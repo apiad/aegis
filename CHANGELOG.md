@@ -5,104 +5,7 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
-### Changed
-
-- **Quota bars are coloured by pace, not by level alone.** A window now also
-  reports where its spend lands at reset: `percent / elapsed_fraction`, green
-  under 80%, yellow from 80 to 100, red above it. The colour is the worse of
-  that and the old spent-so-far verdict, so level and the vendor's own alarm can
-  still escalate a comfortable projection but never relax a real one. The
-  projection prints beside the percent (`45% →150% ↻ 3h30m`) once it is what
-  decided the colour. Windows spend most of their life in the same colour as
-  before; what changes is that a burst reads red while there is still time to
-  slow down, and relaxes on its own as the window measures it.
-
-  A five-hour window opens against a 15% floor on the elapsed fraction, because
-  one turn six minutes in would otherwise project to 250% and every window would
-  open red. Consequence worth knowing: red always needs more than 15% of the
-  quota spent. A window with no reset time, no known span, or a stale reading
-  keeps its level-only colour rather than guessing.
-
-- **A quota countdown past a day is counted in days.** `↻ 105h34m` is now
-  `↻ 4d09h`. Four cells back on every weekly gauge, which is what lets the
-  projection share the tail without squeezing the bar to its three-cell floor.
-- **`make check` runs the tests, and `typecheck` is advisory until its list is
-  empty.** `typecheck` sat ahead of `test` and has never passed — `ty` is 0.0.29,
-  was never configured here, and reports a few hundred diagnostics on working
-  code — so the gate aborted at stage four every time and had never once run the
-  suite, while AGENTS.md defined done as "`make check` passes". The tests now run
-  first and typecheck prints its count without failing the build, the same way
-  this repo already treats `rift`: warning until the list is empty, then promoted
-  to blocking. `make typecheck` stays strict for driving the number down.
-  Tracked in #8.
-- **CI enforces the gates instead of only the tests.** It ran `pytest` and
-  nothing else, so four of five gates were enforced by whoever remembered them,
-  and two had silently drifted. It now runs `format-check`, `lint`, the suite and
-  a non-blocking `typecheck`, each as its own named step. `lint-docs` stays
-  local: `rift` is private and not on PyPI.
-- **A `scheduler:` block is documented, and `voice:`'s sub-keys are no longer
-  read as top-level sections.** The `rift` rule checking that every config
-  section is documented extracted `raw.get(...)` across the whole loader, so
-  `voice:`'s own keys counted as sections; the sub-parsers now take a `block`
-  parameter and the rule sees top-level sections only. `scheduler:` itself parses
-  and is read by nothing, and is now documented as accepted with no effect rather
-  than looking like configuration that works.
-
-- **The old browser client, `RemoteSessionManager` and `aegis --remote` are
-  deleted.** The hand-written JS client and its aegis-aware WebSocket protocol
-  are gone, along with the `--remote` TUI that spoke the same protocol and the
-  twenty branches it threaded through the TUI. `aegis web` serves browsers and
-  ssh serves remote terminals. `aegis web` gains `--no-autostart` for systemd,
-  and serves a service worker that unregisters the retired PWA.
-- **`aegis web` is a client of the daemon, and the daemon no longer serves
-  the web.** `aegis web` runs as its own process: it ensures a token and a
-  daemon, serves the same TUI to each browser tab through xterm.js, and
-  relays each tab's frames to the daemon's unix socket unchanged. A tab
-  whose daemon restarts reconnects to its view. The daemon binds no web port
-  even with a `web:` block configured, so a terminal `aegis` never starts a
-  web server, and `aegis web` no longer writes its port into `.aegis.yaml`.
-  The previous browser client is unwired and will be deleted; dev.apiad.net
-  runs the old version until it is redeployed.
-- **`aegis serve` is now `aegis server`.** `serve` still works and is hidden
-  from `--help`.
-
-- **An ephemeral agent whose turn ends badly is no longer destroyed.** A queue
-  worker used to be closed the moment a turn ended in anything but `ready`, and
-  closing is irreversible: the session left the roster, its MCP token was
-  revoked, its pane was dropped, and its conversation stopped being reachable by
-  any path aegis offers. A dropped SSH link to an execution host arrives as
-  `Result(is_error=True)`, so a tunnel blip destroyed an hour of context. The
-  worker now **stalls and rebuilds** — the harness under the session is replaced,
-  the conversation resumes from the id the harness reported, and the worker is
-  told it was interrupted and is still on the same task, so from inside the turn
-  simply never ended. The task keeps its slot for the rebuild window and no
-  longer; `max_attempts` (default 2) bounds it.
-
-  When the attempts run out the worker is **parked** rather than closed. Parking
-  is one mechanism — its `Origin.kind` leaves `EPHEMERAL_KINDS` — and it buys two
-  behaviours: the ghost book stops reading the session as a departure and fading
-  it, and `close_guard` starts protecting it like any other non-disposable
-  session. The task goes to `recoverable`, a third status beside `completed` and
-  `failed` rather than a flavour of failure, and `aegis_delegate`/`run()` report
-  it as itself with the worker's handle, so a delegating caller is not told
-  "failed" about work that is one call from continuing. The `max_parallel` slot is
-  freed immediately, so parking never blocks the queue, and the producer's
-  callback says where the conversation is and carries whatever the worker had
-  already said.
-
-  On restart, a task that was in flight replays into a resume or a park, **never
-  a re-run**: a worker that got halfway may already have committed, pushed,
-  deployed or sent mail. It used to be declared `failed: interrupted` while its
-  tab came back from `plan_resume` with the whole conversation in it and nobody
-  ever looked at it again. Parked tasks rehydrate too, and stay quiet — their
-  producer was told once already.
-
-  A parked session is a real session, and the idle reaper will not reap a daemon
-  while one stands, so `recoverable_ttl_s` (default a day, `0` disables) closes
-  one nobody acted on and fails its task. What that costs is a conversation, and
-  it says so — a bounded, announced loss after a full day in which anyone could
-  have read or resumed it, which is a different thing from the silent loss four
-  seconds after a dropped link.
+## [0.40.0] - 2026-09-30
 
 ### Added
 
@@ -185,6 +88,152 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   provider and `claude-code` has no `gemini` entry; calls whose recorded model is
   not a model at all (OpenCode writes `OpenCode`, Gemini writes nothing) are
   counted under **unpriced work** instead of being charged zero.
+- **F3's SYSTEM block now answers whether the network works.** A `NET` row
+  carries egress liveness with its handshake RTT, the Cloudflare colo, and an
+  opt-in throughput figure; the row under it carries the exit IP. The two
+  questions it exists for are the ones that decide what an agent should do
+  next — on a captive network egress dies silently and the failures arrive
+  later looking like bugs in whatever was being built, and a link measured at
+  139 KB/s is forty times under the threshold where work stays local instead
+  of going to a server.
+
+  Three readings on three cadences, because they differ by a factor of three
+  thousand in cost: a TCP handshake every 20s, a 300-byte lookup every 300s
+  and whenever egress comes back, and a megabyte download only when
+  `network.speed_interval` is set or you type `/net`. TCP rather than ICMP,
+  because a captive portal answers `ping` and refuses the connection. A
+  throughput figure is never shown without its age, and never at all when the
+  transfer delivered less than it asked for.
+
+- **A tab warns before a message would re-read a large context uncached.** After an hour idle, Claude Code's prompt cache has expired and the next message pays for the whole context again: over 30 days of real transcripts, 130 resumes of contexts above 100k tokens missed the cache and re-wrote 51.2M tokens, a median of 383k each. When you come back to such a tab, a line under the last turn says how many tokens the next message will re-read and offers `/spawn <agent> continue this task` to carry on in a fresh context. Claude Code sessions only, since only their TTL was measured.
+
+### Changed
+
+- **Quota bars are coloured by pace, not by level alone.** A window now also
+  reports where its spend lands at reset: `percent / elapsed_fraction`, green
+  under 80%, yellow from 80 to 100, red above it. The colour is the worse of
+  that and the old spent-so-far verdict, so level and the vendor's own alarm can
+  still escalate a comfortable projection but never relax a real one. The
+  projection prints beside the percent (`45% →150% ↻ 3h30m`) once it is what
+  decided the colour. Windows spend most of their life in the same colour as
+  before; what changes is that a burst reads red while there is still time to
+  slow down, and relaxes on its own as the window measures it.
+
+  A five-hour window opens against a 15% floor on the elapsed fraction, because
+  one turn six minutes in would otherwise project to 250% and every window would
+  open red. Consequence worth knowing: red always needs more than 15% of the
+  quota spent. A window with no reset time, no known span, or a stale reading
+  keeps its level-only colour rather than guessing.
+
+- **A quota countdown past a day is counted in days.** `↻ 105h34m` is now
+  `↻ 4d09h`. Four cells back on every weekly gauge, which is what lets the
+  projection share the tail without squeezing the bar to its three-cell floor.
+- **`make check` runs the tests, and `typecheck` is advisory until its list is
+  empty.** `typecheck` sat ahead of `test` and has never passed — `ty` is 0.0.29,
+  was never configured here, and reports a few hundred diagnostics on working
+  code — so the gate aborted at stage four every time and had never once run the
+  suite, while AGENTS.md defined done as "`make check` passes". The tests now run
+  first and typecheck prints its count without failing the build, the same way
+  this repo already treats `rift`: warning until the list is empty, then promoted
+  to blocking. `make typecheck` stays strict for driving the number down.
+  Tracked in #8.
+- **CI enforces the gates instead of only the tests.** It ran `pytest` and
+  nothing else, so four of five gates were enforced by whoever remembered them,
+  and two had silently drifted. It now runs `format-check`, `lint`, the suite and
+  a non-blocking `typecheck`, each as its own named step. `lint-docs` stays
+  local: `rift` is private and not on PyPI.
+- **A `scheduler:` block is documented, and `voice:`'s sub-keys are no longer
+  read as top-level sections.** The `rift` rule checking that every config
+  section is documented extracted `raw.get(...)` across the whole loader, so
+  `voice:`'s own keys counted as sections; the sub-parsers now take a `block`
+  parameter and the rule sees top-level sections only. `scheduler:` itself parses
+  and is read by nothing, and is now documented as accepted with no effect rather
+  than looking like configuration that works.
+
+- **The old browser client, `RemoteSessionManager` and `aegis --remote` are
+  deleted.** The hand-written JS client and its aegis-aware WebSocket protocol
+  are gone, along with the `--remote` TUI that spoke the same protocol and the
+  twenty branches it threaded through the TUI. `aegis web` serves browsers and
+  ssh serves remote terminals. `aegis web` gains `--no-autostart` for systemd,
+  and serves a service worker that unregisters the retired PWA.
+- **`aegis web` is a client of the daemon, and the daemon no longer serves
+  the web.** `aegis web` runs as its own process: it ensures a token and a
+  daemon, serves the same TUI to each browser tab through xterm.js, and
+  relays each tab's frames to the daemon's unix socket unchanged. A tab
+  whose daemon restarts reconnects to its view. The daemon binds no web port
+  even with a `web:` block configured, so a terminal `aegis` never starts a
+  web server, and `aegis web` no longer writes its port into `.aegis.yaml`.
+  On a phone, a row of on-screen keys sends Esc, Tab, Ctrl and the arrows.
+- **`aegis serve` is now `aegis server`.** `serve` still works and is hidden
+  from `--help`.
+
+- **An ephemeral agent whose turn ends badly is no longer destroyed.** A queue
+  worker used to be closed the moment a turn ended in anything but `ready`, and
+  closing is irreversible: the session left the roster, its MCP token was
+  revoked, its pane was dropped, and its conversation stopped being reachable by
+  any path aegis offers. A dropped SSH link to an execution host arrives as
+  `Result(is_error=True)`, so a tunnel blip destroyed an hour of context. The
+  worker now **stalls and rebuilds** — the harness under the session is replaced,
+  the conversation resumes from the id the harness reported, and the worker is
+  told it was interrupted and is still on the same task, so from inside the turn
+  simply never ended. The task keeps its slot for the rebuild window and no
+  longer; `max_attempts` (default 2) bounds it.
+
+  When the attempts run out the worker is **parked** rather than closed. Parking
+  is one mechanism — its `Origin.kind` leaves `EPHEMERAL_KINDS` — and it buys two
+  behaviours: the ghost book stops reading the session as a departure and fading
+  it, and `close_guard` starts protecting it like any other non-disposable
+  session. The task goes to `recoverable`, a third status beside `completed` and
+  `failed` rather than a flavour of failure, and `aegis_delegate`/`run()` report
+  it as itself with the worker's handle, so a delegating caller is not told
+  "failed" about work that is one call from continuing. The `max_parallel` slot is
+  freed immediately, so parking never blocks the queue, and the producer's
+  callback says where the conversation is and carries whatever the worker had
+  already said.
+
+  On restart, a task that was in flight replays into a resume or a park, **never
+  a re-run**: a worker that got halfway may already have committed, pushed,
+  deployed or sent mail. It used to be declared `failed: interrupted` while its
+  tab came back from `plan_resume` with the whole conversation in it and nobody
+  ever looked at it again. Parked tasks rehydrate too, and stay quiet — their
+  producer was told once already.
+
+  A parked session is a real session, and the idle reaper will not reap a daemon
+  while one stands, so `recoverable_ttl_s` (default a day, `0` disables) closes
+  one nobody acted on and fails its task. What that costs is a conversation, and
+  it says so — a bounded, announced loss after a full day in which anyone could
+  have read or resumed it, which is a different thing from the silent loss four
+  seconds after a dropped link.
+- **Release notes are written as fragments, one file per change.** `CHANGELOG.md`
+  was the only file that conflicted on every PR: each change appended to the top
+  of the same list under `## [Unreleased]`, so two agents working in parallel
+  wrote adjacent lines in one hunk, and three PRs in one afternoon produced three
+  conflicts while nothing else in the tree collided once. A change now drops a
+  file in `changelog.d/` named `<slug>.<category>.md`, so two PRs never touch the
+  same bytes, and `python -m aegis.changelog apply --version x.y.z` collates them
+  into a release section at release time. The category lives in the filename,
+  which also removes the second failure this file had — placing a bullet meant
+  reading the whole release section, and inserting at the first matching heading
+  had already produced two `### Changed` blocks under one release. An unknown
+  category is refused by name rather than skipped, because a fragment nobody
+  renders is an entry missing from the release notes.
+
+- **The file picker honours `.gitignore`.** Inside a repo, `git ls-files`
+  decides what the picker lists, so every `.gitignore`, `info/exclude` and the
+  global excludes count exactly as git counts them. A repo inside a gitignored
+  directory, such as `repos/<name>` in a workspace that ignores `repos/`, is
+  indexed by its own rules. Submodules are included, and worktrees are not.
+  On the Workspace the index went from 61,486 paths to 36,414, and the walk
+  from 5.9 s to 1.7 s of CPU. Scratch trees under a gitignored `.playground/`
+  no longer enter it, and the delete burst behind #18 came from one of those.
+
+- **`aegis_read_peer` returns the conversation, not the command output.** The default window is 4 turns and 10k tokens instead of 12 and 24k, and each run of tool calls collapses to one `tools: Bash×3, Read` line; `tools=True` brings the calls and their results back. Over 569 real logs the median window fell from 33.5k to 8.5k characters and p90 from 95.5k to 16.2k.
+
+- **Known issues page, starting with scroll tearing on VTE terminals.** Rows
+  that duplicate for a frame while scrolling in Ptyxis or GNOME Terminal come
+  from VTE not implementing synchronized output, not from aegis. The new page
+  explains the cause and the workaround (a terminal with mode 2026, such as
+  Ghostty), and the README no longer says every frame is atomic.
 
 ### Fixed
 
@@ -253,6 +302,95 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
   from. Every test of the path passed, because every stub harness starts
   lazily and tolerates a `send` with no process behind it. The same flag also
   governs the manual `/reconnect` repair of a dropped remote link.
+- **The F3 sidebar shows `⚡ N tok/s` again, along with four other figures it
+  had been discarding.** Drawing its own CTX gauge made the CONTEXT section
+  fall back to the narrowest metrics tier, which carries neither the
+  generation speed nor the cached share, the reasoning share, the tool count
+  or the compaction counter — so the panel that exists to spend the vertical
+  axis on detail was showing less of it than the one-line status bar. It now
+  reads the numbers off the metrics model instead of scavenging a rendered
+  string, and puts them on two rows of their own: the per-turn measurements
+  on one, the accumulating counters on the other. A narrow column sheds the
+  shares and keeps the speed, which is the figure with no other surface here.
+
+- **Six defects in the network block, found by an adversarial review of the
+  whole branch.** A `/net` reading that started before an outage could overwrite
+  the sample that saw it, so the sidebar went back to green on a dead link;
+  `refresh` is now serialised. An exit IP that could not be re-confirmed was
+  shown as current, so moving to a captive network displayed your previous
+  network's address beside a green tick; it now carries its age. `interval: 0`
+  was accepted and turned the poller into a hot loop issuing tens of thousands
+  of handshakes a second — every cadence and budget must now be positive, and
+  only `speed_interval` may be `0`, because that is its off switch. The probe
+  loop was released in `action_quit` alone, leaking one per app that exited any
+  other way. `speed_timeout` was an httpx per-operation timeout rather than the
+  budget it promised, so a link that kept trickling was never cut off. And an
+  unbracketed IPv6 anchor was silently mangled into a host that never connects,
+  which read as a permanent `✗ no egress`; brackets are now required, because
+  `2606:4700:4700::1111:443` is itself a valid address and the form is genuinely
+  ambiguous.
+- **A complete throughput sample is no longer discarded for being fast.** The
+  floor meant to prevent a division by a hair also threw away any megabyte that
+  arrived in under 10 ms — above roughly 800 Mbps — so the row vanished on
+  exactly the links good enough for the answer to be good news.
+
+- **The throughput probe no longer inherits the handshake's three-second
+  timeout.** `network.timeout` governs a TCP handshake, where three seconds
+  means a dead anchor. The 1 MB download was given the same budget, so it
+  reported `unmeasured — ConnectTimeout (0 of 1000000 bytes in 3.16s)` and
+  failed on precisely the slow links the reading exists to judge, while
+  succeeding on the fast ones where the answer does not change any decision.
+  It now has `network.speed_timeout`, default 30 seconds.
+
+- **A spawned agent's tab keeps drawing after you first open it.** A tab that opens in the background draws the agent's first events while hidden, and the first time you looked at it the replay step reset its window to the length of the log it had read at construction, zero for a new session. Every block after that was recorded and never drawn, so the transcript stopped wherever your first look found it until you pressed Alt+End or reopened it. Events that arrived before the tab was mounted at all were dropped from the screen the same way. The first look now draws the whole history, replay and live events together, in order and once.
+
+- **A queue worker whose monitor fires during its last turn is no longer closed with the wake inside it.** A working session buffers a delivered message until its turn ends, and the queue's close guard counted only messages held for sessions that were not bound. When a worker armed a monitor, kept working and wrote a file, the monitor tripped before the turn ended; the finalizer ran while the turn digest was diffing the repo, saw no live monitor and an empty inbox, marked the task completed with the worker's "I'll wait" line and closed the session. The inbox now counts the bound session's buffer too, so the worker is deferred until the wake has run. `aegis_close` reads the same count.
+
+- **A tab opened with `/spawn` shows the prompt it was started with.** The brain sends that opening turn, not the pane, and the pane dropped claude's echo of it on the assumption that it had drawn the line itself, so the operator watched an agent answer a prompt they could not see. The same held for `aegis_spawn` and queue workers. The spawned tab now leads with the operator's own words, then where they came from, then the tail the agent was handed.
+
+- **A queue worker resumed after a daemon restart keeps its tab.** `aegis_task_resume` closes the parked session and respawns its conversation under the same handle. Each view dropped the old pane and mounted the new one in two concurrent workers, and when the mount ran while the old pane was still leaving the screen it hit a duplicate widget id, took it for a detached view and gave up: the worker ran with no tab anywhere. Mounts and drops for a handle now take turns, and a drop only removes the pane of the session it was for. A pane mounted over a session already mid-turn also reads `working` from the start instead of `idle`.
+
+- **A daemon with an armed schedule no longer reaps itself as idle.** The idle reaper looked only at attached views and live sessions, so a daemon whose whole job is firing schedules exited after `AEGIS_IDLE_TIMEOUT` and its schedules stopped without a word: the AFK coordinator logged `daemon idle for 1800s; exiting` and never moved another card. It now also asks the scheduler, so an enabled schedule, including one pushed at runtime, keeps the daemon up, and a daemon with no schedules still cleans itself up.
+
+### Performance
+
+- **Benchmarked against 0.39.0 on zion** (`bench/history/zion/0.40.0.json`).
+  The daemon boots 32 to 39% faster and the first frame arrives 29 to 49%
+  sooner across the streaming scenarios (first frame 4.07 s to 2.70 s in
+  `claude-blocks`), and a render tick's median fell about 35%.
+
+  `two-clients` reads as a regression and is not a like-for-like one: the
+  second client's median marker latency went from 60 ms to 98 ms and the median
+  tick from 4.2 ms to 9.8 ms. In 0.39.0 that second client left 93 to 95% of the
+  markers undrawn (`latency.markers_undrawn_b_pct`, in three separate runs), so
+  its latency was measured on the few it did draw and the daemon rendered for
+  one view. In 0.40.0 it draws all of them and the daemon renders for both
+  views. That matches the frozen-tab fix above (#16), though no run isolated
+  that commit.
+
+  Other rows regressed and are not explained: `idle` compose p95 2.2 to 3.4 ms,
+  `typing` loop lag max 28 to 43 ms, `resize` settle max 698 to 982 ms. The
+  baseline has one repeat and was recorded on a busy host, so the comparison
+  cannot tell them from noise; a same-day run of `idle` on both versions showed
+  no regression.
+- **A burst of deleted files no longer pins the daemon's CPU.** The file
+  picker's index removed paths with a linear scan while holding the GIL: 3.6 ms
+  per delete or rename on a 61k-path Workspace, even for a `.pyc` or a
+  `.git/index.lock` that was never indexed. When an agent built and deleted a
+  root filesystem inside the Workspace, the daemon spent more than 20 minutes
+  draining the events, and every view and MCP call slowed down with it. Removal
+  is now a binary search, and events under ignored paths are dropped before any
+  stat. Replaying a 30k-file create-and-delete burst went from 52 s of CPU to
+  7 s.
+
+- **The file index starts when first used and stops watching when idle.**
+  Every view used to walk the whole cwd at mount and keep a watchdog observer
+  on it for the life of the daemon: 100,953 inotify watches on the Workspace,
+  and about 11% of a core of event processing with 12 agents working, whether
+  or not anyone opened the picker. The index is now built by the first
+  Ctrl+O, file browser tab, or Ctrl+click or Alt+click on a path. The
+  observer stops after 10 minutes without one of those, and the next query
+  answers from the stale index while a re-walk refreshes it.
 
 ## [0.39.0] - 2026-09-23
 

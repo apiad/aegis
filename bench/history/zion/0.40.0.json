@@ -1,0 +1,2248 @@
+{
+  "schema": 1,
+  "run_id": "20260929T155837-current",
+  "fingerprint": {
+    "host": "zion",
+    "cpu": "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz",
+    "cores": 8,
+    "governor": "powersave",
+    "loadavg": [
+      3.2,
+      4.5,
+      3.32
+    ],
+    "cpu_busy_pct_start": 26.1,
+    "size": "120x40",
+    "speed": 1.0,
+    "sabotage_ms": 0,
+    "target": "current",
+    "topology": "daemon",
+    "aegis_version": "0.40.0",
+    "aegis_build": "0.40.0+93e8992",
+    "aegis_file": "/home/apiad/Workspace/repos/aegis/.claude/worktrees/release-0400/src/aegis/__init__.py",
+    "git_sha": "93e8992",
+    "git_dirty": false,
+    "python": "3.13.1",
+    "textual": "8.2.6",
+    "rich": "14.3.3",
+    "bench_build": "0.40.0+93e8992",
+    "created": "2026-09-29T19:58:37+00:00"
+  },
+  "scenarios": {
+    "startup": {
+      "status": "ok",
+      "reason": "",
+      "repeats": [
+        {
+          "render.bytes_per_frame.p50": 8256.0,
+          "render.tick_ms.p50": 7.4,
+          "render.tick_ms.p95": 8.723,
+          "render.tick_ms.p99": 8.723,
+          "render.tick_ms.max": 8.723,
+          "render.layout_ms.p95": 7.214,
+          "render.compose_ms.p95": 6.496,
+          "render.display_ms.p95": 0.391,
+          "loop.lag_ms.p50": 0.17,
+          "loop.lag_ms.p99": 3.105,
+          "loop.lag_ms.max": 118.228,
+          "loop.stalls_16_per_min": 48.83,
+          "loop.stalls_50_per_min": 36.623,
+          "loop.stalls_100_per_min": 24.415,
+          "cpu.daemon_s_per_s": 0.1497,
+          "render.height_calls": 0,
+          "render.render_lines_calls": 68,
+          "gc.pause_total_ms": 104.967,
+          "gc.pause_max_ms": 73.057,
+          "mem.rss_peak_mb": 119.73,
+          "mem.rss_end_mb": 119.73,
+          "mem.uss_peak_mb": 100.75,
+          "cpu.client_s_per_s": 0.999,
+          "startup.daemon_boot_ms": 2666.97,
+          "startup.first_frame_ms": 2952.455,
+          "startup.ready_ms": 2954.74,
+          "startup.warm_first_frame_ms": 3188.713
+        },
+        {
+          "render.bytes_per_frame.p50": 8256.0,
+          "render.tick_ms.p50": 7.381,
+          "render.tick_ms.p95": 10.109,
+          "render.tick_ms.p99": 10.109,
+          "render.tick_ms.max": 10.109,
+          "render.layout_ms.p95": 7.351,
+          "render.compose_ms.p95": 6.903,
+          "render.display_ms.p95": 0.746,
+          "loop.lag_ms.p50": 0.17,
+          "loop.lag_ms.p99": 2.023,
+          "loop.lag_ms.max": 77.878,
+          "loop.stalls_16_per_min": 52.922,
+          "loop.stalls_50_per_min": 26.461,
+          "loop.stalls_100_per_min": 0.0,
+          "cpu.daemon_s_per_s": 0.1328,
+          "render.height_calls": 0,
+          "render.render_lines_calls": 77,
+          "gc.pause_total_ms": 137.068,
+          "gc.pause_max_ms": 103.683,
+          "mem.rss_peak_mb": 119.11,
+          "mem.rss_end_mb": 119.11,
+          "mem.uss_peak_mb": 98.82,
+          "cpu.client_s_per_s": 0.9977,
+          "startup.daemon_boot_ms": 2992.44,
+          "startup.first_frame_ms": 2901.765,
+          "startup.ready_ms": 2903.219,
+          "startup.warm_first_frame_ms": 2730.03
+        },
+        {
+          "render.bytes_per_frame.p50": 8256.0,
+          "render.tick_ms.p50": 6.654,
+          "render.tick_ms.p95": 7.156,
+          "render.tick_ms.p99": 7.156,
+          "render.tick_ms.max": 7.156,
+          "render.layout_ms.p95": 5.977,
+          "render.compose_ms.p95": 5.196,
+          "render.display_ms.p95": 0.422,
+          "loop.lag_ms.p50": 0.171,
+          "loop.lag_ms.p99": 4.665,
+          "loop.lag_ms.max": 82.141,
+          "loop.stalls_16_per_min": 51.502,
+          "loop.stalls_50_per_min": 25.751,
+          "loop.stalls_100_per_min": 0.0,
+          "cpu.daemon_s_per_s": 0.1202,
+          "render.height_calls": 0,
+          "render.render_lines_calls": 77,
+          "gc.pause_total_ms": 100.509,
+          "gc.pause_max_ms": 70.283,
+          "mem.rss_peak_mb": 119.15,
+          "mem.rss_end_mb": 119.15,
+          "mem.uss_peak_mb": 98.81,
+          "cpu.client_s_per_s": 0.9996,
+          "startup.daemon_boot_ms": 2439.141,
+          "startup.first_frame_ms": 2900.546,
+          "startup.ready_ms": 2901.888,
+          "startup.warm_first_frame_ms": 2808.191
+        }
+      ],
+      "gates": [
+        [
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          },
+          {
+            "name": "sync_seen_a2",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          },
+          {
+            "name": "sync_seen_a2",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          },
+          {
+            "name": "sync_seen_a2",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ]
+      ],
+      "median": {
+        "cpu.client_s_per_s": 0.999,
+        "cpu.daemon_s_per_s": 0.1328,
+        "gc.pause_max_ms": 73.057,
+        "gc.pause_total_ms": 104.967,
+        "loop.lag_ms.max": 82.141,
+        "loop.lag_ms.p50": 0.17,
+        "loop.lag_ms.p99": 3.105,
+        "loop.stalls_100_per_min": 0.0,
+        "loop.stalls_16_per_min": 51.502,
+        "loop.stalls_50_per_min": 26.461,
+        "mem.rss_end_mb": 119.15,
+        "mem.rss_peak_mb": 119.15,
+        "mem.uss_peak_mb": 98.82,
+        "render.bytes_per_frame.p50": 8256.0,
+        "render.compose_ms.p95": 6.496,
+        "render.display_ms.p95": 0.422,
+        "render.height_calls": 0,
+        "render.layout_ms.p95": 7.214,
+        "render.render_lines_calls": 77,
+        "render.tick_ms.max": 8.723,
+        "render.tick_ms.p50": 7.381,
+        "render.tick_ms.p95": 8.723,
+        "render.tick_ms.p99": 8.723,
+        "startup.daemon_boot_ms": 2666.97,
+        "startup.first_frame_ms": 2901.765,
+        "startup.ready_ms": 2903.219,
+        "startup.warm_first_frame_ms": 2808.191
+      }
+    },
+    "idle": {
+      "status": "ok",
+      "reason": "",
+      "repeats": [
+        {
+          "render.bytes_per_frame.p50": 256.0,
+          "render.frames_per_s": 2.997,
+          "render.tick_ms.p50": 2.822,
+          "render.tick_ms.p95": 5.398,
+          "render.tick_ms.p99": 7.493,
+          "render.tick_ms.max": 7.493,
+          "render.layout_ms.p95": 5.226,
+          "render.compose_ms.p95": 3.724,
+          "render.display_ms.p95": 0.161,
+          "render.ticks_per_s": 2.997,
+          "loop.lag_ms.p50": 0.198,
+          "loop.lag_ms.p99": 2.062,
+          "loop.lag_ms.max": 7.594,
+          "loop.stalls_16_per_min": 0.0,
+          "loop.stalls_50_per_min": 0.0,
+          "loop.stalls_100_per_min": 0.0,
+          "cpu.daemon_s_per_s": 0.0471,
+          "render.height_calls": 20,
+          "render.render_lines_calls": 591,
+          "gc.pause_total_ms": 4.948,
+          "gc.pause_max_ms": 71.035,
+          "mem.rss_peak_mb": 122.06,
+          "mem.rss_end_mb": 122.06,
+          "mem.uss_peak_mb": 101.45,
+          "cpu.client_s_per_s": 0.0,
+          "startup.daemon_boot_ms": 2432.067,
+          "startup.first_frame_ms": 2919.054,
+          "startup.ready_ms": 2921.837,
+          "host.load_per_core.max": 0.314,
+          "host.cpu_busy_pct": 35.31
+        },
+        {
+          "render.bytes_per_frame.p50": 256.0,
+          "render.frames_per_s": 3.0,
+          "render.tick_ms.p50": 2.726,
+          "render.tick_ms.p95": 4.96,
+          "render.tick_ms.p99": 10.791,
+          "render.tick_ms.max": 10.791,
+          "render.layout_ms.p95": 4.58,
+          "render.compose_ms.p95": 3.424,
+          "render.display_ms.p95": 0.154,
+          "render.ticks_per_s": 3.0,
+          "loop.lag_ms.p50": 0.193,
+          "loop.lag_ms.p99": 1.611,
+          "loop.lag_ms.max": 9.626,
+          "loop.stalls_16_per_min": 0.0,
+          "loop.stalls_50_per_min": 0.0,
+          "loop.stalls_100_per_min": 0.0,
+          "cpu.daemon_s_per_s": 0.0449,
+          "render.height_calls": 20,
+          "render.render_lines_calls": 591,
+          "gc.pause_total_ms": 4.814,
+          "gc.pause_max_ms": 69.267,
+          "mem.rss_peak_mb": 122.07,
+          "mem.rss_end_mb": 122.07,
+          "mem.uss_peak_mb": 101.57,
+          "cpu.client_s_per_s": 0.0005,
+          "startup.daemon_boot_ms": 2317.258,
+          "startup.first_frame_ms": 2951.961,
+          "startup.ready_ms": 2954.326,
+          "host.load_per_core.max": 0.336,
+          "host.cpu_busy_pct": 33.08
+        },
+        {
+          "render.bytes_per_frame.p50": 256.0,
+          "render.frames_per_s": 3.0,
+          "render.tick_ms.p50": 1.854,
+          "render.tick_ms.p95": 3.1,
+          "render.tick_ms.p99": 5.57,
+          "render.tick_ms.max": 5.57,
+          "render.layout_ms.p95": 2.732,
+          "render.compose_ms.p95": 2.518,
+          "render.display_ms.p95": 0.128,
+          "render.ticks_per_s": 3.0,
+          "loop.lag_ms.p50": 0.209,
+          "loop.lag_ms.p99": 1.006,
+          "loop.lag_ms.max": 3.735,
+          "loop.stalls_16_per_min": 0.0,
+          "loop.stalls_50_per_min": 0.0,
+          "loop.stalls_100_per_min": 0.0,
+          "cpu.daemon_s_per_s": 0.0415,
+          "render.height_calls": 19,
+          "render.render_lines_calls": 570,
+          "gc.pause_total_ms": 4.361,
+          "gc.pause_max_ms": 70.83,
+          "mem.rss_peak_mb": 122.01,
+          "mem.rss_end_mb": 122.01,
+          "mem.uss_peak_mb": 101.4,
+          "cpu.client_s_per_s": 0.0,
+          "startup.daemon_boot_ms": 2511.273,
+          "startup.first_frame_ms": 3111.991,
+          "startup.ready_ms": 3113.585,
+          "host.load_per_core.max": 0.495,
+          "host.cpu_busy_pct": 14.97
+        }
+      ],
+      "gates": [
+        [
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ]
+      ],
+      "median": {
+        "cpu.client_s_per_s": 0.0,
+        "cpu.daemon_s_per_s": 0.0449,
+        "gc.pause_max_ms": 70.83,
+        "gc.pause_total_ms": 4.814,
+        "host.cpu_busy_pct": 33.08,
+        "host.load_per_core.max": 0.336,
+        "loop.lag_ms.max": 7.594,
+        "loop.lag_ms.p50": 0.198,
+        "loop.lag_ms.p99": 1.611,
+        "loop.stalls_100_per_min": 0.0,
+        "loop.stalls_16_per_min": 0.0,
+        "loop.stalls_50_per_min": 0.0,
+        "mem.rss_end_mb": 122.06,
+        "mem.rss_peak_mb": 122.06,
+        "mem.uss_peak_mb": 101.45,
+        "render.bytes_per_frame.p50": 256.0,
+        "render.compose_ms.p95": 3.424,
+        "render.display_ms.p95": 0.154,
+        "render.frames_per_s": 3.0,
+        "render.height_calls": 20,
+        "render.layout_ms.p95": 4.58,
+        "render.render_lines_calls": 591,
+        "render.tick_ms.max": 7.493,
+        "render.tick_ms.p50": 2.726,
+        "render.tick_ms.p95": 4.96,
+        "render.tick_ms.p99": 7.493,
+        "render.ticks_per_s": 3.0,
+        "startup.daemon_boot_ms": 2432.067,
+        "startup.first_frame_ms": 2951.961,
+        "startup.ready_ms": 2954.326
+      }
+    },
+    "claude-blocks": {
+      "status": "ok",
+      "reason": "",
+      "repeats": [
+        {
+          "latency.marker_ms.p50": 118.745,
+          "latency.marker_ms.p95": 118.745,
+          "latency.marker_ms.p99": 118.745,
+          "latency.marker_ms.max": 118.745,
+          "latency.markers_undrawn_pct": 0.0,
+          "render.bytes_per_frame.p50": 246.0,
+          "render.frames_per_s": 13.333,
+          "render.tick_ms.p50": 1.606,
+          "render.tick_ms.p95": 4.489,
+          "render.tick_ms.p99": 37.395,
+          "render.tick_ms.max": 82.231,
+          "render.layout_ms.p95": 3.426,
+          "render.compose_ms.p95": 3.206,
+          "render.display_ms.p95": 0.188,
+          "render.ticks_per_s": 13.242,
+          "loop.lag_ms.p50": 0.213,
+          "loop.lag_ms.p99": 2.352,
+          "loop.lag_ms.max": 82.642,
+          "loop.stalls_16_per_min": 27.21,
+          "loop.stalls_50_per_min": 5.442,
+          "loop.stalls_100_per_min": 0.0,
+          "cpu.daemon_s_per_s": 0.07,
+          "render.height_calls": 7,
+          "render.render_lines_calls": 1551,
+          "gc.pause_total_ms": 6.503,
+          "gc.pause_max_ms": 73.356,
+          "mem.rss_peak_mb": 118.92,
+          "mem.rss_end_mb": 118.92,
+          "mem.uss_peak_mb": 98.25,
+          "cpu.client_s_per_s": 0.001,
+          "startup.daemon_boot_ms": 2372.727,
+          "startup.first_frame_ms": 2694.142,
+          "startup.ready_ms": 2695.689,
+          "host.load_per_core.max": 0.525,
+          "host.cpu_busy_pct": 17.67
+        },
+        {
+          "latency.marker_ms.p50": 114.579,
+          "latency.marker_ms.p95": 114.579,
+          "latency.marker_ms.p99": 114.579,
+          "latency.marker_ms.max": 114.579,
+          "latency.markers_undrawn_pct": 0.0,
+          "render.bytes_per_frame.p50": 246.0,
+          "render.frames_per_s": 13.308,
+          "render.tick_ms.p50": 1.687,
+          "render.tick_ms.p95": 4.437,
+          "render.tick_ms.p99": 31.039,
+          "render.tick_ms.max": 79.305,
+          "render.layout_ms.p95": 4.411,
+          "render.compose_ms.p95": 3.365,
+          "render.display_ms.p95": 0.168,
+          "render.ticks_per_s": 13.217,
+          "loop.lag_ms.p50": 0.187,
+          "loop.lag_ms.p99": 2.397,
+          "loop.lag_ms.max": 79.701,
+          "loop.stalls_16_per_min": 27.159,
+          "loop.stalls_50_per_min": 10.864,
+          "loop.stalls_100_per_min": 0.0,
+          "cpu.daemon_s_per_s": 0.0786,
+          "render.height_calls": 11,
+          "render.render_lines_calls": 1607,
+          "gc.pause_total_ms": 11.968,
+          "gc.pause_max_ms": 70.032,
+          "mem.rss_peak_mb": 120.42,
+          "mem.rss_end_mb": 120.42,
+          "mem.uss_peak_mb": 99.76,
+          "cpu.client_s_per_s": 0.002,
+          "startup.daemon_boot_ms": 2309.791,
+          "startup.first_frame_ms": 2699.924,
+          "startup.ready_ms": 2701.372,
+          "host.load_per_core.max": 0.438,
+          "host.cpu_busy_pct": 18.37
+        },
+        {
+          "latency.marker_ms.p50": 155.728,
+          "latency.marker_ms.p95": 155.728,
+          "latency.marker_ms.p99": 155.728,
+          "latency.marker_ms.max": 155.728,
+          "latency.markers_undrawn_pct": 0.0,
+          "render.bytes_per_frame.p50": 246.0,
+          "render.frames_per_s": 13.17,
+          "render.tick_ms.p50": 2.187,
+          "render.tick_ms.p95": 5.615,
+          "render.tick_ms.p99": 23.54,
+          "render.tick_ms.max": 93.206,
+          "render.layout_ms.p95": 5.553,
+          "render.compose_ms.p95": 3.835,
+          "render.display_ms.p95": 0.255,
+          "render.ticks_per_s": 13.08,
+          "loop.lag_ms.p50": 0.183,
+          "loop.lag_ms.p99": 3.219,
+          "loop.lag_ms.max": 94.282,
+          "loop.stalls_16_per_min": 37.628,
+          "loop.stalls_50_per_min": 16.126,
+          "loop.stalls_100_per_min": 0.0,
+          "cpu.daemon_s_per_s": 0.0974,
+          "render.height_calls": 11,
+          "render.render_lines_calls": 1642,
+          "gc.pause_total_ms": 20.64,
+          "gc.pause_max_ms": 67.041,
+          "mem.rss_peak_mb": 120.4,
+          "mem.rss_end_mb": 120.4,
+          "mem.uss_peak_mb": 99.79,
+          "cpu.client_s_per_s": 0.003,
+          "startup.daemon_boot_ms": 2142.391,
+          "startup.first_frame_ms": 2987.186,
+          "startup.ready_ms": 2990.448,
+          "host.load_per_core.max": 0.427,
+          "host.cpu_busy_pct": 32.35
+        }
+      ],
+      "gates": [
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "1 of 1 drawn"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "1 of 1 drawn"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "1 of 1 drawn"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ]
+      ],
+      "median": {
+        "cpu.client_s_per_s": 0.002,
+        "cpu.daemon_s_per_s": 0.0786,
+        "gc.pause_max_ms": 70.032,
+        "gc.pause_total_ms": 11.968,
+        "host.cpu_busy_pct": 18.37,
+        "host.load_per_core.max": 0.438,
+        "latency.marker_ms.max": 118.745,
+        "latency.marker_ms.p50": 118.745,
+        "latency.marker_ms.p95": 118.745,
+        "latency.marker_ms.p99": 118.745,
+        "latency.markers_undrawn_pct": 0.0,
+        "loop.lag_ms.max": 82.642,
+        "loop.lag_ms.p50": 0.187,
+        "loop.lag_ms.p99": 2.397,
+        "loop.stalls_100_per_min": 0.0,
+        "loop.stalls_16_per_min": 27.21,
+        "loop.stalls_50_per_min": 10.864,
+        "mem.rss_end_mb": 120.4,
+        "mem.rss_peak_mb": 120.4,
+        "mem.uss_peak_mb": 99.76,
+        "render.bytes_per_frame.p50": 246.0,
+        "render.compose_ms.p95": 3.365,
+        "render.display_ms.p95": 0.188,
+        "render.frames_per_s": 13.308,
+        "render.height_calls": 11,
+        "render.layout_ms.p95": 4.411,
+        "render.render_lines_calls": 1607,
+        "render.tick_ms.max": 82.231,
+        "render.tick_ms.p50": 1.687,
+        "render.tick_ms.p95": 4.489,
+        "render.tick_ms.p99": 31.039,
+        "render.ticks_per_s": 13.217,
+        "startup.daemon_boot_ms": 2309.791,
+        "startup.first_frame_ms": 2699.924,
+        "startup.ready_ms": 2701.372
+      }
+    },
+    "block-stream": {
+      "status": "ok",
+      "reason": "",
+      "repeats": [
+        {
+          "latency.marker_ms.p50": 42.422,
+          "latency.marker_ms.p95": 112.379,
+          "latency.marker_ms.p99": 145.205,
+          "latency.marker_ms.max": 155.192,
+          "latency.markers_undrawn_pct": 0.0,
+          "render.bytes_per_frame.p50": 9461.0,
+          "render.frames_per_s": 24.297,
+          "render.tick_ms.p50": 8.437,
+          "render.tick_ms.p95": 37.908,
+          "render.tick_ms.p99": 115.022,
+          "render.tick_ms.max": 133.043,
+          "render.layout_ms.p95": 37.827,
+          "render.compose_ms.p95": 23.359,
+          "render.display_ms.p95": 1.044,
+          "render.ticks_per_s": 24.297,
+          "render.paint_ms.p50": 1.404,
+          "loop.lag_ms.p50": 0.25,
+          "loop.lag_ms.p99": 38.07,
+          "loop.lag_ms.max": 130.926,
+          "loop.stalls_16_per_min": 478.111,
+          "loop.stalls_50_per_min": 23.514,
+          "loop.stalls_100_per_min": 15.676,
+          "cpu.daemon_s_per_s": 0.5646,
+          "render.height_calls": 144,
+          "render.render_lines_calls": 1747,
+          "gc.pause_total_ms": 349.54,
+          "gc.pause_max_ms": 111.291,
+          "mem.rss_peak_mb": 121.28,
+          "mem.rss_end_mb": 121.28,
+          "mem.uss_peak_mb": 100.77,
+          "cpu.client_s_per_s": 0.0066,
+          "startup.daemon_boot_ms": 3149.873,
+          "startup.first_frame_ms": 3839.789,
+          "startup.ready_ms": 3846.075,
+          "host.load_per_core.max": 0.49,
+          "host.cpu_busy_pct": 44.85
+        },
+        {
+          "latency.marker_ms.p50": 73.033,
+          "latency.marker_ms.p95": 173.622,
+          "latency.marker_ms.p99": 248.034,
+          "latency.marker_ms.max": 248.609,
+          "latency.markers_undrawn_pct": 0.0,
+          "render.bytes_per_frame.p50": 9461.0,
+          "render.frames_per_s": 23.15,
+          "render.tick_ms.p50": 9.1,
+          "render.tick_ms.p95": 48.777,
+          "render.tick_ms.p99": 108.174,
+          "render.tick_ms.max": 165.783,
+          "render.layout_ms.p95": 48.704,
+          "render.compose_ms.p95": 31.282,
+          "render.display_ms.p95": 1.471,
+          "render.ticks_per_s": 23.15,
+          "render.paint_ms.p50": 1.575,
+          "loop.lag_ms.p50": 0.301,
+          "loop.lag_ms.p99": 51.198,
+          "loop.lag_ms.max": 165.646,
+          "loop.stalls_16_per_min": 528.762,
+          "loop.stalls_50_per_min": 71.028,
+          "loop.stalls_100_per_min": 15.784,
+          "cpu.daemon_s_per_s": 0.554,
+          "render.height_calls": 126,
+          "render.render_lines_calls": 1540,
+          "gc.pause_total_ms": 351.897,
+          "gc.pause_max_ms": 102.329,
+          "mem.rss_peak_mb": 121.29,
+          "mem.rss_end_mb": 121.29,
+          "mem.uss_peak_mb": 100.79,
+          "cpu.client_s_per_s": 0.0042,
+          "startup.daemon_boot_ms": 3529.35,
+          "startup.first_frame_ms": 3588.277,
+          "startup.ready_ms": 3589.876,
+          "host.load_per_core.max": 0.578,
+          "host.cpu_busy_pct": 67.52
+        },
+        {
+          "latency.marker_ms.p50": 95.717,
+          "latency.marker_ms.p95": 331.141,
+          "latency.marker_ms.p99": 362.213,
+          "latency.marker_ms.max": 362.981,
+          "latency.markers_undrawn_pct": 0.0,
+          "render.bytes_per_frame.p50": 9550.0,
+          "render.frames_per_s": 16.237,
+          "render.tick_ms.p50": 22.561,
+          "render.tick_ms.p95": 67.587,
+          "render.tick_ms.p99": 196.79,
+          "render.tick_ms.max": 261.468,
+          "render.layout_ms.p95": 67.497,
+          "render.compose_ms.p95": 46.927,
+          "render.display_ms.p95": 3.181,
+          "render.ticks_per_s": 16.113,
+          "render.paint_ms.p50": 1.763,
+          "loop.lag_ms.p50": 0.325,
+          "loop.lag_ms.p99": 67.481,
+          "loop.lag_ms.max": 261.131,
+          "loop.stalls_16_per_min": 609.811,
+          "loop.stalls_50_per_min": 171.045,
+          "loop.stalls_100_per_min": 22.31,
+          "cpu.daemon_s_per_s": 0.4645,
+          "render.height_calls": 114,
+          "render.render_lines_calls": 1292,
+          "gc.pause_total_ms": 548.888,
+          "gc.pause_max_ms": 211.636,
+          "mem.rss_peak_mb": 121.28,
+          "mem.rss_end_mb": 121.28,
+          "mem.uss_peak_mb": 100.7,
+          "cpu.client_s_per_s": 0.0043,
+          "startup.daemon_boot_ms": 2883.086,
+          "startup.first_frame_ms": 4200.118,
+          "startup.ready_ms": 4202.642,
+          "host.load_per_core.max": 0.689,
+          "host.cpu_busy_pct": 87.34
+        }
+      ],
+      "gates": [
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "120 of 120 drawn"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "120 of 120 drawn"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "120 of 120 drawn"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ]
+      ],
+      "median": {
+        "cpu.client_s_per_s": 0.0043,
+        "cpu.daemon_s_per_s": 0.554,
+        "gc.pause_max_ms": 111.291,
+        "gc.pause_total_ms": 351.897,
+        "host.cpu_busy_pct": 67.52,
+        "host.load_per_core.max": 0.578,
+        "latency.marker_ms.max": 248.609,
+        "latency.marker_ms.p50": 73.033,
+        "latency.marker_ms.p95": 173.622,
+        "latency.marker_ms.p99": 248.034,
+        "latency.markers_undrawn_pct": 0.0,
+        "loop.lag_ms.max": 165.646,
+        "loop.lag_ms.p50": 0.301,
+        "loop.lag_ms.p99": 51.198,
+        "loop.stalls_100_per_min": 15.784,
+        "loop.stalls_16_per_min": 528.762,
+        "loop.stalls_50_per_min": 71.028,
+        "mem.rss_end_mb": 121.28,
+        "mem.rss_peak_mb": 121.28,
+        "mem.uss_peak_mb": 100.77,
+        "render.bytes_per_frame.p50": 9461.0,
+        "render.compose_ms.p95": 31.282,
+        "render.display_ms.p95": 1.471,
+        "render.frames_per_s": 23.15,
+        "render.height_calls": 126,
+        "render.layout_ms.p95": 48.704,
+        "render.paint_ms.p50": 1.575,
+        "render.render_lines_calls": 1540,
+        "render.tick_ms.max": 165.783,
+        "render.tick_ms.p50": 9.1,
+        "render.tick_ms.p95": 48.777,
+        "render.tick_ms.p99": 115.022,
+        "render.ticks_per_s": 23.15,
+        "startup.daemon_boot_ms": 3149.873,
+        "startup.first_frame_ms": 3839.789,
+        "startup.ready_ms": 3846.075
+      }
+    },
+    "claude-stream": {
+      "status": "skipped",
+      "reason": "aegis does not pass --include-partial-messages to claude",
+      "repeats": [],
+      "gates": [],
+      "median": {}
+    },
+    "acp-stream": {
+      "status": "ok",
+      "reason": "",
+      "repeats": [
+        {
+          "latency.marker_ms.p50": 8633.719,
+          "latency.marker_ms.p95": 10678.601,
+          "latency.marker_ms.p99": 10882.869,
+          "latency.marker_ms.max": 10882.869,
+          "latency.markers_undrawn_pct": 55.0,
+          "render.bytes_per_frame.p50": 244.0,
+          "render.frames_per_s": 12.281,
+          "render.tick_ms.p50": 1.811,
+          "render.tick_ms.p95": 4.21,
+          "render.tick_ms.p99": 21.172,
+          "render.tick_ms.max": 46.062,
+          "render.layout_ms.p95": 0.0,
+          "render.compose_ms.p95": 3.972,
+          "render.display_ms.p95": 0.159,
+          "render.ticks_per_s": 12.199,
+          "render.paint_ms.p50": 1.063,
+          "loop.lag_ms.p50": 0.2,
+          "loop.lag_ms.p99": 2.692,
+          "loop.lag_ms.max": 702.175,
+          "loop.stalls_16_per_min": 29.475,
+          "loop.stalls_50_per_min": 9.825,
+          "loop.stalls_100_per_min": 4.912,
+          "cpu.daemon_s_per_s": 0.1569,
+          "render.height_calls": 6,
+          "render.render_lines_calls": 1578,
+          "gc.pause_total_ms": 14.035,
+          "gc.pause_max_ms": 67.204,
+          "mem.rss_peak_mb": 119.77,
+          "mem.rss_end_mb": 119.77,
+          "mem.uss_peak_mb": 99.22,
+          "cpu.client_s_per_s": 0.0025,
+          "startup.daemon_boot_ms": 2326.972,
+          "startup.first_frame_ms": 3620.703,
+          "startup.ready_ms": 3622.675,
+          "host.load_per_core.max": 0.659,
+          "host.cpu_busy_pct": 32.72
+        },
+        {
+          "latency.marker_ms.p50": 8557.222,
+          "latency.marker_ms.p95": 10604.261,
+          "latency.marker_ms.p99": 10808.272,
+          "latency.marker_ms.max": 10808.272,
+          "latency.markers_undrawn_pct": 55.0,
+          "render.bytes_per_frame.p50": 244.0,
+          "render.frames_per_s": 12.333,
+          "render.tick_ms.p50": 1.509,
+          "render.tick_ms.p95": 3.571,
+          "render.tick_ms.p99": 13.837,
+          "render.tick_ms.max": 30.605,
+          "render.layout_ms.p95": 0.0,
+          "render.compose_ms.p95": 3.115,
+          "render.display_ms.p95": 0.18,
+          "render.ticks_per_s": 12.25,
+          "render.paint_ms.p50": 1.08,
+          "loop.lag_ms.p50": 0.237,
+          "loop.lag_ms.p99": 2.225,
+          "loop.lag_ms.max": 642.67,
+          "loop.stalls_16_per_min": 25.0,
+          "loop.stalls_50_per_min": 5.0,
+          "loop.stalls_100_per_min": 5.0,
+          "cpu.daemon_s_per_s": 0.1403,
+          "render.height_calls": 4,
+          "render.render_lines_calls": 1447,
+          "gc.pause_total_ms": 7.925,
+          "gc.pause_max_ms": 71.978,
+          "mem.rss_peak_mb": 119.69,
+          "mem.rss_end_mb": 119.69,
+          "mem.uss_peak_mb": 99.25,
+          "cpu.client_s_per_s": 0.0027,
+          "startup.daemon_boot_ms": 2417.751,
+          "startup.first_frame_ms": 2937.09,
+          "startup.ready_ms": 2939.64,
+          "host.load_per_core.max": 0.655,
+          "host.cpu_busy_pct": 19.77
+        },
+        {
+          "latency.marker_ms.p50": 8621.124,
+          "latency.marker_ms.p95": 10666.956,
+          "latency.marker_ms.p99": 10871.21,
+          "latency.marker_ms.max": 10871.21,
+          "latency.markers_undrawn_pct": 55.0,
+          "render.bytes_per_frame.p50": 244.0,
+          "render.frames_per_s": 12.57,
+          "render.tick_ms.p50": 1.521,
+          "render.tick_ms.p95": 3.047,
+          "render.tick_ms.p99": 15.041,
+          "render.tick_ms.max": 28.631,
+          "render.layout_ms.p95": 0.0,
+          "render.compose_ms.p95": 2.891,
+          "render.display_ms.p95": 0.162,
+          "render.ticks_per_s": 12.487,
+          "render.paint_ms.p50": 0.909,
+          "loop.lag_ms.p50": 0.23,
+          "loop.lag_ms.p99": 2.054,
+          "loop.lag_ms.max": 706.736,
+          "loop.stalls_16_per_min": 19.979,
+          "loop.stalls_50_per_min": 4.995,
+          "loop.stalls_100_per_min": 4.995,
+          "cpu.daemon_s_per_s": 0.1466,
+          "render.height_calls": 4,
+          "render.render_lines_calls": 1443,
+          "gc.pause_total_ms": 9.628,
+          "gc.pause_max_ms": 70.046,
+          "mem.rss_peak_mb": 119.64,
+          "mem.rss_end_mb": 119.64,
+          "mem.uss_peak_mb": 99.25,
+          "cpu.client_s_per_s": 0.0018,
+          "startup.daemon_boot_ms": 2337.637,
+          "startup.first_frame_ms": 2816.96,
+          "startup.ready_ms": 2818.673,
+          "host.load_per_core.max": 0.529,
+          "host.cpu_busy_pct": 21.8
+        }
+      ],
+      "gates": [
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "45 of 100 drawn; first undrawn: ['\u00abb0024\u00bb', '\u00abb0025\u00bb', '\u00abb0026\u00bb', '\u00abb0027\u00bb', '\u00abb0028\u00bb']"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "45 of 100 drawn; first undrawn: ['\u00abb0024\u00bb', '\u00abb0025\u00bb', '\u00abb0026\u00bb', '\u00abb0027\u00bb', '\u00abb0028\u00bb']"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "45 of 100 drawn; first undrawn: ['\u00abb0024\u00bb', '\u00abb0025\u00bb', '\u00abb0026\u00bb', '\u00abb0027\u00bb', '\u00abb0028\u00bb']"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ]
+      ],
+      "median": {
+        "cpu.client_s_per_s": 0.0025,
+        "cpu.daemon_s_per_s": 0.1466,
+        "gc.pause_max_ms": 70.046,
+        "gc.pause_total_ms": 9.628,
+        "host.cpu_busy_pct": 21.8,
+        "host.load_per_core.max": 0.655,
+        "latency.marker_ms.max": 10871.21,
+        "latency.marker_ms.p50": 8621.124,
+        "latency.marker_ms.p95": 10666.956,
+        "latency.marker_ms.p99": 10871.21,
+        "latency.markers_undrawn_pct": 55.0,
+        "loop.lag_ms.max": 702.175,
+        "loop.lag_ms.p50": 0.23,
+        "loop.lag_ms.p99": 2.225,
+        "loop.stalls_100_per_min": 4.995,
+        "loop.stalls_16_per_min": 25.0,
+        "loop.stalls_50_per_min": 5.0,
+        "mem.rss_end_mb": 119.69,
+        "mem.rss_peak_mb": 119.69,
+        "mem.uss_peak_mb": 99.25,
+        "render.bytes_per_frame.p50": 244.0,
+        "render.compose_ms.p95": 3.115,
+        "render.display_ms.p95": 0.162,
+        "render.frames_per_s": 12.333,
+        "render.height_calls": 4,
+        "render.layout_ms.p95": 0.0,
+        "render.paint_ms.p50": 1.063,
+        "render.render_lines_calls": 1447,
+        "render.tick_ms.max": 30.605,
+        "render.tick_ms.p50": 1.521,
+        "render.tick_ms.p95": 3.571,
+        "render.tick_ms.p99": 15.041,
+        "render.ticks_per_s": 12.25,
+        "startup.daemon_boot_ms": 2337.637,
+        "startup.first_frame_ms": 2937.09,
+        "startup.ready_ms": 2939.64
+      }
+    },
+    "deep-stream": {
+      "status": "ok",
+      "reason": "",
+      "repeats": [
+        {
+          "latency.marker_ms.p50": 67.904,
+          "latency.marker_ms.p95": 165.84,
+          "latency.marker_ms.p99": 198.976,
+          "latency.marker_ms.max": 198.976,
+          "latency.markers_undrawn_pct": 0.0,
+          "render.bytes_per_frame.p50": 9533.0,
+          "render.frames_per_s": 17.93,
+          "render.tick_ms.p50": 19.65,
+          "render.tick_ms.p95": 36.969,
+          "render.tick_ms.p99": 155.576,
+          "render.tick_ms.max": 155.576,
+          "render.layout_ms.p95": 36.912,
+          "render.compose_ms.p95": 14.6,
+          "render.display_ms.p95": 0.836,
+          "render.ticks_per_s": 17.93,
+          "render.paint_ms.p50": 0.723,
+          "loop.lag_ms.p50": 0.242,
+          "loop.lag_ms.p99": 39.395,
+          "loop.lag_ms.max": 155.761,
+          "loop.stalls_16_per_min": 755.337,
+          "loop.stalls_50_per_min": 45.778,
+          "loop.stalls_100_per_min": 22.889,
+          "cpu.daemon_s_per_s": 0.5799,
+          "render.height_calls": 75,
+          "render.render_lines_calls": 763,
+          "gc.pause_total_ms": 358.122,
+          "gc.pause_max_ms": 120.171,
+          "mem.rss_peak_mb": 132.34,
+          "mem.rss_end_mb": 132.34,
+          "mem.uss_peak_mb": 111.74,
+          "cpu.client_s_per_s": 0.0025,
+          "startup.daemon_boot_ms": 2321.276,
+          "startup.first_frame_ms": 2751.864,
+          "startup.ready_ms": 2753.459,
+          "host.load_per_core.max": 0.326,
+          "host.cpu_busy_pct": 27.01
+        },
+        {
+          "latency.marker_ms.p50": 83.325,
+          "latency.marker_ms.p95": 187.623,
+          "latency.marker_ms.p99": 218.341,
+          "latency.marker_ms.max": 218.341,
+          "latency.markers_undrawn_pct": 0.0,
+          "render.bytes_per_frame.p50": 9533.0,
+          "render.frames_per_s": 14.445,
+          "render.tick_ms.p50": 25.259,
+          "render.tick_ms.p95": 53.013,
+          "render.tick_ms.p99": 133.587,
+          "render.tick_ms.max": 133.587,
+          "render.layout_ms.p95": 52.984,
+          "render.compose_ms.p95": 17.24,
+          "render.display_ms.p95": 0.84,
+          "render.ticks_per_s": 14.101,
+          "render.paint_ms.p50": 0.726,
+          "loop.lag_ms.p50": 0.26,
+          "loop.lag_ms.p99": 55.279,
+          "loop.lag_ms.max": 319.615,
+          "loop.stalls_16_per_min": 722.253,
+          "loop.stalls_50_per_min": 72.225,
+          "loop.stalls_100_per_min": 30.954,
+          "cpu.daemon_s_per_s": 0.6944,
+          "render.height_calls": 484,
+          "render.render_lines_calls": 964,
+          "gc.pause_total_ms": 379.803,
+          "gc.pause_max_ms": 108.115,
+          "mem.rss_peak_mb": 132.15,
+          "mem.rss_end_mb": 132.15,
+          "mem.uss_peak_mb": 111.54,
+          "cpu.client_s_per_s": 0.0025,
+          "startup.daemon_boot_ms": 2276.547,
+          "startup.first_frame_ms": 2702.687,
+          "startup.ready_ms": 2704.673,
+          "host.load_per_core.max": 0.305,
+          "host.cpu_busy_pct": 31.29
+        },
+        {
+          "latency.marker_ms.p50": 73.68,
+          "latency.marker_ms.p95": 151.618,
+          "latency.marker_ms.p99": 199.392,
+          "latency.marker_ms.max": 199.392,
+          "latency.markers_undrawn_pct": 0.0,
+          "render.bytes_per_frame.p50": 9533.0,
+          "render.frames_per_s": 13.824,
+          "render.tick_ms.p50": 26.796,
+          "render.tick_ms.p95": 108.101,
+          "render.tick_ms.p99": 145.103,
+          "render.tick_ms.max": 145.103,
+          "render.layout_ms.p95": 108.06,
+          "render.compose_ms.p95": 24.299,
+          "render.display_ms.p95": 1.002,
+          "render.ticks_per_s": 13.824,
+          "render.paint_ms.p50": 0.732,
+          "loop.lag_ms.p50": 0.225,
+          "loop.lag_ms.p99": 77.419,
+          "loop.lag_ms.max": 196.82,
+          "loop.stalls_16_per_min": 776.298,
+          "loop.stalls_50_per_min": 85.074,
+          "loop.stalls_100_per_min": 42.537,
+          "cpu.daemon_s_per_s": 0.6445,
+          "render.height_calls": 257,
+          "render.render_lines_calls": 901,
+          "gc.pause_total_ms": 381.662,
+          "gc.pause_max_ms": 107.824,
+          "mem.rss_peak_mb": 131.52,
+          "mem.rss_end_mb": 131.52,
+          "mem.uss_peak_mb": 111.01,
+          "cpu.client_s_per_s": 0.002,
+          "startup.daemon_boot_ms": 2448.332,
+          "startup.first_frame_ms": 3145.376,
+          "startup.ready_ms": 3148.285,
+          "host.load_per_core.max": 0.388,
+          "host.cpu_busy_pct": 41.55
+        }
+      ],
+      "gates": [
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "80 of 80 drawn"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "80 of 80 drawn"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "80 of 80 drawn"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ]
+      ],
+      "median": {
+        "cpu.client_s_per_s": 0.0025,
+        "cpu.daemon_s_per_s": 0.6445,
+        "gc.pause_max_ms": 108.115,
+        "gc.pause_total_ms": 379.803,
+        "host.cpu_busy_pct": 31.29,
+        "host.load_per_core.max": 0.326,
+        "latency.marker_ms.max": 199.392,
+        "latency.marker_ms.p50": 73.68,
+        "latency.marker_ms.p95": 165.84,
+        "latency.marker_ms.p99": 199.392,
+        "latency.markers_undrawn_pct": 0.0,
+        "loop.lag_ms.max": 196.82,
+        "loop.lag_ms.p50": 0.242,
+        "loop.lag_ms.p99": 55.279,
+        "loop.stalls_100_per_min": 30.954,
+        "loop.stalls_16_per_min": 755.337,
+        "loop.stalls_50_per_min": 72.225,
+        "mem.rss_end_mb": 132.15,
+        "mem.rss_peak_mb": 132.15,
+        "mem.uss_peak_mb": 111.54,
+        "render.bytes_per_frame.p50": 9533.0,
+        "render.compose_ms.p95": 17.24,
+        "render.display_ms.p95": 0.84,
+        "render.frames_per_s": 14.445,
+        "render.height_calls": 257,
+        "render.layout_ms.p95": 52.984,
+        "render.paint_ms.p50": 0.726,
+        "render.render_lines_calls": 901,
+        "render.tick_ms.max": 145.103,
+        "render.tick_ms.p50": 25.259,
+        "render.tick_ms.p95": 53.013,
+        "render.tick_ms.p99": 145.103,
+        "render.ticks_per_s": 14.101,
+        "startup.daemon_boot_ms": 2321.276,
+        "startup.first_frame_ms": 2751.864,
+        "startup.ready_ms": 2753.459
+      }
+    },
+    "resize": {
+      "status": "ok",
+      "reason": "",
+      "repeats": [
+        {
+          "render.bytes_per_frame.p50": 9543.0,
+          "render.frames_per_s": 5.489,
+          "render.tick_ms.p50": 13.519,
+          "render.tick_ms.p95": 133.358,
+          "render.tick_ms.p99": 166.936,
+          "render.tick_ms.max": 166.936,
+          "render.layout_ms.p95": 133.346,
+          "render.compose_ms.p95": 23.714,
+          "render.display_ms.p95": 0.771,
+          "render.ticks_per_s": 4.392,
+          "loop.lag_ms.p50": 0.191,
+          "loop.lag_ms.p99": 123.174,
+          "loop.lag_ms.max": 288.255,
+          "loop.stalls_16_per_min": 205.852,
+          "loop.stalls_50_per_min": 148.213,
+          "loop.stalls_100_per_min": 98.809,
+          "cpu.daemon_s_per_s": 0.4232,
+          "render.height_calls": 4794,
+          "render.render_lines_calls": 622,
+          "gc.pause_total_ms": 191.681,
+          "gc.pause_max_ms": 110.251,
+          "mem.rss_peak_mb": 134.42,
+          "mem.rss_end_mb": 134.42,
+          "mem.uss_peak_mb": 113.77,
+          "cpu.client_s_per_s": 0.0033,
+          "startup.daemon_boot_ms": 2416.381,
+          "startup.first_frame_ms": 3158.176,
+          "startup.ready_ms": 3159.835,
+          "resize.first_frame_ms.p50": 202.437,
+          "resize.first_frame_ms.max": 299.661,
+          "resize.settle_ms.p50": 237.436,
+          "resize.settle_ms.max": 982.145,
+          "sidebar.first_frame_ms.p50": 180.9,
+          "sidebar.first_frame_ms.max": 232.939,
+          "sidebar.settle_ms.p50": 295.381,
+          "sidebar.settle_ms.max": 599.294,
+          "host.load_per_core.max": 0.455,
+          "host.cpu_busy_pct": 26.2
+        },
+        {
+          "render.bytes_per_frame.p50": 7944.0,
+          "render.frames_per_s": 5.849,
+          "render.tick_ms.p50": 2.942,
+          "render.tick_ms.p95": 90.671,
+          "render.tick_ms.p99": 103.031,
+          "render.tick_ms.max": 103.031,
+          "render.layout_ms.p95": 90.658,
+          "render.compose_ms.p95": 14.225,
+          "render.display_ms.p95": 0.776,
+          "render.ticks_per_s": 4.596,
+          "loop.lag_ms.p50": 0.195,
+          "loop.lag_ms.p99": 83.658,
+          "loop.lag_ms.max": 250.345,
+          "loop.stalls_16_per_min": 181.744,
+          "loop.stalls_50_per_min": 150.409,
+          "loop.stalls_100_per_min": 68.937,
+          "cpu.daemon_s_per_s": 0.305,
+          "render.height_calls": 4545,
+          "render.render_lines_calls": 742,
+          "gc.pause_total_ms": 178.088,
+          "gc.pause_max_ms": 107.589,
+          "mem.rss_peak_mb": 134.52,
+          "mem.rss_end_mb": 134.52,
+          "mem.uss_peak_mb": 113.91,
+          "cpu.client_s_per_s": 0.0012,
+          "startup.daemon_boot_ms": 2347.185,
+          "startup.first_frame_ms": 2883.255,
+          "startup.ready_ms": 2884.972,
+          "resize.first_frame_ms.p50": 132.805,
+          "resize.first_frame_ms.max": 203.271,
+          "resize.settle_ms.p50": 696.717,
+          "resize.settle_ms.max": 961.578,
+          "sidebar.first_frame_ms.p50": 173.96,
+          "sidebar.first_frame_ms.max": 187.915,
+          "sidebar.settle_ms.p50": 696.867,
+          "sidebar.settle_ms.max": 1007.904,
+          "host.load_per_core.max": 0.43,
+          "host.cpu_busy_pct": 20.5
+        },
+        {
+          "render.bytes_per_frame.p50": 9511.0,
+          "render.frames_per_s": 5.235,
+          "render.tick_ms.p50": 13.708,
+          "render.tick_ms.p95": 147.261,
+          "render.tick_ms.p99": 200.481,
+          "render.tick_ms.max": 200.481,
+          "render.layout_ms.p95": 147.245,
+          "render.compose_ms.p95": 23.416,
+          "render.display_ms.p95": 0.955,
+          "render.ticks_per_s": 4.402,
+          "loop.lag_ms.p50": 0.198,
+          "loop.lag_ms.p99": 128.455,
+          "loop.lag_ms.max": 372.247,
+          "loop.stalls_16_per_min": 185.587,
+          "loop.stalls_50_per_min": 164.173,
+          "loop.stalls_100_per_min": 92.793,
+          "cpu.daemon_s_per_s": 0.4562,
+          "render.height_calls": 5552,
+          "render.render_lines_calls": 751,
+          "gc.pause_total_ms": 247.611,
+          "gc.pause_max_ms": 126.424,
+          "mem.rss_peak_mb": 134.2,
+          "mem.rss_end_mb": 134.2,
+          "mem.uss_peak_mb": 113.59,
+          "cpu.client_s_per_s": 0.0012,
+          "startup.daemon_boot_ms": 2570.439,
+          "startup.first_frame_ms": 2780.063,
+          "startup.ready_ms": 2781.503,
+          "resize.first_frame_ms.p50": 232.816,
+          "resize.first_frame_ms.max": 386.87,
+          "resize.settle_ms.p50": 254.041,
+          "resize.settle_ms.max": 1079.824,
+          "sidebar.first_frame_ms.p50": 244.961,
+          "sidebar.first_frame_ms.max": 251.807,
+          "sidebar.settle_ms.p50": 645.038,
+          "sidebar.settle_ms.max": 708.646,
+          "host.load_per_core.max": 0.412,
+          "host.cpu_busy_pct": 41.15
+        }
+      ],
+      "gates": [
+        [
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ]
+      ],
+      "median": {
+        "cpu.client_s_per_s": 0.0012,
+        "cpu.daemon_s_per_s": 0.4232,
+        "gc.pause_max_ms": 110.251,
+        "gc.pause_total_ms": 191.681,
+        "host.cpu_busy_pct": 26.2,
+        "host.load_per_core.max": 0.43,
+        "loop.lag_ms.max": 288.255,
+        "loop.lag_ms.p50": 0.195,
+        "loop.lag_ms.p99": 123.174,
+        "loop.stalls_100_per_min": 92.793,
+        "loop.stalls_16_per_min": 185.587,
+        "loop.stalls_50_per_min": 150.409,
+        "mem.rss_end_mb": 134.42,
+        "mem.rss_peak_mb": 134.42,
+        "mem.uss_peak_mb": 113.77,
+        "render.bytes_per_frame.p50": 9511.0,
+        "render.compose_ms.p95": 23.416,
+        "render.display_ms.p95": 0.776,
+        "render.frames_per_s": 5.489,
+        "render.height_calls": 4794,
+        "render.layout_ms.p95": 133.346,
+        "render.render_lines_calls": 742,
+        "render.tick_ms.max": 166.936,
+        "render.tick_ms.p50": 13.519,
+        "render.tick_ms.p95": 133.358,
+        "render.tick_ms.p99": 166.936,
+        "render.ticks_per_s": 4.402,
+        "resize.first_frame_ms.max": 299.661,
+        "resize.first_frame_ms.p50": 202.437,
+        "resize.settle_ms.max": 982.145,
+        "resize.settle_ms.p50": 254.041,
+        "sidebar.first_frame_ms.max": 232.939,
+        "sidebar.first_frame_ms.p50": 180.9,
+        "sidebar.settle_ms.max": 708.646,
+        "sidebar.settle_ms.p50": 645.038,
+        "startup.daemon_boot_ms": 2416.381,
+        "startup.first_frame_ms": 2883.255,
+        "startup.ready_ms": 2884.972
+      }
+    },
+    "typing": {
+      "status": "ok",
+      "reason": "",
+      "repeats": [
+        {
+          "render.bytes_per_frame.p50": 1098.0,
+          "render.frames_per_s": 24.213,
+          "render.tick_ms.p50": 1.902,
+          "render.tick_ms.p95": 3.607,
+          "render.tick_ms.p99": 6.765,
+          "render.tick_ms.max": 9.944,
+          "render.layout_ms.p95": 0.0,
+          "render.compose_ms.p95": 3.344,
+          "render.display_ms.p95": 0.138,
+          "render.ticks_per_s": 24.146,
+          "loop.lag_ms.p50": 0.288,
+          "loop.lag_ms.p99": 3.829,
+          "loop.lag_ms.max": 43.337,
+          "loop.stalls_16_per_min": 12.073,
+          "loop.stalls_50_per_min": 0.0,
+          "loop.stalls_100_per_min": 0.0,
+          "cpu.daemon_s_per_s": 0.1431,
+          "render.height_calls": 1,
+          "render.render_lines_calls": 3427,
+          "gc.pause_total_ms": 13.371,
+          "gc.pause_max_ms": 66.922,
+          "mem.rss_peak_mb": 118.95,
+          "mem.rss_end_mb": 118.95,
+          "mem.uss_peak_mb": 98.4,
+          "cpu.client_s_per_s": 0.0064,
+          "startup.daemon_boot_ms": 2448.702,
+          "startup.first_frame_ms": 3031.979,
+          "startup.ready_ms": 3033.664,
+          "latency.echo_ms.p50": 6.436,
+          "latency.echo_ms.p95": 22.358,
+          "latency.echo_ms.max": 37.725,
+          "host.load_per_core.max": 0.416,
+          "host.cpu_busy_pct": 29.78
+        },
+        {
+          "render.bytes_per_frame.p50": 1098.0,
+          "render.frames_per_s": 24.876,
+          "render.tick_ms.p50": 1.735,
+          "render.tick_ms.p95": 3.163,
+          "render.tick_ms.p99": 4.846,
+          "render.tick_ms.max": 9.414,
+          "render.layout_ms.p95": 0.0,
+          "render.compose_ms.p95": 2.997,
+          "render.display_ms.p95": 0.134,
+          "render.ticks_per_s": 24.808,
+          "loop.lag_ms.p50": 0.292,
+          "loop.lag_ms.p99": 2.595,
+          "loop.lag_ms.max": 45.963,
+          "loop.stalls_16_per_min": 8.09,
+          "loop.stalls_50_per_min": 0.0,
+          "loop.stalls_100_per_min": 0.0,
+          "cpu.daemon_s_per_s": 0.1363,
+          "render.height_calls": 1,
+          "render.render_lines_calls": 3389,
+          "gc.pause_total_ms": 11.162,
+          "gc.pause_max_ms": 67.056,
+          "mem.rss_peak_mb": 118.9,
+          "mem.rss_end_mb": 118.9,
+          "mem.uss_peak_mb": 98.35,
+          "cpu.client_s_per_s": 0.0061,
+          "startup.daemon_boot_ms": 2287.233,
+          "startup.first_frame_ms": 2753.415,
+          "startup.ready_ms": 2754.893,
+          "latency.echo_ms.p50": 6.092,
+          "latency.echo_ms.p95": 22.359,
+          "latency.echo_ms.max": 36.766,
+          "host.load_per_core.max": 0.369,
+          "host.cpu_busy_pct": 16.94
+        },
+        {
+          "render.bytes_per_frame.p50": 1098.0,
+          "render.frames_per_s": 24.496,
+          "render.tick_ms.p50": 1.764,
+          "render.tick_ms.p95": 3.03,
+          "render.tick_ms.p99": 4.938,
+          "render.tick_ms.max": 11.082,
+          "render.layout_ms.p95": 0.0,
+          "render.compose_ms.p95": 2.841,
+          "render.display_ms.p95": 0.127,
+          "render.ticks_per_s": 24.496,
+          "loop.lag_ms.p50": 0.277,
+          "loop.lag_ms.p99": 2.979,
+          "loop.lag_ms.max": 37.816,
+          "loop.stalls_16_per_min": 12.015,
+          "loop.stalls_50_per_min": 0.0,
+          "loop.stalls_100_per_min": 0.0,
+          "cpu.daemon_s_per_s": 0.136,
+          "render.height_calls": 1,
+          "render.render_lines_calls": 3333,
+          "gc.pause_total_ms": 11.858,
+          "gc.pause_max_ms": 78.046,
+          "mem.rss_peak_mb": 118.83,
+          "mem.rss_end_mb": 118.83,
+          "mem.uss_peak_mb": 98.37,
+          "cpu.client_s_per_s": 0.0061,
+          "startup.daemon_boot_ms": 2429.819,
+          "startup.first_frame_ms": 2701.696,
+          "startup.ready_ms": 2704.675,
+          "latency.echo_ms.p50": 6.016,
+          "latency.echo_ms.p95": 21.729,
+          "latency.echo_ms.max": 37.903,
+          "host.load_per_core.max": 0.291,
+          "host.cpu_busy_pct": 17.6
+        }
+      ],
+      "gates": [
+        [
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "echo_lost",
+            "ok": true,
+            "detail": "0 of 200 keystrokes never echoed"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "echo_lost",
+            "ok": true,
+            "detail": "0 of 200 keystrokes never echoed"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "echo_lost",
+            "ok": true,
+            "detail": "0 of 200 keystrokes never echoed"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ]
+      ],
+      "median": {
+        "cpu.client_s_per_s": 0.0061,
+        "cpu.daemon_s_per_s": 0.1363,
+        "gc.pause_max_ms": 67.056,
+        "gc.pause_total_ms": 11.858,
+        "host.cpu_busy_pct": 17.6,
+        "host.load_per_core.max": 0.369,
+        "latency.echo_ms.max": 37.725,
+        "latency.echo_ms.p50": 6.092,
+        "latency.echo_ms.p95": 22.358,
+        "loop.lag_ms.max": 43.337,
+        "loop.lag_ms.p50": 0.288,
+        "loop.lag_ms.p99": 2.979,
+        "loop.stalls_100_per_min": 0.0,
+        "loop.stalls_16_per_min": 12.015,
+        "loop.stalls_50_per_min": 0.0,
+        "mem.rss_end_mb": 118.9,
+        "mem.rss_peak_mb": 118.9,
+        "mem.uss_peak_mb": 98.37,
+        "render.bytes_per_frame.p50": 1098.0,
+        "render.compose_ms.p95": 2.997,
+        "render.display_ms.p95": 0.134,
+        "render.frames_per_s": 24.496,
+        "render.height_calls": 1,
+        "render.layout_ms.p95": 0.0,
+        "render.render_lines_calls": 3389,
+        "render.tick_ms.max": 9.944,
+        "render.tick_ms.p50": 1.764,
+        "render.tick_ms.p95": 3.163,
+        "render.tick_ms.p99": 4.938,
+        "render.ticks_per_s": 24.496,
+        "startup.daemon_boot_ms": 2429.819,
+        "startup.first_frame_ms": 2753.415,
+        "startup.ready_ms": 2754.893
+      }
+    },
+    "many-tabs": {
+      "status": "ok",
+      "reason": "",
+      "repeats": [
+        {
+          "latency.marker_ms.p50": 62.731,
+          "latency.marker_ms.p95": 187.287,
+          "latency.marker_ms.p99": 251.209,
+          "latency.marker_ms.max": 301.829,
+          "latency.markers_undrawn_pct": 0.0,
+          "render.bytes_per_frame.p50": 9568.0,
+          "render.frames_per_s": 21.458,
+          "render.tick_ms.p50": 3.921,
+          "render.tick_ms.p95": 46.076,
+          "render.tick_ms.p99": 128.123,
+          "render.tick_ms.max": 164.954,
+          "render.layout_ms.p95": 46.042,
+          "render.compose_ms.p95": 28.387,
+          "render.display_ms.p95": 1.236,
+          "render.ticks_per_s": 33.343,
+          "render.paint_ms.p50": 1.74,
+          "loop.lag_ms.p50": 0.655,
+          "loop.lag_ms.p99": 56.052,
+          "loop.lag_ms.max": 164.98,
+          "loop.stalls_16_per_min": 594.23,
+          "loop.stalls_50_per_min": 79.231,
+          "loop.stalls_100_per_min": 26.41,
+          "cpu.daemon_s_per_s": 0.7533,
+          "render.height_calls": 153,
+          "render.render_lines_calls": 1835,
+          "gc.pause_total_ms": 581.111,
+          "gc.pause_max_ms": 122.842,
+          "mem.rss_peak_mb": 128.67,
+          "mem.rss_end_mb": 128.67,
+          "mem.uss_peak_mb": 108.11,
+          "cpu.client_s_per_s": 0.0037,
+          "startup.daemon_boot_ms": 2234.551,
+          "startup.first_frame_ms": 2764.935,
+          "startup.ready_ms": 2767.421,
+          "host.load_per_core.max": 0.294,
+          "host.cpu_busy_pct": 44.98
+        },
+        {
+          "latency.marker_ms.p50": 59.256,
+          "latency.marker_ms.p95": 223.179,
+          "latency.marker_ms.p99": 330.66,
+          "latency.marker_ms.max": 372.282,
+          "latency.markers_undrawn_pct": 0.0,
+          "render.bytes_per_frame.p50": 9550.0,
+          "render.frames_per_s": 21.094,
+          "render.tick_ms.p50": 4.553,
+          "render.tick_ms.p95": 41.967,
+          "render.tick_ms.p99": 130.721,
+          "render.tick_ms.max": 168.399,
+          "render.layout_ms.p95": 41.905,
+          "render.compose_ms.p95": 25.186,
+          "render.display_ms.p95": 1.084,
+          "render.ticks_per_s": 33.132,
+          "render.paint_ms.p50": 1.584,
+          "loop.lag_ms.p50": 0.781,
+          "loop.lag_ms.p99": 45.724,
+          "loop.lag_ms.max": 167.671,
+          "loop.stalls_16_per_min": 609.628,
+          "loop.stalls_50_per_min": 53.011,
+          "loop.stalls_100_per_min": 26.506,
+          "cpu.daemon_s_per_s": 0.7337,
+          "render.height_calls": 166,
+          "render.render_lines_calls": 1988,
+          "gc.pause_total_ms": 718.506,
+          "gc.pause_max_ms": 133.142,
+          "mem.rss_peak_mb": 129.0,
+          "mem.rss_end_mb": 129.0,
+          "mem.uss_peak_mb": 108.39,
+          "cpu.client_s_per_s": 0.0037,
+          "startup.daemon_boot_ms": 2527.151,
+          "startup.first_frame_ms": 3332.906,
+          "startup.ready_ms": 3334.974,
+          "host.load_per_core.max": 0.281,
+          "host.cpu_busy_pct": 47.95
+        },
+        {
+          "latency.marker_ms.p50": 36.069,
+          "latency.marker_ms.p95": 140.757,
+          "latency.marker_ms.p99": 155.894,
+          "latency.marker_ms.max": 197.041,
+          "latency.markers_undrawn_pct": 0.0,
+          "render.bytes_per_frame.p50": 9550.0,
+          "render.frames_per_s": 25.103,
+          "render.tick_ms.p50": 3.676,
+          "render.tick_ms.p95": 24.554,
+          "render.tick_ms.p99": 118.007,
+          "render.tick_ms.max": 138.883,
+          "render.layout_ms.p95": 24.512,
+          "render.compose_ms.p95": 16.431,
+          "render.display_ms.p95": 0.876,
+          "render.ticks_per_s": 39.464,
+          "render.paint_ms.p50": 1.339,
+          "loop.lag_ms.p50": 0.612,
+          "loop.lag_ms.p99": 31.848,
+          "loop.lag_ms.max": 136.101,
+          "loop.stalls_16_per_min": 493.294,
+          "loop.stalls_50_per_min": 32.886,
+          "loop.stalls_100_per_min": 26.309,
+          "cpu.daemon_s_per_s": 0.6475,
+          "render.height_calls": 189,
+          "render.render_lines_calls": 2412,
+          "gc.pause_total_ms": 632.044,
+          "gc.pause_max_ms": 122.284,
+          "mem.rss_peak_mb": 128.98,
+          "mem.rss_end_mb": 128.98,
+          "mem.uss_peak_mb": 108.37,
+          "cpu.client_s_per_s": 0.005,
+          "startup.daemon_boot_ms": 2668.789,
+          "startup.first_frame_ms": 3361.857,
+          "startup.ready_ms": 3364.728,
+          "host.load_per_core.max": 0.339,
+          "host.cpu_busy_pct": 33.25
+        }
+      ],
+      "gates": [
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "150 of 150 drawn"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "150 of 150 drawn"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "150 of 150 drawn"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ]
+      ],
+      "median": {
+        "cpu.client_s_per_s": 0.0037,
+        "cpu.daemon_s_per_s": 0.7337,
+        "gc.pause_max_ms": 122.842,
+        "gc.pause_total_ms": 632.044,
+        "host.cpu_busy_pct": 44.98,
+        "host.load_per_core.max": 0.294,
+        "latency.marker_ms.max": 301.829,
+        "latency.marker_ms.p50": 59.256,
+        "latency.marker_ms.p95": 187.287,
+        "latency.marker_ms.p99": 251.209,
+        "latency.markers_undrawn_pct": 0.0,
+        "loop.lag_ms.max": 164.98,
+        "loop.lag_ms.p50": 0.655,
+        "loop.lag_ms.p99": 45.724,
+        "loop.stalls_100_per_min": 26.41,
+        "loop.stalls_16_per_min": 594.23,
+        "loop.stalls_50_per_min": 53.011,
+        "mem.rss_end_mb": 128.98,
+        "mem.rss_peak_mb": 128.98,
+        "mem.uss_peak_mb": 108.37,
+        "render.bytes_per_frame.p50": 9550.0,
+        "render.compose_ms.p95": 25.186,
+        "render.display_ms.p95": 1.084,
+        "render.frames_per_s": 21.458,
+        "render.height_calls": 166,
+        "render.layout_ms.p95": 41.905,
+        "render.paint_ms.p50": 1.584,
+        "render.render_lines_calls": 1988,
+        "render.tick_ms.max": 164.954,
+        "render.tick_ms.p50": 3.921,
+        "render.tick_ms.p95": 41.967,
+        "render.tick_ms.p99": 128.123,
+        "render.ticks_per_s": 33.343,
+        "startup.daemon_boot_ms": 2527.151,
+        "startup.first_frame_ms": 3332.906,
+        "startup.ready_ms": 3334.974
+      }
+    },
+    "two-clients": {
+      "status": "ok",
+      "reason": "",
+      "repeats": [
+        {
+          "latency.marker_ms.p50": 69.125,
+          "latency.marker_ms.p95": 249.198,
+          "latency.marker_ms.p99": 511.113,
+          "latency.marker_ms.max": 608.924,
+          "latency.markers_undrawn_pct": 0.0,
+          "latency.marker_b_ms.p50": 90.227,
+          "latency.marker_b_ms.p95": 140.989,
+          "latency.marker_b_ms.max": 140.989,
+          "latency.markers_undrawn_b_pct": 97.0,
+          "render.bytes_per_frame.p50": 9550.0,
+          "render.frames_per_s": 23.946,
+          "render.tick_ms.p50": 11.023,
+          "render.tick_ms.p95": 32.985,
+          "render.tick_ms.p99": 121.927,
+          "render.tick_ms.max": 141.165,
+          "render.layout_ms.p95": 32.936,
+          "render.compose_ms.p95": 21.318,
+          "render.display_ms.p95": 0.889,
+          "render.ticks_per_s": 31.754,
+          "render.paint_ms.p50": 1.197,
+          "loop.lag_ms.p50": 0.341,
+          "loop.lag_ms.p99": 61.959,
+          "loop.lag_ms.max": 138.141,
+          "loop.stalls_16_per_min": 650.707,
+          "loop.stalls_50_per_min": 67.673,
+          "loop.stalls_100_per_min": 41.645,
+          "cpu.daemon_s_per_s": 0.731,
+          "render.height_calls": 397,
+          "render.render_lines_calls": 3886,
+          "gc.pause_total_ms": 1078.633,
+          "gc.pause_max_ms": 112.476,
+          "mem.rss_peak_mb": 132.21,
+          "mem.rss_end_mb": 132.21,
+          "mem.uss_peak_mb": 111.85,
+          "cpu.client_s_per_s": 0.0049,
+          "startup.daemon_boot_ms": 2250.12,
+          "startup.first_frame_ms": 2663.614,
+          "startup.ready_ms": 2665.208,
+          "host.load_per_core.max": 0.34,
+          "host.cpu_busy_pct": 27.8
+        },
+        {
+          "latency.marker_ms.p50": 58.902,
+          "latency.marker_ms.p95": 242.818,
+          "latency.marker_ms.p99": 444.752,
+          "latency.marker_ms.max": 539.532,
+          "latency.markers_undrawn_pct": 0.0,
+          "latency.marker_b_ms.p50": 100.675,
+          "latency.marker_b_ms.p95": 226.455,
+          "latency.marker_b_ms.max": 331.677,
+          "latency.markers_undrawn_b_pct": 0.0,
+          "render.bytes_per_frame.p50": 9461.0,
+          "render.frames_per_s": 26.288,
+          "render.tick_ms.p50": 9.814,
+          "render.tick_ms.p95": 28.965,
+          "render.tick_ms.p99": 114.285,
+          "render.tick_ms.max": 139.067,
+          "render.layout_ms.p95": 28.914,
+          "render.compose_ms.p95": 18.325,
+          "render.display_ms.p95": 0.678,
+          "render.ticks_per_s": 34.907,
+          "render.paint_ms.p50": 1.115,
+          "loop.lag_ms.p50": 0.381,
+          "loop.lag_ms.p99": 52.055,
+          "loop.lag_ms.max": 152.789,
+          "loop.stalls_16_per_min": 672.287,
+          "loop.stalls_50_per_min": 62.057,
+          "loop.stalls_100_per_min": 46.543,
+          "cpu.daemon_s_per_s": 0.7066,
+          "render.height_calls": 429,
+          "render.render_lines_calls": 4010,
+          "gc.pause_total_ms": 1168.589,
+          "gc.pause_max_ms": 105.526,
+          "mem.rss_peak_mb": 133.14,
+          "mem.rss_end_mb": 133.14,
+          "mem.uss_peak_mb": 112.5,
+          "cpu.client_s_per_s": 0.0048,
+          "startup.daemon_boot_ms": 2320.434,
+          "startup.first_frame_ms": 2823.583,
+          "startup.ready_ms": 2825.138,
+          "host.load_per_core.max": 0.324,
+          "host.cpu_busy_pct": 25.43
+        },
+        {
+          "latency.marker_ms.p50": 68.281,
+          "latency.marker_ms.p95": 272.751,
+          "latency.marker_ms.p99": 422.457,
+          "latency.marker_ms.max": 519.066,
+          "latency.markers_undrawn_pct": 0.0,
+          "latency.marker_b_ms.p50": 97.904,
+          "latency.marker_b_ms.p95": 246.996,
+          "latency.marker_b_ms.max": 337.103,
+          "latency.markers_undrawn_b_pct": 0.0,
+          "render.bytes_per_frame.p50": 9550.0,
+          "render.frames_per_s": 24.094,
+          "render.tick_ms.p50": 9.563,
+          "render.tick_ms.p95": 31.22,
+          "render.tick_ms.p99": 123.867,
+          "render.tick_ms.max": 137.773,
+          "render.layout_ms.p95": 31.174,
+          "render.compose_ms.p95": 19.847,
+          "render.display_ms.p95": 0.814,
+          "render.ticks_per_s": 34.641,
+          "render.paint_ms.p50": 1.159,
+          "loop.lag_ms.p50": 0.346,
+          "loop.lag_ms.p99": 50.065,
+          "loop.lag_ms.max": 200.049,
+          "loop.stalls_16_per_min": 617.361,
+          "loop.stalls_50_per_min": 61.736,
+          "loop.stalls_100_per_min": 41.157,
+          "cpu.daemon_s_per_s": 0.6504,
+          "render.height_calls": 367,
+          "render.render_lines_calls": 4322,
+          "gc.pause_total_ms": 1199.951,
+          "gc.pause_max_ms": 115.824,
+          "mem.rss_peak_mb": 128.23,
+          "mem.rss_end_mb": 128.23,
+          "mem.uss_peak_mb": 107.62,
+          "cpu.client_s_per_s": 0.0049,
+          "startup.daemon_boot_ms": 2244.369,
+          "startup.first_frame_ms": 2623.592,
+          "startup.ready_ms": 2625.115,
+          "host.load_per_core.max": 0.33,
+          "host.cpu_busy_pct": 27.45
+        }
+      ],
+      "gates": [
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "200 of 200 drawn"
+          },
+          {
+            "name": "markers_seen_b",
+            "ok": true,
+            "detail": "3 of 100 drawn; first undrawn: ['\u00abb0104\u00bb', '\u00abb0105\u00bb', '\u00abb0106\u00bb', '\u00abb0107\u00bb', '\u00abb0108\u00bb']"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          },
+          {
+            "name": "sync_seen_b",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "200 of 200 drawn"
+          },
+          {
+            "name": "markers_seen_b",
+            "ok": true,
+            "detail": "104 of 104 drawn"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          },
+          {
+            "name": "sync_seen_b",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ],
+        [
+          {
+            "name": "markers_seen",
+            "ok": true,
+            "detail": "200 of 200 drawn"
+          },
+          {
+            "name": "markers_seen_b",
+            "ok": true,
+            "detail": "105 of 105 drawn"
+          },
+          {
+            "name": "probe_sync",
+            "ok": true,
+            "detail": "app._sync_available"
+          },
+          {
+            "name": "not_headless",
+            "ok": true,
+            "detail": "app.is_headless"
+          },
+          {
+            "name": "sync_seen_a",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          },
+          {
+            "name": "sync_seen_b",
+            "ok": true,
+            "detail": "rig saw \\e[?2026h"
+          }
+        ]
+      ],
+      "median": {
+        "cpu.client_s_per_s": 0.0049,
+        "cpu.daemon_s_per_s": 0.7066,
+        "gc.pause_max_ms": 112.476,
+        "gc.pause_total_ms": 1168.589,
+        "host.cpu_busy_pct": 27.45,
+        "host.load_per_core.max": 0.33,
+        "latency.marker_b_ms.max": 331.677,
+        "latency.marker_b_ms.p50": 97.904,
+        "latency.marker_b_ms.p95": 226.455,
+        "latency.marker_ms.max": 539.532,
+        "latency.marker_ms.p50": 68.281,
+        "latency.marker_ms.p95": 249.198,
+        "latency.marker_ms.p99": 444.752,
+        "latency.markers_undrawn_b_pct": 0.0,
+        "latency.markers_undrawn_pct": 0.0,
+        "loop.lag_ms.max": 152.789,
+        "loop.lag_ms.p50": 0.346,
+        "loop.lag_ms.p99": 52.055,
+        "loop.stalls_100_per_min": 41.645,
+        "loop.stalls_16_per_min": 650.707,
+        "loop.stalls_50_per_min": 62.057,
+        "mem.rss_end_mb": 132.21,
+        "mem.rss_peak_mb": 132.21,
+        "mem.uss_peak_mb": 111.85,
+        "render.bytes_per_frame.p50": 9550.0,
+        "render.compose_ms.p95": 19.847,
+        "render.display_ms.p95": 0.814,
+        "render.frames_per_s": 24.094,
+        "render.height_calls": 397,
+        "render.layout_ms.p95": 31.174,
+        "render.paint_ms.p50": 1.159,
+        "render.render_lines_calls": 4010,
+        "render.tick_ms.max": 139.067,
+        "render.tick_ms.p50": 9.814,
+        "render.tick_ms.p95": 31.22,
+        "render.tick_ms.p99": 121.927,
+        "render.ticks_per_s": 34.641,
+        "startup.daemon_boot_ms": 2250.12,
+        "startup.first_frame_ms": 2663.614,
+        "startup.ready_ms": 2665.208
+      }
+    }
+  }
+}
