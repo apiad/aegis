@@ -496,7 +496,20 @@ PRIMING = (
     "and every monitor wake also list your other live monitors — read that "
     "roster and cancel any whose process you already killed or superseded, "
     "because it will otherwise keep watching for something that will never "
-    "happen."
+    "happen. "
+    # Measured 2026-10-01 (opus, 10 fixture tasks, run with and without):
+    # failing pytest/ruff calls that reported their exit code went from
+    # 0/12 to 6/6, masked gates 15/115 -> 2/55, rows saying nothing
+    # 32% -> 22%, answers and output tokens unchanged.
+    "The operator sees each Bash call as one row: the last non-empty line "
+    "of its output, after `Exit code N` when it fails. When a command "
+    "computes an answer, make that line the answer: put the result last "
+    "(`sort -n | tail -3`, not `sort -rn | head -3`), or end with an echo "
+    'that carries the value (`echo "57 negative rows"`, never '
+    "`echo done`). Plain reads like cat or ls need nothing. Run tests, "
+    "linters, builds and commits bare: their own last line is the verdict, "
+    "and piping them into `tail`, `head` or `grep`, or ending with "
+    "`; echo`, turns a failure into exit 0."
 )
 
 
