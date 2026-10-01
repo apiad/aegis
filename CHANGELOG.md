@@ -5,6 +5,18 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-10-01
+
+### Changed
+
+- **A tool row's label uses the width its result leaves.** The result is right-aligned against the elapsed time and the label gets the rest of the row, instead of a fixed column of at most 48 cells that clipped it beside a two-character `ok` and left most of a wide row blank. A long result still wins, and the label keeps at least 16 cells.
+
+- **Claude agents are told what their Bash row shows.** The priming now says the operator sees one row per Bash call, its last non-empty line, and asks for commands whose last line is the result and for tests, linters, builds and commits run unpiped. Measured with and without on ten fixture tasks: failing test and lint calls that reported their exit code went from 0 of 12 to 6 of 6, gates masked by a pipe or a trailing `echo` fell from 15 of 115 calls to 2 of 55, and rows that said nothing about the outcome fell from 32% to 22%. Answers and output tokens did not change.
+
+### Fixed
+
+- **A failed Bash row shows its verdict, not just `Exit code 1`.** Claude Code heads a failed result with that line and the row read only the first line, so 2,752 real rows in two weeks hid the summary the command printed last. The row now reads `Exit code 1 · 2 failed, 39 passed`. An oversized result that Claude Code saved to disk shows its size instead of the wrapper's closing `</persisted-output>` tag.
+
 ## [0.40.1] - 2026-10-01
 
 ### Fixed
