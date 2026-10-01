@@ -15,6 +15,7 @@ from textual.widgets import Static
 from aegis.fleet.render import bar as _shared_bar
 from aegis.monitor.schema import MonitorView
 from aegis.tui.fit import truncate_cells
+from aegis.tui.own_app import as_own_app
 
 
 def _fmt_dur(seconds: float) -> str:
@@ -153,7 +154,7 @@ class MonitorStrip(Static):
         self._refresh()
 
     def on_mount(self) -> None:
-        self._unsub = self._manager.subscribe(self._refresh)
+        self._unsub = self._manager.subscribe(as_own_app(self, self._refresh))
         self._refresh()
 
     def on_unmount(self) -> None:

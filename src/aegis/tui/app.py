@@ -29,6 +29,7 @@ from aegis.queue import (
 from aegis.state import aegis_log
 from aegis.state.workspace import WorkspaceTab, state_dir
 from aegis.tui.pane import ConversationPane, PaneStateChanged
+from aegis.tui.own_app import as_own_app
 from aegis.tui.state import AgentState
 from aegis.voice import (
     VoiceSession,
@@ -864,7 +865,7 @@ class AegisApp(App):
         # missed by both, appearing in no view at all.
         adopted = False
         if self.manager is not None:
-            self.manager.add_session_observer(self._on_brain_session)
+            self.manager.add_session_observer(as_own_app(self, self._on_brain_session))
             adopted = await self._adopt_brain_sessions()
         self._boot_done = True
         if not resumed_agents and not adopted:

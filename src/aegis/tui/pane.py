@@ -50,6 +50,7 @@ from aegis.tui.palette import CommandPalette
 from aegis.tui.pending import Chip, PendingStrip
 from aegis.tui.monitor_strip import MonitorStrip
 from aegis.tui.netmeter import format_exit_ip, format_net_tiers
+from aegis.tui.own_app import as_own_app
 from aegis.tui.plan_strip import PlanStrip
 from aegis.tui.sidebar import Sidebar, SidebarActions, SidebarModel
 from aegis.tui.strip import QueueStrip
@@ -964,7 +965,7 @@ class ConversationPane(Widget):
                 place=place,
                 project_root=project_root,
             )
-        self._core.add_event_observer(self._on_core_event)
+        self._core.add_event_observer(as_own_app(self, self._on_core_event))
         # RemotePaneCore has no place of its own — a --remote session's
         # harness lives in the serve it is attached to, not here.
         if not hasattr(self._core, "place"):
@@ -972,9 +973,9 @@ class ConversationPane(Widget):
 
             self._core.place = place or Place("local", ".")
         self._place = self._core.place
-        self._core.add_state_observer(self._on_core_state)
-        self._core.add_inbox_observer(self._on_core_inbox)
-        self._core.add_dispatch_observer(self._on_core_dispatch)
+        self._core.add_state_observer(as_own_app(self, self._on_core_state))
+        self._core.add_inbox_observer(as_own_app(self, self._on_core_inbox))
+        self._core.add_dispatch_observer(as_own_app(self, self._on_core_dispatch))
         # Was a single primary slot on the stated assumption that one
         # frontend owns the chip. With N views over one brain that is false:
         # the second pane's assignment would silently replace the first, so
@@ -982,20 +983,20 @@ class ConversationPane(Widget):
         # would report it. RemotePaneCore has no add_* form, hence the
         # fallback — it has no loop of its own either way.
         if hasattr(self._core, "add_loop_observer"):
-            self._core.add_loop_observer(self._on_loop_change)
+            self._core.add_loop_observer(as_own_app(self, self._on_loop_change))
         else:
             self._core.on_loop = self._on_loop_change
         # Same story as on_loop above: the end-of-turn recap renders through
         # the very block /recap uses, and every view needs it, not just the
         # last to attach. Harmless on a RemotePaneCore, which never fires it.
         if hasattr(self._core, "add_recap_observer"):
-            self._core.add_recap_observer(self._on_recap)
+            self._core.add_recap_observer(as_own_app(self, self._on_recap))
         else:
             self._core.on_recap = self._on_recap
         # The drafted reply is not the recap: it arrives on turns whose
         # recap is deliberately not drawn, so it has its own subscription.
         if hasattr(self._core, "add_suggestion_observer"):
-            self._core.add_suggestion_observer(self._on_suggestion)
+            self._core.add_suggestion_observer(as_own_app(self, self._on_suggestion))
         # RemotePaneCore has no log of its own; fall back to the handle so
         # the attribute always answers.
         self.log_id: str = getattr(self._core, "log_id", None) or handle
@@ -1215,10 +1216,14 @@ class ConversationPane(Widget):
         # — see on_unmount.
         if self._digest is not None:
             self._unsubs.append(
-                self._digest._manager.subscribe(lambda _ev: self._refresh_sidebar())
+                self._digest._manager.subscribe(
+                    as_own_app(self, lambda _ev: self._refresh_sidebar())
+                )
             )
         if self._monitor_manager is not None:
-            self._unsubs.append(self._monitor_manager.subscribe(self._refresh_sidebar))
+            self._unsubs.append(
+                self._monitor_manager.subscribe(as_own_app(self, self._refresh_sidebar))
+            )
         # Attached here rather than at construction: `self.app` is only
         # reachable once mounted, and no write can be recorded before the
         # harness has started, so nothing is missed by waiting.
@@ -1226,7 +1231,9 @@ class ConversationPane(Widget):
         if self._repo_tracker is not None:
             with contextlib.suppress(AttributeError):
                 self._core.repo_tracker = self._repo_tracker
-            self._unsubs.append(self._repo_tracker.subscribe(self._refresh_sidebar))
+            self._unsubs.append(
+                self._repo_tracker.subscribe(as_own_app(self, self._refresh_sidebar))
+            )
             # The probe is the only thing in this column that costs a
             # subprocess, so it runs only while the sidebar is open — the
             # closed mode stays one branch per event, as designed.
@@ -3213,7 +3220,7 @@ class ConversationPane(Widget):
         )
         if fn is None:
             return
-        fn(self._on_fleet_recap)
+        fn(as_own_app(self, self._on_fleet_recap))
         self._fleet_watching = on
 
     def _on_fleet_recap(self, _core, _recap) -> None:

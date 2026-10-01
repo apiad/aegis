@@ -11,6 +11,7 @@ from textual.widget import Widget
 from textual.widgets import Static
 
 from aegis.queue.digest import QueueDigest
+from aegis.tui.own_app import as_own_app
 
 
 class _Band(Widget):
@@ -30,7 +31,9 @@ class _Band(Widget):
         yield self._inner
 
     def on_mount(self) -> None:
-        self._unsub = self._digest._manager.subscribe(lambda ev: self.refresh_render())
+        self._unsub = self._digest._manager.subscribe(
+            as_own_app(self, lambda ev: self.refresh_render())
+        )
         self.refresh_render()
 
     def on_unmount(self) -> None:
@@ -305,7 +308,9 @@ class QueueDashboard(ModalScreen):
             )
 
     def on_mount(self) -> None:
-        self._unsub = self.app.queue_digest._manager.subscribe(self._on_event)
+        self._unsub = self.app.queue_digest._manager.subscribe(
+            as_own_app(self, self._on_event)
+        )
         # Refresh elapsed-time fields once a second — workflows don't
         # publish events through the queue substrate, and the elapsed
         # column would otherwise freeze between queue events.

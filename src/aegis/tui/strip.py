@@ -13,6 +13,7 @@ from textual.widgets import Static
 
 from aegis.queue.digest import QueueDigest, QueueView, Snapshot
 from aegis.tui.fit import truncate_cells
+from aegis.tui.own_app import as_own_app
 
 
 def format_q(q: QueueView, palette, width: int | None = None) -> Text:
@@ -101,7 +102,9 @@ class QueueStrip(Static):
         self._refresh()
 
     def on_mount(self) -> None:
-        self._unsub = self._digest._manager.subscribe(lambda ev: self._refresh())
+        self._unsub = self._digest._manager.subscribe(
+            as_own_app(self, lambda ev: self._refresh())
+        )
         self._refresh()
 
     def on_unmount(self) -> None:
