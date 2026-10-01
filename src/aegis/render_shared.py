@@ -151,6 +151,17 @@ def result_digest(name: str, result) -> str:
         return ""
     text = result.text or ""
     lines = [ln for ln in text.splitlines() if ln.strip()]
+    # Claude Code swaps an oversized result for a wrapper around a 2 KB
+    # preview: its last line is the closing tag and the command's own last
+    # line is not in the text at all. Its size is the only honest verdict.
+    if lines and lines[0] == "<persisted-output>" and len(lines) > 1:
+        return _trunc(lines[1].split(". Full output")[0], DIGEST_MAX)
+    # A failed Bash is headed "Exit code N" and still ends on its verdict
+    # ("2 failed, 39 passed"); show both, or keeping the exit status honest
+    # reads worse than piping it into `tail`.
+    if result.is_error and name == "Bash" and len(lines) > 1:
+        if lines[0].startswith("Exit code "):
+            return _trunc(f"{lines[0]} · {lines[-1]}", DIGEST_MAX)
     # An error does not have the shape the tool's success digest reads: a
     # failed Read is a message, not a line count.
     if result.is_error:

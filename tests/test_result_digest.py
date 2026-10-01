@@ -62,6 +62,37 @@ def test_error_digest_ignores_the_tool_shape():
     assert result_digest("Read", r) == "File does not exist: /nope.py"
 
 
+def test_a_failed_bash_keeps_its_exit_code_and_its_last_line():
+    # Claude Code prefixes a failed Bash result with "Exit code N". Taking
+    # the first line alone showed that header on 2,752 real rows and hid
+    # the verdict the command printed at the end.
+    r = ToolResult(
+        text="Exit code 1\n....FF   [100%]\n=== FAILURES ===\n"
+        "FAILED tests/t.py::test_total\n2 failed, 39 passed in 0.13s",
+        is_error=True,
+    )
+    assert result_digest("Bash", r) == "Exit code 1 · 2 failed, 39 passed in 0.13s"
+
+
+def test_a_failed_bash_with_no_output_is_just_its_exit_code():
+    r = ToolResult(text="Exit code 2\n", is_error=True)
+    assert result_digest("Bash", r) == "Exit code 2"
+
+
+def test_a_persisted_output_says_how_big_it_was_not_its_closing_tag():
+    # Claude Code swaps an oversized result for a wrapper holding a 2 KB
+    # preview. Its last line is the wrapper's closing tag, and the preview
+    # stops mid-output, so neither end is the command's verdict.
+    r = ToolResult(
+        text="<persisted-output>\nOutput too large (135.7KB). Full output "
+        "saved to: /home/u/.claude/projects/x/tool-results/b.txt\n\n"
+        "Preview (first 2KB):\n  PID CMD\n1039811 casus\n...\n"
+        "</persisted-output>",
+        is_error=False,
+    )
+    assert result_digest("Bash", r) == "Output too large (135.7KB)"
+
+
 def test_digest_is_empty_while_the_call_is_in_flight():
     assert result_digest("Bash", None) == ""
 
