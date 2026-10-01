@@ -642,8 +642,9 @@ def test_a_long_label_is_clipped_before_the_digest_is():
     assert "…" in rows[0], "the label should have been clipped"
 
 
-def test_the_digest_starts_at_the_same_column_for_every_row():
-    # Aligned columns are the whole point of a strip you skim.
+def test_the_digest_ends_at_the_same_column_for_every_row():
+    # The result is right-aligned against the elapsed column, so a strip you
+    # skim still has one edge to read down: the end of every verdict.
     short = ToolUse(
         name="Read", summary="", kind="read", raw_input={"file_path": "/a/b.py"}
     )
@@ -656,14 +657,60 @@ def test_the_digest_starts_at_the_same_column_for_every_row():
             "command": "true",
         },
     )
-    res = ToolResult(text="ok", is_error=False)
-    a = _row(short, res, 100)[0]
-    b = _row(long, res, 100)[0]
+    a = _row(short, ToolResult(text="ok", is_error=False), 100)[0]
+    b = _row(long, ToolResult(text="3 files changed", is_error=False), 100)[0]
     # Cells, not characters: 📖 is one character and two columns wide, so
     # str.index disagrees with where the terminal actually puts the mark.
     from rich.cells import cell_len
 
-    assert cell_len(a[: a.index("✓")]) == cell_len(b[: b.index("✓")]), f"{a!r}\n{b!r}"
+    end_a = cell_len(a[: a.rindex("1 line") + len("1 line")])
+    end_b = cell_len(b[: b.rindex("changed") + len("changed")])
+    assert end_a == end_b, f"{a!r}\n{b!r}"
+
+
+def test_a_short_result_leaves_the_label_the_rest_of_the_row():
+    # The label used to stop at 48 cells whatever the result needed, and a
+    # two-character "ok" left 80 cells of a 120-wide row blank (#39).
+    desc = "Check whether anything is listening on port 8765 and which process owns it"
+    ev = ToolUse(
+        name="Bash",
+        summary="",
+        kind="execute",
+        raw_input={"description": desc, "command": "true"},
+    )
+    row = _row(ev, ToolResult(text="ok", is_error=False), 120)[0]
+    assert desc in row, row
+    assert "…" not in row
+
+
+def test_a_long_result_still_wins_down_to_the_label_floor():
+    # The result owns the row (2026-09-21): it takes its width first, and
+    # the label gives way, but never below the floor that says which call
+    # this was.
+    from aegis.render import _LABEL_MIN
+
+    ev = ToolUse(
+        name="Bash",
+        summary="",
+        kind="execute",
+        raw_input={"description": "a very long description " * 5, "command": "true"},
+    )
+    row = _row(ev, ToolResult(text="y" * 400, is_error=False), 100)[0]
+    from rich.cells import cell_len
+
+    assert cell_len(row[: row.index("…") + 1]) == _LABEL_MIN, row
+    assert row.rstrip().endswith("12.4s")
+
+
+def test_a_clipped_label_does_not_touch_the_verdict():
+    ev = ToolUse(
+        name="Bash",
+        summary="",
+        kind="execute",
+        raw_input={"description": "a very long description " * 5, "command": "true"},
+    )
+    row = _row(ev, ToolResult(text="3629 passed", is_error=False), 100)[0]
+    assert "…  ✓ 3629 passed" in row, row
 
 
 def test_a_long_digest_is_clipped_to_its_column_not_wrapped():
