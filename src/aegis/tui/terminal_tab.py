@@ -39,6 +39,7 @@ from textual.widgets import Input, Static
 from textual.timer import Timer
 
 from aegis.terminal.manager import CommandRecord, TerminalInfo, TerminalManager
+from aegis.tui.own_app import as_own_app
 from aegis.tui.state import AgentState
 
 
@@ -346,7 +347,9 @@ class TerminalTab(Widget):
     async def on_mount(self) -> None:
         self._refresh_status()
         self._mount_past_ledger()
-        self._manager.add_render_observer(self.handle, self._on_render_event)
+        self._manager.add_render_observer(
+            self.handle, as_own_app(self, self._on_render_event)
+        )
 
     def _mount_past_ledger(self) -> None:
         try:

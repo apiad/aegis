@@ -25,6 +25,7 @@ from aegis.fleet.ghosts import GhostBook
 from aegis.fleet.models import FleetSnapshot
 from aegis.fleet.render import action_at, render_band, render_detail, render_item
 from aegis.fleet.rotation import Rotator
+from aegis.tui.own_app import as_own_app
 
 if TYPE_CHECKING:
     from aegis.tui.app import AegisApp
@@ -284,10 +285,10 @@ class FleetScreen(ModalScreen):
         for session in current:
             if not any(session is h for h in self._hooked):
                 self._hooked.append(session)
-                session.add_event_observer(self._on_event)
+                session.add_event_observer(as_own_app(self, self._on_event))
                 # F10 shows every item's `now` line, so it watches every
                 # session, and pays for their recaps, while it is open.
-                session.add_fleet_watcher(self._on_fleet_recap)
+                session.add_fleet_watcher(as_own_app(self, self._on_fleet_recap))
 
     def _on_event(self, _session, _ev) -> None:
         self.poke()
