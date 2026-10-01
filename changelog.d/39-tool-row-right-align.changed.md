@@ -1,0 +1,1 @@
+- **A tool row's label uses the width its result leaves.** The result is right-aligned against the elapsed time and the label gets the rest of the row, instead of a fixed column of at most 48 cells that clipped it beside a two-character `ok` and left most of a wide row blank. A long result still wins, and the label keeps at least 16 cells.

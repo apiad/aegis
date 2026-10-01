@@ -134,9 +134,12 @@ _ELAPSED_W = 7  # "  12.4s" / "  3m04s" — the widest _fmt_dur output
 # a strobe.
 _PULSE_FRAMES = 5
 
-_LABEL_FRAC = 0.42  # share of the row the label may occupy
+# The narrowest the label gets when a long result squeezes it: enough to
+# say which call this was.
 _LABEL_MIN = 16
-_LABEL_MAX = 48
+# Cells between the label and a right-aligned result, so a clipped label's
+# ellipsis never runs into the verdict mark.
+_GAP = 2
 
 
 class _ToolRow:
@@ -144,10 +147,13 @@ class _ToolRow:
 
     The middle column is the point of the row. A transcript is read to find
     out what came *back* — what passed, what failed, how many matches — and
-    the label is only there to say which call that was. So the label gets a
-    bounded column and gives way first; the result keeps the rest. The line
-    used to be one string truncated from the right, which clipped the result
-    and kept the argument, exactly backwards (Alex, 2026-09-21).
+    the label is only there to say which call that was. So the result takes
+    its width first, right-aligned against the elapsed column, and the label
+    gets whatever is left, down to ``_LABEL_MIN``. The line used to be one
+    string truncated from the right, which clipped the result and kept the
+    argument, exactly backwards (Alex, 2026-09-21). Then the label had a
+    fixed column of at most 48 cells, which clipped it beside a two-cell
+    "ok" and left most of the row blank (#39).
 
     Both columns are laid out at paint time. The only width a caller can
     measure is the transcript's, and a block gets less than that — its own
@@ -171,23 +177,21 @@ class _ToolRow:
 
     def __rich_console__(self, console, options):
         body_w = max(1, options.max_width - _ELAPSED_W)
-        label_w = min(_LABEL_MAX, max(_LABEL_MIN, int(body_w * _LABEL_FRAC)))
-        label_w = min(label_w, body_w)
+        verdict = self.verdict.copy()
+        gap = _GAP if verdict.cell_len else 0
+        label_w = max(min(_LABEL_MIN, body_w), body_w - gap - verdict.cell_len)
+        verdict.truncate(max(0, body_w - gap - label_w), overflow="ellipsis")
 
         row = self.label.copy()
         # The label Text carries end="" so the no-column path can append to
         # it. Here it is the whole row, and a row that does not end has no
         # height: Textual mounted the block and painted nothing.
         row.end = "\n"
-        # Truncate before padding: pad_right on an already-too-long line
-        # would not shorten it.
         row.truncate(label_w, overflow="ellipsis")
-        row.pad_right(max(0, label_w - row.cell_len))
-
-        verdict = self.verdict.copy()
-        verdict.truncate(max(0, body_w - label_w), overflow="ellipsis")
+        # Pad to wherever the result has to start for its end to meet the
+        # elapsed column.
+        row.pad_right(max(0, body_w - verdict.cell_len - row.cell_len))
         row.append_text(verdict)
-        row.pad_right(max(0, body_w - row.cell_len))
         row.append_text(self.stamp)
         yield row
 
