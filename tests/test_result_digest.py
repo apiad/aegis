@@ -161,3 +161,26 @@ def test_a_websearch_label_keeps_its_query():
     # you would go looking for later.
     lbl = tool_label("WebSearch", {"query": "textual compositor render strips"})
     assert "textual compositor" in lbl
+
+
+# --- the priming describes this row to the agent ------------------------
+# PRIMING tells every Claude agent what its Bash row shows, so it writes
+# commands whose last line is the result. If the digest rule changes, that
+# sentence becomes false, so pin the two together.
+
+from aegis.mcp import PRIMING
+
+
+def test_priming_describes_the_bash_row_the_digest_draws():
+    assert "last non-empty line" in PRIMING
+    assert "`Exit code N`" in PRIMING
+    ok = ToolResult(text="row 1\nrow 2\n\n57 negative rows\n\n", is_error=False)
+    assert result_digest("Bash", ok) == "57 negative rows"
+    bad = ToolResult(text="Exit code 1\nFAILED x\n2 failed, 39 passed", is_error=True)
+    assert result_digest("Bash", bad).startswith("Exit code 1 · ")
+
+
+def test_priming_warns_that_a_pipe_hides_a_failure():
+    # The measured win: a gate run bare reports its failure. Piped into
+    # `tail`, 0 of 12 failing pytest/ruff calls did.
+    assert "turns a failure into exit 0" in PRIMING
