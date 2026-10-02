@@ -24,7 +24,8 @@ Newest first. Patch releases bundle under their minor parent.
 
 > **Note:** the entries below stop at v0.14.0 while the package is at
 > v0.32.0 — this file has not been maintained per-release. `CHANGELOG.md`
-> and `TASKS.md` carry the intervening history.
+> carries the intervening history, and open work is tracked in
+> [GitHub issues](https://github.com/apiad/aegis/issues).
 
 ## Shipped
 
