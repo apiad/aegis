@@ -107,6 +107,15 @@ scratch and home directories, and refuses to write a fixture when the
 session ended with an error. Before committing a fixture, check that
 `grep -c /home/ src/aegis/bench/fixtures/*.jsonl` prints 0 for each file.
 
+## On CI
+
+`.github/workflows/bench.yml` runs the previous release against the checked-out
+commit on one GitHub runner and fails on a regression. It runs on manual
+dispatch (`gh workflow run bench.yml --ref <branch>`, optional `baseline` and
+`repeat` inputs) and on PRs that touch the workflow or `src/aegis/bench/`.
+Use it whenever a laptop's load would be part of the answer; releases always
+do (see `know-how/releasing.md`).
+
 ## Saving history for a release
 
 `--save` copies the summary into the checkout the running aegis was
