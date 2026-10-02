@@ -114,7 +114,9 @@ async def test_failure_after_success_goes_stale_and_keeps_the_value():
 
 
 @pytest.mark.asyncio
-async def test_sustained_failure_eventually_drops_the_snapshot():
+async def test_sustained_failure_keeps_the_last_reading():
+    """The last reading stays on screen marked stale for as long as fetches
+    fail. Dropping it after five minutes erased cc from F3 entirely (#41)."""
     c = Clock()
     svc = _service(c, [_snap(1000.0)] + [QuotaError("unreachable")] * 10)
     await svc.refresh()
@@ -122,8 +124,9 @@ async def test_sustained_failure_eventually_drops_the_snapshot():
         c.advance(POLL_S + 1)
         await svc.refresh()
     state = svc.current()
-    assert state.snapshot is None
+    assert state.snapshot is not None
     assert state.failure == "unreachable"
+    assert state.age_s == pytest.approx(9 * (POLL_S + 1))
 
 
 @pytest.mark.asyncio
@@ -190,3 +193,107 @@ async def test_rate_limit_keeps_a_previous_snapshot_visible():
     state = svc.current()
     assert state.failure == "rate_limited"
     assert state.snapshot is not None
+
+
+# --- the shared disk cache (#41) ---------------------------------------------
+
+
+class Wall(Clock):
+    def __init__(self):
+        self.t = 1_800_000_000.0
+
+
+def _cached(clock, wall, path, results, **kw):
+    svc = _service(clock, results)
+    svc._wall = wall
+    svc._cache = path
+    for k, v in kw.items():
+        setattr(svc, k, v)
+    return svc
+
+
+@pytest.mark.asyncio
+async def test_a_new_service_starts_from_the_cached_reading_with_its_real_age(tmp_path):
+    """A TUI restarted during a 429 shows the last reading, aged by the wall
+    clock rather than reset to zero by the new process's monotonic one."""
+    path = tmp_path / "claude.json"
+    c, w = Clock(), Wall()
+    first = _cached(c, w, path, [_snap(c())])
+    await first.refresh()
+
+    c2 = Clock()
+    c2.t = 50.0  # another process: an unrelated monotonic origin
+    w.advance(600)
+    second = _cached(c2, w, path, [QuotaError("rate_limited")])
+    await second.refresh()
+    state = second.current()
+    assert state.snapshot.window("session").percent == 64.0
+    assert state.age_s == pytest.approx(600)
+    assert state.failure == "rate_limited"
+
+
+@pytest.mark.asyncio
+async def test_a_reading_another_process_just_fetched_is_adopted_not_refetched(tmp_path):
+    path = tmp_path / "claude.json"
+    c, w = Clock(), Wall()
+    first = _cached(c, w, path, [_snap(c(), 71.0)])
+    await first.refresh()
+    w.advance(30)
+    second = _cached(Clock(), w, path, [_snap(0.0, 99.0)])
+    await second.refresh()
+    assert second._calls == []
+    assert second.current().snapshot.window("session").percent == 71.0
+    assert second.current().failure == ""
+
+
+@pytest.mark.asyncio
+async def test_a_429_seen_by_one_process_backs_off_the_others(tmp_path):
+    path = tmp_path / "claude.json"
+    c, w = Clock(), Wall()
+    first = _cached(c, w, path, [_snap(c()), QuotaError("rate_limited")])
+    await first.refresh()
+    c.advance(POLL_S + 1)
+    w.advance(POLL_S + 1)
+    await first.refresh()
+    assert first.current().failure == "rate_limited"
+
+    w.advance(10)
+    second = _cached(Clock(), w, path, [_snap(0.0, 99.0)])
+    await second.refresh(force=True)
+    assert second._calls == []
+    state = second.current()
+    assert state.failure == "rate_limited"
+    assert state.snapshot.window("session").percent == 64.0
+
+
+@pytest.mark.asyncio
+async def test_the_floor_follows_the_service_poll_interval():
+    c = Clock()
+    svc = _service(c, [_snap(c()), _snap(c(), 70.0)])
+    svc._poll_s = 180.0
+    await svc.refresh()
+    c.advance(POLL_S + 1)
+    await svc.refresh()
+    assert len(svc._calls) == 1
+    c.advance(180.0)
+    await svc.refresh()
+    assert len(svc._calls) == 2
+
+
+def test_claude_polls_every_three_minutes():
+    """60 s per process starved the endpoint into 429s (#41)."""
+    from aegis.usage.quota_claude import PROVIDER
+
+    assert PROVIDER.poll_s == 180.0
+    assert PROVIDER.turn_floor_s == 60.0
+
+
+@pytest.mark.asyncio
+async def test_build_services_wires_each_provider_cadence_and_cache(tmp_path, monkeypatch):
+    from aegis.usage import quota_providers
+
+    monkeypatch.setattr(quota_providers, "cache_dir", lambda: tmp_path)
+    services = quota_providers.build_services()
+    assert services["claude"]._poll_s == 180.0
+    assert services["claude"]._cache == tmp_path / "claude.json"
+    assert services["opencode-go"]._poll_s == POLL_S

@@ -13,13 +13,19 @@ entry, not a change to the service or the renderer.
 
 from __future__ import annotations
 
+import json
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Mapping
 
 if TYPE_CHECKING:
     from aegis.fleet.models import QuotaGauge
+
+POLL_S = 60.0  # background cadence, unless the provider sets its own
+BACKOFF_S = 300.0  # hands off the endpoint after it says 429
 
 # Used only when the API omits its own `severity` for a window.
 WARNING_AT = 80.0
@@ -96,6 +102,11 @@ class QuotaProvider:
     # projection and keeps its level-only colour, which is what makes a new
     # vendor window safe to meet.
     window_spans: Mapping[str, float] = field(default_factory=dict)
+    # Background cadence, and the floor a turn-end refresh honours. Per
+    # provider because Claude's endpoint 429s under polling that OpenCode's
+    # takes without complaint.
+    poll_s: float = POLL_S
+    turn_floor_s: float = 10.0
 
 
 def _severity(percent: float, given) -> str:
@@ -165,11 +176,6 @@ def _timestamp(raw) -> datetime | None:
         return None
 
 
-POLL_S = 60.0  # background cadence
-STALE_DROP_S = 300.0  # how long a stale value stays on screen before it goes
-BACKOFF_S = 300.0  # hands off the endpoint after it says 429
-
-
 @dataclass(frozen=True)
 class QuotaState:
     """What the bar should show right now.
@@ -191,15 +197,38 @@ class QuotaService:
     ``current()`` is synchronous so the 1-second UI tick never touches the
     network. Fetches run in a worker thread; the endpoint is blocking stdlib
     code and must not stall the event loop.
+
+    The last good reading is never dropped. While fetches fail it stays on
+    screen as stale, with its real age, because an old number is more use than
+    a blank row (#41).
+
+    ``cache`` is a JSON file shared by every aegis process on the machine: the
+    TUI, the daemon, ``aegis usage quota``, the AFK tick. Each one adopts a
+    reading another fetched inside the floor instead of asking again, and a 429
+    any of them sees backs off all of them. Quota is an account property, so
+    one reading per account is the honest number; N pollers were what starved
+    Claude's endpoint into 429s in the first place. Times in the file are wall
+    clock, converted to this process's monotonic clock on load.
     """
 
-    def __init__(self, *, fetch, token_reader, clock=time.monotonic) -> None:
+    def __init__(
+        self,
+        *,
+        fetch,
+        token_reader,
+        clock=time.monotonic,
+        poll_s: float = POLL_S,
+        cache: Path | None = None,
+        wall=time.time,
+    ) -> None:
         self._clock = clock
+        self._wall = wall
         self._fetch = fetch
         self._read_token = token_reader
+        self._poll_s = poll_s
+        self._cache = cache
         self._snapshot: QuotaSnapshot | None = None
         self._failure = ""
-        self._failing_since = 0.0
         self._last_attempt = 0.0
         self._backoff_until = 0.0
         self._task = None
@@ -233,12 +262,12 @@ class QuotaService:
 
         while True:
             await self.refresh()
-            await asyncio.sleep(POLL_S)
+            await asyncio.sleep(self._poll_s)
 
     async def refresh(
         self, *, force: bool = False, min_interval: float | None = None
     ) -> None:
-        """Fetch unless we fetched recently.
+        """Fetch unless we, or another process, fetched recently.
 
         ``min_interval`` overrides the default floor — the turn-end trigger
         passes a shorter one so a finished turn updates the number promptly
@@ -250,7 +279,7 @@ class QuotaService:
         now = self._clock()
         if now < self._backoff_until:
             return
-        floor = POLL_S if min_interval is None else min_interval
+        floor = self._poll_s if min_interval is None else min_interval
         if not force and self._last_attempt and now - self._last_attempt < floor:
             return
         self._last_attempt = now
@@ -259,7 +288,17 @@ class QuotaService:
         if not token:
             self._snapshot = None
             self._failure = "no_credentials"
-            self._failing_since = 0.0
+            return
+
+        self._load_cache(now)
+        if now < self._backoff_until:
+            return
+        if (
+            not force
+            and self._snapshot is not None
+            and not self._failure
+            and now - self._snapshot.fetched_at < floor
+        ):
             return
 
         try:
@@ -274,19 +313,81 @@ class QuotaService:
             return
         self._snapshot = snapshot
         self._failure = ""
-        self._failing_since = 0.0
         self._backoff_until = 0.0
+        self._save_cache()
 
     def _note_failure(self, kind: str, now: float) -> None:
         self._failure = kind
         if kind == "rate_limited":
             self._backoff_until = now + BACKOFF_S
-        if self._snapshot is None:
+            self._save_cache()
+
+    def _load_cache(self, now: float) -> None:
+        """Adopt a newer reading or a live backoff from the shared file."""
+        if self._cache is None:
             return
-        if not self._failing_since:
-            self._failing_since = now
-        elif now - self._failing_since >= STALE_DROP_S:
-            self._snapshot = None
+        try:
+            raw = json.loads(self._cache.read_text())
+            backoff = now + (float(raw.get("backoff_until_wall", 0.0)) - self._wall())
+            snap = None
+            # A 429 before any reading still writes the file, for its backoff.
+            if raw.get("windows") is not None:
+                fetched = now - (self._wall() - float(raw["fetched_wall"]))
+                snap = QuotaSnapshot(
+                    windows=tuple(
+                        QuotaWindow(
+                            w["kind"],
+                            float(w["percent"]),
+                            w["severity"],
+                            _timestamp(w["resets_at"]),
+                            bool(w["is_active"]),
+                        )
+                        for w in raw["windows"]
+                    ),
+                    fetched_at=fetched,
+                )
+        except (OSError, ValueError, KeyError, TypeError):
+            return
+        # +1 s: our own write comes back through float round-trips.
+        if snap is not None and (
+            self._snapshot is None or snap.fetched_at > self._snapshot.fetched_at + 1
+        ):
+            self._snapshot = snap
+            self._failure = ""
+        if backoff > now and backoff > self._backoff_until:
+            self._backoff_until = backoff
+            self._failure = "rate_limited"
+
+    def _save_cache(self) -> None:
+        if self._cache is None:
+            return
+        now, wall = self._clock(), self._wall()
+        snap = self._snapshot
+        raw = {
+            "fetched_wall": wall - (now - snap.fetched_at) if snap else None,
+            "backoff_until_wall": wall + (self._backoff_until - now)
+            if self._backoff_until > now
+            else 0.0,
+            "windows": [
+                {
+                    "kind": w.kind,
+                    "percent": w.percent,
+                    "severity": w.severity,
+                    "resets_at": w.resets_at.isoformat() if w.resets_at else None,
+                    "is_active": w.is_active,
+                }
+                for w in snap.windows
+            ]
+            if snap
+            else None,
+        }
+        try:
+            self._cache.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._cache.with_suffix(f".{os.getpid()}.tmp")
+            tmp.write_text(json.dumps(raw))
+            os.replace(tmp, self._cache)
+        except OSError:
+            pass
 
     def current(self) -> QuotaState:
         age = 0.0
@@ -544,6 +645,7 @@ def quota_gauges(
                     severity=pace_severity(w, span, now=now),
                     resets_in_s=resets,
                     projected=window_pace(w, span, now=now),
+                    stale=stale,
                 )
             )
     return tuple(out)

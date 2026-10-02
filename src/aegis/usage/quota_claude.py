@@ -131,6 +131,10 @@ PROVIDER = QuotaProvider(
     bar_windows=(("session", "5h"), ("weekly_all", "wk")),
     fetch=fetch_quota,
     read_token=read_token,
+    # The usage endpoint 429s at a minute per process (#41). Three minutes,
+    # shared through the cache, and a turn end may not ask sooner than one.
+    poll_s=180.0,
+    turn_floor_s=60.0,
     # The five-hour window starts at the first message of a session and the
     # weekly ones roll on a fixed boundary, so in both cases the start is
     # `resets_at` minus the span. The payload says neither.

@@ -121,6 +121,11 @@ def no_real_provider_accounts(request, tmp_path, monkeypatch):
         return
     monkeypatch.setenv("CLAUDE_CREDS", str(tmp_path / "no-claude-creds.json"))
     monkeypatch.setenv("OPENCODE_AUTH", str(tmp_path / "no-opencode-auth.json"))
+    # The quota cache is shared by every aegis process; a test must neither
+    # read the operator's last reading nor overwrite it.
+    monkeypatch.setattr(
+        "aegis.usage.quota_providers.cache_dir", lambda: tmp_path / "quota-cache"
+    )
     monkeypatch.setattr("aegis.models._run_opencode_models", lambda: None)
     _refuse_real_oneshot(monkeypatch)
 

@@ -34,6 +34,7 @@ from aegis.fleet.render import (
     bar,
     ctx_style,
     gauge,
+    note_row,
     quota_tail,
     rows_of,
     severity_style,
@@ -302,10 +303,7 @@ def _context(m: SidebarModel, palette, width: int) -> Text | None:
     # bars are what Alex reads this column for.
     for q in m.quota_gauges:
         if q.note:
-            row = Text(f"{q.label} ".ljust(6), style=palette.muted)
-            row.append(q.note, style=palette.working)
-            row.truncate(width)
-            rows.append(row)
+            rows.append(note_row(q, width, palette))
             continue
         style = severity_style(q.severity, palette)
         rows.append(

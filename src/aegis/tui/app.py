@@ -1637,7 +1637,9 @@ class AegisApp(App):
             self._quota_states[handle] = state
             if previous is AgentState.working and state is AgentState.ready:
                 self.run_worker(
-                    self.quota_services[provider.name].refresh(min_interval=10.0),
+                    self.quota_services[provider.name].refresh(
+                        min_interval=provider.turn_floor_s
+                    ),
                     exclusive=False,
                 )
 
@@ -1646,8 +1648,7 @@ class AegisApp(App):
         # disagree about the same window.
         readings = [(p, self.quota_services[p.name].current()) for p in PROVIDERS]
         tiers = format_quota_bar(readings, self._palette)
-        # Placeholders here and not in the fleet band: these gauges feed only
-        # the F3 column, where a provider must keep its row (#41).
+        # Placeholders: a provider with no reading keeps its row (#41).
         gauges = quota_gauges(
             readings, now=datetime.now().astimezone(), placeholders=True
         )
@@ -1688,6 +1689,7 @@ class AegisApp(App):
                     g.percent,
                     g.severity,
                     g.note,
+                    g.stale,
                     _reset_bucket(g),
                     _proj_bucket(g),
                 )
@@ -2322,7 +2324,9 @@ class AegisApp(App):
         ]
         return {
             "stats": self._system_stats,
-            "gauges": quota_gauges(readings, now=datetime.now(timezone.utc)),
+            "gauges": quota_gauges(
+                readings, now=datetime.now(timezone.utc), placeholders=True
+            ),
             "build": format_build(self._palette),
         }
 
