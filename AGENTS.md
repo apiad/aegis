@@ -42,6 +42,7 @@ would make it false.
 | `docs/superpowers/` | why each feature is shaped the way it is | a feature is designed |
 | `changelog.d/*.md` | one release note per change, awaiting the next release | any user-visible change |
 | `CHANGELOG.md` | what shipped | a release collates the fragments |
+| GitHub issues | what is still to do: every defect, feature and idea; the `v1.0` label marks the 1.0 scope, `idea` a direction not yet decided | work is found, decided or lands |
 | `know-how/` | how to do one job | a procedure changes |
 | `Makefile`, `.rift.yaml`, tests | every mechanical check | a gate is added or dropped |
 | the code | everything else | constantly |
