@@ -109,8 +109,9 @@ session ended with an error. Before committing a fixture, check that
 
 ## On CI
 
-`.github/workflows/bench.yml` runs the previous release against the checked-out
-commit on one GitHub runner and fails on a regression. It runs on manual
+`.github/workflows/bench.yml` runs the previous release, the checked-out
+commit and the previous release again on one GitHub runner, and fails when
+`aegis bench gate` confirms a regression. It runs on manual
 dispatch (`gh workflow run bench.yml --ref <branch>`, optional `baseline` and
 `repeat` inputs) and on PRs that touch the workflow or `src/aegis/bench/`.
 Use it whenever a laptop's load would be part of the answer; releases always
@@ -134,6 +135,10 @@ step is in `know-how/releasing.md`.
   client CPU as 0.02 s/s against ~1.0 in `startup`. To compare two
   builds, install each as a wheel in its own venv and pass that venv's
   python, as `.github/workflows/bench.yml` does.
+- `compare` alone is not a verdict on a shared runner. Its rule (>10%, above
+  the floor, repeat ranges apart) flagged swings of 10-28% in both directions
+  between 0.41.0 and a diff the bench world never executes, inside one job.
+  Bracket the candidate with two baseline runs and let `gate` decide.
 - Run from a clean tree. Other sessions edit the shared checkout, and a
   half-applied edit anywhere in `src/aegis` breaks every run with an
   import error. A `git worktree` at your commit with its own `uv sync`

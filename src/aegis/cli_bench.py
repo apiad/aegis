@@ -183,6 +183,34 @@ def compare_cmd(
     raise typer.Exit(1 if regressed else 0)
 
 
+@app.command("gate")
+def gate_cmd(
+    base1: str = typer.Argument(..., help="Baseline run, before the candidate."),
+    cand: str = typer.Argument(..., help="Candidate run."),
+    base2: str = typer.Argument(..., help="Baseline run again, after the candidate."),
+) -> None:
+    """Exit 1 only on a regression against both baseline runs that agree."""
+    from aegis.bench import BenchError
+    from aegis.bench.compare import gate, load_summary
+
+    try:
+        confirmed, dropped = gate(
+            load_summary(base1), load_summary(cand), load_summary(base2)
+        )
+    except BenchError as exc:
+        _console.print(f"[red]{exc}[/]")
+        raise typer.Exit(2) from exc
+    for sc, r in confirmed:
+        delta = "" if r.delta_pct is None else f" ({r.delta_pct:+.1f}%)"
+        _console.print(f"[red]regressed[/] {sc} {r.metric}: {r.a:g} -> {r.b:g}{delta}")
+    for sc, metric in dropped:
+        _console.print(f"[dim]noise[/] {sc} {metric}: not past both baselines")
+    _console.print(
+        f"{len(confirmed)} confirmed regression(s), {len(dropped)} dropped as noise"
+    )
+    raise typer.Exit(1 if confirmed else 0)
+
+
 _HISTORY_METRICS = [
     "latency.marker_ms.p50",
     "latency.marker_ms.p95",

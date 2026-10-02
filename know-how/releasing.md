@@ -67,9 +67,11 @@ uniform +15% regression across every scenario, daemon boot included, against a
 summary saved on the same laptop a day earlier under different load. Neither
 number said anything about aegis.
 
-`.github/workflows/bench.yml` measures the previous release from PyPI and the
-checked-out commit back to back on one runner, then runs `aegis bench compare`
-between them. Both sides see the same machine in the same hour. Run it on the
+`.github/workflows/bench.yml` measures the previous release from PyPI, then
+the checked-out commit, then the previous release again, all on one runner, and
+`aegis bench gate` decides. Both sides see the same machine in the same hour,
+and the baseline measured twice shows how much that machine moved on its own.
+A run takes about half an hour. Run it on the
 release commit once it is on `main`:
 
 ```bash
@@ -83,10 +85,11 @@ compared with the previous release even after it is tagged. The comparison
 table is in the run's summary page, and the run directories are the
 `bench-runs` artifact.
 
-Red means a metric regressed. Read every `regressed` row before tagging, and
-either explain it in the changelog or fix it. A single runner is still a
-shared VM, so a lone row just past the threshold is worth one re-run before
-you believe it. See `know-how/benchmarking.md`.
+Red means a metric regressed against both baseline runs. Read every
+`regressed` line before tagging, and either explain it in the changelog or fix
+it. The `compare` table under it is context, not the verdict: on a shared
+runner it routinely shows 10-28% swings either way that the gate drops. See
+`know-how/benchmarking.md`.
 
 ## The other one: `[Unreleased]` is routinely a fraction of what shipped
 
