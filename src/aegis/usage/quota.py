@@ -498,16 +498,33 @@ def quota_report(readings, *, now: datetime | None = None) -> list[str]:
     return lines
 
 
-def quota_gauges(readings, *, now: datetime) -> tuple[QuotaGauge, ...]:
+def quota_gauges(
+    readings, *, now: datetime, placeholders: bool = False
+) -> tuple[QuotaGauge, ...]:
     """One gauge per bar window of every provider with a reading, in
-    ``bar_windows`` order. A provider with no snapshot (no credentials, or
-    nothing fetched yet) draws nothing rather than an empty bar."""
+    ``bar_windows`` order. A provider with no snapshot draws no bar.
+
+    ``placeholders`` gives such a provider one ``note`` gauge saying why, so
+    it keeps a row instead of vanishing while another provider has a reading
+    (#41). A provider with no credentials still draws nothing: it is a rail
+    not in use, not a reading that failed."""
     from aegis.fleet.models import QuotaGauge
 
     out = []
     for provider, state in readings:
         snap = state.snapshot
         if snap is None:
+            if placeholders and state.failure != "no_credentials":
+                note = _FAILURE_TEXT.get(state.failure, state.failure)
+                out.append(
+                    QuotaGauge(
+                        label=provider.label,
+                        percent=0.0,
+                        severity="normal",
+                        resets_in_s=None,
+                        note=note or "no reading yet",
+                    )
+                )
             continue
         # A stale reading does not get to speak about pace. The percent is
         # frozen while the clock runs on, so the projection falls on its own and

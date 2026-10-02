@@ -58,6 +58,10 @@ class QuotaGauge:
     # window carries no reset time or no known span. Carried even when it is
     # comfortable; `quota_tail` decides when it is worth a reader's cells.
     projected: float | None = None
+    # Set on a provider that has credentials but no reading ("rate limited").
+    # The row prints this instead of a bar: a 0% bar would claim a reading of
+    # zero. Only the sidebar asks for these; see `quota_gauges(placeholders=)`.
+    note: str = ""
 
 
 @dataclass(frozen=True)
