@@ -867,6 +867,20 @@ def test_quota_shows_every_window_of_every_provider():
         assert any(lbl in r and f"{pct}%" in r for r in rows), lbl
 
 
+def test_a_stale_quota_reading_keeps_its_bar_and_says_stale():
+    m = SidebarModel(
+        quota_gauges=(
+            QuotaGauge(
+                label="cc wk", percent=14.0, severity="normal", resets_in_s=7200,
+                stale=True,
+            ),
+        )
+    )
+    (row,) = [r for r in as_text(render_sidebar(m, C, 36)).split("\n") if "cc wk" in r]
+    assert "14%" in row and "(stale)" in row
+    assert cell_len(row) <= 36
+
+
 def test_a_provider_without_a_reading_keeps_a_row_with_its_reason():
     """cc went 429 while oc had a reading, and cc left no row at all: the
     tier fallback fires only when no provider has a gauge (#41). The row

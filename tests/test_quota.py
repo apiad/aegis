@@ -180,3 +180,23 @@ def test_a_provider_without_credentials_gets_no_placeholder():
     now = datetime(2026, 10, 2, tzinfo=timezone.utc)
     reading = [(PROVIDER, QuotaState(failure="no_credentials"))]
     assert quota_gauges(reading, now=now, placeholders=True) == ()
+
+
+def test_a_reading_whose_fetches_are_failing_is_a_stale_gauge_not_a_placeholder():
+    """Alex wants the last numbers with a stale mark, not a reason in their
+    place, whenever there is a last number to show (#41)."""
+    from datetime import datetime, timezone
+
+    from aegis.usage.quota import QuotaSnapshot, QuotaState, QuotaWindow, quota_gauges
+    from aegis.usage.quota_claude import PROVIDER
+
+    now = datetime(2026, 10, 2, tzinfo=timezone.utc)
+    snap = QuotaSnapshot(
+        windows=(QuotaWindow("session", 14.0, "normal", None, True),), fetched_at=0.0
+    )
+    state = QuotaState(snapshot=snap, age_s=900.0, failure="rate_limited")
+    (g,) = quota_gauges([(PROVIDER, state)], now=now, placeholders=True)
+    assert g.percent == 14.0 and g.stale and not g.note
+    fresh = QuotaState(snapshot=snap, age_s=10.0)
+    (g,) = quota_gauges([(PROVIDER, fresh)], now=now, placeholders=True)
+    assert not g.stale

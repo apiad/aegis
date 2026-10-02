@@ -576,10 +576,18 @@ boundary between what is finished and what is not, so the row you need is
 the outstanding one rather than the three you closed an hour ago.
 
 **CONTEXT** shows the context window as a bar that turns amber past 60%
-and red past 80%, then one quota bar per provider — the window closest to
-exhaustion, which is the one that decides which rail you can launch on.
-The rest are one `/usage` away. The row underneath carries the tokens,
-the cost and the turn time.
+and red past 80%, then one quota bar per window of every provider (`cc 5h`,
+`cc wk`, `oc 5h`, `oc wk`, `oc mo`). While a provider's fetches fail, its
+last reading stays on screen with `(stale)` after the reset time. A
+provider with credentials but no reading yet prints why in place of its
+bars (`cc    rate limited`). The row underneath carries the tokens, the
+cost and the turn time.
+
+Quota readings are cached in `~/.cache/aegis/quota/` and shared by every
+aegis process on the machine, so a new TUI starts from the last reading and
+two TUIs do not both ask the endpoint. Claude's quota is read every three
+minutes, and at most once a minute when a Claude turn ends; OpenCode's every
+minute. A 429 any process sees holds every process off for five minutes.
 
 The plan survives a restart: a resumed session replays its own transcript
 and comes back with the tasks *and* their banked time intact.
@@ -665,7 +673,8 @@ want it.
   the live sessions, each as a bar.
 - One bar per quota window of every provider aegis holds credentials for
   (`cc 5h`, `cc wk`, `oc 5h`, `oc wk`, `oc mo`), coloured by severity, with
-  the time until it resets. A critical percentage blinks. These are the
+  the time until it resets. A critical percentage blinks. A stale reading
+  and a provider with no reading look as they do in `F3`. These are the
   readings `F3` already polls; `F10` never polls on its own.
 - Counters by [turn attention](#recaps-and-the-loop-judge): working, need
   you, error, review, waiting and done, then what the open sessions have

@@ -185,3 +185,30 @@ def test_the_middle_band_reads_as_yellow_and_not_as_the_error_colour():
     assert severity_style("warning", pal) == pal.working
     assert severity_style("critical", pal) == pal.error
     assert severity_style("normal", pal) == pal.ready
+
+
+# --- #41: a provider with no reading, and a stale one -----------------------
+
+
+def test_the_band_prints_a_provider_without_a_reading_as_its_reason():
+    from dataclasses import replace
+
+    band = replace(
+        BAND,
+        gauges=(
+            QuotaGauge("cc", 0.0, "normal", None, note="rate limited"),
+            QuotaGauge("oc wk", 57, "warning", 60),
+        ),
+    )
+    row = render_band(FleetSnapshot(band=band, cards=CARDS), P, 160, 0).plain.split("\n")[1]
+    assert row.startswith("cc") and "rate limited" in row
+    assert "0%" not in row.split("oc wk")[0]
+    assert "oc wk" in row and "57%" in row
+    assert cell_len(row) <= 160
+
+
+def test_a_stale_gauge_says_so_in_its_tail():
+    from aegis.fleet.render import quota_tail
+
+    assert quota_tail(QuotaGauge("cc 5h", 14, "normal", 3600, stale=True)).endswith("(stale)")
+    assert "stale" not in quota_tail(QuotaGauge("cc 5h", 14, "normal", 3600))

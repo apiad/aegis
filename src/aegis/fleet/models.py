@@ -60,8 +60,11 @@ class QuotaGauge:
     projected: float | None = None
     # Set on a provider that has credentials but no reading ("rate limited").
     # The row prints this instead of a bar: a 0% bar would claim a reading of
-    # zero. Only the sidebar asks for these; see `quota_gauges(placeholders=)`.
+    # zero. The TUI asks for these; see `quota_gauges(placeholders=)`.
     note: str = ""
+    # The last good reading while fetches fail. Drawn as a bar like any other,
+    # with `(stale)` in its tail.
+    stale: bool = False
 
 
 @dataclass(frozen=True)

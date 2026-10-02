@@ -205,9 +205,26 @@ def quota_tail(g) -> str:
 
     reset = reset_in(g.resets_in_s)
     if g.projected is None or g.projected < PACE_WARN_AT:
-        return reset
-    proj = f"→{g.projected:.0f}%"
-    return f"{proj} {reset}" if reset else proj
+        tail = reset
+    else:
+        proj = f"→{g.projected:.0f}%"
+        tail = f"{proj} {reset}" if reset else proj
+    if g.stale:
+        tail = f"{tail} (stale)" if tail else "(stale)"
+    return tail
+
+
+def note_row(g, cells: int, pal) -> Text:
+    """A provider with no reading: its label and why, where its bars would be.
+
+    Padded to ``cells`` so the band's next gauge keeps its column. No bar: a
+    0% bar would claim a reading of zero rather than no reading at all.
+    """
+    t = Text(f"{g.label} ".ljust(6), style=pal.muted)
+    t.append(g.note, style=pal.working)
+    t.truncate(cells)
+    t.pad_right(cells - cell_len(t.plain))
+    return t
 
 
 def render_band(snapshot: FleetSnapshot, pal, width: int, frame: int) -> Text:
@@ -259,6 +276,9 @@ def render_band(snapshot: FleetSnapshot, pal, width: int, frame: int) -> Text:
         qcells = (width - 2 * (per_q - 1)) // per_q
         quota: list[Text] = []
         for g in band.gauges:
+            if g.note:
+                quota.append(note_row(g, qcells, pal))
+                continue
             style = severity_style(g.severity, pal)
             value = f"{g.percent:.0f}%"
             if g.severity == "critical":

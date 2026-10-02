@@ -7,6 +7,7 @@ import the core, so the core cannot import them back.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from aegis.usage.quota import QuotaProvider, QuotaService
 from aegis.usage.quota_claude import PROVIDER as CLAUDE
@@ -27,10 +28,21 @@ def for_harness(slug: str) -> QuotaProvider | None:
     return None
 
 
+def cache_dir() -> Path:
+    """Where every aegis process shares its last reading. User-level, like
+    the models cache: quota belongs to the account, not to a checkout."""
+    return Path.home() / ".cache" / "aegis" / "quota"
+
+
 def build_services() -> dict[str, QuotaService]:
     """One poller per provider, keyed by provider name."""
     return {
-        p.name: QuotaService(fetch=p.fetch, token_reader=p.read_token)
+        p.name: QuotaService(
+            fetch=p.fetch,
+            token_reader=p.read_token,
+            poll_s=p.poll_s,
+            cache=cache_dir() / f"{p.name}.json",
+        )
         for p in PROVIDERS
     }
 
