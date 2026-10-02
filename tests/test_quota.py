@@ -149,3 +149,34 @@ def test_fetch_maps_429_to_rate_limited():
     with pytest.raises(QuotaError) as e:
         fetch_quota("tok", opener=opener)
     assert e.value.kind == "rate_limited"
+
+
+# --- placeholders for providers with no reading (#41) -------------------------
+
+
+def test_a_provider_with_no_reading_gets_a_placeholder_gauge_only_on_request():
+    from datetime import datetime, timezone
+
+    from aegis.usage.quota import QuotaState, quota_gauges
+    from aegis.usage.quota_claude import PROVIDER
+
+    now = datetime(2026, 10, 2, tzinfo=timezone.utc)
+    reading = [(PROVIDER, QuotaState(failure="rate_limited"))]
+    # The fleet band keeps its old contract: no snapshot, no gauge.
+    assert quota_gauges(reading, now=now) == ()
+    (g,) = quota_gauges(reading, now=now, placeholders=True)
+    assert g.label == PROVIDER.label
+    assert g.note == "rate limited"
+
+
+def test_a_provider_without_credentials_gets_no_placeholder():
+    """No credentials means the rail is not in use; a permanent row saying
+    so would be noise on every session."""
+    from datetime import datetime, timezone
+
+    from aegis.usage.quota import QuotaState, quota_gauges
+    from aegis.usage.quota_claude import PROVIDER
+
+    now = datetime(2026, 10, 2, tzinfo=timezone.utc)
+    reading = [(PROVIDER, QuotaState(failure="no_credentials"))]
+    assert quota_gauges(reading, now=now, placeholders=True) == ()

@@ -701,7 +701,13 @@ def test_a_long_plan_does_not_evict_the_sections_below_it():
 # narrow case being worst because the recap wraps). The ceiling sits one
 # row above the worst measurement and two below the hard budget, so a
 # section that grows trips this before it trips a user.
-ROW_CEILING = 36
+#
+# #41 then spent three rows on purpose: every quota window gets its own row
+# instead of one per provider, because Alex wants all five bars on screen.
+# Now 35 / 36 / 38. At width 26 the busiest session runs one row past the
+# 37-row budget and the column scrolls by one row at its bottom; the quota
+# rows sit near the top and stay visible. The ceiling is the new worst case.
+ROW_CEILING = 38
 
 
 def _full_model():
@@ -836,12 +842,9 @@ def test_a_gauge_bar_does_not_sprawl_across_a_wide_column():
     assert cell_len(row) <= 36
 
 
-def test_quota_shows_the_window_closest_to_exhaustion_per_provider():
-    """A real session has five windows across two providers. One row each
-    cost CONTEXT four rows it does not have; the question the segment
-    answers — which rail can I launch on — is decided by the window nearest
-    its limit, and the rest are one `/usage` away.
-    """
+def test_quota_shows_every_window_of_every_provider():
+    """Collapsing each provider to its worst window hid three of five bars,
+    and Alex wants all of them on screen (#41)."""
     m = SidebarModel(
         quota_gauges=tuple(
             QuotaGauge(label=lbl, percent=pct, severity="normal", resets_in_s=60)
@@ -859,9 +862,32 @@ def test_quota_shows_the_window_closest_to_exhaustion_per_provider():
         for ln in as_text(render_sidebar(m, C, 56)).split("\n")
         if ln and not ln.startswith("── ")
     ]
-    assert len(rows) == 2
-    assert any("cc wk" in r and "14%" in r for r in rows)
-    assert any("oc wk" in r and "7%" in r for r in rows)
+    assert len(rows) == 5
+    for lbl, pct in (("cc 5h", 2), ("cc wk", 14), ("oc 5h", 0), ("oc wk", 7), ("oc mo", 3)):
+        assert any(lbl in r and f"{pct}%" in r for r in rows), lbl
+
+
+def test_a_provider_without_a_reading_keeps_a_row_with_its_reason():
+    """cc went 429 while oc had a reading, and cc left no row at all: the
+    tier fallback fires only when no provider has a gauge (#41). The row
+    says why and draws no bar, since a 0% bar claims a reading of zero."""
+    m = SidebarModel(
+        quota_gauges=(
+            QuotaGauge(
+                label="cc", percent=0.0, severity="normal", resets_in_s=None,
+                note="rate limited",
+            ),
+            QuotaGauge(label="oc wk", percent=57.0, severity="warning", resets_in_s=60),
+        )
+    )
+    rows = [
+        ln
+        for ln in as_text(render_sidebar(m, C, 56)).split("\n")
+        if ln and not ln.startswith("── ")
+    ]
+    (cc,) = [r for r in rows if r.startswith("cc")]
+    assert "rate limited" in cc and "%" not in cc
+    assert any("oc wk" in r and "57%" in r for r in rows)
 
 
 # --- findings from the whole-branch review -----------------------------

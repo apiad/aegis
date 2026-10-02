@@ -1646,7 +1646,11 @@ class AegisApp(App):
         # disagree about the same window.
         readings = [(p, self.quota_services[p.name].current()) for p in PROVIDERS]
         tiers = format_quota_bar(readings, self._palette)
-        gauges = quota_gauges(readings, now=datetime.now().astimezone())
+        # Placeholders here and not in the fleet band: these gauges feed only
+        # the F3 column, where a provider must keep its row (#41).
+        gauges = quota_gauges(
+            readings, now=datetime.now().astimezone(), placeholders=True
+        )
         if active is None or not hasattr(active, "set_quota"):
             # Held for the fleet band, which F10 can open over any tab. No
             # pane holds it, so the next agent pane in front is painted.
@@ -1679,7 +1683,14 @@ class AegisApp(App):
         stamp = (
             tiers,
             tuple(
-                (g.label, g.percent, g.severity, _reset_bucket(g), _proj_bucket(g))
+                (
+                    g.label,
+                    g.percent,
+                    g.severity,
+                    g.note,
+                    _reset_bucket(g),
+                    _proj_bucket(g),
+                )
                 for g in gauges
             ),
         )
