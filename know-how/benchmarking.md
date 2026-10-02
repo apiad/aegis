@@ -126,6 +126,14 @@ step is in `know-how/releasing.md`.
 
 ## Traps
 
+- `--target X.Y.Z` is not a like-for-like baseline. It launches the
+  release through `uvx`, which re-resolves its environment on every launch
+  and is the process the bench measures. Against an in-tree build on a CI
+  runner (2026-10-02, #43) that put ~300 ms on every baseline startup
+  (2010 ms vs 1700 ms, "16% faster" everywhere) and read the baseline's
+  client CPU as 0.02 s/s against ~1.0 in `startup`. To compare two
+  builds, install each as a wheel in its own venv and pass that venv's
+  python, as `.github/workflows/bench.yml` does.
 - Run from a clean tree. Other sessions edit the shared checkout, and a
   half-applied edit anywhere in `src/aegis` breaks every run with an
   import error. A `git worktree` at your commit with its own `uv sync`

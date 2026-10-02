@@ -64,12 +64,28 @@ jobs:
           echo "baseline: $base"
           echo "version=$base" >> "$GITHUB_OUTPUT"
 
-      - name: bench the baseline
+      # Both sides are installed the same way, as wheels in plain venvs, and
+      # handed to the bench as a python path. `--target X.Y.Z` would run the
+      # baseline through `uvx`, which re-resolves its environment on every
+      # launch (+~300 ms to each startup) and is the process the bench then
+      # measures, so the baseline's client CPU read as ~0. On the first run
+      # of this workflow that made the candidate look 16% faster everywhere
+      # and 50x hungrier in `startup`, neither of which was aegis.
+      - name: install both sides
         env:
           BASE: ${{ steps.base.outputs.version }}
         run: |
+          uv venv -q "$RUNNER_TEMP/base"
+          uv pip install -q --python "$RUNNER_TEMP/base/bin/python" "aegis-harness==$BASE"
+          uv venv -q "$RUNNER_TEMP/cand"
+          uv pip install -q --python "$RUNNER_TEMP/cand/bin/python" .
+          "$RUNNER_TEMP/base/bin/python" -c "import aegis, importlib.metadata as m; print('base', m.version('aegis-harness'))"
+          "$RUNNER_TEMP/cand/bin/python" -c "import aegis, importlib.metadata as m; print('cand', m.version('aegis-harness'))"
+
+      - name: bench the baseline
+        run: |
           set +e
-          uv run aegis bench run --target "$BASE" --repeat "$REPEAT" --out "$RUNNER_TEMP/bench"
+          uv run aegis bench run --target "$RUNNER_TEMP/base/bin/python" --repeat "$REPEAT" --out "$RUNNER_TEMP/bench/base"
           rc=$?
           [ "$rc" -eq 1 ] && echo "::warning::a baseline scenario failed; see the log"
           [ "$rc" -le 1 ]
@@ -77,7 +93,7 @@ jobs:
       - name: bench this commit
         run: |
           set +e
-          uv run aegis bench run --repeat "$REPEAT" --out "$RUNNER_TEMP/bench"
+          uv run aegis bench run --target "$RUNNER_TEMP/cand/bin/python" --repeat "$REPEAT" --out "$RUNNER_TEMP/bench/cand"
           rc=$?
           [ "$rc" -eq 1 ] && echo "::warning::a scenario failed on this commit; see the log"
           [ "$rc" -le 1 ]
@@ -86,8 +102,8 @@ jobs:
         env:
           BASE: ${{ steps.base.outputs.version }}
         run: |
-          base_dir="$(ls -d "$RUNNER_TEMP/bench"/*-"$BASE")"
-          cand_dir="$(ls -d "$RUNNER_TEMP/bench"/*-current)"
+          base_dir="$(ls -d "$RUNNER_TEMP"/bench/base/*/)"
+          cand_dir="$(ls -d "$RUNNER_TEMP"/bench/cand/*/)"
           set +e
           uv run aegis bench compare "$base_dir" "$cand_dir" > compare.txt 2>&1
           rc=$?
