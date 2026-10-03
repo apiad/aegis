@@ -12,11 +12,8 @@ This gives hermetic coverage of:
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import sys
-
-import pytest
 
 from aegis.config import Agent, GeminiCLI
 from aegis.drivers.acp import AcpDriver
@@ -414,6 +411,62 @@ async def test_acp_session_maps_usage_into_result_token_usage(tmp_path):
     assert result.usage.cache_read == 2000
     assert result.usage.cache_creation == 300
     assert result.usage.true_input == 1234 + 300 + 2000  # 3534
+
+
+_STUB_DELAYED_FIRST_CHUNK = r'''
+import asyncio
+import acp
+from acp.schema import AgentMessageChunk, TextContentBlock
+
+
+class StubAgent(acp.Agent):
+    def on_connect(self, conn):
+        self._conn = conn
+
+    async def initialize(self, protocol_version, client_capabilities=None,
+                         client_info=None, **kw):
+        return acp.InitializeResponse(
+            protocolVersion=1,
+            agentCapabilities={"loadSession": True},
+            agentInfo={"name": "stub", "version": "0.0.1"},
+        )
+
+    async def new_session(self, cwd, mcp_servers=None,
+                          additional_directories=None, **kw):
+        return acp.NewSessionResponse(sessionId="sess-1")
+
+    async def prompt(self, session_id, prompt, message_id=None, **kw):
+        await asyncio.sleep(0.02)
+        await self._conn.session_update(
+            session_id=session_id,
+            update=AgentMessageChunk(
+                content=TextContentBlock(text="OK", type="text"),
+                sessionUpdate="agent_message_chunk",
+            ),
+        )
+        await asyncio.sleep(0.02)
+        return acp.PromptResponse(stopReason="end_turn")
+
+    async def cancel(self, session_id, **kw):
+        return None
+
+
+asyncio.run(acp.run_agent(StubAgent()))
+'''
+
+
+async def test_acp_session_measures_ttft_from_first_agent_chunk(tmp_path):
+    sess = _stub_driver(_STUB_DELAYED_FIRST_CHUNK).session(
+        _agent(), str(tmp_path), mcp_url="", handle="h")
+    await sess.start()
+    await sess.send("hi")
+    events = [ev async for ev in sess.events()]
+    await sess.close()
+
+    result = next(e for e in events if isinstance(e, Result))
+    assert result.ttft_ms is not None
+    assert result.duration_ms is not None
+    assert 0 <= result.ttft_ms <= result.duration_ms
 
 
 _STUB_FAILED_TOOL = r'''

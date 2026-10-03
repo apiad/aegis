@@ -26,6 +26,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -154,6 +155,8 @@ class _AegisAcpClient(acp.Client):
         # Latest mid-turn UsageUpdate.cost.amount — surfaced on Result.
         # ACP has no end-of-turn cost field, only the in-band updates.
         self.last_cost_usd: float | None = None
+        self.turn_started_at: float | None = None
+        self.first_response_at: float | None = None
 
     # The SDK invokes on_connect as a regular function, NOT as a
     # coroutine — declaring this async produces a "coroutine was never
@@ -163,6 +166,10 @@ class _AegisAcpClient(acp.Client):
 
     async def session_update(self, session_id, update, **kw) -> None:
         kind = update.__class__.__name__
+        if kind in ("AgentMessageChunk", "AgentThoughtChunk"):
+            started = self.turn_started_at
+            if started is not None and self.first_response_at is None:
+                self.first_response_at = time.monotonic()
         if kind == "AgentMessageChunk":
             text = getattr(update.content, "text", None)
             if text:
@@ -588,6 +595,8 @@ class AcpSession(HarnessSession):
         if not self._conn or not self._session_id:
             raise RuntimeError("AcpSession.send() called before start()")
         started = _time.monotonic()
+        self._client.turn_started_at = started
+        self._client.first_response_at = None
         blocks = [{"type": "text", "text": text}]
         if self._persona and not self._persona_sent:
             blocks = [{"type": "text", "text": self._persona}, *blocks]
@@ -618,6 +627,12 @@ class AcpSession(HarnessSession):
         from aegis.events import TokenUsage as _TU
 
         duration_ms = int((_time.monotonic() - started) * 1000)
+        first_response_at = self._client.first_response_at
+        ttft_ms = (
+            int((first_response_at - started) * 1000)
+            if first_response_at is not None
+            else None
+        )
         is_error = resp.stop_reason not in ("end_turn", None)
         usage = None
         in_tok = out_tok = None
@@ -687,6 +702,7 @@ class AcpSession(HarnessSession):
                 output_tokens=out_tok,
                 usage=usage,
                 stop_reason=stop_reason,
+                ttft_ms=ttft_ms,
                 cost_usd=self._client.last_cost_usd,
                 model_usage=model_usage,
             )
