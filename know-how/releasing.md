@@ -59,27 +59,37 @@ name — `harpio` imports as `harp` and `mkdocs-material` as `material`, so
 `import harpio` fails on a perfectly good install and sends you chasing a
 problem that is not there.
 
-## Before tagging: record the benchmark
+## Before tagging: run the bench workflow
 
-Every release gets a benchmark summary on zion, so `aegis bench history`
-shows whether rendering, latency, CPU and memory moved.
+The benchmark runs on CI, not on zion (#43). zion is never idle: it runs the
+Workspace daemon and agent sessions, and at v0.42.0 a run there read as a
+uniform +15% regression across every scenario, daemon boot included, against a
+summary saved on the same laptop a day earlier under different load. Neither
+number said anything about aegis.
 
-1. Make sure the machine is quiet. `aegis bench run` warns when the CPU is
-   over 50% busy, and a busy run does not compare. Stop other sessions'
-   test suites first.
-2. From the release commit, with `src/` clean:
+`.github/workflows/bench.yml` measures the previous release from PyPI, then
+the checked-out commit, then the previous release again, all on one runner, and
+`aegis bench gate` decides. Both sides see the same machine in the same hour,
+and the baseline measured twice shows how much that machine moved on its own.
+A run takes about half an hour. Run it on the
+release commit once it is on `main`:
 
-   ```bash
-   aegis bench run --save
-   aegis bench compare <run-id> --baseline latest-release
-   ```
+```bash
+gh workflow run bench.yml --ref main
+gh run watch $(gh run list --workflow=bench.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status
+```
 
-3. `--save` writes `bench/history/zion/<version>-<sha>.json`. Rename it to
-   `bench/history/zion/<version>.json`, which is what `latest-release` and
-   `history` treat as a release, and commit it with the release.
+`baseline=X.Y.Z` picks another release to compare against; by default it is
+the nearest `v*` tag behind the commit's parent, so the release commit is
+compared with the previous release even after it is tagged. The comparison
+table is in the run's summary page, and the run directories are the
+`bench-runs` artifact.
 
-Read every `regressed` row before tagging, and either explain it in the
-changelog or fix it. See `know-how/benchmarking.md`.
+Red means a metric regressed against both baseline runs. Read every
+`regressed` line before tagging, and either explain it in the changelog or fix
+it. The `compare` table under it is context, not the verdict: on a shared
+runner it routinely shows 10-28% swings either way that the gate drops. See
+`know-how/benchmarking.md`.
 
 ## The other one: `[Unreleased]` is routinely a fraction of what shipped
 
@@ -144,6 +154,8 @@ user-facing doc — the features had shipped with only AGENTS.md entries.
    the inotify limit" caveat was a leak plus two teardown races, fixed in
    0.25.0. A red run is a regression — do not re-roll it.
 6. Commit `chore(release): vX.Y.Z`, push `main`.
+   Then run the bench workflow on `main` and read it before going on (see
+   *Before tagging* above).
 7. `git tag -a vX.Y.Z -m "Release vX.Y.Z"` and `git push origin vX.Y.Z`.
 8. Watch the run: `gh run watch $(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status`.
 9. `gh release create vX.Y.Z --generate-notes --title vX.Y.Z`.

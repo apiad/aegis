@@ -103,6 +103,49 @@ def compare(a: dict, b: dict, *, force: bool = False) -> dict[str, list[Row]]:
     return out
 
 
+def gate(
+    base1: dict, cand: dict, base2: dict
+) -> tuple[list[tuple[str, Row]], list[tuple[str, str]]]:
+    """Regressions that survive the baseline measured on both sides of them.
+
+    The candidate runs between two runs of the same baseline. A metric is
+    confirmed only when the candidate regressed against both, and the two
+    baseline runs agree with each other. A machine that drifts during the job
+    moves the second baseline with it, and a metric the baseline cannot hold
+    steady against itself says nothing about the candidate. On a shared CI
+    runner, compare's 10% threshold alone flagged swings of 10-28% in both
+    directions in one job, on a diff the bench world never executes (#43).
+
+    Returns the confirmed ``(scenario, row)`` pairs, rows from the first
+    comparison, and the ``(scenario, metric)`` pairs that regressed against
+    the first baseline and were dropped.
+    """
+    unstable = {
+        (sc, r.metric)
+        for sc, rows in compare(base1, base2).items()
+        for r in rows
+        if r.verdict in ("regressed", "improved", "changed")
+    }
+    against_second = {
+        (sc, r.metric)
+        for sc, rows in compare(base2, cand).items()
+        for r in rows
+        if r.verdict == "regressed"
+    }
+    confirmed: list[tuple[str, Row]] = []
+    dropped: list[tuple[str, str]] = []
+    for sc, rows in compare(base1, cand).items():
+        for r in rows:
+            if r.verdict != "regressed":
+                continue
+            key = (sc, r.metric)
+            if key in unstable or key not in against_second:
+                dropped.append(key)
+            else:
+                confirmed.append((sc, r))
+    return confirmed, dropped
+
+
 def load_summary(ref: str) -> dict:
     """A summary by path to ``summary.json``, run directory, run id under
     ``runs_dir()``, or a saved history file."""

@@ -1,0 +1,150 @@
+name: bench
+
+# The release benchmark, on a runner instead of a laptop (#43).
+#
+# One job measures the previous release from PyPI and then the checked-out
+# commit, back to back on the same runner, and compares the two. A runner is a
+# shared VM and is not quiet either, but both sides see the same machine in the
+# same hour, which a summary saved on zion at the last release never did: zion
+# runs the daemon and agent sessions, and at v0.42.0 its load showed up as a
+# uniform +15% across every scenario, startup included.
+#
+# The baseline runs twice, before and after the candidate, and `aegis bench
+# gate` decides: red only on a metric that regressed against both baseline runs
+# while those two agree with each other. The plain `compare` table is printed
+# for context. With compare alone, the second run of this workflow went red on
+# swings of 10-28% in both directions, on a diff the bench never executes.
+# A scenario that failed inside a run (exit 1 from `bench run`) is a warning;
+# a run that could not finish at all (exit 2) is red.
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: "Released X.Y.Z to compare against (default: the nearest release tag behind this commit)"
+        required: false
+      repeat:
+        description: "Repeats per scenario"
+        required: false
+        default: "3"
+  pull_request:
+    paths:
+      - ".github/workflows/bench.yml"
+      - "src/aegis/bench/**"
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      # Typer forces a terminal under GITHUB_ACTIONS (#7); keep the log and the
+      # step summary free of escape codes, and wide enough for the tables.
+      NO_COLOR: "1"
+      COLUMNS: "140"
+      REPEAT: ${{ inputs.repeat || '3' }}
+      BASELINE_INPUT: ${{ inputs.baseline }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: pip install uv
+      - run: uv sync --locked
+
+      - name: resolve baseline
+        id: base
+        run: |
+          base="$BASELINE_INPUT"
+          if [ -z "$base" ]; then
+            # The nearest release behind this commit's parent: v0.41.0 for a
+            # PR or an untagged release commit cut after it, and still
+            # v0.41.0 for the v0.42.0 commit once tagged, never itself.
+            base="$(git describe --tags --abbrev=0 --match 'v*' HEAD^)"
+            base="${base#v}"
+          fi
+          echo "baseline: $base"
+          echo "version=$base" >> "$GITHUB_OUTPUT"
+
+      # Both sides are installed the same way, as wheels in plain venvs, and
+      # handed to the bench as a python path. `--target X.Y.Z` would run the
+      # baseline through `uvx`, which re-resolves its environment on every
+      # launch (+~300 ms to each startup) and is the process the bench then
+      # measures, so the baseline's client CPU read as ~0. On the first run
+      # of this workflow that made the candidate look 16% faster everywhere
+      # and 50x hungrier in `startup`, neither of which was aegis.
+      - name: install both sides
+        env:
+          BASE: ${{ steps.base.outputs.version }}
+        run: |
+          uv venv -q "$RUNNER_TEMP/base"
+          uv pip install -q --python "$RUNNER_TEMP/base/bin/python" "aegis-harness==$BASE"
+          uv venv -q "$RUNNER_TEMP/cand"
+          uv pip install -q --python "$RUNNER_TEMP/cand/bin/python" .
+          "$RUNNER_TEMP/base/bin/python" -c "import aegis, importlib.metadata as m; print('base', m.version('aegis-harness'))"
+          "$RUNNER_TEMP/cand/bin/python" -c "import aegis, importlib.metadata as m; print('cand', m.version('aegis-harness'))"
+
+      - name: bench the baseline
+        run: |
+          set +e
+          uv run aegis bench run --target "$RUNNER_TEMP/base/bin/python" --repeat "$REPEAT" --out "$RUNNER_TEMP/bench/base1"
+          rc=$?
+          [ "$rc" -eq 1 ] && echo "::warning::a baseline scenario failed; see the log"
+          [ "$rc" -le 1 ]
+
+      - name: bench this commit
+        run: |
+          set +e
+          uv run aegis bench run --target "$RUNNER_TEMP/cand/bin/python" --repeat "$REPEAT" --out "$RUNNER_TEMP/bench/cand"
+          rc=$?
+          [ "$rc" -eq 1 ] && echo "::warning::a scenario failed on this commit; see the log"
+          [ "$rc" -le 1 ]
+
+      - name: bench the baseline again
+        run: |
+          set +e
+          uv run aegis bench run --target "$RUNNER_TEMP/base/bin/python" --repeat "$REPEAT" --out "$RUNNER_TEMP/bench/base2"
+          rc=$?
+          [ "$rc" -eq 1 ] && echo "::warning::a baseline scenario failed; see the log"
+          [ "$rc" -le 1 ]
+
+      - name: gate
+        env:
+          BASE: ${{ steps.base.outputs.version }}
+        run: |
+          base1="$(ls -d "$RUNNER_TEMP"/bench/base1/*/)"
+          cand="$(ls -d "$RUNNER_TEMP"/bench/cand/*/)"
+          base2="$(ls -d "$RUNNER_TEMP"/bench/base2/*/)"
+          set +e
+          uv run aegis bench gate "$base1" "$cand" "$base2" > gate.txt 2>&1
+          rc=$?
+          uv run aegis bench compare "$base1" "$cand" > compare.txt 2>&1
+          set -e
+          cat gate.txt compare.txt
+          {
+            echo "## aegis bench: $BASE → ${GITHUB_SHA::7}"
+            echo
+            echo "Gate (regressed against both baseline runs, which agree):"
+            echo
+            echo '```text'
+            cat gate.txt
+            echo '```'
+            echo
+            echo "<details><summary>compare, first baseline vs this commit</summary>"
+            echo
+            echo '```text'
+            cat compare.txt
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-runs
+          path: ${{ runner.temp }}/bench
+          if-no-files-found: ignore

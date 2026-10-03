@@ -847,6 +847,7 @@ aegis bench run --quick                 # a fast subset, one repeat
 aegis bench run                         # the default scenarios, 3 repeats
 aegis bench list                        # scenarios, and recent runs
 aegis bench compare RUN --baseline latest-release
+aegis bench gate BASE1 CAND BASE2       # regression against both baseline runs
 aegis bench history -s block-stream     # saved summaries for this host
 aegis bench selftest                    # prove the rig sees an injected regression
 ```
@@ -860,6 +861,13 @@ what `compare --baseline latest-release` and `history` read.
 `compare` exits 1 when a metric regressed, so it works as a gate. Run it on a
 quiet machine — `run` warns when the host is over 50% busy, and a busy run does
 not compare.
+
+`gate` is the stricter gate for a machine you do not control. Run the baseline,
+then the candidate, then the baseline again, and pass the three runs in that
+order. It exits 1 only on a metric that regressed against both baseline runs
+while those two agree with each other; everything else it lists as noise. The
+`bench` GitHub workflow runs exactly this, the previous release against the
+commit, on one runner.
 
 ## The aegis log (`aegis logs`)
 
