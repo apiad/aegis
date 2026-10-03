@@ -1,0 +1,1 @@
+- **ACP-backed sessions now report time to first token.** Gemini, OpenCode and Lovelaice turns emitted a duration but no `ttft_ms`, so renderers and metrics could not show first-response latency for ACP harnesses.
