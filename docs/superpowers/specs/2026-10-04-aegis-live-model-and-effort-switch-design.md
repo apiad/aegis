@@ -85,6 +85,26 @@ there were three:
 
 `acp` 0.10.0, the client aegis pins, has `ClientSideConnection.set_config_option`.
 
+### Model lists, and how fast they come
+
+Autocomplete for `/model` needs the list of models. Every source was timed on the
+same day:
+
+| Source | Time | What it returns |
+|---|---|---|
+| Claude `control_request {"subtype":"list_models"}` on a live session | 8 to 13 ms, three calls | 12 models; works without `initialize` |
+| Claude `control_request {"subtype":"initialize"}` | 542 ms, mostly CLI boot | the same list minus disabled entries (11), in `response.models` |
+| OpenCode `session/new` | 1,265 ms, which aegis already pays at spawn | 148 models in `configOptions`, a 12 KB payload |
+| `opencode models` as a separate process | 2,786 ms | 148 lines |
+
+Each Claude entry carries `value` (an alias such as `sonnet` or a full id),
+`resolvedModel`, `displayName`, `description`, and `supportedEffortLevels`.
+The levels differ by model: `low medium high xhigh max` on the Opus, Fable and
+Sonnet 5 families, `low medium high max` on older ones, and none on Haiku 4.5.
+That explains the `applied.effort: null` on Haiku above. `list_models` also
+returns entries with `"disabled": true` that the installed CLI cannot use yet
+("Update Claude Code to use this model").
+
 ## Design
 
 ### The commands
@@ -121,11 +141,14 @@ That covers the oneshot driver and any harness that has not been checked.
 `control_response` with the same `request_id`:
 
 - model: `{"subtype": "set_model", "model": value}`.
-- effort: `{"subtype": "apply_flag_settings", "settings": {"effortLevel": value}}`,
+- effort: refused before anything is sent when `value` is not in the current
+  model's `supportedEffortLevels`, with "<model> does not take an effort level"
+  when that list is empty. Otherwise
+  `{"subtype": "apply_flag_settings", "settings": {"effortLevel": value}}`,
   then `{"subtype": "get_settings"}`. The result is `ok` only if
-  `applied.effort == value`. The read-back is required, because an unknown
-  level returns `success` and changes nothing. When `applied.effort` is `null`,
-  the error is "this model does not take an effort level".
+  `applied.effort == value`. The read-back stays even with the check in front,
+  because an unknown level returns `success` and changes nothing, and the next
+  CLI release may rename a level.
 
 The driver does not read `control_response` today: `interrupt()` writes its
 request and drains events without matching a reply. `_pump_stdout` has to
@@ -154,6 +177,49 @@ Find the option by `category`, not by `id`, because the agent chooses the ids:
 Only OpenCode has been measured. Gemini and lovelaice take the same path and
 get the refusal if they advertise no such option. The plan checks what Gemini
 advertises. Adding config options to lovelaice is a separate change.
+
+### Autocomplete
+
+`HarnessSession` gains a second method, synchronous and without I/O:
+
+```python
+def option_choices(self, kind: str) -> list[OptionChoice]: ...
+```
+
+It returns the list the session last received, so the command palette can call
+it on every keystroke. `OptionChoice` holds the `value` to submit, a display
+name and a one-line description. The default returns `[]`, and an empty list
+means "no completions", never an error.
+
+There is no cache on disk or across sessions. Each list lives on the harness
+session that produced it and dies with it:
+
+- **Claude** sends `list_models` once, after the first `SystemInit`, and again
+  after every confirmed switch. Entries with `disabled: true` are dropped. The
+  same response supplies the `/effort` choices: the `supportedEffortLevels` of
+  the entry whose `value` or `resolvedModel` matches the current model.
+- **ACP** reads the `options` of the `model` and `thought_level` config options
+  it already keeps for validation. `config_option_update` refreshes them, which
+  is how `/effort` completions follow a model switch on OpenCode.
+
+Between the session's spawn and that first response the list is empty, so
+`/model ` completes nothing for about half a second on Claude and four seconds
+on OpenCode. That is the only window. A disk cache would fill it at the cost of
+a list that goes stale when the CLI updates, as the disabled Sonnet 5.5 entry
+shows, and it is not worth that.
+
+The palette already completes arguments: an `Arg` takes a `completer`
+(`src/aegis/commands/args.py`), and `complete()` ranks its choices with
+`fuzzy_rank` (`src/aegis/commands/__init__.py:234`). What it lacks is the
+session. A completer is called with the bridge alone, so it cannot tell whose
+models to list. `complete()` gains the calling handle and passes it to a
+completer that accepts two arguments. The pane already knows its handle when it
+calls `complete()`. The `/model` completer then calls a bridge method,
+`session_option_choices(handle, kind)`, and maps each `OptionChoice` to a
+`(value, detail)` pair, the shape completers return today.
+
+What `/model` accepts on submit is still the validation rule above: exact, or
+the unique suffix after the provider's `/`.
 
 ### Session state and persistence
 
@@ -214,8 +280,8 @@ at the turn boundary.
 - Passing every unknown `/verb` through to the harness. That would reach Claude's
   other built-ins, but OpenCode ignores the text, so it cannot be how these two
   commands work.
-- Listing Claude's models. The CLI has a `list_models` control request; it was
-  not probed, and bare `/model` on Claude prints only the current model.
+- Completing `--model` on `/spawn`. No session exists yet to ask, and a list
+  fetched for it would need the disk cache this design rejects.
 - `mode` (OpenCode's build and plan). Same mechanism, different command.
 - Persisting a switch into `.aegis.yaml`. A switch belongs to the session, as
   `/spawn --model` does.
@@ -233,6 +299,9 @@ at the turn boundary.
 4. Kill the daemon, start it again, and the resumed Claude tab is still on
    Sonnet 5, read from the `init` of its next turn.
 5. A Gemini tab gets a refusal or a working switch, never a silent no-op.
-6. Driver tests cover the `control_response` routing, the effort read-back and
+6. Typing `/model so` in a Claude tab offers `sonnet` and the Sonnet ids, and
+   no disabled entry. Typing `/effort ` in an OpenCode tab after a switch to
+   qwen3.8-flash offers `low medium xhigh default`.
+7. Driver tests cover the `control_response` routing, the effort read-back and
    the ACP category lookup against recorded fixtures from the probes. A switch
    that the harness rejects must turn the test red.
