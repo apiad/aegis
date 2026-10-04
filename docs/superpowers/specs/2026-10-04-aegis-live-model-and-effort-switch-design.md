@@ -1,0 +1,238 @@
+# Switching a live session's model and effort
+
+> **Status:** design, 2026-10-04. Not yet planned.
+> Issue: [#97](https://github.com/apiad/aegis/issues/97).
+> Parent: `2026-07-17-aegis-slash-commands-2b-builtin-coverage-design.md`, which
+> deferred `/model` and `/effort` on the premise that changing either needs a
+> resume-restart. That premise is wrong for both harnesses measured below.
+
+`/model <name>` and `/effort <level>` change the model and reasoning effort of the
+session in the active tab. The conversation stays in the same harness process:
+no restart, no `--resume`, no lost context. The next turn runs on the new
+setting, and the setting survives a daemon restart.
+
+## Where aegis stands today
+
+aegis has neither command. `dispatch()` stops any verb it does not own with
+`unknown command` (`src/aegis/commands/__init__.py:146`), so `/model` and
+`/effort` never reach the harness. The one way through is the escape the input
+box already has: `//model sonnet` delivers `/model sonnet` as a plain message
+(`src/aegis/tui/pane.py`, the `"//foo"` branch after `dispatch`). For Claude that
+does switch the model. aegis does not know it happened, so the status bar keeps
+the old name and the next resume rebuilds the old `--model` argv. For OpenCode
+it does nothing at all (see below).
+
+Model and effort are fixed at spawn in three places:
+
+- `ClaudeDriver.build_argv` bakes `--model` and `--effort` into the argv
+  (`src/aegis/drivers/claude.py:331-334`), and `resume()` reuses that argv.
+- `OpenCodeDriver.extra_env` passes the model as `OPENCODE_CONFIG_CONTENT`
+  (`src/aegis/drivers/opencode.py`). Effort is not passed to OpenCode at all.
+- `StatusBar.__init__` captures model and effort once
+  (`src/aegis/tui/widgets.py:423`, built at `src/aegis/tui/pane.py:1197`).
+
+Resume after a daemon restart looks up the profile from config,
+`agents[tab.profile]` (`src/aegis/tui/app.py:204` and `:929`), so even today's
+`/spawn --model` override is lost on restart. `WorkspaceTab`
+(`src/aegis/state/workspace.py:35`) has no field to carry it.
+
+## What the harnesses accept
+
+Measured on zion on 2026-10-04 with Claude Code 2.1.283 and OpenCode 1.18.31,
+each driven the way aegis drives it (`claude -p` stream-json; `opencode acp`).
+The probe scripts and raw JSONL are in the Workspace at
+`.playground/model-switch/`.
+
+### Claude Code
+
+Started on `claude-haiku-4-5-20251001`, then switched mid-session.
+
+| Sent | What happened |
+|---|---|
+| user text `/model claude-sonnet-5` | A turn with a `<synthetic>` assistant reply, "Set model to Sonnet 5 for this session only", and a `result`. The next turn's `init` and `assistant.model` were `claude-sonnet-5`. |
+| `control_request {"subtype":"set_model","model":…}` | `control_response success`, nothing in the transcript. The next turn ran on the new model. |
+| `set_model` with `no-such-model-xyz` | `control_response error`, "Model 'no-such-model-xyz' not found", after 4.7 s. |
+| `set_model` sent 3 s into a streaming turn | `success` 1.8 s later. The turn in flight finished on the old model; the next turn used the new one. |
+| user text `/effort low` | A synthetic turn, "Set effort level to low (this session only)". |
+| `control_request {"subtype":"apply_flag_settings","settings":{"effortLevel":L}}` | `success` for `low`, `medium`, `xhigh` and `max`; `get_settings` then reports `applied.effort == L`. |
+| `apply_flag_settings` with `effortLevel: "bogus"` | `success`, but `applied.effort` stays at the previous value. The CLI ignores an unknown level silently. |
+| `get_settings` right after spawn with `--effort high` | `applied.effort: "high"` on Sonnet 5, `null` on Haiku 4.5. |
+
+One `set_model` to Haiku failed once with "Couldn't confirm model … with the
+API", and the same call succeeded on the next run. The CLI checks the model
+against the API before it switches, so a switch can fail for reasons aegis does
+not control, and the error has to reach the operator.
+
+### OpenCode (ACP)
+
+`session/new` and `session/load` both return `configOptions`. On this install
+there were three:
+
+| `id` | `category` | values |
+|---|---|---|
+| `model` | `model` | 148, e.g. `opencode-go/deepseek-v4-flash` |
+| `effort` | `thought_level` | depends on the model: `low/high/max/default` on deepseek-v4-flash, `low/medium/xhigh/default` on qwen3.8-flash |
+| `mode` | `mode` | `build`, `plan` |
+
+| Sent | What happened |
+|---|---|
+| prompt text `/model opencode-go/qwen3.8-flash` | `end_turn` with no output and no tokens. The next turn read deepseek's prompt cache, so nothing switched. `model` is not in `available_commands`. |
+| `session/set_config_option {configId:"model", value}` | Returned the updated `configOptions` and emitted `config_option_update`. The next turn wrote a fresh 13k-token cache, so a different model served it. |
+| `session/set_config_option {configId:"effort", value:"high"}` on qwen3.8-flash | JSON-RPC `-32602`, "effort not found: high". |
+| the same with `medium` | Applied; `configOptions` showed `effort: medium`. |
+| `session/set_model` (the older, unstable method) | Also applied. |
+| new process, env still naming deepseek, `session/load` of the switched session | `configOptions` came back as `qwen3.8-flash` / `medium`, and the turn read qwen's cache. OpenCode stores both per session. |
+
+`acp` 0.10.0, the client aegis pins, has `ClientSideConnection.set_config_option`.
+
+## Design
+
+### The commands
+
+```
+/model [<name>]
+/effort [<level>]
+```
+
+Both act on the calling pane's session (`CommandContext.handle`). With no
+argument they print the current value and, where the harness lists them, the
+choices. With an argument they switch and print what the harness confirmed,
+for example `model → claude-sonnet-5 (from the next turn)`.
+
+They are aegis built-ins, not a pass-through of the text to the harness. Text
+pass-through works for Claude only. OpenCode drops it without a word, and in
+both cases aegis would not learn the new value.
+
+### Driver method
+
+`HarnessSession` gains one method with a default that refuses:
+
+```python
+async def set_option(self, kind: str, value: str) -> OptionResult: ...
+```
+
+`kind` is `"model"` or `"effort"`. `OptionResult` carries `ok`, the value the
+harness reports as applied, an error string, and the choices when the harness
+lists them. The base implementation returns
+`OptionResult(ok=False, error="<harness> cannot switch <kind> in a live session")`.
+That covers the oneshot driver and any harness that has not been checked.
+
+**Claude** (`ClaudeSession`). Sends a control request and waits for the
+`control_response` with the same `request_id`:
+
+- model: `{"subtype": "set_model", "model": value}`.
+- effort: `{"subtype": "apply_flag_settings", "settings": {"effortLevel": value}}`,
+  then `{"subtype": "get_settings"}`. The result is `ok` only if
+  `applied.effort == value`. The read-back is required, because an unknown
+  level returns `success` and changes nothing. When `applied.effort` is `null`,
+  the error is "this model does not take an effort level".
+
+The driver does not read `control_response` today: `interrupt()` writes its
+request and drains events without matching a reply. `_pump_stdout` has to
+route a `control_response` line to a pending future keyed by `request_id`
+before `parse()` sees it, so the reply cannot leak into a turn's events. Bound
+the wait at 15 s, since a bad model took 4.7 s to come back.
+
+**ACP** (`AcpSession`, which covers OpenCode, Gemini and lovelaice). Keep the
+`configOptions` from the `new_session` / `load_session` response and from every
+`config_option_update`, instead of dropping them as the client does now (the
+"Other update classes … drop" branch in `_AegisAcpClient.session_update`).
+Find the option by `category`, not by `id`, because the agent chooses the ids:
+`model` for model, `thought_level` for effort. Then:
+
+- If the harness advertises no option of that category, refuse with
+  "<harness> does not offer a <kind> setting".
+- Validate `value` against the option's current `options`. Effort levels change
+  with the model, so the check must use the list as it stands after the last
+  `config_option_update`, not the list from boot. An exact match wins.
+  Otherwise a value that is the unique suffix of one option after its `/` is
+  accepted, so `/model qwen3.8-flash` finds `opencode-go/qwen3.8-flash`.
+  Anything else is an error that lists the near matches.
+- Call `set_config_option(config_id=<option id>, value=…, session_id=…)` and
+  report the `currentValue` from the response.
+
+Only OpenCode has been measured. Gemini and lovelaice take the same path and
+get the refusal if they advertise no such option. The plan checks what Gemini
+advertises. Adding config options to lovelaice is a separate change.
+
+### Session state and persistence
+
+A confirmed switch replaces `AgentSession.agent` with
+`_overlay_agent(agent, model=…, effort=…)` (`src/aegis/core/manager.py:25`).
+Everything that reads `session.agent` sees the new value from then on, including
+`/fork`, the recap and the session's own resume.
+
+`WorkspaceTab` gains `model: str | None = None` and `effort: str | None = None`,
+written when the tab is saved. Both resume sites in `src/aegis/tui/app.py`
+overlay them on `agents[tab.profile]` before calling `drv.resume`. With defaults
+of `None`, an old `workspace.json` loads unchanged and `WORKSPACE_VERSION`
+stays at 1. This also fixes the existing loss of `/spawn --model` overrides on
+restart.
+
+Claude needs the overlay, because `--resume` rebuilds the argv from the agent.
+OpenCode restores both values from its own session store, as measured. The
+overlay keeps aegis's record and the status bar right, and it is harmless.
+
+`Effort` (`src/aegis/config/__init__.py:82`) gains `xhigh`, which Claude accepts
+(measured above), and `_EFFORT` in `drivers/claude.py` maps it. An ACP effort
+value that is not an `Effort` member, such as OpenCode's `default`, is recorded
+on the tab for display and left out of the `Agent` overlay. The harness
+restores it on load anyway.
+
+### Display
+
+`StatusBar` gains a method that rebuilds `_identity` from a model and an
+effort. The pane calls it when a `/model` or `/effort` result lands. It also
+calls it when the harness reports a change without being asked: a Claude
+`SystemInit` whose `model` differs from the agent's, or an ACP
+`config_option_update`. The latter becomes a `ContextUpdate` with two new
+fields, `model` and `effort`. ACP `SystemInit.model` today carries the agent's
+name (`OpenCode`), not a model, and the status bar should stop showing it as
+one.
+
+The web client renders the TUI over a terminal relay, so it gets the same
+status bar with no extra work.
+
+### Through the bridge
+
+The commands call a new `AppBridge` method,
+`set_session_option(handle, kind, value) -> dict`, implemented on
+`SessionManager` and on the TUI app, as `set_title` is
+(`src/aegis/core/manager.py:731`, `src/aegis/tui/app.py:3134`). It returns
+`{"ok": True, "model": …, "effort": …}` or `{"error": …}`, the same shape the
+other bridge methods return.
+
+Mid-turn, the call goes to the harness immediately. Claude applies it from the
+next turn, as measured. Mid-turn ACP has not been measured. If OpenCode rejects
+`set_config_option` during a prompt, the bridge holds the switch and applies it
+at the turn boundary.
+
+## Out of scope
+
+- An MCP tool that lets an agent switch its own model. It belongs in a separate
+  issue once there is a reason to want it.
+- Passing every unknown `/verb` through to the harness. That would reach Claude's
+  other built-ins, but OpenCode ignores the text, so it cannot be how these two
+  commands work.
+- Listing Claude's models. The CLI has a `list_models` control request; it was
+  not probed, and bare `/model` on Claude prints only the current model.
+- `mode` (OpenCode's build and plan). Same mechanism, different command.
+- Persisting a switch into `.aegis.yaml`. A switch belongs to the session, as
+  `/spawn --model` does.
+
+## Done
+
+1. In the TUI, a Claude tab spawned on Haiku: `/model claude-sonnet-5`, one turn,
+   and the turn's `assistant.model` in the session log is `claude-sonnet-5`. The
+   status bar shows it before that turn starts.
+2. `/effort xhigh` on that tab reports `xhigh`, and `/effort bogus` is refused
+   without a request reaching the harness.
+3. An OpenCode tab: `/model qwen3.8-flash` resolves to
+   `opencode-go/qwen3.8-flash`, and `/effort high` is refused with the levels
+   the new model offers.
+4. Kill the daemon, start it again, and the resumed Claude tab is still on
+   Sonnet 5, read from the `init` of its next turn.
+5. A Gemini tab gets a refusal or a working switch, never a silent no-op.
+6. Driver tests cover the `control_response` routing, the effort read-back and
+   the ACP category lookup against recorded fixtures from the probes. A switch
+   that the harness rejects must turn the test red.
