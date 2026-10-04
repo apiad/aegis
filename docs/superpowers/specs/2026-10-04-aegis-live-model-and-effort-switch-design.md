@@ -1,6 +1,6 @@
 # Switching a live session's model and effort
 
-> **Status:** design, 2026-10-04. Not yet planned.
+> **Status:** design, 2026-10-04. Planned: `docs/superpowers/plans/2026-10-04-aegis-live-model-and-effort-switch.md`.
 > Issue: [#97](https://github.com/apiad/aegis/issues/97).
 > Parent: `2026-07-17-aegis-slash-commands-2b-builtin-coverage-design.md`, which
 > deferred `/model` and `/effort` on the premise that changing either needs a
@@ -132,10 +132,14 @@ async def set_option(self, kind: str, value: str) -> OptionResult: ...
 ```
 
 `kind` is `"model"` or `"effort"`. `OptionResult` carries `ok`, the value the
-harness reports as applied, an error string, and the choices when the harness
-lists them. The base implementation returns
-`OptionResult(ok=False, error="<harness> cannot switch <kind> in a live session")`.
-That covers the oneshot driver and any harness that has not been checked.
+harness reports as applied, and an error string. The base implementation
+returns `OptionResult(ok=False, error="cannot switch <kind> in a live session")`,
+and `AgentSession` prefixes every error with the harness name. That covers the
+oneshot driver and any harness that has not been checked.
+
+A harness process starts lazily, on the session's first turn. `/model` typed into
+a fresh tab starts it through the same path the turn uses, so the two cannot
+start it twice.
 
 **Claude** (`ClaudeSession`). Sends a control request and waits for the
 `control_response` with the same `request_id`:
@@ -175,8 +179,16 @@ Find the option by `category`, not by `id`, because the agent chooses the ids:
   report the `currentValue` from the response.
 
 Only OpenCode has been measured. Gemini and lovelaice take the same path and
-get the refusal if they advertise no such option. The plan checks what Gemini
-advertises. Adding config options to lovelaice is a separate change.
+get the refusal if they advertise no such option. Gemini could not be probed:
+on zion, `gemini --acp` 0.44.0 answers `session/new` with "This client is no
+longer supported for Gemini Code Assist for individuals", which is the account
+problem behind #116. A fake ACP agent with no config options stands in for it
+in the tests. Adding config options to lovelaice is a separate change.
+
+The bundled model registry (`aegis.models.models_for`, which feeds the spawn
+picker and the price table) is not a source for `/model`. It lists what aegis
+can price, and the live session lists what the harness will accept, which is
+the question `/model` asks.
 
 ### Autocomplete
 
@@ -202,9 +214,10 @@ session that produced it and dies with it:
   it already keeps for validation. `config_option_update` refreshes them, which
   is how `/effort` completions follow a model switch on OpenCode.
 
-Between the session's spawn and that first response the list is empty, so
-`/model ` completes nothing for about half a second on Claude and four seconds
-on OpenCode. That is the only window. A disk cache would fill it at the cost of
+Asking for completions in a tab whose harness has not started yet starts it in
+the background. Until the first list arrives, `/model ` completes nothing: about
+half a second on Claude and four seconds on OpenCode, measured from the harness
+start. That is the only window. A disk cache would fill it at the cost of
 a list that goes stale when the CLI updates, as the disabled Sonnet 5.5 entry
 shows, and it is not worth that.
 
@@ -228,12 +241,26 @@ A confirmed switch replaces `AgentSession.agent` with
 Everything that reads `session.agent` sees the new value from then on, including
 `/fork`, the recap and the session's own resume.
 
-`WorkspaceTab` gains `model: str | None = None` and `effort: str | None = None`,
-written when the tab is saved. Both resume sites in `src/aegis/tui/app.py`
-overlay them on `agents[tab.profile]` before calling `drv.resume`. With defaults
-of `None`, an old `workspace.json` loads unchanged and `WORKSPACE_VERSION`
-stays at 1. This also fixes the existing loss of `/spawn --model` overrides on
-restart.
+The labels are stored in two places, each following an existing pattern:
+
+- `WorkspaceTab` gains `model: str | None = None` and `effort: str | None = None`,
+  written by `_pane_to_tab` on every snapshot. This is the boot roster. With
+  defaults of `None`, an old `workspace.json` loads unchanged and
+  `WORKSPACE_VERSION` stays at 1.
+- `SessionMeta` gains `model` and `effort` (default `""`), appended to the
+  session log on each switch the way `_record_title` appends a title. The
+  history fold reads the last non-empty value into `SessionHistoryRow`, so a
+  session reopened from Ctrl+R comes back on its switched model too. The
+  history index keeps `INDEX_VERSION = 2`, for the reason its comment gives.
+
+`src/aegis/tui/app.py` resumes in five places: `bootstrap_resume`, both
+branches of `_resume_agent_tabs` (brain and local), and both branches of
+`_resume_from_history`. All five take the stored values through one helper that
+returns the `model` and `effort` overrides. The local branches overlay them on
+`agents[tab.profile]` before `drv.resume`. The brain branches pass them to
+`SessionManager._sync_spawn`, which already accepts `model` and `effort` next to
+`resume_from`. This also fixes the existing loss of `/spawn --model` overrides
+on restart.
 
 Claude needs the overlay, because `--resume` rebuilds the argv from the agent.
 OpenCode restores both values from its own session store, as measured. The
@@ -248,13 +275,21 @@ restores it on load anyway.
 ### Display
 
 `StatusBar` gains a method that rebuilds `_identity` from a model and an
-effort. The pane calls it when a `/model` or `/effort` result lands. It also
-calls it when the harness reports a change without being asked: a Claude
-`SystemInit` whose `model` differs from the agent's, or an ACP
-`config_option_update`. The latter becomes a `ContextUpdate` with two new
-fields, `model` and `effort`. ACP `SystemInit.model` today carries the agent's
-name (`OpenCode`), not a model, and the status bar should stop showing it as
-one.
+effort. The status bar and the sidebar stop reading the pane's copy of the
+`Agent` and read two labels on the `AgentSession`, `model_label` and
+`effort_label`. Both start from the agent and change when a switch is confirmed.
+
+ACP sessions also report the values the harness actually runs. At start and on
+every `config_option_update`, `AcpSession` emits a `ContextUpdate` with two new
+fields, `model` and `effort`, and `AgentSession` folds them into the labels.
+This fixes an existing error: an OpenCode tab's status bar shows the profile's
+`effort` (default `high`), which aegis never passes to OpenCode, while OpenCode
+runs whatever its own config says (`low` in every probe above).
+
+Claude reports nothing extra. A `SystemInit.model` that differs from the label
+is ignored, because the CLI resolves aliases (`opus` comes back as a full id)
+and because `usage/aggregate.py` already reads that field for pricing. ACP
+`SystemInit.model` carries the agent's name (`OpenCode`) and stays as it is.
 
 The web client renders the TUI over a terminal relay, so it gets the same
 status bar with no extra work.
@@ -268,10 +303,11 @@ The commands call a new `AppBridge` method,
 `{"ok": True, "model": …, "effort": …}` or `{"error": …}`, the same shape the
 other bridge methods return.
 
-Mid-turn, the call goes to the harness immediately. Claude applies it from the
-next turn, as measured. Mid-turn ACP has not been measured. If OpenCode rejects
-`set_config_option` during a prompt, the bridge holds the switch and applies it
-at the turn boundary.
+Mid-turn, the call goes to the harness immediately, with no hold or queue in
+aegis. Both harnesses accept it and apply it from the next turn. OpenCode
+answered `set_config_option` 2.0 s into a streaming prompt with the new model as
+`currentValue`. The prompt in flight finished on deepseek, which its cache read
+shows, and the next turn wrote a fresh cache on qwen.
 
 ## Out of scope
 
@@ -298,7 +334,8 @@ at the turn boundary.
    the new model offers.
 4. Kill the daemon, start it again, and the resumed Claude tab is still on
    Sonnet 5, read from the `init` of its next turn.
-5. A Gemini tab gets a refusal or a working switch, never a silent no-op.
+5. An ACP session whose agent advertises no config options (the Gemini case,
+   tested with a fake agent) gets a refusal from `/model`, never a silent no-op.
 6. Typing `/model so` in a Claude tab offers `sonnet` and the Sonnet ids, and
    no disabled entry. Typing `/effort ` in an OpenCode tab after a switch to
    qwen3.8-flash offers `low medium xhigh default`.
