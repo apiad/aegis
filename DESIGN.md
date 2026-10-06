@@ -15,7 +15,9 @@ built as a second package next to the TUI-era aegis, which now lives under
 **One process per machine, one websocket per browser.** `aegis serve` serves the
 static client, holds the sessions and runs each harness as its own child process.
 A browser talks to it over one websocket. Closing the browser leaves the sessions
-running; stopping the server ends their processes, not the sessions. Later slices
+running; stopping the server ends their processes, not the sessions. The window
+`aegis` opens is the user's browser started detached, never a child of the server,
+so stopping the server leaves it to reconnect (`window.py`). Later slices
 add the home server, links to other servers and plugin hosts, in the order the
 vision spec gives.
 
