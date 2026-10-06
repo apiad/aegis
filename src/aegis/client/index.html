@@ -18,7 +18,7 @@
     <div class="tablist" id="tablist"></div>
     <div class="tab add" id="tab-add" title="New session">+</div>
     <div class="gap"></div>
-    <div class="servers"><span class="dot ghost" id="conn-dot"></span><span id="conn-text">connecting</span></div>
+    <div class="servers"><span class="dot ghost" id="conn-dot"></span><span id="conn-text">connecting</span><span class="ver-top" id="ver-top" hidden></span></div>
     <label class="theme-pick">Theme
       <select id="theme">
         <option value="ink">Ink</option>
@@ -85,6 +85,12 @@
       </div>
       <div class="sec acts live-only"><button class="btn" id="stop-session" title="End the process; the next message resumes it">Stop</button><button class="btn" id="close" title="Archive it: the tab goes away in every browser">Close</button></div>
       <div class="sec read-only"><p class="sub">Archived. Reopen it to continue the conversation.</p><button class="btn primary" id="reopen">Reopen</button></div>
+      <div class="sec ver" id="ver-sec" hidden><h4 id="ver-head">aegis</h4>
+        <div class="kv"><span>running</span><span id="ver-run"></span></div>
+        <div class="kv dim" id="ver-ref-row" hidden><span>ref</span><span class="path" id="ver-ref"></span></div>
+        <div class="kv dim" id="ver-base-row" hidden><span>base</span><span class="v" id="ver-base"></span></div>
+        <div class="kv"><span>latest</span><span id="ver-latest"></span></div>
+      </div>
       <p class="sub err-text" id="side-error"></p>
     </aside>
   </main>
