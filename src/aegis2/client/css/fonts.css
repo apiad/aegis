@@ -1,0 +1,10 @@
+/* Vendored woff2 under the SIL Open Font License; texts in /static/fonts/OFL-*.txt. */
+@font-face{font-family:'Inter';font-weight:400;src:url('/static/fonts/inter-400.woff2') format('woff2')}
+@font-face{font-family:'Inter';font-weight:500;src:url('/static/fonts/inter-500.woff2') format('woff2')}
+@font-face{font-family:'Inter';font-weight:600;src:url('/static/fonts/inter-600.woff2') format('woff2')}
+@font-face{font-family:'JBM';font-weight:400;src:url('/static/fonts/jbmono-400.woff2') format('woff2')}
+@font-face{font-family:'JBM';font-weight:500;src:url('/static/fonts/jbmono-500.woff2') format('woff2')}
+@font-face{font-family:'SS4';font-weight:400;src:url('/static/fonts/serif-400.woff2') format('woff2')}
+@font-face{font-family:'SS4';font-weight:400;font-style:italic;src:url('/static/fonts/serif-400i.woff2') format('woff2')}
+@font-face{font-family:'SS4';font-weight:600;src:url('/static/fonts/serif-600.woff2') format('woff2')}
+@font-face{font-family:'SpaceG';font-weight:300 700;src:url('/static/fonts/spacegrotesk.woff2') format('woff2')}

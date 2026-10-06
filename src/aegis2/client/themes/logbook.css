@@ -1,0 +1,14 @@
+/* Logbook: daylight lab notebook; times in the margin, a rule between turns. */
+[data-theme=logbook] #a2{
+  --bg:#fbfbfa;--chrome:#eef0f2;--side:#f3f4f6;--surface:#ffffff;--raised:#eef0f2;--rule:#dfe2e6;
+  --ink:#262d38;--strong:#1d2430;--muted:#5d6672;--faint:#9aa1ab;
+  --accent:#2f5ba8;--accent-soft:rgba(47,91,168,.10);--on-accent:#fff;
+  --ok:#3e7d5a;--err:#b3412e;--err-bg:#fbeeea;--warn:#a8641a;--comms:#6a4fb3;
+  --add-bg:#eaf5ee;--del-bg:#fbeeea;
+  --font-ui:'Inter',sans-serif;--font-prose:'SS4',serif;--font-mono:'JBM',monospace;
+  --font-chrome:'Inter',sans-serif;--font-head:'SS4',serif;
+  --prose-size:16.5px;--r:6px;--r-lg:10px;--time:block;--thread:none;--row-cols:38px 18px 1fr;--fill:var(--accent);
+}
+[data-theme=logbook] #a2 .row.user{border-top:1px solid var(--rule);padding-top:12px;margin-top:6px}
+[data-theme=logbook] #a2 .row.user .body{background:none;border-left:3px solid var(--accent);border-radius:0;padding:0 0 0 12px;font-weight:500}
+[data-theme=logbook] #a2 .row.tool .line{border-bottom:1px dotted var(--rule)}

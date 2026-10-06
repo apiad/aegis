@@ -253,3 +253,22 @@ def test_refolding_the_same_records_gives_identical_entries():
     live, _ = run(r)
     assert fold_records(r.records).entries() == live.entries()
     assert fold_records(r.records).entries() == fold_records(r.records).entries()
+
+
+def test_a_call_still_running_when_the_turn_ends_is_marked():
+    r = Rec()
+    r.call("t1", "Bash", {"command": "sleep 60"})
+    r.own("interrupt")
+    r.result(is_error=True, subtype="error_during_execution")
+    f, _ = run(r)
+    tool = f.entries()[0]
+    assert (tool["status"], tool["detail"]["result"]) == ("err", "interrupted")
+
+
+def test_a_turn_that_ends_normally_with_a_call_unanswered_publishes_its_update():
+    r = Rec()
+    r.call("t1", "Bash", {"command": "x"})
+    r.result()
+    f, ops = run(r)
+    assert [op["upsert"]["id"] for op in ops[1]] == ["t1", "e1.0"]
+    assert f.entries()[0]["detail"]["result"] == "no result"

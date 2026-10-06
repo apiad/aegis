@@ -36,6 +36,19 @@ class Harness:
     def kinds(self) -> list[tuple[str, str]]:
         return [(e["kind"], e["status"]) for e in self.session.entries()]
 
+    def patches_rebuild_entries(self) -> bool:
+        """What a browser that saw every patch would hold."""
+        shown: dict[str, dict] = {}
+        for ch, ops in self.published:
+            if ch != self.session.channel:
+                continue
+            for op in ops:
+                if "upsert" in op:
+                    shown[op["upsert"]["id"]] = op["upsert"]
+                else:
+                    shown.pop(op["remove"], None)
+        return list(shown.values()) == self.session.entries()
+
     def refold_matches(self) -> bool:
         records, damaged = read_store(self.path)
         return (
@@ -50,6 +63,7 @@ async def h(tmp_path, fake_claude):
     yield harness
     await harness.session.close()
     assert harness.refold_matches(), "live entries differ from a fold of the store"
+    assert harness.patches_rebuild_entries(), "the published patches do not add up to the entries"
 
 
 async def test_a_prompt_runs_a_turn(h):
@@ -101,6 +115,16 @@ async def test_interrupt_ends_the_turn(h):
     await h.session.interrupt()
     await until(lambda: h.session.status == "idle", what="idle after interrupt")
     assert h.session.entries()[-1]["summary"].startswith("interrupted")
+    (tool,) = [e for e in h.session.entries() if e["kind"] == "tool"]
+    assert tool["status"] == "err"
+    published = [
+        op["upsert"]
+        for ch, ops in h.published
+        if ch == h.session.channel
+        for op in ops
+        if "upsert" in op
+    ]
+    assert published[-2]["id"] == tool["id"] and published[-2]["status"] == "err"
 
 
 async def test_interrupt_when_idle_does_nothing(h):
