@@ -1,1 +1,0 @@
-"""Aegis test package."""

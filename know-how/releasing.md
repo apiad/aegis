@@ -24,11 +24,11 @@ error: The lockfile at `uv.lock` needs to be updated, but `--locked` was provide
 This has sunk both the v0.17.0 and v0.18.0 first attempts. **Bump the lock
 in the same commit as `pyproject.toml`.**
 
-### Do the lock edit surgically, not with `uv lock`
+### Do the lock edit surgically when only the version changes
 
-Running `uv lock` locally on zion rewrites the *entire* file — the local
-uv is an older format and strips `upload-time` from every entry, producing
-~2400 lines of churn. Instead, edit just the self-version line:
+For a version-only bump, edit just the self-version line rather than re-locking
+everything (an older uv on zion once rewrote the whole file; uv 0.11 does not,
+and a dependency change needs `uv lock` anyway):
 
 ```toml
 [[package]]
@@ -41,45 +41,19 @@ Then confirm the gate is satisfied — this must print nothing about needing
 an update:
 
 ```bash
-uv sync --inexact --locked --extra voice --group dev --group docs
+uv sync --inexact --locked --group dev
 ```
 
-### `uv sync --locked` on its own strips the venv
+`--inexact` verifies the lock without uninstalling what it does not mention;
+a bare `uv sync` strips everything outside the locked default set.
 
-A bare `uv sync` resolves to *exactly* the locked default set, so it
-**uninstalls** everything outside it — at v0.39.0 that was 37 packages,
-taking the `voice` extra (`harpio`, `sounddevice`) and the whole `docs`
-group with it. The step passes, the gate is satisfied, and `mkdocs` and
-push-to-talk are gone until someone notices.
+## Before tagging: read the benchmark
 
-`--inexact` is what stops it: verify the lock without touching anything
-the lock does not mention. If you have already run the bare form, put the
-venv back with the same flags and check by module name, not distribution
-name — `harpio` imports as `harp` and `mkdocs-material` as `material`, so
-`import harpio` fails on a perfectly good install and sends you chasing a
-problem that is not there.
-
-## Before tagging: record the benchmark
-
-Every release gets a benchmark summary on zion, so `aegis bench history`
-shows whether rendering, latency, CPU and memory moved.
-
-1. Make sure the machine is quiet. `aegis bench run` warns when the CPU is
-   over 50% busy, and a busy run does not compare. Stop other sessions'
-   test suites first.
-2. From the release commit, with `src/` clean:
-
-   ```bash
-   aegis bench run --save
-   aegis bench compare <run-id> --baseline latest-release
-   ```
-
-3. `--save` writes `bench/history/zion/<version>-<sha>.json`. Rename it to
-   `bench/history/zion/<version>.json`, which is what `latest-release` and
-   `history` treat as a release, and commit it with the release.
-
-Read every `regressed` row before tagging, and either explain it in the
-changelog or fix it. See `know-how/benchmarking.md`.
+Every PR's CI benches its base and head (`scripts/bench2.py`) and warns on a
+metric more than 20% worse. Before tagging, read the warnings of the PRs in the
+range (`gh pr checks <n>`, the `bench2` job's summary), and either explain each
+in the changelog or fix it. On a quiet zion, `make bench2` gives the numbers for
+the release notes.
 
 ## The other one: `[Unreleased]` is routinely a fraction of what shipped
 
@@ -111,10 +85,9 @@ Two traps while assembling:
 - **Intra-release fixes are not user-facing fixes.** A bug introduced and
   fixed between two tags never reached anyone. Leave it out of `### Fixed`.
 
-Same sweep for the docs: grep `README.md docs/*.md` for each new command,
-config key and MCP verb. At v0.29.0 none of `/btw`, `/fork`, `@peer`,
-`text_generation:`, `aegis_fork` or `aegis_read_peer` appeared in any
-user-facing doc — the features had shipped with only AGENTS.md entries.
+Same sweep for the docs: grep `README.md` for each new command, config key and
+MCP tool. At v0.29.0 five features had shipped with only AGENTS.md entries and
+no user-facing doc.
 
 ## Release checklist
 
@@ -123,7 +96,7 @@ user-facing doc — the features had shipped with only AGENTS.md entries.
    the coverage diff above, and after closing any doc gaps it exposes:
 
    ```bash
-   uv run python -m aegis.changelog apply --version X.Y.Z   # --date defaults to today, UTC
+   uv run python scripts/changelog.py apply --version X.Y.Z   # --date defaults to today, UTC
    git add CHANGELOG.md changelog.d
    ```
 
@@ -136,13 +109,9 @@ user-facing doc — the features had shipped with only AGENTS.md entries.
    yourself if it belongs there.
 3. Bump `version` in `pyproject.toml`.
 4. **Bump the `aegis-harness` version line in `uv.lock`** (surgical edit),
-   then verify with
-   `uv sync --inexact --locked --extra voice --group dev --group docs`.
-   The bare form passes too, and takes 37 packages with it — see above.
-5. Run the fast suite locally: `uv run python -m pytest -q -m "not live"`.
-   It is expected to be green: the old "1-2 TUI/watchdog tests flake on
-   the inotify limit" caveat was a leak plus two teardown races, fixed in
-   0.25.0. A red run is a regression — do not re-roll it.
+   then verify with `uv sync --inexact --locked --group dev`.
+5. Run the suite locally: `make check`. A red run is a regression; do not
+   re-roll it.
 6. Commit `chore(release): vX.Y.Z`, push `main`.
 7. `git tag -a vX.Y.Z -m "Release vX.Y.Z"` and `git push origin vX.Y.Z`.
 8. Watch the run: `gh run watch $(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status`.

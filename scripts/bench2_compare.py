@@ -37,7 +37,7 @@ def compare(base: dict | None, head: dict) -> tuple[list[str], list[str]]:
     """The table's lines and the warnings."""
     if base is None:
         rows = [
-            "### aegis2 bench",
+            "### aegis bench",
             "",
             "No base result to compare against.",
             "",
@@ -46,7 +46,7 @@ def compare(base: dict | None, head: dict) -> tuple[list[str], list[str]]:
         ]
         return rows + [f"| {k} | {fmt(v)} |" for k, v in head.items()], []
     rows = [
-        "### aegis2 bench",
+        "### aegis bench",
         "",
         "| metric | base | head | change |",
         "|---|---:|---:|---:|",
@@ -63,7 +63,7 @@ def compare(base: dict | None, head: dict) -> tuple[list[str], list[str]]:
         )
         if change > WORSE:
             warnings.append(
-                f"::warning title=aegis2 bench::{k} is {change:.0%} worse ({fmt(b)} → {fmt(h)})"
+                f"::warning title=aegis bench::{k} is {change:.0%} worse ({fmt(b)} → {fmt(h)})"
             )
     return rows, warnings
 

@@ -51,7 +51,7 @@ make changelog            # preview the collated CHANGELOG, writing nothing
 At release, the releaser folds them into a version section and deletes them:
 
 ```bash
-uv run python -m aegis.changelog apply --version 0.40.0
+uv run python scripts/changelog.py apply --version X.Y.Z
 ```
 
 See `know-how/releasing.md`.

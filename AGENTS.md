@@ -1,20 +1,15 @@
 # aegis
 
-aegis is a meta-harness. It runs coding-agent CLIs (Claude Code, Gemini CLI,
-OpenCode) and its own native lovelaice agent as subprocesses, and adds a control
-plane above them: multiplexed sessions, inboxes, queues, workflows, schedules,
-groups, file claims, execution hosts, and an MCP server every spawned agent talks
-to. It is published on PyPI as `aegis-harness`, and it is the harness Alex and his
-agents use for multi-agent work in this workspace, from a TUI locally and from a
-browser over a remote link.
+aegis is a web-native workplace for coding agents. `aegis serve` runs Claude Code
+sessions on one machine and serves them to browser tabs: a Fleet view, shared tabs,
+a transcript per session, and an archive. Agents in it get aegis's tools over MCP:
+monitors, queues of workers, handoffs, reading a peer, and an inbox that delivers
+what those produce. It is published on PyPI as `aegis-harness`, and it is the
+workplace Alex and his agents use for multi-agent work in this workspace.
 
-**The repo holds two trees, and the old one is frozen.** Everything under
-src/aegis/, the TUI included, takes bug fixes only. Agents building its successor
-run inside it, so its bugs still get fixed, but it gets no new features. New work
-goes to aegis2 under src/aegis2/: a web-native rewrite built from scratch next to
-the old tree, with no imports from it. Its direction is the aegis2 vision spec, and
-each slice has its own spec, all under `docs/superpowers/specs/`. When aegis2 covers
-Alex's daily use, the old tree is deleted and aegis2 takes the name.
+Until 2.0 aegis was a terminal app. That tree lives under `legacy/` as reference:
+not packaged, not tested, not launchable. Read it to learn how something was done;
+never import it. Its design is `legacy/DESIGN.md`.
 
 **Read this file, then DESIGN.md, then the know-how doc for the job in front of
 you.** This file changes when aegis's goals change. Nothing in it should be made
@@ -22,30 +17,21 @@ false by a commit that adds a module, a tool or a test.
 
 ## What done means
 
-A change to the old tree is done when:
-
-1. `make check` passes;
-2. it has been exercised the way a user reaches it: in the TUI, or in a browser
-   through `aegis web`, attached to a daemon started after the change, or with
-   `aegis bench` for any claim about speed;
-3. a user-visible change has a `changelog.d/` fragment, and a new command, driver, tool or
-   config key is documented under `docs/`;
-4. a change to how the pieces fit has its spec under `docs/superpowers/specs/`,
-   with a status that matches the code.
-
-Green tests against a daemon that booted before the change prove nothing about the
-change.
-
-A change to aegis2 is done when:
+A change is done when:
 
 1. `make check` passes, browser tests included;
-2. it has been exercised in a browser against an `aegis2 serve` started after the
-   change;
+2. it has been exercised in a browser against an `aegis serve` started after the
+   change, and, for a change to how agents use aegis, by a real Claude Code
+   session (`make test-live`);
 3. `make bench2` has run and its table is in the PR body. CI reports a regression
    as a warning and never fails on one, so a reader has to look at it;
-4. DESIGN.md's aegis2 part describes the code as it now is;
+4. DESIGN.md describes the code as it now is;
 5. a user-visible change has a `changelog.d/` fragment, and a change to how the
-   pieces fit has its slice spec under `docs/superpowers/specs/`.
+   pieces fit has its spec under `docs/superpowers/specs/`, with a status that
+   matches the code.
+
+Green tests against a server that booted before the change prove nothing about
+the change.
 
 ## Where everything lives
 
@@ -55,15 +41,15 @@ would make it false.
 | | holds | changes when |
 |---|---|---|
 | `AGENTS.md` | what aegis is, who it is for, what done means | the goals change |
-| `DESIGN.md` | the process model, the rules that span modules, what is linted and what a reader judges | the architecture changes |
+| `DESIGN.md` | the process model and the rules that span modules | the architecture changes |
 | module docstrings | the rules of one module, with their reasons | that module changes |
-| `docs/` | the user-facing reference published with mkdocs | a user-visible surface changes |
-| `docs/superpowers/` | why each feature is shaped the way it is | a feature is designed |
+| `docs/superpowers/` | the vision and one spec and plan per slice: why each part is shaped the way it is | a feature is designed |
 | `changelog.d/*.md` | one release note per change, awaiting the next release | any user-visible change |
 | `CHANGELOG.md` | what shipped | a release collates the fragments |
-| GitHub issues | what is still to do: every defect, feature and idea; the `v1.0` label marks the 1.0 scope, `idea` a direction not yet decided | work is found, decided or lands |
+| GitHub issues | what is still to do: defects, features, ideas (`idea` marks a direction not yet decided) | work is found, decided or lands |
 | `know-how/` | how to do one job | a procedure changes |
 | `Makefile`, `.rift.yaml`, tests | every mechanical check | a gate is added or dropped |
+| `legacy/` | the TUI-era tree, its tests, docs and know-how, as reference | never |
 | the code | everything else | constantly |
 
 Nothing derivable is written down: module tours, command lists and counts are one
@@ -105,27 +91,17 @@ eliminated are worth writing down — they stop the next agent repeating them.
 `make know-how` prints the procedure docs, one `when:` line each; read the ones
 that match the task. Use `uv`, never pip. Python 3.13 or newer.
 
-Two gates are not what they look like:
-
-- **`typecheck` is advisory.** `ty` is 0.0.29, has never been configured here,
-  and reports a few hundred diagnostics on code that works. It runs, its count
-  is printed, and it does not fail `make check` — because a stage that always
-  fails gates nothing, and this one used to abort the run *before the tests*,
-  so the gate had never once executed the suite. Drive the number down with
-  `make typecheck` and promote it to blocking when the list is empty. Issue #8.
-- **`lint-docs` is the one gate CI cannot run.** `rift` is private and not on
-  PyPI, so a runner cannot install it. Run it locally before opening the PR.
+`lint-docs` is the one gate CI cannot run: `rift` is private and not on PyPI.
+Run it locally before opening the PR.
 
 Release notes are **fragments**, not edits to `CHANGELOG.md`: drop a file in
-`changelog.d/` named `<slug>.<category>.md` and a release collates them. That
-file was the only one in the repo that conflicted on a merge, and it conflicted
-on every one. `changelog.d/README.md` has the format; `make changelog-check`
-blocks, because it is a filename parse with no backlog rather than a 235-item
-one. Issue #10.
+`changelog.d/` named `<slug>.<category>.md` and a release collates them
+(`changelog.d/README.md` has the format; `make changelog-check` blocks).
 
-CI runs `format-check`, `lint`, `changelog-check`, the suite, and `typecheck`
-non-blocking. It does not run `make check` itself: that target's `format` stage
-rewrites files, and a runner has to fail on drift rather than fix it.
+The tests run the real app: the fake claude in `tests/fake_claude.py` speaks
+stream-json and calls the real `/mcp` with its own token, and the browser tests
+drive headless Chromium against a real `aegis serve`. Prefer a test of that shape
+to a unit test of a seam.
 
 Commits follow the workspace convention: conventional commits, English, one logical
 change. This is a shared checkout, so stage and commit named paths only

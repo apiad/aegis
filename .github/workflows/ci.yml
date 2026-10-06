@@ -36,13 +36,9 @@ jobs:
         run: uv run playwright install --with-deps chromium
       - run: uv run pytest -q -m "not live"
 
-      # Advisory, exactly as in `make check`: `ty` is 0.0.29, has never been
-      # configured here, and reports ~235 diagnostics on working code. Run so
-      # the number is visible on every PR and can be driven down; not blocking
-      # until the list is empty. Issue #8.
-      - name: typecheck (advisory)
+      # Blocking, as in `make check`: the tree has no diagnostics.
+      - name: typecheck
         run: make typecheck
-        continue-on-error: true
 
   # aegis2's bench, on the PR's base and head on one runner so the machine
   # cancels out. Reports in the job summary and warns past 20% worse; it

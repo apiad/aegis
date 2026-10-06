@@ -40,7 +40,9 @@ jobs:
       - name: Run hermetic tests
         run: |
           uv sync --locked
-          uv run pytest -q -m "not live"
+          # Browser tests need Chromium, which this job does not install;
+          # the PR's CI ran them on the same commit.
+          uv run pytest -q -m "not live and not browser"
 
       - name: Build sdist + wheel
         run: uv build
