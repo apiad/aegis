@@ -51,3 +51,15 @@ def test_nested_provider_form(tmp_path: Path):
         "low",
         "read",
     )
+
+
+def test_provider_as_a_string_names_the_harness(tmp_path: Path):
+    # The form the Workspace's own .aegis.yaml uses.
+    (tmp_path / ".aegis.yaml").write_text(
+        "agents:\n"
+        "  opus: {provider: claude-code, model: opus, effort: high, permission: full}\n"
+        "  deepseek: {provider: opencode, model: opencode-go/deepseek-v4-pro, permission: full}\n"
+    )
+    by_name = {p.name: p for p in load_profiles(tmp_path)}
+    assert by_name["opus"].harness == "claude-code" and by_name["opus"].enabled
+    assert by_name["deepseek"].harness == "opencode" and not by_name["deepseek"].enabled

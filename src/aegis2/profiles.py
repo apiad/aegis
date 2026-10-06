@@ -1,8 +1,9 @@
 """Agent profiles, read from the ``agents:`` map of the old ``.aegis.yaml``.
 
-This is the only part of the old config aegis2 reads. Both the flat form
-(``model:``, ``effort:``, ``permission:``, ``harness:``) and the nested
-``provider:`` form are accepted. Defaults match the old tree: harness
+This is the only part of the old config aegis2 reads. Three forms are
+accepted: flat (``harness:``, ``model:``, ``effort:``, ``permission:``),
+``provider: <harness>`` as a string next to the flat fields (the Workspace's
+own form), and a nested ``provider:`` mapping. Defaults match the old tree: harness
 ``claude-code``, effort ``high``, permission ``auto``.
 """
 
@@ -57,7 +58,9 @@ class Profile:
 def _profile(name: str, raw: Any) -> Profile:
     d: dict[str, Any] = raw if isinstance(raw, dict) else {}
     provider = d.get("provider")
-    if isinstance(provider, dict):
+    if isinstance(provider, str):
+        d = {**d, "harness": provider}
+    elif isinstance(provider, dict):
         d = {**d, **provider, "harness": provider.get("name", d.get("harness"))}
     return Profile(
         name=str(name),
