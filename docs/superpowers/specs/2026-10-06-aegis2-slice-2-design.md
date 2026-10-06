@@ -1,6 +1,8 @@
 # aegis2 slice 2: many sessions, shared tabs, lazy resume, archive
 
-**Status: approved, 2026-10-06** (issue #127). Designed with Alex in one
+**Status: implemented, 2026-10-06** (issue #127), following
+`docs/superpowers/plans/2026-10-06-aegis2-slice-2.md`. Where the build changed the
+design, this file says so in place. Designed with Alex in one
 brainstorming session; builds on slice 1
 (`2026-10-06-aegis2-slice-1-design.md`) and the vision
 (`2026-10-05-aegis2-vision-design.md`).
@@ -63,6 +65,8 @@ Measured on zion, 2026-10-06, Claude Code 2.1.283, Haiku (issue #127):
 - **No idle reaping.** Only shutdown, Stop and Close end a process.
 - **A restart during a turn.** On boot, a session whose last status was
   `working` gets a system entry: "the server stopped during a turn".
+- **A prompt never read** when its process ends (stop, exit, a server stop)
+  shows as `lost`, not pending forever. (Added during the build.)
 - **`error` is live.** A child that exited moves the session to `stopped` with
   the exit entry kept in the transcript; the next prompt resumes. (Slice 1 kept
   a dead session in `error` until closed; with resume there is no reason to.)
@@ -81,6 +85,12 @@ Measured on zion, 2026-10-06, Claude Code 2.1.283, Haiku (issue #127):
   from its store: the spawn record gives the spec, the first `init` the Claude
   session id, the first send the title; it is marked archived. A store whose
   meta is rebuilt this way never takes the boot down.
+- **The meta also keeps `activity`,** so the Fleet view needs no fold of any
+  session at boot. (Added during the build.)
+- **A store continues its numbering** when reopened, read from its last intact
+  record, and starts a fresh line if a crash cut the last one. It opens its file
+  only on the first write, so archived sessions hold no file open. (Added during
+  the build.)
 - **Folds are lazy.** A transcript is folded from its store on the first
   subscribe, then kept in memory while the session is open; an archived
   session's fold is dropped when its last subscriber leaves.
@@ -120,6 +130,9 @@ Channels:
 
 - **`sessions`** replaces `session`. Snapshot: the metas of every open session,
   ordered by `created_at`. Patches: `{"upsert": meta}` and `{"remove": log_id}`.
+  A change to status, handle or title publishes at once; activity, context and
+  cost are coalesced for 250 ms. (Added during the build: publishing per changed
+  field doubled the server's cost per line in bench2.)
   The meta on the wire adds `state` (`idle`, `working`, `error`, `stopped`) and
   `activity`, a one-line "what it is doing" computed in Python from the fold:
   the running tool's title and label, or the first line of the latest prose,
@@ -182,7 +195,12 @@ resuming; Close in one browser removing the tab from another; Reopen from the
 archive; rename.
 
 The bench adds boot time with 100 sessions on disk and the cold load of the
-Fleet view with 20 open sessions.
+Fleet view with 20 open sessions. First run on zion, 2026-10-06: a registry boot
+over 20 open and 80 archived sessions takes 7.3 ms; the Fleet view shows 20
+cards 112 ms after navigation. The cost per Claude line rose from 69 to 82 µs at
+p50 and from 163 to 233 µs at p95 against `main`, measured back to back; most of
+the p95 is the meta file written at each turn's end (a `result` line costs 416 µs
+against 235), which this design requires so a crash loses nothing.
 
 ## Done means
 
