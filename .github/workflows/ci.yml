@@ -43,3 +43,34 @@ jobs:
       - name: typecheck (advisory)
         run: make typecheck
         continue-on-error: true
+
+  # aegis2's bench, on the PR's base and head on one runner so the machine
+  # cancels out. Reports in the job summary and warns past 20% worse; it
+  # never fails the run (scripts/bench2_compare.py exits 0, and every step
+  # here may fail without failing the job).
+  bench2:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install uv
+      - run: uv sync --locked
+      - run: uv run playwright install --with-deps chromium
+      - name: bench head
+        run: uv run python scripts/bench2.py --out /tmp/head.json
+      - name: bench base
+        run: |
+          git worktree add /tmp/base ${{ github.event.pull_request.base.sha }}
+          if [ -f /tmp/base/scripts/bench2.py ]; then
+            cd /tmp/base && uv sync --locked && uv run python scripts/bench2.py --out /tmp/base.json
+          fi
+      - name: compare
+        if: always()
+        run: uv run python scripts/bench2_compare.py /tmp/base.json /tmp/head.json

@@ -133,7 +133,9 @@ function onSession(s) {
       `transcript:${s.log_id}`,
       (entries) => {
         transcript.snapshot(entries || []);
-        window.__a2snapshot = { at: performance.now(), count: (entries || []).length };
+        // Read by scripts/bench2.py: when the snapshot was drawn and painted.
+        const mark = (window.__a2snapshot = { at: performance.now(), count: (entries || []).length });
+        requestAnimationFrame(() => (mark.painted = performance.now()));
       },
       (ops) => transcript.apply(ops),
     );
