@@ -9,8 +9,15 @@ workers and handoffs over MCP.
 ```bash
 uv tool install aegis-harness
 cd ~/your/project          # the nearest ancestor with .aegis.yaml is the root
-aegis serve                # prints a URL with its token; open it
+aegis                      # serves, and opens it in a browser app window
 ```
+
+`aegis` is `aegis serve --window`: once the server listens it opens the URL in a
+Chromium-family browser with `--app=`, a window without tabs or address bar (the
+desktop default if it is Chromium-family, else the first Chrome, Chromium, Edge or
+Brave found; `--browser` or `AEGIS_BROWSER` picks another). Run it again while the
+server is up and it only opens another window. Plain `aegis serve` opens nothing and
+prints the URL instead, for systemd and remote hosts.
 
 `aegis serve --port 8742 --host 127.0.0.1` are the defaults. The token is kept in
 `.aegis/state/token` and reused across restarts; delete the file to rotate it.

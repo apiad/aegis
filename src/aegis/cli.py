@@ -1,4 +1,6 @@
-"""``aegis serve``: the only module that reads the process's working directory.
+"""``aegis serve``, and ``aegis`` alone, which is ``serve --window``.
+
+This is the only module that reads the process's working directory.
 
 It builds the roots from it once and passes them down (DESIGN.md, "Three
 roots, never Path.cwd()").
@@ -8,11 +10,14 @@ from __future__ import annotations
 
 import errno
 import socket
+import threading
+import time
 from pathlib import Path
 
 import typer
 
 HELP = "aegis: a web-native workplace for coding agents."
+DEFAULT_PORT = 8742
 
 app = typer.Typer(add_completion=False, help=HELP)
 
@@ -25,8 +30,9 @@ def _version(value: bool) -> None:
         raise typer.Exit()
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def _root(
+    ctx: typer.Context,
     version: bool = typer.Option(
         False,
         "--version",
@@ -35,7 +41,22 @@ def _root(
         help="Print the version and exit.",
     ),
 ) -> None:
-    """aegis: a web-native workplace for coding agents."""
+    """aegis: a web-native workplace for coding agents.
+
+    With no command, serves and opens the server in a browser app window
+    (`aegis serve --window`); the browser comes from AEGIS_BROWSER if set."""
+    if ctx.invoked_subcommand is None:
+        import os
+
+        serve(
+            root=None,
+            port=DEFAULT_PORT,
+            host="127.0.0.1",
+            claude="claude",
+            log_level="warning",
+            window=True,
+            browser=os.environ.get("AEGIS_BROWSER"),
+        )
 
 
 def _port_free(host: str, port: int) -> bool:
@@ -51,18 +72,48 @@ def _port_free(host: str, port: int) -> bool:
     return True
 
 
+def _open_when_listening(host: str, port: int, url: str, browser: str | None) -> None:
+    """Open the window once the port accepts, from a thread: uvicorn.run blocks."""
+    from .window import open_window
+
+    def wait_then_open() -> None:
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            try:
+                socket.create_connection((host, port), timeout=0.2).close()
+            except OSError:
+                time.sleep(0.05)
+                continue
+            open_window(url, browser)
+            return
+
+    threading.Thread(target=wait_then_open, daemon=True).start()
+
+
 @app.command()
 def serve(
     root: Path | None = typer.Option(
         None, help="Config root; default: the nearest ancestor holding .aegis.yaml."
     ),
-    port: int = typer.Option(8742, help="Port to listen on."),
+    port: int = typer.Option(DEFAULT_PORT, help="Port to listen on."),
     host: str = typer.Option(
         "127.0.0.1", help="Address to bind; anything but loopback must be asked for."
     ),
     claude: str = typer.Option("claude", help="The claude executable to run."),
     log_level: str = typer.Option(
         "warning", help="debug, info, warning or error; info logs every operation."
+    ),
+    window: bool = typer.Option(
+        False,
+        "--window",
+        help="Open the server in a browser app window; if this root's server is "
+        "already running, just open the window.",
+    ),
+    browser: str | None = typer.Option(
+        None,
+        envvar="AEGIS_BROWSER",
+        help="The browser for --window; default: the first Chrome, Chromium, "
+        "Edge or Brave installed, else the system browser.",
     ),
 ) -> None:
     """Serve Claude Code sessions to browser tabs."""
@@ -89,7 +140,11 @@ def serve(
             err=True,
         )
         raise typer.Exit(1)
+    local = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0", "localhost") else host
     if not _port_free(host, port):
+        if window and _open_running(roots.state_root, local, port, browser):
+            typer.echo(f"aegis already serving {roots.config_root}; opened a window")
+            return
         typer.echo(f"port {port} on {host} is taken; pass --port", err=True)
         raise typer.Exit(1)
     token = load_or_create_token(roots.state_root)
@@ -101,7 +156,6 @@ def serve(
     }
     import socket as _socket
 
-    local = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0", "localhost") else host
     app = App(
         roots,
         claude_bin=claude,
@@ -111,8 +165,26 @@ def serve(
     web = build_web(app, token, allowed)
     shown = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0") else host
     typer.echo(f"aegis serving {roots.config_root}")
-    typer.echo(f"open http://{shown}:{port}/?token={token}")
+    url = f"http://{shown}:{port}/?token={token}"
+    typer.echo(f"open {url}")
+    if window:
+        _open_when_listening(local, port, url, browser)
     uvicorn.run(web, host=host, port=port, log_level="warning")
+
+
+def _open_running(state_root: Path, host: str, port: int, browser: str | None) -> bool:
+    """Open a window on this root's running server; False if the port holds
+    anything else."""
+    from .window import open_window, serves
+
+    token_file = state_root / "token"
+    if not token_file.is_file():
+        return False
+    token = token_file.read_text().strip()
+    if not serves(host, port, token):
+        return False
+    open_window(f"http://{host}:{port}/?token={token}", browser)
+    return True
 
 
 def main() -> None:
