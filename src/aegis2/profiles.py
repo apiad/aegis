@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from ruamel.yaml import YAML, YAMLError
 
@@ -53,8 +54,8 @@ class Profile:
         }
 
 
-def _profile(name: str, raw: object) -> Profile:
-    d = raw if isinstance(raw, dict) else {}
+def _profile(name: str, raw: Any) -> Profile:
+    d: dict[str, Any] = raw if isinstance(raw, dict) else {}
     provider = d.get("provider")
     if isinstance(provider, dict):
         d = {**d, **provider, "harness": provider.get("name", d.get("harness"))}

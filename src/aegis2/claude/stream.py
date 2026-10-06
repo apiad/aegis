@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -124,7 +125,7 @@ Event = (
 TURN_BEARING = (Text, Thinking, ToolCall, ToolOutput)
 
 
-def _usage(d: object) -> Usage | None:
+def _usage(d: Any) -> Usage | None:
     if not isinstance(d, dict):
         return None
     keys = (
@@ -143,7 +144,7 @@ def _usage(d: object) -> Usage | None:
     )
 
 
-def _text_of(content: object) -> str:
+def _text_of(content: Any) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -155,13 +156,13 @@ def _text_of(content: object) -> str:
     return ""
 
 
-def _str(v: object) -> str | None:
+def _str(v: Any) -> str | None:
     return v if isinstance(v, str) else None
 
 
 def parse(line: str) -> list[Event]:
     try:
-        obj = json.loads(line)
+        obj: Any = json.loads(line)
     except ValueError:
         return [Garbled(raw=line)]
     if not isinstance(obj, dict):
@@ -242,7 +243,7 @@ def parse(line: str) -> list[Event]:
                         usage=usage,
                     )
                 )
-        return out or [Ignored(type=etype)]
+        return out if out else [Ignored(type=etype)]
 
     if etype == "user":
         if isinstance(content, list):
