@@ -26,6 +26,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from .app import App
+from .channels import Sub
 from .ops import OpError
 
 PROTO = 1
@@ -114,7 +115,7 @@ def build_web(app: App, token: str, allowed_hosts: set[str]) -> Starlette:
 
         out.put_nowait({"t": "welcome", "proto": PROTO, "server": socket.gethostname()})
         write_task = asyncio.create_task(writer())
-        subs: dict[str, object] = {}
+        subs: dict[str, Sub] = {}
         calls: set[asyncio.Task] = set()
         try:
             while True:
@@ -127,7 +128,7 @@ def build_web(app: App, token: str, allowed_hosts: set[str]) -> Starlette:
                 elif t == "sub":
                     ch = str(msg.get("channel"))
                     if ch in subs:
-                        app.channels.unsubscribe(subs.pop(ch))  # type: ignore[arg-type]
+                        app.channels.unsubscribe(subs.pop(ch))
                     try:
                         subs[ch] = app.channels.subscribe(ch, out.put_nowait)
                     except OpError as e:
@@ -141,12 +142,12 @@ def build_web(app: App, token: str, allowed_hosts: set[str]) -> Starlette:
                 elif t == "unsub":
                     sub = subs.pop(str(msg.get("channel")), None)
                     if sub is not None:
-                        app.channels.unsubscribe(sub)  # type: ignore[arg-type]
+                        app.channels.unsubscribe(sub)
         except (WebSocketDisconnect, ValueError, RuntimeError):
             pass
         finally:
             for sub in subs.values():
-                app.channels.unsubscribe(sub)  # type: ignore[arg-type]
+                app.channels.unsubscribe(sub)
             write_task.cancel()
 
     @contextlib.asynccontextmanager

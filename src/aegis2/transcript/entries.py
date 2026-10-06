@@ -18,6 +18,7 @@ Two rules from Claude Code's measured behaviour live here:
 from __future__ import annotations
 
 from collections import deque
+from typing import Any
 
 from ..claude.stream import (
     Compact,
@@ -218,7 +219,9 @@ class Fold:
             inp = call.input if call else {}
             pair = d.edit_pair(name, inp)
             prev = self._entries.get(ev.id)
-            detail = dict(prev["detail"]) if prev else {"args": "", "steps": 0}
+            detail: dict[str, Any] = (
+                dict(prev["detail"]) if prev else {"args": "", "steps": 0}
+            )
             detail.update(
                 result=d.result_digest(name, ev.text, ev.is_error, pair),
                 tail=d.output_tail(ev.text),
