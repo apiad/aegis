@@ -66,3 +66,74 @@ async def test_a_real_prompt_interrupt_stop_and_resume(tmp_path: Path):
         await s.stop()
     records, damaged = read_store(path)
     assert damaged == 0 and fold_records(records).entries() == s.entries()
+
+
+async def test_real_claude_arms_a_monitor_through_the_endpoint_and_is_woken(
+    tmp_path: Path,
+):
+    """The real binary against the real /mcp: tool listing, the token header,
+    the primer, and the inbox wake."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis2.app import App
+    from aegis2.roots import make_roots
+    from aegis2.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  haiku: {{model: {HAIKU}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"profile": "haiku"})
+        s = app.sessions.sessions[r["log_id"]]
+        flag = tmp_path / "ready.flag"
+        await s.send(
+            f"Use the aegis monitor_start tool to wait until the file {flag} exists "
+            "(done condition `test -f <that path>`, interval 2 seconds). Then end your turn. "
+            "When you are woken, reply with the single word WOKEN."
+        )
+        await until(
+            lambda: app.monitors.of(s.log_id),
+            timeout=120,
+            what="the monitor armed by Claude",
+        )
+        await until(
+            lambda: s.status == "idle", timeout=60, what="Claude ending its turn"
+        )
+        flag.touch()
+        await until(
+            lambda: (
+                any(e["kind"] == "inbox" for e in s.entries())
+                and s.status == "idle"
+                and any(
+                    "WOKEN" in (e.get("md") or "")
+                    for e in s.entries()
+                    if e["kind"] == "prose"
+                )
+            ),
+            timeout=120,
+            what="the wake and Claude's answer",
+        )
+        calls = [e["title"] for e in s.entries() if e["kind"] == "tool"]
+        assert "monitor_start" in calls
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
