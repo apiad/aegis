@@ -44,6 +44,8 @@ class Server:
                 str(self.port),
                 "--claude",
                 self.claude,
+                "--log-level",
+                "info",
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -245,6 +247,14 @@ def test_tabs_reorder_per_browser_and_survive_a_reload(server, browser, page):
 
 
 def test_a_restart_brings_tabs_back_stopped_and_a_prompt_resumes(server, page):
+    frames: list[str] = []
+
+    def watch(ws):
+        ws.on("framesent", lambda f: frames.append(f"> {f}"[:300]))
+        ws.on("framereceived", lambda f: frames.append(f"< {f}"[:300]))
+        ws.on("close", lambda _: frames.append("closed"))
+
+    page.on("websocket", watch)
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     a = spawn(page, "remember PELICAN")
@@ -284,7 +294,9 @@ def test_a_restart_brings_tabs_back_stopped_and_a_prompt_resumes(server, page):
             "no recall after the restart.\n"
             f"transcript tail: {page.inner_text('#entries')[-1500:]}\n"
             f"send error: {page.inner_text('#send-error')!r} side error: {page.inner_text('#side-error')!r}\n"
-            f"page errors: {page.errors}\nmetas: {metas}\nserver output: {server.output[-3000:]}"
+            f"page errors: {page.errors}\nmetas: {metas}\nserver output: {server.output[-4000:]}\n"
+            + "last frames:\n"
+            + "\n".join(frames[-40:])
         ) from None
     assert page.errors == []
 
