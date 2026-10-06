@@ -23,6 +23,14 @@ prints the URL instead, for systemd and remote hosts.
 `.aegis/state/token` and reused across restarts; delete the file to rotate it.
 Anything but loopback must be asked for with `--host`.
 
+Behind a reverse proxy, name the public origin: `aegis serve --origin
+https://dev.example` (repeatable) accepts sockets whose `Host` is `dev.example` and
+whose `Origin` is exactly that origin, and prints the public URL with the token.
+Keep `--host` on loopback and let the proxy terminate TLS. Anyone with the token
+drives agents that may run with full permission on that machine, so put a second
+lock in the proxy (basic auth, or a login), and do not proxy `/mcp`: agents reach
+it on loopback.
+
 ## Configuration
 
 aegis reads two maps from `.aegis.yaml` at the root:

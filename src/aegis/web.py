@@ -6,6 +6,11 @@ otherwise be able to prompt an agent running with full permission. So a
 socket must come from an allowed ``Host`` with a matching ``Origin`` (which
 also stops DNS rebinding, where the attacker's name resolves to 127.0.0.1),
 and must say ``hello`` with the server's token within 5 s.
+
+Behind a reverse proxy the browser sends the public name and an https origin,
+which the loopback rule refuses. ``serve --origin https://dev.example`` names
+one such origin: a socket is accepted when its ``Host`` is that origin's host
+and its ``Origin`` is that origin, exactly. The token is still required.
 """
 
 from __future__ import annotations
@@ -19,7 +24,9 @@ import os
 import time
 import secrets
 import socket
+from collections.abc import Iterable
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from starlette.applications import Starlette
 from starlette.responses import FileResponse
@@ -69,7 +76,24 @@ def load_or_create_token(state_root: Path) -> str:
     return token
 
 
-def build_web(app: App, token: str, allowed_hosts: set[str]) -> Starlette:
+def public_origin(value: str) -> str:
+    """``value`` as an origin, ``scheme://host[:port]``; ValueError if it is not one."""
+    u = urlsplit(value.strip())
+    if u.scheme not in ("http", "https") or not u.netloc:
+        raise ValueError(f"{value!r} is not an http or https origin")
+    if u.path not in ("", "/") or u.query or u.fragment:
+        raise ValueError(
+            f"{value!r} has a path or query; an origin is a scheme and a host"
+        )
+    return f"{u.scheme}://{u.netloc}"
+
+
+def build_web(
+    app: App, token: str, allowed_hosts: set[str], origins: Iterable[str] = ()
+) -> Starlette:
+    # Host header -> the one origin a socket naming that host must come from.
+    public = {urlsplit(o).netloc: o for o in map(public_origin, origins)}
+
     async def index(request):
         return FileResponse(
             CLIENT_DIR / "index.html", headers={"Cache-Control": "no-cache"}
@@ -78,7 +102,8 @@ def build_web(app: App, token: str, allowed_hosts: set[str]) -> Starlette:
     async def ws(websocket: WebSocket) -> None:
         host = websocket.headers.get("host", "")
         origin = websocket.headers.get("origin", "")
-        if host not in allowed_hosts or origin != f"http://{host}":
+        local = host in allowed_hosts and origin == f"http://{host}"
+        if not local and public.get(host) != origin:
             await websocket.close(code=BAD_ORIGIN)
             return
         await websocket.accept()
