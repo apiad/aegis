@@ -40,7 +40,9 @@ def test_init():
             }
         )
     )
-    assert ev == Init(session_id="s1", model="claude-haiku-4-5-20251001", version="2.1.283")
+    assert ev == Init(
+        session_id="s1", model="claude-haiku-4-5-20251001", version="2.1.283"
+    )
 
 
 def test_assistant_line_with_several_blocks_yields_all_of_them():
@@ -53,7 +55,12 @@ def test_assistant_line_with_several_blocks_yields_all_of_them():
                     "content": [
                         {"type": "thinking", "thinking": "hmm"},
                         {"type": "text", "text": "Hello"},
-                        {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls"}},
+                        {
+                            "type": "tool_use",
+                            "id": "t1",
+                            "name": "Bash",
+                            "input": {"command": "ls"},
+                        },
                     ],
                 },
             }
@@ -104,13 +111,21 @@ def test_tool_result_with_list_content():
 
 def test_echo_is_a_replayed_user_message():
     (ev,) = parse(
-        line({"type": "user", "isReplay": True, "message": {"role": "user", "content": "hi there"}})
+        line(
+            {
+                "type": "user",
+                "isReplay": True,
+                "message": {"role": "user", "content": "hi there"},
+            }
+        )
     )
     assert ev == Echo(text="hi there")
 
 
 def test_a_user_line_that_is_not_a_replay_is_ignored():
-    (ev,) = parse(line({"type": "user", "message": {"role": "user", "content": "skill body"}}))
+    (ev,) = parse(
+        line({"type": "user", "message": {"role": "user", "content": "skill body"}})
+    )
     assert isinstance(ev, Ignored)
 
 
@@ -139,7 +154,13 @@ def test_result_reads_cost_and_context_window():
 
 
 def test_system_notices():
-    for sub in ("thinking_tokens", "hook_started", "hook_response", "task_started", "task_notification"):
+    for sub in (
+        "thinking_tokens",
+        "hook_started",
+        "hook_response",
+        "task_started",
+        "task_notification",
+    ):
         assert parse(line({"type": "system", "subtype": sub})) == [Notice(subtype=sub)]
 
 
@@ -157,7 +178,9 @@ def test_compact_boundary():
 
 
 def test_unhandled_types_are_ignored_and_garbage_is_garbled():
-    assert parse(line({"type": "rate_limit_event"})) == [Ignored(type="rate_limit_event")]
+    assert parse(line({"type": "rate_limit_event"})) == [
+        Ignored(type="rate_limit_event")
+    ]
     assert parse("not json") == [Garbled(raw="not json")]
     assert parse("[1, 2]") == [Garbled(raw="[1, 2]")]
     assert parse(line({"type": "assistant", "message": {"content": []}})) == [

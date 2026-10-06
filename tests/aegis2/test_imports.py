@@ -26,8 +26,6 @@ def test_aegis2_never_imports_the_old_tree_or_itself_absolutely():
     assert files, "found no modules to check"
     for f in files:
         bad = [
-            n
-            for n in _absolute_imports(f)
-            if n.split(".")[0] in ("aegis", "aegis2")
+            n for n in _absolute_imports(f) if n.split(".")[0] in ("aegis", "aegis2")
         ]
         assert not bad, f"{f.relative_to(PKG)} imports {bad}"

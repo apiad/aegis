@@ -30,4 +30,6 @@ def test_only_the_cli_reads_the_working_directory():
     for f in files:
         if f.name == "cli.py" and f.parent == PKG:
             continue
-        assert not _cwd_calls(f), f"{f.relative_to(PKG)} reads the cwd at lines {_cwd_calls(f)}"
+        assert not _cwd_calls(f), (
+            f"{f.relative_to(PKG)} reads the cwd at lines {_cwd_calls(f)}"
+        )

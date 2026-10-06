@@ -105,7 +105,17 @@ class Garbled:
 
 
 Event = (
-    Init | Text | Thinking | ToolCall | ToolOutput | Echo | Result | Notice | Compact | Ignored | Garbled
+    Init
+    | Text
+    | Thinking
+    | ToolCall
+    | ToolOutput
+    | Echo
+    | Result
+    | Notice
+    | Compact
+    | Ignored
+    | Garbled
 )
 
 # Events that only occur inside a turn. Anything else on the wire (system
@@ -117,7 +127,12 @@ TURN_BEARING = (Text, Thinking, ToolCall, ToolOutput)
 def _usage(d: object) -> Usage | None:
     if not isinstance(d, dict):
         return None
-    keys = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
+    keys = (
+        "input_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
+        "output_tokens",
+    )
     if not any(k in d for k in keys):
         return None
     return Usage(
@@ -133,7 +148,9 @@ def _text_of(content: object) -> str:
         return content
     if isinstance(content, list):
         return "\n".join(
-            b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"
+            b.get("text", "")
+            for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
         )
     return ""
 
@@ -205,9 +222,15 @@ def parse(line: str) -> list[Event]:
                 continue
             bt = b.get("type")
             if bt == "text":
-                out.append(Text(text=str(b.get("text", "")), parent=parent, usage=usage))
+                out.append(
+                    Text(text=str(b.get("text", "")), parent=parent, usage=usage)
+                )
             elif bt == "thinking":
-                out.append(Thinking(text=str(b.get("thinking", "")), parent=parent, usage=usage))
+                out.append(
+                    Thinking(
+                        text=str(b.get("thinking", "")), parent=parent, usage=usage
+                    )
+                )
             elif bt == "tool_use":
                 inp = b.get("input")
                 out.append(

@@ -45,4 +45,9 @@ def test_nested_provider_form(tmp_path: Path):
         "agents:\n  x:\n    provider: {name: claude-code, model: haiku, effort: low, permission: read}\n"
     )
     (p,) = load_profiles(tmp_path)
-    assert (p.harness, p.model, p.effort, p.permission) == ("claude-code", "haiku", "low", "read")
+    assert (p.harness, p.model, p.effort, p.permission) == (
+        "claude-code",
+        "haiku",
+        "low",
+        "read",
+    )
