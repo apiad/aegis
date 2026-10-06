@@ -1,4 +1,4 @@
-.PHONY: check lint lint-docs lint-detail format format-check typecheck typecheck-advisory changelog changelog-check test test-cov test-all test-live coverage know-how
+.PHONY: check lint lint-docs lint-detail format format-check typecheck typecheck-advisory changelog changelog-check test test-cov test-all test-live test-browser bench2 coverage know-how
 
 # The order is the point: the tests run before the advisory stage, so nothing
 # optional can stop the gate from reaching them. `typecheck` used to sit here
@@ -71,6 +71,10 @@ test-all:
 # fake claude. Marked slow too, so `make test` skips them; CI runs them.
 test-browser:
 	uv run pytest -q -m browser
+
+# aegis2's transcript path, measured (scripts/bench2.py). Reports, never gates.
+bench2:
+	uv run python scripts/bench2.py --out .aegis2-bench.json
 
 # Real agent CLIs, models and remote hosts: spends quota, touches the VPS.
 # Select by marker, never with -k "not live": -k matches substrings and silently
