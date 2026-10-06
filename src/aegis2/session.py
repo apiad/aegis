@@ -36,8 +36,14 @@ from .transcript.store import Store, read_store
 
 Publish = Callable[[str, list[dict]], None]
 
-# What a fleet card shows; a change to any of these publishes the session.
-_SHOWN = ("status", "activity", "cost_usd", "context_tokens", "context_window", "handle", "title", "model_id")
+# What a fleet card shows. A change to one of _NOW publishes the session at
+# once; the others change on nearly every line of a turn (context grows with
+# each message, activity with each call), so they wait up to PUBLISH_EVERY_S
+# and go out together. Publishing them per line doubled the server's cost per
+# line in bench2 (issue #127).
+_NOW = ("status", "handle", "title", "model_id")
+_SOON = ("activity", "cost_usd", "context_tokens", "context_window")
+PUBLISH_EVERY_S = 0.25
 
 
 @dataclass(frozen=True)
@@ -100,6 +106,7 @@ class Session:
         self._proc: ClaudeProcess | None = None
         self._stopping = False
         self._interrupt_timer: asyncio.Task | None = None
+        self._publish_timer: asyncio.TimerHandle | None = None
 
     # -- what the outside sees -------------------------------------------
     def meta(self) -> dict:
@@ -175,8 +182,16 @@ class Session:
         if self.running:
             return
         resume = self.claude_session_id
-        argv = build_argv(self._claude_bin, self.spec.model, self.spec.effort, self.spec.permission, resume)
-        proc = ClaudeProcess(argv, self.spec.cwd, self._stderr_path, self._on_line, self._on_exit)
+        argv = build_argv(
+            self._claude_bin,
+            self.spec.model,
+            self.spec.effort,
+            self.spec.permission,
+            resume,
+        )
+        proc = ClaudeProcess(
+            argv, self.spec.cwd, self._stderr_path, self._on_line, self._on_exit
+        )
         await proc.start()
         self._proc = proc
         self._stopping = False
@@ -190,7 +205,9 @@ class Session:
         if not self.title:
             self._set(title=default_title(text))
         self._record({"kind": "send", "text": text})
-        await self._proc.write({"type": "user", "message": {"role": "user", "content": text}})
+        await self._proc.write(
+            {"type": "user", "message": {"role": "user", "content": text}}
+        )
         self._set(status="working")
 
     async def interrupt(self) -> None:
@@ -237,15 +254,21 @@ class Session:
     async def _interrupt_deadline(self) -> None:
         await asyncio.sleep(self._interrupt_timeout)
         if self.status == "working" and self._proc is not None:
-            self._record({"kind": "interrupt_timeout", "after_s": self._interrupt_timeout})
+            self._record(
+                {"kind": "interrupt_timeout", "after_s": self._interrupt_timeout}
+            )
             self._set(status="error")
 
     def _record(self, record: dict, events: list | None = None) -> None:
         fold = self.fold()
         stored = self.store.append({"ts": time.time(), "src": "aegis2", **record})
         self.last_activity = stored["ts"]
-        self._publish(self.channel, fold.apply(stored, events))
-        self._set(activity=fold.activity())
+        ops = fold.apply(stored, events)
+        self._publish(self.channel, ops)
+        if any(
+            op.get("upsert", {}).get("kind") in ("user", "prose", "tool") for op in ops
+        ):
+            self._set(activity=fold.activity())
 
     def _set(self, **changes: object) -> None:
         changes = {k: v for k, v in changes.items() if getattr(self, k) != v}
@@ -255,12 +278,27 @@ class Session:
             setattr(self, k, v)
         if "status" in changes:
             self.last_status = self.status
-        if any(k in _SHOWN for k in changes):
-            self._publish("sessions", [{"upsert": self.wire()}])
+        if any(k in _NOW for k in changes):
+            self._publish_now()
+        elif any(k in _SOON for k in changes) and self._publish_timer is None:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self._publish_now()
+            else:
+                self._publish_timer = loop.call_later(
+                    PUBLISH_EVERY_S, self._publish_now
+                )
         if changes.get("status") in ("idle", "stopped", "error"):
             self._metas.write(self.meta())
         else:
-            self._metas.write_soon(self.meta())
+            self._metas.write_soon(self.log_id, self.meta)
+
+    def _publish_now(self) -> None:
+        if self._publish_timer is not None:
+            self._publish_timer.cancel()
+            self._publish_timer = None
+        self._publish("sessions", [{"upsert": self.wire()}])
 
     def _on_line(self, line: str) -> None:
         if self._stopping:
