@@ -31,8 +31,8 @@ on one machine. It never reads the old tree's state. The one file both read is
 `.aegis.yaml`, and aegis2 reads only its `agents:` map.
 
 **No imports from the old tree.** Code that is already right is copied and
-adapted, never imported, and imports inside aegis2 are relative. An AST test
-enforces the first rule. The second makes the final rename one mechanical commit.
+adapted, never imported, and imports inside aegis2 are relative.
+`tests/aegis2/test_imports.py` enforces both by AST. The second makes the final rename one mechanical commit.
 
 ## Rules that span modules
 
@@ -63,10 +63,17 @@ writing one needs no framework.
 theme might show, and the base stylesheet reads only CSS variables. A theme sets
 the variables and a few overrides that decide what shows.
 
-**The store keeps raw events; entries are derived.** A transcript file holds parsed
-harness events with their receive times. Entries are folded from them on load, with
-deterministic ids, so a better summary applies to old transcripts and a resume
-reads the same file the live session wrote.
+**The store keeps raw lines; entries are derived.** A transcript file holds the
+harness's raw stdout lines and what aegis2 did (spawn, send, interrupt, exit,
+close), each with its receive time and its own index. Entries are folded from them
+on load, with deterministic ids, so a better summary applies to old transcripts and
+a resume reads the same file the live session wrote.
+
+**The patches add up to the entries.** A browser that saw every patch from a
+snapshot on holds exactly the session's live entries, and those equal a fresh fold
+of the store. A reload and a live view must never disagree. The session tests check
+both after every scenario, because the first bug the browser found was a patch that
+left out an update the entries had.
 
 **A transcript is keyed by a log id minted at spawn, never by a handle.** Handles
 are reused; keying on them once merged unrelated conversations into one file in
@@ -86,7 +93,8 @@ returned.
 
 **Three roots, never `Path.cwd()`.** The CLI reads the working directory once to
 build the config root, state root and harness cwd, and passes them down. Nothing
-below it calls `Path.cwd()`, and an AST test fails if something does.
+below it calls `Path.cwd()`, and `tests/aegis2/test_no_cwd.py` fails if something
+does.
 
 **A damaged file never takes a session down.** A store line that does not parse is
 skipped and counted; a stdout line that does not parse is stored and shown as a
@@ -96,9 +104,10 @@ system entry.
 localhost port is not trusted either: the websocket needs the server's token and
 its own origin, because any page in the browser can open a socket to localhost.
 
-**Performance is measured on every PR and never gates.** The bench replays a
-recorded transcript through a fake harness, and CI compares the PR's base and head
-on the same runner. A regression is a warning a reader has to weigh.
+**Performance is measured on every PR and never gates.** `scripts/bench2.py`
+replays a recorded transcript through the fake harness in
+`tests/aegis2/fake_claude.py`, and CI compares the PR's base and head on the same
+runner. A regression is a warning a reader has to weigh.
 
 # The frozen tree: aegis
 

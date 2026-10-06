@@ -1,7 +1,9 @@
 # aegis2 slice 1: one Claude Code session in a browser tab
 
-**Status: draft, 2026-10-06.** Designed with Alex in one brainstorming session.
-Nothing is built. It is the first slice of the aegis2 vision
+**Status: implemented, 2026-10-06,** on the branch `docs/aegis2-slice-1`
+(issue #124), following `docs/superpowers/plans/2026-10-06-aegis2-slice-1.md`.
+Designed with Alex in one brainstorming session. Where the build changed the
+design, this file says so in place. It is the first slice of the aegis2 vision
 (`2026-10-05-aegis2-vision-design.md`, on the branch `docs/aegis2-vision` until
 that PR merges) and the first code under `src/aegis2/`.
 
@@ -112,11 +114,11 @@ slice 2.
 |---|---|
 | `roots.py` | The config root, state root and harness cwd, passed explicitly to everything that resolves a path |
 | `profiles.py` | Reads the `agents:` map of `.aegis.yaml` under the config root |
-| `models.py` | Context windows by model, copied from the old model registry's bundled table; only what the status line needs |
 | `claude/stream.py` | Parses stream-json lines into typed events; copied and adapted from `src/aegis/events.py` |
 | `claude/process.py` | Spawns, writes to, interrupts and closes the `claude -p` child |
 | `transcript/store.py` | Appends raw events to `<state>/transcripts/<log_id>.jsonl`; reads skip damaged lines |
-| `transcript/entries.py` | Folds events into entries with the decisions made; copied from `render_shared.py` |
+| `transcript/describe.py` | Glyphs, labels, verdicts, args and diff windows of tool calls; copied from `render_shared.py` |
+| `transcript/entries.py` | Folds store records into entries with every decision made |
 | `session.py` | The session: status, cost, context, the fold, and publishing to channels |
 | `ops.py` | The operation registry |
 | `channels.py` | Named channels: snapshot on subscribe, then numbered patches |
@@ -124,8 +126,10 @@ slice 2.
 | `cli.py` | `aegis2 serve` |
 | `client/` | Static ES modules, vendored markdown-it, three theme CSS files, fonts |
 
-**The store keeps raw events, not entries.** Each line is one parsed event with
-its receive time. Entries are derived by folding events on load, so a better
+**The store keeps raw lines, not entries.** Each record is either a raw Claude
+stdout line or something aegis2 did (spawn, send, interrupt, exit, close), with
+its receive time and its own index, so skipping a damaged line on load never
+shifts the ids after it. Entries are derived by folding records on load, so a better
 summary or glyph applies to old transcripts too, and slice 2's resume reads the
 same file. A stdout line that does not parse is stored as an `unknown` event with
 the raw text and renders as a system entry; it never stops the session.
@@ -201,7 +205,9 @@ replies `bad_params` with the pydantic message.
 - **`session`** holds the live session or `null`: `log_id`, `profile`, `model`,
   `effort`, `permission`, `cwd`, `status` (starting, idle, working, error,
   closed), `cost_usd`, `context_tokens`, `context_window`, `started_at`. Its patch
-  op is `{"set":{…}}`, a shallow merge.
+  ops are `{"set":{…}}`, a shallow merge of changed fields, and
+  `{"replace":value}`, used when a session appears or goes away. The build
+  added `replace`: a merge cannot turn an object back into null.
 - **`transcript:<log_id>`** holds the entries in order. Its patch ops are
   `{"upsert":entry}` and `{"remove":id}`. An upsert of an unknown id appends; of a
   known id, replaces in place.
@@ -223,8 +229,14 @@ replies `bad_params` with the pydantic message.
   that shows, whether it starts collapsed, and the diff window of an edit as
   hunks of old and new lines.
 - **Ids are deterministic,** so re-folding a store gives the same ids: a tool
-  entry is its `tool_use_id`; every other entry is `e<index>` where the index is
-  the event's position in the store; a pending prompt is `pending:<n>`.
+  entry is its `tool_use_id`; every other entry is `e<record>.<block>`, since
+  one Claude line can carry several blocks; a pending prompt is
+  `pending:<record>`.
+- **The context window** comes from the `result` line's
+  `modelUsage[model].contextWindow`, which Claude Code 2.1.283 reports. The
+  copied model table the design first planned was not needed.
+- **A call still running when its turn ends** gets the verdict `interrupted`
+  or `no result`, because no result will ever come for it.
 
 ## The client
 
@@ -306,7 +318,11 @@ The old aegis uses `.aegis/state/` and its own ports, so both run on one machine
 - a system notice never moves the session to `working`;
 - the user entry comes from the echo, not the send, and two sends before one
   echo match in order;
-- re-folding a store gives identical entries and ids.
+- re-folding a store gives identical entries and ids;
+- the patches a session published add up to its live entries. This one was
+  added during the build, after a result's patch left out the update of an
+  interrupted call while the live entries had it, so a reload and a live view
+  disagreed.
 
 **Unit tests** cover the stream parser (with its old tests copied), the fold, the
 store, the registry's validation, channel sequence numbers, and the profile
@@ -339,6 +355,13 @@ speed and reports:
 
 The fixture is a store file, so any real session becomes a bench input. Slice 1
 ships one recorded from a real working session, scrubbed of anything private.
+
+First run on zion, 2026-10-06: 54 µs p50 and 135 µs p95 per Claude line on
+the server; 2.1 ms p50 and 8.2 ms p95 from the fake writing a tool line to its
+row being in the DOM; 762 ms cold load of 2,325 entries; 53 MB server RSS and
+7 MB JS heap. Replaying to 2,000 rows took 12.6 s, about 3 ms per line. The cause is not
+measured yet; the first suspect is the layout read in `Transcript.apply`, which
+asks on every patch whether the reader is at the bottom.
 
 **Noticed, never gated.** CI runs the bench twice on one runner, on the PR's
 base commit and on its head, so the difference between runner machines cancels
