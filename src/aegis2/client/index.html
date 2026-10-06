@@ -14,7 +14,9 @@
 <body>
 <div id="a2" class="app" data-view="boot">
   <header class="tabs">
-    <div class="tab on" id="tab"><span class="dot ghost" id="tab-dot"></span><span id="tab-name">aegis2</span><span class="srv" id="tab-srv"></span></div>
+    <div class="tab home" id="tab-fleet" title="Fleet (Alt+0)">Fleet</div>
+    <div class="tablist" id="tablist"></div>
+    <div class="tab add" id="tab-add" title="New session">+</div>
     <div class="gap"></div>
     <div class="servers"><span class="dot ghost" id="conn-dot"></span><span id="conn-text">connecting</span></div>
     <label class="theme-pick">Theme
@@ -27,6 +29,14 @@
   </header>
 
   <main class="view v-boot"><div class="notice" id="boot-text">Connecting…</div></main>
+
+  <main class="view v-fleet">
+    <section class="cards" id="cards"></section>
+    <section class="archive">
+      <div class="archive-head"><h3>Archive</h3><input id="arch-q" placeholder="Filter by title, handle or directory" spellcheck="false"></div>
+      <div id="arch-list"></div>
+    </section>
+  </main>
 
   <main class="view v-spawn">
     <form class="spawn" id="spawn">
@@ -62,8 +72,9 @@
     </section>
     <aside class="side">
       <div class="sec"><h4>Session</h4>
-        <div class="title" id="s-title"></div>
-        <div class="kv"><span id="s-model"></span><span class="st" id="s-status"></span></div>
+        <div class="title editable" id="s-title" title="Click to rename"></div>
+        <div class="kv"><span class="handle editable" id="s-handle" title="Click to rename"></span><span class="st" id="s-status"></span></div>
+        <div class="kv"><span id="s-model"></span></div>
         <div class="kv dim"><span class="path" id="s-cwd"></span></div>
       </div>
       <div class="sec"><h4>Context</h4>
@@ -71,7 +82,9 @@
         <div class="kv"><span id="s-tokens">no turn yet</span><span id="s-pct"></span></div>
         <div class="kv"><span>Cost</span><span id="s-cost">$0.00</span></div>
       </div>
-      <div class="sec"><button class="btn" id="close">Close session</button></div>
+      <div class="sec acts live-only"><button class="btn" id="stop-session" title="End the process; the next message resumes it">Stop</button><button class="btn" id="close" title="Archive it: the tab goes away in every browser">Close</button></div>
+      <div class="sec read-only"><p class="sub">Archived. Reopen it to continue the conversation.</p><button class="btn primary" id="reopen">Reopen</button></div>
+      <p class="sub err-text" id="side-error"></p>
     </aside>
   </main>
 </div>

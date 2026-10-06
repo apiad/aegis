@@ -17,6 +17,7 @@ Two rules from Claude Code's measured behaviour live here:
 
 from __future__ import annotations
 
+import re
 from collections import deque
 from typing import Any
 
@@ -381,7 +382,12 @@ class Fold:
         return self._upsert(e)
 
 
+_MARKUP = re.compile(r"(\*\*|__|`|^#+\s*|^>\s*)")
+
+
 def _cut(line: str, n: int = 80) -> str:
+    """One line for a card: Markdown emphasis, code and heading marks dropped."""
+    line = _MARKUP.sub("", line).strip()
     return line if len(line) <= n else line[: n - 1] + "…"
 
 
