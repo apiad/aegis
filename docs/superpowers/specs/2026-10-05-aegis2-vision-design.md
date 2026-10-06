@@ -54,28 +54,20 @@ are written for agents, not strangers.
 ## Topology
 
 ```mermaid
-flowchart LR
+flowchart TB
+  subgraph vps["VPS · shared"]
+    VS[(aegis2 server)]
+  end
   subgraph zion["zion · Alex"]
     AB[browser] -->|home token| ZS[(aegis2 server)]
-    ZS --> ZH[harness sessions]
-  end
-  subgraph phone["phone · Alex"]
-    PB[browser]
   end
   subgraph yudi["laptop · Yudi"]
     YB[browser] -->|home token| YS[(aegis2 server)]
-    YS --> YH[harness sessions]
   end
-  subgraph daniel["laptop · Daniel"]
-    DB[browser]
-  end
-  subgraph vps["VPS · shared"]
-    VS[(aegis2 server)] --> VH[harness sessions]
-  end
+  PB[Alex's phone · browser] -->|home token| VS
+  DB[Daniel · browser] -->|home token| VS
   ZS ==>|"link · Alex's VPS token"| VS
   YS ==>|"link · Yudi's VPS token"| VS
-  PB -->|home token| VS
-  DB -->|home token| VS
 ```
 
 - **A server per working machine.** A server runs harness sessions, stores
@@ -178,22 +170,19 @@ sequenceDiagram
 
 ```mermaid
 flowchart TB
-  BR[browser] -->|client protocol · WebSocket| CP
-  HN[Claude Code / OpenCode / lovelaice] -->|MCP| MCP
+  BR[browser] -->|client protocol| CP
+  HN[Claude Code · OpenCode · lovelaice] -->|MCP| MCP
   subgraph S["aegis2 server"]
     CP[client endpoint] --> REG
     MCP[MCP endpoint] --> REG
-    REG[operation registry] --> CORE
-    CORE[sessions · transcripts · users · session panels]
-    CH[state channels] --> CP
-    CORE --> CH
-    RT[plugin runtime] -->|registers operations, channels, panels, hooks| REG
-    LC[link client]
+    REG[operation registry] --> CORE[sessions · transcripts · users · session panels · state channels]
+    REG -->|addressed to another server| LC[link client]
+    RT[plugin runtime] -->|operations, channels, panels, hooks| REG
   end
   CORE -->|spawn, stream-json| HN
+  LC <-->|client protocol| OS[(other server)]
   RT <-->|JSON-RPC · unix socket| BH[bundled plugin host]
   RT <-->|JSON-RPC · unix socket| DP[plugin under development]
-  LC <-->|client protocol| OS[(other server)]
 ```
 
 The core holds what it takes to run a session, see it and talk to it, across
@@ -298,7 +287,7 @@ sequenceDiagram
   Ag->>Ag: end turn
   S->>C: transcript channel patch
   C->>C: render the panel in a sandboxed iframe
-  C->>S: Alex submits; panel state as JSON
+  C->>S: Alex submits, with the panel state as JSON
   S->>Ag: user turn "from panel pick-a-layout" with the state
   S->>C: panel collapses to a one-line record of the choice
 ```
