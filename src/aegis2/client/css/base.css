@@ -2,6 +2,16 @@
    new theme is a copy of one variable block plus a few overrides. */
 *{box-sizing:border-box}
 #a2 [hidden]{display:none !important}
+
+/* Scrollbars in the theme's colors: thin, a thumb in the rule color that
+   brightens under the pointer, no track. */
+#a2 *{scrollbar-width:thin;scrollbar-color:var(--rule) transparent}
+#a2 *:hover{scrollbar-color:var(--faint) transparent}
+#a2 ::-webkit-scrollbar{width:8px;height:8px}
+#a2 ::-webkit-scrollbar-track{background:transparent}
+#a2 ::-webkit-scrollbar-thumb{background:var(--rule);border-radius:4px;border:2px solid transparent;background-clip:padding-box}
+#a2 ::-webkit-scrollbar-thumb:hover{background:var(--faint);background-clip:padding-box}
+#a2 ::-webkit-scrollbar-corner{background:transparent}
 html,body{margin:0;height:100%}
 body{background:#000}
 #a2{height:100vh;display:grid;grid-template-rows:auto 1fr;overflow:hidden;
@@ -40,7 +50,7 @@ body{background:#000}
 
 /* transcript */
 #a2 .col{display:grid;grid-template-rows:1fr auto;min-height:0;position:relative}
-#a2 .tr{overflow-y:auto;padding:18px 22px 8px;position:relative;scrollbar-width:thin}
+#a2 .tr{overflow-y:auto;padding:18px 22px 8px;position:relative}
 #a2 .tr:before{content:"";display:var(--thread);position:absolute;left:32px;top:24px;bottom:0;width:1px;background:var(--rule)}
 #a2 .row{display:grid;grid-template-columns:var(--row-cols);column-gap:10px;margin:0 0 9px;min-width:0}
 #a2 .row .t{display:var(--time);width:38px;font-family:var(--font-mono);font-size:11px;color:var(--faint);line-height:1.9}
