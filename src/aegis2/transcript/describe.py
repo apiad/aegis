@@ -42,6 +42,7 @@ PROSE_GLYPH = "⏺"
 THINKING_GLYPH = "✻"
 SYSTEM_GLYPH = "·"
 ERROR_GLYPH = "✗"
+COMMS_GLYPH = "⇄"
 
 # How much of a result the one-line verdict may carry.
 DIGEST_MAX = 200
@@ -56,13 +57,39 @@ def _tail(path: str) -> str:
     return path.rsplit("/", 1)[-1] if path else ""
 
 
+AEGIS_PREFIX = "mcp__aegis__"
+
+
 def tool_glyph(name: str) -> str:
+    if name.startswith(AEGIS_PREFIX):
+        return COMMS_GLYPH
     return KIND_GLYPH[KIND_BY_NAME.get(name, "other")]
+
+
+def tool_title(name: str) -> str:
+    """A call to aegis is named by its verb; ``mcp__aegis__`` is noise."""
+    return name.removeprefix(AEGIS_PREFIX)
+
+
+def _aegis_label(verb: str, inp: dict) -> str:
+    first = lambda v: next((ln.strip() for ln in str(v).splitlines() if ln.strip()), "")  # noqa: E731
+    if verb == "monitor_start":
+        return _trunc(inp.get("description", ""), 70)
+    if verb == "queue_enqueue":
+        return _trunc(f"{inp.get('queue', '')}: {first(inp.get('payload', ''))}", 70)
+    if verb in ("peer_handoff", "peer_read"):
+        return str(inp.get("target", ""))
+    for v in inp.values():
+        if isinstance(v, str) and v.strip():
+            return _trunc(v, 60)
+    return ""
 
 
 def tool_label(name: str, inp: dict) -> str:
     """The shortest honest name for a call: which call it was, without its
     arguments, except a search's pattern, which is which search it was."""
+    if name.startswith(AEGIS_PREFIX):
+        return _aegis_label(tool_title(name), inp)
     if name == "Bash":
         if inp.get("description"):
             return str(inp["description"])

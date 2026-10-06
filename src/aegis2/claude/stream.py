@@ -84,9 +84,15 @@ class Result:
 @dataclass(frozen=True)
 class Notice:
     """A system line that is not part of any turn: hooks, thinking-token
-    estimates, task notices. It never moves a session to working."""
+    estimates, task notices. It never moves a session to working.
+
+    Claude's own tasks (a Bash call, a background command) are reported as
+    ``task_started`` and closed by ``task_notification`` with a ``status``;
+    a session's open tasks are the ids started and not yet notified."""
 
     subtype: str
+    task_id: str | None = None
+    status: str | None = None
 
 
 @dataclass(frozen=True)
@@ -189,7 +195,13 @@ def parse(line: str) -> list[Event]:
                     post_tokens=int(meta.get("post_tokens") or 0),
                 )
             ]
-        return [Notice(subtype=sub)]
+        return [
+            Notice(
+                subtype=sub,
+                task_id=_str(obj.get("task_id")),
+                status=_str(obj.get("status")),
+            )
+        ]
 
     if etype == "result":
         window = None

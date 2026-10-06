@@ -12,6 +12,11 @@ stdout. The text of a prompt picks a script:
     /big           a Read whose result is 2 MB on one line.
     /exit N        a few stderr lines, then exit with code N.
     /recall        text listing the prompts this session id received before.
+    /mcp T JSON    call tool T of the aegis MCP server named in --mcp-config with
+                   arguments JSON, as a tool call and its result, then a result.
+    /bgtask N      start a background task (task_started) and end the turn; N
+                   seconds later the task is notified and the fake wakes itself
+                   with a second turn, as Claude does.
     anything else  text that quotes the prompt, then a result.
 
 An interrupt ``control_request`` ends a running script with an error result.
@@ -37,6 +42,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.request
 import uuid
 
 OUT = threading.Lock()
@@ -49,6 +55,43 @@ SESSION_ID = (
     else str(uuid.uuid4())
 )
 HOME = os.environ.get("FAKE_CLAUDE_HOME") or tempfile.gettempdir()
+
+
+def mcp_call(tool: str, arguments: dict) -> tuple[bool, str]:
+    """POST one tools/call to the server and header in --mcp-config."""
+    try:
+        cfg = json.loads(sys.argv[sys.argv.index("--mcp-config") + 1])["mcpServers"][
+            "aegis"
+        ]
+    except (ValueError, KeyError, IndexError):
+        return False, "no aegis MCP server configured"
+    body = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": tool, "arguments": arguments},
+        }
+    )
+    req = urllib.request.Request(
+        cfg["url"],
+        data=body.encode(),
+        headers={
+            "content-type": "application/json",
+            "accept": "application/json, text/event-stream",
+            **cfg.get("headers", {}),
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            reply = json.loads(r.read())
+    except Exception as e:  # noqa: BLE001
+        return False, f"{type(e).__name__}: {e}"
+    if "error" in reply:
+        return False, json.dumps(reply["error"])
+    res = reply["result"]
+    text = "".join(c.get("text", "") for c in res.get("content", []))
+    return not res.get("isError"), text
 
 
 def prompts_file() -> str:
@@ -211,6 +254,49 @@ def run(text: str) -> None:
         )
         tool_output(tid, "\n".join(f"line {i} " + "x" * 60 for i in range(30000)))
         result()
+    elif word == "/mcp":
+        tool, _, raw = arg.partition(" ")
+        tid = tool_id()
+        args = json.loads(raw or "{}")
+        assistant(
+            {
+                "type": "tool_use",
+                "id": tid,
+                "name": f"mcp__aegis__{tool}",
+                "input": args,
+            }
+        )
+        ok, text = mcp_call(tool, args)
+        tool_output(tid, text, is_error=not ok)
+        assistant({"type": "text", "text": f"mcp {'ok' if ok else 'error'}: {text}"})
+        result()
+    elif word == "/bgtask":
+        task_id = f"bg{state['tool']}"
+        emit(
+            {
+                "type": "system",
+                "subtype": "task_started",
+                "task_id": task_id,
+                "is_backgrounded": True,
+            }
+        )
+        assistant({"type": "text", "text": "started a background task"})
+        result()
+
+        def finish():
+            time.sleep(float(arg or 1))
+            emit(
+                {
+                    "type": "system",
+                    "subtype": "task_notification",
+                    "task_id": task_id,
+                    "status": "completed",
+                }
+            )
+            assistant({"type": "text", "text": "the background task finished"})
+            result()
+
+        threading.Thread(target=finish, daemon=True).start()
     elif word == "/recall":
         assistant({"type": "text", "text": "earlier: " + " | ".join(before)})
         result()

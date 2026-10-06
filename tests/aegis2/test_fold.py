@@ -314,3 +314,35 @@ def test_activity_drops_markdown_marks():
     r = Rec()
     r.text("## Done: **all** tests pass in `make test`")
     assert run(r)[0].activity() == "Done: all tests pass in make test"
+
+
+def test_an_inbox_message_is_its_own_kind():
+    r = Rec()
+    r.echo("> from monitor:01M4 · ok · 2026-10-06T10:00:00Z\npytest finished")
+    (e,) = run(r)[0].entries()
+    assert (e["kind"], e["glyph"], e["title"]) == (
+        "inbox",
+        "⇄",
+        "monitor:01M4 · ok · 2026-10-06T10:00:00Z",
+    )
+
+
+def test_a_call_to_aegis_is_named_by_its_verb():
+    r = Rec()
+    r.call(
+        "t1",
+        "mcp__aegis__monitor_start",
+        {"description": "Run the tests", "done": "test -f x"},
+    )
+    r.call(
+        "t2",
+        "mcp__aegis__queue_enqueue",
+        {"queue": "general", "payload": "\nReview PR 12\nmore"},
+    )
+    a, b = run(r)[0].entries()
+    assert (a["title"], a["glyph"], a["summary"]) == (
+        "monitor_start",
+        "⇄",
+        "Run the tests",
+    )
+    assert b["summary"] == "general: Review PR 12"

@@ -11,8 +11,8 @@ class Echo(BaseModel):
 def make() -> Registry:
     r = Registry()
 
-    @r.op("echo", Echo)
-    async def echo(p: Echo):
+    @r.op("echo", Echo, agent=True)
+    async def echo(p: Echo, caller):
         if p.text == "boom":
             raise OpError("boom", "asked to fail")
         return p.text.upper()
@@ -47,3 +47,25 @@ def test_names_and_double_registration():
     assert r.names() == ["echo"]
     with pytest.raises(ValueError):
         r.op("echo", Echo)(lambda p: None)
+
+
+async def test_agents_reach_only_agent_operations_and_carry_their_session():
+    from aegis2.ops import Caller
+
+    r = make()
+
+    @r.op("private")
+    async def private(p, caller):
+        return "secret"
+
+    @r.op("whoami", agent=True)
+    async def whoami(p, caller):
+        return caller.log_id
+
+    agent = Caller("agent", "log-1")
+    assert await r.call("whoami", {}, agent) == "log-1"
+    with pytest.raises(OpError) as e:
+        await r.call("private", {}, agent)
+    assert e.value.code == "not_for_agents"
+    assert await r.call("private", {}) == "secret"
+    assert [o.tool_name for o in r.agent_ops()] == ["echo", "whoami"]
