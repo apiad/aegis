@@ -308,3 +308,9 @@ def test_activity_prefers_a_running_call_then_the_latest_prose():
     assert run(r)[0].activity() == "Bash · Run tests"
     r.output("t1", "ok")
     assert run(r)[0].activity() == "Looking at the tests now."
+
+
+def test_activity_drops_markdown_marks():
+    r = Rec()
+    r.text("## Done: **all** tests pass in `make test`")
+    assert run(r)[0].activity() == "Done: all tests pass in make test"

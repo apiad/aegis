@@ -14,7 +14,7 @@
 #a2 ::-webkit-scrollbar-corner{background:transparent}
 html,body{margin:0;height:100%}
 body{background:#000}
-#a2{height:100vh;display:grid;grid-template-rows:auto 1fr;overflow:hidden;
+#a2{height:100vh;display:grid;grid-template-rows:auto 1fr;grid-template-columns:minmax(0,1fr);overflow:hidden;
   background:var(--bg);color:var(--ink);font-family:var(--font-ui)}
 #a2 button,#a2 input,#a2 select,#a2 textarea{font:inherit;color:inherit}
 
@@ -24,6 +24,16 @@ body{background:#000}
 #a2 .tab.on{background:var(--bg);color:var(--strong);box-shadow:inset 0 2px 0 var(--accent)}
 #a2 .tab .srv{opacity:.55}
 #a2 .tabs .gap{flex:1}
+#a2 .tabs{min-width:0}
+#a2 .tablist{display:flex;gap:2px;flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
+#a2 .tablist::-webkit-scrollbar{display:none}
+#a2 .tab{cursor:pointer;user-select:none}
+#a2 .tab .tname{max-width:22ch;overflow:hidden;text-overflow:ellipsis}
+#a2 .tab.home{font-weight:500}
+#a2 .tab.add{font-size:15px;padding:4px 12px}
+#a2 .tab.stopped{opacity:.6}
+#a2 .tab.dragging{opacity:.35}
+#a2 .tab.drop{box-shadow:inset 2px 0 0 var(--accent)}
 #a2 .tabs .servers{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--faint);padding:0 10px}
 #a2 .theme-pick{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--faint);padding:0 4px 6px}
 #a2 .theme-pick select{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:2px 6px;font-size:11.5px}
@@ -36,6 +46,9 @@ body{background:#000}
 #a2[data-view=boot] .v-boot{display:grid;place-items:center}
 #a2[data-view=spawn] .v-spawn{display:grid;place-items:start center;overflow:auto;padding:48px 20px}
 #a2[data-view=session] .v-session{display:grid;grid-template-columns:1fr 260px}
+#a2[data-view=fleet] .v-fleet{display:block;overflow:auto}
+#a2[data-mode=read] .composer,#a2[data-mode=read] .side .live-only{display:none}
+#a2:not([data-mode=read]) .read-only{display:none}
 #a2 .notice{color:var(--muted);font-size:14px;max-width:520px;text-align:center;line-height:1.5}
 
 /* spawn form */
@@ -130,3 +143,42 @@ body{background:#000}
   #a2 .side{display:none}
   #a2 .spawn .three{grid-template-columns:1fr}
 }
+
+/* fleet */
+#a2 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;padding:18px 20px}
+#a2 .card{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:12px 14px;font-size:12.5px;display:flex;flex-direction:column;gap:7px;cursor:pointer;min-width:0}
+#a2 .card:hover{border-color:var(--faint)}
+#a2 .card.working{border-color:var(--accent)}
+#a2 .card.error{border-color:var(--err)}
+#a2 .card.stopped{opacity:.6}
+#a2 .card .hd{display:flex;align-items:center;gap:8px}
+#a2 .card .hd .h{font-family:var(--font-chrome);color:var(--strong);font-weight:500}
+#a2 .card .hd .s{color:var(--faint);font-family:var(--font-chrome);margin-left:auto}
+#a2 .card .ttl{font-family:var(--font-head);color:var(--strong);font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2[data-theme=ink] .card .ttl,[data-theme=ink] #a2 .card .ttl{font-family:var(--font-ui)}
+#a2 .card .ln{color:var(--muted);font-family:var(--font-chrome);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2 .card .ln b{color:var(--faint);font-weight:500;margin-right:6px}
+#a2 .card .act{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);min-height:1.4em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2 .card .bar.thin{height:4px;margin:0}
+#a2 .card .ft{display:flex;gap:12px;font-family:var(--font-chrome);font-size:11.5px;color:var(--faint);border-top:1px solid var(--rule);padding-top:7px}
+#a2 .card .ft .ctx{margin-left:auto}
+#a2 .empty{color:var(--faint);font-size:13px;padding:6px 2px}
+
+/* archive */
+#a2 .archive{padding:4px 20px 24px}
+#a2 .archive-head{display:flex;align-items:center;gap:14px;margin-bottom:10px}
+#a2 .archive-head h3{margin:0;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
+#a2 .archive-head input{flex:1;max-width:420px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 10px;font-size:12.5px}
+#a2 .tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+#a2 .tbl th{text-align:left;font-weight:500;color:var(--faint);padding:6px 8px;border-bottom:1px solid var(--rule);font-family:var(--font-chrome);font-size:11.5px}
+#a2 .tbl td{padding:7px 8px;border-bottom:1px solid var(--rule);color:var(--ink)}
+#a2 .tbl td.m{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+#a2 .tbl td.acts{text-align:right;white-space:nowrap}
+#a2 .tbl td.acts .btn{margin-left:6px;padding:3px 10px}
+
+/* rename in place */
+#a2 .editable{cursor:text;border-radius:4px}
+#a2 .editable:hover{background:var(--raised)}
+#a2 input.rename{width:100%;background:var(--bg);border:1px solid var(--accent);border-radius:4px;padding:2px 6px;font:inherit;color:var(--strong)}
+#a2 .side .acts{display:flex;gap:8px}
+#a2 .side .sub{color:var(--faint);font-size:12px;margin:0 0 8px}
