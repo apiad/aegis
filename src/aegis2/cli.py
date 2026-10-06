@@ -46,9 +46,18 @@ def serve(
         "127.0.0.1", help="Address to bind; anything but loopback must be asked for."
     ),
     claude: str = typer.Option("claude", help="The claude executable to run."),
+    log_level: str = typer.Option(
+        "warning", help="debug, info, warning or error; info logs every operation."
+    ),
 ) -> None:
-    """Serve one Claude Code session to a browser tab."""
+    """Serve Claude Code sessions to browser tabs."""
+    import logging
+
     import uvicorn
+
+    logging.basicConfig(
+        level=log_level.upper(), format="%(asctime)s %(name)s %(levelname)s %(message)s"
+    )
 
     from .app import App
     from .roots import make_roots

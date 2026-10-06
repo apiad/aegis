@@ -14,7 +14,9 @@ import asyncio
 import contextlib
 import hmac
 import json
+import logging
 import os
+import time
 import secrets
 import socket
 from pathlib import Path
@@ -28,6 +30,8 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from .app import App
 from .channels import Sub
 from .ops import OpError
+
+log = logging.getLogger("aegis2.web")
 
 PROTO = 1
 HELLO_TIMEOUT_S = 5.0
@@ -111,17 +115,26 @@ def build_web(app: App, token: str, allowed_hosts: set[str]) -> Starlette:
 
         async def handle_call(msg: dict) -> None:
             reply: dict = {"t": "reply", "id": msg.get("id")}
+            op = str(msg.get("op"))
+            t0 = time.monotonic()
+            log.info("call %s %s", op, msg.get("params"))
             try:
-                reply["result"] = await app.registry.call(
-                    str(msg.get("op")), msg.get("params")
-                )
+                reply["result"] = await app.registry.call(op, msg.get("params"))
             except OpError as e:
                 reply["error"] = {"code": e.code, "message": e.message}
             except Exception as e:  # an operation bug must not kill the socket
+                log.exception("call %s failed", op)
                 reply["error"] = {
                     "code": "internal",
                     "message": f"{type(e).__name__}: {e}",
                 }
+            ms = (time.monotonic() - t0) * 1000
+            log.info(
+                "call %s done in %.0f ms %s",
+                op,
+                ms,
+                reply.get("error", {}).get("code", "ok"),
+            )
             out.put_nowait(reply)
 
         out.put_nowait({"t": "welcome", "proto": PROTO, "server": socket.gethostname()})
