@@ -40,6 +40,17 @@ NO_HELLO = 4408
 BAD_PROTO = 4400
 
 
+class ClientFiles(StaticFiles):
+    """The client's files, revalidated on every load (``no-cache`` plus the
+    ETag Starlette already sends), so an edit to the client shows on the next
+    reload instead of whenever the browser's heuristic cache expires."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def load_or_create_token(state_root: Path) -> str:
     """The server's token, kept in ``<state>/token`` with mode 0600 and reused
     across restarts so an open tab survives one. Delete the file to rotate."""
@@ -158,7 +169,7 @@ def build_web(app: App, token: str, allowed_hosts: set[str]) -> Starlette:
     return Starlette(
         routes=[
             Route("/", index),
-            Mount("/static", StaticFiles(directory=CLIENT_DIR)),
+            Mount("/static", ClientFiles(directory=CLIENT_DIR)),
             WebSocketRoute("/ws", ws),
         ],
         lifespan=lifespan,

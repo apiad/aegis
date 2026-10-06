@@ -56,9 +56,17 @@ class Conn:
         raise AssertionError(f"no matching message in {limit}")
 
 
-def test_index_and_static_are_public(project, fake_claude):
+def test_index_and_static_are_public_and_always_revalidated(project, fake_claude):
     with client_for(project, fake_claude) as c:
         assert c.get("/").status_code == 200
+        css = c.get("/static/css/base.css")
+        assert css.status_code == 200 and css.headers["cache-control"] == "no-cache"
+        assert (
+            c.get(
+                "/static/css/base.css", headers={"if-none-match": css.headers["etag"]}
+            ).status_code
+            == 304
+        )
 
 
 def test_a_wrong_token_is_refused(project, fake_claude):
