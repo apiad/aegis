@@ -20,8 +20,17 @@ STDERR_TAIL = 20
 TERM_GRACE_S = 5.0
 
 
+NO_MCP = '{"mcpServers":{}}'
+
+
 def build_argv(
-    claude_bin: str, model: str, effort: str, permission: str, resume: str | None = None
+    claude_bin: str,
+    model: str,
+    effort: str,
+    permission: str,
+    resume: str | None = None,
+    mcp_config: str = NO_MCP,
+    system_prompt: str | None = None,
 ) -> list[str]:
     argv = [
         claude_bin,
@@ -36,8 +45,10 @@ def build_argv(
         PERMISSION_MODE.get(permission, permission),
         "--strict-mcp-config",
         "--mcp-config",
-        '{"mcpServers":{}}',
+        mcp_config,
     ]
+    if system_prompt:
+        argv += ["--append-system-prompt", system_prompt]
     if model:
         argv += ["--model", model]
     if effort:

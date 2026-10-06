@@ -225,6 +225,14 @@ class Fold:
             ops: list[dict] = []
             if self._pending:
                 ops += self._remove(self._pending.popleft())
+            if ev.text.startswith("> from "):
+                # An inbox message: a monitor wake, a queue result, a handoff.
+                header = ev.text.splitlines()[0].removeprefix("> from ").strip()
+                return ops + self._upsert(
+                    _entry(
+                        id, "inbox", "ok", ts, d.COMMS_GLYPH, title=header, md=ev.text
+                    )
+                )
             return ops + self._upsert(
                 _entry(id, "user", "ok", ts, d.USER_GLYPH, md=ev.text)
             )
@@ -262,7 +270,7 @@ class Fold:
                     "running",
                     ts,
                     d.tool_glyph(ev.name),
-                    title=ev.name,
+                    title=d.tool_title(ev.name),
                     summary=d.tool_label(ev.name, ev.input),
                     detail={"args": d.format_tool_args(ev.name, ev.input), "steps": 0},
                 )
@@ -297,7 +305,7 @@ class Fold:
                     "err" if ev.is_error else "ok",
                     prev["ts"] if prev else ts,
                     d.tool_glyph(name),
-                    title=name,
+                    title=d.tool_title(name),
                     summary=prev["summary"] if prev else "",
                     detail=detail,
                 )

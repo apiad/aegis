@@ -23,7 +23,7 @@ from .meta import MetaStore, rebuild
 from .names import TITLE_MAX, mint_handle, valid_handle
 from .ops import OpError
 from .roots import Roots
-from .session import Session, SpawnSpec
+from .session import Host, Session, SpawnSpec
 from .transcript.entries import fold_records
 from .transcript.store import Store, read_store
 
@@ -35,7 +35,7 @@ def mint_log_id() -> str:
     return f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
 
 
-class Registry:
+class Registry(Host):
     def __init__(
         self,
         roots: Roots,
@@ -50,6 +50,47 @@ class Registry:
         self.metas = MetaStore(roots.state_root / "sessions")
         self.sessions: dict[str, Session] = {}
         self.archived: dict[str, dict] = {}
+        # Set by the app when it wires the MCP endpoint, monitors and queues.
+        self.mcp_url: str | None = None
+        self.tokens = None
+        self.server_name = "aegis2"
+        self.monitors = None
+        self.queues = None
+
+    # -- the Host a session asks ----------------------------------------------
+    def spawn_args(self, session: Session) -> tuple[str | None, str | None]:
+        if self.mcp_url is None or self.tokens is None:
+            return None, None
+        from .mcp import mcp_config, primer
+
+        return mcp_config(self.mcp_url, self.tokens.mint(session.log_id)), primer(
+            session, self.server_name
+        )
+
+    def turn_ended(self, session: Session) -> None:
+        if self.queues is not None:
+            self.queues.turn_ended(session)
+
+    def exited(self, session: Session, code: int, stderr_tail: list[str]) -> None:
+        if self.tokens is not None:
+            self.tokens.drop(session.log_id)
+        if self.queues is not None:
+            self.queues.exited(session, code, stderr_tail)
+
+    def card(self, session: Session) -> dict:
+        return {
+            "monitors": self.monitors.card(session.log_id)
+            if self.monitors is not None
+            else []
+        }
+
+    def refresh_card(self, log_id: str) -> None:
+        s = self.sessions.get(log_id)
+        if s is not None:
+            s._publish_now()
+
+    def by_handle(self, handle: str) -> Session | None:
+        return next((s for s in self.sessions.values() if s.handle == handle), None)
 
     # -- paths ---------------------------------------------------------------
     def store_path(self, log_id: str) -> Path:
@@ -95,6 +136,9 @@ class Registry:
             activity=meta.get("activity") or "",
             model_id=meta.get("model_id"),
             interrupt_timeout=self._interrupt_timeout,
+            host=self,
+            held=meta.get("held"),
+            worker=meta.get("worker"),
         )
 
     def boot(self) -> None:
@@ -158,7 +202,9 @@ class Registry:
             )
         return None
 
-    async def spawn(self, spec: SpawnSpec) -> Session:
+    async def spawn(
+        self, spec: SpawnSpec, worker: dict | None = None, title: str = ""
+    ) -> Session:
         log_id = mint_log_id()
         s = self._session(
             {"log_id": log_id, "handle": mint_handle(self._handles())}
@@ -169,6 +215,8 @@ class Registry:
                 "permission": spec.permission,
                 "cwd": str(spec.cwd),
                 "created_at": time.time(),
+                "worker": worker,
+                "title": title,
             }
         )
         self.sessions[log_id] = s
@@ -186,6 +234,8 @@ class Registry:
 
     async def close(self, log_id: str) -> None:
         s = self.open(log_id)
+        if self.monitors is not None:
+            self.monitors.drop_owner(log_id)
         await s.stop()
         del self.sessions[log_id]
         s.archived = True

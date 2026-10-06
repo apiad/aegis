@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .claude.process import ClaudeProcess, build_argv
-from .claude.stream import TURN_BEARING, Init, Result, parse
+from .claude.stream import TURN_BEARING, Init, Notice, Result, parse
 from .meta import MetaStore
 from .names import default_title
 from .transcript.entries import Fold, fold_records
@@ -44,6 +44,31 @@ Publish = Callable[[str, list[dict]], None]
 _NOW = ("status", "handle", "title", "model_id")
 _SOON = ("activity", "cost_usd", "context_tokens", "context_window")
 PUBLISH_EVERY_S = 0.25
+
+
+class Host:
+    """What a session asks of the server around it. The registry implements
+    it; the default does nothing, which is what a bare session in a test or
+    the bench needs."""
+
+    def spawn_args(self, session: "Session") -> tuple[str | None, str | None]:
+        """The ``--mcp-config`` and the appended system prompt for a new process."""
+        return None, None
+
+    def turn_ended(self, session: "Session") -> None: ...
+
+    def exited(self, session: "Session", code: int, stderr_tail: list[str]) -> None: ...
+
+    def card(self, session: "Session") -> dict:
+        """Extra fields for the session's card on the ``sessions`` channel."""
+        return {}
+
+
+NO_HOST = Host()
+
+
+class Archived(Exception):
+    """A message was sent to an archived session."""
 
 
 @dataclass(frozen=True)
@@ -79,6 +104,9 @@ class Session:
         activity: str = "",
         model_id: str | None = None,
         interrupt_timeout: float = 10.0,
+        host: Host = NO_HOST,
+        held: list[dict] | None = None,
+        worker: dict | None = None,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
@@ -107,6 +135,13 @@ class Session:
         self._stopping = False
         self._interrupt_timer: asyncio.Task | None = None
         self._publish_timer: asyncio.TimerHandle | None = None
+        self._host = host
+        # Inbox messages waiting for this session's turn to end.
+        self.held: list[dict] = list(held or [])
+        self._flushing = False
+        # Claude's own tasks started and not yet notified (Bash, background).
+        self.open_tasks: set[str] = set()
+        self.worker = worker
 
     # -- what the outside sees -------------------------------------------
     def meta(self) -> dict:
@@ -131,14 +166,24 @@ class Session:
             "context_tokens": self.context_tokens,
             "context_window": self.context_window,
             "activity": self.activity,
+            "held": self.held,
+            "worker": self.worker,
         }
 
     def wire(self) -> dict:
         """What the ``sessions`` channel carries."""
         m = self.meta()
+        m.pop("held")
+        m["held_count"] = len(self.held)
         m["state"] = self.status
         m["model"] = self.model_id or self.spec.model
+        m.update(self._host.card(self))
         return m
+
+    @property
+    def busy(self) -> bool:
+        """Mid-turn, or about to start one to receive held messages."""
+        return self.status == "working" or self._flushing or bool(self.held)
 
     def fold(self) -> Fold:
         if self._fold is None:
@@ -182,12 +227,15 @@ class Session:
         if self.running:
             return
         resume = self.claude_session_id
+        mcp_config, system_prompt = self._host.spawn_args(self)
         argv = build_argv(
             self._claude_bin,
             self.spec.model,
             self.spec.effort,
             self.spec.permission,
             resume,
+            **({"mcp_config": mcp_config} if mcp_config else {}),
+            system_prompt=system_prompt,
         )
         proc = ClaudeProcess(
             argv, self.spec.cwd, self._stderr_path, self._on_line, self._on_exit
@@ -195,9 +243,34 @@ class Session:
         await proc.start()
         self._proc = proc
         self._stopping = False
+        self.open_tasks.clear()
         if resume:
             self._record({"kind": "resume", "claude_session_id": resume})
         self._set(status="idle")
+
+    async def deliver(self, header: str, body: str) -> None:
+        """An inbox message. Idle or stopped: sent now (a stopped session is
+        resumed to receive it). Mid-turn: held, and sent with any others when
+        the turn ends, because a prompt written mid-turn would be injected at
+        the next tool boundary instead of waiting."""
+        if self.archived:
+            raise Archived(self.log_id)
+        msg = {"header": header, "body": body, "ts": time.time()}
+        if self.status == "working" or self._flushing:
+            self.held.append(msg)
+            self._metas.write_soon(self.log_id, self.meta)
+            self._publish_now()
+            return
+        await self.send(_inbox_text([msg]))
+
+    async def _flush_held(self) -> None:
+        self._flushing = True
+        try:
+            batch, self.held = self.held, []
+            if batch:
+                await self.send(_inbox_text(batch))
+        finally:
+            self._flushing = False
 
     async def send(self, text: str) -> None:
         await self.ensure_running()
@@ -317,6 +390,11 @@ class Session:
                     changes["model_id"] = ev.model
                 if ev.session_id:
                     changes["claude_session_id"] = ev.session_id
+            if isinstance(ev, Notice) and ev.task_id:
+                if ev.subtype == "task_started":
+                    self.open_tasks.add(ev.task_id)
+                elif ev.subtype == "task_notification":
+                    self.open_tasks.discard(ev.task_id)
             if isinstance(ev, Result):
                 if self._interrupt_timer:
                     self._interrupt_timer.cancel()
@@ -327,10 +405,22 @@ class Session:
                     changes["context_window"] = ev.context_window
         if changes:
             self._set(**changes)
+        if any(isinstance(ev, Result) for ev in events):
+            if self.held:
+                self._flushing = True
+                asyncio.get_running_loop().create_task(self._flush_held())
+            self._host.turn_ended(self)
 
     def _on_exit(self, code: int, stderr_tail: list[str]) -> None:
         if self._stopping:
             return
         self._proc = None
+        self.open_tasks.clear()
         self._record({"kind": "exit", "code": code, "stderr_tail": stderr_tail})
         self._set(status="stopped")
+        self._host.exited(self, code, stderr_tail)
+
+
+def _inbox_text(batch: list[dict]) -> str:
+    """Held messages as one prompt, in arrival order, each under its header."""
+    return "\n\n".join(f"{m['header']}\n{m['body']}".rstrip() for m in batch)

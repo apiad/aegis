@@ -176,15 +176,18 @@ def build_web(app: App, token: str, allowed_hosts: set[str]) -> Starlette:
 
     @contextlib.asynccontextmanager
     async def lifespan(_):
-        app.boot()
-        yield
-        await app.shutdown()
+        # The MCP app keeps its own session manager running for the server's life.
+        async with app.mcp_app.router.lifespan_context(app.mcp_app):
+            await app.boot()
+            yield
+            await app.shutdown()
 
     return Starlette(
         routes=[
             Route("/", index),
             Mount("/static", ClientFiles(directory=CLIENT_DIR)),
             WebSocketRoute("/ws", ws),
+            *app.mcp_app.routes,
         ],
         lifespan=lifespan,
     )

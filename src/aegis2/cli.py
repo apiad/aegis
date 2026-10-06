@@ -74,7 +74,16 @@ def serve(
         f"[::1]:{port}",
         f"{host}:{port}",
     }
-    web = build_web(App(roots, claude_bin=claude), token, allowed)
+    import socket as _socket
+
+    local = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0", "localhost") else host
+    app = App(
+        roots,
+        claude_bin=claude,
+        base_url=f"http://{local}:{port}",
+        server_name=_socket.gethostname(),
+    )
+    web = build_web(app, token, allowed)
     shown = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0") else host
     typer.echo(f"aegis2 serving {roots.config_root}")
     typer.echo(f"open http://{shown}:{port}/?token={token}")

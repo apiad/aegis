@@ -14,7 +14,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from .agent_ops import register_agent_ops
 from .channels import Channels
+from .mcp import PATH as MCP_PATH, Tokens, build_mcp
+from .monitors import Monitors
+from .queues import Queues
 from .ops import OpError, Registry as Ops
 from .profiles import ProfileError, default_profile, load_profiles
 from .registry import Registry
@@ -47,7 +51,7 @@ class LogParams(_Strict):
 
 
 class RenameParams(_Strict):
-    log_id: str
+    log_id: str | None = None
     handle: str | None = None
     title: str | None = None
 
@@ -67,19 +71,43 @@ def _dead(e: Exception) -> OpError:
 
 class App:
     def __init__(
-        self, roots: Roots, claude_bin: str = "claude", interrupt_timeout: float = 10.0
+        self,
+        roots: Roots,
+        claude_bin: str = "claude",
+        interrupt_timeout: float = 10.0,
+        base_url: str | None = None,
+        server_name: str = "aegis2",
     ) -> None:
         self.roots = roots
         self.claude_bin = claude_bin
         self.channels = Channels(self._resolve)
         self.sessions = Registry(roots, self.publish, claude_bin, interrupt_timeout)
+        self.tokens = Tokens()
+        self.monitors = Monitors(self.sessions, roots.state_root / "monitors.json")
+        self.queues = Queues(
+            self.sessions, self.monitors, roots.state_root / "tasks.jsonl"
+        )
+        reg = self.sessions
+        reg.tokens, reg.monitors, reg.queues, reg.server_name = (
+            self.tokens,
+            self.monitors,
+            self.queues,
+            server_name,
+        )
+        reg.mcp_url = f"{base_url.rstrip('/')}{MCP_PATH}" if base_url else None
         self.registry = Ops()
         self._register()
+        register_agent_ops(self)
+        self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
 
-    def boot(self) -> None:
+    async def boot(self) -> None:
         self.sessions.boot()
+        self.monitors.boot()
+        self.monitors.arm_all()
+        await self.queues.resume_after_boot(self.queues.boot())
 
     async def shutdown(self) -> None:
+        await self.monitors.shutdown()
         await self.sessions.shutdown()
 
     def publish(self, channel: str, ops: list[dict]) -> None:
@@ -110,7 +138,7 @@ class App:
         reg = self.sessions
 
         @r.op("profiles.list")
-        async def profiles_list(_):
+        async def profiles_list(_, caller):
             try:
                 profiles = load_profiles(self.roots.config_root)
                 default = default_profile(self.roots.config_root)
@@ -123,7 +151,7 @@ class App:
             }
 
         @r.op("session.spawn", SpawnParams)
-        async def spawn(p: SpawnParams):
+        async def spawn(p: SpawnParams, caller):
             try:
                 profiles = {x.name: x for x in load_profiles(self.roots.config_root)}
             except ProfileError as e:
@@ -151,7 +179,7 @@ class App:
             return {"log_id": s.log_id, "handle": s.handle}
 
         @r.op("session.send", SendParams)
-        async def send(p: SendParams):
+        async def send(p: SendParams, caller):
             s = reg.open(p.log_id)
             try:
                 await s.send(p.text)
@@ -163,28 +191,39 @@ class App:
                 raise _dead(e) from e
 
         @r.op("session.interrupt", LogParams)
-        async def interrupt(p: LogParams):
+        async def interrupt(p: LogParams, caller):
             try:
                 await reg.open(p.log_id).interrupt()
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e
 
         @r.op("session.stop", LogParams)
-        async def stop(p: LogParams):
+        async def stop(p: LogParams, caller):
             await reg.open(p.log_id).stop()
 
         @r.op("session.close", LogParams)
-        async def close(p: LogParams):
+        async def close(p: LogParams, caller):
             await reg.close(p.log_id)
 
         @r.op("session.reopen", LogParams)
-        async def reopen(p: LogParams):
+        async def reopen(p: LogParams, caller):
             return reg.reopen(p.log_id).wire()
 
-        @r.op("session.rename", RenameParams)
-        async def rename(p: RenameParams):
-            return reg.rename(p.log_id, p.handle, p.title)
+        @r.op("session.rename", RenameParams, agent=True)
+        async def rename(p: RenameParams, caller):
+            """Rename your session: a handle (2 or 3 lowercase segments joined by
+            hyphens) and/or a title."""
+            log_id = p.log_id
+            if caller.is_agent:
+                if log_id not in (None, caller.log_id):
+                    raise OpError(
+                        "not_yours", "agents can rename only their own session"
+                    )
+                log_id = caller.log_id
+            if log_id is None:
+                raise OpError("bad_params", "log_id is required")
+            return reg.rename(log_id, p.handle, p.title)
 
         @r.op("archive.list", ArchiveParams)
-        async def archive_list(p: ArchiveParams):
+        async def archive_list(p: ArchiveParams, caller):
             return reg.archive(p.query, p.limit, p.before)
