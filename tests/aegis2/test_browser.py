@@ -64,10 +64,13 @@ class Server:
                 time.sleep(0.05)
         raise AssertionError("aegis2 serve is not listening")
 
+    output = ""
+
     def stop(self) -> None:
         if self.proc and self.proc.poll() is None:
             self.proc.terminate()
-            self.proc.wait(10)
+            out, _ = self.proc.communicate(timeout=10)
+            self.output += out or ""
 
 
 @pytest.fixture
@@ -267,9 +270,22 @@ def test_a_restart_brings_tabs_back_stopped_and_a_prompt_resumes(server, page):
     assert "resumes" in page.get_attribute("#input", "placeholder")
     page.fill("#input", "/recall")
     page.press("#input", "Enter")
-    page.wait_for_selector(
-        ".row.prose .body >> text=earlier: remember PELICAN", timeout=8000
-    )
+    try:
+        page.wait_for_selector(
+            ".row.prose .body >> text=earlier: remember PELICAN", timeout=8000
+        )
+    except Exception:
+        server.stop()
+        metas = {
+            p.name: p.read_text()
+            for p in (server.root / ".aegis2" / "state" / "sessions").glob("*.json")
+        }
+        raise AssertionError(
+            "no recall after the restart.\n"
+            f"transcript tail: {page.inner_text('#entries')[-1500:]}\n"
+            f"send error: {page.inner_text('#send-error')!r} side error: {page.inner_text('#side-error')!r}\n"
+            f"page errors: {page.errors}\nmetas: {metas}\nserver output: {server.output[-3000:]}"
+        ) from None
     assert page.errors == []
 
 
