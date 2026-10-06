@@ -346,3 +346,21 @@ def test_a_wrong_token_says_so(server, page):
     page.wait_for_function(
         "document.getElementById('boot-text').textContent.includes('refused')"
     )
+
+
+def test_text_typed_right_after_switching_tabs_is_kept(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "first")
+    spawn(page, "second")
+    kept = page.evaluate(
+        """async (a) => {
+            document.querySelector(`#tablist .tab[data-id='${a}']`).click();
+            document.getElementById('input').value = 'typed at once';
+            await new Promise((r) => setTimeout(r, 100));
+            return document.getElementById('input').value;
+        }""",
+        a,
+    )
+    assert kept == "typed at once"
+    assert page.errors == []
