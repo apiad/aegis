@@ -1,6 +1,9 @@
 # aegis2 slice 3: the daily driver
 
-**Status: approved, 2026-10-06** (issue #129). Designed with Alex; builds on
+**Status: implemented, 2026-10-06** (issue #129), following
+`docs/superpowers/plans/2026-10-06-aegis2-slice-3.md`. A live test runs real
+Claude Code (Haiku) through the endpoint: it lists the tools, arms a monitor with
+its own token, ends its turn, and is woken (14.5 s on zion). Designed with Alex; builds on
 slices 1 and 2 and the vision.
 
 ## What slice 3 delivers
@@ -125,7 +128,8 @@ names, tasks they enqueued. Reading and messaging are open.
 - Inbox rows: `⇄`, the sender and kind as title, the body as Markdown.
 - Calls to aegis tools: `mcp__aegis__` stripped, glyph `⇄`, the verb as title and
   a one-line label (a monitor's description, a queue and the first line of its
-  payload, a handoff's target).
+  payload, a handoff's target). The reply is digested to the id it made, the
+  status, or a count. (Added during the build: the raw JSON reply was unreadable.)
 - Sidebar: a Monitors section with a bar per live monitor.
 - Fleet card: the monitor count, a "worker" badge with the queue.
 

@@ -68,6 +68,29 @@ an action that is not an operation, so a subsystem cannot exist for agents and b
 missing from the UI. The retired September client died of the opposite: a protocol
 in which every subsystem needed its own fields.
 
+**Agents call the same operations, as MCP tools named after them.** An operation
+marked for agents is served at `/mcp` under its name with the dot as an underscore,
+so `monitor.start` is `mcp__aegis__monitor_start`. The caller is the session whose
+token the request carries; the token is minted for each `claude` process and rides
+in its `--mcp-config` header. No tool takes the caller's handle as an argument,
+because an argument can be wrong and the token cannot.
+
+**The inbox holds messages until a turn ends.** A monitor's wake, a queue's result
+and a handoff reach a session as a user turn headed `> from <kind>:<name> · …`. An
+idle session gets it at once and a stopped one is resumed for it; a working one
+holds it and gets every held message as one turn when its turn ends. Writing to a
+working `claude` would inject the message at its next tool boundary instead.
+
+**A turn ending is not completion.** Ending a turn is how an agent waits, so a
+queue worker is finished only when its turn has ended with no live monitor, no
+held message and no Claude task still open (`task_started` without its
+`task_notification`). Reading the turn boundary alone as done closed a worker
+mid-wait in the old tree.
+
+**Agents change only what they created.** An agent reads and messages any session
+it can see, and changes only its own monitors, its own session's names and the
+tasks it enqueued. People can do anything.
+
 **The client knows no subsystem by name.** Server state reaches the browser as
 named channels: a snapshot on subscribe, then numbered patches. A gap in the
 numbers, or a reconnect, means resubscribe and take a fresh snapshot. Adding a
