@@ -56,6 +56,7 @@ def _root(
             log_level="warning",
             window=True,
             browser=os.environ.get("AEGIS_BROWSER"),
+            origin=[],
         )
 
 
@@ -90,6 +91,15 @@ def _open_when_listening(host: str, port: int, url: str, browser: str | None) ->
     threading.Thread(target=wait_then_open, daemon=True).start()
 
 
+def _origins(values: list[str]) -> list[str]:
+    from .web import public_origin
+
+    try:
+        return [public_origin(v) for v in values]
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
+
+
 @app.command()
 def serve(
     root: Path | None = typer.Option(
@@ -114,6 +124,13 @@ def serve(
         envvar="AEGIS_BROWSER",
         help="The browser for --window; default: the first Chrome, Chromium, "
         "Edge or Brave installed, else the system browser.",
+    ),
+    origin: list[str] = typer.Option(
+        [],
+        "--origin",
+        callback=_origins,
+        help="A public origin a reverse proxy serves aegis at, e.g. "
+        "https://dev.example; repeatable. Its browsers' sockets are accepted.",
     ),
 ) -> None:
     """Serve Claude Code sessions to browser tabs."""
@@ -162,11 +179,13 @@ def serve(
         base_url=f"http://{local}:{port}",
         server_name=_socket.gethostname(),
     )
-    web = build_web(app, token, allowed)
+    web = build_web(app, token, allowed, origin)
     shown = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0") else host
     typer.echo(f"aegis serving {roots.config_root}")
     url = f"http://{shown}:{port}/?token={token}"
     typer.echo(f"open {url}")
+    for o in origin:
+        typer.echo(f"open {o}/?token={token}")
     if window:
         _open_when_listening(local, port, url, browser)
     uvicorn.run(web, host=host, port=port, log_level="warning")

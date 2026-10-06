@@ -263,12 +263,17 @@ def test_the_window_waits_for_the_port(monkeypatch):
 
 
 def test_bare_aegis_is_serve_with_a_window(monkeypatch):
+    import inspect
+
+    params = set(inspect.signature(cli.serve).parameters)
     seen = {}
     monkeypatch.setattr(cli, "serve", lambda **kw: seen.update(kw))
     r = CliRunner().invoke(cli.app, [])
     assert r.exit_code == 0, r.output
     assert seen["window"] is True
     assert seen["port"] == cli.DEFAULT_PORT
+    # Called directly, serve gets typer's OptionInfo for anything not passed.
+    assert set(seen) == params
 
 
 def test_the_browser_is_the_one_asked_for_then_the_first_on_path(tmp_path, monkeypatch):

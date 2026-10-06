@@ -69,6 +69,79 @@ def test_index_and_static_are_public_and_always_revalidated(project, fake_claude
         )
 
 
+def public_client(project: Path, claude_bin: str, origins: list[str]) -> TestClient:
+    app = App(make_roots(project, None), claude_bin=claude_bin, interrupt_timeout=0.5)
+    return TestClient(build_web(app, TOKEN, {"testserver"}, origins))
+
+
+PUBLIC = {"host": "dev.example", "origin": "https://dev.example"}
+
+
+@pytest.mark.parametrize("headers", [PUBLIC, ORIGIN])
+def test_a_public_origin_is_accepted_and_loopback_still_is(
+    project, fake_claude, headers
+):
+    with (
+        public_client(project, fake_claude, ["https://dev.example"]) as c,
+        c.websocket_connect("/ws", headers=headers) as ws,
+    ):
+        Conn(ws).hello()
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"host": "dev.example", "origin": "http://dev.example"},
+        {"host": "evil.example", "origin": "https://dev.example"},
+        {"host": "dev.example", "origin": "https://evil.example"},
+        {"host": "dev.example"},
+        {"host": "dev.example:8742", "origin": "https://dev.example"},
+    ],
+    ids=["other-scheme", "other-host", "other-origin", "no-origin", "host-with-port"],
+)
+def test_only_the_exact_public_origin_is_accepted(project, fake_claude, headers):
+    with public_client(project, fake_claude, ["https://dev.example"]) as c:
+        with (
+            pytest.raises(WebSocketDisconnect) as e,
+            c.websocket_connect("/ws", headers=headers) as ws,
+        ):
+            ws.receive_json()
+        assert e.value.code == 4403
+
+
+def test_without_origins_a_public_name_is_refused(project, fake_claude):
+    with client_for(project, fake_claude) as c:
+        with (
+            pytest.raises(WebSocketDisconnect) as e,
+            c.websocket_connect("/ws", headers=PUBLIC) as ws,
+        ):
+            ws.receive_json()
+        assert e.value.code == 4403
+
+
+@pytest.mark.parametrize(
+    "value, wanted",
+    [
+        ("https://dev.example", "https://dev.example"),
+        ("https://dev.example/", "https://dev.example"),
+        ("http://box.lan:8080", "http://box.lan:8080"),
+        ("dev.example", None),
+        ("ftp://dev.example", None),
+        ("https://dev.example/aegis", None),
+        ("https://dev.example/?x=1", None),
+        ("https://", None),
+    ],
+)
+def test_an_origin_is_a_scheme_and_a_host_only(value, wanted):
+    from aegis.web import public_origin
+
+    if wanted is None:
+        with pytest.raises(ValueError):
+            public_origin(value)
+    else:
+        assert public_origin(value) == wanted
+
+
 def test_a_wrong_token_is_refused(project, fake_claude):
     with (
         client_for(project, fake_claude) as c,
@@ -302,3 +375,18 @@ def test_server_version_reports_the_running_build_and_the_latest_release(
     assert r["latest"] == "99.0.0"
     assert set(r["running"]) == {"version", "commit", "ref", "dev"}
     assert r["status"] == ("dev" if r["running"]["dev"] else "behind")
+
+
+def test_serve_refuses_a_bad_origin_before_starting(tmp_path):
+    from typer.testing import CliRunner
+
+    from aegis.cli import app as cli_app
+
+    r = CliRunner().invoke(
+        cli_app,
+        ["serve", "--root", str(tmp_path), "--origin", "https://dev.example/aegis"],
+        env={"COLUMNS": "200"},  # Rich wraps the error box at the default width
+    )
+    assert r.exit_code == 2
+    assert "path or query" in r.output
+    assert not (tmp_path / ".aegis").exists(), "nothing was created"
