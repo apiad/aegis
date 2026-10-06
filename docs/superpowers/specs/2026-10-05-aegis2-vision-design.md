@@ -296,6 +296,126 @@ sequenceDiagram
   both directions.
 - JavaScript errors inside a panel go to the authoring agent's inbox, so it can
   fix its panel without being told.
+- The host passes the active theme's CSS variables into every panel frame, so
+  an agent's panel takes the theme's colors and type and follows a theme
+  switch. Without them, a sandboxed panel would keep its own palette.
+
+## Visual identity
+
+The HTML companion of this spec carries a working mockup with four views and a
+theme switcher. Agreed with Alex on 2026-10-05 in the brainstorming companion.
+
+aegis2 ships three themes and no default look. All three are bundled, and
+each person picks one in Settings.
+
+| Theme | Look | Type |
+|---|---|---|
+| Ink | the TUI's warm dark palette (`aegis-ink`) with its amber accent; the TUI glyphs on a thread down the left tie each turn together | JetBrains Mono for the chrome and tool rows, Source Serif 4 for agent prose, Inter for prompts |
+| Logbook | daylight, cool and read like a lab notebook: times in the margin, a rule between turns, ink-blue for the user, green and red only for outcomes | Inter for the chrome, Source Serif 4 for prose and headings, JetBrains Mono for tool rows |
+| Syalia | the house design system of the AInBox apps (`repos/syalia-ui`): navy, tool calls as chips, the brand gradient only on the active tab and on progress bars | Inter, Space Grotesk for headings, JetBrains Mono for tool rows |
+
+The fonts are vendored woff2 files under the SIL Open Font License, so the client
+renders the same offline. The mockup takes them from `repos/scriptorium` and
+`repos/syalia-ui`.
+
+### A theme is one CSS file
+
+There is one markup for every theme. It carries everything any theme might show:
+the timestamp, the glyph, the thread, the wrapper that Syalia draws as a chip. A
+theme is a block of CSS variables plus a few overrides that decide what shows.
+Themes live in `.aegis/themes/` or come with a plugin, and an agent can write
+one.
+
+A transcript row, as every theme receives it:
+
+```html
+<div class="row tool err">
+  <span class="t">21:11</span>   <!-- shown by Logbook, hidden by Ink and Syalia -->
+  <span class="g">⌬</span>        <!-- the TUI glyph for the kind of call -->
+  <div class="body">
+    <span class="tn">Bash</span>
+    <span class="ta">mmdc -i d5.mmd -o d5.svg</span>
+    <span class="tr2">exit 1</span>
+    <pre>Error: Parse error on line 9: got 'NEWLINE'</pre>
+  </div>
+</div>
+```
+
+The variables each theme sets. Base CSS reads only these, so a new theme starts
+by copying one block:
+
+```css
+#a2[data-theme=ink] {
+  --bg:#11100e; --chrome:#0b0a09; --side:#0d0c0b; --surface:#191814; --raised:#1d1b17; --rule:#2a2721;
+  --ink:#dcd9cf; --strong:#f1ede2; --muted:#8a867b; --faint:#6f6b62;
+  --accent:#e0a872; --accent-soft:rgba(224,168,114,.16); --on-accent:#1a140d;
+  --ok:#9db07e; --err:#d9806f; --err-bg:#221512; --warn:#e0a872; --comms:#9fb4d0;
+  --font-ui:'Inter'; --font-prose:'Source Serif 4'; --font-mono:'JetBrains Mono';
+  --font-chrome:'JetBrains Mono'; --font-head:'JetBrains Mono';
+  --prose-size:16.5px; --r:6px; --r-lg:10px;
+  --time:none; --thread:block; --row-cols:22px 1fr; --fill:var(--accent);
+}
+#a2[data-theme=logbook] {
+  --bg:#fbfbfa; --chrome:#eef0f2; --side:#f3f4f6; --surface:#ffffff; --raised:#eef0f2; --rule:#dfe2e6;
+  --ink:#262d38; --strong:#1d2430; --muted:#5d6672; --faint:#9aa1ab;
+  --accent:#2f5ba8; --accent-soft:rgba(47,91,168,.10); --on-accent:#fff;
+  --ok:#3e7d5a; --err:#b3412e; --err-bg:#fbeeea; --warn:#a8641a; --comms:#6a4fb3;
+  --font-ui:'Inter'; --font-prose:'Source Serif 4'; --font-mono:'JetBrains Mono';
+  --font-chrome:'Inter'; --font-head:'Source Serif 4';
+  --prose-size:16.5px; --r:6px; --r-lg:10px;
+  --time:block; --thread:none; --row-cols:38px 18px 1fr; --fill:var(--accent);
+}
+#a2[data-theme=syalia] {
+  --bg:#060a17; --chrome:#0b1222; --side:#0b1222; --surface:#0f172a; --raised:#1e293b; --rule:#22304a;
+  --ink:#e2e8f0; --strong:#f1f5f9; --muted:#94a3b8; --faint:#64748b;
+  --accent:#2563eb; --accent-soft:rgba(129,140,248,.14); --on-accent:#fff;
+  --ok:#34d399; --err:#f87171; --err-bg:#1a0f17; --warn:#fbbf24; --comms:#a78bfa;
+  --font-ui:'Inter'; --font-prose:'Inter'; --font-mono:'JetBrains Mono';
+  --font-chrome:'Inter'; --font-head:'Space Grotesk';
+  --prose-size:15px; --r:10px; --r-lg:12px;
+  --time:none; --thread:none; --row-cols:22px 1fr;
+  --fill:linear-gradient(90deg,#38bdf8,#818cf8);
+}
+```
+
+Base CSS uses them like this, and the overrides are about a dozen rules per
+theme, such as Logbook's rule between turns and Syalia's chips:
+
+```css
+#a2 .row     { display:grid; grid-template-columns:var(--row-cols); column-gap:10px }
+#a2 .row .t  { display:var(--time); font-family:var(--font-mono); color:var(--faint) }
+#a2 .tr:before { content:""; display:var(--thread); width:1px; background:var(--rule) }
+#a2 .row.prose .body { font-family:var(--font-prose); font-size:var(--prose-size) }
+#a2[data-theme=syalia] .row.tool .body { border:1px solid var(--rule); border-radius:8px }
+```
+
+The mockup found why the row layout is a variable and not a fixed grid: with
+the timestamp hidden, a three-column grid shifts every message into the glyph
+column.
+
+### The four views
+
+<!-- aegis2-mockup -->
+
+- **Session.** Tabs from every server across the top: Fleet on the left,
+  Settings on the right, and server health in between. The transcript keeps the
+  TUI's glyphs: `❯` the user, `⏺` agent prose, `⌬` a command, `✎` an edit,
+  `✻` thinking or working, `⇄` a call to aegis such as a handoff. A tool call
+  is one line, its result right-aligned, and a failure opens to its last
+  output. The sidebar keeps the TUI's sections: session, context, plan,
+  monitors, repos.
+- **Fleet.** The home screen. A band per server counts sessions by state, next
+  to the quota gauges. Below it, one card per session from every server, with
+  its owner's initials: what it is doing, what comes next, the last events,
+  time, cost and context. A session that asks something gets the accent border
+  and the question on the card. A failed one gets the error border. A finished
+  queue worker fades out.
+- **Settings.** Theme cards, the server list with home and links, and the
+  plugin list with where each plugin runs and a reload button for the ones in
+  their own process.
+- **Agent panels.** A chart an agent drew in the transcript, a decision panel
+  already answered and collapsed to a line, and a live decision panel the turn
+  is waiting on. The sidebar shows a section contributed by a plugin.
 
 ## Plugins
 
