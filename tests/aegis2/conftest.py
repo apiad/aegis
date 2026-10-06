@@ -13,7 +13,11 @@ def fake_claude(tmp_path: Path) -> str:
     """An executable that runs the fake claude, as a session would exec it."""
     path = tmp_path / "bin" / "claude"
     path.parent.mkdir()
-    path.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{FAKE}" "$@"\n')
+    home = tmp_path / "fake-home"
+    home.mkdir()
+    path.write_text(
+        f'#!/bin/sh\nexport FAKE_CLAUDE_HOME="{home}"\nexec "{sys.executable}" "{FAKE}" "$@"\n'
+    )
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
     return str(path)
 

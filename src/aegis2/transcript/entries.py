@@ -88,6 +88,43 @@ class Fold:
         return self._own(i, ts, record)
 
     # -- helpers -------------------------------------------------------
+    def _end_calls(self, verdict: str) -> list[dict]:
+        """A call still running when its turn or its process ends will never
+        get a result."""
+        ops: list[dict] = []
+        for e in list(self._entries.values()):
+            if e["kind"] == "tool" and e["status"] == "running":
+                ops += self._upsert(
+                    {**e, "status": "err", "detail": {**e["detail"], "result": verdict}}
+                )
+        return ops
+
+    def _lose_pending(self) -> list[dict]:
+        """Prompts Claude never read before its process ended."""
+        ops: list[dict] = []
+        while self._pending:
+            e = self._entries.get(self._pending.popleft())
+            if e is not None:
+                ops += self._upsert({**e, "status": "lost"})
+        return ops
+
+    def activity(self) -> str:
+        """One line on what the session is doing or last did, for a fleet card."""
+        for e in reversed(self._entries.values()):
+            if e["kind"] == "tool":
+                line = (
+                    f"{e['title']} · {e['summary']}" if e["status"] == "running" else ""
+                )
+                if line:
+                    return _cut(line)
+                continue
+            if e["kind"] in ("prose", "user") and e.get("md"):
+                first = next(
+                    (ln.strip() for ln in e["md"].splitlines() if ln.strip()), ""
+                )
+                return _cut(first)
+        return ""
+
     def _upsert(self, e: dict) -> list[dict]:
         self._entries[e["id"]] = e
         return [{"upsert": e}]
@@ -135,16 +172,33 @@ class Fold:
             )
         if kind == "exit":
             stderr = "\n".join(rec.get("stderr_tail") or [])
-            return self._upsert(
-                _entry(
-                    f"e{i}",
-                    "error",
-                    "err",
-                    ts,
-                    d.ERROR_GLYPH,
-                    summary=f"claude exited with code {rec.get('code')}",
-                    detail={"tail": stderr, "collapsed": False},
+            return (
+                self._end_calls("no result")
+                + self._lose_pending()
+                + self._upsert(
+                    _entry(
+                        f"e{i}",
+                        "error",
+                        "err",
+                        ts,
+                        d.ERROR_GLYPH,
+                        summary=f"claude exited with code {rec.get('code')}",
+                        detail={"tail": stderr, "collapsed": False},
+                    )
                 )
+            )
+        if kind in ("stop", "server_stopped"):
+            line = "stopped" if kind == "stop" else "the server stopped during a turn"
+            return (
+                self._end_calls("no result")
+                + self._lose_pending()
+                + self._upsert(
+                    _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary=line)
+                )
+            )
+        if kind == "resume":
+            return self._upsert(
+                _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary="resumed")
             )
         if kind == "close":
             return self._upsert(
@@ -260,18 +314,7 @@ class Fold:
             if ev.stop_reason and ev.stop_reason not in ("end_turn", "stop_sequence"):
                 parts.append(ev.stop_reason)
             interrupted, self._interrupted = self._interrupted, False
-            # A call still running when its turn ends will never get a result.
-            ops = []
-            for e in list(self._entries.values()):
-                if e["kind"] == "tool" and e["status"] == "running":
-                    verdict = "interrupted" if interrupted else "no result"
-                    ops += self._upsert(
-                        {
-                            **e,
-                            "status": "err",
-                            "detail": {**e["detail"], "result": verdict},
-                        }
-                    )
+            ops = self._end_calls("interrupted" if interrupted else "no result")
             if ev.is_error:
                 head = (
                     "interrupted"
@@ -336,6 +379,10 @@ class Fold:
             return []
         e = {**e, "detail": {**e["detail"], "steps": e["detail"].get("steps", 0) + 1}}
         return self._upsert(e)
+
+
+def _cut(line: str, n: int = 80) -> str:
+    return line if len(line) <= n else line[: n - 1] + "…"
 
 
 def fold_records(records: list[dict]) -> Fold:

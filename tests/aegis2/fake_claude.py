@@ -11,9 +11,15 @@ stdout. The text of a prompt picks a script:
     /notice        three system notices and nothing else.
     /big           a Read whose result is 2 MB on one line.
     /exit N        a few stderr lines, then exit with code N.
+    /recall        text listing the prompts this session id received before.
     anything else  text that quotes the prompt, then a result.
 
 An interrupt ``control_request`` ends a running script with an error result.
+
+``--resume <id>`` keeps that session id, as Claude does; without it the fake
+mints one. Each id's prompts are appended to ``$FAKE_CLAUDE_HOME/<id>.prompts``
+(default: the system temp dir), which is what ``/recall`` reads, so a test can
+prove a resumed process has its earlier context.
 
 With ``FAKE_CLAUDE_REPLAY=<store file>``, the first prompt instead replays the
 Claude lines of an aegis2 store, ``FAKE_CLAUDE_PACE`` seconds apart (default
@@ -28,13 +34,33 @@ import json
 import os
 import queue
 import sys
+import tempfile
 import threading
 import time
+import uuid
 
 OUT = threading.Lock()
 inbox: queue.Queue = queue.Queue()
 interrupted = threading.Event()
 state = {"cost": 0.0, "tool": 0, "inited": False, "deaf": False}
+SESSION_ID = (
+    sys.argv[sys.argv.index("--resume") + 1]
+    if "--resume" in sys.argv
+    else str(uuid.uuid4())
+)
+HOME = os.environ.get("FAKE_CLAUDE_HOME") or tempfile.gettempdir()
+
+
+def prompts_file() -> str:
+    return os.path.join(HOME, f"{SESSION_ID}.prompts")
+
+
+def earlier_prompts() -> list[str]:
+    try:
+        with open(prompts_file()) as f:
+            return [json.loads(line) for line in f]
+    except FileNotFoundError:
+        return []
 
 
 def emit(obj: dict) -> None:
@@ -120,12 +146,15 @@ def run(text: str) -> None:
             {
                 "type": "system",
                 "subtype": "init",
-                "session_id": "fake",
+                "session_id": SESSION_ID,
                 "model": "fake-model",
                 "claude_code_version": "0.0-fake",
             }
         )
     echo(text)
+    before = earlier_prompts()
+    with open(prompts_file(), "a") as f:
+        f.write(json.dumps(text) + "\n")
     word, _, arg = text.partition(" ")
     if word in ("/sleep", "/deafsleep"):
         state["deaf"] = word == "/deafsleep"
@@ -181,6 +210,9 @@ def run(text: str) -> None:
             }
         )
         tool_output(tid, "\n".join(f"line {i} " + "x" * 60 for i in range(30000)))
+        result()
+    elif word == "/recall":
+        assistant({"type": "text", "text": "earlier: " + " | ".join(before)})
         result()
     elif word == "/exit":
         sys.stderr.write("fatal: something broke\nsecond line\n")
