@@ -195,6 +195,28 @@ function renderMeta(s) {
     $("s-bar").style.width = "0%";
   }
   $("s-cost").textContent = money(s.cost_usd);
+  const mons = s.monitors || [];
+  $("s-mon-sec").hidden = !mons.length;
+  $("s-monitors").replaceChildren(
+    ...mons.map((m) => {
+      const box = document.createElement("div");
+      box.className = "mon";
+      const kv = document.createElement("div");
+      kv.className = "kv";
+      const name = document.createElement("span");
+      name.textContent = m.description;
+      const pct = document.createElement("span");
+      pct.textContent = m.progress == null ? "watching" : `${m.progress}%`;
+      kv.append(name, pct);
+      const bar = document.createElement("div");
+      bar.className = "bar thin";
+      const fill = document.createElement("i");
+      fill.style.width = `${m.progress || 0}%`;
+      bar.append(fill);
+      box.append(kv, bar);
+      return box;
+    }),
+  );
   const working = s.state === "working";
   $("stop").hidden = !working;
   $("working").hidden = !working;
