@@ -182,3 +182,14 @@ body{background:#000}
 #a2 input.rename{width:100%;background:var(--bg);border:1px solid var(--accent);border-radius:4px;padding:2px 6px;font:inherit;color:var(--strong)}
 #a2 .side .acts{display:flex;gap:8px}
 #a2 .side .sub{color:var(--faint);font-size:12px;margin:0 0 8px}
+
+/* inbox rows, monitors, workers */
+#a2 .row.inbox .g{color:var(--comms)}
+#a2 .row.inbox .body{border-left:2px solid var(--comms);padding:2px 0 2px 12px}
+#a2 .row.inbox .from{font-family:var(--font-mono);font-size:11.5px;color:var(--comms);margin-bottom:4px}
+#a2 .row.inbox .md{font-size:14px;color:var(--ink)}
+#a2 .mon{margin-bottom:8px}
+#a2 .mon .kv span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2 .badge{font-size:10.5px;padding:1px 7px;border-radius:9px;background:var(--accent-soft);color:var(--accent);font-family:var(--font-chrome)}
+#a2 .card .ft .mons{color:var(--accent)}
+#a2 .row.tool.comms .tn,#a2 .row.tool .g.comms{color:var(--comms)}

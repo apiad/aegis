@@ -364,3 +364,26 @@ def test_text_typed_right_after_switching_tabs_is_kept(server, page):
     )
     assert kept == "typed at once"
     assert page.errors == []
+
+
+def test_a_monitor_shows_in_the_sidebar_and_its_wake_arrives_as_an_inbox_row(
+    server, page, tmp_path
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    flag = tmp_path / "browser-flag"
+    args = json.dumps(
+        {"description": "wait for the flag", "done": f"test -f {flag}", "interval_s": 1}
+    )
+    page.fill("#input", f"/mcp monitor_start {args}")
+    page.press("#input", "Enter")
+    page.wait_for_selector("#s-mon-sec:not([hidden]) .mon >> text=wait for the flag")
+    assert page.inner_text(".row.tool .tn") == "monitor_start"
+    page.click("#tab-fleet")
+    page.wait_for_selector(".card .mons >> text=1 monitor")
+    page.locator(".card").first.click()
+    flag.touch()
+    page.wait_for_selector(".row.inbox .from >> text=monitor:", timeout=10000)
+    page.wait_for_selector("#s-mon-sec[hidden]", state="attached")
+    assert page.errors == []

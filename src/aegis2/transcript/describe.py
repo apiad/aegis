@@ -115,6 +115,26 @@ def tool_label(name: str, inp: dict) -> str:
     return name
 
 
+def _aegis_digest(text: str) -> str:
+    """An aegis call's reply, as the one fact a row needs: the id it made, the
+    status it reports, or how many things it listed."""
+    try:
+        v = json.loads(text)
+    except ValueError:
+        first = next((ln for ln in text.splitlines() if ln.strip()), "ok")
+        return _trunc(first, DIGEST_MAX)
+    if isinstance(v, list):
+        return f"{len(v)} item{'s' if len(v) != 1 else ''}"
+    if isinstance(v, dict):
+        parts = [
+            str(v[k])
+            for k in ("monitor_id", "task_id", "cancelled", "status", "handle")
+            if v.get(k)
+        ]
+        return _trunc(" · ".join(parts) or "ok", DIGEST_MAX)
+    return _trunc(str(v), DIGEST_MAX)
+
+
 def diff_counts(old_text: str, new_text: str) -> tuple[int, int]:
     added = removed = 0
     for line in difflib.ndiff(old_text.splitlines(), new_text.splitlines()):
@@ -172,6 +192,8 @@ def result_digest(
     name: str, text: str, is_error: bool, pair: tuple[str, str, str] | None
 ) -> str:
     """The one-line verdict a tool row carries after it finishes."""
+    if name.startswith(AEGIS_PREFIX) and not is_error:
+        return _aegis_digest(text)
     lines = [ln for ln in text.splitlines() if ln.strip()]
     # Claude Code swaps an oversized result for a wrapper around a 2 KB
     # preview; its size is the only honest verdict.

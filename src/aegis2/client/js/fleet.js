@@ -40,7 +40,9 @@ export function renderCards(box, metas, onOpen) {
       const c = el("div", `card ${m.state}`);
       c.dataset.id = m.log_id;
       const hd = el("div", "hd");
-      hd.append(el("span", `dot ${dotClass(m.state)}`), el("span", "h", m.handle), el("span", "s", m.state));
+      hd.append(el("span", `dot ${dotClass(m.state)}`), el("span", "h", m.handle));
+      if (m.worker) hd.append(el("span", "badge", `worker · ${m.worker.queue}`));
+      hd.append(el("span", "s", m.state));
       const ttl = el("div", "ttl", m.title || "untitled");
       const sub = el("div", "ln");
       sub.append(el("b", null, m.profile), document.createTextNode(`${m.model} · ${cwdTail(m.cwd)}`));
@@ -51,7 +53,10 @@ export function renderCards(box, metas, onOpen) {
       fill.style.width = `${pct}%`;
       bar.append(fill);
       const ft = el("div", "ft");
-      ft.append(el("span", "when", ago(m.last_activity)), el("span", null, money(m.cost_usd)), el("span", "ctx", `${pct}%`));
+      ft.append(el("span", "when", ago(m.last_activity)), el("span", null, money(m.cost_usd)));
+      const mons = (m.monitors || []).length;
+      if (mons) ft.append(el("span", "mons", `${mons} monitor${mons > 1 ? "s" : ""}`));
+      ft.append(el("span", "ctx", `${pct}%`));
       c.append(hd, ttl, sub, act, bar, ft);
       c.addEventListener("click", () => onOpen(m.log_id));
       return c;

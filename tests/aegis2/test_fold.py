@@ -346,3 +346,16 @@ def test_a_call_to_aegis_is_named_by_its_verb():
         "Run the tests",
     )
     assert b["summary"] == "general: Review PR 12"
+
+
+def test_an_aegis_reply_is_digested_to_its_ids():
+    r = Rec()
+    r.call("t1", "mcp__aegis__queue_enqueue", {"queue": "general", "payload": "x"})
+    r.output("t1", '{"task_id": "task-1", "status": "running", "position": null}')
+    r.call("t2", "mcp__aegis__session_list", {})
+    r.output("t2", '[{"handle": "a"}, {"handle": "b"}]')
+    a, b = run(r)[0].entries()
+    assert (
+        a["detail"]["result"] == "task-1 · running"
+        and b["detail"]["result"] == "2 items"
+    )

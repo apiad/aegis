@@ -103,6 +103,15 @@ const RENDERERS = {
     return row(e, "sys", body);
   },
 
+  inbox(e) {
+    // A monitor wake, a queue result, a handoff: the header is the title.
+    const body = el("div", "body");
+    body.append(el("div", "from", e.title));
+    const text = (e.md || "").split("\n").filter((l) => !l.startsWith("> from ")).join("\n");
+    body.append(markdown(text));
+    return row(e, "inbox", body);
+  },
+
   error(e) {
     const body = el("div", "body", e.summary);
     if (e.detail?.tail) body.append(el("pre", "out", e.detail.tail));
