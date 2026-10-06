@@ -57,6 +57,7 @@ def _root(
             window=True,
             browser=os.environ.get("AEGIS_BROWSER"),
             origin=[],
+            detach=False,
         )
 
 
@@ -89,6 +90,89 @@ def _open_when_listening(host: str, port: int, url: str, browser: str | None) ->
             return
 
     threading.Thread(target=wait_then_open, daemon=True).start()
+
+
+def _listening(host: str, port: int) -> bool:
+    try:
+        socket.create_connection((host, port), timeout=0.2).close()
+        return True
+    except OSError:
+        return False
+
+
+def _tail(path: Path, lines: int = 20) -> str:
+    return "\n".join(path.read_text(errors="replace").splitlines()[-lines:])
+
+
+DETACH_BOOT_S = 30
+
+
+def _detach(
+    roots,
+    host: str,
+    local: str,
+    port: int,
+    claude: str,
+    log_level: str,
+    origins: list[str],
+    urls: list[str],
+) -> None:
+    """Run this serve again, undetached, in its own session; return once it listens.
+
+    A re-exec rather than a fork: the parent may already hold threads, and a
+    forked asyncio process inherits them half-alive. Its own session keeps it
+    clear of the terminal's hangup; its output goes to ``serve.log`` because
+    nothing will read its stdout. The parent waits for the port so a boot
+    failure is reported here, before the prompt comes back."""
+    import subprocess
+    import sys
+
+    log_path = roots.state_root / "serve.log"
+    pid_path = roots.state_root / "serve.pid"
+    cmd = [
+        sys.executable, "-m", "aegis", "serve",
+        "--root", str(roots.config_root),
+        "--port", str(port),
+        "--host", host,
+        "--claude", claude,
+        "--log-level", log_level,
+    ]  # fmt: skip
+    for o in origins:
+        cmd += ["--origin", o]
+    with log_path.open("a") as log:
+        log.write(f"== {time.strftime('%Y-%m-%dT%H:%M:%S%z')} aegis serve --detach\n")
+        log.flush()
+        child = subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            cwd=roots.config_root,
+        )
+    pid_path.write_text(f"{child.pid}\n")
+    deadline = time.monotonic() + DETACH_BOOT_S
+    while not _listening(local, port):
+        if child.poll() is not None:
+            pid_path.unlink(missing_ok=True)
+            typer.echo(
+                f"aegis serve exited with {child.returncode} before listening; "
+                f"the end of {log_path}:\n{_tail(log_path)}",
+                err=True,
+            )
+            raise typer.Exit(1)
+        if time.monotonic() > deadline:
+            typer.echo(
+                f"aegis serve (pid {child.pid}) is not listening after "
+                f"{DETACH_BOOT_S} s; see {log_path}",
+                err=True,
+            )
+            raise typer.Exit(1)
+        time.sleep(0.05)
+    typer.echo(f"aegis serving {roots.config_root} in the background (pid {child.pid})")
+    for url in urls:
+        typer.echo(f"open {url}")
+    typer.echo(f"log {log_path}; stop it with: kill {child.pid}")
 
 
 def _origins(values: list[str]) -> list[str]:
@@ -132,6 +216,13 @@ def serve(
         help="A public origin a reverse proxy serves aegis at, e.g. "
         "https://dev.example; repeatable. Its browsers' sockets are accepted.",
     ),
+    detach: bool = typer.Option(
+        False,
+        "--detach",
+        "-d",
+        help="Start in the background and return once it listens; output goes "
+        "to <state>/serve.log, the pid to <state>/serve.pid.",
+    ),
 ) -> None:
     """Serve Claude Code sessions to browser tabs."""
     import logging
@@ -165,6 +256,16 @@ def serve(
         typer.echo(f"port {port} on {host} is taken; pass --port", err=True)
         raise typer.Exit(1)
     token = load_or_create_token(roots.state_root)
+    shown = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0") else host
+    url = f"http://{shown}:{port}/?token={token}"
+    if detach:
+        urls = [url, *(f"{o}/?token={token}" for o in origin)]
+        _detach(roots, host, local, port, claude, log_level, origin, urls)
+        if window:
+            from .window import open_window
+
+            open_window(url, browser)
+        return
     allowed = {
         f"127.0.0.1:{port}",
         f"localhost:{port}",
@@ -180,9 +281,7 @@ def serve(
         server_name=_socket.gethostname(),
     )
     web = build_web(app, token, allowed, origin)
-    shown = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0") else host
     typer.echo(f"aegis serving {roots.config_root}")
-    url = f"http://{shown}:{port}/?token={token}"
     typer.echo(f"open {url}")
     for o in origin:
         typer.echo(f"open {o}/?token={token}")

@@ -23,6 +23,14 @@ prints the URL instead, for systemd and remote hosts.
 `.aegis/state/token` and reused across restarts; delete the file to rotate it.
 Anything but loopback must be asked for with `--host`.
 
+`aegis serve -d` (`--detach`) starts the server in the background, in its own
+session, so it outlives the terminal or the SSH connection without tmux or screen.
+It returns once the port listens and prints the URLs, the pid and how to stop it;
+the output goes to `.aegis/state/serve.log` and the pid to `.aegis/state/serve.pid`.
+A server that dies while booting is reported with the end of its log, and the
+command exits 1. With `--window` the window opens once it listens. For a host that
+must survive reboots, run plain `aegis serve` under systemd instead.
+
 Behind a reverse proxy, name the public origin: `aegis serve --origin
 https://dev.example` (repeatable) accepts sockets whose `Host` is `dev.example` and
 whose `Origin` is exactly that origin, and prints the public URL with the token.
