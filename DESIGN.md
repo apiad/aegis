@@ -22,8 +22,22 @@ updates this part in the same change that alters the shape.
 **One process per machine, one websocket per browser.** `aegis2 serve` serves the
 static client, holds the sessions and runs each harness as its own child process.
 A browser talks to it over one websocket. Closing the browser leaves the sessions
-running; stopping the server ends them. Later slices add the home server, links to
-other servers and plugin hosts, in the order the vision spec gives.
+running; stopping the server ends their processes, not the sessions. Later slices
+add the home server, links to other servers and plugin hosts, in the order the
+vision spec gives.
+
+**A session outlives its process.** A session is live (a `claude` child is
+running), stopped (none is), or archived (closed: no process, no tab). A prompt to
+a stopped session starts `claude --resume`, which prints nothing old, so the store
+and the fold simply continue. Only shutdown, Stop and Close end a process. Nothing
+reaps idle sessions, because a Claude session waiting on its own background task
+wakes itself when the task ends, and stopping it would kill the task.
+
+**Boot reads meta files, never stores.** Each session has a small JSON meta next to
+its store, written by write-then-rename. Boot reads only those, so an archive of
+hundreds costs hundreds of small reads; a missing or damaged meta is rebuilt from
+its store and the session lands in the archive. Boot writes to no store, except one
+`server_stopped` record for a session whose meta says it was mid-turn.
 
 **Separate state, separate port.** aegis2 keeps its state in `.aegis2/state/`
 under the config root and listens on its own port, so it runs next to the old tree
@@ -35,6 +49,17 @@ adapted, never imported, and imports inside aegis2 are relative.
 `tests/aegis2/test_imports.py` enforces both by AST. The second makes the final rename one mechanical commit.
 
 ## Rules that span modules
+
+**The tabs are the server's; their order is the browser's.** The tab bar is the
+server's open sessions, the same in every browser, so Close on any browser removes
+the tab everywhere and nothing accumulates in a browser. Which tab is focused and
+the order of the tabs belong to each browser (the URL hash and local storage); the
+server never sees them.
+
+**A session's card is published when it changes, at most four times a second.**
+Status, handle and title go out at once; activity, context and cost change on
+nearly every line of a turn and are coalesced for 250 ms. Publishing them per line
+doubled the server's cost per line.
 
 **One registry, every caller.** Every action is one registered operation with a
 pydantic params model. A websocket `call` is one projection of the registry, MCP
