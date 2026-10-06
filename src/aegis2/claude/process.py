@@ -20,7 +20,9 @@ STDERR_TAIL = 20
 TERM_GRACE_S = 5.0
 
 
-def build_argv(claude_bin: str, model: str, effort: str, permission: str) -> list[str]:
+def build_argv(
+    claude_bin: str, model: str, effort: str, permission: str, resume: str | None = None
+) -> list[str]:
     argv = [
         claude_bin,
         "-p",
@@ -40,6 +42,8 @@ def build_argv(claude_bin: str, model: str, effort: str, permission: str) -> lis
         argv += ["--model", model]
     if effort:
         argv += ["--effort", effort]
+    if resume:
+        argv += ["--resume", resume]
     return argv
 
 
@@ -64,6 +68,10 @@ class ClaudeProcess:
     @property
     def pid(self) -> int | None:
         return self._proc.pid if self._proc else None
+
+    @property
+    def running(self) -> bool:
+        return self._proc is not None and self._proc.returncode is None
 
     async def start(self) -> None:
         """Raises FileNotFoundError when the binary is missing."""

@@ -1,8 +1,9 @@
+import os
 from pathlib import Path
 
 import pytest
 
-from aegis2.claude.process import build_argv
+from aegis2.meta import MetaStore
 from aegis2.session import Session, SpawnSpec
 from aegis2.transcript.entries import fold_records
 from aegis2.transcript.store import Store, read_store
@@ -14,31 +15,46 @@ class Harness:
     def __init__(self, tmp_path: Path, fake: str, **kw):
         self.published: list[tuple[str, list[dict]]] = []
         self.path = tmp_path / "state" / "transcripts" / "log-abc.jsonl"
-        self.session = Session(
+        self.metas = MetaStore(tmp_path / "state" / "sessions")
+        self.fake = fake
+        self.tmp_path = tmp_path
+        self.kw = kw
+        self.snapshot: list[dict] = []  # what a browser subscribed with
+        self.session = self.make()
+
+    def make(self, **meta) -> Session:
+        """A Session over the same store, as a registry builds one at boot."""
+        return Session(
             log_id="log-abc",
-            spec=SpawnSpec("opus", "opus", "high", "full", tmp_path),
+            spec=SpawnSpec("opus", "opus", "high", "full", self.tmp_path),
+            handle="quiet-owl",
             store=Store(self.path),
-            argv=build_argv(fake, "opus", "high", "full"),
-            stderr_path=tmp_path / "state" / "stderr" / "log-abc.log",
+            stderr_path=self.tmp_path / "state" / "stderr" / "log-abc.log",
+            claude_bin=self.fake,
             publish=lambda ch, ops: self.published.append((ch, ops)),
-            **kw,
+            metas=self.metas,
+            **meta,
+            **self.kw,
         )
 
     def statuses(self) -> list[str]:
-        return [
-            op["set"]["status"]
-            for ch, ops in self.published
-            if ch == "session"
-            for op in ops
-            if "status" in op["set"]
-        ]
+        """The states the sessions channel announced, repeats folded."""
+        out: list[str] = []
+        for ch, ops in self.published:
+            if ch != "sessions":
+                continue
+            for op in ops:
+                state = op["upsert"]["state"]
+                if not out or out[-1] != state:
+                    out.append(state)
+        return out
 
     def kinds(self) -> list[tuple[str, str]]:
         return [(e["kind"], e["status"]) for e in self.session.entries()]
 
     def patches_rebuild_entries(self) -> bool:
-        """What a browser that saw every patch would hold."""
-        shown: dict[str, dict] = {}
+        """What a browser that took ``snapshot`` and then every patch would hold."""
+        shown: dict[str, dict] = {e["id"]: e for e in self.snapshot}
         for ch, ops in self.published:
             if ch != self.session.channel:
                 continue
@@ -56,12 +72,16 @@ class Harness:
         )
 
 
+def tools(s: Session) -> list[dict]:
+    return [e for e in s.entries() if e["kind"] == "tool"]
+
+
 @pytest.fixture
 async def h(tmp_path, fake_claude):
     harness = Harness(tmp_path, fake_claude)
     await harness.session.start()
     yield harness
-    await harness.session.close()
+    await harness.session.stop()
     assert harness.refold_matches(), "live entries differ from a fold of the store"
     assert harness.patches_rebuild_entries(), (
         "the published patches do not add up to the entries"
@@ -78,7 +98,8 @@ async def test_a_prompt_runs_a_turn(h):
     assert ("user", "ok") in kinds and ("prose", "ok") in kinds
     assert not [k for k in kinds if k[1] == "pending"]
     assert h.session.context_window == 200000 and h.session.context_tokens == 1030
-    assert h.session.meta()["model"] == "fake-model"
+    assert h.session.wire()["model"] == "fake-model"
+    assert h.session.title == "hello" and h.session.claude_session_id
 
 
 async def test_the_store_is_named_by_the_log_id(h):
@@ -86,10 +107,6 @@ async def test_the_store_is_named_by_the_log_id(h):
 
 
 async def test_notices_never_start_a_turn(h):
-    await h.session.send("/notice")
-    await until(lambda: len(read_store(h.path)[0]) >= 6, what="the notices")
-    # The send itself moved it to working; a fresh session idles through notices.
-    h.session.status = "idle"
     h.session._on_line('{"type":"system","subtype":"hook_started"}')
     h.session._on_line('{"type":"system","subtype":"thinking_tokens"}')
     assert h.session.status == "idle"
@@ -97,36 +114,22 @@ async def test_notices_never_start_a_turn(h):
 
 async def test_a_prompt_sent_mid_turn_is_echoed_in_order_and_one_result_ends_both(h):
     await h.session.send("/sleep 0.4")
-    await until(
-        lambda: any(e["kind"] == "tool" for e in h.session.entries()),
-        what="the tool call",
-    )
+    await until(lambda: tools(h.session), what="the tool call")
     await h.session.send("steer this")
     await until(lambda: h.session.status == "idle", what="idle")
     users = [e["md"] for e in h.session.entries() if e["kind"] == "user"]
     assert users == ["/sleep 0.4", "steer this"]
-    assert h.statuses().count("idle") == 2  # start, then the one result
+    assert h.statuses() == ["idle", "working", "idle"]
 
 
 async def test_interrupt_ends_the_turn(h):
     await h.session.send("/sleep 5")
-    await until(
-        lambda: any(e["kind"] == "tool" for e in h.session.entries()),
-        what="the tool call",
-    )
+    await until(lambda: tools(h.session), what="the tool call")
     await h.session.interrupt()
     await until(lambda: h.session.status == "idle", what="idle after interrupt")
     assert h.session.entries()[-1]["summary"].startswith("interrupted")
-    (tool,) = [e for e in h.session.entries() if e["kind"] == "tool"]
+    (tool,) = tools(h.session)
     assert tool["status"] == "err"
-    published = [
-        op["upsert"]
-        for ch, ops in h.published
-        if ch == h.session.channel
-        for op in ops
-        if "upsert" in op
-    ]
-    assert published[-2]["id"] == tool["id"] and published[-2]["status"] == "err"
 
 
 async def test_interrupt_when_idle_does_nothing(h):
@@ -139,10 +142,7 @@ async def test_an_unanswered_interrupt_is_an_error(tmp_path, fake_claude):
     await h.session.start()
     try:
         await h.session.send("/deafsleep 2")
-        await until(
-            lambda: any(e["kind"] == "tool" for e in h.session.entries()),
-            what="the tool call",
-        )
+        await until(lambda: tools(h.session), what="the tool call")
         await h.session.interrupt()
         await until(lambda: h.session.status == "error", what="error")
         assert (
@@ -150,36 +150,96 @@ async def test_an_unanswered_interrupt_is_an_error(tmp_path, fake_claude):
             == "the interrupt went unanswered for 0.3s"
         )
     finally:
-        await h.session.close()
+        await h.session.stop()
 
 
-async def test_a_dead_claude_is_an_error_with_its_stderr(h):
+async def test_a_dead_claude_leaves_the_session_stopped_and_the_next_prompt_resumes(h):
+    await h.session.send("first prompt")
+    await until(
+        lambda: h.session.status == "idle" and h.session.cost_usd,
+        what="the first result",
+    )
     await h.session.send("/exit 3")
-    await until(lambda: h.session.status == "error", what="error")
+    await until(lambda: h.session.status == "stopped", what="stopped")
     last = h.session.entries()[-1]
     assert last["summary"] == "claude exited with code 3"
     assert "fatal: something broke" in last["detail"]["tail"]
+    await h.session.send("/recall")
+    await until(lambda: h.session.status == "idle", what="the resumed turn")
+    prose = [e["md"] for e in h.session.entries() if e["kind"] == "prose"]
+    assert prose[-1] == "earlier: first prompt | /exit 3"
 
 
 async def test_a_2mb_line_is_stored_and_its_entry_carries_only_the_tail(h):
     await h.session.send("/big")
     await until(lambda: h.session.status == "idle", what="idle")
-    (tool,) = [e for e in h.session.entries() if e["kind"] == "tool"]
+    (tool,) = tools(h.session)
     assert tool["status"] == "ok" and tool["detail"]["result"] == "30000 lines"
     assert len(tool["detail"]["tail"].encode()) <= 8192 + 3
     assert h.path.stat().st_size > 2_000_000
 
 
-async def test_close_ends_the_child(tmp_path, fake_claude):
-    import os
-
-    h = Harness(tmp_path, fake_claude)
-    await h.session.start()
+async def test_stop_ends_the_child_and_keeps_the_session(h):
     pid = h.session.pid
-    await h.session.close()
-    assert h.session.status == "closed"
+    assert pid is not None
+    await h.session.stop()
+    assert (
+        h.session.status == "stopped"
+        and h.session.entries()[-1]["summary"] == "stopped"
+    )
     with pytest.raises(ProcessLookupError):
         os.kill(pid, 0)
+
+
+async def test_a_stopped_session_resumes_with_its_context_in_the_same_store(h):
+    await h.session.send("remember PELICAN")
+    await until(
+        lambda: h.session.status == "idle" and h.session.cost_usd,
+        what="the first result",
+    )
+    first_id = h.session.claude_session_id
+    await h.session.stop()
+    await h.session.send("/recall")
+    await until(lambda: h.session.status == "idle", what="the resumed turn")
+    assert h.session.claude_session_id == first_id
+    summaries = [e["summary"] for e in h.session.entries() if e["kind"] == "system"]
+    assert "stopped" in summaries and "resumed" in summaries
+    prose = [e["md"] for e in h.session.entries() if e["kind"] == "prose"]
+    assert prose[-1] == "earlier: remember PELICAN"
+
+
+async def test_a_session_rebuilt_from_its_meta_resumes(h):
+    await h.session.send("before the restart")
+    await until(
+        lambda: h.session.status == "idle" and h.session.cost_usd, what="the result"
+    )
+    await h.session.shutdown()
+    kept = {
+        k: v for k, v in h.session.meta().items() if k in ("claude_session_id", "title")
+    }
+    h.published.clear()
+    reborn = h.session = h.make(**kept)
+    assert reborn.status == "stopped" and not reborn.running
+    h.snapshot = reborn.entries()  # a browser subscribes after the restart
+    await reborn.send("/recall")
+    await until(lambda: reborn.status == "idle", what="the resumed turn")
+    prose = [e["md"] for e in reborn.entries() if e["kind"] == "prose"]
+    assert prose[-1] == "earlier: before the restart"
+
+
+async def test_a_missing_binary_on_resume_leaves_it_stopped(h):
+    await h.session.stop()
+    h.session._claude_bin = "/no/such/claude"
+    with pytest.raises(FileNotFoundError):
+        await h.session.send("hello")
+    assert h.session.status == "stopped" and not h.session.running
+    h.session._claude_bin = h.fake
+
+
+async def test_interrupt_on_a_stopped_session_does_nothing(h):
+    await h.session.stop()
+    await h.session.interrupt()
+    assert h.session.status == "stopped"
 
 
 async def test_a_missing_binary_raises_on_start(tmp_path):

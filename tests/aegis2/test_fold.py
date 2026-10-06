@@ -272,3 +272,39 @@ def test_a_turn_that_ends_normally_with_a_call_unanswered_publishes_its_update()
     f, ops = run(r)
     assert [op["upsert"]["id"] for op in ops[1]] == ["t1", "e1.0"]
     assert f.entries()[0]["detail"]["result"] == "no result"
+
+
+def test_stopping_ends_running_calls_and_loses_unread_prompts():
+    r = Rec()
+    r.own("send", text="first")
+    r.echo("first")
+    r.call("t1", "Bash", {"command": "sleep 60"})
+    r.own("send", text="never read")
+    r.own("stop")
+    f, _ = run(r)
+    by_kind = {(e["kind"], e["status"]) for e in f.entries()}
+    assert ("user", "lost") in by_kind and ("tool", "err") in by_kind
+    assert f.entries()[-1]["summary"] == "stopped"
+
+
+def test_resume_and_server_stopped_lines():
+    r = Rec()
+    r.own("server_stopped")
+    r.own("resume", claude_session_id="cs")
+    f, _ = run(r)
+    assert [e["summary"] for e in f.entries()] == [
+        "the server stopped during a turn",
+        "resumed",
+    ]
+
+
+def test_activity_prefers_a_running_call_then_the_latest_prose():
+    r = Rec()
+    r.echo("do it")
+    assert run(r)[0].activity() == "do it"
+    r.text("Looking at the tests now.\nMore lines.")
+    assert run(r)[0].activity() == "Looking at the tests now."
+    r.call("t1", "Bash", {"command": "pytest", "description": "Run tests"})
+    assert run(r)[0].activity() == "Bash · Run tests"
+    r.output("t1", "ok")
+    assert run(r)[0].activity() == "Looking at the tests now."

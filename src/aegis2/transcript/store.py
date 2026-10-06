@@ -14,14 +14,25 @@ from pathlib import Path
 
 
 class Store:
+    """Opened lazily on the first append, so a server with hundreds of stored
+    sessions holds no file open for the ones nobody writes to. A store that
+    already has records continues their numbering."""
+
     def __init__(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
-        self._f = path.open("a", encoding="utf-8")
-        self._next = 0
+        self._f = None
+        self._next: int | None = None
 
     def append(self, record: dict) -> dict:
         """Write ``record`` with its index and return the stored form."""
+        if self._f is None:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            if self._next is None:
+                self._next = last_index(self.path) + 1
+            self._f = self.path.open("a", encoding="utf-8")
+            if _ends_mid_line(self.path):
+                self._f.write("\n")  # a crash cut the last line; start clean
+        assert self._next is not None
         stored = {"i": self._next, **record}
         self._next += 1
         self._f.write(json.dumps(stored, ensure_ascii=False) + "\n")
@@ -29,7 +40,45 @@ class Store:
         return stored
 
     def close(self) -> None:
-        self._f.close()
+        if self._f is not None:
+            self._f.close()
+            self._f = None
+
+
+def _ends_mid_line(path: Path) -> bool:
+    with path.open("rb") as f:
+        f.seek(0, 2)
+        if f.tell() == 0:
+            return False
+        f.seek(-1, 2)
+        return f.read(1) != b"\n"
+
+
+def last_index(path: Path) -> int:
+    """The index of the last intact record, read from the end of the file; -1
+    for a missing or empty store. A truncated last line is skipped."""
+    try:
+        size = path.stat().st_size
+    except FileNotFoundError:
+        return -1
+    with path.open("rb") as f:
+        chunk = 1 << 16
+        while True:
+            start = max(0, size - chunk)
+            f.seek(start)
+            lines = f.read(size - start).split(b"\n")
+            if start > 0:
+                lines = lines[1:]  # the first one may be cut
+            for raw in reversed(lines):
+                try:
+                    rec = json.loads(raw)
+                except ValueError:
+                    continue
+                if isinstance(rec, dict) and isinstance(rec.get("i"), int):
+                    return rec["i"]
+            if start == 0:
+                return -1
+            chunk *= 4
 
 
 def read_store(path: Path) -> tuple[list[dict], int]:
