@@ -205,4 +205,4 @@ def output_tail(text: str, max_lines: int = 40, max_bytes: int = 8192) -> str:
 
 
 def money(usd: float) -> str:
-    return f"${usd:.2f}" if usd >= 0.01 else f"${usd:.4f}"
+    return f"${usd:.2f}" if usd >= 0.005 else f"${usd:.4f}"

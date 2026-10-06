@@ -1,0 +1,122 @@
+/* Base styles. They read only the variables a theme sets (themes/*.css), so a
+   new theme is a copy of one variable block plus a few overrides. */
+*{box-sizing:border-box}
+#a2 [hidden]{display:none !important}
+html,body{margin:0;height:100%}
+body{background:#000}
+#a2{height:100vh;display:grid;grid-template-rows:auto 1fr;overflow:hidden;
+  background:var(--bg);color:var(--ink);font-family:var(--font-ui)}
+#a2 button,#a2 input,#a2 select,#a2 textarea{font:inherit;color:inherit}
+
+/* top bar */
+#a2 .tabs{display:flex;align-items:stretch;gap:2px;padding:6px 8px 0;background:var(--chrome);border-bottom:1px solid var(--rule);font-family:var(--font-chrome)}
+#a2 .tab{position:relative;display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:12.5px;white-space:nowrap;color:var(--muted);border-radius:var(--r) var(--r) 0 0}
+#a2 .tab.on{background:var(--bg);color:var(--strong);box-shadow:inset 0 2px 0 var(--accent)}
+#a2 .tab .srv{opacity:.55}
+#a2 .tabs .gap{flex:1}
+#a2 .tabs .servers{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--faint);padding:0 10px}
+#a2 .theme-pick{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--faint);padding:0 4px 6px}
+#a2 .theme-pick select{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:2px 6px;font-size:11.5px}
+#a2 .dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none}
+#a2 .dot.working{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+#a2 .dot.ready{background:var(--ok)}#a2 .dot.err{background:var(--err)}#a2 .dot.ghost{background:var(--faint)}
+
+/* views */
+#a2 .view{display:none;min-height:0}
+#a2[data-view=boot] .v-boot{display:grid;place-items:center}
+#a2[data-view=spawn] .v-spawn{display:grid;place-items:start center;overflow:auto;padding:48px 20px}
+#a2[data-view=session] .v-session{display:grid;grid-template-columns:1fr 260px}
+#a2 .notice{color:var(--muted);font-size:14px;max-width:520px;text-align:center;line-height:1.5}
+
+/* spawn form */
+#a2 .spawn{width:min(640px,100%);background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:22px 24px;display:grid;gap:14px}
+#a2 .spawn h3{margin:0;font-family:var(--font-head);font-weight:500;font-size:18px;color:var(--strong)}
+#a2 .spawn .sub{margin:-8px 0 0;color:var(--faint);font-size:12.5px}
+#a2 .spawn label{display:grid;gap:5px;font-size:12px;color:var(--muted);font-family:var(--font-chrome)}
+#a2 .spawn input,#a2 .spawn select{background:var(--bg);border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;font-size:13px;font-family:var(--font-mono);color:var(--ink)}
+#a2 .spawn .three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+#a2 .pa{display:flex;gap:10px;justify-content:flex-end;align-items:center}
+#a2 .err-text{color:var(--err);font-size:12px;font-family:var(--font-chrome);margin-right:auto}
+
+/* transcript */
+#a2 .col{display:grid;grid-template-rows:1fr auto;min-height:0;position:relative}
+#a2 .tr{overflow-y:auto;padding:18px 22px 8px;position:relative;scrollbar-width:thin}
+#a2 .tr:before{content:"";display:var(--thread);position:absolute;left:32px;top:24px;bottom:0;width:1px;background:var(--rule)}
+#a2 .row{display:grid;grid-template-columns:var(--row-cols);column-gap:10px;margin:0 0 9px;min-width:0}
+#a2 .row .t{display:var(--time);width:38px;font-family:var(--font-mono);font-size:11px;color:var(--faint);line-height:1.9}
+#a2 .row .g{text-align:center;line-height:1.6;color:var(--faint);font-size:13px;position:relative;z-index:1;background:var(--bg);align-self:start}
+#a2 .row .body{min-width:0}
+#a2 .row.user .body{color:var(--strong);background:var(--raised);padding:9px 12px;border-radius:var(--r);font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+#a2 .row.user .g{color:var(--accent)}
+#a2 .row.user.pending .body{opacity:.55;border:1px dashed var(--rule)}
+#a2 .row.user.pending .body:after{content:"not read yet";display:block;font-size:11px;color:var(--faint);margin-top:4px;font-family:var(--font-chrome)}
+#a2 .row.prose .body{font-family:var(--font-prose);font-size:var(--prose-size);line-height:1.55;color:var(--ink);overflow-wrap:anywhere}
+#a2 .row.prose .g{color:var(--ink)}
+#a2 .md>:first-child{margin-top:0}#a2 .md>:last-child{margin-bottom:0}
+#a2 .md p,#a2 .md ul,#a2 .md ol{margin:0 0 .6em}
+#a2 .md h1,#a2 .md h2,#a2 .md h3,#a2 .md h4{font-family:var(--font-head);color:var(--strong);font-weight:600;margin:.9em 0 .4em;font-size:1.05em}
+#a2 .md a{color:var(--accent)}
+#a2 .md pre{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;overflow-x:auto;font-size:12.5px;line-height:1.45}
+#a2 .md pre code{background:none;padding:0}
+#a2 .md table{border-collapse:collapse;font-size:.88em;font-family:var(--font-ui)}
+#a2 .md th,#a2 .md td{border:1px solid var(--rule);padding:4px 8px;text-align:left}
+#a2 .md blockquote{margin:0 0 .6em;padding-left:12px;border-left:2px solid var(--rule);color:var(--muted)}
+#a2 code{font-family:var(--font-mono);font-size:.82em;background:var(--raised);padding:1px 5px;border-radius:4px}
+
+#a2 .row.tool,#a2 .row.think,#a2 .row.sys,#a2 .row.error,#a2 .row.working{font-family:var(--font-mono);font-size:12.5px}
+#a2 .row.tool details>summary{list-style:none;cursor:pointer}
+#a2 .row.tool details>summary::-webkit-details-marker{display:none}
+#a2 .row.tool .line{display:grid;grid-template-columns:auto minmax(0,1fr) auto;column-gap:12px;align-items:baseline}
+#a2 .tn{color:var(--strong);font-weight:500}
+#a2 .ta{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2 .tr2{color:var(--faint);white-space:nowrap;max-width:46ch;overflow:hidden;text-overflow:ellipsis}
+#a2 .row.tool.ok .tr2,#a2 .row.tool.ok .g{color:var(--ok)}
+#a2 .row.tool.err .tr2,#a2 .row.tool.err .g,#a2 .row.error,#a2 .row.error .g{color:var(--err)}
+#a2 .row.tool.running .tr2{color:var(--accent)}
+#a2 .row.tool.running .tr2:after{content:"running";animation:a2pulse 1.4s ease-in-out infinite}
+@keyframes a2pulse{50%{opacity:.35}}
+#a2 .more{margin:6px 0 2px;display:grid;gap:6px}
+#a2 .more pre,#a2 pre.out{margin:0;padding:7px 10px;font-size:11.5px;white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--font-mono);background:var(--surface);border-left:2px solid var(--rule);color:var(--muted);max-height:420px;overflow:auto}
+#a2 .row.tool.err pre.out,#a2 .row.error pre.out{background:var(--err-bg);color:var(--err);border-left-color:var(--err)}
+#a2 .diff{margin:0;padding:6px 0;font-size:11.5px;font-family:var(--font-mono);background:var(--surface);border-radius:4px;overflow-x:auto}
+#a2 .diff div{padding:0 10px;white-space:pre}
+#a2 .diff .del{background:var(--del-bg);color:var(--err)}#a2 .diff .add{background:var(--add-bg);color:var(--ok)}
+#a2 .diff .path,#a2 .diff .elided{color:var(--faint)}
+#a2 .row.think{color:var(--faint);font-style:italic}
+#a2 .row.think summary{cursor:pointer}
+#a2 .row.think .md{font-family:var(--font-prose);font-size:14px;color:var(--muted);margin-top:4px}
+#a2 .row.sys{color:var(--faint);font-size:11.5px}
+#a2 .row.working,#a2 .row.working .g{color:var(--accent)}
+#a2 .meta{color:var(--faint);margin-left:10px}
+#a2 .steps{color:var(--faint);margin-left:8px}
+#a2 .jump{position:absolute;right:28px;bottom:118px;z-index:3;background:var(--raised);color:var(--strong);border:1px solid var(--rule);border-radius:999px;padding:4px 12px;font-size:12px;cursor:pointer}
+
+/* composer */
+#a2 .composer{padding:10px 22px 16px}
+#a2 .composer textarea{width:100%;resize:none;padding:12px 14px;font-size:13.5px;line-height:1.45;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);color:var(--strong);font-family:var(--font-ui);max-height:40vh;outline:none}
+#a2 .composer textarea:focus{border-color:var(--accent)}
+#a2 .composer .chips{display:flex;gap:8px;margin-top:8px;align-items:center}
+#a2 .chip{font-size:11.5px;padding:3px 9px;border:1px solid var(--rule);border-radius:5px;color:var(--muted);font-family:var(--font-chrome)}
+#a2 .chip:empty{display:none}
+#a2 .send,#a2 .btn{font-size:12px;padding:6px 14px;border-radius:var(--r);border:1px solid var(--rule);background:var(--surface);color:var(--ink);cursor:pointer}
+#a2 .send,#a2 .btn.primary{background:var(--accent);color:var(--on-accent);border-color:transparent;font-weight:500}
+#a2 .send:disabled,#a2 .btn:disabled{opacity:.45;cursor:default}
+
+/* sidebar */
+#a2 .side{padding:16px;overflow:auto;background:var(--side);border-left:1px solid var(--rule)}
+#a2 .side .sec{margin-bottom:18px}
+#a2 .side h4{margin:0 0 8px;font-weight:500;font-size:12px;color:var(--faint);font-family:var(--font-head)}
+#a2 .side .title{font-size:14px;color:var(--strong);margin-bottom:6px;font-family:var(--font-head)}
+#a2 .kv{display:flex;justify-content:space-between;gap:8px;font-size:12px;margin:3px 0;color:var(--muted);font-family:var(--font-chrome)}
+#a2 .kv.dim{color:var(--faint)}
+#a2 .kv .path{overflow-wrap:anywhere;font-family:var(--font-mono);font-size:11px}
+#a2 .bar{height:6px;margin:6px 0 4px;overflow:hidden;background:var(--raised);border-radius:3px}
+#a2 .bar i{display:block;height:100%;background:var(--fill);border-radius:3px}
+#a2 .st{color:var(--accent)}
+#a2 .st.err{color:var(--err)}#a2 .st.idle{color:var(--ok)}
+
+@media (max-width:760px){
+  #a2[data-view=session] .v-session{grid-template-columns:1fr}
+  #a2 .side{display:none}
+  #a2 .spawn .three{grid-template-columns:1fr}
+}

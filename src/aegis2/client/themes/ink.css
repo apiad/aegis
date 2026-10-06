@@ -1,0 +1,12 @@
+/* Ink: the TUI's warm dark palette and amber accent; glyphs on a thread. */
+[data-theme=ink] #a2{
+  --bg:#11100e;--chrome:#0b0a09;--side:#0d0c0b;--surface:#191814;--raised:#1d1b17;--rule:#2a2721;
+  --ink:#dcd9cf;--strong:#f1ede2;--muted:#8a867b;--faint:#6f6b62;
+  --accent:#e0a872;--accent-soft:rgba(224,168,114,.16);--on-accent:#1a140d;
+  --ok:#9db07e;--err:#d9806f;--err-bg:#221512;--warn:#e0a872;--comms:#9fb4d0;
+  --add-bg:#18200f;--del-bg:#2a1512;
+  --font-ui:'Inter',sans-serif;--font-prose:'SS4',serif;--font-mono:'JBM',monospace;
+  --font-chrome:'JBM',monospace;--font-head:'JBM',monospace;
+  --prose-size:16.5px;--r:6px;--r-lg:10px;--time:none;--thread:block;--row-cols:22px 1fr;--fill:var(--accent);
+}
+[data-theme=ink] #a2 .side .title{font-family:var(--font-ui)}

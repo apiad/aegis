@@ -122,6 +122,7 @@ dev = [
     "pytest-xdist>=3.8.0",
     "mcp>=1.0.0",
     "pytest-httpx>=0.36.2",
+    "playwright>=1.63.0",
 ]
 docs = [
     "mkdocs-material>=9.5",

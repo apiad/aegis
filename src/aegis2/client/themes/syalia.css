@@ -1,0 +1,20 @@
+/* Syalia: the house design system; tool calls as chips, the gradient on the active tab. */
+[data-theme=syalia] #a2{
+  --bg:#060a17;--chrome:#0b1222;--side:#0b1222;--surface:#0f172a;--raised:#1e293b;--rule:#22304a;
+  --ink:#e2e8f0;--strong:#f1f5f9;--muted:#94a3b8;--faint:#64748b;
+  --accent:#2563eb;--accent-soft:rgba(129,140,248,.14);--on-accent:#fff;
+  --ok:#34d399;--err:#f87171;--err-bg:#1a0f17;--warn:#fbbf24;--comms:#a78bfa;
+  --add-bg:#0b2a22;--del-bg:#2a0f17;
+  --font-ui:'Inter',sans-serif;--font-prose:'Inter',sans-serif;--font-mono:'JBM',monospace;
+  --font-chrome:'Inter',sans-serif;--font-head:'SpaceG',sans-serif;
+  --prose-size:15px;--r:10px;--r-lg:12px;--time:none;--thread:none;--row-cols:22px 1fr;
+  --fill:linear-gradient(90deg,#38bdf8,#818cf8);
+}
+[data-theme=syalia] #a2 .row.tool .body{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:6px 10px}
+[data-theme=syalia] #a2 .row.tool.err .body{border-color:#5b2330}
+[data-theme=syalia] #a2 .tn{font-family:var(--font-ui);font-weight:600}
+[data-theme=syalia] #a2 .tab.on:after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:2px;background:linear-gradient(90deg,#38bdf8,#818cf8,#c084fc)}
+[data-theme=syalia] #a2 .tab.on{box-shadow:none;border-radius:8px}
+[data-theme=syalia] #a2 .row.user .body{border-radius:12px;border:1px solid #2b3a55}
+[data-theme=syalia] #a2 .send,[data-theme=syalia] #a2 .btn.primary,[data-theme=syalia] #a2 .chip{border-radius:999px}
+[data-theme=syalia] #a2 .row.working,[data-theme=syalia] #a2 .row.working .g,[data-theme=syalia] #a2 .st{color:#a5b4fc}

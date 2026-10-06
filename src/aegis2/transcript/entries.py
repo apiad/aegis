@@ -257,13 +257,25 @@ class Fold:
             if ev.stop_reason and ev.stop_reason not in ("end_turn", "stop_sequence"):
                 parts.append(ev.stop_reason)
             interrupted, self._interrupted = self._interrupted, False
+            # A call still running when its turn ends will never get a result.
+            ops = []
+            for e in list(self._entries.values()):
+                if e["kind"] == "tool" and e["status"] == "running":
+                    verdict = "interrupted" if interrupted else "no result"
+                    ops += self._upsert(
+                        {
+                            **e,
+                            "status": "err",
+                            "detail": {**e["detail"], "result": verdict},
+                        }
+                    )
             if ev.is_error:
                 head = (
                     "interrupted"
                     if interrupted
                     else f"turn failed ({ev.subtype or 'error'})"
                 )
-                return self._upsert(
+                return ops + self._upsert(
                     _entry(
                         id,
                         "error",
@@ -273,7 +285,7 @@ class Fold:
                         summary=" · ".join([head, *parts[1:]]),
                     )
                 )
-            return self._upsert(
+            return ops + self._upsert(
                 _entry(
                     id, "system", "ok", ts, d.SYSTEM_GLYPH, summary=" · ".join(parts)
                 )

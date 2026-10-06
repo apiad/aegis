@@ -1,1 +1,80 @@
-<!doctype html><title>aegis2</title>
+<!doctype html>
+<html lang="en" data-theme="ink">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aegis2</title>
+<link rel="stylesheet" href="/static/css/fonts.css">
+<link rel="stylesheet" href="/static/css/base.css">
+<link rel="stylesheet" href="/static/themes/ink.css">
+<link rel="stylesheet" href="/static/themes/logbook.css">
+<link rel="stylesheet" href="/static/themes/syalia.css">
+<script>document.documentElement.dataset.theme = localStorage.getItem("aegis2.theme") || "ink";</script>
+</head>
+<body>
+<div id="a2" class="app" data-view="boot">
+  <header class="tabs">
+    <div class="tab on" id="tab"><span class="dot ghost" id="tab-dot"></span><span id="tab-name">aegis2</span><span class="srv" id="tab-srv"></span></div>
+    <div class="gap"></div>
+    <div class="servers"><span class="dot ghost" id="conn-dot"></span><span id="conn-text">connecting</span></div>
+    <label class="theme-pick">Theme
+      <select id="theme">
+        <option value="ink">Ink</option>
+        <option value="logbook">Logbook</option>
+        <option value="syalia">Syalia</option>
+      </select>
+    </label>
+  </header>
+
+  <main class="view v-boot"><div class="notice" id="boot-text">Connecting…</div></main>
+
+  <main class="view v-spawn">
+    <form class="spawn" id="spawn">
+      <h3>New session</h3>
+      <p class="sub">Claude Code on this server. The fields after the profile apply to this session only.</p>
+      <label>Profile <select name="profile" id="sp-profile"></select></label>
+      <label>Working directory <input name="cwd" id="sp-cwd" spellcheck="false"></label>
+      <div class="three">
+        <label>Model <input name="model" id="sp-model" spellcheck="false"></label>
+        <label>Effort <select name="effort" id="sp-effort">
+          <option>low</option><option>medium</option><option>high</option><option>max</option></select></label>
+        <label>Permission <select name="permission" id="sp-permission">
+          <option value="read">read (plan)</option><option value="write">write (accept edits)</option>
+          <option value="auto">auto</option><option value="full">full (bypass)</option></select></label>
+      </div>
+      <div class="pa"><span class="err-text" id="sp-error"></span><button class="btn primary" type="submit" id="sp-go">Spawn</button></div>
+    </form>
+  </main>
+
+  <main class="view v-session">
+    <section class="col">
+      <div class="tr" id="tr"><div id="entries"></div><div class="row working" id="working" hidden><span class="t"></span><span class="g">✻</span><div class="body">Working <span class="meta" id="working-meta"></span></div></div></div>
+      <button class="jump" id="jump" hidden>↓ latest</button>
+      <div class="composer">
+        <textarea id="input" rows="1" placeholder="Message the agent. Enter sends, Shift+Enter adds a line, Esc interrupts."></textarea>
+        <div class="chips">
+          <span class="chip" id="chip-model"></span><span class="chip" id="chip-effort"></span><span class="chip" id="chip-perm"></span>
+          <span class="err-text" id="send-error"></span>
+          <button class="btn" id="stop" hidden>Stop</button>
+          <button class="send" id="send">Send</button>
+        </div>
+      </div>
+    </section>
+    <aside class="side">
+      <div class="sec"><h4>Session</h4>
+        <div class="title" id="s-title"></div>
+        <div class="kv"><span id="s-model"></span><span class="st" id="s-status"></span></div>
+        <div class="kv dim"><span class="path" id="s-cwd"></span></div>
+      </div>
+      <div class="sec"><h4>Context</h4>
+        <div class="bar"><i id="s-bar" style="width:0%"></i></div>
+        <div class="kv"><span id="s-tokens">no turn yet</span><span id="s-pct"></span></div>
+        <div class="kv"><span>Cost</span><span id="s-cost">$0.00</span></div>
+      </div>
+      <div class="sec"><button class="btn" id="close">Close session</button></div>
+    </aside>
+  </main>
+</div>
+<script type="module" src="/static/js/app.js"></script>
+</body>
+</html>
