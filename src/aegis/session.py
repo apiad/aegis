@@ -40,7 +40,7 @@ Publish = Callable[[str, list[dict]], None]
 # once; the others change on nearly every line of a turn (context grows with
 # each message, activity with each call), so they wait up to PUBLISH_EVERY_S
 # and go out together. Publishing them per line doubled the server's cost per
-# line in bench2 (issue #127).
+# line in the bench (issue #127).
 _NOW = ("status", "handle", "title", "model_id")
 _SOON = ("activity", "cost_usd", "context_tokens", "context_window")
 PUBLISH_EVERY_S = 0.25

@@ -23,7 +23,7 @@ A change is done when:
 2. it has been exercised in a browser against an `aegis serve` started after the
    change, and, for a change to how agents use aegis, by a real Claude Code
    session (`make test-live`);
-3. `make bench2` has run and its table is in the PR body. CI reports a regression
+3. `make bench` has run and its table is in the PR body. CI reports a regression
    as a warning and never fails on one, so a reader has to look at it;
 4. DESIGN.md describes the code as it now is;
 5. a user-visible change has a `changelog.d/` fragment, and a change to how the

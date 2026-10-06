@@ -1,4 +1,4 @@
-.PHONY: check lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-live test-browser bench2 coverage know-how
+.PHONY: check lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-live test-browser bench coverage know-how
 
 # Every gate. The tests run before typecheck so a type error cannot hide a
 # failing suite; both block.
@@ -56,9 +56,9 @@ test-all:
 test-browser:
 	uv run pytest -q -m browser
 
-# The transcript path, measured (scripts/bench2.py). Reports, never gates.
-bench2:
-	uv run python scripts/bench2.py --out .aegis2-bench.json
+# The transcript path, measured (scripts/bench.py). Reports, never gates.
+bench:
+	uv run python scripts/bench.py --out .aegis-bench.json
 
 # Real agent CLIs and models: spends quota. Select by marker, never with
 # -k "not live": -k matches substrings and silently drops unrelated tests whose

@@ -14,10 +14,10 @@ its code is kept under `legacy/` in the repository, and `pip install
 ### Changed
 
 - **`aegis serve` runs Claude Code sessions and serves them to browser tabs.**
-  Open the URL it prints (it carries a token, kept in `.aegis2/state/token` and
+  Open the URL it prints (it carries a token, kept in the state directory and
   reused across restarts). It listens on 127.0.0.1:8742 by default and reads the
-  `agents:` and `queues:` maps of `.aegis.yaml`. State lives in `.aegis2/state/`;
-  the old `.aegis/state/` is left untouched and nothing reads it.
+  `agents:` and `queues:` maps of `.aegis.yaml`. Its state was kept apart from
+  the legacy tree's `.aegis/state/` in this release (moved there in 2.0.1).
 
 ### Added
 

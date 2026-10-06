@@ -29,13 +29,27 @@ def find_config_root(start: Path) -> Path:
     return start
 
 
+# Files only the legacy tree wrote in its state directory. Finding one means the
+# directory holds that tree's state, in another format, and aegis must not mix
+# its own into it (``aegis serve`` refuses to start; see legacy_state()).
+LEGACY_MARKERS = (
+    "daemon.lock",
+    "daemon.sock",
+    "workspace.json",
+    "history_index.json",
+    "comms",
+)
+
+
+def legacy_state(state_root: Path) -> list[str]:
+    """The legacy tree's marker files present in ``state_root``, if any."""
+    return [m for m in LEGACY_MARKERS if (state_root / m).exists()]
+
+
 def make_roots(start: Path, root: Path | None) -> Roots:
     config_root = root.resolve() if root is not None else find_config_root(start)
     return Roots(
         config_root=config_root,
-        # Not .aegis/: that holds the legacy tree's state (1.7 GB of sessions in
-        # another format on zion), and two formats in one directory invite
-        # collisions. Renaming it is one change once nothing reads the old one.
-        state_root=config_root / ".aegis2" / "state",
+        state_root=config_root / ".aegis" / "state",
         harness_cwd=config_root,
     )

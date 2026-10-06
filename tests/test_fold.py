@@ -15,7 +15,7 @@ class Rec:
         return r
 
     def own(self, kind, **kw):
-        return self._add(src="aegis2", kind=kind, **kw)
+        return self._add(src="aegis", kind=kind, **kw)
 
     def claude(self, obj):
         return self._add(src="claude", line=json.dumps(obj))

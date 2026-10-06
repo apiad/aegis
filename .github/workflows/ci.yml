@@ -31,7 +31,7 @@ jobs:
       # that silently goes missing.
       - name: changelog fragments
         run: make changelog-check
-      # aegis2's browser tests drive headless Chromium.
+      # aegis's browser tests drive headless Chromium.
       - name: chromium for browser tests
         run: uv run playwright install --with-deps chromium
       - run: uv run pytest -q -m "not live"
@@ -40,11 +40,11 @@ jobs:
       - name: typecheck
         run: make typecheck
 
-  # aegis2's bench, on the PR's base and head on one runner so the machine
+  # aegis's bench, on the PR's base and head on one runner so the machine
   # cancels out. Reports in the job summary and warns past 20% worse; it
-  # never fails the run (scripts/bench2_compare.py exits 0, and every step
+  # never fails the run (scripts/bench_compare.py exits 0, and every step
   # here may fail without failing the job).
-  bench2:
+  bench:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -60,13 +60,13 @@ jobs:
       - run: uv sync --locked
       - run: uv run playwright install --with-deps chromium
       - name: bench head
-        run: uv run python scripts/bench2.py --out /tmp/head.json
+        run: uv run python scripts/bench.py --out /tmp/head.json
       - name: bench base
         run: |
           git worktree add /tmp/base ${{ github.event.pull_request.base.sha }}
-          if [ -f /tmp/base/scripts/bench2.py ]; then
-            cd /tmp/base && uv sync --locked && uv run python scripts/bench2.py --out /tmp/base.json
+          if [ -f /tmp/base/scripts/bench.py ]; then
+            cd /tmp/base && uv sync --locked && uv run python scripts/bench.py --out /tmp/base.json
           fi
       - name: compare
         if: always()
-        run: uv run python scripts/bench2_compare.py /tmp/base.json /tmp/head.json
+        run: uv run python scripts/bench_compare.py /tmp/base.json /tmp/head.json

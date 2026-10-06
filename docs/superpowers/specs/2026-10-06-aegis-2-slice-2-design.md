@@ -1,11 +1,11 @@
-# aegis2 slice 2: many sessions, shared tabs, lazy resume, archive
+# aegis 2 slice 2: many sessions, shared tabs, lazy resume, archive
 
 **Status: implemented, 2026-10-06** (issue #127), following
-`docs/superpowers/plans/2026-10-06-aegis2-slice-2.md`. Where the build changed the
+`docs/superpowers/plans/2026-10-06-aegis-2-slice-2.md`. Where the build changed the
 design, this file says so in place. Designed with Alex in one
 brainstorming session; builds on slice 1
-(`2026-10-06-aegis2-slice-1-design.md`) and the vision
-(`2026-10-05-aegis2-vision-design.md`).
+(`2026-10-06-aegis-2-slice-1-design.md`) and the vision
+(`2026-10-05-aegis-2-vision-design.md`).
 
 ## What slice 2 delivers
 
@@ -143,7 +143,7 @@ Channels:
 
 - **Tab bar:** Fleet, then one tab per open session (status dot, handle, title
   cut to fit), then `+`. A tab can be dragged; the order is
-  `localStorage["aegis2.tabs"]`, a list of log ids. A session not in the list
+  `localStorage["aegis.tabs"]`, a list of log ids. A session not in the list
   goes at the end; ids that are no longer open are dropped. Which tab is
   focused is `#s=<log_id>` in the URL, so it is private to each browser and
   survives a reload. Alt+1 to Alt+9 focus a tab, Alt+0 Fleet.
@@ -207,7 +207,7 @@ against 235), which this design requires so a crash loses nothing.
 1. `make check`, browser tests and the bench pass.
 2. Alex runs several sessions at once on zion, restarts the server, and resumes
    them by prompting; closes one, finds it in the archive, reopens it.
-3. DESIGN.md's aegis2 part describes the lifecycle, the meta files and the
+3. DESIGN.md's aegis 2 part describes the lifecycle, the meta files and the
    shared tabs.
 4. A changelog fragment.
 

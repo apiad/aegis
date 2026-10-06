@@ -1,17 +1,17 @@
-# aegis2 slice 3: the daily driver
+# aegis 2 slice 3: the daily driver
 
 **Status: implemented, 2026-10-06** (issue #129), following
-`docs/superpowers/plans/2026-10-06-aegis2-slice-3.md`. A live test runs real
+`docs/superpowers/plans/2026-10-06-aegis-2-slice-3.md`. A live test runs real
 Claude Code (Haiku) through the endpoint: it lists the tools, arms a monitor with
 its own token, ends its turn, and is woken (14.5 s on zion). Designed with Alex; builds on
 slices 1 and 2 and the vision.
 
 ## What slice 3 delivers
 
-Agents running in aegis2 get the aegis tools they use every day: monitors, queues
+Agents running in aegis 2 get the aegis tools they use every day: monitors, queues
 of workers, handoffs, reading a peer, listing sessions, renaming themselves, and an
 inbox that delivers what those produce. With it Alex can move his daily work to
-aegis2.
+aegis 2.
 
 The choice of tools is measured, not guessed. Over 28 days of the old aegis
 (issue #129): monitors are 40% of the agents' calls to aegis, queues 29%,
@@ -156,8 +156,8 @@ turn, and is woken.
 ## Done means
 
 1. `make check`, browser tests and the bench pass.
-2. Alex's daily flow works in aegis2: an agent arms a monitor and is woken, a
+2. Alex's daily flow works in aegis 2: an agent arms a monitor and is woken, a
    producer enqueues to `general` and gets the callback, two agents hand off.
-3. DESIGN.md's aegis2 part describes the endpoint, the inbox and the completion
+3. DESIGN.md's aegis 2 part describes the endpoint, the inbox and the completion
    rule.
 4. A changelog fragment.

@@ -49,10 +49,10 @@ a bare `uv sync` strips everything outside the locked default set.
 
 ## Before tagging: read the benchmark
 
-Every PR's CI benches its base and head (`scripts/bench2.py`) and warns on a
+Every PR's CI benches its base and head (`scripts/bench.py`) and warns on a
 metric more than 20% worse. Before tagging, read the warnings of the PRs in the
-range (`gh pr checks <n>`, the `bench2` job's summary), and either explain each
-in the changelog or fix it. On a quiet zion, `make bench2` gives the numbers for
+range (`gh pr checks <n>`, the `bench` job's summary), and either explain each
+in the changelog or fix it. On a quiet zion, `make bench` gives the numbers for
 the release notes.
 
 ## The other one: `[Unreleased]` is routinely a fraction of what shipped
