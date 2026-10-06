@@ -1,38 +1,35 @@
 """The server's state and its operations, independent of any transport.
 
-Slice 1 holds at most one session. Its operations: ``profiles.list``,
-``session.spawn``, ``session.send``, ``session.interrupt``,
-``session.close``. Its channels: ``session`` (the live session or null) and
-``transcript:<log_id>``.
-
-The ``session`` channel's patch ops are ``{"set": {...}}``, a shallow merge of
-changed fields, and ``{"replace": value}``, used when a session appears or
-goes away.
+Operations: ``profiles.list``, ``session.spawn``, ``session.send``,
+``session.interrupt``, ``session.stop``, ``session.close``, ``session.reopen``,
+``session.rename``, ``archive.list``. Channels: ``sessions`` (every open
+session's meta; patches ``upsert`` and ``remove``) and ``transcript:<log_id>``
+(any session, archived included).
 """
 
 from __future__ import annotations
 
-import secrets
-import time
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 from .channels import Channels
-from .claude.process import build_argv
-from .ops import OpError, Registry
+from .ops import OpError, Registry as Ops
 from .profiles import ProfileError, default_profile, load_profiles
+from .registry import Registry
 from .roots import Roots
-from .session import Session, SpawnSpec
-from .transcript.store import Store
+from .session import SpawnSpec
 
 Effort = Literal["low", "medium", "high", "max"]
 Permission = Literal["read", "write", "full", "auto"]
 
 
-class SpawnParams(BaseModel):
+class _Strict(BaseModel):
     model_config = {"extra": "forbid"}
+
+
+class SpawnParams(_Strict):
     profile: str
     cwd: str | None = None
     model: str | None = None
@@ -40,19 +37,32 @@ class SpawnParams(BaseModel):
     permission: Permission | None = None
 
 
-class SendParams(BaseModel):
-    model_config = {"extra": "forbid"}
+class SendParams(_Strict):
     log_id: str
     text: str = Field(min_length=1)
 
 
-class LogParams(BaseModel):
-    model_config = {"extra": "forbid"}
+class LogParams(_Strict):
     log_id: str
 
 
-def mint_log_id() -> str:
-    return f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
+class RenameParams(_Strict):
+    log_id: str
+    handle: str | None = None
+    title: str | None = None
+
+
+class ArchiveParams(_Strict):
+    query: str | None = None
+    limit: int = Field(default=50, ge=1, le=200)
+    before: float | None = None
+
+
+def _dead(e: Exception) -> OpError:
+    return OpError(
+        "session_dead",
+        f"claude stopped while being written to: {e}; send again to resume",
+    )
 
 
 class App:
@@ -61,31 +71,26 @@ class App:
     ) -> None:
         self.roots = roots
         self.claude_bin = claude_bin
-        self.interrupt_timeout = interrupt_timeout
-        self.session: Session | None = None
-        self.registry = Registry()
         self.channels = Channels(self._resolve)
+        self.sessions = Registry(roots, self.publish, claude_bin, interrupt_timeout)
+        self.registry = Ops()
         self._register()
 
-    # -- channels ----------------------------------------------------------
-    def _resolve(self, name: str):
-        if name == "session":
-            return lambda: self.session.meta() if self.session else None
-        if name.startswith("transcript:"):
-            s = self.session
-            if s is not None and name == s.channel:
-                return s.entries
-        return None
+    def boot(self) -> None:
+        self.sessions.boot()
+
+    async def shutdown(self) -> None:
+        await self.sessions.shutdown()
 
     def publish(self, channel: str, ops: list[dict]) -> None:
         self.channels.publish(channel, ops)
 
-    # -- operations --------------------------------------------------------
-    def _live(self, log_id: str) -> Session:
-        s = self.session
-        if s is None or s.log_id != log_id:
-            raise OpError("no_session", f"no live session {log_id!r}")
-        return s
+    def _resolve(self, name: str):
+        if name == "sessions":
+            return lambda: [s.wire() for s in self.sessions.open_sessions()]
+        if name.startswith("transcript:"):
+            return self.sessions.transcript(name.removeprefix("transcript:"))
+        return None
 
     def _resolve_cwd(self, raw: str | None) -> Path:
         base = self.roots.harness_cwd
@@ -102,6 +107,7 @@ class App:
 
     def _register(self) -> None:
         r = self.registry
+        reg = self.sessions
 
         @r.op("profiles.list")
         async def profiles_list(_):
@@ -118,8 +124,6 @@ class App:
 
         @r.op("session.spawn", SpawnParams)
         async def spawn(p: SpawnParams):
-            if self.session is not None:
-                raise OpError("session_live", "close the live session first")
             try:
                 profiles = {x.name: x for x in load_profiles(self.roots.config_root)}
             except ProfileError as e:
@@ -138,60 +142,49 @@ class App:
                 permission=p.permission or prof.permission,
                 cwd=self._resolve_cwd(p.cwd),
             )
-            log_id = mint_log_id()
-            state = self.roots.state_root
-            session = Session(
-                log_id=log_id,
-                spec=spec,
-                store=Store(state / "transcripts" / f"{log_id}.jsonl"),
-                argv=build_argv(
-                    self.claude_bin, spec.model, spec.effort, spec.permission
-                ),
-                stderr_path=state / "stderr" / f"{log_id}.log",
-                publish=self.publish,
-                interrupt_timeout=self.interrupt_timeout,
-            )
-            self.session = session
-            self.publish("session", [{"replace": session.meta()}])
             try:
-                await session.start()
+                s = await reg.spawn(spec)
             except FileNotFoundError as e:
-                session.store.close()
-                self.session = None
-                self.publish("session", [{"replace": None}])
                 raise OpError(
                     "claude_not_found", f"cannot run {self.claude_bin!r}: {e}"
                 ) from e
-            return {"log_id": log_id}
+            return {"log_id": s.log_id, "handle": s.handle}
 
         @r.op("session.send", SendParams)
         async def send(p: SendParams):
-            s = self._live(p.log_id)
+            s = reg.open(p.log_id)
             try:
                 await s.send(p.text)
-            except (BrokenPipeError, ConnectionResetError) as e:
+            except FileNotFoundError as e:
                 raise OpError(
-                    "session_dead", "claude is not running; close this session"
+                    "claude_not_found", f"cannot run {self.claude_bin!r}: {e}"
                 ) from e
+            except (BrokenPipeError, ConnectionResetError) as e:
+                raise _dead(e) from e
 
         @r.op("session.interrupt", LogParams)
         async def interrupt(p: LogParams):
-            s = self._live(p.log_id)
             try:
-                await s.interrupt()
+                await reg.open(p.log_id).interrupt()
             except (BrokenPipeError, ConnectionResetError) as e:
-                raise OpError(
-                    "session_dead", "claude is not running; close this session"
-                ) from e
+                raise _dead(e) from e
+
+        @r.op("session.stop", LogParams)
+        async def stop(p: LogParams):
+            await reg.open(p.log_id).stop()
 
         @r.op("session.close", LogParams)
         async def close(p: LogParams):
-            s = self._live(p.log_id)
-            await s.close()
-            self.session = None
-            self.publish("session", [{"replace": None}])
+            await reg.close(p.log_id)
 
-    async def shutdown(self) -> None:
-        if self.session is not None:
-            await self.session.close()
-            self.session = None
+        @r.op("session.reopen", LogParams)
+        async def reopen(p: LogParams):
+            return reg.reopen(p.log_id).wire()
+
+        @r.op("session.rename", RenameParams)
+        async def rename(p: RenameParams):
+            return reg.rename(p.log_id, p.handle, p.title)
+
+        @r.op("archive.list", ArchiveParams)
+        async def archive_list(p: ArchiveParams):
+            return reg.archive(p.query, p.limit, p.before)
