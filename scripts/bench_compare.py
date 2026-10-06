@@ -1,6 +1,6 @@
-"""Compare two scripts/bench2.py results. Reports; never fails.
+"""Compare two scripts/bench.py results. Reports; never fails.
 
-    uv run python scripts/bench2_compare.py BASE.json HEAD.json
+    uv run python scripts/bench_compare.py BASE.json HEAD.json
 
 Writes a Markdown table to $GITHUB_STEP_SUMMARY when it is set, else to
 stdout, and prints a GitHub ``::warning::`` line on stdout for every metric

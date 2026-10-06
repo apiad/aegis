@@ -78,7 +78,17 @@ def serve(
     from .roots import make_roots
     from .web import build_web, load_or_create_token
 
+    from .roots import legacy_state
+
     roots = make_roots(start=Path.cwd(), root=root)
+    if found := legacy_state(roots.state_root):
+        typer.echo(
+            f"{roots.state_root} holds the state of aegis before 2.0 ({', '.join(found)}).\n"
+            f"Move it aside, then start again:\n"
+            f"  mv {roots.state_root} {roots.state_root.parent / 'legacy-state'}",
+            err=True,
+        )
+        raise typer.Exit(1)
     if not _port_free(host, port):
         typer.echo(f"port {port} on {host} is taken; pass --port", err=True)
         raise typer.Exit(1)

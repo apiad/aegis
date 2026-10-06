@@ -1,16 +1,16 @@
-# aegis2 slice 1: one Claude Code session in a browser tab
+# aegis 2 slice 1: one Claude Code session in a browser tab
 
-**Status: implemented, 2026-10-06,** on the branch `docs/aegis2-slice-1`
-(issue #124), following `docs/superpowers/plans/2026-10-06-aegis2-slice-1.md`.
+**Status: implemented, 2026-10-06,** on the branch `docs/aegis 2-slice-1`
+(issue #124), following `docs/superpowers/plans/2026-10-06-aegis-2-slice-1.md`.
 Designed with Alex in one brainstorming session. Where the build changed the
-design, this file says so in place. It is the first slice of the aegis2 vision
-(`2026-10-05-aegis2-vision-design.md`, on the branch `docs/aegis2-vision` until
-that PR merges) and the first code under `src/aegis2/`.
+design, this file says so in place. It is the first slice of the aegis 2 vision
+(`2026-10-05-aegis-2-vision-design.md`, on the branch `docs/aegis 2-vision` until
+that PR merges) and the first code under `src/aegis/`.
 
 ## What slice 1 delivers
 
 One Claude Code session, in one browser tab, on one server, usable for real work
-in one repo. Alex starts `aegis2 serve`, opens the URL it prints, picks a profile
+in one repo. Alex starts `aegis serve`, opens the URL it prints, picks a profile
 and a cwd, and works with the agent: prompts, a streaming transcript with readable
 tool rows and failures, rendered Markdown, a status line with cost and context,
 interrupt, and close.
@@ -57,7 +57,7 @@ three reasons that bite in later slices:
 - **Plugins drawing their own entries.** With server HTML a plugin would supply a
   Python render function called over the plugin socket for every entry. With
   client rendering it ships a JavaScript renderer that the browser hot-reloads,
-  which is the reason aegis2 moved to the web.
+  which is the reason aegis 2 moved to the web.
 - **Interactivity wants data.** Opening a 2 MB Read result on demand, syntax
   highlighting, and a file path that opens the file viewer are awkward over
   finished HTML.
@@ -104,13 +104,13 @@ and the pending entry shows that it has not been read yet.
 
 ## The shape
 
-`aegis2 serve` is one foreground process. It serves the client, holds at most one
+`aegis serve` is one foreground process. It serves the client, holds at most one
 live Claude session, and runs that session's `claude -p` as a child. Closing the
 browser leaves the session running; stopping the server ends it. The transcript
 is written to disk from the first event, though nothing reads it back until
 slice 2.
 
-| Module under `src/aegis2/` | What it does |
+| Module under `src/aegis/` | What it does |
 |---|---|
 | `roots.py` | The config root, state root and harness cwd, passed explicitly to everything that resolves a path |
 | `profiles.py` | Reads the `agents:` map of `.aegis.yaml` under the config root |
@@ -123,11 +123,11 @@ slice 2.
 | `ops.py` | The operation registry |
 | `channels.py` | Named channels: snapshot on subscribe, then numbered patches |
 | `web.py` | Starlette: static files and one websocket |
-| `cli.py` | `aegis2 serve` |
+| `cli.py` | `aegis serve` |
 | `client/` | Static ES modules, vendored markdown-it, three theme CSS files, fonts |
 
 **The store keeps raw lines, not entries.** Each record is either a raw Claude
-stdout line or something aegis2 did (spawn, send, interrupt, exit, close), with
+stdout line or something aegis 2 did (spawn, send, interrupt, exit, close), with
 its receive time and its own index, so skipping a damaged line on load never
 shifts the ids after it. Entries are derived by folding records on load, so a better
 summary or glyph applies to old transcripts too, and slice 2's resume reads the
@@ -285,14 +285,14 @@ Static ES modules under `client/`, served by the server, no build step.
 | An interrupt gets no `result` within 10 s | Status `error`, with a system entry saying the interrupt went unanswered |
 | The websocket drops | The client reconnects and resubscribes |
 | SIGINT or SIGTERM to the server | Claude gets SIGTERM, then SIGKILL after 5 s; the store is flushed |
-| The port is taken | `aegis2 serve` exits with the port and the hint to pass `--port` |
+| The port is taken | `aegis serve` exits with the port and the hint to pass `--port` |
 
 ## Roots, state, and the CLI
 
-`aegis2 serve [--root PATH] [--port 8742] [--host 127.0.0.1]`. The CLI is the only
+`aegis serve [--root PATH] [--port 8742] [--host 127.0.0.1]`. The CLI is the only
 place that reads the process's working directory, once, to build the roots: the
 config root is `--root` or the nearest ancestor holding `.aegis.yaml`; the state
-root is `<config root>/.aegis2/state`; the harness cwd defaults to the config
+root is `<config root>/.aegis/state`; the harness cwd defaults to the config
 root. Nothing below the CLI calls `Path.cwd()`.
 
 The log id is minted at spawn, before the child starts, and names the store file.
@@ -303,15 +303,15 @@ across restarts so that an open tab survives a server restart. Deleting the file
 rotates it. Binding to anything but loopback needs an explicit `--host`.
 
 The old aegis uses `.aegis/state/` and its own ports, so both run on one machine.
-`.aegis2/` is added to the repo's `.gitignore` and to the Workspace's.
+`.aegis/` is added to the repo's `.gitignore` and to the Workspace's.
 
 ## Testing
 
 **Lessons first.** These tests are written before the code they constrain:
 
-- no file under `src/aegis2/` imports `aegis` (AST, like
+- no file under `src/aegis/` imports `aegis` (AST, like
   `tests/webterm/test_imports.py`);
-- no `Path.cwd()` under `src/aegis2/` outside `cli.py` (AST, like
+- no `Path.cwd()` under `src/aegis/` outside `cli.py` (AST, like
   `tests/test_no_cwd_regression.py`);
 - the store file is named by a log id minted at spawn, never by a handle;
 - a damaged store line is skipped and the rest of the transcript loads;
@@ -328,13 +328,13 @@ The old aegis uses `.aegis/state/` and its own ports, so both run on one machine
 store, the registry's validation, channel sequence numbers, and the profile
 reader.
 
-**A fake `claude`.** `tests/aegis2/fake_claude.py` speaks stream-json on stdin
+**A fake `claude`.** `tests/fake_claude.py` speaks stream-json on stdin
 and stdout. It replays a store file as a scripted session, echoes user messages,
 and answers an interrupt `control_request` with an error `result`. Server
 integration tests drive it through Starlette's websocket test client.
 
 **Browser tests,** marked `browser` and run in CI, use Playwright and headless
-Chromium against `aegis2 serve` with the fake: spawn from the form, send, watch
+Chromium against `aegis serve` with the fake: spawn from the form, send, watch
 entries arrive, interrupt, reload the page and see the same transcript. Playwright
 joins the dev dependency group.
 
@@ -367,33 +367,33 @@ asks on every patch whether the reader is at the bottom.
 base commit and on its head, so the difference between runner machines cancels
 out. It writes the table of deltas to the job summary and adds a `::warning::`
 annotation for each metric more than 20% worse. The step never fails the run.
-When the base has no aegis2, as on slice 1's own PR, it reports the head's
+When the base has no aegis 2, as on slice 1's own PR, it reports the head's
 numbers alone.
 
 ## Docs that change with this slice
 
 - **AGENTS.md** says near the top that the old tree under `src/aegis/`, TUI
   included, is frozen and takes bug fixes only, and that new work goes to
-  `src/aegis2/` following the vision spec and the slice specs. "What done means"
-  gains an aegis2 version: `make check`, exercised in a browser against a server
+  `src/aegis/` following the vision spec and the slice specs. "What done means"
+  gains an aegis 2 version: `make check`, exercised in a browser against a server
   started after the change, the bench run, and DESIGN.md updated.
-- **DESIGN.md** gains an aegis2 part at the top with its process model and its
+- **DESIGN.md** gains an aegis 2 part at the top with its process model and its
   cross-module rules, and the current content moves under a heading that marks it
-  as the frozen tree's design. Every slice PR updates the aegis2 part in the same
+  as the frozen tree's design. Every slice PR updates the aegis 2 part in the same
   change that alters the shape.
 
-These two edits land with this spec. The DESIGN.md aegis2 part describes the
+These two edits land with this spec. The DESIGN.md aegis 2 part describes the
 design as specified, marked as such, until slice 1's code lands.
 
 ## Done means
 
 1. `make check` passes, browser tests included.
-2. Alex runs `aegis2 serve` on zion, spawns `opus` in a repo, and works with it:
+2. Alex runs `aegis serve` on zion, spawns `opus` in a repo, and works with it:
    prompts, a mid-turn steer, an interrupt, a failing tool call, a page reload, a
    theme switch, and close.
 3. `make bench2` runs locally and in CI, and the job summary shows its table.
-4. DESIGN.md's aegis2 part matches the code.
-5. A `changelog.d/` fragment announces `aegis2 serve` as experimental.
+4. DESIGN.md's aegis 2 part matches the code.
+5. A `changelog.d/` fragment announces `aegis serve` as experimental.
 
 ## Out of scope
 

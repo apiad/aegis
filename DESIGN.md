@@ -6,9 +6,9 @@ what aegis is and what done means; `know-how/` says how to do a particular job.
 This file changes when the architecture changes, and not otherwise. A rule that
 belongs to one module lives in that module's docstring, next to the code it
 protects. The reasoning behind each feature is in `docs/superpowers/specs/`: the
-vision (`2026-10-05-aegis2-vision-design.md`) and one spec per slice. The tree was
-built as `aegis2` next to the TUI-era aegis, which now lives under `legacy/` with
-its own `legacy/DESIGN.md`.
+vision (`2026-10-05-aegis-2-vision-design.md`) and one spec per slice. This tree was
+built as a second package next to the TUI-era aegis, which now lives under
+`legacy/` with its own `legacy/DESIGN.md`.
 
 ## The process model
 
@@ -32,13 +32,15 @@ hundreds costs hundreds of small reads; a missing or damaged meta is rebuilt fro
 its store and the session lands in the archive. Boot writes to no store, except one
 `server_stopped` record for a session whose meta says it was mid-turn.
 
-**Its own state.** aegis keeps its state in `.aegis2/state/` under the config
-root. `.aegis/state/` holds the legacy tree's state in another format, and two
-formats in one directory invite collisions; renaming it is one change once nothing
-reads the old one. Of `.aegis.yaml`, aegis reads the `agents:` and `queues:` maps.
+**Its own state, never mixed with the legacy tree's.** aegis keeps its state in
+`.aegis/state/` under the config root, where the legacy tree kept its own in
+another format. `aegis serve` refuses to start on a state directory holding the
+legacy tree's marker files, and says to move it to `.aegis/legacy-state/`; mixing
+the two would have each read files the other wrote. Of `.aegis.yaml`, aegis reads
+the `agents:` and `queues:` maps.
 
 **Relative imports, and nothing from the legacy tree.** Imports inside aegis are
-relative, which is what made the rename from `aegis2` one directory move, and no
+relative, which is what made taking over the `aegis` name one directory move, and no
 module imports `legacy/`, which is not packaged. `tests/test_imports.py` enforces
 both by AST.
 
@@ -146,7 +148,7 @@ system entry.
 localhost port is not trusted either: the websocket needs the server's token and
 its own origin, because any page in the browser can open a socket to localhost.
 
-**Performance is measured on every PR and never gates.** `scripts/bench2.py`
+**Performance is measured on every PR and never gates.** `scripts/bench.py`
 replays a recorded transcript through the fake harness in
 `tests/fake_claude.py`, and CI compares the PR's base and head on the same
 runner. A regression is a warning a reader has to weigh.

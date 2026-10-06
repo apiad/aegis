@@ -17,7 +17,7 @@ def test_a_full_pool_falls_back_to_a_suffix():
 
 
 def test_valid_handle():
-    assert valid_handle("quiet-owl") and valid_handle("aegis2-slice-one")
+    assert valid_handle("quiet-owl") and valid_handle("aegis-slice-one")
     for bad in ("Quiet-owl", "owl", "a-b-c-d", "1abc-x", "quiet_owl", "quiet-", "-owl"):
         assert not valid_handle(bad), bad
 

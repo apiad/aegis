@@ -13,7 +13,7 @@ aegis serve                # prints a URL with its token; open it
 ```
 
 `aegis serve --port 8742 --host 127.0.0.1` are the defaults. The token is kept in
-`.aegis2/state/token` and reused across restarts; delete the file to rotate it.
+`.aegis/state/token` and reused across restarts; delete the file to rotate it.
 Anything but loopback must be asked for with `--host`.
 
 ## Configuration

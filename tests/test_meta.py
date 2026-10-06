@@ -41,7 +41,7 @@ def test_rebuild_recovers_spec_claude_id_and_title(tmp_path: Path):
     s = Store(path)
     s.append(
         {
-            "src": "aegis2",
+            "src": "aegis",
             "kind": "spawn",
             "ts": 1.0,
             "profile": "opus",
@@ -53,7 +53,7 @@ def test_rebuild_recovers_spec_claude_id_and_title(tmp_path: Path):
     )
     s.append(
         {
-            "src": "aegis2",
+            "src": "aegis",
             "kind": "send",
             "ts": 2.0,
             "text": "fix the flaky test\nplease",

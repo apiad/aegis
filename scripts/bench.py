@@ -1,6 +1,6 @@
 """Measure aegis's transcript path. Reports; never gates.
 
-    uv run python scripts/bench2.py [--out FILE]
+    uv run python scripts/bench.py [--out FILE]
 
 Four measurements, all lower-is-better, over the recorded session in
 tests/fixtures/session.jsonl:
@@ -14,7 +14,7 @@ tests/fixtures/session.jsonl:
   from navigation start to the first frame painted after the snapshot;
 - memory after that replay: the server's RSS and the page's JS heap.
 
-scripts/bench2_compare.py turns two of these files into a table and warnings.
+scripts/bench_compare.py turns two of these files into a table and warnings.
 """
 
 from __future__ import annotations
@@ -264,7 +264,7 @@ def make_world(root: Path, n_open: int = 20, n_archived: int = 80) -> None:
     (root / ".aegis.yaml").write_text(
         "agents:\n  bench: {model: m, effort: low, permission: full}\n"
     )
-    state = root / ".aegis2" / "state"
+    state = root / ".aegis" / "state"
     (state / "transcripts").mkdir(parents=True)
     (state / "sessions").mkdir(parents=True)
     store = FIXTURE.read_bytes()

@@ -1,13 +1,13 @@
-# aegis2: vision
+# aegis 2: vision
 
 **Status: draft vision, 2026-10-05.** Agreed with Alex in one conversation;
 nothing is built. This is the top-level picture that later specs hang from: the
 server core and its protocols, the web client, the plugin runtime, cross-server
 links, and the migration. Each of those gets its own spec when its slice comes up.
 
-It sets a new direction for aegis2 and leaves the current aegis as it is. The
+It sets a new direction for aegis 2 and leaves the current aegis as it is. The
 current tree follows `2026-09-07-retire-web-ui-tui-over-web-design.md` (one
-brain, many TUI views); aegis2 does not. It takes ideas 1 to 3 from
+brain, many TUI views); aegis 2 does not. It takes ideas 1 to 3 from
 `2026-08-23-aegis-plugin-first-core-vision.md` and drops idea 5.
 
 ## Why a second aegis
@@ -34,17 +34,17 @@ Four things the current aegis cannot do.
    work".
 
 Doing all four inside the current tree would touch nearly every module and keep
-`main` working through dozens of intermediate states. aegis2 is built from
+`main` working through dozens of intermediate states. aegis 2 is built from
 scratch next to it instead ("How we build it" below).
 
-## What aegis2 is
+## What aegis 2 is
 
-aegis2 is a shared workplace for a small team and their coding agents. Each
+aegis 2 is a shared workplace for a small team and their coding agents. Each
 person runs a server on the machine where they work. A shared server on the VPS
 is where the team schedules tasks and watches long-running work. The browser
 talks to one server, its home server, which proxies every other server the user
 holds a token for. Agents run inside existing harnesses (Claude Code, OpenCode,
-lovelaice). aegis2 runs them, lets them talk to each other across servers, and
+lovelaice). aegis 2 runs them, lets them talk to each other across servers, and
 lets them reshape the UI and extend the server while they work.
 
 It is for Alex, Yudi and Daniel first. It stays publishable on PyPI, but its
@@ -56,13 +56,13 @@ are written for agents, not strangers.
 ```mermaid
 flowchart TB
   subgraph vps["VPS · shared"]
-    VS[(aegis2 server)]
+    VS[(aegis server)]
   end
   subgraph zion["zion · Alex"]
-    AB[browser] -->|home token| ZS[(aegis2 server)]
+    AB[browser] -->|home token| ZS[(aegis server)]
   end
   subgraph yudi["laptop · Yudi"]
-    YB[browser] -->|home token| YS[(aegis2 server)]
+    YB[browser] -->|home token| YS[(aegis server)]
   end
   PB[Alex's phone · browser] -->|home token| VS
   DB[Daniel · browser] -->|home token| VS
@@ -158,7 +158,7 @@ sequenceDiagram
   Z-->>A: user turn "from quiet-owl@vps"
 ```
 
-- aegis2 delivers the message and records its provenance. Fetching the repo,
+- aegis 2 delivers the message and records its provenance. Fetching the repo,
   checking out the branch and reading the brief are the receiving agent's job,
   taught by skills.
 - Session transfer, moving the transcript and the harness's own session file,
@@ -172,7 +172,7 @@ sequenceDiagram
 flowchart TB
   BR[browser] -->|client protocol| CP
   HN[Claude Code · OpenCode · lovelaice] -->|MCP| MCP
-  subgraph S["aegis2 server"]
+  subgraph S["aegis server"]
     CP[client endpoint] --> REG
     MCP[MCP endpoint] --> REG
     REG[operation registry] --> CORE[sessions · transcripts · users · session panels · state channels]
@@ -273,8 +273,8 @@ flowchart LR
 A panel is an HTML document rendered in a sandboxed iframe. It talks to its host
 page by JSON-RPC over `postMessage` and calls operations through the page, never
 directly. This is the shape of the MCP Apps extension (SEP-1865, specification
-dated 2026-01-26). Following its message format would let aegis2 host existing
-MCP Apps and let aegis2 panels run in other hosts.
+dated 2026-01-26). Following its message format would let aegis 2 host existing
+MCP Apps and let aegis 2 panels run in other hosts.
 
 A decision panel round-trips like this:
 
@@ -305,7 +305,7 @@ sequenceDiagram
 The HTML companion of this spec carries a working mockup with four views and a
 theme switcher. Agreed with Alex on 2026-10-05 in the brainstorming companion.
 
-aegis2 ships three themes and no default look. All three are bundled, and
+aegis 2 ships three themes and no default look. All three are bundled, and
 each person picks one in Settings.
 
 | Theme | Look | Type |
@@ -395,7 +395,7 @@ column.
 
 ### The four views
 
-<!-- aegis2-mockup -->
+<!-- aegis 2-mockup -->
 
 - **Session.** Tabs from every server across the top: Fleet on the left,
   Settings on the right, and server health in between. The transcript keeps the
@@ -499,19 +499,19 @@ Nothing is ported in bulk. Each item arrives when a slice needs it.
 
 ## How we build it
 
-- **A new tree in the same repo.** `src/aegis2/`, with its own `aegis2` entry
+- **A new tree in the same repo.** `src/aegis/`, with its own `aegis 2` entry
   point in the `aegis-harness` package and the same `uv.lock`. PRs land on
   `main` as usual while aegis keeps working.
-- **Copy, never import.** No file under `src/aegis2/` imports `aegis`. An AST
+- **Copy, never import.** No file under `src/aegis/` imports `aegis`. An AST
   test enforces it, like `tests/webterm/test_imports.py`. Leaf modules that are
   already right, such as the stream-json parsing in the drivers, the model
   registry and the glyph table, are copied and adapted.
-- **Relative imports inside aegis2,** so renaming it to `aegis` at the switch is
+- **Relative imports inside aegis 2,** so renaming it to `aegis` at the switch is
   one mechanical commit.
 - **Separate state.** Its own state root, socket path and port, so both run on
   one machine.
-- **The old tree takes bug fixes only.** New features go to aegis2. Agents
-  building aegis2 run inside the old aegis, so its bugs still get fixed.
+- **The old tree takes bug fixes only.** New features go to aegis 2. Agents
+  building aegis 2 run inside the old aegis, so its bugs still get fixed.
 - **Lessons become tests first.** Each DESIGN.md rule that cost an incident and
   still applies becomes a test before the code it constrains: transcripts are
   keyed by a log id minted at spawn, a turn boundary is not completion, replay
@@ -519,12 +519,12 @@ Nothing is ported in bulk. Each item arrives when a slice needs it.
   `Path.cwd()`, a damaged file never takes a session down, and what aegis says
   about a turn stays out of the agent's context.
 - **Its own agent docs from day one,** covered by `.rift.yaml`, so an agent
-  working in `src/aegis2/` does not read the old architecture.
+  working in `src/aegis/` does not read the old architecture.
 - **Specs and plans on zion, implementation on the VPS.** Each slice is
   designed interactively and executed by a VPS session.
-- **Switch at daily use, not at parity.** Alex moves his daily work to aegis2
+- **Switch at daily use, not at parity.** Alex moves his daily work to aegis 2
   once it covers what he uses every day, and falls back to aegis for the rest.
-  When nothing sends him back, aegis is deleted and aegis2 renamed.
+  When nothing sends him back, aegis is deleted and aegis 2 renamed.
 
 ### Slices
 
@@ -553,7 +553,7 @@ attention, voice.
 - Session transfer between servers. Possible later.
 - Permissions finer than a full token. Read-only and append-only tokens later.
 - Electron.
-- Replacing the harnesses. aegis2 runs Claude Code, OpenCode and lovelaice.
+- Replacing the harnesses. aegis 2 runs Claude Code, OpenCode and lovelaice.
 - Log scraping. Every signal comes from a structured protocol (stream-json or
   ACP).
 - Groups and ssh execution hosts.
@@ -563,10 +563,10 @@ attention, voice.
 - **Where the arrangement is stored.** In browser storage, so zion and the
   phone each keep their own; or per user on the home server, so every browser
   using that home shares it.
-- **Old data.** Whether aegis2 reads `.aegis.yaml` and the existing transcripts,
+- **Old data.** Whether aegis 2 reads `.aegis.yaml` and the existing transcripts,
   or starts empty and keeps aegis installed as a read-only archive of old
   sessions.
-- **A terminal CLI** (`aegis2 send`, `ls`, `tail`) for scripts and ssh.
+- **A terminal CLI** (`aegis 2 send`, `ls`, `tail`) for scripts and ssh.
 - **Harnesses that do not refresh tool lists.** Check OpenCode and lovelaice
   before the plugin slice.
 - **The panel message format.** Adopt MCP Apps' exactly, after reading the

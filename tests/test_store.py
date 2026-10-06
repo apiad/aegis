@@ -5,7 +5,7 @@ from aegis.transcript.store import Store, read_store
 
 def test_append_numbers_records(tmp_path: Path):
     s = Store(tmp_path / "t" / "log.jsonl")
-    assert [s.append({"src": "aegis2", "kind": "x"})["i"] for _ in range(3)] == [
+    assert [s.append({"src": "aegis", "kind": "x"})["i"] for _ in range(3)] == [
         0,
         1,
         2,
@@ -18,7 +18,7 @@ def test_append_numbers_records(tmp_path: Path):
 def test_damaged_lines_are_skipped_and_counted(tmp_path: Path):
     p = tmp_path / "log.jsonl"
     p.write_text(
-        '{"i": 0, "src": "aegis2", "kind": "spawn"}\n'
+        '{"i": 0, "src": "aegis", "kind": "spawn"}\n'
         "{not json\n"
         '{"i": 2, "src": "claude", "line": "{}"}\n'
         '["a list"]\n'
@@ -33,12 +33,12 @@ def test_a_reopened_store_continues_its_numbering(tmp_path: Path):
     p = tmp_path / "log.jsonl"
     s = Store(p)
     for _ in range(3):
-        s.append({"src": "aegis2", "kind": "x"})
+        s.append({"src": "aegis", "kind": "x"})
     s.close()
     with p.open("a") as f:
         f.write('{"i": 3, "src": "claude", "li')  # a line cut by a crash
     s2 = Store(p)
-    assert s2.append({"src": "aegis2", "kind": "y"})["i"] == 3
+    assert s2.append({"src": "aegis", "kind": "y"})["i"] == 3
     s2.close()
     records, damaged = read_store(p)
     assert [r["i"] for r in records] == [0, 1, 2, 3] and damaged == 1

@@ -22,7 +22,7 @@ uv run python - <<'PY'
 from pathlib import Path
 from aegis.transcript.store import read_store
 from aegis.transcript.entries import fold_records
-for p in Path(".aegis2/state/transcripts").glob("*.jsonl"):
+for p in Path(".aegis/state/transcripts").glob("*.jsonl"):
     entries = fold_records(read_store(p)[0]).entries()
     ...
 PY

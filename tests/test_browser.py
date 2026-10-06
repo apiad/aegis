@@ -288,7 +288,7 @@ def test_a_restart_brings_tabs_back_stopped_and_a_prompt_resumes(server, page):
         server.stop()
         metas = {
             p.name: p.read_text()
-            for p in (server.root / ".aegis2" / "state" / "sessions").glob("*.json")
+            for p in (server.root / ".aegis" / "state" / "sessions").glob("*.json")
         }
         raise AssertionError(
             "no recall after the restart.\n"

@@ -9,7 +9,7 @@ def test_nearest_ancestor_with_config_is_the_root(tmp_path: Path):
     deep.mkdir(parents=True)
     roots = make_roots(start=deep, root=None)
     assert roots.config_root == tmp_path
-    assert roots.state_root == tmp_path / ".aegis2" / "state"
+    assert roots.state_root == tmp_path / ".aegis" / "state"
     assert roots.harness_cwd == tmp_path
 
 

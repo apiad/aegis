@@ -157,7 +157,7 @@ function follow(id) {
     `transcript:${id}`,
     (entries) => {
       transcript.snapshot(entries || []);
-      // Read by scripts/bench2.py: when the snapshot was drawn and painted.
+      // Read by scripts/bench.py: when the snapshot was drawn and painted.
       const mark = (window.__a2snapshot = { at: performance.now(), count: (entries || []).length });
       requestAnimationFrame(() => (mark.painted = performance.now()));
     },

@@ -1,8 +1,8 @@
 import importlib.util
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "bench2_compare.py"
-spec = importlib.util.spec_from_file_location("bench2_compare", SCRIPT)
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "bench_compare.py"
+spec = importlib.util.spec_from_file_location("bench_compare", SCRIPT)
 bc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bc)
 

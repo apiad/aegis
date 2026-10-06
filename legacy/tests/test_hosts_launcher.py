@@ -68,7 +68,7 @@ class FakeLauncher:
         # `sleep` itself, not `sh -c "sleep 30"`: a shell that forks sleep
         # leaves it holding the pipes after SIGTERM kills the shell, and
         # close() then waits out its 5 s timeout. Under parallel load that
-        # happened often enough to trip the 3 s budget (aegis2 slice 3).
+        # happened often enough to trip the 3 s budget (aegis 2 slice 3).
         return await LocalLauncher().spawn(
             ["sleep", "30"], cwd=cwd, env=None)
 
