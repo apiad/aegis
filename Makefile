@@ -67,6 +67,11 @@ test-cov:
 test-all:
 	uv run pytest -q -n auto --cov=aegis --cov-report=term-missing
 
+# aegis2's client in headless Chromium against a real `aegis2 serve` and the
+# fake claude. Marked slow too, so `make test` skips them; CI runs them.
+test-browser:
+	uv run pytest -q -m browser
+
 # Real agent CLIs, models and remote hosts: spends quota, touches the VPS.
 # Select by marker, never with -k "not live": -k matches substrings and silently
 # drops unrelated tests whose names contain "live", such as anything with "deliver".

@@ -5,6 +5,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # A websocket test that waits forever must not hold a runner for hours.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,6 +31,9 @@ jobs:
       # that silently goes missing.
       - name: changelog fragments
         run: make changelog-check
+      # aegis2's browser tests drive headless Chromium.
+      - name: chromium for browser tests
+        run: uv run playwright install --with-deps chromium
       - run: uv run pytest -q -m "not live"
 
       # Advisory, exactly as in `make check`: `ty` is 0.0.29, has never been
