@@ -1,15 +1,15 @@
-"""Measure aegis2's transcript path. Reports; never gates.
+"""Measure aegis's transcript path. Reports; never gates.
 
     uv run python scripts/bench2.py [--out FILE]
 
 Four measurements, all lower-is-better, over the recorded session in
-tests/aegis2/fixtures/session.jsonl:
+tests/fixtures/session.jsonl:
 
 - server cost per Claude line: parse, store, fold, publish and JSON-encode
   the patch, in process, p50 and p95;
 - browser latency per tool entry: from the fake claude writing the line to
   the row being in the DOM of headless Chromium, through a real
-  ``aegis2 serve``, p50 and p95;
+  ``aegis serve``, p50 and p95;
 - cold load: the fixture replayed to 2,000+ entries, then a page load timed
   from navigation start to the first frame painted after the snapshot;
 - memory after that replay: the server's RSS and the page's JS heap.
@@ -32,8 +32,8 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FIXTURE = ROOT / "tests" / "aegis2" / "fixtures" / "session.jsonl"
-FAKE = ROOT / "tests" / "aegis2" / "fake_claude.py"
+FIXTURE = ROOT / "tests" / "fixtures" / "session.jsonl"
+FAKE = ROOT / "tests" / "fake_claude.py"
 COLD_ENTRIES = 2000
 
 sys.path.insert(0, str(ROOT / "src"))
@@ -52,9 +52,9 @@ def claude_lines() -> list[str]:
 
 # -- 1. server cost per line --------------------------------------------------
 async def server_cost(rounds: int = 40) -> dict:
-    from aegis2.meta import MetaStore
-    from aegis2.session import Session, SpawnSpec
-    from aegis2.transcript.store import Store
+    from aegis.meta import MetaStore
+    from aegis.session import Session, SpawnSpec
+    from aegis.transcript.store import Store
 
     lines = claude_lines()
     samples: list[float] = []
@@ -113,7 +113,7 @@ class Server:
             [
                 sys.executable,
                 "-m",
-                "aegis2",
+                "aegis",
                 "serve",
                 "--root",
                 str(tmp),
@@ -131,7 +131,7 @@ class Server:
         while not self.url:
             line = self.proc.stdout.readline()
             if not line:
-                raise RuntimeError("aegis2 serve exited")
+                raise RuntimeError("aegis serve exited")
             if m := re.search(r"open (http://\S+)", line):
                 self.url = m.group(1)
         for _ in range(200):
@@ -294,8 +294,8 @@ def make_world(root: Path, n_open: int = 20, n_archived: int = 80) -> None:
 
 
 def boot_cost() -> dict:
-    from aegis2.registry import Registry
-    from aegis2.roots import make_roots
+    from aegis.registry import Registry
+    from aegis.roots import make_roots
 
     with tempfile.TemporaryDirectory() as tmp:
         make_world(Path(tmp))

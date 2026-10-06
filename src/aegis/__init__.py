@@ -1,24 +1,5 @@
-from aegis.config import (
-    Agent,
-    ClaudeCode,
-    Effort,
-    GeminiCLI,
-    OpenCode,
-    Permission,
-    Provider,
-)
-from aegis.embed import EmbeddedAegis, embed
-from aegis.queue import Queue
+"""aegis: a web-native workplace for coding agents.
 
-__all__ = [
-    "Agent",
-    "ClaudeCode",
-    "Effort",
-    "EmbeddedAegis",
-    "GeminiCLI",
-    "OpenCode",
-    "Permission",
-    "Provider",
-    "Queue",
-    "embed",
-]
+Built from scratch next to the old ``aegis`` tree and never importing it. The
+vision and each slice's design are under ``docs/superpowers/specs/``.
+"""

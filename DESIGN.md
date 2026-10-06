@@ -1,25 +1,18 @@
-# aegis — design
+# aegis: design
 
-How aegis is built, and the rules that hold across its modules. AGENTS.md says what
-aegis is and what done means; `know-how/` says how to do a particular job.
+How aegis is built, and the rules that hold across its modules. AGENTS.md says
+what aegis is and what done means; `know-how/` says how to do a particular job.
 
-This file changes when the architecture changes, and not otherwise. Adding a tool,
-a command, a driver or a sidebar section touches none of it. A rule that belongs to
-one module lives in that module's docstring, next to the code it protects, so the
-person editing the module reads it. The user-facing reference is the mkdocs site
-under `docs/`, and the reasoning behind each feature is in `docs/superpowers/specs/`.
-
-The repo holds two trees. aegis2, under src/aegis2/, is where new work goes, and
-its design comes first. The old tree under src/aegis/ is frozen and takes bug fixes
-only. Its design follows unchanged, because those fixes still have to respect it.
-Each aegis2 rule below lands with the slice that first needs it, and every slice PR
-updates this part in the same change that alters the shape.
-
-# aegis2
+This file changes when the architecture changes, and not otherwise. A rule that
+belongs to one module lives in that module's docstring, next to the code it
+protects. The reasoning behind each feature is in `docs/superpowers/specs/`: the
+vision (`2026-10-05-aegis2-vision-design.md`) and one spec per slice. The tree was
+built as `aegis2` next to the TUI-era aegis, which now lives under `legacy/` with
+its own `legacy/DESIGN.md`.
 
 ## The process model
 
-**One process per machine, one websocket per browser.** `aegis2 serve` serves the
+**One process per machine, one websocket per browser.** `aegis serve` serves the
 static client, holds the sessions and runs each harness as its own child process.
 A browser talks to it over one websocket. Closing the browser leaves the sessions
 running; stopping the server ends their processes, not the sessions. Later slices
@@ -39,14 +32,15 @@ hundreds costs hundreds of small reads; a missing or damaged meta is rebuilt fro
 its store and the session lands in the archive. Boot writes to no store, except one
 `server_stopped` record for a session whose meta says it was mid-turn.
 
-**Separate state, separate port.** aegis2 keeps its state in `.aegis2/state/`
-under the config root and listens on its own port, so it runs next to the old tree
-on one machine. It never reads the old tree's state. The one file both read is
-`.aegis.yaml`, and aegis2 reads only its `agents:` map.
+**Its own state.** aegis keeps its state in `.aegis2/state/` under the config
+root. `.aegis/state/` holds the legacy tree's state in another format, and two
+formats in one directory invite collisions; renaming it is one change once nothing
+reads the old one. Of `.aegis.yaml`, aegis reads the `agents:` and `queues:` maps.
 
-**No imports from the old tree.** Code that is already right is copied and
-adapted, never imported, and imports inside aegis2 are relative.
-`tests/aegis2/test_imports.py` enforces both by AST. The second makes the final rename one mechanical commit.
+**Relative imports, and nothing from the legacy tree.** Imports inside aegis are
+relative, which is what made the rename from `aegis2` one directory move, and no
+module imports `legacy/`, which is not packaged. `tests/test_imports.py` enforces
+both by AST.
 
 ## Rules that span modules
 
@@ -85,7 +79,7 @@ working `claude` would inject the message at its next tool boundary instead.
 queue worker is finished only when its turn has ended with no live monitor, no
 held message and no Claude task still open (`task_started` without its
 `task_notification`). Reading the turn boundary alone as done closed a worker
-mid-wait in the old tree.
+mid-wait in the legacy tree.
 
 **Agents change only what they created.** An agent reads and messages any session
 it can see, and changes only its own monitors, its own session's names and the
@@ -112,7 +106,7 @@ theme might show, and the base stylesheet reads only CSS variables. A theme sets
 the variables and a few overrides that decide what shows.
 
 **The store keeps raw lines; entries are derived.** A transcript file holds the
-harness's raw stdout lines and what aegis2 did (spawn, send, interrupt, exit,
+harness's raw stdout lines and what aegis did (spawn, send, interrupt, exit,
 close), each with its receive time and its own index. Entries are folded from them
 on load, with deterministic ids, so a better summary applies to old transcripts and
 a resume reads the same file the live session wrote.
@@ -125,7 +119,7 @@ left out an update the entries had.
 
 **A transcript is keyed by a log id minted at spawn, never by a handle.** Handles
 are reused; keying on them once merged unrelated conversations into one file in
-the old tree.
+the legacy tree.
 
 **The echo creates the user entry, never the send.** Claude Code injects a prompt
 sent mid-turn at the next tool boundary and closes both prompts with one `result`,
@@ -141,7 +135,7 @@ returned.
 
 **Three roots, never `Path.cwd()`.** The CLI reads the working directory once to
 build the config root, state root and harness cwd, and passes them down. Nothing
-below it calls `Path.cwd()`, and `tests/aegis2/test_no_cwd.py` fails if something
+below it calls `Path.cwd()`, and `tests/test_no_cwd.py` fails if something
 does.
 
 **A damaged file never takes a session down.** A store line that does not parse is
@@ -154,134 +148,5 @@ its own origin, because any page in the browser can open a socket to localhost.
 
 **Performance is measured on every PR and never gates.** `scripts/bench2.py`
 replays a recorded transcript through the fake harness in
-`tests/aegis2/fake_claude.py`, and CI compares the PR's base and head on the same
+`tests/fake_claude.py`, and CI compares the PR's base and head on the same
 runner. A regression is a warning a reader has to weigh.
-
-# The frozen tree: aegis
-
-## The process model
-
-**`aegis` boots no brain.** A detached `aegis server` holds the sessions, the queues
-and every view; a terminal connects over a unix socket and pipes bytes. Sessions
-outlive the terminal, several terminals can watch one daemon, and `Ctrl+Q` detaches
-rather than shutting anything down. The daemon keeps whatever code it booted with,
-which is the first thing to suspect when an edit does not appear.
-
-**A browser is a view, like a terminal.** `aegis web` is a separate process
-that serves each browser tab one view over the daemon's unix socket and
-relays its frames unchanged. It checks the token and knows nothing else:
-no session, agent or queue crosses into it, and `tests/webterm/test_imports.py`
-fails if one does. The daemon binds no web port, so the process facing a
-network is never the one running the agents.
-
-**One boot path.** Every entry point goes through `_serve` in `src/aegis/cli.py`,
-which takes an `AegisRoots` and an optional UI attachment. With no attachment it
-starts the MCP plane itself; with one it defers `start()`, because `build_server`
-captures the bridge at `start()` and a front end rebinds the plane to itself first.
-`load_boot_config` raises `ConfigError` instead of exiting, so a host that embeds
-aegis sees the exception.
-
-**Three roots, never `Path.cwd()`.** `config_root`, `state_root` and `harness_cwd`
-coincide for the CLI and differ when aegis is embedded, so every path is resolved
-against the right root. They were conflated as `Path.cwd()` for a long time, and
-`tests/test_no_cwd_regression.py` guards the regression by AST.
-
-**`.aegis.yaml` is the single config file.** Drop-in overlays under
-`.aegis/<kind>/*.yaml` merge with inline entries and fail loud on a collision,
-because a silently shadowed agent or queue is a worse failure than a refused boot.
-
-## Rules that span modules
-
-**A view adopts the brain's planes; it never builds its own.** Queues, monitors,
-reminders, the inbox, canvas, terminals, groups and claims are brain state. Agents
-reach the brain's copy through MCP, so a copy a view built for itself renders
-something nothing writes to. `src/aegis/core/planes.py` is the inventory, and a test
-forces every new `attach_*` on `SessionManager` into it.
-
-**A view opens sessions on the brain; it never builds one.** Only the brain mints
-the token a harness presents to MCP and lists the session in
-`aegis_list_sessions`. A session a view built itself is on screen and unknown to
-every agent, so `read_peer`, `handoff`, `rename` and `/loop` fail for it. New tab,
-`/spawn`, `/fork`, a history reopen, the boot restore and a reconnect all go through
-`SessionManager`, and a bridged view that reaches for its own raises.
-
-**One authority for handle names.** A handle bound anywhere in a process is never
-handed to a different session. A pane's DOM id is its birth handle and Textual ids
-are immutable, so reusing a name is `DuplicateIds` and takes the whole app down.
-Mint through `SessionManager.handles`, never `generate_name`.
-
-**A transcript is keyed by a log id minted at spawn, never by a handle.** Handles
-come from a finite pool and are reused across restarts; keying on them once merged
-unrelated conversations into one file (100 of 223 logs on a real state dir). A
-rename appends metadata and moves nothing.
-
-**A damaged file never takes a session down.** Transcript reads skip damaged lines
-and salvage what they can, and observability writes (the comms ledger, the process
-log) log their own failure instead of raising into the call they observe.
-
-**A turn boundary is not completion.** Ending a turn is how an agent waits on a
-monitor or a reminder, so nothing that finalises a worker (marking a task done,
-sending a callback, closing it) may read a turn boundary as done. Reading it that
-way once closed a worker mid-wait and stranded real work in a shared checkout.
-
-**Replay does not re-record.** Recording hooks (which repos a turn wrote to, what a
-turn did) hang off `AgentSession._fire_event`, which the replay walk does not call.
-Moving one somewhere replay reaches makes a resumed session re-collect its whole
-history as a single turn.
-
-**What aegis says about a turn stays out of the agent's context.** Recaps and side
-notes land in the pane's history and are never appended to the session log, which
-keeps them out of the model's context and stops summaries compounding into
-summaries of themselves.
-
-**Caller identity is a transport fact.** One co-resident MCP server means no
-per-connection identity, so aegis mints a token per harness spawn and carries it in
-a request header that `resolve_caller` reads back. A tool's `from_handle` argument
-is a convention; the token is what attribution trusts.
-
-**Off-host paths are never resolved against the local disk.** The same string names
-a different tree on another host, and resolving it locally returns a wrong answer
-instead of an error. Claims, the repos board and file targets all carry the host.
-
-**Spawn has three orthogonal axes.** Agent profile, harness and host are resolved
-per spawn. Per-session overrides (model, effort, prompt, host) are never persisted
-to config.
-
-**One table per fact that crosses the wire.** Tool glyphs are resolved once, in
-Python, and reach every frontend already rendered. The retired browser client
-kept a second copy and it drifted the first time a glyph was added on one side.
-
-**Extension without forking.** Users extend aegis through three shapes: `@workflow`
-(orchestration invoked by a user, an agent or the scheduler), `@hook` (harness
-lifecycle events) and `@tool` (an MCP tool an agent can call). Plugins are
-auto-imported from `.aegis/plugins/` and the `plugin_dirs` config.
-
-## What a machine checks, and what a reader judges
-
-`make check` runs formatting, lint, doc lint, type checking and the fast test lane.
-`make test` is the lane to iterate on. A red run is a regression to investigate, not
-noise to re-roll: the suite's old flakes (a leaked inotify instance per app, two
-teardown races, tests sharing one `.aegis/state`) were fixed, and re-running a red
-test until it passes would now hide real failures.
-
-`.rift.yaml` checks that the docs name only real files and real tools, that the
-rosters (slash commands, drivers, config sections, mkdocs pages) are documented, and
-that the agent docs follow their contract. It runs from the Makefile only: rift is
-private, so CI cannot install it.
-
-A reader still has to judge:
-
-- whether a doc's explanation is correct, not merely that its nouns resolve;
-- whether `src/aegis/`-relative shorthands (`tui/pane.py`) still point at real
-  modules, since rift resolves paths against the repo root only;
-- whether every MCP tool is documented at all, since `docs/mcp.md` is an
-  architecture page and not a tool reference;
-- anything about `Path.cwd()` discipline beyond what the AST test covers.
-
-## Non-goals
-
-- Log scraping. Every signal comes from a structured protocol (stream-json or ACP),
-  never from parsing terminal text.
-- A line REPL or `--plain` mode. The TUI requires a TTY.
-- Replacing the underlying agent. If an upstream CLI improves, aegis improves with
-  it.

@@ -9,21 +9,22 @@ mechanics, and the traps each step has already cost someone.
 
 ## 1. The issue carries evidence, not a plan
 
-Reproduce it, measure it, then write it. `/spawn` was reported as "loses
-context"; the issue that came out of it carried *30 of 71 real preambles
-carried no `user:` line*, because the corpus under
-`.aegis/state/sessions/` was there to count. A number survives the branch
-being deleted; an impression does not.
+Reproduce it, measure it, then write it. The daily-driver slice (#129) chose
+its tools from 2,588 real tool calls in the legacy tree's comms ledger, not from
+a guess at what agents use. A number survives the branch being deleted; an
+impression does not.
 
-The logs are plain JSONL and replaying them is cheap:
+The stores are plain JSONL, one raw Claude line or aegis record per line, and
+folding them is cheap:
 
 ```bash
-python3 - <<'PY'
-import json, glob
-for f in glob.glob(".aegis/state/sessions/*.jsonl"):
-    for line in open(f, errors="replace"):
-        ev = json.loads(line).get("event", {})
-        ...
+uv run python - <<'PY'
+from pathlib import Path
+from aegis.transcript.store import read_store
+from aegis.transcript.entries import fold_records
+for p in Path(".aegis2/state/transcripts").glob("*.jsonl"):
+    entries = fold_records(read_store(p)[0]).entries()
+    ...
 PY
 ```
 
@@ -47,10 +48,10 @@ peer's work. Use a throwaway commit instead.
 Two things a fresh worktree does not give you:
 
 - `uv sync` — run it, or you are testing against whatever was there.
-- A clean tree across a big rename. A rebase across the stage-6 web
-  deletion leaves `src/aegis/web/__pycache__/` behind, and a bare
-  directory is a package, so `test_no_old_web_layer.py` fails until you
-  `rm -rf src/aegis/web`.
+- A clean tree across a big rename. A rebase across a moved package leaves
+  its `__pycache__/` behind, and a bare directory is a package, so an
+  import that should fail succeeds until you delete it.
+- Chromium for the browser tests: `uv run playwright install chromium`.
 
 ## 3. Write the release note as a fragment, not an edit
 
@@ -89,9 +90,12 @@ GITHUB_ACTIONS=true uv run pytest -q -m "not live"
 
 `typer.rich_utils` sets `FORCE_TERMINAL = True` when `GITHUB_ACTIONS` is
 set, so `--help` renders with ANSI escapes on a runner and nowhere else.
-That alone kept the `ci` workflow red while every laptop was green (#7).
-`FORCE_COLOR=1` is *not* the same switch — it also colours the
-application's own Rich consoles, and it breaks nine tests instead of two.
+That kept the `ci` workflow red while every laptop was green (#7).
+
+A runner is also slower than zion, which widens races a laptop never sees:
+#128's browser test failed only on CI because a tab switch rendered a moment
+after the URL changed. When a test fails only there, capture both ends (the
+page's websocket frames, `aegis serve --log-level info`) before guessing.
 
 Never read a gate's exit code through a pipe. `make test | tail` gives you
 `tail`'s status, which turns a red gate green.
