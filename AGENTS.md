@@ -8,13 +8,21 @@ to. It is published on PyPI as `aegis-harness`, and it is the harness Alex and h
 agents use for multi-agent work in this workspace, from a TUI locally and from a
 browser over a remote link.
 
+**The repo holds two trees, and the old one is frozen.** Everything under
+src/aegis/, the TUI included, takes bug fixes only. Agents building its successor
+run inside it, so its bugs still get fixed, but it gets no new features. New work
+goes to aegis2 under src/aegis2/: a web-native rewrite built from scratch next to
+the old tree, with no imports from it. Its direction is the aegis2 vision spec, and
+each slice has its own spec, all under `docs/superpowers/specs/`. When aegis2 covers
+Alex's daily use, the old tree is deleted and aegis2 takes the name.
+
 **Read this file, then DESIGN.md, then the know-how doc for the job in front of
 you.** This file changes when aegis's goals change. Nothing in it should be made
 false by a commit that adds a module, a tool or a test.
 
 ## What done means
 
-A change is done when:
+A change to the old tree is done when:
 
 1. `make check` passes;
 2. it has been exercised the way a user reaches it: in the TUI, or in a browser
@@ -27,6 +35,17 @@ A change is done when:
 
 Green tests against a daemon that booted before the change prove nothing about the
 change.
+
+A change to aegis2 is done when:
+
+1. `make check` passes, browser tests included;
+2. it has been exercised in a browser against an `aegis2 serve` started after the
+   change;
+3. `make bench2` has run and its table is in the PR body. CI reports a regression
+   as a warning and never fails on one, so a reader has to look at it;
+4. DESIGN.md's aegis2 part describes the code as it now is;
+5. a user-visible change has a `changelog.d/` fragment, and a change to how the
+   pieces fit has its slice spec under `docs/superpowers/specs/`.
 
 ## Where everything lives
 
