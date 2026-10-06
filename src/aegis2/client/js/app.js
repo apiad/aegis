@@ -49,12 +49,17 @@ function route() {
   return { view: "fleet" };
 }
 
+// Navigation renders in the same step as the URL changes. Setting
+// location.hash would render later, on hashchange, and anything typed in
+// between was wiped when the new tab's draft loaded (#128's CI failure).
+// Back and Forward, and a hand-edited URL, still arrive through hashchange.
 function go(hash) {
-  if (location.hash !== hash) location.hash = hash;
-  else render();
+  if (location.hash !== hash) history.pushState(null, "", hash);
+  render();
 }
 
 window.addEventListener("hashchange", render);
+window.addEventListener("popstate", render);
 
 function show(view, text) {
   root.dataset.view = view;
