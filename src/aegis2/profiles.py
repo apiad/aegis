@@ -67,15 +67,24 @@ def _profile(name: str, raw: object) -> Profile:
     )
 
 
-def load_profiles(config_root: Path) -> list[Profile]:
+def _config(config_root: Path) -> dict:
     path = config_root / CONFIG_FILE
     if not path.is_file():
-        return []
+        return {}
     try:
         data = YAML(typ="safe").load(path.read_text())
     except YAMLError as e:
         raise ProfileError(f"{path}: {e}") from e
-    agents = data.get("agents") if isinstance(data, dict) else None
+    return data if isinstance(data, dict) else {}
+
+
+def default_profile(config_root: Path) -> str | None:
+    name = _config(config_root).get("default_agent")
+    return str(name) if name else None
+
+
+def load_profiles(config_root: Path) -> list[Profile]:
+    agents = _config(config_root).get("agents")
     if not isinstance(agents, dict):
         return []
     return [_profile(name, raw) for name, raw in agents.items()]
