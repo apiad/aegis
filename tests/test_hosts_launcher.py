@@ -65,8 +65,12 @@ class FakeLauncher:
 
     async def spawn(self, argv, *, cwd, env):
         self.calls.append((list(argv), cwd, env))
+        # `sleep` itself, not `sh -c "sleep 30"`: a shell that forks sleep
+        # leaves it holding the pipes after SIGTERM kills the shell, and
+        # close() then waits out its 5 s timeout. Under parallel load that
+        # happened often enough to trip the 3 s budget (aegis2 slice 3).
         return await LocalLauncher().spawn(
-            ["sh", "-c", "sleep 30"], cwd=cwd, env=None)
+            ["sleep", "30"], cwd=cwd, env=None)
 
 
 def test_claude_session_uses_its_launcher(tmp_path):
