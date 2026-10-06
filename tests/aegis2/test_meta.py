@@ -18,9 +18,9 @@ def test_write_is_atomic_and_readable(tmp_path: Path):
 
 def test_throttled_writes_coalesce_until_flush(tmp_path: Path):
     ms = MetaStore(tmp_path)
-    ms.write_soon(meta(n=1))  # first write goes through at once
-    ms.write_soon(meta(n=2))
-    ms.write_soon(meta(n=3))
+    ms.write_soon("a", lambda: meta(n=1))  # first write goes through at once
+    ms.write_soon("a", lambda: meta(n=2))
+    ms.write_soon("a", lambda: meta(n=3))
     assert json.loads(ms.path("a").read_text())["n"] == 1
     ms.flush()
     assert json.loads(ms.path("a").read_text())["n"] == 3

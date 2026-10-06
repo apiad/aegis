@@ -100,10 +100,11 @@ def free_port() -> int:
 
 
 class Server:
-    def __init__(self, tmp: Path, env: dict) -> None:
-        (tmp / ".aegis.yaml").write_text(
-            "agents:\n  bench: {model: m, effort: low, permission: full}\n"
-        )
+    def __init__(self, tmp: Path, env: dict, keep_config: bool = False) -> None:
+        if not keep_config:
+            (tmp / ".aegis.yaml").write_text(
+                "agents:\n  bench: {model: m, effort: low, permission: full}\n"
+            )
         fake = tmp / "claude"
         fake.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{FAKE}" "$@"\n')
         fake.chmod(0o755)
@@ -152,6 +153,8 @@ class Server:
 
 def start_session(page, url: str) -> None:
     page.goto(url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.click("#tab-add")
     page.wait_for_selector("#a2[data-view=spawn]")
     page.click("#sp-go")
     page.wait_for_selector("#a2[data-view=session]")
@@ -255,6 +258,83 @@ def browser_runs(playwright) -> dict:
     return out
 
 
+# -- 4. many sessions: registry boot and the Fleet view ------------------------
+def make_world(root: Path, n_open: int = 20, n_archived: int = 80) -> None:
+    """A state directory with the fixture's store copied into many sessions."""
+    (root / ".aegis.yaml").write_text(
+        "agents:\n  bench: {model: m, effort: low, permission: full}\n"
+    )
+    state = root / ".aegis2" / "state"
+    (state / "transcripts").mkdir(parents=True)
+    (state / "sessions").mkdir(parents=True)
+    store = FIXTURE.read_bytes()
+    for i in range(n_open + n_archived):
+        log_id = f"20261006-0000{i:02}-bench{i:03}"
+        (state / "transcripts" / f"{log_id}.jsonl").write_bytes(store)
+        meta = {
+            "log_id": log_id,
+            "handle": f"bench-{i}",
+            "title": f"Session {i}",
+            "profile": "bench",
+            "model": "m",
+            "effort": "low",
+            "permission": "full",
+            "cwd": str(root),
+            "claude_session_id": f"cs-{i}",
+            "archived": i >= n_open,
+            "created_at": 1_000_000.0 + i,
+            "last_activity": 1_000_000.0 + i,
+            "last_status": "idle",
+            "cost_usd": 0.05,
+            "context_tokens": 27000,
+            "context_window": 200000,
+            "activity": "Bash · Run tests",
+        }
+        (state / "sessions" / f"{log_id}.json").write_text(json.dumps(meta))
+
+
+def boot_cost() -> dict:
+    from aegis2.registry import Registry
+    from aegis2.roots import make_roots
+
+    with tempfile.TemporaryDirectory() as tmp:
+        make_world(Path(tmp))
+        roots = make_roots(Path(tmp), None)
+        times = []
+        for _ in range(5):
+            t0 = time.perf_counter()
+            r = Registry(roots, lambda ch, ops: None)
+            r.boot()
+            times.append((time.perf_counter() - t0) * 1000)
+            assert len(r.sessions) == 20 and len(r.archived) == 80
+    return {"boot_100_ms": min(times)}
+
+
+def fleet_load(playwright) -> dict:
+    browser = playwright.chromium.launch()
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            make_world(Path(tmp))
+            srv = Server(Path(tmp), {}, keep_config=True)
+            try:
+                page = browser.new_page()
+                loads = []
+                for _ in range(3):
+                    page.goto(srv.url + "#fleet")
+                    loads.append(
+                        page.wait_for_function(
+                            "() => document.querySelectorAll('.card').length >= 20 && performance.now()",
+                            timeout=60_000,
+                        ).json_value()
+                    )
+                    page.goto("about:blank")
+            finally:
+                srv.stop()
+    finally:
+        browser.close()
+    return {"fleet_load_ms": min(loads)}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path)
@@ -262,8 +342,10 @@ def main() -> None:
     from playwright.sync_api import sync_playwright
 
     metrics = asyncio.run(server_cost())
+    metrics.update(boot_cost())
     with sync_playwright() as p:
         metrics.update(browser_runs(p))
+        metrics.update(fleet_load(p))
     commit = subprocess.run(
         ["git", "rev-parse", "--short", "HEAD"],
         cwd=ROOT,

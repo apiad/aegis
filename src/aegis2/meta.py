@@ -13,6 +13,7 @@ import asyncio
 import json
 import os
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from .claude.stream import Init, parse
@@ -25,7 +26,7 @@ THROTTLE_S = 1.0
 class MetaStore:
     def __init__(self, dir: Path) -> None:
         self.dir = dir
-        self._pending: dict[str, dict] = {}
+        self._pending: dict[str, Callable[[], dict]] = {}
         self._last: dict[str, float] = {}
         self._timers: dict[str, asyncio.TimerHandle] = {}
 
@@ -45,12 +46,16 @@ class MetaStore:
         os.replace(tmp, target)
         self._last[log_id] = time.monotonic()
 
-    def write_soon(self, meta: dict) -> None:
-        """Write now if the last write was over a second ago, else within a second."""
-        log_id = meta["log_id"]
+    def write_soon(self, log_id: str, meta: Callable[[], dict]) -> None:
+        """Write now if the last write was over a second ago, else within a
+        second. ``meta`` is called only when the file is written, so a session
+        changing on every line builds its meta once a second, not per line."""
+        if log_id in self._pending:
+            self._pending[log_id] = meta
+            return
         wait = THROTTLE_S - (time.monotonic() - self._last.get(log_id, 0.0))
         if wait <= 0:
-            self.write(meta)
+            self.write(meta())
             return
         self._pending[log_id] = meta
         if log_id not in self._timers:
@@ -64,7 +69,7 @@ class MetaStore:
         self._timers.pop(log_id, None)
         meta = self._pending.pop(log_id, None)
         if meta is not None:
-            self.write(meta)
+            self.write(meta())
 
     def flush(self) -> None:
         for log_id in list(self._pending):
