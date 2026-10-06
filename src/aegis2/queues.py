@@ -255,7 +255,10 @@ class Queues:
 
     async def resume_after_boot(self, tasks: list[Task]) -> None:
         for t in tasks:
-            s = self._registry.sessions[t.worker]  # type: ignore[index]
+            s = self._registry.sessions.get(t.worker or "")
+            if s is None:
+                self._fail(t, "its worker was gone after a restart")
+                continue
             try:
                 await s.deliver(
                     f"> from queue:{t.queue} · task#{t.id} · restart · {iso_now()}",
