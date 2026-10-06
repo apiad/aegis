@@ -9,6 +9,99 @@ one module lives in that module's docstring, next to the code it protects, so th
 person editing the module reads it. The user-facing reference is the mkdocs site
 under `docs/`, and the reasoning behind each feature is in `docs/superpowers/specs/`.
 
+The repo holds two trees. aegis2, under src/aegis2/, is where new work goes, and
+its design comes first. The old tree under src/aegis/ is frozen and takes bug fixes
+only. Its design follows unchanged, because those fixes still have to respect it.
+Each aegis2 rule below lands with the slice that first needs it, and every slice PR
+updates this part in the same change that alters the shape.
+
+# aegis2
+
+## The process model
+
+**One process per machine, one websocket per browser.** `aegis2 serve` serves the
+static client, holds the sessions and runs each harness as its own child process.
+A browser talks to it over one websocket. Closing the browser leaves the sessions
+running; stopping the server ends them. Later slices add the home server, links to
+other servers and plugin hosts, in the order the vision spec gives.
+
+**Separate state, separate port.** aegis2 keeps its state in `.aegis2/state/`
+under the config root and listens on its own port, so it runs next to the old tree
+on one machine. It never reads the old tree's state. The one file both read is
+`.aegis.yaml`, and aegis2 reads only its `agents:` map.
+
+**No imports from the old tree.** Code that is already right is copied and
+adapted, never imported, and imports inside aegis2 are relative. An AST test
+enforces the first rule. The second makes the final rename one mechanical commit.
+
+## Rules that span modules
+
+**One registry, every caller.** Every action is one registered operation with a
+pydantic params model. A websocket `call` is one projection of the registry, MCP
+tools are another, and plugins add operations to it. Nothing reaches the client as
+an action that is not an operation, so a subsystem cannot exist for agents and be
+missing from the UI. The retired September client died of the opposite: a protocol
+in which every subsystem needed its own fields.
+
+**The client knows no subsystem by name.** Server state reaches the browser as
+named channels: a snapshot on subscribe, then numbered patches. A gap in the
+numbers, or a reconnect, means resubscribe and take a fresh snapshot. Adding a
+subsystem adds operations and channels, never a protocol field.
+
+**Python decides, the browser draws.** Every fact and decision about a transcript
+entry is computed once in Python: its glyph, title, summary, status, the diff
+window of an edit, and what collapses. The entry crosses the wire as data and the
+browser only turns it into markup. One copy of each fact means no drift, and a
+data protocol version fails loudly across a link where mismatched markup would
+break silently.
+
+**A renderer is a function that returns a Node.** The client is plain ES modules
+with no framework and no build step. A plugin's renderer has the same shape, so
+writing one needs no framework.
+
+**A theme is one CSS file over one markup.** The markup carries everything any
+theme might show, and the base stylesheet reads only CSS variables. A theme sets
+the variables and a few overrides that decide what shows.
+
+**The store keeps raw events; entries are derived.** A transcript file holds parsed
+harness events with their receive times. Entries are folded from them on load, with
+deterministic ids, so a better summary applies to old transcripts and a resume
+reads the same file the live session wrote.
+
+**A transcript is keyed by a log id minted at spawn, never by a handle.** Handles
+are reused; keying on them once merged unrelated conversations into one file in
+the old tree.
+
+**The echo creates the user entry, never the send.** Claude Code injects a prompt
+sent mid-turn at the next tool boundary and closes both prompts with one `result`,
+so a turn is not one prompt and nothing counts turns by counting sends. A sent
+prompt is pending until Claude echoes it, and the transcript records the order the
+model read things in.
+
+**System notices never start a turn.** Hook, init, thinking-token and task notices
+arrive both inside and outside turns. Only a sent prompt or a turn-bearing event
+moves a session to working, and only `result` or the end of the stream moves it
+out. Promoting a notice to a turn parked old-tree sessions on a read that never
+returned.
+
+**Three roots, never `Path.cwd()`.** The CLI reads the working directory once to
+build the config root, state root and harness cwd, and passes them down. Nothing
+below it calls `Path.cwd()`, and an AST test fails if something does.
+
+**A damaged file never takes a session down.** A store line that does not parse is
+skipped and counted; a stdout line that does not parse is stored and shown as a
+system entry.
+
+**Agent text is untrusted.** Markdown renders with raw HTML disabled, and the
+localhost port is not trusted either: the websocket needs the server's token and
+its own origin, because any page in the browser can open a socket to localhost.
+
+**Performance is measured on every PR and never gates.** The bench replays a
+recorded transcript through a fake harness, and CI compares the PR's base and head
+on the same runner. A regression is a warning a reader has to weigh.
+
+# The frozen tree: aegis
+
 ## The process model
 
 **`aegis` boots no brain.** A detached `aegis server` holds the sessions, the queues
