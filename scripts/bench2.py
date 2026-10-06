@@ -52,6 +52,7 @@ def claude_lines() -> list[str]:
 
 # -- 1. server cost per line --------------------------------------------------
 async def server_cost(rounds: int = 40) -> dict:
+    from aegis2.meta import MetaStore
     from aegis2.session import Session, SpawnSpec
     from aegis2.transcript.store import Store
 
@@ -66,12 +67,14 @@ async def server_cost(rounds: int = 40) -> dict:
             )
 
         s = Session(
-            "bench",
-            SpawnSpec("b", "m", "low", "full", Path(tmp)),
-            Store(Path(tmp) / "t.jsonl"),
-            ["true"],
-            Path(tmp) / "e",
-            sink,
+            log_id="bench",
+            spec=SpawnSpec("b", "m", "low", "full", Path(tmp)),
+            handle="bench-one",
+            store=Store(Path(tmp) / "t.jsonl"),
+            stderr_path=Path(tmp) / "e",
+            claude_bin="true",
+            publish=sink,
+            metas=MetaStore(Path(tmp) / "sessions"),
         )
         s.status = "idle"
         for r in range(rounds):
