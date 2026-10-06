@@ -163,6 +163,7 @@ def build_web(app: App, token: str, allowed_hosts: set[str]) -> Starlette:
 
     @contextlib.asynccontextmanager
     async def lifespan(_):
+        app.boot()
         yield
         await app.shutdown()
 

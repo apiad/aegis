@@ -130,11 +130,11 @@ def test_spawn_send_and_watch_a_turn(project, fake_claude):
         c.websocket_connect("/ws", headers=ORIGIN) as ws,
     ):
         conn = Conn(ws).hello()
-        ws.send_json({"t": "sub", "channel": "session"})
-        assert conn.until(lambda m: m["t"] == "snapshot")["data"] is None
-        log_id = conn.call("session.spawn", profile="opus", cwd="repo")["result"][
-            "log_id"
-        ]
+        ws.send_json({"t": "sub", "channel": "sessions"})
+        assert conn.until(lambda m: m["t"] == "snapshot")["data"] == []
+        r = conn.call("session.spawn", profile="opus", cwd="repo")["result"]
+        log_id = r["log_id"]
+        assert r["handle"]
         ws.send_json({"t": "sub", "channel": f"transcript:{log_id}"})
         snap = conn.until(
             lambda m: m["t"] == "snapshot" and m["channel"].startswith("transcript")
@@ -144,10 +144,10 @@ def test_spawn_send_and_watch_a_turn(project, fake_claude):
         conn.until(
             lambda m: (
                 m["t"] == "patch"
-                and m["channel"] == "session"
+                and m["channel"] == "sessions"
                 and any(
-                    op.get("set", {}).get("status") == "idle"
-                    and "cost_usd" in op.get("set", {})
+                    op.get("upsert", {}).get("state") == "idle"
+                    and op["upsert"].get("cost_usd")
                     for op in m["ops"]
                 )
             )
@@ -160,13 +160,53 @@ def test_spawn_send_and_watch_a_turn(project, fake_claude):
         assert [m["seq"] for m in patches] == list(range(1, len(patches) + 1))
         upserts = [op["upsert"] for m in patches for op in m["ops"] if "upsert" in op]
         assert {e["kind"] for e in upserts} >= {"user", "prose", "system"}
-        assert (
-            conn.call("session.spawn", profile="opus")["error"]["code"]
-            == "session_live"
-        )
+        second = conn.call("session.spawn", profile="opus")["result"]
+        assert second["handle"] != r["handle"]
         assert conn.call("session.close", log_id=log_id).get("error") is None
         assert any(
-            m["t"] == "patch" and {"replace": None} in m["ops"] for m in conn.seen
+            m["t"] == "patch" and {"remove": log_id} in m["ops"] for m in conn.seen
+        )
+        assert (
+            conn.call("session.send", log_id=log_id, text="x")["error"]["code"]
+            == "archived"
+        )
+        assert [m["log_id"] for m in conn.call("archive.list")["result"]] == [log_id]
+        reopened = conn.call("session.reopen", log_id=log_id)["result"]
+        assert reopened["state"] == "stopped"
+        assert (
+            conn.call("session.reopen", log_id=log_id)["error"]["code"]
+            == "not_archived"
+        )
+        assert (
+            conn.call("session.send", log_id=log_id, text="/recall").get("error")
+            is None
+        )
+        conn.until(
+            lambda m: (
+                m["t"] == "patch"
+                and m["channel"] == f"transcript:{log_id}"
+                and any(
+                    op.get("upsert", {}).get("md") == "earlier: hi" for op in m["ops"]
+                )
+            )
+        )
+        renamed = conn.call(
+            "session.rename", log_id=log_id, handle="my-session", title="Hello world"
+        )["result"]
+        assert (renamed["handle"], renamed["title"]) == ("my-session", "Hello world")
+        taken = conn.call(
+            "session.rename", log_id=second["log_id"], handle="my-session"
+        )
+        assert taken["error"]["code"] == "handle_taken"
+        assert (
+            conn.call("session.rename", log_id=log_id, handle="Bad Handle")["error"][
+                "code"
+            ]
+            == "bad_handle"
+        )
+        assert (
+            conn.call("session.send", log_id="nope", text="x")["error"]["code"]
+            == "no_session"
         )
 
 
@@ -223,8 +263,8 @@ def test_a_missing_claude_leaves_no_session_behind(project, tmp_path):
             conn.call("session.spawn", profile="opus")["error"]["code"]
             == "claude_not_found"
         )
-        ws.send_json({"t": "sub", "channel": "session"})
-        assert conn.until(lambda m: m["t"] == "snapshot")["data"] is None
+        ws.send_json({"t": "sub", "channel": "sessions"})
+        assert conn.until(lambda m: m["t"] == "snapshot")["data"] == []
 
 
 def test_unknown_channel_and_op(project, fake_claude):
