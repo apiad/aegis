@@ -63,7 +63,9 @@ async def h(tmp_path, fake_claude):
     yield harness
     await harness.session.close()
     assert harness.refold_matches(), "live entries differ from a fold of the store"
-    assert harness.patches_rebuild_entries(), "the published patches do not add up to the entries"
+    assert harness.patches_rebuild_entries(), (
+        "the published patches do not add up to the entries"
+    )
 
 
 async def test_a_prompt_runs_a_turn(h):
