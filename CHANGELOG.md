@@ -5,6 +5,17 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-06
+
+### Changed
+
+- **State lives in `.aegis/state/`.** 2.0.0 kept it in a directory of its own
+  next to the legacy tree's. `aegis serve` now refuses to start on a
+  `.aegis/state/` that still holds the legacy tree's state (`daemon.lock`,
+  `workspace.json`, `history_index.json`, `comms/`), and prints the one `mv`
+  that moves it to `.aegis/legacy-state/`. Move your 2.0.0 state into
+  `.aegis/state/` once the legacy one is out of the way.
+
 ## [2.0.0] - 2026-10-06
 
 aegis is now a web-native workplace for coding agents. The terminal app is gone;
