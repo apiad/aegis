@@ -5,6 +5,57 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-06
+
+aegis is now a web-native workplace for coding agents. The terminal app is gone;
+its code is kept under `legacy/` in the repository, and `pip install
+"aegis-harness<2"` still installs it.
+
+### Changed
+
+- **`aegis serve` runs Claude Code sessions and serves them to browser tabs.**
+  Open the URL it prints (it carries a token, kept in `.aegis2/state/token` and
+  reused across restarts). It listens on 127.0.0.1:8742 by default and reads the
+  `agents:` and `queues:` maps of `.aegis.yaml`. State lives in `.aegis2/state/`;
+  the old `.aegis/state/` is left untouched and nothing reads it.
+
+### Added
+
+- **Sessions in tabs, with Fleet as home.** The tab bar is the server's open
+  sessions, the same in every browser, in an order each browser keeps by drag
+  (Alt+1 to Alt+9 switch, Alt+0 is Fleet). Fleet shows a card per session and
+  the archive below it.
+- **Lazy resume, Stop, Close, Reopen.** A server restart brings every session
+  back stopped, and the next prompt resumes it with `claude --resume`. Stop ends a
+  process and keeps the tab; Close archives a session for every browser; Reopen
+  brings it back. Handles and titles rename in place.
+- **A transcript built for reading.** Tool rows with one-line verdicts, failures
+  opened, diff windows for edits, rendered Markdown, a prompt sent mid-turn shown
+  as not read yet until Claude reads it, Esc to interrupt. Three themes: Ink,
+  Logbook, Syalia.
+- **aegis's tools for agents over MCP.** Each session's `claude` connects to
+  `/mcp` with its own token, so no tool asks who is calling. Tools are named after
+  their operation: `mcp__aegis__monitor_start`, `monitor_cancel`, `monitor_list`,
+  `queue_enqueue`, `task_status`, `task_cancel`, `task_resume`, `peer_handoff`,
+  `peer_read`, `session_list`, `session_rename`, `meta`.
+- **An inbox.** Monitor wakes, queue results and handoffs arrive as turns headed
+  `> from <kind>:<name>`; a busy session gets them together when its turn ends.
+- **Monitors** poll bash conditions (`done`, `fail`, `progress`) and wake their
+  owner; they show in the sidebar and survive a restart.
+- **Queues** spawn worker sessions and call back with the worker's last message
+  once it has nothing pending: no live monitor, no held message, no background
+  task still running. A worker in the middle of a task when the server restarts is
+  resumed.
+
+### Removed
+
+- **The TUI, the daemon, and everything only it used:** slash commands,
+  workflows and their DSL, schedules, canvases, shared terminals, execution
+  hosts, groups, claims, reminders, recaps, voice input, the web relay, and the
+  documentation site. Dropped dependencies: textual, lovelaice, croniter,
+  watchdog, ptyprocess, agent-client-protocol, jsonschema, markdown-it-py,
+  pathspec, tomli-w, rich, and the `voice` extra.
+
 ## [0.42.0] - 2026-10-02
 
 ### Fixed
