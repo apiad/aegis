@@ -74,7 +74,10 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
       state === "open" ? server : state === "connecting" ? "connecting" : state === "closed" ? "disconnected, retrying" : state;
     if (state === "unauthorized") show("boot", "The token was refused. Open the URL that `aegis serve` printed.");
     if (state === "version") show("boot", "This page and the server speak different protocol versions. Reload the page.");
-    if (state === "open") loadProfiles();
+    if (state === "open") {
+      loadProfiles();
+      loadVersion();
+    }
   },
 });
 
@@ -237,6 +240,53 @@ setInterval(() => {
     if (m) c.querySelector(".when").textContent = ago(m.last_activity);
   }
 }, 1000);
+
+// -- version: the running aegis and the latest release ------------------------
+// Asked again every hour, so a tab left open learns about a new release; the
+// server caches PyPI's answer for that long anyway.
+
+function span(cls, text) {
+  const el = document.createElement("span");
+  el.className = cls;
+  el.textContent = text;
+  return el;
+}
+
+async function loadVersion() {
+  let v;
+  try {
+    v = await conn.call("server.version");
+  } catch (e) {
+    return;
+  }
+  const run = v.running;
+  const dev = run.dev;
+  const short = run.commit ? run.commit.slice(0, 7) : null;
+  const shown = dev && short ? short : run.version || "unknown";
+  const behind = v.status === "behind";
+
+  $("ver-head").textContent = `aegis on ${conn.server}`;
+  $("ver-run").replaceChildren(span("v", shown), ...(dev ? [span("tag", "dev")] : []));
+  // aegis-dev builds from the resolved commit, so the ref is often the commit again.
+  const ref = run.ref && !(run.commit || "").startsWith(run.ref) ? run.ref : null;
+  $("ver-ref-row").hidden = !ref;
+  $("ver-ref").textContent = ref || "";
+  $("ver-base-row").hidden = !dev || !run.version;
+  $("ver-base").textContent = run.version || "";
+  const mark = v.status === "current" ? [span("ok", "✓ current")] : behind ? [span("upd", "↑ update")] : [];
+  $("ver-latest").replaceChildren(span("v", v.latest || "unknown"), ...mark);
+  $("ver-sec").hidden = false;
+
+  const top = $("ver-top");
+  top.replaceChildren(span("", shown), ...(dev ? [span("tag", "dev")] : behind ? [span("upd", "↑")] : []));
+  top.title = behind
+    ? `aegis ${run.version}; ${v.latest} is out: uv tool upgrade aegis-harness`
+    : dev
+      ? `aegis built from ${run.commit || "a source tree"}${ref ? ` (${ref})` : ""}, based on ${run.version}; latest release ${v.latest || "unknown"}`
+      : `aegis ${run.version}; latest release ${v.latest || "unknown"}`;
+  top.hidden = false;
+}
+setInterval(() => conn.open && loadVersion(), 3600 * 1000);
 
 // -- archive -------------------------------------------------------------------
 let archived = [];

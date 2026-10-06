@@ -2,6 +2,7 @@
 started as a real process, with the fake claude behind it."""
 
 import json
+import os
 import re
 import socket
 import subprocess
@@ -28,6 +29,7 @@ def _free_port() -> int:
 class Server:
     def __init__(self, root: Path, claude: str):
         self.root, self.claude, self.port = root, claude, _free_port()
+        self.releases = root / "pypi.json"
         self.proc = None
         self.url = ""
 
@@ -50,6 +52,8 @@ class Server:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            # Off the network: the latest release is whatever this file says.
+            env={**os.environ, "AEGIS_RELEASES_URL": self.releases.as_uri()},
         )
         deadline = time.monotonic() + 15
         self.url = ""
@@ -386,4 +390,29 @@ def test_a_monitor_shows_in_the_sidebar_and_its_wake_arrives_as_an_inbox_row(
     flag.touch()
     page.wait_for_selector(".row.inbox .from >> text=monitor:", timeout=10000)
     page.wait_for_selector("#s-mon-sec[hidden]", state="attached")
+    assert page.errors == []
+
+
+def test_the_running_build_and_the_latest_release_show_in_the_top_bar_and_sidebar(
+    server, page
+):
+    from aegis.version import running
+
+    run = running()
+    server.releases.write_text('{"info": {"version": "99.0.0"}}')
+    page.goto(server.url)
+    page.wait_for_selector("#ver-top:not([hidden])")
+    shown = run["commit"][:7] if run["dev"] and run["commit"] else run["version"]
+    top = page.inner_text("#ver-top")
+    assert top.startswith(shown)
+    assert ("dev" in top) == run["dev"]
+    assert "99.0.0" in page.get_attribute("#ver-top", "title")
+
+    spawn(page)
+    page.wait_for_selector("#ver-sec:not([hidden])")
+    assert page.inner_text("#ver-head") == f"aegis on {socket.gethostname()}"
+    assert page.inner_text("#ver-run").startswith(shown)
+    assert page.inner_text("#ver-latest").startswith("99.0.0")
+    if not run["dev"]:
+        assert "update" in page.inner_text("#ver-latest")
     assert page.errors == []

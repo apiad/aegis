@@ -286,3 +286,19 @@ def test_the_token_file_is_private_and_reused(tmp_path):
     assert load_or_create_token(tmp_path / "state") == a
     mode = (tmp_path / "state" / "token").stat().st_mode
     assert stat.S_IMODE(mode) == 0o600
+
+
+def test_server_version_reports_the_running_build_and_the_latest_release(
+    project, fake_claude, monkeypatch, tmp_path
+):
+    feed = tmp_path / "pypi.json"
+    feed.write_text('{"info": {"version": "99.0.0"}}')
+    monkeypatch.setenv("AEGIS_RELEASES_URL", feed.as_uri())
+    with (
+        client_for(project, fake_claude) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        r = Conn(ws).hello().call("server.version")["result"]
+    assert r["latest"] == "99.0.0"
+    assert set(r["running"]) == {"version", "commit", "ref", "dev"}
+    assert r["status"] == ("dev" if r["running"]["dev"] else "behind")

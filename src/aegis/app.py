@@ -2,7 +2,7 @@
 
 Operations: ``profiles.list``, ``session.spawn``, ``session.send``,
 ``session.interrupt``, ``session.stop``, ``session.close``, ``session.reopen``,
-``session.rename``, ``archive.list``. Channels: ``sessions`` (every open
+``session.rename``, ``archive.list``, ``server.version``. Channels: ``sessions`` (every open
 session's meta; patches ``upsert`` and ``remove``) and ``transcript:<log_id>``
 (any session, archived included).
 """
@@ -24,6 +24,7 @@ from .profiles import ProfileError, default_profile, load_profiles
 from .registry import Registry
 from .roots import Roots
 from .session import SpawnSpec
+from .version import Versions
 
 Effort = Literal["low", "medium", "high", "max"]
 Permission = Literal["read", "write", "full", "auto"]
@@ -95,6 +96,7 @@ class App:
             server_name,
         )
         reg.mcp_url = f"{base_url.rstrip('/')}{MCP_PATH}" if base_url else None
+        self.versions = Versions()
         self.registry = Ops()
         self._register()
         register_agent_ops(self)
@@ -227,3 +229,7 @@ class App:
         @r.op("archive.list", ArchiveParams)
         async def archive_list(p: ArchiveParams, caller):
             return reg.archive(p.query, p.limit, p.before)
+
+        @r.op("server.version")
+        async def server_version(_, caller):
+            return await self.versions.wire()
