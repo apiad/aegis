@@ -254,3 +254,17 @@ async def test_a_meta_from_before_agents_boots_with_its_agent_name(world):
     # Closed, it is found in the archive by its agent's name (Step 9).
     await r.close("old")
     assert [m["log_id"] for m in r.archive("opus", 10, None)] == ["old"]
+
+
+async def test_the_priming_never_leaves_the_server_from_the_archive(world):
+    r = world.registry()
+    spec = SpawnSpec(
+        "rev", "opus", "max", "read", world.roots.config_root, priming="secret text"
+    )
+    s = await r.spawn(spec)
+    await r.close(s.log_id)
+    (listed,) = r.archive(None, 10, None)
+    assert listed["agent"] == "rev" and "priming" not in listed
+    assert "priming" not in r.rename(s.log_id, None, "renamed")
+    # The stored meta keeps it, so a reopened session resumes with it.
+    assert r.archived[s.log_id]["priming"] == "secret text"

@@ -35,6 +35,12 @@ def mint_log_id() -> str:
     return f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
 
 
+def _public(meta: dict) -> dict:
+    """A stored meta as a browser may see it: the agent's priming stays on the
+    server, like ``Session.wire`` keeps it."""
+    return {k: v for k, v in meta.items() if k != "priming"}
+
+
 class Registry(Host):
     def __init__(
         self,
@@ -275,7 +281,7 @@ class Registry(Host):
         if title is not None:
             meta["title"] = title
         self.metas.write(meta)
-        return meta
+        return _public(meta)
 
     def archive(
         self, query: str | None, limit: int, before: float | None
@@ -296,7 +302,7 @@ class Registry(Host):
             ).lower()
             if q and q not in hay:
                 continue
-            out.append(m)
+            out.append(_public(m))
             if len(out) >= limit:
                 break
         return out
