@@ -37,7 +37,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from . import files
 from .app import App
 from .channels import Sub
-from .ops import OpError
+from .ops import Caller, OpError
 
 log = logging.getLogger("aegis.web")
 
@@ -50,6 +50,8 @@ BAD_ORIGIN = 4403
 BAD_TOKEN = 4401
 NO_HELLO = 4408
 BAD_PROTO = 4400
+
+LOOPBACK = ("127.0.0.1", "localhost", "[::1]")
 
 
 class ClientFiles(StaticFiles):
@@ -150,6 +152,12 @@ def build_web(
             await websocket.close(code=BAD_PROTO)
             return
 
+        # On the server's desktop: a loopback socket (a proxy's public name
+        # is a browser elsewhere) on a server with somewhere to open a file.
+        desktop = (
+            local and host.rpartition(":")[0] in LOOPBACK and files.opener() is not None
+        )
+        caller = Caller("user", desktop=desktop)
         out: asyncio.Queue[dict] = asyncio.Queue()
 
         async def writer() -> None:
@@ -163,7 +171,7 @@ def build_web(
             t0 = time.monotonic()
             log.info("call %s %s", op, msg.get("params"))
             try:
-                reply["result"] = await app.registry.call(op, msg.get("params"))
+                reply["result"] = await app.registry.call(op, msg.get("params"), caller)
             except OpError as e:
                 reply["error"] = {"code": e.code, "message": e.message}
             except Exception as e:  # an operation bug must not kill the socket
@@ -181,7 +189,14 @@ def build_web(
             )
             out.put_nowait(reply)
 
-        out.put_nowait({"t": "welcome", "proto": PROTO, "server": socket.gethostname()})
+        out.put_nowait(
+            {
+                "t": "welcome",
+                "proto": PROTO,
+                "server": socket.gethostname(),
+                "native": desktop,
+            }
+        )
         write_task = asyncio.create_task(writer())
         subs: dict[str, Sub] = {}
         calls: set[asyncio.Task] = set()

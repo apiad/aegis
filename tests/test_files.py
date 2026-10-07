@@ -129,3 +129,31 @@ def test_a_dotfile_is_served_like_any_other(tmp_path):
     assert find(tmp_path / "state", rec["file_id"], ".aegis.yaml").read_text() == (
         "agents: {}\n"
     )
+
+
+def test_open_natively_needs_a_desktop_or_an_opener(monkeypatch):
+    for var in ("DISPLAY", "WAYLAND_DISPLAY", "AEGIS_OPENER"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(files.sys, "platform", "linux")
+    assert files.opener() is None, "a headless Linux box has nowhere to open a file"
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    monkeypatch.setattr(files.shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
+    assert files.opener() == ["/usr/bin/xdg-open"]
+    monkeypatch.setattr(files.sys, "platform", "darwin")
+    assert files.opener() == ["/usr/bin/open"]
+    monkeypatch.setenv("AEGIS_OPENER", "my-viewer --new")
+    assert files.opener() == ["my-viewer", "--new"]
+
+
+def test_open_natively_runs_the_opener_on_the_stored_copy(tmp_path, monkeypatch):
+    marker = tmp_path / "opened"
+    script = tmp_path / "opener.sh"
+    script.write_text(f'#!/bin/sh\nprintf "%s" "$1" > "{marker}"\n')
+    script.chmod(0o755)
+    monkeypatch.setenv("AEGIS_OPENER", str(script))
+    src = tmp_path / "a b.txt"
+    src.write_text("x")
+    rec = store(tmp_path / "state", src)
+    path = find(tmp_path / "state", rec["file_id"], "a b.txt")
+    files.open_natively(path).wait(5)
+    assert marker.read_text() == str(path)

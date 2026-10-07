@@ -20,7 +20,10 @@ import mimetypes
 import os
 import re
 import secrets
+import shlex
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from urllib.parse import quote
 
@@ -178,3 +181,35 @@ def headers(path: Path, download: bool) -> dict[str, str]:
     elif "svg" in mime or "xml" in mime:
         h["Content-Security-Policy"] = "sandbox"
     return h
+
+
+def opener() -> list[str] | None:
+    """The command that opens a file in the desktop's app for it, or None when
+    the server has no desktop to open it on. ``AEGIS_OPENER`` overrides it.
+
+    A browser on loopback is not proof of a desktop: an SSH tunnel to a
+    headless box looks local, and ``xdg-open`` there would open nothing."""
+    if custom := os.environ.get("AEGIS_OPENER"):
+        return shlex.split(custom)
+    if sys.platform == "darwin":
+        cmd = "open"
+    elif os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+        cmd = "xdg-open"
+    else:
+        return None
+    found = shutil.which(cmd)
+    return [found] if found else None
+
+
+def open_natively(path: Path) -> subprocess.Popen:
+    """Hand ``path`` to the desktop, detached, and return without waiting."""
+    cmd = opener()
+    if cmd is None:
+        raise FileError("no_desktop", "this server has no desktop to open files on")
+    return subprocess.Popen(
+        [*cmd, str(path)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
