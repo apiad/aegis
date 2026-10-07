@@ -89,7 +89,7 @@ class Server:
 @pytest.fixture
 def server(tmp_path: Path, fake_claude: str):
     (tmp_path / ".aegis.yaml").write_text(
-        "default_agent: opus\nagents:\n  opus: {model: opus, effort: high, permission: full}\n"
+        "default_agent: opus\nagents:\n  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
     )
     s = Server(tmp_path, fake_claude).start()
     yield s

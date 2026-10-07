@@ -24,7 +24,8 @@ from .conftest import until
 CONFIG = """\
 default_agent: opus
 agents:
-  opus: {model: opus, effort: high, permission: full}
+  opus: {harness: claude-code, model: opus, effort: high, permission: full}
+  reviewer: {harness: claude-code, model: opus, effort: high, permission: read, priming: You review.}
 queues:
   general: {agent: opus, max_parallel: 2}
   solo: {agent: opus, max_parallel: 1}
@@ -70,7 +71,7 @@ class World:
         await self.start()
 
     async def spawn(self) -> "object":
-        r = await self.app.registry.call("session.spawn", {"profile": "opus"})
+        r = await self.app.registry.call("session.spawn", {"agent": "opus"})
         return self.app.sessions.sessions[r["log_id"]]
 
     def session(self, log_id):
@@ -132,7 +133,8 @@ async def test_the_tools_are_named_after_their_operations_and_take_no_handle(wor
         "meta",
         "file_send",
     } <= set(tools)
-    assert "session_spawn" not in tools and "session_close" not in tools
+    assert {"session_spawn", "agents_list"} <= set(tools)
+    assert "session_close" not in tools
     for t in tools.values():
         assert "from_handle" not in t["inputSchema"].get("properties", {})
 
@@ -440,9 +442,7 @@ async def test_an_agent_sends_a_file_and_the_link_serves_its_bytes(world, tmp_pa
 async def test_a_relative_path_resolves_against_the_session_cwd(world, tmp_path):
     (tmp_path / "sub").mkdir()
     (tmp_path / "sub" / "notes.md").write_text("# Notes\n")
-    r = await world.app.registry.call(
-        "session.spawn", {"profile": "opus", "cwd": "sub"}
-    )
+    r = await world.app.registry.call("session.spawn", {"agent": "opus", "cwd": "sub"})
     s = world.session(r["log_id"])
     said = await turn(s, mcp("file_send", path="notes.md"))
     assert json.loads(said.removeprefix("mcp ok: "))["name"] == "notes.md"
@@ -466,3 +466,37 @@ async def test_a_missing_relative_path_says_where_it_looked(world, tmp_path):
     assert said.startswith("mcp error: not_found")
     assert f"session's working directory, {tmp_path}" in said
     assert "absolute path" in said
+
+
+async def test_an_agent_spawns_with_overrides_its_cwd_and_the_agents_priming(
+    world, tmp_path
+):
+    (tmp_path / "sub").mkdir()
+    r = await world.app.registry.call("session.spawn", {"agent": "opus", "cwd": "sub"})
+    a = world.session(r["log_id"])
+    said = await turn(
+        a,
+        mcp("session_spawn", agent="reviewer", effort="max", cwd=".", prompt="/argv"),
+    )
+    child = world.session(json.loads(said.removeprefix("mcp ok: "))["log_id"])
+    assert child.spec.spawned_by == a.log_id
+    assert child.spec.cwd == (tmp_path / "sub").resolve()
+    assert child.spec.overridden == ("effort",)
+    await until(
+        lambda: any(e["kind"] == "prose" for e in child.entries()),
+        timeout=8,
+        what="the child's first turn",
+    )
+    md = next(e["md"] for e in child.entries() if e["kind"] == "prose")
+    argv = json.loads(md.removeprefix("argv: "))
+    assert argv[argv.index("--effort") + 1] == "max"
+    system = argv[argv.index("--append-system-prompt") + 1]
+    assert system.startswith("You are running inside aegis")
+    assert system.endswith("\n\nYou review.")
+
+
+async def test_an_agent_lists_the_agents(world):
+    a = await world.spawn()
+    said = await turn(a, mcp("agents_list"))
+    listed = json.loads(said.removeprefix("mcp ok: "))
+    assert [x["name"] for x in listed["agents"]] == ["opus", "reviewer"]

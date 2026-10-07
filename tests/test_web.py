@@ -19,8 +19,10 @@ def project(tmp_path: Path) -> Path:
     (tmp_path / ".aegis.yaml").write_text(
         "default_agent: opus\n"
         "agents:\n"
-        "  opus: {model: opus, effort: high, permission: full}\n"
-        "  deepseek: {harness: opencode, model: x}\n"
+        "  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
+        "  reviewer: {harness: claude-code, model: claude-sonnet-5, effort: max, permission: read, priming: You review.}\n"
+        "  deepseek: {harness: opencode, model: x, effort: high, permission: full}\n"
+        "  broken: {harness: claude-code, model: opus, permission: full}\n"
     )
     (tmp_path / "repo").mkdir()
     return tmp_path
@@ -184,18 +186,30 @@ def test_another_protocol_version_is_refused(project, fake_claude):
         assert e.value.code == 4400
 
 
-def test_profiles_list(project, fake_claude):
+def test_agents_list(project, fake_claude):
     with (
         client_for(project, fake_claude) as c,
         c.websocket_connect("/ws", headers=ORIGIN) as ws,
     ):
-        r = Conn(ws).hello().call("profiles.list")["result"]
-        assert r["default"] == "opus"
-        assert [(p["name"], p["enabled"]) for p in r["profiles"]] == [
-            ("opus", True),
-            ("deepseek", False),
-        ]
-        assert r["cwd"] == str(project)
+        r = Conn(ws).hello().call("agents.list")["result"]
+    assert r["default"] == "opus"
+    assert [(a["name"], a["enabled"], a["error"]) for a in r["agents"]] == [
+        ("opus", True, None),
+        ("reviewer", True, None),
+        ("deepseek", False, None),
+        ("broken", False, "effort is missing"),
+    ]
+    reviewer = r["agents"][1]
+    assert reviewer["has_priming"] is True and "priming" not in reviewer
+    assert r["harnesses"] == [
+        {"name": "claude-code", "supported": True},
+        {"name": "opencode", "supported": False},
+    ]
+    assert r["models"] == {
+        "claude-code": ["opus", "sonnet", "haiku", "fable", "claude-sonnet-5"],
+        "opencode": ["x"],
+    }
+    assert r["cwd"] == str(project)
 
 
 def test_spawn_send_and_watch_a_turn(project, fake_claude):
@@ -206,7 +220,7 @@ def test_spawn_send_and_watch_a_turn(project, fake_claude):
         conn = Conn(ws).hello()
         ws.send_json({"t": "sub", "channel": "sessions"})
         assert conn.until(lambda m: m["t"] == "snapshot")["data"] == []
-        r = conn.call("session.spawn", profile="opus", cwd="repo")["result"]
+        r = conn.call("session.spawn", agent="opus", cwd="repo")["result"]
         log_id = r["log_id"]
         assert r["handle"]
         ws.send_json({"t": "sub", "channel": f"transcript:{log_id}"})
@@ -234,7 +248,7 @@ def test_spawn_send_and_watch_a_turn(project, fake_claude):
         assert [m["seq"] for m in patches] == list(range(1, len(patches) + 1))
         upserts = [op["upsert"] for m in patches for op in m["ops"] if "upsert" in op]
         assert {e["kind"] for e in upserts} >= {"user", "prose", "system"}
-        second = conn.call("session.spawn", profile="opus")["result"]
+        second = conn.call("session.spawn", agent="opus")["result"]
         assert second["handle"] != r["handle"]
         assert conn.call("session.close", log_id=log_id).get("error") is None
         assert any(
@@ -291,7 +305,7 @@ def test_two_clients_see_the_same_patches(project, fake_claude):
             c.websocket_connect("/ws", headers=ORIGIN) as b,
         ):
             ca, cb = Conn(a).hello(), Conn(b).hello()
-            log_id = ca.call("session.spawn", profile="opus")["result"]["log_id"]
+            log_id = ca.call("session.spawn", agent="opus")["result"]["log_id"]
             for conn in (ca, cb):
                 conn.ws.send_json({"t": "sub", "channel": f"transcript:{log_id}"})
                 conn.until(lambda m: m["t"] == "snapshot")
@@ -312,11 +326,15 @@ def test_two_clients_see_the_same_patches(project, fake_claude):
 @pytest.mark.parametrize(
     ("params", "code"),
     [
-        ({"profile": "nope"}, "unknown_profile"),
-        ({"profile": "deepseek"}, "harness_unsupported"),
-        ({"profile": "opus", "cwd": "/"}, "bad_cwd"),
-        ({"profile": "opus", "cwd": "missing"}, "bad_cwd"),
-        ({"profile": "opus", "effort": "huge"}, "bad_params"),
+        ({"agent": "nope"}, "unknown_agent"),
+        ({"agent": "broken"}, "bad_agent"),
+        ({"agent": "deepseek"}, "harness_unsupported"),
+        ({"agent": "opus", "harness": "opencode"}, "harness_unsupported"),
+        ({"agent": "opus", "cwd": "/"}, "bad_cwd"),
+        ({"agent": "opus", "cwd": "missing"}, "bad_cwd"),
+        ({"agent": "opus", "effort": "huge"}, "bad_params"),
+        ({"agent": "opus", "prompt": ""}, "bad_params"),
+        ({"profile": "opus"}, "bad_params"),
     ],
 )
 def test_spawn_errors(project, fake_claude, params, code):
@@ -327,6 +345,53 @@ def test_spawn_errors(project, fake_claude, params, code):
         assert Conn(ws).hello().call("session.spawn", **params)["error"]["code"] == code
 
 
+def test_spawn_without_an_agent_or_a_default_is_refused(project, fake_claude):
+    (project / ".aegis.yaml").write_text(
+        "agents:\n  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
+    )
+    with (
+        client_for(project, fake_claude) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        assert Conn(ws).hello().call("session.spawn")["error"]["code"] == "no_agent"
+
+
+def test_spawn_sends_the_prompt_and_marks_the_override(project, fake_claude):
+    with (
+        client_for(project, fake_claude) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        conn = Conn(ws).hello()
+        r = conn.call("session.spawn", model="sonnet", prompt="hello there")["result"]
+        ws.send_json({"t": "sub", "channel": "sessions"})
+        (meta,) = conn.until(lambda m: m["t"] == "snapshot")["data"]
+        assert (meta["agent"], meta["model"], meta["overridden"]) == (
+            "opus",
+            "sonnet",
+            ["model"],
+        )
+        ws.send_json({"t": "sub", "channel": f"transcript:{r['log_id']}"})
+        snap = conn.until(
+            lambda m: m["t"] == "snapshot" and m["channel"].startswith("transcript")
+        )
+        assert snap["data"][0]["summary"].startswith("spawned opus* · sonnet")
+
+        def has_prompt(rows):
+            return any(
+                e.get("kind") == "user" and e.get("md") == "hello there" for e in rows
+            )
+
+        if not has_prompt(snap["data"]):
+            conn.until(
+                lambda m: (
+                    m["t"] == "patch"
+                    and m["channel"] == f"transcript:{r['log_id']}"
+                    and has_prompt([op["upsert"] for op in m["ops"] if "upsert" in op])
+                )
+            )
+        conn.call("session.close", log_id=r["log_id"])
+
+
 def test_a_missing_claude_leaves_no_session_behind(project, tmp_path):
     with (
         client_for(project, str(tmp_path / "no-claude")) as c,
@@ -334,7 +399,7 @@ def test_a_missing_claude_leaves_no_session_behind(project, tmp_path):
     ):
         conn = Conn(ws).hello()
         assert (
-            conn.call("session.spawn", profile="opus")["error"]["code"]
+            conn.call("session.spawn", agent="opus")["error"]["code"]
             == "claude_not_found"
         )
         ws.send_json({"t": "sub", "channel": "sessions"})
