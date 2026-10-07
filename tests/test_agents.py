@@ -130,6 +130,7 @@ async def test_the_tools_are_named_after_their_operations_and_take_no_handle(wor
         "session_list",
         "session_rename",
         "meta",
+        "quota_read",
         "file_send",
     } <= set(tools)
     assert "session_spawn" not in tools and "session_close" not in tools
@@ -165,6 +166,13 @@ async def test_a_call_acts_as_its_own_session(world):
     assert said.startswith("mcp error: not_yours")
     rows = [e for e in a.entries() if e["kind"] == "tool"]
     assert rows[0]["title"] == "session_list" and rows[0]["glyph"] == "⇄"
+
+
+async def test_quota_read_returns_the_snapshot(world):
+    a = await world.spawn()
+    said = await turn(a, mcp("quota_read"))
+    # conftest leaves no credentials, so no provider has anything to say.
+    assert json.loads(said.removeprefix("mcp ok: ")) == {"providers": []}
 
 
 # -- the inbox ----------------------------------------------------------------------

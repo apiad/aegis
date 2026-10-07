@@ -56,6 +56,7 @@ class Registry(Host):
         self.server_name = "aegis"
         self.monitors = None
         self.queues = None
+        self.quota = None
 
     # -- the Host a session asks ----------------------------------------------
     def spawn_args(self, session: Session) -> tuple[str | None, str | None]:
@@ -70,6 +71,8 @@ class Registry(Host):
     def turn_ended(self, session: Session) -> None:
         if self.queues is not None:
             self.queues.turn_ended(session)
+        if self.quota is not None:
+            self.quota.turn_ended()
 
     def exited(self, session: Session, code: int, stderr_tail: list[str]) -> None:
         if self.tokens is not None:

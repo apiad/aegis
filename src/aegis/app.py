@@ -2,9 +2,11 @@
 
 Operations: ``profiles.list``, ``session.spawn``, ``session.send``,
 ``session.interrupt``, ``session.stop``, ``session.close``, ``session.reopen``,
-``session.rename``, ``archive.list``, ``server.version``, ``file.open``. Channels: ``sessions`` (every open
-session's meta; patches ``upsert`` and ``remove``) and ``transcript:<log_id>``
-(any session, archived included).
+``session.rename``, ``archive.list``, ``server.version``, ``file.open``,
+``quota.read``. Channels: ``sessions`` (every open session's meta; patches
+``upsert`` and ``remove``), ``transcript:<log_id>`` (any session, archived
+included), ``quota`` (each provider's windows; patches ``set``) and ``host``
+(CPU, RAM and disk while someone watches; patches ``set``).
 """
 
 from __future__ import annotations
@@ -17,9 +19,11 @@ from pydantic import BaseModel, Field
 from . import files
 from .agent_ops import register_agent_ops
 from .channels import Channels
+from .host import HostSampler
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors
 from .queues import Queues
+from .quota import Quota
 from .ops import OpError, Registry as Ops
 from .profiles import ProfileError, default_profile, load_profiles
 from .registry import Registry
@@ -94,6 +98,10 @@ class App:
         self.queues = Queues(
             self.sessions, self.monitors, roots.state_root / "tasks.jsonl"
         )
+        self.quota = Quota(self.publish)
+        self.host = HostSampler(
+            self.publish, self.channels.subscribers, roots.config_root
+        )
         reg = self.sessions
         reg.tokens, reg.monitors, reg.queues, reg.server_name = (
             self.tokens,
@@ -101,6 +109,7 @@ class App:
             self.queues,
             server_name,
         )
+        reg.quota = self.quota
         reg.mcp_url = f"{base_url.rstrip('/')}{MCP_PATH}" if base_url else None
         self.versions = Versions()
         self.registry = Ops()
@@ -113,8 +122,12 @@ class App:
         self.monitors.boot()
         self.monitors.arm_all()
         await self.queues.resume_after_boot(self.queues.boot())
+        self.quota.start()
+        self.host.start()
 
     async def shutdown(self) -> None:
+        await self.quota.stop()
+        await self.host.stop()
         await self.monitors.shutdown()
         await self.sessions.shutdown()
 
@@ -126,6 +139,10 @@ class App:
             return lambda: [s.wire() for s in self.sessions.open_sessions()]
         if name.startswith("transcript:"):
             return self.sessions.transcript(name.removeprefix("transcript:"))
+        if name == "quota":
+            return self.quota.snapshot
+        if name == "host":
+            return self.host.snapshot
         return None
 
     def _resolve_cwd(self, raw: str | None) -> Path:
@@ -256,3 +273,11 @@ class App:
         @r.op("server.version")
         async def server_version(_, caller):
             return await self.versions.wire()
+
+        @r.op("quota.read", agent=True)
+        async def quota_read(_, caller):
+            """How much of each subscription window is left: per provider, each
+            window's percent used, severity, projected percent at reset and
+            reset time (epoch seconds). Reads the last reading; never asks the
+            vendor, so calling it costs nothing."""
+            return self.quota.snapshot()

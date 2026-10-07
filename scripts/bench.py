@@ -99,6 +99,21 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
+def server_env(tmp: Path, env: dict) -> dict:
+    """The bench server's environment. The quota credentials and cache point
+    into ``tmp``: on a dev machine the real token is there, and a bench run
+    would poll the vendors and write the cache the running aegis shows."""
+    off = tmp / "quota"
+    return {
+        **os.environ,
+        "PYTHONPATH": str(ROOT / "src"),
+        "CLAUDE_CREDS": str(off / "claude-credentials.json"),
+        "OPENCODE_AUTH": str(off / "opencode-auth.json"),
+        "AEGIS_QUOTA_CACHE": str(off / "cache"),
+        **env,
+    }
+
+
 class Server:
     def __init__(self, tmp: Path, env: dict, keep_config: bool = False) -> None:
         if not keep_config:
@@ -125,7 +140,7 @@ class Server:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            env={**os.environ, "PYTHONPATH": str(ROOT / "src"), **env},
+            env=server_env(tmp, env),
         )
         self.url = ""
         while not self.url:
