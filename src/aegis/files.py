@@ -126,14 +126,19 @@ def store(state_root: Path, src: Path) -> dict:
         raise FileError("too_large", f"{src} is {size} bytes; the limit is {MAX_BYTES}")
     mime, preview = classify(src)
     file_id = secrets.token_urlsafe(16)
-    folder = state_root / "files" / file_id
-    folder.mkdir(parents=True)
-    part = folder / f".{src.name}.part"
+    root = state_root / "files"
+    root.mkdir(parents=True, exist_ok=True)
+    # Copied beside the id folders, under a name no id can match, then moved
+    # in: a half-copied file is never at a URL, and any name, dotfiles
+    # included, can be served.
+    part = root / f".{file_id}.part"
     try:
         shutil.copyfile(src, part)
     except OSError as e:
-        shutil.rmtree(folder, ignore_errors=True)
+        part.unlink(missing_ok=True)
         raise FileError("unreadable", f"cannot read {src}: {e}") from e
+    folder = root / file_id
+    folder.mkdir()
     dest = folder / src.name
     os.replace(part, dest)
     return {
@@ -148,7 +153,7 @@ def store(state_root: Path, src: Path) -> dict:
 
 
 def find(state_root: Path, file_id: str, name: str) -> Path | None:
-    if not _ID.fullmatch(file_id) or "/" in name or name.startswith("."):
+    if not _ID.fullmatch(file_id) or "/" in name or name in (".", ".."):
         return None
     path = state_root / "files" / file_id / name
     return path if path.is_file() else None

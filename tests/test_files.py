@@ -54,7 +54,7 @@ def test_store_copies_and_survives_the_original(tmp_path):
     assert rec["size"] == 9 and rec["preview"] == "image"
     path = find(tmp_path / "state", rec["file_id"], "chart.png")
     assert path.read_bytes() == b"png bytes"
-    assert not list(path.parent.glob(".*.part"))
+    assert not list((tmp_path / "state" / "files").glob(".*.part"))
 
 
 def test_the_same_name_twice_is_two_files(tmp_path):
@@ -119,4 +119,13 @@ def test_headers(tmp_path):
     assert (
         dl["Content-Disposition"]
         == "attachment; filename*=UTF-8''informe%20a%C3%B1o.pdf"
+    )
+
+
+def test_a_dotfile_is_served_like_any_other(tmp_path):
+    src = tmp_path / ".aegis.yaml"
+    src.write_text("agents: {}\n")
+    rec = store(tmp_path / "state", src)
+    assert find(tmp_path / "state", rec["file_id"], ".aegis.yaml").read_text() == (
+        "agents: {}\n"
     )
