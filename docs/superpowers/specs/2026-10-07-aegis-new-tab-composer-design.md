@@ -1,7 +1,7 @@
 # aegis: the new-tab composer, and agents as presets
 
-**Status: draft, 2026-10-07** (issue #155). Designed with Alex in a brainstorm with
-mockups. No plan yet.
+**Status: approved, 2026-10-07** (issue #155). Designed with Alex in a brainstorm with
+mockups. Plan: `docs/superpowers/plans/2026-10-07-aegis-new-tab-composer.md`.
 
 ## What this delivers
 
@@ -154,10 +154,12 @@ card shows the agent as `opus*` when `overridden` is not empty.
   editable.
 - **Enter** calls `session.spawn` with the agent, the changed fields only, the
   cwd and the text as `prompt`, then focuses the new tab. On an empty box it
-  spawns an idle session. A failure shows its code and message under the box and
-  keeps the text.
-- **Each `+`** starts from the last agent spawned in this browser (local storage)
-  with no overrides, or from `default_agent` when there is none.
+  spawns an idle session. A failure shows its message under the box and keeps
+  the text.
+- **After a spawn** the composer goes back to the agent just used, with no
+  overrides and an empty box. A fresh page starts from the last agent spawned in
+  this browser (local storage), or from `default_agent` when there is none.
+  Leaving the view without spawning keeps the text and the chips as they were.
 
 ## Tests
 
