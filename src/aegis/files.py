@@ -105,13 +105,12 @@ def excerpt(path: Path) -> str | None:
 
 
 def human_size(n: int) -> str:
-    for unit in ("B", "KB", "MB"):
-        if n < 1024 or unit == "MB":
-            break
-        n /= 1024
-    if unit == "B":
+    if n < 1024:
         return f"{n} B"
-    return f"{n:.1f} {unit}" if n < 10 else f"{n:.0f} {unit}"
+    size, unit = n / 1024, "KB"
+    if size >= 1024:
+        size, unit = size / 1024, "MB"
+    return f"{size:.1f} {unit}" if size < 10 else f"{size:.0f} {unit}"
 
 
 def url(file_id: str, name: str) -> str:
