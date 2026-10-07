@@ -141,6 +141,41 @@ detail = {url, download, preview, mime, size, excerpt}
 - Browser (`test_browser.py`): an image preview loads with a non-zero natural
   width; Open's and Download's links fetch the bytes that were sent.
 
+## Open natively
+
+Added with Alex after the first build. Each file is a card: a bar with the name,
+size and type and the actions (**Open**, the primary, **Open natively**,
+**Download**), and the preview below it.
+
+Open natively runs `xdg-open` (`open` on macOS, or `AEGIS_OPENER`) on aegis's
+copy, detached, through `file.open`: a person's operation, never an agent tool,
+since an agent could otherwise launch apps on the desktop. It opens the copy,
+not the agent's original, which aegis does not record.
+
+The browser cannot tell whether it runs on the server's machine; the server can.
+The welcome carries `native`, true when the socket's `Host` is loopback
+(`127.0.0.1`, `localhost`, `[::1]`) and the server has a desktop (`DISPLAY`,
+`WAYLAND_DISPLAY`, macOS, or `AEGIS_OPENER`). The button shows only then, and
+`file.open` from any other socket is refused with `not_local`. Loopback alone is
+not enough: an SSH tunnel to a headless VPS looks local.
+
+## How agents know
+
+Claude Code defers MCP tools: a session starts knowing only the name
+`mcp__aegis__file_send`. The primer, appended to every session's system prompt,
+is the channel every agent reads, so it carries the rule, as Alex set it: send a
+file when it is an output the person asked for, or an intermediate artifact they
+need to look at to discuss it (a mockup, a diagram, a draft render); nothing
+else, and never source files the agent edited.
+
+Measured before it shipped, with real Claude Code (Haiku 4.5, effort low), four
+prompts run twice with the paragraph and twice without, none of them naming the
+tool. Where the agent made the file, it sent it in 3 of 3 runs with the
+paragraph and 0 of 2 without; it sent no file for a typo fix or a new function
+with tests in 8 of 8 runs either way. Two mockup runs per condition made no SVG
+at all: the user's `frontend-design` skill had the agent stop at a design brief.
+With the paragraph the agent loaded the deferred tool through `ToolSearch` itself.
+
 ## The second step: a viewer page
 
 Open goes to `/view/<id>/<name>`, an aegis page that renders Markdown, shows CSV

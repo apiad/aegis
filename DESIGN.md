@@ -157,6 +157,10 @@ and a download cannot carry the token the websocket needs. HTML, SVG and XML are
 served with `Content-Security-Policy: sandbox` (HTML with `allow-scripts`, so a
 report still runs) and framed with `sandbox`: on aegis's own origin their script
 could read the token from `sessionStorage` and drive every agent (`files.py`).
+Open natively runs the desktop's opener on the server, so it is a person's
+operation only, and only for a socket on loopback to a server with a desktop: a
+proxy's public name is a browser elsewhere, and an SSH tunnel to a headless box
+looks local but has nowhere to open the file.
 
 **Performance is measured on every PR and never gates.** `scripts/bench.py`
 replays a recorded transcript through the fake harness in
