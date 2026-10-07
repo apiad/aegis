@@ -17,13 +17,6 @@ from ruamel.yaml import YAML, YAMLError
 
 from .roots import CONFIG_FILE
 
-# The old tree's permission vocabulary, mapped to Claude Code's modes.
-PERMISSION_MODE = {
-    "read": "plan",
-    "write": "acceptEdits",
-    "full": "bypassPermissions",
-    "auto": "auto",
-}
 EFFORTS = ("low", "medium", "high", "max")
 SUPPORTED_HARNESSES = ("claude-code",)
 
