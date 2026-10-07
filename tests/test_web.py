@@ -302,3 +302,45 @@ def test_server_version_reports_the_running_build_and_the_latest_release(
     assert r["latest"] == "99.0.0"
     assert set(r["running"]) == {"version", "commit", "ref", "dev"}
     assert r["status"] == ("dev" if r["running"]["dev"] else "behind")
+
+
+def test_sent_files_are_served_at_their_capability_url(project, fake_claude):
+    from aegis import files
+
+    app = App(make_roots(project, None), claude_bin=fake_claude)
+    state = app.roots.state_root
+
+    def sent(name: str, data: bytes = b"x") -> str:
+        src = project / name
+        src.write_bytes(data)
+        rec = files.store(state, src)
+        return files.url(rec["file_id"], rec["name"])
+
+    png, html, svg, pdf = (
+        sent("a.png", b"png"),
+        sent("r.html"),
+        sent("d.svg"),
+        sent("p.pdf"),
+    )
+    md, zipf, odd = sent("n.md"), sent("z.zip"), sent("informe año #2.pdf", b"pdf")
+    with TestClient(build_web(app, TOKEN, {"testserver"})) as c:
+        r = c.get(png)
+        assert r.status_code == 200 and r.content == b"png"
+        assert r.headers["content-type"] == "image/png"
+        assert r.headers["x-content-type-options"] == "nosniff"
+        assert r.headers["referrer-policy"] == "no-referrer"
+        assert "immutable" in r.headers["cache-control"]
+        assert c.get(html).headers["content-security-policy"] == "sandbox"
+        assert c.get(svg).headers["content-security-policy"] == "sandbox"
+        assert "content-security-policy" not in c.get(pdf).headers
+        assert c.get(md).headers["content-type"] == "text/plain; charset=utf-8"
+        assert c.get(zipf).headers["content-disposition"].startswith("attachment")
+        r = c.get(odd + "?download=1")
+        assert r.content == b"pdf"
+        assert r.headers["content-disposition"] == (
+            "attachment; filename*=UTF-8''informe%20a%C3%B1o%20%232.pdf"
+        )
+        file_id = png.split("/")[2]
+        assert c.get(f"/files/{file_id}/b.png").status_code == 404
+        assert c.get("/files/AAAAAAAAAAAAAAAAAAAAAA/a.png").status_code == 404
+        assert c.get(png, headers={"host": "evil.example"}).status_code == 404
