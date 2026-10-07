@@ -54,6 +54,17 @@ export const KEYS = [
   // Documents the browser's own Tab; it never matches.
   { scope: "session", label: "Tab", desc: "Walk the buttons from the selected row on", action: "none", match: () => false },
   { scope: "session", label: "i  /", desc: "Back to the message box", action: "composer", match: key("i", "/") },
+  { scope: "fleet", label: "j  ↓", desc: "Next card, then the archive", action: "fleetNext", match: key("j", "ArrowDown") },
+  { scope: "fleet", label: "k  ↑", desc: "Previous card", action: "fleetPrev", match: key("k", "ArrowUp") },
+  {
+    scope: "fleet",
+    label: "Enter",
+    desc: "Open the session; Read an archived one",
+    action: "fleetOpen",
+    match: key("Enter"),
+    native: true,
+  },
+  { scope: "fleet", label: "/", desc: "Filter the archive", action: "filter", match: key("/") },
 ];
 
 function typing(t) {
