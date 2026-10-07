@@ -359,3 +359,46 @@ def test_an_aegis_reply_is_digested_to_its_ids():
         a["detail"]["result"] == "task-1 · running"
         and b["detail"]["result"] == "2 items"
     )
+
+
+FILE_REC = {
+    "file_id": "AbCdEfGhIjKlMnOpQrStUv",
+    "name": "informe año.png",
+    "mime": "image/png",
+    "size": 48213,
+    "preview": "image",
+    "excerpt": None,
+    "caption": "Weekly cost",
+}
+
+
+def test_a_sent_file_is_its_own_kind():
+    r = Rec()
+    r.own("file", **FILE_REC)
+    (e,) = run(r)[0].entries()
+    url = "/files/AbCdEfGhIjKlMnOpQrStUv/informe%20a%C3%B1o.png"
+    assert (e["kind"], e["status"], e["glyph"], e["title"]) == (
+        "file",
+        "ok",
+        "▤",
+        "informe año.png",
+    )
+    assert e["summary"] == "47 KB · image/png"
+    assert e["md"] == "Weekly cost"
+    assert e["detail"] == {
+        "url": url,
+        "download": url + "?download=1",
+        "preview": "image",
+        "mime": "image/png",
+        "size": 48213,
+        "excerpt": None,
+    }
+
+
+def test_activity_names_the_latest_sent_file():
+    r = Rec()
+    r.text("Rendering the chart.")
+    r.own("file", **FILE_REC)
+    assert run(r)[0].activity() == "sent informe año.png"
+    r.text("Done.")
+    assert run(r)[0].activity() == "Done."

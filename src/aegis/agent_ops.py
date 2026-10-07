@@ -89,6 +89,10 @@ def _render(e: dict, tools: bool) -> str | None:
         return f"tool {e['title']} {e['summary']} -> {result}"
     if kind == "thinking":
         return None
+    if kind == "file":
+        return (
+            f"file: {e['title']} ({e['summary'].split(' · ')[0]}) {e['detail']['url']}"
+        )
     return f"· {e['summary']}"
 
 

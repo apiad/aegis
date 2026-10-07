@@ -34,6 +34,7 @@ from ..claude.stream import (
     ToolOutput,
     parse,
 )
+from .. import files
 from . import describe as d
 
 
@@ -119,6 +120,8 @@ class Fold:
                 if line:
                     return _cut(line)
                 continue
+            if e["kind"] == "file":
+                return _cut(f"sent {e['title']}")
             if e["kind"] in ("prose", "user") and e.get("md"):
                 first = next(
                     (ln.strip() for ln in e["md"].splitlines() if ln.strip()), ""
@@ -204,6 +207,28 @@ class Fold:
         if kind == "close":
             return self._upsert(
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary="closed")
+            )
+        if kind == "file":
+            url = files.url(str(rec.get("file_id")), str(rec.get("name")))
+            return self._upsert(
+                _entry(
+                    f"e{i}",
+                    "file",
+                    "ok",
+                    ts,
+                    d.FILE_GLYPH,
+                    title=str(rec.get("name")),
+                    summary=f"{files.human_size(int(rec.get('size') or 0))} · {rec.get('mime')}",
+                    md=rec.get("caption"),
+                    detail={
+                        "url": url,
+                        "download": f"{url}?download=1",
+                        "preview": rec.get("preview"),
+                        "mime": rec.get("mime"),
+                        "size": rec.get("size"),
+                        "excerpt": rec.get("excerpt"),
+                    },
+                )
             )
         if kind == "damaged":
             n = rec.get("count", 0)

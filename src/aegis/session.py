@@ -339,7 +339,8 @@ class Session:
         ops = fold.apply(stored, events)
         self._publish(self.channel, ops)
         if any(
-            op.get("upsert", {}).get("kind") in ("user", "prose", "tool") for op in ops
+            op.get("upsert", {}).get("kind") in ("user", "prose", "tool", "file")
+            for op in ops
         ):
             self._set(activity=fold.activity())
 
