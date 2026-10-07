@@ -498,8 +498,10 @@ installKeys(
     },
     browse() {
       const v = route().view;
-      if (v === "session" || v === "read") $("tr").focus({ preventScroll: true });
-      else if (v === "fleet") $("cards").focus({ preventScroll: true });
+      if (v === "session" || v === "read") {
+        $("tr").focus({ preventScroll: true });
+        transcript.pick();
+      } else if (v === "fleet") $("cards").focus({ preventScroll: true });
     },
     cycle(ev) {
       const all = ["#fleet", ...ordered.map((m) => `#s=${m.log_id}`)];
@@ -507,6 +509,13 @@ installKeys(
       const i = all.indexOf(location.hash || "#fleet");
       go(all[i < 0 ? (d > 0 ? 0 : all.length - 1) : (i + d + all.length) % all.length]);
     },
+    next: () => transcript.move(1),
+    prev: () => transcript.move(-1),
+    turn: (ev) => transcript.moveTurn(ev.key === "J" ? 1 : -1),
+    edge: (ev) => transcript.edge(ev.key === "G"),
+    toggle: () => transcript.toggle(),
+    press: () => transcript.press(),
+    none() {},
     spawn: () => go("#new"),
     tab(ev) {
       const n = Number(ev.altKey ? ev.code.slice(5) : ev.key);

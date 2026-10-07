@@ -38,6 +38,21 @@ export const KEYS = [
   { scope: "global", label: "Esc", desc: "Interrupt the agent; close this list", action: "escape", match: key("Escape") },
   { scope: "browse", label: "0…9", desc: "Fleet, or the n-th tab", action: "tab", match: (ev) => bare(ev) && /^[0-9]$/.test(ev.key) },
   { scope: "browse", label: "n", desc: "New session", action: "spawn", match: key("n") },
+  { scope: "session", label: "j  ↓", desc: "Next row", action: "next", match: key("j", "ArrowDown") },
+  { scope: "session", label: "k  ↑", desc: "Previous row", action: "prev", match: key("k", "ArrowUp") },
+  { scope: "session", label: "J  K", desc: "Next / previous message of yours", action: "turn", match: key("J", "K") },
+  { scope: "session", label: "g  G", desc: "First row / last row, and follow the tail", action: "edge", match: key("g", "G") },
+  {
+    scope: "session",
+    label: "Enter  Space",
+    desc: "Open or close the row's details",
+    action: "toggle",
+    match: key("Enter", " "),
+    native: true,
+  },
+  { scope: "session", label: "o", desc: "Press the row's first button", action: "press", match: key("o") },
+  // Documents the browser's own Tab; it never matches.
+  { scope: "session", label: "Tab", desc: "Walk the buttons from the selected row on", action: "none", match: () => false },
   { scope: "session", label: "i  /", desc: "Back to the message box", action: "composer", match: key("i", "/") },
 ];
 
