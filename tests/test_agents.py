@@ -29,6 +29,8 @@ agents:
 queues:
   general: {agent: opus, max_parallel: 2}
   solo: {agent: opus, max_parallel: 1}
+  reviewing: {agent: reviewer, max_parallel: 1}
+  broken: {agent: opus}
 """
 
 
@@ -500,3 +502,39 @@ async def test_an_agent_lists_the_agents(world):
     said = await turn(a, mcp("agents_list"))
     listed = json.loads(said.removeprefix("mcp ok: "))
     assert [x["name"] for x in listed["agents"]] == ["opus", "reviewer"]
+
+
+async def test_a_worker_gets_its_agents_priming(world):
+    a = await world.spawn()
+    await turn(a, mcp("queue_enqueue", queue="reviewing", payload="/argv"))
+    await until(lambda: inbox(a), timeout=12, what="the callback")
+    (cb,) = inbox(a)
+    assert "You review." in cb["md"]
+
+
+async def test_a_queue_missing_a_field_says_which(world):
+    a = await world.spawn()
+    said = await turn(a, mcp("queue_enqueue", queue="broken", payload="x"))
+    assert said.startswith("mcp error: bad_config")
+    assert "max_parallel is missing" in said
+
+
+async def test_a_logged_task_on_a_queue_that_broke_does_not_stop_dispatch(world):
+    # A task logged while `broken` was valid must not crash the dispatcher
+    # with a KeyError on max_parallel; the other queues keep working.
+    from aegis.queues import Task
+
+    t = Task(
+        id="task-old",
+        queue="broken",
+        payload="x",
+        callback=False,
+        enqueuer=None,
+        cwd=str(world.root),
+    )
+    world.app.queues.tasks[t.id] = t
+    a = await world.spawn()
+    said = await turn(
+        a, mcp("queue_enqueue", queue="general", payload="hi", callback=False)
+    )
+    assert said.startswith("mcp ok")

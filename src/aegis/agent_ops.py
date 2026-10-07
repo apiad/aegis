@@ -201,6 +201,8 @@ def register_agent_ops(app: App) -> None:
         if p.queue not in app.queues.queues:
             known = ", ".join(sorted(app.queues.queues)) or "none configured"
             raise OpError("unknown_queue", f"no queue {p.queue!r}; queues: {known}")
+        if err := app.queues.queues[p.queue].get("error"):
+            raise OpError("bad_config", f"queue {p.queue!r} in .aegis.yaml: {err}")
         enqueuer = own(caller) if caller.is_agent else None
         cwd = str(enqueuer.spec.cwd if enqueuer else app.roots.harness_cwd)
         t = await app.queues.enqueue(

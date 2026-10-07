@@ -4,6 +4,7 @@ import pytest
 
 from aegis.agents import ConfigError, load_agents, model_suggestions, resolve
 from aegis.ops import OpError
+from aegis.queues import load_queues
 
 
 def write(tmp_path: Path, text: str) -> Path:
@@ -194,3 +195,20 @@ def test_resolve_errors(agents, tmp_path, default, name, overrides, code):
 def test_bad_agent_says_what_is_wrong(agents, tmp_path):
     with pytest.raises(OpError, match="agent 'broken': effort is missing"):
         resolve(agents, None, "broken", none(), tmp_path)
+
+
+def test_a_queue_names_its_agent_and_max_parallel(tmp_path):
+    root = write(
+        tmp_path,
+        "queues:\n"
+        "  ok: {agent: opus, max_parallel: 3}\n"
+        "  nolimit: {agent: opus}\n"
+        "  bare: {}\n"
+        "  zero: {agent: opus, max_parallel: 0}\n",
+    )
+    assert load_queues(root) == {
+        "ok": {"agent": "opus", "max_parallel": 3},
+        "nolimit": {"error": "max_parallel is missing"},
+        "bare": {"error": "agent, max_parallel are missing"},
+        "zero": {"error": "max_parallel 0 is not a positive integer"},
+    }
