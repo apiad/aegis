@@ -31,7 +31,7 @@ so it can move when the plugin runtime from #113 exists.
 |---|---|---|
 | Core module or plugin | A core module, like `monitors.py`, with its own channels | aegis 2 has no plugin runtime yet. The client knows only channel names, so a later move into a plugin changes no protocol |
 | Where the numbers come from | A copy of the legacy `QuotaService` and its two providers, adapted, never imported | DESIGN.md: copy, never import from `legacy/`. The legacy code has already been through #41 (429s, stale readings, placeholders) |
-| One reading per machine | Keep the legacy cache path and format, `~/.cache/aegis/quota/<provider>.json`, now honouring `XDG_CACHE_HOME` | The Claude endpoint 429s under light polling. Every aegis process on the machine adopts a reading another fetched inside the floor and honours a backoff another saw |
+| One reading per machine | Keep the legacy cache path and format, `~/.cache/aegis/quota/<provider>.json`, now honouring `XDG_CACHE_HOME`; `AEGIS_QUOTA_CACHE` overrides the directory | The Claude endpoint 429s under light polling. Every aegis process on the machine adopts a reading another fetched inside the floor and honours a backoff another saw |
 | Who decides severity and projection | The server, re-evaluated once a minute | DESIGN.md: Python decides, the browser draws. Both depend on the clock, so the server republishes when either changes |
 | Who computes the tick and the countdown | The browser, from `starts_at` and `resets_at` | Pure geometry and clock text, as `ago()` already is for the cards. Republishing every second for a countdown would cost more than the gauges |
 | Session counts and average context | The browser, from the `sessions` channel it already holds | No new server data. A count of states the client already has is drawing, not deciding |
@@ -50,8 +50,10 @@ so it can move when the plugin runtime from #113 exists.
 - `src/aegis/quota/claude.py` and `src/aegis/quota/opencode.py`: copied from
   `quota_claude.py` and `quota_opencode.py`.
 - `src/aegis/quota/__init__.py`: `Quota`, the object `App` owns. It holds one
-  `QuotaService` per provider, runs their loops, re-evaluates severity once a
-  minute, builds the wire snapshot and publishes it.
+  `QuotaService` per provider and runs one loop that ticks every 60 s. Each tick
+  asks every service to refresh (each service's floor decides whether it really
+  fetches), rebuilds the wire snapshot, and publishes it if it changed. So one
+  loop carries both the fetch cadence and the minute re-evaluation.
 
 `quota` is a package because it holds three modules. `host.py` is one module.
 
@@ -115,15 +117,20 @@ The snapshot:
 
 - `state` is `ok`, `stale` or `failed`. `failed` has a `note`
   ("rate limited", "auth expired", "unreachable") and no windows. `stale` has
-  windows, its `note`, and `projected: null` on every window.
+  windows, its `note`, `severity: "normal"` and `projected: null` on every
+  window.
 - `starts_at` is `resets_at` minus the window's span, or `null` when the
   projection is declined. The browser draws no tick for a `null`.
 - Times are wall-clock epoch seconds.
 - A patch is one op, `{"set": <snapshot>}`. The whole snapshot is a few hundred
   bytes, so diffing it would cost more code than it saves.
-- `Quota` publishes when a fetch changes the snapshot, and when the minute
-  re-evaluation changes a window's severity or moves `projected` across one of
-  the thresholds. Comparing the wire dicts decides "changed".
+- `Quota` publishes when the wire snapshot differs from the last one it
+  published. `projected` is rounded to a whole percent and `read_at` to a whole
+  second, so the minute re-evaluation publishes at most once a minute, and only
+  while a window's projection is moving.
+- A provider whose 429 backoff is running carries `retry_at` (epoch seconds),
+  so the Quota heading can say "rate limited, retrying in 4m". Otherwise
+  `retry_at` is `null`.
 
 `quota.read` (agent operation, no params) returns the same snapshot.
 
@@ -189,8 +196,9 @@ pace is involved.
   declined; publish only on change; the #72 fix; and `Host` parsing of fixture
   `/proc` text.
 - **Never the real endpoint.** `conftest.py` points `CLAUDE_CREDS` and
-  `OPENCODE_AUTH` at missing files and `XDG_CACHE_HOME` at a temporary directory
-  for every test. A test that wants a reading writes a token file and a fresh
+  `OPENCODE_AUTH` at missing files and `AEGIS_QUOTA_CACHE` at a temporary
+  directory for every test. Not `XDG_CACHE_HOME`: Playwright looks for its
+  Chromium under it. A test that wants a reading writes a token file and a fresh
   cache file. The service adopts the cached reading inside the floor and does
   not fetch.
 - **Browser:** against a real `aegis serve` with a seeded cache, the Fleet band
