@@ -1,6 +1,7 @@
 # aegis 2: quota and host gauges
 
-**Status: designed, 2026-10-07** (issue #146). Designed with Alex, who approved
+**Status: implemented, 2026-10-07** (issue #146), following
+`docs/superpowers/plans/2026-10-07-aegis-2-quota-gauges.md`. Designed with Alex, who approved
 the visual design from an HTML mockup that uses the real client CSS and themes.
 The mockup is in `.playground/aegis-quota-mockup/` in the Workspace (untracked).
 

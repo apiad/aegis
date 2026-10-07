@@ -45,7 +45,7 @@
 - Produces, in `aegis.quota.core`: `QuotaWindow(kind, percent, severity, resets_at, is_active)`, `QuotaSnapshot(windows, fetched_at)` with `.window(kind)`, `QuotaProvider(name, label, harness, bar_windows, fetch, read_token, window_spans={}, poll_s=60.0, turn_floor_s=10.0)`, `QuotaError(kind)`, `QuotaState(snapshot=None, age_s=0.0, failure="", retry_in_s=0.0)`, `QuotaService(*, fetch, token_reader, clock=time.monotonic, poll_s=POLL_S, cache=None, wall=time.time)` with `async refresh(*, force=False, min_interval=None)`, `current() -> QuotaState`, `start()`, `async stop()`; `window_pace(window, span_s, *, now) -> float | None`; `pace_severity(window, span_s, *, now) -> str`; `cancel_and_wait(task) -> None` (async); `FAILURE_TEXT: dict[str, str]`; constants `POLL_S`, `BACKOFF_S`, `PACE_WARN_AT`, `PACE_CRIT_AT`, `PACE_FLOOR`.
 - Produces `aegis.quota.claude.PROVIDER` (name `"claude"`, label `"Claude"`) and `aegis.quota.opencode.PROVIDER` (name `"opencode-go"`, label `"OpenCode Go"`).
 
-- [ ] **Step 1: Isolate every test from the real quota files**
+- [x] **Step 1: Isolate every test from the real quota files**
 
 Append to `tests/conftest.py`, after `until`:
 
@@ -63,7 +63,7 @@ def _no_real_quota(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("AEGIS_QUOTA_CACHE", str(off / "cache"))
 ```
 
-- [ ] **Step 2: Copy the legacy tests with their imports moved**
+- [x] **Step 2: Copy the legacy tests with their imports moved**
 
 ```bash
 cd .claude/worktrees/quota-gauges
@@ -81,7 +81,7 @@ grep -n 'aegis\.usage\|aegis\.themes\|aegis\.tui\|quota_gauges\|format_quota_bar
 
 Expected: no matches and `leftovers rc=1`. Strip trailing blank lines at the end of each file if `ruff format` asks to.
 
-- [ ] **Step 3: Add the two new service tests**
+- [x] **Step 3: Add the two new service tests**
 
 Append to `tests/test_quota_service.py`:
 
@@ -122,12 +122,12 @@ async def test_stop_lets_a_cancel_meant_for_its_caller_through():
         await caller
 ```
 
-- [ ] **Step 4: Run the copied tests to see them fail**
+- [x] **Step 4: Run the copied tests to see them fail**
 
 Run: `uv run pytest -q tests/test_quota_claude.py tests/test_quota_opencode.py tests/test_quota_pace.py tests/test_quota_service.py`
 Expected: collection errors, `ModuleNotFoundError: No module named 'aegis.quota'`.
 
-- [ ] **Step 5: Copy the core, without the renderers**
+- [x] **Step 5: Copy the core, without the renderers**
 
 ```bash
 mkdir -p src/aegis/quota
@@ -219,7 +219,7 @@ async def cancel_and_wait(task: asyncio.Task | None) -> None:
 
 Delete the now-unused `import asyncio` lines inside `QuotaService.start`, `_loop` and `refresh` only if ruff reports them as redefinitions; otherwise leave them.
 
-- [ ] **Step 6: Copy the two providers**
+- [x] **Step 6: Copy the two providers**
 
 ```bash
 for p in claude opencode; do
@@ -233,12 +233,12 @@ Then edit:
 - `src/aegis/quota/claude.py`: `label="cc"` becomes `label="Claude"`; `bar_windows=(("session", "5h"), ("weekly_all", "wk"))` becomes `bar_windows=(("session", "5 hours"), ("weekly_all", "week"))`; replace the comment above `bar_windows` with `# The two windows the gauges draw; the payload has more.`; in the docstring, "degrades to a message in the status bar" becomes "degrades to a note on the gauges".
 - `src/aegis/quota/opencode.py`: `label="oc"` becomes `label="OpenCode Go"`; `bar_windows=(("rolling", "5h"), ("weekly", "wk"), ("monthly", "mo"))` becomes `bar_windows=(("rolling", "5 hours"), ("weekly", "week"), ("monthly", "month"))`; the same docstring change.
 
-- [ ] **Step 7: Run the tests**
+- [x] **Step 7: Run the tests**
 
 Run: `uv run pytest -q tests/test_quota_claude.py tests/test_quota_opencode.py tests/test_quota_pace.py tests/test_quota_service.py tests/test_imports.py`
 Expected: all pass. If a copied test asserts a legacy label (`"cc"`, `"5h"`), change the assertion to the new label and say so in the commit body.
 
-- [ ] **Step 8: Lint, type-check, commit**
+- [x] **Step 8: Lint, type-check, commit**
 
 ```bash
 uv run ruff format src/aegis/quota tests/test_quota_*.py tests/conftest.py
@@ -273,7 +273,7 @@ EOF
 - Consumes: everything Task 1 produces.
 - Produces: `aegis.quota.Quota(publish, *, providers=PROVIDERS, cache=None, clock=time.monotonic, wall=time.time)` with `snapshot() -> dict`, `check() -> None`, `async tick()`, `start()`, `async stop()`, `turn_ended()`; `aegis.quota.cache_dir() -> Path`; `aegis.quota.PROVIDERS`; `aegis.quota.TICK_S = 60.0`. `App.quota`. Channel `quota`: snapshot `{"providers": [...]}`, patches `[{"set": snapshot}]`. Wire provider: `{"name", "label", "state": "ok"|"stale"|"failed", "note", "read_at": int|None, "retry_at": int|None, "windows": [{"kind", "label", "percent", "severity", "projected": int|None, "starts_at": int|None, "resets_at": int|None}]}`. Operation `quota.read` (agent tool `quota_read`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_quota_wire.py`:
 
@@ -513,12 +513,12 @@ async def test_quota_read_returns_the_snapshot(world):
     assert json.loads(said.removeprefix("mcp ok: ")) == {"providers": []}
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest -q tests/test_quota_wire.py tests/test_agents.py -k "quota or tools_are_named"`
 Expected: `ImportError: cannot import name 'Quota' from 'aegis.quota'`.
 
-- [ ] **Step 3: Write `Quota`**
+- [x] **Step 3: Write `Quota`**
 
 Replace `src/aegis/quota/__init__.py` with:
 
@@ -719,7 +719,7 @@ class Quota:
         self.check()
 ```
 
-- [ ] **Step 4: Wire it into the app and the registry**
+- [x] **Step 4: Wire it into the app and the registry**
 
 In `src/aegis/registry.py`, in `Registry.__init__` after `self.queues = None`, add `self.quota = None`. In `turn_ended`, add at the end:
 
@@ -748,12 +748,12 @@ In `src/aegis/app.py`:
 
 - in the module docstring, add `quota.read` to the operations and the channel `quota` (each provider's windows; patches `set`).
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run pytest -q tests/test_quota_wire.py tests/test_agents.py tests/test_registry.py tests/test_imports.py tests/test_no_cwd.py`
 Expected: all pass.
 
-- [ ] **Step 6: Lint, type-check, commit**
+- [x] **Step 6: Lint, type-check, commit**
 
 ```bash
 uv run ruff format src/aegis/quota src/aegis/app.py src/aegis/registry.py tests/test_quota_wire.py tests/test_agents.py
@@ -786,7 +786,7 @@ EOF
 - Consumes: `Channels.subscribers(channel) -> int` (`src/aegis/channels.py`), `App.publish`, `roots.config_root`.
 - Produces: `aegis.host.HostSampler(publish, subscribers, disk_path, *, proc=Path("/proc"), interval=INTERVAL_S)` with `sample() -> dict | None`, `snapshot() -> dict | None`, `check() -> None`, `start()`, `async stop()`. Channel `host`: snapshot `{"cpu": int, "ram": {"pct", "used_gb", "total_gb"}, "disk": {"pct", "used_gb", "total_gb"} | None}` or `null`; patches `[{"set": snapshot}]`. `App.host`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_host.py`:
 
@@ -868,12 +868,12 @@ def test_a_change_in_a_whole_percent_publishes_and_nothing_else_does(tmp_path):
     assert sent[-1][1] == [{"set": h.snapshot()}]
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest -q tests/test_host.py`
 Expected: `ModuleNotFoundError: No module named 'aegis.host'`.
 
-- [ ] **Step 3: Write `src/aegis/host.py`**
+- [x] **Step 3: Write `src/aegis/host.py`**
 
 ```python
 """Host meters for the Fleet band: CPU, RAM, and the disk that holds aegis.
@@ -1017,16 +1017,16 @@ class HostSampler:
         await cancel_and_wait(task)
 ```
 
-- [ ] **Step 4: Wire it into the app**
+- [x] **Step 4: Wire it into the app**
 
 In `src/aegis/app.py`: import `from .host import HostSampler`; in `App.__init__` after `self.quota = Quota(self.publish)` add `self.host = HostSampler(self.publish, self.channels.subscribers, roots.config_root)`; in `boot` add `self.host.start()`; in `shutdown` add `await self.host.stop()` after the quota line; in `_resolve` add `if name == "host": return self.host.snapshot`; add the `host` channel to the module docstring.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run pytest -q tests/test_host.py tests/test_imports.py tests/test_no_cwd.py tests/test_agents.py -k "host or imports or cwd or tools_are_named"`
 Expected: all pass.
 
-- [ ] **Step 6: Lint, type-check, commit**
+- [x] **Step 6: Lint, type-check, commit**
 
 ```bash
 uv run ruff format src/aegis/host.py src/aegis/app.py tests/test_host.py
@@ -1059,7 +1059,7 @@ EOF
 - Consumes: the `quota` and `host` channels from Tasks 2 and 3; `dotClass(state)` from `js/tabs.js`; `conn.subscribe(channel, onSnapshot, onPatch)` returning an unsubscribe function; `conn.server`.
 - Produces: `gauges.js` exports `PROJECT_FROM`, `countdown(seconds)`, `elapsed(w, now)`, `hostSeverity(pct)`, `quotaRow(p, w, now)`, `quotaSideRow(p, w, now)`, `hostRow(label, pct, tail)`, `noteRow(note)`, `quotaHeading(providers, now)`, `providerLine(p, now)`. `fleet.js` exports `renderBand(band, { metas, quota, host, server, now })`. DOM ids: `#band`, `#band-server`, `#band-counts`, `#band-host`, `#band-quota-col`, `#band-quota-age`, `#band-quota`, `#s-quota-sec`, `#s-quota`. Each quota row carries `data-kind` (the window's `kind`).
 
-- [ ] **Step 1: Write the failing browser test**
+- [x] **Step 1: Write the failing browser test**
 
 In `tests/test_browser.py`, add `from datetime import datetime, timezone` to the imports, and after the `server` fixture:
 
@@ -1135,12 +1135,12 @@ def test_the_fleet_band_and_the_sidebar_show_quota_and_the_host(quota_server, pa
     assert page.errors == []
 ```
 
-- [ ] **Step 2: Run it to see it fail**
+- [x] **Step 2: Run it to see it fail**
 
 Run: `uv run pytest -q tests/test_browser.py -k quota`
 Expected: FAIL, a timeout waiting for `#band .gauge[data-kind=session]`.
 
-- [ ] **Step 3: Write `src/aegis/client/js/gauges.js`**
+- [x] **Step 3: Write `src/aegis/client/js/gauges.js`**
 
 ```js
 // One gauge row, drawn the same in the Fleet band and the session sidebar.
@@ -1285,7 +1285,7 @@ export function quotaHeading(providers, now) {
 }
 ```
 
-- [ ] **Step 4: Add `renderBand` to `src/aegis/client/js/fleet.js`**
+- [x] **Step 4: Add `renderBand` to `src/aegis/client/js/fleet.js`**
 
 Add `import { hostRow, noteRow, providerLine, quotaHeading, quotaRow } from "./gauges.js";` under the existing import, and append:
 
@@ -1332,7 +1332,7 @@ export function renderBand(band, { metas, quota, host, server, now }) {
 }
 ```
 
-- [ ] **Step 5: Add the markup to `src/aegis/client/index.html`**
+- [x] **Step 5: Add the markup to `src/aegis/client/index.html`**
 
 Inside `<main class="view v-fleet">`, before `<section class="cards" id="cards">`:
 
@@ -1350,7 +1350,7 @@ In the sidebar, right after the Context `</div>` (the section holding `#s-cost`)
       <div class="sec" id="s-quota-sec" hidden><h4>Quota</h4><div id="s-quota"></div></div>
 ```
 
-- [ ] **Step 6: Wire it in `src/aegis/client/js/app.js`**
+- [x] **Step 6: Wire it in `src/aegis/client/js/app.js`**
 
 - Change the fleet import to `import { ago, money, renderArchive, renderBand, renderCards } from "./fleet.js";` and add `import { age, quotaSideRow } from "./gauges.js";`.
 - Under the `const token = ...` line, add state:
@@ -1437,7 +1437,7 @@ function drawQuota() {
 setInterval(drawQuota, 30 * 1000);
 ```
 
-- [ ] **Step 7: Add the CSS to `src/aegis/client/css/base.css`**
+- [x] **Step 7: Add the CSS to `src/aegis/client/css/base.css`**
 
 Append:
 
@@ -1475,12 +1475,12 @@ Append:
 #a2 .side .gnote{color:var(--warn)}
 ```
 
-- [ ] **Step 8: Run the browser test**
+- [x] **Step 8: Run the browser test**
 
 Run: `uv run pytest -q tests/test_browser.py -k quota`
 Expected: PASS.
 
-- [ ] **Step 9: Prove the test can fail**
+- [x] **Step 9: Prove the test can fail**
 
 ```bash
 cp src/aegis/client/js/gauges.js /tmp/gauges.js.orig
@@ -1493,13 +1493,13 @@ cmp /tmp/gauges.js.orig src/aegis/client/js/gauges.js && echo restored
 
 Expected: `mutated (expect 1): 1`, the test fails on the `critical` assertion with `rc (expect 1): 1`, then `restored`.
 
-- [ ] **Step 10: Run the whole browser suite and look at it**
+- [x] **Step 10: Run the whole browser suite and look at it**
 
 Run: `uv run pytest -q -m browser` and expect every test to pass (the band must not break the existing Fleet tests).
 
 Then take screenshots of the Fleet view and a session in each of the three themes, against a `quota_server`-style seeded server, and read them. The point is to check that the band matches the approved mockup: the columns line up, the tick shows, and the stale row is grey.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add src/aegis/client/js/gauges.js src/aegis/client/js/fleet.js src/aegis/client/js/app.js src/aegis/client/index.html src/aegis/client/css/base.css tests/test_browser.py
@@ -1525,7 +1525,7 @@ EOF
 - Modify: `docs/superpowers/specs/2026-10-07-aegis-2-quota-gauges-design.md` (status line)
 - Modify: `DESIGN.md` only if a rule that spans modules changed (expected: none; the cache rule lives in `aegis/quota/__init__.py`'s docstring)
 
-- [ ] **Step 1: Write the fragment**
+- [x] **Step 1: Write the fragment**
 
 `changelog.d/146-quota-gauges.added.md`:
 
@@ -1541,11 +1541,11 @@ EOF
   with every aegis on the machine through `~/.cache/aegis/quota/`.
 ```
 
-- [ ] **Step 2: Flip the spec status**
+- [x] **Step 2: Flip the spec status**
 
 Replace the spec's first status line with `**Status: implemented, 2026-10-07** (issue #146), following \`docs/superpowers/plans/2026-10-07-aegis-2-quota-gauges.md\`.` and keep the rest of that paragraph.
 
-- [ ] **Step 3: Run every gate**
+- [x] **Step 3: Run every gate**
 
 ```bash
 make check
@@ -1558,7 +1558,7 @@ echo "bench rc=$?"
 
 Read each rc directly. All three must be 0. Keep the bench table for the PR body.
 
-- [ ] **Step 4: Commit, push, open the PR**
+- [x] **Step 4: Commit, push, open the PR**
 
 ```bash
 git add changelog.d/146-quota-gauges.added.md docs/superpowers/specs/2026-10-07-aegis-2-quota-gauges-design.md docs/superpowers/plans/2026-10-07-aegis-2-quota-gauges.md
