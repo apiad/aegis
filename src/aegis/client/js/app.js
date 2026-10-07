@@ -536,7 +536,8 @@ installKeys(
     composer() {
       const v = route().view;
       if (v === "session") input.focus();
-      else if (v === "spawn") $("sp-profile").focus();
+      // The directory, not the profile: Enter in a text field submits the form.
+      else if (v === "spawn") $("sp-cwd").focus();
     },
     browse() {
       const v = route().view;

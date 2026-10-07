@@ -77,8 +77,8 @@ const HEADS = { global: "Anywhere", browse: "Outside a text field", session: "Tr
 export function renderKeys(box) {
   const panel = document.createElement("div");
   panel.className = "panel";
-  const t = document.createElement("table");
   for (const [scope, head] of Object.entries(HEADS)) {
+    const t = document.createElement("table");
     const th = document.createElement("th");
     th.colSpan = 2;
     th.textContent = head;
@@ -89,8 +89,8 @@ export function renderKeys(box) {
       r.insertCell().textContent = k.label;
       r.insertCell().textContent = k.desc;
     }
+    panel.append(t);
   }
-  panel.append(t);
   box.replaceChildren(panel);
 }
 
