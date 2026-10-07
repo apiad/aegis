@@ -103,7 +103,7 @@ class Server:
     def __init__(self, tmp: Path, env: dict, keep_config: bool = False) -> None:
         if not keep_config:
             (tmp / ".aegis.yaml").write_text(
-                "agents:\n  bench: {model: m, effort: low, permission: full}\n"
+                "agents:\n  bench: {harness: claude-code, model: m, effort: low, permission: full}\n"
             )
         fake = tmp / "claude"
         fake.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{FAKE}" "$@"\n')
@@ -262,7 +262,7 @@ def browser_runs(playwright) -> dict:
 def make_world(root: Path, n_open: int = 20, n_archived: int = 80) -> None:
     """A state directory with the fixture's store copied into many sessions."""
     (root / ".aegis.yaml").write_text(
-        "agents:\n  bench: {model: m, effort: low, permission: full}\n"
+        "agents:\n  bench: {harness: claude-code, model: m, effort: low, permission: full}\n"
     )
     state = root / ".aegis" / "state"
     (state / "transcripts").mkdir(parents=True)
