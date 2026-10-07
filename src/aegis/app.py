@@ -2,7 +2,7 @@
 
 Operations: ``profiles.list``, ``session.spawn``, ``session.send``,
 ``session.interrupt``, ``session.stop``, ``session.close``, ``session.reopen``,
-``session.rename``, ``archive.list``, ``server.version``. Channels: ``sessions`` (every open
+``session.rename``, ``archive.list``, ``server.version``, ``file.open``. Channels: ``sessions`` (every open
 session's meta; patches ``upsert`` and ``remove``) and ``transcript:<log_id>``
 (any session, archived included).
 """
@@ -14,6 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from . import files
 from .agent_ops import register_agent_ops
 from .channels import Channels
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
@@ -55,6 +56,11 @@ class RenameParams(_Strict):
     log_id: str | None = None
     handle: str | None = None
     title: str | None = None
+
+
+class FileRef(_Strict):
+    file_id: str
+    name: str
 
 
 class ArchiveParams(_Strict):
@@ -229,6 +235,23 @@ class App:
         @r.op("archive.list", ArchiveParams)
         async def archive_list(p: ArchiveParams, caller):
             return reg.archive(p.query, p.limit, p.before)
+
+        @r.op("file.open", FileRef)
+        async def file_open(p: FileRef, caller):
+            """Open a sent file in the desktop's app for it. Only for a person
+            whose browser runs on the server's desktop; never an agent tool,
+            or an agent could launch apps on that desktop."""
+            if not caller.desktop:
+                raise OpError(
+                    "not_local", "only a browser on the server's desktop can do this"
+                )
+            path = files.find(self.roots.state_root, p.file_id, p.name)
+            if path is None:
+                raise OpError("no_file", f"no sent file {p.name!r}")
+            try:
+                files.open_natively(path)
+            except (files.FileError, OSError) as e:
+                raise OpError("open_failed", str(e)) from e
 
         @r.op("server.version")
         async def server_version(_, caller):

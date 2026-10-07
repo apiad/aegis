@@ -332,6 +332,10 @@ class Session:
             )
             self._set(status="error")
 
+    def record_file(self, record: dict) -> None:
+        """A file sent by the agent (files.store's record plus a caption)."""
+        self._record(record)
+
     def _record(self, record: dict, events: list | None = None) -> None:
         fold = self.fold()
         stored = self.store.append({"ts": time.time(), "src": "aegis", **record})
@@ -339,7 +343,8 @@ class Session:
         ops = fold.apply(stored, events)
         self._publish(self.channel, ops)
         if any(
-            op.get("upsert", {}).get("kind") in ("user", "prose", "tool") for op in ops
+            op.get("upsert", {}).get("kind") in ("user", "prose", "tool", "file")
+            for op in ops
         ):
             self._set(activity=fold.activity())
 

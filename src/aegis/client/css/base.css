@@ -192,6 +192,27 @@ body{background:#000}
 #a2 .side .acts{display:flex;gap:8px}
 #a2 .side .sub{color:var(--faint);font-size:12px;margin:0 0 8px}
 
+/* files an agent sent: a card, a bar of actions, the preview below */
+#a2 .row.file .g{color:var(--accent)}
+#a2 .row.file .cap{font-family:var(--font-prose);font-size:var(--prose-size);color:var(--ink);margin-bottom:8px}
+#a2 .fcard{border:1px solid var(--rule);border-radius:var(--r-lg);background:var(--surface);overflow:hidden}
+#a2 .fbar{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 12px;background:var(--raised);font-family:var(--font-chrome)}
+#a2 .fbar .ic{color:var(--accent);font-size:15px}
+#a2 .fbar .fn{color:var(--strong);font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex-shrink:1}
+#a2 .fbar .fs{color:var(--faint);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex-shrink:3}
+#a2 .fbar .acts{margin-left:auto;display:flex;gap:6px;flex-shrink:0}
+#a2 .fbar .btn{padding:5px 11px;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;font-family:var(--font-ui)}
+#a2 .fbar .native{display:none}
+#a2[data-native] .fbar .native{display:inline-flex}
+#a2 .fcard .stage{border-top:1px solid var(--rule);background:var(--bg)}
+#a2 .fcard .stage.image{display:flex;justify-content:center;padding:12px}
+#a2 .fcard .stage img{max-width:100%;max-height:360px;border-radius:4px;cursor:zoom-in}
+#a2 .fcard .stage iframe{display:block;width:100%;height:480px;border:0;background:#fff}
+#a2 .fcard .stage .excerpt{margin:0;padding:10px 12px;max-height:360px;overflow:auto}
+#a2 .fcard .stage pre.excerpt{font-family:var(--font-mono);font-size:12px;line-height:1.45;white-space:pre;color:var(--ink)}
+#a2 .fcard .stage video{display:block;max-width:100%;max-height:360px;margin:0 auto}
+#a2 .fcard .stage audio{display:block;width:100%;padding:8px}
+
 /* inbox rows, monitors, workers */
 #a2 .row.inbox .g{color:var(--comms)}
 #a2 .row.inbox .body{border-left:2px solid var(--comms);padding:2px 0 2px 12px}

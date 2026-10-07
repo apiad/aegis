@@ -130,6 +130,7 @@ async def test_the_tools_are_named_after_their_operations_and_take_no_handle(wor
         "session_list",
         "session_rename",
         "meta",
+        "file_send",
     } <= set(tools)
     assert "session_spawn" not in tools and "session_close" not in tools
     for t in tools.values():
@@ -408,3 +409,60 @@ async def test_a_running_task_resumes_after_a_restart(world):
     a2 = world.session(a.log_id)
     await until(lambda: inbox(a2), timeout=12, what="the callback after the restart")
     assert world.app.queues.tasks[task_id].status == "completed"
+
+
+# -- files -------------------------------------------------------------------------
+def files_sent(s) -> list[dict]:
+    return [e for e in s.entries() if e["kind"] == "file"]
+
+
+async def test_an_agent_sends_a_file_and_the_link_serves_its_bytes(world, tmp_path):
+    a = await world.spawn()
+    (tmp_path / "out").mkdir()
+    chart = tmp_path / "out" / "chart.png"
+    chart.write_bytes(b"first png")
+    said = await turn(a, mcp("file_send", path="out/chart.png", caption="Weekly"))
+    first = json.loads(said.removeprefix("mcp ok: "))
+    assert first["name"] == "chart.png" and first["size"] == 9
+    assert first["mime"] == "image/png" and first["url"].startswith("/files/")
+    (e,) = files_sent(a)
+    assert e["md"] == "Weekly" and e["detail"]["url"] == first["url"]
+
+    chart.write_bytes(b"second png")
+    said = await turn(a, mcp("file_send", path=str(chart)))
+    second = json.loads(said.removeprefix("mcp ok: "))
+    assert second["url"] != first["url"]
+    async with httpx.AsyncClient() as c:
+        assert (await c.get(world.base + first["url"])).content == b"first png"
+        assert (await c.get(world.base + second["url"])).content == b"second png"
+
+
+async def test_a_relative_path_resolves_against_the_session_cwd(world, tmp_path):
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "notes.md").write_text("# Notes\n")
+    r = await world.app.registry.call(
+        "session.spawn", {"profile": "opus", "cwd": "sub"}
+    )
+    s = world.session(r["log_id"])
+    said = await turn(s, mcp("file_send", path="notes.md"))
+    assert json.loads(said.removeprefix("mcp ok: "))["name"] == "notes.md"
+    assert files_sent(s)[0]["detail"]["excerpt"] == "# Notes"
+
+
+async def test_a_directory_is_not_a_file(world, tmp_path):
+    a = await world.spawn()
+    said = await turn(a, mcp("file_send", path="."))
+    assert said.startswith("mcp error: not_a_file")
+    assert files_sent(a) == []
+
+
+async def test_a_missing_relative_path_says_where_it_looked(world, tmp_path):
+    # The agent wrote out/chart.png, then sent chart.png: its shell's cd does
+    # not carry over, so the name resolves against the session's cwd.
+    a = await world.spawn()
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "chart.png").write_bytes(b"png")
+    said = await turn(a, mcp("file_send", path="chart.png"))
+    assert said.startswith("mcp error: not_found")
+    assert f"session's working directory, {tmp_path}" in said
+    assert "absolute path" in said

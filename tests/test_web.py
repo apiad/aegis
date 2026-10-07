@@ -1,4 +1,5 @@
 import stat
+import time
 from pathlib import Path
 
 import pytest
@@ -377,6 +378,55 @@ def test_server_version_reports_the_running_build_and_the_latest_release(
     assert r["status"] == ("dev" if r["running"]["dev"] else "behind")
 
 
+def test_sent_files_are_served_at_their_capability_url(project, fake_claude):
+    from aegis import files
+
+    app = App(make_roots(project, None), claude_bin=fake_claude)
+    state = app.roots.state_root
+
+    def sent(name: str, data: bytes = b"x") -> str:
+        src = project / name
+        src.write_bytes(data)
+        rec = files.store(state, src)
+        return files.url(rec["file_id"], rec["name"])
+
+    png, html, svg, pdf = (
+        sent("a.png", b"png"),
+        sent("r.html"),
+        sent("d.svg"),
+        sent("p.pdf"),
+    )
+    md, zipf, odd = sent("n.md"), sent("z.zip"), sent("informe año #2.pdf", b"pdf")
+    with TestClient(build_web(app, TOKEN, {"testserver"})) as c:
+        r = c.get(png)
+        assert r.status_code == 200 and r.content == b"png"
+        assert r.headers["content-type"] == "image/png"
+        assert r.headers["x-content-type-options"] == "nosniff"
+        assert r.headers["referrer-policy"] == "no-referrer"
+        assert "immutable" in r.headers["cache-control"]
+        assert c.get(html).headers["content-security-policy"] == "sandbox allow-scripts"
+        assert c.get(svg).headers["content-security-policy"] == "sandbox"
+        assert "content-security-policy" not in c.get(pdf).headers
+        assert c.get(md).headers["content-type"] == "text/plain; charset=utf-8"
+        assert c.get(zipf).headers["content-disposition"].startswith("attachment")
+        r = c.get(odd + "?download=1")
+        assert r.content == b"pdf"
+        assert r.headers["content-disposition"] == (
+            "attachment; filename*=UTF-8''informe%20a%C3%B1o%20%232.pdf"
+        )
+        file_id = png.split("/")[2]
+        assert c.get(f"/files/{file_id}/b.png").status_code == 404
+        assert c.get("/files/AAAAAAAAAAAAAAAAAAAAAA/a.png").status_code == 404
+        assert c.get(png, headers={"host": "evil.example"}).status_code == 404
+
+    # Behind a reverse proxy the browser sends the public name as Host.
+    again = App(make_roots(project, None), claude_bin=fake_claude)  # same state
+    proxied = build_web(again, TOKEN, {"testserver"}, ["https://dev.example"])
+    with TestClient(proxied, base_url="https://dev.example") as c:
+        assert c.get(png).content == b"png"
+        assert c.get(png, headers={"host": "evil.example"}).status_code == 404
+
+
 def test_serve_refuses_a_bad_origin_before_starting(tmp_path):
     from typer.testing import CliRunner
 
@@ -390,3 +440,70 @@ def test_serve_refuses_a_bad_origin_before_starting(tmp_path):
     assert r.exit_code == 2
     assert "path or query" in r.output
     assert not (tmp_path / ".aegis").exists(), "nothing was created"
+
+
+def test_open_natively_only_for_a_browser_on_the_servers_desktop(
+    project, fake_claude, monkeypatch, tmp_path
+):
+    from aegis import files
+
+    marker = tmp_path / "opened"
+    script = tmp_path / "opener.sh"
+    script.write_text(f'#!/bin/sh\nprintf "%s" "$1" > "{marker}"\n')
+    script.chmod(0o755)
+    monkeypatch.setenv("AEGIS_OPENER", str(script))
+    src = project / "chart.png"
+    src.write_bytes(b"png")
+
+    # A browser elsewhere: told so, and refused even if it asks.
+    app = App(make_roots(project, None), claude_bin=fake_claude)
+    rec = files.store(app.roots.state_root, src)
+    ref = {"file_id": rec["file_id"], "name": rec["name"]}
+    with (
+        TestClient(build_web(app, TOKEN, {"testserver"})) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        ws.send_json({"t": "hello", "token": TOKEN, "proto": 1})
+        assert ws.receive_json()["native"] is False
+        r = Conn(ws).call("file.open", **ref)
+        assert r["error"]["code"] == "not_local"
+    assert not marker.exists()
+
+    # A browser on loopback, on a server with a desktop.
+    app = App(make_roots(project, None), claude_bin=fake_claude)
+    local = "127.0.0.1:8742"
+    with (
+        TestClient(build_web(app, TOKEN, {local}), base_url=f"http://{local}") as c,
+        c.websocket_connect(
+            "/ws", headers={"host": local, "origin": f"http://{local}"}
+        ) as ws,
+    ):
+        ws.send_json({"t": "hello", "token": TOKEN, "proto": 1})
+        assert ws.receive_json()["native"] is True
+        conn = Conn(ws)
+        assert "error" not in conn.call("file.open", **ref)
+        assert (
+            conn.call("file.open", file_id=rec["file_id"], name="nope.png")["error"][
+                "code"
+            ]
+            == "no_file"
+        )
+    for _ in range(100):
+        if marker.exists():
+            break
+        time.sleep(0.02)
+    assert marker.read_text().endswith("/chart.png")
+
+    # The same loopback browser on a headless server: no button, and refused.
+    monkeypatch.delenv("AEGIS_OPENER")
+    monkeypatch.setattr(files, "opener", lambda: None)
+    app = App(make_roots(project, None), claude_bin=fake_claude)
+    with (
+        TestClient(build_web(app, TOKEN, {local}), base_url=f"http://{local}") as c,
+        c.websocket_connect(
+            "/ws", headers={"host": local, "origin": f"http://{local}"}
+        ) as ws,
+    ):
+        ws.send_json({"t": "hello", "token": TOKEN, "proto": 1})
+        assert ws.receive_json()["native"] is False
+        assert Conn(ws).call("file.open", **ref)["error"]["code"] == "not_local"
