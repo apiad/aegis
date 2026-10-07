@@ -155,6 +155,7 @@ body{background:#000}
 
 /* fleet */
 #a2 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;padding:18px 20px}
+#a2 .tr:focus,#a2 .cards:focus{outline:none}
 #a2 .card{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:12px 14px;font-size:12.5px;display:flex;flex-direction:column;gap:7px;cursor:pointer;min-width:0}
 #a2 .card:hover{border-color:var(--faint)}
 #a2 .card.working{border-color:var(--accent)}

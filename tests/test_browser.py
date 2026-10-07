@@ -614,3 +614,53 @@ def test_open_natively_shows_only_on_the_servers_desktop_and_opens_the_copy(
     assert marker.read_text().endswith("/dot.png")
     assert (server.root / ".aegis") in Path(marker.read_text()).parents
     assert page.errors == []
+
+
+# -- the keyboard (#159) ------------------------------------------------------
+
+
+def focused_id(pg) -> str:
+    return pg.evaluate("document.activeElement.id")
+
+
+def hash_is(pg, h: str) -> None:
+    pg.wait_for_function("h => location.hash === h", arg=h, timeout=3000)
+
+
+def test_alt_period_and_alt_comma_move_focus_between_composer_and_transcript(
+    server, page
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.keyboard.press("Alt+,")
+    assert focused_id(page) == "tr"
+    page.keyboard.press("Alt+.")
+    assert focused_id(page) == "input"
+    page.keyboard.type("jk")  # in a text field, plain keys are text
+    assert page.input_value("#input") == "jk"
+    for back in ("i", "/"):
+        page.keyboard.press("Alt+,")
+        page.keyboard.press(back)
+        assert focused_id(page) == "input"
+    assert page.input_value("#input") == "jk"
+    assert page.errors == []
+
+
+def test_alt_brackets_cycle_fleet_and_tabs_and_digits_pick_a_tab(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a, b = spawn(page, "alpha"), spawn(page, "beta")
+    steps = (("Alt+]", "#fleet"), ("Alt+]", f"#s={a}"), ("Alt+[", "#fleet"))
+    for key, want in (*steps, ("Alt+[", f"#s={b}")):
+        page.keyboard.press(key)
+        hash_is(page, want)
+    page.keyboard.press("Alt+,")
+    for key, want in (("1", f"#s={a}"), ("0", "#fleet"), ("2", f"#s={b}")):
+        page.keyboard.press(key)
+        hash_is(page, want)
+    page.keyboard.press("Alt+KeyN")
+    hash_is(page, "#new")
+    page.keyboard.press("Alt+.")
+    assert focused_id(page) == "sp-profile"
+    assert page.errors == []

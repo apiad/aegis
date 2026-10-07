@@ -16,7 +16,7 @@
   <header class="tabs">
     <div class="tab home" id="tab-fleet" title="Fleet (Alt+0)">Fleet</div>
     <div class="tablist" id="tablist"></div>
-    <div class="tab add" id="tab-add" title="New session">+</div>
+    <div class="tab add" id="tab-add" title="New session (Alt+N)">+</div>
     <div class="gap"></div>
     <div class="servers"><span class="dot ghost" id="conn-dot"></span><span id="conn-text">connecting</span><span class="ver-top" id="ver-top" hidden></span></div>
     <label class="theme-pick">Theme
@@ -36,7 +36,7 @@
       <div><h5>Host</h5><div id="band-host"></div></div>
       <div class="q" id="band-quota-col" hidden><h5><span>Quota</span><span class="age" id="band-quota-age"></span></h5><div id="band-quota"></div></div>
     </section>
-    <section class="cards" id="cards"></section>
+    <section class="cards" id="cards" tabindex="-1"></section>
     <section class="archive">
       <div class="archive-head"><h3>Archive</h3><input id="arch-q" placeholder="Filter by title, handle or directory" spellcheck="false"></div>
       <div id="arch-list"></div>
@@ -63,7 +63,7 @@
 
   <main class="view v-session">
     <section class="col">
-      <div class="tr" id="tr"><div id="entries"></div><div class="row working" id="working" hidden><span class="t"></span><span class="g">✻</span><div class="body">Working <span class="meta" id="working-meta"></span></div></div></div>
+      <div class="tr" id="tr" tabindex="-1"><div id="entries"></div><div class="row working" id="working" hidden><span class="t"></span><span class="g">✻</span><div class="body">Working <span class="meta" id="working-meta"></span></div></div></div>
       <button class="jump" id="jump" hidden>↓ latest</button>
       <div class="composer">
         <textarea id="input" rows="1" placeholder="Message the agent. Enter sends, Shift+Enter adds a line, Esc interrupts."></textarea>
