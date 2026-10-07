@@ -34,6 +34,7 @@ from .core import (
     QuotaProvider,
     QuotaService,
     QuotaState,
+    boot_clock,
     cancel_and_wait,
     pace_severity,
     window_pace,
@@ -117,7 +118,7 @@ class Quota:
         *,
         providers: tuple[QuotaProvider, ...] = PROVIDERS,
         cache: Path | None = None,
-        clock: Callable[[], float] = time.monotonic,
+        clock: Callable[[], float] = boot_clock,
         wall: Callable[[], float] = time.time,
     ) -> None:
         self._publish = publish

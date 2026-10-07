@@ -171,3 +171,15 @@ def test_fetch_maps_429_to_rate_limited():
 
 
 # --- placeholders for providers with no reading (#41) -------------------------
+
+
+def test_a_fetch_stamps_its_reading_on_the_clock_that_counts_sleep(monkeypatch):
+    """The service ages readings with boot_clock; a reading stamped on another
+    clock would come out hours off after a suspend."""
+    import aegis.quota.claude as claude
+
+    monkeypatch.setattr(claude, "boot_clock", lambda: 42.0)
+    snap = fetch_quota(
+        "tok", opener=lambda req, timeout=None: _Resp(json.dumps(LIVE).encode())
+    )
+    assert snap.fetched_at == 42.0

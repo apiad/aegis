@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import json
 import os
-import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 from .core import (
+    boot_clock,
     QuotaError,
     QuotaProvider,
     QuotaSnapshot,
@@ -141,7 +141,7 @@ def fetch_usage(
         raise QuotaError("unreachable") from exc
     if not isinstance(payload, dict):
         raise QuotaError("unreachable")
-    return parse_usage(payload, now=time.monotonic() if now is None else now)
+    return parse_usage(payload, now=boot_clock() if now is None else now)
 
 
 PROVIDER = QuotaProvider(

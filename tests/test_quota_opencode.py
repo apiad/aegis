@@ -181,3 +181,13 @@ def test_fetch_maps_truncated_body_to_unreachable():
     with pytest.raises(QuotaError) as e:
         fetch_usage("sk-go", opener=opener)
     assert e.value.kind == "unreachable"
+
+
+def test_a_fetch_stamps_its_reading_on_the_clock_that_counts_sleep(monkeypatch):
+    import aegis.quota.opencode as opencode
+
+    monkeypatch.setattr(opencode, "boot_clock", lambda: 42.0)
+    snap = fetch_usage(
+        "sk-go", opener=lambda req, timeout=None: _Resp(json.dumps(LIVE).encode())
+    )
+    assert snap.fetched_at == 42.0

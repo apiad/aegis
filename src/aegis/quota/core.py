@@ -44,6 +44,24 @@ PACE_FLOOR = 0.15
 PACE_SKEW_GRACE_S = 60.0
 
 
+def boot_clock() -> float:
+    """Seconds on a clock that keeps counting while the machine sleeps.
+
+    ``CLOCK_MONOTONIC`` stops during suspend on Linux, so a reading taken
+    before a laptop slept for eight hours read as seconds old after it woke:
+    shown as fresh, and inside the floor, so never refetched. ``CLOCK_BOOTTIME``
+    counts the sleep. Every reading's ``fetched_at`` and every service's age
+    and floor use this one clock; mixing it with ``time.monotonic`` would put
+    the total time asleep into every age.
+    """
+    if _BOOTTIME is not None:
+        return time.clock_gettime(_BOOTTIME)
+    return time.monotonic()
+
+
+_BOOTTIME = getattr(time, "CLOCK_BOOTTIME", None)
+
+
 class QuotaError(Exception):
     """A fetch failed.
 
@@ -236,7 +254,7 @@ class QuotaService:
         *,
         fetch,
         token_reader,
-        clock=time.monotonic,
+        clock=boot_clock,
         poll_s: float = POLL_S,
         cache: Path | None = None,
         wall=time.time,

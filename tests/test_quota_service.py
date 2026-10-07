@@ -330,3 +330,18 @@ async def test_stop_lets_a_cancel_meant_for_its_caller_through():
     caller.cancel()
     with pytest.raises(asyncio.CancelledError):
         await caller
+
+
+def test_the_default_clock_keeps_counting_while_the_machine_sleeps():
+    """CLOCK_MONOTONIC stops during suspend on Linux: a reading from before an
+    8-hour sleep read as 5 s old, so it showed as fresh and sat inside the
+    floor, never refetched (final review of #146)."""
+    import time
+
+    from aegis.quota import Quota
+    from aegis.quota.core import boot_clock
+
+    assert QuotaService(fetch=None, token_reader=None)._clock is boot_clock
+    assert Quota(lambda *a: None).services["claude"]._clock is boot_clock
+    if hasattr(time, "CLOCK_BOOTTIME"):
+        assert boot_clock() >= time.clock_gettime(time.CLOCK_MONOTONIC)
