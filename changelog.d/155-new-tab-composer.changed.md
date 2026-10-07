@@ -5,3 +5,5 @@
   `mcp__aegis__session_spawn` and `mcp__aegis__agents_list`. `.aegis.yaml` has
   no defaults any more: an agent missing a field, or a queue missing
   `max_parallel`, is shown with what is missing instead of being filled in.
+  To upgrade, give every agent `harness: claude-code` (or `provider:`), an
+  `effort` and a `permission`, and every queue a `max_parallel`.
