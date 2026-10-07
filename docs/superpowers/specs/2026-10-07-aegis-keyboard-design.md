@@ -1,7 +1,8 @@
 # aegis 2: driving the client from the keyboard
 
-**Status: designed, 2026-10-07** (issue #159). Designed with Alex, who chose the
-"focus decides" model over all-Alt chords and over an explicit vim mode.
+**Status: implemented, 2026-10-07** (issue #159), following
+`docs/superpowers/plans/2026-10-07-aegis-keyboard.md`. Designed with Alex, who chose
+the "focus decides" model over all-Alt chords and over an explicit vim mode.
 
 ## What this delivers
 
@@ -46,7 +47,7 @@ is, and the focus is visible:
 
 | key | action |
 |---|---|
-| Alt+. | focus the composer: the session's input, or the spawn form's first field on `#new` |
+| Alt+. | focus the composer: the session's input, or on `#new` the spawn form's directory field, where Enter submits (Enter on the profile `<select>` does not) |
 | Alt+, | focus the transcript in a session or read view; the cards in Fleet |
 | Alt+[ / Alt+] | previous / next tab, in this browser's order, Fleet first; wraps |
 | Alt+N | new session (`#new`) |
@@ -109,15 +110,15 @@ themes need no new colour.
 - **`client/js/transcript.js`** gains `select(id)`, `move(delta)`, `moveTurn(delta)`,
   `selected` and `toggle()`, and re-applies the selection inside `snapshot()` and
   `apply()`.
-- **`client/js/fleet.js`**: `renderCards()` and `renderArchive()` mark the selected
-  id. The Fleet selection lives in `app.js`, next to `ordered`.
+- **`client/js/app.js`** holds the Fleet selection and re-marks it after
+  `renderCards()` and `renderArchive()`; `fleet.js` is unchanged.
 - **`client/js/app.js`** wires the actions to what already exists: `go()`,
   `interrupt()`, the composer, the order in `ordered`.
 - **`index.html`**: the overlay's container, and the shortcut hints in the titles
   and placeholder.
 
 The new-tab composer in PR #156 replaces the spawn form. Whichever lands second
-points Alt+. at the other's first field; the rest is unaffected.
+points Alt+. at the field where Enter spawns; the rest is unaffected.
 
 ## Testing
 
