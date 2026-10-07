@@ -1,7 +1,8 @@
 # aegis: the new-tab composer, and agents as presets
 
-**Status: approved, 2026-10-07** (issue #155). Designed with Alex in a brainstorm with
-mockups. Plan: `docs/superpowers/plans/2026-10-07-aegis-new-tab-composer.md`.
+**Status: implemented, 2026-10-07** (issue #155), following
+`docs/superpowers/plans/2026-10-07-aegis-new-tab-composer.md`. Designed with Alex in a
+brainstorm with mockups.
 
 ## What this delivers
 

@@ -45,7 +45,7 @@
 **Interfaces:**
 - Produces: `SpawnSpec(agent, model, effort, permission, cwd, harness="claude-code", priming=None, overridden=(), spawned_by=None)`; `SpawnSpec.record() -> dict`; `SpawnSpec.from_record(d: dict, cwd_default: Path) -> SpawnSpec`; `Registry.spawn_args` returns `(mcp_config | None, system_prompt | None)` where the system prompt is aegis's primer, then `"\n\n"`, then the priming. Meta and wire keys `agent`, `harness`, and when set `overridden`, `spawned_by`; meta (not wire) key `priming`. Fake script `/argv`; `tests.conftest.argv_of(session) -> list[str]`.
 
-- [ ] **Step 1: Add `/argv` to the fake claude**
+- [x] **Step 1: Add `/argv` to the fake claude**
 
 In `tests/fake_claude.py`, add a line to the docstring's script list after `/recall`:
 
@@ -61,7 +61,7 @@ and a branch in `run()` before `elif word == "/recall":`:
         result()
 ```
 
-- [ ] **Step 2: Add `argv_of` to `tests/conftest.py`**
+- [x] **Step 2: Add `argv_of` to `tests/conftest.py`**
 
 Add `import json` to the imports and, after `until`:
 
@@ -83,7 +83,7 @@ async def argv_of(s) -> list[str]:
     return json.loads(prose()[-1].removeprefix("argv: "))
 ```
 
-- [ ] **Step 3: Write the failing tests in `tests/test_registry.py`**
+- [x] **Step 3: Write the failing tests in `tests/test_registry.py`**
 
 Add `argv_of` to the import from `.conftest`, then:
 
@@ -168,7 +168,7 @@ async def test_a_meta_from_before_agents_boots_with_its_agent_name(world):
     assert [m["log_id"] for m in r.archive("opus", 10, None)] == ["old"]
 ```
 
-- [ ] **Step 4: Update `tests/test_meta.py` for the renamed key**
+- [x] **Step 4: Update `tests/test_meta.py` for the renamed key**
 
 In the rebuild test (~line 74) the store still writes `"profile": "opus"`, which is what an old store holds. Change the assertion to read the new key:
 
@@ -182,12 +182,12 @@ In the rebuild test (~line 74) the store still writes `"profile": "opus"`, which
     assert m["harness"] is None
 ```
 
-- [ ] **Step 5: Run the tests to see them fail**
+- [x] **Step 5: Run the tests to see them fail**
 
 Run: `uv run pytest -q tests/test_registry.py tests/test_meta.py`
 Expected: FAIL (`SpawnSpec` has no `priming`; `KeyError: 'agent'`).
 
-- [ ] **Step 6: Extend `SpawnSpec` in `src/aegis/session.py`**
+- [x] **Step 6: Extend `SpawnSpec` in `src/aegis/session.py`**
 
 Replace the dataclass at line 74-80 with:
 
@@ -246,7 +246,7 @@ class SpawnSpec:
         )
 ```
 
-- [ ] **Step 7: Record the spec in `Session.start`, `Session.meta` and `Session.wire`**
+- [x] **Step 7: Record the spec in `Session.start`, `Session.meta` and `Session.wire`**
 
 In `start()`, replace the dict passed to `self._record` with:
 
@@ -285,7 +285,7 @@ In `wire()`, after `m.pop("held")`, add:
         m.pop("priming", None)  # the agent's text stays on the server
 ```
 
-- [ ] **Step 8: Pass the priming in `Registry.spawn_args`**
+- [x] **Step 8: Pass the priming in `Registry.spawn_args`**
 
 Replace `spawn_args` in `src/aegis/registry.py`:
 
@@ -302,7 +302,7 @@ Replace `spawn_args` in `src/aegis/registry.py`:
         return mcp_config(self.mcp_url, self.tokens.mint(session.log_id)), prompt
 ```
 
-- [ ] **Step 9: Build and spawn sessions from the record in the registry**
+- [x] **Step 9: Build and spawn sessions from the record in the registry**
 
 In `_session`, replace the `spec=SpawnSpec(...)` argument with:
 
@@ -320,7 +320,7 @@ In `spawn`, replace the dict merged into the new meta with:
 
 In the archive search, change the key tuple to `("title", "handle", "cwd", "agent", "profile")` so old metas stay searchable by name.
 
-- [ ] **Step 10: Rebuild metas and summaries with the new keys**
+- [x] **Step 10: Rebuild metas and summaries with the new keys**
 
 In `src/aegis/meta.py` `rebuild`, replace `"profile": spawn.get("profile"),` with:
 
@@ -340,12 +340,12 @@ In `src/aegis/transcript/entries.py`, replace the `spawn` summary line with:
             line = f"spawned {agent}{star} · {rec.get('model')} · {rec.get('cwd')}"
 ```
 
-- [ ] **Step 11: Run the tests to see them pass**
+- [x] **Step 11: Run the tests to see them pass**
 
 Run: `uv run pytest -q tests/test_registry.py tests/test_meta.py tests/test_session.py tests/test_fold.py`
 Expected: PASS.
 
-- [ ] **Step 12: Commit**
+- [x] **Step 12: Commit**
 
 ```bash
 git add src/aegis/session.py src/aegis/registry.py src/aegis/meta.py src/aegis/transcript/entries.py tests/fake_claude.py tests/conftest.py tests/test_registry.py tests/test_meta.py
@@ -373,7 +373,7 @@ EOF
 - Consumes: `SpawnSpec` from Task 1.
 - Produces: `aegis.agents.Agent` (fields `name, harness, model, effort, permission, priming, error`; property `enabled`; `as_dict()` with keys `name, harness, model, effort, permission, enabled, error, has_priming`); `ConfigError`; `read_config(config_root) -> dict`; `load_agents(config_root) -> list[Agent]`; `default_agent(config_root) -> str | None`; `model_suggestions(agents) -> dict[str, list[str]]`; `resolve(agents, default, name, overrides, cwd, spawned_by=None) -> SpawnSpec` raising `OpError` with codes `no_agent`, `unknown_agent`, `bad_agent`, `harness_unsupported`; constants `EFFORTS`, `HARNESSES`, `SUPPORTED_HARNESSES`, `MODEL_ALIASES`, `FIELDS`.
 
-- [ ] **Step 1: Move `PERMISSION_MODE` into `claude/process.py`**
+- [x] **Step 1: Move `PERMISSION_MODE` into `claude/process.py`**
 
 In `src/aegis/claude/process.py`, replace `from ..profiles import PERMISSION_MODE` with the definition:
 
@@ -389,7 +389,7 @@ PERMISSION_MODE = {
 
 In `src/aegis/profiles.py`, delete the `PERMISSION_MODE` dict and its comment (nothing in that module uses it).
 
-- [ ] **Step 2: Write the failing tests in `tests/test_agent_config.py`**
+- [x] **Step 2: Write the failing tests in `tests/test_agent_config.py`**
 
 ```python
 from pathlib import Path
@@ -590,12 +590,12 @@ def test_bad_agent_says_what_is_wrong(agents, tmp_path):
         resolve(agents, None, "broken", none(), tmp_path)
 ```
 
-- [ ] **Step 3: Run the tests to see them fail**
+- [x] **Step 3: Run the tests to see them fail**
 
 Run: `uv run pytest -q tests/test_agent_config.py`
 Expected: FAIL with `ModuleNotFoundError: No module named 'aegis.agents'`.
 
-- [ ] **Step 4: Write `src/aegis/agents.py`**
+- [x] **Step 4: Write `src/aegis/agents.py`**
 
 ```python
 """Agents: named presets read from the ``agents:`` map of ``.aegis.yaml``.
@@ -782,12 +782,12 @@ def resolve(
     )
 ```
 
-- [ ] **Step 5: Run the tests to see them pass**
+- [x] **Step 5: Run the tests to see them pass**
 
 Run: `uv run pytest -q tests/test_agent_config.py tests/test_imports.py tests/test_stream.py`
 Expected: PASS. If `tests/test_imports.py` reports an import cycle, check that `claude/process.py` no longer imports `profiles`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/agents.py src/aegis/claude/process.py src/aegis/profiles.py tests/test_agent_config.py
@@ -813,7 +813,7 @@ EOF
 
 Note: the browser tests stay red from this task until Task 5, because the old client still calls `profiles.list`. Do not run `tests/test_browser.py` here.
 
-- [ ] **Step 1: Make every test config name its harness**
+- [x] **Step 1: Make every test config name its harness**
 
 Each YAML below gains `harness: claude-code` (or keeps its `harness:`/`provider:`), because a missing harness is now `bad_agent`:
 
@@ -848,7 +848,7 @@ queues:
 
 Then rename the spawn parameter everywhere in the tests: every `profile="opus"` and `{"profile": "opus"}` / `{"profile": "haiku"}` in `tests/test_web.py`, `tests/test_agents.py` and `tests/test_live.py` becomes `agent=...` / `{"agent": ...}`. Find them with `grep -n 'profile' tests/test_web.py tests/test_agents.py tests/test_live.py`; after the edit that grep prints nothing.
 
-- [ ] **Step 2: Write the failing web tests in `tests/test_web.py`**
+- [x] **Step 2: Write the failing web tests in `tests/test_web.py`**
 
 Replace `test_profiles_list` with:
 
@@ -947,7 +947,7 @@ def test_spawn_sends_the_prompt_and_marks_the_override(project, fake_claude):
 
 In `test_spawn_send_and_watch_a_turn`, the existing check `startswith("spawned opus")` stays.
 
-- [ ] **Step 3: Write the failing MCP tests in `tests/test_agents.py`**
+- [x] **Step 3: Write the failing MCP tests in `tests/test_agents.py`**
 
 Change the tool-list assertion (~line 135) to:
 
@@ -993,7 +993,7 @@ async def test_an_agent_lists_the_agents(world):
     assert [x["name"] for x in listed["agents"]] == ["opus", "reviewer"]
 ```
 
-- [ ] **Step 4: Add the live test to `tests/test_live.py`**
+- [x] **Step 4: Add the live test to `tests/test_live.py`**
 
 Copy the structure of `test_real_claude_arms_a_monitor_through_the_endpoint_and_is_woken` (line 71, the first App-based test: its imports, `.aegis.yaml`, `App`, uvicorn server and `finally` block), and change the body inside `try:` to:
 
@@ -1029,12 +1029,12 @@ Copy the structure of `test_real_claude_arms_a_monitor_through_the_endpoint_and_
 
 Name it `test_real_claude_spawns_a_peer_through_session_spawn`, with the docstring `"""The real binary finds session_spawn from its description and the new session runs its prompt."""`.
 
-- [ ] **Step 5: Run the tests to see them fail**
+- [x] **Step 5: Run the tests to see them fail**
 
 Run: `uv run pytest -q tests/test_web.py tests/test_agents.py`
 Expected: FAIL (`unknown_op` for `agents.list`; `bad_params` for `agent`).
 
-- [ ] **Step 6: Rewrite the spawn operations in `src/aegis/app.py`**
+- [x] **Step 6: Rewrite the spawn operations in `src/aegis/app.py`**
 
 Imports: replace `from .profiles import ProfileError, default_profile, load_profiles` with
 
@@ -1162,12 +1162,12 @@ Replace the `profiles.list` and `session.spawn` handlers with:
 
 In the module docstring, replace ``profiles.list`` with ``agents.list``.
 
-- [ ] **Step 7: Run the tests to see them pass**
+- [x] **Step 7: Run the tests to see them pass**
 
 Run: `uv run pytest -q tests/test_web.py tests/test_agents.py tests/test_ops.py`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/aegis/app.py tests/test_web.py tests/test_agents.py tests/test_live.py tests/test_browser.py
@@ -1195,7 +1195,7 @@ EOF
 - Consumes: `read_config`, `ConfigError`, `load_agents`, `resolve` from Task 2.
 - Produces: `load_queues(config_root) -> dict[str, dict]` where each value is either `{"agent": str, "max_parallel": int}` or `{"error": str}`; `queue_enqueue` refuses an errored queue with `bad_config`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/test_agent_config.py`:
 
@@ -1262,12 +1262,12 @@ async def test_a_logged_task_on_a_queue_that_broke_does_not_stop_dispatch(world)
 
 Check `Task`'s required fields in `src/aegis/queues.py` (the dataclass above `load_queues`) and pass exactly those; the call above matches the fields `Queues.enqueue` sets.
 
-- [ ] **Step 2: Run the tests to see them fail**
+- [x] **Step 2: Run the tests to see them fail**
 
 Run: `uv run pytest -q tests/test_agent_config.py tests/test_agents.py -k "queue or worker"`
 Expected: FAIL (`nolimit` parses as `max_parallel: 1`; `broken` is unknown; `KeyError: 'max_parallel'` or a worker without the priming).
 
-- [ ] **Step 3: Rewrite `load_queues`**
+- [x] **Step 3: Rewrite `load_queues`**
 
 ```python
 def load_queues(config_root: Path) -> dict[str, dict]:
@@ -1301,7 +1301,7 @@ def load_queues(config_root: Path) -> dict[str, dict]:
 
 Imports: replace `from .profiles import load_profiles` with `from .agents import ConfigError, load_agents, read_config, resolve` and add `from .ops import OpError` if `queues.py` does not import it yet. Remove the now-unused `YAML`, `YAMLError` and `CONFIG_FILE` imports if nothing else in the module uses them (check with `grep -n "YAML\|CONFIG_FILE" src/aegis/queues.py`).
 
-- [ ] **Step 4: Skip errored queues in `dispatch`, start workers through `resolve`**
+- [x] **Step 4: Skip errored queues in `dispatch`, start workers through `resolve`**
 
 In `dispatch`, make the loop's first statement:
 
@@ -1326,7 +1326,7 @@ Replace the body of `_start` up to `try: s = await self._registry.spawn(` with:
 
 keeping the rest of `_start` (spawn, `dispatched`, `send`) as it is. In the module docstring, line 4, change "the queue's profile" to "the queue's agent".
 
-- [ ] **Step 5: Refuse an errored queue in `queue_enqueue`**
+- [x] **Step 5: Refuse an errored queue in `queue_enqueue`**
 
 In `src/aegis/agent_ops.py`, after the `unknown_queue` check:
 
@@ -1335,7 +1335,7 @@ In `src/aegis/agent_ops.py`, after the `unknown_queue` check:
             raise OpError("bad_config", f"queue {p.queue!r} in .aegis.yaml: {err}")
 ```
 
-- [ ] **Step 6: Delete `profiles.py` and its test**
+- [x] **Step 6: Delete `profiles.py` and its test**
 
 ```bash
 git rm src/aegis/profiles.py tests/test_profiles.py
@@ -1344,12 +1344,12 @@ grep -rn "profiles" src/aegis tests scripts --include=*.py
 
 Expected: the grep prints nothing.
 
-- [ ] **Step 7: Run the tests to see them pass**
+- [x] **Step 7: Run the tests to see them pass**
 
 Run: `uv run pytest -q tests/test_agent_config.py tests/test_agents.py tests/test_imports.py`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/aegis/queues.py src/aegis/agent_ops.py tests/test_agent_config.py tests/test_agents.py
@@ -1377,7 +1377,7 @@ EOF
 - Consumes: `agents.list` and `session.spawn` from Task 3; wire keys `agent`, `overridden` from Task 1.
 - Produces: element ids `sp-agent`, `sp-harness`, `sp-model` (with `datalist#sp-models`), `sp-effort`, `sp-permission`, `sp-cwd`, `sp-text`, `sp-reset`, `sp-go`, `sp-error`; class `diff` on a changed chip; localStorage key `aegis.lastAgent`.
 
-- [ ] **Step 1: Write the failing browser tests**
+- [x] **Step 1: Write the failing browser tests**
 
 In `tests/test_browser.py`, replace the `spawn` helper:
 
@@ -1451,12 +1451,12 @@ def test_a_failed_spawn_keeps_the_text_and_says_why(server, page):
     assert page.evaluate("document.querySelector('#a2').dataset.view") == "spawn"
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest -q tests/test_browser.py -k "composer or failed_spawn"`
 Expected: FAIL (no `#sp-agent`).
 
-- [ ] **Step 3: Replace the view's markup in `src/aegis/client/index.html`**
+- [x] **Step 3: Replace the view's markup in `src/aegis/client/index.html`**
 
 Replace the whole `<form class="spawn" id="spawn">…</form>` with:
 
@@ -1486,7 +1486,7 @@ Replace the whole `<form class="spawn" id="spawn">…</form>` with:
     </form>
 ```
 
-- [ ] **Step 4: Replace the styles in `src/aegis/client/css/base.css`**
+- [x] **Step 4: Replace the styles in `src/aegis/client/css/base.css`**
 
 Line 47 becomes:
 
@@ -1518,7 +1518,7 @@ Replace lines 54-60 (`/* spawn form */` through `.three`) with:
 
 Keep line 61 (`#a2 .pa`) and line 62 (`#a2 .err-text`); other views use them. Delete line 153 (`#a2 .spawn .three{grid-template-columns:1fr}`) inside the media query.
 
-- [ ] **Step 5: Replace the spawn section of `src/aegis/client/js/app.js`**
+- [x] **Step 5: Replace the spawn section of `src/aegis/client/js/app.js`**
 
 Replace everything from `// -- spawn ---…` (the `let profiles = [];` line) through the end of the `$("spawn").addEventListener("submit", …)` handler with:
 
@@ -1650,7 +1650,7 @@ In the connection's `onState` handler, replace `loadProfiles();` with `loadAgent
 
 `markDiffs` rewrites the selected option's text, and `loadAgents` rebuilds every option from `roster` and then calls `markDiffs`, so a reconnect never shows a stale `*`.
 
-- [ ] **Step 6: Show the agent and its star on the fleet card**
+- [x] **Step 6: Show the agent and its star on the fleet card**
 
 In `src/aegis/client/js/fleet.js:48`, replace `m.profile` with:
 
@@ -1658,12 +1658,12 @@ In `src/aegis/client/js/fleet.js:48`, replace `m.profile` with:
 `${m.agent}${(m.overridden || []).length ? "*" : ""}`
 ```
 
-- [ ] **Step 7: Run the browser tests to see them pass**
+- [x] **Step 7: Run the browser tests to see them pass**
 
 Run: `uv run playwright install chromium` (once per worktree), then `uv run pytest -q tests/test_browser.py`
 Expected: PASS, every browser test, since they all spawn through the new helper.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/aegis/client/index.html src/aegis/client/css/base.css src/aegis/client/js/app.js src/aegis/client/js/fleet.js tests/test_browser.py
@@ -1685,7 +1685,7 @@ EOF
 - Modify: `docs/superpowers/specs/2026-10-07-aegis-new-tab-composer-design.md` (status line)
 - Modify: this plan (check the boxes)
 
-- [ ] **Step 1: README**
+- [x] **Step 1: README**
 
 Replace the YAML block and the paragraph after it in "Configuration" with:
 
@@ -1714,7 +1714,7 @@ does not is shown with what is missing. `permission` is `read` (plan mode),
 agents run today.
 ````
 
-- [ ] **Step 2: DESIGN.md**
+- [x] **Step 2: DESIGN.md**
 
 Replace the sentence "Of `.aegis.yaml`, aegis reads the `agents:` and `queues:` maps." with:
 
@@ -1726,7 +1726,7 @@ rather than filled in or dropped. A setting the loader filled in would be one
 nobody chose, with nothing to show it.
 ```
 
-- [ ] **Step 3: Changelog fragment**
+- [x] **Step 3: Changelog fragment**
 
 `changelog.d/155-new-tab-composer.changed.md`:
 
@@ -1743,7 +1743,7 @@ nobody chose, with nothing to show it.
 Run: `make changelog-check`
 Expected: exit 0.
 
-- [ ] **Step 4: Run every gate, reading each exit code directly**
+- [x] **Step 4: Run every gate, reading each exit code directly**
 
 ```bash
 make check; echo "check rc=$?"
@@ -1755,7 +1755,7 @@ make bench
 
 Expected: `check`, `rift`, `browser` and `live` print `rc=0`. Never pipe a gate (`make check | tail` reports `tail`'s status). Keep the bench table for the PR body.
 
-- [ ] **Step 5: Exercise it in a browser against a server started after the change**
+- [x] **Step 5: Exercise it in a browser against a server started after the change**
 
 ```bash
 uv run aegis serve --root /tmp/aegis-composer --port 8766 --detach
@@ -1763,11 +1763,11 @@ uv run aegis serve --root /tmp/aegis-composer --port 8766 --detach
 
 with `/tmp/aegis-composer/.aegis.yaml` holding the README's example. Open the printed URL, press `+`, change the model chip to `sonnet`, type a prompt and press Enter. Check that: the tab opens with the message as its first entry; the agent chip read `opus*` before Enter and the fleet card reads `opus*`; `reset` restored the chips; an agent with a missing field shows disabled with its reason. Take a screenshot of the composer for the PR. Stop that server with the `kill <pid>` line `aegis serve --detach` printed (never `pkill -f`).
 
-- [ ] **Step 6: Flip the spec's status and check this plan's boxes**
+- [x] **Step 6: Flip the spec's status and check this plan's boxes**
 
 In the spec, the status line becomes `**Status: implemented, 2026-10-07** (issue #155), following this plan.` Check every box above.
 
-- [ ] **Step 7: Commit, push, open the PR**
+- [x] **Step 7: Commit, push, open the PR**
 
 ```bash
 git add README.md DESIGN.md changelog.d/155-new-tab-composer.changed.md docs/superpowers/specs/2026-10-07-aegis-new-tab-composer-design.md docs/superpowers/plans/2026-10-07-aegis-new-tab-composer.md

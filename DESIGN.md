@@ -39,7 +39,11 @@ its store and the session lands in the archive. Boot writes to no store, except 
 another format. `aegis serve` refuses to start on a state directory holding the
 legacy tree's marker files, and says to move it to `.aegis/legacy-state/`; mixing
 the two would have each read files the other wrote. Of `.aegis.yaml`, aegis reads
-the `agents:` and `queues:` maps.
+the `agents:` and `queues:` maps, and nothing in them is a default: an agent
+names its harness, model, effort and permission, a queue its agent and
+`max_parallel`, and one that does not is reported by name rather than filled
+in or dropped. A setting the loader filled in would be one nobody chose, with
+nothing to show it.
 
 **Relative imports, and nothing from the legacy tree.** Imports inside aegis are
 relative, which is what made taking over the `aegis` name one directory move, and no

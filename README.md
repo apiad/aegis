@@ -46,14 +46,25 @@ aegis reads two maps from `.aegis.yaml` at the root:
 ```yaml
 default_agent: opus
 agents:
-  opus: {model: opus, effort: high, permission: full}
-  haiku: {model: claude-haiku-4-5-20251001, effort: low, permission: read}
+  opus: {harness: claude-code, model: opus, effort: high, permission: full}
+  reviewer:
+    harness: claude-code
+    model: opus
+    effort: max
+    permission: read
+    priming: |
+      You review changes for correctness and report findings by severity.
 queues:
   general: {agent: opus, max_parallel: 5}
 ```
 
-`permission` is `read` (plan mode), `write` (accept edits), `auto` or `full`
-(bypass permissions). Only Claude Code profiles run today.
+An agent is a preset. The new tab starts from one, and any of its harness,
+model, effort and permission can be changed for that session; its `priming` is
+appended to aegis's own system prompt. Nothing has a default: an agent names
+all four fields and a queue names its agent and `max_parallel`, and one that
+does not is shown with what is missing. `permission` is `read` (plan mode),
+`write` (accept edits), `auto` or `full` (bypass permissions). Only Claude Code
+agents run today.
 
 ## What you get
 
