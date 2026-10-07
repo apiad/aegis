@@ -344,4 +344,7 @@ def test_the_default_clock_keeps_counting_while_the_machine_sleeps():
     assert QuotaService(fetch=None, token_reader=None)._clock is boot_clock
     assert Quota(lambda *a: None).services["claude"]._clock is boot_clock
     if hasattr(time, "CLOCK_BOOTTIME"):
-        assert boot_clock() >= time.clock_gettime(time.CLOCK_MONOTONIC)
+        # BOOTTIME is MONOTONIC plus the time asleep, so it reads at least as
+        # much when read after it; on a machine that never slept they are equal.
+        mono = time.clock_gettime(time.CLOCK_MONOTONIC)
+        assert boot_clock() >= mono
