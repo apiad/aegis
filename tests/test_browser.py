@@ -614,3 +614,111 @@ def test_open_natively_shows_only_on_the_servers_desktop_and_opens_the_copy(
     assert marker.read_text().endswith("/dot.png")
     assert (server.root / ".aegis") in Path(marker.read_text()).parents
     assert page.errors == []
+
+
+# -- cost that must not grow with the transcript or the tab count (#157, #158) --
+
+FIXTURE = Path(__file__).parent / "fixtures" / "session.jsonl"
+ROWS = "#entries > .row"
+BOTTOM_GAP = (
+    "(() => { const s = document.getElementById('tr');"
+    " return s.scrollHeight - s.scrollTop - s.clientHeight; })()"
+)
+
+
+@pytest.fixture
+def replay_server(tmp_path: Path, fake_claude: str):
+    (tmp_path / ".aegis.yaml").write_text(
+        "default_agent: opus\nagents:\n  opus: {model: opus, effort: high, permission: full}\n"
+    )
+    s = Server(tmp_path, fake_claude)
+    s.env = {"FAKE_CLAUDE_REPLAY": str(FIXTURE), "FAKE_CLAUDE_REPEAT": "16"}
+    s.start()
+    yield s
+    s.stop()
+
+
+def test_a_long_transcript_mounts_its_tail_and_the_rest_as_the_reader_scrolls_up(
+    replay_server, page
+):
+    page.goto(replay_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    page.fill("#input", "replay")
+    page.press("#input", "Enter")
+    page.wait_for_function(
+        "document.getElementById('s-status').textContent === 'idle'", timeout=60_000
+    )
+    page.reload()
+    page.wait_for_function("window.__a2snapshot && window.__a2snapshot.painted")
+    total = page.evaluate("window.__a2snapshot.count")
+    assert total > 300
+
+    # Only the tail is in the DOM, and the view follows it to the bottom once
+    # the rows have taken their real heights.
+    assert page.locator(ROWS).count() <= 200
+    page.wait_for_function(f"{BOTTOM_GAP} < 48", timeout=3000)
+    page.wait_for_timeout(500)
+    assert page.evaluate(BOTTOM_GAP) < 48
+
+    # Scrolling to the top mounts the earlier rows above, and the row that was
+    # first stays where the reader saw it.
+    while (n := page.locator(ROWS).count()) < total:
+        first = page.evaluate(f"document.querySelector('{ROWS}').dataset.id")
+        page.evaluate("document.getElementById('tr').scrollTop = 0")
+        page.wait_for_function(
+            f"n => document.querySelectorAll('{ROWS}').length > n", arg=n, timeout=3000
+        )
+        drift = page.evaluate(
+            """id => {
+              const row = document.querySelector(`#entries > .row[data-id="${id}"]`);
+              return row.getBoundingClientRect().top - document.getElementById('tr').getBoundingClientRect().top;
+            }""",
+            first,
+        )
+        assert abs(drift) < 60, drift
+    ids = page.evaluate(
+        f"[...document.querySelectorAll('{ROWS}')].map(r => r.dataset.id)"
+    )
+    assert len(ids) == len(set(ids)) == total
+    assert page.errors == []
+
+
+def test_a_sessions_patch_redraws_only_its_own_tab_and_card(server, browser, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a, b = spawn(page, "alpha"), spawn(page, "beta")
+    keep = (
+        "id => document.querySelector(`#tablist .tab[data-id='${id}']`).__kept = true"
+    )
+    kept = (
+        "id => document.querySelector(`#tablist .tab[data-id='${id}']`).__kept === true"
+    )
+    page.evaluate(keep, a)
+    page.fill("#input", "again")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    assert page.evaluate(kept, a), "a patch for b rebuilt a's tab"
+
+    page.click("#tab-fleet")
+    page.wait_for_selector(f"#cards .card[data-id='{a}']")
+    page.evaluate(
+        "id => document.querySelector(`#cards .card[data-id='${id}']`).__kept = true", a
+    )
+    other = new_page(browser, [])
+    other.goto(f"{server.url.split('#')[0]}#s={b}")
+    other.wait_for_selector("#a2[data-view=session]")
+    other.fill("#input", "once more")
+    other.press("#input", "Enter")
+    turns_done(other, 3)
+    page.wait_for_function(
+        "id => document.querySelector(`#cards .card[data-id='${id}'] .act`).textContent.includes('once more')"
+        " || document.querySelector(`#cards .card[data-id='${id}']`).textContent.includes('idle')",
+        arg=b,
+    )
+    assert page.evaluate(
+        "id => document.querySelector(`#cards .card[data-id='${id}']`).__kept === true",
+        a,
+    ), "a patch for b rebuilt a's card"
+    assert tab_ids(page) == [a, b]
+    assert page.errors == []

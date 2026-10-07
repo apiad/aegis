@@ -12,7 +12,11 @@ tests/fixtures/session.jsonl:
   ``aegis serve``, p50 and p95;
 - cold load: the fixture replayed to 2,000+ entries, then a page load timed
   from navigation start to the first frame painted after the snapshot;
-- memory after that replay: the server's RSS and the page's JS heap.
+- memory after that replay: the server's RSS and the page's JS heap;
+- typing in that session: the renderer main thread's time per keystroke in
+  the composer, from a trace. Every layout pays a hover hit test and a paint
+  over the mounted rows, so this is what grows if the transcript's DOM does
+  (#157).
 
 scripts/bench_compare.py turns two of these files into a table and warnings.
 """
@@ -186,6 +190,50 @@ new MutationObserver(() => {
 """
 
 
+# Rows the transcript mounted, by id, whether or not they are still mounted:
+# the transcript keeps only its tail in the DOM.
+ROWS_SEEN = """
+window.__rows = new Set();
+new MutationObserver((ms) => {
+  for (const m of ms) for (const n of m.addedNodes)
+    if (n.nodeType === 1 && n.matches('#entries > .row')) window.__rows.add(n.dataset.id);
+}).observe(document, {childList: true, subtree: true});
+"""
+
+
+def key_cost(browser, page, keys: int = 60) -> float:
+    """Main-thread milliseconds per keystroke typed into the composer."""
+    page.click("#input")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "trace.json"
+        browser.start_tracing(
+            page=page,
+            path=str(path),
+            categories=["devtools.timeline", "disabled-by-default-devtools.timeline"],
+        )
+        page.keyboard.type("x" * keys, delay=30)
+        page.wait_for_timeout(200)
+        browser.stop_tracing()
+        events = json.loads(path.read_text())
+    events = events["traceEvents"] if isinstance(events, dict) else events
+    # The page's main thread: the one that recalculated style.
+    threads: dict = {}
+    for e in events:
+        if e.get("name") == "UpdateLayoutTree":
+            t = (e.get("pid"), e.get("tid"))
+            threads[t] = threads.get(t, 0) + 1
+    main = max(threads, key=threads.get)
+    busy = sum(
+        e.get("dur", 0)
+        for e in events
+        if (e.get("pid"), e.get("tid")) == main
+        and e.get("name") == "RunTask"
+        and e.get("ph") == "X"
+    )
+    page.fill("#input", "")
+    return busy / 1000 / keys
+
+
 def browser_runs(playwright) -> dict:
     out: dict = {}
     browser = playwright.chromium.launch(args=["--enable-precise-memory-info"])
@@ -236,10 +284,11 @@ def browser_runs(playwright) -> dict:
             )
             try:
                 page = browser.new_page()
+                page.add_init_script(ROWS_SEEN)
                 start_session(page, srv.url)
                 t0 = time.monotonic()
                 page.wait_for_function(
-                    "n => document.querySelectorAll('#entries .row').length >= n",
+                    "n => window.__rows.size >= n",
                     arg=COLD_ENTRIES,
                     timeout=180_000,
                 )
@@ -266,6 +315,7 @@ def browser_runs(playwright) -> dict:
                     browser_heap_mb=page.evaluate("performance.memory.usedJSHeapSize")
                     / 2**20,
                 )
+                out.update(cold_key_ms=key_cost(browser, page))
             finally:
                 srv.stop()
     finally:

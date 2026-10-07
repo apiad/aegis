@@ -36,33 +36,38 @@ export function renderCards(box, metas, onOpen) {
     box.replaceChildren(el("div", "empty", "No open sessions. Start one with +."));
     return;
   }
-  box.replaceChildren(
-    ...metas.map((m) => {
-      const c = el("div", `card ${m.state}`);
-      c.dataset.id = m.log_id;
-      const hd = el("div", "hd");
-      hd.append(el("span", `dot ${dotClass(m.state)}`), el("span", "h", m.handle));
-      if (m.worker) hd.append(el("span", "badge", `worker · ${m.worker.queue}`));
-      hd.append(el("span", "s", m.state));
-      const ttl = el("div", "ttl", m.title || "untitled");
-      const sub = el("div", "ln");
-      sub.append(el("b", null, m.profile), document.createTextNode(`${m.model} · ${cwdTail(m.cwd)}`));
-      const act = el("div", "act", m.activity || "");
-      const pct = m.context_window && m.context_tokens ? Math.min(100, Math.round((100 * m.context_tokens) / m.context_window)) : 0;
-      const bar = el("div", "bar thin");
-      const fill = el("i");
-      fill.style.width = `${pct}%`;
-      bar.append(fill);
-      const ft = el("div", "ft");
-      ft.append(el("span", "when", ago(m.last_activity)), el("span", null, money(m.cost_usd)));
-      const mons = (m.monitors || []).length;
-      if (mons) ft.append(el("span", "mons", `${mons} monitor${mons > 1 ? "s" : ""}`));
-      ft.append(el("span", "ctx", `${pct}%`));
-      c.append(hd, ttl, sub, act, bar, ft);
-      c.addEventListener("click", () => onOpen(m.log_id));
-      return c;
-    }),
-  );
+  box.replaceChildren(...metas.map((m) => card(m, onOpen)));
+}
+
+// One session's card redrawn where it stands; the others keep their nodes.
+export function patchCard(box, m, onOpen) {
+  box.querySelector(`.card[data-id="${CSS.escape(m.log_id)}"]`)?.replaceWith(card(m, onOpen));
+}
+
+function card(m, onOpen) {
+  const c = el("div", `card ${m.state}`);
+  c.dataset.id = m.log_id;
+  const hd = el("div", "hd");
+  hd.append(el("span", `dot ${dotClass(m.state)}`), el("span", "h", m.handle));
+  if (m.worker) hd.append(el("span", "badge", `worker · ${m.worker.queue}`));
+  hd.append(el("span", "s", m.state));
+  const ttl = el("div", "ttl", m.title || "untitled");
+  const sub = el("div", "ln");
+  sub.append(el("b", null, m.profile), document.createTextNode(`${m.model} · ${cwdTail(m.cwd)}`));
+  const act = el("div", "act", m.activity || "");
+  const pct = m.context_window && m.context_tokens ? Math.min(100, Math.round((100 * m.context_tokens) / m.context_window)) : 0;
+  const bar = el("div", "bar thin");
+  const fill = el("i");
+  fill.style.width = `${pct}%`;
+  bar.append(fill);
+  const ft = el("div", "ft");
+  ft.append(el("span", "when", ago(m.last_activity)), el("span", null, money(m.cost_usd)));
+  const mons = (m.monitors || []).length;
+  if (mons) ft.append(el("span", "mons", `${mons} monitor${mons > 1 ? "s" : ""}`));
+  ft.append(el("span", "ctx", `${pct}%`));
+  c.append(hd, ttl, sub, act, bar, ft);
+  c.addEventListener("click", () => onOpen(m.log_id));
+  return c;
 }
 
 export function renderArchive(box, items, { onReopen, onRead }) {
