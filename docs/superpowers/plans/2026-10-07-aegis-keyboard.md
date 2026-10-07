@@ -40,7 +40,7 @@
 **Interfaces:**
 - Produces: `KEYS` (array of `{scope, label, desc, action, match, native?}`), `installKeys(actions, view)` where `view()` returns `"session" | "read" | "fleet" | "spawn" | "boot"` and `actions` maps an action name to `(ev) => void`.
 
-- [ ] **Step 1: failing tests**
+- [x] **Step 1: failing tests**
 
 ```python
 def focused_id(pg) -> str:
@@ -84,9 +84,9 @@ def test_alt_brackets_cycle_fleet_and_tabs_and_digits_pick_a_tab(server, page):
     assert page.errors == []
 ```
 
-- [ ] **Step 2:** `uv run pytest -q tests/test_browser.py -k "alt_period or alt_brackets"` fails: focus stays on the input, the hash does not change.
+- [x] **Step 2:** `uv run pytest -q tests/test_browser.py -k "alt_period or alt_brackets"` fails: focus stays on the input, the hash does not change.
 
-- [ ] **Step 3: `keys.js`**
+- [x] **Step 3: `keys.js`**
 
 ```js
 // The keyboard: one table of every key the client answers, and the one
@@ -140,7 +140,7 @@ export function installKeys(actions, view) {
 }
 ```
 
-- [ ] **Step 4: wire it in `app.js`** — replace the `document.addEventListener("keydown", …)` block with:
+- [x] **Step 4: wire it in `app.js`** — replace the `document.addEventListener("keydown", …)` block with:
 
 ```js
 const views = () => ["#fleet", ...ordered.map((m) => `#s=${m.log_id}`)];
@@ -182,8 +182,8 @@ installKeys(
 
 `index.html`: `<div class="tr" id="tr" tabindex="-1">`, `<section class="cards" id="cards" tabindex="-1">`, `title="New session (Alt+N)"` on `#tab-add`. CSS: `#a2 .tr:focus,#a2 .cards:focus{outline:none}` in `base.css`.
 
-- [ ] **Step 5:** the two new tests pass, and `-k "spawn_to_close or tabs_reorder"` still passes (Esc and Alt+1).
-- [ ] **Step 6:** commit `feat(client): a key table with Alt chords Chrome leaves free (#159)`.
+- [x] **Step 5:** the two new tests pass, and `-k "spawn_to_close or tabs_reorder"` still passes (Esc and Alt+1).
+- [x] **Step 6:** commit `feat(client): a key table with Alt chords Chrome leaves free (#159)`.
 
 ### Task 2: selection in the transcript
 
@@ -195,7 +195,7 @@ installKeys(
 - Consumes: `KEYS`, `installKeys` from Task 1.
 - Produces: `Transcript.selected` (entry id or null), `select(id)`, `move(delta)`, `moveTurn(delta)`, `edge(last)`, `toggle()`, `press()`, `pick()`.
 
-- [ ] **Step 1: failing tests**
+- [x] **Step 1: failing tests**
 
 ```python
 def selected(pg) -> str | None:
@@ -249,9 +249,9 @@ def test_a_selected_row_keeps_its_selection_when_it_updates_and_enter_opens_it(s
 
 The Tab step assumes the tool row's summary is the first focusable element after `#tr`'s current selection; if focus lands on an earlier row's summary, the assertion that matters is that the row holding focus became the selection: `selected(page) == page.evaluate("document.activeElement.closest('.row').dataset.id")`, and that one Enter flipped that row's details exactly once. Write the test that way.
 
-- [ ] **Step 2:** both fail: nothing gets `.sel`.
+- [x] **Step 2:** both fail: nothing gets `.sel`.
 
-- [ ] **Step 3: `Transcript`** — add to the class:
+- [x] **Step 3: `Transcript`** — add to the class:
 
 ```js
   // -- the selection: one row, by entry id, because apply() replaces nodes ----
@@ -332,7 +332,7 @@ In the constructor: `this.selected = null;` and
 
 At the end of `snapshot()` before `toBottom()`: `this.mark();`. In `apply()`: after the upsert loop body sets `this.nodes.set(e.id, n)`, nothing; after the whole loop, `this.mark();` (removal of the selected entry leaves `selected` pointing at a missing node, and `mark()` clears it). In `clear()`: `this.selected = null;`.
 
-- [ ] **Step 4: keys** — add to `KEYS`, after the browse rows:
+- [x] **Step 4: keys** — add to `KEYS`, after the browse rows:
 
 ```js
   { scope: "session", label: "j  ↓", desc: "Next row", action: "next", match: key("j", "ArrowDown") },
@@ -361,8 +361,8 @@ In `app.js` actions: `browse()` calls `transcript.pick()` after focusing `#tr`; 
 
 `base.css`: `#a2 .row.sel{box-shadow:-6px 0 0 -3px var(--accent);background:linear-gradient(var(--accent-soft),var(--accent-soft))}`, adjusted in the browser so the rule reads on all three themes.
 
-- [ ] **Step 5:** both tests pass; `-k "spawn_to_close or prompt_sent_mid_turn"` still passes.
-- [ ] **Step 6:** commit `feat(client): a selected row in the transcript, kept across updates (#159)`.
+- [x] **Step 5:** both tests pass; `-k "spawn_to_close or prompt_sent_mid_turn"` still passes.
+- [x] **Step 6:** commit `feat(client): a selected row in the transcript, kept across updates (#159)`.
 
 ### Task 3: selection in the Fleet
 
@@ -374,7 +374,7 @@ In `app.js` actions: `browse()` calls `transcript.pick()` after focusing `#tr`; 
 - Consumes: `installKeys` actions object from Task 1.
 - Produces: `fleetSel` (log id or null), `fleetMark(scroll)`, `fleetMove(delta)`, `fleetOpen()` in `app.js`.
 
-- [ ] **Step 1: failing test**
+- [x] **Step 1: failing test**
 
 ```python
 def test_fleet_cards_and_archive_rows_walk_with_j_and_open_with_enter(server, page):
@@ -402,9 +402,9 @@ def test_fleet_cards_and_archive_rows_walk_with_j_and_open_with_enter(server, pa
     assert page.errors == []
 ```
 
-- [ ] **Step 2:** fails: no `.sel` in the Fleet.
+- [x] **Step 2:** fails: no `.sel` in the Fleet.
 
-- [ ] **Step 3: `app.js`**, next to the archive state:
+- [x] **Step 3: `app.js`**, next to the archive state:
 
 ```js
 // The Fleet's selection: a card or an archive row, by log id, re-marked after
@@ -442,7 +442,7 @@ Call `fleetMark(false)` after `renderCards(...)` in `render()` and after `render
 
 `fleetMark` is a function declaration, hoisted, so `render()` can call it although it is defined further down; `fleetSel` is a `let` read only at call time, after the module ran.
 
-- [ ] **Step 4: keys**
+- [x] **Step 4: keys**
 
 ```js
   { scope: "fleet", label: "j  ↓", desc: "Next card, then the archive", action: "fleetNext", match: key("j", "ArrowDown") },
@@ -453,8 +453,8 @@ Call `fleetMark(false)` after `renderCards(...)` in `render()` and after `render
 
 `base.css`: `#a2 .card.sel{outline:2px solid var(--accent);outline-offset:1px}` and `#a2 .tbl tr.sel td{background:var(--accent-soft)}`.
 
-- [ ] **Step 5:** the test passes.
-- [ ] **Step 6:** commit `feat(client): walk the Fleet cards and the archive with j and k (#159)`.
+- [x] **Step 5:** the test passes.
+- [x] **Step 6:** commit `feat(client): walk the Fleet cards and the archive with j and k (#159)`.
 
 ### Task 4: the `?` overlay
 
@@ -465,7 +465,7 @@ Call `fleetMark(false)` after `renderCards(...)` in `render()` and after `render
 **Interfaces:**
 - Produces: `renderKeys(box)` in `keys.js`.
 
-- [ ] **Step 1: failing test**
+- [x] **Step 1: failing test**
 
 ```python
 def test_question_mark_lists_every_key_and_escape_closes_it(server, page):
@@ -484,9 +484,9 @@ def test_question_mark_lists_every_key_and_escape_closes_it(server, page):
     assert page.errors == []
 ```
 
-- [ ] **Step 2:** fails: no `#keymap`.
+- [x] **Step 2:** fails: no `#keymap`.
 
-- [ ] **Step 3:** in `keys.js`:
+- [x] **Step 3:** in `keys.js`:
 
 ```js
 const HEADS = { global: "Anywhere", browse: "Outside a text field", session: "Transcript", fleet: "Fleet" };
@@ -540,15 +540,15 @@ The `help` action calls `help()`; `escape()` becomes `if (!keymap.hidden) help(f
 
 `.keys-btn` styled like the header's existing small controls.
 
-- [ ] **Step 4:** the test passes.
-- [ ] **Step 5:** commit `feat(client): ? lists every key, drawn from the key table (#159)`.
+- [x] **Step 4:** the test passes.
+- [x] **Step 5:** commit `feat(client): ? lists every key, drawn from the key table (#159)`.
 
 ### Task 5: docs, gates, the browser, the PR
 
-- [ ] `DESIGN.md`, under *Rules that span modules*: one rule, **"A key is one row in one table"**, with the Chrome constraint and the focus-decides model.
-- [ ] `changelog.d/159-keyboard.added.md`.
-- [ ] The spec: status `implemented`, and the Fleet marking corrected to "marked in `app.js` after each redraw".
-- [ ] `make check` rc=0, `make test-browser` rc=0, `rift check`, `make bench` (table into the PR body).
-- [ ] `aegis serve` from the worktree on a spare port with a scratch root; drive it with the keys in headless Chromium, screenshot the selection and the overlay on all three themes, send the screenshots to Alex.
+- [x] `DESIGN.md`, under *Rules that span modules*: one rule, **"A key is one row in one table"**, with the Chrome constraint and the focus-decides model.
+- [x] `changelog.d/159-keyboard.added.md`.
+- [x] The spec: status `implemented`, and the Fleet marking corrected to "marked in `app.js` after each redraw".
+- [x] `make check` rc=0, `make test-browser` rc=0, `rift check`, `make bench` (table into the PR body).
+- [x] `aegis serve` from the worktree on a spare port with a scratch root; drive it with the keys in headless Chromium, screenshot the selection and the overlay on all three themes, send the screenshots to Alex.
 - [ ] Push, open the PR `Closes #159`, wait for CI.
 - [ ] Alex presses the keys in his own Chrome against that server; that is the only check that sees Chrome's accelerators.
