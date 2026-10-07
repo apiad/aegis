@@ -7,11 +7,13 @@ enqueued (the vision's security model). People can do anything.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
+from . import files
 from .monitors import iso_now
 from .ops import Caller, OpError
 from .session import Archived
@@ -69,6 +71,17 @@ class Read(_Strict):
     tools: bool = Field(False, description="Include tool calls.")
 
 
+class FileSend(_Strict):
+    path: str = Field(
+        min_length=1,
+        description="The file's absolute path. A relative one resolves against "
+        "your session's working directory, not your shell's last cd.",
+    )
+    caption: str | None = Field(
+        None, description="A line of Markdown shown above the file."
+    )
+
+
 class NoArgs(_Strict):
     pass
 
@@ -89,6 +102,10 @@ def _render(e: dict, tools: bool) -> str | None:
         return f"tool {e['title']} {e['summary']} -> {result}"
     if kind == "thinking":
         return None
+    if kind == "file":
+        return (
+            f"file: {e['title']} ({e['summary'].split(' · ')[0]}) {e['detail']['url']}"
+        )
     return f"· {e['summary']}"
 
 
@@ -258,6 +275,36 @@ def register_agent_ops(app: App) -> None:
             }
             for s in reg.open_sessions()
         ]
+
+    @r.op("file.send", FileSend, agent=True)
+    async def file_send(p: FileSend, caller):
+        """Hand a file to the person: it shows in your transcript with a preview
+        when the browser can draw one, and Open and Download links. The file is
+        copied, so later changes to it are not seen."""
+        s = own(caller)
+        path = Path(p.path).expanduser()
+        relative = not path.is_absolute()
+        if relative:
+            path = s.spec.cwd / path
+        try:
+            rec = await asyncio.to_thread(files.store, app.roots.state_root, path)
+        except files.FileError as e:
+            # Agents write files after a cd in the shell, which does not carry
+            # over, then send the bare name (seen in Alex's first smoke test).
+            hint = (
+                f"; a relative path resolves against your session's working "
+                f"directory, {s.spec.cwd}; pass the file's absolute path"
+                if relative and e.code == "not_found"
+                else ""
+            )
+            raise OpError(e.code, e.message + hint) from e
+        s.record_file({**rec, "caption": p.caption})
+        return {
+            "url": files.url(rec["file_id"], rec["name"]),
+            "name": rec["name"],
+            "size": rec["size"],
+            "mime": rec["mime"],
+        }
 
     @r.op("meta", NoArgs, agent=True)
     async def meta(_, caller):

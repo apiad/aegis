@@ -85,6 +85,9 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
     if (state === "unauthorized") show("boot", "The token was refused. Open the URL that `aegis serve` printed.");
     if (state === "version") show("boot", "This page and the server speak different protocol versions. Reload the page.");
     if (state === "open") {
+      // Whether this browser runs on the server's desktop (Open natively).
+      if (conn.native) root.dataset.native = "";
+      else delete root.dataset.native;
       loadProfiles();
       loadVersion();
     }
@@ -372,6 +375,20 @@ async function loadVersion() {
   top.hidden = false;
 }
 setInterval(() => conn.open && loadVersion(), 3600 * 1000);
+
+// -- Open natively on a sent file's card ------------------------------------
+$("entries").addEventListener("click", async (ev) => {
+  const b = ev.target.closest(".fbar .native");
+  if (!b) return;
+  b.disabled = true;
+  try {
+    await conn.call("file.open", { file_id: b.dataset.fileId, name: b.dataset.name });
+  } catch (e) {
+    $("send-error").textContent = e.message;
+  } finally {
+    setTimeout(() => (b.disabled = false), 800);
+  }
+});
 
 // -- archive -------------------------------------------------------------------
 let archived = [];

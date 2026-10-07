@@ -33,6 +33,9 @@ class Caller:
 
     kind: str  # "user" | "agent"
     log_id: str | None = None
+    # A person whose browser runs on the server's own desktop, so an action
+    # like opening a file in a desktop app reaches them. Set by the transport.
+    desktop: bool = False
 
     @property
     def is_agent(self) -> bool:
