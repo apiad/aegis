@@ -137,3 +137,57 @@ async def test_real_claude_arms_a_monitor_through_the_endpoint_and_is_woken(
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)
+
+
+async def test_real_claude_sends_a_file_and_the_link_serves_it(tmp_path: Path):
+    """The real binary finds file_send from its description and hands over a
+    file it wrote; the transcript entry's link serves the same bytes."""
+    import asyncio
+
+    import httpx
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  haiku: {{model: {HAIKU}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    base = f"http://127.0.0.1:{port}"
+    app = App(make_roots(tmp_path, None), claude_bin=claude, base_url=base)
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"profile": "haiku"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "Write a file named haiku.md in your working directory holding a "
+            "three-line poem about pelicans, then hand it to me with the aegis "
+            "tool for sending files, captioned 'A pelican haiku'. Then end your turn."
+        )
+        await until(
+            lambda: (
+                s.status == "idle" and any(e["kind"] == "file" for e in s.entries())
+            ),
+            timeout=180,
+            what="the file sent by Claude",
+        )
+        (e,) = [e for e in s.entries() if e["kind"] == "file"]
+        assert e["title"] == "haiku.md" and e["detail"]["preview"] == "markdown"
+        async with httpx.AsyncClient() as c:
+            got = await c.get(base + e["detail"]["url"])
+        assert got.content == (tmp_path / "haiku.md").read_bytes()
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
