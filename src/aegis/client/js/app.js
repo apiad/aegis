@@ -9,6 +9,7 @@ import { Transcript } from "./transcript.js";
 import { TabOrder, renderTabs } from "./tabs.js";
 import { ago, money, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
+import { installKeys } from "./keys.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -486,14 +487,38 @@ $("spawn").addEventListener("submit", async (ev) => {
 // -- tab bar and keys -----------------------------------------------------------
 $("tab-fleet").addEventListener("click", () => go("#fleet"));
 $("tab-add").addEventListener("click", () => go("#new"));
-document.addEventListener("keydown", (ev) => {
-  if (ev.altKey && /^Digit[0-9]$/.test(ev.code)) {
-    ev.preventDefault();
-    const n = Number(ev.code.slice(5));
-    if (n === 0) go("#fleet");
-    else if (ordered[n - 1]) go(`#s=${ordered[n - 1].log_id}`);
-  } else if (ev.key === "Escape" && route().view === "session" && !editing.size) interrupt();
-});
+// What each key in keys.js does. `input` and `editing` are declared below;
+// a key is pressed only after this module has run.
+installKeys(
+  {
+    composer() {
+      const v = route().view;
+      if (v === "session") input.focus();
+      else if (v === "spawn") $("sp-profile").focus();
+    },
+    browse() {
+      const v = route().view;
+      if (v === "session" || v === "read") $("tr").focus({ preventScroll: true });
+      else if (v === "fleet") $("cards").focus({ preventScroll: true });
+    },
+    cycle(ev) {
+      const all = ["#fleet", ...ordered.map((m) => `#s=${m.log_id}`)];
+      const d = ev.code === "BracketRight" ? 1 : -1;
+      const i = all.indexOf(location.hash || "#fleet");
+      go(all[i < 0 ? (d > 0 ? 0 : all.length - 1) : (i + d + all.length) % all.length]);
+    },
+    spawn: () => go("#new"),
+    tab(ev) {
+      const n = Number(ev.altKey ? ev.code.slice(5) : ev.key);
+      if (n === 0) go("#fleet");
+      else if (ordered[n - 1]) go(`#s=${ordered[n - 1].log_id}`);
+    },
+    escape() {
+      if (route().view === "session" && !editing.size) interrupt();
+    },
+  },
+  () => (booted ? route().view : "boot"),
+);
 
 // -- composer ---------------------------------------------------------------
 const input = $("input");
