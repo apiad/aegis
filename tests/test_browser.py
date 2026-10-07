@@ -195,6 +195,22 @@ def test_the_composer_overrides_a_chip_resets_it_and_spawns_with_the_first_messa
     assert page.errors == []
 
 
+def test_enter_in_the_model_or_cwd_field_moves_to_the_message_and_spawns_nothing(
+    server, page
+):
+    page.goto(server.url)
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    page.fill("#sp-text", "half written")
+    for field in ("#sp-model", "#sp-cwd"):
+        page.focus(field)
+        page.press(field, "Enter")
+        assert page.evaluate("document.activeElement.id") == "sp-text"
+    page.wait_for_timeout(300)  # a spawn would have switched the view by now
+    assert page.evaluate("document.querySelector('#a2').dataset.view") == "spawn"
+    assert page.evaluate("document.querySelectorAll('#tablist .tab').length") == 0
+
+
 def test_a_failed_spawn_keeps_the_text_and_says_why(server, page):
     page.goto(server.url)
     page.click("#tab-add")

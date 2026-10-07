@@ -459,6 +459,16 @@ $("spawn").addEventListener("submit", (ev) => {
   ev.preventDefault();
   spawnFromComposer();
 });
+// Enter in a field would submit the form and spawn a half-written session;
+// there it means "done with this field".
+for (const id of ["sp-model", "sp-cwd"]) {
+  $(id).addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && !ev.isComposing) {
+      ev.preventDefault();
+      $("sp-text").focus();
+    }
+  });
+}
 $("sp-text").addEventListener("keydown", (ev) => {
   if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
     ev.preventDefault();
