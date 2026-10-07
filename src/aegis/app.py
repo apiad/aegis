@@ -4,8 +4,9 @@ Operations: ``profiles.list``, ``session.spawn``, ``session.send``,
 ``session.interrupt``, ``session.stop``, ``session.close``, ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``quota.read``. Channels:
 ``sessions`` (every open session's meta; patches ``upsert`` and ``remove``),
-``transcript:<log_id>`` (any session, archived included) and ``quota`` (each
-provider's windows; patches ``set``).
+``transcript:<log_id>`` (any session, archived included), ``quota`` (each
+provider's windows; patches ``set``) and ``host`` (CPU, RAM and disk while
+someone watches; patches ``set``).
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from .agent_ops import register_agent_ops
 from .channels import Channels
+from .host import HostSampler
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors
 from .queues import Queues
@@ -91,6 +93,9 @@ class App:
             self.sessions, self.monitors, roots.state_root / "tasks.jsonl"
         )
         self.quota = Quota(self.publish)
+        self.host = HostSampler(
+            self.publish, self.channels.subscribers, roots.config_root
+        )
         reg = self.sessions
         reg.tokens, reg.monitors, reg.queues, reg.server_name = (
             self.tokens,
@@ -112,9 +117,11 @@ class App:
         self.monitors.arm_all()
         await self.queues.resume_after_boot(self.queues.boot())
         self.quota.start()
+        self.host.start()
 
     async def shutdown(self) -> None:
         await self.quota.stop()
+        await self.host.stop()
         await self.monitors.shutdown()
         await self.sessions.shutdown()
 
@@ -128,6 +135,8 @@ class App:
             return self.sessions.transcript(name.removeprefix("transcript:"))
         if name == "quota":
             return self.quota.snapshot
+        if name == "host":
+            return self.host.snapshot
         return None
 
     def _resolve_cwd(self, raw: str | None) -> Path:
