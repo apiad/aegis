@@ -416,3 +416,50 @@ def test_the_running_build_and_the_latest_release_show_in_the_top_bar_and_sideba
     if not run["dev"]:
         assert "update" in page.inner_text("#ver-latest")
     assert page.errors == []
+
+
+# A 1x1 PNG, so the preview has a real image to decode.
+PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+    "1f15c4890000000d49444154789c6360f8ffff3f0005fe02fea7d6a4"
+    "f50000000049454e44ae426082"
+)
+
+
+def test_a_sent_file_previews_in_the_transcript_with_open_and_download(server, page):
+    (server.root / "dot.png").write_bytes(PNG)
+    # The report's script reports whether it can reach the client's storage.
+    (server.root / "report.html").write_text(
+        '<p id="s">no script</p><script>let r;'
+        'try { sessionStorage.length; r = "storage open"; }'
+        'catch (e) { r = "storage refused"; }'
+        'document.getElementById("s").textContent = r;</script>'
+    )
+    (server.root / "notes.md").write_text("# Notes\n\n- one\n- two\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    sends = (("dot.png", "The **chart**"), ("report.html", None), ("notes.md", None))
+    for n, (path, caption) in enumerate(sends, 1):
+        args = {"path": path} | ({"caption": caption} if caption else {})
+        page.fill("#input", f"/mcp file_send {json.dumps(args)}")
+        page.press("#input", "Enter")
+        turns_done(page, n)  # one at a time: prompts sent mid-turn share a turn
+
+    img = page.locator(".row.file img")
+    img.wait_for()
+    page.wait_for_function("document.querySelector('.row.file img').naturalWidth > 0")
+    first = page.locator(".row.file").first
+    assert "chart" in first.locator(".cap strong").inner_text()
+    href = first.locator("a.open").get_attribute("href")
+    assert first.locator("a.open").get_attribute("target") == "_blank"
+    assert first.locator("a.dl").get_attribute("href") == href + "?download=1"
+    assert page.request.get(server.url.split("/?")[0] + href).body() == PNG
+
+    frame = page.locator(".row.file iframe")
+    assert frame.get_attribute("sandbox") == "allow-scripts"
+    report = page.frame_locator(".row.file iframe").locator("#s")
+    report.filter(has_text="storage").wait_for()
+    assert report.inner_text() == "storage refused"
+    assert page.locator(".row.file .md h1").inner_text() == "Notes"
+    assert page.errors == []

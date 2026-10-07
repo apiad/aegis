@@ -8,8 +8,9 @@ websocket carries it, so an ``<img>``, a new tab and a download could not.
 
 The preview kind is decided here, once, at send (the fold draws nothing it did
 not decide). HTML, SVG and XML can run script; on aegis's origin a script could
-read the token and drive every agent, so they are served with ``CSP: sandbox``,
-which gives them an opaque origin. PDF is not: Chrome refuses to render a PDF
+read the token and drive every agent, so they are served with ``CSP: sandbox``
+(``allow-scripts`` for HTML, so an interactive report still runs), which gives
+them an opaque origin. PDF is not: Chrome refuses to render a PDF
 under that policy, and its viewer cannot reach the page's storage.
 """
 
@@ -167,6 +168,9 @@ def headers(path: Path, download: bool) -> dict[str, str]:
         return h
     if preview in ("markdown", "text"):
         h["Content-Type"] = "text/plain; charset=utf-8"
-    if preview == "html" or "svg" in mime or "xml" in mime:
+    if preview == "html":
+        # Scripts run, so an interactive report works, in an opaque origin.
+        h["Content-Security-Policy"] = "sandbox allow-scripts"
+    elif "svg" in mime or "xml" in mime:
         h["Content-Security-Policy"] = "sandbox"
     return h

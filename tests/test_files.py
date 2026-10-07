@@ -109,7 +109,7 @@ def test_headers(tmp_path):
     assert png["Cache-Control"] == "private, max-age=31536000, immutable"
     assert png["Content-Type"] == "image/png"
     assert "Content-Security-Policy" not in png and "Content-Disposition" not in png
-    assert h("a.html")["Content-Security-Policy"] == "sandbox"
+    assert h("a.html")["Content-Security-Policy"] == "sandbox allow-scripts"
     assert h("a.svg")["Content-Security-Policy"] == "sandbox"
     assert h("a.xml")["Content-Security-Policy"] == "sandbox"
     assert "Content-Security-Policy" not in h("a.pdf")

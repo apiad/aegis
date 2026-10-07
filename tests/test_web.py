@@ -330,7 +330,7 @@ def test_sent_files_are_served_at_their_capability_url(project, fake_claude):
         assert r.headers["x-content-type-options"] == "nosniff"
         assert r.headers["referrer-policy"] == "no-referrer"
         assert "immutable" in r.headers["cache-control"]
-        assert c.get(html).headers["content-security-policy"] == "sandbox"
+        assert c.get(html).headers["content-security-policy"] == "sandbox allow-scripts"
         assert c.get(svg).headers["content-security-policy"] == "sandbox"
         assert "content-security-policy" not in c.get(pdf).headers
         assert c.get(md).headers["content-type"] == "text/plain; charset=utf-8"

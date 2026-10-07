@@ -112,6 +112,53 @@ const RENDERERS = {
     return row(e, "inbox", body);
   },
 
+  file(e) {
+    // An agent's file_send. The preview kind was decided at send (files.py).
+    const det = e.detail || {};
+    const body = el("div", "body");
+    if (e.md) {
+      const cap = markdown(e.md);
+      cap.classList.add("cap");
+      body.append(cap);
+    }
+    const head = el("div", "fh");
+    const open = el("a", "open", "Open");
+    open.href = det.url;
+    open.target = "_blank";
+    open.rel = "noopener noreferrer";
+    const dl = el("a", "dl", "Download");
+    dl.href = det.download;
+    head.append(el("span", "fn", e.title), el("span", "fs", e.summary), open, dl);
+    body.append(head);
+    const pv = det.preview;
+    let view = null;
+    if (pv === "image") {
+      view = el("img", "pv");
+      view.src = det.url;
+      view.alt = e.title;
+      view.loading = "lazy";
+      view.addEventListener("click", () => window.open(det.url, "_blank", "noopener"));
+    } else if (pv === "pdf" || pv === "html") {
+      view = el("iframe", "pv");
+      if (pv === "html") view.setAttribute("sandbox", "allow-scripts");
+      view.loading = "lazy";
+      view.src = det.url;
+      view.title = e.title;
+    } else if (pv === "markdown") {
+      view = markdown(det.excerpt);
+      view.classList.add("pv", "excerpt");
+    } else if (pv === "text") {
+      view = el("pre", "pv excerpt", det.excerpt);
+    } else if (pv === "audio" || pv === "video") {
+      view = el(pv, "pv");
+      view.controls = true;
+      view.preload = "metadata";
+      view.src = det.url;
+    }
+    if (view) body.append(view);
+    return row(e, "file", body);
+  },
+
   error(e) {
     const body = el("div", "body", e.summary);
     if (e.detail?.tail) body.append(el("pre", "out", e.detail.tail));
