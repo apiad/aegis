@@ -9,12 +9,35 @@ workers and handoffs over MCP.
 ```bash
 uv tool install aegis-harness
 cd ~/your/project          # the nearest ancestor with .aegis.yaml is the root
-aegis serve                # prints a URL with its token; open it
+aegis                      # serves, and opens it in a browser app window
 ```
+
+`aegis` is `aegis serve --window`: once the server listens it opens the URL in a
+Chromium-family browser with `--app=`, a window without tabs or address bar (the
+desktop default if it is Chromium-family, else the first Chrome, Chromium, Edge or
+Brave found; `--browser` or `AEGIS_BROWSER` picks another). Run it again while the
+server is up and it only opens another window. Plain `aegis serve` opens nothing and
+prints the URL instead, for systemd and remote hosts.
 
 `aegis serve --port 8742 --host 127.0.0.1` are the defaults. The token is kept in
 `.aegis/state/token` and reused across restarts; delete the file to rotate it.
 Anything but loopback must be asked for with `--host`.
+
+`aegis serve -d` (`--detach`) starts the server in the background, in its own
+session, so it outlives the terminal or the SSH connection without tmux or screen.
+It returns once the port listens and prints the URLs, the pid and how to stop it;
+the output goes to `.aegis/state/serve.log` and the pid to `.aegis/state/serve.pid`.
+A server that dies while booting is reported with the end of its log, and the
+command exits 1. With `--window` the window opens once it listens. For a host that
+must survive reboots, run plain `aegis serve` under systemd instead.
+
+Behind a reverse proxy, name the public origin: `aegis serve --origin
+https://dev.example` (repeatable) accepts sockets whose `Host` is `dev.example` and
+whose `Origin` is exactly that origin, and prints the public URL with the token.
+Keep `--host` on loopback and let the proxy terminate TLS. Anyone with the token
+drives agents that may run with full permission on that machine, so put a second
+lock in the proxy (basic auth, or a login), and do not proxy `/mcp`: agents reach
+it on loopback.
 
 ## Configuration
 
