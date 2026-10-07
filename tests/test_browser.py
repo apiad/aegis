@@ -90,6 +90,7 @@ class Server:
 def server(tmp_path: Path, fake_claude: str):
     (tmp_path / ".aegis.yaml").write_text(
         "default_agent: opus\nagents:\n  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
+        "  deepseek: {provider: opencode, model: opencode-go/deepseek-v4-pro, effort: high, permission: full}\n"
     )
     s = Server(tmp_path, fake_claude).start()
     yield s
@@ -159,6 +160,11 @@ def test_the_composer_overrides_a_chip_resets_it_and_spawns_with_the_first_messa
     page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
     assert page.input_value("#sp-model") == "opus"
     assert page.is_hidden("#sp-reset")
+    # A select sizes to its longest option; the chips must still sit on one row.
+    tops = page.eval_on_selector_all(
+        "#spawn .pick, #sp-go", "els => els.map(e => e.getBoundingClientRect().top)"
+    )
+    assert max(tops) - min(tops) < 4, tops
 
     page.fill("#sp-model", "sonnet")
     assert page.inner_text("#sp-agent option:checked") == "opus*"
