@@ -139,13 +139,67 @@ def turns_done(pg, n: int) -> None:
 def spawn(pg, prompt: str | None = None) -> str:
     pg.click("#tab-add")
     pg.wait_for_selector("#a2[data-view=spawn]")
-    pg.click("#sp-go")
+    pg.wait_for_function("document.querySelector('#sp-agent').value !== ''")
+    if prompt:
+        pg.fill("#sp-text", prompt)
+        pg.press("#sp-text", "Enter")
+    else:
+        pg.click("#sp-go")
     pg.wait_for_selector("#a2[data-view=session]")
     if prompt:
-        pg.fill("#input", prompt)
-        pg.press("#input", "Enter")
         turns_done(pg, 1)
     return pg.evaluate("location.hash.slice(3)")
+
+
+def test_the_composer_overrides_a_chip_resets_it_and_spawns_with_the_first_message(
+    server, page
+):
+    page.goto(server.url)
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    assert page.input_value("#sp-model") == "opus"
+    assert page.is_hidden("#sp-reset")
+
+    page.fill("#sp-model", "sonnet")
+    assert page.inner_text("#sp-agent option:checked") == "opus*"
+    assert "diff" in page.get_attribute("#sp-model", "class")
+    page.click("#sp-reset")
+    assert page.input_value("#sp-model") == "opus"
+    assert page.inner_text("#sp-agent option:checked") == "opus"
+    assert page.is_hidden("#sp-reset")
+
+    page.fill("#sp-text", "/argv")
+    page.press("#sp-text", "Shift+Enter")
+    assert page.evaluate("document.querySelector('#a2').dataset.view") == "spawn"
+    page.fill("#sp-text", "/argv")
+    page.select_option("#sp-effort", "max")
+    page.press("#sp-text", "Enter")
+    page.wait_for_selector("#a2[data-view=session]")
+    turns_done(page, 1)
+    text = page.inner_text("#entries")
+    assert "/argv" in text and '"--effort", "max"' in text
+
+    page.click("#tab-fleet")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert page.inner_text(".card .ln b") == "opus*"
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    assert page.input_value("#sp-effort") == "high", "a spawn clears the overrides"
+    assert page.input_value("#sp-text") == ""
+    assert page.errors == []
+
+
+def test_a_failed_spawn_keeps_the_text_and_says_why(server, page):
+    page.goto(server.url)
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    page.fill("#sp-cwd", "/")
+    page.fill("#sp-text", "keep me")
+    page.press("#sp-text", "Enter")
+    page.wait_for_function("document.querySelector('#sp-error').textContent !== ''")
+    assert "outside" in page.inner_text("#sp-error")
+    assert page.input_value("#sp-text") == "keep me"
+    assert page.evaluate("document.querySelector('#a2').dataset.view") == "spawn"
 
 
 def tab_ids(pg) -> list[str]:
