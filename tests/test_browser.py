@@ -662,7 +662,9 @@ def test_alt_brackets_cycle_fleet_and_tabs_and_digits_pick_a_tab(server, page):
     page.keyboard.press("Alt+KeyN")
     hash_is(page, "#new")
     page.keyboard.press("Alt+.")
-    assert focused_id(page) == "sp-profile"
+    assert focused_id(page) == "sp-cwd"
+    page.keyboard.press("Enter")  # submits the spawn form
+    page.wait_for_selector("#a2[data-view=session]")
     assert page.errors == []
 
 

@@ -39,7 +39,7 @@ body{background:#000}
 #a2 .keys-btn:hover{color:var(--strong)}
 #a2 .keymap{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(0,0,0,.45)}
 #a2 .keymap[hidden]{display:none}
-#a2 .keymap .panel{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:6px 22px 14px;max-height:80vh;overflow:auto;font-size:12.5px}
+#a2 .keymap .panel{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:6px 22px 14px;max-height:85vh;overflow:auto;font-size:12.5px;display:grid;grid-template-columns:auto auto;column-gap:36px;align-items:start}
 #a2 .keymap th{text-align:left;color:var(--faint);font-family:var(--font-chrome);font-size:11.5px;font-weight:500;padding:12px 0 4px}
 #a2 .keymap td{padding:3px 18px 3px 0;color:var(--ink)}
 #a2 .keymap td:first-child{font-family:var(--font-mono);color:var(--strong);white-space:pre}
@@ -79,7 +79,8 @@ body{background:#000}
 #a2 .row .body{min-width:0}
 #a2 .row.user .body{color:var(--strong);background:var(--raised);padding:9px 12px;border-radius:var(--r);font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
 #a2 .row.user .g{color:var(--accent)}
-#a2 .row.sel{background:var(--accent-soft);box-shadow:inset 2px 0 0 var(--accent);border-radius:2px}
+#a2 .row.sel{background:var(--accent-soft);position:relative}
+#a2 .row.sel:before{content:"";position:absolute;left:-8px;top:0;bottom:0;width:2px;background:var(--accent)}
 #a2 .row.sel .g{background:none}
 #a2 .row.user.pending .body{opacity:.55;border:1px dashed var(--rule)}
 #a2 .row.user.pending .body:after{content:"not read yet";display:block;font-size:11px;color:var(--faint);margin-top:4px;font-family:var(--font-chrome)}
