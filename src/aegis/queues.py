@@ -184,6 +184,13 @@ class Queues:
             return
         self._dispatching = True
         try:
+            # A task logged on a queue that has since lost a field, or been
+            # removed, would wait forever for a slot; fail it with the reason.
+            for t in list(self.tasks.values()):
+                q = self.queues.get(t.queue)
+                if t.status == "pending" and (q is None or "error" in q):
+                    why = q["error"] if q else "it is no longer configured"
+                    self._fail(t, f"its queue {t.queue!r} in .aegis.yaml: {why}")
             for name, q in self.queues.items():
                 if "error" in q:
                     continue

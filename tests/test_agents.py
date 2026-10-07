@@ -538,3 +538,8 @@ async def test_a_logged_task_on_a_queue_that_broke_does_not_stop_dispatch(world)
         a, mcp("queue_enqueue", queue="general", payload="hi", callback=False)
     )
     assert said.startswith("mcp ok")
+    # And the stranded task fails with the queue's error instead of waiting
+    # forever for a slot the queue can no longer give it.
+    old = world.app.queues.tasks["task-old"]
+    assert old.status == "failed"
+    assert "max_parallel is missing" in old.error
