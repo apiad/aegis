@@ -8,6 +8,7 @@ import socket
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,8 @@ class Server:
         self.root, self.claude, self.port = root, claude, _free_port()
         self.releases = root / "pypi.json"
         self.env: dict[str, str] = {}
+        self.proc = None
+        self.url = ""
 
     def environ(self) -> dict[str, str]:
         # Off the network: the latest release is whatever this file says. Off
@@ -38,8 +41,6 @@ class Server:
         hidden = ("DISPLAY", "WAYLAND_DISPLAY", "AEGIS_OPENER")
         env = {k: v for k, v in os.environ.items() if k not in hidden}
         return env | {"AEGIS_RELEASES_URL": self.releases.as_uri()} | self.env
-        self.proc = None
-        self.url = ""
 
     def start(self) -> "Server":
         self.proc = subprocess.Popen(
@@ -92,6 +93,64 @@ def server(tmp_path: Path, fake_claude: str):
         "default_agent: opus\nagents:\n  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
         "  deepseek: {provider: opencode, model: opencode-go/deepseek-v4-pro, effort: high, permission: full}\n"
     )
+    s = Server(tmp_path, fake_claude).start()
+    yield s
+    s.stop()
+
+
+def seed_quota() -> None:
+    """A Claude reading fresh enough that the server adopts it without asking,
+    and an OpenCode Go reading 14 minutes old behind a live 429 backoff. The
+    paths are conftest's temp ones, inherited by `aegis serve`."""
+    now = time.time()
+
+    def at(s):
+        return datetime.fromtimestamp(now + s, timezone.utc).isoformat()
+
+    cache = Path(os.environ["AEGIS_QUOTA_CACHE"])
+    cache.mkdir(parents=True, exist_ok=True)
+    Path(os.environ["CLAUDE_CREDS"]).write_text(
+        json.dumps({"claudeAiOauth": {"accessToken": "test-token"}})
+    )
+    Path(os.environ["OPENCODE_AUTH"]).write_text(
+        json.dumps({"opencode-go": {"key": "test-key"}})
+    )
+    window = lambda kind, pct, s: {  # noqa: E731
+        "kind": kind,
+        "percent": pct,
+        "severity": "normal",
+        "resets_at": at(s),
+        "is_active": True,
+    }
+    (cache / "claude.json").write_text(
+        json.dumps(
+            {
+                "fetched_wall": now,
+                "backoff_until_wall": 0.0,
+                "windows": [
+                    window("session", 71.0, 3 * 3600 + 6 * 60),
+                    window("weekly_all", 47.0, 2 * 86400),
+                ],
+            }
+        )
+    )
+    (cache / "opencode-go.json").write_text(
+        json.dumps(
+            {
+                "fetched_wall": now - 840,
+                "backoff_until_wall": now + 240,
+                "windows": [window("rolling", 64.0, 3480)],
+            }
+        )
+    )
+
+
+@pytest.fixture
+def quota_server(tmp_path: Path, fake_claude: str):
+    (tmp_path / ".aegis.yaml").write_text(
+        "default_agent: opus\nagents:\n  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
+    )
+    seed_quota()
     s = Server(tmp_path, fake_claude).start()
     yield s
     s.stop()
@@ -498,6 +557,58 @@ def test_the_running_build_and_the_latest_release_show_in_the_top_bar_and_sideba
     assert page.inner_text("#ver-latest").startswith("99.0.0")
     if not run["dev"]:
         assert "update" in page.inner_text("#ver-latest")
+    assert page.errors == []
+
+
+def test_the_fleet_band_and_the_sidebar_show_quota_and_the_host(quota_server, page):
+    page.goto(quota_server.url)
+    five = page.locator("#band .gauge[data-kind=session]")
+    five.wait_for()
+    # 71% with 38% of the window gone: on pace for about 187%, so red.
+    assert "critical" in five.get_attribute("class")
+    assert "71%" in five.inner_text()
+    assert re.search(r"→ 18\d%", five.inner_text())
+    assert five.locator(".tick").count() == 1
+    week = page.locator("#band .gauge[data-kind=weekly_all]")
+    assert "normal" in week.get_attribute("class") and "→" not in week.inner_text()
+    stale = page.locator("#band .gauge[data-kind=rolling]")
+    assert "stale" in stale.get_attribute("class")
+    assert stale.locator(".tick").count() == 0
+    assert "retrying in" in page.inner_text("#band-quota-age")
+    page.wait_for_selector("#band-host .gauge")
+    assert "CPU" in page.inner_text("#band-host")
+
+    spawn(page)
+    page.wait_for_selector("#s-quota .qrow.critical")
+    assert "Claude 5 hours" in page.inner_text("#s-quota")
+    assert "OpenCode" not in page.inner_text("#s-quota")
+    assert page.errors == []
+
+
+def test_quota_rows_survive_session_updates_so_their_tooltip_stays(
+    quota_server, browser, page
+):
+    """A rebuilt row loses its hover tooltip. Sessions patch up to four times a
+    second per working agent and quota about once a minute, so a sessions
+    patch must not rebuild the quota rows (final review of #146)."""
+    page.goto(quota_server.url)
+    row = "#band .gauge[data-kind=session]"
+    page.wait_for_selector(row)
+    page.evaluate(f"document.querySelector('{row}').__kept = true")
+    other = new_page(browser, [])
+    other.goto(quota_server.url)
+    other.wait_for_selector("#a2[data-view=fleet]")
+    spawn(other, "hello")
+    page.wait_for_selector("#cards .card")
+    assert page.evaluate(f"document.querySelector('{row}').__kept === true")
+
+    page.click("#cards .card")
+    page.wait_for_selector("#s-quota .qrow")
+    page.evaluate("document.querySelector('#s-quota .qrow').__kept = true")
+    page.fill("#input", "again")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    assert page.evaluate("document.querySelector('#s-quota .qrow').__kept === true")
     assert page.errors == []
 
 

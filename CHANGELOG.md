@@ -5,6 +5,67 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-07
+
+### Added
+
+- **`aegis` alone opens aegis in its own window.** With no command it serves as
+  `aegis serve` does and, once the port listens, opens the URL in a Chromium-family
+  browser in app mode (`--app=`): no tabs, no address bar, no token in sight. Before,
+  bare `aegis` failed with "Missing command" and the URL had to be pasted into a tab.
+  If this root's server is already running, `aegis` opens a window on it and exits;
+  a port held by anything else still fails. The browser is the desktop default when
+  it is Chromium-family, else the first Chrome, Chromium, Edge or Brave on PATH, else
+  the system browser; `--browser` or `AEGIS_BROWSER` overrides it. `aegis serve
+  --window` does the same with serve's options.
+
+- **`aegis serve -d` runs in the background.** `--detach` starts the server in its
+  own session, so it survives the terminal and SSH hangups, and returns once the
+  port listens, printing the URL with its token, the pid and the `kill` that stops
+  it. Output goes to `.aegis/state/serve.log` and the pid to `.aegis/state/serve.pid`.
+  Before, a remote host needed tmux, screen or a hand-rolled `setsid nohup`, which
+  hid boot errors until someone read the log; now a server that dies before
+  listening fails the command with the end of its log.
+
+- **The client shows which aegis is serving it and the newest release.** The
+  top bar carries the running version next to the server name, and the session
+  sidebar ends with an "aegis on <host>" section: the release number with
+  `✓ current` or `↑ update` against PyPI, or, for a build from git, the short
+  commit with a `dev` badge, its ref and the release it is based on. A git build
+  reports the last release number from its metadata, so until now two dev
+  builds looked the same. The server asks PyPI at most once an hour; offline,
+  the latest release reads `unknown` and nothing else changes.
+
+- **`aegis serve --origin` runs aegis behind an HTTPS reverse proxy.** The
+  websocket accepted only a loopback `Host` with an `http://` origin, so behind
+  Caddy at a public name every socket closed with 4403 and the page never booted.
+  `--origin https://dev.example` (repeatable) accepts sockets whose `Host` is that
+  origin's host and whose `Origin` is exactly that origin; the token is still
+  required, and `serve` prints the public URL next to the local one.
+
+- **Agents can hand you files.** The new `file_send` tool copies a file into the
+  server's state and puts it in the session's transcript: images, PDFs, HTML
+  reports, audio and video preview inline, Markdown renders, text and CSV show
+  their first 40 lines. Every file is a card with Open, Download and, when your
+  browser runs on the server's own desktop, Open natively, which hands the file
+  to the desktop's app for it. aegis serves it at an unguessable
+  `/files/<id>/<name>` link, so it works the same from a browser on the server's
+  machine and from one reaching it remotely. Until now an agent could only print
+  a path. HTML, SVG and XML run sandboxed in an opaque origin, so a report's
+  script cannot read the token that drives your agents.
+
+- **The quota and host gauges are back.** The Fleet view opens with a band: this
+  server's sessions by state; CPU, RAM, disk and average context; and one gauge
+  per window of every subscription aegis holds credentials for (Claude's 5 hours
+  and week, OpenCode Go's 5 hours, week and month). A tick on each bar marks how
+  much of the window is gone, so fill past it means spending faster than the
+  window refills; the projection at reset prints from 80%. The session sidebar
+  gets a Quota section with Claude's two windows. Agents read the same numbers
+  with `quota_read`, which never asks the vendor. Readings are shared with every
+  aegis on the machine through `~/.cache/aegis/quota/`. The band costs the Fleet
+  view's first paint about 14 ms (CI's benchmark, `fleet_load_ms` 66.1 → 80.5 on
+  one runner): it subscribes to two more channels and draws the gauges.
+
 ## [2.0.1] - 2026-10-06
 
 ### Changed

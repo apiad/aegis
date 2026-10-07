@@ -1,6 +1,6 @@
 [project]
 name = "aegis-harness"
-version = "2.0.1"
+version = "2.1.0"
 description = "A web-native workplace for coding agents: Claude Code sessions in browser tabs, with monitors, queues and handoffs over MCP."
 readme = "README.md"
 authors = [

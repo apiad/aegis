@@ -31,6 +31,11 @@
   <main class="view v-boot"><div class="notice" id="boot-text">Connecting…</div></main>
 
   <main class="view v-fleet">
+    <section class="band" id="band">
+      <div><h5 id="band-server">server</h5><div class="counts" id="band-counts"></div></div>
+      <div><h5>Host</h5><div id="band-host"></div></div>
+      <div class="q" id="band-quota-col" hidden><h5><span>Quota</span><span class="age" id="band-quota-age"></span></h5><div id="band-quota"></div></div>
+    </section>
     <section class="cards" id="cards"></section>
     <section class="archive">
       <div class="archive-head"><h3>Archive</h3><input id="arch-q" placeholder="Filter by title, handle or directory" spellcheck="false"></div>
@@ -91,6 +96,7 @@
         <div class="kv"><span id="s-tokens">no turn yet</span><span id="s-pct"></span></div>
         <div class="kv"><span>Cost</span><span id="s-cost">$0.00</span></div>
       </div>
+      <div class="sec" id="s-quota-sec" hidden><h4>Quota</h4><div id="s-quota"></div></div>
       <div class="sec acts live-only"><button class="btn" id="stop-session" title="End the process; the next message resumes it">Stop</button><button class="btn" id="close" title="Archive it: the tab goes away in every browser">Close</button></div>
       <div class="sec read-only"><p class="sub">Archived. Reopen it to continue the conversation.</p><button class="btn primary" id="reopen">Reopen</button></div>
       <div class="sec ver" id="ver-sec" hidden><h4 id="ver-head">aegis</h4>

@@ -2,6 +2,7 @@
 // Every field comes from the session's meta; nothing here computes activity.
 
 import { dotClass } from "./tabs.js";
+import { hostRow, noteRow, providerLine, quotaHeading, quotaRow } from "./gauges.js";
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -93,4 +94,50 @@ export function renderArchive(box, items, { onReopen, onRead }) {
     t.append(tr);
   }
   box.replaceChildren(t);
+}
+
+const STATE_ORDER = ["working", "idle", "error", "stopped"];
+
+// The band over the cards: this server's sessions by state and its host.
+// Counts and the average context come from the sessions the client already
+// holds; the host meters from the host channel.
+export function renderBand(band, { metas, host, server }) {
+  band.querySelector("#band-server").textContent = server || "server";
+  const counts = new Map();
+  for (const m of metas) counts.set(m.state, (counts.get(m.state) || 0) + 1);
+  const rows = STATE_ORDER.filter((s) => counts.get(s)).map((s) => {
+    const d = el("div");
+    d.append(el("span", `dot ${dotClass(s)}`), el("b", null, String(counts.get(s))), document.createTextNode(s));
+    return d;
+  });
+  band.querySelector("#band-counts").replaceChildren(...(rows.length ? rows : [el("div", "empty", "no sessions")]));
+
+  const meters = [];
+  if (host) {
+    meters.push(hostRow("CPU", host.cpu, ""));
+    meters.push(hostRow("RAM", host.ram.pct, `${host.ram.used_gb} / ${host.ram.total_gb} GB`));
+    if (host.disk) meters.push(hostRow("Disk", host.disk.pct, `${host.disk.used_gb} / ${host.disk.total_gb} GB`));
+  }
+  const live = metas.filter((m) => m.state !== "stopped" && m.context_window && m.context_tokens);
+  if (live.length) {
+    const avg = Math.round(live.reduce((a, m) => a + Math.min(100, (100 * m.context_tokens) / m.context_window), 0) / live.length);
+    meters.push(hostRow("Context", avg, `avg of ${live.length} live`));
+  }
+  band.querySelector("#band-host").replaceChildren(...meters);
+}
+
+// The quota column, apart from the rest of the band: sessions patch up to four
+// times a second per working agent and quota about once a minute, and a
+// rebuilt row loses the hover tooltip that spells its reading out.
+export function renderBandQuota(band, { quota, now }) {
+  const providers = (quota && quota.providers) || [];
+  band.querySelector("#band-quota-col").hidden = !providers.length;
+  band.querySelector("#band-quota-age").textContent = quotaHeading(providers, now);
+  const out = [];
+  for (const p of providers) {
+    out.push(el("div", "prov", providerLine(p, now)));
+    if (p.state === "failed") out.push(noteRow(p.note));
+    else for (const w of p.windows) out.push(quotaRow(p, w, now));
+  }
+  band.querySelector("#band-quota").replaceChildren(...out);
 }
