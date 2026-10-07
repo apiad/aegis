@@ -115,7 +115,13 @@ else {
           setChanged = true;
         }
       }
-      if (!frame) frame = requestAnimationFrame(flushSessions);
+      // A session added or removed redraws at once: a reply that navigates
+      // to it (spawn, reopen) arrives right after this patch.
+      if (setChanged) {
+        setChanged = false;
+        changed.clear();
+        onSessions();
+      } else if (!frame) frame = requestAnimationFrame(flushSessions);
     },
   );
   conn.subscribe(
@@ -132,9 +138,8 @@ else {
   conn.connect();
 }
 
-// Sessions patches redraw once a frame, however many arrive. A patch that only
-// updates sessions the page already shows redraws their tab and card and
-// nothing else; a session added or removed redraws the lists (#158).
+// Patches that only update sessions the page already shows redraw once a
+// frame, however many arrive, and only those sessions' tab and card (#158).
 let changed = new Set();
 let setChanged = false;
 let frame = 0;
@@ -143,11 +148,6 @@ function flushSessions() {
   frame = 0;
   const ids = changed;
   changed = new Set();
-  if (setChanged) {
-    setChanged = false;
-    onSessions();
-    return;
-  }
   if (!booted) return;
   ordered = ordered.map((m) => sessions.get(m.log_id));
   const r = route();

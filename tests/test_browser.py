@@ -385,7 +385,15 @@ def test_close_in_one_browser_removes_the_tab_in_another(server, browser, page):
     assert errors == [] and page.errors == []
 
 
-def test_reopen_from_the_archive_and_rename(server, page):
+# A slow runner paints late: a frame 300 ms out makes any redraw left to the
+# next frame visible to the test (#161's CI failure).
+SLOW_FRAMES = "const raf = window.requestAnimationFrame; window.requestAnimationFrame = (f) => setTimeout(() => raf(f), 300);"
+
+
+@pytest.mark.parametrize("frames", ["normal", "slow"])
+def test_reopen_from_the_archive_and_rename(server, page, frames):
+    if frames == "slow":
+        page.add_init_script(SLOW_FRAMES)
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     a = spawn(page, "an old conversation")
