@@ -1,4 +1,5 @@
 import asyncio
+import json
 import stat
 import sys
 from pathlib import Path
@@ -28,6 +29,23 @@ async def until(pred, timeout: float = 3.0, what: str = "condition") -> None:
         if asyncio.get_running_loop().time() > end:
             raise AssertionError(f"timed out waiting for {what}")
         await asyncio.sleep(0.01)
+
+
+async def argv_of(s) -> list[str]:
+    """The argv the session's current claude process was started with, as the
+    fake reports it for ``/argv``."""
+
+    def prose() -> list[str]:
+        return [e["md"] for e in s.entries() if e["kind"] == "prose"]
+
+    before = len(prose())
+    await s.send("/argv")
+    await until(
+        lambda: s.status == "idle" and len(prose()) > before,
+        timeout=8,
+        what="the /argv turn",
+    )
+    return json.loads(prose()[-1].removeprefix("argv: "))
 
 
 # -- run options, carried over from the legacy tree's conftest --------------------
