@@ -7,7 +7,8 @@
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
 import { TabOrder, renderTabs } from "./tabs.js";
-import { ago, money, renderArchive, renderCards } from "./fleet.js";
+import { ago, money, renderArchive, renderBand, renderCards } from "./fleet.js";
+import { age, quotaSideRow } from "./gauges.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -21,6 +22,14 @@ if (params.has("token")) {
   history.replaceState(null, "", location.pathname + (rest ? `?${rest}` : "") + location.hash);
 }
 const token = sessionStorage.getItem("aegis.token");
+
+// Quota is one subscription for the page: the band and the sidebar both draw
+// it. Host is subscribed only while the Fleet view shows, so a server nobody
+// watches samples nothing.
+let quota = { providers: [] };
+let host = null;
+let unsubHost = null;
+const nowS = () => Date.now() / 1000;
 
 // -- theme ----------------------------------------------------------------
 const themePick = $("theme");
@@ -99,6 +108,17 @@ else {
       onSessions();
     },
   );
+  conn.subscribe(
+    "quota",
+    (snap) => {
+      quota = snap || { providers: [] };
+      drawQuota();
+    },
+    (ops) => {
+      for (const op of ops) if (op.set) quota = op.set;
+      drawQuota();
+    },
+  );
   conn.connect();
 }
 
@@ -130,24 +150,82 @@ function render() {
     follow(null);
     show("fleet");
     renderCards($("cards"), ordered, (id) => go(`#s=${id}`));
+    watchHost(true);
+    drawBand();
     if (!archiveLoaded) loadArchive();
     document.title = "Fleet · aegis";
   } else if (r.view === "spawn") {
+    watchHost(false);
     follow(null);
     show("spawn");
     document.title = "New session · aegis";
   } else if (r.view === "session") {
+    watchHost(false);
     follow(r.id);
     show("session");
     renderMeta(sessions.get(r.id));
+    drawSideQuota();
   } else {
+    watchHost(false);
     follow(r.id);
     show("session");
     const m = archived.find((x) => x.log_id === r.id);
     if (m) renderMeta({ ...m, state: "archived" });
     else if (!archiveLoaded) loadArchive().then(render);
+    drawSideQuota();
   }
 }
+
+function watchHost(on) {
+  if (on && !unsubHost) {
+    unsubHost = conn.subscribe(
+      "host",
+      (snap) => {
+        host = snap;
+        drawBand();
+      },
+      (ops) => {
+        for (const op of ops) if ("set" in op) host = op.set;
+        drawBand();
+      },
+    );
+  } else if (!on && unsubHost) {
+    unsubHost();
+    unsubHost = null;
+    host = null;
+  }
+}
+
+function drawBand() {
+  if (root.dataset.view !== "fleet") return;
+  renderBand($("band"), { metas: ordered, quota, host, server: conn.server, now: nowS() });
+}
+
+function drawSideQuota() {
+  const p = quota.providers.find((x) => x.name === "claude");
+  $("s-quota-sec").hidden = !p;
+  if (!p) return;
+  const now = nowS();
+  const rows = p.state === "failed" ? [] : p.windows.map((w) => quotaSideRow(p, w, now));
+  const foot = document.createElement("div");
+  foot.className = "kv dim";
+  const note = document.createElement("span");
+  if (p.state === "ok") note.textContent = `read ${ago(p.read_at)}`; // "read just now", "read 2m ago"
+  else {
+    note.className = "gnote";
+    note.textContent = p.state === "stale" ? `${p.note}, reading ${age(now - p.read_at)} old` : p.note;
+  }
+  foot.append(note);
+  $("s-quota").replaceChildren(...rows, foot);
+}
+
+function drawQuota() {
+  if (root.dataset.view === "fleet") drawBand();
+  else if (root.dataset.view === "session") drawSideQuota();
+}
+
+// Countdowns and the tick move with the clock; their unit is minutes.
+setInterval(drawQuota, 30 * 1000);
 
 function follow(id) {
   if (shown === id) return;

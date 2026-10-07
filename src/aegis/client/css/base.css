@@ -202,3 +202,35 @@ body{background:#000}
 #a2 .badge{font-size:10.5px;padding:1px 7px;border-radius:9px;background:var(--accent-soft);color:var(--accent);font-family:var(--font-chrome)}
 #a2 .card .ft .mons{color:var(--accent)}
 #a2 .row.tool.comms .tn,#a2 .row.tool .g.comms{color:var(--comms)}
+
+/* gauges: the Fleet band and the sidebar's Quota section (js/gauges.js).
+   Quota bars are --ok when calm, never --fill: in Ink --fill and --warn are
+   the same amber, so a calm bar would read as a warning. */
+#a2 .band{display:grid;grid-template-columns:minmax(170px,.55fr) 1fr 1.35fr;gap:28px;padding:16px 20px 14px;border-bottom:1px solid var(--rule);background:var(--side)}
+#a2 .band h5{margin:0 0 8px;font-size:12px;font-weight:500;color:var(--faint);font-family:var(--font-head);display:flex;justify-content:space-between;gap:8px}
+#a2 .band h5 .age{font-weight:400;font-family:var(--font-chrome);font-size:11px}
+#a2 .band .counts{display:grid;gap:5px;font-size:12.5px;font-family:var(--font-chrome);color:var(--muted)}
+#a2 .band .counts div{display:flex;align-items:center;gap:8px}
+#a2 .band .counts b{color:var(--strong);font-weight:600;min-width:1.6ch;text-align:right}
+#a2 .band .prov{font-size:11px;color:var(--faint);font-family:var(--font-chrome);margin:8px 0 2px}
+#a2 .band .prov:first-child{margin-top:0}
+@media (max-width:1100px){#a2 .band{grid-template-columns:1fr 1fr}#a2 .band .q{grid-column:1/-1}}
+#a2 .gauge{display:grid;grid-template-columns:70px minmax(60px,1fr) 150px;gap:10px;align-items:center;font-size:12px;font-family:var(--font-chrome);color:var(--muted);margin:4px 0}
+#a2 .gauge .bar{margin:0;position:relative}
+#a2 .gauge .val{display:flex;gap:8px;justify-content:flex-end;white-space:nowrap}
+#a2 .gauge .val b{font-weight:500;color:var(--ink)}
+#a2 .gauge .val .rst{color:var(--faint)}
+#a2 .gauge .note{grid-column:2/-1;color:var(--warn)}
+#a2 .bar.q i{background:var(--ok)}
+#a2 .bar.h i{background:var(--muted)}
+#a2 .bar.warning i{background:var(--warn)}
+#a2 .bar.critical i{background:var(--err)}
+#a2 .warning .val b,#a2 .warning .val .proj,#a2 .sv.warning{color:var(--warn)}
+#a2 .critical .val b,#a2 .critical .val .proj,#a2 .sv.critical{color:var(--err);font-weight:600}
+#a2 .bar .tick{position:absolute;top:-2px;bottom:-2px;width:2px;margin-left:-1px;background:var(--strong);opacity:.7;border-radius:1px}
+#a2 .stale .bar i{background:var(--faint)}
+#a2 .stale .val b{color:var(--faint);font-weight:500}
+#a2 .side .qrow{margin-bottom:9px}
+#a2 .side .qrow .bar{position:relative;overflow:visible;margin:4px 0 0}
+#a2 .side .qrow .bar .tick{top:-1px;bottom:-1px}
+#a2 .side .gnote{color:var(--warn)}
