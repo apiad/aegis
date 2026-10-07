@@ -7,11 +7,13 @@ enqueued (the vision's security model). People can do anything.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
+from . import files
 from .monitors import iso_now
 from .ops import Caller, OpError
 from .session import Archived
@@ -67,6 +69,16 @@ class Read(_Strict):
     target: str = Field(description="A session's handle.")
     last: int = Field(30, ge=1, le=200, description="How many entries back.")
     tools: bool = Field(False, description="Include tool calls.")
+
+
+class FileSend(_Strict):
+    path: str = Field(
+        min_length=1,
+        description="The file to hand to the person; relative to your session's cwd.",
+    )
+    caption: str | None = Field(
+        None, description="A line of Markdown shown above the file."
+    )
 
 
 class NoArgs(_Strict):
@@ -262,6 +274,27 @@ def register_agent_ops(app: App) -> None:
             }
             for s in reg.open_sessions()
         ]
+
+    @r.op("file.send", FileSend, agent=True)
+    async def file_send(p: FileSend, caller):
+        """Hand a file to the person: it shows in your transcript with a preview
+        when the browser can draw one, and Open and Download links. The file is
+        copied, so later changes to it are not seen."""
+        s = own(caller)
+        path = Path(p.path).expanduser()
+        if not path.is_absolute():
+            path = s.spec.cwd / path
+        try:
+            rec = await asyncio.to_thread(files.store, app.roots.state_root, path)
+        except files.FileError as e:
+            raise OpError(e.code, e.message) from e
+        s.record_file({**rec, "caption": p.caption})
+        return {
+            "url": files.url(rec["file_id"], rec["name"]),
+            "name": rec["name"],
+            "size": rec["size"],
+            "mime": rec["mime"],
+        }
 
     @r.op("meta", NoArgs, agent=True)
     async def meta(_, caller):

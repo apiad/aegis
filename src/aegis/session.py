@@ -332,6 +332,10 @@ class Session:
             )
             self._set(status="error")
 
+    def record_file(self, record: dict) -> None:
+        """A file sent by the agent (files.store's record plus a caption)."""
+        self._record(record)
+
     def _record(self, record: dict, events: list | None = None) -> None:
         fold = self.fold()
         stored = self.store.append({"ts": time.time(), "src": "aegis", **record})
