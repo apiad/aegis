@@ -29,6 +29,7 @@ spawned, and per-task overrides on `queue_enqueue`.
 | Where the priming lives | `priming:` text inside the agent's entry in `.aegis.yaml` | One place to read an agent; Alex asked for it in the agent config |
 | How the priming reaches the model | After aegis's primer, in the same `--append-system-prompt` | aegis's primer is what makes its tools usable; an agent adds to it, never removes it |
 | A spawn with no agent | Uses `default_agent`. With neither, the spawn fails with `no_agent` | No hard-coded fallback: every session starts from a preset someone wrote down |
+| Defaults in `.aegis.yaml` | None. An agent names its harness, model, effort and permission; a queue names its agent and `max_parallel`. A missing field is an error that names the agent or queue and the field | Alex: nothing in the YAML is a default. A default the loader fills in is a setting nobody chose, and nothing shows it was filled |
 | Which priming a resumed session gets | The text recorded at spawn, not the current YAML | Claude Code does not keep the system prompt in its session file, so a resume passes it again; reading the YAML would change old sessions when an agent is edited |
 | Agents spawning | `session.spawn` is marked for agents, with the same params | DESIGN.md: one registry, every caller. The vision spec allows an agent to spawn on its own server |
 | A spawned session reporting back | Nothing new. The spawner uses `peer_read` or `peer_handoff` | Both exist; a callback is what queues are for |
@@ -54,10 +55,26 @@ agents:
 default_agent: opus
 ```
 
-`priming:` is optional; without it the session gets only aegis's primer. The
-other fields and their accepted forms are unchanged (`profiles.py`): flat
-`harness:`, `provider:` as a string, or a nested `provider:` mapping. A field an
-agent omits keeps the loader's current default.
+Every agent names `harness` (in any of the three forms `profiles.py` accepts
+today: flat `harness:`, `provider:` as a string, or a nested `provider:`
+mapping), `model`, `effort` and `permission`. The loader stops filling in
+`claude-code`, `high` and `auto`, and an empty `model` no longer means the CLI's
+default. `priming:` is the one optional key: without it the session gets only
+aegis's primer, and nothing is filled in its place.
+
+An agent with a missing or invalid field does not take the others down. It is
+listed by `agents.list` as disabled with its `error`, such as
+`effort is missing`, and spawning it fails with `bad_agent` and the same text.
+A `default_agent` that names a missing or broken agent fails the spawn the same
+way.
+
+The same rule holds for `queues:`. Today a queue without `agent` is dropped
+without a word and `max_parallel` falls back to 1 (`queues.py`). After this
+change a queue must name both, and `queue_enqueue` on a queue that does not
+fails with `bad_config` naming the queue and the field.
+
+The Workspace's own `.aegis.yaml` needs one edit when this lands: the
+`deepseek` agent has no `effort`.
 
 ## Operations
 
@@ -65,8 +82,9 @@ agent omits keeps the loader's current default.
 
 Returns what the chips need, computed in Python so the browser only draws it:
 
-- `agents`: name, harness, model, effort, permission, `enabled` (its harness has
-  a driver) and `has_priming`. The priming text itself does not cross the wire.
+- `agents`: name, harness, model, effort, permission, `enabled` (its fields are
+  complete and its harness has a driver), `error` when it is not, and
+  `has_priming`. The priming text itself does not cross the wire.
 - `default`: `default_agent`, or null.
 - `harnesses`: each known harness name with `supported`. Today `claude-code` is
   supported and `opencode` is listed but not.
@@ -86,7 +104,7 @@ Returns what the chips need, computed in Python so the browser only draws it:
 
 Resolution, per field: the override if given, otherwise the agent's value. The
 priming is always the agent's. Errors: `no_agent` (no `agent` and no
-`default_agent`), `unknown_agent`, `harness_unsupported` (the resolved harness,
+`default_agent`), `unknown_agent`, `bad_agent`, `harness_unsupported` (the resolved harness,
 whether from the agent or an override), `bad_cwd`, `bad_config`,
 `claude_not_found`.
 
@@ -153,7 +171,10 @@ All of the repo's usual shape: the fake claude against a real `aegis serve`.
 - Priming: an agent with `priming:` spawns with aegis's primer followed by the
   priming in `--append-system-prompt`. Edit the YAML, stop the session, send to
   it: the resumed process carries the old text.
-- Resolution: `no_agent`, `unknown_agent`, and `harness_unsupported` from an
-  override.
+- Resolution: `no_agent`, `unknown_agent`, `harness_unsupported` from an
+  override, and `bad_agent` for an agent missing `effort`, while the other
+  agents in the same file still spawn.
+- Queues: a queue without `max_parallel` fails `queue_enqueue` with
+  `bad_config` naming it.
 - Old stores: a meta with `profile` and no `agent` still boots into the archive
   with its agent name.
