@@ -148,6 +148,14 @@ system entry.
 localhost port is not trusted either: the websocket needs the server's token and
 its own origin, because any page in the browser can open a socket to localhost.
 
+**A sent file's URL is its key, and its content runs nowhere near the token.**
+`file_send` copies the file into the state root under 128 random bits, and
+`/files/<id>/<name>` serves it to anyone with the link, because `<img>`, a new tab
+and a download cannot carry the token the websocket needs. HTML, SVG and XML are
+served with `Content-Security-Policy: sandbox` (HTML with `allow-scripts`, so a
+report still runs) and framed with `sandbox`: on aegis's own origin their script
+could read the token from `sessionStorage` and drive every agent (`files.py`).
+
 **Performance is measured on every PR and never gates.** `scripts/bench.py`
 replays a recorded transcript through the fake harness in
 `tests/fake_claude.py`, and CI compares the PR's base and head on the same

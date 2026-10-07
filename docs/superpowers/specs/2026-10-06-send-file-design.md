@@ -1,6 +1,9 @@
 # send_file: agents hand files to the person
 
-**Status: designed, 2026-10-06** (issue #142). Designed with Alex. Not built yet.
+**Status: implemented, 2026-10-06** (issue #142), following
+`docs/superpowers/plans/2026-10-06-send-file.md`. Designed with Alex. One change
+from the first draft: HTML is served with `sandbox allow-scripts`, not a bare
+`sandbox`, which stopped every script and so every interactive report.
 
 ## What it delivers
 
@@ -28,7 +31,7 @@ configurable size limit.
 | Copy or point at the path | Copy into the server's state when sent | Agents overwrite and delete their working files, and an archived session must still show what it was sent |
 | How a browser is allowed to fetch it | The URL is the capability: `/files/<id>/<name>`, `<id>` 128 random bits | The token lives in the tab's `sessionStorage` and only the websocket carries it; `<img src>`, a new tab and a download cannot. An unguessable link works in all three |
 | What Open shows | The raw file, served with a type the browser displays | Covers images, PDFs, HTML reports, audio and video, most of what agents send. A viewer page follows once Markdown and CSV are common |
-| Active content | HTML, SVG and XML are served with `Content-Security-Policy: sandbox`, and framed with `sandbox` | On aegis's origin a script in an agent's HTML could read the token from `sessionStorage` and drive every agent. The sandbox gives it an opaque origin |
+| Active content | HTML, SVG and XML are served with `Content-Security-Policy: sandbox` (`sandbox allow-scripts` for HTML), and HTML is framed with `sandbox=allow-scripts` | On aegis's origin a script in an agent's HTML could read the token from `sessionStorage` and drive every agent. The sandbox gives it an opaque origin |
 | PDF | Served without the sandbox policy | Chrome refuses to render a PDF under `CSP: sandbox`, and a PDF in the browser's viewer has no access to the page's storage |
 | Where the preview kind is decided | On the server, when the file is recorded | The fold already makes every drawing decision (entries.py); the client only draws |
 | One file or many per call | One | An agent with several files calls the tool once per file; each gets its own caption |
@@ -78,7 +81,7 @@ sniff of the first 4 KB when the guess is empty or `application/octet-stream`
 |---|---|---|---|
 | `image` | png, jpeg, gif, webp, avif, svg | `<img>`, at most ~360 px tall; click opens | its type; SVG sandboxed |
 | `pdf` | pdf | `<iframe loading=lazy>`, ~480 px tall | `application/pdf` |
-| `html` | html, htm | `<iframe sandbox=allow-scripts loading=lazy>`, ~480 px | `text/html`, sandboxed |
+| `html` | html, htm | `<iframe sandbox=allow-scripts loading=lazy>`, ~480 px | `text/html`, `sandbox allow-scripts` |
 | `markdown` | md, markdown | excerpt rendered with the transcript's Markdown renderer | `text/plain; charset=utf-8` |
 | `text` | any other text: code, csv, json, yaml, logs | excerpt in a monospace box | `text/plain; charset=utf-8` |
 | `audio` | audio/* | `<audio controls preload=metadata>` | its type |
@@ -118,7 +121,8 @@ detail = {url, download, preview, mime, size, excerpt}
   changes.
 - `?download=1`: `Content-Disposition: attachment; filename*=…`.
 - Without it: the "served for Open as" column above. `Content-Security-Policy:
-  sandbox` on `html` and SVG, and on any XML type; `attachment` for `other`.
+  sandbox allow-scripts` on `html`, `sandbox` on SVG and any XML type;
+  `attachment` for `other`.
 - `Referrer-Policy: no-referrer`, so a page an HTML report links to does not
   learn the capability URL.
 
