@@ -32,6 +32,8 @@ class Server:
         self.root, self.claude, self.port = root, claude, _free_port()
         self.releases = root / "pypi.json"
         self.env: dict[str, str] = {}
+        self.proc = None
+        self.url = ""
 
     def environ(self) -> dict[str, str]:
         # Off the network: the latest release is whatever this file says. Off
@@ -39,8 +41,6 @@ class Server:
         hidden = ("DISPLAY", "WAYLAND_DISPLAY", "AEGIS_OPENER")
         env = {k: v for k, v in os.environ.items() if k not in hidden}
         return env | {"AEGIS_RELEASES_URL": self.releases.as_uri()} | self.env
-        self.proc = None
-        self.url = ""
 
     def start(self) -> "Server":
         self.proc = subprocess.Popen(
