@@ -160,6 +160,7 @@ function render() {
     follow(null);
     show("fleet");
     renderCards($("cards"), ordered, (id) => go(`#s=${id}`));
+    fleetMark(false);
     watchHost(true);
     drawBand();
     if (newView) drawQuota();
@@ -408,6 +409,40 @@ async function loadArchive() {
     onReopen: reopen,
     onRead: (id) => go(`#read=${id}`),
   });
+  fleetMark(false);
+}
+
+// The Fleet's selection: a card or an archive row, by log id, re-marked after
+// every redraw because both are rebuilt from scratch.
+let fleetSel = null;
+
+function fleetItems() {
+  return [...document.querySelectorAll("#cards .card, #arch-list tr[data-id]")];
+}
+
+function fleetMark(scroll) {
+  for (const n of document.querySelectorAll("#cards .sel, #arch-list .sel")) n.classList.remove("sel");
+  const n = fleetItems().find((x) => x.dataset.id === fleetSel);
+  if (!n) {
+    fleetSel = null;
+    return;
+  }
+  n.classList.add("sel");
+  if (scroll) n.scrollIntoView({ block: "nearest" });
+}
+
+function fleetMove(delta) {
+  const items = fleetItems();
+  const i = items.findIndex((x) => x.dataset.id === fleetSel);
+  const n = i < 0 ? items[0] : items[i + delta];
+  if (!n) return;
+  fleetSel = n.dataset.id;
+  fleetMark(true);
+}
+
+function fleetOpen() {
+  const n = fleetItems().find((x) => x.dataset.id === fleetSel);
+  if (n) go(n.classList.contains("card") ? `#s=${fleetSel}` : `#read=${fleetSel}`);
 }
 
 $("arch-q").addEventListener("input", () => {
@@ -501,7 +536,10 @@ installKeys(
       if (v === "session" || v === "read") {
         $("tr").focus({ preventScroll: true });
         transcript.pick();
-      } else if (v === "fleet") $("cards").focus({ preventScroll: true });
+      } else if (v === "fleet") {
+        $("cards").focus({ preventScroll: true });
+        if (!fleetSel) fleetMove(1);
+      }
     },
     cycle(ev) {
       const all = ["#fleet", ...ordered.map((m) => `#s=${m.log_id}`)];
@@ -516,6 +554,10 @@ installKeys(
     toggle: () => transcript.toggle(),
     press: () => transcript.press(),
     none() {},
+    fleetNext: () => fleetMove(1),
+    fleetPrev: () => fleetMove(-1),
+    fleetOpen,
+    filter: () => $("arch-q").focus(),
     spawn: () => go("#new"),
     tab(ev) {
       const n = Number(ev.altKey ? ev.code.slice(5) : ev.key);

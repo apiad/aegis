@@ -742,3 +742,31 @@ def test_a_selected_row_keeps_its_selection_when_it_updates_and_enter_opens_it(
     page.keyboard.press("Enter")
     assert page.evaluate("document.activeElement.parentElement.open") is not was
     assert page.errors == []
+
+
+def test_fleet_cards_and_archive_rows_walk_with_j_and_open_with_enter(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a, b = spawn(page, "alpha"), spawn(page, "beta")
+    page.click("#close")  # b goes to the archive
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.reload()  # the archive misses a Close until a reload (#160)
+    page.wait_for_selector(f"#arch-list tr[data-id='{b}']")
+    sel = "document.querySelector('#cards .sel, #arch-list .sel')?.dataset.id ?? null"
+    page.keyboard.press("Alt+,")
+    assert page.evaluate(sel) == a
+    page.keyboard.press("j")
+    assert page.evaluate(sel) == b
+    page.keyboard.press("Enter")
+    hash_is(page, f"#read={b}")
+    page.keyboard.press("Alt+0")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.keyboard.press("k")
+    assert page.evaluate(sel) == a
+    page.keyboard.press("Enter")
+    hash_is(page, f"#s={a}")
+    page.keyboard.press("Alt+0")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.keyboard.press("/")
+    assert focused_id(page) == "arch-q"
+    assert page.errors == []
