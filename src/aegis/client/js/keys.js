@@ -38,6 +38,7 @@ export const KEYS = [
   { scope: "global", label: "Esc", desc: "Interrupt the agent; close this list", action: "escape", match: key("Escape") },
   { scope: "browse", label: "0…9", desc: "Fleet, or the n-th tab", action: "tab", match: (ev) => bare(ev) && /^[0-9]$/.test(ev.key) },
   { scope: "browse", label: "n", desc: "New session", action: "spawn", match: key("n") },
+  { scope: "browse", label: "?", desc: "This list", action: "help", match: key("?") },
   { scope: "session", label: "j  ↓", desc: "Next row", action: "next", match: key("j", "ArrowDown") },
   { scope: "session", label: "k  ↑", desc: "Previous row", action: "prev", match: key("k", "ArrowUp") },
   { scope: "session", label: "J  K", desc: "Next / previous message of yours", action: "turn", match: key("J", "K") },
@@ -69,6 +70,28 @@ export const KEYS = [
 
 function typing(t) {
   return t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+}
+
+const HEADS = { global: "Anywhere", browse: "Outside a text field", session: "Transcript", fleet: "Fleet" };
+
+export function renderKeys(box) {
+  const panel = document.createElement("div");
+  panel.className = "panel";
+  const t = document.createElement("table");
+  for (const [scope, head] of Object.entries(HEADS)) {
+    const th = document.createElement("th");
+    th.colSpan = 2;
+    th.textContent = head;
+    t.insertRow().append(th);
+    for (const k of KEYS.filter((x) => x.scope === scope)) {
+      const r = t.insertRow();
+      r.className = "k";
+      r.insertCell().textContent = k.label;
+      r.insertCell().textContent = k.desc;
+    }
+  }
+  panel.append(t);
+  box.replaceChildren(panel);
 }
 
 const PRESSABLE = new Set(["A", "BUTTON", "SUMMARY"]);

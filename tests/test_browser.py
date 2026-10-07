@@ -770,3 +770,19 @@ def test_fleet_cards_and_archive_rows_walk_with_j_and_open_with_enter(server, pa
     page.keyboard.press("/")
     assert focused_id(page) == "arch-q"
     assert page.errors == []
+
+
+def test_question_mark_lists_every_key_and_escape_closes_it(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    n = page.evaluate("import('/static/js/keys.js').then(m => m.KEYS.length)")
+    page.keyboard.press("?")
+    page.wait_for_selector("#keymap", state="visible")
+    assert page.locator("#keymap tr.k").count() == n
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#keymap", state="hidden")
+    page.click("#keys-btn")
+    page.wait_for_selector("#keymap", state="visible")
+    page.keyboard.press("?")
+    page.wait_for_selector("#keymap", state="hidden")
+    assert page.errors == []
