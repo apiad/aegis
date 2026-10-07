@@ -500,3 +500,30 @@ def test_the_fleet_band_and_the_sidebar_show_quota_and_the_host(quota_server, pa
     assert "Claude 5 hours" in page.inner_text("#s-quota")
     assert "OpenCode" not in page.inner_text("#s-quota")
     assert page.errors == []
+
+
+def test_quota_rows_survive_session_updates_so_their_tooltip_stays(
+    quota_server, browser, page
+):
+    """A rebuilt row loses its hover tooltip. Sessions patch up to four times a
+    second per working agent and quota about once a minute, so a sessions
+    patch must not rebuild the quota rows (final review of #146)."""
+    page.goto(quota_server.url)
+    row = "#band .gauge[data-kind=session]"
+    page.wait_for_selector(row)
+    page.evaluate(f"document.querySelector('{row}').__kept = true")
+    other = new_page(browser, [])
+    other.goto(quota_server.url)
+    other.wait_for_selector("#a2[data-view=fleet]")
+    spawn(other, "hello")
+    page.wait_for_selector("#cards .card")
+    assert page.evaluate(f"document.querySelector('{row}').__kept === true")
+
+    page.click("#cards .card")
+    page.wait_for_selector("#s-quota .qrow")
+    page.evaluate("document.querySelector('#s-quota .qrow').__kept = true")
+    page.fill("#input", "again")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    assert page.evaluate("document.querySelector('#s-quota .qrow').__kept === true")
+    assert page.errors == []

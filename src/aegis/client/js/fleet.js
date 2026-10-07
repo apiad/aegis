@@ -98,10 +98,10 @@ export function renderArchive(box, items, { onReopen, onRead }) {
 
 const STATE_ORDER = ["working", "idle", "error", "stopped"];
 
-// The band over the cards: this server's sessions by state, its host, and
-// every provider's quota windows. Counts and the average context come from the
-// sessions the client already holds; quota and host from their channels.
-export function renderBand(band, { metas, quota, host, server, now }) {
+// The band over the cards: this server's sessions by state and its host.
+// Counts and the average context come from the sessions the client already
+// holds; the host meters from the host channel.
+export function renderBand(band, { metas, host, server }) {
   band.querySelector("#band-server").textContent = server || "server";
   const counts = new Map();
   for (const m of metas) counts.set(m.state, (counts.get(m.state) || 0) + 1);
@@ -124,7 +124,12 @@ export function renderBand(band, { metas, quota, host, server, now }) {
     meters.push(hostRow("Context", avg, `avg of ${live.length} live`));
   }
   band.querySelector("#band-host").replaceChildren(...meters);
+}
 
+// The quota column, apart from the rest of the band: sessions patch up to four
+// times a second per working agent and quota about once a minute, and a
+// rebuilt row loses the hover tooltip that spells its reading out.
+export function renderBandQuota(band, { quota, now }) {
   const providers = (quota && quota.providers) || [];
   band.querySelector("#band-quota-col").hidden = !providers.length;
   band.querySelector("#band-quota-age").textContent = quotaHeading(providers, now);

@@ -7,7 +7,7 @@
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
 import { TabOrder, renderTabs } from "./tabs.js";
-import { ago, money, renderArchive, renderBand, renderCards } from "./fleet.js";
+import { ago, money, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
 
 const $ = (id) => document.getElementById(id);
@@ -29,6 +29,7 @@ const token = sessionStorage.getItem("aegis.token");
 let quota = { providers: [] };
 let host = null;
 let unsubHost = null;
+let quotaDrawnFor = null; // the view the quota rows were last drawn for
 const nowS = () => Date.now() / 1000;
 
 // -- theme ----------------------------------------------------------------
@@ -146,12 +147,18 @@ function render() {
   $("tab-fleet").classList.toggle("on", r.view === "fleet");
   $("tab-add").classList.toggle("on", r.view === "spawn");
   root.dataset.mode = r.view === "read" ? "read" : "live";
+  // Quota rows redraw on a quota patch, the timer, or a change of view; never
+  // on a sessions patch, which would take the hover tooltip with them.
+  const viewKey = `${r.view}:${r.id || ""}`;
+  const newView = viewKey !== quotaDrawnFor;
+  quotaDrawnFor = viewKey;
   if (r.view === "fleet") {
     follow(null);
     show("fleet");
     renderCards($("cards"), ordered, (id) => go(`#s=${id}`));
     watchHost(true);
     drawBand();
+    if (newView) drawQuota();
     if (!archiveLoaded) loadArchive();
     document.title = "Fleet · aegis";
   } else if (r.view === "spawn") {
@@ -164,7 +171,7 @@ function render() {
     follow(r.id);
     show("session");
     renderMeta(sessions.get(r.id));
-    drawSideQuota();
+    if (newView) drawQuota();
   } else {
     watchHost(false);
     follow(r.id);
@@ -172,7 +179,7 @@ function render() {
     const m = archived.find((x) => x.log_id === r.id);
     if (m) renderMeta({ ...m, state: "archived" });
     else if (!archiveLoaded) loadArchive().then(render);
-    drawSideQuota();
+    if (newView) drawQuota();
   }
 }
 
@@ -198,7 +205,7 @@ function watchHost(on) {
 
 function drawBand() {
   if (root.dataset.view !== "fleet") return;
-  renderBand($("band"), { metas: ordered, quota, host, server: conn.server, now: nowS() });
+  renderBand($("band"), { metas: ordered, host, server: conn.server });
 }
 
 function drawSideQuota() {
@@ -220,7 +227,7 @@ function drawSideQuota() {
 }
 
 function drawQuota() {
-  if (root.dataset.view === "fleet") drawBand();
+  if (root.dataset.view === "fleet") renderBandQuota($("band"), { quota, now: nowS() });
   else if (root.dataset.view === "session") drawSideQuota();
 }
 
