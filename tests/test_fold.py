@@ -386,6 +386,7 @@ def test_a_sent_file_is_its_own_kind():
     assert e["summary"] == "47 KB · image/png"
     assert e["md"] == "Weekly cost"
     assert e["detail"] == {
+        "file_id": "AbCdEfGhIjKlMnOpQrStUv",
         "url": url,
         "download": url + "?download=1",
         "preview": "image",

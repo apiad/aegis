@@ -30,6 +30,14 @@ class Server:
     def __init__(self, root: Path, claude: str):
         self.root, self.claude, self.port = root, claude, _free_port()
         self.releases = root / "pypi.json"
+        self.env: dict[str, str] = {}
+
+    def environ(self) -> dict[str, str]:
+        # Off the network: the latest release is whatever this file says. Off
+        # the desktop: a click on Open natively must not launch real apps.
+        hidden = ("DISPLAY", "WAYLAND_DISPLAY", "AEGIS_OPENER")
+        env = {k: v for k, v in os.environ.items() if k not in hidden}
+        return env | {"AEGIS_RELEASES_URL": self.releases.as_uri()} | self.env
         self.proc = None
         self.url = ""
 
@@ -52,8 +60,7 @@ class Server:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            # Off the network: the latest release is whatever this file says.
-            env={**os.environ, "AEGIS_RELEASES_URL": self.releases.as_uri()},
+            env=self.environ(),
         )
         deadline = time.monotonic() + 15
         self.url = ""
@@ -462,4 +469,37 @@ def test_a_sent_file_previews_in_the_transcript_with_open_and_download(server, p
     report.filter(has_text="storage").wait_for()
     assert report.inner_text() == "storage refused"
     assert page.locator(".row.file .md h1").inner_text() == "Notes"
+    assert page.errors == []
+
+
+def test_open_natively_shows_only_on_the_servers_desktop_and_opens_the_copy(
+    server, browser, page
+):
+    (server.root / "dot.png").write_bytes(PNG)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page)
+    page.fill("#input", f"/mcp file_send {json.dumps({'path': 'dot.png'})}")
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    native = page.locator(".row.file .fbar .native")
+    assert native.count() == 1 and not native.is_visible(), "a headless server"
+
+    # The same server with an opener: the button shows and opens the copy.
+    marker = server.root / "opened"
+    opener = server.root / "opener.sh"
+    opener.write_text(f'#!/bin/sh\nprintf "%s" "$1" > "{marker}"\n')
+    opener.chmod(0o755)
+    server.stop()
+    server.env = {"AEGIS_OPENER": str(opener)}
+    server.start()
+    page.goto(f"{server.url}#s={sid}")
+    page.wait_for_selector(".row.file .fbar .native", state="visible")
+    page.click(".row.file .fbar .native")
+    for _ in range(100):
+        if marker.exists():
+            break
+        time.sleep(0.02)
+    assert marker.read_text().endswith("/dot.png")
+    assert (server.root / ".aegis") in Path(marker.read_text()).parents
     assert page.errors == []

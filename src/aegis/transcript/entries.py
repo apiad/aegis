@@ -221,6 +221,7 @@ class Fold:
                     summary=f"{files.human_size(int(rec.get('size') or 0))} · {rec.get('mime')}",
                     md=rec.get("caption"),
                     detail={
+                        "file_id": rec.get("file_id"),
                         "url": url,
                         "download": f"{url}?download=1",
                         "preview": rec.get("preview"),

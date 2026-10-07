@@ -40,6 +40,7 @@ export class Connection {
         this.open = true;
         this.backoff = 500;
         this.server = msg.server;
+        this.native = msg.native === true;
         this.onState("open", msg.server);
         for (const channel of this.subs.keys()) this._sendSub(channel);
         break;
