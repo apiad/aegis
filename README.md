@@ -66,11 +66,21 @@ queues:
 - **A transcript that reads well.** Tool rows with one-line verdicts, failures open,
   diffs for edits, rendered Markdown, a prompt sent mid-turn shown pending until
   Claude reads it, Esc to interrupt. Three themes: Ink, Logbook, Syalia.
+- **Files from agents.** An agent hands you a file with `file_send`; it shows in
+  the transcript as a card with a preview (images, PDF, HTML, Markdown, text,
+  audio, video), Open and Download. A browser on the server's own desktop also
+  gets Open natively, which runs `xdg-open` (`open` on macOS, or `AEGIS_OPENER`).
+  aegis keeps a copy and serves it at an unguessable `/files/` link.
+- **Gauges.** The Fleet view carries session counts, CPU, RAM and disk, and your
+  Claude and OpenCode Go quota windows with the share already spent and where
+  the window is heading; the session sidebar shows Claude's two windows.
+- **Which aegis.** The top bar and the sidebar show the running version (the
+  commit, for a build from git) and the latest release on PyPI.
 - **Tools for agents** at `/mcp`, named `mcp__aegis__<verb>`:
   `monitor_start`, `monitor_cancel`, `monitor_list`, `queue_enqueue`,
   `task_status`, `task_cancel`, `task_resume`, `peer_handoff`, `peer_read`,
-  `session_list`, `session_rename`, `meta`. Each session's `claude` connects with
-  its own token, so no tool asks who is calling.
+  `session_list`, `session_rename`, `file_send`, `quota_read`, `meta`. Each
+  session's `claude` connects with its own token, so no tool asks who is calling.
 
 ## Before 2.0
 
