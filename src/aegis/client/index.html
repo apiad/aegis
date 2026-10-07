@@ -19,6 +19,7 @@
     <div class="tab add" id="tab-add" title="New session (Alt+N)">+</div>
     <div class="gap"></div>
     <div class="servers"><span class="dot ghost" id="conn-dot"></span><span id="conn-text">connecting</span><span class="ver-top" id="ver-top" hidden></span></div>
+    <button class="keys-btn" id="keys-btn" title="Keyboard (?)">?</button>
     <label class="theme-pick">Theme
       <select id="theme">
         <option value="ink">Ink</option>
@@ -100,6 +101,7 @@
       <p class="sub err-text" id="side-error"></p>
     </aside>
   </main>
+  <div class="keymap" id="keymap" hidden></div>
 </div>
 <script type="module" src="/static/js/app.js"></script>
 </body>

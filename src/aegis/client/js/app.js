@@ -9,7 +9,7 @@ import { Transcript } from "./transcript.js";
 import { TabOrder, renderTabs } from "./tabs.js";
 import { ago, money, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
-import { installKeys } from "./keys.js";
+import { installKeys, renderKeys } from "./keys.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -522,6 +522,13 @@ $("spawn").addEventListener("submit", async (ev) => {
 // -- tab bar and keys -----------------------------------------------------------
 $("tab-fleet").addEventListener("click", () => go("#fleet"));
 $("tab-add").addEventListener("click", () => go("#new"));
+// The ? list: drawn once from the key table.
+const keymap = $("keymap");
+renderKeys(keymap);
+const help = (open = keymap.hidden) => (keymap.hidden = !open);
+$("keys-btn").addEventListener("click", () => help());
+keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));
+
 // What each key in keys.js does. `input` and `editing` are declared below;
 // a key is pressed only after this module has run.
 installKeys(
@@ -565,8 +572,10 @@ installKeys(
       else if (ordered[n - 1]) go(`#s=${ordered[n - 1].log_id}`);
     },
     escape() {
-      if (route().view === "session" && !editing.size) interrupt();
+      if (!keymap.hidden) help(false);
+      else if (route().view === "session" && !editing.size) interrupt();
     },
+    help: () => help(),
   },
   () => (booted ? route().view : "boot"),
 );
