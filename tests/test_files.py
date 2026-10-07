@@ -73,7 +73,7 @@ def test_store_refuses_a_directory_and_a_file_too_large(tmp_path, monkeypatch):
     assert e.value.code == "not_a_file"
     with pytest.raises(FileError) as e:
         store(tmp_path / "state", tmp_path / "missing.txt")
-    assert e.value.code == "not_a_file"
+    assert e.value.code == "not_found"
     big = tmp_path / "big.bin"
     big.write_bytes(b"x" * 11)
     monkeypatch.setattr(files, "MAX_BYTES", 10)

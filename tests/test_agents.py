@@ -454,3 +454,15 @@ async def test_a_directory_is_not_a_file(world, tmp_path):
     said = await turn(a, mcp("file_send", path="."))
     assert said.startswith("mcp error: not_a_file")
     assert files_sent(a) == []
+
+
+async def test_a_missing_relative_path_says_where_it_looked(world, tmp_path):
+    # The agent wrote out/chart.png, then sent chart.png: its shell's cd does
+    # not carry over, so the name resolves against the session's cwd.
+    a = await world.spawn()
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "chart.png").write_bytes(b"png")
+    said = await turn(a, mcp("file_send", path="chart.png"))
+    assert said.startswith("mcp error: not_found")
+    assert f"session's working directory, {tmp_path}" in said
+    assert "absolute path" in said

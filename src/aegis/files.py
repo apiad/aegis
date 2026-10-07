@@ -122,6 +122,8 @@ def url(file_id: str, name: str) -> str:
 
 def store(state_root: Path, src: Path) -> dict:
     """Copy ``src`` under a fresh id; the store record's body, without caption."""
+    if not src.exists():
+        raise FileError("not_found", f"{src} does not exist")
     if not src.is_file():
         raise FileError("not_a_file", f"{src} is not a regular file")
     size = src.stat().st_size

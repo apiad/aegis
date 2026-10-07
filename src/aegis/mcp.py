@@ -130,8 +130,8 @@ To wait on a long process (tests, a build, a download), never sleep or poll: cal
 monitor_start with a bash `done` condition (and `progress`, echoing 0 to 100), \
 then end your turn. You are woken when it finishes, fails or times out.
 
-To show the person a file, call file_send with a one-line caption; it appears in \
-their browser with a preview. Send a file when it is an output they asked for, or \
+To show the person a file, call file_send with the file's absolute path and a \
+one-line caption; it appears in their browser with a preview. Send a file when it is an output they asked for, or \
 an intermediate artifact they need to look at to discuss it (a mockup, a diagram, \
 a draft render). Do not send other files, such as source code you edited: they \
 see those as diffs.

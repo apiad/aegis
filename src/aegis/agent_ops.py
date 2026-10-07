@@ -74,7 +74,8 @@ class Read(_Strict):
 class FileSend(_Strict):
     path: str = Field(
         min_length=1,
-        description="The file to hand to the person; relative to your session's cwd.",
+        description="The file's absolute path. A relative one resolves against "
+        "your session's working directory, not your shell's last cd.",
     )
     caption: str | None = Field(
         None, description="A line of Markdown shown above the file."
@@ -282,12 +283,21 @@ def register_agent_ops(app: App) -> None:
         copied, so later changes to it are not seen."""
         s = own(caller)
         path = Path(p.path).expanduser()
-        if not path.is_absolute():
+        relative = not path.is_absolute()
+        if relative:
             path = s.spec.cwd / path
         try:
             rec = await asyncio.to_thread(files.store, app.roots.state_root, path)
         except files.FileError as e:
-            raise OpError(e.code, e.message) from e
+            # Agents write files after a cd in the shell, which does not carry
+            # over, then send the bare name (seen in Alex's first smoke test).
+            hint = (
+                f"; a relative path resolves against your session's working "
+                f"directory, {s.spec.cwd}; pass the file's absolute path"
+                if relative and e.code == "not_found"
+                else ""
+            )
+            raise OpError(e.code, e.message + hint) from e
         s.record_file({**rec, "caption": p.caption})
         return {
             "url": files.url(rec["file_id"], rec["name"]),
