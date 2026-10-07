@@ -664,3 +664,81 @@ def test_alt_brackets_cycle_fleet_and_tabs_and_digits_pick_a_tab(server, page):
     page.keyboard.press("Alt+.")
     assert focused_id(page) == "sp-profile"
     assert page.errors == []
+
+
+def selected(pg) -> str | None:
+    return pg.evaluate(
+        "document.querySelector('#entries .row.sel')?.dataset.id ?? null"
+    )
+
+
+def row_ids(pg, cls: str = "") -> list[str]:
+    return pg.evaluate(
+        f"[...document.querySelectorAll('#entries .row{cls}')].map(r => r.dataset.id)"
+    )
+
+
+def test_j_k_and_the_turn_keys_walk_the_transcript(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "one")
+    page.fill("#input", "two")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    rows, users = row_ids(page), row_ids(page, ".user")
+    page.keyboard.press("Alt+,")  # nothing selected: the last row on screen
+    assert selected(page) == rows[-1]
+    walk = (
+        ("k", rows[-2]),
+        ("j", rows[-1]),
+        ("j", rows[-1]),
+        ("g", rows[0]),
+        ("K", rows[0]),  # the first row is the spawn's, not a message
+        ("J", users[0]),
+        ("J", users[1]),
+        ("K", users[0]),
+        ("ArrowDown", rows[rows.index(users[0]) + 1]),
+        ("ArrowUp", users[0]),
+        ("G", rows[-1]),
+    )
+    for key, want in walk:
+        page.keyboard.press(key)
+        assert selected(page) == want, key
+    assert page.errors == []
+
+
+def test_a_selected_row_keeps_its_selection_when_it_updates_and_enter_opens_it(
+    server, page
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    page.fill("#input", "/sleep 1")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    tid = page.get_attribute(".row.tool", "data-id")
+    page.keyboard.press("Alt+,")
+    page.keyboard.press("G")
+    for _ in range(len(row_ids(page))):
+        if selected(page) == tid:
+            break
+        page.keyboard.press("k")
+    assert selected(page) == tid
+    turns_done(page, 1)  # the result replaced the tool row's node
+    assert selected(page) == tid
+    is_open = f"document.querySelector('.row[data-id=\"{tid}\"] details').open"
+    page.keyboard.press("Enter")
+    assert page.evaluate(is_open) is True
+    page.keyboard.press(" ")
+    assert page.evaluate(is_open) is False
+
+    # Tab is native: the row holding focus becomes the selection, and Enter on
+    # its summary toggles its details once, not twice.
+    page.keyboard.press("Tab")
+    assert page.evaluate("document.activeElement.tagName") == "SUMMARY"
+    holder = page.evaluate("document.activeElement.closest('.row').dataset.id")
+    assert selected(page) == holder
+    was = page.evaluate("document.activeElement.parentElement.open")
+    page.keyboard.press("Enter")
+    assert page.evaluate("document.activeElement.parentElement.open") is not was
+    assert page.errors == []
