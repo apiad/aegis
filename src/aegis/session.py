@@ -36,7 +36,7 @@ from pathlib import Path
 
 from .claude.control import Catalog
 from .claude.process import ControlError
-from .claude.stream import TURN_BEARING, Init, Notice, Result
+from .claude.stream import TURN_BEARING, Delta, Init, Notice, Result, Title
 from .harness import Launch, Process, harness_for
 from .meta import MetaStore
 from .names import default_title
@@ -170,11 +170,14 @@ class Session:
         held: list[dict] | None = None,
         worker: dict | None = None,
         opencode_bin: str = "opencode",
+        title_set: bool = False,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
         self.handle = handle
         self.title = title
+        # A person or an agent named it; the harness's own title then waits.
+        self.title_set = title_set
         self.store = store
         self.channel = f"transcript:{log_id}"
         self.resume_id = resume_id
@@ -216,6 +219,7 @@ class Session:
             "log_id": self.log_id,
             "handle": self.handle,
             "title": self.title,
+            "title_set": self.title_set,
             **s.record(),
             "model_id": self.model_id,
             "resume_id": self.resume_id,
@@ -295,13 +299,26 @@ class Session:
                 on_error=self._on_error,
             )
         )
+        # Before the start: a harness can speak while it starts (OpenCode's
+        # session.created), and a line read while stopping is dropped.
+        self._stopping = False
         await proc.start()
         self._proc = proc
         self.catalog_task = asyncio.create_task(self._fetch_catalog(proc))
-        self._stopping = False
         self.open_tasks.clear()
         if resume:
             self._record({"kind": "resume", "resume_id": resume})
+        sid = proc.session_id
+        if resume and sid and sid != resume:
+            self._record(
+                {
+                    "kind": "reset",
+                    "text": f"{self.harness.label} no longer had this conversation; "
+                    "it started a new one",
+                }
+            )
+        if sid:
+            self._set(resume_id=sid)
         self._set(status="idle")
 
     async def _fetch_catalog(self, proc: Process) -> Catalog | None:
@@ -315,7 +332,15 @@ class Session:
         ):
             return None
         self._host.catalog_ready(self, cat)
+        self._window_from(cat)
         return cat
+
+    def _window_from(self, cat: Catalog | None) -> None:
+        """A harness whose events name no context window (OpenCode) has it in
+        its catalog."""
+        m = cat.model(self.spec.model) if cat is not None else None
+        if m is not None and m.window:
+            self._set(context_window=m.window)
 
     async def configure(
         self,
@@ -352,6 +377,9 @@ class Session:
                 self.spec = dataclasses.replace(self.spec, **applied)
                 if "model" in applied:
                     self.model_id = None  # the next init names the resolved id
+                    t = self.catalog_task
+                    if t is not None and t.done() and not t.cancelled():
+                        self._window_from(t.result())
                 self._record(
                     {"kind": "configure", **applied, **({"when": when} if when else {})}
                 )
@@ -389,8 +417,10 @@ class Session:
             # A slash command names no task; the first prompt does.
             self._set(title=default_title(text))
         self._record({"kind": "send", "text": text})
-        await self._proc.send(text)
+        # Working before the send returns: a harness can answer during it (an
+        # OpenCode command refused before it starts a turn).
         self._set(status="working")
+        await self._proc.send(text)
 
     async def interrupt(self) -> None:
         if self.status != "working" or self._proc is None:
@@ -486,7 +516,16 @@ class Session:
     def _on_line(self, line: str) -> None:
         if self._stopping:
             return
-        events = self.fold().parse(self.harness.src, line)
+        fold = self.fold()
+        events = fold.parse(self.harness.src, line)
+        if events and all(isinstance(ev, Delta) for ev in events):
+            # Never stored: the part's closing update carries the whole text.
+            self._publish(self.channel, fold.live(events))
+            self._set(
+                activity=fold.activity(),
+                **({"status": "working"} if self.status == "idle" else {}),
+            )
+            return
         self._record({"src": self.harness.src, "line": line}, events)
         changes: dict[str, object] = {}
         for ev in events:
@@ -495,6 +534,8 @@ class Session:
             usage = getattr(ev, "usage", None)
             if usage is not None and getattr(ev, "parent", None) is None:
                 changes["context_tokens"] = usage.context
+            if isinstance(ev, Title) and not self.title_set:
+                changes["title"] = ev.text
             if isinstance(ev, Init):
                 if ev.model:
                     changes["model_id"] = ev.model

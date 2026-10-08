@@ -139,6 +139,7 @@ class Registry(Host):
             publish=self._publish,
             metas=self.metas,
             title=meta.get("title") or "",
+            title_set=bool(meta.get("title_set")),
             resume_id=meta.get("resume_id") or meta.get("claude_session_id"),
             created_at=meta.get("created_at"),
             last_activity=meta.get("last_activity"),
@@ -283,6 +284,8 @@ class Registry(Host):
             changes = {
                 k: v for k, v in (("handle", handle), ("title", title)) if v is not None
             }
+            if title is not None:
+                s.title_set = True
             s._set(**changes)
             self.metas.write(s.meta())
             return s.wire()
@@ -291,6 +294,7 @@ class Registry(Host):
             meta["handle"] = handle
         if title is not None:
             meta["title"] = title
+            meta["title_set"] = True
         self.metas.write(meta)
         return _public(meta)
 
