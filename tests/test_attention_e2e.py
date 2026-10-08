@@ -127,6 +127,16 @@ async def test_a_cancelled_queue_task_leaves_the_published_card(world, published
     await world.app.registry.call("task.cancel", {"task_id": busy})
 
 
+async def test_a_change_of_attention_alone_goes_out_at_once(world):
+    a = await world.spawn()
+    card = a.wire()
+    world.app._sessions_key({"upsert": card})
+    _, urgent = world.app._sessions_key({"upsert": card})
+    assert not urgent
+    _, urgent = world.app._sessions_key({"upsert": {**card, "attention": "needs_you"}})
+    assert urgent
+
+
 @pytest.mark.parametrize(
     "args",
     [
