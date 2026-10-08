@@ -175,11 +175,20 @@ W, N and Tab, and on Linux Alt+1…9 and Alt+←/→, for itself, so the chords 
 Alt keys it leaves free. Plain keys act only outside a text field and the view
 decides what they do: there is no mode. A selection, in the transcript or the
 Fleet, is held by id and re-marked after every redraw, because both replace their
-nodes on each patch.
+nodes on each patch. Esc closes, in order, a dialog, the drawer, the ? list and a
+monitor card, and only then interrupts.
 
 **A theme is one CSS file over one markup.** The markup carries everything any
 theme might show, and the base stylesheet reads only CSS variables. A theme sets
 the variables and a few overrides that decide what shows.
+
+**One page for every screen.** A phone gets the desktop's markup. Below 760 px
+one CSS block wraps the tab bar onto its own row, turns the side panel into a
+drawer (`data-side=open`, opened by ☰) and stacks the Fleet band; under
+`(pointer: coarse)` touch targets grow to 44 px and Enter in the composer adds a
+line. A second set of screens would be a second client to keep in step. The
+client asks through its own dialog (`js/dialog.js`), never the browser's:
+`tests/test_client_rules.py` fails on `confirm(`, `alert(` or `prompt(`.
 
 **The store keeps raw lines; entries are derived.** A transcript file holds the
 harness's raw stdout lines and what aegis did (spawn, send, interrupt, exit,

@@ -13,6 +13,7 @@ import { installKeys, renderKeys } from "./keys.js";
 import { glyph, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
+import { ask, cancelAsk } from "./dialog.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -305,6 +306,7 @@ const kept = new Map(); // log_id -> transcript.stash()
 
 function follow(id) {
   if (shown === id) return;
+  closeSide();
   if (unsubTranscript) unsubTranscript();
   unsubTranscript = null;
   if (shown) {
@@ -392,7 +394,8 @@ function renderMeta(s) {
   $("s-mon-sec").hidden = !mons.length;
   renderMonitors($("s-monitors"), mons);
   const working = s.state === "working";
-  $("stop").hidden = !working;
+  $("interrupt").hidden = !working;
+  $("restart").disabled = working;
   $("working").hidden = !working;
   $("stop-session").disabled = s.state === "stopped";
   if (working && workingSince == null) workingSince = Date.now();
@@ -400,7 +403,9 @@ function renderMeta(s) {
   $("input").placeholder =
     s.state === "stopped"
       ? "Stopped; your next message resumes it."
-      : "Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts.";
+      : touch.matches
+        ? "Message the agent. ↵ sends, / for commands."
+        : "Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts.";
   document.title = `${working ? "● " : ""}${s.title || s.handle} · aegis`;
 }
 
@@ -741,6 +746,8 @@ installKeys(
       } else menu.openOverlay();
     },
     escape() {
+      if (cancelAsk()) return;
+      if (root.dataset.side === "open") return closeSide();
       if (!keymap.hidden) help(false);
       else if (closeMonitorCard()) return;
       else if (route().view === "session" && !editing.size) interrupt();
@@ -752,6 +759,9 @@ installKeys(
 
 // -- composer ---------------------------------------------------------------
 const input = $("input");
+// On a touch screen Enter adds a line and the button sends: the key sits where
+// a mistap lands, and half a message costs a turn.
+const touch = matchMedia("(pointer: coarse)");
 
 function autosize() {
   input.style.height = "auto";
@@ -784,6 +794,9 @@ function drawReplies(s) {
   );
 }
 
+const askClose = (s) =>
+  ask(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`, { ok: "Close" });
+
 // A line from the composer, or from the menu's own filter (Alt+/ over a
 // draft), which leaves the composer alone. The server resolves "/" lines.
 async function sendLine(text, fromComposer) {
@@ -797,7 +810,7 @@ async function sendLine(text, fromComposer) {
     else menu.openOverlay();
     return;
   }
-  if (text === "/close" && !confirm(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`)) return;
+  if (text === "/close" && !(await askClose(s))) return;
   $("send-error").textContent = "";
   const box = $("replies");
   const was = box.hidden;
@@ -894,13 +907,16 @@ input.addEventListener("input", async () => {
 });
 input.addEventListener("keydown", (ev) => {
   if (menu.onKey(ev)) return;
-  if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
+  if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing && !touch.matches) {
     ev.preventDefault();
     send();
   }
 });
 $("send").addEventListener("click", send);
-$("stop").addEventListener("click", interrupt);
+$("interrupt").addEventListener("click", interrupt);
+// A nudge after an interrupt, an error or a stop: a message to a stopped
+// session resumes it, so Restart is one sentence to the agent.
+$("restart").addEventListener("click", () => sendLine("Continue", false));
 
 $("stop-session").addEventListener("click", async () => {
   const s = focused();
@@ -915,13 +931,29 @@ $("stop-session").addEventListener("click", async () => {
 $("close").addEventListener("click", async () => {
   const s = focused();
   if (!s) return;
-  if (!confirm(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`)) return;
+  if (!(await askClose(s))) return;
   try {
     await conn.call("session.close", { log_id: s.log_id });
     archiveLoaded = false;
   } catch (e) {
     $("side-error").textContent = e.message;
   }
+});
+
+// -- the drawer: the side panel on a phone (base.css, max-width 760px) --------
+const closeSide = () => delete root.dataset.side;
+// The header's height, for the drawer to start under it: it wraps to two rows
+// on a phone and grows with the safe area.
+const header = document.querySelector("#a2 > .tabs");
+new ResizeObserver(() => root.style.setProperty("--hdr", `${header.getBoundingClientRect().height}px`)).observe(header);
+$("side-btn").addEventListener("click", () => {
+  if (root.dataset.side === "open") closeSide();
+  else root.dataset.side = "open";
+});
+// The dimmed transcript is the session view's own ::after, so a tap on it
+// lands on the view itself and goes no further.
+document.querySelector(".v-session").addEventListener("click", (ev) => {
+  if (ev.target === ev.currentTarget && root.dataset.side === "open") closeSide();
 });
 
 // -- rename in place -------------------------------------------------------------

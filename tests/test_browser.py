@@ -294,6 +294,13 @@ def tab_ids(pg) -> list[str]:
     )
 
 
+def close_session(pg) -> None:
+    """Close the shown session through the aegis dialog."""
+    pg.click("#close")
+    pg.wait_for_selector("#dialog .ok", state="visible")
+    pg.click("#dialog .ok")
+
+
 def test_a_session_from_spawn_to_close(server, page):
     page.goto(server.url)
     assert "token=" not in page.url, "the token stays out of the address bar"
@@ -341,7 +348,7 @@ def test_a_session_from_spawn_to_close(server, page):
     page.select_option("#theme", "logbook")
     assert page.evaluate(bg) != before == "#11100e"
 
-    page.click("#close")
+    close_session(page)
     page.wait_for_selector("#a2[data-view=fleet]")
     page.wait_for_selector("#arch-list tr[data-id]")
     assert tab_ids(page) == []
@@ -464,7 +471,7 @@ def test_close_in_one_browser_removes_the_tab_in_another(server, browser, page):
     other = new_page(browser, errors)
     other.goto(server.url + f"#s={a}")
     other.wait_for_selector("#a2[data-view=session]")
-    page.click("#close")
+    close_session(page)
     other.wait_for_selector("#a2[data-view=fleet]", timeout=5000)
     assert tab_ids(other) == []
     assert errors == [] and page.errors == []
@@ -490,7 +497,7 @@ def test_reopen_from_the_archive_and_rename(server, page, frames):
     page.fill("#s-handle input", "old-talk")
     page.press("#s-handle input", "Enter")
     page.wait_for_selector("#tablist .tab .srv >> text=old-talk")
-    page.click("#close")
+    close_session(page)
     page.wait_for_selector(f"#arch-list tr[data-id='{a}']")
     page.fill("#arch-q", "nothing like it")
     page.wait_for_selector("#arch-list .empty")
@@ -1134,7 +1141,7 @@ def test_fleet_cards_and_archive_rows_walk_with_j_and_open_with_enter(server, pa
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     a, b = spawn(page, "alpha"), spawn(page, "beta")
-    page.click("#close")  # b goes to the archive
+    close_session(page)  # b goes to the archive
     page.wait_for_selector("#a2[data-view=fleet]")
     page.reload()  # the archive misses a Close until a reload (#160)
     page.wait_for_selector(f"#arch-list tr[data-id='{b}']")
@@ -1455,6 +1462,133 @@ def test_each_quota_bar_shares_a_row_with_its_label_and_value(
     assert rows, "no quota gauges drawn"
     for tops in rows:
         assert max(tops) - min(tops) < 12, tops
+    assert errors == []
+
+
+def test_close_asks_in_an_aegis_dialog_and_esc_cancels_without_interrupting(
+    server, page
+):
+    native: list = []
+    page.on("dialog", lambda d: native.append(d.message))
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page)
+    page.fill("#input", "/sleep 3")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    page.click("#close")
+    page.wait_for_selector("#dialog .ok", state="visible")
+    assert "Close" in page.inner_text("#dialog .q")
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#dialog", state="hidden")
+    assert page.is_visible(".row.tool.running"), "Esc on the dialog interrupted"
+    assert tab_ids(page) == [a]
+    page.fill("#input", "/close")
+    page.press("#input", "Enter")
+    page.click("#dialog .cancel")
+    assert tab_ids(page) == [a]
+    close_session(page)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert tab_ids(page) == [] and native == [] and page.errors == []
+
+
+def test_the_interrupt_sits_beside_send_and_restart_sends_continue(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    assert page.locator("#stop").count() == 0, "the text Stop under the box is gone"
+    assert page.is_hidden("#interrupt")
+    page.fill("#input", "/sleep 5")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    box = page.locator(".composer .box").bounding_box()
+    btn = page.locator("#interrupt").bounding_box()
+    assert box["y"] <= btn["y"] and btn["y"] + btn["height"] <= box["y"] + box["height"]
+    assert page.is_disabled("#restart")
+    page.click("#interrupt")
+    turns_done(page, 1)
+    assert page.is_hidden("#interrupt")
+    page.click("#restart")
+    page.wait_for_selector(".row.user >> text=Continue")
+    turns_done(page, 2)
+    assert page.errors == []
+
+
+def phone(browser, errors: list, landscape: bool = False):
+    size = {"width": 844, "height": 390} if landscape else {"width": 390, "height": 844}
+    pg = browser.new_context(viewport=size, has_touch=True, is_mobile=True).new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    return pg
+
+
+WIDER = """[...document.querySelectorAll('#a2 *')].filter(e => {
+  const r = e.getBoundingClientRect();
+  return r.width > 0 && (r.left < -1 || r.right > innerWidth + 1) && !e.closest('.tablist, .side, pre, .diff');
+}).map(e => e.className || e.tagName).slice(0, 5)"""
+
+
+def test_a_phone_reaches_tabs_the_drawer_and_the_chips(server, browser):
+    errors: list = []
+    page = phone(browser, errors)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "first")
+    b = spawn(page, "second")
+    assert page.evaluate(WIDER) == []
+    page.tap(f"#tablist .tab[data-id='{a}']")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
+    assert page.locator(".side").bounding_box()["x"] >= 389, "the drawer starts closed"
+    page.tap("#side-btn")
+    page.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
+    page.wait_for_timeout(250)  # the slide
+    assert page.locator(".side").bounding_box()["x"] < 390 - 300
+    assert page.is_visible("#restart") and page.is_visible("#close")
+    page.mouse.click(20, 400)  # the dimmed transcript
+    page.wait_for_function("document.getElementById('a2').dataset.side !== 'open'")
+    # The header stays above the dimmed page: ☰ closes the drawer, and a tab
+    # switches session with it open.
+    page.tap("#side-btn")
+    page.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
+    page.tap("#side-btn")
+    page.wait_for_function("document.getElementById('a2').dataset.side !== 'open'")
+    page.tap("#side-btn")
+    page.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
+    page.tap(f"#tablist .tab[data-id='{b}']")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=b)
+    page.wait_for_function("document.getElementById('a2').dataset.side !== 'open'")
+    # Enter adds a line on a touch screen; the button sends.
+    page.tap("#input")
+    page.keyboard.type("one")
+    page.keyboard.press("Enter")
+    page.keyboard.type("two")
+    assert page.input_value("#input") == "one\ntwo"
+    page.tap("#send")
+    turns_done(page, 2)
+    # Reply chips: one per row, 44 px or taller, and a long one wraps.
+    page.evaluate(
+        """(() => { const r = document.getElementById('replies'); r.hidden = false;
+        r.innerHTML = '<span class=lbl>reply</span>' + ['Yes', 'No', 'x '.repeat(80)]
+          .map(t => '<button class=rp>' + t + '</button>').join(''); })()"""
+    )
+    chips = page.eval_on_selector_all(
+        ".rp", "bs => bs.map(b => b.getBoundingClientRect().toJSON())"
+    )
+    assert all(c["height"] >= 44 for c in chips)
+    assert len({round(c["x"]) for c in chips}) == 1 and chips[0]["width"] > 300
+    assert page.evaluate(WIDER) == []
+    assert errors == []
+
+
+def test_a_phone_in_landscape_gets_the_desktop_layout_with_touch_targets(
+    server, browser
+):
+    errors: list = []
+    page = phone(browser, errors, landscape=True)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    assert page.is_visible(".side") and page.is_hidden("#side-btn")
+    assert page.locator("#send").bounding_box()["height"] >= 44
     assert errors == []
 
 
