@@ -1435,6 +1435,63 @@ def test_a_reply_taller_than_the_view_becomes_read(server, page):
     assert page.errors == []
 
 
+def test_a_tall_reply_that_lands_off_screen_becomes_read_when_you_scroll_into_it(
+    server, page
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.wait_for_function(
+        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+    )
+    # A prompt sent mid-turn is answered when the tool call ends, with text that
+    # quotes it: the tall reply lands two seconds from now, with the reader at
+    # the top.
+    page.fill("#input", "/sleep 2")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    page.fill("#input", "\n\n".join(f"line {i}" for i in range(200)))
+    page.press("#input", "Enter")
+    # A send scrolls to the bottom once it is accepted; the reader goes up after.
+    page.wait_for_function("() => document.querySelector('#input').value === ''")
+    page.evaluate("document.querySelector('#tr').scrollTop = 0")
+    tall = "[...document.querySelectorAll('.row.prose')].at(-1)"
+    page.wait_for_function(
+        f"() => {tall}.textContent.includes('line 199')", timeout=8000
+    )
+    # More than five times the view: its ratio never reaches 0.25.
+    assert page.evaluate(
+        f"() => {tall}.offsetHeight > 5 * document.querySelector('#tr').clientHeight"
+    )
+    page.wait_for_timeout(1500)
+    assert page.evaluate(f"() => !!{tall}.querySelector('.rm .ic.unread')")
+    # The top edge comes in first, then the row covers the view in steps, as
+    # a reader scrolling down meets it.
+    page.evaluate(
+        f"""() => {{
+            const tr = document.querySelector('#tr');
+            const top = {tall}.getBoundingClientRect().top - tr.getBoundingClientRect().top;
+            tr.scrollTop += top - tr.clientHeight + 40;
+        }}"""
+    )
+    for _ in range(3):
+        page.wait_for_timeout(200)
+        page.evaluate(
+            "() => { const tr = document.querySelector('#tr'); tr.scrollTop += tr.clientHeight / 2; }"
+        )
+    assert page.evaluate(
+        f"""() => {{
+            const v = document.querySelector('#tr').getBoundingClientRect();
+            const r = {tall}.getBoundingClientRect();
+            return r.top <= v.top && r.bottom >= v.bottom;
+        }}"""
+    ), "the row covers the view"
+    page.wait_for_function(
+        f"() => !!{tall}.querySelector('.rm .ic.read')", timeout=6000
+    )
+    assert page.errors == []
+
+
 def test_a_reply_that_lands_while_you_are_away_stays_unread_until_you_look(
     server, page
 ):
