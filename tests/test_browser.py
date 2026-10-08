@@ -1502,10 +1502,17 @@ def test_returning_to_a_tab_receives_only_what_changed(server, page):
     spawn(page, "beta")
     rows = page.evaluate("document.querySelectorAll('#entries .row').length")
     frames.clear()
+    t0 = page.evaluate("performance.now()")
     page.click(f"#tablist .tab[data-id='{a}']")
     page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
+    # The cached rows show before the delta arrives: wait for the delta itself.
+    page.wait_for_function("t => (window.__a2snapshot?.at ?? 0) > t", arg=t0)
+    for _ in range(40):  # Playwright reports the frame on its own schedule
+        snaps = [f for f in frames if '"t": "snapshot"' in f and f"transcript:{a}" in f]
+        if snaps:
+            break
+        page.wait_for_timeout(50)
     page.wait_for_selector(".row.user >> text=alpha")
-    snaps = [f for f in frames if '"t": "snapshot"' in f and f"transcript:{a}" in f]
     assert snaps and all('"since"' in f for f in snaps), snaps
     assert sum(map(len, snaps)) < 1500, [len(f) for f in snaps]
     assert page.evaluate("document.querySelectorAll('#entries .row').length") >= 3
