@@ -620,6 +620,48 @@ def test_a_resubscribe_with_since_gets_only_what_changed(project, fake_claude):
         conn.call("session.close", log_id=log_id)
 
 
+def test_a_read_reaches_a_tab_that_returns_with_since(project, fake_claude):
+    # A read makes no store record: the delta carries the flag anyway.
+    with client_for(project, fake_claude) as c:
+        with (
+            c.websocket_connect("/ws", headers=ORIGIN) as a,
+            c.websocket_connect("/ws", headers=ORIGIN) as b,
+        ):
+            ca, cb = Conn(a).hello(), Conn(b).hello()
+            log_id = ca.call("session.spawn", agent="opus")["result"]["log_id"]
+            ch = f"transcript:{log_id}"
+
+            def snapshot(conn, **extra):
+                conn.ws.send_json({"t": "sub", "channel": ch, **extra})
+                return conn.until(
+                    lambda m: m["t"] == "snapshot" and m["channel"] == ch
+                )["data"]
+
+            snapshot(ca)
+            ca.call("session.send", log_id=log_id, text="hello both")
+            ca.until(
+                lambda m: (
+                    m["t"] == "patch"
+                    and any(
+                        op.get("upsert", {}).get("summary", "").startswith("done in")
+                        for op in m["ops"]
+                    )
+                )
+            )
+            held = snapshot(cb)
+            (pid,) = [e["id"] for e in held["entries"] if e["kind"] == "prose"]
+            assert [e["unread"] for e in held["entries"] if e["id"] == pid] == [True]
+            cb.ws.send_json({"t": "unsub", "channel": ch})  # b leaves the tab
+            assert ca.call("session.read", log_id=log_id, ids=[pid])["result"] == {
+                "read": 1,
+                "unread": 0,
+            }
+            delta = snapshot(cb, since=held["rev"])  # and comes back
+            assert delta["since"] == held["rev"] == delta["rev"]
+            assert [(e["id"], e["unread"]) for e in delta["entries"]] == [(pid, False)]
+            ca.call("session.close", log_id=log_id)
+
+
 def test_transcript_detail_returns_what_the_wire_left_out(project, fake_claude):
     with (
         client_for(project, fake_claude) as c,

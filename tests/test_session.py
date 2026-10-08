@@ -8,7 +8,6 @@ from aegis.claude.process import ControlError
 from aegis.session import Host, Session, SpawnSpec
 from aegis.transcript.entries import fold_records
 from aegis.transcript.store import Store, read_store
-from aegis.transcript.wire import wire
 
 from .conftest import cmdline, until
 
@@ -65,7 +64,8 @@ class Harness:
                     shown[op["upsert"]["id"]] = op["upsert"]
                 else:
                     shown.pop(op["remove"], None)
-        return list(shown.values()) == [wire(e) for e in self.session.entries()]
+        # What the channel serves: wired, each agent message with its unread flag.
+        return list(shown.values()) == self.session.snapshot()["entries"]
 
     def refold_matches(self) -> bool:
         records, damaged = read_store(self.path)
@@ -220,7 +220,7 @@ async def test_a_session_rebuilt_from_its_meta_resumes(h):
     h.published.clear()
     reborn = h.session = h.make(**kept)
     assert reborn.status == "stopped" and not reborn.running
-    h.snapshot = reborn.entries()  # a browser subscribes after the restart
+    h.snapshot = reborn.view()  # a browser subscribes after the restart
     await reborn.send("/recall")
     await until(lambda: reborn.status == "idle", what="the resumed turn")
     prose = [e["md"] for e in reborn.entries() if e["kind"] == "prose"]
@@ -354,3 +354,73 @@ async def test_a_status_change_tells_the_host(tmp_path, fake_claude):
     await until(lambda: h.session.status == "idle" and "working" in seen, what="a turn")
     assert seen[:3] == ["idle", "working", "idle"]
     await h.session.shutdown()
+
+
+async def test_agent_messages_arrive_unread_and_a_read_clears_them(h):
+    await h.session.send("hello")
+    await until(lambda: h.session.status == "idle" and h.session.unread, what="a reply")
+    (pid,) = [e["id"] for e in h.session.entries() if e["kind"] == "prose"]
+    assert h.session.unread == {pid}
+    assert [e["unread"] for e in h.session.view() if e["kind"] == "prose"] == [True]
+    assert "unread" not in next(e for e in h.session.entries() if e["id"] == pid)
+    assert h.session.wire()["unread"] == 1
+    n = len(h.published)
+    assert h.session.read([pid, "nope"]) == 1
+    assert h.session.unread == set() and h.session.last_read_at
+    ups = [
+        op["upsert"]
+        for ch, ops in h.published[n:]
+        if ch == h.session.channel
+        for op in ops
+    ]
+    assert [(u["id"], u["unread"]) for u in ups] == [(pid, False)]
+    cards = [
+        op["upsert"] for ch, ops in h.published[n:] if ch == "sessions" for op in ops
+    ]
+    assert cards and cards[-1]["unread"] == 0
+    assert h.session.read([pid]) == 0  # already read: nothing published
+
+
+async def test_read_state_survives_a_rebuild_and_an_old_meta_has_none(
+    tmp_path, fake_claude
+):
+    h = Harness(tmp_path, fake_claude)
+    assert h.session.unread == set() and h.session.last_read_at is None
+    await h.session.start()
+    await h.session.send("hello")
+    await until(lambda: h.session.status == "idle" and h.session.unread, what="a reply")
+    unread = set(h.session.unread)
+    await h.session.shutdown()
+    meta = h.metas.read_all()[0][0]
+    assert set(meta["unread"]) == unread
+    again = h.make(unread=meta["unread"], last_read_at=meta["last_read_at"])
+    assert again.unread == unread
+
+
+async def test_a_delta_after_a_restart_carries_reads_from_before_it(h):
+    await h.session.send("hello")
+    await until(lambda: h.session.status == "idle" and h.session.unread, what="a reply")
+    (pid,) = [e["id"] for e in h.session.entries() if e["kind"] == "prose"]
+    held = h.session.snapshot()  # a tab takes the transcript, then leaves
+    assert h.session.read([pid]) == 1
+    await h.session.shutdown()
+    keep = ("resume_id", "title", "unread", "last_read_at")
+    kept = {k: v for k, v in h.session.meta().items() if k in keep}
+    h.published.clear()
+    reborn = h.session = h.make(**kept)
+    h.snapshot = reborn.view()
+    # The new process never saw the read, so the tab coming back with its rev
+    # gets every agent message, dressed.
+    delta = reborn.snapshot(held["rev"])
+    assert delta["since"] == held["rev"] == delta["rev"]
+    assert [(e["id"], e["unread"]) for e in delta["entries"]] == [(pid, False)]
+    # Once the fold moves on, a delta from after the load carries only reads
+    # made since then.
+    await reborn.send("again")
+    await until(lambda: reborn.status == "idle" and reborn.unread, what="a reply")
+    later = reborn.snapshot()
+    (new,) = reborn.unread
+    assert reborn.snapshot(later["rev"])["entries"] == []
+    assert reborn.read([new]) == 1
+    delta = reborn.snapshot(later["rev"])
+    assert [(e["id"], e["unread"]) for e in delta["entries"]] == [(new, False)]

@@ -37,6 +37,7 @@ body{background:#000}
 #a2 .tabs .servers{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--faint);padding:0 10px}
 #a2 .keys-btn{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);color:var(--faint);font-family:var(--font-mono);font-size:11.5px;padding:1px 7px;margin:0 6px 6px;cursor:pointer}
 #a2 .keys-btn:hover{color:var(--strong)}
+#a2 .bell[data-state=granted]{color:var(--accent)}
 #a2 .keymap{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(0,0,0,.45)}
 #a2 .keymap[hidden]{display:none}
 #a2 .keymap .panel{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:6px 22px 14px;max-height:85vh;overflow:auto;font-size:12.5px;display:grid;grid-template-columns:auto auto;column-gap:36px;align-items:start}
@@ -107,6 +108,13 @@ body{background:#000}
 #a2 .row.user.pending .body:after{content:"not read yet";display:block;font-size:11px;color:var(--faint);margin-top:4px;font-family:var(--font-chrome)}
 #a2 .row.prose .body{font-family:var(--font-prose);font-size:var(--prose-size);line-height:1.55;color:var(--ink);overflow-wrap:anywhere}
 #a2 .row.prose .g{color:var(--ink)}
+/* reading: the margin mark on agent messages */
+#a2 .row.prose{grid-template-columns:var(--row-cols) 16px}
+#a2 .row.prose .rm{line-height:1.9;text-align:center}
+#a2 .row.prose .rm .ic{width:12px;height:12px}
+#a2 .row.prose .rm .ic.unread{color:var(--accent)}
+#a2 .row.prose .rm .ic.read{color:var(--faint)}
+#a2 .card .ft .unr{color:var(--accent)}
 #a2 .md>:first-child{margin-top:0}#a2 .md>:last-child{margin-bottom:0}
 #a2 .md p,#a2 .md ul,#a2 .md ol{margin:0 0 .6em}
 #a2 .md h1,#a2 .md h2,#a2 .md h3,#a2 .md h4{font-family:var(--font-head);color:var(--strong);font-weight:600;margin:.9em 0 .4em;font-size:1.05em}
@@ -147,7 +155,18 @@ body{background:#000}
 #a2 .row.working,#a2 .row.working .g{color:var(--accent)}
 #a2 .meta{color:var(--faint);margin-left:10px}
 #a2 .steps{color:var(--faint);margin-left:8px}
-#a2 .jump{position:absolute;right:28px;bottom:118px;z-index:3;background:var(--raised);color:var(--strong);border:1px solid var(--rule);border-radius:999px;padding:4px 12px;font-size:12px;cursor:pointer}
+/* the divider and the navigator */
+#a2 .row.since::before{content:attr(data-since);grid-column:1/-1;display:flex;align-items:center;gap:10px;margin:6px 0 10px;font-family:var(--font-chrome);font-size:11px;color:var(--accent);background:linear-gradient(var(--accent),var(--accent)) left 50%/calc(50% - 15ch) 1px no-repeat,linear-gradient(var(--accent),var(--accent)) right 50%/calc(50% - 15ch) 1px no-repeat;justify-content:center}
+#a2 .nav{position:absolute;right:14px;bottom:104px;z-index:3;display:flex;align-items:center;border:1px solid var(--rule);background:var(--raised);border-radius:999px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.25);font-family:var(--font-chrome)}
+#a2 .nav[hidden]{display:none}
+#a2 .nav button{border:none;background:none;color:var(--strong);height:30px;padding:0 10px;cursor:pointer;display:grid;place-items:center}
+#a2 .nav button+button{border-left:1px solid var(--rule)}
+#a2 .nav .pos{font-size:12px;color:var(--muted)}
+#a2 .nav .pos:empty{display:none}
+#a2 .nav button:disabled{opacity:.4;cursor:default}
+#a2 .nav .latest.new{color:var(--accent)}
+#a2 .nav .ic{width:15px;height:15px}
+#a2 .col:has(#replies:not([hidden])) .nav{bottom:150px}
 
 /* composer */
 #a2 .composer{padding:10px 22px 16px}
@@ -405,8 +424,8 @@ body{background:#000}
 #a2 .ic.wait{color:var(--muted)}#a2 .ic.done{color:var(--ok)}#a2 .ic.work{color:var(--accent);animation:a2spin 1.1s linear infinite}
 @keyframes a2spin{to{transform:rotate(360deg)}}
 @keyframes a2blink{to{visibility:hidden}}
-#a2 .tab:not(.on) .ic.need{animation:a2blink 1.2s steps(2,start) infinite}
-@media (prefers-reduced-motion:reduce){#a2 .ic.work,#a2 .tab .ic.need{animation:none}}
+#a2 .tab.blink:not(.on) .ic.need{animation:a2blink 1.2s steps(2,start) infinite}
+@media (prefers-reduced-motion:reduce){#a2 .ic.work,#a2 .tab.blink:not(.on) .ic.need{animation:none}}
 #a2 .card.at-needs_you{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 #a2 .card.at-error{border-color:var(--err);box-shadow:inset 3px 0 0 var(--err)}
 #a2 .card .hd .s.at-needs_you{color:var(--accent)}#a2 .card .hd .s.at-error{color:var(--err)}
@@ -437,7 +456,6 @@ body{background:#000}
 #a2 .replies .lbl{font-family:var(--font-chrome);font-size:11px;color:var(--faint);margin-right:2px}
 #a2 .rp{font-family:var(--font-ui);font-size:13px;color:var(--strong);background:var(--surface);border:1px solid var(--rule);border-radius:999px;padding:5px 13px;cursor:pointer;line-height:1.3;text-align:left}
 #a2 .rp:hover{border-color:var(--accent);background:var(--accent-soft)}
-#a2 .col:has(#replies:not([hidden])) .jump{bottom:160px}
 
 /* narrow and touch: last, so these win over the rules above */
 #a2 .side-btn{display:none}
@@ -451,7 +469,7 @@ body{background:#000}
   #a2 .tablist .tab .srv{display:none}
   #a2 .tablist .tab .tname{max-width:16ch}
   #a2 .theme-pick{font-size:0;gap:0}
-  #a2 .keys-btn{display:none}
+  #a2 .keys-btn:not(.bell){display:none}
   #a2[data-view=session] .side-btn{display:block;background:none;border:0;color:var(--muted);font-size:18px;min-width:44px;cursor:pointer}
   #a2[data-view=session] .v-session{grid-template-columns:minmax(0,1fr)}
   /* The drawer and its dimmed page start under the header (--hdr, its height,
@@ -466,7 +484,6 @@ body{background:#000}
   #a2 .composer{padding:6px 8px max(8px,env(safe-area-inset-bottom))}
   #a2 .replies{flex-direction:column;align-items:stretch}
   #a2 .replies .lbl{display:none}
-  #a2 .jump{right:14px}
   #a2 .band{grid-template-columns:minmax(0,1fr);gap:14px;padding:12px 14px}
   #a2 .gauge{grid-template-columns:62px minmax(0,1fr) max-content;gap:8px}
   #a2 .cards{padding:12px;gap:10px}
@@ -478,6 +495,8 @@ body{background:#000}
   #a2 .rp{min-height:44px;padding:10px 14px;font-size:14.5px}
   #a2 .composer .acts .send,#a2 .composer .acts .int{min-width:44px;min-height:44px}
   #a2 .tab{min-height:40px}
+  #a2 .bell{min-width:44px;min-height:40px}
+  #a2 .nav button{height:44px;min-width:44px}
   #a2 .row.tool details>summary{padding:9px 0}
   #a2 .btn{min-height:44px}
 }

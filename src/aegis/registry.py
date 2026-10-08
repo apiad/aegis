@@ -101,8 +101,13 @@ class Registry(Host):
         }
 
     def _attention(self, s: Session) -> dict:
+        last = s.standing.get("last_message")
         return attention.card(
-            s.standing, working=s.in_turn, worker=bool(s.worker), waits=self._waits(s)
+            s.standing,
+            working=s.in_turn,
+            worker=bool(s.worker),
+            waits=self._waits(s),
+            last_unread=bool(last) and last in s.unread,
         )
 
     def _waits(self, s: Session) -> list[str]:
@@ -197,6 +202,8 @@ class Registry(Host):
             held=meta.get("held"),
             worker=meta.get("worker"),
             standing=meta.get("standing"),
+            unread=meta.get("unread"),
+            last_read_at=meta.get("last_read_at"),
         )
 
     def boot(self) -> None:
@@ -252,7 +259,7 @@ class Registry(Host):
         """A snapshot function for any session's transcript, archived included."""
         s = self.sessions.get(log_id)
         if s is not None:
-            return lambda: s.fold().snapshot(since)
+            return lambda: s.snapshot(since)
         if log_id in self.archived:
             return lambda: self._archived_fold(log_id).snapshot(since)
         return None

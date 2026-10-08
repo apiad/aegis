@@ -1,8 +1,9 @@
 # aegis: what a session needs from you, what it did, and what you have read
 
-**Status: slice 1 implemented, 2026-10-08** (issue #171), following
-`docs/superpowers/plans/2026-10-08-session-attention-slice-1.md`. Slices 2 and 3
-are designed, not built. Designed with Alex in a brainstorm
+**Status: slices 1 and 2 implemented, 2026-10-08** (issue #171), following
+`docs/superpowers/plans/2026-10-08-session-attention-slice-1.md` and
+`docs/superpowers/plans/2026-10-08-session-attention-slice-2.md`. Slice 3 (the
+recap) is designed, not built. Designed with Alex in a brainstorm
 with mockups, rendered on the client's own CSS from `main`. The approved screens
 are in the workspace playground, not in this repo:
 `.playground/aegis-recap-ui/src-transcript.html` (transcript, recap, read marks,
@@ -171,15 +172,20 @@ lands the tools reports the rate over a week of Alex's sessions.
 
 ## What you have read
 
-**Storage.** The meta gains `read_floor`, a store index: every agent message
-before it is read. A message read out of order is kept in `read_ids` until the
-floor passes it, so the set stays small. A session that predates this feature
-starts with its floor at its current end, so nothing old turns up unread.
+**Storage.** The meta keeps the set of unread agent-message ids and the time of
+the last read. A new agent message joins the set as the fold publishes it; a read
+removes ids. A session that predates this feature has no set, so nothing old turns
+up unread. This replaced a first design with a `read_floor` store index plus the
+ids read out of order: the floor had to start at "the current end", which only the
+store knows, and boot reads no store. The cost is one id in the meta per agent
+message nobody has read.
 
 **Reading.** The client watches the mounted `prose` rows. A row that has been at
-least half visible for one second, while the page is visible and focused, is
+least half visible, or has filled half the transcript's height, for one second
+while the page is visible and focused, is
 sent in a batched `session.read(log_id, ids)` call. That operation is for people
-only. The server moves the floor, writes the meta, and publishes.
+only. The server removes the ids from the unread set, writes the meta, and
+publishes.
 
 **What crosses the wire.** Python decides whether a message is unread. Each
 `prose` entry carries an `unread` flag when it is published, and a read sends
@@ -228,8 +234,8 @@ in the navigator asks for one regardless.
 `context`, one sentence on what the session was doing, and `ask`, one sentence on
 what it needs from you, empty when nothing. The prompt is the legacy one
 (`legacy/aegis/recap/__init__.py`, `SYSTEM`) cut down to these two fields. It
-reads the transcript from the last user message or the read floor, whichever is
-earlier, within 3,000 tokens, plus the agent's own `turn_end` line and the plan,
+reads the transcript from the last user message or the first unread agent
+message, whichever is earlier, within 3,000 tokens, plus the agent's own `turn_end` line and the plan,
 which it is told to trust over its own reading.
 
 **How it is paid for.** `.aegis.yaml` gains `recap: {agent: <name>}`, naming an
@@ -298,7 +304,8 @@ call `/mcp` with its own token.
 - **Plan.** `plan_update` calls give now, did and the count; a refold of the store
   gives the same card; a `turn_end` from an earlier turn does not survive the next
   prompt's echo.
-- **Read.** `session.read` moves the floor and keeps `read_ids` small. A second
+- **Read.** `session.read` removes the ids from the unread set, and ids not in
+  it change nothing. A second
   browser receives the flag changes and the count. A pre-existing session starts
   fully read. The session tests' rule holds: the patches add up to a fresh fold.
 - **Recap.** The one-shot runner is injected, so tests never call Claude. The
@@ -323,7 +330,7 @@ Each slice is a PR that works on its own.
 1. **Status.** The two agent tools and their records, the attention rule, the
    card fields, the priming, the glyph module, tab and card marks, the band, the
    order switch and the reply pills.
-2. **Reading.** The read floor, `session.read`, the unread flags, margin marks,
+2. **Reading.** The unread set, `session.read`, the unread flags, margin marks,
    the divider, the navigator, the keys, the title count, the favicon and
    notifications.
 3. **Recap.** `recap:` in the config, `recap.request`, the one-shot runner, the
