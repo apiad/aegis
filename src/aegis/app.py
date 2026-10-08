@@ -5,11 +5,13 @@ resolves a ``/`` line first, ``commands.py``), ``session.configure``,
 ``commands.list``, ``session.interrupt``, ``session.stop``, ``session.close``,
 ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``,
-``quota.read``. Channels: ``sessions`` (every open session's meta; patches
-``upsert`` and ``remove``), ``transcript:<log_id>`` (any session, archived
-included), ``quota`` (each provider's windows; patches ``set``) and ``host``
-(CPU, RAM and disk while someone watches; patches ``set``) and ``config``
-(``.aegis.yaml`` as aegis holds it; patches ``set``).
+``quota.read``, and ``config.read``, ``config.write``, ``config.detect``,
+``config.doctor`` and ``config.propose`` (``config_ops.py``). Channels:
+``sessions`` (every open session's meta; patches ``upsert`` and ``remove``),
+``transcript:<log_id>`` (any session, archived included), ``quota`` (each
+provider's windows; patches ``set``), ``host`` (CPU, RAM and disk while someone
+watches; patches ``set``) and ``config`` (``.aegis.yaml`` as aegis holds it;
+patches ``set``).
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ from .agents import (
 from .channels import Channels, Throttle
 from .claude.process import PERMISSION_MODE, ControlError
 from .config import Config, Snapshot
+from .config_ops import register_config_ops
 from .host import HostSampler
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors
@@ -173,6 +176,7 @@ class App:
         self.registry = Ops()
         self._register()
         register_agent_ops(self)
+        register_config_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
 
     def _bin(self, harness: str) -> str:
