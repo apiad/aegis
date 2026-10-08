@@ -13,6 +13,7 @@ import { installKeys, renderKeys } from "./keys.js";
 import { glyph, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
+import { ask, cancelAsk } from "./dialog.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -719,6 +720,7 @@ installKeys(
       } else menu.openOverlay();
     },
     escape() {
+      if (cancelAsk()) return;
       if (!keymap.hidden) help(false);
       else if (closeMonitorCard()) return;
       else if (route().view === "session" && !editing.size) interrupt();
@@ -762,6 +764,9 @@ function drawReplies(s) {
   );
 }
 
+const askClose = (s) =>
+  ask(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`, { ok: "Close" });
+
 // A line from the composer, or from the menu's own filter (Alt+/ over a
 // draft), which leaves the composer alone. The server resolves "/" lines.
 async function sendLine(text, fromComposer) {
@@ -775,7 +780,7 @@ async function sendLine(text, fromComposer) {
     else menu.openOverlay();
     return;
   }
-  if (text === "/close" && !confirm(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`)) return;
+  if (text === "/close" && !(await askClose(s))) return;
   $("send-error").textContent = "";
   const box = $("replies");
   const was = box.hidden;
@@ -893,7 +898,7 @@ $("stop-session").addEventListener("click", async () => {
 $("close").addEventListener("click", async () => {
   const s = focused();
   if (!s) return;
-  if (!confirm(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`)) return;
+  if (!(await askClose(s))) return;
   try {
     await conn.call("session.close", { log_id: s.log_id });
     archiveLoaded = false;

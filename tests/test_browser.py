@@ -294,6 +294,13 @@ def tab_ids(pg) -> list[str]:
     )
 
 
+def close_session(pg) -> None:
+    """Close the shown session through the aegis dialog."""
+    pg.click("#close")
+    pg.wait_for_selector("#dialog .ok", state="visible")
+    pg.click("#dialog .ok")
+
+
 def test_a_session_from_spawn_to_close(server, page):
     page.goto(server.url)
     assert "token=" not in page.url, "the token stays out of the address bar"
@@ -337,7 +344,7 @@ def test_a_session_from_spawn_to_close(server, page):
     page.select_option("#theme", "logbook")
     assert page.evaluate(bg) != before == "#11100e"
 
-    page.click("#close")
+    close_session(page)
     page.wait_for_selector("#a2[data-view=fleet]")
     page.wait_for_selector("#arch-list tr[data-id]")
     assert tab_ids(page) == []
@@ -460,7 +467,7 @@ def test_close_in_one_browser_removes_the_tab_in_another(server, browser, page):
     other = new_page(browser, errors)
     other.goto(server.url + f"#s={a}")
     other.wait_for_selector("#a2[data-view=session]")
-    page.click("#close")
+    close_session(page)
     other.wait_for_selector("#a2[data-view=fleet]", timeout=5000)
     assert tab_ids(other) == []
     assert errors == [] and page.errors == []
@@ -486,7 +493,7 @@ def test_reopen_from_the_archive_and_rename(server, page, frames):
     page.fill("#s-handle input", "old-talk")
     page.press("#s-handle input", "Enter")
     page.wait_for_selector("#tablist .tab .srv >> text=old-talk")
-    page.click("#close")
+    close_session(page)
     page.wait_for_selector(f"#arch-list tr[data-id='{a}']")
     page.fill("#arch-q", "nothing like it")
     page.wait_for_selector("#arch-list .empty")
@@ -1130,7 +1137,7 @@ def test_fleet_cards_and_archive_rows_walk_with_j_and_open_with_enter(server, pa
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     a, b = spawn(page, "alpha"), spawn(page, "beta")
-    page.click("#close")  # b goes to the archive
+    close_session(page)  # b goes to the archive
     page.wait_for_selector("#a2[data-view=fleet]")
     page.reload()  # the archive misses a Close until a reload (#160)
     page.wait_for_selector(f"#arch-list tr[data-id='{b}']")
@@ -1452,3 +1459,30 @@ def test_each_quota_bar_shares_a_row_with_its_label_and_value(
     for tops in rows:
         assert max(tops) - min(tops) < 12, tops
     assert errors == []
+
+
+def test_close_asks_in_an_aegis_dialog_and_esc_cancels_without_interrupting(
+    server, page
+):
+    native: list = []
+    page.on("dialog", lambda d: native.append(d.message))
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page)
+    page.fill("#input", "/sleep 3")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    page.click("#close")
+    page.wait_for_selector("#dialog .ok", state="visible")
+    assert "Close" in page.inner_text("#dialog .q")
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#dialog", state="hidden")
+    assert page.is_visible(".row.tool.running"), "Esc on the dialog interrupted"
+    assert tab_ids(page) == [a]
+    page.fill("#input", "/close")
+    page.press("#input", "Enter")
+    page.click("#dialog .cancel")
+    assert tab_ids(page) == [a]
+    close_session(page)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert tab_ids(page) == [] and native == [] and page.errors == []
