@@ -1105,7 +1105,9 @@ def test_an_unknown_command_is_flagged_and_claudes_commands_render(server, page)
     page.fill("#input", "/context")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.command .cmd")
-    assert page.inner_text(".row.command .cmd") == "/context"
+    # textContent: rows use content-visibility:auto, so innerText of a row not
+    # yet painted reads empty (#161).
+    assert page.text_content(".row.command .cmd") == "/context"
     assert page.errors == []
 
 

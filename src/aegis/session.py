@@ -88,7 +88,9 @@ class SpawnSpec:
     """What a session's process runs with, fixed at spawn and recorded in the
     spawn record and the meta. A resume reads it from there, never from
     ``.aegis.yaml``: Claude Code does not keep the system prompt in its own
-    session file, so editing an agent must not change its old sessions."""
+    session file, so editing an agent must not change its old sessions. Only
+    model, effort and permission change later, through ``Session.configure``,
+    which records each change for the meta and a rebuild."""
 
     agent: str
     model: str

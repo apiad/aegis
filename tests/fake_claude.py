@@ -82,6 +82,7 @@ SCRIPTS = (
     "recall",
     "mcp",
     "bgtask",
+    "argv",
 )
 COMMANDS = (
     [

@@ -70,7 +70,7 @@ def test_a_value_outside_the_vocabulary_is_an_error(tmp_path):
             "agents:\n  x: {harness: claude-code, model: opus, effort: huge, permission: full}\n",
         )
     )
-    assert a.error == "effort 'huge' is not one of low, medium, high, max"
+    assert a.error == "effort 'huge' is not one of low, medium, high, xhigh, max"
 
 
 def test_an_unsupported_harness_is_disabled_but_not_an_error(tmp_path):

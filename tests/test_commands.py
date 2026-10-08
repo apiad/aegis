@@ -8,7 +8,7 @@ from aegis.transcript.store import read_store
 
 from .conftest import cmdline, until
 
-CONFIG = "default_agent: opus\nagents:\n  opus: {model: opus, effort: high, permission: full}\n"
+CONFIG = "default_agent: opus\nagents:\n  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
 
 
 def make_app(root, fake) -> App:
@@ -25,7 +25,7 @@ async def app(tmp_path, fake_claude):
 
 
 async def spawn(app) -> str:
-    return (await app.registry.call("session.spawn", {"profile": "opus"}))["log_id"]
+    return (await app.registry.call("session.spawn", {"agent": "opus"}))["log_id"]
 
 
 async def send(app, log_id, text):
