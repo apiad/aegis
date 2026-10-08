@@ -60,6 +60,10 @@ def _tail(path: str) -> str:
 
 AEGIS_PREFIX = "mcp__aegis__"
 
+# Lines Claude Code appends after a Bash call's own output. Left in, they
+# would be the verdict of every call that ran ``cd`` or rewrote a read file.
+CLAUDE_TRAILERS = ("Shell cwd was reset to ", "[This command modified ")
+
 
 def tool_glyph(name: str) -> str:
     if name.startswith(AEGIS_PREFIX):
@@ -196,6 +200,9 @@ def result_digest(
     if name.startswith(AEGIS_PREFIX) and not is_error:
         return _aegis_digest(text)
     lines = [ln for ln in text.splitlines() if ln.strip()]
+    if name == "Bash":
+        while len(lines) > 1 and lines[-1].startswith(CLAUDE_TRAILERS):
+            lines.pop()
     # Claude Code swaps an oversized result for a wrapper around a 2 KB
     # preview; its size is the only honest verdict.
     if lines and lines[0] == "<persisted-output>" and len(lines) > 1:
