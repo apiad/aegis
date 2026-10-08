@@ -766,3 +766,33 @@ def test_a_turn_cut_by_a_server_restart_is_an_error_and_a_persons_stop_is_not():
     rec.own("stop")
     f, _ = run(rec)
     assert f.standing["turn_error"] == ""
+
+
+def test_a_recap_record_is_an_entry_and_a_send_folds_it():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.echo("go")
+    rec.text("done it")
+    rec.result()
+    rec.own(
+        "recap",
+        upto=3,
+        context="fixing it",
+        ask="merge?",
+        model="m",
+        cost_usd=0.004,
+        duration_ms=1800,
+    )
+    f, _ = run(rec)
+    (r,) = [e for e in f.entries() if e["kind"] == "recap"]
+    assert (
+        r["id"] == "e4"
+        and r["detail"]["context"] == "fixing it"
+        and r["detail"]["folded"] is False
+    )
+    assert f.last_index == 4
+    ops = f.apply(rec.own("send", text="next"))
+    assert any(
+        op.get("upsert", {}).get("id") == "e4" and op["upsert"]["detail"]["folded"]
+        for op in ops
+    )

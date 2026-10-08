@@ -45,6 +45,7 @@ ERROR_GLYPH = "✗"
 COMMS_GLYPH = "⇄"
 FILE_GLYPH = "▤"
 COMMAND_GLYPH = "/"
+RECAP_GLYPH = "✦"
 
 # How much of a result the one-line verdict may carry.
 DIGEST_MAX = 200

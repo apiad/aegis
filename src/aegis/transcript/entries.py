@@ -123,6 +123,9 @@ class Fold:
         self.standing: dict = EMPTY_STANDING
         self._turns = 0  # results seen
         self._report_turn = -1  # self._turns when the current report was made
+        self.last_index = -1  # the "i" of the last record applied
+        self._recap: str | None = None  # the latest recap entry's id
+        self.last_recap_upto: int | None = None
 
     def entries(self) -> list[dict]:
         return list(self._entries.values())
@@ -134,6 +137,7 @@ class Fold:
         parse; a re-fold passes nothing and parses the stored line.
         """
         i, ts = record["i"], record.get("ts")
+        self.last_index = i
         src = record.get("src")
         if src in PARSERS:
             evs = (
@@ -281,9 +285,14 @@ class Fold:
         if kind == "send":
             self._turn_open = True
             self._stand(report=None, turn_error="")
+            # The person is back and writing: the recap has done its job.
+            folded: list[dict] = []
+            r = self._entries.get(self._recap) if self._recap else None
+            if r is not None and not r["detail"].get("folded"):
+                folded = self._upsert({**r, "detail": {**r["detail"], "folded": True}})
             pid = f"pending:{i}"
             self._pending.append(pid)
-            return self._upsert(
+            return folded + self._upsert(
                 _entry(
                     pid,
                     "user",
@@ -316,6 +325,29 @@ class Fold:
                 }
             )
             return []
+        if kind == "recap":
+            self._recap = f"e{i}"
+            self.last_recap_upto = rec.get("upto")
+            return self._upsert(
+                _entry(
+                    f"e{i}",
+                    "recap",
+                    "ok",
+                    ts,
+                    d.RECAP_GLYPH,
+                    title="recap",
+                    summary=str(rec.get("context") or ""),
+                    detail={
+                        "context": rec.get("context") or "",
+                        "ask": rec.get("ask") or "",
+                        "model": rec.get("model") or "",
+                        "cost_usd": float(rec.get("cost_usd") or 0.0),
+                        "duration_ms": int(rec.get("duration_ms") or 0),
+                        "upto": rec.get("upto"),
+                        "folded": False,
+                    },
+                )
+            )
         if kind == "interrupt":
             self._interrupted = True
             return []
