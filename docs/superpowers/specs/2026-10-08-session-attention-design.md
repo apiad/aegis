@@ -163,7 +163,7 @@ Compliance is measured, not assumed: `make test-live` runs a real Sonnet session
 through a question turn, which must end in `turn_end` with `needs_you` and one to
 three replies, and a work turn, which must end in `turn_end` with `done`. Not yet
 measured live: `plan_update` compliance, a wait turn, and an open question that
-offers no replies (a #171 follow-up). On 2026-10-08
+offers no replies (#178). On 2026-10-08
 Opus and Sonnet called turn_end on 6 of 6 question and work turns with this
 wording, Haiku in about 1 of 3, so the live test runs on Sonnet. The PR that
 lands the tools reports the rate over a week of Alex's sessions.
@@ -311,8 +311,7 @@ call `/mcp` with its own token.
 - **Live.** `make test-live` runs a real Sonnet session through a question turn,
   which must end in `turn_end` with `needs_you` and one to three replies, and a
   work turn, which must end in `turn_end` with `done`. `plan_update` compliance, a
-  wait turn and an open question with no replies are not yet measured live (a #171
-  follow-up).
+  wait turn and an open question with no replies are not yet measured live (#178).
 - **Bench.** The `unread` flag and the attention rule must not raise the cost per
   stdout line; `make bench` runs on each PR.
 
