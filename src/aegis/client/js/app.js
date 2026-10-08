@@ -10,6 +10,7 @@ import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { ago, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
 import { installKeys, renderKeys } from "./keys.js";
+import { installGlyphs } from "./glyphs.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -50,6 +51,20 @@ let unsubTranscript = null;
 let workingSince = null;
 let booted = false;
 const transcript = new Transcript($("tr"), $("entries"), $("jump"));
+installGlyphs();
+// How the Fleet orders its cards: this browser's choice, like the tab order.
+let fleetOrder = localStorage.getItem("aegis.fleetOrder") || "attention";
+function markOrder() {
+  for (const b of document.querySelectorAll("#fleet-order button")) b.classList.toggle("on", b.dataset.order === fleetOrder);
+}
+markOrder();
+for (const b of document.querySelectorAll("#fleet-order button"))
+  b.addEventListener("click", () => {
+    fleetOrder = b.dataset.order;
+    localStorage.setItem("aegis.fleetOrder", fleetOrder);
+    markOrder();
+    render();
+  });
 
 // -- routing: #fleet, #new, #s=<log_id>, #read=<log_id> -----------------------
 function route() {
@@ -154,7 +169,8 @@ function flushSessions() {
   const r = route();
   for (const id of ids) patchTab($("tablist"), sessions.get(id), r.view === "session" ? r.id : null, tabActions);
   if (r.view === "fleet") {
-    for (const id of ids) patchCard($("cards"), sessions.get(id), openSession);
+    const regroup = [...ids].some((id) => !patchCard($("cards"), sessions.get(id), openSession, fleetOrder));
+    if (regroup) renderCards($("cards"), ordered, openSession, fleetOrder);
     fleetMark(false);
     drawBand();
   } else if (r.view === "session" && ids.has(r.id)) renderMeta(sessions.get(r.id));
@@ -195,7 +211,7 @@ function render() {
   if (r.view === "fleet") {
     follow(null);
     show("fleet");
-    renderCards($("cards"), ordered, openSession);
+    renderCards($("cards"), ordered, openSession, fleetOrder);
     fleetMark(false);
     watchHost(true);
     drawBand();
