@@ -163,7 +163,7 @@ def parse(stdout: str) -> tuple[RecapOut | None, float, int]:
     if not isinstance(env, dict):
         return None, 0.0, 0
     cost = _number(env.get("total_cost_usd"), float)
-    ms = _number(env.get("duration_ms"), int)
+    ms = int(_number(env.get("duration_ms"), int))
     candidates = []
     if isinstance(env.get("structured_output"), dict):
         candidates.append(env["structured_output"])

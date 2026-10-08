@@ -130,7 +130,7 @@ async def test_a_cancelled_requester_leaves_the_call_holding_its_slot(
     world, monkeypatch, tmp_path
 ):
     a = await two_unread(world)
-    monkeypatch.setattr(recap, "TIMEOUT_S", 3)
+    monkeypatch.setattr(recap, "TIMEOUT_S", 2)
     monkeypatch.setenv("FAKE_CLAUDE_ONESHOT", "slow")
     first = asyncio.create_task(
         world.app.registry.call("recap.request", {"log_id": a.log_id})
