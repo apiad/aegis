@@ -730,3 +730,197 @@ def test_a_sessions_patch_redraws_only_its_own_tab_and_card(server, browser, pag
     ), "a patch for b rebuilt a's card"
     assert tab_ids(page) == [a, b]
     assert page.errors == []
+
+
+# -- the keyboard (#159) ------------------------------------------------------
+
+
+def focused_id(pg) -> str:
+    return pg.evaluate("document.activeElement.id")
+
+
+def hash_is(pg, h: str) -> None:
+    pg.wait_for_function("h => location.hash === h", arg=h, timeout=3000)
+
+
+def test_alt_period_and_alt_comma_move_focus_between_composer_and_transcript(
+    server, page
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.keyboard.press("Alt+,")
+    assert focused_id(page) == "tr"
+    page.keyboard.press("Alt+.")
+    assert focused_id(page) == "input"
+    page.keyboard.type("jk")  # in a text field, plain keys are text
+    assert page.input_value("#input") == "jk"
+    for back in ("i", "/"):
+        page.keyboard.press("Alt+,")
+        page.keyboard.press(back)
+        assert focused_id(page) == "input"
+    assert page.input_value("#input") == "jk"
+    assert page.errors == []
+
+
+def test_alt_brackets_cycle_fleet_and_tabs_and_digits_pick_a_tab(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a, b = spawn(page, "alpha"), spawn(page, "beta")
+    steps = (("Alt+]", "#fleet"), ("Alt+]", f"#s={a}"), ("Alt+[", "#fleet"))
+    for key, want in (*steps, ("Alt+[", f"#s={b}")):
+        page.keyboard.press(key)
+        hash_is(page, want)
+    page.keyboard.press("Alt+,")
+    for key, want in (("1", f"#s={a}"), ("0", "#fleet"), ("2", f"#s={b}")):
+        page.keyboard.press(key)
+        hash_is(page, want)
+    page.keyboard.press("Alt+KeyN")
+    hash_is(page, "#new")
+    page.keyboard.press("Alt+.")
+    assert focused_id(page) == "sp-cwd"
+    page.keyboard.press("Enter")  # submits the spawn form
+    page.wait_for_selector("#a2[data-view=session]")
+    assert page.errors == []
+
+
+def selected(pg) -> str | None:
+    return pg.evaluate(
+        "document.querySelector('#entries .row.sel')?.dataset.id ?? null"
+    )
+
+
+def row_ids(pg, cls: str = "") -> list[str]:
+    return pg.evaluate(
+        f"[...document.querySelectorAll('#entries .row{cls}')].map(r => r.dataset.id)"
+    )
+
+
+def test_j_k_and_the_turn_keys_walk_the_transcript(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "one")
+    page.fill("#input", "two")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    rows, users = row_ids(page), row_ids(page, ".user")
+    page.keyboard.press("Alt+,")  # nothing selected: the last row on screen
+    assert selected(page) == rows[-1]
+    walk = (
+        ("k", rows[-2]),
+        ("j", rows[-1]),
+        ("j", rows[-1]),
+        ("g", rows[0]),
+        ("K", rows[0]),  # the first row is the spawn's, not a message
+        ("J", users[0]),
+        ("J", users[1]),
+        ("K", users[0]),
+        ("ArrowDown", rows[rows.index(users[0]) + 1]),
+        ("ArrowUp", users[0]),
+        ("G", rows[-1]),
+    )
+    for key, want in walk:
+        page.keyboard.press(key)
+        assert selected(page) == want, key
+    assert page.errors == []
+
+
+def test_a_selected_row_keeps_its_selection_when_it_updates_and_enter_opens_it(
+    server, page
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    page.fill("#input", "/sleep 1")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    tid = page.get_attribute(".row.tool", "data-id")
+    page.keyboard.press("Alt+,")
+    page.keyboard.press("G")
+    for _ in range(len(row_ids(page))):
+        if selected(page) == tid:
+            break
+        page.keyboard.press("k")
+    assert selected(page) == tid
+    turns_done(page, 1)  # the result replaced the tool row's node
+    assert selected(page) == tid
+    is_open = f"document.querySelector('.row[data-id=\"{tid}\"] details').open"
+    page.keyboard.press("Enter")
+    assert page.evaluate(is_open) is True
+    page.keyboard.press(" ")
+    assert page.evaluate(is_open) is False
+
+    # Tab is native: the row holding focus becomes the selection, and Enter on
+    # its summary toggles its details once, not twice.
+    page.keyboard.press("Tab")
+    assert page.evaluate("document.activeElement.tagName") == "SUMMARY"
+    holder = page.evaluate("document.activeElement.closest('.row').dataset.id")
+    assert selected(page) == holder
+    was = page.evaluate("document.activeElement.parentElement.open")
+    page.keyboard.press("Enter")
+    assert page.evaluate("document.activeElement.parentElement.open") is not was
+    assert page.errors == []
+
+
+def test_fleet_cards_and_archive_rows_walk_with_j_and_open_with_enter(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a, b = spawn(page, "alpha"), spawn(page, "beta")
+    page.click("#close")  # b goes to the archive
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.reload()  # the archive misses a Close until a reload (#160)
+    page.wait_for_selector(f"#arch-list tr[data-id='{b}']")
+    sel = "document.querySelector('#cards .sel, #arch-list .sel')?.dataset.id ?? null"
+    page.keyboard.press("Alt+,")
+    assert page.evaluate(sel) == a
+    page.keyboard.press("j")
+    assert page.evaluate(sel) == b
+    page.keyboard.press("Enter")
+    hash_is(page, f"#read={b}")
+    page.keyboard.press("Alt+0")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.keyboard.press("k")
+    assert page.evaluate(sel) == a
+    page.keyboard.press("Enter")
+    hash_is(page, f"#s={a}")
+    page.keyboard.press("Alt+0")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.keyboard.press("/")
+    assert focused_id(page) == "arch-q"
+    assert page.errors == []
+
+
+def test_question_mark_lists_every_key_and_escape_closes_it(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    n = page.evaluate("import('/static/js/keys.js').then(m => m.KEYS.length)")
+    page.keyboard.press("?")
+    page.wait_for_selector("#keymap", state="visible")
+    assert page.locator("#keymap tr.k").count() == n
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#keymap", state="hidden")
+    page.click("#keys-btn")
+    page.wait_for_selector("#keymap", state="visible")
+    page.keyboard.press("?")
+    page.wait_for_selector("#keymap", state="hidden")
+    assert page.errors == []
+
+
+def test_g_in_a_long_transcript_mounts_and_selects_the_first_entry(replay_server, page):
+    page.goto(replay_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    page.fill("#input", "replay")
+    page.press("#input", "Enter")
+    page.wait_for_function(
+        "document.getElementById('s-status').textContent === 'idle'", timeout=60_000
+    )
+    page.reload()
+    page.wait_for_function("window.__a2snapshot && window.__a2snapshot.painted")
+    total = page.evaluate("window.__a2snapshot.count")
+    assert page.locator(ROWS).count() < total
+    page.keyboard.press("Alt+,")
+    page.keyboard.press("g")
+    assert page.locator(ROWS).count() == total
+    assert selected(page) == row_ids(page)[0]
+    assert page.errors == []

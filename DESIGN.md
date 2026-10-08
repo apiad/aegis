@@ -117,6 +117,15 @@ page redraws once a frame, and only the tab and card of a session that changed.
 Mounting a long transcript whole and rebuilding every tab per patch made typing
 cost grow with the transcript's length and the number of sessions (#157, #158).
 
+**A key is one row in one table.** `client/js/keys.js` holds every key the client
+answers and the one `keydown` listener that dispatches from it; the `?` list is drawn
+from the same table, so it cannot name a key that does nothing. Chrome keeps Ctrl+T,
+W, N and Tab, and on Linux Alt+1…9 and Alt+←/→, for itself, so the chords are the
+Alt keys it leaves free. Plain keys act only outside a text field and the view
+decides what they do: there is no mode. A selection, in the transcript or the
+Fleet, is held by id and re-marked after every redraw, because both replace their
+nodes on each patch.
+
 **A theme is one CSS file over one markup.** The markup carries everything any
 theme might show, and the base stylesheet reads only CSS variables. A theme sets
 the variables and a few overrides that decide what shows.

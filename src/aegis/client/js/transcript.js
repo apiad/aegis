@@ -28,6 +28,14 @@ export class Transcript {
     this.opened = new Map(); // id -> open, for rows whose details the reader toggled
     this.touched = new Set();
     this.following = true;
+    this.selected = null; // an entry id: apply() replaces nodes, ids stay
+    // Tab walks the rows' summaries and buttons; the row holding focus is the selection.
+    list.addEventListener("focusin", (ev) => {
+      const r = ev.target.closest(".row");
+      if (!r) return;
+      this.selected = r.dataset.id;
+      this.mark();
+    });
     scroller.addEventListener("scroll", () => {
       this.following = this.atBottom();
       if (this.following) this.jump.hidden = true;
@@ -80,14 +88,16 @@ export class Transcript {
     const frag = document.createDocumentFragment();
     for (const e of entries.slice(-WINDOW)) frag.append(this.mount(e));
     this.list.replaceChildren(frag);
+    this.mark();
     this.toBottom();
   }
 
   // The PAGE entries before the first mounted row, mounted above it, with the
   // reader's place kept: the row that was first stays where it was on screen.
+  // False when every entry is already mounted.
   mountEarlier() {
     const start = this.entries.size - this.nodes.size;
-    if (start <= 0) return;
+    if (start <= 0) return false;
     const ids = [...this.entries.keys()].slice(Math.max(0, start - PAGE), start);
     const ref = this.list.firstElementChild;
     const top = ref?.getBoundingClientRect().top;
@@ -95,6 +105,7 @@ export class Transcript {
     for (const id of ids) frag.append(this.mount(this.entries.get(id)));
     this.list.prepend(frag);
     if (ref) this.scroller.scrollTop += ref.getBoundingClientRect().top - top;
+    return true;
   }
 
   apply(ops) {
@@ -124,8 +135,10 @@ export class Transcript {
         this.nodes.delete(first.dataset.id);
         first.remove();
       }
-      this.toBottom();
-    } else if (added) this.jump.hidden = false;
+    }
+    this.mark();
+    if (this.following) this.toBottom();
+    else if (added) this.jump.hidden = false;
   }
 
   clear() {
@@ -134,6 +147,78 @@ export class Transcript {
     this.opened.clear();
     this.touched.clear();
     this.following = true;
+    this.selected = null;
     this.list.replaceChildren();
+  }
+
+  // -- the selection --------------------------------------------------------
+
+  // Puts the mark on the selected entry's current node; a removed entry
+  // clears the selection.
+  mark() {
+    this.list.querySelector(".row.sel")?.classList.remove("sel");
+    const n = this.selected ? this.nodes.get(this.selected) : null;
+    if (n) n.classList.add("sel");
+    else this.selected = null;
+    return n;
+  }
+
+  select(id) {
+    this.selected = id;
+    const n = this.mark();
+    if (!n) return;
+    // A focused summary in another row would take the next Enter.
+    if (this.list.contains(document.activeElement)) this.scroller.focus({ preventScroll: true });
+    n.scrollIntoView({ block: "nearest" });
+  }
+
+  // The row the reader is looking at: the last whose top is on screen.
+  inView() {
+    const bottom = this.scroller.getBoundingClientRect().bottom;
+    const rows = [...this.list.children];
+    for (let i = rows.length - 1; i >= 0; i--) if (rows[i].getBoundingClientRect().top < bottom) return rows[i];
+    return null;
+  }
+
+  pick() {
+    if (!this.selected) this.select(this.inView()?.dataset.id || null);
+  }
+
+  // Walking up past the first mounted row mounts the page before it.
+  move(delta, keep = () => true) {
+    let n = this.selected ? this.nodes.get(this.selected) : null;
+    if (!n) return this.pick();
+    for (;;) {
+      const next = delta > 0 ? n.nextElementSibling : n.previousElementSibling;
+      if (!next && delta < 0 && this.mountEarlier()) continue;
+      n = next;
+      if (!n || keep(n)) break;
+    }
+    if (n) this.select(n.dataset.id);
+  }
+
+  moveTurn(delta) {
+    this.move(delta, (n) => n.classList.contains("user"));
+  }
+
+  // The first entry is mounted on the way: an explicit jump may pay for it.
+  edge(last) {
+    if (!last) while (this.mountEarlier());
+    const n = last ? this.list.lastElementChild : this.list.firstElementChild;
+    if (last) this.toBottom();
+    if (n) this.select(n.dataset.id);
+  }
+
+  toggle() {
+    const n = this.selected ? this.nodes.get(this.selected) : null;
+    const d = n?.querySelector("details");
+    if (!d) return;
+    this.touched.add(this.selected);
+    d.open = !d.open;
+  }
+
+  press() {
+    const n = this.selected ? this.nodes.get(this.selected) : null;
+    n?.querySelector("a.btn, button")?.click();
   }
 }
