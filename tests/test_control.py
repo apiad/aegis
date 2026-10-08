@@ -58,3 +58,91 @@ async def test_effort_applies_only_where_the_model_lists_it(tmp_path, fake_claud
         assert (await p.request("get_settings"))["applied"]["effort"] == "max"
     finally:
         await p.terminate()
+
+
+def test_the_catalog_reads_sources_cuts_docs_and_drops_disabled_models():
+    from aegis.claude import control
+
+    cat = control.from_initialize(
+        {
+            "commands": [
+                {
+                    "name": "compact",
+                    "description": "Clear history but keep a summary. Extra.",
+                    "argumentHint": "",
+                    "builtin": True,
+                },
+                {
+                    "name": "draft",
+                    "description": "Generate a draft. (project)",
+                    "argumentHint": "<outline>",
+                },
+                {"name": "ingest", "description": "x" * 300},
+                {"name": "sync", "description": "Sync it. (claude.ai sync)"},
+            ],
+            "models": [
+                {
+                    "value": "sonnet",
+                    "resolvedModel": "claude-sonnet-5",
+                    "displayName": "Sonnet 5",
+                    "description": "d",
+                    "supportedEffortLevels": ["low"],
+                },
+                {
+                    "value": "old",
+                    "resolvedModel": "x",
+                    "displayName": "Old",
+                    "description": "d",
+                    "disabled": True,
+                },
+            ],
+        }
+    )
+    by = {c["name"]: c for c in cat.wire_commands(shadowed=())}
+    assert by["compact"] == {
+        "name": "compact",
+        "hint": "",
+        "doc": "Clear history but keep a summary.",
+        "source": "claude",
+    }
+    assert (by["draft"]["source"], by["draft"]["doc"], by["draft"]["hint"]) == (
+        "project",
+        "Generate a draft.",
+        "<outline>",
+    )
+    assert by["ingest"]["source"] == "skill" and len(by["ingest"]["doc"]) == 140
+    assert by["sync"]["source"] == "claude.ai sync"
+    assert cat.model("claude-sonnet-5").value == "sonnet" and cat.model("old") is None
+    assert [m["value"] for m in cat.wire_models()] == ["sonnet"]
+    assert cat.wire_models()[0]["resolved"] == "claude-sonnet-5"
+    assert "compact" not in {
+        c["name"] for c in cat.wire_commands(shadowed=("compact",))
+    }
+
+
+async def test_the_setters_switch_a_live_fake_and_effort_is_read_back(
+    tmp_path, fake_claude
+):
+    from aegis.claude import control
+
+    p = await start(fake_claude, tmp_path, [])
+    try:
+        cat = await control.catalog(p)
+        assert cat.has("hello") and not cat.has("bogus")
+        await control.set_model(p, "sonnet")
+        await control.set_effort(p, "xhigh")
+        await control.set_permission(p, "read")
+        await control.set_model(p, "haiku")
+        with pytest.raises(ControlError, match="did not apply effort low"):
+            await control.set_effort(p, "low")
+    finally:
+        await p.terminate()
+
+
+async def test_a_probe_answers_and_leaves_no_process(tmp_path, fake_claude):
+    from aegis.claude import control
+
+    cat = await control.probe(
+        fake_claude, "opus", "high", "full", tmp_path, tmp_path / "probe.log"
+    )
+    assert cat.has("compact")
