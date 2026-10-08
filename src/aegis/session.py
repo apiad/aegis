@@ -243,6 +243,7 @@ class Session:
         m["held_count"] = len(self.held)
         m["state"] = self.status
         m["model"] = self.model_id or self.spec.model
+        m["harness_label"] = self.harness.label
         m.update(self._host.card(self))
         return m
 

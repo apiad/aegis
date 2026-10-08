@@ -309,7 +309,7 @@ function renderMeta(s) {
   if (!s) return;
   if (!editing.has("title")) $("s-title").textContent = s.title || "untitled";
   if (!editing.has("handle")) $("s-handle").textContent = s.handle;
-  $("s-model").textContent = `Claude Code, ${s.model}`;
+  $("s-model").textContent = `${s.harness_label}, ${s.model}`;
   $("s-status").textContent = s.state;
   $("s-status").className = `st ${s.state === "error" ? "err" : s.state === "idle" ? "idle" : ""}`;
   $("s-cwd").textContent = s.cwd;

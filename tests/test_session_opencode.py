@@ -104,6 +104,7 @@ async def test_a_prompt_runs_a_turn_with_cost_context_title_and_model(oc):
     assert s.context_window == 1000000 and s.model_id == "opencode-go/fake-pro"
     assert s.resume_id and s.resume_id.startswith("ses_")
     assert s.title == "Fake title: hello"
+    assert s.wire()["harness_label"] == "OpenCode"
     # OpenCode names the model once prompted, so this line follows the echo.
     assert "OpenCode 1.18.31 · opencode-go/fake-pro" in [
         e["summary"] for e in s.entries()
