@@ -531,7 +531,12 @@ def test_a_monitor_shows_in_the_sidebar_and_its_wake_arrives_as_an_inbox_row(
     spawn(page)
     flag = tmp_path / "browser-flag"
     args = json.dumps(
-        {"description": "wait for the flag", "done": f"test -f {flag}", "interval_s": 1}
+        {
+            "description": "wait for the flag",
+            "done": f"test -f {flag}",
+            "progress": None,
+            "interval_s": 1,
+        }
     )
     page.fill("#input", f"/mcp monitor_start {args}")
     page.press("#input", "Enter")
@@ -543,6 +548,38 @@ def test_a_monitor_shows_in_the_sidebar_and_its_wake_arrives_as_an_inbox_row(
     flag.touch()
     page.wait_for_selector(".row.inbox .from >> text=monitor:", timeout=10000)
     page.wait_for_selector("#s-mon-sec[hidden]", state="attached")
+    assert page.errors == []
+
+
+def test_a_monitor_with_no_reading_animates_and_one_with_a_reading_fills(
+    server, page, tmp_path
+):
+    pct = tmp_path / "pct"
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    for args in (
+        {"description": "no command", "done": "false", "progress": None},
+        {
+            "description": "a pct file",
+            "done": "false",
+            "progress": f"cat {pct}",
+            "interval_s": 1,
+        },
+    ):
+        page.fill("#input", f"/mcp monitor_start {json.dumps(args)}")
+        page.press("#input", "Enter")
+        page.wait_for_selector(f"#s-monitors .mon >> text={args['description']}")
+    mons = page.locator("#s-monitors .mon")
+    # no command, and a command with no reading yet: both running, amount unknown
+    assert mons.nth(0).locator(".bar.indet").count() == 1
+    assert mons.nth(1).locator(".bar.indet").count() == 1
+    pct.write_text("42\n")
+    page.wait_for_selector("#s-monitors .mon:nth-child(2) .kv >> text=42%")
+    measured = mons.nth(1)
+    assert measured.locator(".bar.indet").count() == 0
+    assert measured.locator(".bar i").get_attribute("style") == "width: 42%;"
+    assert mons.nth(0).locator(".bar.indet").count() == 1
     assert page.errors == []
 
 
