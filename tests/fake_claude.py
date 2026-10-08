@@ -605,6 +605,9 @@ def oneshot() -> None:
 
 
 def main() -> None:
+    if sys.argv[1:2] == ["--version"]:
+        print("0.0-fake (Claude Code)")
+        return
     if "-p" in sys.argv and _arg("--output-format") == "json":
         oneshot()
         return

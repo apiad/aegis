@@ -1,6 +1,6 @@
 # aegis: what a session needs from you, what it did, and what you have read
 
-**Status: implemented, 2026-10-08** (issue #171), in three slices following
+**Status: implemented, 2026-10-08** (issue #171; Alt+J, #199), in three slices following
 `docs/superpowers/plans/2026-10-08-session-attention-slice-1.md`,
 `docs/superpowers/plans/2026-10-08-session-attention-slice-2.md` and
 `docs/superpowers/plans/2026-10-08-session-attention-slice-3.md`. Designed with Alex in a brainstorm
@@ -273,7 +273,18 @@ The recap is aegis talking to the person. It never reaches the agent's context, 
 **In the page.** Tab and card marks as in the table above. The Fleet band counts
 sessions by attention (need you, error, review, working, waiting, done) instead of
 by process state. With "Needs you first", the Fleet shows needs_you, error and
-review cards under "Needs you", and the rest below.
+review cards under "Needs you", and the rest below. Within "Needs you" the
+cards go needs_you, then error, then review, and within each the one waiting
+longest first, by `last_activity`: a read does not move it, so for an idle session
+it is when its last turn ended (#199).
+
+**Alt+J** goes to the session that needs you most, in that same order, with done
+sessions that still have unread messages after the reviews; a queue worker counts
+only when it errored. Pressed again it goes to the next, and after the last back
+to the first. From a tab not in the list it starts at the top, so reading a review,
+which drops it, makes the next press go to whatever now needs you most. It lands
+on the first unread agent message, as Alt+U does. With nobody in the list it stays
+and says "Nobody needs you" at the foot of the page.
 
 **Outside the page.**
 

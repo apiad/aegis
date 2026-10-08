@@ -77,3 +77,37 @@ def test_the_catalog_lists_models_with_variants_and_windows_and_commands():
     pro = cat.model("go/pro")
     assert (pro.label, pro.efforts, pro.window) == ("Pro", ("high", "max"), 1000000)
     assert cat.model("go/plain").efforts == ()
+
+
+def test_a_free_model_costs_nothing_calls_tools_and_writes_text():
+    def model(cost, toolcall=True, text=True):
+        return {
+            "name": "m",
+            "cost": cost,
+            "capabilities": {"toolcall": toolcall, "output": {"text": text}},
+        }
+
+    cat = catalog_from(
+        [],
+        {
+            "providers": [
+                {
+                    "id": "p",
+                    "models": {
+                        "paid": model({"input": 1, "output": 2}),
+                        "video": model(
+                            {"input": 0, "output": 0}, toolcall=False, text=False
+                        ),
+                        "free": model({"input": 0, "output": 0}),
+                        "unpriced": {"name": "u"},
+                    },
+                }
+            ]
+        },
+    )
+    assert {m.value: m.free for m in cat.models} == {
+        "p/paid": False,
+        "p/video": False,
+        "p/free": True,
+        "p/unpriced": False,
+    }

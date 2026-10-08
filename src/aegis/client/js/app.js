@@ -7,12 +7,13 @@
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
-import { ago, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
+import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
 import { installKeys, renderKeys } from "./keys.js";
 import { glyph, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
+import { Settings } from "./settings.js";
 import { installBell, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
 
@@ -42,6 +43,7 @@ const sessions = new Map(); // log_id -> meta, from the `sessions` channel
 const order = new TabOrder();
 let ordered = []; // metas in this browser's tab order
 let shown = null; // log_id whose transcript is subscribed
+let landUnread = null; // the tab Alt+J opened, whose transcript lands on its first unread
 let unsubTranscript = null;
 let workingSince = null;
 let booted = false;
@@ -110,12 +112,13 @@ for (const b of document.querySelectorAll("#fleet-order button"))
     render();
   });
 
-// -- routing: #fleet, #new, #s=<log_id>, #read=<log_id> -----------------------
+// -- routing: #fleet, #new, #settings, #s=<log_id>, #read=<log_id> ------------
 function route() {
   const h = location.hash.slice(1);
   if (h.startsWith("s=")) return { view: "session", id: h.slice(2) };
   if (h.startsWith("read=")) return { view: "read", id: h.slice(5) };
   if (h === "new") return { view: "spawn" };
+  if (h === "settings") return { view: "settings" };
   return { view: "fleet" };
 }
 
@@ -130,6 +133,16 @@ function go(hash) {
 
 window.addEventListener("hashchange", render);
 window.addEventListener("popstate", render);
+
+// A line at the foot of the page for a key that had nothing to do.
+let noteTimer = null;
+function note(text) {
+  const n = $("note");
+  n.textContent = text;
+  n.hidden = false;
+  clearTimeout(noteTimer);
+  noteTimer = setTimeout(() => (n.hidden = true), 2000);
+}
 
 function show(view, text) {
   root.dataset.view = view;
@@ -176,6 +189,7 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
     }
   },
 });
+const settings = new Settings(conn, $("settings"));
 
 conn.subscribe(
   "sessions",
@@ -219,6 +233,14 @@ conn.subscribe(
   (ops) => {
     for (const op of ops) if (op.set) quota = op.set;
     drawQuota();
+  },
+);
+conn.subscribe(
+  "config",
+  (w) => settings.onConfig(w),
+  (ops) => {
+    for (const op of ops) if (op.set) settings.onConfig(op.set);
+    loadAgents();
   },
 );
 conn.connect();
@@ -272,6 +294,7 @@ function render() {
   renderTabs($("tablist"), ordered, r.view === "session" ? r.id : null, tabActions);
   $("tab-fleet").classList.toggle("on", r.view === "fleet");
   $("tab-add").classList.toggle("on", r.view === "spawn");
+  $("settings-btn").classList.toggle("on", r.view === "settings");
   root.dataset.mode = r.view === "read" ? "read" : "live";
   // Quota rows redraw on a quota patch, the timer, or a change of view; never
   // on a sessions patch, which would take the hover tooltip with them.
@@ -294,6 +317,12 @@ function render() {
     show("spawn");
     $("sp-text").focus();
     setTitle("New session · aegis");
+  } else if (r.view === "settings") {
+    watchHost(false);
+    follow(null);
+    show("settings");
+    if (newView) settings.open();
+    setTitle("Settings · aegis");
   } else if (r.view === "session") {
     watchHost(false);
     // Shown first: follow() sizes the message box, which measures 0 while hidden.
@@ -397,6 +426,8 @@ function follow(id) {
       if (!placed) {
         transcript.setSince(sinceText(sessions.get(id)));
         askRecap(false); // the server decides whether it is worth one
+        if (landUnread === id) transcript.firstUnread();
+        landUnread = null;
       }
       placed = true;
       // Read by scripts/bench.py: when the snapshot was drawn and painted.
@@ -665,13 +696,17 @@ const LAST_AGENT = "aegis.lastAgent";
 const PICKS = ["harness", "model", "effort", "permission"];
 
 async function loadAgents() {
+  // The picked agent as the chips last knew it, to tell the person's overrides
+  // from values an edit to .aegis.yaml has since changed.
+  const was = current();
   try {
     roster = await conn.call("agents.list");
   } catch (e) {
     $("sp-error").textContent = e.message;
     return;
   }
-  // A reconnect rebuilds the options; the chips keep what the person set.
+  // A reconnect or a config change rebuilds the options; the chips keep what
+  // the person set and follow the agent everywhere else.
   const before = Object.fromEntries(PICKS.map((k) => [k, $(`sp-${k}`).value]));
   $("sp-harness").replaceChildren(
     ...roster.harnesses.map((h) => {
@@ -692,10 +727,15 @@ async function loadAgents() {
   const keep = $("sp-agent").dataset.picked;
   const start = [keep, localStorage.getItem(LAST_AGENT), roster.default].find((n) => usable.includes(n)) || usable[0];
   if (!$("sp-cwd").value) $("sp-cwd").value = roster.cwd;
-  $("sp-error").textContent = roster.agents.length ? "" : "No agents: add an agents: map to .aegis.yaml.";
+  $("sp-error").textContent = roster.config_error
+    ? `.aegis.yaml does not parse; aegis is using the last version that did. ${roster.config_error}`
+    : roster.agents.length
+      ? ""
+      : "No agents yet. Set them up in Settings (Alt+S).";
   if (keep && usable.includes(keep)) {
     $("sp-agent").value = keep;
-    for (const k of PICKS) $(`sp-${k}`).value = before[k];
+    const now = current();
+    for (const k of PICKS) $(`sp-${k}`).value = was && before[k] === was[k] ? now[k] : before[k];
     fillModels($("sp-harness").value);
     markDiffs();
   } else if (start) pickAgent(start);
@@ -797,6 +837,7 @@ const keymap = $("keymap");
 renderKeys(keymap);
 const help = (open = keymap.hidden) => (keymap.hidden = !open);
 $("keys-btn").addEventListener("click", () => help());
+$("settings-btn").addEventListener("click", () => go("#settings"));
 keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));
 
 // What each key in keys.js does. `input` and `editing` are declared below;
@@ -819,6 +860,18 @@ installKeys(
         if (!fleetSel) fleetMove(1);
       }
     },
+    // In byNeed's order, from the tab after this one; from the top when this one
+    // is not in the list, as after reading a review, which drops it.
+    needs() {
+      const list = byNeed(ordered);
+      if (!list.length) return note("Nobody needs you");
+      const r = route();
+      const i = r.view === "session" ? list.findIndex((m) => m.log_id === r.id) : -1;
+      const id = list[(i + 1) % list.length].log_id;
+      if (list[i]?.log_id === id) return transcript.firstUnread(); // the only one, and open
+      landUnread = id;
+      go(`#s=${id}`);
+    },
     cycle(ev) {
       const all = ["#fleet", ...ordered.map((m) => `#s=${m.log_id}`)];
       const d = ev.code === "BracketRight" ? 1 : -1;
@@ -839,6 +892,7 @@ installKeys(
     fleetOpen,
     filter: () => $("arch-q").focus(),
     spawn: () => go("#new"),
+    settings: () => go("#settings"),
     tab(ev) {
       const n = Number(ev.altKey ? ev.code.slice(5) : ev.key);
       if (n === 0) go("#fleet");

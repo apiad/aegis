@@ -1468,6 +1468,138 @@ def test_reply_pills_send_their_text_and_all_disappear(server, page):
     assert page.errors == []
 
 
+SETTINGS_CONFIG = (
+    "# kept across a save\n"
+    "default_agent: opus\nagents:\n  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
+    "  bad.one: {harness: claude-code, model: nope, effort: high, permission: full}\n"
+)
+
+
+@pytest.fixture
+def settings_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    (tmp_path / ".aegis.yaml").write_text(SETTINGS_CONFIG)
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
+    yield s
+    s.stop()
+
+
+def open_settings(pg, url: str) -> None:
+    pg.goto(url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.keyboard.press("Alt+KeyS")
+    pg.wait_for_selector("#a2[data-view=settings]")
+    pg.wait_for_selector('.set-agent[data-row="agents.opus"]')
+
+
+def test_settings_saves_an_edit_to_the_file_and_the_composer_follows(
+    settings_server, page
+):
+    open_settings(page, settings_server.url)
+    page.select_option('.set-agent[data-row="agents.opus"] select[name=effort]', "max")
+    page.click("#set-save")
+    page.wait_for_function(
+        "document.querySelector('#set-status').textContent === 'Saved'"
+    )
+    text = (settings_server.root / ".aegis.yaml").read_text()
+    assert "# kept across a save" in text and "effort: max" in text
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-effort').value === 'max'")
+    assert page.errors == []
+
+
+def test_an_edit_on_disk_reloads_the_open_settings_page(settings_server, page):
+    open_settings(page, settings_server.url)
+    (settings_server.root / ".aegis.yaml").write_text(
+        SETTINGS_CONFIG
+        + "  extra: {harness: claude-code, model: sonnet, effort: low, permission: read}\n"
+    )
+    page.wait_for_selector('.set-agent[data-row="agents.extra"]', timeout=5000)
+
+
+def test_an_edit_on_disk_under_unsaved_edits_offers_reload(settings_server, page):
+    open_settings(page, settings_server.url)
+    page.fill('.set-agent[data-row="agents.opus"] input[name=model]', "sonnet")
+    (settings_server.root / ".aegis.yaml").write_text(SETTINGS_CONFIG + "# changed\n")
+    page.wait_for_selector("#set-stale", timeout=5000)
+    assert (
+        page.input_value('.set-agent[data-row="agents.opus"] input[name=model]')
+        == "sonnet"
+    )
+    page.click("#set-reload")
+    page.wait_for_function(
+        "document.querySelector('.set-agent[data-row=\"agents.opus\"] input[name=model]').value === 'opus'"
+    )
+
+
+def test_run_doctor_marks_the_row(settings_server, page):
+    open_settings(page, settings_server.url)
+    page.click("#set-doctor")
+    card = '.set-agent[data-row="agents.bad.one"]'
+    page.wait_for_selector(card + ".warn", timeout=15000)
+    assert "does not list 'nope'" in page.text_content(card)
+    assert "1 warning" in page.text_content("#set-summary")
+
+
+def test_typing_in_settings_survives_session_patches(settings_server, page):
+    open_settings(page, settings_server.url)
+    box = '.set-agent[data-row="agents.opus"] input[name=model]'
+    page.click(box)
+    page.keyboard.type("-x")
+    page.evaluate(
+        "window.dispatchEvent(new HashChangeEvent('hashchange'))"
+    )  # a render() with no view change
+    page.keyboard.type("y")
+    assert page.input_value(box) == "opus-xy"
+    assert page.evaluate("document.activeElement.name") == "model"
+
+
+@pytest.fixture
+def empty_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
+    yield s
+    s.stop()
+
+
+def test_an_empty_root_offers_set_up_and_saving_creates_the_file(empty_server, page):
+    page.goto(empty_server.url + "#settings")
+    page.wait_for_selector("#set-setup")
+    page.click("#set-setup")
+    page.wait_for_selector('.set-agent[data-row="agents.opus"]', timeout=15000)
+    page.click("#set-save")
+    page.wait_for_function(
+        "document.querySelector('#set-status').textContent === 'Saved'"
+    )
+    assert "default_agent: opus" in (empty_server.root / ".aegis.yaml").read_text()
+
+
+def test_renaming_the_default_agent_carries_to_the_default(settings_server, page):
+    open_settings(page, settings_server.url)
+    page.fill('.set-agent[data-row="agents.opus"] input[name=name]', "big")
+    page.click("#set-save")
+    page.wait_for_function(
+        "document.querySelector('#set-status').textContent === 'Saved'"
+    )
+    text = (settings_server.root / ".aegis.yaml").read_text()
+    assert "default_agent: big" in text and "  big:" in text
+
+
+def test_renaming_an_agent_carries_to_the_queues_that_run_it(settings_server, page):
+    (settings_server.root / ".aegis.yaml").write_text(
+        SETTINGS_CONFIG + "queues:\n  q: {agent: opus, max_parallel: 2}\n"
+    )
+    open_settings(page, settings_server.url)
+    page.wait_for_selector('.set-queue[data-row="queues.q"]')
+    page.fill('.set-agent[data-row="agents.opus"] input[name=name]', "big")
+    assert (
+        page.input_value('.set-queue[data-row="queues.q"] select[name=agent]') == "big"
+    )
+    page.click("#set-save")
+    page.wait_for_function(
+        "document.querySelector('#set-status').textContent === 'Saved'"
+    )
+    assert "agent: big" in (settings_server.root / ".aegis.yaml").read_text()
+
+
 def test_a_reply_read_on_screen_turns_its_mark_and_clears_the_done_badge(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -1791,6 +1923,51 @@ def test_the_navigator_counts_the_unread_and_jumps_to_the_first(server, page):
     assert page.evaluate(sel) == unread
     page.wait_for_timeout(1500)  # still unfocused: nothing was read
     assert page.inner_text("#nav-pos").startswith("1 unread · ")
+    assert page.errors == []
+
+
+def test_alt_j_walks_the_sessions_that_need_you_longest_waiting_first(server, page):
+    """#199: Alt+J goes to the session that has waited longest for you, lands on
+    its first unread message, and cycles; the Fleet's needs-you group agrees."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.evaluate("document.hasFocus = () => false")  # nothing gets read
+    a, b = spawn(page, "alpha"), spawn(page, "beta")
+    report(page, attention="needs_you", line="Rebase or merge?", replies=[])
+    turns_done(page, 2)
+    page.click(f".tab[data-id='{a}']")
+    page.wait_for_selector("#a2[data-view=session]")
+    report(page, attention="needs_you", line="Which branch?", replies=[])
+    turns_done(page, 2)
+    # b asked first, so b has waited longest, against the tab order a, b.
+    page.click("#tab-fleet")
+    page.wait_for_selector(".card .ask >> text=Which branch?")
+    assert page.eval_on_selector_all(".card", "cs => cs.map(c => c.dataset.id)") == [
+        b,
+        a,
+    ]
+    hash_ = "location.hash.slice(3)"
+    page.keyboard.press("Alt+KeyJ")
+    page.wait_for_function(f"{hash_} === '{b}'")
+    first = "document.querySelector('.row.prose:has(.rm .ic.unread)')?.dataset.id"
+    page.wait_for_function(
+        f"document.querySelector('.row.sel')?.dataset.id === {first}"
+    )
+    page.keyboard.press("Alt+KeyJ")
+    page.wait_for_function(f"{hash_} === '{a}'")
+    page.keyboard.press("Alt+KeyJ")
+    page.wait_for_function(f"{hash_} === '{b}'")
+    assert page.errors == []
+
+
+def test_alt_j_with_nobody_waiting_says_so_and_stays(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    page.wait_for_selector(".tab.on .dot.ready", timeout=6000)  # read: idle dot
+    page.keyboard.press("Alt+KeyJ")
+    page.wait_for_selector("#note >> text=Nobody needs you")
+    assert page.evaluate("location.hash.slice(3)") == sid
     assert page.errors == []
 
 

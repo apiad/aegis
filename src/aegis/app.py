@@ -6,15 +6,20 @@ resolves a ``/`` line first, ``commands.py``), ``session.read``,
 ``commands.list``, ``session.interrupt``, ``session.stop``, ``session.close``,
 ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``,
-``quota.read``, ``transcript.detail``. Channels: ``sessions`` (every open
-session's meta; patches ``upsert`` and ``remove``), ``transcript:<log_id>``
-(any session, archived included; a subscribe ``since`` a revision gets what
-changed after it), ``quota`` (each provider's windows; patches ``set``) and ``host``
-(CPU, RAM and disk while someone watches; patches ``set``).
+``quota.read``, ``transcript.detail``, and ``config.read``, ``config.write``,
+``config.detect``, ``config.doctor`` and ``config.propose`` (``config_ops.py``).
+Channels: ``sessions`` (every open session's meta; patches ``upsert`` and
+``remove``), ``transcript:<log_id>`` (any session, archived included; a
+subscribe ``since`` a revision gets what changed after it), ``quota`` (each
+provider's windows; patches ``set``), ``host`` (CPU, RAM and disk while someone
+watches; patches ``set``) and ``config`` (``.aegis.yaml`` as aegis holds it;
+patches ``set``).
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from pathlib import Path
 from typing import Literal
 
@@ -27,14 +32,13 @@ from .agents import (
     HARNESSES,
     PERMISSION_ORDER,
     SUPPORTED_HARNESSES,
-    ConfigError,
-    default_agent,
-    load_agents,
     model_suggestions,
     resolve,
 )
 from .channels import Channels, Throttle
 from .claude.process import PERMISSION_MODE, ControlError
+from .config import Config, Snapshot
+from .config_ops import register_config_ops
 from .host import HostSampler
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors
@@ -163,8 +167,11 @@ class App:
         )
         self.tokens = Tokens()
         self.monitors = Monitors(self.sessions, roots.state_root / "monitors.json")
+        self.config = Config(roots.config_root, self._on_config)
+        self._config_task: asyncio.Task | None = None
+        self._background: set[asyncio.Task] = set()
         self.queues = Queues(
-            self.sessions, self.monitors, roots.state_root / "tasks.jsonl"
+            self.sessions, self.monitors, roots.state_root / "tasks.jsonl", self.config
         )
         self.quota = Quota(self.publish)
         self.host = HostSampler(
@@ -188,12 +195,14 @@ class App:
         self.registry = Ops()
         self._register()
         register_agent_ops(self)
+        register_config_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
 
     def _bin(self, harness: str) -> str:
         return self.opencode_bin if harness == "opencode" else self.claude_bin
 
     async def boot(self) -> None:
+        self._config_task = asyncio.create_task(self.config.watch())
         self.sessions.boot()
         self.monitors.boot()
         self.monitors.arm_all()
@@ -202,11 +211,27 @@ class App:
         self.host.start()
 
     async def shutdown(self) -> None:
+        if self._config_task is not None:
+            self._config_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._config_task
         await self.quota.stop()
         await self.host.stop()
         await self.monitors.shutdown()
         await self.recaps.shutdown()
         await self.sessions.shutdown()
+
+    def _on_config(self, snap: Snapshot) -> None:
+        """Every change to .aegis.yaml, however it was made: the page and the
+        composer follow it, and the queues start what it now allows."""
+        self.channels.publish("config", [{"set": snap.wire()}])
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        t = loop.create_task(self.queues.dispatch())
+        self._background.add(t)
+        t.add_done_callback(self._background.discard)
 
     def publish(self, channel: str, ops: list[dict]) -> None:
         if channel == "sessions":
@@ -246,14 +271,13 @@ class App:
             return self.quota.snapshot
         if name == "host":
             return self.host.snapshot
+        if name == "config":
+            return lambda: self.config.current().wire()
         return None
 
     def _agents(self):
-        try:
-            root = self.roots.config_root
-            return load_agents(root), default_agent(root)
-        except ConfigError as e:
-            raise OpError("bad_config", str(e)) from e
+        snap = self.config.current()
+        return list(snap.agents), snap.default_agent
 
     def _resolve_cwd(self, raw: str | None, base: Path | None = None) -> Path:
         base = base or self.roots.harness_cwd
@@ -356,6 +380,7 @@ class App:
                 ],
                 "models": model_suggestions(agents),
                 "cwd": str(self.roots.harness_cwd),
+                "config_error": self.config.current().error,
             }
 
         @r.op("session.spawn", SpawnParams, agent=True)

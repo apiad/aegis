@@ -40,11 +40,20 @@ its store and the session lands in the archive. Boot writes to no store, except 
 another format. `aegis serve` refuses to start on a state directory holding the
 legacy tree's marker files, and says to move it to `.aegis/legacy-state/`; mixing
 the two would have each read files the other wrote. Of `.aegis.yaml`, aegis reads
-the `agents:` and `queues:` maps, and nothing in them is a default: an agent
-names its harness, model, effort and permission, a queue its agent and
-`max_parallel`, and one that does not is reported by name rather than filled
-in or dropped. A setting the loader filled in would be one nobody chose, with
-nothing to show it.
+the `agents:` and `queues:` maps and `default_agent`, and nothing in them is a
+default: an agent names its harness, model, effort and permission, a queue its
+agent and `max_parallel`, and one that does not is reported by name rather than
+filled in or dropped. A setting the loader filled in would be one nobody chose,
+with nothing to show it.
+
+**The file is the configuration.** The server holds a parsed copy and re-reads
+it whenever its stamp changes (`config.py`), so an edit made in an editor and a
+save from the Settings page take the same path, and nothing patches server state
+behind the file's back. A file that does not parse, or is empty, leaves the last
+one that did in force and says so, because a half-typed edit must not stop every
+spawn. `aegis init` and the Settings page write through one writer that keeps
+comments and refuses a stale write; `aegis doctor` and `config.doctor` check the
+file against the harnesses actually installed (`doctor.py`).
 
 **Relative imports, and nothing from the legacy tree.** Imports inside aegis are
 relative, which is what made taking over the `aegis` name one directory move, and no

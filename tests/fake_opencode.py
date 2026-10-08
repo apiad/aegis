@@ -111,9 +111,17 @@ PROVIDERS = {
             "name": "OpenCode Go",
             "models": {
                 "fake-pro": {"id": "fake-pro", "name": "Fake Pro", "limit": {"context": 1000000, "output": 8192},
-                             "variants": {"high": {}, "max": {}}},
+                             "variants": {"high": {}, "max": {}},
+                             "cost": {"input": 1.0, "output": 4.0},
+                             "capabilities": {"toolcall": True, "output": {"text": True}}},
+                # Free, but it makes video and calls no tools: no agent can run on it.
+                "fake-video": {"id": "fake-video", "name": "Fake Video", "limit": {"context": 8000, "output": 8192},
+                               "cost": {"input": 0, "output": 0},
+                               "capabilities": {"toolcall": False, "output": {"text": False, "video": True}}},
                 "fake-flash": {"id": "fake-flash", "name": "Fake Flash", "limit": {"context": 500000, "output": 8192},
-                               "variants": {"low": {}, "high": {}, "max": {}}},
+                               "variants": {"low": {}, "high": {}, "max": {}},
+                               "cost": {"input": 0, "output": 0},
+                               "capabilities": {"toolcall": True, "output": {"text": True}}},
                 "fake-plain": {"id": "fake-plain", "name": "Fake Plain", "limit": {"context": 200000, "output": 8192}},
             },
         }
@@ -580,6 +588,9 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     args = sys.argv[1:]
+    if args[:1] == ["--version"]:
+        print("0.0-fake")
+        return
     if not args or args[0] != "serve":
         print("fake opencode: only `serve` is faked", file=sys.stderr)
         sys.exit(2)
