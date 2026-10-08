@@ -711,3 +711,49 @@ def test_transcript_detail_returns_what_the_wire_left_out(project, fake_claude):
             == "bad_params"
         )
         conn.call("session.close", log_id=log_id)
+
+
+def stub_dictation(root: Path) -> Path:
+    from aegis.dictation import PINS, pin_id
+
+    d = root / pin_id()
+    d.mkdir(parents=True)
+    for p in PINS:
+        (d / p.name).write_bytes(b"stub " + p.name.encode())
+    return root
+
+
+def test_dictation_prepare_returns_the_base_and_keywords(
+    project, fake_claude, tmp_path
+):
+    from aegis.dictation import pin_id
+
+    app = App(
+        make_roots(project, None),
+        claude_bin=fake_claude,
+        dictation_dir=stub_dictation(tmp_path / "dict"),
+    )
+    with TestClient(build_web(app, TOKEN, {"testserver"})) as c:
+        with c.websocket_connect("/ws", headers=ORIGIN) as ws:
+            got = Conn(ws).hello().call("dictation.prepare")["result"]
+            assert got["base"] == f"/dictation/{pin_id()}/"
+            assert "pull request" in got["keywords"]
+            assert "reviewer" in got["keywords"]  # an agent in the config
+        r = c.get(f"/dictation/{pin_id()}/whistle.cact")
+        assert r.status_code == 200 and r.content == b"stub whistle.cact"
+        assert r.headers["cache-control"] == "public, max-age=31536000, immutable"
+        assert c.get(f"/dictation/{pin_id()}/token").status_code == 404
+        assert c.get("/dictation/000000000000/needle.js").status_code == 404
+
+
+def test_dictation_prepare_says_why_when_the_files_cannot_be_had(
+    project, fake_claude, tmp_path
+):
+    blocked = tmp_path / "dict"
+    blocked.write_text("a file where the cache directory goes")
+    app = App(make_roots(project, None), claude_bin=fake_claude, dictation_dir=blocked)
+    with TestClient(build_web(app, TOKEN, {"testserver"})) as c:
+        with c.websocket_connect("/ws", headers=ORIGIN) as ws:
+            reply = Conn(ws).hello().call("dictation.prepare")
+            assert reply["error"]["code"] == "dictation_unavailable"
+            assert "cache directory" in reply["error"]["message"]

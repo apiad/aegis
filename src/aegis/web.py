@@ -120,6 +120,17 @@ def build_web(
             path, media_type=headers.pop("Content-Type"), headers=headers
         )
 
+    async def dictation_file(request):
+        """The pinned dictation files. The path changes with the pin, so a
+        browser may keep them forever (dictation.py)."""
+        p = request.path_params
+        path = app.dictation.file(p["pin"], p["name"])
+        if path is None:
+            return PlainTextResponse("Not Found", status_code=404)
+        return FileResponse(
+            path, headers={"Cache-Control": "public, max-age=31536000, immutable"}
+        )
+
     async def ws(websocket: WebSocket) -> None:
         host = websocket.headers.get("host", "")
         origin = websocket.headers.get("origin", "")
@@ -249,6 +260,7 @@ def build_web(
             Route("/", index),
             Mount("/static", ClientFiles(directory=CLIENT_DIR)),
             Route("/files/{file_id}/{name}", sent_file),
+            Route("/dictation/{pin}/{name}", dictation_file),
             WebSocketRoute("/ws", ws),
             *app.mcp_app.routes,
         ],
