@@ -4,8 +4,9 @@
 with mockups, rendered on the client's own CSS from `main`. The approved screens
 are in the workspace playground, not in this repo:
 `.playground/aegis-recap-ui/src-transcript.html` (transcript, recap, read marks,
-navigator) and `.playground/aegis-recap-ui/src-glyphs.html` (Fleet cards, band,
-order switch, glyphs; style B was chosen). Replaces, for aegis 2, the legacy
+navigator), `.playground/aegis-recap-ui/src-glyphs.html` (Fleet cards, band,
+order switch, glyphs; style B was chosen) and
+`.playground/aegis-recap-ui/src-replies.html` (reply pills on the composer). Replaces, for aegis 2, the legacy
 specs `2026-09-17-aegis-turn-attention-design.md` and
 `2026-09-17-aegis-unified-recap-design.md`.
 
@@ -18,6 +19,8 @@ own words, what it is doing, what it did, and what it needs from you. When you
 come back to a tab after a while, the last row of the transcript is a two-line
 recap of where things stand, every agent message you have not read carries a
 mark, and a navigator in the corner walks the agent messages and skips the rest.
+When the agent asks a question, up to three replies it wrote in your voice sit on
+the message box, and one click sends one.
 
 The legacy tree paid a Haiku call on every turn, and another every few seconds
 while a turn ran, to produce these lines. Here the agent reports its own plan
@@ -41,6 +44,7 @@ with a long unread stretch.
 | Read mark style | A ● in the right margin when unread, a faint ✓ when read | Chosen from three mockups |
 | Navigator | A pill at the bottom right: up, "2 unread · message 3 of 4", down, to latest | Chosen over a vertical stack |
 | Fleet card order | A switch in the Fleet: "Needs you first" (default) or "Tab order", kept per browser | Alex wants both; the choice is a view preference like the tab order |
+| Reply suggestions | Up to three, written by the agent in its `turn_end` call, shown as pills on top of the message box; a click sends the reply | The agent that wrote the options knows them, so a suggestion costs nothing extra. The legacy Haiku suggester guessed answers to open questions in 9 of its 13 suggestions |
 | Glyphs | Inline SVG, filled badges, drawn in `currentColor` | Unicode marks render differently in each font; style B was chosen over an outline set |
 
 ## The status of a session
@@ -97,14 +101,17 @@ queue task in aegis, so the tracker is called a plan.
 already use well, and it makes every call idempotent. Text is cut to 120
 characters per item and 30 items.
 
-**`turn_end(attention, line)`.** Called when the agent hands the turn back.
-`attention` is one of `needs_you`, `review`, `done`; `line` is one sentence of
-at most 140 characters saying what the person must answer or read, or what got
-done. The agent decides this; no model second-guesses it.
+**`turn_end(attention, line, replies)`.** Called when the agent hands the turn
+back. `attention` is one of `needs_you`, `review`, `done`; `line` is one sentence
+of at most 140 characters saying what the person must answer or read, or what got
+done. `replies` is zero to three suggested next messages, each one line of at most
+80 characters, written as the person would type them. The agent decides all of
+this; no model second-guesses it. A queue worker's replies are dropped, because
+nobody reads its tab.
 
 Each handler validates its params and appends an aegis record to the session's
 store: `{"kind": "plan", "items": [...]}` and
-`{"kind": "turn_end", "attention": ..., "line": ...}`. The fold reads them like
+`{"kind": "turn_end", "attention": ..., "line": ..., "replies": [...]}`. The fold reads them like
 any record aegis writes, so the plan and the last report survive a restart and a
 refold gives the same card. The tool calls themselves still render as tool rows.
 A `turn_end` belongs to the turn it was called in: the fold drops it when the
@@ -127,6 +134,19 @@ The primer in `mcp.py` gains a paragraph, worded for the agent:
 > they must answer, `review` with what they should read, or `done` with what got
 > done, in one sentence. Do not call turn_end when you end your turn to wait on a
 > monitor or a queue task.
+>
+> turn_end also takes up to three `replies`: messages the person might send next,
+> written as they would type them, in the language they write to you in, lowercase
+> and without a final period. Offer them when you laid out options, or when you
+> proposed one thing and wait for a go-ahead (then a reply is their way of saying
+> yes). Leave them empty when you asked an open question with many possible
+> answers, or when you report finished work. An empty list is better than a wrong
+> guess.
+
+The reply rules are the findings of the legacy probe over 40 real turn ends
+(`legacy/aegis/recap/__init__.py`, `SUGGESTION_RULE`): Alex's replies start
+lowercase and end without a period, assent was the case the old suggester missed,
+and invented answers to open questions were most of what it offered.
 
 Compliance is measured, not assumed: `make test-live` runs a real session through
 a question turn, a work turn and a wait, and asserts the calls. The PR that lands
@@ -164,6 +184,19 @@ count. A browser that reloads gets the same flags from the snapshot.
 move between agent messages, Alt+U goes to the first unread. Chrome on Linux
 leaves these free; the plan checks them against
 `chrome/browser/ui/accelerator_table.cc`, as the existing chords were.
+
+## Reply pills
+
+The card carries `replies` from the current `turn_end`. The session view shows
+them as pills on top of the message box, under a faint "reply" label, in the order
+the agent gave them. A click sends the pill's text through `session.send`,
+exactly as if it had been typed, so the transcript and the agent see an ordinary
+message. The pills disappear when anything is sent: the fold drops the replies at
+the next `send` record, and the client hides them at once without waiting for the
+patch. While pills are showing, the navigator sits above them.
+
+Pills are click-only in this design. Chrome on Linux keeps Alt+1…9, so a key for
+them needs a chord of its own, and none was chosen.
 
 ## The recap
 
@@ -241,6 +274,10 @@ call `/mcp` with its own token.
   turn. A `Result.is_error` gives error over any report. A queue worker's
   needs_you gives done. A turn with no `turn_end` gives done. A turn started by an
   inbox message ends exactly like a sent one.
+- **Replies.** A `turn_end` with replies puts them on the card; a send, typed or
+  from a pill, clears them; a queue worker's replies never reach the card; more
+  than three, or a reply over 80 characters, is refused with a message the agent
+  can act on.
 - **Plan.** `plan_update` calls give now, did and the count; a refold of the store
   gives the same card; a `turn_end` from an earlier turn does not survive the next
   prompt's echo.
@@ -254,9 +291,10 @@ call `/mcp` with its own token.
 - **Browser.** Margin marks flip after a row is on screen for a second; the divider
   sits before the first unread; the pill's count and jumps; Alt+↑, Alt+↓, Alt+U;
   the order switch persists across a reload; the title count; a blinking tab stops
-  when it is focused.
+  when it is focused; a reply pill sends its text and every pill disappears.
 - **Live.** `make test-live` asserts a real session calls both tools in the three
-  scenarios above.
+  scenarios above, offers replies after laying out options, and offers none after
+  an open question.
 - **Bench.** The `unread` flag and the attention rule must not raise the cost per
   stdout line; `make bench` runs on each PR.
 
@@ -265,8 +303,8 @@ call `/mcp` with its own token.
 Each slice is a PR that works on its own.
 
 1. **Status.** The two agent tools and their records, the attention rule, the
-   card fields, the priming, the glyph module, tab and card marks, the band and
-   the order switch.
+   card fields, the priming, the glyph module, tab and card marks, the band, the
+   order switch and the reply pills.
 2. **Reading.** The read floor, `session.read`, the unread flags, margin marks,
    the divider, the navigator, the keys, the title count, the favicon and
    notifications.
@@ -276,7 +314,7 @@ Each slice is a PR that works on its own.
 ## Out of scope
 
 - A Stop hook that forces `turn_end`. Revisit with the measured compliance.
-- The legacy reply suggestion, a draft of the person's next message.
+- A key for the reply pills.
 - A paid mid-turn "doing" line.
 - Title generation (#49 in the legacy tree).
 - Read state per browser.
