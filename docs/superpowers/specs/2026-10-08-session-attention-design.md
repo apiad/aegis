@@ -1,6 +1,8 @@
 # aegis: what a session needs from you, what it did, and what you have read
 
-**Status: designed, 2026-10-08** (issue #171). Designed with Alex in a brainstorm
+**Status: slice 1 implemented, 2026-10-08** (issue #171), following
+`docs/superpowers/plans/2026-10-08-session-attention-slice-1.md`. Slices 2 and 3
+are designed, not built. Designed with Alex in a brainstorm
 with mockups, rendered on the client's own CSS from `main`. The approved screens
 are in the workspace playground, not in this repo:
 `.playground/aegis-recap-ui/src-transcript.html` (transcript, recap, read marks,

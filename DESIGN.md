@@ -63,6 +63,16 @@ Status, handle and title go out at once; activity, context and cost change on
 nearly every line of a turn and are coalesced for 250 ms. Publishing them per line
 doubled the server's cost per line.
 
+**A session's attention is decided in Python, from facts and the agent's own
+reports.** Working, error and waiting are facts the server holds: the turn, the
+fold's last failure, live monitors, background tasks, held messages, queue tasks
+and child sessions. Whether a finished turn asked the person something, showed
+them something to read, or just finished, only the agent knows, and it says so
+with `turn_end`; its plan comes from `plan_update`. Both are aegis records in the
+store, so the fold derives a session's `standing` and a refold gives the same
+card; the meta keeps it, so boot still reads no store. `attention.py` holds the
+precedence. No model reads a transcript to guess what a turn meant.
+
 **One registry, every caller.** Every action is one registered operation with a
 pydantic params model. A websocket `call` is one projection of the registry, MCP
 tools are another, and plugins add operations to it. Nothing reaches the client as
