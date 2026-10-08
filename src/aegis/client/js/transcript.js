@@ -63,25 +63,38 @@ export class Transcript {
     new ResizeObserver(() => {
       if (this.following) this.toBottom();
     }).observe(list);
-    // Reading: an unread agent message counts as read once its row has been at
-    // least half visible for a second while the page is visible and focused.
+    // Reading: an unread agent message counts as read once its row has been
+    // seen for a second while the page is visible and focused. Seen means half
+    // of the row is visible, or it fills half the view: a reply taller than
+    // twice the view is never half visible.
     this.onRead = onRead;
-    this.since = new Map(); // id -> when it became half visible
+    this.since = new Map(); // id -> when it was first seen
     this.sent = new Set(); // ids reported and not yet echoed back as read
     this.watch = new IntersectionObserver(
       (items) => {
         for (const it of items) {
           const id = it.target.dataset.id;
+          // Ids repeat across sessions: a late entry for a dropped node is not
+          // this session's row.
+          if (this.nodes.get(id) !== it.target) continue;
+          const seen =
+            it.isIntersecting &&
+            (it.intersectionRatio >= 0.5 ||
+              it.intersectionRect.height >= it.rootBounds.height / 2);
           // A replaced row's new node keeps the time its old one was first seen.
-          if (!it.isIntersecting) this.since.delete(id);
+          if (!seen) this.since.delete(id);
           else if (!this.since.has(id)) this.since.set(id, performance.now());
         }
       },
-      { root: scroller, threshold: 0.5 },
+      { root: scroller, threshold: [0, 0.25, 0.5, 0.75, 1] },
     );
     const looking = () => document.visibilityState === "visible" && document.hasFocus();
-    window.addEventListener("focus", () => {
+    const restart = () => {
       for (const id of this.since.keys()) this.since.set(id, performance.now());
+    };
+    window.addEventListener("focus", restart);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") restart();
     });
     setInterval(() => {
       if (!looking()) return;

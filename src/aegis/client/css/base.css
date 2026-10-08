@@ -405,7 +405,7 @@ body{background:#000}
 @keyframes a2spin{to{transform:rotate(360deg)}}
 @keyframes a2blink{to{visibility:hidden}}
 #a2 .tab.blink:not(.on) .ic.need{animation:a2blink 1.2s steps(2,start) infinite}
-@media (prefers-reduced-motion:reduce){#a2 .ic.work,#a2 .tab .ic.need{animation:none}}
+@media (prefers-reduced-motion:reduce){#a2 .ic.work,#a2 .tab.blink:not(.on) .ic.need{animation:none}}
 #a2 .card.at-needs_you{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 #a2 .card.at-error{border-color:var(--err);box-shadow:inset 3px 0 0 var(--err)}
 #a2 .card .hd .s.at-needs_you{color:var(--accent)}#a2 .card .hd .s.at-error{color:var(--err)}
