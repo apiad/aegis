@@ -614,8 +614,8 @@ installKeys(
     composer() {
       const v = route().view;
       if (v === "session") input.focus();
-      // The directory, not the profile: Enter in a text field submits the form.
-      else if (v === "spawn") $("sp-cwd").focus();
+      // The new tab's message box: Enter there spawns and sends.
+      else if (v === "spawn") $("sp-text").focus();
     },
     browse() {
       const v = route().view;
