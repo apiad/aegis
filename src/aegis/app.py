@@ -2,7 +2,7 @@
 
 Operations: ``agents.list``, ``session.spawn``, ``session.send`` (which
 resolves a ``/`` line first, ``commands.py``), ``session.read``,
-``recap.request``, ``session.configure``,
+``recap.request``, ``dictation.prepare``, ``session.configure``,
 ``commands.list``, ``session.interrupt``, ``session.stop``, ``session.close``,
 ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``,
@@ -25,7 +25,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from . import commands, files
+from . import commands, dictation, files
 from .agent_ops import register_agent_ops
 from .agents import (
     EFFORTS,
@@ -45,7 +45,7 @@ from .monitors import Monitors
 from .queues import Queues
 from .quota import Quota
 from .recaps import Recaps
-from .ops import OpError, Registry as Ops
+from .ops import NoParams, OpError, Registry as Ops
 from .registry import Registry
 from .roots import Roots
 from .session import PUBLISH_EVERY_S
@@ -145,10 +145,12 @@ class App:
         base_url: str | None = None,
         server_name: str = "aegis",
         opencode_bin: str = "opencode",
+        dictation_dir: Path | None = None,
     ) -> None:
         self.roots = roots
         self.claude_bin = claude_bin
         self.opencode_bin = opencode_bin
+        self.dictation = dictation.Store(dictation_dir or dictation.default_dir())
         self.channels = Channels(self._resolve)
         # Every session's card changes go out together, a few times a second at
         # most, however many sessions are working (#158).
@@ -472,6 +474,25 @@ class App:
         async def recap_request(p: RecapParams, caller):
             """A recap of where the session stands, for a person landing on its tab."""
             return await self.recaps.request(reg.open(p.log_id), p.force)
+
+        @r.op("dictation.prepare", NoParams)
+        async def dictation_prepare(p: NoParams, caller):
+            """The engine and model the browser transcribes with, on disk and
+            verified, and the words to bias it toward (dictation.py)."""
+            try:
+                await self.dictation.ensure()
+            except dictation.Unavailable as e:
+                raise OpError("dictation_unavailable", str(e)) from e
+            snap = self.config.current()
+            live = reg.open_sessions()
+            return {
+                "base": f"/dictation/{self.dictation.id}/",
+                "keywords": dictation.keywords(
+                    [s.handle for s in live],
+                    [s.spec.cwd for s in live],
+                    [*(a.name for a in snap.agents), *snap.queues],
+                ),
+            }
 
         @r.op("session.configure", ConfigureParams)
         async def configure(p: ConfigureParams, caller):

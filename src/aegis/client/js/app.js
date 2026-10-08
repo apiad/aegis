@@ -16,6 +16,7 @@ import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { installBell, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
+import { Dictation } from "./dictation.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -408,6 +409,7 @@ function follow(id) {
     while (kept.size > TAB_CACHE) kept.delete(kept.keys().next().value);
   } else transcript.clear();
   drawNavNow(); // at once: the old session's navigator goes with its rows
+  if (dictation.target?.el === input) dictation.stop(); // a recording belongs to its session
   shown = id;
   if (!id) return;
   const saved = kept.get(id);
@@ -785,6 +787,7 @@ async function spawnFromComposer() {
   if (!a || $("sp-go").disabled) return;
   $("sp-go").disabled = true;
   $("sp-error").textContent = "";
+  await dictation.finish($("sp-text"));
   const text = $("sp-text").value.trim();
   const params = { agent: a.name, cwd: $("sp-cwd").value.trim() || null, ...overrides() };
   if (text) params.prompt = text;
@@ -849,6 +852,11 @@ installKeys(
       if (v === "session") input.focus();
       // The new tab's message box: Enter there spawns and sends.
       else if (v === "spawn") $("sp-text").focus();
+    },
+    dictate() {
+      const v = route().view;
+      if (!navigator.mediaDevices || (v !== "session" && v !== "spawn")) return;
+      dictation.toggle(v === "spawn" ? spawnTarget() : sessionTarget());
     },
     browse() {
       const v = route().view;
@@ -921,6 +929,36 @@ installKeys(
 
 // -- composer ---------------------------------------------------------------
 const input = $("input");
+
+// -- dictation: the mic in both message boxes (dictation.js) ----------------
+const mics = () => [
+  [$("mic"), input],
+  [$("sp-mic"), $("sp-text")],
+];
+const dictation = new Dictation({
+  prepare: () => conn.call("dictation.prepare"),
+  onState(state) {
+    for (const [b, el] of mics()) b.dataset.state = dictation.target?.el === el ? state : "idle";
+  },
+  onLevel(x) {
+    for (const [b] of mics()) b.style.setProperty("--level", Math.min(1, x * 8).toFixed(2));
+  },
+  onError(message) {
+    $(dictation.target?.el === input ? "send-error" : "sp-error").textContent = message;
+  },
+});
+// A session's box holds that session's draft, so text that lands after the
+// box moved to another session goes to the draft it started in.
+const sessionTarget = () => ({ el: input, key: `aegis.draft.${shown}`, current: () => `aegis.draft.${shown}` });
+const spawnTarget = () => ({ el: $("sp-text"), key: null, current: () => null });
+if (!navigator.mediaDevices) {
+  for (const [b] of mics()) {
+    b.disabled = true;
+    b.title = "Dictation needs https or localhost";
+  }
+}
+$("mic").addEventListener("click", () => dictation.toggle(sessionTarget()));
+$("sp-mic").addEventListener("click", () => dictation.toggle(spawnTarget()));
 // On a touch screen Enter adds a line and the button sends: the key sits where
 // a mistap lands, and half a message costs a turn.
 const touch = matchMedia("(pointer: coarse)");
@@ -996,7 +1034,10 @@ async function sendLine(text, fromComposer) {
   }
 }
 
-const send = () => sendLine(input.value.trim(), true);
+const send = async () => {
+  await dictation.finish(input); // what was said goes out with the rest
+  return sendLine(input.value.trim(), true);
+};
 
 // Catalogs per session, fetched when the menu first opens there. The promise
 // is kept, so keystrokes that arrive while it loads wait for the same call

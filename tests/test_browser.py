@@ -2443,6 +2443,344 @@ def test_returning_to_a_tab_receives_only_what_changed(server, page):
     assert rows >= 3 and page.errors == []
 
 
+# -- dictation ----------------------------------------------------------------
+# The stub engine in tests/fixtures/dictation answers each chunk with its length
+# and keyword count, so the client's cutting, ordering and insertion can be
+# checked without the 17.8 MB model.
+
+
+@pytest.fixture
+def dict_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    from aegis.dictation import PINS, pin_id
+
+    d = tmp_path / "dictation" / pin_id()
+    d.mkdir(parents=True)
+    stub = (Path(__file__).parent / "fixtures" / "dictation" / "needle.js").read_bytes()
+    for p in PINS:
+        (d / p.name).write_bytes(stub if p.name == "needle.js" else b"stub")
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    s = Server(tmp_path, fake_claude, fake_opencode)
+    s.env["AEGIS_DICTATION_DIR"] = str(d.parent)
+    s.start()
+    yield s
+    s.stop()
+
+
+def run_dictation(pg, body: str):
+    """Run ``body`` with the dictation module as ``m``, sine ``tone(s)`` and
+    silent ``gap(s)`` arrays, a ``source`` whose ``feed`` pushes samples in
+    100 ms blocks, and ``prepare`` answering the server's pinned base."""
+    from aegis.dictation import pin_id
+
+    return pg.evaluate(
+        """async ([base, body]) => {
+            const m = await import('/static/js/dictation.js');
+            const tone = (s) => Float32Array.from({ length: Math.round(s * 16000) }, (_, i) => 0.3 * Math.sin(i / 5));
+            const gap = (s) => new Float32Array(Math.round(s * 16000));
+            const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+            let push = null;
+            const source = async (on) => { push = on; return async () => {}; };
+            const feed = (...parts) => { for (const p of parts) for (let i = 0; i < p.length; i += 1600) push(p.subarray(i, i + 1600)); };
+            const prepare = async () => ({ base, keywords: ['aegis', 'pull request'] });
+            return await new (Object.getPrototypeOf(async function () {}).constructor)(
+                'm', 'tone', 'gap', 'sleep', 'source', 'feed', 'prepare', body,
+            )(m, tone, gap, sleep, source, feed, prepare);
+        }""",
+        [f"/dictation/{pin_id()}/", body],
+    )
+
+
+def test_dictation_cuts_at_the_first_pause_after_20s_and_at_30s_without_one(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const out = []; const c = new m.Chunker((a) => out.push(a.length / 16000));
+        for (const p of [tone(22), gap(0.5), tone(35), tone(3)])
+            for (let i = 0; i < p.length; i += 1600) c.push(p.subarray(i, i + 1600));
+        return { out, tail: c.finish().map((a) => a.length / 16000) };""",
+    )
+    assert len(got["out"]) == 2
+    assert 22.0 <= got["out"][0] <= 22.4, "the pause after 22 s"
+    assert 20.0 <= got["out"][1] <= 30.0, "no pause: the quietest point"
+    assert len(got["tail"]) == 2 and sum(got["tail"]) > 10
+
+
+def test_dictation_splits_a_long_tail_in_two_and_drops_silence(dict_server, page):
+    page.goto(dict_server.url)
+    halves, short, silent = run_dictation(
+        page,
+        """const fin = (...parts) => { const c = new m.Chunker(() => {}); for (const p of parts) c.push(p); return c.finish(); };
+        return [fin(tone(6), gap(0.3), tone(8)).map((x) => x.length / 16000),
+                fin(tone(4)).length, fin(gap(5)).length];""",
+    )
+    assert len(halves) == 2 and 5.9 <= halves[0] <= 6.4, "cut in the pause"
+    assert short == 1 and silent == 0
+
+
+def test_dictation_inserts_pieces_in_order_after_the_last_one_and_keeps_typing(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    text = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        el.value = 'Before. After.'; el.setSelectionRange(7, 7);
+        const errors = [];
+        const d = new m.Dictation({ prepare, onError: (e) => errors.push(e) });
+        await d.start({ el, key: null, current: () => null }, source);
+        feed(tone(21), gap(0.5));
+        while (!el.value.includes('kw=')) await sleep(20);
+        el.value += ' typed';
+        feed(tone(14), gap(0.3), tone(7.7));
+        await d.stop();
+        while (d.state !== 'idle') await sleep(20);
+        if (errors.length) throw new Error(errors.join('; '));
+        return el.value;""",
+    )
+    # The tail splits into a long first half (400 ms in the stub) and a short
+    # second half (50 ms), so the second finishes first and must wait.
+    secs = [float(s) for s in re.findall(r"\[(\d+\.\d)s kw=2\]", text)]
+    assert len(secs) == 3 and secs[0] > 20 and secs[1] > 12 > secs[2], text
+    assert text.startswith("Before. [21.") and text.endswith("] After. typed"), text
+
+
+def test_dictation_puts_late_text_in_the_draft_the_textarea_no_longer_shows(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        let showing = 'aegis.draft.a';
+        localStorage.setItem('aegis.draft.a', 'draft of a');
+        const d = new m.Dictation({ prepare });
+        await d.start({ el, key: 'aegis.draft.a', current: () => showing }, source);
+        feed(tone(3));
+        showing = 'aegis.draft.b'; el.value = 'b is shown';
+        await d.stop();
+        while (d.state !== 'idle') await sleep(20);
+        return [el.value, localStorage.getItem('aegis.draft.a')];""",
+    )
+    assert got[0] == "b is shown"
+    assert got[1].startswith("draft of a [3.0s kw=2]")
+
+
+@pytest.fixture
+def mic_page(tmp_path: Path):
+    """A page whose microphone is Chromium's fake device playing 4 s of tone
+    and 1 s of silence, on a loop, with the permission already granted."""
+    import math
+    import wave
+
+    wav = tmp_path / "speech.wav"
+    with wave.open(str(wav), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(
+            b"".join(
+                (int(9000 * math.sin(i / 5)) if i < 4 * 16000 else 0).to_bytes(
+                    2, "little", signed=True
+                )
+                for i in range(5 * 16000)
+            )
+        )
+    with playwright.sync_playwright() as p:
+        b = p.chromium.launch(
+            args=[
+                "--use-fake-ui-for-media-stream",
+                "--use-fake-device-for-media-stream",
+                f"--use-file-for-fake-audio-capture={wav}",
+            ]
+        )
+        ctx = b.new_context(
+            viewport={"width": 1280, "height": 800}, permissions=["microphone"]
+        )
+        errors: list = []
+        pg = ctx.new_page()
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.errors = errors
+        yield pg
+        b.close()
+
+
+def dictate_for(pg, mic: str, seconds: float, press=None) -> None:
+    (press or (lambda: pg.click(mic)))()
+    pg.wait_for_selector(f"{mic}[data-state=listening]", timeout=10000)
+    pg.wait_for_timeout(int(seconds * 1000))
+
+
+def test_the_mic_button_inserts_dictated_text_and_sends_nothing(dict_server, mic_page):
+    pg = mic_page
+    pg.goto(dict_server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg)
+    pg.fill("#input", "Look at")
+    dictate_for(pg, "#mic", 2.5)
+    pg.click("#mic")
+    pg.wait_for_selector("#mic[data-state=idle]", timeout=10000)
+    v = pg.input_value("#input")
+    assert re.fullmatch(r"Look at \[\d\.\ds kw=\d+\]", v), v
+    assert pg.locator(".row.sys .body", has_text="done in").count() == 0
+    assert pg.errors == []
+
+
+def test_enter_while_dictating_sends_what_was_said(dict_server, mic_page):
+    pg = mic_page
+    pg.goto(dict_server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg)
+    dictate_for(pg, "#mic", 2.5)
+    pg.press("#input", "Enter")
+    turns_done(pg, 1)
+    assert pg.get_attribute("#mic", "data-state") == "idle"
+    assert pg.input_value("#input") == ""
+    assert pg.locator(".row", has_text="kw=").count() >= 1, "the dictated text was sent"
+
+
+def test_alt_m_dictates_and_a_tab_switch_sends_late_text_to_its_own_draft(
+    dict_server, mic_page
+):
+    pg = mic_page
+    pg.goto(dict_server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(pg)
+    spawn(pg)
+    pg.click(f"#tablist .tab[data-id='{a}']")
+    pg.wait_for_function("(a) => location.hash === `#s=${a}`", arg=a)
+    pg.focus("#input")
+    dictate_for(pg, "#mic", 2.5, press=lambda: pg.keyboard.press("Alt+KeyM"))
+    pg.click(f"#tablist .tab:not([data-id='{a}'])")
+    pg.wait_for_selector("#mic[data-state=idle]", timeout=10000)
+    assert "kw=" not in pg.input_value("#input")
+    draft = pg.evaluate("(a) => localStorage.getItem(`aegis.draft.${a}`) || ''", a)
+    assert "kw=" in draft
+    pg.click(f"#tablist .tab[data-id='{a}']")
+    pg.wait_for_function("() => document.getElementById('input').value.includes('kw=')")
+    assert pg.errors == []
+
+
+def test_the_new_tab_box_dictates_too(dict_server, mic_page):
+    pg = mic_page
+    pg.goto(dict_server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.click("#tab-add")
+    pg.wait_for_selector("#a2[data-view=spawn]")
+    dictate_for(pg, "#sp-mic", 2.5)
+    pg.click("#sp-mic")
+    pg.wait_for_selector("#sp-mic[data-state=idle]", timeout=10000)
+    assert "kw=" in pg.input_value("#sp-text")
+    assert pg.get_attribute("#mic", "data-state") == "idle"
+
+
+def test_the_mic_is_disabled_without_a_microphone_api(dict_server, page):
+    page.add_init_script(
+        "Object.defineProperty(Navigator.prototype, 'mediaDevices', { get: () => undefined })"
+    )
+    page.goto(dict_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    assert page.locator("#mic").is_disabled()
+    assert "https" in page.get_attribute("#mic", "title")
+    page.focus("#input")
+    page.keyboard.press("Alt+KeyM")
+    assert page.get_attribute("#mic", "data-state") == "idle"
+
+
+def test_a_model_that_cannot_be_had_says_so_and_stops(
+    tmp_path, fake_claude, fake_opencode, mic_page
+):
+    blocked = tmp_path / "not-a-dir"
+    blocked.write_text("a file where the cache directory goes")
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    s = Server(tmp_path, fake_claude, fake_opencode)
+    s.env["AEGIS_DICTATION_DIR"] = str(blocked)
+    s.start()
+    try:
+        pg = mic_page
+        pg.goto(s.url)
+        pg.wait_for_selector("#a2[data-view=fleet]")
+        spawn(pg)
+        pg.click("#mic")
+        pg.wait_for_function(
+            "() => document.getElementById('send-error').textContent.includes('Dictation model unavailable')"
+        )
+        pg.wait_for_selector("#mic[data-state=idle]")
+        assert pg.input_value("#input") == ""
+    finally:
+        s.stop()
+
+
+# LibriSpeech test-clean (CC BY 4.0), row 1 of the openslr/librispeech_asr split.
+LIBRISPEECH_REF = (
+    "THE ENGLISH FORWARDED TO THE FRENCH BASKETS OF FLOWERS OF WHICH THEY HAD MADE"
+    " A PLENTIFUL PROVISION TO GREET THE ARRIVAL OF THE YOUNG PRINCESS THE FRENCH IN"
+    " RETURN INVITED THE ENGLISH TO A SUPPER WHICH WAS TO BE GIVEN THE NEXT DAY"
+)
+
+
+def word_error_rate(ref: str, hyp: str) -> float:
+    def words(s: str) -> list[str]:
+        return re.sub(r"[^\w\s]", " ", s.lower()).split()
+
+    r, h = words(ref), words(hyp)
+    prev = list(range(len(h) + 1))
+    for i in range(1, len(r) + 1):
+        cur = [i]
+        for j in range(1, len(h) + 1):
+            cur.append(
+                min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (r[i - 1] != h[j - 1]))
+            )
+        prev = cur
+    return prev[-1] / len(r)
+
+
+@pytest.mark.live
+def test_live_dictation_transcribes_a_librispeech_clip(
+    tmp_path, fake_claude, fake_opencode
+):
+    """The real model, downloaded through the server from Hugging Face into the
+    real cache (so a second run downloads nothing), and the clip played into
+    Chromium's fake microphone in real time. Its 14.2 s go out as a split tail."""
+    clip = (
+        Path(__file__).parent
+        / "fixtures"
+        / "dictation"
+        / "librispeech-test-clean-row1.wav"
+    )
+    cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    s = Server(tmp_path, fake_claude, fake_opencode)
+    s.env["AEGIS_DICTATION_DIR"] = str(cache / "aegis" / "dictation")
+    s.start()
+    try:
+        with playwright.sync_playwright() as p:
+            b = p.chromium.launch(
+                args=[
+                    "--use-fake-ui-for-media-stream",
+                    "--use-fake-device-for-media-stream",
+                    f"--use-file-for-fake-audio-capture={clip}%noloop",
+                ]
+            )
+            pg = b.new_context(permissions=["microphone"]).new_page()
+            pg.goto(s.url)
+            pg.wait_for_selector("#a2[data-view=fleet]")
+            spawn(pg)
+            pg.click("#mic")
+            pg.wait_for_timeout(15500)
+            pg.click("#mic")
+            pg.wait_for_selector("#mic[data-state=idle]", timeout=300_000)
+            text = pg.input_value("#input")
+            b.close()
+    finally:
+        s.stop()
+    wer = word_error_rate(LIBRISPEECH_REF, text)
+    print(f"live dictation WER {wer:.1%}: {text}")
+    assert wer < 0.15, text
+
+
 def test_pasting_the_token_signs_this_browser_in_and_it_stays(server, browser):
     errors: list = []
     page = new_page(browser, errors)
