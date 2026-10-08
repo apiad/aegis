@@ -240,6 +240,19 @@ def run(text: str) -> None:
         tool_output(tid, "Exit code 1\nError: it failed", is_error=True)
         assistant({"type": "text", "text": "That failed."})
         result()
+    elif word == "/bash":
+        desc, _, out = arg.partition(" => ")
+        tid = tool_id()
+        assistant(
+            {
+                "type": "tool_use",
+                "id": tid,
+                "name": "Bash",
+                "input": {"command": "true", "description": desc},
+            }
+        )
+        tool_output(tid, out)
+        result()
     elif word == "/notice":
         for sub in ("hook_started", "thinking_tokens", "task_notification"):
             emit({"type": "system", "subtype": sub})

@@ -112,10 +112,12 @@ body{background:#000}
 #a2 .row.tool,#a2 .row.think,#a2 .row.sys,#a2 .row.error,#a2 .row.working{font-family:var(--font-mono);font-size:12.5px}
 #a2 .row.tool details>summary{list-style:none;cursor:pointer}
 #a2 .row.tool details>summary::-webkit-details-marker{display:none}
-#a2 .row.tool .line{display:grid;grid-template-columns:auto minmax(0,1fr) auto;column-gap:12px;align-items:baseline}
-#a2 .tn{color:var(--strong);font-weight:500}
-#a2 .ta{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#a2 .tr2{color:var(--faint);white-space:nowrap;max-width:46ch;overflow:hidden;text-overflow:ellipsis}
+#a2 .row.tool .line{display:flex;column-gap:12px;align-items:baseline}
+#a2 .tn{color:var(--strong);font-weight:500;flex:none}
+/* The description and the verdict share the row 30:70 and each stops at its own
+   width, so either one takes the room the other leaves. */
+#a2 .ta{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:3 1 0;min-width:0;max-width:max-content}
+#a2 .tr2{color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:7 1 0;min-width:0;max-width:max-content;margin-left:auto}
 #a2 .row.tool.ok .tr2,#a2 .row.tool.ok .g{color:var(--ok)}
 #a2 .row.tool.err .tr2,#a2 .row.tool.err .g,#a2 .row.error,#a2 .row.error .g{color:var(--err)}
 #a2 .row.tool.running .tr2{color:var(--accent)}
