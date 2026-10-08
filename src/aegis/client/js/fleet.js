@@ -48,7 +48,9 @@ export function renderCards(box, metas, onOpen, order = "attention") {
   const needs = metas.filter((m) => group(m) === "needs");
   const rest = metas.filter((m) => group(m) === "rest");
   if (needs.length) out.push(el("div", "grp-h", "Needs you"), ...needs.map((m) => card(m, onOpen)));
-  if (rest.length) out.push(el("div", "grp-h", needs.length ? "Everything else" : "Sessions"), ...rest.map((m) => card(m, onOpen)));
+  // With nobody needing you, the order bar's "Sessions" heading names the list.
+  if (rest.length && needs.length) out.push(el("div", "grp-h", "Everything else"));
+  out.push(...rest.map((m) => card(m, onOpen)));
   box.replaceChildren(...out);
 }
 

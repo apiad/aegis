@@ -1124,7 +1124,7 @@ def test_a_patch_that_changes_a_cards_group_regroups_the_open_fleet(
     a, b = spawn(page, "alpha"), spawn(page, "beta")
     page.click("#tab-fleet")
     page.wait_for_selector(f"#cards .card[data-id='{b}']")
-    assert page.locator(".grp-h").all_inner_texts() == ["Sessions"]
+    assert page.locator(".grp-h").count() == 0  # the order bar's heading names the list
     other = new_page(browser, [])
     other.goto(f"{server.url.split('#')[0]}#s={b}")
     other.wait_for_selector("#a2[data-view=session]")
