@@ -267,6 +267,9 @@ async def test_a_report_is_published_at_once_and_survives_a_rebuild(
     assert meta["standing"]["plan"] == [{"text": "read", "state": "doing"}]
     again = h.make(standing=meta["standing"])
     assert again.standing == meta["standing"]
+    # A record adopts the fold's object, so later records compare by identity.
+    again.report({"kind": "plan", "items": [{"text": "read", "state": "doing"}]})
+    assert again.standing is again.fold().standing
 
 
 async def test_a_session_from_an_old_meta_has_an_empty_standing(tmp_path, fake_claude):

@@ -394,6 +394,7 @@ class Session:
         self._publish(self.channel, ops)
         if fold.standing is not self.standing:
             self._set(standing=fold.standing)
+            self.standing = fold.standing
         if any(
             op.get("upsert", {}).get("kind") in ("user", "prose", "tool", "file")
             for op in ops
