@@ -132,8 +132,9 @@ permission, so spawning is never a way to gain power. People can do anything.
 
 **The client knows no subsystem by name.** Server state reaches the browser as
 named channels: a snapshot on subscribe, then numbered patches. A gap in the
-numbers, or a reconnect, means resubscribe and take a fresh snapshot. Adding a
-subsystem adds operations and channels, never a protocol field.
+numbers, or a reconnect, means resubscribe, saying which revision it holds; a
+channel that keeps revisions answers with what changed after it, and any other
+with a fresh snapshot. Adding a subsystem adds operations and channels, never a protocol field.
 
 **Python decides, the browser draws.** Every fact and decision about a transcript
 entry is computed once in Python: its glyph, title, summary, status, the diff
@@ -141,6 +142,14 @@ window of an edit, and what collapses. The entry crosses the wire as data and th
 browser only turns it into markup. One copy of each fact means no drift, and a
 data protocol version fails loudly across a link where mismatched markup would
 break silently.
+
+**The wire carries no collapsed detail.** A tool's arguments, output and diff, a
+system note's tail and thinking text stay on the server until a row opens and
+asks for them with `transcript.detail` (`transcript/wire.py`). They were 75% of a
+snapshot's bytes over 80 real transcripts. Every entry carries `rev`, the store
+index of the record that last changed it, so a returning client asks for what
+changed since the revision it holds, and the client keeps the last 8 tabs it
+showed.
 
 **A renderer is a function that returns a Node.** The client is plain ES modules
 with no framework and no build step. A plugin's renderer has the same shape, so
@@ -191,7 +200,10 @@ a resume reads the same file the live session wrote.
 snapshot on holds exactly the session's live entries, and those equal a fresh fold
 of the store. A reload and a live view must never disagree. The session tests check
 both after every scenario, because the first bug the browser found was a patch that
-left out an update the entries had.
+left out an update the entries had. A delta from any revision, applied to the
+entries as of that revision, equals the entries now, live ones included
+(tests/test_wire.py checks every cut of the fixtures and 40 earlier moments at
+every step of a stream).
 
 **A transcript is keyed by a log id minted at spawn, never by a handle.** Handles
 are reused; keying on them once merged unrelated conversations into one file in

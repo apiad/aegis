@@ -1,6 +1,6 @@
 # aegis on a phone: a lighter wire, a narrow layout, an installable app
 
-**Status: designed, not built, 2026-10-08.** Designed with Alex in a brainstorm
+**Status: slices 1 to 3 built, 2026-10-08** (the quota fix in #192, the lighter wire in #194, the narrow layout for #190); slices 4 and 5 designed, not built. Designed with Alex in a brainstorm
 with screenshots of the real client at phone width. The measurement scripts, the
 prototype stylesheet and the screenshots are in the workspace playground, not in
 this repo: `.playground/aegis-mobile/measure.py` and `cuts.py` (wire),

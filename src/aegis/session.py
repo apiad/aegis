@@ -42,6 +42,7 @@ from .meta import MetaStore
 from .names import default_title
 from .transcript.entries import EMPTY_STANDING, Fold, fold_records
 from .transcript.store import Store, read_store
+from .transcript.wire import wire_ops
 
 Publish = Callable[[str, list[dict]], None]
 
@@ -517,7 +518,7 @@ class Session:
         stored = self.store.append({"ts": time.time(), "src": "aegis", **record})
         self.last_activity = stored["ts"]
         ops = fold.apply(stored, events)
-        self._publish(self.channel, ops)
+        self._publish(self.channel, wire_ops(ops))
         if fold.standing is not self.standing:
             self._set(standing=fold.standing)
             self.standing = fold.standing
@@ -565,7 +566,7 @@ class Session:
         events = fold.parse(self.harness.src, line)
         if events and all(isinstance(ev, Delta) for ev in events):
             # Never stored: the part's closing update carries the whole text.
-            self._publish(self.channel, fold.live(events))
+            self._publish(self.channel, wire_ops(fold.live(events)))
             self._set(
                 activity=fold.activity(),
                 **({"status": "working"} if self.status == "idle" else {}),

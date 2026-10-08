@@ -41,7 +41,7 @@ from .ops import Caller, OpError
 
 log = logging.getLogger("aegis.web")
 
-PROTO = 1
+PROTO = 2
 HELLO_TIMEOUT_S = 5.0
 CLIENT_DIR = Path(__file__).parent / "client"
 
@@ -210,10 +210,13 @@ def build_web(
                     task.add_done_callback(calls.discard)
                 elif t == "sub":
                     ch = str(msg.get("channel"))
+                    since = msg.get("since")
+                    if not isinstance(since, int) or isinstance(since, bool):
+                        since = None
                     if ch in subs:
                         app.channels.unsubscribe(subs.pop(ch))
                     try:
-                        subs[ch] = app.channels.subscribe(ch, out.put_nowait)
+                        subs[ch] = app.channels.subscribe(ch, out.put_nowait, since)
                     except OpError as e:
                         out.put_nowait(
                             {

@@ -8,7 +8,11 @@ from aegis.ops import OpError
 
 def make():
     state = {"n": 0}
-    return Channels(lambda name: (lambda: dict(state)) if name == "c" else None), state
+    return Channels(
+        lambda name, since=None: (
+            (lambda: {**state, "since": since}) if name == "c" else None
+        )
+    ), state
 
 
 def test_snapshot_then_numbered_patches():
@@ -120,3 +124,11 @@ async def test_the_rate_is_bounded_however_many_keys_change():
     assert len(sent) <= 0.5 / 0.05 + 2
     last = {op["upsert"]["id"]: op["upsert"]["n"] for ops in sent for op in ops}
     assert len(last) == 100 and max(last.values()) == n - 1
+
+
+def test_since_reaches_the_channel_resolver():
+    ch, _ = make()
+    got = []
+    ch.subscribe("c", got.append, since=7)
+    ch.subscribe("c", got.append)
+    assert [m["data"]["since"] for m in got] == [7, None]

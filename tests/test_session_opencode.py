@@ -8,6 +8,7 @@ from aegis.meta import MetaStore
 from aegis.session import Session, SpawnSpec
 from aegis.transcript.entries import fold_records
 from aegis.transcript.store import Store, read_store
+from aegis.transcript.wire import wire
 
 from .conftest import until
 
@@ -84,7 +85,7 @@ class OC:
                     shown[op["upsert"]["id"]] = op["upsert"]
                 else:
                     shown.pop(op["remove"], None)
-        return list(shown.values()) == self.session.entries()
+        return list(shown.values()) == [wire(e) for e in self.session.entries()]
 
 
 @pytest.fixture

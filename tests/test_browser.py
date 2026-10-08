@@ -315,7 +315,11 @@ def test_a_session_from_spawn_to_close(server, page):
     page.fill("#input", "/fail")
     page.press("#input", "Enter")
     turns_done(page, 2)
-    assert page.is_visible(".row.tool.err pre.out")
+    assert page.is_visible(".row.tool.err") and not page.is_visible(
+        ".row.tool.err pre.out"
+    )
+    page.click(".row.tool.err summary")
+    page.wait_for_selector(".row.tool.err pre.out", state="visible")
 
     page.fill("#input", "/sleep 5")
     page.press("#input", "Enter")
@@ -1586,3 +1590,64 @@ def test_a_phone_in_landscape_gets_the_desktop_layout_with_touch_targets(
     assert page.is_visible(".side") and page.is_hidden("#side-btn")
     assert page.locator("#send").bounding_box()["height"] >= 44
     assert errors == []
+
+
+def frames_on(pg) -> list[str]:
+    got: list[str] = []
+    # A lambda: Playwright marks its handlers, and a builtin takes no attribute.
+    pg.on("websocket", lambda ws: ws.on("framereceived", lambda f: got.append(f)))
+    return got
+
+
+def test_a_tool_row_loads_its_output_when_opened(server, page):
+    frames = frames_on(page)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/bash list it => SECRET-OUT")
+    assert page.locator(".row.tool pre.out").count() == 0, "the tail came unasked"
+    assert not any('"tail"' in f for f in frames if '"kind": "tool"' in f)
+    page.click(".row.tool summary")
+    page.wait_for_selector(".row.tool pre.out >> text=SECRET-OUT")
+    page.reload()
+    page.wait_for_selector(".row.tool")
+    page.click(".row.tool summary")
+    page.wait_for_selector(".row.tool pre.out >> text=SECRET-OUT")
+    assert page.errors == []
+
+
+def test_an_open_row_refetches_when_its_result_lands(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    page.fill("#input", "/sleep 2")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    page.click(".row.tool.running summary")
+    turns_done(page, 1)
+    page.wait_for_selector(".row.tool.ok pre.out", state="visible")
+    assert page.errors == []
+
+
+def test_returning_to_a_tab_receives_only_what_changed(server, page):
+    frames = frames_on(page)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "alpha " + "x" * 3000)
+    spawn(page, "beta")
+    rows = page.evaluate("document.querySelectorAll('#entries .row').length")
+    frames.clear()
+    t0 = page.evaluate("performance.now()")
+    page.click(f"#tablist .tab[data-id='{a}']")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
+    # The cached rows show before the delta arrives: wait for the delta itself.
+    page.wait_for_function("t => (window.__a2snapshot?.at ?? 0) > t", arg=t0)
+    for _ in range(40):  # Playwright reports the frame on its own schedule
+        snaps = [f for f in frames if '"t": "snapshot"' in f and f"transcript:{a}" in f]
+        if snaps:
+            break
+        page.wait_for_timeout(50)
+    page.wait_for_selector(".row.user >> text=alpha")
+    assert snaps and all('"since"' in f for f in snaps), snaps
+    assert sum(map(len, snaps)) < 1500, [len(f) for f in snaps]
+    assert page.evaluate("document.querySelectorAll('#entries .row').length") >= 3
+    assert rows >= 3 and page.errors == []

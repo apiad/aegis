@@ -53,7 +53,10 @@ let shown = null; // log_id whose transcript is subscribed
 let unsubTranscript = null;
 let workingSince = null;
 let booted = false;
-const transcript = new Transcript($("tr"), $("entries"), $("jump"));
+const transcript = new Transcript($("tr"), $("entries"), $("jump"), (ids) => {
+  const id = shown;
+  return conn.call("transcript.detail", { log_id: id, ids }).then((got) => (shown === id ? got : []));
+});
 installGlyphs();
 // How the Fleet orders its cards: this browser's choice, like the tab order.
 let fleetOrder = localStorage.getItem("aegis.fleetOrder") || "attention";
@@ -296,23 +299,42 @@ function drawQuota() {
 // Countdowns and the tick move with the clock; their unit is minutes.
 setInterval(drawQuota, 30 * 1000);
 
+// The last TAB_CACHE tabs left, newest last: a return to one shows it at once
+// and asks only for what changed since (transcript/wire.py, Fold.snapshot).
+const TAB_CACHE = 8;
+const kept = new Map(); // log_id -> transcript.stash()
+
 function follow(id) {
   if (shown === id) return;
   closeSide();
   if (unsubTranscript) unsubTranscript();
   unsubTranscript = null;
-  transcript.clear();
+  if (shown) {
+    kept.delete(shown);
+    kept.set(shown, transcript.stash());
+    while (kept.size > TAB_CACHE) kept.delete(kept.keys().next().value);
+  } else transcript.clear();
   shown = id;
   if (!id) return;
+  const saved = kept.get(id);
+  if (saved) {
+    kept.delete(id);
+    transcript.restore(saved);
+  }
   unsubTranscript = conn.subscribe(
     `transcript:${id}`,
-    (entries) => {
-      transcript.snapshot(entries || []);
+    (data) => {
+      if (data.since !== undefined) transcript.resume(data);
+      else transcript.snapshot(data);
       // Read by scripts/bench.py: when the snapshot was drawn and painted.
-      const mark = (window.__a2snapshot = { at: performance.now(), count: (entries || []).length });
+      const mark = (window.__a2snapshot = { at: performance.now(), count: transcript.entries.size });
       requestAnimationFrame(() => (mark.painted = performance.now()));
     },
     (ops) => transcript.apply(ops),
+    undefined,
+    // Holding nothing, a full snapshot mounts only the last rows; a delta
+    // from -1 would mount every row through apply().
+    () => (transcript.rev >= 0 ? transcript.rev : null),
   );
   menu.close();
   $("input").value = localStorage.getItem(`aegis.draft.${id}`) || "";

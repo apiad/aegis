@@ -43,6 +43,7 @@ from ..claude.stream import (
 from .. import files
 from ..opencode.stream import Parser as OpenCodeParser
 from . import describe as d
+from .wire import wire
 
 
 class _Stateless:
@@ -112,6 +113,13 @@ class Fold:
         self._parsers: dict[str, Any] = {}
         # Entries only deltas made, whose part has not closed yet.
         self._live: set[str] = set()
+        # The store index of the record being folded; stamped on every entry
+        # it changes as ``rev`` (-1 before the first record).
+        self._rev = -1
+        # Removed entry ids, by the rev that removed them. Kept after an id
+        # comes back, so a delta removes it first and appends it again, as a
+        # fresh fold orders it.
+        self._removed: dict[str, int] = {}
         # A prompt was sent or read and its turn has said nothing back yet.
         self._turn_open = False
         self.standing: dict = EMPTY_STANDING
@@ -121,6 +129,27 @@ class Fold:
     def entries(self) -> list[dict]:
         return list(self._entries.values())
 
+    def entry(self, id: str) -> dict | None:
+        return self._entries.get(id)
+
+    def snapshot(self, since: int | None = None) -> dict:
+        """What a subscriber gets: every entry, or, given the ``rev`` it holds,
+        the entries changed after it and the ids removed after it. Live
+        entries are in every delta: deltas grow them without a store record,
+        so their ``rev`` does not move. A ``since`` this fold never reached
+        gets everything."""
+        entries = self.entries()
+        if since is None or not -1 <= since <= self._rev:
+            return {"rev": self._rev, "entries": [wire(e) for e in entries]}
+        return {
+            "rev": self._rev,
+            "since": since,
+            "removed": [i for i, r in self._removed.items() if r > since],
+            "entries": [
+                wire(e) for e in entries if e["rev"] > since or e["id"] in self._live
+            ],
+        }
+
     def apply(self, record: dict, events: list[Event] | None = None) -> list[dict]:
         """Fold one stored record; return the patch ops it caused.
 
@@ -128,6 +157,7 @@ class Fold:
         parse; a re-fold passes nothing and parses the stored line.
         """
         i, ts = record["i"], record.get("ts")
+        self._rev = i
         src = record.get("src")
         if src in PARSERS:
             evs = (
@@ -262,11 +292,13 @@ class Fold:
         return ""
 
     def _upsert(self, e: dict) -> list[dict]:
+        e["rev"] = self._rev
         self._entries[e["id"]] = e
         return [{"upsert": e}]
 
     def _remove(self, id: str) -> list[dict]:
         self._entries.pop(id, None)
+        self._removed[id] = self._rev
         return [{"remove": id}]
 
     # -- what aegis itself did ---------------------------------------
@@ -603,7 +635,6 @@ class Fold:
             detail.update(
                 result=d.result_digest(name, ev.text, ev.is_error, pair),
                 tail=d.output_tail(ev.text),
-                collapsed=not ev.is_error,
             )
             if pair is not None and not ev.is_error:
                 removed, added, elided = d.diff_window(pair[1], pair[2])

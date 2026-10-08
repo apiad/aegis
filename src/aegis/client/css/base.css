@@ -117,6 +117,7 @@ body{background:#000}
 #a2 .row.tool details>summary{list-style:none;cursor:pointer}
 #a2 .row.tool details>summary::-webkit-details-marker{display:none}
 #a2 .row.tool .line{display:flex;column-gap:12px;align-items:baseline}
+#a2 .row .loading{font-family:var(--font-mono);font-size:12px;color:var(--faint);padding:4px 0}
 #a2 .tn{color:var(--strong);font-weight:500;flex:none}
 /* The description and the verdict share the row 30:70 and each stops at its own
    width, so either one takes the room the other leaves. */
