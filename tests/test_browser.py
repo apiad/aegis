@@ -1723,6 +1723,72 @@ def test_the_divider_stays_where_it_was_across_a_reconnect(server, page):
     assert page.errors == []
 
 
+def test_more_than_500_messages_read_at_once_go_out_in_batches(
+    tmp_path, fake_claude, browser
+):
+    # 600 one-line replies in one turn, read in one tick: more than one
+    # session.read may carry (its ids are capped at 500).
+    text = [
+        {
+            "type": "assistant",
+            "message": {"content": [{"type": "text", "text": f"m{i}"}]},
+        }
+        for i in range(600)
+    ]
+    end = {"type": "result", "subtype": "success", "is_error": False, "num_turns": 1}
+    store = tmp_path / "many.jsonl"
+    store.write_text(
+        "".join(
+            json.dumps({"src": "claude", "line": json.dumps(x)}) + "\n"
+            for x in [*text, end]
+        )
+    )
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    s = Server(tmp_path, fake_claude)
+    s.env = {"FAKE_CLAUDE_REPLAY": str(store)}
+    s.start()
+    try:
+        pg = new_page(browser, errors := [])
+        pg.add_init_script("""
+          window.__reads = [];
+          const send = WebSocket.prototype.send;
+          WebSocket.prototype.send = function (data) {
+            const m = JSON.parse(data);
+            if (m.op === "session.read") window.__reads.push(m.params.ids.length);
+            return send.call(this, data);
+          };
+        """)
+        # Tall enough that every row is on screen at once.
+        pg.set_viewport_size({"width": 1280, "height": 40000})
+        pg.goto(s.url)
+        pg.wait_for_selector("#a2[data-view=fleet]")
+        spawn(pg)
+        pg.evaluate("document.hasFocus = () => false")  # nothing is read yet
+        pg.fill("#input", "replay")
+        pg.press("#input", "Enter")
+        pg.wait_for_function(
+            "() => document.getElementById('nav-pos').textContent"
+            ".startsWith('600 unread')",
+            timeout=30_000,
+        )
+        turns_done(pg, 1)  # no patch comes later to trim the mounted rows
+        pg.click("#nav-pos")  # the first unread: mounts every row down from it
+        assert pg.locator(".row.prose .rm .ic.unread").count() == 600
+        # Every row on screen for over a second before the page is focused, so
+        # the first tick takes all 600: a read's patch trims the mounted rows.
+        pg.wait_for_timeout(2000)
+        pg.evaluate("delete document.hasFocus")
+        pg.wait_for_function(
+            "() => !document.querySelector('.row.prose .rm .ic.unread')",
+            timeout=10_000,
+        )
+        reads = pg.evaluate("window.__reads")
+        assert reads == [500, 100]
+        assert errors == []
+    finally:
+        s.stop()
+
+
 def test_the_divider_is_drawn_on_its_row_when_scrolling_up_mounts_it(
     replay_server, page
 ):

@@ -56,8 +56,13 @@ let workingSince = null;
 let booted = false;
 const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
   // A failed report is retried by the next tick: the ids stay unread in the view.
+  // One call carries at most 500 ids, the operation's cap.
   onRead: (ids) => {
-    if (shown) conn.call("session.read", { log_id: shown, ids }).catch(() => ids.forEach((i) => transcript.sent.delete(i)));
+    if (!shown) return;
+    for (let i = 0; i < ids.length; i += 500) {
+      const batch = ids.slice(i, i + 500);
+      conn.call("session.read", { log_id: shown, ids: batch }).catch(() => batch.forEach((id) => transcript.sent.delete(id)));
+    }
   },
   onSelect: drawNav,
 });
