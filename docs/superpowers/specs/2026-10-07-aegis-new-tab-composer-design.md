@@ -90,9 +90,10 @@ Returns what the chips need, computed in Python so the browser only draws it:
 - `default`: `default_agent`, or null.
 - `harnesses`: each known harness name with `supported`. Today `claude-code` is
   supported and `opencode` is listed but not.
-- `models`: per harness, the suggestions for the model chip. For `claude-code`,
-  Claude Code's aliases (`opus`, `sonnet`, `haiku`, `fable`) followed by every
-  model an agent of that harness names, without duplicates.
+- `models`: per harness, the model chip's fallback list, used when Claude gave
+  no catalog (see the model chip below). For `claude-code`, Claude Code's
+  aliases (`opus`, `sonnet`, `haiku`, `fable`) followed by every model an agent
+  of that harness names, without duplicates.
 - `cwd`: the default working directory, as today.
 
 ### `session.spawn` (open to agents)
@@ -150,8 +151,19 @@ card shows the agent as `opus*` when `overridden` is not empty.
   `reset`, which restores the preset's values.
 - **The harness chip** lists every harness; unsupported ones are disabled, as an
   agent with an unsupported harness is today.
-- **The model chip** offers the suggestions from `agents.list` for the selected
-  harness and accepts any typed model id.
+- **The model chip** is a select of the models Claude lists for the composer's
+  cwd, from `models.list {agent, cwd}`: the same `initialize` catalog as
+  `commands.list`, probed once per cwd when no session runs there. The agent's
+  model is always an option and reads `opus (current)`, even a pinned id Claude
+  lists under an alias. Without a catalog it offers `agents.list`'s `models`.
+  It began as a free-text field with a datalist, prefilled with the agent's
+  model; Chromium filters a datalist by the field's text, so it offered only
+  that model (#172). A model outside the catalog can no longer be typed, as
+  `/model` already refused one.
+- **The effort chip** follows the chosen model's levels: a level it does not
+  take is disabled, a selected level it lacks moves down to the nearest one it
+  has, and a model with none (`haiku`, for which Claude drops `--effort`)
+  disables the chip and sends no effort override.
 - **The working directory** is the line under the wordmark; a click makes it
   editable.
 - **Enter** calls `session.spawn` with the agent, the changed fields only, the
