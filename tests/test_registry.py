@@ -120,6 +120,28 @@ async def test_boot_takes_the_standing_from_the_meta(world):
     assert s.wire()["plan_now"] == "write the test"
 
 
+async def test_boot_takes_the_read_state_from_the_meta(world):
+    sessions = world.roots.state_root / "sessions"
+    sessions.mkdir(parents=True)
+    meta = {
+        "log_id": "l000",
+        "handle": "h-0",
+        "archived": False,
+        "created_at": 0,
+        "last_activity": 0,
+        "profile": "opus",
+        "cwd": str(world.roots.config_root),
+        "unread": ["e5.0"],
+        "last_read_at": 1234.0,
+    }
+    (sessions / "l000.json").write_text(json.dumps(meta))
+    r = world.registry()
+    (s,) = r.open_sessions()
+    assert s.unread == {"e5.0"}
+    assert s.wire()["unread"] == 1
+    assert s.wire()["last_read_at"] == 1234.0
+
+
 async def test_boot_reads_no_store_when_every_meta_is_there(world, monkeypatch):
     sessions = world.roots.state_root / "sessions"
     sessions.mkdir(parents=True)

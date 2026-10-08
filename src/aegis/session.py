@@ -51,7 +51,7 @@ Publish = Callable[[str, list[dict]], None]
 # and go out together. Publishing them per line doubled the server's cost per
 # line in the bench (issue #127).
 _NOW = ("status", "handle", "title", "model_id", "standing")
-_SOON = ("activity", "cost_usd", "context_tokens", "context_window")
+_SOON = ("activity", "cost_usd", "context_tokens", "context_window", "unread")
 PUBLISH_EVERY_S = 0.25
 
 
@@ -170,6 +170,8 @@ class Session:
         held: list[dict] | None = None,
         worker: dict | None = None,
         standing: dict | None = None,
+        unread: list[str] | None = None,
+        last_read_at: float | None = None,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
@@ -208,6 +210,11 @@ class Session:
         # The fold's view of the agent's plan and last report; persisted so a
         # card at boot needs no store (DESIGN.md, boot reads meta files).
         self.standing: dict = standing or EMPTY_STANDING
+        # Agent messages (prose entries) no person has read yet, on any browser,
+        # and when someone last read. In the meta, so boot needs no store; a meta
+        # from before this has neither, and nothing old turns up unread.
+        self.unread: set[str] = set(unread or ())
+        self.last_read_at = last_read_at
         # The current process's catalog; None as a result when it did not answer.
         self.catalog_task: asyncio.Task[Catalog | None] | None = None
 
@@ -233,6 +240,8 @@ class Session:
             "held": self.held,
             "worker": self.worker,
             "standing": self.standing,
+            "unread": sorted(self.unread),
+            "last_read_at": self.last_read_at,
         }
 
     def wire(self) -> dict:
@@ -241,6 +250,7 @@ class Session:
         m.pop("held")
         m.pop("standing")
         m.pop("priming", None)  # the agent's text stays on the server
+        m["unread"] = len(self.unread)
         m["held_count"] = len(self.held)
         m["state"] = self.status
         m["model"] = self.model_id or self.spec.model
@@ -268,6 +278,31 @@ class Session:
 
     def entries(self) -> list[dict]:
         return self.fold().entries()
+
+    def view(self) -> list[dict]:
+        """The entries as the transcript channel serves them: each agent message
+        carries whether it is unread. The fold's entries never carry it, so a
+        refold of the store still equals them."""
+        return [self._dress(e) for e in self.entries()]
+
+    def _dress(self, e: dict) -> dict:
+        return {**e, "unread": e["id"] in self.unread} if e["kind"] == "prose" else e
+
+    def read(self, ids: list[str]) -> int:
+        """A person read these agent messages; ids that are not unread are
+        ignored. Publishes the changed entries and the card at once."""
+        hit = [i for i in dict.fromkeys(ids) if i in self.unread]
+        if not hit:
+            return 0
+        # _set writes the meta; the card goes out at once below, not in a batch.
+        self._set(unread=self.unread - set(hit), last_read_at=time.time())
+        by_id = {e["id"]: e for e in self.fold().entries()}
+        self._publish(
+            self.channel,
+            [{"upsert": self._dress(by_id[i])} for i in hit if i in by_id],
+        )
+        self._publish_now()
+        return len(hit)
 
     @property
     def pid(self) -> int | None:
@@ -466,7 +501,22 @@ class Session:
         stored = self.store.append({"ts": time.time(), "src": "aegis", **record})
         self.last_activity = stored["ts"]
         ops = fold.apply(stored, events)
-        self._publish(self.channel, ops)
+        new = [
+            op["upsert"]["id"]
+            for op in ops
+            if op.get("upsert", {}).get("kind") == "prose"
+        ]
+        if new:
+            # Before dressing the ops, so the new rows go out unread. "unread" is
+            # in _SOON: the card's count follows within PUBLISH_EVERY_S.
+            self._set(unread=self.unread | set(new))
+        self._publish(
+            self.channel,
+            [
+                {"upsert": self._dress(op["upsert"])} if "upsert" in op else op
+                for op in ops
+            ],
+        )
         if fold.standing is not self.standing:
             self._set(standing=fold.standing)
             self.standing = fold.standing

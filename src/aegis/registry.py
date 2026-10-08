@@ -190,6 +190,8 @@ class Registry(Host):
             held=meta.get("held"),
             worker=meta.get("worker"),
             standing=meta.get("standing"),
+            unread=meta.get("unread"),
+            last_read_at=meta.get("last_read_at"),
         )
 
     def boot(self) -> None:
@@ -245,7 +247,7 @@ class Registry(Host):
         """A snapshot function for any session's transcript, archived included."""
         s = self.sessions.get(log_id)
         if s is not None:
-            return s.entries
+            return s.view
         if log_id in self.archived:
             path = self.store_path(log_id)
             return lambda: (
