@@ -113,8 +113,7 @@ Reply = Annotated[str, Field(min_length=1, max_length=80, pattern=r"^[^\n]+$")]
 
 class TurnEnd(_Strict):
     attention: Literal["needs_you", "review", "done"] = Field(
-        description="Call turn_end before the final message of every turn you hand "
-        "back. needs_you: your message asks the person something. review: it "
+        description="needs_you: your message asks the person something. review: it "
         "presents something for them to read. done: it reports finished work."
     )
     line: str = Field(
@@ -371,9 +370,9 @@ def register_agent_ops(app: App) -> None:
 
     @r.op("turn.end", TurnEnd, agent=True)
     async def turn_end(p: TurnEnd, caller):
-        """Call this as the last thing before you hand the turn back to the person,
-        not when you end a turn to wait on a monitor or a queue task. It sets the
-        mark on your tab and the line on your card."""
+        """Call this before the final message of every turn you hand back to the
+        person, and not when you end a turn to wait on a monitor or a queue task.
+        It sets the mark on your tab and the line on your card."""
         s = own(caller)
         s.report(
             {
