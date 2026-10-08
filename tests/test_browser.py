@@ -526,11 +526,11 @@ def test_reopen_from_the_archive_and_rename(server, page, frames):
     assert page.errors == []
 
 
-def test_a_wrong_token_says_so(server, page):
+def test_a_wrong_token_says_so_and_offers_the_login(server, page):
     page.goto(re.sub(r"token=[^&]+", "token=wrong", server.url))
-    page.wait_for_function(
-        "document.getElementById('boot-text').textContent.includes('refused')"
-    )
+    page.wait_for_selector("#login", state="visible")
+    assert "refused" in page.inner_text("#login-error")
+    assert "token=" not in page.url
 
 
 def test_text_typed_right_after_switching_tabs_is_kept(server, page):
@@ -2441,3 +2441,56 @@ def test_returning_to_a_tab_receives_only_what_changed(server, page):
     assert sum(map(len, snaps)) < 1500, [len(f) for f in snaps]
     assert page.evaluate("document.querySelectorAll('#entries .row').length") >= 3
     assert rows >= 3 and page.errors == []
+
+
+def test_pasting_the_token_signs_this_browser_in_and_it_stays(server, browser):
+    errors: list = []
+    page = new_page(browser, errors)
+    bare = server.url.split("?")[0]
+    page.goto(bare)
+    page.wait_for_selector("#login", state="visible")
+    page.fill("#login-token", "wrong")
+    page.press("#login-token", "Enter")
+    page.wait_for_function("document.getElementById('login-error').textContent !== ''")
+    errors.clear()  # Chrome logs the refused login's 401; it is the one expected
+    token = server.url.split("token=")[1]
+    page.fill("#login-token", token)
+    page.press("#login-token", "Enter")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.reload()
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert page.evaluate("document.cookie") == "", "HttpOnly: no script sees it"
+    # Opened from another site, as a link in a chat app would.
+    page.goto(f"data:text/html,<a id=go href='{bare}'>aegis</a>")
+    page.click("#go")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert errors == []
+
+
+def test_two_servers_on_one_host_keep_their_own_sign_in(
+    server, browser, tmp_path, fake_claude
+):
+    (tmp_path / "other").mkdir()
+    (tmp_path / "other" / ".aegis.yaml").write_text(CONFIG)
+    other = Server(tmp_path / "other", fake_claude).start()
+    try:
+        errors: list = []
+        page = new_page(browser, errors)
+        page.goto(server.url)
+        page.wait_for_selector("#a2[data-view=fleet]")
+        page.goto(other.url)
+        page.wait_for_selector("#a2[data-view=fleet]")
+        page.goto(server.url.split("?")[0])
+        page.wait_for_selector("#a2[data-view=fleet]")
+        assert errors == []
+    finally:
+        other.stop()
+
+
+def test_a_rotated_token_shows_the_login_instead_of_retrying(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    server.stop()
+    (server.root / ".aegis" / "state" / "token").unlink()
+    server.start()
+    page.wait_for_selector("#login", state="visible", timeout=15000)

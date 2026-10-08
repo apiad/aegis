@@ -20,16 +20,6 @@ import { ask, cancelAsk } from "./dialog.js";
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
 
-// -- the token: from the URL once, then kept for this tab only ----------
-const params = new URLSearchParams(location.search);
-if (params.has("token")) {
-  sessionStorage.setItem("aegis.token", params.get("token"));
-  params.delete("token");
-  const rest = params.toString();
-  history.replaceState(null, "", location.pathname + (rest ? `?${rest}` : "") + location.hash);
-}
-const token = sessionStorage.getItem("aegis.token");
-
 // Quota is one subscription for the page: the band and the sidebar both draw
 // it. Host is subscribed only while the Fleet view shows, so a server nobody
 // watches samples nothing.
@@ -159,13 +149,36 @@ function show(view, text) {
   if (text) $("boot-text").textContent = text;
 }
 
+// -- signing in: the socket said 4401, so this browser has no valid cookie -----
+function showLogin() {
+  show("boot", "This browser is not signed in to this server.");
+  $("login").hidden = false;
+  if (new URLSearchParams(location.search).has("refused")) {
+    $("login-error").textContent = "That token was refused. Paste the one aegis serve printed.";
+    history.replaceState(null, "", location.pathname + location.hash);
+  }
+  $("login-token").focus();
+}
+
+$("login").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  $("login-error").textContent = "";
+  const r = await fetch("/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: $("login-token").value.trim() }),
+  });
+  if (r.ok) location.reload();
+  else $("login-error").textContent = "That token was refused.";
+});
+
 // -- the connection -----------------------------------------------------------
-const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`, token, {
+const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`, {
   onState(state, server) {
     $("conn-dot").className = `dot ${state === "open" ? "ready" : state === "connecting" ? "ghost" : "err"}`;
     $("conn-text").textContent =
       state === "open" ? server : state === "connecting" ? "connecting" : state === "closed" ? "disconnected, retrying" : state;
-    if (state === "unauthorized") show("boot", "The token was refused. Open the URL that `aegis serve` printed.");
+    if (state === "unauthorized") showLogin();
     if (state === "version") show("boot", "This page and the server speak different protocol versions. Reload the page.");
     if (state === "open") {
       // Whether this browser runs on the server's desktop (Open natively).
@@ -178,62 +191,59 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
 });
 const settings = new Settings(conn, $("settings"));
 
-if (!token) show("boot", "No token. Open the URL that `aegis serve` printed; it carries the token.");
-else {
-  conn.subscribe(
-    "sessions",
-    (metas) => {
-      sessions.clear();
-      for (const m of metas || []) sessions.set(m.log_id, m);
-      booted = true;
+conn.subscribe(
+  "sessions",
+  (metas) => {
+    sessions.clear();
+    for (const m of metas || []) sessions.set(m.log_id, m);
+    booted = true;
+    onSessions();
+  },
+  (ops) => {
+    for (const op of ops) {
+      if (op.upsert) {
+        if (!sessions.has(op.upsert.log_id)) setChanged = true;
+        sessions.set(op.upsert.log_id, op.upsert);
+        changed.add(op.upsert.log_id);
+      } else if (op.remove !== undefined) {
+        sessions.delete(op.remove);
+        setChanged = true;
+      }
+    }
+    // A session added or removed redraws at once: a reply that navigates
+    // to it (spawn, reopen) arrives right after this patch.
+    if (setChanged) {
+      setChanged = false;
+      changed.clear();
       onSessions();
-    },
-    (ops) => {
-      for (const op of ops) {
-        if (op.upsert) {
-          if (!sessions.has(op.upsert.log_id)) setChanged = true;
-          sessions.set(op.upsert.log_id, op.upsert);
-          changed.add(op.upsert.log_id);
-        } else if (op.remove !== undefined) {
-          sessions.delete(op.remove);
-          setChanged = true;
-        }
-      }
-      // A session added or removed redraws at once: a reply that navigates
-      // to it (spawn, reopen) arrives right after this patch.
-      if (setChanged) {
-        setChanged = false;
-        changed.clear();
-        onSessions();
-      } else {
-        if (!frame) frame = requestAnimationFrame(flushSessions);
-        // Not in the frame: a hidden tab runs no frames, and that is when the
-        // ping matters.
-        updatePing([...sessions.values()], { onOpen: openSession });
-      }
-    },
-  );
-  conn.subscribe(
-    "quota",
-    (snap) => {
-      quota = snap || { providers: [] };
-      drawQuota();
-    },
-    (ops) => {
-      for (const op of ops) if (op.set) quota = op.set;
-      drawQuota();
-    },
-  );
-  conn.subscribe(
-    "config",
-    (w) => settings.onConfig(w),
-    (ops) => {
-      for (const op of ops) if (op.set) settings.onConfig(op.set);
-      loadAgents();
-    },
-  );
-  conn.connect();
-}
+    } else {
+      if (!frame) frame = requestAnimationFrame(flushSessions);
+      // Not in the frame: a hidden tab runs no frames, and that is when the
+      // ping matters.
+      updatePing([...sessions.values()], { onOpen: openSession });
+    }
+  },
+);
+conn.subscribe(
+  "quota",
+  (snap) => {
+    quota = snap || { providers: [] };
+    drawQuota();
+  },
+  (ops) => {
+    for (const op of ops) if (op.set) quota = op.set;
+    drawQuota();
+  },
+);
+conn.subscribe(
+  "config",
+  (w) => settings.onConfig(w),
+  (ops) => {
+    for (const op of ops) if (op.set) settings.onConfig(op.set);
+    loadAgents();
+  },
+);
+conn.connect();
 
 // Patches that only update sessions the page already shows redraw once a
 // frame, however many arrive, and only those sessions' tab and card (#158).
@@ -275,7 +285,7 @@ const tabActions = {
 };
 
 function render() {
-  if (!token || !booted) return;
+  if (!booted) return;
   const r = route();
   if (r.view === "session" && !sessions.has(r.id)) {
     go("#fleet"); // closed here or elsewhere

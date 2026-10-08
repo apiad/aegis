@@ -269,6 +269,8 @@ system entry.
 **Agent text is untrusted.** Markdown renders with raw HTML disabled, and the
 localhost port is not trusted either: the websocket needs the server's token and
 its own origin, because any page in the browser can open a socket to localhost.
+The browser holds the token only as an HttpOnly cookie, named per state root,
+that no script on the page can read.
 
 **A sent file's URL is its key, and its content runs nowhere near the token.**
 `file_send` copies the file into the state root under 128 random bits, and
@@ -276,7 +278,9 @@ its own origin, because any page in the browser can open a socket to localhost.
 and a download cannot carry the token the websocket needs. HTML, SVG and XML are
 served with `Content-Security-Policy: sandbox` (HTML with `allow-scripts`, so a
 report still runs) and framed with `sandbox`: on aegis's own origin their script
-could read the token from `sessionStorage` and drive every agent (`files.py`).
+could open the websocket, which the browser signs in with its cookie, and drive
+every agent; the sandbox's opaque origin fails the socket's origin check
+(`files.py`).
 Open natively runs the desktop's opener on the server, so it is a person's
 operation only, and only for a socket on loopback to a server with a desktop: a
 proxy's public name is a browser elsewhere, and an SSH tunnel to a headless box
