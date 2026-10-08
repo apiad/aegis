@@ -66,7 +66,9 @@ export class Transcript {
     // Reading: an unread agent message counts as read once its row has been
     // seen for a second while the page is visible and focused. Seen means half
     // of the row is visible, or it fills half the view: a reply taller than
-    // twice the view is never half visible.
+    // twice the view is never half visible. The observer calls back only when
+    // the ratio crosses a threshold, and a row five views tall never passes
+    // 0.2, so the thresholds step every 1%.
     this.onRead = onRead;
     this.since = new Map(); // id -> when it was first seen
     this.sent = new Set(); // ids reported and not yet echoed back as read
@@ -86,7 +88,7 @@ export class Transcript {
           else if (!this.since.has(id)) this.since.set(id, performance.now());
         }
       },
-      { root: scroller, threshold: [0, 0.25, 0.5, 0.75, 1] },
+      { root: scroller, threshold: Array.from({ length: 101 }, (_, i) => i / 100) },
     );
     const looking = () => document.visibilityState === "visible" && document.hasFocus();
     const restart = () => {
