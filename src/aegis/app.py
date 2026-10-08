@@ -2,9 +2,8 @@
 
 Operations: ``agents.list``, ``session.spawn``, ``session.send`` (which
 resolves a ``/`` line first, ``commands.py``), ``session.configure``,
-``commands.list``, ``session.interrupt``, ``session.stop``, ``session.close``,
-``session.reopen``,
-``session.rename``, ``archive.list``, ``server.version``, ``file.open``,
+``commands.list``, ``models.list``, ``session.interrupt``, ``session.stop``,
+``session.close``, ``session.reopen``, ``session.rename``, ``archive.list``, ``server.version``, ``file.open``,
 ``quota.read``. Channels: ``sessions`` (every open session's meta; patches
 ``upsert`` and ``remove``), ``transcript:<log_id>`` (any session, archived
 included), ``quota`` (each provider's windows; patches ``set``) and ``host``
@@ -88,6 +87,11 @@ class ConfigureParams(_Strict):
 
 class LogParams(_Strict):
     log_id: str
+
+
+class ModelsParams(_Strict):
+    agent: str | None = None
+    cwd: str | None = None
 
 
 class RenameParams(_Strict):
@@ -407,6 +411,16 @@ class App:
                 # an unknown name from one of claude's.
                 "complete": bool(cat and cat.commands),
             }
+
+        @r.op("models.list", ModelsParams)
+        async def models_list(p: ModelsParams, caller):
+            """What the new-tab composer's model picker offers: the models
+            claude lists in that cwd, before any session runs there. Empty when
+            claude gave none; the picker then offers ``agents.list``'s names."""
+            agents, default = self._agents()
+            spec = resolve(agents, default, p.agent, {}, self._resolve_cwd(p.cwd))
+            cat = await self.catalogs.for_spec(spec)
+            return {"models": cat.wire_models() if cat else []}
 
         @r.op("session.interrupt", LogParams)
         async def interrupt(p: LogParams, caller):

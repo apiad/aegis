@@ -22,7 +22,7 @@ from pathlib import Path
 
 from .claude import control
 from .claude.control import Catalog
-from .session import Session
+from .session import Session, SpawnSpec
 
 
 @dataclass(frozen=True)
@@ -105,7 +105,6 @@ class Catalogs:
         self._failed.discard(str(cwd))
 
     async def get(self, s: Session) -> Catalog | None:
-        key = str(s.spec.cwd)
         t = s.catalog_task
         if t is not None:
             await asyncio.wait([t])
@@ -113,20 +112,26 @@ class Catalogs:
             if done is not None:
                 return done
             if not t.cancelled():
-                self._failed.add(key)  # the live process gave none
+                self._failed.add(str(s.spec.cwd))  # the live process gave none
+        return await self.for_spec(s.spec)
+
+    async def for_spec(self, sp: SpawnSpec) -> Catalog | None:
+        """The catalog of ``sp.cwd``, probed with ``sp``'s flags if no process
+        there has given one: the new-tab composer asks before any session
+        exists."""
+        key = str(sp.cwd)
         if key in self._by_cwd:
             return self._by_cwd[key]
         if key in self._failed:
             return None
         probe = self._probing.get(key)
         if probe is None:
-            probe = asyncio.create_task(self._probe(s))
+            probe = asyncio.create_task(self._probe(sp))
             self._probing[key] = probe
             probe.add_done_callback(lambda _: self._probing.pop(key, None))
         return await asyncio.shield(probe)
 
-    async def _probe(self, s: Session) -> Catalog | None:
-        sp = s.spec
+    async def _probe(self, sp: SpawnSpec) -> Catalog | None:
         try:
             cat = await control.probe(
                 self._claude_bin,
