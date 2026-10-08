@@ -204,3 +204,18 @@ async def test_a_recap_is_not_session_activity(world):
     r = await world.app.registry.call("recap.request", {"log_id": a.log_id})
     assert r["status"] == "made"
     assert a.last_activity == before
+
+
+async def test_a_recap_that_finishes_after_a_send_is_stale(world, monkeypatch):
+    a = await two_unread(world)
+    monkeypatch.setattr(recap, "TIMEOUT_S", 60)
+    monkeypatch.setenv("FAKE_CLAUDE_ONESHOT", "slow")
+    monkeypatch.setenv("FAKE_CLAUDE_ONESHOT_SLEEP", "1")
+    pending = asyncio.create_task(
+        world.app.registry.call("recap.request", {"log_id": a.log_id})
+    )
+    await asyncio.sleep(0.2)
+    await world.app.registry.call("session.send", {"log_id": a.log_id, "text": "more"})
+    assert (await pending) == {"status": "stale"}
+    assert not [x for x in a.entries() if x["kind"] == "recap"]
+    assert a.recap_cost_usd > 0

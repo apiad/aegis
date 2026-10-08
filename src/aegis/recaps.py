@@ -91,6 +91,11 @@ class Recaps:
             return {"status": "failed", "why": "the model returned nothing usable"}
         if s.archived:
             return {"status": "failed", "why": "the session was closed"}
+        if s.in_turn or s.fold().content_index != upto:
+            # The person wrote while the call ran: the recap answers a point the
+            # session has left. The call was paid all the same.
+            s.add_recap_cost(cost)
+            return {"status": "stale"}
         s.report(
             {
                 "kind": "recap",
