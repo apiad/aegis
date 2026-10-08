@@ -95,13 +95,13 @@ class Registry(Host):
             "monitors": self.monitors.card(session.log_id)
             if self.monitors is not None
             else [],
-            **attention.card(
-                session.standing,
-                working=session.in_turn,
-                worker=bool(session.worker),
-                waits=self._waits(session),
-            ),
+            **self._attention(session),
         }
+
+    def _attention(self, s: Session) -> dict:
+        return attention.card(
+            s.standing, working=s.in_turn, worker=bool(s.worker), waits=self._waits(s)
+        )
 
     def _waits(self, s: Session) -> list[str]:
         """What a session waits on that is not a person, one phrase each."""
@@ -120,7 +120,9 @@ class Registry(Host):
         n_kid = sum(
             1
             for o in self.sessions.values()
-            if o.spec.spawned_by == s.log_id and o.status == "working"
+            # transitive: a child waiting on its own monitor, task or child counts
+            if o.spec.spawned_by == s.log_id
+            and self._attention(o)["attention"] in ("working", "waiting")
         )
         counts = (
             (n_mon, "monitor"),
@@ -144,6 +146,7 @@ class Registry(Host):
         s = self.sessions.get(log_id)
         if s is not None:
             s._publish_now()
+            self.status_changed(s)
 
     def by_handle(self, handle: str) -> Session | None:
         return next((s for s in self.sessions.values() if s.handle == handle), None)

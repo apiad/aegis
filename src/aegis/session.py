@@ -67,7 +67,8 @@ class Host:
     def turn_ended(self, session: "Session") -> None: ...
 
     def status_changed(self, session: "Session") -> None:
-        """The session's status changed: a parent waiting on it re-derives."""
+        """The session's status, or what it waits on, changed: a parent waiting
+        on it re-derives."""
 
     def exited(self, session: "Session", code: int, stderr_tail: list[str]) -> None: ...
 
@@ -542,6 +543,7 @@ class Session:
             self._set(**changes)
         if len(self.open_tasks) != tasks:
             self._publish_now()  # waiting on a background task shows on the card
+            self._host.status_changed(self)
         if any(isinstance(ev, Result) for ev in events):
             if self.held:
                 self._flushing = True

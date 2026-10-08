@@ -66,7 +66,8 @@ context and cost change on nearly every line of a turn and are coalesced for
 **A session's attention is decided in Python, from facts and the agent's own
 reports.** Working, error and waiting are facts the server holds: the turn, the
 fold's last failure, live monitors, background tasks, held messages, queue tasks
-and child sessions. Whether a finished turn asked the person something, showed
+and child sessions that are working or waiting themselves, so a wait is
+transitive and a change in a child's card re-derives its parent's. Whether a finished turn asked the person something, showed
 them something to read, or just finished, only the agent knows, and it says so
 with `turn_end`; its plan comes from `plan_update`. Both are aegis records in the
 store, so the fold derives a session's `standing` and a refold gives the same

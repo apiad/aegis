@@ -62,7 +62,8 @@ card. The first rule that holds wins:
    whoever enqueued it.
 4. **waiting**: the session has a live monitor, an open Claude task, a held
    message, a queue task it enqueued that has not finished, or a session it
-   spawned that is still working. The card names what it waits on
+   spawned that is itself working or waiting, so a wait carries up any depth
+   of `session_spawn` (#183). The card names what it waits on
    ("CI, 1 monitor").
 5. **review**: the agent's `turn_end` said `review`.
 6. **done**: everything else, including a turn that ended with no `turn_end`.
