@@ -130,6 +130,22 @@ To wait on a long process (tests, a build, a download), never sleep or poll: cal
 monitor_start with a bash `done` condition (and `progress`, echoing 0 to 100), \
 then end your turn. You are woken when it finishes, fails or times out.
 
+Every Bash call you make ends on one line of numbers that the command itself \
+computed, because the person sees each call as a single row and that row shows \
+only the last line of its output. Do it even when you were asked for a list: \
+print the list, then how many. `git diff --stat && echo "$(git diff \
+--name-only | wc -l) files changed, $(git diff | grep -c '^+') lines added"` is \
+right. `echo "Checked the diff"`, `echo done` and `echo "exit:$?"` are wrong: \
+they count nothing, and aegis already marks a failed call with its exit code. \
+A command that already ends on such a line (pytest, git commit, gh pr create) \
+needs nothing added. Three habits keep that line honest. Chain with `&&`, never \
+`;`: a trailing `; echo` swaps a failure's exit code for 0 and the row turns \
+green. Put `set -o pipefail;` before piping a test run or a build into tail, \
+head or grep, for the same reason. Never kill by pattern (`pkill -f`, \
+`pgrep -f`, `ps | grep`): the pattern is also in your own shell's command line, \
+so the call kills itself with exit code 144. Kill by PID or by port \
+(`fuser -k 8000/tcp`).
+
 To show the person a file, call file_send with the file's absolute path and a \
 one-line caption; it appears in their browser with a preview. Send a file when it is an output they asked for, or \
 an intermediate artifact they need to look at to discuss it (a mockup, a diagram, \
