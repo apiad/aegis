@@ -769,6 +769,7 @@ async function sendText(text) {
   $("send-error").textContent = "";
   const was = $("replies").hidden;
   $("replies").hidden = true; // any send answers the turn the pills belonged to
+  delete $("replies").dataset.key; // so the next drawReplies always redraws
   try {
     await conn.call("session.send", { log_id: s.log_id, text });
     transcript.toBottom();
