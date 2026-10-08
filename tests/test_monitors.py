@@ -52,8 +52,8 @@ def test_readings_keep_the_first_move_when_they_are_trimmed():
         ("fail", 1, "", "not failing", False),
         ("fail", 0, "", "failed", False),
         ("progress", 0, "66", "printed 66", False),
-        ("progress", 0, "about half", "printed no number", True),
-        ("progress", 2, "", "exit 2, no reading", True),
+        ("progress", 0, "about half", "printed no number", False),
+        ("progress", 1, "", "exit 1, no reading", False),
         ("done", 127, "", "command not found", True),
         ("done", 126, "", "cannot execute", True),
         ("done", None, "", "took over 30s", True),
@@ -61,3 +61,13 @@ def test_readings_keep_the_first_move_when_they_are_trimmed():
 )
 def test_each_result_reads_as_a_verdict(kind, rc, out, said, bad):
     assert verdict(kind, rc, out, "took over 30s" if rc is None else "") == (said, bad)
+
+
+def test_a_missing_command_inside_a_pipeline_is_still_broken():
+    """`twinctl status | jq -e .done` exits with jq's code, not 127."""
+    err = "bash: line 1: twinctl: command not found\n"
+    assert verdict("done", 4, "", err) == ("command not found", True)
+    assert verdict("done", 1, "", "grep: x.log: No such file or directory") == (
+        "not yet",
+        False,
+    )
