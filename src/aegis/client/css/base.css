@@ -430,3 +430,31 @@ body{background:#000}
 #a2 .rp{font-family:var(--font-ui);font-size:13px;color:var(--strong);background:var(--surface);border:1px solid var(--rule);border-radius:999px;padding:5px 13px;cursor:pointer;line-height:1.3;text-align:left}
 #a2 .rp:hover{border-color:var(--accent);background:var(--accent-soft)}
 #a2 .col:has(#replies:not([hidden])) .jump{bottom:160px}
+#a2[data-view=settings] .v-settings{display:block;overflow:auto}
+#a2 .settings{max-width:1040px;margin:0 auto;padding:24px 20px 40px;font-family:var(--font-chrome);color:var(--ink)}
+#a2 .set-head{display:flex;align-items:baseline;gap:14px;margin-bottom:12px}
+#a2 .set-head h3,#a2 .settings h4{margin:0;font-family:var(--font-head);font-weight:500;color:var(--strong)}
+#a2 .settings h4{font-size:13px;margin:18px 0 6px}
+#a2 #set-path{color:var(--faint);font-family:var(--font-mono);font-size:12px}
+#a2 .set-band{border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;color:var(--muted);font-size:12.5px}
+#a2 .set-band.err{border-color:var(--err);color:var(--err);background:var(--err-bg)}
+#a2 .set-table{width:100%;border-collapse:collapse}
+#a2 .set-table th{text-align:left;font-weight:500;color:var(--faint);font-size:11.5px;padding:4px 6px}
+#a2 .set-table td{padding:3px 6px;vertical-align:top}
+#a2 .settings input,#a2 .settings select,#a2 .settings textarea{width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);color:var(--strong);font-family:var(--font-mono);font-size:12px;padding:3px 6px}
+#a2 .settings button{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);color:var(--muted);font-family:var(--font-chrome);font-size:12px;padding:3px 10px;cursor:pointer;margin-top:6px}
+#a2 .settings button:hover{color:var(--strong)}
+#a2 .set-default select{max-width:280px}
+#a2 [data-row].warn td:first-child,#a2 .set-default.warn{box-shadow:inset 3px 0 var(--warn)}
+#a2 [data-row].error td:first-child,#a2 .set-default.error{box-shadow:inset 3px 0 var(--err)}
+#a2 .set-why{font-size:11.5px;color:var(--muted);margin-top:3px;white-space:normal}
+#a2 .set-priming summary{color:var(--faint);font-size:11.5px;cursor:pointer}
+#a2 .set-actions{display:flex;align-items:center;gap:10px;margin-top:18px}
+#a2 #set-status{color:var(--muted);font-size:12px}
+#a2 #set-findings{list-style:none;padding:0;margin:0 0 8px;font-size:12px}
+#a2 #set-findings li{padding:2px 0;color:var(--muted)}
+#a2 #set-findings li.ok{color:var(--faint)}
+#a2 #set-findings li.warn b{color:var(--warn)}
+#a2 #set-findings li.error b{color:var(--err)}
+#a2 #set-findings b{display:inline-block;width:3.5em;font-weight:500}
+#a2 #settings-btn.on{color:var(--strong);border-color:var(--accent)}

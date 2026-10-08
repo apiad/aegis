@@ -86,7 +86,7 @@ def test_the_doc_keeps_a_broken_queue_editable(tmp_path):
 def test_the_wire_carries_the_doc_the_stamp_and_the_vocabulary(tmp_path):
     c, _ = config(tmp_path, A)
     w = c.current().wire()
-    assert w["exists"] and w["error"] is None and len(w["stamp"]) == 3
+    assert w["exists"] and w["error"] is None and w["stamp"].count(":") == 2
     assert w["root"] == str(tmp_path)
     assert ConfigDoc.model_validate(w["doc"]).agents[0].name == "a"
     assert w["vocab"]["efforts"] == ["low", "medium", "high", "xhigh", "max"]

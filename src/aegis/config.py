@@ -56,6 +56,23 @@ def stamp_of(path: Path) -> Stamp | None:
     return (st.st_mtime_ns, st.st_size, st.st_ino)
 
 
+def stamp_token(stamp: Stamp | None) -> str | None:
+    """The stamp as the browser carries it. A string, because st_mtime_ns is
+    about 1.8e18 and a JavaScript number holds integers exactly only up to
+    2**53: a numeric stamp came back rounded and every save looked stale."""
+    return ":".join(map(str, stamp)) if stamp else None
+
+
+def stamp_from(token: str | None) -> Stamp | None:
+    if token is None:
+        return None
+    try:
+        a, b, c = (int(x) for x in token.split(":"))
+    except ValueError as e:
+        raise OpError("bad_params", f"stamp {token!r} is not one aegis sent") from e
+    return (a, b, c)
+
+
 def load(path: Path) -> tuple[dict | None, str | None]:
     """The file's top-level mapping, or why it has none."""
     try:
@@ -170,7 +187,7 @@ class Snapshot:
             "path": str(self.path),
             "root": str(self.path.parent),
             "exists": self.exists,
-            "stamp": list(self.stamp) if self.stamp else None,
+            "stamp": stamp_token(self.stamp),
             "error": self.error,
             "unknown_keys": list(self.unknown_keys),
             "doc": self.doc.model_dump(),

@@ -67,3 +67,14 @@ async def test_doctor_detect_and_propose(app, monkeypatch):
     doc = await app.registry.call("config.propose", {})
     assert doc["default_agent"] == "opus"
     assert len(calls) == 1, "detect and propose share one probe within DETECT_TTL_S"
+
+
+async def test_the_stamp_survives_a_browser_round_trip(app, tmp_path):
+    # A JavaScript number holds integers exactly only up to 2**53, and st_mtime_ns
+    # is about 1.8e18: a numeric stamp came back rounded and every save from the
+    # page was refused as stale.
+    import json
+
+    w = json.loads(json.dumps(await app.registry.call("config.read", {})), parse_int=float)
+    r = await app.registry.call("config.write", {"doc": w["doc"], "stamp": w["stamp"]})
+    assert r["saved"]

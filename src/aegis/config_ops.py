@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from .config import ConfigDoc, write
+from .config import ConfigDoc, stamp_from, write
 from .doctor import Found, detect, doctor, propose
 
 if TYPE_CHECKING:
@@ -25,7 +25,7 @@ DETECT_TTL_S = 60.0
 class WriteParams(BaseModel):
     model_config = {"extra": "forbid"}
     doc: ConfigDoc
-    stamp: tuple[int, int, int] | None = None
+    stamp: str | None = None
 
 
 def register_config_ops(app: App) -> None:
@@ -53,7 +53,7 @@ def register_config_ops(app: App) -> None:
     async def config_write(p: WriteParams, caller):
         """Write the Settings form to .aegis.yaml. Refused when the file changed
         since `stamp`; nothing is written when the document has a problem."""
-        problems = write(app.config.path, p.doc, p.stamp)
+        problems = write(app.config.path, p.doc, stamp_from(p.stamp))
         return {
             "saved": not problems,
             "problems": [f.wire() for f in problems],

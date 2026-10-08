@@ -1432,3 +1432,93 @@ def test_reply_pills_send_their_text_and_all_disappear(server, page):
     assert page.locator("#replies .rp").count() == 0 or page.is_hidden("#replies")
     assert "at-done" in page.get_attribute("#s-status", "class").split()
     assert page.errors == []
+
+
+SETTINGS_CONFIG = (
+    "# kept across a save\n"
+    "default_agent: opus\nagents:\n  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
+    "  bad.one: {harness: claude-code, model: nope, effort: high, permission: full}\n"
+)
+
+
+@pytest.fixture
+def settings_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    (tmp_path / ".aegis.yaml").write_text(SETTINGS_CONFIG)
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
+    yield s
+    s.stop()
+
+
+def open_settings(pg, url: str) -> None:
+    pg.goto(url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.keyboard.press("Alt+KeyS")
+    pg.wait_for_selector("#a2[data-view=settings]")
+    pg.wait_for_selector('tr.set-agent[data-row="agents.opus"]')
+
+
+def test_settings_saves_an_edit_to_the_file_and_the_composer_follows(settings_server, page):
+    open_settings(page, settings_server.url)
+    page.select_option('tr.set-agent[data-row="agents.opus"] select[name=effort]', "max")
+    page.click("#set-save")
+    page.wait_for_function("document.querySelector('#set-status').textContent === 'Saved'")
+    text = (settings_server.root / ".aegis.yaml").read_text()
+    assert "# kept across a save" in text and "effort: max" in text
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-effort').value === 'max'")
+    assert page.errors == []
+
+
+def test_an_edit_on_disk_reloads_the_open_settings_page(settings_server, page):
+    open_settings(page, settings_server.url)
+    (settings_server.root / ".aegis.yaml").write_text(
+        SETTINGS_CONFIG + "  extra: {harness: claude-code, model: sonnet, effort: low, permission: read}\n"
+    )
+    page.wait_for_selector('tr.set-agent[data-row="agents.extra"]', timeout=5000)
+
+
+def test_an_edit_on_disk_under_unsaved_edits_offers_reload(settings_server, page):
+    open_settings(page, settings_server.url)
+    page.fill('tr.set-agent[data-row="agents.opus"] input[name=model]', "sonnet")
+    (settings_server.root / ".aegis.yaml").write_text(SETTINGS_CONFIG + "# changed\n")
+    page.wait_for_selector("#set-stale", timeout=5000)
+    assert page.input_value('tr.set-agent[data-row="agents.opus"] input[name=model]') == "sonnet"
+    page.click("#set-reload")
+    page.wait_for_function(
+        "document.querySelector('tr.set-agent[data-row=\"agents.opus\"] input[name=model]').value === 'opus'"
+    )
+
+
+def test_run_doctor_marks_the_row(settings_server, page):
+    open_settings(page, settings_server.url)
+    page.click("#set-doctor")
+    page.wait_for_selector('tr.set-agent[data-row="agents.bad.one"].warn', timeout=15000)
+    assert "does not list 'nope'" in page.text_content("#set-findings")
+
+
+def test_typing_in_settings_survives_session_patches(settings_server, page):
+    open_settings(page, settings_server.url)
+    box = 'tr.set-agent[data-row="agents.opus"] input[name=model]'
+    page.click(box)
+    page.keyboard.type("-x")
+    page.evaluate("window.dispatchEvent(new HashChangeEvent('hashchange'))")  # a render() with no view change
+    page.keyboard.type("y")
+    assert page.input_value(box) == "opus-xy"
+    assert page.evaluate("document.activeElement.name") == "model"
+
+
+@pytest.fixture
+def empty_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
+    yield s
+    s.stop()
+
+
+def test_an_empty_root_offers_set_up_and_saving_creates_the_file(empty_server, page):
+    page.goto(empty_server.url + "#settings")
+    page.wait_for_selector("#set-setup")
+    page.click("#set-setup")
+    page.wait_for_selector('tr.set-agent[data-row="agents.opus"]', timeout=15000)
+    page.click("#set-save")
+    page.wait_for_function("document.querySelector('#set-status').textContent === 'Saved'")
+    assert "default_agent: opus" in (empty_server.root / ".aegis.yaml").read_text()
