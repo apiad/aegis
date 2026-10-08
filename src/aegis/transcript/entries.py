@@ -233,6 +233,8 @@ class Fold:
             )
         if kind in ("stop", "server_stopped"):
             line = "stopped" if kind == "stop" else "the server stopped during a turn"
+            if kind == "server_stopped":
+                self._stand(turn_error="the server stopped during a turn")
             return (
                 self._end_calls("no result")
                 + self._lose_pending()

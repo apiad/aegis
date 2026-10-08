@@ -82,6 +82,44 @@ async def test_a_session_working_at_shutdown_is_marked_once(world):
     assert len(marks) == 1
 
 
+async def test_a_turn_cut_by_a_restart_boots_as_an_error(world):
+    r = world.registry()
+    s = await r.spawn(world.spec())
+    await s.send("/sleep 5")
+    await until(lambda: any(e["kind"] == "tool" for e in s.entries()), what="the call")
+    await r.shutdown()
+    r2 = world.registry()
+    (s2,) = r2.open_sessions()
+    assert s2.wire()["attention"] == "error"
+    assert s2.wire()["attention_line"] == "the server stopped during a turn"
+    await r2.shutdown()
+
+
+async def test_boot_takes_the_standing_from_the_meta(world):
+    sessions = world.roots.state_root / "sessions"
+    sessions.mkdir(parents=True)
+    standing = {
+        "plan": [{"text": "write the test", "state": "doing"}],
+        "did": "",
+        "report": None,
+        "turn_error": "",
+    }
+    meta = {
+        "log_id": "l000",
+        "handle": "h-0",
+        "archived": False,
+        "created_at": 0,
+        "last_activity": 0,
+        "profile": "opus",
+        "cwd": str(world.roots.config_root),
+        "standing": standing,
+    }
+    (sessions / "l000.json").write_text(json.dumps(meta))
+    r = world.registry()
+    (s,) = r.open_sessions()
+    assert s.wire()["plan_now"] == "write the test"
+
+
 async def test_boot_reads_no_store_when_every_meta_is_there(world, monkeypatch):
     sessions = world.roots.state_root / "sessions"
     sessions.mkdir(parents=True)

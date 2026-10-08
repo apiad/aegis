@@ -490,3 +490,16 @@ def test_failures_set_turn_error_and_a_persons_interrupt_does_not():
     assert f.standing["turn_error"] == "the interrupt went unanswered for 10s"
     f.apply(rec.result())
     assert f.standing["turn_error"] == ""
+
+
+def test_a_turn_cut_by_a_server_restart_is_an_error_and_a_persons_stop_is_not():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.own("server_stopped")
+    f, _ = run(rec)
+    assert f.standing["turn_error"] == "the server stopped during a turn"
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.own("stop")
+    f, _ = run(rec)
+    assert f.standing["turn_error"] == ""
