@@ -86,7 +86,13 @@ def _entry(
 # item it finished last, its report on the turn that ended (turn_end), and why
 # that turn failed. Replaced as a whole when it changes, so a session compares
 # identity to know whether to publish.
-EMPTY_STANDING: dict = {"plan": [], "did": "", "report": None, "turn_error": ""}
+EMPTY_STANDING: dict = {
+    "plan": [],
+    "did": "",
+    "report": None,
+    "turn_error": "",
+    "last_message": "",
+}
 
 
 def _did(old: list[dict], new: list[dict], prev: str) -> str:
@@ -125,6 +131,11 @@ class Fold:
         self.standing: dict = EMPTY_STANDING
         self._turns = 0  # results seen
         self._report_turn = -1  # self._turns when the current report was made
+
+    @property
+    def rev(self) -> int:
+        """The store index of the last record folded; -1 before the first."""
+        return self._rev
 
     def entries(self) -> list[dict]:
         return list(self._entries.values())
@@ -585,9 +596,11 @@ class Fold:
                 self._live.discard(ev.key)
             if not ev.text.strip():
                 return []
-            return self._upsert(
+            ops = self._upsert(
                 _entry(eid, "prose", "ok", ts, d.PROSE_GLYPH, md=ev.text)
             )
+            self._stand(last_message=eid)
+            return ops
 
         if isinstance(ev, Thinking):
             eid = ev.key or id

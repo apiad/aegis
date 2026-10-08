@@ -75,6 +75,19 @@ store, so the fold derives a session's `standing` and a refold gives the same
 card; the meta keeps it, so boot still reads no store. `attention.py` holds the
 precedence. No model reads a transcript to guess what a turn meant.
 
+**What a person has read is the server's, shared by every browser.** A session
+keeps the ids of the agent messages no person has read, and when someone last
+read, in its meta, so boot still reads no store; a new message joins the set as
+the fold publishes it, and only a person's `session.read` removes ids. The `unread`
+flag lives in the transcript channel's view, never in the fold's entries, so a
+refold of the store still equals them. A read makes no store record, so it moves
+no `rev`: a delta (`Session.snapshot`) also carries every agent message read since
+the revision the client holds, and every agent message when that revision is from
+before this process loaded the fold, whose earlier reads it never saw. A browser reports a message once its row
+has been at least half visible, or has filled half the view, for a second while
+the page is visible and focused. A done or review badge clears once the turn's last
+agent message is read, which `attention.card` decides as the card's `mark`.
+
 **One registry, every caller.** Every action is one registered operation with a
 pydantic params model. A websocket `call` is one projection of the registry, MCP
 tools are another, and plugins add operations to it. Nothing reaches the client as

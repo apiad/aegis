@@ -10,9 +10,10 @@ import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { ago, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
 import { installKeys, renderKeys } from "./keys.js";
-import { glyph, installGlyphs, LABEL } from "./glyphs.js";
+import { glyph, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
+import { installBell, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
 
 const $ = (id) => document.getElementById(id);
@@ -43,6 +44,7 @@ themePick.value = document.documentElement.dataset.theme;
 themePick.addEventListener("change", () => {
   document.documentElement.dataset.theme = themePick.value;
   localStorage.setItem("aegis.theme", themePick.value);
+  redrawFavicon();
 });
 
 // -- state ----------------------------------------------------------------
@@ -53,11 +55,55 @@ let shown = null; // log_id whose transcript is subscribed
 let unsubTranscript = null;
 let workingSince = null;
 let booted = false;
-const transcript = new Transcript($("tr"), $("entries"), $("jump"), (ids) => {
-  const id = shown;
-  return conn.call("transcript.detail", { log_id: id, ids }).then((got) => (shown === id ? got : []));
+const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
+  // A failed report is retried by the next tick: the ids stay unread in the view.
+  // One call carries at most 500 ids, the operation's cap.
+  onRead: (ids) => {
+    if (!shown) return;
+    for (let i = 0; i < ids.length; i += 500) {
+      const batch = ids.slice(i, i + 500);
+      conn.call("session.read", { log_id: shown, ids: batch }).catch(() => batch.forEach((id) => transcript.sent.delete(id)));
+    }
+  },
+  onSelect: drawNav,
+  loadDetail: (ids) => {
+    const id = shown;
+    return conn.call("transcript.detail", { log_id: id, ids }).then((got) => (shown === id ? got : []));
+  },
 });
 installGlyphs();
+// The navigator: previous / next agent message, the position, and the latest.
+$("nav-up").append(icon("up"));
+$("nav-down").append(icon("down"));
+$("jump").append(icon("latest"));
+$("bell").append(icon("bell"));
+installBell($("bell"));
+$("nav-up").addEventListener("click", () => transcript.message(-1));
+$("nav-down").addEventListener("click", () => transcript.message(1));
+$("nav-pos").addEventListener("click", () => transcript.firstUnread());
+// Every redraw of the transcript re-marks the selection, which asks for the
+// navigator, so it is drawn at most once a frame: position() walks every entry.
+let navFrame = 0;
+function drawNav() {
+  if (!navFrame) navFrame = requestAnimationFrame(drawNavNow);
+}
+// Shown with any entry, so the latest button is there before the first agent
+// message; with none, the position is empty and the arrows are off. Unchanged
+// values are not written back.
+let navDrawn = {};
+function drawNavNow() {
+  navFrame = 0;
+  const { index, total, unread } = transcript.position();
+  const now = {
+    hidden: !transcript.entries.size,
+    text: total ? `${unread ? `${unread} unread · ` : ""}message ${index} of ${total}` : "",
+    off: !total,
+  };
+  if (now.hidden !== navDrawn.hidden) $("nav").hidden = now.hidden;
+  if (now.text !== navDrawn.text) $("nav-pos").textContent = now.text;
+  if (now.off !== navDrawn.off) $("nav-up").disabled = $("nav-down").disabled = now.off;
+  navDrawn = now;
+}
 // How the Fleet orders its cards: this browser's choice, like the tab order.
 let fleetOrder = localStorage.getItem("aegis.fleetOrder") || "attention";
 function markOrder() {
@@ -143,7 +189,12 @@ else {
         setChanged = false;
         changed.clear();
         onSessions();
-      } else if (!frame) frame = requestAnimationFrame(flushSessions);
+      } else {
+        if (!frame) frame = requestAnimationFrame(flushSessions);
+        // Not in the frame: a hidden tab runs no frames, and that is when the
+        // ping matters.
+        updatePing([...sessions.values()], { onOpen: openSession });
+      }
     },
   );
   conn.subscribe(
@@ -186,6 +237,7 @@ function onSessions() {
   const ids = order.arrange([...sessions.values()].sort((a, b) => a.created_at - b.created_at).map((m) => m.log_id));
   ordered = ids.map((id) => sessions.get(id));
   render();
+  updatePing([...sessions.values()], { onOpen: openSession });
 }
 
 // -- rendering -----------------------------------------------------------------
@@ -223,13 +275,13 @@ function render() {
     drawBand();
     if (newView) drawQuota();
     if (!archiveLoaded) loadArchive();
-    document.title = "Fleet · aegis";
+    setTitle("Fleet · aegis");
   } else if (r.view === "spawn") {
     watchHost(false);
     follow(null);
     show("spawn");
     $("sp-text").focus();
-    document.title = "New session · aegis";
+    setTitle("New session · aegis");
   } else if (r.view === "session") {
     watchHost(false);
     // Shown first: follow() sizes the message box, which measures 0 while hidden.
@@ -314,6 +366,7 @@ function follow(id) {
     kept.set(shown, transcript.stash());
     while (kept.size > TAB_CACHE) kept.delete(kept.keys().next().value);
   } else transcript.clear();
+  drawNavNow(); // at once: the old session's navigator goes with its rows
   shown = id;
   if (!id) return;
   const saved = kept.get(id);
@@ -321,11 +374,16 @@ function follow(id) {
     kept.delete(id);
     transcript.restore(saved);
   }
+  // The divider is placed by the first snapshot or delta after this switch,
+  // and kept across a resubscribe of the same session.
+  let placed = false;
   unsubTranscript = conn.subscribe(
     `transcript:${id}`,
     (data) => {
       if (data.since !== undefined) transcript.resume(data);
       else transcript.snapshot(data);
+      if (!placed) transcript.setSince(sinceText(sessions.get(id)));
+      placed = true;
       // Read by scripts/bench.py: when the snapshot was drawn and painted.
       const mark = (window.__a2snapshot = { at: performance.now(), count: transcript.entries.size });
       requestAnimationFrame(() => (mark.painted = performance.now()));
@@ -339,6 +397,14 @@ function follow(id) {
   menu.close();
   $("input").value = localStorage.getItem(`aegis.draft.${id}`) || "";
   autosize();
+}
+
+// The divider's label: how long since this session was last read.
+function sinceText(s) {
+  const t = s?.last_read_at;
+  if (!t) return "new since you left";
+  const m = Math.round((Date.now() / 1000 - t) / 60);
+  return `new since you left · ${m < 60 ? `${m} min` : `${Math.round(m / 60)} h`}`;
 }
 
 function fmtTokens(n) {
@@ -406,7 +472,7 @@ function renderMeta(s) {
       : touch.matches
         ? "Message the agent. ↵ sends, / for commands."
         : "Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts.";
-  document.title = `${working ? "● " : ""}${s.title || s.handle} · aegis`;
+  setTitle(`${working ? "● " : ""}${s.title || s.handle} · aegis`);
 }
 
 setInterval(() => {
@@ -723,6 +789,8 @@ installKeys(
     prev: () => transcript.move(-1),
     turn: (ev) => transcript.moveTurn(ev.key === "J" ? 1 : -1),
     edge: (ev) => transcript.edge(ev.key === "G"),
+    message: (ev) => transcript.message(ev.code === "ArrowUp" ? -1 : 1),
+    firstUnread: () => transcript.firstUnread(),
     toggle: () => transcript.toggle(),
     press: () => transcript.press(),
     none() {},

@@ -35,8 +35,9 @@ export function money(usd) {
 }
 
 // The cards a person must act on, shown first when the Fleet is ordered by need.
+// Grouped on the drawn mark, so a review already read joins the rest.
 const NEEDS = new Set(["needs_you", "error", "review"]);
-const group = (m) => (NEEDS.has(m.attention) ? "needs" : "rest");
+const group = (m) => (NEEDS.has(m.mark) ? "needs" : "rest");
 
 export function renderCards(box, metas, onOpen, order = "attention") {
   if (!metas.length) {
@@ -67,12 +68,18 @@ export function patchCard(box, m, onOpen, order = "attention") {
   return true;
 }
 
+// A session's mark: its attention, or the plain idle dot once a done or review is read.
+export function markNode(m) {
+  if (m.mark === "idle") return el("span", "dot ready");
+  return glyph(m.mark || m.attention);
+}
+
 function card(m, onOpen) {
   const c = el("div", `card ${m.state} at-${m.attention}`);
   c.dataset.id = m.log_id;
   c.dataset.group = group(m);
   const hd = el("div", "hd");
-  hd.append(glyph(m.attention), el("span", "h", m.handle));
+  hd.append(markNode(m), el("span", "h", m.handle));
   if (m.worker) hd.append(el("span", "badge", `worker · ${m.worker.queue}`));
   const label = m.attention === "waiting" && m.waiting_on ? `waiting · ${m.waiting_on}` : LABEL[m.attention] || m.state;
   hd.append(el("span", `s at-${m.attention}`, label));
@@ -95,6 +102,7 @@ function card(m, onOpen) {
   bar.append(fill);
   const ft = el("div", "ft");
   ft.append(el("span", "when", ago(m.last_activity)), el("span", null, money(m.cost_usd)));
+  if (m.unread) ft.append(el("span", "unr", `${m.unread} unread`));
   const mons = (m.monitors || []).length;
   if (mons) ft.append(el("span", "mons", `${mons} monitor${mons > 1 ? "s" : ""}`));
   if (m.plan_total) ft.append(el("span", "prog", `plan ${m.plan_done}/${m.plan_total}`));

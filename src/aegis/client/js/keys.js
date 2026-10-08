@@ -5,6 +5,7 @@
 // Chrome on Linux keeps Ctrl+T/W/N/Tab, Alt+1…9, Alt+←/→ and Alt+D/E/F for
 // itself (chrome/browser/ui/accelerator_table.cc); the chords here are the Alt
 // keys it leaves free. They match ev.code, because Alt can change ev.key.
+// Alt+↑/↓ and Alt+U are not in Chrome's Linux accelerator table either.
 // Plain keys act only outside text fields, as in Gmail, and the view decides
 // what they do, so there is no mode to keep in your head.
 
@@ -43,6 +44,14 @@ export const KEYS = [
   { scope: "session", label: "j  ↓", desc: "Next row", action: "next", match: key("j", "ArrowDown") },
   { scope: "session", label: "k  ↑", desc: "Previous row", action: "prev", match: key("k", "ArrowUp") },
   { scope: "session", label: "J  K", desc: "Next / previous message of yours", action: "turn", match: key("J", "K") },
+  {
+    scope: "session",
+    label: "Alt+↑  Alt+↓",
+    desc: "Previous / next agent message",
+    action: "message",
+    match: (ev) => alt("ArrowUp")(ev) || alt("ArrowDown")(ev),
+  },
+  { scope: "session", label: "Alt+U", desc: "First unread agent message", action: "firstUnread", match: alt("KeyU") },
   { scope: "session", label: "g  G", desc: "First row / last row, and follow the tail", action: "edge", match: key("g", "G") },
   {
     scope: "session",

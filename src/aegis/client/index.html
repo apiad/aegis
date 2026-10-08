@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>aegis</title>
+<link rel="icon" id="favicon" href="data:,">
 <link rel="stylesheet" href="/static/css/fonts.css">
 <link rel="stylesheet" href="/static/css/base.css">
 <link rel="stylesheet" href="/static/themes/ink.css">
@@ -19,6 +20,7 @@
     <div class="tab add" id="tab-add" title="New session (Alt+N)">+</div>
     <div class="gap"></div>
     <div class="servers"><span class="dot ghost" id="conn-dot"></span><span id="conn-text">connecting</span><span class="ver-top" id="ver-top" hidden></span></div>
+    <button class="keys-btn bell" id="bell" title="Turn on desktop notifications"></button>
     <button class="side-btn" id="side-btn" title="Session details" aria-label="Session details">☰</button>
     <button class="keys-btn" id="keys-btn" title="Keyboard (?)">?</button>
     <label class="theme-pick">Theme
@@ -80,7 +82,12 @@
   <main class="view v-session">
     <section class="col">
       <div class="tr" id="tr" tabindex="-1"><div id="entries"></div><div class="row working" id="working" hidden><span class="t"></span><span class="g">✻</span><div class="body">Working <span class="meta" id="working-meta"></span></div></div></div>
-      <button class="jump" id="jump" hidden>↓ latest</button>
+      <div class="nav" id="nav" hidden>
+        <button class="up" id="nav-up" title="Previous agent message (Alt+↑)"></button>
+        <button class="pos" id="nav-pos" title="First unread (Alt+U)"></button>
+        <button class="down" id="nav-down" title="Next agent message (Alt+↓)"></button>
+        <button class="latest" id="jump" title="Latest (G)"></button>
+      </div>
       <div class="composer" id="composer">
         <div class="cmd-menu" id="cmd-menu" hidden><input id="cmd-filter" hidden spellcheck="false" placeholder="/command"><div id="cmd-rows"></div></div>
         <div class="replies" id="replies" hidden></div>
