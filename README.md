@@ -77,6 +77,18 @@ agents run today.
 - **A transcript that reads well.** Tool rows with one-line verdicts, failures open,
   diffs for edits, rendered Markdown, a prompt sent mid-turn shown pending until
   Claude reads it, Esc to interrupt. Three themes: Ink, Logbook, Syalia.
+- **Slash commands.** `/model`, `/effort` and `/permission` switch a running
+  session; `/rename`, `/title`, `/stop` and `/close` act on it; Claude's own
+  commands and skills pass through. `/` or Alt+/ opens a menu that completes
+  them, and an unknown command is refused rather than sent as a prompt.
+- **The keyboard.** Alt chords move between the message box, the transcript,
+  Fleet and the tabs; j and k walk transcript rows and Fleet cards. `?` lists
+  every key.
+- **Monitors you can read.** A session's monitors sit in its sidebar with their
+  progress and ETA. Hovering one opens a card with its readings chart, start,
+  interval and timeout, and each of its `done`, `progress` and `fail` commands
+  with the last exit code and stderr line, so a check that cannot run shows red
+  instead of looking like one still waiting.
 - **Files from agents.** An agent hands you a file with `file_send`; it shows in
   the transcript as a card with a preview (images, PDF, HTML, Markdown, text,
   audio, video), Open and Download. A browser on the server's own desktop also
