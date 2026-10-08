@@ -33,7 +33,15 @@ class MonitorStart(_Strict):
     )
     done: str = Field(min_length=1, description="Bash; exit 0 means finished.")
     fail: str | None = Field(None, description="Bash; exit 0 means failed.")
-    progress: str | None = Field(None, description="Bash; prints 0 to 100.")
+    # Required but nullable: an optional field was left out by 44 of 51 monitors
+    # (#165), most of them CI waits whose checks could be counted.
+    progress: str | None = Field(
+        description="Bash; prints 0 to 100 for the bar on your card. Always give one: "
+        "count what is finished over the total (CI checks or jobs done, files "
+        "written, test lines passed), or as a last resort elapsed seconds over the "
+        "expected duration, capped at 99. Pass null only when nothing about the "
+        "process can be counted or estimated."
+    )
     interval_s: float = Field(10, ge=1, le=3600)
     timeout_s: float = Field(3600, gt=0, le=7 * 86400)
     cwd: str | None = Field(
@@ -147,8 +155,10 @@ def register_agent_ops(app: App) -> None:
     async def monitor_start(p: MonitorStart, caller):
         """Watch a long-running process without polling: bash conditions run every
         interval_s, and you are woken through your inbox when `done` or `fail` exits 0
-        or the timeout passes. Returns at once; end your turn after calling it. The
-        reply lists your other live monitors: cancel any you no longer need."""
+        or the timeout passes. `progress` feeds the bar a person watches: measure it
+        whenever anything can be counted. Returns at once; end your turn after
+        calling it. The reply lists your other live monitors: cancel any you no
+        longer need."""
         s = own(caller)
         cwd = Path(p.cwd).expanduser() if p.cwd else s.spec.cwd
         if not cwd.is_absolute():

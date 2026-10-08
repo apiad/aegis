@@ -261,6 +261,9 @@ body{background:#000}
 #a2 .row.inbox .md{font-size:14px;color:var(--ink)}
 #a2 .mon{margin-bottom:8px}
 #a2 .mon .kv span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2 .bar.indet i{width:30%;animation:a2slide 1.6s ease-in-out infinite}
+@keyframes a2slide{from{transform:translateX(-100%)}to{transform:translateX(340%)}}
+@media (prefers-reduced-motion:reduce){#a2 .bar.indet i{width:100%;animation:a2pulse 1.6s ease-in-out infinite}}
 #a2 .badge{font-size:10.5px;padding:1px 7px;border-radius:9px;background:var(--accent-soft);color:var(--accent);font-family:var(--font-chrome)}
 #a2 .card .ft .mons{color:var(--accent)}
 #a2 .row.tool.comms .tn,#a2 .row.tool .g.comms{color:var(--comms)}
