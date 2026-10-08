@@ -37,12 +37,12 @@ def card(standing: dict, *, working: bool, worker: bool, waits: list[str]) -> di
         line = report["line"]
     else:
         line = ""
-    shows_report = kind in ("needs_you", "review", "done") and report and not worker
+    shows_report = kind in ("needs_you", "review", "done") and not worker
     plan = standing.get("plan") or []
     return {
         "attention": kind,
         "attention_line": line,
-        "replies": list(report["replies"]) if shows_report else [],
+        "replies": list(report["replies"]) if report and shows_report else [],
         "waiting_on": ", ".join(waits) if kind == "waiting" else "",
         "plan": plan,
         "plan_now": next((i["text"] for i in plan if i["state"] == "doing"), ""),
