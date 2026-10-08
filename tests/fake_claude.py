@@ -558,6 +558,9 @@ def worker() -> None:
 
 
 def main() -> None:
+    if sys.argv[1:2] == ["--version"]:
+        print("0.0-fake (Claude Code)")
+        return
     t = threading.Thread(target=worker, daemon=True)
     t.start()
     for raw in sys.stdin:

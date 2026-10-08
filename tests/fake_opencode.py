@@ -580,6 +580,9 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     args = sys.argv[1:]
+    if args[:1] == ["--version"]:
+        print("0.0-fake")
+        return
     if not args or args[0] != "serve":
         print("fake opencode: only `serve` is faked", file=sys.stderr)
         sys.exit(2)
