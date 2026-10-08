@@ -1566,7 +1566,9 @@ def test_a_phone_reaches_tabs_the_drawer_and_the_chips(server, browser):
         r.innerHTML = '<span class=lbl>reply</span>' + ['Yes', 'No', 'x '.repeat(80)]
           .map(t => '<button class=rp>' + t + '</button>').join(''); })()"""
     )
-    chips = page.eval_on_selector_all(".rp", "bs => bs.map(b => b.getBoundingClientRect().toJSON())")
+    chips = page.eval_on_selector_all(
+        ".rp", "bs => bs.map(b => b.getBoundingClientRect().toJSON())"
+    )
     assert all(c["height"] >= 44 for c in chips)
     assert len({round(c["x"]) for c in chips}) == 1 and chips[0]["width"] > 300
     assert page.evaluate(WIDER) == []
