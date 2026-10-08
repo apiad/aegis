@@ -1598,6 +1598,8 @@ def test_renaming_an_agent_carries_to_the_queues_that_run_it(settings_server, pa
         "document.querySelector('#set-status').textContent === 'Saved'"
     )
     assert "agent: big" in (settings_server.root / ".aegis.yaml").read_text()
+
+
 def test_a_reply_read_on_screen_turns_its_mark_and_clears_the_done_badge(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
