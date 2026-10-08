@@ -1,7 +1,8 @@
 # aegis: creating, checking and editing `.aegis.yaml`
 
-**Status: designed, 2026-10-08** (issue #193). Not built. Designed with Alex in
-a brainstorm in chat; one PR carries all of it.
+**Status: implemented, 2026-10-08** (issue #193), following
+`docs/superpowers/plans/2026-10-08-aegis-config-init-doctor-settings.md`.
+Designed with Alex in a brainstorm in chat; one PR carries all of it.
 
 ## What this delivers
 
@@ -51,8 +52,13 @@ change up the same way it picks up an edit made in a text editor.
 
 A new module, `config.py`, owns the file. `agents.py` keeps the agent rules
 (`_agent`, `resolve`, `EFFORTS`, `PERMISSION_ORDER`); `queues.py` keeps
-`load_queues`'s rules as a function over a mapping. `read_config`,
-`load_agents`, `default_agent` and the per-call file reads go.
+`load_queues`'s rules as a function over a mapping (`agents_from`,
+`queues_from`). The server no longer reads the file per call; `load_agents` and
+`load_queues` stay as one-shot readers for tests, and `default_agent()` goes.
+An empty file counts as one that does not parse, because an editor that
+truncates before it writes leaves one for a moment. The stamp crosses the wire
+as an opaque string: `st_mtime_ns` is past 2**53, so a JavaScript number would
+round it.
 
 ```python
 @dataclass(frozen=True)
