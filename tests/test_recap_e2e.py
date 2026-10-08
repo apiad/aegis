@@ -196,3 +196,11 @@ async def test_stopping_the_session_after_a_recap_leaves_it_covered(world):
     await until(lambda: a.status == "stopped", what="stopped")
     again = await world.app.registry.call("recap.request", {"log_id": a.log_id})
     assert again["status"] == "exists"
+
+
+async def test_a_recap_is_not_session_activity(world):
+    a = await two_unread(world)
+    before = a.last_activity
+    r = await world.app.registry.call("recap.request", {"log_id": a.log_id})
+    assert r["status"] == "made"
+    assert a.last_activity == before

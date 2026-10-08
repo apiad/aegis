@@ -564,7 +564,9 @@ class Session:
     def _record(self, record: dict, events: list | None = None) -> None:
         fold = self.fold()
         stored = self.store.append({"ts": time.time(), "src": "aegis", **record})
-        self.last_activity = stored["ts"]
+        if record.get("kind") != "recap":
+            # aegis talking to the person, not the session doing anything.
+            self.last_activity = stored["ts"]
         ops = fold.apply(stored, events)
         new = [
             op["upsert"]["id"]
