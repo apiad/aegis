@@ -526,6 +526,10 @@ async function askRecap(force) {
 $("entries").addEventListener("click", (ev) => {
   if (ev.target.closest("[data-recap=force]")) askRecap(true);
 });
+// Coming back to the page is landing again; the server decides.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && shown) askRecap(false);
+});
 
 // -- Open natively on a sent file's card ------------------------------------
 $("entries").addEventListener("click", async (ev) => {

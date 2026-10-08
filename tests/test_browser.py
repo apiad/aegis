@@ -1643,6 +1643,41 @@ def test_the_landing_recap_request_shows_no_hint_and_the_sparkle_does(server, pa
     assert page.errors == []
 
 
+def test_coming_back_to_the_page_asks_for_a_recap_and_hiding_it_does_not(
+    recap_server, page
+):
+    page.goto(recap_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "first")
+    page.wait_for_function(
+        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+    )
+    # The person leaves the page: nothing on it is read while it is hidden.
+    page.evaluate(
+        """() => {
+            window.__vis = 'hidden';
+            Object.defineProperty(document, 'visibilityState',
+                { configurable: true, get: () => window.__vis });
+            document.dispatchEvent(new Event('visibilitychange'));
+        }"""
+    )
+    for n in (2, 3):
+        page.fill("#input", "/sleep 1")
+        page.press("#input", "Enter")
+        turns_done(page, n)
+    page.evaluate("() => document.dispatchEvent(new Event('visibilitychange'))")
+    page.wait_for_timeout(1500)  # a request fired while hidden would have landed
+    assert page.locator(".row.recap").count() == 0
+    page.evaluate(
+        """() => {
+            window.__vis = 'visible';
+            document.dispatchEvent(new Event('visibilitychange'));
+        }"""
+    )
+    page.wait_for_selector(".row.recap .ctx >> text=recap of", timeout=8000)
+    assert page.errors == []
+
+
 def test_the_divider_and_navigator_walk_agent_messages(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
