@@ -3,12 +3,13 @@
 A sent file is copied into ``<state>/files/<id>/<name>`` when it is sent, because
 agents overwrite and delete their working files and an archived session must
 still show what it was sent. ``<id>`` is 128 random bits and the URL is the
-capability: the token lives in the tab's ``sessionStorage`` and only the
-websocket carries it, so an ``<img>``, a new tab and a download could not.
+capability: the websocket needs the server's token, and an ``<img>``, a new
+tab and a download cannot prove it.
 
 The preview kind is decided here, once, at send (the fold draws nothing it did
 not decide). HTML, SVG and XML can run script; on aegis's origin a script could
-read the token and drive every agent, so they are served with ``CSP: sandbox``
+open the websocket, which the browser would sign in with its cookie, and drive
+every agent, so they are served with ``CSP: sandbox``
 (``allow-scripts`` for HTML, so an interactive report still runs), which gives
 them an opaque origin. PDF is not: Chrome refuses to render a PDF
 under that policy, and its viewer cannot reach the page's storage.

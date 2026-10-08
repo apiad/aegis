@@ -1,4 +1,6 @@
+import json
 import stat
+import struct
 import time
 from pathlib import Path
 
@@ -8,7 +10,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from aegis.app import App
 from aegis.roots import make_roots
-from aegis.web import PROTO, load_or_create_token, build_web
+from aegis.web import PROTO, cookie_name, load_or_create_token, build_web
 
 TOKEN = "t0ken"
 ORIGIN = {"origin": "http://testserver"}
@@ -760,3 +762,97 @@ def test_dictation_prepare_says_why_when_the_files_cannot_be_had(
             reply = Conn(ws).hello().call("dictation.prepare")
             assert reply["error"]["code"] == "dictation_unavailable"
             assert "cache directory" in reply["error"]["message"]
+
+
+def test_the_token_url_sets_a_cookie_and_moves_the_token_out(project, fake_claude):
+    with client_for(project, fake_claude) as c:
+        r = c.get(f"/?token={TOKEN}", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/"
+        cookie = r.headers["set-cookie"]
+        name = cookie_name(project / ".aegis" / "state")
+        assert cookie.startswith(f"{name}={TOKEN};")
+        for attr in ("HttpOnly", "SameSite=strict", "Path=/", "Max-Age=31536000"):
+            assert attr.lower() in cookie.lower(), attr
+        assert "secure" not in cookie.lower(), "plain http on loopback"
+        bad = c.get("/?token=wrong", follow_redirects=False)
+        assert (
+            bad.headers["location"] == "/?refused=1" and "set-cookie" not in bad.headers
+        )
+
+
+def test_a_socket_signs_in_with_the_cookie_alone(project, fake_claude):
+    name = cookie_name(project / ".aegis" / "state")
+    with client_for(project, fake_claude) as c:
+        with c.websocket_connect(
+            "/ws", headers={**ORIGIN, "cookie": f"{name}={TOKEN}"}
+        ) as ws:
+            ws.send_json({"t": "hello", "proto": PROTO})
+            assert ws.receive_json()["t"] == "welcome"
+        with c.websocket_connect(
+            "/ws", headers={**ORIGIN, "cookie": f"{name}=wrong"}
+        ) as ws:
+            ws.send_json({"t": "hello", "proto": PROTO})
+            with pytest.raises(WebSocketDisconnect) as e:
+                ws.receive_json()
+            assert e.value.code == 4401
+        with c.websocket_connect(
+            "/ws", headers={**ORIGIN, "cookie": f"aegis_00000000={TOKEN}"}
+        ) as ws:
+            ws.send_json({"t": "hello", "proto": PROTO})
+            with pytest.raises(WebSocketDisconnect) as e:
+                ws.receive_json()
+            assert e.value.code == 4401, "another server's cookie name"
+
+
+def test_login_sets_the_cookie_for_a_pasted_token(project, fake_claude):
+    with client_for(project, fake_claude) as c:
+        ok = c.post("/login", json={"token": TOKEN})
+        assert ok.status_code == 204 and "httponly" in ok.headers["set-cookie"].lower()
+        for body in ({"token": "wrong"}, {"token": 3}, {}):
+            r = c.post("/login", json=body)
+            assert r.status_code == 401 and "set-cookie" not in r.headers
+
+
+def test_two_state_roots_have_two_cookie_names(tmp_path):
+    a, b = cookie_name(tmp_path / "a"), cookie_name(tmp_path / "b")
+    assert a != b and a.startswith("aegis_") and len(a) == len("aegis_") + 8
+
+
+def test_the_cookie_is_secure_only_behind_an_https_origin(project, fake_claude):
+    app = App(make_roots(project, None), claude_bin=fake_claude)
+    web = build_web(
+        app, TOKEN, {"testserver"}, ["https://dev.example", "http://box.lan:8742"]
+    )
+    with TestClient(web) as c:
+        r = c.get(f"https://dev.example/?token={TOKEN}", follow_redirects=False)
+        assert "secure" in r.headers["set-cookie"].lower()
+        r = c.get(f"http://box.lan:8742/?token={TOKEN}", follow_redirects=False)
+        assert "secure" not in r.headers["set-cookie"].lower()
+
+
+def png_size(data: bytes) -> tuple[int, int]:
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    return struct.unpack(">II", data[16:24])
+
+
+def test_the_manifest_names_the_server_and_its_icons_load(project, fake_claude):
+    with client_for(project, fake_claude) as c:
+        r = c.get("/manifest.webmanifest")
+        assert r.headers["content-type"].startswith("application/manifest+json")
+        m = json.loads(r.text)
+        assert m["display"] == "standalone" and m["start_url"] == "/"
+        assert m["name"].startswith("aegis · ") and m["short_name"] == "aegis"
+        got_icons = set()
+        for icon in m["icons"]:
+            got = c.get(icon["src"])
+            assert got.status_code == 200 and got.headers["content-type"] == "image/png"
+            w, h = png_size(got.content)
+            assert f"{w}x{h}" == icon["sizes"]
+            got_icons.add((icon["sizes"], icon.get("purpose", "any")))
+        assert got_icons == {
+            ("192x192", "any"),
+            ("512x512", "any"),
+            ("512x512", "maskable"),
+        }
+        page = c.get("/").text
+        assert '<link rel="manifest" href="/manifest.webmanifest">' in page

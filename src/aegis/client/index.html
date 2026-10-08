@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0b0a09">
+<link rel="icon" href="/static/icons/aegis-192.png">
 <title>aegis</title>
 <link rel="icon" id="favicon" href="data:,">
 <link rel="stylesheet" href="/static/css/fonts.css">
@@ -33,7 +36,17 @@
     </label>
   </header>
 
-  <main class="view v-boot"><div class="notice" id="boot-text">Connecting…</div></main>
+  <main class="view v-boot">
+    <div class="boot">
+      <div class="notice" id="boot-text">Connecting…</div>
+      <form class="login" id="login" hidden>
+        <label for="login-token">Paste the token <code>aegis serve</code> printed. This browser stays signed in.</label>
+        <input id="login-token" type="password" autocomplete="current-password" spellcheck="false" required>
+        <button class="btn primary" type="submit">Sign in</button>
+        <p class="err-text" id="login-error"></p>
+      </form>
+    </div>
+  </main>
 
   <main class="view v-fleet">
     <section class="band" id="band">
@@ -134,6 +147,7 @@
     </aside>
   </main>
   <div class="keymap" id="keymap" hidden></div>
+  <div class="note" id="note" role="status" hidden></div>
 </div>
 <script type="module" src="/static/js/app.js"></script>
 </body>

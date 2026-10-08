@@ -1,0 +1,1 @@
+- **aegis installs as an app, and a browser signs in once.** Chrome's menu offers "Add to home screen" (Android) or "Install" (desktop), named after the server. Opening the URL `aegis serve` prints, or pasting its token into the new sign-in field, sets an HttpOnly cookie that lasts a year, so an installed app opens signed in. No script on the page can read the token any more.

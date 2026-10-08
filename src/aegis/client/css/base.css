@@ -63,6 +63,11 @@ body{background:#000}
 #a2[data-mode=read] .composer,#a2[data-mode=read] .side .live-only{display:none}
 #a2:not([data-mode=read]) .read-only{display:none}
 #a2 .notice{color:var(--muted);font-size:14px;max-width:520px;text-align:center;line-height:1.5}
+#a2 .boot{display:grid;gap:14px;justify-items:center;padding:16px}
+#a2 .login{display:grid;gap:10px;width:min(360px,100%)}
+#a2 .login[hidden]{display:none}
+#a2 .login label{color:var(--muted);font-size:13px;line-height:1.45}
+#a2 .login input{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;font-size:15px;color:var(--strong)}
 
 /* the new-tab composer */
 #a2 .spawn{width:min(640px,100%);display:grid;gap:10px;justify-items:center}
@@ -608,3 +613,5 @@ body{background:#000}
   #a2 .row.tool details>summary{padding:9px 0}
   #a2 .btn{min-height:44px}
 }
+#a2 .note{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:40;padding:7px 14px;border:1px solid var(--rule);border-radius:999px;background:var(--raised);color:var(--muted);font-family:var(--font-chrome);font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+#a2 .note[hidden]{display:none}

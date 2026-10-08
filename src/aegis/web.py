@@ -5,7 +5,9 @@ any page open in the browser can open a socket to localhost and would
 otherwise be able to prompt an agent running with full permission. So a
 socket must come from an allowed ``Host`` with a matching ``Origin`` (which
 also stops DNS rebinding, where the attacker's name resolves to 127.0.0.1),
-and must say ``hello`` with the server's token within 5 s.
+and must prove it holds the server's token within 5 s: in its ``hello``, or
+as the HttpOnly cookie ``GET /?token=`` and ``POST /login`` set, so no script
+on the page ever holds the token.
 
 Behind a reverse proxy the browser sends the public name and an https origin,
 which the loopback rule refuses. ``serve --origin https://dev.example`` names
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import hmac
 import json
 import logging
@@ -29,7 +32,13 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from starlette.applications import Starlette
-from starlette.responses import FileResponse, PlainTextResponse
+from starlette.responses import (
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
@@ -52,6 +61,14 @@ NO_HELLO = 4408
 BAD_PROTO = 4400
 
 LOOPBACK = ("127.0.0.1", "localhost", "[::1]")
+COOKIE_MAX_AGE_S = 365 * 24 * 3600
+
+
+def cookie_name(state_root: Path) -> str:
+    """The session cookie's name. Cookies ignore ports, so two servers on one
+    host would overwrite each other's under one name; this one is per state
+    root, as the token is."""
+    return "aegis_" + hashlib.sha256(str(state_root).encode()).hexdigest()[:8]
 
 
 class ClientFiles(StaticFiles):
@@ -96,11 +113,83 @@ def build_web(
 ) -> Starlette:
     # Host header -> the one origin a socket naming that host must come from.
     public = {urlsplit(o).netloc: o for o in map(public_origin, origins)}
+    cookie = cookie_name(app.roots.state_root)
+
+    def valid(given: object) -> bool:
+        return isinstance(given, str) and hmac.compare_digest(given, token)
+
+    def signed_in(response: Response, request) -> Response:
+        """``response`` carrying the cookie: HttpOnly, so no script on the page
+        can read the token; Secure behind an https origin."""
+        origin = public.get(request.headers.get("host", ""), "")
+        response.set_cookie(
+            cookie,
+            token,
+            max_age=COOKIE_MAX_AGE_S,
+            path="/",
+            httponly=True,
+            samesite="strict",
+            secure=origin.startswith("https://"),
+        )
+        return response
 
     async def index(request):
+        """The page. ``?token=`` from the URL `aegis serve` printed becomes the
+        cookie, and the address bar loses it; a wrong one says so."""
+        given = request.query_params.get("token")
+        if given is not None:
+            if valid(given):
+                return signed_in(RedirectResponse("/", status_code=303), request)
+            return RedirectResponse("/?refused=1", status_code=303)
         return FileResponse(
             CLIENT_DIR / "index.html", headers={"Cache-Control": "no-cache"}
         )
+
+    async def login(request):
+        """A pasted token, for a browser that never opened the printed URL."""
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        given = body.get("token") if isinstance(body, dict) else None
+        if not valid(given):
+            return JSONResponse({"error": "bad_token"}, status_code=401)
+        return signed_in(Response(status_code=204), request)
+
+    manifest = {
+        "name": f"aegis · {socket.gethostname()}",
+        "short_name": "aegis",
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#11100e",
+        "theme_color": "#0b0a09",
+        "icons": [
+            {
+                "src": "/static/icons/aegis-192.png",
+                "sizes": "192x192",
+                "type": "image/png",
+            },
+            {
+                "src": "/static/icons/aegis-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+            },
+            {
+                "src": "/static/icons/aegis-maskable-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "maskable",
+            },
+        ],
+    }
+
+    async def webmanifest(request):
+        """What Chrome installs: the server's name, so zion and the VPS differ
+        on a home screen. No service worker: Chrome installs from its menu
+        without one since 108 on Android, and a caching one could serve a stale
+        client after an upgrade."""
+        return JSONResponse(manifest, media_type="application/manifest+json")
 
     async def sent_file(request):
         """A file an agent sent. The id is the secret (files.py); a Host the
@@ -146,11 +235,9 @@ def build_web(
                 await websocket.close(code=NO_HELLO)
             return
         given = hello.get("token") if isinstance(hello, dict) else None
-        if (
-            hello.get("t") != "hello"
-            or not isinstance(given, str)
-            or not hmac.compare_digest(given, token)
-        ):
+        if not isinstance(given, str):
+            given = websocket.cookies.get(cookie)
+        if hello.get("t") != "hello" or not valid(given):
             await websocket.close(code=BAD_TOKEN)
             return
         if hello.get("proto") != PROTO:
@@ -258,6 +345,8 @@ def build_web(
     return Starlette(
         routes=[
             Route("/", index),
+            Route("/login", login, methods=["POST"]),
+            Route("/manifest.webmanifest", webmanifest),
             Mount("/static", ClientFiles(directory=CLIENT_DIR)),
             Route("/files/{file_id}/{name}", sent_file),
             Route("/dictation/{pin}/{name}", dictation_file),

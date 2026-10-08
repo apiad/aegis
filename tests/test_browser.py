@@ -526,11 +526,11 @@ def test_reopen_from_the_archive_and_rename(server, page, frames):
     assert page.errors == []
 
 
-def test_a_wrong_token_says_so(server, page):
+def test_a_wrong_token_says_so_and_offers_the_login(server, page):
     page.goto(re.sub(r"token=[^&]+", "token=wrong", server.url))
-    page.wait_for_function(
-        "document.getElementById('boot-text').textContent.includes('refused')"
-    )
+    page.wait_for_selector("#login", state="visible")
+    assert "refused" in page.inner_text("#login-error")
+    assert "token=" not in page.url
 
 
 def test_text_typed_right_after_switching_tabs_is_kept(server, page):
@@ -1926,6 +1926,51 @@ def test_the_navigator_counts_the_unread_and_jumps_to_the_first(server, page):
     assert page.errors == []
 
 
+def test_alt_j_walks_the_sessions_that_need_you_longest_waiting_first(server, page):
+    """#199: Alt+J goes to the session that has waited longest for you, lands on
+    its first unread message, and cycles; the Fleet's needs-you group agrees."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.evaluate("document.hasFocus = () => false")  # nothing gets read
+    a, b = spawn(page, "alpha"), spawn(page, "beta")
+    report(page, attention="needs_you", line="Rebase or merge?", replies=[])
+    turns_done(page, 2)
+    page.click(f".tab[data-id='{a}']")
+    page.wait_for_selector("#a2[data-view=session]")
+    report(page, attention="needs_you", line="Which branch?", replies=[])
+    turns_done(page, 2)
+    # b asked first, so b has waited longest, against the tab order a, b.
+    page.click("#tab-fleet")
+    page.wait_for_selector(".card .ask >> text=Which branch?")
+    assert page.eval_on_selector_all(".card", "cs => cs.map(c => c.dataset.id)") == [
+        b,
+        a,
+    ]
+    hash_ = "location.hash.slice(3)"
+    page.keyboard.press("Alt+KeyJ")
+    page.wait_for_function(f"{hash_} === '{b}'")
+    first = "document.querySelector('.row.prose:has(.rm .ic.unread)')?.dataset.id"
+    page.wait_for_function(
+        f"document.querySelector('.row.sel')?.dataset.id === {first}"
+    )
+    page.keyboard.press("Alt+KeyJ")
+    page.wait_for_function(f"{hash_} === '{a}'")
+    page.keyboard.press("Alt+KeyJ")
+    page.wait_for_function(f"{hash_} === '{b}'")
+    assert page.errors == []
+
+
+def test_alt_j_with_nobody_waiting_says_so_and_stays(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    page.wait_for_selector(".tab.on .dot.ready", timeout=6000)  # read: idle dot
+    page.keyboard.press("Alt+KeyJ")
+    page.wait_for_selector("#note >> text=Nobody needs you")
+    assert page.evaluate("location.hash.slice(3)") == sid
+    assert page.errors == []
+
+
 def test_a_needs_you_tab_blinks_until_its_last_message_is_read(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -2734,3 +2779,56 @@ def test_live_dictation_transcribes_a_librispeech_clip(
     wer = word_error_rate(LIBRISPEECH_REF, text)
     print(f"live dictation WER {wer:.1%}: {text}")
     assert wer < 0.15, text
+
+
+def test_pasting_the_token_signs_this_browser_in_and_it_stays(server, browser):
+    errors: list = []
+    page = new_page(browser, errors)
+    bare = server.url.split("?")[0]
+    page.goto(bare)
+    page.wait_for_selector("#login", state="visible")
+    page.fill("#login-token", "wrong")
+    page.press("#login-token", "Enter")
+    page.wait_for_function("document.getElementById('login-error').textContent !== ''")
+    errors.clear()  # Chrome logs the refused login's 401; it is the one expected
+    token = server.url.split("token=")[1]
+    page.fill("#login-token", token)
+    page.press("#login-token", "Enter")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.reload()
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert page.evaluate("document.cookie") == "", "HttpOnly: no script sees it"
+    # Opened from another site, as a link in a chat app would.
+    page.goto(f"data:text/html,<a id=go href='{bare}'>aegis</a>")
+    page.click("#go")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert errors == []
+
+
+def test_two_servers_on_one_host_keep_their_own_sign_in(
+    server, browser, tmp_path, fake_claude
+):
+    (tmp_path / "other").mkdir()
+    (tmp_path / "other" / ".aegis.yaml").write_text(CONFIG)
+    other = Server(tmp_path / "other", fake_claude).start()
+    try:
+        errors: list = []
+        page = new_page(browser, errors)
+        page.goto(server.url)
+        page.wait_for_selector("#a2[data-view=fleet]")
+        page.goto(other.url)
+        page.wait_for_selector("#a2[data-view=fleet]")
+        page.goto(server.url.split("?")[0])
+        page.wait_for_selector("#a2[data-view=fleet]")
+        assert errors == []
+    finally:
+        other.stop()
+
+
+def test_a_rotated_token_shows_the_login_instead_of_retrying(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    server.stop()
+    (server.root / ".aegis" / "state" / "token").unlink()
+    server.start()
+    page.wait_for_selector("#login", state="visible", timeout=15000)
