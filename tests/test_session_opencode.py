@@ -113,7 +113,7 @@ async def test_a_prompt_runs_a_turn_with_cost_context_title_and_model(oc):
 async def test_text_streams_before_the_turn_ends(oc):
     await oc.session.send("/stream 4")
     await until(lambda: any("chunk1" in m for m in oc.prose()), what="the first chunk")
-    assert oc.done_lines() == 0
+    assert not any("chunk4" in m for m in oc.prose()), "drawn while it streams"
     await until(lambda: oc.done_lines() == 1, timeout=5, what="the end")
     assert oc.prose() == ["chunk1 chunk2 chunk3 chunk4 "]
 

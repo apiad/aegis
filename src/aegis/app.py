@@ -110,7 +110,7 @@ class ArchiveParams(_Strict):
 def _dead(e: Exception) -> OpError:
     return OpError(
         "session_dead",
-        f"claude stopped while being written to: {e}; send again to resume",
+        f"the agent stopped while being written to: {e}; send again to resume",
     )
 
 
@@ -170,6 +170,9 @@ class App:
         self._register()
         register_agent_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
+
+    def _bin(self, harness: str) -> str:
+        return self.opencode_bin if harness == "opencode" else self.claude_bin
 
     async def boot(self) -> None:
         self.sessions.boot()
@@ -359,7 +362,7 @@ class App:
                 s = await reg.spawn(spec)
             except FileNotFoundError as e:
                 raise OpError(
-                    "claude_not_found", f"cannot run {self.claude_bin!r}: {e}"
+                    "harness_not_found", f"cannot run {self._bin(spec.harness)!r}: {e}"
                 ) from e
             if p.prompt:
                 try:
@@ -391,7 +394,8 @@ class App:
                 await s.send(commands.escape(p.text))
             except FileNotFoundError as e:
                 raise OpError(
-                    "claude_not_found", f"cannot run {self.claude_bin!r}: {e}"
+                    "harness_not_found",
+                    f"cannot run {self._bin(s.spec.harness)!r}: {e}",
                 ) from e
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e
