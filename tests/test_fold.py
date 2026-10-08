@@ -796,3 +796,20 @@ def test_a_recap_record_is_an_entry_and_a_send_folds_it():
         op.get("upsert", {}).get("id") == "e4" and op["upsert"]["detail"]["folded"]
         for op in ops
     )
+
+
+def test_every_recap_before_a_send_folds_and_stays_folded_on_a_refold():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.echo("go")
+    rec.text("done it")
+    rec.result()
+    rec.own("recap", upto=3, context="first", ask="")
+    rec.own("recap", upto=3, context="refreshed", ask="")
+    rec.own("send", text="next")
+    f, _ = run(rec)
+    recaps = [e for e in f.entries() if e["kind"] == "recap"]
+    assert [r["id"] for r in recaps] == ["e4", "e5"]
+    assert all(r["detail"]["folded"] for r in recaps)
+    g, _ = run(rec)
+    assert g.entries() == f.entries()

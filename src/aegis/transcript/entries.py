@@ -124,7 +124,7 @@ class Fold:
         self._turns = 0  # results seen
         self._report_turn = -1  # self._turns when the current report was made
         self.last_index = -1  # the "i" of the last record applied
-        self._recap: str | None = None  # the latest recap entry's id
+        self._recaps: list[str] = []  # recap entry ids no send has folded yet
         self.last_recap_upto: int | None = None
 
     def entries(self) -> list[dict]:
@@ -287,9 +287,10 @@ class Fold:
             self._stand(report=None, turn_error="")
             # The person is back and writing: the recap has done its job.
             folded: list[dict] = []
-            r = self._entries.get(self._recap) if self._recap else None
-            if r is not None and not r["detail"].get("folded"):
-                folded = self._upsert({**r, "detail": {**r["detail"], "folded": True}})
+            for rid in self._recaps:
+                r = self._entries[rid]
+                folded += self._upsert({**r, "detail": {**r["detail"], "folded": True}})
+            self._recaps = []
             pid = f"pending:{i}"
             self._pending.append(pid)
             return folded + self._upsert(
@@ -326,7 +327,7 @@ class Fold:
             )
             return []
         if kind == "recap":
-            self._recap = f"e{i}"
+            self._recaps.append(f"e{i}")
             self.last_recap_upto = rec.get("upto")
             return self._upsert(
                 _entry(
