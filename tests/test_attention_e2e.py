@@ -18,6 +18,26 @@ async def world(tmp_path, fake_claude):
     await w.stop()
 
 
+@pytest.fixture
+def published(world):
+    """The last card the ``sessions`` channel carried for a log id, or None.
+
+    ``wire()`` computes a card fresh on every read, so only this sees what a
+    browser was sent."""
+    sent: list[dict] = []
+    original = world.app.channels.publish
+
+    def publish(channel, ops):
+        if channel == "sessions":
+            sent.extend(op["upsert"] for op in ops if "upsert" in op)
+        original(channel, ops)
+
+    world.app.channels.publish = publish
+    return lambda log_id: next(
+        (c for c in reversed(sent) if c["log_id"] == log_id), None
+    )
+
+
 async def test_a_question_turn_needs_you_and_carries_its_line_and_replies(world):
     a = await world.spawn()
     await turn(
@@ -69,7 +89,7 @@ async def test_a_dead_process_is_an_error_until_the_next_send(world):
     assert a.wire()["attention"] == "done"
 
 
-async def test_a_parent_waits_on_a_working_child(world):
+async def test_a_parent_waits_on_a_working_child(world, published):
     a = await world.spawn()
     said = await turn(a, mcp("session_spawn", agent="opus", prompt="/sleep 3"))
     child = world.session(json.loads(said.removeprefix("mcp ok: "))["log_id"])
@@ -77,6 +97,34 @@ async def test_a_parent_waits_on_a_working_child(world):
     assert a.wire()["attention"] == "waiting" and a.wire()["waiting_on"] == "1 session"
     await until(lambda: child.status == "idle", timeout=10, what="the child done")
     assert a.wire()["attention"] == "done"
+    await until(
+        lambda: published(a.log_id)["attention"] == "done",
+        what="the parent's published card done",
+    )
+
+
+async def test_a_cancelled_queue_task_leaves_the_published_card(world, published):
+    a = await world.spawn()
+    said = await turn(
+        a, mcp("queue_enqueue", queue="solo", payload="/sleep 30", callback=False)
+    )
+    busy = json.loads(said.removeprefix("mcp ok: "))["task_id"]
+    said = await turn(a, mcp("queue_enqueue", queue="solo", payload="/sleep 5"))
+    held = json.loads(said.removeprefix("mcp ok: "))["task_id"]
+    assert world.app.queues.tasks[held].status == "pending"
+    await until(
+        lambda: published(a.log_id)["waiting_on"] == "1 queue task",
+        what="the pending callback task on the published card",
+    )
+    await world.app.registry.call("task.cancel", {"task_id": held})
+    await until(
+        lambda: (
+            published(a.log_id)["waiting_on"] == ""
+            and published(a.log_id)["attention"] == "done"
+        ),
+        what="the cancelled task gone from the published card",
+    )
+    await world.app.registry.call("task.cancel", {"task_id": busy})
 
 
 @pytest.mark.parametrize(
