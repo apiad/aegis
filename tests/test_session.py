@@ -228,11 +228,11 @@ async def test_a_session_rebuilt_from_its_meta_resumes(h):
 
 async def test_a_missing_binary_on_resume_leaves_it_stopped(h):
     await h.session.stop()
-    h.session._claude_bin = "/no/such/claude"
+    h.session.harness.bin = "/no/such/claude"
     with pytest.raises(FileNotFoundError):
         await h.session.send("hello")
     assert h.session.status == "stopped" and not h.session.running
-    h.session._claude_bin = h.fake
+    h.session.harness.bin = h.fake
 
 
 async def test_interrupt_on_a_stopped_session_does_nothing(h):

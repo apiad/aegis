@@ -16,8 +16,9 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from .claude.stream import Init, parse
+from .claude.stream import Init
 from .names import default_title
+from .transcript.entries import PARSERS, Fold
 from .transcript.store import read_store
 
 THROTTLE_S = 1.0
@@ -101,13 +102,12 @@ def rebuild(store_path: Path) -> dict | None:
     if spawn is None:
         return None
     resume_id = None
+    fold = Fold()
     for r in records:
-        if r.get("src") == "claude":
-            init = next(
-                (e for e in parse(r.get("line", "")) if isinstance(e, Init)), None
-            )
-            if init and init.session_id:
-                resume_id = init.session_id  # the last one: /clear starts anew
+        if r.get("src") in PARSERS:
+            for e in fold.parse(r["src"], r.get("line", "")):
+                if isinstance(e, Init) and e.session_id:
+                    resume_id = e.session_id  # the last one: /clear starts anew
     first_send = next((r for r in records if r.get("kind") == "send"), None)
     spec = {k: spawn.get(k) for k in ("model", "effort", "permission")}
     for r in records:

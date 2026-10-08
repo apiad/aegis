@@ -122,9 +122,11 @@ class App:
         interrupt_timeout: float = 10.0,
         base_url: str | None = None,
         server_name: str = "aegis",
+        opencode_bin: str = "opencode",
     ) -> None:
         self.roots = roots
         self.claude_bin = claude_bin
+        self.opencode_bin = opencode_bin
         self.channels = Channels(self._resolve)
         # Every session's card changes go out together, a few times a second at
         # most, however many sessions are working (#158).
@@ -134,7 +136,13 @@ class App:
             PUBLISH_EVERY_S,
         )
         self._on_wire: dict[str, tuple] = {}  # log_id -> its fields a person acts on
-        self.sessions = Registry(roots, self.publish, claude_bin, interrupt_timeout)
+        self.sessions = Registry(
+            roots,
+            self.publish,
+            claude_bin,
+            interrupt_timeout,
+            opencode_bin=opencode_bin,
+        )
         self.tokens = Tokens()
         self.monitors = Monitors(self.sessions, roots.state_root / "monitors.json")
         self.queues = Queues(
@@ -153,7 +161,7 @@ class App:
         )
         reg.quota = self.quota
         self.catalogs = commands.Catalogs(
-            claude_bin, roots.state_root / "stderr" / "catalog-probe.log"
+            roots.state_root / "stderr" / "catalog-probe.log"
         )
         reg.catalogs = self.catalogs
         reg.mcp_url = f"{base_url.rstrip('/')}{MCP_PATH}" if base_url else None

@@ -43,6 +43,18 @@ from .. import files
 from . import describe as d
 
 
+class _Stateless:
+    """Claude's stream-json needs no memory between lines."""
+
+    def feed(self, line: str) -> list[Event]:
+        return parse(line)
+
+
+# The store's src tag -> a parser factory. A fold keeps one parser per tag, so
+# a harness whose events need earlier lines (OpenCode's) sees them in order.
+PARSERS: dict[str, Any] = {"claude": _Stateless}
+
+
 def _entry(
     id: str,
     kind: str,
@@ -75,6 +87,7 @@ class Fold:
         self._seen_init = False
         self._interrupted = False
         self._last_cost = 0.0
+        self._parsers: dict[str, Any] = {}
 
     def entries(self) -> list[dict]:
         return list(self._entries.values())
@@ -86,13 +99,25 @@ class Fold:
         parse; a re-fold passes nothing and parses the stored line.
         """
         i, ts = record["i"], record.get("ts")
-        if record.get("src") == "claude":
-            evs = events if events is not None else parse(record.get("line", ""))
+        src = record.get("src")
+        if src in PARSERS:
+            evs = (
+                events
+                if events is not None
+                else self.parse(src, record.get("line", ""))
+            )
             ops: list[dict] = []
             for k, ev in enumerate(evs):
                 ops += self._event(f"e{i}.{k}", ts, ev)
             return ops
         return self._own(i, ts, record)
+
+    def parse(self, src: str, line: str) -> list[Event]:
+        """One stored or live line of harness ``src``, through this fold's parser."""
+        p = self._parsers.get(src)
+        if p is None:
+            p = self._parsers[src] = PARSERS[src]()
+        return p.feed(line)
 
     # -- helpers -------------------------------------------------------
     def _end_calls(self, verdict: str) -> list[dict]:

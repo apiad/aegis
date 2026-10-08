@@ -84,7 +84,7 @@ def aegis_wire() -> list[dict]:
 
 
 class Catalogs:
-    """Each cwd's catalog, from a live process's ``initialize`` or a probe.
+    """Each (harness, cwd)'s catalog, from a live process or a probe.
 
     A cwd whose ``claude`` gives no catalog (a CLI without ``initialize``, or
     one that timed out) is remembered as such until a process there answers,
@@ -93,19 +93,23 @@ class Catalogs:
     lookups for one cwd share a single probe, so a burst of keystrokes after a
     restart starts one ``claude``, not one per key."""
 
-    def __init__(self, claude_bin: str, stderr_path: Path) -> None:
-        self._claude_bin = claude_bin
+    def __init__(self, stderr_path: Path) -> None:
         self._stderr = stderr_path
-        self._by_cwd: dict[str, Catalog] = {}
+        self._by_key: dict[str, Catalog] = {}
         self._failed: set[str] = set()
         self._probing: dict[str, asyncio.Task[Catalog | None]] = {}
 
-    def put(self, cwd: Path, catalog: Catalog) -> None:
-        self._by_cwd[str(cwd)] = catalog
-        self._failed.discard(str(cwd))
+    @staticmethod
+    def _key(harness: str, cwd: Path) -> str:
+        return f"{harness}\0{cwd}"
+
+    def put(self, harness: str, cwd: Path, catalog: Catalog) -> None:
+        key = self._key(harness, cwd)
+        self._by_key[key] = catalog
+        self._failed.discard(key)
 
     async def get(self, s: Session) -> Catalog | None:
-        key = str(s.spec.cwd)
+        key = self._key(s.spec.harness, s.spec.cwd)
         t = s.catalog_task
         if t is not None:
             await asyncio.wait([t])
@@ -114,8 +118,8 @@ class Catalogs:
                 return done
             if not t.cancelled():
                 self._failed.add(key)  # the live process gave none
-        if key in self._by_cwd:
-            return self._by_cwd[key]
+        if key in self._by_key:
+            return self._by_key[key]
         if key in self._failed:
             return None
         probe = self._probing.get(key)
@@ -126,18 +130,11 @@ class Catalogs:
         return await asyncio.shield(probe)
 
     async def _probe(self, s: Session) -> Catalog | None:
-        sp = s.spec
+        key = self._key(s.spec.harness, s.spec.cwd)
         try:
-            cat = await control.probe(
-                self._claude_bin,
-                sp.model,
-                sp.effort,
-                sp.permission,
-                sp.cwd,
-                self._stderr,
-            )
+            cat = await s.harness.probe(s.spec, self._stderr)
         except (control.ControlError, TimeoutError, OSError):
-            self._failed.add(str(sp.cwd))
+            self._failed.add(key)
             return None
-        self.put(sp.cwd, cat)
+        self.put(s.spec.harness, s.spec.cwd, cat)
         return cat
