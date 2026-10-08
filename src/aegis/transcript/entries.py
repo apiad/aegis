@@ -327,9 +327,17 @@ class Fold:
             )
             return []
         if kind == "recap":
+            # A refresh replaces the recap on screen: one full box, never two.
+            folded = []
+            for rid in self._recaps:
+                r = self._entries[rid]
+                if not r["detail"]["folded"]:
+                    folded += self._upsert(
+                        {**r, "detail": {**r["detail"], "folded": True}}
+                    )
             self._recaps.append(f"e{i}")
             self.last_recap_upto = rec.get("upto")
-            return self._upsert(
+            return folded + self._upsert(
                 _entry(
                     f"e{i}",
                     "recap",

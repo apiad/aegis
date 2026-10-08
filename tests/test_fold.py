@@ -813,3 +813,19 @@ def test_every_recap_before_a_send_folds_and_stays_folded_on_a_refold():
     assert all(r["detail"]["folded"] for r in recaps)
     g, _ = run(rec)
     assert g.entries() == f.entries()
+
+
+def test_a_new_recap_folds_the_earlier_ones_without_a_send():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.echo("go")
+    rec.text("done it")
+    rec.result()
+    rec.own("recap", upto=3, context="first", ask="")
+    rec.own("recap", upto=3, context="refreshed", ask="")
+    f, _ = run(rec)
+    recaps = {e["id"]: e for e in f.entries() if e["kind"] == "recap"}
+    assert recaps["e4"]["detail"]["folded"] is True
+    assert recaps["e5"]["detail"]["folded"] is False
+    g, _ = run(rec)
+    assert g.entries() == f.entries()
