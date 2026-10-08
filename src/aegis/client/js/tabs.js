@@ -39,10 +39,6 @@ export class TabOrder {
   }
 }
 
-export function dotClass(state) {
-  return { working: "working", idle: "ready", error: "err" }[state] || "ghost";
-}
-
 export function renderTabs(list, metas, focusId, actions) {
   list.replaceChildren(...metas.map((m) => tab(m, focusId, actions)));
 }
