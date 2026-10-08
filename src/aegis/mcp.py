@@ -143,7 +143,10 @@ they count nothing, and aegis already marks a failed call with its exit code. \
 A command that already ends on such a line (pytest, git commit, gh pr create) \
 needs nothing added. Three habits keep that line honest. Chain with `&&`, never \
 `;`: a trailing `; echo` swaps a failure's exit code for 0 and the row turns \
-green. Put `set -o pipefail;` before piping a test run or a build into tail, \
+green. A count that can be zero breaks such a chain: `grep -c` exits 1 when it \
+finds nothing, so `n=$(grep -c x f) && echo "$n hits"` prints nothing exactly \
+when the answer is 0. Count inside the final echo, or write \
+`n=$(grep -c x f || true)`. Put `set -o pipefail;` before piping a test run or a build into tail, \
 head or grep, for the same reason. Never kill by pattern (`pkill -f`, \
 `pgrep -f`, `ps | grep`): the pattern is also in your own shell's command line, \
 so the call kills itself with exit code 144. Kill by PID or by port \
