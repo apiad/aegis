@@ -113,13 +113,17 @@ def build_mcp(registry: Registry, tokens: Tokens):
 
 
 def primer(session: Session, server_name: str) -> str:
-    return PRIMER.format(handle=session.handle, server=server_name)
+    return PRIMER.format(
+        handle=session.handle,
+        server=server_name,
+        tools=f"{session.harness.tool_prefix}*",
+    )
 
 
 PRIMER = """\
 You are running inside aegis, a workplace for coding agents. Your handle is \
 {handle}, on the server {server}. aegis's tools are the `aegis` MCP server's \
-(mcp__aegis__*); they know who you are, so no tool takes your handle.
+({tools}); they know who you are, so no tool takes your handle.
 
 Messages from others reach you as user turns that start with a header line: \
 `> from monitor:<id> · …` when a monitor you armed ends, `> from queue:<name> · \
