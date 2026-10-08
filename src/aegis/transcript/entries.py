@@ -71,7 +71,13 @@ def _entry(
 # item it finished last, its report on the turn that ended (turn_end), and why
 # that turn failed. Replaced as a whole when it changes, so a session compares
 # identity to know whether to publish.
-EMPTY_STANDING: dict = {"plan": [], "did": "", "report": None, "turn_error": ""}
+EMPTY_STANDING: dict = {
+    "plan": [],
+    "did": "",
+    "report": None,
+    "turn_error": "",
+    "last_message": "",
+}
 
 
 def _did(old: list[dict], new: list[dict], prev: str) -> str:
@@ -411,9 +417,9 @@ class Fold:
         if isinstance(ev, Text):
             if not ev.text.strip():
                 return []
-            return self._upsert(
-                _entry(id, "prose", "ok", ts, d.PROSE_GLYPH, md=ev.text)
-            )
+            ops = self._upsert(_entry(id, "prose", "ok", ts, d.PROSE_GLYPH, md=ev.text))
+            self._stand(last_message=id)
+            return ops
 
         if isinstance(ev, Thinking):
             return self._upsert(

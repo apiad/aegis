@@ -12,7 +12,9 @@ A queue worker's needs_you is done: its answer goes to whoever enqueued it,
 and nobody reads its tab, so its replies are dropped too.
 
 The tab shows `mark`: the attention, except that a review or done badge turns
-to idle once the person has read every agent message the turn left.
+to idle once the person has read the turn's last agent message. The badge
+follows that message, not every unread one, so an interim line nobody scrolled
+to does not keep it.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ def card(
     working: bool,
     worker: bool,
     waits: list[str],
-    unread: int = 0,
+    last_unread: bool = False,
 ) -> dict:
     report = standing.get("report")
     said = report["attention"] if report else "done"
@@ -49,11 +51,12 @@ def card(
         line = ""
     shows_report = kind in ("needs_you", "review", "done") and not worker
     plan = standing.get("plan") or []
-    # A review or done badge is for messages not yet read; once read, the tab
-    # shows the plain idle dot. A needs_you badge stays until the person sends,
-    # because the session is still blocked on them; it blinks only while unread.
-    mark = "idle" if kind in ("review", "done") and unread == 0 else kind
-    blink = kind == "needs_you" and unread > 0
+    # A review or done badge is for the turn's last message while it is unread;
+    # once read, the tab shows the plain idle dot. A needs_you badge stays until
+    # the person sends, because the session is still blocked on them; it blinks
+    # only while that message is unread.
+    mark = "idle" if kind in ("review", "done") and not last_unread else kind
+    blink = kind == "needs_you" and last_unread
     return {
         "attention": kind,
         "mark": mark,

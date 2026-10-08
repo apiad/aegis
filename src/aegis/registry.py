@@ -100,7 +100,8 @@ class Registry(Host):
                 working=session.in_turn,
                 worker=bool(session.worker),
                 waits=self._waits(session),
-                unread=len(session.unread),
+                last_unread=bool(session.standing.get("last_message"))
+                and session.standing.get("last_message") in session.unread,
             ),
         }
 

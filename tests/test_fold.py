@@ -586,9 +586,25 @@ def test_standing_starts_empty_and_is_the_same_object_until_it_changes():
     rec = Rec()
     rec.own("send", text="hi")
     rec.echo("hi")
-    rec.text("hello")
     f, _ = run(rec)
     assert f.standing == EMPTY_STANDING
+
+
+def test_last_message_is_the_latest_agent_message_and_survives_a_refold():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.echo("go")
+    rec.text("first")
+    rec.call("task1", "Task", {"description": "look", "prompt": "look"})
+    rec.text("second")
+    rec.text("a subagent's text is not the turn's message", parent="task1")
+    rec.result()
+    f, _ = run(rec)
+    prose = [e["id"] for e in f.entries() if e["kind"] == "prose"]
+    assert len(prose) == 2
+    assert f.standing["last_message"] == prose[-1]
+    again, _ = run(rec)
+    assert again.standing == f.standing
 
 
 def test_a_plan_record_sets_the_plan_and_did_tracks_the_last_item_finished():

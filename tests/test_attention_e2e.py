@@ -212,6 +212,26 @@ async def test_reading_the_reply_clears_a_done_mark_on_the_published_card(
     assert published(a.log_id)["attention"] == "done"
 
 
+async def test_the_mark_follows_the_last_message_not_every_unread_one(world, published):
+    a = await world.spawn()
+    await turn(a, "hello")
+    await turn(a, mcp("turn_end", attention="done", line="did it", replies=[]))
+    prose = [e for e in a.view() if e["kind"] == "prose"]
+    assert len(prose) == 2 and all(e["unread"] for e in prose)
+    assert a.standing["last_message"] == prose[-1]["id"]
+    await until(
+        lambda: (published(a.log_id) or {}).get("mark") == "done",
+        what="the done mark",
+    )
+    await world.app.registry.call(
+        "session.read", {"log_id": a.log_id, "ids": [prose[-1]["id"]]}
+    )
+    await until(
+        lambda: published(a.log_id).get("mark") == "idle", what="the cleared mark"
+    )
+    assert published(a.log_id)["unread"] == 1
+
+
 async def test_session_read_is_for_people_only(world):
     from aegis.ops import Caller
 

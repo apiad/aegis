@@ -71,27 +71,27 @@ def test_the_plan_gives_now_did_and_counts():
 
 
 @pytest.mark.parametrize(
-    "standing, kw, unread, mark, blink",
+    "standing, kw, last_unread, mark, blink",
     [
-        (st(report=rep("done")), {}, 1, "done", False),
-        (st(report=rep("done")), {}, 0, "idle", False),
-        (st(report=rep("review")), {}, 0, "idle", False),
-        (st(report=rep("review")), {}, 2, "review", False),
-        (st(report=rep("needs_you")), {}, 1, "needs_you", True),
-        (st(report=rep("needs_you")), {}, 0, "needs_you", False),
-        (st(turn_error="boom"), {}, 0, "error", False),
-        (st(), {"waits": ["1 monitor"]}, 0, "waiting", False),
-        (st(), {"working": True}, 0, "working", False),
+        (st(report=rep("done")), {}, True, "done", False),
+        (st(report=rep("done")), {}, False, "idle", False),
+        (st(report=rep("review")), {}, False, "idle", False),
+        (st(report=rep("review")), {}, True, "review", False),
+        (st(report=rep("needs_you")), {}, True, "needs_you", True),
+        (st(report=rep("needs_you")), {}, False, "needs_you", False),
+        (st(turn_error="boom"), {}, True, "error", False),
+        (st(), {"waits": ["1 monitor"]}, True, "waiting", False),
+        (st(), {"working": True}, True, "working", False),
     ],
 )
-def test_review_and_done_clear_on_read_and_needs_you_blinks_while_unread(
-    standing, kw, unread, mark, blink
+def test_review_and_done_clear_when_the_last_message_is_read_and_needs_you_blinks(
+    standing, kw, last_unread, mark, blink
 ):
     c = card(
         standing,
         working=kw.get("working", False),
         worker=False,
         waits=kw.get("waits", []),
-        unread=unread,
+        last_unread=last_unread,
     )
     assert (c["mark"], c["blink"]) == (mark, blink)

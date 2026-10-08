@@ -80,8 +80,8 @@ the fold publishes it, and only a person's `session.read` removes ids. The `unre
 flag lives in the transcript channel's view, never in the fold's entries, so a
 refold of the store still equals them. A browser reports a message once its row
 has been at least half visible, or has filled half the view, for a second while
-the page is visible and focused. A done or review badge clears once its messages
-are read, which `attention.card` decides as the card's `mark`.
+the page is visible and focused. A done or review badge clears once the turn's last
+agent message is read, which `attention.card` decides as the card's `mark`.
 
 **One registry, every caller.** Every action is one registered operation with a
 pydantic params model. A websocket `call` is one projection of the registry, MCP
