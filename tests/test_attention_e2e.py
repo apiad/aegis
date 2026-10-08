@@ -114,6 +114,32 @@ async def test_a_parent_waits_on_a_working_child(world, published):
     )
 
 
+async def test_a_parent_waits_on_a_child_that_waits(world, published):
+    a = await world.spawn()
+    arm = mcp(
+        "monitor_start", description="never", done="false", progress=None, interval_s=60
+    )
+    said = await turn(a, mcp("session_spawn", agent="opus", prompt=arm))
+    child = world.session(json.loads(said.removeprefix("mcp ok: "))["log_id"])
+    await until(
+        lambda: child.status == "idle" and world.app.monitors.of(child.log_id),
+        timeout=10,
+        what="the child idle on its monitor",
+    )
+    assert child.wire()["attention"] == "waiting"
+    assert a.wire()["attention"] == "waiting" and a.wire()["waiting_on"] == "1 session"
+    await until(
+        lambda: published(a.log_id)["attention"] == "waiting",
+        what="the parent's published card waiting",
+    )
+    (m,) = world.app.monitors.of(child.log_id)
+    await world.app.registry.call("monitor.cancel", {"monitor_id": m.id})
+    await until(
+        lambda: published(a.log_id)["attention"] == "done",
+        what="the parent's published card done once the child's monitor ends",
+    )
+
+
 async def test_a_cancelled_queue_task_leaves_the_published_card(world, published):
     a = await world.spawn()
     said = await turn(
