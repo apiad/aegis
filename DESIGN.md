@@ -59,9 +59,9 @@ the order of the tabs belong to each browser (the URL hash and local storage); t
 server never sees them.
 
 **A session's card is published when it changes, at most four times a second.**
-Status, handle and title go out at once; activity, context and cost change on
-nearly every line of a turn and are coalesced for 250 ms. Publishing them per line
-doubled the server's cost per line.
+Status, handle, title, model and the agent's standing go out at once; activity,
+context and cost change on nearly every line of a turn and are coalesced for
+250 ms. Publishing them per line doubled the server's cost per line.
 
 **A session's attention is decided in Python, from facts and the agent's own
 reports.** Working, error and waiting are facts the server holds: the turn, the
@@ -127,10 +127,11 @@ The transcript keeps every entry's data but mounts rows only for the tail
 (`js/transcript.js`), more as the reader scrolls up, and off-screen rows skip
 layout. The `sessions` channel goes out at most every `PUBLISH_EVERY_S`,
 merged across sessions (`channels.Throttle`), except a change a person acts on
-(a session added or removed, its state, names or model), which goes at once. The
-page redraws once a frame, and only the tab and card of a session that changed.
-Mounting a long transcript whole and rebuilding every tab per patch made typing
-cost grow with the transcript's length and the number of sessions (#157, #158).
+(a session added or removed, its state, names, model or attention), which goes
+at once. The page redraws once a frame, and only the tab and card of a session
+that changed. Mounting a long transcript whole and rebuilding every tab per patch
+made typing cost grow with the transcript's length and the number of sessions
+(#157, #158).
 
 **A key is one row in one table.** `client/js/keys.js` holds every key the client
 answers and the one `keydown` listener that dispatches from it; the `?` list is drawn
