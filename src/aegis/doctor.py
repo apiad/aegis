@@ -121,7 +121,8 @@ def propose(found: list[Found]) -> ConfigDoc:
         name = first.value.rsplit("/", 1)[-1]
         if any(a.name == name for a in agents):
             name += "-opencode"
-        effort = next((e for e in first.efforts if e in EFFORTS), "high")
+        offered = [e for e in first.efforts if e in EFFORTS]
+        effort = "high" if "high" in offered or not offered else offered[0]
         agents.append(AgentDoc(name=name, harness="opencode", model=first.value, effort=effort, permission="full"))
     if not agents:
         return ConfigDoc()

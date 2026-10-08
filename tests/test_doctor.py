@@ -121,3 +121,10 @@ def test_propose_without_claude_defaults_to_opencode_and_nothing_installed_propo
     doc = propose([Found("claude-code", None), Found("opencode", "/bin/opencode", "1.18", (m("opencode-go/opus"),))])
     assert doc.default_agent == "opus" and doc.agents[0].harness == "opencode"
     assert propose([Found("claude-code", None), Found("opencode", None)]).agents == []
+
+
+def test_propose_prefers_effort_high_when_the_model_offers_it():
+    doc = propose([Found("opencode", "/bin/opencode", "1.18", (m("google/gemini-flash", ("low", "medium", "high")),))])
+    assert doc.agents[0].effort == "high"
+    doc = propose([Found("opencode", "/bin/opencode", "1.18", (m("x/y", ("minimal", "low")),))])
+    assert doc.agents[0].effort == "low"
