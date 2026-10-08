@@ -10,6 +10,7 @@ from aegis.recap import (
     parse,
     window,
 )
+from aegis.agent_ops import _render
 from aegis.transcript.entries import EMPTY_STANDING
 
 
@@ -134,3 +135,20 @@ def test_load_recap_names_an_agent_or_says_what_is_wrong(tmp_path):
 
 def test_the_recap_never_invents_a_question():
     assert "never invent" in SYSTEM
+
+
+def test_window_carries_the_turn_error_after_the_report():
+    st = {
+        **EMPTY_STANDING,
+        "report": {"attention": "done", "line": "Shipped.", "replies": []},
+        "turn_error": "claude exited with code 1",
+    }
+    w = window([user(1, "go"), prose(2, "ok")], {"e2.0"}, st)
+    assert "ERROR: claude exited with code 1" in w
+    assert w.index("AGENT REPORT") < w.index("ERROR:")
+    assert "ERROR:" not in window([user(1, "go")], set(), EMPTY_STANDING)
+
+
+def test_peer_read_never_shows_a_recap():
+    e = {"kind": "recap", "summary": "fixing it", "detail": {}}
+    assert _render(e, True) is None

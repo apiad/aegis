@@ -107,6 +107,8 @@ def window(entries: list[dict], unread: set[str], standing: dict) -> str:
     report = standing.get("report")
     if report:
         parts.append(f"AGENT REPORT ({report['attention']}): {report['line']}")
+    if standing.get("turn_error"):
+        parts.append(f"ERROR: {standing['turn_error']}")
     plan = standing.get("plan") or []
     if plan:
         parts.append(

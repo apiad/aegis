@@ -6,6 +6,7 @@ import pytest
 
 from aegis import recap
 from aegis.ops import Caller, OpError
+from aegis.recaps import Recaps
 
 from .conftest import until
 from .test_agents import CONFIG, World, turn
@@ -219,3 +220,27 @@ async def test_a_recap_that_finishes_after_a_send_is_stale(world, monkeypatch):
     assert (await pending) == {"status": "stale"}
     assert not [x for x in a.entries() if x["kind"] == "recap"]
     assert a.recap_cost_usd > 0
+
+
+async def test_a_paid_call_with_no_usable_answer_still_counts_its_cost(
+    world, monkeypatch
+):
+    a = await two_unread(world)
+    monkeypatch.setenv("FAKE_CLAUDE_ONESHOT", "empty")
+    r = await world.app.registry.call("recap.request", {"log_id": a.log_id})
+    assert r["status"] == "failed"
+    assert a.recap_cost_usd == 0.004
+
+
+async def test_a_call_that_raises_on_cancel_does_not_stop_shutdown():
+    async def stubborn():
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            raise RuntimeError("cleanup went wrong") from None
+
+    rs = Recaps(app=None)
+    rs._running["x"] = asyncio.create_task(stubborn())
+    await asyncio.sleep(0)
+    await rs.shutdown()
+    assert rs._running["x"].done()

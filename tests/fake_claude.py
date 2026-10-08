@@ -43,9 +43,9 @@ prove a resumed process has its earlier context.
 
 ``-p PROMPT`` one-shot (``--output-format json``, which a session's ``-p``
 never has): prints a JSON envelope whose structured output is a recap built
-from the prompt; ``FAKE_CLAUDE_ONESHOT=fail|garbage|slow`` makes it exit 1,
-print non-JSON, or sleep 120 s (``FAKE_CLAUDE_ONESHOT_SLEEP`` seconds, when set)
-before answering. Each one-shot appends a line to
+from the prompt; ``FAKE_CLAUDE_ONESHOT=fail|garbage|empty|slow`` makes it exit
+1, print non-JSON, print an envelope with a cost and no answer, or sleep 120 s
+(``FAKE_CLAUDE_ONESHOT_SLEEP`` seconds, when set) before answering. Each one-shot appends a line to
 ``$FAKE_CLAUDE_HOME/oneshot.log`` and writes its pid to
 ``$FAKE_CLAUDE_HOME/oneshot.pid``, so a test can count calls and find the child.
 
@@ -582,6 +582,9 @@ def oneshot() -> None:
         sys.exit(1)
     if mode == "garbage":
         print("not json")
+        return
+    if mode == "empty":
+        print(json.dumps({"type": "result", "result": "", "total_cost_usd": 0.004}))
         return
     if mode == "slow":
         time.sleep(float(os.environ.get("FAKE_CLAUDE_ONESHOT_SLEEP", "120")))

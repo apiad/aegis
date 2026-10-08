@@ -51,7 +51,8 @@ class Recaps:
         for t in tasks:
             t.cancel()
         for t in tasks:
-            with contextlib.suppress(asyncio.CancelledError):
+            # Nothing a recap does may stop the sessions shutting down after it.
+            with contextlib.suppress(asyncio.CancelledError, Exception):
                 await t
 
     async def _make(self, s, cfg: dict, upto: int) -> dict:
@@ -88,6 +89,7 @@ class Recaps:
             }
         value, cost, ms = recap.parse(out.decode(errors="replace"))
         if value is None:
+            s.add_recap_cost(cost)  # paid, even with nothing to show
             return {"status": "failed", "why": "the model returned nothing usable"}
         if s.archived:
             return {"status": "failed", "why": "the session was closed"}
