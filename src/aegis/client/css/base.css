@@ -139,8 +139,12 @@ body{background:#000}
 
 /* composer */
 #a2 .composer{padding:10px 22px 16px}
-#a2 .composer textarea{width:100%;resize:none;padding:12px 14px;font-size:13.5px;line-height:1.45;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);color:var(--strong);font-family:var(--font-ui);max-height:40vh;outline:none}
-#a2 .composer textarea:focus{border-color:var(--accent)}
+#a2 .composer .box{display:flex;align-items:flex-end;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg)}
+#a2 .composer .box:focus-within{border-color:var(--accent)}
+#a2 .composer textarea{flex:1;min-width:0;resize:none;padding:12px 14px;font-size:13.5px;line-height:1.45;background:none;border:none;color:var(--strong);font-family:var(--font-ui);max-height:40vh;outline:none}
+/* Buttons inside the box, bottom right: send, and the mic when it comes. */
+#a2 .composer .acts{display:flex;gap:6px;align-items:center;padding:8px 8px 8px 0}
+#a2 .composer .acts .send{font-size:15px;line-height:1;padding:6px 12px;font-weight:600}
 #a2 .composer .chips{display:flex;gap:8px;margin-top:8px;align-items:center}
 #a2 .chip{font-size:11.5px;padding:3px 9px;border:1px solid var(--rule);border-radius:5px;color:var(--muted);font-family:var(--font-chrome)}
 #a2 .chip:empty{display:none}

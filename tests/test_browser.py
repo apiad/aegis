@@ -546,6 +546,21 @@ def test_the_message_box_opens_at_full_height(server, page):
     assert page.errors == []
 
 
+def test_send_sits_inside_the_message_box_and_sends(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    box = page.locator(".composer .box").bounding_box()
+    btn = page.locator("#send").bounding_box()
+    assert box["x"] <= btn["x"] and btn["x"] + btn["width"] <= box["x"] + box["width"]
+    assert box["y"] <= btn["y"] and btn["y"] + btn["height"] <= box["y"] + box["height"]
+    page.fill("#input", "via the button")
+    page.click("#send")
+    turns_done(page, 1)
+    assert page.input_value("#input") == ""
+    assert page.errors == []
+
+
 def test_a_monitor_shows_in_the_sidebar_and_its_wake_arrives_as_an_inbox_row(
     server, page, tmp_path
 ):
