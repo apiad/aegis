@@ -807,7 +807,7 @@ def test_a_long_transcript_mounts_its_tail_and_the_rest_as_the_reader_scrolls_up
     page.fill("#input", "replay")
     page.press("#input", "Enter")
     page.wait_for_function(
-        "document.getElementById('s-status').textContent === 'idle'", timeout=60_000
+        "document.getElementById('s-status').textContent.trim() === 'done'", timeout=60_000
     )
     page.reload()
     page.wait_for_function("window.__a2snapshot && window.__a2snapshot.painted")
@@ -1067,7 +1067,7 @@ def test_g_in_a_long_transcript_mounts_and_selects_the_first_entry(replay_server
     page.fill("#input", "replay")
     page.press("#input", "Enter")
     page.wait_for_function(
-        "document.getElementById('s-status').textContent === 'idle'", timeout=60_000
+        "document.getElementById('s-status').textContent.trim() === 'done'", timeout=60_000
     )
     page.reload()
     page.wait_for_function("window.__a2snapshot && window.__a2snapshot.painted")
@@ -1127,4 +1127,25 @@ def test_a_patch_that_changes_a_cards_group_regroups_the_open_fleet(
     page.wait_for_selector(".card .ask >> text=Which branch?")
     assert page.locator(".grp-h").all_inner_texts() == ["Needs you", "Everything else"]
     assert page.eval_on_selector_all(".card", "cs => cs.map(c => c.dataset.id)") == [b, a]
+    assert page.errors == []
+
+
+def test_reply_pills_send_their_text_and_all_disappear(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    plan = [{"text": "read", "state": "done"}, {"text": "fix", "state": "doing"}]
+    page.fill("#input", f"/mcp plan_update {json.dumps({'items': plan})}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    page.wait_for_selector("#s-plan-sec:not([hidden]) >> text=fix")
+    report(page, attention="needs_you", line="Rebase or merge?", replies=["rebase onto main", "merge main into it"])
+    turns_done(page, 3)
+    page.wait_for_selector("#s-ask:not([hidden]) >> text=Rebase or merge?")
+    page.wait_for_selector("#replies:not([hidden]) .rp >> text=merge main into it")
+    page.click("#replies .rp >> text=rebase onto main")
+    page.wait_for_selector("#replies", state="hidden")
+    turns_done(page, 4)
+    assert "rebase onto main" in page.inner_text(".row.user >> nth=-1")
+    assert page.locator("#replies .rp").count() == 0 or page.is_hidden("#replies")
     assert page.errors == []

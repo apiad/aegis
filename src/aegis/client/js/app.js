@@ -10,7 +10,7 @@ import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { ago, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
 import { installKeys, renderKeys } from "./keys.js";
-import { installGlyphs } from "./glyphs.js";
+import { glyph, installGlyphs, LABEL } from "./glyphs.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -323,8 +323,23 @@ function renderMeta(s) {
   if (!editing.has("title")) $("s-title").textContent = s.title || "untitled";
   if (!editing.has("handle")) $("s-handle").textContent = s.handle;
   $("s-model").textContent = `Claude Code, ${s.model}`;
-  $("s-status").textContent = s.state;
-  $("s-status").className = `st ${s.state === "error" ? "err" : s.state === "idle" ? "idle" : ""}`;
+  $("s-status").replaceChildren(glyph(s.attention), document.createTextNode(` ${LABEL[s.attention] || s.state}`));
+  $("s-status").className = `st at-${s.attention}`;
+  $("s-ask").hidden = !s.attention_line;
+  $("s-ask").textContent = s.attention_line || "";
+  $("s-ask").className = `askbox at-${s.attention}`;
+  const plan = s.plan || [];
+  $("s-plan-sec").hidden = !plan.length;
+  const mark = { done: "✓", doing: "◐", pending: "○" };
+  $("s-plan").replaceChildren(
+    ...plan.map((i) => {
+      const d = document.createElement("div");
+      d.className = i.state;
+      d.append(span("pm", mark[i.state] || ""), span("", i.text));
+      return d;
+    }),
+  );
+  drawReplies(s);
   $("s-cwd").textContent = s.cwd;
   $("chip-model").textContent = s.model;
   $("chip-effort").textContent = `${s.effort} effort`;
@@ -727,19 +742,51 @@ function focused() {
   return r.view === "session" ? sessions.get(r.id) : null;
 }
 
+// The agent's suggested next messages, from its turn_end. Redrawn only when they
+// change: renderMeta runs on every patch of the open session.
+function drawReplies(s) {
+  const box = $("replies");
+  const replies = s.state === "working" ? [] : s.replies || [];
+  const key = JSON.stringify([s.log_id, replies]);
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.hidden = !replies.length;
+  box.replaceChildren(
+    span("lbl", "reply"),
+    ...replies.map((text) => {
+      const b = document.createElement("button");
+      b.className = "rp";
+      b.textContent = text;
+      b.addEventListener("click", () => sendText(text));
+      return b;
+    }),
+  );
+}
+
+async function sendText(text) {
+  const s = focused();
+  if (!text || !s) return false;
+  $("send-error").textContent = "";
+  $("replies").hidden = true; // any send answers the turn the pills belonged to
+  try {
+    await conn.call("session.send", { log_id: s.log_id, text });
+    transcript.toBottom();
+    return true;
+  } catch (e) {
+    $("send-error").textContent = e.message;
+    $("replies").hidden = false;
+    return false;
+  }
+}
+
 async function send() {
   const s = focused();
   const text = input.value.trim();
   if (!text || !s) return;
-  $("send-error").textContent = "";
-  try {
-    await conn.call("session.send", { log_id: s.log_id, text });
+  if (await sendText(text)) {
     input.value = "";
     localStorage.removeItem(`aegis.draft.${s.log_id}`);
     autosize();
-    transcript.toBottom();
-  } catch (e) {
-    $("send-error").textContent = e.message;
   }
 }
 
