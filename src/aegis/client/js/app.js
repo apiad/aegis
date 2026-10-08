@@ -767,6 +767,7 @@ async function sendText(text) {
   const s = focused();
   if (!text || !s) return false;
   $("send-error").textContent = "";
+  const was = $("replies").hidden;
   $("replies").hidden = true; // any send answers the turn the pills belonged to
   try {
     await conn.call("session.send", { log_id: s.log_id, text });
@@ -774,7 +775,7 @@ async function sendText(text) {
     return true;
   } catch (e) {
     $("send-error").textContent = e.message;
-    $("replies").hidden = false;
+    $("replies").hidden = was;
     return false;
   }
 }

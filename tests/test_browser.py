@@ -1148,4 +1148,5 @@ def test_reply_pills_send_their_text_and_all_disappear(server, page):
     turns_done(page, 4)
     assert "rebase onto main" in page.inner_text(".row.user >> nth=-1")
     assert page.locator("#replies .rp").count() == 0 or page.is_hidden("#replies")
+    assert "at-done" in page.get_attribute("#s-status", "class").split()
     assert page.errors == []

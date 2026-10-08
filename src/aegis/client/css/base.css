@@ -163,7 +163,7 @@ body{background:#000}
 #a2 .bar{height:6px;margin:6px 0 4px;overflow:hidden;background:var(--raised);border-radius:3px}
 #a2 .bar i{display:block;height:100%;background:var(--fill);border-radius:3px}
 #a2 .st{color:var(--accent)}
-#a2 .st.err{color:var(--err)}#a2 .st.idle{color:var(--ok)}
+#a2 .st.at-error{color:var(--err)}#a2 .st.at-done{color:var(--ok)}
 
 /* the running aegis and the latest release, in the sidebar and the top bar */
 #a2 .side .ver{border-top:1px solid var(--rule);padding-top:12px}
