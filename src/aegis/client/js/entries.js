@@ -52,7 +52,14 @@ function diffBlock(diff) {
 
 const RENDERERS = {
   user(e) {
-    return row(e, `user ${e.status}`, el("div", "body", e.md));
+    const body = el("div", "body", e.md);
+    if (e.detail?.tail) {
+      // A command OpenCode expanded: the line as typed, its template under it.
+      const d = el("details");
+      d.append(el("summary", null, "template"), el("pre", "out", e.detail.tail));
+      body.append(d);
+    }
+    return row(e, `user ${e.status}`, body);
   },
 
   command(e) {
