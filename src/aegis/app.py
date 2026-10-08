@@ -1,7 +1,8 @@
 """The server's state and its operations, independent of any transport.
 
 Operations: ``agents.list``, ``session.spawn``, ``session.send`` (which
-resolves a ``/`` line first, ``commands.py``), ``session.configure``,
+resolves a ``/`` line first, ``commands.py``), ``session.read``,
+``session.configure``,
 ``commands.list``, ``session.interrupt``, ``session.stop``, ``session.close``,
 ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``,
@@ -77,6 +78,11 @@ class SpawnParams(_Strict):
 class SendParams(_Strict):
     log_id: str
     text: str = Field(min_length=1)
+
+
+class ReadParams(_Strict):
+    log_id: str
+    ids: list[str] = Field(max_length=500)
 
 
 class ConfigureParams(_Strict):
@@ -184,15 +190,24 @@ class App:
             self.channels.publish(channel, ops)
 
     def _sessions_key(self, op: dict) -> tuple[str, bool]:
-        """A session added or removed, or a change to its state, name, model or
-        attention, goes out at once: the page acts on them (Esc interrupts only a
-        working session, a spawn shows the new tab, a person answers a session
-        that needs them). The rest of a card can wait."""
+        """A session added or removed, or a change to its state, name, model,
+        attention, mark or blink, goes out at once: the page acts on them (Esc
+        interrupts only a working session, a spawn shows the new tab, a person
+        answers a session that needs them, a mark clearing or starting to blink
+        changes what a person acts on). The rest of a card can wait."""
         if "remove" in op:
             self._on_wire.pop(op["remove"], None)
             return op["remove"], True
         m = op["upsert"]
-        seen = (m["state"], m["title"], m["handle"], m["model"], m.get("attention"))
+        seen = (
+            m["state"],
+            m["title"],
+            m["handle"],
+            m["model"],
+            m.get("attention"),
+            m.get("mark"),
+            m.get("blink"),
+        )
         urgent = self._on_wire.get(m["log_id"]) != seen
         self._on_wire[m["log_id"]] = seen
         return m["log_id"], urgent
@@ -388,6 +403,13 @@ class App:
                 ) from e
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e
+
+        @r.op("session.read", ReadParams)
+        async def read(p: ReadParams, caller):
+            """A person read these agent messages, on any browser."""
+            s = reg.open(p.log_id)
+            n = s.read(p.ids)
+            return {"read": n, "unread": len(s.unread)}
 
         @r.op("session.configure", ConfigureParams)
         async def configure(p: ConfigureParams, caller):

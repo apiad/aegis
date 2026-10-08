@@ -100,6 +100,7 @@ class Registry(Host):
                 working=session.in_turn,
                 worker=bool(session.worker),
                 waits=self._waits(session),
+                unread=len(session.unread),
             ),
         }
 
