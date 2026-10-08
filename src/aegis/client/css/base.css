@@ -451,6 +451,94 @@ body{background:#000}
 #a2 .replies .lbl{font-family:var(--font-chrome);font-size:11px;color:var(--faint);margin-right:2px}
 #a2 .rp{font-family:var(--font-ui);font-size:13px;color:var(--strong);background:var(--surface);border:1px solid var(--rule);border-radius:999px;padding:5px 13px;cursor:pointer;line-height:1.3;text-align:left}
 #a2 .rp:hover{border-color:var(--accent);background:var(--accent-soft)}
+#a2 .col:has(#replies:not([hidden])) .jump{bottom:160px}
+/* Settings: agents are cards carrying the composer's chips; queues are one
+   sentence each; the doctor is one line until it finds something. */
+#a2[data-view=settings] .v-settings{display:flex;flex-direction:column;overflow:auto}
+#a2 .settings{flex:1;display:flex;flex-direction:column;font-family:var(--font-ui);color:var(--ink)}
+#a2 .set-page{width:min(880px,100%);box-sizing:border-box;margin:0 auto;padding:28px 24px 24px;flex:1}
+#a2 .set-head{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid var(--rule)}
+#a2 .set-head h2,#a2 .set-empty h2{margin:0 0 4px;font-family:var(--font-head);font-weight:500;font-size:20px;color:var(--strong)}
+#a2 #set-path{font-family:var(--font-mono);font-size:11.5px;color:var(--faint)}
+#a2 .set-harnesses{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--font-chrome);font-size:11.5px;color:var(--muted)}
+#a2 .set-harness b{font-weight:500;color:var(--ink)}
+#a2 .set-harness::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ok);margin-right:7px;vertical-align:1px}
+#a2 .set-harness.off{color:var(--faint)}
+#a2 .set-harness.off::before{background:var(--faint)}
+#a2 .set-alert{margin:16px 0 0;padding:9px 12px;border-radius:var(--r);border:1px solid var(--rule);background:var(--surface);font-size:13px;color:var(--ink);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#a2 .set-alert.err{border-color:var(--err);background:var(--err-bg);color:var(--err)}
+#a2 .set-checks{margin-top:14px}
+#a2 .set-summary{display:flex;align-items:center;gap:14px;font-size:13px;color:var(--muted)}
+#a2 .set-summary .ok{color:var(--ok)}
+#a2 .set-summary .warn{color:var(--warn)}
+#a2 .set-summary .err{color:var(--err)}
+#a2 .set-summary #set-doctor{margin-left:auto}
+#a2 .set-findings{list-style:none;margin:8px 0 0;padding:0;font-size:12.5px}
+#a2 .set-findings:empty{display:none}
+#a2 .set-findings li{display:grid;grid-template-columns:minmax(150px,auto) 1fr;gap:12px;padding:4px 0;border-top:1px solid var(--rule);color:var(--ink)}
+#a2 .set-findings li code{font-family:var(--font-mono);font-size:11.5px;color:var(--faint);background:none;padding:0}
+#a2 .set-findings li.ok span{color:var(--muted)}
+#a2 .set-findings li.warn code{color:var(--warn)}
+#a2 .set-findings li.error code{color:var(--err)}
+#a2 .set-section-head{display:flex;align-items:baseline;justify-content:space-between;margin:30px 0 10px}
+#a2 .set-section-head h3{margin:0;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
+#a2 .set-agents{display:grid;gap:8px}
+#a2 .set-agent{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:10px 14px;display:grid;grid-template-columns:120px 1fr;gap:6px 12px;align-items:center}
+#a2 .set-card-foot{grid-column:2;display:flex;align-items:flex-start;gap:12px}
+#a2 .set-card-foot .set-priming{flex:1}
+#a2 .set-agent > .set-why{grid-column:2}
+#a2 .set-agent:focus-within{border-color:var(--faint)}
+#a2 .set-agent.is-default{border-color:var(--accent)}
+#a2 .set-agent.warn{box-shadow:inset 3px 0 var(--warn)}
+#a2 .set-agent.error{box-shadow:inset 3px 0 var(--err)}
+
+#a2 .set-name{min-width:0;background:none;border:none;border-bottom:1px solid transparent;outline:none;padding:1px 0;font-family:var(--font-head);font-weight:500;font-size:14px;color:var(--strong)}
+#a2 .set-name:hover{border-bottom-color:var(--rule)}
+#a2 .set-name:focus{border-bottom-color:var(--accent)}
+#a2 .set-name::placeholder{color:var(--faint)}
+#a2 .settings .picks{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#a2 .settings .pick{field-sizing:content;max-width:36ch;background:var(--bg);border:1px solid var(--rule);border-radius:5px;padding:3px 8px;font-family:var(--font-chrome);font-size:11.5px;color:var(--ink);cursor:pointer}
+#a2 .settings input.pick{min-width:10ch;cursor:text}
+#a2 .settings .pick:hover{border-color:var(--faint)}
+#a2 .settings .pick:focus{outline:none;border-color:var(--accent)}
+#a2 .set-default{background:none;border:1px solid transparent;border-radius:5px;padding:1px 7px;font-family:var(--font-chrome);font-size:11px;color:var(--faint);cursor:pointer}
+#a2 .set-default:hover:not(:disabled){color:var(--accent);border-color:var(--rule)}
+#a2 .set-default.on{color:var(--accent);border-color:var(--accent);cursor:default}
+#a2 .set-default:disabled:not(.on){opacity:0}
+#a2 .settings .link{background:none;border:none;padding:0;font-family:var(--font-ui);font-size:12.5px;color:var(--muted);cursor:pointer}
+#a2 .settings .link:hover{color:var(--accent)}
+#a2 .settings .link.danger:hover{color:var(--err)}
+#a2 .set-agent .link.danger{opacity:0}
+#a2 .set-agent:hover .link.danger,#a2 .set-agent:focus-within .link.danger{opacity:1}
+#a2 .set-priming summary{font-size:12px;color:var(--faint);cursor:pointer;list-style:none}
+#a2 .set-priming summary::before{content:"+ "}
+#a2 .set-priming[open] summary::before{content:"\2212  "}
+#a2 .set-priming textarea{margin-top:6px;width:100%;box-sizing:border-box;resize:vertical;background:var(--bg);border:1px solid var(--rule);border-radius:var(--r);padding:7px 9px;font-family:var(--font-mono);font-size:12px;line-height:1.5;color:var(--ink)}
+#a2 .set-priming textarea:focus{outline:none;border-color:var(--accent)}
+#a2 .set-why{margin:0;font-size:12px;line-height:1.45}
+#a2 .set-why.warn{color:var(--warn)}
+#a2 .set-why.error{color:var(--err)}
+#a2 .set-section-head .set-why{margin-left:12px;flex:1}
+#a2 .set-queues{border:1px solid var(--rule);border-radius:var(--r-lg);background:var(--surface)}
+#a2 .set-queue{padding:9px 14px;border-top:1px solid var(--rule)}
+#a2 .set-queue:first-child{border-top:none}
+#a2 .set-queue.warn{box-shadow:inset 3px 0 var(--warn)}
+#a2 .set-queue.error{box-shadow:inset 3px 0 var(--err)}
+#a2 .set-queue-line{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+#a2 .set-queue .set-name{flex:0 0 120px;font-size:13px}
+#a2 .set-queue .link.danger{margin-left:auto;opacity:0}
+#a2 .set-queue:hover .link.danger,#a2 .set-queue:focus-within .link.danger{opacity:1}
+#a2 .set-limit{width:5ch;min-width:0;text-align:right}
+#a2 .set-none{margin:0;font-size:13px;color:var(--faint)}
+#a2 .set-bar{position:sticky;bottom:0;display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:10px max(24px,calc((100% - 880px) / 2 + 24px));border-top:1px solid var(--rule);background:var(--side)}
+#a2 .set-bar #set-status{margin-right:auto;font-size:12.5px;color:var(--muted)}
+#a2 .set-bar.dirty #set-status{color:var(--accent)}
+#a2 .set-bar .btn[hidden]{display:none}
+#a2 .set-empty{width:min(520px,100%);margin:12vh auto 0;padding:0 24px;display:grid;gap:14px;justify-items:start;font-size:14px;line-height:1.55;color:var(--ink)}
+#a2 .set-empty p{margin:0}
+#a2 .set-empty code{font-family:var(--font-mono);font-size:12.5px;color:var(--strong)}
+#a2 #settings-btn.on{color:var(--strong);border-color:var(--accent)}
+@media (max-width:640px){#a2 .set-agent{grid-template-columns:1fr}#a2 .set-card-foot,#a2 .set-agent > .set-why{grid-column:1}#a2 .set-findings li{grid-template-columns:1fr;gap:2px}}
 
 /* the recap: aegis's own two sentences, last in the transcript */
 #a2 .row.recap .g{color:var(--accent)}

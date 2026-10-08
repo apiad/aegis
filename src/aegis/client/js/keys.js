@@ -30,6 +30,7 @@ export const KEYS = [
     match: (ev) => alt("BracketLeft")(ev) || alt("BracketRight")(ev),
   },
   { scope: "global", label: "Alt+N", desc: "New session", action: "spawn", match: alt("KeyN") },
+  { scope: "global", label: "Alt+S", desc: "Settings: .aegis.yaml", action: "settings", match: alt("KeyS") },
   {
     scope: "global",
     label: "Alt+0…9",

@@ -20,6 +20,7 @@
     <div class="tab add" id="tab-add" title="New session (Alt+N)">+</div>
     <div class="gap"></div>
     <div class="servers"><span class="dot ghost" id="conn-dot"></span><span id="conn-text">connecting</span><span class="ver-top" id="ver-top" hidden></span></div>
+    <button class="keys-btn" id="settings-btn" title="Settings (Alt+S)">Settings</button>
     <button class="keys-btn bell" id="bell" title="Turn on desktop notifications"></button>
     <button class="side-btn" id="side-btn" title="Session details" aria-label="Session details">☰</button>
     <button class="keys-btn" id="keys-btn" title="Keyboard (?)">?</button>
@@ -78,6 +79,8 @@
       <p class="err-text" id="sp-error"></p>
     </form>
   </main>
+
+  <main class="view v-settings"><section class="settings" id="settings"></section></main>
 
   <main class="view v-session">
     <section class="col">

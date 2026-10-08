@@ -1,4 +1,5 @@
-"""``aegis serve``, and ``aegis`` alone, which is ``serve --window``.
+"""``aegis serve``, ``aegis init``, ``aegis doctor``, and ``aegis`` alone, which is
+``serve --window``.
 
 This is the only module that reads the process's working directory.
 
@@ -8,6 +9,7 @@ roots, never Path.cwd()").
 
 from __future__ import annotations
 
+import asyncio
 import errno
 import socket
 import threading
@@ -293,6 +295,152 @@ def serve(
     if window:
         _open_when_listening(local, port, url, browser)
     uvicorn.run(web, host=host, port=port, log_level="warning")
+
+
+MARK = {"ok": "ok   ", "warn": "warn ", "error": "ERROR"}
+
+
+def _bins(claude: str, opencode: str) -> dict[str, str]:
+    return {"claude-code": claude, "opencode": opencode}
+
+
+def _report(findings) -> int:
+    """Print the findings; the number of errors."""
+    for f in findings:
+        typer.echo(f"{MARK[f.level]} {f.where:<26} {f.message}")
+    errors = sum(f.level == "error" for f in findings)
+    warns = sum(f.level == "warn" for f in findings)
+    typer.echo(f"{errors} errors, {warns} warnings")
+    return errors
+
+
+@app.command()
+def doctor(
+    root: Path | None = typer.Option(
+        None, help="Config root; default: the nearest ancestor holding .aegis.yaml."
+    ),
+    claude: str = typer.Option("claude", help="The claude executable to check."),
+    opencode: str = typer.Option("opencode", help="The opencode executable to check."),
+) -> None:
+    """Check .aegis.yaml, the harnesses it names and the state directory."""
+    from .doctor import doctor as run_doctor
+    from .roots import make_roots
+
+    start = Path.cwd()
+    roots = make_roots(start=start, root=root)
+    findings = asyncio.run(
+        run_doctor(roots, _bins(claude, opencode), start=None if root else start)
+    )
+    raise typer.Exit(1 if _report(findings) else 0)
+
+
+def _ask(doc, found):
+    """``doc`` as the person answers for it, each value offered as the default."""
+    import click
+
+    from .agents import EFFORTS, PERMISSION_ORDER
+    from .config import ConfigDoc, QueueDoc
+
+    agents = []
+    for a in doc.agents:
+        if not typer.confirm(f"Add agent {a.name!r} ({a.harness})?", default=True):
+            continue
+        models = next((f.models for f in found if f.harness == a.harness), ())
+        if models:
+            typer.echo("  models: " + ", ".join(m.value for m in models[:12]))
+        agents.append(
+            a.model_copy(
+                update={
+                    "model": typer.prompt("  model", default=a.model),
+                    "effort": typer.prompt(
+                        "  effort", default=a.effort, type=click.Choice(EFFORTS)
+                    ),
+                    "permission": typer.prompt(
+                        "  permission",
+                        default=a.permission,
+                        type=click.Choice(PERMISSION_ORDER),
+                    ),
+                }
+            )
+        )
+    if not agents:
+        return ConfigDoc()
+    names = [a.name for a in agents]
+    first = doc.default_agent if doc.default_agent in names else names[0]
+    default = typer.prompt("Default agent", default=first, type=click.Choice(names))
+    queues = []
+    if typer.confirm(
+        f"Add a queue 'general' of workers running {default}?", default=True
+    ):
+        n = typer.prompt("  workers at a time", default=3, type=click.IntRange(1))
+        queues.append(QueueDoc(name="general", agent=default, max_parallel=n))
+    return ConfigDoc(agents=agents, default_agent=default, queues=queues)
+
+
+@app.command()
+def init(
+    root: Path | None = typer.Option(
+        None, help="Where to write .aegis.yaml; default: here."
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Accept every proposal without asking."
+    ),
+    claude: str = typer.Option("claude", help="The claude executable to look for."),
+    opencode: str = typer.Option(
+        "opencode", help="The opencode executable to look for."
+    ),
+) -> None:
+    """Write a first .aegis.yaml from the harnesses installed here."""
+    from .config import write
+    from .doctor import LABELS, detect, propose
+    from .doctor import doctor as run_doctor
+    from .roots import CONFIG_FILE, find_config_root, make_roots
+
+    target = (root or Path.cwd()).resolve()
+    path = target / CONFIG_FILE
+    if not target.is_dir():
+        typer.echo(f"{target} is not a directory", err=True)
+        raise typer.Exit(1)
+    if path.exists():
+        typer.echo(f"{path} already exists; run `aegis doctor` to check it", err=True)
+        raise typer.Exit(1)
+    parent = find_config_root(target.parent) / CONFIG_FILE
+    if parent.is_file():
+        typer.echo(f"{parent} governs {target} now.")
+        if not yes and not typer.confirm(
+            f"Create a new aegis root at {target}?", default=True
+        ):
+            raise typer.Exit(1)
+    bins = _bins(claude, opencode)
+    found = asyncio.run(detect(target, bins))
+    for f in found:
+        if f.bin is None:
+            typer.echo(f"{LABELS[f.harness]}: not found ({f.error})")
+        elif f.error:
+            typer.echo(f"{LABELS[f.harness]}: {f.bin}, {f.error}")
+        else:
+            typer.echo(
+                f"{LABELS[f.harness]}: {f.bin}, {f.version}, {len(f.models)} models"
+            )
+    if not any(f.bin for f in found):
+        typer.echo(
+            "No harness found. Install Claude Code or OpenCode, then run `aegis init` again.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    doc = propose(found)
+    if not yes:
+        doc = _ask(doc, found)
+    if not doc.agents:
+        typer.echo("No agents chosen; nothing written.", err=True)
+        raise typer.Exit(1)
+    if problems := write(path, doc, None):
+        _report(problems)
+        raise typer.Exit(1)
+    typer.echo(f"\nwrote {path}:\n")
+    typer.echo(path.read_text())
+    errors = _report(asyncio.run(run_doctor(make_roots(target, target), bins)))
+    raise typer.Exit(1 if errors else 0)
 
 
 def _open_running(state_root: Path, host: str, port: int, browser: str | None) -> bool:

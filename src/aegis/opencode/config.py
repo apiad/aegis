@@ -77,6 +77,8 @@ def catalog_from(commands: list, providers: dict) -> Catalog:
                 continue
             value = f"{p['id']}/{mid}"
             window = (m.get("limit") or {}).get("context")
+            cost = m.get("cost") or {}
+            caps = m.get("capabilities") or {}
             models.append(
                 Model(
                     value=value,
@@ -85,6 +87,10 @@ def catalog_from(commands: list, providers: dict) -> Catalog:
                     doc="",
                     efforts=tuple((m.get("variants") or {}).keys()),
                     window=window if isinstance(window, int) else None,
+                    free=cost.get("input") == 0
+                    and cost.get("output") == 0
+                    and caps.get("toolcall") is True
+                    and (caps.get("output") or {}).get("text") is True,
                 )
             )
     return Catalog(cmds, tuple(models))

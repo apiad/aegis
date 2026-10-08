@@ -16,6 +16,10 @@ A worker whose process exits on its own fails its task and keeps its tab.
 Tasks are an append-only log, ``<state>/tasks.jsonl``, replayed at boot:
 pending tasks are dispatched again, and a running task's worker is resumed
 with "the server restarted; continue your task".
+
+The queues are read from ``.aegis.yaml`` as it is at each dispatch (config.py),
+so a queue added or changed on disk takes tasks with no restart, and the app
+dispatches again on every change.
 """
 
 from __future__ import annotations
@@ -27,14 +31,15 @@ import secrets
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from .agents import ConfigError, load_agents, read_config, resolve
+from .agents import ConfigError, read_config, resolve
 from .monitors import iso_now
 from .names import default_title
 from .ops import OpError
 
 if TYPE_CHECKING:
+    from .config import Config
     from .monitors import Monitors
     from .registry import Registry
     from .session import Session
@@ -65,14 +70,11 @@ class Task:
         return d
 
 
-def load_queues(config_root: Path) -> dict[str, dict]:
-    """Every queue in ``queues:``. A queue that does not name its agent and a
-    positive ``max_parallel`` is kept with an ``error``, so enqueueing on it
-    says what is wrong; nothing in .aegis.yaml is a default (agents.py)."""
-    try:
-        raw = read_config(config_root).get("queues")
-    except ConfigError:
-        return {}
+def queues_from(raw: Any) -> dict[str, dict]:
+    """Every queue in a parsed ``queues:`` map. A queue that does not name its
+    agent and a positive ``max_parallel`` is kept with an ``error``, so
+    enqueueing on it says what is wrong; nothing in .aegis.yaml is a default
+    (agents.py)."""
     if not isinstance(raw, dict):
         return {}
     out: dict[str, dict] = {}
@@ -94,14 +96,30 @@ def load_queues(config_root: Path) -> dict[str, dict]:
     return out
 
 
+def load_queues(config_root: Path) -> dict[str, dict]:
+    try:
+        raw = read_config(config_root).get("queues")
+    except ConfigError:
+        return {}
+    return queues_from(raw)
+
+
 class Queues:
-    def __init__(self, registry: Registry, monitors: Monitors, path: Path) -> None:
+    def __init__(
+        self, registry: Registry, monitors: Monitors, path: Path, config: Config
+    ) -> None:
         self._registry = registry
         self._monitors = monitors
         self._path = path
-        self.queues = load_queues(registry.roots.config_root)
+        self._config = config
         self.tasks: dict[str, Task] = {}
         self._dispatching = False
+        self._again = False
+
+    @property
+    def queues(self) -> dict[str, dict]:
+        """The queues in .aegis.yaml as it is now (config.py)."""
+        return self._config.current().queues
 
     # -- the log --------------------------------------------------------------
     def _log(self, t: Task, event: str) -> None:
@@ -180,47 +198,61 @@ class Queues:
         return t
 
     async def dispatch(self) -> None:
+        """Start what the queues allow. A call that arrives while a dispatch is
+        running (a config change, a task finishing) makes that dispatch run
+        again, rather than being dropped: its loop read the old limits."""
         if self._dispatching:
+            self._again = True
             return
         self._dispatching = True
         try:
-            # A task logged on a queue that has since lost a field, or been
-            # removed, would wait forever for a slot; fail it with the reason.
-            for t in list(self.tasks.values()):
-                q = self.queues.get(t.queue)
-                if t.status == "pending" and (q is None or "error" in q):
-                    why = q["error"] if q else "it is no longer configured"
-                    self._fail(t, f"its queue {t.queue!r} in .aegis.yaml: {why}")
-            for name, q in self.queues.items():
-                if "error" in q:
-                    continue
-                while True:
-                    running = sum(
-                        1
-                        for t in self.tasks.values()
-                        if t.queue == name and t.status == "running"
-                    )
-                    pending = sorted(
-                        (
-                            t
-                            for t in self.tasks.values()
-                            if t.queue == name and t.status == "pending"
-                        ),
-                        key=lambda t: t.created_at,
-                    )
-                    if not pending or running >= q["max_parallel"]:
-                        break
-                    await self._start(pending[0], q)
+            while True:
+                self._again = False
+                await self._dispatch_once()
+                if not self._again:
+                    break
         finally:
             self._dispatching = False
 
+    async def _dispatch_once(self) -> None:
+        # A task logged on a queue that has since lost a field, or been
+        # removed, would wait forever for a slot; fail it with the reason.
+        # A moment with no file on disk is an editor saving (Vim and Emacs
+        # rename the old file away, a git checkout unlinks it), not a decision
+        # to drop the backlog: tasks wait for the file to come back.
+        present = self._config.current().exists
+        for t in list(self.tasks.values()):
+            q = self.queues.get(t.queue)
+            if present and t.status == "pending" and (q is None or "error" in q):
+                why = q["error"] if q else "it is no longer configured"
+                self._fail(t, f"its queue {t.queue!r} in .aegis.yaml: {why}")
+        for name, q in self.queues.items():
+            if "error" in q:
+                continue
+            while True:
+                running = sum(
+                    1
+                    for t in self.tasks.values()
+                    if t.queue == name and t.status == "running"
+                )
+                pending = sorted(
+                    (
+                        t
+                        for t in self.tasks.values()
+                        if t.queue == name and t.status == "pending"
+                    ),
+                    key=lambda t: t.created_at,
+                )
+                if not pending or running >= q["max_parallel"]:
+                    break
+                await self._start(pending[0], q)
+
     async def _start(self, t: Task, q: dict) -> None:
         try:
-            agents = load_agents(self._registry.roots.config_root)
+            agents = list(self._config.current().agents)
             spec = resolve(agents, None, q["agent"], {}, Path(t.cwd))
-        except (ConfigError, OpError) as e:
-            reason = e.message if isinstance(e, OpError) else str(e)
-            self._fail(t, f"the queue's agent {q['agent']!r} cannot start: {reason}")
+        except OpError as e:
+            self._fail(t, f"the queue's agent {q['agent']!r} cannot start: {e.message}")
             return
         try:
             s = await self._registry.spawn(
