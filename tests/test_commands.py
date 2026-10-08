@@ -242,3 +242,19 @@ async def test_help_reaching_the_server_sends_nothing(app):
     assert await send(app, lid, "/help") is None
     records, _ = read_store(app.sessions.store_path(lid))
     assert not [r for r in records if r.get("kind") == "send"]
+
+
+def test_every_script_the_fake_runs_is_in_the_catalog_it_advertises():
+    """aegis refuses a slash command missing from the session's catalog, so a
+    script the fake handles but does not list cannot be reached. #169 added
+    /bash after #170 started refusing, and its browser test hung on main."""
+    import re
+    from pathlib import Path
+
+    from . import fake_claude
+
+    source = Path(fake_claude.__file__).read_text()
+    handled = set(re.findall(r'word == "/([a-z]+)"', source))
+    for group in re.findall(r"word in \(([^)]*)\)", source):
+        handled |= set(re.findall(r'"/([a-z]+)"', group))
+    assert handled <= {c["name"] for c in fake_claude.COMMANDS}

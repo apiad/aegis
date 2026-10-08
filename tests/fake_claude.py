@@ -8,6 +8,7 @@ stdout. The text of a prompt picks a script:
                    boundary and answered in the same turn, as Claude does.
     /deafsleep N   the same, but it ignores interrupts.
     /fail          a Bash call that fails.
+    /bash D => OUT a Bash call described D whose output is OUT, then a result.
     /notice        three system notices and nothing else.
     /big           a Read whose result is 2 MB on one line.
     /exit N        a few stderr lines, then exit with code N.
@@ -86,6 +87,7 @@ SCRIPTS = (
     "mcp",
     "bgtask",
     "argv",
+    "bash",
 )
 COMMANDS = (
     [
