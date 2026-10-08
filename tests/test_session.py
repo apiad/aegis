@@ -100,7 +100,7 @@ async def test_a_prompt_runs_a_turn(h):
     assert not [k for k in kinds if k[1] == "pending"]
     assert h.session.context_window == 200000 and h.session.context_tokens == 1030
     assert h.session.wire()["model"] == "fake-model"
-    assert h.session.title == "hello" and h.session.claude_session_id
+    assert h.session.title == "hello" and h.session.resume_id
 
 
 async def test_the_store_is_named_by_the_log_id(h):
@@ -163,7 +163,7 @@ async def test_a_dead_claude_leaves_the_session_stopped_and_the_next_prompt_resu
     await h.session.send("/exit 3")
     await until(lambda: h.session.status == "stopped", what="stopped")
     last = h.session.entries()[-1]
-    assert last["summary"] == "claude exited with code 3"
+    assert last["summary"] == "Claude Code exited with code 3"
     assert "fatal: something broke" in last["detail"]["tail"]
     await h.session.send("/recall")
     await until(lambda: h.session.status == "idle", what="the resumed turn")
@@ -198,11 +198,11 @@ async def test_a_stopped_session_resumes_with_its_context_in_the_same_store(h):
         lambda: h.session.status == "idle" and h.session.cost_usd,
         what="the first result",
     )
-    first_id = h.session.claude_session_id
+    first_id = h.session.resume_id
     await h.session.stop()
     await h.session.send("/recall")
     await until(lambda: h.session.status == "idle", what="the resumed turn")
-    assert h.session.claude_session_id == first_id
+    assert h.session.resume_id == first_id
     summaries = [e["summary"] for e in h.session.entries() if e["kind"] == "system"]
     assert "stopped" in summaries and "resumed" in summaries
     prose = [e["md"] for e in h.session.entries() if e["kind"] == "prose"]
@@ -215,9 +215,7 @@ async def test_a_session_rebuilt_from_its_meta_resumes(h):
         lambda: h.session.status == "idle" and h.session.cost_usd, what="the result"
     )
     await h.session.shutdown()
-    kept = {
-        k: v for k, v in h.session.meta().items() if k in ("claude_session_id", "title")
-    }
+    kept = {k: v for k, v in h.session.meta().items() if k in ("resume_id", "title")}
     h.published.clear()
     reborn = h.session = h.make(**kept)
     assert reborn.status == "stopped" and not reborn.running
@@ -230,11 +228,11 @@ async def test_a_session_rebuilt_from_its_meta_resumes(h):
 
 async def test_a_missing_binary_on_resume_leaves_it_stopped(h):
     await h.session.stop()
-    h.session._claude_bin = "/no/such/claude"
+    h.session.harness.bin = "/no/such/claude"
     with pytest.raises(FileNotFoundError):
         await h.session.send("hello")
     assert h.session.status == "stopped" and not h.session.running
-    h.session._claude_bin = h.fake
+    h.session.harness.bin = h.fake
 
 
 async def test_interrupt_on_a_stopped_session_does_nothing(h):

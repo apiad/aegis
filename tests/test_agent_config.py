@@ -77,7 +77,7 @@ def test_an_unsupported_harness_is_disabled_but_not_an_error(tmp_path):
     (a,) = load_agents(
         write(
             tmp_path,
-            "agents:\n  d: {provider: opencode, model: x, effort: high, permission: full}\n",
+            "agents:\n  d: {provider: lovelaice, model: x, effort: high, permission: full}\n",
         )
     )
     assert a.error is None and not a.enabled
@@ -134,7 +134,8 @@ def agents(tmp_path):
             "  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
             "  rev: {harness: claude-code, model: opus, effort: max, permission: read, priming: You review.}\n"
             "  broken: {harness: claude-code, model: opus, permission: full}\n"
-            "  deep: {harness: opencode, model: x, effort: high, permission: full}\n",
+            "  deep: {harness: opencode, model: opencode-go/fake-pro, effort: high, permission: full}\n"
+            "  lovelaice-agent: {harness: lovelaice, model: m, effort: high, permission: full}\n",
         )
     )
 
@@ -182,8 +183,8 @@ def test_no_name_falls_back_to_default_agent(agents, tmp_path):
         (None, "nope", {}, "unknown_agent"),
         (None, "broken", {}, "bad_agent"),
         ("broken", None, {}, "bad_agent"),
-        (None, "deep", {}, "harness_unsupported"),
-        (None, "opus", {"harness": "opencode"}, "harness_unsupported"),
+        (None, "lovelaice-agent", {}, "harness_unsupported"),
+        (None, "opus", {"harness": "opencode"}, "bad_model"),
     ],
 )
 def test_resolve_errors(agents, tmp_path, default, name, overrides, code):
@@ -212,3 +213,17 @@ def test_a_queue_names_its_agent_and_max_parallel(tmp_path):
         "bare": {"error": "agent, max_parallel are missing"},
         "zero": {"error": "max_parallel 0 is not a positive integer"},
     }
+
+
+def test_an_opencode_agent_names_provider_and_model(tmp_path):
+    (a,) = load_agents(
+        write(
+            tmp_path,
+            "agents:\n  d: {provider: opencode, model: x, effort: high, permission: full}\n",
+        )
+    )
+    assert (
+        a.error
+        == "an OpenCode model is provider/model, such as opencode-go/deepseek-v4-pro"
+    )
+    assert not a.enabled

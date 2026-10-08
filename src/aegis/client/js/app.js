@@ -325,7 +325,7 @@ function renderMeta(s) {
   if (!s) return;
   if (!editing.has("title")) $("s-title").textContent = s.title || "untitled";
   if (!editing.has("handle")) $("s-handle").textContent = s.handle;
-  $("s-model").textContent = `Claude Code, ${s.model}`;
+  $("s-model").textContent = `${s.harness_label}, ${s.model}`;
   if (s.attention === undefined) {
     // The archived read view: a stored meta has no attention, so the state alone.
     $("s-status").textContent = s.state;

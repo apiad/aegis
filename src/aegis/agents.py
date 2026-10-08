@@ -30,13 +30,24 @@ from .session import SpawnSpec
 
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 HARNESSES = ("claude-code", "opencode")
-SUPPORTED_HARNESSES = ("claude-code",)
+SUPPORTED_HARNESSES = HARNESSES
 # Claude Code's --model aliases (`claude --help`), offered before the models
 # the agents name.
 MODEL_ALIASES = {"claude-code": ("opus", "sonnet", "haiku", "fable")}
 FIELDS = ("harness", "model", "effort", "permission")
 # Least to most: an agent spawns sessions with at most its own permission.
 PERMISSION_ORDER = ("read", "write", "auto", "full")
+
+
+OPENCODE_MODEL = (
+    "an OpenCode model is provider/model, such as opencode-go/deepseek-v4-pro"
+)
+
+
+def _model_error(harness: str, model: str) -> str | None:
+    if harness == "opencode" and "/" not in model:
+        return OPENCODE_MODEL
+    return None
 
 
 class ConfigError(Exception):
@@ -95,6 +106,7 @@ def _agent(name: str, raw: Any) -> Agent:
         error: str | None = f"{', '.join(missing)} {verb} missing"
     else:
         error = next((e for f in FIELDS if (e := _invalid(f, values[f]))), None)
+        error = error or _model_error(values["harness"], values["model"])
     priming = d.get("priming")
     return Agent(
         name=str(name),
@@ -169,6 +181,8 @@ def resolve(
         raise OpError(
             "harness_unsupported", f"{fields['harness']} is not supported yet"
         )
+    if err := _model_error(fields["harness"], fields["model"]):
+        raise OpError("bad_model", err)
     return SpawnSpec(
         agent=agent.name,
         model=fields["model"],

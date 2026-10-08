@@ -2,8 +2,8 @@
 it has one.
 
 A session exists without a process. ``stopped`` means there is none; the first
-prompt starts ``claude``, with ``--resume`` once Claude has given the session an
-id, and the store and the fold simply continue (Claude prints nothing old on
+prompt starts ``claude``, with ``--resume`` once the harness has given the session
+an id, and the store and the fold simply continue (Claude prints nothing old on
 resume, measured in issue #127). Only shutdown, Stop and Close end a process:
 a session waiting on its own background task wakes itself, so nothing stops an
 idle-looking one.
@@ -34,10 +34,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from .claude import control
 from .claude.control import Catalog
-from .claude.process import ClaudeProcess, build_argv
-from .claude.stream import TURN_BEARING, Init, Notice, Result, parse
+from .claude.process import ControlError
+from .claude.stream import TURN_BEARING, Delta, Init, Notice, Result, Title
+from .harness import Launch, Process, harness_for
 from .meta import MetaStore
 from .names import default_title
 from .transcript.entries import EMPTY_STANDING, Fold, fold_records
@@ -60,8 +60,11 @@ class Host:
     it; the default does nothing, which is what a bare session in a test or
     the bench needs."""
 
-    def spawn_args(self, session: "Session") -> tuple[str | None, str | None]:
-        """The ``--mcp-config`` and the appended system prompt for a new process."""
+    def spawn_args(
+        self, session: "Session"
+    ) -> tuple[tuple[str, str] | None, str | None]:
+        """The aegis MCP URL and this session's token, and the appended system
+        prompt, for a new process."""
         return None, None
 
     def turn_ended(self, session: "Session") -> None: ...
@@ -156,7 +159,7 @@ class Session:
         publish: Publish,
         metas: MetaStore,
         title: str = "",
-        claude_session_id: str | None = None,
+        resume_id: str | None = None,
         archived: bool = False,
         created_at: float | None = None,
         last_activity: float | None = None,
@@ -170,15 +173,19 @@ class Session:
         host: Host = NO_HOST,
         held: list[dict] | None = None,
         worker: dict | None = None,
+        opencode_bin: str = "opencode",
+        title_set: bool = False,
         standing: dict | None = None,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
         self.handle = handle
         self.title = title
+        # A person or an agent named it; the harness's own title then waits.
+        self.title_set = title_set
         self.store = store
         self.channel = f"transcript:{log_id}"
-        self.claude_session_id = claude_session_id
+        self.resume_id = resume_id
         self.archived = archived
         self.created_at = created_at or time.time()
         self.last_activity = last_activity or self.created_at
@@ -190,12 +197,12 @@ class Session:
         self.model_id = model_id
         self.status = "stopped"
         self._stderr_path = stderr_path
-        self._claude_bin = claude_bin
+        self.harness = harness_for(spec.harness, claude_bin, opencode_bin)
         self._publish = publish
         self._metas = metas
         self._interrupt_timeout = interrupt_timeout
         self._fold: Fold | None = None
-        self._proc: ClaudeProcess | None = None
+        self._proc: Process | None = None
         self._stopping = False
         self._interrupt_timer: asyncio.Task | None = None
         self._publish_timer: asyncio.TimerHandle | None = None
@@ -203,6 +210,11 @@ class Session:
         # Inbox messages waiting for this session's turn to end.
         self.held: list[dict] = list(held or [])
         self._flushing = False
+        # One start at a time: an OpenCode start takes seconds, and two sends
+        # in that window must not start two children.
+        self._starting = asyncio.Lock()
+        # Bumped per process start, so a stale process's exit changes nothing.
+        self._generation = 0
         # Claude's own tasks started and not yet notified (Bash, background).
         self.open_tasks: set[str] = set()
         self.worker = worker
@@ -220,9 +232,10 @@ class Session:
             "log_id": self.log_id,
             "handle": self.handle,
             "title": self.title,
+            "title_set": self.title_set,
             **s.record(),
             "model_id": self.model_id,
-            "claude_session_id": self.claude_session_id,
+            "resume_id": self.resume_id,
             "archived": self.archived,
             "created_at": self.created_at,
             "last_activity": self.last_activity,
@@ -245,6 +258,7 @@ class Session:
         m["held_count"] = len(self.held)
         m["state"] = self.status
         m["model"] = self.model_id or self.spec.model
+        m["harness_label"] = self.harness.label
         m.update(self._host.card(self))
         return m
 
@@ -285,45 +299,79 @@ class Session:
         await self.ensure_running()
 
     async def ensure_running(self) -> None:
-        """Start ``claude`` if there is no process. Raises FileNotFoundError when
-        the binary is missing, leaving the session stopped."""
-        if self.running:
-            return
-        resume = self.claude_session_id
-        mcp_config, system_prompt = self._host.spawn_args(self)
-        argv = build_argv(
-            self._claude_bin,
-            self.spec.model,
-            self.spec.effort,
-            self.spec.permission,
-            resume,
-            **({"mcp_config": mcp_config} if mcp_config else {}),
-            system_prompt=system_prompt,
+        """Start the harness if there is no process. Raises FileNotFoundError
+        when its binary is missing, leaving the session stopped."""
+        async with self._starting:
+            if not self.running:
+                await self._start_process()
+
+    async def _start_process(self) -> None:
+        self._generation += 1
+        generation = self._generation
+
+        def on_exit(code: int, tail: list[str]) -> None:
+            if generation == self._generation:
+                self._on_exit(code, tail)
+
+        resume = self.resume_id
+        mcp, system_prompt = self._host.spawn_args(self)
+        proc = self.harness.process(
+            Launch(
+                cwd=self.spec.cwd,
+                model=self.spec.model,
+                effort=self.spec.effort,
+                permission=self.spec.permission,
+                resume_id=resume,
+                mcp=mcp,
+                system_prompt=system_prompt,
+                stderr_path=self._stderr_path,
+                on_line=self._on_line,
+                on_exit=on_exit,
+                on_error=self._on_error,
+            )
         )
-        proc = ClaudeProcess(
-            argv, self.spec.cwd, self._stderr_path, self._on_line, self._on_exit
-        )
+        # Before the start: a harness can speak while it starts (OpenCode's
+        # session.created), and a line read while stopping is dropped.
+        self._stopping = False
         await proc.start()
         self._proc = proc
         self.catalog_task = asyncio.create_task(self._fetch_catalog(proc))
-        self._stopping = False
         self.open_tasks.clear()
         if resume:
-            self._record({"kind": "resume", "claude_session_id": resume})
+            self._record({"kind": "resume", "resume_id": resume})
+        sid = proc.session_id
+        if resume and sid and sid != resume:
+            self._record(
+                {
+                    "kind": "reset",
+                    "text": f"{self.harness.label} no longer had this conversation; "
+                    "it started a new one",
+                }
+            )
+        if sid:
+            self._set(resume_id=sid)
         self._set(status="idle")
 
-    async def _fetch_catalog(self, proc: ClaudeProcess) -> Catalog | None:
+    async def _fetch_catalog(self, proc: Process) -> Catalog | None:
         try:
-            cat = await control.catalog(proc)
+            cat = await proc.catalog()
         except (
-            control.ControlError,
+            ControlError,
             TimeoutError,
             BrokenPipeError,
             ConnectionResetError,
         ):
             return None
         self._host.catalog_ready(self, cat)
+        self._window_from(cat)
         return cat
+
+    def _window_from(self, cat: Catalog | None) -> None:
+        """A harness whose events name no context window (OpenCode) has it in
+        its catalog."""
+        m = cat.model(self.spec.model) if cat is not None else None
+        if m is not None and m.window:
+            self._set(context_window=m.window)
 
     async def configure(
         self,
@@ -343,24 +391,26 @@ class Session:
             if self.status == "working"
             else ""
         )
-        steps = (
-            ("model", model, control.set_model),
-            ("effort", effort, control.set_effort),
-            ("permission", permission, control.set_permission),
-        )
         applied: dict[str, str] = {}
         try:
-            for kind, value, setter in steps:
+            for kind, value in (
+                ("model", model),
+                ("effort", effort),
+                ("permission", permission),
+            ):
                 if not value:
                     continue
                 if proc is not None:
-                    await setter(proc, value)
+                    await proc.set(kind, value)
                 applied[kind] = value
         finally:
             if applied:
                 self.spec = dataclasses.replace(self.spec, **applied)
                 if "model" in applied:
                     self.model_id = None  # the next init names the resolved id
+                    t = self.catalog_task
+                    if t is not None and t.done() and not t.cancelled():
+                        self._window_from(t.result())
                 self._record(
                     {"kind": "configure", **applied, **({"when": when} if when else {})}
                 )
@@ -398,24 +448,24 @@ class Session:
             # A slash command names no task; the first prompt does.
             self._set(title=default_title(text))
         self._record({"kind": "send", "text": text})
-        await self._proc.write(
-            {"type": "user", "message": {"role": "user", "content": text}}
-        )
+        # Working before the send returns: a harness can answer during it (an
+        # OpenCode command refused before it starts a turn).
         self._set(status="working")
+        try:
+            await self._proc.send(text)
+        except Exception as e:
+            self._on_error(f"the message did not reach the agent: {e}", True, text)
+            raise
 
     async def interrupt(self) -> None:
         if self.status != "working" or self._proc is None:
             return
         self._record({"kind": "interrupt"})
-        await self._proc.write(
-            {
-                "type": "control_request",
-                "request_id": f"aegis_interrupt_{time.monotonic_ns()}",
-                "request": {"subtype": "interrupt"},
-            }
-        )
+        # The deadline first: an interrupt that cannot reach the child still
+        # ends in "error" instead of leaving the session working.
         if self._interrupt_timer is None or self._interrupt_timer.done():
             self._interrupt_timer = asyncio.create_task(self._interrupt_deadline())
+        await self._proc.interrupt()
 
     async def stop(self) -> None:
         """End the process and keep the session."""
@@ -511,8 +561,17 @@ class Session:
     def _on_line(self, line: str) -> None:
         if self._stopping:
             return
-        events = parse(line)
-        self._record({"src": "claude", "line": line}, events)
+        fold = self.fold()
+        events = fold.parse(self.harness.src, line)
+        if events and all(isinstance(ev, Delta) for ev in events):
+            # Never stored: the part's closing update carries the whole text.
+            self._publish(self.channel, fold.live(events))
+            self._set(
+                activity=fold.activity(),
+                **({"status": "working"} if self.status == "idle" else {}),
+            )
+            return
+        self._record({"src": self.harness.src, "line": line}, events)
         changes: dict[str, object] = {}
         tasks = len(self.open_tasks)
         for ev in events:
@@ -521,11 +580,13 @@ class Session:
             usage = getattr(ev, "usage", None)
             if usage is not None and getattr(ev, "parent", None) is None:
                 changes["context_tokens"] = usage.context
+            if isinstance(ev, Title) and not self.title_set:
+                changes["title"] = ev.text
             if isinstance(ev, Init):
                 if ev.model:
                     changes["model_id"] = ev.model
                 if ev.session_id:
-                    changes["claude_session_id"] = ev.session_id
+                    changes["resume_id"] = ev.session_id
             if isinstance(ev, Notice) and ev.task_id:
                 if ev.subtype == "task_started":
                     self.open_tasks.add(ev.task_id)
@@ -555,9 +616,27 @@ class Session:
             return
         self._proc = None
         self.open_tasks.clear()
-        self._record({"kind": "exit", "code": code, "stderr_tail": stderr_tail})
+        self._record(
+            {
+                "kind": "exit",
+                "code": code,
+                "stderr_tail": stderr_tail,
+                "harness": self.harness.label,
+            }
+        )
         self._set(status="stopped")
         self._host.exited(self, code, stderr_tail)
+
+    def _on_error(self, text: str, idle: bool, line: str | None = None) -> None:
+        if self._stopping:
+            return
+        rec: dict = {"kind": "harness_error", "text": text}
+        if line:
+            rec["line"] = line
+        self._record(rec)
+        if idle and self.status == "working":
+            self._set(status="idle")
+            self._host.turn_ended(self)
 
 
 def _inbox_text(batch: list[dict]) -> str:

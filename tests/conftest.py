@@ -23,6 +23,24 @@ def fake_claude(tmp_path: Path) -> str:
     return str(path)
 
 
+FAKE_OPENCODE = Path(__file__).parent / "fake_opencode.py"
+
+
+@pytest.fixture
+def fake_opencode(tmp_path: Path) -> str:
+    """An executable that runs the fake opencode, as a session would exec it."""
+    path = tmp_path / "bin-opencode" / "opencode"
+    path.parent.mkdir()
+    home = tmp_path / "fake-opencode-home"
+    home.mkdir()
+    path.write_text(
+        f'#!/bin/sh\nexport FAKE_OPENCODE_HOME="{home}"\n'
+        f'exec "{sys.executable}" "{FAKE_OPENCODE}" "$@"\n'
+    )
+    path.chmod(path.stat().st_mode | stat.S_IEXEC)
+    return str(path)
+
+
 async def until(pred, timeout: float = 3.0, what: str = "condition") -> None:
     end = asyncio.get_running_loop().time() + timeout
     while not pred():

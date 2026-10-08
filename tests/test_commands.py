@@ -96,13 +96,13 @@ async def test_claudes_commands_pass_through_and_fold_cleanly(app):
     for text in ("/context", "/hello world", "/compact"):
         await send(app, lid, text)
         await until(lambda: s.status == "idle", what=text)
-    await until(lambda: s.claude_session_id, what="a session id")
-    first_id = s.claude_session_id
+    await until(lambda: s.resume_id, what="a session id")
+    first_id = s.resume_id
     await send(app, lid, "/clear")
     await until(lambda: s.status == "idle", what="/clear")
     await send(app, lid, "after")
     await until(
-        lambda: s.status == "idle" and s.claude_session_id != first_id,
+        lambda: s.status == "idle" and s.resume_id != first_id,
         what="the new conversation",
     )
     es = s.entries()

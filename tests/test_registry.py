@@ -157,7 +157,7 @@ async def test_missing_and_damaged_metas_are_rebuilt_from_their_stores(world):
     r2 = world.registry()
     titles = sorted(m["title"] for m in r2.archived.values())
     assert titles == ["alpha prompt", "beta prompt"]
-    assert all(m["claude_session_id"] for m in r2.archived.values())
+    assert all(m["resume_id"] for m in r2.archived.values())
     assert "junk" not in r2.archived and "junk" not in r2.sessions
     reopened = r2.reopen(a.log_id)
     await reopened.send("/recall")
@@ -306,6 +306,50 @@ async def test_the_priming_never_leaves_the_server_from_the_archive(world):
     assert "priming" not in r.rename(s.log_id, None, "renamed")
     # The stored meta keeps it, so a reopened session resumes with it.
     assert r.archived[s.log_id]["priming"] == "secret text"
+
+
+def test_a_meta_from_before_the_rename_still_resumes(world):
+    from aegis.meta import MetaStore
+
+    MetaStore(world.roots.state_root / "sessions").write(
+        {
+            "log_id": "old-1",
+            "handle": "old-owl",
+            "agent": "opus",
+            "harness": "claude-code",
+            "model": "opus",
+            "effort": "high",
+            "permission": "full",
+            "cwd": str(world.roots.config_root),
+            "claude_session_id": "cs-old",
+            "created_at": 1.0,
+        }
+    )
+    r = world.registry()
+    assert r.sessions["old-1"].resume_id == "cs-old"
+    assert r.sessions["old-1"].meta()["resume_id"] == "cs-old"
+
+
+async def test_a_spawn_whose_harness_fails_to_start_leaves_nothing(
+    tmp_path, fake_opencode, monkeypatch
+):
+    (tmp_path / ".aegis.yaml").write_text("agents: {}\n")
+    monkeypatch.setenv("FAKE_OPENCODE_DIE", "1")
+    published = []
+    r = Registry(
+        make_roots(tmp_path, None),
+        lambda ch, ops: published.append((ch, ops)),
+        "claude",
+        opencode_bin=fake_opencode,
+    )
+    r.boot()
+    spec = SpawnSpec(
+        "d", "opencode-go/fake-pro", "high", "full", tmp_path, harness="opencode"
+    )
+    with pytest.raises(OSError):
+        await r.spawn(spec)
+    assert r.sessions == {}
+    assert not list((r.roots.state_root / "transcripts").glob("*.jsonl"))
 
 
 async def test_the_archive_list_ships_no_standing_or_priming(world):

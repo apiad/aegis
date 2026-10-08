@@ -35,6 +35,8 @@ class Init:
     session_id: str | None
     model: str | None
     version: str | None
+    # Who printed it, for the transcript's first line.
+    harness: str = "Claude Code"
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,9 @@ class Text:
     text: str
     parent: str | None
     usage: Usage | None
+    # A harness that updates one part in place (OpenCode) names it; the entry
+    # id is then the key. Claude's blocks have none.
+    key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -49,6 +54,7 @@ class Thinking:
     text: str
     parent: str | None
     usage: Usage | None
+    key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -70,9 +76,38 @@ class ToolOutput:
 
 @dataclass(frozen=True)
 class Echo:
-    """A prompt Claude has read, echoed back by ``--replay-user-messages``."""
+    """A prompt the harness has read: Claude echoes it with
+    ``--replay-user-messages``. ``expands`` marks a harness that echoes a slash
+    command as its expanded template (OpenCode), never as the line."""
 
     text: str
+    expands: bool = False
+
+
+@dataclass(frozen=True)
+class Delta:
+    """A few more characters of an open text (``prose``) or reasoning
+    (``thinking``) part. Folded live and never stored: the part's closing
+    update carries the whole text."""
+
+    key: str
+    kind: str
+    text: str
+
+
+@dataclass(frozen=True)
+class Title:
+    """The title the harness generated for the conversation."""
+
+    text: str
+
+
+@dataclass(frozen=True)
+class Step:
+    """What one finished model step used (OpenCode's ``step-finish``)."""
+
+    usage: Usage
+    parent: str | None = None
 
 
 @dataclass(frozen=True)
@@ -165,6 +200,9 @@ Event = (
     | Compact
     | Ignored
     | Garbled
+    | Delta
+    | Title
+    | Step
 )
 
 # Events that only occur inside a turn. Anything else on the wire (system

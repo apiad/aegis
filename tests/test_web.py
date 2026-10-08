@@ -21,7 +21,7 @@ def project(tmp_path: Path) -> Path:
         "agents:\n"
         "  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
         "  reviewer: {harness: claude-code, model: claude-sonnet-5, effort: max, permission: read, priming: You review.}\n"
-        "  deepseek: {harness: opencode, model: x, effort: high, permission: full}\n"
+        "  deepseek: {harness: opencode, model: opencode-go/fake-pro, effort: high, permission: full}\n"
         "  broken: {harness: claude-code, model: opus, permission: full}\n"
     )
     (tmp_path / "repo").mkdir()
@@ -196,18 +196,18 @@ def test_agents_list(project, fake_claude):
     assert [(a["name"], a["enabled"], a["error"]) for a in r["agents"]] == [
         ("opus", True, None),
         ("reviewer", True, None),
-        ("deepseek", False, None),
+        ("deepseek", True, None),
         ("broken", False, "effort is missing"),
     ]
     reviewer = r["agents"][1]
     assert reviewer["has_priming"] is True and "priming" not in reviewer
     assert r["harnesses"] == [
         {"name": "claude-code", "supported": True},
-        {"name": "opencode", "supported": False},
+        {"name": "opencode", "supported": True},
     ]
     assert r["models"] == {
         "claude-code": ["opus", "sonnet", "haiku", "fable", "claude-sonnet-5"],
-        "opencode": ["x"],
+        "opencode": ["opencode-go/fake-pro"],
     }
     assert r["cwd"] == str(project)
 
@@ -328,8 +328,7 @@ def test_two_clients_see_the_same_patches(project, fake_claude):
     [
         ({"agent": "nope"}, "unknown_agent"),
         ({"agent": "broken"}, "bad_agent"),
-        ({"agent": "deepseek"}, "harness_unsupported"),
-        ({"agent": "opus", "harness": "opencode"}, "harness_unsupported"),
+        ({"agent": "opus", "harness": "opencode"}, "bad_model"),
         ({"agent": "opus", "cwd": "/"}, "bad_cwd"),
         ({"agent": "opus", "cwd": "missing"}, "bad_cwd"),
         ({"agent": "opus", "effort": "huge"}, "bad_params"),
@@ -400,7 +399,7 @@ def test_a_missing_claude_leaves_no_session_behind(project, tmp_path):
         conn = Conn(ws).hello()
         assert (
             conn.call("session.spawn", agent="opus")["error"]["code"]
-            == "claude_not_found"
+            == "harness_not_found"
         )
         ws.send_json({"t": "sub", "channel": "sessions"})
         assert conn.until(lambda m: m["t"] == "snapshot")["data"] == []

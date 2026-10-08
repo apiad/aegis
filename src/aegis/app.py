@@ -110,7 +110,7 @@ class ArchiveParams(_Strict):
 def _dead(e: Exception) -> OpError:
     return OpError(
         "session_dead",
-        f"claude stopped while being written to: {e}; send again to resume",
+        f"the agent stopped while being written to: {e}; send again to resume",
     )
 
 
@@ -122,9 +122,11 @@ class App:
         interrupt_timeout: float = 10.0,
         base_url: str | None = None,
         server_name: str = "aegis",
+        opencode_bin: str = "opencode",
     ) -> None:
         self.roots = roots
         self.claude_bin = claude_bin
+        self.opencode_bin = opencode_bin
         self.channels = Channels(self._resolve)
         # Every session's card changes go out together, a few times a second at
         # most, however many sessions are working (#158).
@@ -134,7 +136,13 @@ class App:
             PUBLISH_EVERY_S,
         )
         self._on_wire: dict[str, tuple] = {}  # log_id -> its fields a person acts on
-        self.sessions = Registry(roots, self.publish, claude_bin, interrupt_timeout)
+        self.sessions = Registry(
+            roots,
+            self.publish,
+            claude_bin,
+            interrupt_timeout,
+            opencode_bin=opencode_bin,
+        )
         self.tokens = Tokens()
         self.monitors = Monitors(self.sessions, roots.state_root / "monitors.json")
         self.queues = Queues(
@@ -153,7 +161,7 @@ class App:
         )
         reg.quota = self.quota
         self.catalogs = commands.Catalogs(
-            claude_bin, roots.state_root / "stderr" / "catalog-probe.log"
+            roots.state_root / "stderr" / "catalog-probe.log"
         )
         reg.catalogs = self.catalogs
         reg.mcp_url = f"{base_url.rstrip('/')}{MCP_PATH}" if base_url else None
@@ -162,6 +170,9 @@ class App:
         self._register()
         register_agent_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
+
+    def _bin(self, harness: str) -> str:
+        return self.opencode_bin if harness == "opencode" else self.claude_bin
 
     async def boot(self) -> None:
         self.sessions.boot()
@@ -258,9 +269,11 @@ class App:
         try:
             await s.configure(model=model, effort=effort, permission=permission)
         except ControlError as e:
-            raise OpError("refused", f"claude refused: {e}") from e
+            raise OpError("refused", f"{s.harness.label} refused: {e}") from e
         except TimeoutError as e:
-            raise OpError("timeout", "claude did not answer within 15 s") from e
+            raise OpError(
+                "timeout", f"{s.harness.label} did not answer within 15 s"
+            ) from e
         except (BrokenPipeError, ConnectionResetError) as e:
             raise _dead(e) from e
         return s.wire()
@@ -352,7 +365,11 @@ class App:
                 s = await reg.spawn(spec)
             except FileNotFoundError as e:
                 raise OpError(
-                    "claude_not_found", f"cannot run {self.claude_bin!r}: {e}"
+                    "harness_not_found", f"cannot run {self._bin(spec.harness)!r}: {e}"
+                ) from e
+            except (OSError, TimeoutError) as e:
+                raise OpError(
+                    "harness_failed", f"{self._bin(spec.harness)!r} did not start: {e}"
                 ) from e
             if p.prompt:
                 try:
@@ -384,7 +401,8 @@ class App:
                 await s.send(commands.escape(p.text))
             except FileNotFoundError as e:
                 raise OpError(
-                    "claude_not_found", f"cannot run {self.claude_bin!r}: {e}"
+                    "harness_not_found",
+                    f"cannot run {self._bin(s.spec.harness)!r}: {e}",
                 ) from e
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e

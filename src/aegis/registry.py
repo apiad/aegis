@@ -49,10 +49,12 @@ class Registry(Host):
         publish: Publish,
         claude_bin: str = "claude",
         interrupt_timeout: float = 10.0,
+        opencode_bin: str = "opencode",
     ) -> None:
         self.roots = roots
         self._publish = publish
         self._claude_bin = claude_bin
+        self._opencode_bin = opencode_bin
         self._interrupt_timeout = interrupt_timeout
         self.metas = MetaStore(roots.state_root / "sessions")
         self.sessions: dict[str, Session] = {}
@@ -67,16 +69,16 @@ class Registry(Host):
         self.catalogs = None
 
     # -- the Host a session asks ----------------------------------------------
-    def spawn_args(self, session: Session) -> tuple[str | None, str | None]:
+    def spawn_args(self, session: Session) -> tuple[tuple[str, str] | None, str | None]:
         priming = session.spec.priming
         if self.mcp_url is None or self.tokens is None:
             return None, priming
-        from .mcp import mcp_config, primer
+        from .mcp import primer
 
         prompt = primer(session, self.server_name)
         if priming:
             prompt += "\n\n" + priming
-        return mcp_config(self.mcp_url, self.tokens.mint(session.log_id)), prompt
+        return (self.mcp_url, self.tokens.mint(session.log_id)), prompt
 
     def turn_ended(self, session: Session) -> None:
         if self.queues is not None:
@@ -140,7 +142,7 @@ class Registry(Host):
 
     def catalog_ready(self, session: Session, catalog) -> None:
         if self.catalogs is not None:
-            self.catalogs.put(session.spec.cwd, catalog)
+            self.catalogs.put(session.spec.harness, session.spec.cwd, catalog)
 
     def refresh_card(self, log_id: str) -> None:
         s = self.sessions.get(log_id)
@@ -176,10 +178,12 @@ class Registry(Host):
             store=Store(self.store_path(meta["log_id"])),
             stderr_path=self._stderr_path(meta["log_id"]),
             claude_bin=self._claude_bin,
+            opencode_bin=self._opencode_bin,
             publish=self._publish,
             metas=self.metas,
             title=meta.get("title") or "",
-            claude_session_id=meta.get("claude_session_id"),
+            title_set=bool(meta.get("title_set")),
+            resume_id=meta.get("resume_id") or meta.get("claude_session_id"),
             created_at=meta.get("created_at"),
             last_activity=meta.get("last_activity"),
             last_status=meta.get("last_status") or "stopped",
@@ -269,7 +273,7 @@ class Registry(Host):
         self._publish("sessions", [{"upsert": s.wire()}])
         try:
             await s.start()
-        except FileNotFoundError:
+        except (OSError, TimeoutError):
             del self.sessions[log_id]
             s.store.close()
             self.store_path(log_id).unlink(missing_ok=True)
@@ -324,6 +328,8 @@ class Registry(Host):
             changes = {
                 k: v for k, v in (("handle", handle), ("title", title)) if v is not None
             }
+            if title is not None:
+                s.title_set = True
             s._set(**changes)
             self.metas.write(s.meta())
             return s.wire()
@@ -332,6 +338,7 @@ class Registry(Host):
             meta["handle"] = handle
         if title is not None:
             meta["title"] = title
+            meta["title_set"] = True
         self.metas.write(meta)
         return _public(meta)
 

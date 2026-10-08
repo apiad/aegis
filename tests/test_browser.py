@@ -28,8 +28,9 @@ def _free_port() -> int:
 
 
 class Server:
-    def __init__(self, root: Path, claude: str):
+    def __init__(self, root: Path, claude: str, opencode: str | None = None):
         self.root, self.claude, self.port = root, claude, _free_port()
+        self.opencode = opencode
         self.releases = root / "pypi.json"
         self.env: dict[str, str] = {}
         self.proc = None
@@ -55,6 +56,7 @@ class Server:
                 str(self.port),
                 "--claude",
                 self.claude,
+                *(["--opencode", self.opencode] if self.opencode else []),
                 "--log-level",
                 "info",
             ],
@@ -89,14 +91,14 @@ class Server:
 
 CONFIG = (
     "default_agent: opus\nagents:\n  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
-    "  deepseek: {provider: opencode, model: opencode-go/deepseek-v4-pro, effort: high, permission: full}\n"
+    "  deepseek: {provider: opencode, model: opencode-go/fake-pro, effort: high, permission: full}\n"
 )
 
 
 @pytest.fixture
-def server(tmp_path: Path, fake_claude: str):
+def server(tmp_path: Path, fake_claude: str, fake_opencode: str):
     (tmp_path / ".aegis.yaml").write_text(CONFIG)
-    s = Server(tmp_path, fake_claude).start()
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
     yield s
     s.stop()
 
@@ -1299,6 +1301,35 @@ def test_help_opens_the_menu_and_sends_nothing(server, page):
     assert menu_rows(page)[0] == "/model"
     assert page.evaluate("document.querySelectorAll('.row.user').length") == 1
     assert page.errors == []
+
+
+def test_an_opencode_session_streams_and_calls_aegis(server, page):
+    page.goto(server.url)
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value !== ''")
+    page.select_option("#sp-agent", "deepseek")
+    page.click("#sp-go")
+    page.wait_for_selector("#a2[data-view=session]")
+    # Subscribed before the stream starts: the text can only arrive as patches.
+    page.fill("#input", "/stream 6")
+    page.press("#input", "Enter")
+    page.wait_for_function(
+        "[...document.querySelectorAll('.row.prose .body')]"
+        ".some(b => b.textContent.includes('chunk1'))"
+    )
+    prose = page.inner_text(".row.prose .body")
+    assert "chunk6" not in prose, "the text is drawn while it streams"
+    turns_done(page, 1)
+    assert page.inner_text("#s-model") == "OpenCode, opencode-go/fake-pro"
+    page.wait_for_function(
+        "document.querySelector('#s-cost').textContent === '$0.0020'"
+    )
+
+    page.fill("#input", "/mcp meta {}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    assert "meta" in page.locator(".row.tool.ok").last.inner_text()
+    assert "OpenCode 1.18.31" in page.inner_text("#entries")
 
 
 # -- attention (#171) -----------------------------------------------------------

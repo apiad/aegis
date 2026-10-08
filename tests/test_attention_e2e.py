@@ -95,7 +95,7 @@ async def test_a_dead_process_is_an_error_until_the_next_send(world):
     await until(lambda: a.status == "stopped", timeout=8, what="the exit")
     c = a.wire()
     assert c["attention"] == "error"
-    assert c["attention_line"] == "claude exited with code 3"
+    assert c["attention_line"] == "Claude Code exited with code 3"
     await turn(a, "hello again")
     assert a.wire()["attention"] == "done"
 

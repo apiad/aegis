@@ -26,6 +26,7 @@ from ..claude.stream import (
     CommandEcho,
     CommandOutput,
     Compact,
+    Delta,
     Echo,
     Event,
     Garbled,
@@ -40,7 +41,20 @@ from ..claude.stream import (
     parse,
 )
 from .. import files
+from ..opencode.stream import Parser as OpenCodeParser
 from . import describe as d
+
+
+class _Stateless:
+    """Claude's stream-json needs no memory between lines."""
+
+    def feed(self, line: str) -> list[Event]:
+        return parse(line)
+
+
+# The store's src tag -> a parser factory. A fold keeps one parser per tag, so
+# a harness whose events need earlier lines (OpenCode's) sees them in order.
+PARSERS: dict[str, Any] = {"claude": _Stateless, "opencode": OpenCodeParser}
 
 
 def _entry(
@@ -95,6 +109,11 @@ class Fold:
         self._seen_init = False
         self._interrupted = False
         self._last_cost = 0.0
+        self._parsers: dict[str, Any] = {}
+        # Entries only deltas made, whose part has not closed yet.
+        self._live: set[str] = set()
+        # A prompt was sent or read and its turn has said nothing back yet.
+        self._turn_open = False
         self.standing: dict = EMPTY_STANDING
         self._turns = 0  # results seen
         self._report_turn = -1  # self._turns when the current report was made
@@ -109,13 +128,72 @@ class Fold:
         parse; a re-fold passes nothing and parses the stored line.
         """
         i, ts = record["i"], record.get("ts")
-        if record.get("src") == "claude":
-            evs = events if events is not None else parse(record.get("line", ""))
+        src = record.get("src")
+        if src in PARSERS:
+            evs = (
+                events
+                if events is not None
+                else self.parse(src, record.get("line", ""))
+            )
             ops: list[dict] = []
             for k, ev in enumerate(evs):
                 ops += self._event(f"e{i}.{k}", ts, ev)
             return ops
         return self._own(i, ts, record)
+
+    def parse(self, src: str, line: str) -> list[Event]:
+        """One stored or live line of harness ``src``, through this fold's parser."""
+        p = self._parsers.get(src)
+        if p is None:
+            p = self._parsers[src] = PARSERS[src]()
+        return p.feed(line)
+
+    def live(self, events: list[Event]) -> list[dict]:
+        """Deltas: grow their part's entry without a store record. The part's
+        closing update replaces the text, so a reload agrees once it closes."""
+        ops: list[dict] = []
+        for ev in events:
+            if not isinstance(ev, Delta) or not ev.key:
+                continue
+            e = self._entries.get(ev.key)
+            if e is None:
+                thinking = ev.kind == "thinking"
+                e = _entry(
+                    ev.key,
+                    "thinking" if thinking else "prose",
+                    "ok",
+                    None,
+                    d.THINKING_GLYPH if thinking else d.PROSE_GLYPH,
+                    title="Thinking" if thinking else "",
+                    md="",
+                )
+                self._live.add(ev.key)
+            ops += self._upsert({**e, "md": (e.get("md") or "") + ev.text})
+        return ops
+
+    def _end_turn(self) -> None:
+        """A turn ended without a result: each parser forgets it."""
+        self._turn_open = False
+        for p in self._parsers.values():
+            end = getattr(p, "end_turn", None)
+            if end is not None:
+                end()
+
+    def _drop_live(self) -> list[dict]:
+        """Entries only deltas made, whose part never closed."""
+        ops: list[dict] = []
+        for key in sorted(self._live):
+            ops += self._remove(key)
+        self._live.clear()
+        return ops
+
+    def _exact(self, want: str) -> str | None:
+        """Remove and return the pending send whose text is ``want``."""
+        for p in self._pending:
+            if ((self._entries.get(p) or {}).get("md") or "").strip() == want.strip():
+                self._pending.remove(p)
+                return p
+        return None
 
     # -- helpers -------------------------------------------------------
     def _stand(self, **changes: Any) -> None:
@@ -174,6 +252,8 @@ class Fold:
                 continue
             if e["kind"] == "file":
                 return _cut(f"sent {e['title']}")
+            if e["kind"] == "user" and self._turn_open:
+                return "waiting for the model"
             if e["kind"] in ("prose", "user") and e.get("md"):
                 first = next(
                     (ln.strip() for ln in e["md"].splitlines() if ln.strip()), ""
@@ -193,6 +273,7 @@ class Fold:
     def _own(self, i: int, ts: float | None, rec: dict) -> list[dict]:
         kind = rec.get("kind")
         if kind == "send":
+            self._turn_open = True
             self._stand(report=None, turn_error="")
             pid = f"pending:{i}"
             self._pending.append(pid)
@@ -240,9 +321,13 @@ class Fold:
             )
         if kind == "exit":
             stderr = "\n".join(rec.get("stderr_tail") or [])
-            self._stand(turn_error=f"claude exited with code {rec.get('code')}")
+            self._end_turn()
+            self._stand(
+                turn_error=f"{rec.get('harness') or 'claude'} exited with code {rec.get('code')}"
+            )
             return (
-                self._end_calls("no result")
+                self._drop_live()
+                + self._end_calls("no result")
                 + self._lose_pending()
                 + self._upsert(
                     _entry(
@@ -251,17 +336,19 @@ class Fold:
                         "err",
                         ts,
                         d.ERROR_GLYPH,
-                        summary=f"claude exited with code {rec.get('code')}",
+                        summary=f"{rec.get('harness') or 'claude'} exited with code {rec.get('code')}",
                         detail={"tail": stderr, "collapsed": False},
                     )
                 )
             )
         if kind in ("stop", "server_stopped"):
             line = "stopped" if kind == "stop" else "the server stopped during a turn"
+            self._end_turn()
             if kind == "server_stopped":
                 self._stand(turn_error="the server stopped during a turn")
             return (
-                self._end_calls("no result")
+                self._drop_live()
+                + self._end_calls("no result")
                 + self._lose_pending()
                 + self._upsert(
                     _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary=line)
@@ -312,6 +399,35 @@ class Fold:
             return self._upsert(
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary=line)
             )
+        if kind == "harness_error":
+            ops: list[dict] = []
+            line = rec.get("line")
+            if line:
+                pid = self._exact(str(line))
+                if pid is not None:
+                    ops += self._upsert({**self._entries[pid], "status": "lost"})
+            return ops + self._upsert(
+                _entry(
+                    f"e{i}",
+                    "error",
+                    "err",
+                    ts,
+                    d.ERROR_GLYPH,
+                    summary=str(rec.get("text")),
+                )
+            )
+        if kind == "reset":
+            self._end_turn()
+            return self._upsert(
+                _entry(
+                    f"e{i}",
+                    "system",
+                    "ok",
+                    ts,
+                    d.SYSTEM_GLYPH,
+                    summary=str(rec.get("text")),
+                )
+            )
         if kind == "damaged":
             n = rec.get("count", 0)
             return self._upsert(
@@ -330,15 +446,38 @@ class Fold:
     def _event(self, id: str, ts: float | None, ev: Event) -> list[dict]:
         if isinstance(ev, Echo):
             ops: list[dict] = []
-            pid = self._take(ev.text, command=False)
+            typed = None
+            if ev.expands:
+                pid = self._exact(ev.text)
+                if pid is None:
+                    pid = self._take(None, command=True, strict=True)
+                    if pid is not None:
+                        typed = (self._entries.get(pid) or {}).get("md")
+                if pid is None:
+                    pid = self._take(None, command=False)
+            else:
+                pid = self._take(ev.text, command=False)
             if pid is not None:
                 ops += self._remove(pid)
+            self._turn_open = True
             if ev.text.startswith("> from "):
                 # An inbox message: a monitor wake, a queue result, a handoff.
                 header = ev.text.splitlines()[0].removeprefix("> from ").strip()
                 return ops + self._upsert(
                     _entry(
                         id, "inbox", "ok", ts, d.COMMS_GLYPH, title=header, md=ev.text
+                    )
+                )
+            if typed is not None:
+                return ops + self._upsert(
+                    _entry(
+                        id,
+                        "user",
+                        "ok",
+                        ts,
+                        d.USER_GLYPH,
+                        md=typed,
+                        detail={"tail": ev.text},
                     )
                 )
             return ops + self._upsert(
@@ -409,16 +548,24 @@ class Fold:
             return self._subagent_step(ev.parent)
 
         if isinstance(ev, Text):
+            eid = ev.key or id
+            if ev.key:
+                self._live.discard(ev.key)
             if not ev.text.strip():
                 return []
             return self._upsert(
-                _entry(id, "prose", "ok", ts, d.PROSE_GLYPH, md=ev.text)
+                _entry(eid, "prose", "ok", ts, d.PROSE_GLYPH, md=ev.text)
             )
 
         if isinstance(ev, Thinking):
+            eid = ev.key or id
+            if ev.key:
+                self._live.discard(ev.key)
+                if not ev.text.strip():
+                    return []  # an opening part
             return self._upsert(
                 _entry(
-                    id,
+                    eid,
                     "thinking",
                     "ok",
                     ts,
@@ -500,6 +647,8 @@ class Fold:
                 error = f"turn failed ({ev.subtype or 'error'})"
             self._stand(report=report, turn_error=error)
             ops = self._end_calls("interrupted" if interrupted else "no result")
+            ops += self._drop_live()
+            self._turn_open = False
             if ev.turns == 0 and len(parts) == 1 and not ev.is_error:
                 return ops  # a local command that cost nothing: its own entry says it
             if ev.is_error:
@@ -531,7 +680,7 @@ class Fold:
             line = " · ".join(
                 x
                 for x in (
-                    f"Claude Code {ev.version}" if ev.version else "Claude Code",
+                    f"{ev.harness} {ev.version}" if ev.version else ev.harness,
                     ev.model,
                 )
                 if x
@@ -541,7 +690,11 @@ class Fold:
             )
 
         if isinstance(ev, Compact):
-            line = f"context compacted: {ev.pre_tokens // 1000}k → {ev.post_tokens // 1000}k tokens"
+            line = (
+                f"context compacted: {ev.pre_tokens // 1000}k → {ev.post_tokens // 1000}k tokens"
+                if ev.pre_tokens
+                else "context compacted"
+            )
             return self._upsert(
                 _entry(id, "system", "ok", ts, d.SYSTEM_GLYPH, summary=line)
             )

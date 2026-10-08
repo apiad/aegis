@@ -53,6 +53,7 @@ def _root(
             port=DEFAULT_PORT,
             host="127.0.0.1",
             claude="claude",
+            opencode="opencode",
             log_level="warning",
             window=True,
             browser=os.environ.get("AEGIS_BROWSER"),
@@ -116,6 +117,7 @@ def _detach(
     log_level: str,
     origins: list[str],
     urls: list[str],
+    opencode: str = "opencode",
 ) -> None:
     """Run this serve again, undetached, in its own session; return once it listens.
 
@@ -135,6 +137,7 @@ def _detach(
         "--port", str(port),
         "--host", host,
         "--claude", claude,
+        "--opencode", opencode,
         "--log-level", log_level,
     ]  # fmt: skip
     for o in origins:
@@ -194,6 +197,7 @@ def serve(
         "127.0.0.1", help="Address to bind; anything but loopback must be asked for."
     ),
     claude: str = typer.Option("claude", help="The claude executable to run."),
+    opencode: str = typer.Option("opencode", help="The opencode executable to run."),
     log_level: str = typer.Option(
         "warning", help="debug, info, warning or error; info logs every operation."
     ),
@@ -260,7 +264,7 @@ def serve(
     url = f"http://{shown}:{port}/?token={token}"
     if detach:
         urls = [url, *(f"{o}/?token={token}" for o in origin)]
-        _detach(roots, host, local, port, claude, log_level, origin, urls)
+        _detach(roots, host, local, port, claude, log_level, origin, urls, opencode)
         if window:
             from .window import open_window
 
@@ -277,6 +281,7 @@ def serve(
     app = App(
         roots,
         claude_bin=claude,
+        opencode_bin=opencode,
         base_url=f"http://{local}:{port}",
         server_name=_socket.gethostname(),
     )
