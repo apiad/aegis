@@ -32,6 +32,7 @@ drives it (`claude -p --input-format stream-json --output-format stream-json
 | `/clear` | A top-level `{"type": "conversation_reset", "trigger": "clear", …}` line and a `result`. The next `init` carries a **new `session_id`**, so a later `--resume` continues the cleared conversation. |
 | `/bogus-thing x` | Echoed as a plain prompt and answered by the model: a paid turn ($0.16 here) spent on a typo. |
 | `/doctor` | A workspace skill of that name ran a long turn. Names are resolved against the catalog below, not against what Claude Code's terminal does. |
+| ` /effort low` (a leading space) | Echoed as a plain prompt, stripped to `/effort low`, and answered by the model. The command did not run. |
 | `/effort max` and `/model haiku` sent while a turn ran tool calls | Not injected at a tool boundary the way a prompt is. Each waited for the turn's `result`, then ran as its own zero-cost turn with its own `result`. |
 
 ### Control requests
@@ -71,8 +72,9 @@ Folding the `/effort`, `/hello`, `/compact`, `/clear`, prompt sequence through
 resolves it in a new module, `src/aegis/commands.py`, before anything is written
 to `claude`:
 
-1. **`//rest`** sends `/rest` as a plain prompt. The escape for a message that
-   starts with a slash.
+1. **`//rest`** sends ` /rest`, with a leading space, as a plain prompt. Claude
+   Code runs a line as a command only when the slash is its first character, so
+   the space is what keeps `//compact` from compacting.
 2. **An aegis command** runs the operation it stands for and sends nothing to
    `claude` as text. Each one is a line of syntax over an operation that already
    exists or that this spec adds, so the registry stays the only way to act
@@ -166,10 +168,8 @@ for an OpenCode harness in aegis 2.
     {"name": "superpowers:brainstorming", "hint": "", "doc": "You MUST use this before…", "source": "plugin"},
     {"name": "draft", "hint": "<outline-path>", "doc": "Generate a voice-calibrated draft…", "source": "project"}
   ],
-  "models": [{"value": "sonnet", "label": "Sonnet 5", "doc": "…", "efforts": ["low", "medium", "high", "xhigh", "max"]}],
-  "permissions": ["read", "write", "auto", "full"],
-  "current": {"model": "sonnet", "effort": "high", "permission": "auto"},
-  "complete": true
+  "models": [{"value": "sonnet", "resolved": "claude-sonnet-5", "label": "Sonnet 5", "doc": "…", "efforts": ["low", "medium", "high", "xhigh", "max"]}],
+  "permissions": ["read", "write", "auto", "full"]
 }
 ```
 
@@ -181,8 +181,9 @@ for an OpenCode harness in aegis 2.
   session's flags, sends `initialize`, takes the answer and ends it: about 0.5 s
   and no tokens. Nothing goes to disk, so an upgraded CLI never meets a stale
   list. #97 rejected a disk cache for the same reason.
-- **What is dropped.** `terminal_slash_commands`, Claude's own entries that an
-  aegis command shadows, and models marked `disabled`.
+- **What is dropped.** Claude's own entries that an aegis command shadows, and
+  models marked `disabled`. The `init` line's `terminal_slash_commands` are kept:
+  here `doctor` is also a workspace skill, and it ran as one.
 - **`source`.** `aegis`, `claude` (`builtin: true`), and for the rest the
   parenthesised suffix Claude puts on the description, `project`, `user` or a
   plugin's name, else `skill`. Here: 54 builtin, 49 project, 16 synced from
@@ -232,21 +233,24 @@ sources all come from `commands.list`.
 
 ### The transcript: folding what a harness command returns
 
-The fold keeps two pending queues instead of one: prompts and commands. A sent
-text that starts with `/` (after the server resolved it as a harness command)
-joins the command queue. Then:
+Pending sends stay one ordered list, but an answer no longer takes the oldest
+one blindly. Each answer first takes the oldest pending send whose text equals
+what it answers (compared stripped), and only then falls back: a prompt's echo to
+the oldest send that is not a command line, a command's answer to the oldest
+send that is. A command line is a send whose first character is `/`; the `//`
+escape's leading space makes it a prompt. Then:
 
 | Line | Entry |
 |---|---|
 | assistant, `model: "<synthetic>"`, `local_command_run` | resolves the oldest pending command; one `command` entry titled `/effort high`, its `md` the output with the `<local-command-stdout>` wrapper removed |
 | replayed user `<command-message>…<command-name>/x</command-name><command-args>a</command-args>` | resolves the oldest pending command; a `user` entry drawn as `/x a`, followed by the turn as usual |
-| replayed user `<local-command-stdout>…</local-command-stdout>` | resolves the oldest pending command if one waits (as for `/compact`), else adds the output to the last command entry; never a user bubble |
+| replayed user `<local-command-stdout>…</local-command-stdout>` | resolves the oldest pending command if one waits (as for `/compact`) and becomes its `command` entry; with none waiting (the echo of a `set_model` that `session.configure` sent) it makes no entry, because the `configure` record already did; never a user bubble |
 | `conversation_reset` with `trigger: "clear"` | resolves the pending `/clear`; a system entry "context cleared; Claude started a new conversation" |
 | any other replayed user line | resolves the oldest pending prompt, as now |
 
-Two queues because a prompt sent mid-turn is read at the next tool boundary
-while a command waits for the turn to end, so the two kinds are answered out of
-order. A new glyph in `describe.py` marks command entries; `⌬` is taken by
+Matching by text matters because a prompt sent mid-turn is read at the next
+tool boundary while a command waits for the turn to end, so the two kinds are
+answered out of order. A new glyph in `describe.py` marks command entries; `⌬` is taken by
 Bash.
 
 `claude/stream.py` gains the events behind these rows: `LocalCommand`
@@ -268,7 +272,7 @@ the turn state, because they are control requests.
   `apply_flag_settings`, `get_settings` and `set_permission_mode`, and replays the
   line shapes above for `/effort`, `/hello`, `/compact`, `/clear`, copied from
   the recorded probes rather than written by hand.
-- Fold tests replay those recordings and check: no entry left pending, one
+- Fold tests replay a trimmed copy of those recordings (`tests/fixtures/slash-commands.jsonl`) and check: no entry left pending, one
   `command` entry per local command, `/hello world` drawn as itself, the
   patches equal a fresh fold (the existing invariant).
 - Session tests: `/model sonnet` on a live session sends `set_model` and the
