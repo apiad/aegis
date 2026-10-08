@@ -1583,12 +1583,14 @@ def test_the_divider_and_navigator_walk_agent_messages(server, page):
     page.keyboard.press("j")
     assert page.eval_on_selector(".row.sel", "n => n.classList.contains('since')")
     # A selection by focus moves the position too, not only the keys.
+    # The navigator is drawn on the next frame.
     page.keyboard.press("Alt+ArrowUp")
     pos = "document.getElementById('nav-pos').textContent"
+    page.evaluate("() => new Promise((r) => requestAnimationFrame(() => r()))")
     before = page.evaluate(pos)
     page.focus(".row.tool summary")
     assert page.eval_on_selector(".row.sel", "n => n.classList.contains('tool')")
-    assert page.evaluate(pos) != before
+    page.wait_for_function(f"b => {pos} !== b", arg=before, timeout=2000)
     # Switching sessions drops the navigator with the old rows, before the new
     # session's snapshot arrives.
     other = spawn(page)

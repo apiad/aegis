@@ -73,16 +73,31 @@ $("nav-down").append(icon("down"));
 $("jump").append(icon("latest"));
 $("bell").append(icon("bell"));
 installBell($("bell"));
-$("nav-up").addEventListener("click", () => (transcript.message(-1), drawNav()));
-$("nav-down").addEventListener("click", () => (transcript.message(1), drawNav()));
-$("nav-pos").addEventListener("click", () => (transcript.firstUnread(), drawNav()));
-// Shown with any entry, so the latest button is there before the first agent
-// message; with none, the position is empty and the arrows are off.
+$("nav-up").addEventListener("click", () => transcript.message(-1));
+$("nav-down").addEventListener("click", () => transcript.message(1));
+$("nav-pos").addEventListener("click", () => transcript.firstUnread());
+// Every redraw of the transcript re-marks the selection, which asks for the
+// navigator, so it is drawn at most once a frame: position() walks every entry.
+let navFrame = 0;
 function drawNav() {
+  if (!navFrame) navFrame = requestAnimationFrame(drawNavNow);
+}
+// Shown with any entry, so the latest button is there before the first agent
+// message; with none, the position is empty and the arrows are off. Unchanged
+// values are not written back.
+let navDrawn = {};
+function drawNavNow() {
+  navFrame = 0;
   const { index, total, unread } = transcript.position();
-  $("nav").hidden = !transcript.entries.size;
-  $("nav-pos").textContent = total ? `${unread ? `${unread} unread · ` : ""}message ${index} of ${total}` : "";
-  $("nav-up").disabled = $("nav-down").disabled = !total;
+  const now = {
+    hidden: !transcript.entries.size,
+    text: total ? `${unread ? `${unread} unread · ` : ""}message ${index} of ${total}` : "",
+    off: !total,
+  };
+  if (now.hidden !== navDrawn.hidden) $("nav").hidden = now.hidden;
+  if (now.text !== navDrawn.text) $("nav-pos").textContent = now.text;
+  if (now.off !== navDrawn.off) $("nav-up").disabled = $("nav-down").disabled = now.off;
+  navDrawn = now;
 }
 // How the Fleet orders its cards: this browser's choice, like the tab order.
 let fleetOrder = localStorage.getItem("aegis.fleetOrder") || "attention";
@@ -336,7 +351,7 @@ function follow(id) {
   if (unsubTranscript) unsubTranscript();
   unsubTranscript = null;
   transcript.clear();
-  drawNav();
+  drawNavNow(); // at once: the old session's navigator goes with its rows
   shown = id;
   if (!id) return;
   let placed = false; // the divider is placed by the first snapshot only
@@ -346,15 +361,11 @@ function follow(id) {
       transcript.snapshot(entries || []);
       if (!placed) transcript.setSince(sinceText(sessions.get(id)));
       placed = true;
-      drawNav();
       // Read by scripts/bench.py: when the snapshot was drawn and painted.
       const mark = (window.__a2snapshot = { at: performance.now(), count: (entries || []).length });
       requestAnimationFrame(() => (mark.painted = performance.now()));
     },
-    (ops) => {
-      transcript.apply(ops);
-      drawNav();
-    },
+    (ops) => transcript.apply(ops),
   );
   menu.close();
   $("input").value = localStorage.getItem(`aegis.draft.${id}`) || "";
@@ -744,18 +755,12 @@ installKeys(
       const i = all.indexOf(location.hash || "#fleet");
       go(all[i < 0 ? (d > 0 ? 0 : all.length - 1) : (i + d + all.length) % all.length]);
     },
-    next: () => (transcript.move(1), drawNav()),
-    prev: () => (transcript.move(-1), drawNav()),
-    turn: (ev) => (transcript.moveTurn(ev.key === "J" ? 1 : -1), drawNav()),
-    edge: (ev) => (transcript.edge(ev.key === "G"), drawNav()),
-    message(ev) {
-      transcript.message(ev.code === "ArrowUp" ? -1 : 1);
-      drawNav();
-    },
-    firstUnread() {
-      transcript.firstUnread();
-      drawNav();
-    },
+    next: () => transcript.move(1),
+    prev: () => transcript.move(-1),
+    turn: (ev) => transcript.moveTurn(ev.key === "J" ? 1 : -1),
+    edge: (ev) => transcript.edge(ev.key === "G"),
+    message: (ev) => transcript.message(ev.code === "ArrowUp" ? -1 : 1),
+    firstUnread: () => transcript.firstUnread(),
     toggle: () => transcript.toggle(),
     press: () => transcript.press(),
     none() {},
