@@ -204,6 +204,7 @@ class Registry(Host):
             standing=meta.get("standing"),
             unread=meta.get("unread"),
             last_read_at=meta.get("last_read_at"),
+            recap_cost_usd=meta.get("recap_cost_usd") or 0.0,
         )
 
     def boot(self) -> None:

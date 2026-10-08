@@ -51,7 +51,14 @@ Publish = Callable[[str, list[dict]], None]
 # and go out together. Publishing them per line doubled the server's cost per
 # line in the bench (issue #127).
 _NOW = ("status", "handle", "title", "model_id", "standing")
-_SOON = ("activity", "cost_usd", "context_tokens", "context_window", "unread")
+_SOON = (
+    "activity",
+    "cost_usd",
+    "context_tokens",
+    "context_window",
+    "unread",
+    "recap_cost_usd",
+)
 PUBLISH_EVERY_S = 0.25
 
 
@@ -178,6 +185,7 @@ class Session:
         standing: dict | None = None,
         unread: list[str] | None = None,
         last_read_at: float | None = None,
+        recap_cost_usd: float = 0.0,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
@@ -228,6 +236,8 @@ class Session:
         # from before this has neither, and nothing old turns up unread.
         self.unread: set[str] = set(unread or ())
         self.last_read_at = last_read_at
+        # What this session's recaps cost (recaps.py), apart from its own turns.
+        self.recap_cost_usd = recap_cost_usd
         # The current process's catalog; None as a result when it did not answer.
         self.catalog_task: asyncio.Task[Catalog | None] | None = None
 
@@ -256,6 +266,7 @@ class Session:
             "standing": self.standing,
             "unread": sorted(self.unread),
             "last_read_at": self.last_read_at,
+            "recap_cost_usd": self.recap_cost_usd,
         }
 
     def wire(self) -> dict:
@@ -546,6 +557,9 @@ class Session:
     def report(self, record: dict) -> None:
         """A plan or a turn report from the agent (agent_ops)."""
         self._record(record)
+
+    def add_recap_cost(self, cost: float) -> None:
+        self._set(recap_cost_usd=round(self.recap_cost_usd + cost, 6))
 
     def _record(self, record: dict, events: list | None = None) -> None:
         fold = self.fold()
