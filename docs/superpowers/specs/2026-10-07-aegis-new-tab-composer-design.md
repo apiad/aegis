@@ -33,6 +33,7 @@ spawned, and per-task overrides on `queue_enqueue`.
 | Defaults in `.aegis.yaml` | None. An agent names its harness, model, effort and permission; a queue names its agent and `max_parallel`. A missing field is an error that names the agent or queue and the field | Alex: nothing in the YAML is a default. A default the loader fills in is a setting nobody chose, and nothing shows it was filled |
 | Which priming a resumed session gets | The text recorded at spawn, not the current YAML | Claude Code does not keep the system prompt in its session file, so a resume passes it again; reading the YAML would change old sessions when an agent is edited |
 | Agents spawning | `session.spawn` is marked for agents, with the same params | DESIGN.md: one registry, every caller. The vision spec allows an agent to spawn on its own server |
+| An agent's ceiling | A session an agent spawns has at most the agent's own permission (`read < write < auto < full`); asking for more fails with `not_allowed` | Alex, after review: otherwise a `read` agent could start a `full` session running a prompt it wrote. Refusing, not clamping, tells the agent what it got |
 | A spawned session reporting back | Nothing new. The spawner uses `peer_read` or `peer_handoff` | Both exist; a callback is what queues are for |
 | Naming | `profile` becomes `agent` on the wire: the `agent` param, `agents.list` | The config key is `agents:` and the screen says agent; the only caller of the old names is aegis's own client |
 

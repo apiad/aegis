@@ -35,6 +35,8 @@ SUPPORTED_HARNESSES = ("claude-code",)
 # the agents name.
 MODEL_ALIASES = {"claude-code": ("opus", "sonnet", "haiku", "fable")}
 FIELDS = ("harness", "model", "effort", "permission")
+# Least to most: an agent spawns sessions with at most its own permission.
+PERMISSION_ORDER = ("read", "write", "auto", "full")
 
 
 class ConfigError(Exception):

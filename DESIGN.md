@@ -91,7 +91,8 @@ mid-wait in the legacy tree.
 
 **Agents change only what they created.** An agent reads and messages any session
 it can see, and changes only its own monitors, its own session's names and the
-tasks it enqueued. People can do anything.
+tasks it enqueued. A session an agent spawns runs with at most the agent's own
+permission, so spawning is never a way to gain power. People can do anything.
 
 **The client knows no subsystem by name.** Server state reaches the browser as
 named channels: a snapshot on subscribe, then numbered patches. A gap in the

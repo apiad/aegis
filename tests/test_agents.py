@@ -551,3 +551,18 @@ async def test_a_logged_task_on_a_queue_that_broke_does_not_stop_dispatch(world)
     old = world.app.queues.tasks["task-old"]
     assert old.status == "failed"
     assert "max_parallel is missing" in old.error
+
+
+async def test_an_agent_spawns_with_at_most_its_own_permission(world):
+    r = await world.app.registry.call("session.spawn", {"agent": "reviewer"})
+    reader = world.session(r["log_id"])  # permission: read
+    said = await turn(reader, mcp("session_spawn", agent="opus"))
+    assert said.startswith("mcp error: not_allowed")
+    assert "at most read" in said and "full" in said
+    said = await turn(reader, mcp("session_spawn", agent="opus", permission="read"))
+    child = world.session(json.loads(said.removeprefix("mcp ok: "))["log_id"])
+    assert child.spec.permission == "read"
+    # A full-permission agent may hand out less, and a person is not limited.
+    full = await world.spawn()
+    said = await turn(full, mcp("session_spawn", agent="reviewer"))
+    assert said.startswith("mcp ok")

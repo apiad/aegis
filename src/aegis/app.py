@@ -20,6 +20,7 @@ from . import files
 from .agent_ops import register_agent_ops
 from .agents import (
     HARNESSES,
+    PERMISSION_ORDER,
     SUPPORTED_HARNESSES,
     ConfigError,
     default_agent,
@@ -210,8 +211,9 @@ class App:
         async def spawn(p: SpawnParams, caller):
             """Start a new session from an agent, overriding its harness, model,
             effort or permission if you need to, and send it `prompt` as its
-            first message. Returns its log id and handle. It does not report
-            back: read it with peer_read, message it with peer_handoff."""
+            first message. Its permission can be at most yours. Returns its log
+            id and handle. It does not report back: read it with peer_read,
+            message it with peer_handoff."""
             agents, default = self._agents()
             parent = reg.sessions.get(caller.log_id) if caller.is_agent else None
             spec = resolve(
@@ -227,6 +229,16 @@ class App:
                 self._resolve_cwd(p.cwd, parent.spec.cwd if parent else None),
                 spawned_by=parent.log_id if parent else None,
             )
+            # An agent cannot hand a session more power than it has itself.
+            if parent is not None and PERMISSION_ORDER.index(
+                spec.permission
+            ) > PERMISSION_ORDER.index(parent.spec.permission):
+                raise OpError(
+                    "not_allowed",
+                    f"your session runs with {parent.spec.permission}, so a session "
+                    f"you spawn can have at most {parent.spec.permission} "
+                    f"(this one would have {spec.permission}); pass permission",
+                )
             try:
                 s = await reg.spawn(spec)
             except FileNotFoundError as e:
