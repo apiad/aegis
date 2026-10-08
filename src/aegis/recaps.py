@@ -12,17 +12,6 @@ import time
 from . import recap
 
 
-def _point(fold) -> int:
-    """The store index a recap made now would cover: the last record that is not
-    itself a recap. With the fold's ``last_index``, the recap's own record would
-    move the point past its ``upto``, and the same point would be paid for again."""
-    recaps = {int(e["id"][1:]) for e in fold.entries() if e["kind"] == "recap"}
-    i = fold.last_index
-    while i in recaps:
-        i -= 1
-    return i
-
-
 class Recaps:
     def __init__(self, app) -> None:
         self.app = app
@@ -39,7 +28,7 @@ class Recaps:
         if s.log_id in self._running:
             return await asyncio.shield(self._running[s.log_id])
         fold = s.fold()
-        upto = _point(fold)
+        upto = fold.content_index
         if not force:
             if fold.last_recap_upto == upto:
                 return {"status": "exists"}

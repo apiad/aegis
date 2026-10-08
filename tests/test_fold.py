@@ -829,3 +829,16 @@ def test_a_new_recap_folds_the_earlier_ones_without_a_send():
     assert recaps["e5"]["detail"]["folded"] is False
     g, _ = run(rec)
     assert g.entries() == f.entries()
+
+
+def test_a_stop_and_an_exit_after_the_prose_leave_the_content_index():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.echo("go")
+    rec.text("done it")
+    rec.result()
+    f, _ = run(rec)
+    assert f.content_index == 2
+    f.apply(rec.own("stop"))
+    f.apply(rec.own("exit", code=1, harness="claude"))
+    assert f.content_index == 2 and f.last_index == 5

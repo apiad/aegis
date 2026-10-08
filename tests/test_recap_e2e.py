@@ -186,3 +186,13 @@ async def test_stopping_the_server_kills_a_running_call(world, monkeypatch, tmp_
     await until(lambda: not alive(pid), what="the one-shot's death")
     with contextlib.suppress(asyncio.CancelledError):
         await pending
+
+
+async def test_stopping_the_session_after_a_recap_leaves_it_covered(world):
+    a = await two_unread(world)
+    r = await world.app.registry.call("recap.request", {"log_id": a.log_id})
+    assert r["status"] == "made"
+    await world.app.registry.call("session.stop", {"log_id": a.log_id})
+    await until(lambda: a.status == "stopped", what="stopped")
+    again = await world.app.registry.call("recap.request", {"log_id": a.log_id})
+    assert again["status"] == "exists"

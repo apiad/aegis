@@ -107,6 +107,10 @@ def _did(old: list[dict], new: list[dict], prev: str) -> str:
     return done[-1] if done else ""
 
 
+# The kinds a recap reads (recap._line).
+CONTENT_KINDS = frozenset({"user", "prose", "tool", "inbox"})
+
+
 class Fold:
     def __init__(self) -> None:
         self._entries: dict[str, dict] = {}
@@ -124,6 +128,9 @@ class Fold:
         self._turns = 0  # results seen
         self._report_turn = -1  # self._turns when the current report was made
         self.last_index = -1  # the "i" of the last record applied
+        # The "i" of the last record that changed what a recap reads: a stop,
+        # an exit or a recap after it leaves the point a recap covers alone.
+        self.content_index = -1
         self._recaps: list[str] = []  # recap entry ids no send has folded yet
         self.last_recap_upto: int | None = None
 
@@ -148,8 +155,11 @@ class Fold:
             ops: list[dict] = []
             for k, ev in enumerate(evs):
                 ops += self._event(f"e{i}.{k}", ts, ev)
-            return ops
-        return self._own(i, ts, record)
+        else:
+            ops = self._own(i, ts, record)
+        if any(op.get("upsert", {}).get("kind") in CONTENT_KINDS for op in ops):
+            self.content_index = i
+        return ops
 
     def parse(self, src: str, line: str) -> list[Event]:
         """One stored or live line of harness ``src``, through this fold's parser."""
