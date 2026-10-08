@@ -920,6 +920,10 @@ $("close").addEventListener("click", async () => {
 
 // -- the drawer: the side panel on a phone (base.css, max-width 760px) --------
 const closeSide = () => delete root.dataset.side;
+// The header's height, for the drawer to start under it: it wraps to two rows
+// on a phone and grows with the safe area.
+const header = document.querySelector("#a2 > .tabs");
+new ResizeObserver(() => root.style.setProperty("--hdr", `${header.getBoundingClientRect().height}px`)).observe(header);
 $("side-btn").addEventListener("click", () => {
   if (root.dataset.side === "open") closeSide();
   else root.dataset.side = "open";

@@ -1541,11 +1541,16 @@ def test_a_phone_reaches_tabs_the_drawer_and_the_chips(server, browser):
     assert page.is_visible("#restart") and page.is_visible("#close")
     page.mouse.click(20, 400)  # the dimmed transcript
     page.wait_for_function("document.getElementById('a2').dataset.side !== 'open'")
+    # The header stays above the dimmed page: ☰ closes the drawer, and a tab
+    # switches session with it open.
     page.tap("#side-btn")
     page.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
-    # The dimmed page covers the tab row, so the switch comes from elsewhere:
-    # the back button, or a link to the session.
-    page.evaluate("id => (location.hash = '#s=' + id)", b)
+    page.tap("#side-btn")
+    page.wait_for_function("document.getElementById('a2').dataset.side !== 'open'")
+    page.tap("#side-btn")
+    page.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
+    page.tap(f"#tablist .tab[data-id='{b}']")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=b)
     page.wait_for_function("document.getElementById('a2').dataset.side !== 'open'")
     # Enter adds a line on a touch screen; the button sends.
     page.tap("#input")
