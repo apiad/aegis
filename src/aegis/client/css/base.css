@@ -46,7 +46,6 @@ body{background:#000}
 #a2 .theme-pick{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--faint);padding:0 4px 6px}
 #a2 .theme-pick select{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:2px 6px;font-size:11.5px}
 #a2 .dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none}
-#a2 .dot.working{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 #a2 .dot.ready{background:var(--ok)}#a2 .dot.err{background:var(--err)}#a2 .dot.ghost{background:var(--faint)}
 
 /* views */
@@ -177,7 +176,7 @@ body{background:#000}
 #a2 .bar{height:6px;margin:6px 0 4px;overflow:hidden;background:var(--raised);border-radius:3px}
 #a2 .bar i{display:block;height:100%;background:var(--fill);border-radius:3px}
 #a2 .st{color:var(--accent)}
-#a2 .st.err{color:var(--err)}#a2 .st.idle{color:var(--ok)}
+#a2 .st.at-error{color:var(--err)}#a2 .st.at-done{color:var(--ok)}
 
 /* the running aegis and the latest release, in the sidebar and the top bar */
 #a2 .side .ver{border-top:1px solid var(--rule);padding-top:12px}
@@ -390,3 +389,44 @@ body{background:#000}
 #a2 .side .qrow .bar{position:relative;overflow:visible;margin:4px 0 0}
 #a2 .side .qrow .bar .tick{top:-1px;bottom:-1px}
 #a2 .side .gnote{color:var(--warn)}
+
+/* attention: glyphs, cards, groups, the order switch (js/glyphs.js) */
+#a2{--knock:var(--bg)}
+#a2 .ic{width:15px;height:15px;flex:none;display:inline-block;vertical-align:-3px}
+#a2 .ic.need{color:var(--accent)}#a2 .ic.err{color:var(--err)}#a2 .ic.rev{color:var(--strong)}
+#a2 .ic.wait{color:var(--muted)}#a2 .ic.done{color:var(--ok)}#a2 .ic.work{color:var(--accent);animation:a2spin 1.1s linear infinite}
+@keyframes a2spin{to{transform:rotate(360deg)}}
+@keyframes a2blink{to{visibility:hidden}}
+#a2 .tab:not(.on) .ic.need{animation:a2blink 1.2s steps(2,start) infinite}
+@media (prefers-reduced-motion:reduce){#a2 .ic.work,#a2 .tab .ic.need{animation:none}}
+#a2 .card.at-needs_you{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+#a2 .card.at-error{border-color:var(--err);box-shadow:inset 3px 0 0 var(--err)}
+#a2 .card .hd .s.at-needs_you{color:var(--accent)}#a2 .card .hd .s.at-error{color:var(--err)}
+#a2 .card .ask{font-size:13px;color:var(--strong);line-height:1.4}
+#a2 .card .ask.at-error{color:var(--err)}
+#a2 .card .pl{display:grid;gap:3px;font-size:12px;font-family:var(--font-chrome)}
+#a2 .card .pl div{display:grid;grid-template-columns:44px 1fr;gap:6px;color:var(--muted);overflow:hidden}
+#a2 .card .pl div span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2 .card .pl .k{color:var(--faint)}
+#a2 .card .pl .now span:last-child{color:var(--strong)}
+#a2 .card .ft .prog{color:var(--faint)}
+#a2 .grp-h{grid-column:1/-1;font-family:var(--font-head);font-size:12px;color:var(--faint);margin-top:4px}
+#a2 .order{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 0}
+#a2 .order h3{margin:0;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
+#a2 .seg{display:inline-flex;border:1px solid var(--rule);border-radius:var(--r);overflow:hidden;font-family:var(--font-chrome);font-size:11.5px}
+#a2 .seg button{background:none;border:none;padding:4px 10px;color:var(--muted);cursor:pointer}
+#a2 .seg button+button{border-left:1px solid var(--rule)}
+#a2 .seg button.on{background:var(--accent-soft);color:var(--strong)}
+#a2 .band .counts .ic{width:14px;height:14px}
+#a2 .askbox{font-size:12.5px;color:var(--strong);background:var(--accent-soft);border-left:2px solid var(--accent);padding:6px 8px;border-radius:4px;margin-top:6px}
+#a2 .askbox.at-error{background:var(--err-bg);border-left-color:var(--err);color:var(--err)}
+#a2 .st .ic{width:13px;height:13px}
+#a2 .plan{display:grid;gap:5px;font-size:12.5px}
+#a2 .plan div{display:grid;grid-template-columns:16px 1fr;gap:6px;color:var(--muted)}
+#a2 .plan>.done{color:var(--faint)}#a2 .plan>.doing{color:var(--strong)}
+#a2 .plan .ic{width:12px;height:12px;margin-top:3px}#a2 .plan .ic.work{animation:none}
+#a2 .replies{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 9px 2px}
+#a2 .replies .lbl{font-family:var(--font-chrome);font-size:11px;color:var(--faint);margin-right:2px}
+#a2 .rp{font-family:var(--font-ui);font-size:13px;color:var(--strong);background:var(--surface);border:1px solid var(--rule);border-radius:999px;padding:5px 13px;cursor:pointer;line-height:1.3;text-align:left}
+#a2 .rp:hover{border-color:var(--accent);background:var(--accent-soft)}
+#a2 .col:has(#replies:not([hidden])) .jump{bottom:160px}

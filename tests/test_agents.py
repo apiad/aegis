@@ -135,6 +135,8 @@ async def test_the_tools_are_named_after_their_operations_and_take_no_handle(wor
         "meta",
         "quota_read",
         "file_send",
+        "plan_update",
+        "turn_end",
     } <= set(tools)
     assert {"session_spawn", "agents_list"} <= set(tools)
     assert "session_close" not in tools

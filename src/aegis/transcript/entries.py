@@ -67,6 +67,26 @@ def _entry(
     }
 
 
+# What a session stands on between turns, for its card: the agent's plan, the
+# item it finished last, its report on the turn that ended (turn_end), and why
+# that turn failed. Replaced as a whole when it changes, so a session compares
+# identity to know whether to publish.
+EMPTY_STANDING: dict = {"plan": [], "did": "", "report": None, "turn_error": ""}
+
+
+def _did(old: list[dict], new: list[dict], prev: str) -> str:
+    """The item finished most recently: one that became done in this update, or
+    the previous one while it is still done, or the last done item."""
+    was = {i["text"] for i in old if i["state"] == "done"}
+    fresh = [i["text"] for i in new if i["state"] == "done" and i["text"] not in was]
+    if fresh:
+        return fresh[-1]
+    done = [i["text"] for i in new if i["state"] == "done"]
+    if prev in done:
+        return prev
+    return done[-1] if done else ""
+
+
 class Fold:
     def __init__(self) -> None:
         self._entries: dict[str, dict] = {}
@@ -75,6 +95,9 @@ class Fold:
         self._seen_init = False
         self._interrupted = False
         self._last_cost = 0.0
+        self.standing: dict = EMPTY_STANDING
+        self._turns = 0  # results seen
+        self._report_turn = -1  # self._turns when the current report was made
 
     def entries(self) -> list[dict]:
         return list(self._entries.values())
@@ -95,6 +118,10 @@ class Fold:
         return self._own(i, ts, record)
 
     # -- helpers -------------------------------------------------------
+    def _stand(self, **changes: Any) -> None:
+        if any(self.standing.get(k) != v for k, v in changes.items()):
+            self.standing = {**self.standing, **changes}
+
     def _end_calls(self, verdict: str) -> list[dict]:
         """A call still running when its turn or its process ends will never
         get a result."""
@@ -166,6 +193,7 @@ class Fold:
     def _own(self, i: int, ts: float | None, rec: dict) -> list[dict]:
         kind = rec.get("kind")
         if kind == "send":
+            self._stand(report=None, turn_error="")
             pid = f"pending:{i}"
             self._pending.append(pid)
             return self._upsert(
@@ -185,22 +213,34 @@ class Fold:
             return self._upsert(
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary=line)
             )
+        if kind == "plan":
+            items = list(rec.get("items") or [])
+            self._stand(
+                plan=items, did=_did(self.standing["plan"], items, self.standing["did"])
+            )
+            return []
+        if kind == "turn_end":
+            self._report_turn = self._turns
+            self._stand(
+                report={
+                    "attention": rec.get("attention"),
+                    "line": rec.get("line") or "",
+                    "replies": list(rec.get("replies") or []),
+                }
+            )
+            return []
         if kind == "interrupt":
             self._interrupted = True
             return []
         if kind == "interrupt_timeout":
+            line = f"the interrupt went unanswered for {rec.get('after_s', 10):g}s"
+            self._stand(turn_error=line)
             return self._upsert(
-                _entry(
-                    f"e{i}",
-                    "error",
-                    "err",
-                    ts,
-                    d.ERROR_GLYPH,
-                    summary=f"the interrupt went unanswered for {rec.get('after_s', 10):g}s",
-                )
+                _entry(f"e{i}", "error", "err", ts, d.ERROR_GLYPH, summary=line)
             )
         if kind == "exit":
             stderr = "\n".join(rec.get("stderr_tail") or [])
+            self._stand(turn_error=f"claude exited with code {rec.get('code')}")
             return (
                 self._end_calls("no result")
                 + self._lose_pending()
@@ -218,6 +258,8 @@ class Fold:
             )
         if kind in ("stop", "server_stopped"):
             line = "stopped" if kind == "stop" else "the server stopped during a turn"
+            if kind == "server_stopped":
+                self._stand(turn_error="the server stopped during a turn")
             return (
                 self._end_calls("no result")
                 + self._lose_pending()
@@ -449,6 +491,14 @@ class Fold:
             if ev.stop_reason and ev.stop_reason not in ("end_turn", "stop_sequence"):
                 parts.append(ev.stop_reason)
             interrupted, self._interrupted = self._interrupted, False
+            self._turns += 1
+            report = self.standing["report"]
+            if report is not None and self._report_turn < self._turns - 1:
+                report = None  # made in an earlier turn; this one ended without one
+            error = ""
+            if ev.is_error and not interrupted:
+                error = f"turn failed ({ev.subtype or 'error'})"
+            self._stand(report=report, turn_error=error)
             ops = self._end_calls("interrupted" if interrupted else "no result")
             if ev.turns == 0 and len(parts) == 1 and not ev.is_error:
                 return ops  # a local command that cost nothing: its own entry says it

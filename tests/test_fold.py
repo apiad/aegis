@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from aegis.transcript.entries import Fold, fold_records
+from aegis.transcript.entries import EMPTY_STANDING, Fold, fold_records
 from aegis.transcript.store import read_store
 
 
@@ -576,3 +576,103 @@ def test_a_set_model_note_does_not_take_a_queued_commands_place():
     assert [(e["kind"], e["title"], e["md"]) for e in f.entries()] == [
         ("command", "/compact", "Compacted")
     ]
+
+
+def plan(*pairs):
+    return [{"text": t, "state": s} for t, s in pairs]
+
+
+def test_standing_starts_empty_and_is_the_same_object_until_it_changes():
+    rec = Rec()
+    rec.own("send", text="hi")
+    rec.echo("hi")
+    rec.text("hello")
+    f, _ = run(rec)
+    assert f.standing == EMPTY_STANDING
+
+
+def test_a_plan_record_sets_the_plan_and_did_tracks_the_last_item_finished():
+    rec = Rec()
+    rec.own("plan", items=plan(("read", "doing"), ("fix", "pending")))
+    f, _ = run(rec)
+    assert f.standing["plan"] == plan(("read", "doing"), ("fix", "pending"))
+    assert f.standing["did"] == ""
+    before = f.standing
+    f.apply(rec.own("plan", items=plan(("read", "done"), ("fix", "doing"))))
+    assert f.standing is not before
+    assert f.standing["did"] == "read"
+    same = f.standing
+    f.apply(rec.own("plan", items=plan(("read", "done"), ("fix", "doing"))))
+    assert f.standing is same  # nothing changed, same object
+
+
+def test_a_turn_end_lasts_until_the_next_send_or_a_later_turn_ends_without_one():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.echo("go")
+    rec.own(
+        "turn_end", attention="needs_you", line="Rebase or merge?", replies=["rebase"]
+    )
+    rec.result()
+    f, _ = run(rec)
+    assert f.standing["report"] == {
+        "attention": "needs_you",
+        "line": "Rebase or merge?",
+        "replies": ["rebase"],
+    }
+    # A turn Claude starts on its own and ends without turn_end drops it.
+    f.apply(rec.text("the background task finished"))
+    f.apply(rec.result())
+    assert f.standing["report"] is None
+
+
+def test_a_send_clears_the_report_at_once():
+    rec = Rec()
+    rec.own("turn_end", attention="review", line="Read the spec", replies=[])
+    rec.result()
+    f, _ = run(rec)
+    assert f.standing["report"]["attention"] == "review"
+    f.apply(rec.own("send", text="ok"))
+    assert f.standing["report"] is None
+
+
+def test_the_last_turn_end_of_a_turn_wins():
+    rec = Rec()
+    rec.own("turn_end", attention="done", line="first", replies=[])
+    rec.own("turn_end", attention="needs_you", line="second", replies=[])
+    rec.result()
+    f, _ = run(rec)
+    assert f.standing["report"]["line"] == "second"
+
+
+def test_failures_set_turn_error_and_a_persons_interrupt_does_not():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.result(is_error=True, subtype="error_during_execution")
+    f, _ = run(rec)
+    assert f.standing["turn_error"] == "turn failed (error_during_execution)"
+    f.apply(rec.own("send", text="again"))
+    assert f.standing["turn_error"] == ""
+    f.apply(rec.own("interrupt"))
+    f.apply(rec.result(is_error=True, subtype="error_during_execution"))
+    assert f.standing["turn_error"] == ""
+    f.apply(rec.own("exit", code=3, stderr_tail=[]))
+    assert f.standing["turn_error"] == "claude exited with code 3"
+    f.apply(rec.own("send", text="resume"))
+    f.apply(rec.own("interrupt_timeout", after_s=10))
+    assert f.standing["turn_error"] == "the interrupt went unanswered for 10s"
+    f.apply(rec.result())
+    assert f.standing["turn_error"] == ""
+
+
+def test_a_turn_cut_by_a_server_restart_is_an_error_and_a_persons_stop_is_not():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.own("server_stopped")
+    f, _ = run(rec)
+    assert f.standing["turn_error"] == "the server stopped during a turn"
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.own("stop")
+    f, _ = run(rec)
+    assert f.standing["turn_error"] == ""

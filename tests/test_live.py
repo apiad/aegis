@@ -414,3 +414,65 @@ async def test_real_claude_ends_a_bash_call_on_a_counted_verdict(tmp_path: Path)
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)
+
+
+async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
+    """A real Sonnet primed by aegis calls turn_end: needs_you with replies after
+    laying out two options, done without needs_you after finished work. Sonnet,
+    not Haiku: Haiku called turn_end in about 1 of 3 runs whatever the primer's
+    wording (#171)."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "I need to bring a feature branch up to date with main. Lay out the two "
+            "usual ways in two lines and ask me which one I want. Do not run anything."
+        )
+        await until(
+            lambda: s.status == "idle" and s.cost_usd,
+            timeout=120,
+            what="the question turn",
+        )
+        c = s.wire()
+        assert c["attention"] == "needs_you", c
+        assert 1 <= len(c["replies"]) <= 3, c
+        await s.send(
+            f"Create the file {tmp_path / 'done.txt'} containing ok, then tell me it is done."
+        )
+        await until(
+            lambda: s.status == "idle" and (tmp_path / "done.txt").exists(),
+            timeout=120,
+            what="the work turn",
+        )
+        assert (s.standing.get("report") or {}).get("attention") == "done", s.standing
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)

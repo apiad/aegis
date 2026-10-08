@@ -10,6 +10,7 @@ import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { ago, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
 import { installKeys, renderKeys } from "./keys.js";
+import { glyph, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 
@@ -52,6 +53,20 @@ let unsubTranscript = null;
 let workingSince = null;
 let booted = false;
 const transcript = new Transcript($("tr"), $("entries"), $("jump"));
+installGlyphs();
+// How the Fleet orders its cards: this browser's choice, like the tab order.
+let fleetOrder = localStorage.getItem("aegis.fleetOrder") || "attention";
+function markOrder() {
+  for (const b of document.querySelectorAll("#fleet-order button")) b.classList.toggle("on", b.dataset.order === fleetOrder);
+}
+markOrder();
+for (const b of document.querySelectorAll("#fleet-order button"))
+  b.addEventListener("click", () => {
+    fleetOrder = b.dataset.order;
+    localStorage.setItem("aegis.fleetOrder", fleetOrder);
+    markOrder();
+    render();
+  });
 
 // -- routing: #fleet, #new, #s=<log_id>, #read=<log_id> -----------------------
 function route() {
@@ -156,7 +171,8 @@ function flushSessions() {
   const r = route();
   for (const id of ids) patchTab($("tablist"), sessions.get(id), r.view === "session" ? r.id : null, tabActions);
   if (r.view === "fleet") {
-    for (const id of ids) patchCard($("cards"), sessions.get(id), openSession);
+    const regroup = [...ids].some((id) => !patchCard($("cards"), sessions.get(id), openSession, fleetOrder));
+    if (regroup) renderCards($("cards"), ordered, openSession, fleetOrder);
     fleetMark(false);
     drawBand();
   } else if (r.view === "session" && ids.has(r.id)) renderMeta(sessions.get(r.id));
@@ -197,7 +213,7 @@ function render() {
   if (r.view === "fleet") {
     follow(null);
     show("fleet");
-    renderCards($("cards"), ordered, openSession);
+    renderCards($("cards"), ordered, openSession, fleetOrder);
     fleetMark(false);
     watchHost(true);
     drawBand();
@@ -310,8 +326,29 @@ function renderMeta(s) {
   if (!editing.has("title")) $("s-title").textContent = s.title || "untitled";
   if (!editing.has("handle")) $("s-handle").textContent = s.handle;
   $("s-model").textContent = `Claude Code, ${s.model}`;
-  $("s-status").textContent = s.state;
-  $("s-status").className = `st ${s.state === "error" ? "err" : s.state === "idle" ? "idle" : ""}`;
+  if (s.attention === undefined) {
+    // The archived read view: a stored meta has no attention, so the state alone.
+    $("s-status").textContent = s.state;
+    $("s-status").className = "st";
+  } else {
+    $("s-status").replaceChildren(glyph(s.attention), document.createTextNode(` ${LABEL[s.attention] || s.state}`));
+    $("s-status").className = `st at-${s.attention}`;
+  }
+  $("s-ask").hidden = !s.attention_line;
+  $("s-ask").textContent = s.attention_line || "";
+  $("s-ask").className = `askbox at-${s.attention}`;
+  const plan = s.plan || [];
+  $("s-plan-sec").hidden = !plan.length;
+  const mark = { done: "done", doing: "working", pending: "waiting" };
+  $("s-plan").replaceChildren(
+    ...plan.map((i) => {
+      const d = document.createElement("div");
+      d.className = i.state;
+      d.append(glyph(mark[i.state] || "waiting"), span("", i.text));
+      return d;
+    }),
+  );
+  drawReplies(s);
   $("s-cwd").textContent = s.cwd;
   $("chip-model").textContent = s.model;
   $("chip-effort").textContent = `${s.effort} effort`;
@@ -704,6 +741,27 @@ function focused() {
   return r.view === "session" ? sessions.get(r.id) : null;
 }
 
+// The agent's suggested next messages, from its turn_end. Redrawn only when they
+// change: renderMeta runs on every patch of the open session.
+function drawReplies(s) {
+  const box = $("replies");
+  const replies = s.state === "working" ? [] : s.replies || [];
+  const key = JSON.stringify([s.log_id, replies]);
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.hidden = !replies.length;
+  box.replaceChildren(
+    span("lbl", "reply"),
+    ...replies.map((text) => {
+      const b = document.createElement("button");
+      b.className = "rp";
+      b.textContent = text;
+      b.addEventListener("click", () => sendLine(text, false));
+      return b;
+    }),
+  );
+}
+
 // A line from the composer, or from the menu's own filter (Alt+/ over a
 // draft), which leaves the composer alone. The server resolves "/" lines.
 async function sendLine(text, fromComposer) {
@@ -719,6 +777,10 @@ async function sendLine(text, fromComposer) {
   }
   if (text === "/close" && !confirm(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`)) return;
   $("send-error").textContent = "";
+  const box = $("replies");
+  const was = box.hidden;
+  box.hidden = true; // any send answers the turn the pills belonged to
+  delete box.dataset.key; // so the next drawReplies always redraws
   try {
     await conn.call("session.send", { log_id: s.log_id, text });
     if (/^\/model\s/.test(text)) catalogs.delete(s.log_id); // its efforts may differ
@@ -733,6 +795,7 @@ async function sendLine(text, fromComposer) {
     transcript.toBottom();
   } catch (e) {
     $("send-error").textContent = e.message;
+    box.hidden = was;
   }
 }
 
