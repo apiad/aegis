@@ -84,8 +84,8 @@ class OC:
                     shown[op["upsert"]["id"]] = op["upsert"]
                 else:
                     shown.pop(op["remove"], None)
-        # What the channel serves: the entries with each agent message's unread flag.
-        return list(shown.values()) == self.session.view()
+        # What the channel serves: wired, each agent message with its unread flag.
+        return list(shown.values()) == self.session.snapshot()["entries"]
 
 
 @pytest.fixture

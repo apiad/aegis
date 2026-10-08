@@ -149,7 +149,6 @@ def test_tool_output_replaces_its_call_in_place():
         "ok",
         "3 passed",
     )
-    assert done["detail"]["collapsed"] is True
 
 
 def test_a_bash_row_is_named_by_its_opening_comment():
@@ -201,13 +200,13 @@ def test_a_failed_bash_verdict_skips_them_too():
     assert e["detail"]["result"] == "Exit code 2 · 1 failed, 3 passed"
 
 
-def test_a_failure_starts_open_with_its_tail():
+def test_a_failure_starts_closed_like_every_tool_row():
     r = Rec()
     r.call("t1", "Bash", {"command": "mmdc"})
     r.output("t1", "Exit code 1\nError: Parse error on line 9", is_error=True)
     f, _ = run(r)
     (e,) = f.entries()
-    assert e["status"] == "err" and e["detail"]["collapsed"] is False
+    assert e["status"] == "err" and "collapsed" not in e["detail"]
     assert e["detail"]["result"] == "Exit code 1 · Error: Parse error on line 9"
     assert "Parse error" in e["detail"]["tail"]
 

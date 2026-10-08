@@ -25,7 +25,7 @@ from .names import TITLE_MAX, mint_handle, valid_handle
 from .ops import OpError
 from .roots import Roots
 from .session import Host, Session, SpawnSpec
-from .transcript.entries import fold_records
+from .transcript.entries import Fold, fold_records
 from .transcript.store import Store, read_store
 
 log = logging.getLogger("aegis.registry")
@@ -255,17 +255,30 @@ class Registry(Host):
             raise OpError("archived", f"{log_id} is archived; reopen it first")
         raise OpError("no_session", f"no session {log_id!r}")
 
-    def transcript(self, log_id: str):
+    def transcript(self, log_id: str, since: int | None = None):
         """A snapshot function for any session's transcript, archived included."""
         s = self.sessions.get(log_id)
         if s is not None:
-            return s.view
+            return lambda: s.snapshot(since)
         if log_id in self.archived:
-            path = self.store_path(log_id)
-            return lambda: (
-                fold_records(read_store(path)[0]).entries() if path.exists() else []
-            )
+            return lambda: self._archived_fold(log_id).snapshot(since)
         return None
+
+    def detail(self, log_id: str, ids: list[str]) -> list[dict]:
+        """The whole entries ``ids`` name, for rows the wire sent without
+        their detail (transcript/wire.py); unknown ids are left out."""
+        s = self.sessions.get(log_id)
+        if s is not None:
+            fold = s.fold()
+        elif log_id in self.archived:
+            fold = self._archived_fold(log_id)
+        else:
+            raise OpError("no_session", f"no session {log_id!r}")
+        return [e for e in map(fold.entry, ids) if e is not None]
+
+    def _archived_fold(self, log_id: str) -> Fold:
+        path = self.store_path(log_id)
+        return fold_records(read_store(path)[0]) if path.exists() else Fold()
 
     async def spawn(
         self, spec: SpawnSpec, worker: dict | None = None, title: str = ""

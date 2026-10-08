@@ -4,7 +4,9 @@
 // mounts the PAGE before them. Every layout costs a hover hit test and a paint
 // that walk all mounted rows, and a keystroke always lays out, so mounting a
 // long transcript whole made typing cost grow with its length (#157). Mounted
-// rows are always a suffix of the transcript.
+// rows are always a suffix of the transcript. The data of a tab not on screen
+// is kept by app.js (stash and restore), and a row the wire sent without its
+// detail fetches it when it opens (transcript/wire.py).
 //
 // It follows the bottom while the reader is at the bottom; once they scroll
 // up, new entries light the navigator's latest button instead of moving the
@@ -24,7 +26,7 @@ const PAGE = 100;
 const NEAR_TOP_PX = 400;
 
 export class Transcript {
-  constructor(scroller, list, jump, { onRead = () => {}, onSelect = () => {} } = {}) {
+  constructor(scroller, list, jump, { loadDetail, onRead = () => {}, onSelect = () => {} } = {}) {
     this.scroller = scroller;
     this.list = list;
     this.jump = jump;
@@ -37,6 +39,10 @@ export class Transcript {
     this.sinceId = null; // the entry the "new since you left" divider sits above
     this.sinceText = "";
     this.onSelect = onSelect; // after every selection change: each path ends in mark()
+    this.loadDetail = loadDetail; // ids -> Promise of whole entries
+    this.rev = -1; // the highest revision seen: what a resubscribe asks since
+    this.full = new Map(); // id -> the whole entry, fetched when its row opened
+    this.fetching = new Set();
     // Tab walks the rows' summaries and buttons; the row holding focus is the selection.
     list.addEventListener("focusin", (ev) => {
       const r = ev.target.closest(".row");
@@ -61,6 +67,7 @@ export class Transcript {
       (ev) => {
         const id = ev.target.closest(".row")?.dataset.id;
         if (id && this.touched.has(id)) this.opened.set(id, ev.target.open);
+        if (id && ev.target.open) this.fetch(id);
       },
       true, // toggle does not bubble
     );
@@ -127,11 +134,18 @@ export class Transcript {
     this.jump.classList.remove("new");
   }
 
+  // The entry to draw: the fetched whole one while it is still current.
+  whole(e) {
+    const f = this.full.get(e.id);
+    return f && f.rev === e.rev ? f : e;
+  }
+
   mount(e) {
-    const n = render(e);
+    const n = render(this.whole(e));
     if (this.opened.has(e.id)) {
       const d = n.querySelector("details");
       if (d) d.open = this.opened.get(e.id);
+      if (d?.open) this.fetch(e.id);
     }
     // Every path that mounts the divider's row draws the divider with it.
     if (e.id === this.sinceId) {
@@ -143,16 +157,67 @@ export class Transcript {
     return n;
   }
 
-  // A fresh snapshot of the session already shown (a reconnect, a gap in the
-  // patches) keeps the divider where it was; switching sessions clears it.
-  snapshot(entries) {
+  // A row opened: fetch what the wire left out, unless it is here and current.
+  // An upsert that lands while the fetch is out fetches again once it answers.
+  fetch(id) {
+    const e = this.entries.get(id);
+    if (!e?.detail?.more || this.whole(e) !== e || this.fetching.has(id)) return;
+    this.fetching.add(id);
+    this.loadDetail([id])
+      .then((got) => {
+        this.fetching.delete(id);
+        for (const f of got) {
+          this.full.set(f.id, f);
+          const cur = this.entries.get(f.id);
+          const old = this.nodes.get(f.id);
+          if (cur && old && cur.rev === f.rev) old.replaceWith(this.mount(cur));
+        }
+        this.mark();
+        const f = got.find((x) => x.id === id);
+        if (f && this.entries.get(id)?.rev !== f.rev && this.nodes.get(id)?.querySelector("details")?.open) this.fetch(id);
+      })
+      .catch(() => this.fetching.delete(id));
+  }
+
+  // A whole snapshot of the session already shown (a reconnect the server
+  // answers in full, a gap in the patches) keeps the divider where it was;
+  // switching sessions clears it (stash, clear).
+  snapshot(data) {
     const { sinceId, sinceText } = this;
     this.clear();
     this.sinceId = sinceId;
     this.sinceText = sinceText;
-    for (const e of entries) this.entries.set(e.id, e);
+    this.rev = data.rev;
+    for (const e of data.entries) this.entries.set(e.id, e);
     const frag = document.createDocumentFragment();
-    for (const e of entries.slice(-WINDOW)) frag.append(this.mount(e));
+    for (const e of data.entries.slice(-WINDOW)) frag.append(this.mount(e));
+    this.list.replaceChildren(frag);
+    this.mark();
+    this.toBottom();
+  }
+
+  // A delta: what changed since the revision this tab held, removals first.
+  resume(data) {
+    this.apply([...data.removed.map((id) => ({ remove: id })), ...data.entries.map((e) => ({ upsert: e }))]);
+    this.rev = Math.max(this.rev, data.rev);
+  }
+
+  // Hands over this tab's data and starts empty; restore() takes it back.
+  stash() {
+    const s = { entries: this.entries, full: this.full, opened: this.opened, touched: this.touched, rev: this.rev };
+    this.entries = new Map();
+    this.full = new Map();
+    this.opened = new Map();
+    this.touched = new Set();
+    this.clear();
+    return s;
+  }
+
+  restore(s) {
+    this.clear();
+    Object.assign(this, { entries: s.entries, full: s.full, opened: s.opened, touched: s.touched, rev: s.rev });
+    const frag = document.createDocumentFragment();
+    for (const e of [...this.entries.values()].slice(-WINDOW)) frag.append(this.mount(e));
     this.list.replaceChildren(frag);
     this.mark();
     this.toBottom();
@@ -179,6 +244,7 @@ export class Transcript {
     for (const op of ops) {
       if (op.upsert) {
         const e = op.upsert;
+        if (e.rev > this.rev) this.rev = e.rev;
         const known = this.entries.has(e.id);
         this.entries.set(e.id, e);
         if (!e.unread) {
@@ -226,6 +292,9 @@ export class Transcript {
     this.nodes.clear();
     this.opened.clear();
     this.touched.clear();
+    this.full.clear();
+    this.fetching.clear();
+    this.rev = -1;
     this.following = true;
     this.selected = null;
     this.sinceId = null;

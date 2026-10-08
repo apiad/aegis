@@ -54,10 +54,10 @@ function diffBlock(diff) {
 const RENDERERS = {
   user(e) {
     const body = el("div", "body", e.md);
-    if (e.detail?.tail) {
+    if (e.detail?.tail || e.detail?.more) {
       // A command OpenCode expanded: the line as typed, its template under it.
       const d = el("details");
-      d.append(el("summary", null, "template"), el("pre", "out", e.detail.tail));
+      d.append(el("summary", null, "template"), e.detail.tail ? el("pre", "out", e.detail.tail) : el("div", "loading", "loading…"));
       body.append(d);
     }
     return row(e, `user ${e.status}`, body);
@@ -86,9 +86,9 @@ const RENDERERS = {
 
   thinking(e) {
     const body = el("div", "body");
-    if (e.md) {
+    if (e.md || e.detail?.more) {
       const d = el("details");
-      d.append(el("summary", null, e.title || "Thinking"), markdown(e.md));
+      d.append(el("summary", null, e.title || "Thinking"), e.md ? markdown(e.md) : el("div", "loading", "loading…"));
       body.append(d);
     } else {
       body.textContent = e.summary || "thought";
@@ -99,7 +99,6 @@ const RENDERERS = {
   tool(e) {
     const det = e.detail || {};
     const d = el("details");
-    if (det.collapsed === false) d.open = true;
     const line = el("summary", "line");
     const name = el("span", "tn", e.title);
     const label = el("span", "ta", e.summary);
@@ -110,6 +109,7 @@ const RENDERERS = {
     if (det.diff) more.append(diffBlock(det.diff));
     if (det.tail) more.append(el("pre", "out", det.tail));
     if (det.args) more.append(el("pre", "args", det.args));
+    if (det.more) more.append(el("div", "loading", "loading…"));
     if (more.childNodes.length) d.append(more);
     const body = el("div", "body");
     body.append(d);
@@ -118,9 +118,9 @@ const RENDERERS = {
 
   system(e) {
     const body = el("div", "body", e.summary);
-    if (e.detail?.tail) {
+    if (e.detail?.tail || e.detail?.more) {
       const d = el("details");
-      d.append(el("summary", null, "show"), el("pre", "out", e.detail.tail));
+      d.append(el("summary", null, "show"), e.detail.tail ? el("pre", "out", e.detail.tail) : el("div", "loading", "loading…"));
       body.append(d);
     }
     return row(e, "sys", body);

@@ -42,6 +42,7 @@ from .meta import MetaStore
 from .names import default_title
 from .transcript.entries import EMPTY_STANDING, Fold, fold_records
 from .transcript.store import Store, read_store
+from .transcript.wire import wire, wire_ops
 
 Publish = Callable[[str, list[dict]], None]
 
@@ -204,6 +205,12 @@ class Session:
         self._metas = metas
         self._interrupt_timeout = interrupt_timeout
         self._fold: Fold | None = None
+        # A read makes no store record, so the fold's revisions never see it. Per
+        # agent message, the fold's rev when it was read, so a delta since a rev
+        # still carries the flag; and the fold's rev when this process loaded it,
+        # since reads before then were not kept (snapshot).
+        self._read_rev: dict[str, int] = {}
+        self._reads_from: int | None = None
         self._proc: Process | None = None
         self._stopping = False
         self._interrupt_timer: asyncio.Task | None = None
@@ -289,19 +296,54 @@ class Session:
                 self._fold = fold_records(records)
             else:
                 self._fold = Fold()
+            self._reads_from = self._fold.rev
         return self._fold
 
     def entries(self) -> list[dict]:
         return self.fold().entries()
 
     def view(self) -> list[dict]:
-        """The entries as the transcript channel serves them: each agent message
-        carries whether it is unread. The fold's entries never carry it, so a
-        refold of the store still equals them."""
-        return [self._dress(e) for e in self.entries()]
+        """The entries as the transcript channel serves them (snapshot)."""
+        return self.snapshot()["entries"]
+
+    def snapshot(self, since: int | None = None) -> dict:
+        """The fold's snapshot as the channel serves it: wired, and each agent
+        message carrying whether it is unread. The fold's entries never carry
+        the flag, so a refold of the store still equals them. A read makes no
+        store record, so a delta also carries every agent message read since
+        ``since``; and every one, when ``since`` is from before this process
+        loaded the fold, whose earlier reads it does not know."""
+        fold = self.fold()
+        snap = fold.snapshot(since)
+        if "since" in snap:
+            since = snap["since"]
+            known = self._reads_from is not None and since > self._reads_from
+            read = {
+                e["id"]
+                for e in fold.entries()
+                if e["kind"] == "prose"
+                and (not known or self._read_rev.get(e["id"], -2) >= since)
+            }
+            if read:
+                # In the fold's order, as the delta lists its own entries.
+                got = {e["id"]: e for e in snap["entries"]}
+                snap["entries"] = [
+                    got.get(e["id"]) or wire(e)
+                    for e in fold.entries()
+                    if e["id"] in got or e["id"] in read
+                ]
+        snap["entries"] = [self._dress(e) for e in snap["entries"]]
+        return snap
 
     def _dress(self, e: dict) -> dict:
         return {**e, "unread": e["id"] in self.unread} if e["kind"] == "prose" else e
+
+    def _out(self, ops: list[dict]) -> list[dict]:
+        """Patch ops as the channel serves them: wired and dressed."""
+        return [
+            {"upsert": self._dress(op["upsert"])} if "upsert" in op else op
+            for op in wire_ops(ops)
+        ]
 
     def read(self, ids: list[str]) -> int:
         """A person read these agent messages; ids that are not unread are
@@ -309,12 +351,14 @@ class Session:
         hit = [i for i in dict.fromkeys(ids) if i in self.unread]
         if not hit:
             return 0
+        fold = self.fold()
+        for i in hit:
+            self._read_rev[i] = fold.rev
         # _set writes the meta; the card goes out at once below, not in a batch.
         self._set(unread=self.unread - set(hit), last_read_at=time.time())
-        by_id = {e["id"]: e for e in self.fold().entries()}
         self._publish(
             self.channel,
-            [{"upsert": self._dress(by_id[i])} for i in hit if i in by_id],
+            self._out([{"upsert": e} for i in hit if (e := fold.entry(i))]),
         )
         self._publish_now()
         return len(hit)
@@ -561,13 +605,7 @@ class Session:
             # Before dressing the ops, so the new rows go out unread. "unread" is
             # in _SOON: the card's count follows within PUBLISH_EVERY_S.
             self._set(unread=self.unread | set(new))
-        self._publish(
-            self.channel,
-            [
-                {"upsert": self._dress(op["upsert"])} if "upsert" in op else op
-                for op in ops
-            ],
-        )
+        self._publish(self.channel, self._out(ops))
         if fold.standing is not self.standing:
             self._set(standing=fold.standing)
             self.standing = fold.standing
@@ -615,7 +653,7 @@ class Session:
         events = fold.parse(self.harness.src, line)
         if events and all(isinstance(ev, Delta) for ev in events):
             # Never stored: the part's closing update carries the whole text.
-            self._publish(self.channel, fold.live(events))
+            self._publish(self.channel, self._out(fold.live(events)))
             self._set(
                 activity=fold.activity(),
                 **({"status": "working"} if self.status == "idle" else {}),

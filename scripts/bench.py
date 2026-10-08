@@ -312,17 +312,40 @@ def browser_runs(playwright) -> dict:
                     "document.getElementById('s-status').textContent.trim() === 'done'",
                     timeout=60_000,
                 )
+                frames: list[str] = []
+                # A lambda: Playwright marks its handlers, and a builtin
+                # takes no attribute.
+                page.on(
+                    "websocket",
+                    lambda ws: ws.on("framereceived", lambda f: frames.append(f)),
+                )
                 loads = []
                 for _ in range(3):
+                    frames.clear()
                     page.reload()
                     page.wait_for_function(
                         "window.__a2snapshot && window.__a2snapshot.painted",
                         timeout=60_000,
                     )
                     loads.append(page.evaluate("window.__a2snapshot.painted"))
+                snap = [
+                    f for f in frames if '"t": "snapshot"' in f and "transcript:" in f
+                ]
+                here = page.evaluate("location.hash")
+                page.evaluate("location.hash = '#fleet'")
+                page.wait_for_selector("#a2[data-view=fleet]")
+                frames.clear()
+                page.evaluate("h => (location.hash = h)", here)
+                page.wait_for_function(
+                    "document.querySelector('#a2').dataset.view === 'session'"
+                )
+                page.wait_for_timeout(500)
+                back = [f for f in frames if "transcript:" in f]
                 out.update(
                     cold_load_ms=min(loads),
                     cold_load_entries=page.evaluate("window.__a2snapshot.count"),
+                    cold_snapshot_kb=sum(map(len, snap)) / 1000,
+                    return_tab_kb=sum(map(len, back)) / 1000,
                     server_rss_mb=srv.rss_mb(),
                     browser_heap_mb=page.evaluate("performance.memory.usedJSHeapSize")
                     / 2**20,

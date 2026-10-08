@@ -6,9 +6,10 @@ resolves a ``/`` line first, ``commands.py``), ``session.read``,
 ``commands.list``, ``session.interrupt``, ``session.stop``, ``session.close``,
 ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``,
-``quota.read``. Channels: ``sessions`` (every open session's meta; patches
-``upsert`` and ``remove``), ``transcript:<log_id>`` (any session, archived
-included), ``quota`` (each provider's windows; patches ``set``) and ``host``
+``quota.read``, ``transcript.detail``. Channels: ``sessions`` (every open
+session's meta; patches ``upsert`` and ``remove``), ``transcript:<log_id>``
+(any session, archived included; a subscribe ``since`` a revision gets what
+changed after it), ``quota`` (each provider's windows; patches ``set``) and ``host``
 (CPU, RAM and disk while someone watches; patches ``set``).
 """
 
@@ -94,6 +95,11 @@ class ConfigureParams(_Strict):
 
 class LogParams(_Strict):
     log_id: str
+
+
+class DetailParams(_Strict):
+    log_id: str
+    ids: list[str] = Field(min_length=1, max_length=100)
 
 
 class RenameParams(_Strict):
@@ -223,11 +229,11 @@ class App:
         self._on_wire[m["log_id"]] = seen
         return m["log_id"], urgent
 
-    def _resolve(self, name: str):
+    def _resolve(self, name: str, since: int | None = None):
         if name == "sessions":
             return lambda: [s.wire() for s in self.sessions.open_sessions()]
         if name.startswith("transcript:"):
-            return self.sessions.transcript(name.removeprefix("transcript:"))
+            return self.sessions.transcript(name.removeprefix("transcript:"), since)
         if name == "quota":
             return self.quota.snapshot
         if name == "host":
@@ -448,6 +454,11 @@ class App:
                 # an unknown name from one of claude's.
                 "complete": bool(cat and cat.commands),
             }
+
+        @r.op("transcript.detail", DetailParams)
+        async def detail(p: DetailParams, caller):
+            """The whole entries for rows the wire sent without their detail."""
+            return reg.detail(p.log_id, p.ids)
 
         @r.op("session.interrupt", LogParams)
         async def interrupt(p: LogParams, caller):

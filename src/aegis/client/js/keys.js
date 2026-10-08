@@ -37,7 +37,7 @@ export const KEYS = [
     action: "tab",
     match: (ev) => ev.altKey && /^Digit[0-9]$/.test(ev.code),
   },
-  { scope: "global", label: "Esc", desc: "Interrupt the agent; close this list", action: "escape", match: key("Escape") },
+  { scope: "global", label: "Esc", desc: "Interrupt the agent; close a dialog or this list", action: "escape", match: key("Escape") },
   { scope: "browse", label: "0…9", desc: "Fleet, or the n-th tab", action: "tab", match: (ev) => bare(ev) && /^[0-9]$/.test(ev.key) },
   { scope: "browse", label: "n", desc: "New session", action: "spawn", match: key("n") },
   { scope: "browse", label: "?", desc: "This list", action: "help", match: key("?") },
