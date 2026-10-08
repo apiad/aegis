@@ -522,3 +522,30 @@ def test_configure_records_read_as_one_line():
         "permission → read (when it resumes)",
         "effort → low",
     ]
+
+
+def test_a_set_model_note_does_not_take_a_queued_commands_place():
+    r = Rec()
+    r.own("send", text="/compact")
+    r.claude(
+        {
+            "type": "user",
+            "isReplay": True,
+            "message": {
+                "content": "<local-command-stdout>Set model to Opus</local-command-stdout>"
+            },
+        }
+    )
+    r.claude(
+        {
+            "type": "user",
+            "isReplay": True,
+            "message": {
+                "content": "<local-command-stdout>Compacted </local-command-stdout>"
+            },
+        }
+    )
+    f, _ = run(r)
+    assert [(e["kind"], e["title"], e["md"]) for e in f.entries()] == [
+        ("command", "/compact", "Compacted")
+    ]

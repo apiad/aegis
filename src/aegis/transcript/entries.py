@@ -328,9 +328,13 @@ class Fold:
             )
 
         if isinstance(ev, CommandOutput):
+            # The note a set_model control request leaves answers no send; its
+            # configure record already shows. Taking a queued command's place
+            # would title the note with that command and drop its real output.
+            if ev.text.startswith("Set model to"):
+                return []
             pid = self._take(None, command=True, strict=True)
             if pid is None:
-                # A control request's note; its configure record already shows.
                 return []
             title = (self._entries[pid].get("md") or "").strip()
             return self._remove(pid) + self._upsert(
