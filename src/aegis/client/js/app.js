@@ -11,6 +11,7 @@ import { ago, money, patchCard, renderArchive, renderBand, renderBandQuota, rend
 import { age, quotaSideRow } from "./gauges.js";
 import { installKeys, renderKeys } from "./keys.js";
 import { CommandMenu } from "./commands.js";
+import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -330,28 +331,7 @@ function renderMeta(s) {
   $("s-cost").textContent = money(s.cost_usd);
   const mons = s.monitors || [];
   $("s-mon-sec").hidden = !mons.length;
-  $("s-monitors").replaceChildren(
-    ...mons.map((m) => {
-      const box = document.createElement("div");
-      box.className = "mon";
-      const kv = document.createElement("div");
-      kv.className = "kv";
-      const name = document.createElement("span");
-      name.textContent = m.description;
-      const pct = document.createElement("span");
-      pct.textContent = m.progress == null ? "watching" : `${m.progress}%`;
-      kv.append(name, pct);
-      // No command, no reading yet, or a reading of 0: the monitor is running and
-      // how far it got is unknown, so the bar moves instead of sitting empty.
-      const bar = document.createElement("div");
-      bar.className = m.progress ? "bar thin" : "bar thin indet";
-      const fill = document.createElement("i");
-      if (m.progress) fill.style.width = `${m.progress}%`;
-      bar.append(fill);
-      box.append(kv, bar);
-      return box;
-    }),
-  );
+  renderMonitors($("s-monitors"), mons);
   const working = s.state === "working";
   $("stop").hidden = !working;
   $("working").hidden = !working;
@@ -366,6 +346,7 @@ function renderMeta(s) {
 }
 
 setInterval(() => {
+  tickMonitors();
   if (workingSince != null) $("working-meta").textContent = `${Math.round((Date.now() - workingSince) / 1000)}s, Esc interrupts`;
   if (root.dataset.view === "fleet") for (const c of document.querySelectorAll(".card")) {
     const m = sessions.get(c.dataset.id);
@@ -702,6 +683,7 @@ installKeys(
     },
     escape() {
       if (!keymap.hidden) help(false);
+      else if (closeMonitorCard()) return;
       else if (route().view === "session" && !editing.size) interrupt();
     },
     help: () => help(),
