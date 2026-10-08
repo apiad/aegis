@@ -85,13 +85,14 @@ class Monitor:
         said, bad = verdict(kind, rc, out, err)
         prev = self.checks.get(kind)
         changed = prev is None or (prev["rc"], prev["verdict"]) != (rc, said)
+        since = time.time() if prev is None or changed else prev["since"]
         self.checks[kind] = {
             "rc": rc,
             "verdict": said,
             "bad": bad,
             "out": _last_line(out),
             "err": _last_line(err),
-            "since": time.time() if changed else prev["since"],
+            "since": since,
         }
         return changed
 
@@ -325,18 +326,28 @@ def eta(started_at: float, readings: list[list[float]]) -> tuple[float, str] | N
 
 
 def verdict(kind: str, rc: int | None, out: str, err: str) -> tuple[str, bool]:
-    """A check's result in words, and whether it means the check cannot work."""
+    """A check's result in words, and whether it means the check cannot run.
+
+    Only a command bash cannot find or execute, or one that cannot finish, is
+    broken: any other exit is a condition answering, and a progress command
+    reading a file that does not exist yet is how many monitors start. Bash's
+    own "command not found" counts whatever the exit code, since in a pipeline
+    (`gh ... | jq`) the code is the last command's."""
     if rc is None:
         return err, True
-    if rc == 127:
+    if rc == 127 or (rc != 0 and "command not found" in err):
         return "command not found", True
     if rc == 126:
         return "cannot execute", True
     if kind == "progress":
         if rc != 0:
-            return f"exit {rc}, no reading", True
+            return f"exit {rc}, no reading", False
         value = _percent(out)
-        return ("printed no number", True) if value is None else (f"printed {value}", False)
+        return (
+            ("printed no number", False)
+            if value is None
+            else (f"printed {value}", False)
+        )
     if kind == "done":
         return ("passed" if rc == 0 else "not yet"), False
     return ("failed" if rc == 0 else "not failing"), False
