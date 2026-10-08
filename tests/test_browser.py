@@ -1457,11 +1457,17 @@ def open_settings(pg, url: str) -> None:
     pg.wait_for_selector('tr.set-agent[data-row="agents.opus"]')
 
 
-def test_settings_saves_an_edit_to_the_file_and_the_composer_follows(settings_server, page):
+def test_settings_saves_an_edit_to_the_file_and_the_composer_follows(
+    settings_server, page
+):
     open_settings(page, settings_server.url)
-    page.select_option('tr.set-agent[data-row="agents.opus"] select[name=effort]', "max")
+    page.select_option(
+        'tr.set-agent[data-row="agents.opus"] select[name=effort]', "max"
+    )
     page.click("#set-save")
-    page.wait_for_function("document.querySelector('#set-status').textContent === 'Saved'")
+    page.wait_for_function(
+        "document.querySelector('#set-status').textContent === 'Saved'"
+    )
     text = (settings_server.root / ".aegis.yaml").read_text()
     assert "# kept across a save" in text and "effort: max" in text
     page.click("#tab-add")
@@ -1472,7 +1478,8 @@ def test_settings_saves_an_edit_to_the_file_and_the_composer_follows(settings_se
 def test_an_edit_on_disk_reloads_the_open_settings_page(settings_server, page):
     open_settings(page, settings_server.url)
     (settings_server.root / ".aegis.yaml").write_text(
-        SETTINGS_CONFIG + "  extra: {harness: claude-code, model: sonnet, effort: low, permission: read}\n"
+        SETTINGS_CONFIG
+        + "  extra: {harness: claude-code, model: sonnet, effort: low, permission: read}\n"
     )
     page.wait_for_selector('tr.set-agent[data-row="agents.extra"]', timeout=5000)
 
@@ -1482,7 +1489,10 @@ def test_an_edit_on_disk_under_unsaved_edits_offers_reload(settings_server, page
     page.fill('tr.set-agent[data-row="agents.opus"] input[name=model]', "sonnet")
     (settings_server.root / ".aegis.yaml").write_text(SETTINGS_CONFIG + "# changed\n")
     page.wait_for_selector("#set-stale", timeout=5000)
-    assert page.input_value('tr.set-agent[data-row="agents.opus"] input[name=model]') == "sonnet"
+    assert (
+        page.input_value('tr.set-agent[data-row="agents.opus"] input[name=model]')
+        == "sonnet"
+    )
     page.click("#set-reload")
     page.wait_for_function(
         "document.querySelector('tr.set-agent[data-row=\"agents.opus\"] input[name=model]').value === 'opus'"
@@ -1492,7 +1502,9 @@ def test_an_edit_on_disk_under_unsaved_edits_offers_reload(settings_server, page
 def test_run_doctor_marks_the_row(settings_server, page):
     open_settings(page, settings_server.url)
     page.click("#set-doctor")
-    page.wait_for_selector('tr.set-agent[data-row="agents.bad.one"].warn', timeout=15000)
+    page.wait_for_selector(
+        'tr.set-agent[data-row="agents.bad.one"].warn', timeout=15000
+    )
     assert "does not list 'nope'" in page.text_content("#set-findings")
 
 
@@ -1501,7 +1513,9 @@ def test_typing_in_settings_survives_session_patches(settings_server, page):
     box = 'tr.set-agent[data-row="agents.opus"] input[name=model]'
     page.click(box)
     page.keyboard.type("-x")
-    page.evaluate("window.dispatchEvent(new HashChangeEvent('hashchange'))")  # a render() with no view change
+    page.evaluate(
+        "window.dispatchEvent(new HashChangeEvent('hashchange'))"
+    )  # a render() with no view change
     page.keyboard.type("y")
     assert page.input_value(box) == "opus-xy"
     assert page.evaluate("document.activeElement.name") == "model"
@@ -1520,5 +1534,7 @@ def test_an_empty_root_offers_set_up_and_saving_creates_the_file(empty_server, p
     page.click("#set-setup")
     page.wait_for_selector('tr.set-agent[data-row="agents.opus"]', timeout=15000)
     page.click("#set-save")
-    page.wait_for_function("document.querySelector('#set-status').textContent === 'Saved'")
+    page.wait_for_function(
+        "document.querySelector('#set-status').textContent === 'Saved'"
+    )
     assert "default_agent: opus" in (empty_server.root / ".aegis.yaml").read_text()

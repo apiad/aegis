@@ -10,7 +10,11 @@ CONFIG = "default_agent: opus\nagents:\n  opus: {harness: claude-code, model: op
 @pytest.fixture
 def app(tmp_path, fake_claude, fake_opencode):
     (tmp_path / ".aegis.yaml").write_text(CONFIG)
-    return App(make_roots(tmp_path, tmp_path), claude_bin=fake_claude, opencode_bin=fake_opencode)
+    return App(
+        make_roots(tmp_path, tmp_path),
+        claude_bin=fake_claude,
+        opencode_bin=fake_opencode,
+    )
 
 
 async def test_read_then_write_round_trips_and_publishes(app, tmp_path):
@@ -22,7 +26,10 @@ async def test_read_then_write_round_trips_and_publishes(app, tmp_path):
     assert r["saved"] and r["problems"] == []
     assert "effort: max" in (tmp_path / ".aegis.yaml").read_text()
     assert r["config"]["doc"]["agents"][0]["effort"] == "max"
-    assert sent[-1]["t"] == "patch" and sent[-1]["ops"][0]["set"]["doc"]["agents"][0]["effort"] == "max"
+    assert (
+        sent[-1]["t"] == "patch"
+        and sent[-1]["ops"][0]["set"]["doc"]["agents"][0]["effort"] == "max"
+    )
 
 
 async def test_a_stale_write_is_refused(app, tmp_path):
@@ -75,6 +82,8 @@ async def test_the_stamp_survives_a_browser_round_trip(app, tmp_path):
     # page was refused as stale.
     import json
 
-    w = json.loads(json.dumps(await app.registry.call("config.read", {})), parse_int=float)
+    w = json.loads(
+        json.dumps(await app.registry.call("config.read", {})), parse_int=float
+    )
     r = await app.registry.call("config.write", {"doc": w["doc"], "stamp": w["stamp"]})
     assert r["saved"]

@@ -71,12 +71,16 @@ def test_a_file_created_later_is_picked_up(tmp_path):
 
 
 def test_unknown_top_level_keys_are_listed(tmp_path):
-    c, _ = config(tmp_path, "scheduler: {tick_seconds: 5}\nvoice: {preview: true}\n" + A)
+    c, _ = config(
+        tmp_path, "scheduler: {tick_seconds: 5}\nvoice: {preview: true}\n" + A
+    )
     assert c.current().unknown_keys == ("scheduler", "voice")
 
 
 def test_the_doc_keeps_a_broken_queue_editable(tmp_path):
-    d = doc_from({"queues": {"broken": {"agent": "a"}, "ok": {"agent": "a", "max_parallel": 2}}})
+    d = doc_from(
+        {"queues": {"broken": {"agent": "a"}, "ok": {"agent": "a", "max_parallel": 2}}}
+    )
     assert d.queues == [
         QueueDoc(name="broken", agent="a", max_parallel=None),
         QueueDoc(name="ok", agent="a", max_parallel=2),

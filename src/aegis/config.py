@@ -249,7 +249,11 @@ def validate(doc: ConfigDoc) -> list[Finding]:
         elif names.count(a.name) > 1:
             err(row, row, f"two agents are named {a.name!r}")
         if a.harness and a.harness not in HARNESSES:
-            err(row, f"{row}.harness", f"harness {a.harness!r} is not one of {', '.join(HARNESSES)}")
+            err(
+                row,
+                f"{row}.harness",
+                f"harness {a.harness!r} is not one of {', '.join(HARNESSES)}",
+            )
             continue
         (agent,) = agents_from({"agents": {a.name: a.model_dump(exclude={"name"})}})
         if agent.error:
@@ -262,7 +266,11 @@ def validate(doc: ConfigDoc) -> list[Finding]:
         elif queues.count(q.name) > 1:
             err(row, row, f"two queues are named {q.name!r}")
         if q.agent not in names:
-            err(row, f"{row}.agent", f"no agent named {q.agent!r}" if q.agent else "agent is missing")
+            err(
+                row,
+                f"{row}.agent",
+                f"no agent named {q.agent!r}" if q.agent else "agent is missing",
+            )
         if q.max_parallel is None or q.max_parallel < 1:
             err(row, f"{row}.max_parallel", "max_parallel is not a positive integer")
     if doc.default_agent and doc.default_agent not in names:

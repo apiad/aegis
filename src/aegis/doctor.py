@@ -65,7 +65,9 @@ class Found:
 
 
 async def _version(bin: str) -> str:
-    proc = await asyncio.create_subprocess_exec(bin, "--version", stdout=PIPE, stderr=STDOUT)
+    proc = await asyncio.create_subprocess_exec(
+        bin, "--version", stdout=PIPE, stderr=STDOUT
+    )
     try:
         out, _ = await asyncio.wait_for(proc.communicate(), VERSION_TIMEOUT_S)
     except TimeoutError:
@@ -80,13 +82,19 @@ async def _version(bin: str) -> str:
 
 async def _catalog(name: str, bins: dict[str, str], cwd: Path) -> Catalog:
     h = harness_for(name, bins["claude-code"], bins["opencode"])
-    spec = SpawnSpec(agent="doctor", model="", effort="", permission="read", cwd=cwd, harness=name)
+    spec = SpawnSpec(
+        agent="doctor", model="", effort="", permission="read", cwd=cwd, harness=name
+    )
     with tempfile.TemporaryDirectory() as d:
         stderr = Path(d) / "stderr.log"
         try:
             return await asyncio.wait_for(h.probe(spec, stderr), PROBE_TIMEOUT_S)
         except Exception as e:
-            tail = stderr.read_text(errors="replace").strip().splitlines()[-3:] if stderr.exists() else []
+            tail = (
+                stderr.read_text(errors="replace").strip().splitlines()[-3:]
+                if stderr.exists()
+                else []
+            )
             raise RuntimeError("; ".join([str(e) or type(e).__name__, *tail])) from e
 
 
@@ -101,20 +109,34 @@ async def _find(name: str, bins: dict[str, str], cwd: Path) -> Found:
     try:
         cat = await _catalog(name, {**bins, name: bin}, cwd)
     except RuntimeError as e:
-        return Found(name, bin, version, error=f"{LABELS[name]} gave no model list: {e}")
+        return Found(
+            name, bin, version, error=f"{LABELS[name]} gave no model list: {e}"
+        )
     return Found(name, bin, version, cat.models)
 
 
-async def detect(cwd: Path, bins: dict[str, str], only: Iterable[str] = HARNESSES) -> list[Found]:
+async def detect(
+    cwd: Path, bins: dict[str, str], only: Iterable[str] = HARNESSES
+) -> list[Found]:
     wanted = set(only)
-    return list(await asyncio.gather(*(_find(h, bins, cwd) for h in HARNESSES if h in wanted)))
+    return list(
+        await asyncio.gather(*(_find(h, bins, cwd) for h in HARNESSES if h in wanted))
+    )
 
 
 def propose(found: list[Found]) -> ConfigDoc:
     have = {f.harness: f for f in found if f.bin}
     agents: list[AgentDoc] = []
     if "claude-code" in have:
-        agents.append(AgentDoc(name="opus", harness="claude-code", model="opus", effort="high", permission="full"))
+        agents.append(
+            AgentDoc(
+                name="opus",
+                harness="claude-code",
+                model="opus",
+                effort="high",
+                permission="full",
+            )
+        )
     oc = have.get("opencode")
     if oc is not None and oc.models:
         first = oc.models[0]
@@ -123,7 +145,15 @@ def propose(found: list[Found]) -> ConfigDoc:
             name += "-opencode"
         offered = [e for e in first.efforts if e in EFFORTS]
         effort = "high" if "high" in offered or not offered else offered[0]
-        agents.append(AgentDoc(name=name, harness="opencode", model=first.value, effort=effort, permission="full"))
+        agents.append(
+            AgentDoc(
+                name=name,
+                harness="opencode",
+                model=first.value,
+                effort=effort,
+                permission="full",
+            )
+        )
     if not agents:
         return ConfigDoc()
     default = agents[0].name
@@ -136,7 +166,9 @@ def propose(found: list[Found]) -> ConfigDoc:
 
 def _unknown_keys(data: dict) -> list[Finding]:
     out = [
-        Finding("warn", str(k), f"aegis does not read {k!r}; it reads {', '.join(TOP_KEYS)}")
+        Finding(
+            "warn", str(k), f"aegis does not read {k!r}; it reads {', '.join(TOP_KEYS)}"
+        )
         for k in data
         if k not in TOP_KEYS
     ]
@@ -150,7 +182,12 @@ def _unknown_keys(data: dict) -> list[Finding]:
                 keys += [k for k in raw["provider"] if k != "name"]
             row = f"{section}.{name}"
             out += [
-                Finding("warn", f"{row}.{k}", f"aegis does not read {k!r}; it reads {', '.join(known)}", row)
+                Finding(
+                    "warn",
+                    f"{row}.{k}",
+                    f"aegis does not read {k!r}; it reads {', '.join(known)}",
+                    row,
+                )
                 for k in keys
                 if k not in known
             ]
@@ -162,18 +199,53 @@ def _agent(a: Agent, f: Found | None) -> list[Finding]:
     if a.error:
         return [Finding("error", row, a.error, row)]
     if a.harness not in HARNESSES:
-        return [Finding("error", f"{row}.harness", f"aegis runs {', '.join(HARNESSES)}, not {a.harness!r}", row)]
+        return [
+            Finding(
+                "error",
+                f"{row}.harness",
+                f"aegis runs {', '.join(HARNESSES)}, not {a.harness!r}",
+                row,
+            )
+        ]
     if f is not None and f.error:
-        return [Finding("error", f"{row}.harness", f"{LABELS[a.harness]} cannot run here: {f.error}", row)]
+        return [
+            Finding(
+                "error",
+                f"{row}.harness",
+                f"{LABELS[a.harness]} cannot run here: {f.error}",
+                row,
+            )
+        ]
     out: list[Finding] = []
     if f is not None and f.models:
         m = next((m for m in f.models if a.model in (m.value, m.resolved)), None)
         if m is None:
             listed = ", ".join(x.value for x in f.models[:8])
-            out.append(Finding("warn", f"{row}.model", f"{LABELS[a.harness]} does not list {a.model!r}; it lists {listed}", row))
+            out.append(
+                Finding(
+                    "warn",
+                    f"{row}.model",
+                    f"{LABELS[a.harness]} does not list {a.model!r}; it lists {listed}",
+                    row,
+                )
+            )
         elif m.efforts and a.effort not in m.efforts:
-            out.append(Finding("warn", f"{row}.effort", f"{m.label} takes {', '.join(m.efforts)}, not {a.effort!r}", row))
-    return out or [Finding("ok", row, f"{a.harness} {a.model}, effort {a.effort}, permission {a.permission}", row)]
+            out.append(
+                Finding(
+                    "warn",
+                    f"{row}.effort",
+                    f"{m.label} takes {', '.join(m.efforts)}, not {a.effort!r}",
+                    row,
+                )
+            )
+    return out or [
+        Finding(
+            "ok",
+            row,
+            f"{a.harness} {a.model}, effort {a.effort}, permission {a.permission}",
+            row,
+        )
+    ]
 
 
 def _default(name: str | None, by_name: dict[str, Agent]) -> Finding:
@@ -196,7 +268,9 @@ def _queue(name: str, q: dict, by_name: dict[str, Agent]) -> Finding:
     if a is None:
         return Finding("error", f"{row}.agent", f"no agent named {q['agent']!r}", row)
     if a.error:
-        return Finding("error", f"{row}.agent", f"agent {a.name!r} cannot spawn: {a.error}", row)
+        return Finding(
+            "error", f"{row}.agent", f"agent {a.name!r} cannot spawn: {a.error}", row
+        )
     return Finding("ok", row, f"{a.name}, {q['max_parallel']} at a time", row)
 
 
@@ -210,22 +284,32 @@ def _state(roots: Roots) -> Finding:
         )
     probe = next(p for p in (sr, *sr.parents) if p.exists())
     if not os.access(probe, os.W_OK):
-        return Finding("error", "state", f"{probe} is not writable; aegis keeps its state in {sr}")
+        return Finding(
+            "error", "state", f"{probe} is not writable; aegis keeps its state in {sr}"
+        )
     return Finding("ok", "state", str(sr))
 
 
-async def doctor(roots: Roots, bins: dict[str, str], start: Path | None = None) -> list[Finding]:
+async def doctor(
+    roots: Roots, bins: dict[str, str], start: Path | None = None
+) -> list[Finding]:
     path = roots.config_root / CONFIG_FILE
     if not path.is_file():
         return [
-            Finding("error", "file", f"no {CONFIG_FILE} at {roots.config_root}; run `aegis init` there"),
+            Finding(
+                "error",
+                "file",
+                f"no {CONFIG_FILE} at {roots.config_root}; run `aegis init` there",
+            ),
             _state(roots),
         ]
     data, error = load(path)
     if data is None:
         return [Finding("error", "file", f"does not parse: {error}"), _state(roots)]
     walked = start is not None and start.resolve() != roots.config_root
-    out = [Finding("ok", "file", f"{path}, found from {start}" if walked else str(path))]
+    out = [
+        Finding("ok", "file", f"{path}, found from {start}" if walked else str(path))
+    ]
     out += _unknown_keys(data)
     snap = Snapshot.parse(path, None, data)
     used = {a.harness for a in snap.agents if a.harness in HARNESSES}
@@ -235,7 +319,9 @@ async def doctor(roots: Roots, bins: dict[str, str], start: Path | None = None) 
         if f.error:
             out.append(Finding("error", where, f.error))
         else:
-            out.append(Finding("ok", where, f"{f.bin}, {f.version}, {len(f.models)} models"))
+            out.append(
+                Finding("ok", where, f"{f.bin}, {f.version}, {len(f.models)} models")
+            )
     by_name = {a.name: a for a in snap.agents}
     for a in snap.agents:
         out += _agent(a, found.get(a.harness))

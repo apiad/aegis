@@ -665,23 +665,44 @@ async def test_an_agent_spawns_with_at_most_its_own_permission(world):
 
 
 async def test_a_queue_added_on_disk_takes_tasks_without_a_restart(world, tmp_path):
-    (tmp_path / ".aegis.yaml").write_text(CONFIG + "  late: {agent: opus, max_parallel: 1}\n")
-    r = await world.app.registry.call("queue.enqueue", {"queue": "late", "payload": "say hi"})
+    (tmp_path / ".aegis.yaml").write_text(
+        CONFIG + "  late: {agent: opus, max_parallel: 1}\n"
+    )
+    r = await world.app.registry.call(
+        "queue.enqueue", {"queue": "late", "payload": "say hi"}
+    )
     t = world.app.queues.tasks[r["task_id"]]
-    await until(lambda: t.status == "completed", timeout=12, what="the late queue's task")
+    await until(
+        lambda: t.status == "completed", timeout=12, what="the late queue's task"
+    )
 
 
 async def test_raising_max_parallel_on_disk_starts_a_waiting_task(world, tmp_path):
     flag = tmp_path / "hold"
-    hold = mcp("monitor_start", description="hold", done=f"test -f {flag}", progress=None, interval_s=1)
+    hold = mcp(
+        "monitor_start",
+        description="hold",
+        done=f"test -f {flag}",
+        progress=None,
+        interval_s=1,
+    )
     ids = [
-        (await world.app.registry.call("queue.enqueue", {"queue": "solo", "payload": hold}))["task_id"]
+        (
+            await world.app.registry.call(
+                "queue.enqueue", {"queue": "solo", "payload": hold}
+            )
+        )["task_id"]
         for _ in range(2)
     ]
     first, second = (world.app.queues.tasks[i] for i in ids)
     await until(lambda: first.status == "running", timeout=8, what="the first worker")
     assert second.status == "pending"
-    (tmp_path / ".aegis.yaml").write_text(CONFIG.replace("solo: {agent: opus, max_parallel: 1}", "solo: {agent: opus, max_parallel: 2}"))
+    (tmp_path / ".aegis.yaml").write_text(
+        CONFIG.replace(
+            "solo: {agent: opus, max_parallel: 1}",
+            "solo: {agent: opus, max_parallel: 2}",
+        )
+    )
     await until(lambda: second.status == "running", timeout=5, what="the raised limit")
     flag.touch()
 

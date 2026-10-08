@@ -328,7 +328,9 @@ def doctor(
 
     start = Path.cwd()
     roots = make_roots(start=start, root=root)
-    findings = asyncio.run(run_doctor(roots, _bins(claude, opencode), start=None if root else start))
+    findings = asyncio.run(
+        run_doctor(roots, _bins(claude, opencode), start=None if root else start)
+    )
     raise typer.Exit(1 if _report(findings) else 0)
 
 
@@ -350,9 +352,13 @@ def _ask(doc, found):
             a.model_copy(
                 update={
                     "model": typer.prompt("  model", default=a.model),
-                    "effort": typer.prompt("  effort", default=a.effort, type=click.Choice(EFFORTS)),
+                    "effort": typer.prompt(
+                        "  effort", default=a.effort, type=click.Choice(EFFORTS)
+                    ),
                     "permission": typer.prompt(
-                        "  permission", default=a.permission, type=click.Choice(PERMISSION_ORDER)
+                        "  permission",
+                        default=a.permission,
+                        type=click.Choice(PERMISSION_ORDER),
                     ),
                 }
             )
@@ -363,7 +369,9 @@ def _ask(doc, found):
     first = doc.default_agent if doc.default_agent in names else names[0]
     default = typer.prompt("Default agent", default=first, type=click.Choice(names))
     queues = []
-    if typer.confirm(f"Add a queue 'general' of workers running {default}?", default=True):
+    if typer.confirm(
+        f"Add a queue 'general' of workers running {default}?", default=True
+    ):
         n = typer.prompt("  workers at a time", default=3, type=click.IntRange(1))
         queues.append(QueueDoc(name="general", agent=default, max_parallel=n))
     return ConfigDoc(agents=agents, default_agent=default, queues=queues)
@@ -371,10 +379,16 @@ def _ask(doc, found):
 
 @app.command()
 def init(
-    root: Path | None = typer.Option(None, help="Where to write .aegis.yaml; default: here."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Accept every proposal without asking."),
+    root: Path | None = typer.Option(
+        None, help="Where to write .aegis.yaml; default: here."
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Accept every proposal without asking."
+    ),
     claude: str = typer.Option("claude", help="The claude executable to look for."),
-    opencode: str = typer.Option("opencode", help="The opencode executable to look for."),
+    opencode: str = typer.Option(
+        "opencode", help="The opencode executable to look for."
+    ),
 ) -> None:
     """Write a first .aegis.yaml from the harnesses installed here."""
     from .config import write
@@ -393,7 +407,9 @@ def init(
     parent = find_config_root(target.parent) / CONFIG_FILE
     if parent.is_file():
         typer.echo(f"{parent} governs {target} now.")
-        if not yes and not typer.confirm(f"Create a new aegis root at {target}?", default=True):
+        if not yes and not typer.confirm(
+            f"Create a new aegis root at {target}?", default=True
+        ):
             raise typer.Exit(1)
     bins = _bins(claude, opencode)
     found = asyncio.run(detect(target, bins))
@@ -403,9 +419,14 @@ def init(
         elif f.error:
             typer.echo(f"{LABELS[f.harness]}: {f.bin}, {f.error}")
         else:
-            typer.echo(f"{LABELS[f.harness]}: {f.bin}, {f.version}, {len(f.models)} models")
+            typer.echo(
+                f"{LABELS[f.harness]}: {f.bin}, {f.version}, {len(f.models)} models"
+            )
     if not any(f.bin for f in found):
-        typer.echo("No harness found. Install Claude Code or OpenCode, then run `aegis init` again.", err=True)
+        typer.echo(
+            "No harness found. Install Claude Code or OpenCode, then run `aegis init` again.",
+            err=True,
+        )
         raise typer.Exit(1)
     doc = propose(found)
     if not yes:
