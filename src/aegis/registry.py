@@ -63,6 +63,7 @@ class Registry(Host):
         self.monitors = None
         self.queues = None
         self.quota = None
+        self.catalogs = None
 
     # -- the Host a session asks ----------------------------------------------
     def spawn_args(self, session: Session) -> tuple[str | None, str | None]:
@@ -94,6 +95,10 @@ class Registry(Host):
             if self.monitors is not None
             else []
         }
+
+    def catalog_ready(self, session: Session, catalog) -> None:
+        if self.catalogs is not None:
+            self.catalogs.put(session.spec.cwd, catalog)
 
     def refresh_card(self, log_id: str) -> None:
         s = self.sessions.get(log_id)
