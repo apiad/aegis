@@ -46,7 +46,7 @@ export function renderCards(box, metas, onOpen) {
       hd.append(el("span", "s", m.state));
       const ttl = el("div", "ttl", m.title || "untitled");
       const sub = el("div", "ln");
-      sub.append(el("b", null, m.profile), document.createTextNode(`${m.model} · ${cwdTail(m.cwd)}`));
+      sub.append(el("b", null, `${m.agent}${(m.overridden || []).length ? "*" : ""}`), document.createTextNode(`${m.model} · ${cwdTail(m.cwd)}`));
       const act = el("div", "act", m.activity || "");
       const pct = m.context_window && m.context_tokens ? Math.min(100, Math.round((100 * m.context_tokens) / m.context_window)) : 0;
       const bar = el("div", "bar thin");

@@ -89,7 +89,7 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
       // Whether this browser runs on the server's desktop (Open natively).
       if (conn.native) root.dataset.native = "";
       else delete root.dataset.native;
-      loadProfiles();
+      loadAgents();
       loadVersion();
     }
   },
@@ -170,6 +170,7 @@ function render() {
     watchHost(false);
     follow(null);
     show("spawn");
+    $("sp-text").focus();
     document.title = "New session · aegis";
   } else if (r.view === "session") {
     watchHost(false);
@@ -464,58 +465,135 @@ $("reopen").addEventListener("click", () => {
   if (r.view === "read") reopen(r.id);
 });
 
-// -- spawn -----------------------------------------------------------------------
-let profiles = [];
+// -- the new-tab composer -------------------------------------------------------
+// An agent is a preset: picking one fills the other chips, and changing a chip
+// marks the agent `name*` until reset. Enter spawns and sends in one call.
+let roster = { agents: [], harnesses: [], models: {}, default: null, cwd: "" };
+const LAST_AGENT = "aegis.lastAgent";
+const PICKS = ["harness", "model", "effort", "permission"];
 
-async function loadProfiles() {
+async function loadAgents() {
   try {
-    const r = await conn.call("profiles.list");
-    profiles = r.profiles;
-    const sel = $("sp-profile");
-    const keep = sel.value;
-    sel.replaceChildren(
-      ...profiles.map((p) => {
-        const o = new Option(p.enabled ? `${p.name}  (${p.model || "default model"})` : `${p.name}  (${p.harness}, not supported yet)`, p.name);
-        o.disabled = !p.enabled;
-        return o;
-      }),
-    );
-    const first = profiles.find((p) => p.name === keep && p.enabled) || profiles.find((p) => p.name === r.default && p.enabled) || profiles.find((p) => p.enabled);
-    if (first) sel.value = first.name;
-    if (!$("sp-cwd").value) $("sp-cwd").value = r.cwd;
-    fillProfile();
-    if (!profiles.length) $("sp-error").textContent = "No profiles: add an agents: map to .aegis.yaml.";
+    roster = await conn.call("agents.list");
   } catch (e) {
     $("sp-error").textContent = e.message;
+    return;
   }
+  // A reconnect rebuilds the options; the chips keep what the person set.
+  const before = Object.fromEntries(PICKS.map((k) => [k, $(`sp-${k}`).value]));
+  $("sp-harness").replaceChildren(
+    ...roster.harnesses.map((h) => {
+      const o = new Option(h.supported ? h.name : `${h.name} (not supported yet)`, h.name);
+      o.disabled = !h.supported;
+      return o;
+    }),
+  );
+  $("sp-agent").replaceChildren(
+    ...roster.agents.map((a) => {
+      const why = a.error || (a.enabled ? "" : `${a.harness} is not supported yet`);
+      const o = new Option(why ? `${a.name} (${why})` : a.name, a.name);
+      o.disabled = !a.enabled;
+      return o;
+    }),
+  );
+  const usable = roster.agents.filter((a) => a.enabled).map((a) => a.name);
+  const keep = $("sp-agent").dataset.picked;
+  const start = [keep, localStorage.getItem(LAST_AGENT), roster.default].find((n) => usable.includes(n)) || usable[0];
+  if (!$("sp-cwd").value) $("sp-cwd").value = roster.cwd;
+  $("sp-error").textContent = roster.agents.length ? "" : "No agents: add an agents: map to .aegis.yaml.";
+  if (keep && usable.includes(keep)) {
+    $("sp-agent").value = keep;
+    for (const k of PICKS) $(`sp-${k}`).value = before[k];
+    fillModels($("sp-harness").value);
+    markDiffs();
+  } else if (start) pickAgent(start);
 }
 
-function fillProfile() {
-  const p = profiles.find((x) => x.name === $("sp-profile").value);
-  if (!p) return;
-  $("sp-model").value = p.model;
-  $("sp-effort").value = p.effort;
-  $("sp-permission").value = p.permission;
+function current() {
+  return roster.agents.find((a) => a.name === $("sp-agent").value);
 }
-$("sp-profile").addEventListener("change", fillProfile);
 
-$("spawn").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  const p = profiles.find((x) => x.name === $("sp-profile").value);
-  if (!p) return;
+function fillModels(harness) {
+  $("sp-models").replaceChildren(...(roster.models[harness] || []).map((m) => new Option(m, m)));
+}
+
+function pickAgent(name) {
+  const a = roster.agents.find((x) => x.name === name);
+  if (!a) return;
+  $("sp-agent").value = a.name;
+  $("sp-agent").dataset.picked = a.name;
+  fillModels(a.harness);
+  for (const k of PICKS) $(`sp-${k}`).value = a[k];
+  markDiffs();
+}
+
+function overrides() {
+  const a = current();
+  const out = {};
+  if (!a) return out;
+  for (const k of PICKS) {
+    const v = $(`sp-${k}`).value.trim();
+    if (v && v !== a[k]) out[k] = v;
+  }
+  return out;
+}
+
+function markDiffs() {
+  const a = current();
+  const diff = overrides();
+  for (const k of PICKS) $(`sp-${k}`).classList.toggle("diff", k in diff);
+  const changed = Object.keys(diff).length > 0;
+  $("sp-reset").hidden = !changed;
+  const opt = $("sp-agent").selectedOptions[0];
+  if (a && opt) opt.textContent = changed ? `${a.name}*` : a.name;
+}
+
+async function spawnFromComposer() {
+  const a = current();
+  if (!a || $("sp-go").disabled) return;
   $("sp-go").disabled = true;
   $("sp-error").textContent = "";
-  const params = { profile: p.name, cwd: $("sp-cwd").value.trim() || null };
-  if ($("sp-model").value.trim() !== p.model) params.model = $("sp-model").value.trim();
-  if ($("sp-effort").value !== p.effort) params.effort = $("sp-effort").value;
-  if ($("sp-permission").value !== p.permission) params.permission = $("sp-permission").value;
+  const text = $("sp-text").value.trim();
+  const params = { agent: a.name, cwd: $("sp-cwd").value.trim() || null, ...overrides() };
+  if (text) params.prompt = text;
   try {
     const r = await conn.call("session.spawn", params);
+    localStorage.setItem(LAST_AGENT, a.name);
+    $("sp-text").value = "";
+    pickAgent(a.name);
     go(`#s=${r.log_id}`);
   } catch (e) {
     $("sp-error").textContent = e.message;
   } finally {
     $("sp-go").disabled = false;
+  }
+}
+
+$("sp-agent").addEventListener("change", () => pickAgent($("sp-agent").value));
+$("sp-harness").addEventListener("change", () => {
+  fillModels($("sp-harness").value);
+  markDiffs();
+});
+for (const k of ["model", "effort", "permission"]) $(`sp-${k}`).addEventListener("input", markDiffs);
+$("sp-reset").addEventListener("click", () => pickAgent($("sp-agent").value));
+$("spawn").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  spawnFromComposer();
+});
+// Enter in a field would submit the form and spawn a half-written session;
+// there it means "done with this field".
+for (const id of ["sp-model", "sp-cwd"]) {
+  $(id).addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && !ev.isComposing) {
+      ev.preventDefault();
+      $("sp-text").focus();
+    }
+  });
+}
+$("sp-text").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
+    ev.preventDefault();
+    spawnFromComposer();
   }
 });
 
@@ -536,8 +614,8 @@ installKeys(
     composer() {
       const v = route().view;
       if (v === "session") input.focus();
-      // The directory, not the profile: Enter in a text field submits the form.
-      else if (v === "spawn") $("sp-cwd").focus();
+      // The new tab's message box: Enter there spawns and sends.
+      else if (v === "spawn") $("sp-text").focus();
     },
     browse() {
       const v = route().view;

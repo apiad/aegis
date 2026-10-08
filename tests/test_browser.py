@@ -90,7 +90,8 @@ class Server:
 @pytest.fixture
 def server(tmp_path: Path, fake_claude: str):
     (tmp_path / ".aegis.yaml").write_text(
-        "default_agent: opus\nagents:\n  opus: {model: opus, effort: high, permission: full}\n"
+        "default_agent: opus\nagents:\n  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
+        "  deepseek: {provider: opencode, model: opencode-go/deepseek-v4-pro, effort: high, permission: full}\n"
     )
     s = Server(tmp_path, fake_claude).start()
     yield s
@@ -147,7 +148,7 @@ def seed_quota() -> None:
 @pytest.fixture
 def quota_server(tmp_path: Path, fake_claude: str):
     (tmp_path / ".aegis.yaml").write_text(
-        "default_agent: opus\nagents:\n  opus: {model: opus, effort: high, permission: full}\n"
+        "default_agent: opus\nagents:\n  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
     )
     seed_quota()
     s = Server(tmp_path, fake_claude).start()
@@ -198,13 +199,88 @@ def turns_done(pg, n: int) -> None:
 def spawn(pg, prompt: str | None = None) -> str:
     pg.click("#tab-add")
     pg.wait_for_selector("#a2[data-view=spawn]")
-    pg.click("#sp-go")
+    pg.wait_for_function("document.querySelector('#sp-agent').value !== ''")
+    if prompt:
+        pg.fill("#sp-text", prompt)
+        pg.press("#sp-text", "Enter")
+    else:
+        pg.click("#sp-go")
     pg.wait_for_selector("#a2[data-view=session]")
     if prompt:
-        pg.fill("#input", prompt)
-        pg.press("#input", "Enter")
         turns_done(pg, 1)
     return pg.evaluate("location.hash.slice(3)")
+
+
+def test_the_composer_overrides_a_chip_resets_it_and_spawns_with_the_first_message(
+    server, page
+):
+    page.goto(server.url)
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    assert page.input_value("#sp-model") == "opus"
+    assert page.is_hidden("#sp-reset")
+    # A select sizes to its longest option; the chips must still sit on one row.
+    tops = page.eval_on_selector_all(
+        "#spawn .pick, #sp-go", "els => els.map(e => e.getBoundingClientRect().top)"
+    )
+    assert max(tops) - min(tops) < 4, tops
+
+    page.fill("#sp-model", "sonnet")
+    assert page.inner_text("#sp-agent option:checked") == "opus*"
+    assert "diff" in page.get_attribute("#sp-model", "class")
+    page.click("#sp-reset")
+    assert page.input_value("#sp-model") == "opus"
+    assert page.inner_text("#sp-agent option:checked") == "opus"
+    assert page.is_hidden("#sp-reset")
+
+    page.fill("#sp-text", "/argv")
+    page.press("#sp-text", "Shift+Enter")
+    assert page.evaluate("document.querySelector('#a2').dataset.view") == "spawn"
+    page.fill("#sp-text", "/argv")
+    page.select_option("#sp-effort", "max")
+    page.press("#sp-text", "Enter")
+    page.wait_for_selector("#a2[data-view=session]")
+    turns_done(page, 1)
+    text = page.inner_text("#entries")
+    assert "/argv" in text and '"--effort", "max"' in text
+
+    page.click("#tab-fleet")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert page.inner_text(".card .ln b") == "opus*"
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    assert page.input_value("#sp-effort") == "high", "a spawn clears the overrides"
+    assert page.input_value("#sp-text") == ""
+    assert page.errors == []
+
+
+def test_enter_in_the_model_or_cwd_field_moves_to_the_message_and_spawns_nothing(
+    server, page
+):
+    page.goto(server.url)
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    page.fill("#sp-text", "half written")
+    for field in ("#sp-model", "#sp-cwd"):
+        page.focus(field)
+        page.press(field, "Enter")
+        assert page.evaluate("document.activeElement.id") == "sp-text"
+    page.wait_for_timeout(300)  # a spawn would have switched the view by now
+    assert page.evaluate("document.querySelector('#a2').dataset.view") == "spawn"
+    assert page.evaluate("document.querySelectorAll('#tablist .tab').length") == 0
+
+
+def test_a_failed_spawn_keeps_the_text_and_says_why(server, page):
+    page.goto(server.url)
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    page.fill("#sp-cwd", "/")
+    page.fill("#sp-text", "keep me")
+    page.press("#sp-text", "Enter")
+    page.wait_for_function("document.querySelector('#sp-error').textContent !== ''")
+    assert "outside" in page.inner_text("#sp-error")
+    assert page.input_value("#sp-text") == "keep me"
+    assert page.evaluate("document.querySelector('#a2').dataset.view") == "spawn"
 
 
 def tab_ids(pg) -> list[str]:
@@ -662,8 +738,8 @@ def test_alt_brackets_cycle_fleet_and_tabs_and_digits_pick_a_tab(server, page):
     page.keyboard.press("Alt+KeyN")
     hash_is(page, "#new")
     page.keyboard.press("Alt+.")
-    assert focused_id(page) == "sp-cwd"
-    page.keyboard.press("Enter")  # submits the spawn form
+    assert focused_id(page) == "sp-text"
+    page.keyboard.press("Enter")  # spawns from the composer
     page.wait_for_selector("#a2[data-view=session]")
     assert page.errors == []
 

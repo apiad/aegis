@@ -46,19 +46,27 @@
 
   <main class="view v-spawn">
     <form class="spawn" id="spawn">
-      <h3>New session</h3>
-      <p class="sub">Claude Code on this server. The fields after the profile apply to this session only.</p>
-      <label>Profile <select name="profile" id="sp-profile"></select></label>
-      <label>Working directory <input name="cwd" id="sp-cwd" spellcheck="false"></label>
-      <div class="three">
-        <label>Model <input name="model" id="sp-model" spellcheck="false"></label>
-        <label>Effort <select name="effort" id="sp-effort">
-          <option>low</option><option>medium</option><option>high</option><option>max</option></select></label>
-        <label>Permission <select name="permission" id="sp-permission">
-          <option value="read">read (plan)</option><option value="write">write (accept edits)</option>
-          <option value="auto">auto</option><option value="full">full (bypass)</option></select></label>
+      <div class="mark">aegis</div>
+      <input class="cwd" id="sp-cwd" spellcheck="false" aria-label="Working directory" title="Working directory: click to change">
+      <div class="box">
+        <textarea id="sp-text" rows="3" aria-label="First message"
+          placeholder="What should the agent do? Enter starts the session and sends this; Shift+Enter adds a line."></textarea>
+        <div class="picks">
+          <select class="pick agent" id="sp-agent" aria-label="Agent"></select>
+          <select class="pick" id="sp-harness" aria-label="Harness"></select>
+          <input class="pick" id="sp-model" list="sp-models" spellcheck="false" aria-label="Model">
+          <datalist id="sp-models"></datalist>
+          <select class="pick" id="sp-effort" aria-label="Effort">
+            <option value="low">effort low</option><option value="medium">effort medium</option>
+            <option value="high">effort high</option><option value="max">effort max</option></select>
+          <select class="pick" id="sp-permission" aria-label="Permission">
+            <option value="read">perm read</option><option value="write">perm write</option>
+            <option value="auto">perm auto</option><option value="full">perm full</option></select>
+          <button type="button" class="reset" id="sp-reset" hidden>reset</button>
+          <button class="send" type="submit" id="sp-go" title="Start the session">↵</button>
+        </div>
       </div>
-      <div class="pa"><span class="err-text" id="sp-error"></span><button class="btn primary" type="submit" id="sp-go">Spawn</button></div>
+      <p class="err-text" id="sp-error"></p>
     </form>
   </main>
 

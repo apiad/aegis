@@ -1,7 +1,7 @@
 """Queues of worker sessions.
 
 A task waits FIFO for a free slot in its queue (``max_parallel``), then a worker
-session is spawned from the queue's profile with the payload as its first
+session is spawned from the queue's agent with the payload as its first
 prompt. The worker is an ordinary session with a tab, marked ``worker``.
 
 **A turn ending is not completion.** Ending a turn is how an agent waits, so a
@@ -29,13 +29,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ruamel.yaml import YAML, YAMLError
-
+from .agents import ConfigError, load_agents, read_config, resolve
 from .monitors import iso_now
 from .names import default_title
-from .profiles import load_profiles
-from .roots import CONFIG_FILE
-from .session import SpawnSpec
+from .ops import OpError
 
 if TYPE_CHECKING:
     from .monitors import Monitors
@@ -69,21 +66,31 @@ class Task:
 
 
 def load_queues(config_root: Path) -> dict[str, dict]:
-    path = config_root / CONFIG_FILE
-    if not path.is_file():
-        return {}
+    """Every queue in ``queues:``. A queue that does not name its agent and a
+    positive ``max_parallel`` is kept with an ``error``, so enqueueing on it
+    says what is wrong; nothing in .aegis.yaml is a default (agents.py)."""
     try:
-        data = YAML(typ="safe").load(path.read_text())
-    except YAMLError:
+        raw = read_config(config_root).get("queues")
+    except ConfigError:
         return {}
-    raw = data.get("queues") if isinstance(data, dict) else None
-    out = {}
-    for name, q in (raw or {}).items():
-        if isinstance(q, dict) and q.get("agent"):
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, dict] = {}
+    for name, q in raw.items():
+        q = q if isinstance(q, dict) else {}
+        agent, limit = q.get("agent"), q.get("max_parallel")
+        missing = [
+            k for k, v in (("agent", agent), ("max_parallel", limit)) if v in (None, "")
+        ]
+        if missing:
+            verb = "is" if len(missing) == 1 else "are"
+            out[str(name)] = {"error": f"{', '.join(missing)} {verb} missing"}
+        elif isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
             out[str(name)] = {
-                "agent": str(q["agent"]),
-                "max_parallel": int(q.get("max_parallel") or 1),
+                "error": f"max_parallel {limit!r} is not a positive integer"
             }
+        else:
+            out[str(name)] = {"agent": str(agent), "max_parallel": limit}
     return out
 
 
@@ -177,7 +184,16 @@ class Queues:
             return
         self._dispatching = True
         try:
+            # A task logged on a queue that has since lost a field, or been
+            # removed, would wait forever for a slot; fail it with the reason.
+            for t in list(self.tasks.values()):
+                q = self.queues.get(t.queue)
+                if t.status == "pending" and (q is None or "error" in q):
+                    why = q["error"] if q else "it is no longer configured"
+                    self._fail(t, f"its queue {t.queue!r} in .aegis.yaml: {why}")
             for name, q in self.queues.items():
+                if "error" in q:
+                    continue
                 while True:
                     running = sum(
                         1
@@ -199,23 +215,13 @@ class Queues:
             self._dispatching = False
 
     async def _start(self, t: Task, q: dict) -> None:
-        profile = next(
-            (
-                p
-                for p in load_profiles(self._registry.roots.config_root)
-                if p.name == q["agent"]
-            ),
-            None,
-        )
-        if profile is None or not profile.enabled:
-            self._fail(
-                t,
-                f"the queue's agent profile {q['agent']!r} is missing or not supported",
-            )
+        try:
+            agents = load_agents(self._registry.roots.config_root)
+            spec = resolve(agents, None, q["agent"], {}, Path(t.cwd))
+        except (ConfigError, OpError) as e:
+            reason = e.message if isinstance(e, OpError) else str(e)
+            self._fail(t, f"the queue's agent {q['agent']!r} cannot start: {reason}")
             return
-        spec = SpawnSpec(
-            profile.name, profile.model, profile.effort, profile.permission, Path(t.cwd)
-        )
         try:
             s = await self._registry.spawn(
                 spec,

@@ -35,7 +35,7 @@ def root(tmp_path: Path) -> Path:
     r = tmp_path / "root"
     r.mkdir()
     (r / ".aegis.yaml").write_text(
-        "default_agent: opus\nagents:\n  opus: {model: opus, effort: high, permission: full}\n"
+        "default_agent: opus\nagents:\n  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
     )
     return r
 

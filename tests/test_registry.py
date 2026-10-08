@@ -9,7 +9,7 @@ from aegis.registry import Registry
 from aegis.roots import make_roots
 from aegis.session import SpawnSpec
 
-from .conftest import until
+from .conftest import argv_of, until
 
 
 class World:
@@ -174,3 +174,97 @@ async def test_a_failed_spawn_leaves_nothing_on_disk(world, tmp_path):
         await r.spawn(world.spec())
     assert r.open_sessions() == [] and world.stores() == {}
     assert not list((world.roots.state_root / "sessions").glob("*.json"))
+
+
+async def test_the_priming_reaches_every_start_from_the_record_not_the_config(world):
+    # The World's .aegis.yaml has no agents at all: a resume that read the
+    # priming from the config would lose it.
+    r = world.registry()
+    spec = SpawnSpec(
+        "rev", "opus", "max", "read", world.roots.config_root, priming="You review."
+    )
+    s = await r.spawn(spec)
+    argv = await argv_of(s)
+    assert argv[argv.index("--append-system-prompt") + 1] == "You review."
+    await r.shutdown()
+    r2 = world.registry()
+    (s2,) = r2.open_sessions()
+    assert s2.spec.priming == "You review."
+    argv = await argv_of(s2)
+    assert "--resume" in argv
+    assert argv[argv.index("--append-system-prompt") + 1] == "You review."
+    await r2.shutdown()
+
+
+async def test_no_priming_and_no_mcp_means_no_system_prompt(world):
+    r = world.registry()
+    s = await r.spawn(world.spec())
+    assert "--append-system-prompt" not in await argv_of(s)
+    await r.shutdown()
+
+
+async def test_a_spawn_records_its_agent_overrides_and_spawner(world):
+    r = world.registry()
+    spec = SpawnSpec(
+        "opus",
+        "sonnet",
+        "high",
+        "full",
+        world.roots.config_root,
+        overridden=("model",),
+        spawned_by="parent-log",
+        priming="secret text",
+    )
+    s = await r.spawn(spec)
+    w = s.wire()
+    assert (w["agent"], w["harness"], w["overridden"], w["spawned_by"]) == (
+        "opus",
+        "claude-code",
+        ["model"],
+        "parent-log",
+    )
+    assert "priming" not in w and s.meta()["priming"] == "secret text"
+    assert s.entries()[0]["summary"].startswith("spawned opus* · sonnet")
+    await r.shutdown()
+
+
+async def test_a_meta_from_before_agents_boots_with_its_agent_name(world):
+    sessions = world.roots.state_root / "sessions"
+    sessions.mkdir(parents=True)
+    old = {
+        "log_id": "old",
+        "handle": "old-one",
+        "created_at": 1,
+        "last_activity": 1,
+        "profile": "opus",
+        "model": "opus",
+        "effort": "high",
+        "permission": "full",
+        "cwd": str(world.roots.config_root),
+    }
+    (sessions / "old.json").write_text(json.dumps(old))
+    r = world.registry()
+    (s,) = r.open_sessions()
+    assert (s.spec.agent, s.spec.harness, s.spec.priming) == (
+        "opus",
+        "claude-code",
+        None,
+    )
+    assert s.wire()["agent"] == "opus"
+    # Closed, it is found in the archive by its agent's name (Step 9).
+    await r.close("old")
+    assert [m["log_id"] for m in r.archive("opus", 10, None)] == ["old"]
+
+
+async def test_the_priming_never_leaves_the_server_from_the_archive(world):
+    r = world.registry()
+    spec = SpawnSpec(
+        "rev", "opus", "max", "read", world.roots.config_root, priming="secret text"
+    )
+    s = await r.spawn(spec)
+    await r.close(s.log_id)
+    (listed,) = r.archive(None, 10, None)
+    assert listed["agent"] == "rev" and "priming" not in listed
+    assert "priming" not in r.rename(s.log_id, None, "renamed")
+    # The stored meta keeps it, so a reopened session resumes with it.
+    assert r.archived[s.log_id]["priming"] == "secret text"

@@ -12,6 +12,7 @@ stdout. The text of a prompt picks a script:
     /big           a Read whose result is 2 MB on one line.
     /exit N        a few stderr lines, then exit with code N.
     /recall        text listing the prompts this session id received before.
+    /argv          text "argv: <JSON of the process's argv after the binary>".
     /mcp T JSON    call tool T of the aegis MCP server named in --mcp-config with
                    arguments JSON, as a tool call and its result, then a result.
     /bgtask N      start a background task (task_started) and end the turn; N
@@ -297,6 +298,9 @@ def run(text: str) -> None:
             result()
 
         threading.Thread(target=finish, daemon=True).start()
+    elif word == "/argv":
+        assistant({"type": "text", "text": "argv: " + json.dumps(sys.argv[1:])})
+        result()
     elif word == "/recall":
         assistant({"type": "text", "text": "earlier: " + " | ".join(before)})
         result()

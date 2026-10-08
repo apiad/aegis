@@ -1,6 +1,6 @@
 """The server's state and its operations, independent of any transport.
 
-Operations: ``profiles.list``, ``session.spawn``, ``session.send``,
+Operations: ``agents.list``, ``session.spawn``, ``session.send``,
 ``session.interrupt``, ``session.stop``, ``session.close``, ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``,
 ``quota.read``. Channels: ``sessions`` (every open session's meta; patches
@@ -18,6 +18,16 @@ from pydantic import BaseModel, Field
 
 from . import files
 from .agent_ops import register_agent_ops
+from .agents import (
+    HARNESSES,
+    PERMISSION_ORDER,
+    SUPPORTED_HARNESSES,
+    ConfigError,
+    default_agent,
+    load_agents,
+    model_suggestions,
+    resolve,
+)
 from .channels import Channels
 from .host import HostSampler
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
@@ -25,10 +35,8 @@ from .monitors import Monitors
 from .queues import Queues
 from .quota import Quota
 from .ops import OpError, Registry as Ops
-from .profiles import ProfileError, default_profile, load_profiles
 from .registry import Registry
 from .roots import Roots
-from .session import SpawnSpec
 from .version import Versions
 
 Effort = Literal["low", "medium", "high", "max"]
@@ -40,11 +48,25 @@ class _Strict(BaseModel):
 
 
 class SpawnParams(_Strict):
-    profile: str
-    cwd: str | None = None
-    model: str | None = None
-    effort: Effort | None = None
-    permission: Permission | None = None
+    agent: str | None = Field(
+        None,
+        description="The agent to start from (agents_list shows them); "
+        "omitted means default_agent.",
+    )
+    harness: str | None = Field(None, description="Overrides the agent's harness.")
+    model: str | None = Field(None, description="Overrides the agent's model.")
+    effort: Effort | None = Field(None, description="Overrides the agent's effort.")
+    permission: Permission | None = Field(
+        None, description="Overrides the agent's permission."
+    )
+    cwd: str | None = Field(
+        None,
+        description="Working directory inside the server's root; a relative one "
+        "resolves against yours.",
+    )
+    prompt: str | None = Field(
+        None, min_length=1, description="The new session's first message."
+    )
 
 
 class SendParams(_Strict):
@@ -145,8 +167,15 @@ class App:
             return self.host.snapshot
         return None
 
-    def _resolve_cwd(self, raw: str | None) -> Path:
-        base = self.roots.harness_cwd
+    def _agents(self):
+        try:
+            root = self.roots.config_root
+            return load_agents(root), default_agent(root)
+        except ConfigError as e:
+            raise OpError("bad_config", str(e)) from e
+
+    def _resolve_cwd(self, raw: str | None, base: Path | None = None) -> Path:
+        base = base or self.roots.harness_cwd
         p = Path(raw).expanduser() if raw else base
         if not p.is_absolute():
             p = base / p
@@ -162,45 +191,69 @@ class App:
         r = self.registry
         reg = self.sessions
 
-        @r.op("profiles.list")
-        async def profiles_list(_, caller):
-            try:
-                profiles = load_profiles(self.roots.config_root)
-                default = default_profile(self.roots.config_root)
-            except ProfileError as e:
-                raise OpError("bad_config", str(e)) from e
+        @r.op("agents.list", agent=True)
+        async def agents_list(_, caller):
+            """The agents you can spawn, each a preset of harness, model, effort
+            and permission. session_spawn starts one and can override those."""
+            agents, default = self._agents()
             return {
-                "profiles": [p.as_dict() for p in profiles],
+                "agents": [a.as_dict() for a in agents],
                 "default": default,
+                "harnesses": [
+                    {"name": h, "supported": h in SUPPORTED_HARNESSES}
+                    for h in HARNESSES
+                ],
+                "models": model_suggestions(agents),
                 "cwd": str(self.roots.harness_cwd),
             }
 
-        @r.op("session.spawn", SpawnParams)
+        @r.op("session.spawn", SpawnParams, agent=True)
         async def spawn(p: SpawnParams, caller):
-            try:
-                profiles = {x.name: x for x in load_profiles(self.roots.config_root)}
-            except ProfileError as e:
-                raise OpError("bad_config", str(e)) from e
-            prof = profiles.get(p.profile)
-            if prof is None:
-                raise OpError("unknown_profile", f"no profile named {p.profile!r}")
-            if not prof.enabled:
-                raise OpError(
-                    "harness_unsupported", f"{prof.harness} is not supported yet"
-                )
-            spec = SpawnSpec(
-                profile=prof.name,
-                model=p.model or prof.model,
-                effort=p.effort or prof.effort,
-                permission=p.permission or prof.permission,
-                cwd=self._resolve_cwd(p.cwd),
+            """Start a new session from an agent, overriding its harness, model,
+            effort or permission if you need to, and send it `prompt` as its
+            first message. Its permission can be at most yours. Returns its log
+            id and handle. It does not report back: read it with peer_read,
+            message it with peer_handoff."""
+            agents, default = self._agents()
+            parent = reg.sessions.get(caller.log_id) if caller.is_agent else None
+            spec = resolve(
+                agents,
+                default,
+                p.agent,
+                {
+                    "harness": p.harness,
+                    "model": p.model,
+                    "effort": p.effort,
+                    "permission": p.permission,
+                },
+                self._resolve_cwd(p.cwd, parent.spec.cwd if parent else None),
+                spawned_by=parent.log_id if parent else None,
             )
+            # An agent cannot hand a session more power than it has itself.
+            if parent is not None and PERMISSION_ORDER.index(
+                spec.permission
+            ) > PERMISSION_ORDER.index(parent.spec.permission):
+                raise OpError(
+                    "not_allowed",
+                    f"your session runs with {parent.spec.permission}, so a session "
+                    f"you spawn can have at most {parent.spec.permission} "
+                    f"(this one would have {spec.permission}); pass permission",
+                )
             try:
                 s = await reg.spawn(spec)
             except FileNotFoundError as e:
                 raise OpError(
                     "claude_not_found", f"cannot run {self.claude_bin!r}: {e}"
                 ) from e
+            if p.prompt:
+                try:
+                    await s.send(p.prompt)
+                except (BrokenPipeError, ConnectionResetError, FileNotFoundError) as e:
+                    raise OpError(
+                        "send_failed",
+                        f"{s.handle} ({s.log_id}) started, but its first message "
+                        f"failed: {e}",
+                    ) from e
             return {"log_id": s.log_id, "handle": s.handle}
 
         @r.op("session.send", SendParams)

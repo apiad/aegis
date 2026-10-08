@@ -86,7 +86,7 @@ async def test_real_claude_arms_a_monitor_through_the_endpoint_and_is_woken(
     claude = shutil.which("claude")
     assert claude, "claude is not on PATH"
     (tmp_path / ".aegis.yaml").write_text(
-        f"agents:\n  haiku: {{model: {HAIKU}, effort: low, permission: full}}\n"
+        f"agents:\n  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
     )
     port = _free_port()
     app = App(
@@ -102,7 +102,7 @@ async def test_real_claude_arms_a_monitor_through_the_endpoint_and_is_woken(
     task = asyncio.create_task(server.serve())
     await until(lambda: server.started, timeout=10, what="uvicorn")
     try:
-        r = await app.registry.call("session.spawn", {"profile": "haiku"})
+        r = await app.registry.call("session.spawn", {"agent": "haiku"})
         s = app.sessions.sessions[r["log_id"]]
         flag = tmp_path / "ready.flag"
         await s.send(
@@ -156,7 +156,7 @@ async def test_real_claude_sends_a_file_and_the_link_serves_it(tmp_path: Path):
     claude = shutil.which("claude")
     assert claude, "claude is not on PATH"
     (tmp_path / ".aegis.yaml").write_text(
-        f"agents:\n  haiku: {{model: {HAIKU}, effort: low, permission: full}}\n"
+        f"agents:\n  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
     )
     port = _free_port()
     base = f"http://127.0.0.1:{port}"
@@ -169,7 +169,7 @@ async def test_real_claude_sends_a_file_and_the_link_serves_it(tmp_path: Path):
     task = asyncio.create_task(server.serve())
     await until(lambda: server.started, timeout=10, what="uvicorn")
     try:
-        r = await app.registry.call("session.spawn", {"profile": "haiku"})
+        r = await app.registry.call("session.spawn", {"agent": "haiku"})
         s = app.sessions.sessions[r["log_id"]]
         await s.send(
             "Write a file named haiku.md in your working directory holding a "
@@ -188,6 +188,72 @@ async def test_real_claude_sends_a_file_and_the_link_serves_it(tmp_path: Path):
         async with httpx.AsyncClient() as c:
             got = await c.get(base + e["detail"]["url"])
         assert got.content == (tmp_path / "haiku.md").read_bytes()
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
+async def test_real_claude_spawns_a_peer_through_session_spawn(tmp_path: Path):
+    """The real binary finds session_spawn from its description and the new
+    session runs its prompt."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "haiku"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "Use the aegis session_spawn tool with agent haiku and prompt "
+            "'Reply with the single word PONG.' Then reply with the single word DONE."
+        )
+
+        def child():
+            return next(
+                (
+                    x
+                    for x in app.sessions.sessions.values()
+                    if x.spec.spawned_by == s.log_id
+                ),
+                None,
+            )
+
+        await until(
+            lambda: child() is not None, timeout=120, what="the spawned session"
+        )
+        await until(
+            lambda: any(
+                "PONG" in (e.get("md") or "")
+                for e in child().entries()
+                if e["kind"] == "prose"
+            ),
+            timeout=120,
+            what="the spawned session's answer",
+        )
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)

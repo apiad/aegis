@@ -35,6 +35,12 @@ def mint_log_id() -> str:
     return f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
 
 
+def _public(meta: dict) -> dict:
+    """A stored meta as a browser may see it: the agent's priming stays on the
+    server, like ``Session.wire`` keeps it."""
+    return {k: v for k, v in meta.items() if k != "priming"}
+
+
 class Registry(Host):
     def __init__(
         self,
@@ -60,13 +66,15 @@ class Registry(Host):
 
     # -- the Host a session asks ----------------------------------------------
     def spawn_args(self, session: Session) -> tuple[str | None, str | None]:
+        priming = session.spec.priming
         if self.mcp_url is None or self.tokens is None:
-            return None, None
+            return None, priming
         from .mcp import mcp_config, primer
 
-        return mcp_config(self.mcp_url, self.tokens.mint(session.log_id)), primer(
-            session, self.server_name
-        )
+        prompt = primer(session, self.server_name)
+        if priming:
+            prompt += "\n\n" + priming
+        return mcp_config(self.mcp_url, self.tokens.mint(session.log_id)), prompt
 
     def turn_ended(self, session: Session) -> None:
         if self.queues is not None:
@@ -115,13 +123,7 @@ class Registry(Host):
     def _session(self, meta: dict) -> Session:
         return Session(
             log_id=meta["log_id"],
-            spec=SpawnSpec(
-                profile=str(meta.get("profile") or ""),
-                model=str(meta.get("model") or ""),
-                effort=str(meta.get("effort") or "high"),
-                permission=str(meta.get("permission") or "auto"),
-                cwd=Path(meta.get("cwd") or self.roots.harness_cwd),
-            ),
+            spec=SpawnSpec.from_record(meta, self.roots.harness_cwd),
             handle=meta["handle"],
             store=Store(self.store_path(meta["log_id"])),
             stderr_path=self._stderr_path(meta["log_id"]),
@@ -211,16 +213,8 @@ class Registry(Host):
         log_id = mint_log_id()
         s = self._session(
             {"log_id": log_id, "handle": mint_handle(self._handles())}
-            | {
-                "profile": spec.profile,
-                "model": spec.model,
-                "effort": spec.effort,
-                "permission": spec.permission,
-                "cwd": str(spec.cwd),
-                "created_at": time.time(),
-                "worker": worker,
-                "title": title,
-            }
+            | spec.record()
+            | {"created_at": time.time(), "worker": worker, "title": title}
         )
         self.sessions[log_id] = s
         self._publish("sessions", [{"upsert": s.wire()}])
@@ -290,7 +284,7 @@ class Registry(Host):
         if title is not None:
             meta["title"] = title
         self.metas.write(meta)
-        return meta
+        return _public(meta)
 
     def archive(
         self, query: str | None, limit: int, before: float | None
@@ -306,11 +300,12 @@ class Registry(Host):
             if before is not None and (m.get("last_activity") or 0) >= before:
                 continue
             hay = " ".join(
-                str(m.get(k) or "") for k in ("title", "handle", "cwd", "profile")
+                str(m.get(k) or "")
+                for k in ("title", "handle", "cwd", "agent", "profile")
             ).lower()
             if q and q not in hay:
                 continue
-            out.append(m)
+            out.append(_public(m))
             if len(out) >= limit:
                 break
         return out
