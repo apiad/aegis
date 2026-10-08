@@ -144,6 +144,7 @@ class Registry(Host):
             host=self,
             held=meta.get("held"),
             worker=meta.get("worker"),
+            standing=meta.get("standing"),
         )
 
     def boot(self) -> None:

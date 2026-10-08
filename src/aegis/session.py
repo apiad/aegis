@@ -31,7 +31,7 @@ from .claude.process import ClaudeProcess, build_argv
 from .claude.stream import TURN_BEARING, Init, Notice, Result, parse
 from .meta import MetaStore
 from .names import default_title
-from .transcript.entries import Fold, fold_records
+from .transcript.entries import EMPTY_STANDING, Fold, fold_records
 from .transcript.store import Store, read_store
 
 Publish = Callable[[str, list[dict]], None]
@@ -41,7 +41,7 @@ Publish = Callable[[str, list[dict]], None]
 # each message, activity with each call), so they wait up to PUBLISH_EVERY_S
 # and go out together. Publishing them per line doubled the server's cost per
 # line in the bench (issue #127).
-_NOW = ("status", "handle", "title", "model_id")
+_NOW = ("status", "handle", "title", "model_id", "standing")
 _SOON = ("activity", "cost_usd", "context_tokens", "context_window")
 PUBLISH_EVERY_S = 0.25
 
@@ -56,6 +56,9 @@ class Host:
         return None, None
 
     def turn_ended(self, session: "Session") -> None: ...
+
+    def status_changed(self, session: "Session") -> None:
+        """The session's status changed: a parent waiting on it re-derives."""
 
     def exited(self, session: "Session", code: int, stderr_tail: list[str]) -> None: ...
 
@@ -152,6 +155,7 @@ class Session:
         host: Host = NO_HOST,
         held: list[dict] | None = None,
         worker: dict | None = None,
+        standing: dict | None = None,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
@@ -187,6 +191,9 @@ class Session:
         # Claude's own tasks started and not yet notified (Bash, background).
         self.open_tasks: set[str] = set()
         self.worker = worker
+        # The fold's view of the agent's plan and last report; persisted so a
+        # card at boot needs no store (DESIGN.md, boot reads meta files).
+        self.standing: dict = standing or EMPTY_STANDING
 
     # -- what the outside sees -------------------------------------------
     def meta(self) -> dict:
@@ -209,12 +216,14 @@ class Session:
             "activity": self.activity,
             "held": self.held,
             "worker": self.worker,
+            "standing": self.standing,
         }
 
     def wire(self) -> dict:
         """What the ``sessions`` channel carries."""
         m = self.meta()
         m.pop("held")
+        m.pop("standing")
         m.pop("priming", None)  # the agent's text stays on the server
         m["held_count"] = len(self.held)
         m["state"] = self.status
@@ -226,6 +235,11 @@ class Session:
     def busy(self) -> bool:
         """Mid-turn, or about to start one to receive held messages."""
         return self.status == "working" or self._flushing or bool(self.held)
+
+    @property
+    def in_turn(self) -> bool:
+        """Mid-turn, or starting one to deliver held messages."""
+        return self.status == "working" or self._flushing
 
     def fold(self) -> Fold:
         if self._fold is None:
@@ -368,12 +382,18 @@ class Session:
         """A file sent by the agent (files.store's record plus a caption)."""
         self._record(record)
 
+    def report(self, record: dict) -> None:
+        """A plan or a turn report from the agent (agent_ops)."""
+        self._record(record)
+
     def _record(self, record: dict, events: list | None = None) -> None:
         fold = self.fold()
         stored = self.store.append({"ts": time.time(), "src": "aegis", **record})
         self.last_activity = stored["ts"]
         ops = fold.apply(stored, events)
         self._publish(self.channel, ops)
+        if fold.standing is not self.standing:
+            self._set(standing=fold.standing)
         if any(
             op.get("upsert", {}).get("kind") in ("user", "prose", "tool", "file")
             for op in ops
@@ -388,6 +408,7 @@ class Session:
             setattr(self, k, v)
         if "status" in changes:
             self.last_status = self.status
+            self._host.status_changed(self)
         if any(k in _NOW for k in changes):
             self._publish_now()
         elif any(k in _SOON for k in changes) and self._publish_timer is None:
@@ -416,6 +437,7 @@ class Session:
         events = parse(line)
         self._record({"src": "claude", "line": line}, events)
         changes: dict[str, object] = {}
+        tasks = len(self.open_tasks)
         for ev in events:
             if isinstance(ev, TURN_BEARING) and self.status == "idle":
                 changes["status"] = "working"
@@ -442,6 +464,8 @@ class Session:
                     changes["context_window"] = ev.context_window
         if changes:
             self._set(**changes)
+        if len(self.open_tasks) != tasks:
+            self._publish_now()  # waiting on a background task shows on the card
         if any(isinstance(ev, Result) for ev in events):
             if self.held:
                 self._flushing = True

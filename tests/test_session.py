@@ -246,3 +246,42 @@ async def test_a_missing_binary_raises_on_start(tmp_path):
     h = Harness(tmp_path, str(tmp_path / "no-such-claude"))
     with pytest.raises(FileNotFoundError):
         await h.session.start()
+
+
+async def test_a_report_is_published_at_once_and_survives_a_rebuild(tmp_path, fake_claude):
+    h = Harness(tmp_path, fake_claude)
+    s = h.session
+    await s.start()
+    s.report({"kind": "plan", "items": [{"text": "read", "state": "doing"}]})
+    assert s.standing["plan"] == [{"text": "read", "state": "doing"}]
+    last = [op["upsert"] for ch, ops in h.published if ch == "sessions" for op in ops][-1]
+    assert "standing" not in last  # the card carries derived fields, not the dict
+    await s.shutdown()
+    meta = h.metas.read_all()[0][0]
+    assert meta["standing"]["plan"] == [{"text": "read", "state": "doing"}]
+    again = h.make(standing=meta["standing"])
+    assert again.standing == meta["standing"]
+
+
+async def test_a_session_from_an_old_meta_has_an_empty_standing(tmp_path, fake_claude):
+    from aegis.transcript.entries import EMPTY_STANDING
+
+    h = Harness(tmp_path, fake_claude)
+    assert h.session.standing == EMPTY_STANDING
+
+
+async def test_a_status_change_tells_the_host(tmp_path, fake_claude):
+    from aegis.session import Host
+
+    seen: list[str] = []
+
+    class Spy(Host):
+        def status_changed(self, session):
+            seen.append(session.status)
+
+    h = Harness(tmp_path, fake_claude, host=Spy())
+    await h.session.start()
+    await h.session.send("hello")
+    await until(lambda: h.session.status == "idle" and "working" in seen, what="a turn")
+    assert seen[:3] == ["idle", "working", "idle"]
+    await h.session.shutdown()
