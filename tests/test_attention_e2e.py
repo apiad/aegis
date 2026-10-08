@@ -156,6 +156,7 @@ async def test_a_change_of_attention_alone_goes_out_at_once(world):
         {"attention": "needs_you", "line": "q", "replies": ["a", "b", "c", "d"]},
         {"attention": "waiting", "line": "q", "replies": []},
         {"attention": "done", "line": "x" * 141, "replies": []},
+        {"attention": "done", "line": "one\ntwo", "replies": []},
     ],
 )
 async def test_bad_reports_are_refused_and_change_nothing(world, args):

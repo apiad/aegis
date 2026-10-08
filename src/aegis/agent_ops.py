@@ -119,6 +119,7 @@ class TurnEnd(_Strict):
     line: str = Field(
         min_length=1,
         max_length=140,
+        pattern=r"^[^\n]+$",
         description="One sentence: the question they must answer, what to read, or what got done.",
     )
     replies: list[Reply] = Field(
