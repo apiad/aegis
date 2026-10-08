@@ -297,7 +297,7 @@ def browser_runs(playwright) -> dict:
                     file=sys.stderr,
                 )
                 page.wait_for_function(
-                    "document.getElementById('s-status').textContent === 'idle'",
+                    "document.getElementById('s-status').textContent.trim() === 'done'",
                     timeout=60_000,
                 )
                 loads = []
