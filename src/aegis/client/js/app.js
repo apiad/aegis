@@ -93,7 +93,7 @@ function showLogin() {
   show("boot", "This browser is not signed in to this server.");
   $("login").hidden = false;
   if (new URLSearchParams(location.search).has("refused")) {
-    $("login-error").textContent = "That token was refused. Paste the one `aegis serve` printed.";
+    $("login-error").textContent = "That token was refused. Paste the one aegis serve printed.";
     history.replaceState(null, "", location.pathname + location.hash);
   }
   $("login-token").focus();
