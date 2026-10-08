@@ -16,8 +16,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..profiles import PERMISSION_MODE
-from .process import ClaudeProcess, ControlError, build_argv
+
+from .process import PERMISSION_MODE, ClaudeProcess, ControlError, build_argv
 
 __all__ = ["Catalog", "ControlError", "Model", "catalog", "from_initialize", "probe"]
 

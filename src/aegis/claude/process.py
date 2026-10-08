@@ -29,6 +29,7 @@ CONTROL_TIMEOUT_S = 15.0
 class ControlError(Exception):
     """claude answered a control request with an error."""
 
+
 # aegis's permission vocabulary, mapped to Claude Code's --permission-mode.
 PERMISSION_MODE = {
     "read": "plan",

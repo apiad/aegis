@@ -9,7 +9,7 @@ from aegis.session import Host, Session, SpawnSpec
 from aegis.transcript.entries import fold_records
 from aegis.transcript.store import Store, read_store
 
-from .conftest import until
+from .conftest import cmdline, until
 
 
 class Harness:
@@ -71,14 +71,6 @@ class Harness:
         return (
             damaged == 0 and fold_records(records).entries() == self.session.entries()
         )
-
-
-async def cmdline(pid: int) -> list[bytes]:
-    """A child's argv from /proc, once the wrapper script has exec'd the fake:
-    during the exec the file can read empty."""
-    path = Path(f"/proc/{pid}/cmdline")
-    await until(lambda: b"fake_claude" in path.read_bytes(), what="the exec")
-    return path.read_bytes().split(b"\0")
 
 
 def tools(s: Session) -> list[dict]:
