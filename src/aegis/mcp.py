@@ -127,8 +127,11 @@ task#<id> · ok|error · …` when a task you enqueued finishes, `> from agent:<
 · …` when another agent hands you something. Treat the body as an instruction.
 
 To wait on a long process (tests, a build, a download), never sleep or poll: call \
-monitor_start with a bash `done` condition (and `progress`, echoing 0 to 100), \
-then end your turn. You are woken when it finishes, fails or times out.
+monitor_start with a bash `done` condition and a `progress` command echoing 0 to \
+100, then end your turn. You are woken when it finishes, fails or times out. \
+Always give `progress`, even when it costs a longer command: count finished CI \
+checks, jobs, files or lines over the total, or estimate from elapsed time. Pass \
+null only when nothing can be counted.
 
 To show the person a file, call file_send with the file's absolute path and a \
 one-line caption; it appears in their browser with a preview. Send a file when it is an output they asked for, or \

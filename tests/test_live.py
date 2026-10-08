@@ -257,3 +257,57 @@ async def test_real_claude_spawns_a_peer_through_session_spawn(tmp_path: Path):
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)
+
+
+async def test_real_claude_gives_a_countable_wait_a_progress_command(tmp_path: Path):
+    """Told only what to wait for, the real binary arms the monitor with a
+    `progress` command because the tool and the primer ask for one (#165)."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "haiku"})
+        s = app.sessions.sessions[r["log_id"]]
+        # A CI wait: 33 of the 44 monitors armed without progress in early
+        # October waited on GitHub checks or runs, all of them countable. Before
+        # #165 this prompt got a progress command in 1 of 6 runs.
+        await s.send(
+            "CI is running on pull request 12 of the GitHub repo apiad/aegis. Wait "
+            "for its checks to finish with the aegis monitor_start tool, then end "
+            "your turn. Do not run any command yourself first."
+        )
+        await until(
+            lambda: app.monitors.of(s.log_id),
+            timeout=120,
+            what="the monitor armed by Claude",
+        )
+        (m,) = app.monitors.of(s.log_id)
+        assert m.progress, f"armed with no progress command: {m}"
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)

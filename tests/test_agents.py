@@ -215,12 +215,20 @@ async def test_a_monitor_wakes_its_owner_with_the_roster(world, tmp_path):
             "monitor_start",
             description="wait for the flag",
             done=f"test -f {flag}",
+            progress=None,
             interval_s=1,
         ),
     )
     first = json.loads(said.removeprefix("mcp ok: "))["monitor_id"]
     await turn(
-        a, mcp("monitor_start", description="never", done="false", interval_s=60)
+        a,
+        mcp(
+            "monitor_start",
+            description="never",
+            done="false",
+            progress=None,
+            interval_s=60,
+        ),
     )
     assert [m["description"] for m in a.wire()["monitors"]] == [
         "wait for the flag",
@@ -256,10 +264,31 @@ async def test_monitor_progress_and_fail(world, tmp_path):
     assert " · fail · " in inbox(a)[0]["title"]
 
 
+async def test_a_monitor_needs_progress_or_an_explicit_null(world):
+    """Leaving `progress` out is refused, so an agent decides to opt out instead of
+    forgetting: 44 of 51 monitors armed on zion in early October had none (#165)."""
+    a = await world.spawn()
+    said = await turn(a, mcp("monitor_start", description="forgot", done="false"))
+    assert said.startswith("mcp error") and "progress" in said
+    assert a.wire()["monitors"] == []
+    said = await turn(
+        a, mcp("monitor_start", description="opted out", done="false", progress=None)
+    )
+    assert said.startswith("mcp ok: ")
+    assert [m["description"] for m in a.wire()["monitors"]] == ["opted out"]
+
+
 async def test_an_agent_cannot_cancel_another_agents_monitor(world):
     a, b = await world.spawn(), await world.spawn()
     said = await turn(
-        a, mcp("monitor_start", description="mine", done="false", interval_s=60)
+        a,
+        mcp(
+            "monitor_start",
+            description="mine",
+            done="false",
+            progress=None,
+            interval_s=60,
+        ),
     )
     mid = json.loads(said.removeprefix("mcp ok: "))["monitor_id"]
     said = await turn(b, mcp("monitor_cancel", monitor_id=mid))
@@ -279,6 +308,7 @@ async def test_a_monitor_survives_a_restart_and_resumes_a_stopped_owner(
             "monitor_start",
             description="after restart",
             done=f"test -f {flag}",
+            progress=None,
             interval_s=1,
         ),
     )
@@ -316,6 +346,7 @@ async def test_a_worker_with_a_live_monitor_is_not_finished(world, tmp_path):
         "monitor_start",
         description="worker waits",
         done=f"test -f {flag}",
+        progress=None,
         interval_s=1,
     )
     said = await turn(a, mcp("queue_enqueue", queue="general", payload=payload))

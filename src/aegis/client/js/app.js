@@ -339,10 +339,12 @@ function renderMeta(s) {
       const pct = document.createElement("span");
       pct.textContent = m.progress == null ? "watching" : `${m.progress}%`;
       kv.append(name, pct);
+      // No command, no reading yet, or a reading of 0: the monitor is running and
+      // how far it got is unknown, so the bar moves instead of sitting empty.
       const bar = document.createElement("div");
-      bar.className = "bar thin";
+      bar.className = m.progress ? "bar thin" : "bar thin indet";
       const fill = document.createElement("i");
-      fill.style.width = `${m.progress || 0}%`;
+      if (m.progress) fill.style.width = `${m.progress}%`;
       bar.append(fill);
       box.append(kv, bar);
       return box;
