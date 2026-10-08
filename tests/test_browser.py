@@ -1452,18 +1452,27 @@ def test_a_tall_reply_that_lands_off_screen_becomes_read_when_you_scroll_into_it
     page.wait_for_selector(".row.tool.running")
     page.fill("#input", "\n\n".join(f"line {i}" for i in range(200)))
     page.press("#input", "Enter")
-    # A send scrolls to the bottom once it is accepted; the reader goes up after.
+    # A send scrolls to the bottom once it is accepted, and so does its pending
+    # row while the reader follows; the reader goes up after both.
     page.wait_for_function("() => document.querySelector('#input').value === ''")
-    page.evaluate("document.querySelector('#tr').scrollTop = 0")
+    page.wait_for_selector(".row.user.pending")
+    # Until the scroll event lands, the transcript still follows and an update
+    # takes it back down, so scroll up until it stays.
+    page.wait_for_function(
+        """() => {
+            const tr = document.querySelector('#tr');
+            const up = tr.scrollTop === 0;
+            tr.scrollTop = 0;
+            return up;
+        }""",
+        polling=100,
+    )
     tall = "[...document.querySelectorAll('.row.prose')].at(-1)"
     page.wait_for_function(
         f"() => {tall}.textContent.includes('line 199')", timeout=8000
     )
-    # More than five times the view: its ratio never reaches 0.25.
-    assert page.evaluate(
-        f"() => {tall}.offsetHeight > 5 * document.querySelector('#tr').clientHeight"
-    )
     page.wait_for_timeout(1500)
+    assert page.evaluate("() => document.querySelector('#tr').scrollTop") == 0
     assert page.evaluate(f"() => !!{tall}.querySelector('.rm .ic.unread')")
     # The top edge comes in first, then the row covers the view in steps, as
     # a reader scrolling down meets it.
@@ -1486,6 +1495,11 @@ def test_a_tall_reply_that_lands_off_screen_becomes_read_when_you_scroll_into_it
             return r.top <= v.top && r.bottom >= v.bottom;
         }}"""
     ), "the row covers the view"
+    # More than five times the view: its ratio never reaches 0.25. Off screen
+    # it has no real height (content-visibility), so this is measured here.
+    assert page.evaluate(
+        f"() => {tall}.offsetHeight > 5 * document.querySelector('#tr').clientHeight"
+    )
     page.wait_for_function(
         f"() => !!{tall}.querySelector('.rm .ic.read')", timeout=6000
     )
