@@ -494,6 +494,12 @@ def test_reopen_from_the_archive_and_rename(server, page, frames):
     page.locator(f"#arch-list tr[data-id='{a}'] button", has_text="Read").click()
     page.wait_for_selector("#a2[data-mode=read]")
     assert not page.is_visible(".composer") and not page.is_visible("#close")
+    # An archived meta carries no attention: the state alone, no glyph.
+    assert page.inner_text("#s-status").strip() == "archived"
+    assert page.locator("#s-status svg").count() == 0
+    assert not any(
+        c.startswith("at-") for c in page.get_attribute("#s-status", "class").split()
+    )
     page.click("#reopen")
     page.wait_for_selector("#a2[data-view=session][data-mode=live]")
     assert tab_ids(page) == [a]
@@ -910,7 +916,8 @@ def test_a_long_transcript_mounts_its_tail_and_the_rest_as_the_reader_scrolls_up
     page.fill("#input", "replay")
     page.press("#input", "Enter")
     page.wait_for_function(
-        "document.getElementById('s-status').textContent === 'idle'", timeout=60_000
+        "document.getElementById('s-status').textContent.trim() === 'done'",
+        timeout=60_000,
     )
     page.reload()
     page.wait_for_function("window.__a2snapshot && window.__a2snapshot.painted")
@@ -965,9 +972,11 @@ def test_a_sessions_patch_redraws_only_its_own_tab_and_card(server, browser, pag
 
     page.click("#tab-fleet")
     page.wait_for_selector(f"#cards .card[data-id='{a}']")
-    page.evaluate(
-        "id => document.querySelector(`#cards .card[data-id='${id}']`).__kept = true", a
-    )
+    for id_ in (a, b):
+        page.evaluate(
+            "id => document.querySelector(`#cards .card[data-id='${id}']`).__kept = true",
+            id_,
+        )
     other = new_page(browser, [])
     other.goto(f"{server.url.split('#')[0]}#s={b}")
     other.wait_for_selector("#a2[data-view=session]")
@@ -975,8 +984,8 @@ def test_a_sessions_patch_redraws_only_its_own_tab_and_card(server, browser, pag
     other.press("#input", "Enter")
     turns_done(other, 3)
     page.wait_for_function(
-        "id => document.querySelector(`#cards .card[data-id='${id}'] .act`).textContent.includes('once more')"
-        " || document.querySelector(`#cards .card[data-id='${id}']`).textContent.includes('idle')",
+        "id => { const c = document.querySelector(`#cards .card[data-id='${id}']`);"
+        " return c.__kept !== true && c.textContent.includes('done') }",
         arg=b,
     )
     assert page.evaluate(
@@ -1168,7 +1177,8 @@ def test_g_in_a_long_transcript_mounts_and_selects_the_first_entry(replay_server
     page.fill("#input", "replay")
     page.press("#input", "Enter")
     page.wait_for_function(
-        "document.getElementById('s-status').textContent === 'idle'", timeout=60_000
+        "document.getElementById('s-status').textContent.trim() === 'done'",
+        timeout=60_000,
     )
     page.reload()
     page.wait_for_function("window.__a2snapshot && window.__a2snapshot.painted")
@@ -1320,4 +1330,105 @@ def test_an_opencode_session_streams_and_calls_aegis(server, page):
     turns_done(page, 2)
     assert "meta" in page.locator(".row.tool.ok").last.inner_text()
     assert "OpenCode 1.18.31" in page.inner_text("#entries")
+
+
+# -- attention (#171) -----------------------------------------------------------
+
+
+def report(pg, **args) -> None:
+    pg.fill("#input", f"/mcp turn_end {json.dumps(args)}")
+    pg.press("#input", "Enter")
+
+
+def test_a_question_marks_the_tab_card_and_band_and_the_fleet_groups_it(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    first = page.evaluate("location.hash.slice(3)")
+    spawn(page, "hello")
+    report(page, attention="needs_you", line="Rebase or merge?", replies=[])
+    turns_done(page, 2)
+    page.wait_for_selector(".tab.on svg.ic use[href='#g-need']", state="attached")
+    page.click("#tab-fleet")
+    page.wait_for_selector(".card .ask >> text=Rebase or merge?")
+    assert page.inner_text(".grp-h >> nth=0") == "Needs you"
+    cards = page.eval_on_selector_all(".card", "cs => cs.map(c => c.dataset.id)")
+    assert cards[-1] == first  # the done session sits below the one that needs you
+    assert "need you" in page.inner_text("#band-counts")
+    page.click(".seg button[data-order=tabs]")
+    page.reload()
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert (
+        page.eval_on_selector_all(".card", "cs => cs.map(c => c.dataset.id)")[0]
+        == first
+    )
+    assert page.locator(".grp-h").count() == 0
+    assert page.errors == []
+
+
+def test_a_patch_that_changes_a_cards_group_regroups_the_open_fleet(
+    server, browser, page
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a, b = spawn(page, "alpha"), spawn(page, "beta")
+    page.click("#tab-fleet")
+    page.wait_for_selector(f"#cards .card[data-id='{b}']")
+    assert page.locator(".grp-h").count() == 0  # the order bar's heading names the list
+    other = new_page(browser, [])
+    other.goto(f"{server.url.split('#')[0]}#s={b}")
+    other.wait_for_selector("#a2[data-view=session]")
+    report(other, attention="needs_you", line="Which branch?", replies=[])
+    page.wait_for_selector(".card .ask >> text=Which branch?")
+    assert page.locator(".grp-h").all_inner_texts() == ["Needs you", "Everything else"]
+    assert page.eval_on_selector_all(".card", "cs => cs.map(c => c.dataset.id)") == [
+        b,
+        a,
+    ]
+    assert page.errors == []
+
+
+def test_reply_pills_send_their_text_and_all_disappear(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    plan = [{"text": "read", "state": "done"}, {"text": "fix", "state": "doing"}]
+    page.fill("#input", f"/mcp plan_update {json.dumps({'items': plan})}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    page.wait_for_selector("#s-plan-sec:not([hidden]) >> text=fix")
+    marks = page.eval_on_selector_all(
+        "#s-plan > div > svg.ic",
+        """ms => ms.map(m => {
+          const s = getComputedStyle(m);
+          return [m.getAttribute('class'), s.width, s.animationName, s.color];
+        })""",
+    )
+    ok = page.evaluate(
+        "getComputedStyle(document.getElementById('a2')).getPropertyValue('--ok').trim()"
+    )
+    probe = page.evaluate(
+        f"(() => {{ const d = document.createElement('i'); d.style.color = '{ok}';"
+        " document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; })()"
+    )
+    assert [(c, w, a) for c, w, a, _ in marks] == [
+        ("ic done", "12px", "none"),
+        ("ic work", "12px", "none"),
+    ]
+    assert marks[0][3] == probe
+    report(
+        page,
+        attention="needs_you",
+        line="Rebase or merge?",
+        replies=["rebase onto main", "merge main into it"],
+    )
+    turns_done(page, 3)
+    page.wait_for_selector("#s-ask:not([hidden]) >> text=Rebase or merge?")
+    page.wait_for_selector("#replies:not([hidden]) .rp >> text=merge main into it")
+    page.click("#replies .rp >> text=rebase onto main")
+    page.wait_for_selector("#replies", state="hidden")
+    turns_done(page, 4)
+    assert "rebase onto main" in page.inner_text(".row.user >> nth=-1")
+    assert page.locator("#replies .rp").count() == 0 or page.is_hidden("#replies")
+    assert "at-done" in page.get_attribute("#s-status", "class").split()
     assert page.errors == []

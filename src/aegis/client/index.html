@@ -37,6 +37,12 @@
       <div><h5>Host</h5><div id="band-host"></div></div>
       <div class="q" id="band-quota-col" hidden><h5><span>Quota</span><span class="age" id="band-quota-age"></span></h5><div id="band-quota"></div></div>
     </section>
+    <div class="order"><h3>Sessions</h3>
+      <div class="seg" id="fleet-order">
+        <button data-order="attention">Needs you first</button>
+        <button data-order="tabs">Tab order</button>
+      </div>
+    </div>
     <section class="cards" id="cards" tabindex="-1"></section>
     <section class="archive">
       <div class="archive-head"><h3>Archive</h3><input id="arch-q" placeholder="Filter by title, handle or directory" spellcheck="false"></div>
@@ -76,6 +82,7 @@
       <button class="jump" id="jump" hidden>↓ latest</button>
       <div class="composer" id="composer">
         <div class="cmd-menu" id="cmd-menu" hidden><input id="cmd-filter" hidden spellcheck="false" placeholder="/command"><div id="cmd-rows"></div></div>
+        <div class="replies" id="replies" hidden></div>
         <div class="box">
           <textarea id="input" rows="1" placeholder="Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts."></textarea>
           <div class="acts"><button class="send" id="send" title="Send (Enter)" aria-label="Send">↵</button></div>
@@ -93,7 +100,9 @@
         <div class="kv"><span class="handle editable" id="s-handle" title="Click to rename"></span><span class="st" id="s-status"></span></div>
         <div class="kv"><span id="s-model"></span></div>
         <div class="kv dim"><span class="path" id="s-cwd"></span></div>
+        <div class="askbox" id="s-ask" hidden></div>
       </div>
+      <div class="sec" id="s-plan-sec" hidden><h4>Plan</h4><div class="plan" id="s-plan"></div></div>
       <div class="sec" id="s-mon-sec" hidden><h4>Monitors</h4><div id="s-monitors"></div></div>
       <div class="sec"><h4>Context</h4>
         <div class="bar"><i id="s-bar" style="width:0%"></i></div>

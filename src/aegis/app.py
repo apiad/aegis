@@ -195,14 +195,15 @@ class App:
             self.channels.publish(channel, ops)
 
     def _sessions_key(self, op: dict) -> tuple[str, bool]:
-        """A session added or removed, or a change to its state, name or model,
-        goes out at once: the page acts on them (Esc interrupts only a working
-        session, a spawn shows the new tab). The rest of a card can wait."""
+        """A session added or removed, or a change to its state, name, model or
+        attention, goes out at once: the page acts on them (Esc interrupts only a
+        working session, a spawn shows the new tab, a person answers a session
+        that needs them). The rest of a card can wait."""
         if "remove" in op:
             self._on_wire.pop(op["remove"], None)
             return op["remove"], True
         m = op["upsert"]
-        seen = (m["state"], m["title"], m["handle"], m["model"])
+        seen = (m["state"], m["title"], m["handle"], m["model"], m.get("attention"))
         urgent = self._on_wire.get(m["log_id"]) != seen
         self._on_wire[m["log_id"]] = seen
         return m["log_id"], urgent

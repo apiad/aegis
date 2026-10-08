@@ -2,6 +2,8 @@
 // every browser; their order is this browser's own, kept in localStorage as a
 // list of log ids. Gone ids drop out, new sessions go at the end.
 
+import { glyph, LABEL } from "./glyphs.js";
+
 export class TabOrder {
   constructor(key = "aegis.tabs") {
     this.key = key;
@@ -37,10 +39,6 @@ export class TabOrder {
   }
 }
 
-export function dotClass(state) {
-  return { working: "working", idle: "ready", error: "err" }[state] || "ghost";
-}
-
 export function renderTabs(list, metas, focusId, actions) {
   list.replaceChildren(...metas.map((m) => tab(m, focusId, actions)));
 }
@@ -55,16 +53,15 @@ function tab(m, focusId, { onFocus, onMove }) {
   t.className = `tab${m.log_id === focusId ? " on" : ""}${m.state === "stopped" ? " stopped" : ""}`;
   t.draggable = true;
   t.dataset.id = m.log_id;
-  t.title = `${m.handle}: ${m.title || "untitled"} (${m.state})`;
-  const dot = document.createElement("span");
-  dot.className = `dot ${dotClass(m.state)}`;
+  t.title = `${m.handle}: ${m.title || "untitled"} (${LABEL[m.attention] || m.state})`;
+  const mark = glyph(m.attention);
   const name = document.createElement("span");
   name.className = "tname";
   name.textContent = m.title || m.handle;
   const handle = document.createElement("span");
   handle.className = "srv";
   handle.textContent = m.title ? m.handle : "";
-  t.append(dot, name, handle);
+  t.append(mark, name, handle);
   t.addEventListener("click", () => onFocus(m.log_id));
   t.addEventListener("dragstart", (ev) => {
     ev.dataTransfer.setData("text/aegis-tab", m.log_id);

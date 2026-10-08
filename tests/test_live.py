@@ -3,6 +3,7 @@ and a resume that keeps the context.
 
 Spends a few cents of Haiku. Run with ``make test-live``."""
 
+import json
 import shutil
 from pathlib import Path
 
@@ -361,9 +362,32 @@ async def test_real_claude_gives_a_countable_wait_a_progress_command(tmp_path: P
         await asyncio.wait_for(task, 30)
 
 
-async def test_real_claude_ends_a_bash_call_on_a_counted_verdict(tmp_path: Path):
-    """The primer's Bash paragraph reaches the real binary: a search whose
-    plain answer ends on a file name instead ends on the count it found."""
+def _bash_commands(path: Path) -> list[str]:
+    """Every Bash command a store recorded, as Claude wrote it."""
+    found = []
+
+    def walk(o):
+        if isinstance(o, dict):
+            if o.get("type") == "tool_use" and o.get("name") == "Bash":
+                found.append(o["input"]["command"])
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+
+    for r in read_store(path)[0]:
+        if r.get("src") == "claude":
+            walk(json.loads(r["line"]))
+    return found
+
+
+async def test_real_claude_names_a_bash_call_and_ends_it_on_a_counted_verdict(
+    tmp_path: Path,
+):
+    """The primer's Bash paragraphs reach the real binary: a search opens on a
+    comment that names it, and its plain answer, which would end on a file
+    name, ends on the count it found."""
     import asyncio
     import re
 
@@ -411,6 +435,70 @@ async def test_real_claude_ends_a_bash_call_on_a_counted_verdict(tmp_path: Path)
         assert rows, "Claude made no Bash call"
         verdict = rows[-1]["detail"]["result"]
         assert re.search(rf"\b{hits}\b", verdict), verdict
+        (command, *_) = _bash_commands(s.store.path)
+        assert command.lstrip().startswith("#"), command
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
+async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
+    """A real Sonnet primed by aegis calls turn_end: needs_you with replies after
+    laying out two options, done without needs_you after finished work. Sonnet,
+    not Haiku: Haiku called turn_end in about 1 of 3 runs whatever the primer's
+    wording (#171)."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "I need to bring a feature branch up to date with main. Lay out the two "
+            "usual ways in two lines and ask me which one I want. Do not run anything."
+        )
+        await until(
+            lambda: s.status == "idle" and s.cost_usd,
+            timeout=120,
+            what="the question turn",
+        )
+        c = s.wire()
+        assert c["attention"] == "needs_you", c
+        assert 1 <= len(c["replies"]) <= 3, c
+        await s.send(
+            f"Create the file {tmp_path / 'done.txt'} containing ok, then tell me it is done."
+        )
+        await until(
+            lambda: s.status == "idle" and (tmp_path / "done.txt").exists(),
+            timeout=120,
+            what="the work turn",
+        )
+        assert (s.standing.get("report") or {}).get("attention") == "done", s.standing
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)

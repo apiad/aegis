@@ -244,6 +244,8 @@ class Queues:
             self._log(t, "cancelled")
             if t.worker in self._registry.sessions:
                 await self._registry.close(t.worker)
+        if t.enqueuer:
+            self._registry.refresh_card(t.enqueuer)
         await self.dispatch()
 
     async def resume(self, t: Task) -> None:
