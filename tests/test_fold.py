@@ -152,6 +152,28 @@ def test_tool_output_replaces_its_call_in_place():
     assert done["detail"]["collapsed"] is True
 
 
+def test_a_bash_row_is_named_by_its_opening_comment():
+    r = Rec()
+    r.call("t1", "Bash", {"command": "# Count open issues\ngh issue list | wc -l"})
+    r.call(
+        "t2",
+        "Bash",
+        {"command": "#Run tests\npytest -q", "description": "Run the suite"},
+    )
+    r.call("t3", "Bash", {"command": "pytest -q", "description": "Run tests"})
+    r.call("t4", "Bash", {"command": "ls -la /tmp"})
+    a, b, c, d = run(r)[0].entries()
+    assert [e["summary"] for e in (a, b, c, d)] == [
+        "Count open issues",
+        "Run tests",
+        "Run tests",
+        "ls -la /tmp",
+    ]
+    assert a["detail"]["args"] == "# Count open issues\ngh issue list | wc -l"
+    assert b["detail"]["args"] == "#Run tests\npytest -q"
+    assert c["detail"]["args"] == "# Run tests\npytest -q"
+
+
 def test_a_bash_verdict_skips_the_lines_claude_code_appends():
     r = Rec()
     r.call("t1", "Bash", {"command": "cd /x && pytest -q"})
@@ -319,7 +341,7 @@ def test_stopping_ends_running_calls_and_loses_unread_prompts():
 def test_resume_and_server_stopped_lines():
     r = Rec()
     r.own("server_stopped")
-    r.own("resume", claude_session_id="cs")
+    r.own("resume", resume_id="cs")
     f, _ = run(r)
     assert [e["summary"] for e in f.entries()] == [
         "the server stopped during a turn",
@@ -330,7 +352,7 @@ def test_resume_and_server_stopped_lines():
 def test_activity_prefers_a_running_call_then_the_latest_prose():
     r = Rec()
     r.echo("do it")
-    assert run(r)[0].activity() == "do it"
+    assert run(r)[0].activity() == "waiting for the model"
     r.text("Looking at the tests now.\nMore lines.")
     assert run(r)[0].activity() == "Looking at the tests now."
     r.call("t1", "Bash", {"command": "pytest", "description": "Run tests"})
@@ -576,6 +598,58 @@ def test_a_set_model_note_does_not_take_a_queued_commands_place():
     assert [(e["kind"], e["title"], e["md"]) for e in f.entries()] == [
         ("command", "/compact", "Compacted")
     ]
+
+
+def test_init_and_exit_name_their_harness():
+    r = Rec()
+    r.claude(
+        {
+            "type": "system",
+            "subtype": "init",
+            "session_id": "s",
+            "model": "m",
+            "claude_code_version": "2.1",
+        }
+    )
+    r.own("exit", code=1, stderr_tail=[], harness="OpenCode")
+    r.own("exit", code=2, stderr_tail=[])  # a record from before the label
+    summaries = [e["summary"] for e in run(r)[0].entries()]
+    assert summaries[0] == "Claude Code 2.1 · m"
+    assert "OpenCode exited with code 1" in summaries
+    assert "claude exited with code 2" in summaries
+
+
+def test_a_live_entry_whose_part_never_closed_is_dropped_at_the_turns_end():
+    from aegis.claude.stream import Delta, Result
+
+    f = Fold()
+    f.live([Delta(key="prt_1", kind="prose", text="half an ans")])
+    assert [e["md"] for e in f.entries()] == ["half an ans"]
+    ops = f._event("e9.0", 9.0, Result(False, "success", 10, None, None, None))
+    assert {"remove": "prt_1"} in ops
+    assert all(e["id"] != "prt_1" for e in f.entries())
+
+
+def test_a_harness_error_loses_the_send_it_answers_and_a_reset_is_said():
+    r = Rec()
+    r.own("send", text="/nope x")
+    r.own("harness_error", text="/nope failed: 400", line="/nope x")
+    r.own(
+        "reset", text="OpenCode no longer had this conversation; it started a new one"
+    )
+    e = run(r)[0].entries()
+    assert [(x["kind"], x["status"]) for x in e] == [
+        ("user", "lost"), ("error", "err"), ("system", "ok"),
+    ]  # fmt: skip
+    assert e[1]["summary"] == "/nope failed: 400"
+
+
+def test_activity_waits_for_the_model_until_the_turn_says_something():
+    r = Rec()
+    r.echo("do it")
+    assert run(r)[0].activity() == "waiting for the model"
+    r.text("On it.")
+    assert run(r)[0].activity() == "On it."
 
 
 def plan(*pairs):

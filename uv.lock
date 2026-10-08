@@ -8,6 +8,7 @@ version = "2.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
+    { name = "httpx" },
     { name = "pydantic" },
     { name = "ruamel-yaml" },
     { name = "starlette" },
@@ -32,6 +33,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", specifier = ">=3.2.0" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "ruamel-yaml", specifier = ">=0.18" },
     { name = "starlette", specifier = ">=0.46" },

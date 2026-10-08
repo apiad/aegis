@@ -66,6 +66,14 @@ AEGIS_PREFIX = "mcp__aegis__"
 CLAUDE_TRAILERS = ("Shell cwd was reset to ", "[This command modified ")
 
 
+def _bash_comment(command: str) -> str:
+    """The ``# what it does`` line the primer asks a command to open with.
+    Claude Code drops the optional description field for whole sessions
+    (14 of 81 in early October), and a comment in the command survives that."""
+    first = command.lstrip().split("\n", 1)[0]
+    return first.lstrip("#").strip() if first.startswith("#") else ""
+
+
 def tool_glyph(name: str) -> str:
     if name.startswith(AEGIS_PREFIX):
         return COMMS_GLYPH
@@ -97,6 +105,8 @@ def tool_label(name: str, inp: dict) -> str:
     if name.startswith(AEGIS_PREFIX):
         return _aegis_label(tool_title(name), inp)
     if name == "Bash":
+        if comment := _bash_comment(str(inp.get("command", ""))):
+            return comment
         if inp.get("description"):
             return str(inp["description"])
         return _trunc(inp.get("command", ""), 60)
@@ -238,7 +248,8 @@ def format_tool_args(name: str, inp: dict, cap: int = 500) -> str:
     if not inp:
         return ""
     if name == "Bash" and inp.get("command"):
-        out = [f"# {inp['description']}"] if inp.get("description") else []
+        has = inp.get("description") and not _bash_comment(str(inp["command"]))
+        out = [f"# {inp['description']}"] if has else []
         out.append(str(inp["command"]))
         return "\n".join(out)
     lines = []

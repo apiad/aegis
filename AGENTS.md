@@ -1,7 +1,7 @@
 # aegis
 
 aegis is a web-native workplace for coding agents. `aegis serve` runs Claude Code
-sessions on one machine and serves them to browser tabs: a Fleet view, shared tabs,
+and OpenCode sessions on one machine and serves them to browser tabs: a Fleet view, shared tabs,
 a transcript per session, and an archive. Agents in it get aegis's tools over MCP:
 monitors, queues of workers, handoffs, reading a peer, and an inbox that delivers
 what those produce. It is published on PyPI as `aegis-harness`, and it is the

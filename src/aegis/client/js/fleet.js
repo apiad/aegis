@@ -27,8 +27,11 @@ function cwdTail(cwd) {
   return (cwd || "").split("/").filter(Boolean).slice(-2).join("/");
 }
 
+// transcript/describe.py's money(): a sub-cent session (cheap OpenCode models)
+// would otherwise read $0.00.
 export function money(usd) {
-  return `$${(usd || 0).toFixed(2)}`;
+  const v = usd || 0;
+  return v >= 0.005 || v === 0 ? `$${v.toFixed(2)}` : `$${v.toFixed(4)}`;
 }
 
 // The cards a person must act on, shown first when the Fleet is ordered by need.

@@ -32,6 +32,8 @@ class Model:
     label: str
     doc: str
     efforts: tuple[str, ...]
+    # The context window, when the harness's catalog names one (OpenCode).
+    window: int | None = None
 
     def wire(self) -> dict:
         return {

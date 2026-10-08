@@ -113,13 +113,17 @@ def build_mcp(registry: Registry, tokens: Tokens):
 
 
 def primer(session: Session, server_name: str) -> str:
-    return PRIMER.format(handle=session.handle, server=server_name)
+    return PRIMER.format(
+        handle=session.handle,
+        server=server_name,
+        tools=f"{session.harness.tool_prefix}*",
+    )
 
 
 PRIMER = """\
 You are running inside aegis, a workplace for coding agents. Your handle is \
 {handle}, on the server {server}. aegis's tools are the `aegis` MCP server's \
-(mcp__aegis__*); they know who you are, so no tool takes your handle.
+({tools}); they know who you are, so no tool takes your handle.
 
 Messages from others reach you as user turns that start with a header line: \
 `> from monitor:<id> · …` when a monitor you armed ends, `> from queue:<name> · \
@@ -132,6 +136,12 @@ monitor_start with a bash `done` condition and a `progress` command echoing 0 to
 Always give `progress`, even when it costs a longer command: count finished CI \
 checks, jobs, files or lines over the total, or estimate from elapsed time. Pass \
 null only when nothing can be counted.
+
+Every Bash command you write opens with a comment line that says in a few \
+plain words what it does, such as `# Count the open issues`, and the command \
+starts on the next line. That comment is the row's name: without it the \
+person reads the raw command. Write it even when you also fill the tool's \
+description field.
 
 Every Bash call you make ends on one line of numbers that the command itself \
 computed, because the person sees each call as a single row and that row shows \
