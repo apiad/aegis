@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from . import files
 from .monitors import iso_now
@@ -87,6 +87,46 @@ class FileSend(_Strict):
     )
     caption: str | None = Field(
         None, description="A line of Markdown shown above the file."
+    )
+
+
+class PlanItem(_Strict):
+    text: str = Field(min_length=1)
+    state: Literal["pending", "doing", "done"]
+
+
+class PlanUpdate(_Strict):
+    items: list[PlanItem] = Field(
+        description="The whole plan, every time, in order. Mark one item `doing` "
+        "while you work on it and `done` when it is finished."
+    )
+
+    @model_validator(mode="after")
+    def _one_doing(self) -> "PlanUpdate":
+        if sum(1 for i in self.items if i.state == "doing") > 1:
+            raise ValueError("mark one item `doing` at a time")
+        return self
+
+
+Reply = Annotated[str, Field(min_length=1, max_length=80, pattern=r"^[^\n]+$")]
+
+
+class TurnEnd(_Strict):
+    attention: Literal["needs_you", "review", "done"] = Field(
+        description="needs_you: your message asks the person something. review: it "
+        "presents something for them to read. done: it reports finished work."
+    )
+    line: str = Field(
+        min_length=1,
+        max_length=140,
+        description="One sentence: the question they must answer, what to read, or what got done.",
+    )
+    replies: list[Reply] = Field(
+        default_factory=list,
+        max_length=3,
+        description="Up to three messages the person might send next, written as they "
+        "would type them: their language, lowercase, no final period. Only when you "
+        "laid out options or wait for a go-ahead; empty otherwise.",
     )
 
 
@@ -317,6 +357,27 @@ def register_agent_ops(app: App) -> None:
             "size": rec["size"],
             "mime": rec["mime"],
         }
+
+    @r.op("plan.update", PlanUpdate, agent=True)
+    async def plan_update(p: PlanUpdate, caller):
+        """Keep your plan where the person can see it: on your tab's card and in
+        its sidebar. Send the whole list each time."""
+        s = own(caller)
+        items = [{"text": i.text[:120], "state": i.state} for i in p.items[:30]]
+        s.report({"kind": "plan", "items": items})
+        done = sum(1 for i in items if i["state"] == "done")
+        return f"plan saved: {done} of {len(items)} done"
+
+    @r.op("turn.end", TurnEnd, agent=True)
+    async def turn_end(p: TurnEnd, caller):
+        """Call this as the last thing before you hand the turn back to the person,
+        not when you end a turn to wait on a monitor or a queue task. It sets the
+        mark on your tab and the line on your card."""
+        s = own(caller)
+        s.report(
+            {"kind": "turn_end", "attention": p.attention, "line": p.line, "replies": p.replies}
+        )
+        return "noted"
 
     @r.op("meta", NoArgs, agent=True)
     async def meta(_, caller):

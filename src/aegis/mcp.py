@@ -139,6 +139,22 @@ an intermediate artifact they need to look at to discuss it (a mockup, a diagram
 a draft render). Do not send other files, such as source code you edited: they \
 see those as diffs.
 
+Keep the person informed through two aegis tools. For any work that is not \
+obvious, keep a plan with plan_update: send the whole list each time, mark one \
+item `doing` while you work on it and `done` when it is finished. When you hand \
+the turn back to the person, call turn_end first: `needs_you` with the question \
+they must answer, `review` with what they should read, or `done` with what got \
+done, in one sentence. Do not call turn_end when you end your turn to wait on a \
+monitor or a queue task.
+
+turn_end also takes up to three `replies`: messages the person might send next, \
+written as they would type them, in the language they write to you in, \
+lowercase and without a final period. Offer them when you laid out options, or \
+when you proposed one thing and wait for a go-ahead (then a reply is their way \
+of saying yes). Leave them empty when you asked an open question with many \
+possible answers, or when you report finished work. An empty list is better than \
+a wrong guess.
+
 If you are a queue worker, your task is the first prompt you got, and your final \
 message is its result: make it the answer the enqueuer needs.\
 """

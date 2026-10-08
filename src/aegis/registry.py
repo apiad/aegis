@@ -19,6 +19,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from . import attention
 from .meta import MetaStore, rebuild
 from .names import TITLE_MAX, mint_handle, valid_handle
 from .ops import OpError
@@ -92,8 +93,47 @@ class Registry(Host):
         return {
             "monitors": self.monitors.card(session.log_id)
             if self.monitors is not None
-            else []
+            else [],
+            **attention.card(
+                session.standing,
+                working=session.in_turn,
+                worker=bool(session.worker),
+                waits=self._waits(session),
+            ),
         }
+
+    def _waits(self, s: Session) -> list[str]:
+        """What a session waits on that is not a person, one phrase each."""
+        n_mon = len(self.monitors.of(s.log_id)) if self.monitors is not None else 0
+        n_task = (
+            sum(
+                1
+                for t in self.queues.tasks.values()
+                if t.enqueuer == s.log_id
+                and t.callback
+                and t.status in ("pending", "running")
+            )
+            if self.queues is not None
+            else 0
+        )
+        n_kid = sum(
+            1
+            for o in self.sessions.values()
+            if o.spec.spawned_by == s.log_id and o.status == "working"
+        )
+        counts = (
+            (n_mon, "monitor"),
+            (len(s.open_tasks), "background task"),
+            (len(s.held), "held message"),
+            (n_task, "queue task"),
+            (n_kid, "session"),
+        )
+        return [f"{n} {noun}{'' if n == 1 else 's'}" for n, noun in counts if n]
+
+    def status_changed(self, session: Session) -> None:
+        parent = session.spec.spawned_by
+        if parent and parent in self.sessions:
+            self.refresh_card(parent)
 
     def refresh_card(self, log_id: str) -> None:
         s = self.sessions.get(log_id)
