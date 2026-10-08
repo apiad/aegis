@@ -1,4 +1,6 @@
+import json
 import stat
+import struct
 import time
 from pathlib import Path
 
@@ -735,3 +737,31 @@ def test_the_cookie_is_secure_only_behind_an_https_origin(project, fake_claude):
         assert "secure" in r.headers["set-cookie"].lower()
         r = c.get(f"http://box.lan:8742/?token={TOKEN}", follow_redirects=False)
         assert "secure" not in r.headers["set-cookie"].lower()
+
+
+def png_size(data: bytes) -> tuple[int, int]:
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    return struct.unpack(">II", data[16:24])
+
+
+def test_the_manifest_names_the_server_and_its_icons_load(project, fake_claude):
+    with client_for(project, fake_claude) as c:
+        r = c.get("/manifest.webmanifest")
+        assert r.headers["content-type"].startswith("application/manifest+json")
+        m = json.loads(r.text)
+        assert m["display"] == "standalone" and m["start_url"] == "/"
+        assert m["name"].startswith("aegis · ") and m["short_name"] == "aegis"
+        got_icons = set()
+        for icon in m["icons"]:
+            got = c.get(icon["src"])
+            assert got.status_code == 200 and got.headers["content-type"] == "image/png"
+            w, h = png_size(got.content)
+            assert f"{w}x{h}" == icon["sizes"]
+            got_icons.add((icon["sizes"], icon.get("purpose", "any")))
+        assert got_icons == {
+            ("192x192", "any"),
+            ("512x512", "any"),
+            ("512x512", "maskable"),
+        }
+        page = c.get("/").text
+        assert '<link rel="manifest" href="/manifest.webmanifest">' in page

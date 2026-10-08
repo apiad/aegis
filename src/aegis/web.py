@@ -156,6 +156,41 @@ def build_web(
             return JSONResponse({"error": "bad_token"}, status_code=401)
         return signed_in(Response(status_code=204), request)
 
+    manifest = {
+        "name": f"aegis · {socket.gethostname()}",
+        "short_name": "aegis",
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#11100e",
+        "theme_color": "#0b0a09",
+        "icons": [
+            {
+                "src": "/static/icons/aegis-192.png",
+                "sizes": "192x192",
+                "type": "image/png",
+            },
+            {
+                "src": "/static/icons/aegis-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+            },
+            {
+                "src": "/static/icons/aegis-maskable-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "maskable",
+            },
+        ],
+    }
+
+    async def webmanifest(request):
+        """What Chrome installs: the server's name, so zion and the VPS differ
+        on a home screen. No service worker: Chrome installs from its menu
+        without one since 108 on Android, and a caching one could serve a stale
+        client after an upgrade."""
+        return JSONResponse(manifest, media_type="application/manifest+json")
+
     async def sent_file(request):
         """A file an agent sent. The id is the secret (files.py); a Host the
         websocket would refuse, local or a proxy's public name, gets the same
@@ -300,6 +335,7 @@ def build_web(
         routes=[
             Route("/", index),
             Route("/login", login, methods=["POST"]),
+            Route("/manifest.webmanifest", webmanifest),
             Mount("/static", ClientFiles(directory=CLIENT_DIR)),
             Route("/files/{file_id}/{name}", sent_file),
             WebSocketRoute("/ws", ws),
