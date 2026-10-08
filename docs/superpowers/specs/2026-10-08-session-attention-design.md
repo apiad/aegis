@@ -1,0 +1,283 @@
+# aegis: what a session needs from you, what it did, and what you have read
+
+**Status: designed, 2026-10-08** (issue #171). Designed with Alex in a brainstorm
+with mockups, rendered on the client's own CSS from `main`. The approved screens
+are in the workspace playground, not in this repo:
+`.playground/aegis-recap-ui/src-transcript.html` (transcript, recap, read marks,
+navigator) and `.playground/aegis-recap-ui/src-glyphs.html` (Fleet cards, band,
+order switch, glyphs; style B was chosen). Replaces, for aegis 2, the legacy
+specs `2026-09-17-aegis-turn-attention-design.md` and
+`2026-09-17-aegis-unified-recap-design.md`.
+
+## What this delivers
+
+With seven tabs open, a person can see which sessions are waiting on them, which
+broke, which are waiting on CI, and which finished, without opening any of them.
+Each tab and Fleet card carries one of six status marks. The agent says, in its
+own words, what it is doing, what it did, and what it needs from you. When you
+come back to a tab after a while, the last row of the transcript is a two-line
+recap of where things stand, every agent message you have not read carries a
+mark, and a navigator in the corner walks the agent messages and skips the rest.
+
+The legacy tree paid a Haiku call on every turn, and another every few seconds
+while a turn ran, to produce these lines. Here the agent reports its own plan
+and its own turn end through two aegis tools, the server derives everything else
+from facts it already holds, and Haiku runs only when a person lands on a tab
+with a long unread stretch.
+
+## Decisions
+
+| Question | Decision | Why |
+|---|---|---|
+| Where "doing" and "did" come from | The agent's own `plan_update` calls | Claude Code no longer makes TodoWrite calls here (0 in the last 300 transcripts, #171), and a summariser guessing at intent cost $0.016 a turn in the legacy tree |
+| Where "needs you" comes from | The agent's own `turn_end` call | Only the agent knows whether its message was a question. A model reading the transcript afterwards was the legacy answer, and it paid for every turn |
+| Error, waiting, working | Mechanical, from facts the server holds | They are facts, so a model or an agent can only get them wrong |
+| How hard aegis pushes the agent to report | The priming only, measured | A Stop hook would guarantee it but costs a model step every time the agent forgets, and only works for Claude Code. Revisit if `make test-live` and a week of use show poor compliance |
+| When Haiku runs | When a person lands on a tab with a long unread stretch, or asks | A recap is for a person who was away. Nobody reads a recap of a turn they watched |
+| Where the recap shows | The last row of the transcript | It is the first thing on screen when the tab opens |
+| What "seen" belongs to | The server, shared by every browser | Reading a session on the phone should stop it pinging on the laptop |
+| When a message counts as read | When it has been on screen for a second in a focused, visible tab | Opening a tab does not mean reading a long reply |
+| What a read mark covers | Agent messages only (`prose` entries) | Tool calls, thinking and inbox rows are not what a person reads |
+| Read mark style | A ● in the right margin when unread, a faint ✓ when read | Chosen from three mockups |
+| Navigator | A pill at the bottom right: up, "2 unread · message 3 of 4", down, to latest | Chosen over a vertical stack |
+| Fleet card order | A switch in the Fleet: "Needs you first" (default) or "Tab order", kept per browser | Alex wants both; the choice is a view preference like the tab order |
+| Glyphs | Inline SVG, filled badges, drawn in `currentColor` | Unicode marks render differently in each font; style B was chosen over an outline set |
+
+## The status of a session
+
+Every session has one **attention** value, computed in Python and sent on its
+card. The first rule that holds wins:
+
+1. **working**: `status` is `working`, or held messages are being flushed.
+2. **error**: the last turn ended with `Result.is_error`, the status is `error`
+   (an interrupt went unanswered), or the process exited mid-turn.
+3. **needs_you**: the agent's `turn_end` for the last turn said `needs_you`.
+   A queue worker's `needs_you` counts as `done`, because its answer goes to
+   whoever enqueued it.
+4. **waiting**: the session has a live monitor, an open Claude task, a held
+   message, a queue task it enqueued that has not finished, or a session it
+   spawned that is still working. The card names what it waits on
+   ("CI, 1 monitor").
+5. **review**: the agent's `turn_end` said `review`.
+6. **done**: everything else, including a turn that ended with no `turn_end`.
+
+This order follows the legacy tree's, with one change: the agent's
+`needs_you` comes from the agent, not from a classifier.
+
+The rule is a function of the session, its fold and the monitor and queue
+registries, evaluated whenever one of them changes, so a monitor that ends moves
+a card from waiting to done without a new turn. A turn the harness starts on its
+own, such as a Monitor wake, ends with a `result` like any other and is treated
+the same way. That was legacy #111.
+
+### When a mark shows
+
+| attention | tab and card mark | clears |
+|---|---|---|
+| working | the spinning badge | when the turn ends |
+| error | the error badge | when the next turn starts |
+| needs_you | the needs-you badge, blinking while its message is unread and the tab is not focused | when a person sends to the session |
+| waiting | the waiting badge | when the wait ends |
+| review | the review badge | when its message is read |
+| done | the done badge | when its message is read |
+
+After a review or done mark clears, the tab shows the plain idle dot. A
+needs_you mark stays after it is read, because the session is still blocked on
+you; it only stops blinking.
+
+## The agent's two tools
+
+Both are operations marked for agents, so they reach Claude as
+`mcp__aegis__plan_update` and `mcp__aegis__turn_end`. "Task" already names a
+queue task in aegis, so the tracker is called a plan.
+
+**`plan.update(items)`.** The session's whole plan, every call: a list of
+`{text, state}` with `state` one of `pending`, `doing`, `done`, at most one
+`doing`. The whole list each time is the shape TodoWrite had, which models
+already use well, and it makes every call idempotent. Text is cut to 120
+characters per item and 30 items.
+
+**`turn_end(attention, line)`.** Called when the agent hands the turn back.
+`attention` is one of `needs_you`, `review`, `done`; `line` is one sentence of
+at most 140 characters saying what the person must answer or read, or what got
+done. The agent decides this; no model second-guesses it.
+
+Each handler validates its params and appends an aegis record to the session's
+store: `{"kind": "plan", "items": [...]}` and
+`{"kind": "turn_end", "attention": ..., "line": ...}`. The fold reads them like
+any record aegis writes, so the plan and the last report survive a restart and a
+refold gives the same card. The tool calls themselves still render as tool rows.
+A `turn_end` belongs to the turn it was called in: the fold drops it when the
+next prompt or inbox message is echoed.
+
+The card gets three lines from the plan: **now** is the `doing` item, **did** is
+the most recently finished item, and **plan 3/4** counts done over total. A
+working card keeps today's live activity line (`Fold.activity()`, the running
+tool call) under them. A card with a `needs_you` or `review` report shows its
+`line` under the title. An error card shows the error from the store instead.
+
+### The priming
+
+The primer in `mcp.py` gains a paragraph, worded for the agent:
+
+> Keep the person informed through two aegis tools. For any work that is not
+> obvious, keep a plan with plan_update: send the whole list each time, mark one
+> item `doing` while you work on it and `done` when it is finished. When you hand
+> the turn back to the person, call turn_end first: `needs_you` with the question
+> they must answer, `review` with what they should read, or `done` with what got
+> done, in one sentence. Do not call turn_end when you end your turn to wait on a
+> monitor or a queue task.
+
+Compliance is measured, not assumed: `make test-live` runs a real session through
+a question turn, a work turn and a wait, and asserts the calls. The PR that lands
+the tools reports the rate over a week of Alex's sessions.
+
+## What you have read
+
+**Storage.** The meta gains `read_floor`, a store index: every agent message
+before it is read. A message read out of order is kept in `read_ids` until the
+floor passes it, so the set stays small. A session that predates this feature
+starts with its floor at its current end, so nothing old turns up unread.
+
+**Reading.** The client watches the mounted `prose` rows. A row that has been at
+least half visible for one second, while the page is visible and focused, is
+sent in a batched `session.read(log_id, ids)` call. That operation is for people
+only. The server moves the floor, writes the meta, and publishes.
+
+**What crosses the wire.** Python decides whether a message is unread. Each
+`prose` entry carries an `unread` flag when it is published, and a read sends
+upserts for the entries whose flag changed. The card carries `unread`, the
+count. A browser that reloads gets the same flags from the snapshot.
+
+**The transcript** shows:
+
+- the margin mark on every agent message: ● in the accent colour when unread, ✓
+  faint when read;
+- an accent divider before the first unread entry: "new since you left · 42 min",
+  measured from the last read on any browser. It stays where it is while the tab
+  stays open;
+- the navigator pill at the bottom right, replacing `↓ latest`: up and down move
+  between agent messages, the middle reads "2 unread · message 3 of 4" and jumps
+  to the first unread, and the last button goes to the latest entry.
+
+**Keys**, added to the table in `js/keys.js` so `?` lists them: Alt+↑ and Alt+↓
+move between agent messages, Alt+U goes to the first unread. Chrome on Linux
+leaves these free; the plan checks them against
+`chrome/browser/ui/accelerator_table.cc`, as the existing chords were.
+
+## The recap
+
+**When.** A browser that focuses a tab calls `recap.request(log_id)`. The server
+answers with nothing to do unless the session is idle or stopped, it has unread
+agent messages, and the unread stretch is long: at least 2 unread messages, or
+one longer than 300 words, or a last read more than 30 minutes ago. Those
+thresholds are constants in the recap module, to tune with use. A sparkle button
+in the navigator asks for one regardless.
+
+**What it says.** Two fields, in the language of the person's own messages:
+`context`, one sentence on what the session was doing, and `ask`, one sentence on
+what it needs from you, empty when nothing. The prompt is the legacy one
+(`legacy/aegis/recap/__init__.py`, `SYSTEM`) cut down to these two fields. It
+reads the transcript from the last user message or the read floor, whichever is
+earlier, within 3,000 tokens, plus the agent's own `turn_end` line and the plan,
+which it is told to trust over its own reading.
+
+**How it is paid for.** `.aegis.yaml` gains `recap: {agent: <name>}`, naming an
+agent from `agents:` (Haiku in the Workspace). Nothing defaults: with no
+`recap:`, the request answers that the recap is off and says which key turns it
+on. The call is a one-shot `claude -p` with `--json-schema`,
+`--setting-sources ""`, an empty working directory, stdin closed, and thinking
+off. Each of those choices was measured in the legacy driver
+(`legacy/aegis/drivers/claude.py`, `generate_detailed`). Its cost is added to the
+session's `recap_cost_usd`, apart from the session's own cost.
+
+**Where it lives.** The result is an aegis record,
+`{"kind": "recap", "upto": <store index>, "context", "ask", "model", "cost_usd",
+"duration_ms"}`, and the fold turns it into a `recap` entry. Every browser
+receives that entry, so two browsers landing on the same tab pay once. The
+server also holds one in-flight call per session, so two requests at the same
+moment share it. A recap for the same `upto` is never made twice, except by
+the refresh link. Once a person sends to the session, the fold renders that recap
+folded to one line, so the history keeps what you were told when you came back.
+
+The recap is aegis talking to the person. It never reaches the agent's context.
+
+## The ping
+
+**In the page.** Tab and card marks as in the table above. The Fleet band counts
+sessions by attention (need you, error, review, working, waiting, done) instead of
+by process state. With "Needs you first", the Fleet shows needs_you, error and
+review cards under "Needs you", and the rest below.
+
+**Outside the page.**
+
+- The document title starts with the count of sessions that need you or errored,
+  "(2) aegis", whichever view is open.
+- The favicon is an SVG drawn by the client, with a dot in the needs-you colour
+  while that count is not zero.
+- A desktop notification fires when a session enters needs_you or error while the
+  page is hidden. Its tag is the session's log id and its turn end, so one browser
+  notifies once per turn end; clicking it focuses the tab. The browser asks for
+  permission from a bell button in the top bar, because Chrome only asks from a
+  click.
+
+## Glyphs
+
+The marks are SVG symbols in one client module, `js/glyphs.js`, used as
+`<svg><use href="#g-need"/></svg>` and coloured by `currentColor` from the theme's
+variables. The knocked-out glyph inside a badge uses `var(--bg)`, so it reads on
+every theme. The set is the six attention badges (style B in the mockup), the
+read and unread marks, the recap sparkle, and the navigator's chevrons and
+to-latest arrow. Python still decides which mark a session has; the browser only
+picks the symbol.
+
+## Testing
+
+Every scenario runs through the fake claude in `tests/fake_claude.py`, which can
+call `/mcp` with its own token.
+
+- **Attention.** A turn that calls `turn_end(needs_you)` gives a needs_you card. A
+  monitor armed in the turn gives waiting, and its end gives done with no new
+  turn. A `Result.is_error` gives error over any report. A queue worker's
+  needs_you gives done. A turn with no `turn_end` gives done. A turn started by an
+  inbox message ends exactly like a sent one.
+- **Plan.** `plan_update` calls give now, did and the count; a refold of the store
+  gives the same card; a `turn_end` from an earlier turn does not survive the next
+  prompt's echo.
+- **Read.** `session.read` moves the floor and keeps `read_ids` small. A second
+  browser receives the flag changes and the count. A pre-existing session starts
+  fully read. The session tests' rule holds: the patches add up to a fresh fold.
+- **Recap.** The one-shot runner is injected, so tests never call Claude. The
+  thresholds decide; two simultaneous requests make one call; a second landing on
+  the same `upto` makes none; with no `recap:` the answer names the key; a send
+  folds the entry.
+- **Browser.** Margin marks flip after a row is on screen for a second; the divider
+  sits before the first unread; the pill's count and jumps; Alt+↑, Alt+↓, Alt+U;
+  the order switch persists across a reload; the title count; a blinking tab stops
+  when it is focused.
+- **Live.** `make test-live` asserts a real session calls both tools in the three
+  scenarios above.
+- **Bench.** The `unread` flag and the attention rule must not raise the cost per
+  stdout line; `make bench` runs on each PR.
+
+## Slices
+
+Each slice is a PR that works on its own.
+
+1. **Status.** The two agent tools and their records, the attention rule, the
+   card fields, the priming, the glyph module, tab and card marks, the band and
+   the order switch.
+2. **Reading.** The read floor, `session.read`, the unread flags, margin marks,
+   the divider, the navigator, the keys, the title count, the favicon and
+   notifications.
+3. **Recap.** `recap:` in the config, `recap.request`, the one-shot runner, the
+   recap record and entry, the sparkle button.
+
+## Out of scope
+
+- A Stop hook that forces `turn_end`. Revisit with the measured compliance.
+- The legacy reply suggestion, a draft of the person's next message.
+- A paid mid-turn "doing" line.
+- Title generation (#49 in the legacy tree).
+- Read state per browser.
+- Notifications outside the browser, such as Telegram.
