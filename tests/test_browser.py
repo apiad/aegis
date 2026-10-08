@@ -1558,6 +1558,74 @@ def test_the_divider_and_navigator_walk_agent_messages(server, page):
     assert page.eval_on_selector(".row.sel", "n => n.classList.contains('prose')")
     page.keyboard.press("Alt+ArrowDown")
     assert page.eval_on_selector(".row.sel", "n => n.classList.contains('prose')")
-    page.keyboard.press("j")  # the divider is a style, never a row of its own
-    assert page.eval_on_selector(".row.sel", "n => !!n.dataset.id")
+    # The divider is a style, never a row of its own: from the row above it,
+    # j lands on the row it decorates.
+    page.click(".nav .up")
+    page.keyboard.press("j")  # the turn's end, the row just above the divider
+    assert page.eval_on_selector(
+        ".row.sel", "n => n.nextElementSibling.classList.contains('since')"
+    )
+    page.keyboard.press("j")
+    assert page.eval_on_selector(".row.sel", "n => n.classList.contains('since')")
+    # A selection by focus moves the position too, not only the keys.
+    page.keyboard.press("Alt+ArrowUp")
+    pos = "document.getElementById('nav-pos').textContent"
+    before = page.evaluate(pos)
+    page.focus(".row.tool summary")
+    assert page.eval_on_selector(".row.sel", "n => n.classList.contains('tool')")
+    assert page.evaluate(pos) != before
+    # Switching sessions drops the navigator with the old rows, before the new
+    # session's snapshot arrives.
+    other = spawn(page)
+    page.goto(f"{server.url}#s={sid}")
+    page.wait_for_selector("#nav:not([hidden])")
+    hidden = page.evaluate(
+        """id => new Promise((done) => {
+          addEventListener("hashchange", () => done(document.getElementById("nav").hidden), { once: true });
+          location.hash = `#s=${id}`;
+        })""",
+        other,
+    )
+    assert hidden
+    assert page.errors == []
+
+
+def test_the_divider_is_drawn_on_its_row_when_scrolling_up_mounts_it(
+    replay_server, page
+):
+    page.goto(replay_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page)
+    # The whole replay lands while away, so the divider sits above its first
+    # entry, far above the mounted tail.
+    page.fill("#input", "replay")
+    page.press("#input", "Enter")
+    page.click("#tab-fleet")
+    card = f".card[data-id='{sid}']"
+    page.wait_for_selector(f"{card} .unr", timeout=60_000)
+    page.wait_for_selector(f"{card}:not(.at-working)", timeout=60_000)
+    page.evaluate("delete window.__a2snapshot")  # the empty session's, from spawn
+    page.click(f".tab[data-id='{sid}']")
+    page.wait_for_function("window.__a2snapshot && window.__a2snapshot.painted")
+    total = page.evaluate("window.__a2snapshot.count")
+    assert page.locator(ROWS).count() < total
+    assert page.locator(".row.since").count() == 0
+    # Each row records whether it carried the divider when it was mounted: a
+    # later update would redraw it, so the moment of mounting is what counts.
+    page.evaluate(
+        """() => {
+          window.__mountedSince = [];
+          new MutationObserver((ms) => {
+            for (const m of ms) for (const n of m.addedNodes)
+              if (n.classList?.contains("since")) window.__mountedSince.push(n.dataset.id);
+          }).observe(document.getElementById("entries"), { childList: true });
+        }"""
+    )
+    while (n := page.locator(ROWS).count()) < total:
+        page.evaluate("document.getElementById('tr').scrollTop = 0")
+        page.wait_for_function(
+            f"n => document.querySelectorAll('{ROWS}').length > n", arg=n, timeout=3000
+        )
+    assert len(page.evaluate("window.__mountedSince")) == 1
+    assert page.locator(".row.since").count() == 1
     assert page.errors == []

@@ -24,7 +24,7 @@ const PAGE = 100;
 const NEAR_TOP_PX = 400;
 
 export class Transcript {
-  constructor(scroller, list, jump, { onRead = () => {} } = {}) {
+  constructor(scroller, list, jump, { onRead = () => {}, onSelect = () => {} } = {}) {
     this.scroller = scroller;
     this.list = list;
     this.jump = jump;
@@ -36,6 +36,7 @@ export class Transcript {
     this.selected = null; // an entry id: apply() replaces nodes, ids stay
     this.sinceId = null; // the entry the "new since you left" divider sits above
     this.sinceText = "";
+    this.onSelect = onSelect; // after every selection change: each path ends in mark()
     // Tab walks the rows' summaries and buttons; the row holding focus is the selection.
     list.addEventListener("focusin", (ev) => {
       const r = ev.target.closest(".row");
@@ -131,6 +132,11 @@ export class Transcript {
     if (this.opened.has(e.id)) {
       const d = n.querySelector("details");
       if (d) d.open = this.opened.get(e.id);
+    }
+    // Every path that mounts the divider's row draws the divider with it.
+    if (e.id === this.sinceId) {
+      n.classList.add("since");
+      n.dataset.since = this.sinceText;
     }
     this.nodes.set(e.id, n);
     if (e.unread) this.watch.observe(n);
@@ -239,6 +245,7 @@ export class Transcript {
       s.classList.add("since");
       s.dataset.since = this.sinceText;
     }
+    this.onSelect();
     return n;
   }
 

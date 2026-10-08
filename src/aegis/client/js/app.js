@@ -57,6 +57,7 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
   onRead: (ids) => {
     if (shown) conn.call("session.read", { log_id: shown, ids }).catch(() => ids.forEach((i) => transcript.sent.delete(i)));
   },
+  onSelect: drawNav,
 });
 installGlyphs();
 // The navigator: previous / next agent message, the position, and the latest.
@@ -317,6 +318,7 @@ function follow(id) {
   if (unsubTranscript) unsubTranscript();
   unsubTranscript = null;
   transcript.clear();
+  drawNav();
   shown = id;
   if (!id) return;
   unsubTranscript = conn.subscribe(
