@@ -331,11 +331,13 @@ function follow(id) {
   drawNav();
   shown = id;
   if (!id) return;
+  let placed = false; // the divider is placed by the first snapshot only
   unsubTranscript = conn.subscribe(
     `transcript:${id}`,
     (entries) => {
       transcript.snapshot(entries || []);
-      transcript.setSince(sinceText(sessions.get(id)));
+      if (!placed) transcript.setSince(sinceText(sessions.get(id)));
+      placed = true;
       drawNav();
       // Read by scripts/bench.py: when the snapshot was drawn and painted.
       const mark = (window.__a2snapshot = { at: performance.now(), count: (entries || []).length });

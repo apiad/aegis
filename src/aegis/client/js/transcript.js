@@ -143,8 +143,13 @@ export class Transcript {
     return n;
   }
 
+  // A fresh snapshot of the session already shown (a reconnect, a gap in the
+  // patches) keeps the divider where it was; switching sessions clears it.
   snapshot(entries) {
+    const { sinceId, sinceText } = this;
     this.clear();
+    this.sinceId = sinceId;
+    this.sinceText = sinceText;
     for (const e of entries) this.entries.set(e.id, e);
     const frag = document.createDocumentFragment();
     for (const e of entries.slice(-WINDOW)) frag.append(this.mount(e));

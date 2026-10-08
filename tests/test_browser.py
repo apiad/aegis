@@ -1666,6 +1666,44 @@ def test_a_needs_you_tab_blinks_until_its_last_message_is_read(server, page):
     assert page.errors == []
 
 
+def test_the_divider_stays_where_it_was_across_a_reconnect(server, page):
+    page.add_init_script("""
+      window.__sockets = [];
+      const WS = window.WebSocket;
+      window.WebSocket = class extends WS {
+        constructor(...a) { super(...a); window.__sockets.push(this); }
+      };
+    """)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "one")
+    sid = page.evaluate("location.hash.slice(3)")
+    page.wait_for_function(
+        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+    )
+    page.fill("#input", "/sleep 1")
+    page.press("#input", "Enter")
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=1 unread", timeout=8000)
+    page.click(f".tab[data-id='{sid}']")
+    page.wait_for_selector(".row.since")
+    at = page.eval_on_selector(".row.since", "n => n.dataset.id")
+    # Read on screen: a fresh placement now would find nothing unread.
+    page.wait_for_function(
+        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+    )
+    # A reconnect resubscribes and takes a fresh snapshot of the same session.
+    page.evaluate("delete window.__a2snapshot")
+    page.evaluate("window.__sockets.at(-1).close()")
+    page.wait_for_function(
+        "window.__a2snapshot && window.__a2snapshot.painted", timeout=8000
+    )
+    assert page.eval_on_selector_all(
+        ".row.since", "ns => ns.map(n => n.dataset.id)"
+    ) == [at]
+    assert page.errors == []
+
+
 def test_the_divider_is_drawn_on_its_row_when_scrolling_up_mounts_it(
     replay_server, page
 ):
