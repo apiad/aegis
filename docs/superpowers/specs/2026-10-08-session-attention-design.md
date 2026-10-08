@@ -223,7 +223,8 @@ them needs a chord of its own, and none was chosen.
 
 ## The recap
 
-**When.** A browser that focuses a tab calls `recap.request(log_id)`. The server
+**When.** A browser that opens a tab, or comes back to a page left hidden while a
+tab is shown, calls `recap.request(log_id)`. The server
 answers with nothing to do unless the session is idle or stopped, it has unread
 agent messages, and the unread stretch is long: at least 2 unread messages, or
 one longer than 300 words, or a last read more than 30 minutes ago. Those
@@ -257,7 +258,15 @@ moment share it. A recap for the same `upto` is never made twice, except by
 the refresh link. Once a person sends to the session, the fold renders that recap
 folded to one line, so the history keeps what you were told when you came back.
 
-The recap is aegis talking to the person. It never reaches the agent's context.
+A recap that finishes after the person sent again, or after anything new landed in
+the transcript, answers `stale` and is not recorded: it would describe a state that
+no longer holds. Its cost still counts. What a recap covers is the last record the
+window reads (a user message, an agent message, a tool call or an inbox message),
+so a stop or an exit does not make the same transcript pay twice. A recap does not
+move the session's last activity.
+
+The recap is aegis talking to the person. It never reaches the agent's context, and
+`peer_read` never shows it to another agent.
 
 ## The ping
 
