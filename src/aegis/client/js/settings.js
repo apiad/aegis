@@ -3,26 +3,31 @@
 // `config.write`, which refuses a stale write and validates first. The server
 // re-reads the file after any write, so the page never patches server state.
 // Nothing here decides what is valid: every finding names the row it marks.
+//
+// An agent is drawn as a card whose chips are the new-tab composer's, so a
+// preset looks like the session it starts.
 
 const h = (tag, props = {}, ...kids) => {
   const el = Object.assign(document.createElement(tag), props);
-  el.append(...kids.filter((k) => k != null));
+  el.append(...kids.filter((k) => k != null && k !== false));
   return el;
 };
 
-const button = (text, id, onclick) => {
-  const b = h("button", { type: "button", textContent: text, onclick });
+const button = (text, id, onclick, className = "btn") => {
+  const b = h("button", { type: "button", textContent: text, onclick, className });
   if (id) b.id = id;
   return b;
 };
 
 function select(name, values, value, label = (v) => v) {
-  const s = h("select", { name });
+  const s = h("select", { name, className: "pick" });
   for (const v of values) s.append(new Option(label(v), v));
   if (value && !values.includes(value)) s.append(new Option(`${value} (unknown)`, value));
   s.value = value || "";
   return s;
 }
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export class Settings {
   constructor(conn, box) {
@@ -35,7 +40,9 @@ export class Settings {
     this.saving = false;
     this.stale = false;
     this.found = []; // config.detect
-    this.findings = []; // the last doctor run, or the last refused save
+    this.findings = null; // the last doctor run, or the last refused save
+    this.checked = false; // whether `findings` is a doctor run
+    this.allChecks = false; // the full list of checks is open
     this.status = "";
   }
 
@@ -45,7 +52,7 @@ export class Settings {
     this.wire = wire;
     if (this.saving) return;
     if (!this.dirty || this.doc === null) this.load(wire);
-    else if (JSON.stringify(wire.stamp) !== JSON.stringify(this.stamp)) this.stale = true;
+    else if (wire.stamp !== this.stamp) this.stale = true;
     if (this.box.isConnected && this.box.offsetParent !== null) this.draw();
   }
 
@@ -72,186 +79,258 @@ export class Settings {
   touch() {
     this.dirty = true;
     this.status = "";
-    const s = document.getElementById("set-status");
-    if (s) s.textContent = "";
+    this.drawBar();
   }
 
   draw() {
     const w = this.wire;
     if (!w || !this.doc) return this.box.replaceChildren(h("p", { className: "notice", textContent: "Loading…" }));
-    const parts = [h("div", { className: "set-head" }, h("h3", { textContent: "Settings" }), h("code", { id: "set-path", textContent: w.path }))];
-    if (w.error)
-      parts.push(
-        h("p", {
-          className: "set-band err",
-          id: "set-error",
-          textContent: `The file on disk does not parse; aegis is still using the last version that did. ${w.error}`,
-        }),
-      );
-    if (this.stale)
-      parts.push(
+    if (!w.exists && !this.dirty) return this.box.replaceChildren(this.empty());
+    const page = h(
+      "div",
+      { className: "set-page" },
+      this.head(),
+      w.error && h("p", { className: "set-alert err", id: "set-error", textContent: `The file on disk does not parse, so aegis is still using the last version that did. ${w.error}` }),
+      this.stale &&
         h(
           "p",
-          { className: "set-band", id: "set-stale", textContent: "The file changed on disk since you opened it. " },
+          { className: "set-alert", id: "set-stale", textContent: "The file changed on disk since you opened it. " },
           button("Reload from disk", "set-reload", () => {
             this.load(this.wire);
-            this.findings = [];
+            this.findings = null;
             this.draw();
           }),
         ),
-      );
-    if (!w.exists && !this.dirty) {
-      parts.push(
-        h("div", { className: "set-empty" }, h("p", { textContent: `No .aegis.yaml at ${w.root}.` }), button("Set up", "set-setup", () => this.setup())),
-      );
-      return this.box.replaceChildren(...parts);
-    }
-    parts.push(this.findingsList(), this.agentsTable(), this.defaultPick(), this.queuesTable(), this.actions());
-    this.box.replaceChildren(...parts);
+      this.checks(),
+      this.agents(),
+      this.queues(),
+    );
+    this.box.replaceChildren(page, this.bar());
     this.mark();
   }
 
-  findingsList() {
-    return h(
-      "ul",
-      { id: "set-findings" },
-      ...this.findings.map((f) =>
-        h("li", { className: f.level }, h("b", { textContent: f.level }), " ", h("code", { textContent: f.where }), " ", f.message),
+  head() {
+    const harnesses = h(
+      "div",
+      { className: "set-harnesses" },
+      ...this.found.map((f) =>
+        h(
+          "span",
+          { className: f.bin && !f.error ? "set-harness" : "set-harness off" },
+          h("b", { textContent: f.label }),
+          " ",
+          f.bin ? (f.error ? "cannot run" : `${f.version.replace(/\s*\(.*\)$/, "")}, ${plural(f.models.length, "model")}`) : "not installed",
+        ),
       ),
     );
+    return h(
+      "header",
+      { className: "set-head" },
+      h("div", {}, h("h2", { textContent: "Settings" }), h("code", { id: "set-path", textContent: this.wire.path })),
+      harnesses,
+    );
+  }
+
+  // The doctor: one line until it finds something, the full list on demand.
+  checks() {
+    const f = this.findings;
+    const line = h("div", { className: "set-summary", id: "set-summary" });
+    if (f === null) line.append(h("span", { textContent: "Not checked since you opened this page." }));
+    else {
+      const errors = f.filter((x) => x.level === "error").length;
+      const warns = f.filter((x) => x.level === "warn").length;
+      const what = !this.checked ? `Not saved: ${plural(errors, "problem")}` : errors || warns ? [errors && plural(errors, "error"), warns && plural(warns, "warning")].filter(Boolean).join(", ") : `All ${f.length} checks pass`;
+      line.append(h("span", { className: errors ? "err" : warns ? "warn" : "ok", textContent: what }));
+      if (this.checked)
+        line.append(
+          button(this.allChecks ? "Hide checks" : `Show all ${f.length} checks`, "set-all", () => {
+            this.allChecks = !this.allChecks;
+            this.draw();
+          }, "link"),
+        );
+    }
+    line.append(button("Run doctor", "set-doctor", () => this.runDoctor(), "btn"));
+    // Every check when asked; otherwise mark() lists the problems that have
+    // no card or row to sit on.
+    const list = h("ul", { id: "set-findings", className: "set-findings" });
+    if (this.allChecks && this.checked) list.append(...f.map((x) => this.findingItem(x)));
+    return h("section", { className: "set-checks" }, line, list);
+  }
+
+  findingItem(x) {
+    return h("li", { className: x.level }, h("code", { textContent: x.where }), h("span", { textContent: x.message }));
   }
 
   harnessLabel(x) {
     const f = this.found.find((f) => f.harness === x);
-    return f && !f.bin ? `${x} (not installed)` : x;
+    const name = f ? f.label : x;
+    return f && !f.bin ? `${name} (not installed)` : name;
   }
 
   modelOptions(harness) {
     const f = this.found.find((f) => f.harness === harness);
-    return (f ? f.models : []).map((m) => new Option(m.label, m.value));
+    return (f ? f.models : []).map((m) => new Option(m.free ? `${m.label} (free)` : m.label, m.value));
   }
 
-  agentsTable() {
+  agents() {
     const v = this.wire.vocab;
-    const t = h("table", { className: "set-table", id: "set-agents" });
-    t.append(h("tr", {}, ...["Agent", "Harness", "Model", "Effort", "Permission", ""].map((x) => h("th", { textContent: x }))));
-    this.doc.agents.forEach((a, i) => {
-      const tr = h("tr", { className: "set-agent" });
-      tr.dataset.row = `agents.${a.name}`;
-      const models = h("datalist", { id: `set-models-${i}` }, ...this.modelOptions(a.harness));
-      const name = h("input", { name: "name", value: a.name, spellcheck: false });
-      const harness = select("harness", v.harnesses, a.harness, (x) => this.harnessLabel(x));
-      const model = h("input", { name: "model", value: a.model, spellcheck: false });
-      model.setAttribute("list", models.id);
-      const effort = select("effort", v.efforts, a.effort);
-      const permission = select("permission", v.permissions, a.permission);
-      const priming = h("textarea", { name: "priming", value: a.priming || "", rows: 3, placeholder: "The system prompt every session of this agent starts with" });
-      for (const el of [name, harness, model, effort, permission, priming]) {
-        el.setAttribute("aria-label", `Agent ${el.name}`);
-        el.addEventListener("input", () => {
-          a[el.name] = el.name === "priming" ? el.value || null : el.value;
-          if (el.name === "name") tr.dataset.row = `agents.${el.value}`;
-          if (el.name === "harness") models.replaceChildren(...this.modelOptions(el.value));
-          this.touch();
-        });
-      }
-      const fold = h("details", { className: "set-priming" }, h("summary", { textContent: a.priming ? "priming" : "no priming" }), priming);
-      const del = button("Delete", null, () => {
-        this.doc.agents.splice(i, 1);
-        this.touch();
-        this.draw();
-      });
-      tr.append(h("td", {}, name), h("td", {}, harness), h("td", {}, model, models), h("td", {}, effort), h("td", {}, permission), h("td", {}, fold, del));
-      t.append(tr);
-    });
-    const add = button("Add agent", "set-add-agent", () => {
+    const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Agents" }), button("Add agent", "set-add-agent", () => {
       this.doc.agents.push({ name: "", harness: v.harnesses[0], model: "", effort: "", permission: "", priming: null });
       this.touch();
       this.draw();
-    });
-    return h("section", {}, h("h4", { textContent: "Agents" }), t, add);
+      this.box.querySelector(".set-agent:last-of-type input[name=name]")?.focus();
+    }, "link"));
+    head.dataset.row = "default_agent";
+    const cards = this.doc.agents.map((a, i) => this.agentCard(a, i, v));
+    return h("section", {}, head, h("div", { className: "set-agents", id: "set-agents" }, ...cards));
   }
 
-  defaultPick() {
-    const names = this.doc.agents.map((a) => a.name);
-    const s = select("default_agent", ["", ...names], this.doc.default_agent || "", (x) => x || "(none)");
-    s.id = "set-default";
-    s.setAttribute("aria-label", "Default agent");
-    s.addEventListener("input", () => {
-      this.doc.default_agent = s.value || null;
+  agentCard(a, i, v) {
+    const card = h("div", { className: "set-agent" });
+    card.dataset.row = `agents.${a.name}`;
+    const isDefault = this.doc.default_agent === a.name && a.name !== "";
+    const models = h("datalist", { id: `set-models-${i}` }, ...this.modelOptions(a.harness));
+    const name = h("input", { name: "name", value: a.name, spellcheck: false, placeholder: "name", className: "set-name" });
+    const harness = select("harness", v.harnesses, a.harness, (x) => this.harnessLabel(x));
+    const model = h("input", { name: "model", value: a.model, spellcheck: false, placeholder: "model", className: "pick" });
+    model.setAttribute("list", models.id);
+    const effort = select("effort", ["", ...v.efforts], a.effort, (x) => (x ? `effort ${x}` : "effort?"));
+    const permission = select("permission", ["", ...v.permissions], a.permission, (x) => (x ? `perm ${x}` : "perm?"));
+    const priming = h("textarea", { name: "priming", value: a.priming || "", rows: 4, placeholder: "A system prompt every session of this agent starts with." });
+    for (const el of [name, harness, model, effort, permission, priming]) {
+      el.setAttribute("aria-label", `Agent ${el.name}`);
+      el.addEventListener("input", () => {
+        const was = a.name;
+        a[el.name] = el.name === "priming" ? el.value || null : el.value;
+        if (el.name === "name") {
+          card.dataset.row = `agents.${el.value}`;
+          // A rename carries to the default and the queues that run it.
+          if (this.doc.default_agent === was) this.doc.default_agent = el.value;
+          for (const q of this.doc.queues) if (q.agent === was) q.agent = el.value;
+          this.refreshNames();
+        }
+        if (el.name === "harness") models.replaceChildren(...this.modelOptions(el.value));
+        this.touch();
+      });
+    }
+    const star = button(isDefault ? "default" : "make default", null, () => {
+      this.doc.default_agent = a.name;
       this.touch();
-    });
-    const wrap = h("section", { className: "set-default" }, h("h4", { textContent: "Default agent" }), s);
-    wrap.dataset.row = "default_agent";
-    return wrap;
+      this.draw();
+    }, isDefault ? "set-default on" : "set-default");
+    star.disabled = isDefault || !a.name;
+    const del = button("Remove", null, () => {
+      this.doc.agents.splice(i, 1);
+      if (this.doc.default_agent === a.name) this.doc.default_agent = null;
+      this.touch();
+      this.draw();
+    }, "link danger");
+    const fold = h("details", { className: "set-priming", open: !!a.priming }, h("summary", { textContent: a.priming ? "Priming" : "Add a priming" }), priming);
+    card.append(name, h("div", { className: "picks" }, harness, model, models, effort, permission), h("div", { className: "set-card-foot" }, fold, star, del));
+    if (isDefault) card.classList.add("is-default");
+    return card;
   }
 
-  queuesTable() {
+  // The queues' agent pickers follow a rename in place. Redrawing the form
+  // here would replace the Save button under a click that blurred the name.
+  refreshNames() {
     const names = this.doc.agents.map((a) => a.name);
-    const t = h("table", { className: "set-table", id: "set-queues" });
-    t.append(h("tr", {}, ...["Queue", "Agent", "Workers at a time", ""].map((x) => h("th", { textContent: x }))));
-    this.doc.queues.forEach((q, i) => {
-      const tr = h("tr", { className: "set-queue" });
-      tr.dataset.row = `queues.${q.name}`;
-      const name = h("input", { name: "name", value: q.name, spellcheck: false });
+    this.box.querySelectorAll(".set-queue select[name=agent]").forEach((sel, i) => {
+      sel.replaceChildren(...names.map((n) => new Option(n, n)));
+      sel.value = this.doc.queues[i].agent;
+    });
+  }
+
+  queues() {
+    const names = this.doc.agents.map((a) => a.name);
+    const rows = this.doc.queues.map((q, i) => {
+      const row = h("div", { className: "set-queue" });
+      row.dataset.row = `queues.${q.name}`;
+      const name = h("input", { name: "name", value: q.name, spellcheck: false, placeholder: "queue", className: "set-name" });
       const agent = select("agent", names, q.agent);
-      const limit = h("input", { name: "max_parallel", type: "number", min: 1, value: q.max_parallel ?? "" });
+      const limit = h("input", { name: "max_parallel", type: "number", min: 1, value: q.max_parallel ?? "", className: "pick set-limit" });
       for (const el of [name, agent, limit]) {
         el.setAttribute("aria-label", `Queue ${el.name}`);
         el.addEventListener("input", () => {
           q[el.name] = el.name === "max_parallel" ? (el.value === "" ? null : Number(el.value)) : el.value;
-          if (el.name === "name") tr.dataset.row = `queues.${el.value}`;
+          if (el.name === "name") row.dataset.row = `queues.${el.value}`;
           this.touch();
         });
       }
-      const del = button("Delete", null, () => {
+      const del = button("Remove", null, () => {
         this.doc.queues.splice(i, 1);
         this.touch();
         this.draw();
-      });
-      tr.append(h("td", {}, name), h("td", {}, agent), h("td", {}, limit), h("td", {}, del));
-      t.append(tr);
+      }, "link danger");
+      row.append(h("div", { className: "set-queue-line" }, name, h("span", { textContent: "runs" }), agent, limit, h("span", { textContent: "at a time" }), del));
+      return row;
     });
-    const add = button("Add queue", "set-add-queue", () => {
+    const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Queues" }), button("Add queue", "set-add-queue", () => {
       this.doc.queues.push({ name: "", agent: this.doc.default_agent || names[0] || "", max_parallel: null });
       this.touch();
       this.draw();
-    });
-    return h("section", {}, h("h4", { textContent: "Queues" }), t, add);
+    }, "link"));
+    const body = rows.length
+      ? h("div", { className: "set-queues", id: "set-queues" }, ...rows)
+      : h("p", { className: "set-none", id: "set-queues", textContent: "No queues. A queue hands tasks to fresh worker sessions of one agent." });
+    return h("section", {}, head, body);
   }
 
-  actions() {
-    return h(
-      "div",
-      { className: "set-actions" },
-      button("Save", "set-save", () => this.save()),
-      button("Run doctor", "set-doctor", () => this.runDoctor()),
-      h("span", { id: "set-status", textContent: this.status }),
-    );
+  bar() {
+    const b = h("div", { className: "set-bar", id: "set-bar" });
+    this.barEl = b;
+    this.drawBar();
+    return b;
   }
 
-  // Each finding marks the row Python named; the rest stay in the list.
+  drawBar() {
+    const b = this.barEl;
+    if (!b) return;
+    const status = this.status || (this.dirty ? "Unsaved changes" : "");
+    b.classList.toggle("dirty", this.dirty);
+    const save = button("Save changes", "set-save", () => this.save(), "btn primary");
+    save.disabled = !this.dirty || this.saving;
+    const discard = button("Discard", "set-discard", () => {
+      this.load(this.wire);
+      this.findings = null;
+      this.status = "";
+      this.draw();
+    }, "btn");
+    discard.hidden = !this.dirty;
+    b.replaceChildren(h("span", { id: "set-status", textContent: status }), discard, save);
+  }
+
+  // Each finding marks the card or row Python named; a problem with none to
+  // sit on (the file, a harness, the state) goes in the list under the summary.
   mark() {
+    if (!this.findings) return;
+    const list = this.box.querySelector("#set-findings");
     for (const f of this.findings) {
-      if (!f.row || f.level === "ok") continue;
-      const el = this.box.querySelector(`[data-row="${CSS.escape(f.row)}"]`);
-      if (!el) continue;
-      if (f.level === "error" || !el.classList.contains("error")) el.classList.add(f.level);
-      const why = h("div", { className: "set-why", textContent: f.message });
-      (el.tagName === "TR" ? el.cells[0] : el).append(why);
+      if (f.level === "ok") continue;
+      const els = f.row ? this.box.querySelectorAll(`[data-row="${CSS.escape(f.row)}"]`) : [];
+      for (const el of els) {
+        if (!el.classList.contains("error")) el.classList.add(f.level);
+        el.append(h("p", { className: `set-why ${f.level}`, textContent: f.message }));
+      }
+      if (!els.length && !(this.allChecks && this.checked)) list.append(this.findingItem(f));
     }
   }
 
   async save() {
     this.saving = true;
+    this.drawBar();
     try {
       const r = await this.conn.call("config.write", { doc: this.doc, stamp: this.stamp });
-      this.findings = r.problems;
       if (r.saved) {
         this.wire = r.config;
         this.load(r.config);
+        this.findings = null;
         this.status = "Saved";
-      } else this.status = `Not saved: ${r.problems.length} problem${r.problems.length === 1 ? "" : "s"}`;
+      } else {
+        this.findings = r.problems;
+        this.checked = false;
+        this.status = `Not saved: ${plural(r.problems.length, "problem")}`;
+      }
     } catch (e) {
       if (e.code === "stale") this.stale = true;
       this.status = e.message;
@@ -262,16 +341,37 @@ export class Settings {
   }
 
   async runDoctor() {
-    this.status = "Running the doctor…";
-    document.getElementById("set-status").textContent = this.status;
+    const b = document.getElementById("set-doctor");
+    if (b) {
+      b.disabled = true;
+      b.textContent = "Checking…";
+    }
     try {
       this.findings = await this.conn.call("config.doctor");
-      const n = (l) => this.findings.filter((f) => f.level === l).length;
-      this.status = `${n("error")} errors, ${n("warn")} warnings`;
+      this.checked = true;
     } catch (e) {
       this.status = e.message;
     }
     this.draw();
+  }
+
+  empty() {
+    const usable = this.found.filter((f) => f.bin && !f.error);
+    const found = this.found.length
+      ? usable.length
+        ? `aegis found ${usable.map((f) => `${f.label} ${f.version.replace(/\s*\(.*\)$/, "")}`).join(" and ")} on this machine.`
+        : "aegis found no harness on this machine. Install Claude Code or OpenCode, then reload this page."
+      : "Looking for the harnesses installed on this machine…";
+    const setup = button("Set up from what is installed", "set-setup", () => this.setup(), "btn primary");
+    setup.disabled = !usable.length;
+    return h(
+      "div",
+      { className: "set-empty" },
+      h("h2", { textContent: "No configuration yet" }),
+      h("p", {}, "There is no ", h("code", { textContent: ".aegis.yaml" }), ` in ${this.wire.root}. ${found}`),
+      setup,
+      h("p", { className: "set-none", textContent: "You can change every value before it is saved." }),
+    );
   }
 
   async setup() {

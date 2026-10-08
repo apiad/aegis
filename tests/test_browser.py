@@ -1454,16 +1454,14 @@ def open_settings(pg, url: str) -> None:
     pg.wait_for_selector("#a2[data-view=fleet]")
     pg.keyboard.press("Alt+KeyS")
     pg.wait_for_selector("#a2[data-view=settings]")
-    pg.wait_for_selector('tr.set-agent[data-row="agents.opus"]')
+    pg.wait_for_selector('.set-agent[data-row="agents.opus"]')
 
 
 def test_settings_saves_an_edit_to_the_file_and_the_composer_follows(
     settings_server, page
 ):
     open_settings(page, settings_server.url)
-    page.select_option(
-        'tr.set-agent[data-row="agents.opus"] select[name=effort]', "max"
-    )
+    page.select_option('.set-agent[data-row="agents.opus"] select[name=effort]', "max")
     page.click("#set-save")
     page.wait_for_function(
         "document.querySelector('#set-status').textContent === 'Saved'"
@@ -1481,36 +1479,36 @@ def test_an_edit_on_disk_reloads_the_open_settings_page(settings_server, page):
         SETTINGS_CONFIG
         + "  extra: {harness: claude-code, model: sonnet, effort: low, permission: read}\n"
     )
-    page.wait_for_selector('tr.set-agent[data-row="agents.extra"]', timeout=5000)
+    page.wait_for_selector('.set-agent[data-row="agents.extra"]', timeout=5000)
 
 
 def test_an_edit_on_disk_under_unsaved_edits_offers_reload(settings_server, page):
     open_settings(page, settings_server.url)
-    page.fill('tr.set-agent[data-row="agents.opus"] input[name=model]', "sonnet")
+    page.fill('.set-agent[data-row="agents.opus"] input[name=model]', "sonnet")
     (settings_server.root / ".aegis.yaml").write_text(SETTINGS_CONFIG + "# changed\n")
     page.wait_for_selector("#set-stale", timeout=5000)
     assert (
-        page.input_value('tr.set-agent[data-row="agents.opus"] input[name=model]')
+        page.input_value('.set-agent[data-row="agents.opus"] input[name=model]')
         == "sonnet"
     )
     page.click("#set-reload")
     page.wait_for_function(
-        "document.querySelector('tr.set-agent[data-row=\"agents.opus\"] input[name=model]').value === 'opus'"
+        "document.querySelector('.set-agent[data-row=\"agents.opus\"] input[name=model]').value === 'opus'"
     )
 
 
 def test_run_doctor_marks_the_row(settings_server, page):
     open_settings(page, settings_server.url)
     page.click("#set-doctor")
-    page.wait_for_selector(
-        'tr.set-agent[data-row="agents.bad.one"].warn', timeout=15000
-    )
-    assert "does not list 'nope'" in page.text_content("#set-findings")
+    card = '.set-agent[data-row="agents.bad.one"]'
+    page.wait_for_selector(card + ".warn", timeout=15000)
+    assert "does not list 'nope'" in page.text_content(card)
+    assert "1 warning" in page.text_content("#set-summary")
 
 
 def test_typing_in_settings_survives_session_patches(settings_server, page):
     open_settings(page, settings_server.url)
-    box = 'tr.set-agent[data-row="agents.opus"] input[name=model]'
+    box = '.set-agent[data-row="agents.opus"] input[name=model]'
     page.click(box)
     page.keyboard.type("-x")
     page.evaluate(
@@ -1532,9 +1530,37 @@ def test_an_empty_root_offers_set_up_and_saving_creates_the_file(empty_server, p
     page.goto(empty_server.url + "#settings")
     page.wait_for_selector("#set-setup")
     page.click("#set-setup")
-    page.wait_for_selector('tr.set-agent[data-row="agents.opus"]', timeout=15000)
+    page.wait_for_selector('.set-agent[data-row="agents.opus"]', timeout=15000)
     page.click("#set-save")
     page.wait_for_function(
         "document.querySelector('#set-status').textContent === 'Saved'"
     )
     assert "default_agent: opus" in (empty_server.root / ".aegis.yaml").read_text()
+
+
+def test_renaming_the_default_agent_carries_to_the_default(settings_server, page):
+    open_settings(page, settings_server.url)
+    page.fill('.set-agent[data-row="agents.opus"] input[name=name]', "big")
+    page.click("#set-save")
+    page.wait_for_function(
+        "document.querySelector('#set-status').textContent === 'Saved'"
+    )
+    text = (settings_server.root / ".aegis.yaml").read_text()
+    assert "default_agent: big" in text and "  big:" in text
+
+
+def test_renaming_an_agent_carries_to_the_queues_that_run_it(settings_server, page):
+    (settings_server.root / ".aegis.yaml").write_text(
+        SETTINGS_CONFIG + "queues:\n  q: {agent: opus, max_parallel: 2}\n"
+    )
+    open_settings(page, settings_server.url)
+    page.wait_for_selector('.set-queue[data-row="queues.q"]')
+    page.fill('.set-agent[data-row="agents.opus"] input[name=name]', "big")
+    assert (
+        page.input_value('.set-queue[data-row="queues.q"] select[name=agent]') == "big"
+    )
+    page.click("#set-save")
+    page.wait_for_function(
+        "document.querySelector('#set-status').textContent === 'Saved'"
+    )
+    assert "agent: big" in (settings_server.root / ".aegis.yaml").read_text()
