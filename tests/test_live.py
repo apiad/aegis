@@ -17,6 +17,7 @@ from .conftest import until
 
 pytestmark = pytest.mark.live
 HAIKU = "claude-haiku-4-5-20251001"
+SONNET = "claude-sonnet-5"
 
 
 async def test_a_real_prompt_interrupt_stop_and_resume(tmp_path: Path):
@@ -314,8 +315,10 @@ async def test_real_claude_gives_a_countable_wait_a_progress_command(tmp_path: P
 
 
 async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
-    """A real Haiku primed by aegis calls turn_end: needs_you with replies after
-    laying out two options, done without needs_you after finished work (#171)."""
+    """A real Sonnet primed by aegis calls turn_end: needs_you with replies after
+    laying out two options, done without needs_you after finished work. Sonnet,
+    not Haiku: Haiku called turn_end in about 1 of 3 runs whatever the primer's
+    wording (#171)."""
     import asyncio
 
     import uvicorn
@@ -329,7 +332,7 @@ async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
     claude = shutil.which("claude")
     assert claude, "claude is not on PATH"
     (tmp_path / ".aegis.yaml").write_text(
-        f"agents:\n  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
     )
     port = _free_port()
     app = App(
@@ -345,7 +348,7 @@ async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
     task = asyncio.create_task(server.serve())
     await until(lambda: server.started, timeout=10, what="uvicorn")
     try:
-        r = await app.registry.call("session.spawn", {"agent": "haiku"})
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
         s = app.sessions.sessions[r["log_id"]]
         await s.send(
             "I need to bring a feature branch up to date with main. Lay out the two "
@@ -367,7 +370,7 @@ async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
             timeout=120,
             what="the work turn",
         )
-        assert s.wire()["attention"] == "done", s.wire()
+        assert (s.standing.get("report") or {}).get("attention") == "done", s.standing
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)
