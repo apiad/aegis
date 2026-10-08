@@ -1,3 +1,5 @@
+import asyncio
+import os
 from pathlib import Path
 
 import pytest
@@ -226,3 +228,83 @@ async def test_an_exit_leaves_the_session_stopped(oc):
     await oc.session.send("/exit 3")
     await until(lambda: oc.session.status == "stopped", timeout=5, what="stopped")
     assert oc.session.entries()[-1]["summary"] == "OpenCode exited with code 3"
+
+
+def _children(log: Path) -> list[int]:
+    return [
+        int(x.split()[1])
+        for x in log.read_text().splitlines()
+        if x.startswith("START ")
+    ]
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return Path(f"/proc/{pid}/status").read_text().find("State:\tZ") < 0
+
+
+async def test_two_sends_to_a_stopped_session_start_one_child_and_stop_ends_it(
+    oc, tmp_path, monkeypatch
+):
+    await oc.session.stop()
+    log = tmp_path / "fake.log"
+    monkeypatch.setenv("FAKE_OPENCODE_LOG", str(log))
+    await asyncio.gather(oc.session.send("one"), oc.session.send("two"))
+    await until(lambda: oc.session.status == "idle", timeout=5, what="idle")
+    await oc.session.stop()
+    pids = _children(log)
+    assert len(pids) == 1, pids
+    await until(lambda: not any(_alive(p) for p in pids), what="no child left")
+
+
+async def test_a_task_stores_no_delta_lines(oc):
+    await oc.turn("/task")
+    assert any(
+        e["kind"] == "tool" and e["title"] == "Task" for e in oc.session.entries()
+    )
+    assert "message.part.delta" not in oc.path.read_text()
+
+
+async def test_a_failed_prompt_ends_the_turn_and_says_why(oc):
+    with pytest.raises(Exception):
+        await oc.session.send("FAIL500")
+    assert oc.session.status == "idle"
+    assert any(
+        e["kind"] == "error" and "500" in e["summary"] for e in oc.session.entries()
+    )
+    await oc.turn("still alive")
+
+
+async def test_a_restart_that_fails_leaves_the_session_stopped(oc):
+    await oc.turn("hello")
+    await oc.session.configure(permission="read")
+    oc.session._proc._bin = "/no/such/opencode"
+    with pytest.raises(Exception):
+        await oc.session.send("again")
+    assert oc.session.status == "stopped" and not oc.session.running
+    oc.session.harness.bin = oc.fake
+    await oc.turn("after")
+
+
+async def test_an_interrupt_that_cannot_reach_the_child_still_times_out(
+    tmp_path, fake_opencode
+):
+    h = OC(tmp_path, fake_opencode)
+    h.session = h.make(interrupt_timeout=0.3)
+    await h.session.start()
+    try:
+        await h.session.send("/sleep 3")
+        await until(lambda: h.session.status == "working", what="working")
+
+        async def refuse():
+            raise ConnectionResetError("gone")
+
+        h.session._proc.interrupt = refuse
+        with pytest.raises(ConnectionResetError):
+            await h.session.interrupt()
+        await until(lambda: h.session.status == "error", what="the deadline")
+    finally:
+        await h.session.stop()

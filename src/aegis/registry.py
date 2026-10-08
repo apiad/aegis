@@ -229,7 +229,7 @@ class Registry(Host):
         self._publish("sessions", [{"upsert": s.wire()}])
         try:
             await s.start()
-        except FileNotFoundError:
+        except (OSError, TimeoutError):
             del self.sessions[log_id]
             s.store.close()
             self.store_path(log_id).unlink(missing_ok=True)

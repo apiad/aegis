@@ -151,6 +151,17 @@ class Parser:
         self.turn_end: int | None = None
         self.error: str | None = None
 
+    def end_turn(self) -> None:
+        """The turn ended (an idle, or for the fold an exit, a stop, a server
+        restart or a new conversation): nothing of it may reach the next."""
+        self.closed_calls |= self.open_calls
+        self.open_calls.clear()
+        self.closed_messages |= self.turn_messages
+        self.turn_messages.clear()
+        self.turn_open = False
+        self.turn_start = self.turn_end = None
+        self.error = None
+
     def feed(self, line: str) -> list[Event]:
         try:
             obj: Any = json.loads(line)
@@ -257,16 +268,7 @@ class Parser:
             stop_reason=None,
             context_window=None,
         )
-        self.closed_calls |= self.open_calls
-        self.open_calls.clear()
-        self.closed_messages |= self.turn_messages
-        self.turn_messages.clear()
-        self.turn_open, self.turn_start, self.turn_end, self.error = (
-            False,
-            None,
-            None,
-            None,
-        )
+        self.end_turn()
         return [result]
 
     # -- messages and parts ------------------------------------------
@@ -302,7 +304,10 @@ class Parser:
         if not ok:
             return []
         ptype, pid = part.get("type"), str(part.get("id") or "")
-        role = self.roles.get(str(part.get("messageID")))
+        mid = str(part.get("messageID"))
+        if ptype in ("text", "reasoning") and mid in self.closed_messages:
+            return []  # an abort's late close of a part: its turn has ended
+        role = self.roles.get(mid)
         if ptype == "text":
             text = str(part.get("text") or "")
             if role == "user":
@@ -369,9 +374,11 @@ class Parser:
         return out
 
     def _message_part_delta(self, p: dict) -> list[Event]:
+        """Always one Delta, so the session never stores a delta line; one with
+        no key (a child's, or a part not seen opening) draws nothing."""
         ok, parent = self._belongs(_str(p.get("sessionID")))
         pid = str(p.get("partID") or "")
         kind = self.part_kinds.get(pid)
         if not ok or parent is not None or kind is None or p.get("field") != "text":
-            return []
+            return [Delta(key="", kind="", text="")]
         return [Delta(key=pid, kind=kind, text=str(p.get("delta") or ""))]

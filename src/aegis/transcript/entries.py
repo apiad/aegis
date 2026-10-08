@@ -130,7 +130,7 @@ class Fold:
         closing update replaces the text, so a reload agrees once it closes."""
         ops: list[dict] = []
         for ev in events:
-            if not isinstance(ev, Delta):
+            if not isinstance(ev, Delta) or not ev.key:
                 continue
             e = self._entries.get(ev.key)
             if e is None:
@@ -147,6 +147,14 @@ class Fold:
                 self._live.add(ev.key)
             ops += self._upsert({**e, "md": (e.get("md") or "") + ev.text})
         return ops
+
+    def _end_turn(self) -> None:
+        """A turn ended without a result: each parser forgets it."""
+        self._turn_open = False
+        for p in self._parsers.values():
+            end = getattr(p, "end_turn", None)
+            if end is not None:
+                end()
 
     def _drop_live(self) -> list[dict]:
         """Entries only deltas made, whose part never closed."""
@@ -274,7 +282,7 @@ class Fold:
             )
         if kind == "exit":
             stderr = "\n".join(rec.get("stderr_tail") or [])
-            self._turn_open = False
+            self._end_turn()
             return (
                 self._drop_live()
                 + self._end_calls("no result")
@@ -293,7 +301,7 @@ class Fold:
             )
         if kind in ("stop", "server_stopped"):
             line = "stopped" if kind == "stop" else "the server stopped during a turn"
-            self._turn_open = False
+            self._end_turn()
             return (
                 self._drop_live()
                 + self._end_calls("no result")
@@ -365,6 +373,7 @@ class Fold:
                 )
             )
         if kind == "reset":
+            self._end_turn()
             return self._upsert(
                 _entry(
                     f"e{i}",

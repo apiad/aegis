@@ -268,9 +268,11 @@ class App:
         try:
             await s.configure(model=model, effort=effort, permission=permission)
         except ControlError as e:
-            raise OpError("refused", f"claude refused: {e}") from e
+            raise OpError("refused", f"{s.harness.label} refused: {e}") from e
         except TimeoutError as e:
-            raise OpError("timeout", "claude did not answer within 15 s") from e
+            raise OpError(
+                "timeout", f"{s.harness.label} did not answer within 15 s"
+            ) from e
         except (BrokenPipeError, ConnectionResetError) as e:
             raise _dead(e) from e
         return s.wire()
@@ -363,6 +365,10 @@ class App:
             except FileNotFoundError as e:
                 raise OpError(
                     "harness_not_found", f"cannot run {self._bin(spec.harness)!r}: {e}"
+                ) from e
+            except (OSError, TimeoutError) as e:
+                raise OpError(
+                    "harness_failed", f"{self._bin(spec.harness)!r} did not start: {e}"
                 ) from e
             if p.prompt:
                 try:

@@ -92,15 +92,28 @@ class OpenCodeProcess:
     # -- lifecycle ----------------------------------------------------
     async def start(self) -> None:
         await self._spawn()
-        resume = self._launch.resume_id
-        if resume and await self._exists(resume):
-            self._session_id = resume
-        else:
-            self._session_id = (await self._call("POST", "/session", json={}))["id"]
+        try:
+            resume = self._launch.resume_id
+            if resume and await self._exists(resume):
+                self._session_id = resume
+            else:
+                created = await self._call("POST", "/session", json={})
+                self._session_id = created["id"]
+        except (httpx.HTTPError, OSError, TimeoutError, KeyError, TypeError) as e:
+            await self._end_child()
+            raise ConnectionError(f"opencode serve did not start a session: {e}") from e
         early, self._early = self._early, []
         for raw in early:
             self._deliver(raw)
-        self._catalog = await self._read_catalog()
+        await self._try_catalog()
+
+    async def _try_catalog(self) -> None:
+        """The catalog is optional (a slow MCP server can hold up /command):
+        without it a prompt carries no variant until a later send finds it."""
+        try:
+            self._catalog = await self._read_catalog()
+        except (httpx.HTTPError, OSError, TimeoutError):
+            self._catalog = None
 
     async def _spawn(self) -> None:
         self._quiet = False
@@ -310,13 +323,20 @@ class OpenCodeProcess:
         self._restart = False
         await self._end_child()
         self._launch = dataclasses.replace(self._launch, resume_id=self._session_id)
-        await self._spawn()
+        try:
+            await self._spawn()
+        except (OSError, TimeoutError) as e:
+            # _end_child silenced the old child's exit, so this one says it.
+            self._launch.on_exit(-1, [*self._tail, f"the restart failed: {e}"])
+            raise ConnectionResetError(f"opencode serve did not restart: {e}") from e
 
     async def send(self, text: str) -> None:
         await self._maybe_restart()
         # Busy from the send on, not from OpenCode's busy event: a prompt sent
         # right after must not restart the child under the turn it started.
         self._busy = True
+        if self._catalog is None:
+            await self._try_catalog()
         if text.startswith("/"):
             name, _, args = text[1:].partition(" ")
             # The command's request lasts the whole turn, so it runs on its own
@@ -337,7 +357,14 @@ class OpenCodeProcess:
             body["variant"] = variant
         if self._launch.system_prompt:
             body["system"] = self._launch.system_prompt
-        await self._call("POST", f"/session/{self._session_id}/prompt_async", json=body)
+        try:
+            await self._call(
+                "POST", f"/session/{self._session_id}/prompt_async", json=body
+            )
+        except (httpx.HTTPStatusError, OSError, TimeoutError):
+            if not self._turn_running:
+                self._busy = False  # this send started nothing
+            raise
 
     async def _command(self, name: str, args: str, line: str) -> None:
         body: dict[str, Any] = {"command": name, "arguments": args, "model": self.model}

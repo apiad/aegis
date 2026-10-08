@@ -205,6 +205,11 @@ class Session:
         # Inbox messages waiting for this session's turn to end.
         self.held: list[dict] = list(held or [])
         self._flushing = False
+        # One start at a time: an OpenCode start takes seconds, and two sends
+        # in that window must not start two children.
+        self._starting = asyncio.Lock()
+        # Bumped per process start, so a stale process's exit changes nothing.
+        self._generation = 0
         # Claude's own tasks started and not yet notified (Bash, background).
         self.open_tasks: set[str] = set()
         self.worker = worker
@@ -281,8 +286,18 @@ class Session:
     async def ensure_running(self) -> None:
         """Start the harness if there is no process. Raises FileNotFoundError
         when its binary is missing, leaving the session stopped."""
-        if self.running:
-            return
+        async with self._starting:
+            if not self.running:
+                await self._start_process()
+
+    async def _start_process(self) -> None:
+        self._generation += 1
+        generation = self._generation
+
+        def on_exit(code: int, tail: list[str]) -> None:
+            if generation == self._generation:
+                self._on_exit(code, tail)
+
         resume = self.resume_id
         mcp, system_prompt = self._host.spawn_args(self)
         proc = self.harness.process(
@@ -296,7 +311,7 @@ class Session:
                 system_prompt=system_prompt,
                 stderr_path=self._stderr_path,
                 on_line=self._on_line,
-                on_exit=self._on_exit,
+                on_exit=on_exit,
                 on_error=self._on_error,
             )
         )
@@ -421,15 +436,21 @@ class Session:
         # Working before the send returns: a harness can answer during it (an
         # OpenCode command refused before it starts a turn).
         self._set(status="working")
-        await self._proc.send(text)
+        try:
+            await self._proc.send(text)
+        except Exception as e:
+            self._on_error(f"the message did not reach the agent: {e}", True, text)
+            raise
 
     async def interrupt(self) -> None:
         if self.status != "working" or self._proc is None:
             return
         self._record({"kind": "interrupt"})
-        await self._proc.interrupt()
+        # The deadline first: an interrupt that cannot reach the child still
+        # ends in "error" instead of leaving the session working.
         if self._interrupt_timer is None or self._interrupt_timer.done():
             self._interrupt_timer = asyncio.create_task(self._interrupt_deadline())
+        await self._proc.interrupt()
 
     async def stop(self) -> None:
         """End the process and keep the session."""

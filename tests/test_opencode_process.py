@@ -174,3 +174,27 @@ async def test_the_catalog_and_a_probe(rig, tmp_path, fake_opencode):
     assert cat.has("hello") and cat.model("opencode-go/fake-pro").window == 1000000
     probed = await probe(fake_opencode, tmp_path, tmp_path / "probe.log")
     assert [m.value for m in probed.models] == [m.value for m in cat.models]
+
+
+async def test_a_start_that_fails_after_listening_ends_the_child(
+    tmp_path, fake_opencode, monkeypatch
+):
+    log = tmp_path / "fake.log"
+    monkeypatch.setenv("FAKE_OPENCODE_LOG", str(log))
+    monkeypatch.setenv("FAKE_OPENCODE_FAIL_SESSION", "1")
+    r = Rig(tmp_path, fake_opencode)
+    with pytest.raises(Exception):
+        await r.proc.start()
+    (pid,) = [
+        int(x.split()[1])
+        for x in log.read_text().splitlines()
+        if x.startswith("START ")
+    ]
+    await until(
+        lambda: (
+            not Path(f"/proc/{pid}").exists()
+            or "State:\tZ" in Path(f"/proc/{pid}/status").read_text()
+        ),
+        what="the child gone",
+    )
+    assert not r.proc.running

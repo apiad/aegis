@@ -290,3 +290,25 @@ def test_a_meta_from_before_the_rename_still_resumes(world):
     r = world.registry()
     assert r.sessions["old-1"].resume_id == "cs-old"
     assert r.sessions["old-1"].meta()["resume_id"] == "cs-old"
+
+
+async def test_a_spawn_whose_harness_fails_to_start_leaves_nothing(
+    tmp_path, fake_opencode, monkeypatch
+):
+    (tmp_path / ".aegis.yaml").write_text("agents: {}\n")
+    monkeypatch.setenv("FAKE_OPENCODE_DIE", "1")
+    published = []
+    r = Registry(
+        make_roots(tmp_path, None),
+        lambda ch, ops: published.append((ch, ops)),
+        "claude",
+        opencode_bin=fake_opencode,
+    )
+    r.boot()
+    spec = SpawnSpec(
+        "d", "opencode-go/fake-pro", "high", "full", tmp_path, harness="opencode"
+    )
+    with pytest.raises(OSError):
+        await r.spawn(spec)
+    assert r.sessions == {}
+    assert not list((r.roots.state_root / "transcripts").glob("*.jsonl"))

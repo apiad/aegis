@@ -202,10 +202,9 @@ def test_the_parser_maps_one_turn():
     ]
     assert p.feed(ev(DELTA, sessionID="ses_1", messageID="msg_a", partID="prt_t",
                      field="text", delta="Hel")) == [Delta(key="prt_t", kind="prose", text="Hel")]  # fmt: skip
-    assert (
-        p.feed(ev(DELTA, sessionID="ses_1", partID="prt_nope", field="text", delta="x"))
-        == []
-    )
+    assert p.feed(
+        ev(DELTA, sessionID="ses_1", partID="prt_nope", field="text", delta="x")
+    ) == [Delta(key="", kind="", text="")]
     running = {"id": "prt_c", "messageID": "msg_a", "sessionID": "ses_1", "type": "tool",
                "tool": "read", "callID": "c1", "state": {"status": "running", "input": {"filePath": "/a"}}}  # fmt: skip
     assert p.feed(ev("message.part.updated", sessionID="ses_1", part=running)) == [
@@ -241,3 +240,80 @@ def test_the_parser_maps_one_turn():
     assert p.feed(ev("session.idle", sessionID="ses_1")) == []
     assert p.feed(ev("session.idle", sessionID="ses_other")) == []
     assert p.feed("not json")[0].raw == "not json"
+
+
+def _turn_start(p: Parser, mid: str, created: int) -> None:
+    info = {
+        "id": mid,
+        "role": "assistant",
+        "sessionID": "ses_1",
+        "time": {"created": created},
+    }
+    p.feed(ev("message.updated", sessionID="ses_1", info=info))
+
+
+def test_every_delta_line_is_a_delta_even_one_nothing_draws():
+    p = Parser()
+    p.feed(ev("session.created", sessionID="ses_1", info={"id": "ses_1"}))
+    p.feed(
+        ev(
+            "session.created",
+            sessionID="ses_k",
+            info={"id": "ses_k", "parentID": "ses_1"},
+        )
+    )
+    for line in (
+        ev(DELTA, sessionID="ses_k", partID="prt_k", field="text", delta="child"),
+        ev(DELTA, sessionID="ses_1", partID="prt_unknown", field="text", delta="x"),
+    ):
+        (d,) = p.feed(line)
+        assert isinstance(d, Delta) and not d.key
+        assert Fold().live([d]) == []
+
+
+def test_an_exit_mid_turn_does_not_leak_into_the_next_turn():
+    f = Fold()
+    rec = iter(range(100))
+
+    def line(s):
+        f.apply({"i": next(rec), "ts": 1.0, "src": "opencode", "line": s})
+
+    line(ev("session.created", sessionID="ses_1", info={"id": "ses_1"}))
+    line(ev("message.updated", sessionID="ses_1",
+            info={"id": "m1", "role": "assistant", "sessionID": "ses_1", "time": {"created": 1000}}))  # fmt: skip
+    line(ev("session.error", sessionID="ses_1", error={"name": "APIError"}))
+    f.apply(
+        {
+            "i": next(rec),
+            "ts": 2.0,
+            "src": "aegis",
+            "kind": "exit",
+            "code": 1,
+            "stderr_tail": [],
+        }
+    )
+    line(ev("message.updated", sessionID="ses_1",
+            info={"id": "m2", "role": "assistant", "sessionID": "ses_1",
+                  "time": {"created": 5000, "completed": 6000}}))  # fmt: skip
+    line(ev("session.idle", sessionID="ses_1"))
+    assert f.entries()[-1]["summary"].startswith("done in 1.0s")
+
+
+def test_a_late_text_part_of_an_aborted_message_changes_nothing():
+    p = Parser()
+    p.feed(ev("session.created", sessionID="ses_1", info={"id": "ses_1"}))
+    _turn_start(p, "m1", 10)
+    opened = {
+        "id": "prt_t",
+        "messageID": "m1",
+        "sessionID": "ses_1",
+        "type": "text",
+        "text": "",
+    }
+    p.feed(ev("message.part.updated", sessionID="ses_1", part=opened))
+    p.feed(
+        ev("session.error", sessionID="ses_1", error={"name": "MessageAbortedError"})
+    )
+    assert len(p.feed(ev("session.idle", sessionID="ses_1"))) == 1
+    closed = {**opened, "text": "half"}
+    assert p.feed(ev("message.part.updated", sessionID="ses_1", part=closed)) == []

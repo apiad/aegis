@@ -35,7 +35,10 @@ when the turn ends; an unknown command is a 400.
 Each session id's prompts are appended to ``$FAKE_OPENCODE_HOME/<id>.prompts``,
 which is also how ``GET /session/{id}`` knows a session an earlier process
 made. ``FAKE_OPENCODE_LOG=<file>`` gets one ``METHOD path`` line per request.
-``FAKE_OPENCODE_DIE=1`` exits with code 1 before listening.
+``FAKE_OPENCODE_DIE=1`` exits with code 1 before listening;
+``FAKE_OPENCODE_FAIL_SESSION=1`` answers ``POST /session`` with a 500. The log
+also gets ``START <pid>`` when the server starts, so a test can check every
+child it caused is gone. A prompt whose text is ``FAIL500`` is answered 500.
 """
 
 from __future__ import annotations
@@ -504,6 +507,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, PROVIDERS)
         if method == "POST" and path == "/session":
             self._body()
+            if os.environ.get("FAKE_OPENCODE_FAIL_SESSION"):
+                return self._json(500, {"name": "UnknownError"})
             return self._json(200, new_session().info())
         parts = path.strip("/").split("/")
         if len(parts) >= 2 and parts[0] == "session":
@@ -515,6 +520,8 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
             if parts[2:] == ["prompt_async"]:
                 text = "".join(p.get("text", "") for p in body.get("parts") or [])
+                if text == "FAIL500":
+                    return self._json(500, {"name": "UnknownError"})
                 s.last_body = body
                 take_prompt(s, text, body)
                 return self._json(204, None)
@@ -579,6 +586,9 @@ def main() -> None:
     if os.environ.get("FAKE_OPENCODE_DIE"):
         print("fake opencode: dying before listening", file=sys.stderr, flush=True)
         sys.exit(1)
+    if LOG:
+        with open(LOG, "a") as f:
+            f.write(f"START {os.getpid()}\n")
     port = int(args[args.index("--port") + 1]) if "--port" in args else 0
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     srv.daemon_threads = True
