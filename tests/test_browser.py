@@ -778,6 +778,36 @@ def test_open_natively_shows_only_on_the_servers_desktop_and_opens_the_copy(
     assert page.errors == []
 
 
+VERDICT_BOX = """sel => {
+  const r = [...document.querySelectorAll('.row.tool')].pop();
+  const box = q => r.querySelector(q).getBoundingClientRect().width;
+  const v = r.querySelector('.tr2');
+  return {line: box('.line'), verdict: box('.tr2'), cut: v.scrollWidth > v.clientWidth};
+}"""
+
+
+def test_a_bash_verdict_takes_the_room_its_description_leaves(server, page):
+    """A long verdict is cut only when the row is full: beside a short
+    description it shows whole, and against a long one it keeps most of it."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    verdict = "7 of 12 logs hold ERROR: " + ", ".join(f"node-{i}.log" for i in range(5))
+    page.fill("#input", f"/bash Scan logs => {verdict}")
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    short = page.evaluate(VERDICT_BOX)
+    assert len(verdict) > 46 and not short["cut"], short
+
+    long_desc = "Scan every log under the release tree for errors " * 6
+    page.fill("#input", f"/bash {long_desc} => {verdict * 3}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    full = page.evaluate(VERDICT_BOX)
+    assert full["cut"] and full["verdict"] > 0.6 * full["line"], full
+    assert page.errors == []
+
+
 # -- cost that must not grow with the transcript or the tab count (#157, #158) --
 
 FIXTURE = Path(__file__).parent / "fixtures" / "session.jsonl"

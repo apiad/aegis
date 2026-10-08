@@ -152,6 +152,33 @@ def test_tool_output_replaces_its_call_in_place():
     assert done["detail"]["collapsed"] is True
 
 
+def test_a_bash_verdict_skips_the_lines_claude_code_appends():
+    r = Rec()
+    r.call("t1", "Bash", {"command": "cd /x && pytest -q"})
+    r.output("t1", "....\n3 passed in 0.2s\nShell cwd was reset to /home/a/w")
+    r.call("t2", "Bash", {"command": "sed -i s/a/b/ x.py && echo done"})
+    r.output(
+        "t2",
+        "2 files changed\n[This command modified 1 file you've previously read:"
+        " x.py. Call Read before editing.]",
+    )
+    a, b = run(r)[0].entries()
+    assert a["detail"]["result"] == "3 passed in 0.2s"
+    assert b["detail"]["result"] == "2 files changed"
+
+
+def test_a_failed_bash_verdict_skips_them_too():
+    r = Rec()
+    r.call("t1", "Bash", {"command": "cd /x && make test"})
+    r.output(
+        "t1",
+        "Exit code 2\n1 failed, 3 passed\nShell cwd was reset to /home/a/w",
+        is_error=True,
+    )
+    (e,) = run(r)[0].entries()
+    assert e["detail"]["result"] == "Exit code 2 · 1 failed, 3 passed"
+
+
 def test_a_failure_starts_open_with_its_tail():
     r = Rec()
     r.call("t1", "Bash", {"command": "mmdc"})
