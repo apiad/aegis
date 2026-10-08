@@ -5,6 +5,81 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-08
+
+### Added
+
+- **aegis knows what you have read, on every browser.** Each agent message
+  carries a mark until it has been on screen for a second; a done or review badge
+  clears once you have read it, and a needs-you badge blinks only while unread.
+  Opening a tab after a while shows a "new since you left" divider, and a
+  navigator pill at the bottom right walks the agent messages (Alt+↑, Alt+↓) and
+  jumps to the first unread (Alt+U). The page title counts the sessions that need
+  you, the favicon gets a dot, and with the bell on, a session that needs you
+  while the page is hidden sends a desktop notification.
+
+- **A recap when you come back to a tab.** Opening a tab with a long unread
+  stretch shows two sentences as the last row of the transcript: what the session
+  was doing and what it needs from you, in the language you write in. It costs
+  one cheap call on the agent named by `recap: {agent: <name>}` in `.aegis.yaml`
+  (about $0.002 on Haiku), is made once per point in the transcript for every
+  browser, folds to one line once you reply, and a sparkle on the navigator asks
+  for a fresh one. Without `recap:` nothing is called.
+
+- **Every session says what it needs from you.** Tabs, Fleet cards and the Fleet
+  band carry a badge: working, needs you, error, review, waiting or done. Agents
+  report their own plan (`plan_update`) and how their turn ended (`turn_end`),
+  with up to three suggested replies that show as pills on the message box and
+  send on click. Error and waiting come from what the server already knows:
+  failed turns, live monitors, background tasks, queue tasks and child
+  sessions. The Fleet can put the sessions that need you first, or keep your tab
+  order.
+
+- **OpenCode agents run in aegis.** An agent with `harness: opencode` and a `provider/model` spawns from the new tab and runs `opencode serve` for its session: the transcript streams as it is written, prompts and slash commands, interrupt, resume, `/model`, `/effort` and `/permission`, every aegis tool over MCP, queue work, and a card with cost, context and the title OpenCode gives it. `aegis serve --opencode` names the binary. For every session, the card reads "waiting for the model" between a prompt and the first thing the agent says, and a cost under half a cent shows four decimals instead of $0.00.
+
+- **aegis works on a phone.** Below 760 px the tabs get their own row that scrolls sideways, ☰ opens the session's side panel as a drawer, and the Fleet band stacks. On a touch screen the reply chips, buttons and tool rows are at least 40 to 44 px tall, and Enter in the message box adds a line while ↵ sends.
+
+- **aegis installs as an app, and a browser signs in once.** Chrome's menu offers "Add to home screen" (Android) or "Install" (desktop), named after the server. Opening the URL `aegis serve` prints, or pasting its token into the new sign-in field, sets an HttpOnly cookie that lasts a year, so an installed app opens signed in. No script on the page can read the token any more.
+
+- **aegis creates, checks and edits `.aegis.yaml`, and follows it live.** `aegis init` writes a first config from the harnesses installed on the machine and their models, asking for each value with the proposal filled in (`--yes` takes them all). `aegis doctor` names every problem by its place in the file: a harness that is not on PATH, a model its harness does not list, an effort the model does not take, a queue on a missing agent, a key aegis does not read. A Settings page (Alt+S) edits agents, the default agent and queues, keeps the file's comments, and runs the doctor on its rows. aegis re-reads the file whenever it changes, so a queue added in an editor takes tasks without a restart, and a file that does not parse leaves the last good one in force instead of stopping every spawn.
+
+- **Alt+J goes to the session that has waited longest for you.** Pressed again it
+  cycles through the rest: sessions that asked you something, then errors, then
+  reviews and finished sessions you have not read, the longest waiting first in
+  each. It lands on the first unread message. The Fleet's "Needs you" group uses
+  the same order instead of the tab order.
+
+- **Dictation.** A mic button in the message box and in the new-session box, and Alt+M, turn speech into text in your browser with Cactus Whistle, a 16.9 MB model that runs as WebAssembly. Text lands in the box while you talk and is never sent on its own; pressing Enter while dictating waits for the last words and sends them too. No audio leaves the browser. The first use downloads the engine and model (17.8 MB) to the server's cache, `~/.cache/aegis/dictation` or `$AEGIS_DICTATION_DIR`, checked against pinned hashes.
+
+### Changed
+
+- **Interrupt is the ■ beside send, and the side panel has Restart.** The text Stop under the message box is gone. Restart sends "Continue", which also resumes a stopped session. Close now asks in aegis's own dialog.
+
+- **A failed tool call starts closed, like every tool row.** Its red status and one-line result show on the closed row; open it for the output.
+
+### Fixed
+
+- **A Bash row is named by the comment its command opens with.** Claude Code
+  leaves out the optional `description` field for whole sessions: in early
+  October, 14 of 81 sessions sent it on none of their Bash calls, and their rows
+  showed the raw command. The primer now asks agents to open every Bash command
+  with a line like `# Count the open issues`, and the row takes its name from
+  that line first, then from `description`, then from the command itself. A
+  leading comment does not stop a `Bash(git status:*)` allow rule from matching.
+
+- **A session waits on a child that waits.** A parent whose spawned session
+  armed a monitor, enqueued a task or ran a background command showed done as
+  soon as the child's turn ended. It now shows waiting until the whole chain
+  below it finishes, at any depth.
+
+- **The Fleet's quota bars keep their percentage beside them in a window under 1100 px.** A rule meant for the quota column also matched every quota bar, so each bar took a row of its own and its percentage dropped under it, cut off on the left.
+
+### Performance
+
+- **A transcript costs a quarter of the bytes, and a return to a tab costs only what changed.** Tool arguments, output, diffs and thinking text load when you open a row; they were 75% of a snapshot. Switching back to one of the last 8 tabs, or reconnecting after a phone slept, sends only the entries that changed since. The protocol is now version 2: reload any page left open across the upgrade.
+
+- **Measured against 2.2.0 on one machine, two runs each.** A line of agent output costs the server about 10% more at the median (120 against 108 µs): entries now carry a revision and pass through the projection that leaves collapsed detail behind. The browser heap is about 15% larger, from keeping the last 8 tabs. Cold load of a 2,325-entry transcript, keystroke cost and Fleet load did not move beyond run-to-run noise. The per-PR CI warnings in this range sit inside that runner's noise: #192 changed one CSS selector and warned by 22 to 34%.
+
 ## [2.2.0] - 2026-10-08
 
 ### Added
