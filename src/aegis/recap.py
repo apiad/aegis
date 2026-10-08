@@ -118,7 +118,6 @@ def argv(claude_bin: str, model: str, prompt: str) -> list[str]:
     return [
         claude_bin,
         "-p",
-        prompt,
         "--model",
         model,
         "--output-format",
@@ -134,6 +133,10 @@ def argv(claude_bin: str, model: str, prompt: str) -> list[str]:
         "--mcp-config",
         json.dumps({"mcpServers": {}}),
         "--strict-mcp-config",
+        # Last and after --: the window opens on "---", which the CLI would
+        # otherwise reject as an unknown option.
+        "--",
+        prompt,
     ]
 
 

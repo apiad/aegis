@@ -57,8 +57,11 @@ def test_window_carries_the_agents_report_and_plan_and_is_capped():
 
 
 def test_argv_sheds_tools_settings_and_mcp():
-    a = argv("/bin/claude", "claude-haiku-4-5-20251001", "PROMPT")
-    assert a[:3] == ["/bin/claude", "-p", "PROMPT"]
+    a = argv("/bin/claude", "claude-haiku-4-5-20251001", "--- transcript ---")
+    assert a[:2] == ["/bin/claude", "-p"]
+    # The window opens on dashes, which the CLI reads as an option unless the
+    # prompt comes last, after --.
+    assert a[-2:] == ["--", "--- transcript ---"]
     for flag, value in [
         ("--model", "claude-haiku-4-5-20251001"),
         ("--output-format", "json"),

@@ -567,7 +567,13 @@ def worker() -> None:
 
 def oneshot() -> None:
     mode = os.environ.get("FAKE_CLAUDE_ONESHOT", "")
-    prompt = sys.argv[sys.argv.index("-p") + 1]
+    after = "--" if "--" in sys.argv else "-p"
+    prompt = sys.argv[sys.argv.index(after) + 1]
+    if after == "-p" and prompt.startswith("-"):
+        # Like the real CLI: a prompt opening on "-" reads as an option unless
+        # it comes after --.
+        print(f"error: unknown option '{prompt}'", file=sys.stderr)
+        sys.exit(1)
     with open(os.path.join(HOME, "oneshot.log"), "a") as f:
         f.write(f"{os.getpid()}\n")
     with open(os.path.join(HOME, "oneshot.pid"), "w") as f:
