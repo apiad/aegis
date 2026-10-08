@@ -133,6 +133,12 @@ Always give `progress`, even when it costs a longer command: count finished CI \
 checks, jobs, files or lines over the total, or estimate from elapsed time. Pass \
 null only when nothing can be counted.
 
+Every Bash command you write opens with a comment line that says in a few \
+plain words what it does, such as `# Count the open issues`, and the command \
+starts on the next line. That comment is the row's name: without it the \
+person reads the raw command. Write it even when you also fill the tool's \
+description field.
+
 Every Bash call you make ends on one line of numbers that the command itself \
 computed, because the person sees each call as a single row and that row shows \
 only the last line of its output. Do it even when you were asked for a list: \

@@ -3,6 +3,7 @@ and a resume that keeps the context.
 
 Spends a few cents of Haiku. Run with ``make test-live``."""
 
+import json
 import shutil
 from pathlib import Path
 
@@ -361,9 +362,32 @@ async def test_real_claude_gives_a_countable_wait_a_progress_command(tmp_path: P
         await asyncio.wait_for(task, 30)
 
 
-async def test_real_claude_ends_a_bash_call_on_a_counted_verdict(tmp_path: Path):
-    """The primer's Bash paragraph reaches the real binary: a search whose
-    plain answer ends on a file name instead ends on the count it found."""
+def _bash_commands(path: Path) -> list[str]:
+    """Every Bash command a store recorded, as Claude wrote it."""
+    found = []
+
+    def walk(o):
+        if isinstance(o, dict):
+            if o.get("type") == "tool_use" and o.get("name") == "Bash":
+                found.append(o["input"]["command"])
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+
+    for r in read_store(path)[0]:
+        if r.get("src") == "claude":
+            walk(json.loads(r["line"]))
+    return found
+
+
+async def test_real_claude_names_a_bash_call_and_ends_it_on_a_counted_verdict(
+    tmp_path: Path,
+):
+    """The primer's Bash paragraphs reach the real binary: a search opens on a
+    comment that names it, and its plain answer, which would end on a file
+    name, ends on the count it found."""
     import asyncio
     import re
 
@@ -411,6 +435,8 @@ async def test_real_claude_ends_a_bash_call_on_a_counted_verdict(tmp_path: Path)
         assert rows, "Claude made no Bash call"
         verdict = rows[-1]["detail"]["result"]
         assert re.search(rf"\b{hits}\b", verdict), verdict
+        (command, *_) = _bash_commands(s.store.path)
+        assert command.lstrip().startswith("#"), command
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)
