@@ -104,6 +104,14 @@ def server(tmp_path: Path, fake_claude: str, fake_opencode: str):
     s.stop()
 
 
+@pytest.fixture
+def recap_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG + "recap: {agent: opus}\n")
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
+    yield s
+    s.stop()
+
+
 def seed_quota() -> None:
     """A Claude reading fresh enough that the server adopts it without asking,
     and an OpenCode Go reading 14 minutes old behind a live 429 backoff. The
@@ -1583,6 +1591,107 @@ def test_a_reply_that_lands_while_you_are_away_stays_unread_until_you_look(
     page.wait_for_function(
         "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
     )
+    assert page.errors == []
+
+
+def test_landing_after_two_replies_shows_a_recap_last_and_the_sparkle_makes_one(
+    recap_server, page
+):
+    frames = frames_on(page)
+    page.goto(recap_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "first")
+    sid = page.evaluate("location.hash.slice(3)")
+    page.wait_for_function(
+        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+    )
+    page.fill("#input", "/sleep 1")
+    page.press("#input", "Enter")
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=1 unread", timeout=8000)
+    # one unread is under the threshold: make a second one land while away
+    page.click(f".tab[data-id='{sid}']")
+    page.fill("#input", "/sleep 1")
+    page.press("#input", "Enter")
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=2 unread", timeout=8000)
+    frames.clear()
+    page.click(f".tab[data-id='{sid}']")
+    page.wait_for_selector(".row.recap .ctx >> text=recap of", timeout=8000)
+    # The tab came back from the client's cache: its first frame was a delta,
+    # and that delta is what asked for the recap.
+    snaps = [f for f in frames if '"t": "snapshot"' in f and f"transcript:{sid}" in f]
+    assert snaps and '"since"' in snaps[0], snaps
+    assert page.eval_on_selector(
+        "#entries", "n => n.lastElementChild.classList.contains('recap')"
+    )
+    page.fill("#input", "thanks")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.recap.folded")
+    turns_done(page, 4)  # mid-turn, recap.request answers busy even when forced
+    page.click("#nav-recap")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row.recap').length === 2", timeout=8000
+    )
+    assert page.locator(".row.recap:not(.folded)").count() == 1
+    # a refresh with no send between folds the earlier recap: one full box
+    page.click("#nav-recap")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row.recap').length === 3", timeout=8000
+    )
+    assert page.locator(".row.recap:not(.folded)").count() == 1
+    assert page.errors == []
+
+
+def test_the_landing_recap_request_shows_no_hint_and_the_sparkle_does(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "one")
+    sid = page.evaluate("location.hash.slice(3)")
+    turns_done(page, 1)
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card[data-id='{sid}']")
+    page.click(f".tab[data-id='{sid}']")
+    page.wait_for_selector("#a2[data-view=session]")
+    page.wait_for_timeout(1000)  # the landing request's answer has come back
+    assert page.text_content("#send-error") == ""
+    page.click("#nav-recap")
+    page.wait_for_selector("#send-error >> text=recap: {agent:", timeout=4000)
+    assert page.errors == []
+
+
+def test_coming_back_to_the_page_asks_for_a_recap_and_hiding_it_does_not(
+    recap_server, page
+):
+    page.goto(recap_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "first")
+    page.wait_for_function(
+        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+    )
+    # The person leaves the page: nothing on it is read while it is hidden.
+    page.evaluate(
+        """() => {
+            window.__vis = 'hidden';
+            Object.defineProperty(document, 'visibilityState',
+                { configurable: true, get: () => window.__vis });
+            document.dispatchEvent(new Event('visibilitychange'));
+        }"""
+    )
+    for n in (2, 3):
+        page.fill("#input", "/sleep 1")
+        page.press("#input", "Enter")
+        turns_done(page, n)
+    page.evaluate("() => document.dispatchEvent(new Event('visibilitychange'))")
+    page.wait_for_timeout(1500)  # a request fired while hidden would have landed
+    assert page.locator(".row.recap").count() == 0
+    page.evaluate(
+        """() => {
+            window.__vis = 'visible';
+            document.dispatchEvent(new Event('visibilitychange'));
+        }"""
+    )
+    page.wait_for_selector(".row.recap .ctx >> text=recap of", timeout=8000)
     assert page.errors == []
 
 

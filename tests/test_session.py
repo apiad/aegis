@@ -424,3 +424,25 @@ async def test_a_delta_after_a_restart_carries_reads_from_before_it(h):
     assert reborn.read([new]) == 1
     delta = reborn.snapshot(later["rev"])
     assert [(e["id"], e["unread"]) for e in delta["entries"]] == [(new, False)]
+
+
+async def test_a_tab_holding_a_rev_from_before_a_send_gets_the_folded_recap(h):
+    await h.session.send("hello")
+    await until(lambda: h.session.status == "idle" and h.session.unread, what="a reply")
+    n = len(h.published)
+    h.session.report({"kind": "recap", "upto": 3, "context": "ctx", "ask": ""})
+    (live,) = [
+        op["upsert"]
+        for ch, ops in h.published[n:]
+        if ch == h.session.channel
+        for op in ops
+        if op.get("upsert", {}).get("kind") == "recap"
+    ]
+    held = h.session.snapshot()  # a tab takes the transcript, then leaves
+    assert [e for e in held["entries"] if e["kind"] == "recap"] == [live]
+    await h.session.send("again")
+    await until(lambda: h.session.status == "idle", what="the second turn")
+    delta = h.session.snapshot(held["rev"])
+    (recap,) = [e for e in delta["entries"] if e["kind"] == "recap"]
+    assert recap["id"] == live["id"] and recap["detail"]["folded"] is True
+    assert held["rev"] < recap["rev"] <= delta["rev"]

@@ -88,6 +88,18 @@ has been at least half visible, or has filled half the view, for a second while
 the page is visible and focused. A done or review badge clears once the turn's last
 agent message is read, which `attention.card` decides as the card's `mark`.
 
+**A recap is aegis talking to the person, paid for once.** A browser that opens a
+tab asks `recap.request` once the first snapshot or delta lands, a tab restored
+from its cache included; the server decides whether the unread stretch is long
+enough, runs one `claude -p` on the agent named by `recap:` in `.aegis.yaml` (no
+tools, no settings, no MCP, an empty working directory, thinking off), and appends
+the answer as a `recap` record, so every browser receives the same entry. Nothing
+in it is lazy on the wire, and the send that folds it gives it that send's `rev`,
+so a tab returning with an older revision gets the folded row. One call
+runs per session at a time and a point in the transcript is never paid for twice
+unless a person forces it; the call kills its process when cancelled. Nothing in a
+recap is sent to the agent.
+
 **One registry, every caller.** Every action is one registered operation with a
 pydantic params model. A websocket `call` is one projection of the registry, MCP
 tools are another, and plugins add operations to it. Nothing reaches the client as

@@ -457,6 +457,20 @@ body{background:#000}
 #a2 .rp{font-family:var(--font-ui);font-size:13px;color:var(--strong);background:var(--surface);border:1px solid var(--rule);border-radius:999px;padding:5px 13px;cursor:pointer;line-height:1.3;text-align:left}
 #a2 .rp:hover{border-color:var(--accent);background:var(--accent-soft)}
 
+/* the recap: aegis's own two sentences, last in the transcript */
+#a2 .row.recap .g{color:var(--accent)}
+#a2 .row.recap .g .ic{width:14px;height:14px}
+#a2 .row.recap:not(.folded) .body{border:1px solid var(--accent);border-left-width:3px;border-radius:var(--r);background:var(--accent-soft);padding:10px 14px}
+#a2 .row.recap .hd{display:flex;gap:8px;align-items:center;font-family:var(--font-chrome);font-size:11.5px;color:var(--accent);margin-bottom:6px}
+#a2 .row.recap .hd .ic{width:13px;height:13px}
+#a2 .row.recap .ctx{font-size:14.5px;color:var(--strong);line-height:1.5}
+#a2 .row.recap .ask{font-size:14.5px;color:var(--strong);line-height:1.5;margin-top:6px;font-weight:500}
+#a2 .row.recap .ft{font-family:var(--font-mono);font-size:11px;color:var(--faint);margin-top:8px;display:flex;gap:10px;align-items:center}
+#a2 .row.recap .btn.link{background:none;border:none;padding:0;color:var(--muted);text-decoration:underline;font-size:11px}
+#a2 .row.recap.folded .body{font-size:12.5px;color:var(--muted)}
+#a2 .row.recap.folded .lbl{color:var(--accent);font-family:var(--font-chrome)}
+#a2 .nav .spark{color:var(--accent)}
+
 /* narrow and touch: last, so these win over the rules above */
 #a2 .side-btn{display:none}
 /* A phone: the desktop markup, wrapped. Tabs take their own scrolling row, the

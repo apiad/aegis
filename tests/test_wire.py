@@ -141,6 +141,34 @@ def test_wire_leaves_prose_errors_and_files_whole():
         assert wire(e) is e
 
 
+def test_a_recap_is_not_lazy_on_the_wire():
+    """A recap's detail is what its row shows, open or folded: nothing to fetch."""
+    r = Rec()
+    r.own("send", text="go")
+    r.echo("go")
+    r.text("done it")
+    r.result()
+    r.own(
+        "recap",
+        upto=3,
+        context="fixing it",
+        ask="merge?",
+        model="m",
+        cost_usd=0.004,
+        duration_ms=1800,
+    )
+    f, _ = run(r)
+    (e,) = [x for x in f.snapshot()["entries"] if x["kind"] == "recap"]
+    assert wire(e) is e and "more" not in e["detail"]
+    assert {"context", "ask", "model", "cost_usd", "folded"} <= set(e["detail"])
+    (folded,) = [
+        op["upsert"]
+        for op in wire_ops(f.apply(r.own("send", text="next")))
+        if op.get("upsert", {}).get("kind") == "recap"
+    ]
+    assert folded["detail"] == {**e["detail"], "folded": True}
+
+
 def test_wire_drops_thinking_text_but_not_an_empty_thought():
     e = {"id": "t", "kind": "thinking", "md": "deep thoughts", "detail": {}}
     assert wire(e)["md"] is None and wire(e)["detail"]["more"] is True

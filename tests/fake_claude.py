@@ -41,6 +41,14 @@ mints one. Each id's prompts are appended to ``$FAKE_CLAUDE_HOME/<id>.prompts``
 (default: the system temp dir), which is what ``/recall`` reads, so a test can
 prove a resumed process has its earlier context.
 
+``-p PROMPT`` one-shot (``--output-format json``, which a session's ``-p``
+never has): prints a JSON envelope whose structured output is a recap built
+from the prompt; ``FAKE_CLAUDE_ONESHOT=fail|garbage|empty|slow`` makes it exit
+1, print non-JSON, print an envelope with a cost and no answer, or sleep 120 s
+(``FAKE_CLAUDE_ONESHOT_SLEEP`` seconds, when set) before answering. Each one-shot appends a line to
+``$FAKE_CLAUDE_HOME/oneshot.log`` and writes its pid to
+``$FAKE_CLAUDE_HOME/oneshot.pid``, so a test can count calls and find the child.
+
 With ``FAKE_CLAUDE_REPLAY=<store file>``, the first prompt instead replays the
 Claude lines of an aegis store, ``FAKE_CLAUDE_PACE`` seconds apart (default
 0). ``FAKE_CLAUDE_REPEAT`` replays it that many times, with tool ids made
@@ -557,7 +565,49 @@ def worker() -> None:
         run(text)
 
 
+def oneshot() -> None:
+    mode = os.environ.get("FAKE_CLAUDE_ONESHOT", "")
+    after = "--" if "--" in sys.argv else "-p"
+    prompt = sys.argv[sys.argv.index(after) + 1]
+    if after == "-p" and prompt.startswith("-"):
+        # Like the real CLI: a prompt opening on "-" reads as an option unless
+        # it comes after --.
+        print(f"error: unknown option '{prompt}'", file=sys.stderr)
+        sys.exit(1)
+    with open(os.path.join(HOME, "oneshot.log"), "a") as f:
+        f.write(f"{os.getpid()}\n")
+    with open(os.path.join(HOME, "oneshot.pid"), "w") as f:
+        f.write(str(os.getpid()))
+    if mode == "fail":
+        sys.exit(1)
+    if mode == "garbage":
+        print("not json")
+        return
+    if mode == "empty":
+        print(json.dumps({"type": "result", "result": "", "total_cost_usd": 0.004}))
+        return
+    if mode == "slow":
+        time.sleep(float(os.environ.get("FAKE_CLAUDE_ONESHOT_SLEEP", "120")))
+    lines = [ln for ln in prompt.splitlines() if ln.startswith("user: ")]
+    last = lines[-1].removeprefix("user: ") if lines else "nothing"
+    out = {"context": f"recap of: {last}", "ask": "answer it" if "?" in prompt else ""}
+    print(
+        json.dumps(
+            {
+                "type": "result",
+                "result": json.dumps(out),
+                "structured_output": out,
+                "total_cost_usd": 0.004,
+                "duration_ms": 1800,
+            }
+        )
+    )
+
+
 def main() -> None:
+    if "-p" in sys.argv and _arg("--output-format") == "json":
+        oneshot()
+        return
     t = threading.Thread(target=worker, daemon=True)
     t.start()
     for raw in sys.stdin:
