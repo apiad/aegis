@@ -1605,6 +1605,67 @@ def test_the_divider_and_navigator_walk_agent_messages(server, page):
     assert page.errors == []
 
 
+def test_the_navigator_counts_the_unread_and_jumps_to_the_first(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "one")
+    sid = page.evaluate("location.hash.slice(3)")
+    page.wait_for_function(
+        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+    )
+    # A reply lands while away, and the page is not focused when we return,
+    # so it stays unread.
+    page.fill("#input", "/sleep 1")
+    page.press("#input", "Enter")
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=1 unread", timeout=8000)
+    page.evaluate("document.hasFocus = () => false")
+    page.click(f".tab[data-id='{sid}']")
+    page.wait_for_selector(".row.prose .rm .ic.unread", state="attached")
+    page.wait_for_function(
+        "() => document.getElementById('nav-pos').textContent"
+        ".startsWith('1 unread · message ')"
+    )
+    unread = page.eval_on_selector(
+        ".row.prose:has(.rm .ic.unread)", "n => n.dataset.id"
+    )
+    sel = "document.querySelector('.row.sel')?.dataset.id"
+    page.keyboard.press("Alt+KeyU")
+    assert page.evaluate(sel) == unread
+    page.keyboard.press("Alt+ArrowUp")
+    assert page.evaluate(sel) != unread
+    page.click("#nav-pos")
+    assert page.evaluate(sel) == unread
+    page.wait_for_timeout(1500)  # still unfocused: nothing was read
+    assert page.inner_text("#nav-pos").startswith("1 unread · ")
+    assert page.errors == []
+
+
+def test_a_needs_you_tab_blinks_until_its_last_message_is_read(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "hello")
+    page.wait_for_function(
+        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+    )
+    b = spawn(page, "hello")
+    page.click(f".tab[data-id='{a}']")
+    page.wait_for_selector(f".tab.on[data-id='{a}']")
+    page.evaluate("document.hasFocus = () => false")  # the question lands unseen
+    report(page, attention="needs_you", line="Rebase or merge?", replies=[])
+    turns_done(page, 2)
+    page.click(f".tab[data-id='{b}']")
+    page.evaluate("delete document.hasFocus")
+    page.wait_for_selector(
+        f".tab.blink[data-id='{a}'] .ic.need", state="attached", timeout=6000
+    )
+    page.click(f".tab[data-id='{a}']")
+    page.wait_for_selector(
+        f".tab:not(.blink)[data-id='{a}'] .ic.need", state="attached", timeout=6000
+    )
+    assert page.errors == []
+
+
 def test_the_divider_is_drawn_on_its_row_when_scrolling_up_mounts_it(
     replay_server, page
 ):
