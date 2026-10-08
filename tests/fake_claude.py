@@ -44,7 +44,10 @@ prove a resumed process has its earlier context.
 ``-p PROMPT`` one-shot (``--output-format json``, which a session's ``-p``
 never has): prints a JSON envelope whose structured output is a recap built
 from the prompt; ``FAKE_CLAUDE_ONESHOT=fail|garbage|slow`` makes it exit 1,
-print non-JSON, or sleep 120 s.
+print non-JSON, or sleep 120 s (``FAKE_CLAUDE_ONESHOT_SLEEP`` seconds, when set)
+before answering. Each one-shot appends a line to
+``$FAKE_CLAUDE_HOME/oneshot.log`` and writes its pid to
+``$FAKE_CLAUDE_HOME/oneshot.pid``, so a test can count calls and find the child.
 
 With ``FAKE_CLAUDE_REPLAY=<store file>``, the first prompt instead replays the
 Claude lines of an aegis store, ``FAKE_CLAUDE_PACE`` seconds apart (default
@@ -565,13 +568,17 @@ def worker() -> None:
 def oneshot() -> None:
     mode = os.environ.get("FAKE_CLAUDE_ONESHOT", "")
     prompt = sys.argv[sys.argv.index("-p") + 1]
+    with open(os.path.join(HOME, "oneshot.log"), "a") as f:
+        f.write(f"{os.getpid()}\n")
+    with open(os.path.join(HOME, "oneshot.pid"), "w") as f:
+        f.write(str(os.getpid()))
     if mode == "fail":
         sys.exit(1)
     if mode == "garbage":
         print("not json")
         return
     if mode == "slow":
-        time.sleep(120)
+        time.sleep(float(os.environ.get("FAKE_CLAUDE_ONESHOT_SLEEP", "120")))
     lines = [ln for ln in prompt.splitlines() if ln.startswith("user: ")]
     last = lines[-1].removeprefix("user: ") if lines else "nothing"
     out = {"context": f"recap of: {last}", "ask": "answer it" if "?" in prompt else ""}

@@ -5,6 +5,7 @@ every browser gets the same entry. Rules of one recap are in recap.py."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import time
 
@@ -46,11 +47,23 @@ class Recaps:
                 return {"status": "skip"}
         task = asyncio.get_running_loop().create_task(self._make(s, cfg, upto))
         self._running[s.log_id] = task
-        try:
-            return await asyncio.shield(task)
-        finally:
-            if self._running.get(s.log_id) is task:
-                del self._running[s.log_id]
+        # The call frees its own slot: a requester that goes away leaves the call
+        # running, and the next request must join it, not pay for a second one.
+        task.add_done_callback(
+            lambda t, k=s.log_id: (
+                self._running.pop(k, None) if self._running.get(k) is t else None
+            )
+        )
+        return await asyncio.shield(task)
+
+    async def shutdown(self) -> None:
+        """Cancel every running call; each kills its claude on the way out."""
+        tasks = list(self._running.values())
+        for t in tasks:
+            t.cancel()
+        for t in tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
 
     async def _make(self, s, cfg: dict, upto: int) -> dict:
         prompt = recap.window(s.fold().entries(), s.unread, s.standing)
@@ -73,6 +86,12 @@ class Recaps:
             proc.kill()
             await proc.wait()
             return {"status": "failed", "why": f"no answer in {recap.TIMEOUT_S}s"}
+        except BaseException:
+            # Cancelled (server shutdown): a claude left running would keep billing.
+            if proc.returncode is None:
+                proc.kill()
+                await proc.wait()
+            raise
         if proc.returncode != 0:
             return {
                 "status": "failed",
@@ -81,6 +100,8 @@ class Recaps:
         value, cost, ms = recap.parse(out.decode(errors="replace"))
         if value is None:
             return {"status": "failed", "why": "the model returned nothing usable"}
+        if s.archived:
+            return {"status": "failed", "why": "the session was closed"}
         s.report(
             {
                 "kind": "recap",

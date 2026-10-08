@@ -199,6 +199,7 @@ class App:
         await self.quota.stop()
         await self.host.stop()
         await self.monitors.shutdown()
+        await self.recaps.shutdown()
         await self.sessions.shutdown()
 
     def publish(self, channel: str, ops: list[dict]) -> None:

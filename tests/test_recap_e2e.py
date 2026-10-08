@@ -1,7 +1,10 @@
 import asyncio
+import contextlib
+import os
 
 import pytest
 
+from aegis import recap
 from aegis.ops import Caller, OpError
 
 from .conftest import until
@@ -69,11 +72,17 @@ async def test_skip_busy_off_and_people_only(world, tmp_path):
             "recap.request", {"log_id": a.log_id}, Caller("agent", a.log_id)
         )
     assert e.value.code == "not_for_agents"
+    await until(lambda: a.status != "working", timeout=10, what="the turn's end")
+    (tmp_path / ".aegis.yaml").write_text(CONFIG + "recap: opus\n")
+    off = await world.app.registry.call(
+        "recap.request", {"log_id": a.log_id, "force": True}
+    )
+    assert off["status"] == "off" and "recap:" in off["why"]
     (tmp_path / ".aegis.yaml").write_text(CONFIG)
     off = await world.app.registry.call(
         "recap.request", {"log_id": a.log_id, "force": True}
     )
-    assert off["status"] in ("off", "busy")
+    assert off["status"] == "off" and "recap: {agent:" in off["why"]
 
 
 @pytest.mark.parametrize("mode", ["fail", "garbage"])
@@ -87,3 +96,93 @@ async def test_a_broken_call_is_failed_and_frees_the_slot(world, mode, monkeypat
     assert (await world.app.registry.call("recap.request", {"log_id": a.log_id}))[
         "status"
     ] == "made"
+
+
+def oneshots(tmp_path) -> list[str]:
+    """The pids of every one-shot the fake claude ran, one per call."""
+    log = tmp_path / "fake-home" / "oneshot.log"
+    return log.read_text().split() if log.exists() else []
+
+
+def alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+async def test_a_call_past_the_timeout_is_failed_and_frees_the_slot(world, monkeypatch):
+    a = await two_unread(world)
+    monkeypatch.setattr(recap, "TIMEOUT_S", 1)
+    monkeypatch.setenv("FAKE_CLAUDE_ONESHOT", "slow")
+    r = await world.app.registry.call("recap.request", {"log_id": a.log_id})
+    assert r["status"] == "failed" and "1s" in r["why"]
+    assert not [x for x in a.entries() if x["kind"] == "recap"]
+    monkeypatch.delenv("FAKE_CLAUDE_ONESHOT")
+    assert (await world.app.registry.call("recap.request", {"log_id": a.log_id}))[
+        "status"
+    ] == "made"
+
+
+async def test_a_cancelled_requester_leaves_the_call_holding_its_slot(
+    world, monkeypatch, tmp_path
+):
+    a = await two_unread(world)
+    monkeypatch.setattr(recap, "TIMEOUT_S", 3)
+    monkeypatch.setenv("FAKE_CLAUDE_ONESHOT", "slow")
+    first = asyncio.create_task(
+        world.app.registry.call("recap.request", {"log_id": a.log_id})
+    )
+    await asyncio.sleep(0.3)
+    first.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await first
+    r = await world.app.registry.call("recap.request", {"log_id": a.log_id})
+    assert r["status"] == "failed"
+    assert len(oneshots(tmp_path)) == 1
+
+
+async def test_shutdown_kills_a_running_call(world, monkeypatch, tmp_path):
+    a = await two_unread(world)
+    monkeypatch.setattr(recap, "TIMEOUT_S", 60)
+    monkeypatch.setenv("FAKE_CLAUDE_ONESHOT", "slow")
+    pending = asyncio.create_task(
+        world.app.registry.call("recap.request", {"log_id": a.log_id})
+    )
+    await until(lambda: oneshots(tmp_path), timeout=10, what="the one-shot")
+    (pid,) = map(int, oneshots(tmp_path))
+    await world.app.recaps.shutdown()
+    await until(lambda: not alive(pid), what="the one-shot's death")
+    with contextlib.suppress(asyncio.CancelledError):
+        await pending
+    assert pending.done()
+
+
+async def test_a_session_closed_during_the_call_gets_no_record(world, monkeypatch):
+    a = await two_unread(world)
+    monkeypatch.setenv("FAKE_CLAUDE_ONESHOT", "slow")
+    monkeypatch.setenv("FAKE_CLAUDE_ONESHOT_SLEEP", "1")
+    pending = asyncio.create_task(
+        world.app.registry.call("recap.request", {"log_id": a.log_id})
+    )
+    await asyncio.sleep(0.2)
+    await world.app.registry.call("session.close", {"log_id": a.log_id})
+    r = await pending
+    assert r == {"status": "failed", "why": "the session was closed"}
+    assert not a.recap_cost_usd
+
+
+async def test_stopping_the_server_kills_a_running_call(world, monkeypatch, tmp_path):
+    a = await two_unread(world)
+    monkeypatch.setattr(recap, "TIMEOUT_S", 60)
+    monkeypatch.setenv("FAKE_CLAUDE_ONESHOT", "slow")
+    pending = asyncio.create_task(
+        world.app.registry.call("recap.request", {"log_id": a.log_id})
+    )
+    await until(lambda: oneshots(tmp_path), timeout=10, what="the one-shot")
+    (pid,) = map(int, oneshots(tmp_path))
+    await world.stop()
+    await until(lambda: not alive(pid), what="the one-shot's death")
+    with contextlib.suppress(asyncio.CancelledError):
+        await pending
