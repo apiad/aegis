@@ -87,6 +87,16 @@ token the request carries; the token is minted for each `claude` process and rid
 in its `--mcp-config` header. No tool takes the caller's handle as an argument,
 because an argument can be wrong and the token cannot.
 
+**A `/` line is resolved on the server, and a typo costs nothing.** `session.send`
+runs an aegis command (`commands.py`) as the operation it stands for, passes a name
+in the session's catalog to `claude` as typed, and refuses anything else: Claude
+answers an unknown command with the model. The catalog is Claude's own
+`initialize` answer, in memory by cwd, never on disk, so an upgraded CLI never
+meets a stale list. `/model`, `/effort` and `/permission` are aegis's, because the
+spec the next `--resume` is built from has to change with the process; they reach
+a live `claude` as control requests whose answers `ClaudeProcess.request` routes
+and does not store.
+
 **The inbox holds messages until a turn ends.** A monitor's wake, a queue's result
 and a handoff reach a session as a user turn headed `> from <kind>:<name> · …`. An
 idle session gets it at once and a stopped one is resumed for it; a working one
@@ -166,7 +176,9 @@ the legacy tree.
 sent mid-turn at the next tool boundary and closes both prompts with one `result`,
 so a turn is not one prompt and nothing counts turns by counting sends. A sent
 prompt is pending until Claude echoes it, and the transcript records the order the
-model read things in.
+model read things in. An answer takes the pending send whose text it answers,
+else the oldest of its kind, because a slash command waits for the turn to end
+while a prompt is read at the next tool boundary.
 
 **System notices never start a turn.** Hook, init, thinking-token and task notices
 arrive both inside and outside turns. Only a sent prompt or a turn-bearing event

@@ -107,9 +107,12 @@ def rebuild(store_path: Path) -> dict | None:
                 (e for e in parse(r.get("line", "")) if isinstance(e, Init)), None
             )
             if init and init.session_id:
-                claude_id = init.session_id
-                break
+                claude_id = init.session_id  # the last one: /clear starts anew
     first_send = next((r for r in records if r.get("kind") == "send"), None)
+    spec = {k: spawn.get(k) for k in ("model", "effort", "permission")}
+    for r in records:
+        if r.get("kind") == "configure":
+            spec.update({k: r[k] for k in spec if r.get(k)})
     return {
         "log_id": store_path.stem,
         "handle": None,
@@ -119,9 +122,9 @@ def rebuild(store_path: Path) -> dict | None:
         "priming": spawn.get("priming"),
         "overridden": spawn.get("overridden"),
         "spawned_by": spawn.get("spawned_by"),
-        "model": spawn.get("model"),
-        "effort": spawn.get("effort"),
-        "permission": spawn.get("permission"),
+        "model": spec["model"],
+        "effort": spec["effort"],
+        "permission": spec["permission"],
         "cwd": spawn.get("cwd"),
         "claude_session_id": claude_id,
         "archived": True,

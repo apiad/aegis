@@ -17,6 +17,8 @@ from .conftest import until
 
 pytestmark = pytest.mark.live
 HAIKU = "claude-haiku-4-5-20251001"
+# Haiku at low effort followed the primer's Bash paragraph in 2 of 3 runs, so
+# the test of that paragraph runs on Sonnet, which followed it in 3 of 3.
 SONNET = "claude-sonnet-5"
 
 
@@ -260,6 +262,51 @@ async def test_real_claude_spawns_a_peer_through_session_spawn(tmp_path: Path):
         await asyncio.wait_for(task, 30)
 
 
+async def test_real_claude_switches_model_and_effort_and_keeps_them_across_resume(
+    tmp_path: Path,
+):
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    path = tmp_path / "log.jsonl"
+    s = Session(
+        log_id="live-cmd",
+        spec=SpawnSpec("haiku", HAIKU, "low", "full", tmp_path),
+        handle="live-cmd",
+        store=Store(path),
+        stderr_path=tmp_path / "stderr.log",
+        claude_bin=claude,
+        publish=lambda ch, ops: None,
+        metas=MetaStore(tmp_path / "sessions"),
+    )
+    await s.start()
+    try:
+        cat = await s.catalog_task
+        assert cat and cat.has("compact") and cat.model("sonnet")
+        await s.configure(model="sonnet", effort="low")
+        await s.send("Reply with the single word OK.")
+        await until(
+            lambda: s.status == "idle" and s.cost_usd, timeout=90, what="the turn"
+        )
+        assert s.model_id and "sonnet" in s.model_id
+        await s.send("/context")
+        await until(
+            lambda: (
+                s.status == "idle" and any(e["kind"] == "command" for e in s.entries())
+            ),
+            timeout=60,
+            what="/context",
+        )
+        await s.stop()
+        await s.send("Reply with the single word OK.")
+        await until(lambda: s.status == "idle", timeout=90, what="the resumed turn")
+        assert "sonnet" in (s.model_id or "")
+        assert not [e for e in s.entries() if e["status"] == "pending"]
+    finally:
+        await s.stop()
+    records, damaged = read_store(path)
+    assert damaged == 0 and fold_records(records).entries() == s.entries()
+
+
 async def test_real_claude_gives_a_countable_wait_a_progress_command(tmp_path: Path):
     """Told only what to wait for, the real binary arms the monitor with a
     `progress` command because the tool and the primer ask for one (#165)."""
@@ -309,6 +356,61 @@ async def test_real_claude_gives_a_countable_wait_a_progress_command(tmp_path: P
         )
         (m,) = app.monitors.of(s.log_id)
         assert m.progress, f"armed with no progress command: {m}"
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
+async def test_real_claude_ends_a_bash_call_on_a_counted_verdict(tmp_path: Path):
+    """The primer's Bash paragraph reaches the real binary: a search whose
+    plain answer ends on a file name instead ends on the count it found."""
+    import asyncio
+    import re
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+    )
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    names = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf"]
+    for k, name in enumerate(names):
+        (logs / f"{name}.log").write_text("ERROR disk full\n" if k % 3 == 0 else "ok\n")
+    hits = sum(k % 3 == 0 for k in range(len(names)))
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            f"With one Bash call, list the files in {logs} that contain the word "
+            "ERROR. Then end your turn."
+        )
+        await until(lambda: s.status == "idle", timeout=180, what="the Bash turn")
+        rows = [e for e in s.entries() if e["kind"] == "tool" and e["title"] == "Bash"]
+        assert rows, "Claude made no Bash call"
+        verdict = rows[-1]["detail"]["result"]
+        assert re.search(rf"\b{hits}\b", verdict), verdict
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)

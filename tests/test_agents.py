@@ -266,6 +266,69 @@ async def test_monitor_progress_and_fail(world, tmp_path):
     assert " · fail · " in inbox(a)[0]["title"]
 
 
+@pytest.mark.slow  # three polls a second apart
+async def test_a_monitors_card_carries_its_commands_readings_and_eta(world, tmp_path):
+    a = await world.spawn()
+    pct = tmp_path / "pct"
+    pct.write_text("0\n")
+    await turn(
+        a,
+        mcp(
+            "monitor_start",
+            description="build",
+            done="false",
+            progress="cat pct",
+            interval_s=1,
+        ),
+    )
+    for prev, v in ((0, 20), (20, 40)):
+        await until(
+            lambda p=prev: a.wire()["monitors"][0]["progress"] == p,
+            timeout=5,
+            what=f"{prev}%",
+        )
+        pct.write_text(f"{v}\n")
+    await until(
+        lambda: a.wire()["monitors"][0]["progress"] == 40, timeout=5, what="40%"
+    )
+    (m,) = a.wire()["monitors"]
+    assert [r[1] for r in m["readings"]] == [0, 20, 40]
+    assert m["eta_at"] > m["readings"][-1][0]
+    assert m["eta_basis"].endswith("since progress first moved")
+    assert m["cwd"] == str(tmp_path) and m["timeout_s"] == 3600
+    checks = {c["kind"]: c for c in m["checks"]}
+    assert checks["done"]["cmd"] == "false"
+    assert checks["done"]["verdict"] == "not yet" and not checks["done"]["bad"]
+    assert checks["progress"]["verdict"] == "printed 40"
+    assert checks["fail"]["cmd"] is None
+    assert m["broken"] is False
+
+
+async def test_a_check_that_cannot_run_shows_its_exit_code_and_stderr(world):
+    """A missing command exits 127 on every poll; without this it looks exactly
+    like a monitor still waiting, until its timeout (#174)."""
+    a = await world.spawn()
+    await turn(
+        a,
+        mcp(
+            "monitor_start",
+            description="never passes",
+            done="no-such-aegis-cmd --status",
+            progress=None,
+            interval_s=1,
+        ),
+    )
+    await until(
+        lambda: a.wire()["monitors"][0]["broken"],
+        what="the broken check reaches the card",
+    )
+    (m,) = a.wire()["monitors"]
+    done = next(c for c in m["checks"] if c["kind"] == "done")
+    assert done["rc"] == 127 and done["verdict"] == "command not found" and done["bad"]
+    assert "no-such-aegis-cmd" in done["err"]
+    assert done["since"] >= m["started_at"]
+
+
 async def test_a_monitor_needs_progress_or_an_explicit_null(world):
     """Leaving `progress` out is refused, so an agent decides to opt out instead of
     forgetting: 44 of 51 monitors armed on zion in early October had none (#165)."""

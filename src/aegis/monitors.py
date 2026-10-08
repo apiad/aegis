@@ -6,6 +6,15 @@ timeout ends it, and ``progress`` prints 0 to 100 for the bar on its card. The
 owner is woken through its inbox with ``> from monitor:<id> · <outcome> · …``,
 and the wake lists the owner's other live monitors so it can cancel stale ones.
 
+The card carries what a person needs to judge a monitor without reading its
+JSON: the commands, the readings, an ETA, and the last result of each check
+with its stderr line. A missing command exits 127 on every poll and otherwise
+looks exactly like a condition still waiting (#174). The card is republished
+only when a reading or a check's verdict changes, never on a poll that changed
+nothing, so a 10-second monitor does not patch every browser every 10 seconds;
+that is why a check reports ``since`` (when its result began) and not when it
+last ran.
+
 Monitors are kept in ``<state>/monitors.json`` and re-armed at boot; a wake to
 a stopped owner resumes it.
 """
@@ -28,6 +37,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("aegis.monitors")
 CONDITION_LIMIT_S = 30.0
+READINGS_KEPT = 100
 
 
 def iso_now() -> str:
@@ -58,12 +68,53 @@ class Monitor:
     timeout_s: float = 3600.0
     started_at: float = field(default_factory=time.time)
     last_progress: int | None = None
+    readings: list[list[float]] = field(default_factory=list)  # [time, percent]
+    checks: dict[str, dict] = field(default_factory=dict)  # kind -> last result
+
+    def read(self, t: float, value: int) -> None:
+        """Keep a reading when it differs from the last. Trimming drops the
+        oldest after the first two, which the ETA's rate is anchored on."""
+        if self.readings and self.readings[-1][1] == value:
+            return
+        self.readings.append([t, value])
+        if len(self.readings) > READINGS_KEPT:
+            del self.readings[2]
+
+    def record(self, kind: str, rc: int | None, out: str, err: str) -> bool:
+        """Keep a check's result; True when its verdict changed."""
+        said, bad = verdict(kind, rc, out, err)
+        prev = self.checks.get(kind)
+        changed = prev is None or (prev["rc"], prev["verdict"]) != (rc, said)
+        since = time.time() if prev is None or changed else prev["since"]
+        self.checks[kind] = {
+            "rc": rc,
+            "verdict": said,
+            "bad": bad,
+            "out": _last_line(out),
+            "err": _last_line(err),
+            "since": since,
+        }
+        return changed
 
     def card(self) -> dict:
+        due = eta(self.started_at, self.readings)
+        checks = []
+        for kind in ("done", "progress", "fail"):
+            cmd = getattr(self, kind)
+            checks.append({"kind": kind, "cmd": cmd, **(self.checks.get(kind) or {})})
         return {
             "id": self.id,
             "description": self.description,
             "progress": self.last_progress,
+            "cwd": self.cwd,
+            "started_at": self.started_at,
+            "interval_s": self.interval_s,
+            "timeout_s": self.timeout_s,
+            "readings": self.readings,
+            "eta_at": due[0] if due else None,
+            "eta_basis": due[1] if due else None,
+            "checks": checks,
+            "broken": any(c.get("bad") for c in checks),
         }
 
 
@@ -141,7 +192,7 @@ class Monitors:
     def _arm(self, m: Monitor) -> None:
         self._tasks[m.id] = asyncio.get_running_loop().create_task(self._watch(m))
 
-    async def _run(self, cmd: str, cwd: str) -> tuple[int | None, str]:
+    async def _run(self, cmd: str, cwd: str) -> tuple[int | None, str, str]:
         try:
             proc = await asyncio.create_subprocess_exec(
                 "bash",
@@ -149,17 +200,29 @@ class Monitors:
                 cmd,
                 cwd=cwd,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
             )
         except OSError as e:
-            return None, str(e)
+            return None, "", str(e)
         try:
-            out, _ = await asyncio.wait_for(proc.communicate(), CONDITION_LIMIT_S)
+            out, err = await asyncio.wait_for(proc.communicate(), CONDITION_LIMIT_S)
         except TimeoutError:
             proc.kill()
             await proc.wait()
-            return None, f"took over {CONDITION_LIMIT_S:g}s"
-        return proc.returncode, out.decode("utf-8", "replace")
+            return None, "", f"took over {CONDITION_LIMIT_S:g}s"
+        return (
+            proc.returncode,
+            out.decode("utf-8", "replace"),
+            err.decode("utf-8", "replace"),
+        )
+
+    async def _check(self, m: Monitor, kind: str) -> tuple[int | None, str, bool]:
+        rc, out, err = await self._run(getattr(m, kind), m.cwd)
+        return rc, out, m.record(kind, rc, out, err)
+
+    def _publish(self, m: Monitor) -> None:
+        self._save()
+        self._registry.refresh_card(m.owner)
 
     async def _watch(self, m: Monitor) -> None:
         try:
@@ -174,21 +237,28 @@ class Monitors:
                         f"it ran out of time after {_elapsed(m.timeout_s)}",
                     )
                     return
-                rc, _ = await self._run(m.done, m.cwd)
+                rc, _, changed = await self._check(m, "done")
+                if changed:
+                    self._publish(m)
                 if rc == 0:
                     await self._end(m, "ok", "its done condition passed")
                     return
                 if m.fail:
-                    rc, _ = await self._run(m.fail, m.cwd)
+                    rc, _, changed = await self._check(m, "fail")
+                    if changed:
+                        self._publish(m)
                     if rc == 0:
                         await self._end(m, "fail", "its fail condition passed")
                         return
                 if m.progress:
-                    rc, out = await self._run(m.progress, m.cwd)
+                    rc, out, changed = await self._check(m, "progress")
                     value = _percent(out) if rc == 0 else None
                     if value is not None and value != m.last_progress:
                         m.last_progress = value
-                        self._registry.refresh_card(m.owner)
+                        m.read(time.time(), value)
+                        changed = True
+                    if changed:
+                        self._publish(m)
                 await asyncio.sleep(m.interval_s)
         except asyncio.CancelledError:
             raise
@@ -224,6 +294,68 @@ class Monitors:
             )
         except Exception:
             log.exception("aegis: could not deliver the wake of %s", m.id)
+
+
+def eta(started_at: float, readings: list[list[float]]) -> tuple[float, str] | None:
+    """When progress reaches 100 at its current rate, and what the rate is.
+
+    The rate runs from the first reading that moved off the starting value to
+    the latest. A CI wait sits at 0 while runners set up, and counting that wait
+    made the TUI's straight line from the start guess long. With a single move
+    there is nothing else to go on, so that line is the fallback."""
+    if not readings:
+        return None
+    t_last, p_last = readings[-1]
+    base = readings[0][1]
+    moved = next((r for r in readings if r[1] != base), None)
+    if moved is None:
+        return None
+    if p_last >= 100:
+        return t_last, "finished"
+    if moved is readings[-1]:
+        t0, p0, since = started_at, base, "since the start"
+    else:
+        (t0, p0), since = moved, "since progress first moved"
+    gained, took = p_last - p0, t_last - t0
+    if gained <= 0 or took <= 0:
+        return None
+    return (
+        t_last + (100 - p_last) * took / gained,
+        f"{gained:g} points in {_elapsed(took)}, {since}",
+    )
+
+
+def verdict(kind: str, rc: int | None, out: str, err: str) -> tuple[str, bool]:
+    """A check's result in words, and whether it means the check cannot run.
+
+    Only a command bash cannot find or execute, or one that cannot finish, is
+    broken: any other exit is a condition answering, and a progress command
+    reading a file that does not exist yet is how many monitors start. Bash's
+    own "command not found" counts whatever the exit code, since in a pipeline
+    (`gh ... | jq`) the code is the last command's."""
+    if rc is None:
+        return err, True
+    if rc == 127 or (rc != 0 and "command not found" in err):
+        return "command not found", True
+    if rc == 126:
+        return "cannot execute", True
+    if kind == "progress":
+        if rc != 0:
+            return f"exit {rc}, no reading", False
+        value = _percent(out)
+        return (
+            ("printed no number", False)
+            if value is None
+            else (f"printed {value}", False)
+        )
+    if kind == "done":
+        return ("passed" if rc == 0 else "not yet"), False
+    return ("failed" if rc == 0 else "not failing"), False
+
+
+def _last_line(text: str) -> str:
+    lines = [ln for ln in text.strip().splitlines() if ln.strip()]
+    return lines[-1][:300] if lines else ""
 
 
 def _percent(out: str) -> int | None:

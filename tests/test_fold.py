@@ -1,6 +1,8 @@
 import json
+from pathlib import Path
 
 from aegis.transcript.entries import EMPTY_STANDING, Fold, fold_records
+from aegis.transcript.store import read_store
 
 
 class Rec:
@@ -148,6 +150,33 @@ def test_tool_output_replaces_its_call_in_place():
         "3 passed",
     )
     assert done["detail"]["collapsed"] is True
+
+
+def test_a_bash_verdict_skips_the_lines_claude_code_appends():
+    r = Rec()
+    r.call("t1", "Bash", {"command": "cd /x && pytest -q"})
+    r.output("t1", "....\n3 passed in 0.2s\nShell cwd was reset to /home/a/w")
+    r.call("t2", "Bash", {"command": "sed -i s/a/b/ x.py && echo done"})
+    r.output(
+        "t2",
+        "2 files changed\n[This command modified 1 file you've previously read:"
+        " x.py. Call Read before editing.]",
+    )
+    a, b = run(r)[0].entries()
+    assert a["detail"]["result"] == "3 passed in 0.2s"
+    assert b["detail"]["result"] == "2 files changed"
+
+
+def test_a_failed_bash_verdict_skips_them_too():
+    r = Rec()
+    r.call("t1", "Bash", {"command": "cd /x && make test"})
+    r.output(
+        "t1",
+        "Exit code 2\n1 failed, 3 passed\nShell cwd was reset to /home/a/w",
+        is_error=True,
+    )
+    (e,) = run(r)[0].entries()
+    assert e["detail"]["result"] == "Exit code 2 · 1 failed, 3 passed"
 
 
 def test_a_failure_starts_open_with_its_tail():
@@ -403,6 +432,150 @@ def test_activity_names_the_latest_sent_file():
     assert run(r)[0].activity() == "sent informe año.png"
     r.text("Done.")
     assert run(r)[0].activity() == "Done."
+
+
+FIXTURE = Path("tests/fixtures/slash-commands.jsonl")
+
+
+def local(command, args, text):
+    return {
+        "type": "assistant",
+        "local_command_run": {"command": command, "args": args},
+        "message": {
+            "model": "<synthetic>",
+            "content": [{"type": "text", "text": text}],
+        },
+    }
+
+
+def test_the_recorded_slash_commands_fold_with_nothing_left_pending():
+    records, damaged = read_store(FIXTURE)
+    assert damaged == 0
+    es = fold_records(records).entries()
+    assert not [e for e in es if e["status"] == "pending"]
+    cmds = [(e["title"], e["md"]) for e in es if e["kind"] == "command"]
+    assert cmds[0][0] == "/effort high"
+    assert cmds[0][1].startswith("Set effort level to high")
+    assert ("/compact", "Compacted") in cmds
+    users = [e["md"] for e in es if e["kind"] == "user"]
+    assert users == ["/hello world", "what did I say before? one line"]
+    raw = [
+        e
+        for e in es
+        if "<command-" in (e["md"] or "") or "<local-command" in (e["md"] or "")
+    ]
+    assert not raw
+    assert any(e["summary"].startswith("context cleared") for e in es)
+
+
+def test_a_command_waiting_for_the_turn_end_does_not_take_a_prompts_echo():
+    r = Rec()
+    r.own("send", text="/sleep 2")
+    r.call("t1", "Bash", {"command": "sleep 2"})
+    r.own("send", text="/effort low")
+    r.own("send", text="steer")
+    r.echo("steer")  # injected at the tool boundary
+    r.output("t1", "slept")
+    r.result()
+    r.claude(local("effort", "low", "Set effort level to low"))
+    r.claude(
+        {"type": "result", "subtype": "success", "num_turns": 0, "total_cost_usd": 0.01}
+    )
+    f, _ = run(r)
+    es = f.entries()
+    read = [e["md"] for e in es if e["kind"] == "user" and e["status"] == "ok"]
+    assert read == ["steer"]
+    assert [e["title"] for e in es if e["kind"] == "command"] == ["/effort low"]
+    # Nothing echoed /sleep here; the fake echoes it, real Claude runs a script.
+    assert [e["md"] for e in es if e["status"] == "pending"] == ["/sleep 2"]
+
+
+def test_the_escape_leading_space_matches_the_stripped_echo():
+    r = Rec()
+    r.own("send", text=" /compact now")
+    r.echo("/compact now")
+    f, ops = run(r)
+    assert ops[1][0] == {"remove": "pending:0"}
+    assert [e["md"] for e in f.entries()] == ["/compact now"]
+
+
+def test_output_with_no_command_waiting_makes_no_entry():
+    r = Rec()
+    r.claude(
+        {
+            "type": "user",
+            "isReplay": True,
+            "message": {
+                "content": "<local-command-stdout>Set model to Sonnet 5</local-command-stdout>"
+            },
+        }
+    )
+    f, _ = run(r)
+    assert f.entries() == []
+
+
+def test_a_local_only_turn_leaves_no_done_row_but_compact_shows_its_cost():
+    r = Rec()
+    r.claude(
+        {
+            "type": "result",
+            "subtype": "success",
+            "num_turns": 0,
+            "total_cost_usd": 0.0,
+            "duration_ms": 0,
+        }
+    )
+    r.claude(
+        {
+            "type": "result",
+            "subtype": "success",
+            "num_turns": 0,
+            "total_cost_usd": 0.04,
+            "duration_ms": 3000,
+        }
+    )
+    f, _ = run(r)
+    assert [e["summary"] for e in f.entries()] == ["done in 3.0s · $0.04"]
+
+
+def test_configure_records_read_as_one_line():
+    r = Rec()
+    r.own("configure", model="sonnet", effort="max", when="next_turn")
+    r.own("configure", permission="read", when="on_resume")
+    r.own("configure", effort="low")
+    f, _ = run(r)
+    assert [e["summary"] for e in f.entries()] == [
+        "model → sonnet · effort → max (from the next turn)",
+        "permission → read (when it resumes)",
+        "effort → low",
+    ]
+
+
+def test_a_set_model_note_does_not_take_a_queued_commands_place():
+    r = Rec()
+    r.own("send", text="/compact")
+    r.claude(
+        {
+            "type": "user",
+            "isReplay": True,
+            "message": {
+                "content": "<local-command-stdout>Set model to Opus</local-command-stdout>"
+            },
+        }
+    )
+    r.claude(
+        {
+            "type": "user",
+            "isReplay": True,
+            "message": {
+                "content": "<local-command-stdout>Compacted </local-command-stdout>"
+            },
+        }
+    )
+    f, _ = run(r)
+    assert [(e["kind"], e["title"], e["md"]) for e in f.entries()] == [
+        ("command", "/compact", "Compacted")
+    ]
 
 
 def plan(*pairs):

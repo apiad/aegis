@@ -11,6 +11,8 @@ import { ago, money, patchCard, renderArchive, renderBand, renderBandQuota, rend
 import { age, quotaSideRow } from "./gauges.js";
 import { installKeys, renderKeys } from "./keys.js";
 import { glyph, installGlyphs, LABEL } from "./glyphs.js";
+import { CommandMenu } from "./commands.js";
+import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -310,6 +312,7 @@ function follow(id) {
     },
     (ops) => transcript.apply(ops),
   );
+  menu.close();
   $("input").value = localStorage.getItem(`aegis.draft.${id}`) || "";
   autosize();
 }
@@ -365,28 +368,7 @@ function renderMeta(s) {
   $("s-cost").textContent = money(s.cost_usd);
   const mons = s.monitors || [];
   $("s-mon-sec").hidden = !mons.length;
-  $("s-monitors").replaceChildren(
-    ...mons.map((m) => {
-      const box = document.createElement("div");
-      box.className = "mon";
-      const kv = document.createElement("div");
-      kv.className = "kv";
-      const name = document.createElement("span");
-      name.textContent = m.description;
-      const pct = document.createElement("span");
-      pct.textContent = m.progress == null ? "watching" : `${m.progress}%`;
-      kv.append(name, pct);
-      // No command, no reading yet, or a reading of 0: the monitor is running and
-      // how far it got is unknown, so the bar moves instead of sitting empty.
-      const bar = document.createElement("div");
-      bar.className = m.progress ? "bar thin" : "bar thin indet";
-      const fill = document.createElement("i");
-      if (m.progress) fill.style.width = `${m.progress}%`;
-      bar.append(fill);
-      box.append(kv, bar);
-      return box;
-    }),
-  );
+  renderMonitors($("s-monitors"), mons);
   const working = s.state === "working";
   $("stop").hidden = !working;
   $("working").hidden = !working;
@@ -396,11 +378,12 @@ function renderMeta(s) {
   $("input").placeholder =
     s.state === "stopped"
       ? "Stopped; your next message resumes it."
-      : "Message the agent. Enter sends, Shift+Enter adds a line, Esc interrupts.";
+      : "Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts.";
   document.title = `${working ? "● " : ""}${s.title || s.handle} · aegis`;
 }
 
 setInterval(() => {
+  tickMonitors();
   if (workingSince != null) $("working-meta").textContent = `${Math.round((Date.now() - workingSince) / 1000)}s, Esc interrupts`;
   if (root.dataset.view === "fleet") for (const c of document.querySelectorAll(".card")) {
     const m = sessions.get(c.dataset.id);
@@ -726,8 +709,18 @@ installKeys(
       if (n === 0) go("#fleet");
       else if (ordered[n - 1]) go(`#s=${ordered[n - 1].log_id}`);
     },
+    commands() {
+      if (route().view !== "session") return;
+      const v = input.value;
+      if (!v || v.startsWith("/")) {
+        if (!v) input.value = "/";
+        input.focus();
+        menu.openInline();
+      } else menu.openOverlay();
+    },
     escape() {
       if (!keymap.hidden) help(false);
+      else if (closeMonitorCard()) return;
       else if (route().view === "session" && !editing.size) interrupt();
     },
     help: () => help(),
@@ -763,39 +756,97 @@ function drawReplies(s) {
       const b = document.createElement("button");
       b.className = "rp";
       b.textContent = text;
-      b.addEventListener("click", () => sendText(text));
+      b.addEventListener("click", () => sendLine(text, false));
       return b;
     }),
   );
 }
 
-async function sendText(text) {
+// A line from the composer, or from the menu's own filter (Alt+/ over a
+// draft), which leaves the composer alone. The server resolves "/" lines.
+async function sendLine(text, fromComposer) {
   const s = focused();
-  if (!text || !s) return false;
+  if (!text || !s) return;
+  if (text === "/help") {
+    // The menu is the help: it lists every command with what it does.
+    if (fromComposer) menu.setLine("/");
+    menu.close();
+    if (fromComposer) menu.openInline();
+    else menu.openOverlay();
+    return;
+  }
+  if (text === "/close" && !confirm(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`)) return;
   $("send-error").textContent = "";
-  const was = $("replies").hidden;
-  $("replies").hidden = true; // any send answers the turn the pills belonged to
-  delete $("replies").dataset.key; // so the next drawReplies always redraws
+  const box = $("replies");
+  const was = box.hidden;
+  box.hidden = true; // any send answers the turn the pills belonged to
+  delete box.dataset.key; // so the next drawReplies always redraws
   try {
     await conn.call("session.send", { log_id: s.log_id, text });
+    if (/^\/model\s/.test(text)) catalogs.delete(s.log_id); // its efforts may differ
+    if (fromComposer) {
+      input.value = "";
+      localStorage.removeItem(`aegis.draft.${s.log_id}`);
+      autosize();
+      // Clearing the box fires no input event; an open menu would take the next Esc.
+      menu.close();
+      $("composer").classList.remove("bad");
+    }
     transcript.toBottom();
-    return true;
   } catch (e) {
     $("send-error").textContent = e.message;
-    $("replies").hidden = was;
-    return false;
+    box.hidden = was;
   }
 }
 
-async function send() {
+const send = () => sendLine(input.value.trim(), true);
+
+// Catalogs per session, fetched when the menu first opens there. The promise
+// is kept, so keystrokes that arrive while it loads wait for the same call
+// instead of each asking the server again.
+const catalogs = new Map();
+async function loadCatalog() {
   const s = focused();
-  const text = input.value.trim();
-  if (!text || !s) return;
-  if (await sendText(text)) {
-    input.value = "";
-    localStorage.removeItem(`aegis.draft.${s.log_id}`);
-    autosize();
+  if (!s) return null;
+  if (!catalogs.has(s.log_id)) catalogs.set(s.log_id, conn.call("commands.list", { log_id: s.log_id }));
+  try {
+    return await catalogs.get(s.log_id);
+  } catch (e) {
+    catalogs.delete(s.log_id); // the next open asks again
+    $("send-error").textContent = e.message;
+    return null;
   }
+}
+
+const menu = new CommandMenu({
+  box: $("cmd-menu"),
+  rows: $("cmd-rows"),
+  filter: $("cmd-filter"),
+  load: loadCatalog,
+  run: (line) => sendLine(line, false),
+  getLine: () => input.value,
+  setLine: (v) => {
+    input.value = v;
+    autosize();
+    if (shown) localStorage.setItem(`aegis.draft.${shown}`, v);
+    input.focus();
+  },
+  meta: () => focused(),
+});
+
+for (const [id, cmd] of [
+  ["chip-model", "model"],
+  ["chip-effort", "effort"],
+  ["chip-perm", "permission"],
+]) {
+  $(id).classList.add("click");
+  $(id).addEventListener("click", () => {
+    // Over a draft, the menu's own filter line, as Alt+/ does, so the draft stays.
+    if (input.value && !input.value.startsWith("/")) return menu.openOverlay(`/${cmd} `);
+    input.value = `/${cmd} `;
+    input.focus();
+    menu.openInline();
+  });
 }
 
 async function interrupt() {
@@ -808,11 +859,19 @@ async function interrupt() {
   }
 }
 
-input.addEventListener("input", () => {
+input.addEventListener("input", async () => {
   autosize();
   if (shown) localStorage.setItem(`aegis.draft.${shown}`, input.value);
+  const v = input.value;
+  if (v.startsWith("/") && !v.startsWith("//")) {
+    if (menu.isOpen) menu.refresh();
+    else await menu.openInline(); // the outline below needs the catalog it loads
+  } else if (menu.isOpen) menu.close();
+  const now = input.value;
+  $("composer").classList.toggle("bad", now.startsWith("/") && !now.startsWith("//") && !menu.known(now));
 });
 input.addEventListener("keydown", (ev) => {
+  if (menu.onKey(ev)) return;
   if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
     ev.preventDefault();
     send();

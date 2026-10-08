@@ -9,9 +9,10 @@ equal a fold of its store.
 
 Two rules from Claude Code's measured behaviour live here:
 
-- The echo creates the user entry, never the send. A prompt sent mid-turn is
-  injected at the next tool boundary; the echo is when Claude read it, and
-  echoes match pending prompts in send order.
+- The echo creates the user entry, never the send. An answer takes the pending
+  send whose text it answers, else the oldest of its kind: a prompt sent
+  mid-turn is read at the next tool boundary, while a slash command waits for
+  the turn to end, so the two kinds are answered out of order.
 - System notices make no entry.
 """
 
@@ -22,11 +23,15 @@ from collections import deque
 from typing import Any
 
 from ..claude.stream import (
+    CommandEcho,
+    CommandOutput,
     Compact,
     Echo,
     Event,
     Garbled,
     Init,
+    LocalCommand,
+    Reset,
     Result,
     Text,
     Thinking,
@@ -127,6 +132,26 @@ class Fold:
                     {**e, "status": "err", "detail": {**e["detail"], "result": verdict}}
                 )
         return ops
+
+    def _take(
+        self, want: str | None, command: bool, strict: bool = False
+    ) -> str | None:
+        """Remove and return the pending send an answer belongs to: the oldest
+        whose text is ``want`` (compared stripped), else the oldest command line
+        or prompt as ``command`` says, else, unless ``strict``, the oldest."""
+        texts = [
+            (p, (self._entries.get(p) or {}).get("md") or "") for p in self._pending
+        ]
+        pick = None
+        if want is not None:
+            pick = next((p for p, t in texts if t.strip() == want.strip()), None)
+        if pick is None:
+            pick = next((p for p, t in texts if t.startswith("/") == command), None)
+        if pick is None and not strict and texts:
+            pick = texts[0][0]
+        if pick is not None:
+            self._pending.remove(pick)
+        return pick
 
     def _lose_pending(self) -> list[dict]:
         """Prompts Claude never read before its process ended."""
@@ -273,6 +298,20 @@ class Fold:
                     },
                 )
             )
+        if kind == "configure":
+            parts = [
+                f"{k} → {rec[k]}"
+                for k in ("model", "effort", "permission")
+                if rec.get(k)
+            ]
+            when = {
+                "next_turn": "from the next turn",
+                "on_resume": "when it resumes",
+            }.get(str(rec.get("when") or ""))
+            line = " · ".join(parts) + (f" ({when})" if when else "")
+            return self._upsert(
+                _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary=line)
+            )
         if kind == "damaged":
             n = rec.get("count", 0)
             return self._upsert(
@@ -291,8 +330,9 @@ class Fold:
     def _event(self, id: str, ts: float | None, ev: Event) -> list[dict]:
         if isinstance(ev, Echo):
             ops: list[dict] = []
-            if self._pending:
-                ops += self._remove(self._pending.popleft())
+            pid = self._take(ev.text, command=False)
+            if pid is not None:
+                ops += self._remove(pid)
             if ev.text.startswith("> from "):
                 # An inbox message: a monitor wake, a queue result, a handoff.
                 header = ev.text.splitlines()[0].removeprefix("> from ").strip()
@@ -303,6 +343,66 @@ class Fold:
                 )
             return ops + self._upsert(
                 _entry(id, "user", "ok", ts, d.USER_GLYPH, md=ev.text)
+            )
+
+        if isinstance(ev, LocalCommand):
+            line = f"/{ev.command} {ev.args}".strip()
+            pid = self._take(line, command=True, strict=True)
+            ops = self._remove(pid) if pid is not None else []
+            return ops + self._upsert(
+                _entry(
+                    id,
+                    "command",
+                    "ok",
+                    ts,
+                    d.COMMAND_GLYPH,
+                    title=line,
+                    md=ev.text or None,
+                )
+            )
+
+        if isinstance(ev, CommandEcho):
+            line = f"/{ev.name} {ev.args}".strip()
+            pid = self._take(line, command=True)
+            ops = self._remove(pid) if pid is not None else []
+            return ops + self._upsert(
+                _entry(id, "user", "ok", ts, d.USER_GLYPH, md=line)
+            )
+
+        if isinstance(ev, CommandOutput):
+            # The note a set_model control request leaves answers no send; its
+            # configure record already shows. Taking a queued command's place
+            # would title the note with that command and drop its real output.
+            if ev.text.startswith("Set model to"):
+                return []
+            pid = self._take(None, command=True, strict=True)
+            if pid is None:
+                return []
+            title = (self._entries[pid].get("md") or "").strip()
+            return self._remove(pid) + self._upsert(
+                _entry(
+                    id,
+                    "command",
+                    "ok",
+                    ts,
+                    d.COMMAND_GLYPH,
+                    title=title,
+                    md=ev.text or None,
+                )
+            )
+
+        if isinstance(ev, Reset):
+            pid = self._take("/clear", command=True, strict=True)
+            ops = self._remove(pid) if pid is not None else []
+            return ops + self._upsert(
+                _entry(
+                    id,
+                    "system",
+                    "ok",
+                    ts,
+                    d.SYSTEM_GLYPH,
+                    summary="context cleared; Claude started a new conversation",
+                )
             )
 
         if isinstance(ev, (Text, Thinking, ToolCall, ToolOutput)) and ev.parent:
@@ -400,6 +500,8 @@ class Fold:
                 error = f"turn failed ({ev.subtype or 'error'})"
             self._stand(report=report, turn_error=error)
             ops = self._end_calls("interrupted" if interrupted else "no result")
+            if ev.turns == 0 and len(parts) == 1 and not ev.is_error:
+                return ops  # a local command that cost nothing: its own entry says it
             if ev.is_error:
                 head = (
                     "interrupted"

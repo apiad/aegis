@@ -627,6 +627,77 @@ def test_a_monitor_with_no_reading_animates_and_one_with_a_reading_fills(
     assert page.errors == []
 
 
+def arm(page, **args):
+    page.fill("#input", f"/mcp monitor_start {json.dumps(args)}")
+    page.press("#input", "Enter")
+    page.wait_for_selector(f"#s-monitors .mon >> text={args['description']}")
+
+
+def test_hovering_a_monitor_opens_its_card_and_it_stays_open_as_readings_arrive(
+    server, page, tmp_path
+):
+    """The sidebar redraws on every session patch; the card must not close, or
+    lose its place, each time one of its monitor's readings arrives (#174)."""
+    pct = tmp_path / "pct"
+    pct.write_text("0\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    arm(
+        page,
+        description="a pct file",
+        done="false",
+        progress=f"cat {pct}",
+        interval_s=1,
+    )
+    page.hover("#s-monitors .mon")
+    page.wait_for_selector("#mcard.show")
+    card = page.inner_text("#mcard")
+    assert "a pct file" in card and f"cat {pct}" in card
+    assert "not yet" in card and "no progress" not in card
+    # Count every close: a card that closes and reopens on each redraw ends in the
+    # same state as one that stayed open, and flickers in between.
+    page.evaluate(
+        """() => { window.closes = 0; const c = document.getElementById("mcard");
+        new MutationObserver(() => { if (!c.classList.contains("show")) window.closes++; })
+          .observe(c, {attributes: true, attributeFilter: ["class"]}); }"""
+    )
+    page.wait_for_selector("#mcard.show .big .p >> text=0")
+    pct.write_text("20\n")
+    page.wait_for_selector("#mcard.show .big .p >> text=20")
+    pct.write_text("40\n")
+    page.wait_for_selector("#mcard.show .big .p >> text=40")
+    assert page.locator("#mcard .chart svg .dot").count() == 2
+    assert "ETA" in page.inner_text("#mcard .big .e")
+    assert "since progress first moved" in page.inner_text("#mcard .chart .basis")
+    assert "40% · ~" in page.inner_text("#s-monitors .mon .kv")
+    assert page.evaluate("window.closes") == 0
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#mcard:not(.show)", state="attached")
+    assert page.errors == []
+
+
+def test_a_monitor_whose_check_cannot_run_is_marked_and_its_card_says_why(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    arm(
+        page,
+        description="never passes",
+        done="no-such-aegis-cmd --status",
+        progress=None,
+        interval_s=1,
+    )
+    page.wait_for_selector("#s-monitors .mon.bad >> text=check fails")
+    page.hover("#s-monitors .mon")
+    page.wait_for_selector("#mcard.show .ck.bad")
+    bad = page.inner_text("#mcard .ck.bad")
+    assert "exit 127" in bad and "command not found" in bad
+    assert "no-such-aegis-cmd" in page.inner_text("#mcard .ck.bad .err")
+    assert "no progress command" in page.inner_text("#mcard .big")
+    assert page.errors == []
+
+
 def test_the_running_build_and_the_latest_release_show_in_the_top_bar_and_sidebar(
     server, page
 ):
@@ -781,6 +852,36 @@ def test_open_natively_shows_only_on_the_servers_desktop_and_opens_the_copy(
         time.sleep(0.02)
     assert marker.read_text().endswith("/dot.png")
     assert (server.root / ".aegis") in Path(marker.read_text()).parents
+    assert page.errors == []
+
+
+VERDICT_BOX = """sel => {
+  const r = [...document.querySelectorAll('.row.tool')].pop();
+  const box = q => r.querySelector(q).getBoundingClientRect().width;
+  const v = r.querySelector('.tr2');
+  return {line: box('.line'), verdict: box('.tr2'), cut: v.scrollWidth > v.clientWidth};
+}"""
+
+
+def test_a_bash_verdict_takes_the_room_its_description_leaves(server, page):
+    """A long verdict is cut only when the row is full: beside a short
+    description it shows whole, and against a long one it keeps most of it."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    verdict = "7 of 12 logs hold ERROR: " + ", ".join(f"node-{i}.log" for i in range(5))
+    page.fill("#input", f"/bash Scan logs => {verdict}")
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    short = page.evaluate(VERDICT_BOX)
+    assert len(verdict) > 46 and not short["cut"], short
+
+    long_desc = "Scan every log under the release tree for errors " * 6
+    page.fill("#input", f"/bash {long_desc} => {verdict * 3}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    full = page.evaluate(VERDICT_BOX)
+    assert full["cut"] and full["verdict"] > 0.6 * full["line"], full
     assert page.errors == []
 
 
@@ -1085,6 +1186,118 @@ def test_g_in_a_long_transcript_mounts_and_selects_the_first_entry(replay_server
     page.keyboard.press("g")
     assert page.locator(ROWS).count() == total
     assert selected(page) == row_ids(page)[0]
+
+
+def menu_rows(pg) -> list[str]:
+    return pg.evaluate(
+        "[...document.querySelectorAll('#cmd-menu .cmd-row .nm')].map(n => n.textContent)"
+    )
+
+
+def test_the_menu_completes_a_model_and_esc_closes_it_without_interrupting(
+    server, page
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.fill("#input", "/sleep 3")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    page.click("#input")
+    page.keyboard.type("/mo")
+    page.wait_for_selector("#cmd-menu:not([hidden])")
+    assert menu_rows(page)[0] == "/model"
+    page.keyboard.press("Tab")
+    assert page.input_value("#input") == "/model "
+    page.keyboard.type("son")
+    page.keyboard.press("Enter")  # accepts the highlighted model
+    assert page.input_value("#input") == "/model sonnet "
+    page.keyboard.press("Escape")
+    assert page.is_hidden("#cmd-menu")
+    assert page.is_visible(".row.tool.running"), "Esc on the menu does not interrupt"
+    page.press("#input", "Enter")
+    page.wait_for_function(
+        "() => document.getElementById('chip-model').textContent === 'sonnet'"
+    )
+    assert page.input_value("#input") == ""
+    assert page.errors == []
+
+
+def test_alt_slash_with_a_draft_runs_a_command_and_keeps_the_draft(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.fill("#input", "half a thought")
+    page.keyboard.press("Alt+/")
+    page.wait_for_selector("#cmd-filter")  # prefilled with "/"
+    page.keyboard.type("effort lo")
+    page.keyboard.press("Enter")
+    page.keyboard.press("Enter")
+    page.wait_for_function(
+        "() => document.getElementById('chip-effort').textContent === 'low effort'"
+    )
+    assert page.input_value("#input") == "half a thought"
+    assert page.errors == []
+
+
+def test_an_unknown_command_is_flagged_and_claudes_commands_render(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.fill("#input", "/bogus x")
+    page.wait_for_selector(".composer.bad")
+    page.press("#input", "Enter")
+    page.wait_for_function(
+        "() => document.getElementById('send-error').textContent.includes('// to send it as text')"
+    )
+    page.fill("#input", "/context")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.command .cmd")
+    # textContent: rows use content-visibility:auto, so innerText of a row not
+    # yet painted reads empty (#161).
+    assert page.text_content(".row.command .cmd") == "/context"
+    assert page.errors == []
+
+
+def test_clicking_the_model_chip_opens_the_menu_on_models(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.click("#chip-model")
+    page.wait_for_selector("#cmd-menu:not([hidden])")
+    assert page.input_value("#input") == "/model "
+    assert menu_rows(page)[:3] == ["opus", "sonnet", "haiku"]
+    assert page.errors == []
+
+
+def test_a_chip_click_over_a_draft_keeps_the_draft(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.fill("#input", "keep me")
+    page.click("#chip-effort")
+    page.wait_for_selector("#cmd-filter")
+    assert page.input_value("#cmd-filter") == "/effort "
+    page.keyboard.type("lo")
+    page.keyboard.press("Enter")
+    page.keyboard.press("Enter")
+    page.wait_for_function(
+        "() => document.getElementById('chip-effort').textContent === 'low effort'"
+    )
+    assert page.input_value("#input") == "keep me"
+    assert page.errors == []
+
+
+def test_help_opens_the_menu_and_sends_nothing(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.fill("#input", "/help")
+    page.press("#input", "Enter")
+    page.wait_for_selector("#cmd-menu:not([hidden])")
+    assert page.input_value("#input") == "/"
+    assert menu_rows(page)[0] == "/model"
+    assert page.evaluate("document.querySelectorAll('.row.user').length") == 1
     assert page.errors == []
 
 

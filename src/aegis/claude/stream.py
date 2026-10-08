@@ -1,6 +1,9 @@
 """Claude Code's stream-json output, one stdout line at a time, as typed events.
 
-Adapted from the old tree's ``events.py``, keeping only what slice 1 renders.
+Adapted from the old tree's ``events.py``, keeping only what slice 1 renders,
+plus the shapes Claude's own slash commands produce: ``LocalCommand`` (a command
+Claude ran itself, never echoed), ``CommandEcho`` (a prompt command or skill),
+``CommandOutput`` (a local command's replayed output) and ``Reset`` (``/clear``).
 One assistant line can carry several content blocks, so ``parse`` returns a
 list. Valid JSON of a type nothing here handles is ``Ignored``; a line that is
 not a JSON object is ``Garbled`` and is shown, never fatal.
@@ -9,6 +12,7 @@ not a JSON object is ``Garbled`` and is shown, never fatal.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -72,6 +76,39 @@ class Echo:
 
 
 @dataclass(frozen=True)
+class LocalCommand:
+    """A command Claude Code ran itself (``/effort``, ``/context``): a synthetic
+    assistant line carrying ``local_command_run``. Claude never echoes it."""
+
+    command: str
+    args: str
+    text: str
+
+
+@dataclass(frozen=True)
+class CommandEcho:
+    """The echo of a prompt command or skill (``/hello world``)."""
+
+    name: str
+    args: str
+
+
+@dataclass(frozen=True)
+class CommandOutput:
+    """A local command's output replayed as a user line: ``/compact``'s
+    ``Compacted``, or the note a ``set_model`` control request leaves."""
+
+    text: str
+
+
+@dataclass(frozen=True)
+class Reset:
+    """``/clear`` started a new conversation; the next ``init`` has a new id."""
+
+    trigger: str
+
+
+@dataclass(frozen=True)
 class Result:
     is_error: bool
     subtype: str
@@ -79,6 +116,7 @@ class Result:
     cost_usd: float | None
     stop_reason: str | None
     context_window: int | None
+    turns: int | None = None
 
 
 @dataclass(frozen=True)
@@ -118,6 +156,10 @@ Event = (
     | ToolCall
     | ToolOutput
     | Echo
+    | LocalCommand
+    | CommandEcho
+    | CommandOutput
+    | Reset
     | Result
     | Notice
     | Compact
@@ -166,6 +208,18 @@ def _str(v: Any) -> str | None:
     return v if isinstance(v, str) else None
 
 
+_LOCAL_OUT = re.compile(
+    r"^<local-command-(stdout|stderr)>(.*?)</local-command-\1>$", re.S
+)
+_COMMAND_NAME = re.compile(r"<command-name>(.*?)</command-name>", re.S)
+_COMMAND_ARGS = re.compile(r"<command-args>(.*?)</command-args>", re.S)
+
+
+def _unwrap(text: str) -> str:
+    m = _LOCAL_OUT.match(text.strip())
+    return m.group(2).strip() if m else text.strip()
+
+
 def parse(line: str) -> list[Event]:
     try:
         obj: Any = json.loads(line)
@@ -175,6 +229,9 @@ def parse(line: str) -> list[Event]:
         return [Garbled(raw=line)]
     etype = str(obj.get("type"))
     parent = _str(obj.get("parent_tool_use_id"))
+
+    if etype == "conversation_reset":
+        return [Reset(trigger=str(obj.get("trigger") or ""))]
 
     if etype == "system":
         sub = str(obj.get("subtype"))
@@ -220,12 +277,25 @@ def parse(line: str) -> list[Event]:
                 cost_usd=float(cost) if isinstance(cost, (int, float)) else None,
                 stop_reason=_str(obj.get("stop_reason")),
                 context_window=window,
+                turns=obj["num_turns"]
+                if isinstance(obj.get("num_turns"), int)
+                else None,
             )
         ]
 
     message = obj.get("message")
     message = message if isinstance(message, dict) else {}
     content = message.get("content")
+
+    run = obj.get("local_command_run")
+    if etype == "assistant" and isinstance(run, dict):
+        return [
+            LocalCommand(
+                command=str(run.get("command") or ""),
+                args=str(run.get("args") or ""),
+                text=_unwrap(_text_of(content)),
+            )
+        ]
 
     if etype == "assistant" and isinstance(content, list):
         usage = _usage(message.get("usage"))
@@ -276,6 +346,16 @@ def parse(line: str) -> list[Event]:
         # over 269 transcripts with no false positive).
         if obj.get("isReplay") is True:
             text = _text_of(content).strip()
+            if text.startswith("<command-") and (m := _COMMAND_NAME.search(text)):
+                a = _COMMAND_ARGS.search(text)
+                return [
+                    CommandEcho(
+                        name=m.group(1).strip().lstrip("/"),
+                        args=a.group(1).strip() if a else "",
+                    )
+                ]
+            if _LOCAL_OUT.match(text):
+                return [CommandOutput(text=_unwrap(text))]
             if text:
                 return [Echo(text=text)]
         return [Ignored(type=etype)]

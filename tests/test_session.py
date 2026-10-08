@@ -4,11 +4,12 @@ from pathlib import Path
 import pytest
 
 from aegis.meta import MetaStore
-from aegis.session import Session, SpawnSpec
+from aegis.claude.process import ControlError
+from aegis.session import Host, Session, SpawnSpec
 from aegis.transcript.entries import fold_records
 from aegis.transcript.store import Store, read_store
 
-from .conftest import until
+from .conftest import cmdline, until
 
 
 class Harness:
@@ -246,6 +247,66 @@ async def test_a_missing_binary_raises_on_start(tmp_path):
     h = Harness(tmp_path, str(tmp_path / "no-such-claude"))
     with pytest.raises(FileNotFoundError):
         await h.session.start()
+
+
+async def test_a_process_start_fetches_the_catalog_and_tells_the_host(
+    tmp_path, fake_claude
+):
+    seen = []
+
+    class Spy(Host):
+        def catalog_ready(self, session, catalog):
+            seen.append(catalog)
+
+    h = Harness(tmp_path, fake_claude, host=Spy())
+    await h.session.start()
+    try:
+        cat = await h.session.catalog_task
+        assert cat is not None and cat.has("hello") and seen == [cat]
+    finally:
+        await h.session.stop()
+
+
+async def test_configure_live_switches_the_process_and_the_spec(h):
+    await h.session.send("hi")
+    await until(
+        lambda: h.session.status == "idle" and h.session.cost_usd, what="the turn"
+    )
+    await h.session.configure(model="sonnet", effort="max", permission="read")
+    s = h.session
+    assert (s.spec.model, s.spec.effort, s.spec.permission) == ("sonnet", "max", "read")
+    assert s.wire()["model"] == "sonnet"
+    await s.send("again")
+    await until(lambda: s.model_id == "fake-sonnet", what="the new model's init")
+    assert [e["summary"] for e in s.entries() if " → " in e["summary"]] == [
+        "model → sonnet · effort → max · permission → read"
+    ]
+
+
+async def test_configure_on_a_stopped_session_starts_nothing_and_the_next_start_uses_it(
+    h,
+):
+    await h.session.stop()
+    await h.session.configure(model="haiku")
+    assert h.session.pid is None
+    assert h.session.entries()[-1]["summary"] == "model → haiku (when it resumes)"
+    await h.session.send("hello")
+    argv = await cmdline(h.session.pid)
+    assert argv[argv.index(b"--model") + 1] == b"haiku"
+
+
+async def test_a_refused_change_keeps_what_applied_before_it(h):
+    with pytest.raises(ControlError):
+        await h.session.configure(model="haiku", effort="low")  # no effort on haiku
+    assert (h.session.spec.model, h.session.spec.effort) == ("haiku", "high")
+
+
+async def test_a_slash_command_does_not_title_the_session(h):
+    await h.session.send("/context")
+    await until(lambda: h.session.status == "idle", what="/context")
+    assert h.session.title == ""
+    await h.session.send("fix the parser")
+    assert h.session.title == "fix the parser"
 
 
 async def test_a_report_is_published_at_once_and_survives_a_rebuild(

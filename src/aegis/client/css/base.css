@@ -111,10 +111,12 @@ body{background:#000}
 #a2 .row.tool,#a2 .row.think,#a2 .row.sys,#a2 .row.error,#a2 .row.working{font-family:var(--font-mono);font-size:12.5px}
 #a2 .row.tool details>summary{list-style:none;cursor:pointer}
 #a2 .row.tool details>summary::-webkit-details-marker{display:none}
-#a2 .row.tool .line{display:grid;grid-template-columns:auto minmax(0,1fr) auto;column-gap:12px;align-items:baseline}
-#a2 .tn{color:var(--strong);font-weight:500}
-#a2 .ta{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#a2 .tr2{color:var(--faint);white-space:nowrap;max-width:46ch;overflow:hidden;text-overflow:ellipsis}
+#a2 .row.tool .line{display:flex;column-gap:12px;align-items:baseline}
+#a2 .tn{color:var(--strong);font-weight:500;flex:none}
+/* The description and the verdict share the row 30:70 and each stops at its own
+   width, so either one takes the room the other leaves. */
+#a2 .ta{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:3 1 0;min-width:0;max-width:max-content}
+#a2 .tr2{color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:7 1 0;min-width:0;max-width:max-content;margin-left:auto}
 #a2 .row.tool.ok .tr2,#a2 .row.tool.ok .g{color:var(--ok)}
 #a2 .row.tool.err .tr2,#a2 .row.tool.err .g,#a2 .row.error,#a2 .row.error .g{color:var(--err)}
 #a2 .row.tool.running .tr2{color:var(--accent)}
@@ -145,6 +147,18 @@ body{background:#000}
 #a2 .composer .acts{display:flex;gap:6px;align-items:center;padding:8px 8px 8px 0}
 #a2 .composer .acts .send{font-size:15px;line-height:1;padding:6px 12px;font-weight:600}
 #a2 .composer .chips{display:flex;gap:8px;margin-top:8px;align-items:center}
+/* the command menu, drawn above the composer */
+#a2 .composer{position:relative}
+#a2 .cmd-menu{position:absolute;left:22px;right:22px;bottom:calc(100% - 6px);background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:4px;max-height:280px;overflow:auto;font-family:var(--font-chrome);font-size:12.5px;z-index:5}
+#a2 .cmd-menu input{width:100%;margin-bottom:4px;padding:6px 8px;background:var(--bg);border:1px solid var(--accent);border-radius:4px;color:var(--strong);font:inherit;outline:none}
+#a2 .cmd-row{display:grid;grid-template-columns:auto auto 1fr auto;gap:10px;padding:4px 8px;border-radius:4px;cursor:pointer;align-items:baseline}
+#a2 .cmd-row.on{background:var(--accent-soft)}
+#a2 .cmd-row .nm{color:var(--strong)}#a2 .cmd-row .nm b{color:var(--accent)}
+#a2 .cmd-row .hn,#a2 .cmd-row .dc{color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#a2 .cmd-row .src{color:var(--faint);font-size:11px}
+#a2 .composer.bad .box{border-color:var(--err)}
+#a2 .chip.click{cursor:pointer}#a2 .chip.click:hover{border-color:var(--accent);color:var(--strong)}
+#a2 .row.command .cmd{font-family:var(--font-chrome);color:var(--strong)}
 #a2 .chip{font-size:11.5px;padding:3px 9px;border:1px solid var(--rule);border-radius:5px;color:var(--muted);font-family:var(--font-chrome)}
 #a2 .chip:empty{display:none}
 #a2 .send,#a2 .btn{font-size:12px;padding:6px 14px;border-radius:var(--r);border:1px solid var(--rule);background:var(--surface);color:var(--ink);cursor:pointer}
@@ -246,8 +260,97 @@ body{background:#000}
 #a2 .row.inbox .body{border-left:2px solid var(--comms);padding:2px 0 2px 12px}
 #a2 .row.inbox .from{font-family:var(--font-mono);font-size:11.5px;color:var(--comms);margin-bottom:4px}
 #a2 .row.inbox .md{font-size:14px;color:var(--ink)}
-#a2 .mon{margin-bottom:8px}
-#a2 .mon .kv span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2 .mon .kv>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* a monitor's row: ETA on the right, a broken check in red; its card opens on hover (js/monitors.js) */
+#a2 .mon{margin:0 -8px 4px;padding:4px 8px 6px;border-radius:var(--r);cursor:default;outline:none}
+#a2 .mon:hover,#a2 .mon.open,#a2 .mon:focus-visible{background:var(--raised)}
+#a2 .mon .kv .r{white-space:nowrap;color:var(--muted)}
+#a2 .mon .kv .r .eta{color:var(--faint)}
+#a2 .mon.bad .kv .r{color:var(--err)}
+#a2 .mon.late .kv .r .eta{color:var(--warn)}
+#a2 .mon.bad .bar i{background:var(--err)}
+
+/* the card: fixed, to the left of the sidebar, level with its row */
+#a2 .mcard{position:fixed;z-index:20;width:392px;max-height:calc(100vh - 24px);overflow:auto;
+  background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);
+  box-shadow:0 18px 48px rgba(0,0,0,.38),0 2px 8px rgba(0,0,0,.2);
+  font-family:var(--font-chrome);font-size:12px;color:var(--muted);
+  opacity:0;transform:translateX(6px);transition:opacity .12s ease,transform .12s ease;pointer-events:none}
+#a2 .mcard.show{opacity:1;transform:none;pointer-events:auto}
+@media (prefers-reduced-motion:reduce){#a2 .mcard{transition:none}}
+
+#a2 .mcard .hd{padding:13px 16px 10px;border-bottom:1px solid var(--rule)}
+#a2 .mcard .hd .t{display:flex;gap:10px;align-items:flex-start}
+#a2 .mcard .hd .d{flex:1;color:var(--strong);font-family:var(--font-ui);font-size:13.5px;font-weight:500;line-height:1.35}
+#a2 .mcard .pill{flex:none;font-size:10.5px;padding:2px 8px;border-radius:9px;background:var(--accent-soft);color:var(--accent);margin-top:1px}
+#a2 .mcard .pill.bad{background:var(--err-bg);color:var(--err)}
+#a2 .mcard .pill.late{background:transparent;border:1px solid var(--warn);color:var(--warn);padding:1px 7px}
+#a2 .mcard .pill::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:1px;animation:a2pulse 1.6s ease-in-out infinite}
+#a2 .mcard .sub{margin-top:5px;color:var(--faint);font-family:var(--font-mono);font-size:11px}
+
+/* the headline: percentage and ETA */
+#a2 .mcard .now{padding:12px 16px 4px}
+#a2 .mcard .big{display:flex;align-items:baseline;gap:10px}
+#a2 .mcard .big .p{font-family:var(--font-mono);font-size:26px;color:var(--strong);font-weight:500;letter-spacing:-.5px;line-height:1}
+#a2 .mcard .big .p small{font-size:14px;color:var(--muted);margin-left:1px}
+#a2 .mcard .big .p.unk{font-size:15px;color:var(--muted);letter-spacing:0;font-family:var(--font-chrome)}
+#a2 .mcard .big .e{margin-left:auto;text-align:right;line-height:1.3}
+#a2 .mcard .big .e .at{color:var(--strong);font-family:var(--font-mono);font-size:13px}
+#a2 .mcard .big .e .in{color:var(--faint);font-size:11px}
+#a2 .mcard .big .e.late .at{color:var(--warn)}
+#a2 .mcard .big .e.none .at{color:var(--muted);font-family:var(--font-chrome);font-size:12px}
+
+/* the reading chart */
+#a2 .mcard .chart{position:relative;margin:10px 0 2px}
+#a2 .mcard .chart svg{display:block;width:100%;height:78px;overflow:visible}
+#a2 .mcard .chart .grid{stroke:var(--rule);stroke-width:1}
+#a2 .mcard .chart .area{fill:var(--accent-soft)}
+#a2 .mcard .chart .line{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+#a2 .mcard .chart .proj{fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:3 4;opacity:.55}
+#a2 .mcard .chart .dot{fill:var(--accent);stroke:var(--surface);stroke-width:2}
+#a2 .mcard .chart .nowl{stroke:var(--faint);stroke-width:1;stroke-dasharray:2 3}
+#a2 .mcard .chart .tgt{fill:none;stroke:var(--accent);stroke-width:2;opacity:.55}
+#a2 .mcard .chart .hx{stroke:var(--muted);stroke-width:1}
+#a2 .mcard .chart .ax{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:10.5px;color:var(--faint);margin-top:5px}
+#a2 .mcard .chart .tip{position:absolute;top:-6px;transform:translate(-50%,-100%);white-space:nowrap;pointer-events:none;
+  background:var(--raised);border:1px solid var(--rule);border-radius:5px;padding:3px 7px;font-family:var(--font-mono);font-size:10.5px;color:var(--ink)}
+#a2 .mcard .chart .basis{font-size:10.5px;color:var(--faint);margin-top:4px}
+
+/* time budget, for monitors with nothing to chart */
+#a2 .mcard .budget{margin:12px 0 4px}
+#a2 .mcard .budget .track{position:relative;height:6px;border-radius:3px;background:var(--raised)}
+#a2 .mcard .budget .track i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--faint);opacity:.6}
+#a2 .mcard .budget .ax{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:10.5px;color:var(--faint);margin-top:5px}
+
+/* facts */
+#a2 .mcard .facts{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;padding:10px 16px 12px}
+#a2 .mcard .facts dt{color:var(--faint)}
+#a2 .mcard .facts dd{margin:0;color:var(--ink);font-family:var(--font-mono);font-size:11.5px;text-align:right}
+#a2 .mcard .facts dd span{color:var(--faint)}
+
+/* checks */
+#a2 .mcard .checks{border-top:1px solid var(--rule);padding:10px 16px 12px}
+#a2 .mcard h5{margin:0 0 8px;font-weight:500;font-size:11px;color:var(--faint);font-family:var(--font-head);text-transform:none}
+#a2 .mcard .ck{margin-bottom:10px}
+#a2 .mcard .ck:last-child{margin-bottom:0}
+#a2 .mcard .ck .h{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+#a2 .mcard .ck .k{font-family:var(--font-mono);font-size:11px;color:var(--ink);min-width:58px}
+#a2 .mcard .ck .res{font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+#a2 .mcard .ck .res b{font-weight:500;color:var(--ink)}
+#a2 .mcard .ck .ago{margin-left:auto;font-size:10.5px;color:var(--faint);white-space:nowrap}
+#a2 .mcard .ck.bad .res,#a2 .mcard .ck.bad .res b{color:var(--err)}
+#a2 .mcard .ck.off .k,#a2 .mcard .ck.off .res{color:var(--faint)}
+#a2 .mcard .ck pre{margin:0;padding:7px 9px;border-radius:5px;background:var(--bg);border:1px solid var(--rule);
+  font-family:var(--font-mono);font-size:10.5px;line-height:1.5;color:var(--muted);white-space:pre-wrap;word-break:break-all;
+  max-height:4.6em;overflow:hidden;position:relative;cursor:text;user-select:text}
+#a2 .mcard .ck pre.x{max-height:none}
+#a2 .mcard .ck pre:not(.x)::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1.6em;background:linear-gradient(transparent,var(--bg))}
+#a2 .mcard .ck .err{margin-top:4px;padding:5px 9px;border-radius:5px;background:var(--raised);color:var(--muted);font-family:var(--font-mono);font-size:10.5px;white-space:pre-wrap;word-break:break-all}
+
+#a2 .mcard .ck.bad .err{background:var(--err-bg);color:var(--err)}
+#a2 .mcard .ft{border-top:1px solid var(--rule);padding:8px 16px 10px;display:flex;gap:8px;align-items:center;color:var(--faint);font-size:11px}
+#a2 .mcard .ft .path{font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2 .mcard .ft .hint{margin-left:auto;white-space:nowrap}
 #a2 .bar.indet i{width:30%;animation:a2slide 1.6s ease-in-out infinite}
 @keyframes a2slide{from{transform:translateX(-100%)}to{transform:translateX(340%)}}
 @media (prefers-reduced-motion:reduce){#a2 .bar.indet i{width:100%;animation:a2pulse 1.6s ease-in-out infinite}}

@@ -5,6 +5,103 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-08
+
+### Added
+
+- **The client can be driven from the keyboard.** Alt+. focuses the message
+  box, Alt+, the transcript or the Fleet cards, Alt+[ and Alt+] step through
+  Fleet and the tabs, Alt+N opens a new session. Outside a text field, j and k
+  move a selected row through the transcript, J and K jump between your own
+  messages, g and G go to the ends, Enter or Space opens a row's details and o
+  presses its first button; in Fleet, j and k walk the cards and the archive and
+  Enter opens one. 0 to 9 pick a tab, because Chrome on Linux keeps Alt+1 to 9
+  for its own tabs and the page never sees them. ? lists every key.
+
+- **Slash commands in the composer.** `/model`, `/effort` and `/permission` switch a
+  running session through Claude's control requests and survive a resume; `/rename`,
+  `/title`, `/stop` and `/close` act on the session; Claude's own commands, skills
+  and `.claude/commands` pass through. Typing `/` or pressing Alt+/ opens a menu that
+  completes names, models and effort levels. An unknown command is refused instead
+  of being sent to the model as a paid prompt.
+
+- **A monitor has an ETA again, and a card that shows everything about it.**
+  Hovering a monitor in the session sidebar opens a card with its description,
+  id, start, check interval and timeout, a chart of its progress readings with
+  the ETA, and each of its `done`, `progress` and `fail` commands with the last
+  result: exit code, verdict, and its last stderr line. The row shows the ETA
+  (`66% · ~2m`) or how late it is. The ETA takes the rate since progress first
+  moved, so a CI wait's setup time at 0 no longer stretches it. A check bash
+  cannot run (a missing command, including one inside a pipeline) marks the row
+  `check fails` in red: before, it looked exactly like a condition still
+  waiting until its timeout an hour later.
+
+### Changed
+
+- **The new tab is a composer: type the first message, pick the agent and its
+  settings, press Enter.** An agent is now a preset of harness, model, effort,
+  permission and an optional `priming:` prompt, and every field but the priming
+  can be changed per session. Agents get the same power as
+  `mcp__aegis__session_spawn` and `mcp__aegis__agents_list`, with one limit: a
+  session an agent spawns gets at most the agent's own permission. `.aegis.yaml` has
+  no defaults any more: an agent missing a field, or a queue missing
+  `max_parallel`, is shown with what is missing instead of being filled in.
+  To upgrade, give every agent `harness: claude-code` (or `provider:`), an
+  `effort` and a `permission`, and every queue a `max_parallel`.
+
+- **Send sits inside the message box.** The button moved from the chips row to
+  the box's bottom right, as `↵`, in a slot a microphone button can join. The
+  model, effort and permission chips and Stop stay below the box.
+
+- **A monitor whose progress is unknown shows a moving bar, not an empty one.**
+  With no `progress` command, before its command has printed a reading, or at
+  a reading of 0, the bar on the monitor's row slides instead of sitting at 0%,
+  which read as stalled. With reduced motion asked for, it pulses instead.
+
+- **`monitor_start` requires `progress`, which may be `null`.** 44 of 51
+  monitors armed on zion in early October had no progress command, 33 of them
+  waits on CI checks that could have been counted. Leaving the field out is now
+  refused, and the field, the tool and the primer tell the agent how to measure
+  progress: finished checks, jobs, files or lines over the total, or elapsed over
+  expected time. A real Haiku asked to wait on a pull request's CI gave the
+  monitor a progress command in 1 of 6 runs before and 8 of 8 after.
+
+- **Agents end each Bash call on a line of counts, and that line is the row's
+  verdict.** The primer now asks for a final line the command computed
+  (`&& echo "$n files changed"`), chained with `&&` so a failure keeps its exit
+  code. It also warns that `n=$(grep -c …) &&` stops the chain on a count of
+  zero, against piping a test run without `pipefail`, and against `pkill -f`,
+  which kills the call that runs it. In 124,529 legacy Bash calls,
+  4,007 test runs printed failures and still showed green because of a pipe,
+  and 180 `pkill -f` calls died with exit code 144.
+
+### Fixed
+
+- **The message box opens at its full height.** A session opened from the Fleet,
+  the new-tab form or a fresh load drew its message box collapsed, because the
+  box was sized while the session view was still hidden and measured 0. The view
+  now shows before the box is sized.
+
+- **A Bash row's verdict is the call's own last line again, not Claude Code's
+  note.** Claude Code appends "Shell cwd was reset to …" after any call that
+  changed directory and "[This command modified …]" after one that rewrote a
+  file it had read. Either replaced the verdict; aegis now skips both.
+
+- **A tool row's verdict uses the room its description leaves.** It was cut
+  at 46 characters even beside a one-word description. The description and the
+  verdict now share the row 30:70, and each takes what the other does not need.
+
+### Performance
+
+- **Typing costs the same in a long session and with many tabs open.** Each
+  keystroke made the browser hit-test and repaint every transcript row, and
+  every working session made it rebuild every tab four times a second. With a
+  2,263-entry transcript a key cost 21 ms of main thread and now costs 6.4 ms.
+  Going from 10 to 100 open tabs, with 5 working, added 4.3 ms per key and now
+  adds 0.5 ms. The transcript mounts its last 200 rows and loads earlier ones as
+  you scroll up. Session cards reach the browser merged, at most four times a
+  second, and only the changed tab and card are redrawn.
+
 ## [2.1.0] - 2026-10-07
 
 ### Added

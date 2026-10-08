@@ -19,6 +19,7 @@ const key =
 // fields in any view; "session" (also the read view) and "fleet" in theirs.
 export const KEYS = [
   { scope: "global", label: "Alt+.", desc: "Focus the message box", action: "composer", match: alt("Period") },
+  { scope: "global", label: "Alt+/", desc: "Commands for this session", action: "commands", match: alt("Slash") },
   { scope: "global", label: "Alt+,", desc: "Focus the transcript, or the Fleet cards", action: "browse", match: alt("Comma") },
   {
     scope: "global",
