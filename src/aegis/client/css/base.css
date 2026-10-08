@@ -87,6 +87,8 @@ body{background:#000}
 #a2 .row .t{display:var(--time);width:38px;font-family:var(--font-mono);font-size:11px;color:var(--faint);line-height:1.9}
 #a2 .row .g{text-align:center;line-height:1.6;color:var(--faint);font-size:13px;position:relative;z-index:1;background:var(--bg);align-self:start}
 #a2 .row .body{min-width:0}
+/* Off-screen rows skip layout and paint, and keep their last height once drawn (#157). */
+#a2 #entries>.row{content-visibility:auto;contain-intrinsic-size:auto 40px}
 #a2 .row.user .body{color:var(--strong);background:var(--raised);padding:9px 12px;border-radius:var(--r);font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
 #a2 .row.user .g{color:var(--accent)}
 #a2 .row.sel{background:var(--accent-soft);position:relative}

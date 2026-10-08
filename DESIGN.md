@@ -110,6 +110,18 @@ break silently.
 with no framework and no build step. A plugin's renderer has the same shape, so
 writing one needs no framework.
 
+**A keystroke costs the same in any session.** Every layout in the page costs a
+hover hit test and a paint over every mounted node, and a keystroke always lays
+out, so nothing the page holds may grow the DOM or the redraws without bound.
+The transcript keeps every entry's data but mounts rows only for the tail
+(`js/transcript.js`), more as the reader scrolls up, and off-screen rows skip
+layout. The `sessions` channel goes out at most every `PUBLISH_EVERY_S`,
+merged across sessions (`channels.Throttle`), except a change a person acts on
+(a session added or removed, its state, names or model), which goes at once. The
+page redraws once a frame, and only the tab and card of a session that changed.
+Mounting a long transcript whole and rebuilding every tab per patch made typing
+cost grow with the transcript's length and the number of sessions (#157, #158).
+
 **A key is one row in one table.** `client/js/keys.js` holds every key the client
 answers and the one `keydown` listener that dispatches from it; the `?` list is drawn
 from the same table, so it cannot name a key that does nothing. Chrome keeps Ctrl+T,

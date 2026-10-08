@@ -28,7 +28,7 @@ from .agents import (
     model_suggestions,
     resolve,
 )
-from .channels import Channels
+from .channels import Channels, Throttle
 from .host import HostSampler
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors
@@ -37,6 +37,7 @@ from .quota import Quota
 from .ops import OpError, Registry as Ops
 from .registry import Registry
 from .roots import Roots
+from .session import PUBLISH_EVERY_S
 from .version import Versions
 
 Effort = Literal["low", "medium", "high", "max"]
@@ -114,6 +115,14 @@ class App:
         self.roots = roots
         self.claude_bin = claude_bin
         self.channels = Channels(self._resolve)
+        # Every session's card changes go out together, a few times a second at
+        # most, however many sessions are working (#158).
+        self._sessions_out = Throttle(
+            lambda ops: self.channels.publish("sessions", ops),
+            self._sessions_key,
+            PUBLISH_EVERY_S,
+        )
+        self._on_wire: dict[str, tuple] = {}  # log_id -> its fields a person acts on
         self.sessions = Registry(roots, self.publish, claude_bin, interrupt_timeout)
         self.tokens = Tokens()
         self.monitors = Monitors(self.sessions, roots.state_root / "monitors.json")
@@ -154,7 +163,23 @@ class App:
         await self.sessions.shutdown()
 
     def publish(self, channel: str, ops: list[dict]) -> None:
-        self.channels.publish(channel, ops)
+        if channel == "sessions":
+            self._sessions_out.add(ops)
+        else:
+            self.channels.publish(channel, ops)
+
+    def _sessions_key(self, op: dict) -> tuple[str, bool]:
+        """A session added or removed, or a change to its state, name or model,
+        goes out at once: the page acts on them (Esc interrupts only a working
+        session, a spawn shows the new tab). The rest of a card can wait."""
+        if "remove" in op:
+            self._on_wire.pop(op["remove"], None)
+            return op["remove"], True
+        m = op["upsert"]
+        seen = (m["state"], m["title"], m["handle"], m["model"])
+        urgent = self._on_wire.get(m["log_id"]) != seen
+        self._on_wire[m["log_id"]] = seen
+        return m["log_id"], urgent
 
     def _resolve(self, name: str):
         if name == "sessions":

@@ -41,44 +41,49 @@ export function dotClass(state) {
   return { working: "working", idle: "ready", error: "err" }[state] || "ghost";
 }
 
-export function renderTabs(list, metas, focusId, { onFocus, onMove }) {
-  list.replaceChildren(
-    ...metas.map((m) => {
-      const t = document.createElement("div");
-      t.className = `tab${m.log_id === focusId ? " on" : ""}${m.state === "stopped" ? " stopped" : ""}`;
-      t.draggable = true;
-      t.dataset.id = m.log_id;
-      t.title = `${m.handle}: ${m.title || "untitled"} (${m.state})`;
-      const dot = document.createElement("span");
-      dot.className = `dot ${dotClass(m.state)}`;
-      const name = document.createElement("span");
-      name.className = "tname";
-      name.textContent = m.title || m.handle;
-      const handle = document.createElement("span");
-      handle.className = "srv";
-      handle.textContent = m.title ? m.handle : "";
-      t.append(dot, name, handle);
-      t.addEventListener("click", () => onFocus(m.log_id));
-      t.addEventListener("dragstart", (ev) => {
-        ev.dataTransfer.setData("text/aegis-tab", m.log_id);
-        ev.dataTransfer.effectAllowed = "move";
-        t.classList.add("dragging");
-      });
-      t.addEventListener("dragend", () => t.classList.remove("dragging"));
-      t.addEventListener("dragover", (ev) => {
-        if (ev.dataTransfer.types.includes("text/aegis-tab")) {
-          ev.preventDefault();
-          t.classList.add("drop");
-        }
-      });
-      t.addEventListener("dragleave", () => t.classList.remove("drop"));
-      t.addEventListener("drop", (ev) => {
-        ev.preventDefault();
-        t.classList.remove("drop");
-        const id = ev.dataTransfer.getData("text/aegis-tab");
-        if (id && id !== m.log_id) onMove(id, m.log_id);
-      });
-      return t;
-    }),
-  );
+export function renderTabs(list, metas, focusId, actions) {
+  list.replaceChildren(...metas.map((m) => tab(m, focusId, actions)));
+}
+
+// One session's tab redrawn where it stands; the others keep their nodes.
+export function patchTab(list, m, focusId, actions) {
+  list.querySelector(`.tab[data-id="${CSS.escape(m.log_id)}"]`)?.replaceWith(tab(m, focusId, actions));
+}
+
+function tab(m, focusId, { onFocus, onMove }) {
+  const t = document.createElement("div");
+  t.className = `tab${m.log_id === focusId ? " on" : ""}${m.state === "stopped" ? " stopped" : ""}`;
+  t.draggable = true;
+  t.dataset.id = m.log_id;
+  t.title = `${m.handle}: ${m.title || "untitled"} (${m.state})`;
+  const dot = document.createElement("span");
+  dot.className = `dot ${dotClass(m.state)}`;
+  const name = document.createElement("span");
+  name.className = "tname";
+  name.textContent = m.title || m.handle;
+  const handle = document.createElement("span");
+  handle.className = "srv";
+  handle.textContent = m.title ? m.handle : "";
+  t.append(dot, name, handle);
+  t.addEventListener("click", () => onFocus(m.log_id));
+  t.addEventListener("dragstart", (ev) => {
+    ev.dataTransfer.setData("text/aegis-tab", m.log_id);
+    ev.dataTransfer.effectAllowed = "move";
+    t.classList.add("dragging");
+  });
+  t.addEventListener("dragend", () => t.classList.remove("dragging"));
+  t.addEventListener("dragover", (ev) => {
+    if (ev.dataTransfer.types.includes("text/aegis-tab")) {
+      ev.preventDefault();
+      t.classList.add("drop");
+    }
+  });
+  t.addEventListener("dragleave", () => t.classList.remove("drop"));
+  t.addEventListener("drop", (ev) => {
+    ev.preventDefault();
+    t.classList.remove("drop");
+    const id = ev.dataTransfer.getData("text/aegis-tab");
+    if (id && id !== m.log_id) onMove(id, m.log_id);
+  });
+  return t;
 }

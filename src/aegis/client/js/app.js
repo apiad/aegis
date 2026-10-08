@@ -6,8 +6,8 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { TabOrder, renderTabs } from "./tabs.js";
-import { ago, money, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
+import { TabOrder, patchTab, renderTabs } from "./tabs.js";
+import { ago, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
 import { installKeys, renderKeys } from "./keys.js";
 
@@ -107,10 +107,22 @@ else {
     },
     (ops) => {
       for (const op of ops) {
-        if (op.upsert) sessions.set(op.upsert.log_id, op.upsert);
-        else if (op.remove !== undefined) sessions.delete(op.remove);
+        if (op.upsert) {
+          if (!sessions.has(op.upsert.log_id)) setChanged = true;
+          sessions.set(op.upsert.log_id, op.upsert);
+          changed.add(op.upsert.log_id);
+        } else if (op.remove !== undefined) {
+          sessions.delete(op.remove);
+          setChanged = true;
+        }
       }
-      onSessions();
+      // A session added or removed redraws at once: a reply that navigates
+      // to it (spawn, reopen) arrives right after this patch.
+      if (setChanged) {
+        setChanged = false;
+        changed.clear();
+        onSessions();
+      } else if (!frame) frame = requestAnimationFrame(flushSessions);
     },
   );
   conn.subscribe(
@@ -127,6 +139,27 @@ else {
   conn.connect();
 }
 
+// Patches that only update sessions the page already shows redraw once a
+// frame, however many arrive, and only those sessions' tab and card (#158).
+let changed = new Set();
+let setChanged = false;
+let frame = 0;
+
+function flushSessions() {
+  frame = 0;
+  const ids = changed;
+  changed = new Set();
+  if (!booted) return;
+  ordered = ordered.map((m) => sessions.get(m.log_id));
+  const r = route();
+  for (const id of ids) patchTab($("tablist"), sessions.get(id), r.view === "session" ? r.id : null, tabActions);
+  if (r.view === "fleet") {
+    for (const id of ids) patchCard($("cards"), sessions.get(id), openSession);
+    fleetMark(false);
+    drawBand();
+  } else if (r.view === "session" && ids.has(r.id)) renderMeta(sessions.get(r.id));
+}
+
 function onSessions() {
   const ids = order.arrange([...sessions.values()].sort((a, b) => a.created_at - b.created_at).map((m) => m.log_id));
   ordered = ids.map((id) => sessions.get(id));
@@ -134,6 +167,15 @@ function onSessions() {
 }
 
 // -- rendering -----------------------------------------------------------------
+const openSession = (id) => go(`#s=${id}`);
+const tabActions = {
+  onFocus: openSession,
+  onMove: (id, before) => {
+    order.move(id, before);
+    onSessions();
+  },
+};
+
 function render() {
   if (!token || !booted) return;
   const r = route();
@@ -141,13 +183,7 @@ function render() {
     go("#fleet"); // closed here or elsewhere
     return;
   }
-  renderTabs($("tablist"), ordered, r.view === "session" ? r.id : null, {
-    onFocus: (id) => go(`#s=${id}`),
-    onMove: (id, before) => {
-      order.move(id, before);
-      onSessions();
-    },
-  });
+  renderTabs($("tablist"), ordered, r.view === "session" ? r.id : null, tabActions);
   $("tab-fleet").classList.toggle("on", r.view === "fleet");
   $("tab-add").classList.toggle("on", r.view === "spawn");
   root.dataset.mode = r.view === "read" ? "read" : "live";
@@ -159,7 +195,7 @@ function render() {
   if (r.view === "fleet") {
     follow(null);
     show("fleet");
-    renderCards($("cards"), ordered, (id) => go(`#s=${id}`));
+    renderCards($("cards"), ordered, openSession);
     fleetMark(false);
     watchHost(true);
     drawBand();
