@@ -2666,3 +2666,71 @@ def test_a_model_that_cannot_be_had_says_so_and_stops(
         assert pg.input_value("#input") == ""
     finally:
         s.stop()
+
+
+# LibriSpeech test-clean (CC BY 4.0), row 1 of the openslr/librispeech_asr split.
+LIBRISPEECH_REF = (
+    "THE ENGLISH FORWARDED TO THE FRENCH BASKETS OF FLOWERS OF WHICH THEY HAD MADE"
+    " A PLENTIFUL PROVISION TO GREET THE ARRIVAL OF THE YOUNG PRINCESS THE FRENCH IN"
+    " RETURN INVITED THE ENGLISH TO A SUPPER WHICH WAS TO BE GIVEN THE NEXT DAY"
+)
+
+
+def word_error_rate(ref: str, hyp: str) -> float:
+    def words(s: str) -> list[str]:
+        return re.sub(r"[^\w\s]", " ", s.lower()).split()
+
+    r, h = words(ref), words(hyp)
+    prev = list(range(len(h) + 1))
+    for i in range(1, len(r) + 1):
+        cur = [i]
+        for j in range(1, len(h) + 1):
+            cur.append(
+                min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (r[i - 1] != h[j - 1]))
+            )
+        prev = cur
+    return prev[-1] / len(r)
+
+
+@pytest.mark.live
+def test_live_dictation_transcribes_a_librispeech_clip(
+    tmp_path, fake_claude, fake_opencode
+):
+    """The real model, downloaded through the server from Hugging Face into the
+    real cache (so a second run downloads nothing), and the clip played into
+    Chromium's fake microphone in real time. Its 14.2 s go out as a split tail."""
+    clip = (
+        Path(__file__).parent
+        / "fixtures"
+        / "dictation"
+        / "librispeech-test-clean-row1.wav"
+    )
+    cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    s = Server(tmp_path, fake_claude, fake_opencode)
+    s.env["AEGIS_DICTATION_DIR"] = str(cache / "aegis" / "dictation")
+    s.start()
+    try:
+        with playwright.sync_playwright() as p:
+            b = p.chromium.launch(
+                args=[
+                    "--use-fake-ui-for-media-stream",
+                    "--use-fake-device-for-media-stream",
+                    f"--use-file-for-fake-audio-capture={clip}%noloop",
+                ]
+            )
+            pg = b.new_context(permissions=["microphone"]).new_page()
+            pg.goto(s.url)
+            pg.wait_for_selector("#a2[data-view=fleet]")
+            spawn(pg)
+            pg.click("#mic")
+            pg.wait_for_timeout(15500)
+            pg.click("#mic")
+            pg.wait_for_selector("#mic[data-state=idle]", timeout=300_000)
+            text = pg.input_value("#input")
+            b.close()
+    finally:
+        s.stop()
+    wer = word_error_rate(LIBRISPEECH_REF, text)
+    print(f"live dictation WER {wer:.1%}: {text}")
+    assert wer < 0.15, text
