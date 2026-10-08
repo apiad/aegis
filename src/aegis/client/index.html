@@ -30,7 +30,17 @@
     </label>
   </header>
 
-  <main class="view v-boot"><div class="notice" id="boot-text">Connecting…</div></main>
+  <main class="view v-boot">
+    <div class="boot">
+      <div class="notice" id="boot-text">Connecting…</div>
+      <form class="login" id="login" hidden>
+        <label for="login-token">Paste the token <code>aegis serve</code> printed. This browser stays signed in.</label>
+        <input id="login-token" type="password" autocomplete="current-password" spellcheck="false" required>
+        <button class="btn primary" type="submit">Sign in</button>
+        <p class="err-text" id="login-error"></p>
+      </form>
+    </div>
+  </main>
 
   <main class="view v-fleet">
     <section class="band" id="band">

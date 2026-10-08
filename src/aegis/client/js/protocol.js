@@ -2,6 +2,9 @@
 //
 // A channel delivers a snapshot, then patches numbered from 1. A gap in the
 // numbers, or a reconnect, means resubscribe, saying which revision it holds.
+//
+// The socket signs in with the HttpOnly cookie the server set; the page never
+// holds the token.
 
 export const PROTO = 2;
 
@@ -13,9 +16,8 @@ export class OpError extends Error {
 }
 
 export class Connection {
-  constructor(url, token, { onState = () => {} } = {}) {
+  constructor(url, { onState = () => {} } = {}) {
     this.url = url;
-    this.token = token;
     this.onState = onState;
     this.ws = null;
     this.open = false;
@@ -29,7 +31,7 @@ export class Connection {
   connect() {
     this.onState("connecting");
     const ws = (this.ws = new WebSocket(this.url));
-    ws.onopen = () => ws.send(JSON.stringify({ t: "hello", token: this.token, proto: PROTO }));
+    ws.onopen = () => ws.send(JSON.stringify({ t: "hello", proto: PROTO }));
     ws.onmessage = (ev) => this._receive(JSON.parse(ev.data));
     ws.onclose = (ev) => this._closed(ev.code);
   }
