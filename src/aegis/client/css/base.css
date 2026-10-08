@@ -97,6 +97,13 @@ body{background:#000}
 #a2 .row.user.pending .body:after{content:"not read yet";display:block;font-size:11px;color:var(--faint);margin-top:4px;font-family:var(--font-chrome)}
 #a2 .row.prose .body{font-family:var(--font-prose);font-size:var(--prose-size);line-height:1.55;color:var(--ink);overflow-wrap:anywhere}
 #a2 .row.prose .g{color:var(--ink)}
+/* reading: the margin mark on agent messages */
+#a2 .row.prose{grid-template-columns:var(--row-cols) 16px}
+#a2 .row.prose .rm{line-height:1.9;text-align:center}
+#a2 .row.prose .rm .ic{width:12px;height:12px}
+#a2 .row.prose .rm .ic.unread{color:var(--accent)}
+#a2 .row.prose .rm .ic.read{color:var(--faint)}
+#a2 .card .ft .unr{color:var(--accent)}
 #a2 .md>:first-child{margin-top:0}#a2 .md>:last-child{margin-bottom:0}
 #a2 .md p,#a2 .md ul,#a2 .md ol{margin:0 0 .6em}
 #a2 .md h1,#a2 .md h2,#a2 .md h3,#a2 .md h4{font-family:var(--font-head);color:var(--strong);font-weight:600;margin:.9em 0 .4em;font-size:1.05em}
@@ -397,7 +404,7 @@ body{background:#000}
 #a2 .ic.wait{color:var(--muted)}#a2 .ic.done{color:var(--ok)}#a2 .ic.work{color:var(--accent);animation:a2spin 1.1s linear infinite}
 @keyframes a2spin{to{transform:rotate(360deg)}}
 @keyframes a2blink{to{visibility:hidden}}
-#a2 .tab:not(.on) .ic.need{animation:a2blink 1.2s steps(2,start) infinite}
+#a2 .tab.blink:not(.on) .ic.need{animation:a2blink 1.2s steps(2,start) infinite}
 @media (prefers-reduced-motion:reduce){#a2 .ic.work,#a2 .tab .ic.need{animation:none}}
 #a2 .card.at-needs_you{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 #a2 .card.at-error{border-color:var(--err);box-shadow:inset 3px 0 0 var(--err)}

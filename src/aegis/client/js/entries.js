@@ -5,6 +5,7 @@
 // style; they compute nothing about tools.
 
 import markdownit from "../vendor/markdown-it.mjs";
+import { icon } from "./glyphs.js";
 
 const md = markdownit({ html: false, linkify: true, breaks: false });
 const defaultLink = md.renderer.rules.link_open || ((t, i, o, e, s) => s.renderToken(t, i, o));
@@ -65,7 +66,15 @@ const RENDERERS = {
   prose(e) {
     const body = markdown(e.md);
     body.classList.add("body");
-    return row(e, "prose", body);
+    const r = row(e, "prose", body);
+    // Only the live view carries the flag; an archived transcript draws no mark.
+    if (e.unread !== undefined) {
+      const rm = el("span", "rm");
+      rm.append(icon(e.unread ? "unread" : "read"));
+      r.append(rm);
+      r.classList.toggle("unread", e.unread);
+    }
+    return r;
   },
 
   thinking(e) {

@@ -1401,3 +1401,42 @@ def test_reply_pills_send_their_text_and_all_disappear(server, page):
     assert page.locator("#replies .rp").count() == 0 or page.is_hidden("#replies")
     assert "at-done" in page.get_attribute("#s-status", "class").split()
     assert page.errors == []
+
+
+def test_a_reply_read_on_screen_turns_its_mark_and_clears_the_done_badge(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    report(page, attention="done", line="did it", replies=[])
+    turns_done(page, 2)
+    # On screen and focused for a second: both replies become read.
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row.prose .rm .ic.read').length >= 2"
+        " && !document.querySelector('.row.prose .rm .ic.unread')",
+        timeout=6000,
+    )
+    page.wait_for_selector(".tab.on .dot.ready")  # done, read: the plain idle dot
+    assert page.errors == []
+
+
+def test_a_reply_that_lands_while_you_are_away_stays_unread_until_you_look(
+    server, page
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    sid = page.evaluate("location.hash.slice(3)")
+    # The first reply is on screen: it becomes read before we leave.
+    page.wait_for_function(
+        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+    )
+    page.fill("#input", "/sleep 1")
+    page.press("#input", "Enter")
+    page.click("#tab-fleet")  # away while the reply arrives
+    page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=1 unread", timeout=8000)
+    page.click(f".tab[data-id='{sid}']")
+    page.wait_for_selector(".row.prose .rm .ic.unread", state="attached")
+    page.wait_for_function(
+        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+    )
+    assert page.errors == []

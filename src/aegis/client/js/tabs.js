@@ -2,7 +2,8 @@
 // every browser; their order is this browser's own, kept in localStorage as a
 // list of log ids. Gone ids drop out, new sessions go at the end.
 
-import { glyph, LABEL } from "./glyphs.js";
+import { LABEL } from "./glyphs.js";
+import { markNode } from "./fleet.js";
 
 export class TabOrder {
   constructor(key = "aegis.tabs") {
@@ -51,10 +52,11 @@ export function patchTab(list, m, focusId, actions) {
 function tab(m, focusId, { onFocus, onMove }) {
   const t = document.createElement("div");
   t.className = `tab${m.log_id === focusId ? " on" : ""}${m.state === "stopped" ? " stopped" : ""}`;
+  t.classList.toggle("blink", !!m.blink);
   t.draggable = true;
   t.dataset.id = m.log_id;
   t.title = `${m.handle}: ${m.title || "untitled"} (${LABEL[m.attention] || m.state})`;
-  const mark = glyph(m.attention);
+  const mark = markNode(m);
   const name = document.createElement("span");
   name.className = "tname";
   name.textContent = m.title || m.handle;

@@ -52,7 +52,12 @@ let shown = null; // log_id whose transcript is subscribed
 let unsubTranscript = null;
 let workingSince = null;
 let booted = false;
-const transcript = new Transcript($("tr"), $("entries"), $("jump"));
+const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
+  // A failed report is retried by the next tick: the ids stay unread in the view.
+  onRead: (ids) => {
+    if (shown) conn.call("session.read", { log_id: shown, ids }).catch(() => ids.forEach((i) => transcript.sent.delete(i)));
+  },
+});
 installGlyphs();
 // How the Fleet orders its cards: this browser's choice, like the tab order.
 let fleetOrder = localStorage.getItem("aegis.fleetOrder") || "attention";

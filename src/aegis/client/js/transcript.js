@@ -11,6 +11,10 @@
 // layout off screen (content-visibility in base.css) and take their real
 // height when they near the viewport, so while following, a change in the
 // list's height pins it to the bottom again.
+//
+// It also watches what the reader has seen: an unread agent message on screen
+// for a second is reported through onRead. Only mounted unread rows are
+// observed, and a row is unobserved as it is replaced or dropped.
 
 import { render } from "./entries.js";
 
@@ -19,7 +23,7 @@ const PAGE = 100;
 const NEAR_TOP_PX = 400;
 
 export class Transcript {
-  constructor(scroller, list, jump) {
+  constructor(scroller, list, jump, { onRead = () => {} } = {}) {
     this.scroller = scroller;
     this.list = list;
     this.jump = jump;
@@ -59,6 +63,38 @@ export class Transcript {
     new ResizeObserver(() => {
       if (this.following) this.toBottom();
     }).observe(list);
+    // Reading: an unread agent message counts as read once its row has been at
+    // least half visible for a second while the page is visible and focused.
+    this.onRead = onRead;
+    this.since = new Map(); // id -> when it became half visible
+    this.sent = new Set(); // ids reported and not yet echoed back as read
+    this.watch = new IntersectionObserver(
+      (items) => {
+        for (const it of items) {
+          const id = it.target.dataset.id;
+          // A replaced row's new node keeps the time its old one was first seen.
+          if (!it.isIntersecting) this.since.delete(id);
+          else if (!this.since.has(id)) this.since.set(id, performance.now());
+        }
+      },
+      { root: scroller, threshold: 0.5 },
+    );
+    const looking = () => document.visibilityState === "visible" && document.hasFocus();
+    window.addEventListener("focus", () => {
+      for (const id of this.since.keys()) this.since.set(id, performance.now());
+    });
+    setInterval(() => {
+      if (!looking()) return;
+      const now = performance.now();
+      const ids = [];
+      for (const [id, t] of this.since) {
+        if (now - t >= 1000 && this.entries.get(id)?.unread && !this.sent.has(id)) ids.push(id);
+      }
+      if (ids.length) {
+        for (const id of ids) this.sent.add(id);
+        this.onRead(ids);
+      }
+    }, 300);
   }
 
   atBottom() {
@@ -79,6 +115,7 @@ export class Transcript {
       if (d) d.open = this.opened.get(e.id);
     }
     this.nodes.set(e.id, n);
+    if (e.unread) this.watch.observe(n);
     return n;
   }
 
@@ -115,8 +152,15 @@ export class Transcript {
         const e = op.upsert;
         const known = this.entries.has(e.id);
         this.entries.set(e.id, e);
+        if (!e.unread) {
+          this.sent.delete(e.id);
+          this.since.delete(e.id);
+        }
         const old = this.nodes.get(e.id);
-        if (old) old.replaceWith(this.mount(e));
+        if (old) {
+          this.watch.unobserve(old);
+          old.replaceWith(this.mount(e));
+        }
         else if (!known) {
           this.list.append(this.mount(e));
           added = true;
@@ -124,7 +168,12 @@ export class Transcript {
         // A known entry above the mounted rows changes only its data.
       } else if (op.remove !== undefined) {
         this.entries.delete(op.remove);
-        this.nodes.get(op.remove)?.remove();
+        const old = this.nodes.get(op.remove);
+        if (old) {
+          this.watch.unobserve(old);
+          old.remove();
+        }
+        this.since.delete(op.remove);
         this.nodes.delete(op.remove);
       }
     }
@@ -133,6 +182,8 @@ export class Transcript {
       while (this.nodes.size > WINDOW + PAGE) {
         const first = this.list.firstElementChild;
         this.nodes.delete(first.dataset.id);
+        this.watch.unobserve(first);
+        this.since.delete(first.dataset.id);
         first.remove();
       }
     }
@@ -148,6 +199,9 @@ export class Transcript {
     this.touched.clear();
     this.following = true;
     this.selected = null;
+    this.watch.disconnect();
+    this.since.clear();
+    this.sent.clear();
     this.list.replaceChildren();
   }
 
