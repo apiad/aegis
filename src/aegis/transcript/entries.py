@@ -43,6 +43,7 @@ from ..claude.stream import (
 from .. import files
 from ..opencode.stream import Parser as OpenCodeParser
 from . import describe as d
+from .wire import wire
 
 
 class _Stateless:
@@ -139,13 +140,13 @@ class Fold:
         gets everything."""
         entries = self.entries()
         if since is None or not -1 <= since <= self._rev:
-            return {"rev": self._rev, "entries": entries}
+            return {"rev": self._rev, "entries": [wire(e) for e in entries]}
         return {
             "rev": self._rev,
             "since": since,
             "removed": [i for i, r in self._removed.items() if r > since],
             "entries": [
-                e for e in entries if e["rev"] > since or e["id"] in self._live
+                wire(e) for e in entries if e["rev"] > since or e["id"] in self._live
             ],
         }
 

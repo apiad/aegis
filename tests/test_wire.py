@@ -9,6 +9,7 @@ import pytest
 from aegis.opencode.stream import DELTA
 from aegis.transcript.entries import Fold, fold_records
 from aegis.transcript.store import read_store
+from aegis.transcript.wire import LAZY, wire, wire_ops
 
 from .test_fold import Rec, run
 from .test_opencode_stream import first_prompt, lines
@@ -109,3 +110,58 @@ def test_entry_finds_one_entry_by_id():
     f, _ = run(r)
     assert f.entry("t1")["kind"] == "tool"
     assert f.entry("nope") is None
+
+
+def test_wire_drops_what_a_closed_row_shows_and_says_there_is_more():
+    r = Rec()
+    r.call(
+        "t1",
+        "Edit",
+        {"file_path": "a.py", "old_string": "x = 1", "new_string": "x = 2"},
+    )
+    r.output("t1", "The file a.py has been updated.")
+    r.call("t2", "Bash", {"command": "ls"})
+    r.output("t2", "a\nb")
+    f, _ = run(r)
+    for e in f.entries():
+        w = wire(e)
+        assert w["detail"]["more"] is True
+        assert not set(LAZY["tool"]) & set(w["detail"])
+        assert w["detail"]["result"] == e["detail"]["result"]
+        assert w["summary"] == e["summary"] and w["rev"] == e["rev"]
+        assert "args" in e["detail"], "the fold itself keeps everything"
+
+
+def test_wire_leaves_prose_errors_and_files_whole():
+    for e in (
+        {"id": "p", "kind": "prose", "md": "hi", "detail": {}},
+        {"id": "x", "kind": "error", "md": None, "detail": {"tail": "stderr"}},
+        {"id": "f", "kind": "file", "md": None, "detail": {"url": "/files/a/b"}},
+    ):
+        assert wire(e) is e
+
+
+def test_wire_drops_thinking_text_but_not_an_empty_thought():
+    e = {"id": "t", "kind": "thinking", "md": "deep thoughts", "detail": {}}
+    assert wire(e)["md"] is None and wire(e)["detail"]["more"] is True
+    empty = {"id": "u", "kind": "thinking", "md": "", "detail": {}}
+    assert wire(empty) is empty
+
+
+def test_wire_ops_project_upserts_and_pass_removals():
+    e = {"id": "t", "kind": "thinking", "md": "deep", "detail": {}}
+    assert wire_ops([{"upsert": e}, {"remove": "z"}]) == [
+        {"upsert": wire(e)},
+        {"remove": "z"},
+    ]
+
+
+def test_snapshots_carry_projected_entries():
+    r = Rec()
+    r.call("t1", "Bash", {"command": "ls"})
+    r.output("t1", "a\nb")
+    f, _ = run(r)
+    (e,) = f.snapshot()["entries"]
+    assert "tail" not in e["detail"] and e["detail"]["more"] is True
+    (d,) = f.snapshot(-1)["entries"]
+    assert "tail" not in d["detail"]
