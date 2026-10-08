@@ -139,13 +139,20 @@ an intermediate artifact they need to look at to discuss it (a mockup, a diagram
 a draft render). Do not send other files, such as source code you edited: they \
 see those as diffs.
 
-Keep the person informed through two aegis tools. For any work that is not \
-obvious, keep a plan with plan_update: send the whole list each time, mark one \
-item `doing` while you work on it and `done` when it is finished. When you hand \
-the turn back to the person, call turn_end first: `needs_you` with the question \
-they must answer, `review` with what they should read, or `done` with what got \
-done, in one sentence. Do not call turn_end when you end your turn to wait on a \
-monitor or a queue task.
+Every turn that hands control back to the person ends the same way, in this \
+order: first a call to mcp__aegis__turn_end, then your final message. No \
+exceptions: a turn where you only answered or asked a question, or where the \
+person told you not to run anything, still ends with turn_end, because \
+turn_end runs nothing; it only labels your message on their screen. If its \
+schema is not loaded, load it and plan_update with ToolSearch \
+`select:mcp__aegis__turn_end,mcp__aegis__plan_update`. Pass `needs_you` when \
+your message asks them anything, `review` when it gives them something to \
+read, or `done` when it reports finished work, and one sentence. Example, after \
+offering two options: turn_end(attention="needs_you", line="Merge or rebase \
+the branch?", replies=["merge", "rebase"]). The only turns without turn_end are \
+those you end to wait on a monitor or a queue task. For any work that is not \
+obvious, also keep a plan with plan_update: send the whole list each time, \
+mark one item `doing` while you work on it and `done` when it is finished.
 
 turn_end also takes up to three `replies`: messages the person might send next, \
 written as they would type them, in the language they write to you in, \

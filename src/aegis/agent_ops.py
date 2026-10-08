@@ -113,7 +113,8 @@ Reply = Annotated[str, Field(min_length=1, max_length=80, pattern=r"^[^\n]+$")]
 
 class TurnEnd(_Strict):
     attention: Literal["needs_you", "review", "done"] = Field(
-        description="needs_you: your message asks the person something. review: it "
+        description="Call turn_end before the final message of every turn you hand "
+        "back. needs_you: your message asks the person something. review: it "
         "presents something for them to read. done: it reports finished work."
     )
     line: str = Field(
