@@ -248,14 +248,18 @@ async def test_a_missing_binary_raises_on_start(tmp_path):
         await h.session.start()
 
 
-async def test_a_report_is_published_at_once_and_survives_a_rebuild(tmp_path, fake_claude):
+async def test_a_report_is_published_at_once_and_survives_a_rebuild(
+    tmp_path, fake_claude
+):
     h = Harness(tmp_path, fake_claude)
     s = h.session
     await s.start()
     n = len(h.published)
     s.report({"kind": "plan", "items": [{"text": "read", "state": "doing"}]})
     assert s.standing["plan"] == [{"text": "read", "state": "doing"}]
-    cards = [op["upsert"] for ch, ops in h.published[n:] if ch == "sessions" for op in ops]
+    cards = [
+        op["upsert"] for ch, ops in h.published[n:] if ch == "sessions" for op in ops
+    ]
     assert cards  # the report itself published the card, without waiting
     assert "standing" not in cards[-1]  # the card carries derived fields, not the dict
     await s.shutdown()

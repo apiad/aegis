@@ -62,14 +62,25 @@ async def test_the_plan_reaches_the_card(world):
     items = [{"text": "read", "state": "done"}, {"text": "fix", "state": "doing"}]
     await turn(a, mcp("plan_update", items=items))
     c = a.wire()
-    assert (c["plan_now"], c["plan_did"], c["plan_done"], c["plan_total"]) == ("fix", "read", 1, 2)
+    assert (c["plan_now"], c["plan_did"], c["plan_done"], c["plan_total"]) == (
+        "fix",
+        "read",
+        1,
+        2,
+    )
 
 
 async def test_a_live_monitor_is_waiting_and_cancelling_it_is_done(world):
     a = await world.spawn()
     said = await turn(
         a,
-        mcp("monitor_start", description="never", done="false", progress=None, interval_s=60),
+        mcp(
+            "monitor_start",
+            description="never",
+            done="false",
+            progress=None,
+            interval_s=60,
+        ),
     )
     assert a.wire()["attention"] == "waiting"
     assert a.wire()["waiting_on"] == "1 monitor"
@@ -165,7 +176,12 @@ async def test_two_items_doing_is_refused_and_long_plans_are_cut(world):
     with pytest.raises(OpError):
         await world.app.registry.call(
             "plan.update",
-            {"items": [{"text": "a", "state": "doing"}, {"text": "b", "state": "doing"}]},
+            {
+                "items": [
+                    {"text": "a", "state": "doing"},
+                    {"text": "b", "state": "doing"},
+                ]
+            },
             me,
         )
     items = [{"text": "t" * 200, "state": "pending"} for _ in range(40)]

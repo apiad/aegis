@@ -376,7 +376,12 @@ def register_agent_ops(app: App) -> None:
         mark on your tab and the line on your card."""
         s = own(caller)
         s.report(
-            {"kind": "turn_end", "attention": p.attention, "line": p.line, "replies": p.replies}
+            {
+                "kind": "turn_end",
+                "attention": p.attention,
+                "line": p.line,
+                "replies": p.replies,
+            }
         )
         return "noted"
 
