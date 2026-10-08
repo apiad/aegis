@@ -5,7 +5,7 @@
 // Chrome on Linux keeps Ctrl+T/W/N/Tab, Alt+1…9, Alt+←/→ and Alt+D/E/F for
 // itself (chrome/browser/ui/accelerator_table.cc); the chords here are the Alt
 // keys it leaves free. They match ev.code, because Alt can change ev.key.
-// Alt+↑/↓ and Alt+U are not in Chrome's Linux accelerator table either.
+// Alt+↑/↓, Alt+U and Alt+J are not in Chrome's Linux accelerator table either.
 // Plain keys act only outside text fields, as in Gmail, and the view decides
 // what they do, so there is no mode to keep in your head.
 
@@ -28,6 +28,13 @@ export const KEYS = [
     desc: "Previous / next tab, Fleet first",
     action: "cycle",
     match: (ev) => alt("BracketLeft")(ev) || alt("BracketRight")(ev),
+  },
+  {
+    scope: "global",
+    label: "Alt+J",
+    desc: "Next session that needs you, longest waiting first",
+    action: "needs",
+    match: alt("KeyJ"),
   },
   { scope: "global", label: "Alt+N", desc: "New session", action: "spawn", match: alt("KeyN") },
   {

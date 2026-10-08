@@ -1794,6 +1794,51 @@ def test_the_navigator_counts_the_unread_and_jumps_to_the_first(server, page):
     assert page.errors == []
 
 
+def test_alt_j_walks_the_sessions_that_need_you_longest_waiting_first(server, page):
+    """#199: Alt+J goes to the session that has waited longest for you, lands on
+    its first unread message, and cycles; the Fleet's needs-you group agrees."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.evaluate("document.hasFocus = () => false")  # nothing gets read
+    a, b = spawn(page, "alpha"), spawn(page, "beta")
+    report(page, attention="needs_you", line="Rebase or merge?", replies=[])
+    turns_done(page, 2)
+    page.click(f".tab[data-id='{a}']")
+    page.wait_for_selector("#a2[data-view=session]")
+    report(page, attention="needs_you", line="Which branch?", replies=[])
+    turns_done(page, 2)
+    # b asked first, so b has waited longest, against the tab order a, b.
+    page.click("#tab-fleet")
+    page.wait_for_selector(".card .ask >> text=Which branch?")
+    assert page.eval_on_selector_all(".card", "cs => cs.map(c => c.dataset.id)") == [
+        b,
+        a,
+    ]
+    hash_ = "location.hash.slice(3)"
+    page.keyboard.press("Alt+KeyJ")
+    page.wait_for_function(f"{hash_} === '{b}'")
+    first = "document.querySelector('.row.prose:has(.rm .ic.unread)')?.dataset.id"
+    page.wait_for_function(
+        f"document.querySelector('.row.sel')?.dataset.id === {first}"
+    )
+    page.keyboard.press("Alt+KeyJ")
+    page.wait_for_function(f"{hash_} === '{a}'")
+    page.keyboard.press("Alt+KeyJ")
+    page.wait_for_function(f"{hash_} === '{b}'")
+    assert page.errors == []
+
+
+def test_alt_j_with_nobody_waiting_says_so_and_stays(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    page.wait_for_selector(".tab.on .dot.ready", timeout=6000)  # read: idle dot
+    page.keyboard.press("Alt+KeyJ")
+    page.wait_for_selector("#note >> text=Nobody needs you")
+    assert page.evaluate("location.hash.slice(3)") == sid
+    assert page.errors == []
+
+
 def test_a_needs_you_tab_blinks_until_its_last_message_is_read(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")

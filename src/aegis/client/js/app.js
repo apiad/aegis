@@ -7,7 +7,7 @@
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
-import { ago, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
+import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
 import { installKeys, renderKeys } from "./keys.js";
 import { glyph, icon, installGlyphs, LABEL } from "./glyphs.js";
@@ -52,6 +52,7 @@ const sessions = new Map(); // log_id -> meta, from the `sessions` channel
 const order = new TabOrder();
 let ordered = []; // metas in this browser's tab order
 let shown = null; // log_id whose transcript is subscribed
+let landUnread = null; // the tab Alt+J opened, whose transcript lands on its first unread
 let unsubTranscript = null;
 let workingSince = null;
 let booted = false;
@@ -140,6 +141,16 @@ function go(hash) {
 
 window.addEventListener("hashchange", render);
 window.addEventListener("popstate", render);
+
+// A line at the foot of the page for a key that had nothing to do.
+let noteTimer = null;
+function note(text) {
+  const n = $("note");
+  n.textContent = text;
+  n.hidden = false;
+  clearTimeout(noteTimer);
+  noteTimer = setTimeout(() => (n.hidden = true), 2000);
+}
 
 function show(view, text) {
   root.dataset.view = view;
@@ -387,6 +398,8 @@ function follow(id) {
       if (!placed) {
         transcript.setSince(sinceText(sessions.get(id)));
         askRecap(false); // the server decides whether it is worth one
+        if (landUnread === id) transcript.firstUnread();
+        landUnread = null;
       }
       placed = true;
       // Read by scripts/bench.py: when the snapshot was drawn and painted.
@@ -808,6 +821,18 @@ installKeys(
         $("cards").focus({ preventScroll: true });
         if (!fleetSel) fleetMove(1);
       }
+    },
+    // In byNeed's order, from the tab after this one; from the top when this one
+    // is not in the list, as after reading a review, which drops it.
+    needs() {
+      const list = byNeed(ordered);
+      if (!list.length) return note("Nobody needs you");
+      const r = route();
+      const i = r.view === "session" ? list.findIndex((m) => m.log_id === r.id) : -1;
+      const id = list[(i + 1) % list.length].log_id;
+      if (list[i]?.log_id === id) return transcript.firstUnread(); // the only one, and open
+      landUnread = id;
+      go(`#s=${id}`);
     },
     cycle(ev) {
       const all = ["#fleet", ...ordered.map((m) => `#s=${m.log_id}`)];

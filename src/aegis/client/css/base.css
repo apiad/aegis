@@ -509,3 +509,5 @@ body{background:#000}
   #a2 .row.tool details>summary{padding:9px 0}
   #a2 .btn{min-height:44px}
 }
+#a2 .note{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:40;padding:7px 14px;border:1px solid var(--rule);border-radius:999px;background:var(--raised);color:var(--muted);font-family:var(--font-chrome);font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+#a2 .note[hidden]{display:none}
