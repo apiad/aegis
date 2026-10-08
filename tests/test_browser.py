@@ -1311,7 +1311,9 @@ def test_an_opencode_session_streams_and_calls_aegis(server, page):
     assert "chunk6" not in prose, "the text is drawn while it streams"
     turns_done(page, 1)
     assert page.inner_text("#s-model") == "OpenCode, opencode-go/fake-pro"
-    page.wait_for_function("document.querySelector('#s-cost').textContent === '$0.0020'")
+    page.wait_for_function(
+        "document.querySelector('#s-cost').textContent === '$0.0020'"
+    )
 
     page.fill("#input", "/mcp meta {}")
     page.press("#input", "Enter")
