@@ -36,7 +36,7 @@
 
 ### Task 0: File the issue
 
-- [ ] **Step 1: Open the issue**
+- [x] **Step 1: Open the issue**
 
 ```bash
 cd /home/apiad/Workspace/repos/aegis/.claude/worktrees/slash-commands
@@ -67,7 +67,7 @@ Note the issue number; every commit message on this branch ends its subject with
 - Produces: dataclasses `LocalCommand(command: str, args: str, text: str)`, `CommandEcho(name: str, args: str)`, `CommandOutput(text: str)`, `Reset(trigger: str)` in `aegis.claude.stream`, members of `Event`; `Result` gains `turns: int | None`. None is in `TURN_BEARING`.
 - Produces: `tests/fixtures/slash-commands.jsonl`, an aegis store (records with `i`, `ts`, `src`, and `kind`/`text` or `line`) of five sends and Claude's answers: `/effort high`, `/hello world`, `/compact`, `/clear`, `what did I say before? one line`.
 
-- [ ] **Step 1: Build the fixture from the recorded probe**
+- [x] **Step 1: Build the fixture from the recorded probe**
 
 `scripts/trim_probe.py` turns a probe recording into a store, keeping only the fields aegis parses, so no local path or skill list lands in the repo:
 
@@ -141,7 +141,7 @@ grep -c apiad tests/fixtures/slash-commands.jsonl               # expect 0
 
 If the second count is not 0, the compaction summary carries a local path; replace the summary's content string with `"Summary: (trimmed)"` in `trim()` for user lines without `isReplay` and rerun.
 
-- [ ] **Step 2: Write the failing tests** (append to `tests/test_stream.py`, and add `CommandEcho, CommandOutput, LocalCommand, Reset` to its import list)
+- [x] **Step 2: Write the failing tests** (append to `tests/test_stream.py`, and add `CommandEcho, CommandOutput, LocalCommand, Reset` to its import list)
 
 ```python
 def test_a_local_command_is_a_synthetic_assistant_line():
@@ -191,12 +191,12 @@ def test_the_recorded_probe_parses_into_the_new_events():
     assert "Garbled" not in kinds
 ```
 
-- [ ] **Step 3: Run them, expect ImportError**
+- [x] **Step 3: Run them, expect ImportError**
 
 Run: `uv run pytest tests/test_stream.py -q`
 Expected: collection error, `cannot import name 'CommandEcho'`.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 In `src/aegis/claude/stream.py`, add `import re` and, after `Echo`:
 
@@ -291,11 +291,11 @@ Replace the replay block in the `user` branch with:
 
 Add the four names to the module docstring's list of what is parsed.
 
-- [ ] **Step 5: Run the tests, expect PASS**
+- [x] **Step 5: Run the tests, expect PASS**
 
 Run: `uv run pytest tests/test_stream.py -q`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/claude/stream.py tests/test_stream.py tests/fixtures/slash-commands.jsonl scripts/trim_probe.py
@@ -314,7 +314,7 @@ git commit -m "feat(stream): Claude's local commands, command echoes, their outp
 - Consumes: Task 1's events.
 - Produces: entry kind `"command"` (`title` the command line, `md` its output, glyph `describe.COMMAND_GLYPH = "/"`); the store record `{"kind": "configure", "model"?, "effort"?, "permission"?, "when"?: "next_turn" | "on_resume"}` folds to a system entry `model → sonnet · effort → max (from the next turn)`; a `Result` with `turns == 0` and no cost makes no entry.
 
-- [ ] **Step 1: Write the failing tests** (append to `tests/test_fold.py`)
+- [x] **Step 1: Write the failing tests** (append to `tests/test_fold.py`)
 
 ```python
 from aegis.transcript.store import read_store
@@ -401,12 +401,12 @@ def test_configure_records_read_as_one_line():
 
 Add `from pathlib import Path` to the file's imports.
 
-- [ ] **Step 2: Run, expect failures**
+- [x] **Step 2: Run, expect failures**
 
 Run: `uv run pytest tests/test_fold.py -q`
 Expected: the six new tests fail (pending left, raw tags as user entries, no configure entry).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/aegis/transcript/describe.py`: add `COMMAND_GLYPH = "/"` after `FILE_GLYPH`.
 
@@ -504,12 +504,12 @@ Expected: the six new tests fail (pending left, raw tags as user entries, no con
             return self._upsert(_entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary=line))
 ```
 
-- [ ] **Step 4: Run the fold and session tests, expect PASS**
+- [x] **Step 4: Run the fold and session tests, expect PASS**
 
 Run: `uv run pytest tests/test_fold.py tests/test_session.py -q`
 Expected: all pass, the existing echo-order tests included.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/transcript/entries.py src/aegis/transcript/describe.py tests/test_fold.py
@@ -528,7 +528,7 @@ git commit -m "feat(fold): answers take the send they answer; command entries, r
 - Produces: `ClaudeProcess.request(subtype: str, timeout: float = CONTROL_TIMEOUT_S, **fields) -> dict` (the `response` body of a success), raising `ControlError(message)` on an error answer, `TimeoutError`, or `BrokenPipeError` when claude is not running or exits first. `CONTROL_TIMEOUT_S = 15.0` and `class ControlError(Exception)` in `aegis.claude.process`. Answered responses never reach `on_line`.
 - Produces (fake): answers `initialize` with `{"commands": COMMANDS, "models": MODELS}`; `set_model` (error `Model 'x' not found` for an unknown or disabled one); `apply_flag_settings` (applies `effortLevel` only if the current model lists it, always answers success); `get_settings` → `{"applied": {"model", "effort"}}`; `set_permission_mode` → `{"mode"}`; `interrupt` only interrupts. Scripts `/context`, `/model`, `/effort`, `/rename` (run locally), `/compact`, `/clear`, `/hello <name>`.
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_control.py`)
+- [x] **Step 1: Write the failing tests** (`tests/test_control.py`)
 
 ```python
 import asyncio
@@ -586,12 +586,12 @@ async def test_effort_applies_only_where_the_model_lists_it(tmp_path, fake_claud
         await p.terminate()
 ```
 
-- [ ] **Step 2: Run, expect ImportError**
+- [x] **Step 2: Run, expect ImportError**
 
 Run: `uv run pytest tests/test_control.py -q`
 Expected: `cannot import name 'ControlError'`.
 
-- [ ] **Step 3: Implement `request` in `src/aegis/claude/process.py`**
+- [x] **Step 3: Implement `request` in `src/aegis/claude/process.py`**
 
 Add `import time`, then:
 
@@ -652,7 +652,7 @@ In `_pump_stdout`, replace `if line.strip(): self._on_line(line)` with `if line.
 
 Add to the module docstring: "A control request that wants its answer goes through ``request``; the answer is routed to it and never stored."
 
-- [ ] **Step 4: Extend the fake** (`tests/fake_claude.py`)
+- [x] **Step 4: Extend the fake** (`tests/fake_claude.py`)
 
 Add to the docstring's script list:
 
@@ -766,11 +766,11 @@ At the top of `run`, after the `init` emit and before `echo(text)`:
 
 The later `word, _, arg = text.partition(" ")` line in `run` is now redundant; delete it.
 
-- [ ] **Step 5: Run control, session and agents tests, expect PASS**
+- [x] **Step 5: Run control, session and agents tests, expect PASS**
 
 Run: `uv run pytest tests/test_control.py tests/test_session.py tests/test_agents.py -q`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/claude/process.py tests/fake_claude.py tests/test_control.py
@@ -794,7 +794,7 @@ git commit -m "feat(claude): control requests that wait for their answer; the fa
   - `async catalog(proc) -> Catalog`; `async probe(claude_bin, model, effort, permission, cwd, stderr_path) -> Catalog` (starts `claude`, asks, ends it).
   - `async set_model(proc, value)`, `async set_effort(proc, level)` (raises `ControlError` when `get_settings` does not read back `level`), `async set_permission(proc, permission)` (aegis vocabulary).
 
-- [ ] **Step 1: Write the failing tests** (append to `tests/test_control.py`)
+- [x] **Step 1: Write the failing tests** (append to `tests/test_control.py`)
 
 ```python
 from aegis.claude import control
@@ -845,11 +845,11 @@ async def test_a_probe_answers_and_leaves_no_process(tmp_path, fake_claude):
     assert cat.has("compact")
 ```
 
-- [ ] **Step 2: Run, expect ImportError**
+- [x] **Step 2: Run, expect ImportError**
 
 Run: `uv run pytest tests/test_control.py -q`
 
-- [ ] **Step 3: Implement `src/aegis/claude/control.py`**
+- [x] **Step 3: Implement `src/aegis/claude/control.py`**
 
 ```python
 """What aegis asks of a live ``claude`` through control requests, and the
@@ -988,11 +988,11 @@ async def set_permission(proc: ClaudeProcess, permission: str) -> None:
     await proc.request("set_permission_mode", mode=PERMISSION_MODE.get(permission, permission))
 ```
 
-- [ ] **Step 4: Run, expect PASS**
+- [x] **Step 4: Run, expect PASS**
 
 Run: `uv run pytest tests/test_control.py -q`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/claude/control.py tests/test_control.py
@@ -1015,7 +1015,7 @@ git commit -m "feat(claude): the command catalog from initialize, and live model
   - `async Session.configure(model: str | None = None, effort: str | None = None, permission: str | None = None) -> None`: applies to a live process first, in that order; records one `configure` record of what applied (with `when`), replaces `spec`, clears `model_id` on a model change, publishes and writes the meta; re-raises the setter's error after recording what did apply.
   - `meta.rebuild` applies `configure` records over the spawn's spec and takes the last `init`'s session id.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_session.py`:
 
@@ -1090,11 +1090,11 @@ def test_rebuild_applies_configure_records_and_the_last_session_id(tmp_path: Pat
 
 (Check `tests/test_meta.py`'s imports for `json` and `rebuild`; add them if missing.)
 
-- [ ] **Step 2: Run, expect failures**
+- [x] **Step 2: Run, expect failures**
 
 Run: `uv run pytest tests/test_session.py tests/test_meta.py -q`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/aegis/session.py`:
 
@@ -1184,11 +1184,11 @@ then use `spec["model"]`, `spec["effort"]`, `spec["permission"]` in the returned
             self.catalogs.put(session.spec.cwd, catalog)
 ```
 
-- [ ] **Step 4: Run, expect PASS**
+- [x] **Step 4: Run, expect PASS**
 
 Run: `uv run pytest tests/test_session.py tests/test_meta.py tests/test_registry.py -q`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/aegis/session.py src/aegis/meta.py src/aegis/registry.py tests/test_session.py tests/test_meta.py
@@ -1212,7 +1212,7 @@ git commit -m "feat(session): fetch the command catalog on start; configure mode
   - Operations: `session.configure {log_id, model?, effort?, permission?}` → the session's wire; `commands.list {log_id}` → `{"commands": [...aegis, ...claude], "models": [...], "permissions": [...]}`; `session.send` resolves `/` lines and returns the aegis command's result (or `None` for text).
   - `App.catalogs`; `profiles.EFFORTS` and `app.Effort` include `xhigh`.
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_commands.py`)
+- [x] **Step 1: Write the failing tests** (`tests/test_commands.py`)
 
 ```python
 import pytest
@@ -1375,11 +1375,11 @@ async def test_a_stopped_session_after_a_restart_gets_its_catalog_from_a_probe(t
         await b.shutdown()
 ```
 
-- [ ] **Step 2: Run, expect ImportError**
+- [x] **Step 2: Run, expect ImportError**
 
 Run: `uv run pytest tests/test_commands.py -q`
 
-- [ ] **Step 3: Implement `src/aegis/commands.py`**
+- [x] **Step 3: Implement `src/aegis/commands.py`**
 
 ```python
 """The composer's slash lines, resolved on the server.
@@ -1486,7 +1486,7 @@ class Catalogs:
 
 (`BrokenPipeError` and `ConnectionResetError` are `OSError`s.)
 
-- [ ] **Step 4: Wire the app** (`src/aegis/app.py`, `src/aegis/profiles.py`)
+- [x] **Step 4: Wire the app** (`src/aegis/app.py`, `src/aegis/profiles.py`)
 
 `profiles.py`: `EFFORTS = ("low", "medium", "high", "xhigh", "max")`.
 
@@ -1607,11 +1607,11 @@ class ConfigureParams(_Strict):
 
 - Update the module docstring's operation list with `session.configure` and `commands.list`, and say `session.send` resolves `/` lines (`commands.py`).
 
-- [ ] **Step 5: Run, expect PASS**
+- [x] **Step 5: Run, expect PASS**
 
 Run: `uv run pytest tests/test_commands.py tests/test_web.py tests/test_agents.py -q`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/aegis/commands.py src/aegis/app.py src/aegis/profiles.py tests/test_commands.py
@@ -1631,7 +1631,7 @@ git commit -m "feat: / lines resolved on the server; session.configure and comma
 - Consumes: `commands.list`, `session.send` (Task 6); entry kind `command` (Task 2).
 - Produces (JS module `commands.js`): `fuzzy(query, text) -> {score, positions} | null`; `complete(line, catalog, meta) -> {items: [{insert, label, hint, doc, source}], run: bool}`; `class CommandMenu(box, {load, run, focusInput})` with `openInline()`, `openOverlay()`, `close()`, `isOpen`, `onInput(line)`, `onKey(ev) -> boolean` (true when the menu took the key).
 
-- [ ] **Step 1: Write the failing browser tests** (append to `tests/test_browser.py`, same markers as the tests around them)
+- [x] **Step 1: Write the failing browser tests** (append to `tests/test_browser.py`, same markers as the tests around them)
 
 ```python
 def menu_rows(pg) -> list[str]:
@@ -1703,11 +1703,11 @@ def test_clicking_the_model_chip_opens_the_menu_on_models(server, page):
     assert menu_rows(page)[:3] == ["opus", "sonnet", "haiku"]
 ```
 
-- [ ] **Step 2: Run, expect failures**
+- [x] **Step 2: Run, expect failures**
 
 Run: `uv run pytest tests/test_browser.py -q -m browser -k "menu or alt_slash or unknown_command or chip"`
 
-- [ ] **Step 3: Markup and styles**
+- [x] **Step 3: Markup and styles**
 
 `index.html`: inside `.composer`, before the textarea, add
 
@@ -1733,7 +1733,7 @@ and change the textarea placeholder to `Message the agent. Enter sends, Shift+En
 #a2 .row.command .cmd{font-family:var(--font-chrome);color:var(--strong)}
 ```
 
-- [ ] **Step 4: `commands.js`**
+- [x] **Step 4: `commands.js`**
 
 ```js
 // The composer's command menu: one list for typing "/" and for Alt+/.
@@ -1982,7 +1982,7 @@ export class CommandMenu {
 }
 ```
 
-- [ ] **Step 5: Wire it** (`keys.js`, `app.js`, `entries.js`)
+- [x] **Step 5: Wire it** (`keys.js`, `app.js`, `entries.js`)
 
 `keys.js`, a global row after `Alt+.`:
 
@@ -2093,12 +2093,12 @@ for (const [id, cmd] of [["chip-model", "model"], ["chip-effort", "effort"], ["c
   },
 ```
 
-- [ ] **Step 6: Run the browser tests, expect PASS**
+- [x] **Step 6: Run the browser tests, expect PASS**
 
 Run: `uv run pytest tests/test_browser.py -q -m browser`
 Expected: all pass, the existing ones included (they send `/sleep`, `/fail` and the menu must not swallow their Enter: those lines are whole commands, so Enter sends).
 
-- [ ] **Step 7: Exercise it by hand in a browser**
+- [x] **Step 7: Exercise it by hand in a browser**
 
 Start a server from this worktree on a free port against a throwaway root, with the real `claude`:
 
@@ -2109,7 +2109,7 @@ uv run aegis serve --root /tmp/aegis-slash-try --port 8931
 
 Open the printed URL, spawn, and check: `/` lists commands with sources; `/mo` Tab `son` Enter Enter switches the chip; `/effort` lists levels; `/context` renders a command row; Alt+/ over a draft keeps the draft; `/bogus` is flagged. Use the `saidkick` skill or a person's browser. Stop the server with Ctrl+C. Never point it at the Workspace root (it would read the live state).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/aegis/client/js/commands.js src/aegis/client/js/app.js src/aegis/client/js/keys.js src/aegis/client/js/entries.js src/aegis/client/css/base.css src/aegis/client/index.html tests/test_browser.py
@@ -2124,7 +2124,7 @@ git commit -m "feat(client): the command menu, Alt+/, clickable chips and comman
 - Modify: `tests/test_live.py`, `DESIGN.md`, `docs/superpowers/specs/2026-10-07-aegis-2-slash-commands-design.md`, `src/aegis/client/index.html` (spawn form)
 - Create: `changelog.d/<n>-slash-commands.added.md`
 
-- [ ] **Step 1: A live test** (append to `tests/test_live.py`)
+- [x] **Step 1: A live test** (append to `tests/test_live.py`)
 
 ```python
 async def test_real_claude_switches_model_and_effort_and_keeps_them_across_resume(tmp_path: Path):
@@ -2166,11 +2166,11 @@ async def test_real_claude_switches_model_and_effort_and_keeps_them_across_resum
 
 Run: `make test-live` (spends a few cents of Sonnet; run it once).
 
-- [ ] **Step 2: The spawn form offers xhigh**
+- [x] **Step 2: The spawn form offers xhigh**
 
 `index.html`: the `#sp-effort` select becomes `<option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option>`.
 
-- [ ] **Step 3: DESIGN.md**
+- [x] **Step 3: DESIGN.md**
 
 Add after "**Agents call the same operations, as MCP tools named after them.**":
 
@@ -2188,7 +2188,7 @@ and does not store.
 
 and extend "**The echo creates the user entry, never the send.**" with: "An answer takes the pending send whose text it answers, else the oldest of its kind, because a slash command waits for the turn to end while a prompt is read at the next tool boundary."
 
-- [ ] **Step 4: The release note** (`changelog.d/<n>-slash-commands.added.md`)
+- [x] **Step 4: The release note** (`changelog.d/<n>-slash-commands.added.md`)
 
 ```markdown
 - **Slash commands in the composer.** `/model`, `/effort` and `/permission` switch a
@@ -2201,11 +2201,11 @@ and extend "**The echo creates the user entry, never the send.**" with: "An answ
 
 Run: `make changelog-check`
 
-- [ ] **Step 5: Spec status**
+- [x] **Step 5: Spec status**
 
 Change the spec's status line to `> **Status:** implemented, 2026-10-<dd>. Plan: docs/superpowers/plans/2026-10-08-aegis-2-slash-commands.md.` and tick this plan's boxes.
 
-- [ ] **Step 6: Gates, bench, PR**
+- [x] **Step 6: Gates, bench, PR**
 
 ```bash
 make format lint lint-docs typecheck changelog-check

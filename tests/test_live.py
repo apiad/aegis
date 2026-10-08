@@ -257,3 +257,48 @@ async def test_real_claude_spawns_a_peer_through_session_spawn(tmp_path: Path):
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)
+
+
+async def test_real_claude_switches_model_and_effort_and_keeps_them_across_resume(
+    tmp_path: Path,
+):
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    path = tmp_path / "log.jsonl"
+    s = Session(
+        log_id="live-cmd",
+        spec=SpawnSpec("haiku", HAIKU, "low", "full", tmp_path),
+        handle="live-cmd",
+        store=Store(path),
+        stderr_path=tmp_path / "stderr.log",
+        claude_bin=claude,
+        publish=lambda ch, ops: None,
+        metas=MetaStore(tmp_path / "sessions"),
+    )
+    await s.start()
+    try:
+        cat = await s.catalog_task
+        assert cat and cat.has("compact") and cat.model("sonnet")
+        await s.configure(model="sonnet", effort="low")
+        await s.send("Reply with the single word OK.")
+        await until(
+            lambda: s.status == "idle" and s.cost_usd, timeout=90, what="the turn"
+        )
+        assert s.model_id and "sonnet" in s.model_id
+        await s.send("/context")
+        await until(
+            lambda: (
+                s.status == "idle" and any(e["kind"] == "command" for e in s.entries())
+            ),
+            timeout=60,
+            what="/context",
+        )
+        await s.stop()
+        await s.send("Reply with the single word OK.")
+        await until(lambda: s.status == "idle", timeout=90, what="the resumed turn")
+        assert "sonnet" in (s.model_id or "")
+        assert not [e for e in s.entries() if e["status"] == "pending"]
+    finally:
+        await s.stop()
+    records, damaged = read_store(path)
+    assert damaged == 0 and fold_records(records).entries() == s.entries()

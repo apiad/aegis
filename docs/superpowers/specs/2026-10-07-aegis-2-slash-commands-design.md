@@ -1,7 +1,7 @@
 # Slash commands in aegis 2
 
-> **Status:** design, 2026-10-07, awaiting review. No plan yet.
-> Issues: [#97](https://github.com/apiad/aegis/issues/97) (live model and effort).
+> **Status:** implemented, 2026-10-08. Plan: `docs/superpowers/plans/2026-10-08-aegis-2-slash-commands.md`.
+> Issues: [#166](https://github.com/apiad/aegis/issues/166); [#97](https://github.com/apiad/aegis/issues/97) (live model and effort).
 > Earlier work: the TUI-era specs `2026-07-16-aegis-slash-commands-design.md` and
 > `2026-07-17-aegis-slash-commands-2a..2d`, and the closed PR #123's
 > `2026-10-04-aegis-live-model-and-effort-switch-design.md` (branch
