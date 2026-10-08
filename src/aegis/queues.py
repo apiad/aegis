@@ -16,6 +16,10 @@ A worker whose process exits on its own fails its task and keeps its tab.
 Tasks are an append-only log, ``<state>/tasks.jsonl``, replayed at boot:
 pending tasks are dispatched again, and a running task's worker is resumed
 with "the server restarted; continue your task".
+
+The queues are read from ``.aegis.yaml`` as it is at each dispatch (config.py),
+so a queue added or changed on disk takes tasks with no restart, and the app
+dispatches again on every change.
 """
 
 from __future__ import annotations
@@ -29,12 +33,13 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .agents import ConfigError, load_agents, read_config, resolve
+from .agents import ConfigError, read_config, resolve
 from .monitors import iso_now
 from .names import default_title
 from .ops import OpError
 
 if TYPE_CHECKING:
+    from .config import Config
     from .monitors import Monitors
     from .registry import Registry
     from .session import Session
@@ -100,13 +105,20 @@ def load_queues(config_root: Path) -> dict[str, dict]:
 
 
 class Queues:
-    def __init__(self, registry: Registry, monitors: Monitors, path: Path) -> None:
+    def __init__(
+        self, registry: Registry, monitors: Monitors, path: Path, config: Config
+    ) -> None:
         self._registry = registry
         self._monitors = monitors
         self._path = path
-        self.queues = load_queues(registry.roots.config_root)
+        self._config = config
         self.tasks: dict[str, Task] = {}
         self._dispatching = False
+
+    @property
+    def queues(self) -> dict[str, dict]:
+        """The queues in .aegis.yaml as it is now (config.py)."""
+        return self._config.current().queues
 
     # -- the log --------------------------------------------------------------
     def _log(self, t: Task, event: str) -> None:
@@ -221,11 +233,10 @@ class Queues:
 
     async def _start(self, t: Task, q: dict) -> None:
         try:
-            agents = load_agents(self._registry.roots.config_root)
+            agents = list(self._config.current().agents)
             spec = resolve(agents, None, q["agent"], {}, Path(t.cwd))
-        except (ConfigError, OpError) as e:
-            reason = e.message if isinstance(e, OpError) else str(e)
-            self._fail(t, f"the queue's agent {q['agent']!r} cannot start: {reason}")
+        except OpError as e:
+            self._fail(t, f"the queue's agent {q['agent']!r} cannot start: {e.message}")
             return
         try:
             s = await self._registry.spawn(

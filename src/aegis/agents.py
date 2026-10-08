@@ -139,11 +139,6 @@ def load_agents(config_root: Path) -> list[Agent]:
     return agents_from(read_config(config_root))
 
 
-def default_agent(config_root: Path) -> str | None:
-    name = read_config(config_root).get("default_agent")
-    return str(name) if name else None
-
-
 def model_suggestions(agents: list[Agent]) -> dict[str, list[str]]:
     """Per harness, what the model chip offers: the CLI's aliases, then every
     model an agent of that harness names."""

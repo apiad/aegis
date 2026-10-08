@@ -662,3 +662,33 @@ async def test_an_agent_spawns_with_at_most_its_own_permission(world):
     full = await world.spawn()
     said = await turn(full, mcp("session_spawn", agent="reviewer"))
     assert said.startswith("mcp ok")
+
+
+async def test_a_queue_added_on_disk_takes_tasks_without_a_restart(world, tmp_path):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG + "  late: {agent: opus, max_parallel: 1}\n")
+    r = await world.app.registry.call("queue.enqueue", {"queue": "late", "payload": "say hi"})
+    t = world.app.queues.tasks[r["task_id"]]
+    await until(lambda: t.status == "completed", timeout=12, what="the late queue's task")
+
+
+async def test_raising_max_parallel_on_disk_starts_a_waiting_task(world, tmp_path):
+    flag = tmp_path / "hold"
+    hold = mcp("monitor_start", description="hold", done=f"test -f {flag}", progress=None, interval_s=1)
+    ids = [
+        (await world.app.registry.call("queue.enqueue", {"queue": "solo", "payload": hold}))["task_id"]
+        for _ in range(2)
+    ]
+    first, second = (world.app.queues.tasks[i] for i in ids)
+    await until(lambda: first.status == "running", timeout=8, what="the first worker")
+    assert second.status == "pending"
+    (tmp_path / ".aegis.yaml").write_text(CONFIG.replace("solo: {agent: opus, max_parallel: 1}", "solo: {agent: opus, max_parallel: 2}"))
+    await until(lambda: second.status == "running", timeout=5, what="the raised limit")
+    flag.touch()
+
+
+async def test_a_broken_file_keeps_spawning_with_the_last_good_agents(world, tmp_path):
+    (tmp_path / ".aegis.yaml").write_text("agents: [1, 2\n")
+    roster = await world.app.registry.call("agents.list", {})
+    assert [a["name"] for a in roster["agents"]] == ["opus", "reviewer"]
+    assert ".aegis.yaml" in roster["config_error"]
+    await world.spawn()
