@@ -71,12 +71,13 @@ def test_rebuild_recovers_spec_claude_id_and_title(tmp_path: Path):
     s.close()
     m = rebuild(path)
     assert m["log_id"] == "20261006-x" and m["archived"] is True
-    assert (m["profile"], m["cwd"], m["claude_session_id"], m["title"]) == (
+    assert (m["agent"], m["cwd"], m["claude_session_id"], m["title"]) == (
         "opus",
         "/w",
         "cs-1",
         "fix the flaky test",
     )
+    assert m["harness"] is None
     assert (m["created_at"], m["last_activity"]) == (1.0, 3.0)
 
 

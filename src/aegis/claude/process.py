@@ -13,11 +13,18 @@ from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 
-from ..profiles import PERMISSION_MODE
 
 LINE_LIMIT = 64 * 1024 * 1024
 STDERR_TAIL = 20
 TERM_GRACE_S = 5.0
+
+# aegis's permission vocabulary, mapped to Claude Code's --permission-mode.
+PERMISSION_MODE = {
+    "read": "plan",
+    "write": "acceptEdits",
+    "full": "bypassPermissions",
+    "auto": "auto",
+}
 
 
 NO_MCP = '{"mcpServers":{}}'

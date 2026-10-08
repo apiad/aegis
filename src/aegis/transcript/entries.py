@@ -154,9 +154,9 @@ class Fold:
                 )
             )
         if kind == "spawn":
-            line = (
-                f"spawned {rec.get('profile')} · {rec.get('model')} · {rec.get('cwd')}"
-            )
+            agent = rec.get("agent") or rec.get("profile")
+            star = "*" if rec.get("overridden") else ""
+            line = f"spawned {agent}{star} · {rec.get('model')} · {rec.get('cwd')}"
             return self._upsert(
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary=line)
             )

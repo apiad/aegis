@@ -73,11 +73,56 @@ class Archived(Exception):
 
 @dataclass(frozen=True)
 class SpawnSpec:
-    profile: str
+    """What a session's process runs with, fixed at spawn and recorded in the
+    spawn record and the meta. A resume reads it from there, never from
+    ``.aegis.yaml``: Claude Code does not keep the system prompt in its own
+    session file, so editing an agent must not change its old sessions."""
+
+    agent: str
     model: str
     effort: str
     permission: str
     cwd: Path
+    harness: str = "claude-code"
+    priming: str | None = None
+    # The fields this spawn changed from its agent, such as ("model",).
+    overridden: tuple[str, ...] = ()
+    # The log id of the agent session that spawned this one.
+    spawned_by: str | None = None
+
+    def record(self) -> dict:
+        """The fields a spawn record and a meta carry."""
+        d: dict = {
+            "agent": self.agent,
+            "harness": self.harness,
+            "model": self.model,
+            "effort": self.effort,
+            "permission": self.permission,
+            "cwd": str(self.cwd),
+        }
+        if self.priming:
+            d["priming"] = self.priming
+        if self.overridden:
+            d["overridden"] = list(self.overridden)
+        if self.spawned_by:
+            d["spawned_by"] = self.spawned_by
+        return d
+
+    @classmethod
+    def from_record(cls, d: dict, cwd_default: Path) -> "SpawnSpec":
+        # Records from before #155 carry `profile` and no harness; every one of
+        # them ran Claude Code.
+        return cls(
+            agent=str(d.get("agent") or d.get("profile") or ""),
+            model=str(d.get("model") or ""),
+            effort=str(d.get("effort") or "high"),
+            permission=str(d.get("permission") or "auto"),
+            cwd=Path(d.get("cwd") or cwd_default),
+            harness=str(d.get("harness") or "claude-code"),
+            priming=d.get("priming") or None,
+            overridden=tuple(d.get("overridden") or ()),
+            spawned_by=d.get("spawned_by"),
+        )
 
 
 class Session:
@@ -151,12 +196,8 @@ class Session:
             "log_id": self.log_id,
             "handle": self.handle,
             "title": self.title,
-            "profile": s.profile,
-            "model": s.model,
+            **s.record(),
             "model_id": self.model_id,
-            "effort": s.effort,
-            "permission": s.permission,
-            "cwd": str(s.cwd),
             "claude_session_id": self.claude_session_id,
             "archived": self.archived,
             "created_at": self.created_at,
@@ -174,6 +215,7 @@ class Session:
         """What the ``sessions`` channel carries."""
         m = self.meta()
         m.pop("held")
+        m.pop("priming", None)  # the agent's text stays on the server
         m["held_count"] = len(self.held)
         m["state"] = self.status
         m["model"] = self.model_id or self.spec.model
@@ -208,17 +250,7 @@ class Session:
     # -- operations --------------------------------------------------------
     async def start(self) -> None:
         """A brand-new session: record the spawn, then start ``claude``."""
-        s = self.spec
-        self._record(
-            {
-                "kind": "spawn",
-                "profile": s.profile,
-                "model": s.model,
-                "effort": s.effort,
-                "permission": s.permission,
-                "cwd": str(s.cwd),
-            }
-        )
+        self._record({"kind": "spawn", **self.spec.record()})
         await self.ensure_running()
 
     async def ensure_running(self) -> None:
