@@ -20,8 +20,13 @@ server is up and it only opens another window. Plain `aegis serve` opens nothing
 prints the URL instead, for systemd and remote hosts.
 
 `aegis serve --port 8742 --host 127.0.0.1` are the defaults. The token is kept in
-`.aegis/state/token` and reused across restarts; delete the file to rotate it.
-Anything but loopback must be asked for with `--host`.
+`.aegis/state/token` and reused across restarts; delete the file to rotate it, which
+signs every browser out. Anything but loopback must be asked for with `--host`.
+
+Opening the printed URL once signs that browser in: the server moves the token into
+an HttpOnly cookie that lasts a year and drops it from the address bar, so no script
+on the page can read it. A browser without the cookie gets a field to paste the token
+into.
 
 `aegis serve -d` (`--detach`) starts the server in the background, in its own
 session, so it outlives the terminal or the SSH connection without tmux or screen.
@@ -35,9 +40,9 @@ Behind a reverse proxy, name the public origin: `aegis serve --origin
 https://dev.example` (repeatable) accepts sockets whose `Host` is `dev.example` and
 whose `Origin` is exactly that origin, and prints the public URL with the token.
 Keep `--host` on loopback and let the proxy terminate TLS. Anyone with the token
-drives agents that may run with full permission on that machine, so put a second
-lock in the proxy (basic auth, or a login), and do not proxy `/mcp`: agents reach
-it on loopback.
+drives agents that may run with full permission on that machine, so keep it secret,
+and do not proxy `/mcp`: agents reach it on loopback. Behind https the sign-in cookie
+is `Secure`.
 
 ## Configuration
 
@@ -63,8 +68,16 @@ model, effort and permission can be changed for that session; its `priming` is
 appended to aegis's own system prompt. Nothing has a default: an agent names
 all four fields and a queue names its agent and `max_parallel`, and one that
 does not is shown with what is missing. `permission` is `read` (plan mode),
-`write` (accept edits), `auto` or `full` (bypass permissions). Only Claude Code
-agents run today.
+`write` (accept edits), `auto` or `full` (bypass permissions). An agent runs Claude
+Code (`harness: claude-code`) or OpenCode (`harness: opencode`, with a
+`provider/model`).
+
+`aegis init` writes a first `.aegis.yaml` from the harnesses installed on the
+machine, and `aegis doctor` names every problem in one by its place in the file.
+The Settings page (Alt+S) edits agents and queues and keeps the file's comments, and
+the server follows the file as it changes, without a restart. `recap: {agent:
+<name>}` names the agent that writes a two-sentence recap when you come back to a
+tab after a while; without it nothing is called.
 
 ## What you get
 
@@ -74,9 +87,24 @@ agents run today.
 - **Lazy resume.** A restart brings sessions back stopped; the next prompt resumes
   each with `claude --resume`. Stop ends a process and keeps the tab; Close archives
   the session for every browser; Reopen brings it back.
-- **A transcript that reads well.** Tool rows with one-line verdicts, failures open,
-  diffs for edits, rendered Markdown, a prompt sent mid-turn shown pending until
-  Claude reads it, Esc to interrupt. Three themes: Ink, Logbook, Syalia.
+- **A transcript that reads well.** Tool rows closed on a one-line verdict, a
+  failure in red, the output and the diff loaded when you open a row; rendered
+  Markdown; a prompt sent mid-turn shown pending until Claude reads it; Esc or the
+  ■ beside send to interrupt. Three themes: Ink, Logbook, Syalia.
+- **What needs you.** Each tab and Fleet card carries a badge: working, needs you,
+  error, review, waiting or done. Agents report their plan and how each turn ended,
+  with up to three replies you can send with one tap. aegis knows what you have
+  read on every browser, the page title counts the sessions that need you, and
+  Alt+J goes to the one that has waited longest.
+- **On a phone.** Below 760 px the tabs get their own row, ☰ opens the side panel
+  as a drawer, and touch targets are 44 px. Chrome installs aegis from its menu as
+  an app named after the server. A return to one of the last 8 tabs, or a
+  reconnect after the phone slept, sends only what changed.
+- **Dictation.** The mic in the message box (Alt+M) transcribes in the browser with
+  Cactus Whistle; the text lands in the box and is never sent on its own. The
+  first press downloads the 17.8 MB model from Hugging Face once, into
+  `~/.cache/aegis/dictation/` or `AEGIS_DICTATION_DIR`. The browser needs https or
+  localhost for the microphone.
 - **Slash commands.** `/model`, `/effort` and `/permission` switch a running
   session; `/rename`, `/title`, `/stop` and `/close` act on it; Claude's own
   commands and skills pass through. `/` or Alt+/ opens a menu that completes
@@ -102,7 +130,8 @@ agents run today.
 - **Tools for agents** at `/mcp`, named `mcp__aegis__<verb>`:
   `monitor_start`, `monitor_cancel`, `monitor_list`, `queue_enqueue`,
   `task_status`, `task_cancel`, `task_resume`, `peer_handoff`, `peer_read`,
-  `session_list`, `session_rename`, `file_send`, `quota_read`, `meta`. Each
+  `session_list`, `session_spawn`, `session_rename`, `plan_update`, `turn_end`,
+  `file_send`, `agents_list`, `config_doctor`, `quota_read`, `meta`. Each
   session's `claude` connects with its own token, so no tool asks who is calling.
 
 ## Before 2.0
