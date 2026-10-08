@@ -152,6 +152,28 @@ def test_tool_output_replaces_its_call_in_place():
     assert done["detail"]["collapsed"] is True
 
 
+def test_a_bash_row_is_named_by_its_opening_comment():
+    r = Rec()
+    r.call("t1", "Bash", {"command": "# Count open issues\ngh issue list | wc -l"})
+    r.call(
+        "t2",
+        "Bash",
+        {"command": "#Run tests\npytest -q", "description": "Run the suite"},
+    )
+    r.call("t3", "Bash", {"command": "pytest -q", "description": "Run tests"})
+    r.call("t4", "Bash", {"command": "ls -la /tmp"})
+    a, b, c, d = run(r)[0].entries()
+    assert [e["summary"] for e in (a, b, c, d)] == [
+        "Count open issues",
+        "Run tests",
+        "Run tests",
+        "ls -la /tmp",
+    ]
+    assert a["detail"]["args"] == "# Count open issues\ngh issue list | wc -l"
+    assert b["detail"]["args"] == "#Run tests\npytest -q"
+    assert c["detail"]["args"] == "# Run tests\npytest -q"
+
+
 def test_a_bash_verdict_skips_the_lines_claude_code_appends():
     r = Rec()
     r.call("t1", "Bash", {"command": "cd /x && pytest -q"})
