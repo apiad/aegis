@@ -1,0 +1,1 @@
+- **Interrupt is the ■ beside send, and the side panel has Restart.** The text Stop under the message box is gone. Restart sends "Continue", which also resumes a stopped session. Close now asks in aegis's own dialog.
