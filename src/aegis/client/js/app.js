@@ -10,7 +10,7 @@ import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { ago, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
 import { installKeys, renderKeys } from "./keys.js";
-import { glyph, installGlyphs, LABEL } from "./glyphs.js";
+import { glyph, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 
@@ -59,6 +59,18 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
   },
 });
 installGlyphs();
+// The navigator: previous / next agent message, the position, and the latest.
+$("nav-up").append(icon("up"));
+$("nav-down").append(icon("down"));
+$("jump").append(icon("latest"));
+$("nav-up").addEventListener("click", () => (transcript.message(-1), drawNav()));
+$("nav-down").addEventListener("click", () => (transcript.message(1), drawNav()));
+$("nav-pos").addEventListener("click", () => (transcript.firstUnread(), drawNav()));
+function drawNav() {
+  const { index, total, unread } = transcript.position();
+  $("nav").hidden = !total;
+  $("nav-pos").textContent = `${unread ? `${unread} unread · ` : ""}message ${index} of ${total}`;
+}
 // How the Fleet orders its cards: this browser's choice, like the tab order.
 let fleetOrder = localStorage.getItem("aegis.fleetOrder") || "attention";
 function markOrder() {
@@ -311,15 +323,28 @@ function follow(id) {
     `transcript:${id}`,
     (entries) => {
       transcript.snapshot(entries || []);
+      transcript.setSince(sinceText(sessions.get(id)));
+      drawNav();
       // Read by scripts/bench.py: when the snapshot was drawn and painted.
       const mark = (window.__a2snapshot = { at: performance.now(), count: (entries || []).length });
       requestAnimationFrame(() => (mark.painted = performance.now()));
     },
-    (ops) => transcript.apply(ops),
+    (ops) => {
+      transcript.apply(ops);
+      drawNav();
+    },
   );
   menu.close();
   $("input").value = localStorage.getItem(`aegis.draft.${id}`) || "";
   autosize();
+}
+
+// The divider's label: how long since this session was last read.
+function sinceText(s) {
+  const t = s?.last_read_at;
+  if (!t) return "new since you left";
+  const m = Math.round((Date.now() / 1000 - t) / 60);
+  return `new since you left · ${m < 60 ? `${m} min` : `${Math.round(m / 60)} h`}`;
 }
 
 function fmtTokens(n) {
@@ -697,10 +722,18 @@ installKeys(
       const i = all.indexOf(location.hash || "#fleet");
       go(all[i < 0 ? (d > 0 ? 0 : all.length - 1) : (i + d + all.length) % all.length]);
     },
-    next: () => transcript.move(1),
-    prev: () => transcript.move(-1),
-    turn: (ev) => transcript.moveTurn(ev.key === "J" ? 1 : -1),
-    edge: (ev) => transcript.edge(ev.key === "G"),
+    next: () => (transcript.move(1), drawNav()),
+    prev: () => (transcript.move(-1), drawNav()),
+    turn: (ev) => (transcript.moveTurn(ev.key === "J" ? 1 : -1), drawNav()),
+    edge: (ev) => (transcript.edge(ev.key === "G"), drawNav()),
+    message(ev) {
+      transcript.message(ev.code === "ArrowUp" ? -1 : 1);
+      drawNav();
+    },
+    firstUnread() {
+      transcript.firstUnread();
+      drawNav();
+    },
     toggle: () => transcript.toggle(),
     press: () => transcript.press(),
     none() {},

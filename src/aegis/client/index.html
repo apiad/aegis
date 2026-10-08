@@ -79,7 +79,12 @@
   <main class="view v-session">
     <section class="col">
       <div class="tr" id="tr" tabindex="-1"><div id="entries"></div><div class="row working" id="working" hidden><span class="t"></span><span class="g">✻</span><div class="body">Working <span class="meta" id="working-meta"></span></div></div></div>
-      <button class="jump" id="jump" hidden>↓ latest</button>
+      <div class="nav" id="nav" hidden>
+        <button class="up" id="nav-up" title="Previous agent message (Alt+↑)"></button>
+        <button class="pos" id="nav-pos" title="First unread (Alt+U)"></button>
+        <button class="down" id="nav-down" title="Next agent message (Alt+↓)"></button>
+        <button class="latest" id="jump" title="Latest (G)"></button>
+      </div>
       <div class="composer" id="composer">
         <div class="cmd-menu" id="cmd-menu" hidden><input id="cmd-filter" hidden spellcheck="false" placeholder="/command"><div id="cmd-rows"></div></div>
         <div class="replies" id="replies" hidden></div>

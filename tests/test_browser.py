@@ -1527,3 +1527,37 @@ def test_a_reply_that_lands_while_you_are_away_stays_unread_until_you_look(
         "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
     )
     assert page.errors == []
+
+
+def test_the_divider_and_navigator_walk_agent_messages(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "one")
+    sid = page.evaluate("location.hash.slice(3)")
+    page.wait_for_function(
+        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+    )
+    # A reply lands while away: a one-second turn, and the Fleet before it ends.
+    page.fill("#input", "/sleep 1")
+    page.press("#input", "Enter")
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=1 unread", timeout=8000)
+    page.click(f".tab[data-id='{sid}']")
+    page.wait_for_selector(".row.since")
+    since = page.eval_on_selector(
+        ".row.since", "n => getComputedStyle(n, '::before').content"
+    )
+    assert "new since you left" in since
+    # On screen, it is read within a second; the divider stays where it was.
+    page.wait_for_function(
+        "() => document.querySelector('#nav-pos').textContent.startsWith('message ')",
+        timeout=6000,
+    )
+    assert page.locator(".row.since").count() == 1
+    page.click(".nav .up")
+    assert page.eval_on_selector(".row.sel", "n => n.classList.contains('prose')")
+    page.keyboard.press("Alt+ArrowDown")
+    assert page.eval_on_selector(".row.sel", "n => n.classList.contains('prose')")
+    page.keyboard.press("j")  # the divider is a style, never a row of its own
+    assert page.eval_on_selector(".row.sel", "n => !!n.dataset.id")
+    assert page.errors == []

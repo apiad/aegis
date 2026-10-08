@@ -7,7 +7,8 @@
 // rows are always a suffix of the transcript.
 //
 // It follows the bottom while the reader is at the bottom; once they scroll
-// up, new entries raise the jump pill instead of moving the page. Rows skip
+// up, new entries light the navigator's latest button instead of moving the
+// page. Rows skip
 // layout off screen (content-visibility in base.css) and take their real
 // height when they near the viewport, so while following, a change in the
 // list's height pins it to the bottom again.
@@ -33,6 +34,8 @@ export class Transcript {
     this.touched = new Set();
     this.following = true;
     this.selected = null; // an entry id: apply() replaces nodes, ids stay
+    this.sinceId = null; // the entry the "new since you left" divider sits above
+    this.sinceText = "";
     // Tab walks the rows' summaries and buttons; the row holding focus is the selection.
     list.addEventListener("focusin", (ev) => {
       const r = ev.target.closest(".row");
@@ -42,7 +45,7 @@ export class Transcript {
     });
     scroller.addEventListener("scroll", () => {
       this.following = this.atBottom();
-      if (this.following) this.jump.hidden = true;
+      if (this.following) this.jump.classList.remove("new");
       if (scroller.scrollTop < NEAR_TOP_PX) this.mountEarlier();
     });
     jump.addEventListener("click", () => this.toBottom());
@@ -120,7 +123,7 @@ export class Transcript {
   toBottom() {
     this.scroller.scrollTop = this.scroller.scrollHeight;
     this.following = true;
-    this.jump.hidden = true;
+    this.jump.classList.remove("new");
   }
 
   mount(e) {
@@ -204,7 +207,7 @@ export class Transcript {
     }
     this.mark();
     if (this.following) this.toBottom();
-    else if (added) this.jump.hidden = false;
+    else if (added) this.jump.classList.add("new");
   }
 
   clear() {
@@ -214,6 +217,7 @@ export class Transcript {
     this.touched.clear();
     this.following = true;
     this.selected = null;
+    this.sinceId = null;
     this.watch.disconnect();
     this.since.clear();
     this.sent.clear();
@@ -229,7 +233,39 @@ export class Transcript {
     const n = this.selected ? this.nodes.get(this.selected) : null;
     if (n) n.classList.add("sel");
     else this.selected = null;
+    this.list.querySelector(".row.since")?.classList.remove("since");
+    const s = this.sinceId ? this.nodes.get(this.sinceId) : null;
+    if (s) {
+      s.classList.add("since");
+      s.dataset.since = this.sinceText;
+    }
     return n;
+  }
+
+  // "New since you left": a style on the row it sits above, never a row of its
+  // own, so j/k and the navigator cannot land on it. Placed once, when the tab
+  // is opened, after the last read agent message before the first unread one,
+  // and left there while the tab stays open.
+  setSince(text) {
+    this.sinceText = text;
+    const ids = [...this.entries.keys()];
+    const firstUnread = ids.findIndex((id) => this.entries.get(id).unread);
+    if (firstUnread < 0) {
+      this.sinceId = null;
+    } else {
+      let at = firstUnread;
+      for (let i = firstUnread - 1; i >= 0; i--) {
+        const e = this.entries.get(ids[i]);
+        if (e.kind === "prose") break;
+        if (e.kind === "user") {
+          at = i;
+          break;
+        }
+        at = i;
+      }
+      this.sinceId = ids[at];
+    }
+    this.mark();
   }
 
   select(id) {
@@ -268,6 +304,30 @@ export class Transcript {
 
   moveTurn(delta) {
     this.move(delta, (n) => n.classList.contains("user"));
+  }
+
+  // -- the navigator: agent messages ---------------------------------------
+
+  isProse = (n) => n.classList.contains("prose");
+
+  message(delta) {
+    if (!this.selected) this.pick();
+    this.move(delta, this.isProse);
+  }
+
+  firstUnread() {
+    const id = [...this.entries.keys()].find((i) => this.entries.get(i).unread);
+    if (!id) return this.edge(true);
+    while (!this.nodes.has(id) && this.mountEarlier());
+    this.select(id);
+  }
+
+  // "2 unread · message 3 of 4": counts over every entry, not only the mounted.
+  position() {
+    const prose = [...this.entries.values()].filter((e) => e.kind === "prose");
+    const unread = prose.filter((e) => e.unread).length;
+    const at = this.selected ? prose.findIndex((e) => e.id === this.selected) : -1;
+    return { index: at < 0 ? prose.length : at + 1, total: prose.length, unread };
   }
 
   // The first entry is mounted on the way: an explicit jump may pay for it.

@@ -143,7 +143,16 @@ body{background:#000}
 #a2 .row.working,#a2 .row.working .g{color:var(--accent)}
 #a2 .meta{color:var(--faint);margin-left:10px}
 #a2 .steps{color:var(--faint);margin-left:8px}
-#a2 .jump{position:absolute;right:28px;bottom:118px;z-index:3;background:var(--raised);color:var(--strong);border:1px solid var(--rule);border-radius:999px;padding:4px 12px;font-size:12px;cursor:pointer}
+/* the divider and the navigator */
+#a2 .row.since::before{content:attr(data-since);grid-column:1/-1;display:flex;align-items:center;gap:10px;margin:6px 0 10px;font-family:var(--font-chrome);font-size:11px;color:var(--accent);background:linear-gradient(var(--accent),var(--accent)) left 50%/calc(50% - 15ch) 1px no-repeat,linear-gradient(var(--accent),var(--accent)) right 50%/calc(50% - 15ch) 1px no-repeat;justify-content:center}
+#a2 .nav{position:absolute;right:14px;bottom:104px;z-index:3;display:flex;align-items:center;border:1px solid var(--rule);background:var(--raised);border-radius:999px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.25);font-family:var(--font-chrome)}
+#a2 .nav[hidden]{display:none}
+#a2 .nav button{border:none;background:none;color:var(--strong);height:30px;padding:0 10px;cursor:pointer;display:grid;place-items:center}
+#a2 .nav button+button{border-left:1px solid var(--rule)}
+#a2 .nav .pos{font-size:12px;color:var(--muted)}
+#a2 .nav .latest.new{color:var(--accent)}
+#a2 .nav .ic{width:15px;height:15px}
+#a2 .col:has(#replies:not([hidden])) .nav{bottom:150px}
 
 /* composer */
 #a2 .composer{padding:10px 22px 16px}
@@ -436,4 +445,3 @@ body{background:#000}
 #a2 .replies .lbl{font-family:var(--font-chrome);font-size:11px;color:var(--faint);margin-right:2px}
 #a2 .rp{font-family:var(--font-ui);font-size:13px;color:var(--strong);background:var(--surface);border:1px solid var(--rule);border-radius:999px;padding:5px 13px;cursor:pointer;line-height:1.3;text-align:left}
 #a2 .rp:hover{border-color:var(--accent);background:var(--accent-soft)}
-#a2 .col:has(#replies:not([hidden])) .jump{bottom:160px}
