@@ -1,6 +1,6 @@
 # Dictation: a mic button that transcribes in the browser
 
-**Status: built, 2026-10-08.** Closes #89. Designed with Alex in a
+**Status: built, 2026-10-08 (#201).** Closes #89. Designed with Alex in a
 brainstorm after a playground run on his own dictations and on his phone. The
 playground (page, Node harness, benchmark logs, phone reports) is in the
 workspace at `.playground/whistle-web/`, not in this repo.
