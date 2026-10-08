@@ -1358,6 +1358,20 @@ def test_a_patch_that_changes_a_cards_group_regroups_the_open_fleet(
     assert page.errors == []
 
 
+def test_a_read_review_leaves_the_fleets_needs_you_group(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    report(page, attention="review", line="Read the spec", replies=[])
+    turns_done(page, 2)
+    page.wait_for_selector(".tab.on .dot.ready", timeout=6000)  # read: idle dot
+    page.click("#tab-fleet")
+    page.wait_for_selector(f"#cards .card.at-review[data-id='{sid}']")
+    assert page.locator(".grp-h").count() == 0  # not under "Needs you"
+    assert "review" in page.inner_text("#band-counts")  # the band counts attention
+    assert page.errors == []
+
+
 def test_reply_pills_send_their_text_and_all_disappear(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")

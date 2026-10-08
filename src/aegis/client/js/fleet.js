@@ -32,8 +32,9 @@ export function money(usd) {
 }
 
 // The cards a person must act on, shown first when the Fleet is ordered by need.
+// Grouped on the drawn mark, so a review already read joins the rest.
 const NEEDS = new Set(["needs_you", "error", "review"]);
-const group = (m) => (NEEDS.has(m.attention) ? "needs" : "rest");
+const group = (m) => (NEEDS.has(m.mark) ? "needs" : "rest");
 
 export function renderCards(box, metas, onOpen, order = "attention") {
   if (!metas.length) {
