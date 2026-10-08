@@ -2,7 +2,10 @@
 
 Each subscription numbers its own patches from 1, after the snapshot's 0. A
 client that sees a gap, or reconnects, resubscribes and takes a fresh snapshot;
-that one rule covers dropped frames, a sleeping laptop and a server restart.
+that one rule covers dropped frames, a sleeping laptop and a server restart. A
+subscribe may carry ``since``, the revision the client already holds; a channel
+that keeps revisions (a transcript) answers with only what changed after it,
+and any other channel ignores it.
 Adding a subsystem adds channels, never a protocol field.
 """
 
@@ -16,6 +19,7 @@ from .ops import OpError
 
 Send = Callable[[dict], None]
 Snapshot = Callable[[], Any]
+Resolve = Callable[[str, int | None], Snapshot | None]
 
 
 class Sub:
@@ -26,12 +30,12 @@ class Sub:
 
 
 class Channels:
-    def __init__(self, resolve: Callable[[str], Snapshot | None]) -> None:
+    def __init__(self, resolve: Resolve) -> None:
         self._resolve = resolve
         self._subs: dict[str, list[Sub]] = {}
 
-    def subscribe(self, channel: str, send: Send) -> Sub:
-        snapshot = self._resolve(channel)
+    def subscribe(self, channel: str, send: Send, since: int | None = None) -> Sub:
+        snapshot = self._resolve(channel, since)
         if snapshot is None:
             raise OpError("unknown_channel", f"no channel named {channel!r}")
         sub = Sub(channel, send)
