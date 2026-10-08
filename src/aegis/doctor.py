@@ -139,7 +139,9 @@ def propose(found: list[Found]) -> ConfigDoc:
         )
     oc = have.get("opencode")
     if oc is not None and oc.models:
-        first = oc.models[0]
+        # The first model that costs nothing and can run an agent, so a first
+        # config spends no money until the person picks one that does.
+        first = next((m for m in oc.models if m.free), oc.models[0])
         name = first.value.rsplit("/", 1)[-1]
         if any(a.name == name for a in agents):
             name += "-opencode"

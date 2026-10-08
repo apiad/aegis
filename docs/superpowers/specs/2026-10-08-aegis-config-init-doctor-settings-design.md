@@ -177,7 +177,8 @@ aegis init [--root DIR] [--yes] [--claude BIN] [--opencode BIN]
    - for Claude Code: an agent `opus`, model `opus`, effort `high`, permission
      `full`;
    - for OpenCode: an agent named after the model's last path segment, with the
-     first model in its catalog, effort the model's first listed effort or
+     first model in its catalog that is free (zero input and output cost, calls
+     tools, writes text), else the first model, effort the model's first listed effort or
      `high`, permission `full`;
    - `default_agent`: the Claude agent if there is one, else the first;
    - a queue `general` on the default agent, `max_parallel: 3`.

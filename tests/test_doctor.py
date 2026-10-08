@@ -193,3 +193,14 @@ def test_propose_prefers_effort_high_when_the_model_offers_it():
         [Found("opencode", "/bin/opencode", "1.18", (m("x/y", ("minimal", "low")),))]
     )
     assert doc.agents[0].effort == "low"
+
+
+def test_propose_takes_the_first_free_opencode_model():
+    paid = Model(value="g/pro", resolved="g/pro", label="", doc="", efforts=("high",))
+    free = Model(
+        value="o/pickle", resolved="o/pickle", label="", doc="", efforts=(), free=True
+    )
+    doc = propose([Found("opencode", "/bin/opencode", "1.18", (paid, free))])
+    assert (doc.agents[0].name, doc.agents[0].model) == ("pickle", "o/pickle")
+    doc = propose([Found("opencode", "/bin/opencode", "1.18", (paid,))])
+    assert doc.agents[0].model == "g/pro", "with nothing free, the first model"

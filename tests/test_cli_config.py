@@ -24,7 +24,7 @@ def test_init_yes_writes_a_config_the_doctor_passes(
     assert r.exit_code == 0, r.output
     data = YAML(typ="safe").load((root / ".aegis.yaml").read_text())
     assert data["default_agent"] == "opus"
-    assert data["agents"]["fake-pro"]["model"] == "opencode-go/fake-pro"
+    assert data["agents"]["fake-flash"]["model"] == "opencode-go/fake-flash"
     assert data["queues"]["general"] == {"agent": "opus", "max_parallel": 3}
     assert "0 errors" in r.output
 
@@ -32,7 +32,7 @@ def test_init_yes_writes_a_config_the_doctor_passes(
 def test_init_asks_with_the_proposal_filled_in(tmp_path, fake_claude, fake_opencode):
     root = tmp_path / "ws"
     root.mkdir()
-    # opus: add, model, effort, permission; fake-pro: add, model, effort,
+    # opus: add, model, effort, permission; fake-flash: add, model, effort,
     # permission; default; queue; workers.
     answers = "\n\n\nread\nn\nopus\ny\n5\n"
     r = invoke(

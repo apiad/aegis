@@ -34,6 +34,9 @@ class Model:
     efforts: tuple[str, ...]
     # The context window, when the harness's catalog names one (OpenCode).
     window: int | None = None
+    # Costs nothing per token and can run an agent: it calls tools and writes
+    # text. Only OpenCode's catalog prices its models.
+    free: bool = False
 
     def wire(self) -> dict:
         return {
@@ -42,6 +45,7 @@ class Model:
             "label": self.label,
             "doc": self.doc,
             "efforts": list(self.efforts),
+            "free": self.free,
         }
 
 
