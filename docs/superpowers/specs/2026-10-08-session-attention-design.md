@@ -1,9 +1,9 @@
 # aegis: what a session needs from you, what it did, and what you have read
 
-**Status: slices 1 and 2 implemented, 2026-10-08** (issue #171), following
-`docs/superpowers/plans/2026-10-08-session-attention-slice-1.md` and
-`docs/superpowers/plans/2026-10-08-session-attention-slice-2.md`. Slice 3 (the
-recap) is designed, not built. Designed with Alex in a brainstorm
+**Status: implemented, 2026-10-08** (issue #171), in three slices following
+`docs/superpowers/plans/2026-10-08-session-attention-slice-1.md`,
+`docs/superpowers/plans/2026-10-08-session-attention-slice-2.md` and
+`docs/superpowers/plans/2026-10-08-session-attention-slice-3.md`. Designed with Alex in a brainstorm
 with mockups, rendered on the client's own CSS from `main`. The approved screens
 are in the workspace playground, not in this repo:
 `.playground/aegis-recap-ui/src-transcript.html` (transcript, recap, read marks,
@@ -241,7 +241,8 @@ which it is told to trust over its own reading.
 **How it is paid for.** `.aegis.yaml` gains `recap: {agent: <name>}`, naming an
 agent from `agents:` (Haiku in the Workspace). Nothing defaults: with no
 `recap:`, the request answers that the recap is off and says which key turns it
-on. The call is a one-shot `claude -p` with `--json-schema`,
+on. The call is a one-shot `claude -p` (the window passed last, after `--`, because it
+opens with dashes the CLI would read as an option) with `--json-schema`,
 `--setting-sources ""`, an empty working directory, stdin closed, and thinking
 off. Each of those choices was measured in the legacy driver
 (`legacy/aegis/drivers/claude.py`, `generate_detailed`). Its cost is added to the
