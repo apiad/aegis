@@ -10,6 +10,7 @@ import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { ago, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
 import { installKeys, renderKeys } from "./keys.js";
+import { CommandMenu } from "./commands.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -294,6 +295,7 @@ function follow(id) {
     },
     (ops) => transcript.apply(ops),
   );
+  menu.close();
   $("input").value = localStorage.getItem(`aegis.draft.${id}`) || "";
   autosize();
 }
@@ -357,7 +359,7 @@ function renderMeta(s) {
   $("input").placeholder =
     s.state === "stopped"
       ? "Stopped; your next message resumes it."
-      : "Message the agent. Enter sends, Shift+Enter adds a line, Esc interrupts.";
+      : "Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts.";
   document.title = `${working ? "● " : ""}${s.title || s.handle} · aegis`;
 }
 
@@ -687,6 +689,15 @@ installKeys(
       if (n === 0) go("#fleet");
       else if (ordered[n - 1]) go(`#s=${ordered[n - 1].log_id}`);
     },
+    commands() {
+      if (route().view !== "session") return;
+      const v = input.value;
+      if (!v || v.startsWith("/")) {
+        if (!v) input.value = "/";
+        input.focus();
+        menu.openInline();
+      } else menu.openOverlay();
+    },
     escape() {
       if (!keymap.hidden) help(false);
       else if (route().view === "session" && !editing.size) interrupt();
@@ -709,20 +720,75 @@ function focused() {
   return r.view === "session" ? sessions.get(r.id) : null;
 }
 
-async function send() {
+// A line from the composer, or from the menu's own filter (Alt+/ over a
+// draft), which leaves the composer alone. The server resolves "/" lines.
+async function sendLine(text, fromComposer) {
   const s = focused();
-  const text = input.value.trim();
   if (!text || !s) return;
+  if (text === "/close" && !confirm(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`)) return;
   $("send-error").textContent = "";
   try {
     await conn.call("session.send", { log_id: s.log_id, text });
-    input.value = "";
-    localStorage.removeItem(`aegis.draft.${s.log_id}`);
-    autosize();
+    if (/^\/model\s/.test(text)) catalogs.delete(s.log_id); // its efforts may differ
+    if (fromComposer) {
+      input.value = "";
+      localStorage.removeItem(`aegis.draft.${s.log_id}`);
+      autosize();
+      // Clearing the box fires no input event; an open menu would take the next Esc.
+      menu.close();
+      $("composer").classList.remove("bad");
+    }
     transcript.toBottom();
   } catch (e) {
     $("send-error").textContent = e.message;
   }
+}
+
+const send = () => sendLine(input.value.trim(), true);
+
+// Catalogs per session, fetched when the menu first opens there.
+const catalogs = new Map();
+async function loadCatalog() {
+  const s = focused();
+  if (!s) return null;
+  if (!catalogs.has(s.log_id)) {
+    try {
+      catalogs.set(s.log_id, await conn.call("commands.list", { log_id: s.log_id }));
+    } catch (e) {
+      $("send-error").textContent = e.message;
+      return null;
+    }
+  }
+  return catalogs.get(s.log_id);
+}
+
+const menu = new CommandMenu({
+  box: $("cmd-menu"),
+  rows: $("cmd-rows"),
+  filter: $("cmd-filter"),
+  load: loadCatalog,
+  run: (line) => sendLine(line, false),
+  getLine: () => input.value,
+  setLine: (v) => {
+    input.value = v;
+    autosize();
+    if (shown) localStorage.setItem(`aegis.draft.${shown}`, v);
+    input.focus();
+  },
+  meta: () => focused(),
+});
+
+for (const [id, cmd] of [
+  ["chip-model", "model"],
+  ["chip-effort", "effort"],
+  ["chip-perm", "permission"],
+]) {
+  $(id).classList.add("click");
+  $(id).addEventListener("click", () => {
+    input.value = `/${cmd} `;
+    input.focus();
+    menu.openInline();
+  });
 }
 
 async function interrupt() {
@@ -735,11 +801,19 @@ async function interrupt() {
   }
 }
 
-input.addEventListener("input", () => {
+input.addEventListener("input", async () => {
   autosize();
   if (shown) localStorage.setItem(`aegis.draft.${shown}`, input.value);
+  const v = input.value;
+  if (v.startsWith("/") && !v.startsWith("//")) {
+    if (menu.isOpen) menu.refresh();
+    else await menu.openInline(); // the outline below needs the catalog it loads
+  } else if (menu.isOpen) menu.close();
+  const now = input.value;
+  $("composer").classList.toggle("bad", now.startsWith("/") && !now.startsWith("//") && !menu.known(now));
 });
 input.addEventListener("keydown", (ev) => {
+  if (menu.onKey(ev)) return;
   if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
     ev.preventDefault();
     send();

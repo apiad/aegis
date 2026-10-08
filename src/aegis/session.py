@@ -377,7 +377,8 @@ class Session:
     async def send(self, text: str) -> None:
         await self.ensure_running()
         assert self._proc is not None
-        if not self.title:
+        if not self.title and not text.startswith("/"):
+            # A slash command names no task; the first prompt does.
             self._set(title=default_title(text))
         self._record({"kind": "send", "text": text})
         await self._proc.write(

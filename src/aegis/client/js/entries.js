@@ -55,6 +55,13 @@ const RENDERERS = {
     return row(e, `user ${e.status}`, el("div", "body", e.md));
   },
 
+  command(e) {
+    const body = el("div", "body");
+    body.append(el("div", "cmd", e.title));
+    if (e.md) body.append(markdown(e.md));
+    return row(e, `command ${e.status}`, body);
+  },
+
   prose(e) {
     const body = markdown(e.md);
     body.classList.add("body");

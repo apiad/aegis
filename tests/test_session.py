@@ -299,3 +299,11 @@ async def test_a_refused_change_keeps_what_applied_before_it(h):
     with pytest.raises(ControlError):
         await h.session.configure(model="haiku", effort="low")  # no effort on haiku
     assert (h.session.spec.model, h.session.spec.effort) == ("haiku", "high")
+
+
+async def test_a_slash_command_does_not_title_the_session(h):
+    await h.session.send("/context")
+    await until(lambda: h.session.status == "idle", what="/context")
+    assert h.session.title == ""
+    await h.session.send("fix the parser")
+    assert h.session.title == "fix the parser"

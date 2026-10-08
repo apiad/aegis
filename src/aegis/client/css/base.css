@@ -146,6 +146,18 @@ body{background:#000}
 #a2 .composer .acts{display:flex;gap:6px;align-items:center;padding:8px 8px 8px 0}
 #a2 .composer .acts .send{font-size:15px;line-height:1;padding:6px 12px;font-weight:600}
 #a2 .composer .chips{display:flex;gap:8px;margin-top:8px;align-items:center}
+/* the command menu, drawn above the composer */
+#a2 .composer{position:relative}
+#a2 .cmd-menu{position:absolute;left:22px;right:22px;bottom:calc(100% - 6px);background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:4px;max-height:280px;overflow:auto;font-family:var(--font-chrome);font-size:12.5px;z-index:5}
+#a2 .cmd-menu input{width:100%;margin-bottom:4px;padding:6px 8px;background:var(--bg);border:1px solid var(--accent);border-radius:4px;color:var(--strong);font:inherit;outline:none}
+#a2 .cmd-row{display:grid;grid-template-columns:auto auto 1fr auto;gap:10px;padding:4px 8px;border-radius:4px;cursor:pointer;align-items:baseline}
+#a2 .cmd-row.on{background:var(--accent-soft)}
+#a2 .cmd-row .nm{color:var(--strong)}#a2 .cmd-row .nm b{color:var(--accent)}
+#a2 .cmd-row .hn,#a2 .cmd-row .dc{color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#a2 .cmd-row .src{color:var(--faint);font-size:11px}
+#a2 .composer.bad .box{border-color:var(--err)}
+#a2 .chip.click{cursor:pointer}#a2 .chip.click:hover{border-color:var(--accent);color:var(--strong)}
+#a2 .row.command .cmd{font-family:var(--font-chrome);color:var(--strong)}
 #a2 .chip{font-size:11.5px;padding:3px 9px;border:1px solid var(--rule);border-radius:5px;color:var(--muted);font-family:var(--font-chrome)}
 #a2 .chip:empty{display:none}
 #a2 .send,#a2 .btn{font-size:12px;padding:6px 14px;border-radius:var(--r);border:1px solid var(--rule);background:var(--surface);color:var(--ink);cursor:pointer}
