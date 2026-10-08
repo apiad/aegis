@@ -48,6 +48,14 @@ async def argv_of(s) -> list[str]:
     return json.loads(prose()[-1].removeprefix("argv: "))
 
 
+async def cmdline(pid: int) -> list[bytes]:
+    """A child's argv from /proc, once the wrapper script has exec'd the fake:
+    during the exec the file can read empty."""
+    path = Path(f"/proc/{pid}/cmdline")
+    await until(lambda: b"fake_claude" in path.read_bytes(), what="the exec")
+    return path.read_bytes().split(b"\0")
+
+
 @pytest.fixture(autouse=True)
 def _no_real_quota(tmp_path_factory, monkeypatch):
     """No test reads the real OAuth token or the machine's quota cache. Reading

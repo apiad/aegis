@@ -28,7 +28,7 @@ from .ops import OpError
 from .roots import CONFIG_FILE
 from .session import SpawnSpec
 
-EFFORTS = ("low", "medium", "high", "max")
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
 HARNESSES = ("claude-code", "opencode")
 SUPPORTED_HARNESSES = ("claude-code",)
 # Claude Code's --model aliases (`claude --help`), offered before the models

@@ -8,6 +8,12 @@ resume, measured in issue #127). Only shutdown, Stop and Close end a process:
 a session waiting on its own background task wakes itself, so nothing stops an
 idle-looking one.
 
+The spec is the session's model, effort and permission. ``configure`` changes
+them, live through control requests when there is a process, and the next
+``--resume`` is built from the spec, so a change outlives the process. Each
+process start also asks ``claude`` for its commands and models (``initialize``)
+and hands the answer to the host, which keeps it by cwd.
+
 The session is a continuous fold. Every stdout line is stored, parsed once,
 folded into entry patches and published, whatever the turn state. Status: only a
 sent prompt or a turn-bearing event moves it to ``working``, and only ``result``
@@ -22,11 +28,14 @@ so a crash and a clean stop read the same.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from .claude import control
+from .claude.control import Catalog
 from .claude.process import ClaudeProcess, build_argv
 from .claude.stream import TURN_BEARING, Init, Notice, Result, parse
 from .meta import MetaStore
@@ -63,6 +72,9 @@ class Host:
         """Extra fields for the session's card on the ``sessions`` channel."""
         return {}
 
+    def catalog_ready(self, session: "Session", catalog: Catalog) -> None:
+        """A process answered ``initialize``: its cwd's commands and models."""
+
 
 NO_HOST = Host()
 
@@ -76,7 +88,9 @@ class SpawnSpec:
     """What a session's process runs with, fixed at spawn and recorded in the
     spawn record and the meta. A resume reads it from there, never from
     ``.aegis.yaml``: Claude Code does not keep the system prompt in its own
-    session file, so editing an agent must not change its old sessions."""
+    session file, so editing an agent must not change its old sessions. Only
+    model, effort and permission change later, through ``Session.configure``,
+    which records each change for the meta and a rebuild."""
 
     agent: str
     model: str
@@ -187,6 +201,8 @@ class Session:
         # Claude's own tasks started and not yet notified (Bash, background).
         self.open_tasks: set[str] = set()
         self.worker = worker
+        # The current process's catalog; None as a result when it did not answer.
+        self.catalog_task: asyncio.Task[Catalog | None] | None = None
 
     # -- what the outside sees -------------------------------------------
     def meta(self) -> dict:
@@ -274,11 +290,67 @@ class Session:
         )
         await proc.start()
         self._proc = proc
+        self.catalog_task = asyncio.create_task(self._fetch_catalog(proc))
         self._stopping = False
         self.open_tasks.clear()
         if resume:
             self._record({"kind": "resume", "claude_session_id": resume})
         self._set(status="idle")
+
+    async def _fetch_catalog(self, proc: ClaudeProcess) -> Catalog | None:
+        try:
+            cat = await control.catalog(proc)
+        except (
+            control.ControlError,
+            TimeoutError,
+            BrokenPipeError,
+            ConnectionResetError,
+        ):
+            return None
+        self._host.catalog_ready(self, cat)
+        return cat
+
+    async def configure(
+        self,
+        model: str | None = None,
+        effort: str | None = None,
+        permission: str | None = None,
+    ) -> None:
+        """Change the model, effort or permission. A live process gets each
+        change through a control request first; the spec, which the next
+        ``--resume`` is built from, takes only what applied, and a refusal is
+        raised after that is recorded."""
+        proc = self._proc if self.running else None
+        when = (
+            "on_resume"
+            if proc is None
+            else "next_turn"
+            if self.status == "working"
+            else ""
+        )
+        steps = (
+            ("model", model, control.set_model),
+            ("effort", effort, control.set_effort),
+            ("permission", permission, control.set_permission),
+        )
+        applied: dict[str, str] = {}
+        try:
+            for kind, value, setter in steps:
+                if not value:
+                    continue
+                if proc is not None:
+                    await setter(proc, value)
+                applied[kind] = value
+        finally:
+            if applied:
+                self.spec = dataclasses.replace(self.spec, **applied)
+                if "model" in applied:
+                    self.model_id = None  # the next init names the resolved id
+                self._record(
+                    {"kind": "configure", **applied, **({"when": when} if when else {})}
+                )
+                self._publish_now()
+                self._metas.write(self.meta())
 
     async def deliver(self, header: str, body: str) -> None:
         """An inbox message. Idle or stopped: sent now (a stopped session is
@@ -307,7 +379,8 @@ class Session:
     async def send(self, text: str) -> None:
         await self.ensure_running()
         assert self._proc is not None
-        if not self.title:
+        if not self.title and not text.startswith("/"):
+            # A slash command names no task; the first prompt does.
             self._set(title=default_title(text))
         self._record({"kind": "send", "text": text})
         await self._proc.write(
@@ -351,6 +424,8 @@ class Session:
     async def _end_process(self) -> None:
         if self._interrupt_timer:
             self._interrupt_timer.cancel()
+        if self.catalog_task is not None and not self.catalog_task.done():
+            self.catalog_task.cancel()
         proc, self._proc = self._proc, None
         if proc is not None:
             self._stopping = True

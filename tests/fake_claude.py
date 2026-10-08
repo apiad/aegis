@@ -18,9 +18,22 @@ stdout. The text of a prompt picks a script:
     /bgtask N      start a background task (task_started) and end the turn; N
                    seconds later the task is notified and the fake wakes itself
                    with a second turn, as Claude does.
+    /context, /model, /effort, /rename
+                   run locally, as Claude does: no echo, a <synthetic>
+                   assistant line with local_command_run, a zero-cost result.
+    /compact       a compact_boundary, the replayed "Compacted" note, a result.
+    /clear         a conversation_reset; the next turn has a new session id.
+    /hello NAME    a prompt command: a <command-message> echo, then text.
     anything else  text that quotes the prompt, then a result.
 
 An interrupt ``control_request`` ends a running script with an error result.
+``initialize`` (COMMANDS and MODELS below), ``set_model``,
+``apply_flag_settings``, ``get_settings`` and ``set_permission_mode`` answer as
+Claude Code 2.1.283 does: an unknown model is an error, and an effort level the
+current model does not list is answered with success and not applied.
+``FAKE_CLAUDE_NO_INIT=1`` answers ``initialize`` with an error, as a CLI that
+does not know it would; ``FAKE_CLAUDE_INIT_LOG=<file>`` gets one line per
+``initialize`` received, so a test can count probes.
 
 ``--resume <id>`` keeps that session id, as Claude does; without it the fake
 mints one. Each id's prompts are appended to ``$FAKE_CLAUDE_HOME/<id>.prompts``
@@ -46,10 +59,86 @@ import time
 import urllib.request
 import uuid
 
+
+def _arg(flag: str) -> str | None:
+    return sys.argv[sys.argv.index(flag) + 1] if flag in sys.argv else None
+
+
 OUT = threading.Lock()
 inbox: queue.Queue = queue.Queue()
 interrupted = threading.Event()
-state = {"cost": 0.0, "tool": 0, "inited": False, "deaf": False}
+state: dict = {
+    "cost": 0.0,
+    "tool": 0,
+    "inited": False,
+    "deaf": False,
+    "model": None,  # the resolved id a set_model switched to
+    "effort": _arg("--effort"),
+}
+SCRIPTS = (
+    "sleep",
+    "deafsleep",
+    "fail",
+    "notice",
+    "big",
+    "exit",
+    "recall",
+    "mcp",
+    "bgtask",
+    "argv",
+)
+COMMANDS = (
+    [
+        {"name": w, "description": f"Fake script {w}.", "argumentHint": ""}
+        for w in SCRIPTS
+    ]
+    + [
+        {
+            "name": n,
+            "description": f"Claude's own {n}.",
+            "argumentHint": "",
+            "builtin": True,
+        }
+        for n in ("compact", "clear", "context", "model", "effort", "rename")
+    ]
+    + [
+        {
+            "name": "hello",
+            "description": "Say hello to someone. (project)",
+            "argumentHint": "<name>",
+        }
+    ]
+)
+LEVELS = ["low", "medium", "high", "xhigh", "max"]
+MODELS = [
+    {
+        "value": "opus",
+        "resolvedModel": "fake-opus",
+        "displayName": "Opus",
+        "description": "The big one.",
+        "supportedEffortLevels": LEVELS,
+    },
+    {
+        "value": "sonnet",
+        "resolvedModel": "fake-sonnet",
+        "displayName": "Sonnet",
+        "description": "The middle one.",
+        "supportedEffortLevels": LEVELS,
+    },
+    {
+        "value": "haiku",
+        "resolvedModel": "fake-haiku",
+        "displayName": "Haiku",
+        "description": "Takes no effort level.",
+    },
+    {
+        "value": "retired",
+        "resolvedModel": "fake-retired",
+        "displayName": "Retired",
+        "description": "Update to use it.",
+        "disabled": True,
+    },
+]
 SESSION_ID = (
     sys.argv[sys.argv.index("--resume") + 1]
     if "--resume" in sys.argv
@@ -135,8 +224,10 @@ def assistant(*blocks: dict) -> None:
     )
 
 
-def result(is_error: bool = False, subtype: str = "success") -> None:
-    state["cost"] += 0.01
+def result(
+    is_error: bool = False, subtype: str = "success", cost: float = 0.01, turns: int = 1
+) -> None:
+    state["cost"] += cost
     emit(
         {
             "type": "result",
@@ -146,8 +237,72 @@ def result(is_error: bool = False, subtype: str = "success") -> None:
             "total_cost_usd": round(state["cost"], 4),
             "stop_reason": None if is_error else "end_turn",
             "modelUsage": {"fake-model": {"contextWindow": 200000}},
+            "num_turns": turns,
         }
     )
+
+
+def local_output(text: str) -> None:
+    emit(
+        {
+            "type": "user",
+            "isReplay": True,
+            "message": {
+                "role": "user",
+                "content": f"<local-command-stdout>{text}</local-command-stdout>",
+            },
+        }
+    )
+
+
+def _model(name: str | None) -> dict | None:
+    return next(
+        (
+            m
+            for m in MODELS
+            if name in (m["value"], m["resolvedModel"]) and not m.get("disabled")
+        ),
+        None,
+    )
+
+
+def control(msg: dict) -> None:
+    req = msg.get("request") or {}
+    sub, rid = req.get("subtype"), msg.get("request_id")
+    body: dict = {}
+    error = None
+    if sub == "interrupt":
+        interrupted.set()
+    elif sub == "initialize":
+        if os.environ.get("FAKE_CLAUDE_INIT_LOG"):
+            with open(os.environ["FAKE_CLAUDE_INIT_LOG"], "a") as f:
+                f.write(f"{os.getpid()}\n")
+        if os.environ.get("FAKE_CLAUDE_NO_INIT"):
+            error = "unknown subtype: initialize"
+        else:
+            body = {"commands": COMMANDS, "models": MODELS}
+    elif sub == "set_model":
+        m = _model(req.get("model"))
+        if m is None:
+            error = f"Model '{req.get('model')}' not found"
+        else:
+            state["model"], state["inited"] = m["resolvedModel"], False
+            local_output(f"Set model to {m['displayName']}")
+    elif sub == "apply_flag_settings":
+        level = (req.get("settings") or {}).get("effortLevel")
+        current = _model(state["model"] or _arg("--model")) or MODELS[0]
+        if level in current.get("supportedEffortLevels", []):
+            state["effort"] = level
+    elif sub == "get_settings":
+        body = {"applied": {"model": state["model"], "effort": state["effort"]}}
+    elif sub == "set_permission_mode":
+        body = {"mode": req.get("mode")}
+    resp = (
+        {"request_id": rid, "subtype": "error", "error": error}
+        if error
+        else {"request_id": rid, "subtype": "success", "response": body}
+    )
+    emit({"type": "control_response", "response": resp})
 
 
 def tool_id() -> str:
@@ -184,6 +339,7 @@ def wait(seconds: float) -> bool:
 
 
 def run(text: str) -> None:
+    global SESSION_ID
     if not state["inited"]:
         state["inited"] = True
         emit(
@@ -191,15 +347,52 @@ def run(text: str) -> None:
                 "type": "system",
                 "subtype": "init",
                 "session_id": SESSION_ID,
-                "model": "fake-model",
+                "model": state["model"] or "fake-model",
                 "claude_code_version": "0.0-fake",
             }
         )
+    word, _, arg = text.partition(" ")
+    if word in ("/context", "/model", "/effort", "/rename"):
+        emit(
+            {
+                "type": "assistant",
+                "local_command_run": {"command": word[1:], "args": arg},
+                "message": {
+                    "model": "<synthetic>",
+                    "content": [{"type": "text", "text": f"ran {text[1:]}"}],
+                },
+            }
+        )
+        result(cost=0.0, turns=0)
+        return
+    if word == "/compact":
+        emit(
+            {
+                "type": "system",
+                "subtype": "compact_boundary",
+                "compact_metadata": {"pre_tokens": 50000, "post_tokens": 4000},
+            }
+        )
+        local_output("Compacted ")
+        result(turns=0)
+        return
+    if word == "/clear":
+        SESSION_ID, state["inited"] = str(uuid.uuid4()), False
+        emit({"type": "conversation_reset", "trigger": "clear"})
+        result(cost=0.0, turns=0)
+        return
+    if word == "/hello":
+        echo(
+            "<command-message>hello</command-message>\n<command-name>/hello</command-name>\n"
+            f"<command-args>{arg}</command-args>"
+        )
+        assistant({"type": "text", "text": f"HELLO {arg}"})
+        result()
+        return
     echo(text)
     before = earlier_prompts()
     with open(prompts_file(), "a") as f:
         f.write(json.dumps(text) + "\n")
-    word, _, arg = text.partition(" ")
     if word in ("/sleep", "/deafsleep"):
         state["deaf"] = word == "/deafsleep"
         tid = tool_id()
@@ -358,16 +551,7 @@ def main() -> None:
         except ValueError:
             continue
         if msg.get("type") == "control_request":
-            emit(
-                {
-                    "type": "control_response",
-                    "response": {
-                        "request_id": msg.get("request_id"),
-                        "subtype": "success",
-                    },
-                }
-            )
-            interrupted.set()
+            control(msg)
         elif msg.get("type") == "user":
             interrupted.clear()
             inbox.put(msg["message"]["content"])

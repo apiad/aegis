@@ -1,7 +1,9 @@
 """The server's state and its operations, independent of any transport.
 
-Operations: ``agents.list``, ``session.spawn``, ``session.send``,
-``session.interrupt``, ``session.stop``, ``session.close``, ``session.reopen``,
+Operations: ``agents.list``, ``session.spawn``, ``session.send`` (which
+resolves a ``/`` line first, ``commands.py``), ``session.configure``,
+``commands.list``, ``session.interrupt``, ``session.stop``, ``session.close``,
+``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``,
 ``quota.read``. Channels: ``sessions`` (every open session's meta; patches
 ``upsert`` and ``remove``), ``transcript:<log_id>`` (any session, archived
@@ -16,9 +18,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from . import files
+from . import commands, files
 from .agent_ops import register_agent_ops
 from .agents import (
+    EFFORTS,
     HARNESSES,
     PERMISSION_ORDER,
     SUPPORTED_HARNESSES,
@@ -29,6 +32,7 @@ from .agents import (
     resolve,
 )
 from .channels import Channels, Throttle
+from .claude.process import PERMISSION_MODE, ControlError
 from .host import HostSampler
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors
@@ -40,7 +44,7 @@ from .roots import Roots
 from .session import PUBLISH_EVERY_S
 from .version import Versions
 
-Effort = Literal["low", "medium", "high", "max"]
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
 Permission = Literal["read", "write", "full", "auto"]
 
 
@@ -73,6 +77,13 @@ class SpawnParams(_Strict):
 class SendParams(_Strict):
     log_id: str
     text: str = Field(min_length=1)
+
+
+class ConfigureParams(_Strict):
+    log_id: str
+    model: str | None = None
+    effort: Effort | None = None
+    permission: Permission | None = None
 
 
 class LogParams(_Strict):
@@ -141,6 +152,10 @@ class App:
             server_name,
         )
         reg.quota = self.quota
+        self.catalogs = commands.Catalogs(
+            claude_bin, roots.state_root / "stderr" / "catalog-probe.log"
+        )
+        reg.catalogs = self.catalogs
         reg.mcp_url = f"{base_url.rstrip('/')}{MCP_PATH}" if base_url else None
         self.versions = Versions()
         self.registry = Ops()
@@ -211,6 +226,74 @@ class App:
         if not p.is_dir():
             raise OpError("bad_cwd", f"{p} is not a directory")
         return p
+
+    async def _configure(
+        self,
+        s,
+        model: str | None,
+        effort: str | None,
+        permission: str | None,
+    ) -> dict:
+        if not (model or effort or permission):
+            raise OpError("bad_params", "nothing to change")
+        cat = await self.catalogs.get(s) if model or effort else None
+        if cat is not None:  # without one, claude itself refuses a bad value
+            if model:
+                m = cat.model(model)
+                if m is None:
+                    raise OpError(
+                        "unknown_model", f"no model {model!r}; /model lists them"
+                    )
+                model = m.value
+            if effort:
+                cur = cat.model(model or s.spec.model or "default")
+                if cur is not None and effort not in cur.efforts:
+                    raise OpError(
+                        "bad_effort",
+                        f"{cur.label} takes no effort level"
+                        if not cur.efforts
+                        else f"{cur.label} takes {', '.join(cur.efforts)}",
+                    )
+        try:
+            await s.configure(model=model, effort=effort, permission=permission)
+        except ControlError as e:
+            raise OpError("refused", f"claude refused: {e}") from e
+        except TimeoutError as e:
+            raise OpError("timeout", "claude did not answer within 15 s") from e
+        except (BrokenPipeError, ConnectionResetError) as e:
+            raise _dead(e) from e
+        return s.wire()
+
+    async def _command(self, s, name: str, arg: str):
+        """Run an aegis command typed in the composer."""
+        cmd = commands.AEGIS[name]
+        if cmd.hint.startswith("<") and not arg:
+            raise OpError("missing_argument", f"usage: /{name} {cmd.hint}")
+        reg = self.sessions
+        if name == "model":
+            return await self._configure(s, arg, None, None)
+        if name == "effort":
+            if arg not in EFFORTS:
+                raise OpError("bad_effort", f"an effort is one of {', '.join(EFFORTS)}")
+            return await self._configure(s, None, arg, None)
+        if name == "permission":
+            if arg not in PERMISSION_MODE:
+                raise OpError(
+                    "bad_permission",
+                    f"a permission is one of {', '.join(PERMISSION_MODE)}",
+                )
+            return await self._configure(s, None, None, arg)
+        if name == "rename":
+            return reg.rename(s.log_id, arg, None)
+        if name == "title":
+            return reg.rename(s.log_id, None, arg)
+        if name == "help":
+            return None  # the client opens its menu; nothing goes to claude
+        if name == "stop":
+            await s.stop()
+            return s.wire()
+        await reg.close(s.log_id)  # close
+        return None
 
     def _register(self) -> None:
         r = self.registry
@@ -284,14 +367,46 @@ class App:
         @r.op("session.send", SendParams)
         async def send(p: SendParams, caller):
             s = reg.open(p.log_id)
+            cmd = commands.split(p.text)
+            if cmd is not None:
+                name, arg = cmd
+                if name in commands.AEGIS:
+                    return await self._command(s, name, arg)
+                cat = await self.catalogs.get(s)
+                if cat is not None and cat.commands and not cat.has(name):
+                    raise OpError(
+                        "unknown_command",
+                        f"no command /{name} in this session; "
+                        "start the line with // to send it as text",
+                    )
             try:
-                await s.send(p.text)
+                await s.send(commands.escape(p.text))
             except FileNotFoundError as e:
                 raise OpError(
                     "claude_not_found", f"cannot run {self.claude_bin!r}: {e}"
                 ) from e
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e
+
+        @r.op("session.configure", ConfigureParams)
+        async def configure(p: ConfigureParams, caller):
+            return await self._configure(
+                reg.open(p.log_id), p.model, p.effort, p.permission
+            )
+
+        @r.op("commands.list", LogParams)
+        async def commands_list(p: LogParams, caller):
+            """What the composer's menu offers this session."""
+            cat = await self.catalogs.get(reg.open(p.log_id))
+            return {
+                "commands": commands.aegis_wire()
+                + (cat.wire_commands(shadowed=commands.AEGIS) if cat else []),
+                "models": cat.wire_models() if cat else [],
+                "permissions": list(PERMISSION_MODE),
+                # False: claude gave no command list, so the menu cannot tell
+                # an unknown name from one of claude's.
+                "complete": bool(cat and cat.commands),
+            }
 
         @r.op("session.interrupt", LogParams)
         async def interrupt(p: LogParams, caller):

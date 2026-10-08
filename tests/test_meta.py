@@ -85,3 +85,38 @@ def test_rebuild_gives_up_without_a_spawn_record(tmp_path: Path):
     p = tmp_path / "x.jsonl"
     p.write_text("garbage\n")
     assert rebuild(p) is None
+
+
+def test_rebuild_applies_configure_records_and_the_last_session_id(tmp_path: Path):
+    def init(sid):
+        return json.dumps({"type": "system", "subtype": "init", "session_id": sid})
+
+    rows = [
+        {
+            "i": 0,
+            "ts": 1.0,
+            "src": "aegis",
+            "kind": "spawn",
+            "profile": "opus",
+            "model": "opus",
+            "effort": "high",
+            "permission": "full",
+            "cwd": "/w",
+        },
+        {"i": 1, "ts": 2.0, "src": "claude", "line": init("first")},
+        {
+            "i": 2,
+            "ts": 3.0,
+            "src": "aegis",
+            "kind": "configure",
+            "model": "sonnet",
+            "when": "next_turn",
+        },
+        {"i": 3, "ts": 4.0, "src": "aegis", "kind": "configure", "effort": "max"},
+        {"i": 4, "ts": 5.0, "src": "claude", "line": init("after-clear")},
+    ]
+    path = tmp_path / "log-x.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    m = rebuild(path)
+    assert (m["model"], m["effort"], m["permission"]) == ("sonnet", "max", "full")
+    assert m["claude_session_id"] == "after-clear"

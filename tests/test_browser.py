@@ -1075,4 +1075,116 @@ def test_g_in_a_long_transcript_mounts_and_selects_the_first_entry(replay_server
     page.keyboard.press("g")
     assert page.locator(ROWS).count() == total
     assert selected(page) == row_ids(page)[0]
+
+
+def menu_rows(pg) -> list[str]:
+    return pg.evaluate(
+        "[...document.querySelectorAll('#cmd-menu .cmd-row .nm')].map(n => n.textContent)"
+    )
+
+
+def test_the_menu_completes_a_model_and_esc_closes_it_without_interrupting(
+    server, page
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.fill("#input", "/sleep 3")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    page.click("#input")
+    page.keyboard.type("/mo")
+    page.wait_for_selector("#cmd-menu:not([hidden])")
+    assert menu_rows(page)[0] == "/model"
+    page.keyboard.press("Tab")
+    assert page.input_value("#input") == "/model "
+    page.keyboard.type("son")
+    page.keyboard.press("Enter")  # accepts the highlighted model
+    assert page.input_value("#input") == "/model sonnet "
+    page.keyboard.press("Escape")
+    assert page.is_hidden("#cmd-menu")
+    assert page.is_visible(".row.tool.running"), "Esc on the menu does not interrupt"
+    page.press("#input", "Enter")
+    page.wait_for_function(
+        "() => document.getElementById('chip-model').textContent === 'sonnet'"
+    )
+    assert page.input_value("#input") == ""
+    assert page.errors == []
+
+
+def test_alt_slash_with_a_draft_runs_a_command_and_keeps_the_draft(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.fill("#input", "half a thought")
+    page.keyboard.press("Alt+/")
+    page.wait_for_selector("#cmd-filter")  # prefilled with "/"
+    page.keyboard.type("effort lo")
+    page.keyboard.press("Enter")
+    page.keyboard.press("Enter")
+    page.wait_for_function(
+        "() => document.getElementById('chip-effort').textContent === 'low effort'"
+    )
+    assert page.input_value("#input") == "half a thought"
+    assert page.errors == []
+
+
+def test_an_unknown_command_is_flagged_and_claudes_commands_render(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.fill("#input", "/bogus x")
+    page.wait_for_selector(".composer.bad")
+    page.press("#input", "Enter")
+    page.wait_for_function(
+        "() => document.getElementById('send-error').textContent.includes('// to send it as text')"
+    )
+    page.fill("#input", "/context")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.command .cmd")
+    # textContent: rows use content-visibility:auto, so innerText of a row not
+    # yet painted reads empty (#161).
+    assert page.text_content(".row.command .cmd") == "/context"
+    assert page.errors == []
+
+
+def test_clicking_the_model_chip_opens_the_menu_on_models(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.click("#chip-model")
+    page.wait_for_selector("#cmd-menu:not([hidden])")
+    assert page.input_value("#input") == "/model "
+    assert menu_rows(page)[:3] == ["opus", "sonnet", "haiku"]
+    assert page.errors == []
+
+
+def test_a_chip_click_over_a_draft_keeps_the_draft(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.fill("#input", "keep me")
+    page.click("#chip-effort")
+    page.wait_for_selector("#cmd-filter")
+    assert page.input_value("#cmd-filter") == "/effort "
+    page.keyboard.type("lo")
+    page.keyboard.press("Enter")
+    page.keyboard.press("Enter")
+    page.wait_for_function(
+        "() => document.getElementById('chip-effort').textContent === 'low effort'"
+    )
+    assert page.input_value("#input") == "keep me"
+    assert page.errors == []
+
+
+def test_help_opens_the_menu_and_sends_nothing(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.fill("#input", "/help")
+    page.press("#input", "Enter")
+    page.wait_for_selector("#cmd-menu:not([hidden])")
+    assert page.input_value("#input") == "/"
+    assert menu_rows(page)[0] == "/model"
+    assert page.evaluate("document.querySelectorAll('.row.user').length") == 1
     assert page.errors == []
