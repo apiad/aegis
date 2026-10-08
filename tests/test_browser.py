@@ -523,6 +523,29 @@ def test_text_typed_right_after_switching_tabs_is_kept(server, page):
     assert page.errors == []
 
 
+def box_fits(pg) -> bool:
+    """The message box shows its whole content: it was measured while visible."""
+    return pg.evaluate(
+        "(() => { const i = document.getElementById('input');"
+        " return i.clientHeight > 0 && i.clientHeight >= i.scrollHeight; })()"
+    )
+
+
+def test_the_message_box_opens_at_full_height(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page)
+    assert box_fits(page), "opened from the new-tab form"
+    page.click("#tab-fleet")
+    page.click(f".card[data-id='{a}']")
+    page.wait_for_selector("#a2[data-view=session]")
+    assert box_fits(page), "opened from the Fleet"
+    page.reload()
+    page.wait_for_selector("#a2[data-view=session]")
+    assert box_fits(page), "booted straight into the session"
+    assert page.errors == []
+
+
 def test_a_monitor_shows_in_the_sidebar_and_its_wake_arrives_as_an_inbox_row(
     server, page, tmp_path
 ):

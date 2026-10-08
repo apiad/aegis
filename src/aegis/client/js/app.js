@@ -210,14 +210,15 @@ function render() {
     document.title = "New session · aegis";
   } else if (r.view === "session") {
     watchHost(false);
-    follow(r.id);
+    // Shown first: follow() sizes the message box, which measures 0 while hidden.
     show("session");
+    follow(r.id);
     renderMeta(sessions.get(r.id));
     if (newView) drawQuota();
   } else {
     watchHost(false);
-    follow(r.id);
     show("session");
+    follow(r.id);
     const m = archived.find((x) => x.log_id === r.id);
     if (m) renderMeta({ ...m, state: "archived" });
     else if (!archiveLoaded) loadArchive().then(render);
