@@ -3,12 +3,17 @@
 stdout is read line by line and handed to ``on_line``; stderr goes to a file
 and the last lines are kept for the exit report. A single stdout line can
 carry a whole file (a large Read result), hence the generous line limit.
+
+A control request that wants its answer goes through ``request``; the answer
+is routed to it and never reaches ``on_line``, so it is not stored: it is
+protocol, not transcript, and ``initialize``'s alone is about 60 KB.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections import deque
 from collections.abc import Callable
 from pathlib import Path
@@ -17,6 +22,12 @@ from pathlib import Path
 LINE_LIMIT = 64 * 1024 * 1024
 STDERR_TAIL = 20
 TERM_GRACE_S = 5.0
+# A bad model took 4.7 s to be refused (#97).
+CONTROL_TIMEOUT_S = 15.0
+
+
+class ControlError(Exception):
+    """claude answered a control request with an error."""
 
 # aegis's permission vocabulary, mapped to Claude Code's --permission-mode.
 PERMISSION_MODE = {
@@ -82,6 +93,7 @@ class ClaudeProcess:
         self._proc: asyncio.subprocess.Process | None = None
         self._tasks: list[asyncio.Task] = []
         self._stderr_tail: deque[str] = deque(maxlen=STDERR_TAIL)
+        self._waiting: dict[str, asyncio.Future[dict]] = {}
 
     @property
     def pid(self) -> int | None:
@@ -120,9 +132,12 @@ class ClaudeProcess:
             if not raw:
                 break
             line = raw.decode("utf-8", "replace").rstrip("\r\n")
-            if line.strip():
+            if line.strip() and not self._answer(line):
                 self._on_line(line)
         code = await proc.wait()
+        for fut in self._waiting.values():
+            if not fut.done():
+                fut.set_exception(BrokenPipeError("claude exited"))
         await stderr_done
         self._on_exit(code, list(self._stderr_tail))
 
@@ -141,6 +156,50 @@ class ClaudeProcess:
             raise BrokenPipeError("claude is not running")
         proc.stdin.write((json.dumps(obj) + "\n").encode())
         await proc.stdin.drain()
+
+    async def request(
+        self, subtype: str, timeout: float = CONTROL_TIMEOUT_S, **fields: object
+    ) -> dict:
+        """Send a control request and return its answer's body. Raises
+        ControlError on an error answer, TimeoutError after ``timeout``, and
+        BrokenPipeError when claude is not running or exits first."""
+        rid = f"aegis_{subtype}_{time.monotonic_ns()}"
+        fut: asyncio.Future[dict] = asyncio.get_running_loop().create_future()
+        self._waiting[rid] = fut
+        try:
+            await self.write(
+                {
+                    "type": "control_request",
+                    "request_id": rid,
+                    "request": {"subtype": subtype, **fields},
+                }
+            )
+            return await asyncio.wait_for(fut, timeout)
+        finally:
+            self._waiting.pop(rid, None)
+
+    def _answer(self, line: str) -> bool:
+        """Hand a control response to the request waiting for it; True when
+        one was waiting."""
+        if not self._waiting or '"control_response"' not in line[:40]:
+            return False
+        try:
+            obj = json.loads(line)
+        except ValueError:
+            return False
+        resp = obj.get("response") if isinstance(obj, dict) else None
+        if not isinstance(resp, dict):
+            return False
+        fut = self._waiting.get(str(resp.get("request_id")))
+        if fut is None:
+            return False
+        if not fut.done():
+            if resp.get("subtype") == "error":
+                fut.set_exception(ControlError(str(resp.get("error") or "error")))
+            else:
+                body = resp.get("response")
+                fut.set_result(body if isinstance(body, dict) else {})
+        return True
 
     async def terminate(self) -> None:
         proc = self._proc
