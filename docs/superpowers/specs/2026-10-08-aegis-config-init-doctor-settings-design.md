@@ -229,8 +229,8 @@ anywhere.
 
 ## The Settings page
 
-`#settings`, opened by a gear button in the header next to `?`, and by `Alt+,`
-in the key table.
+`#settings`, opened by a Settings button in the header next to `?`, and by
+`Alt+S` in the key table (`Alt+,` already focuses the transcript).
 
 - **Header.** The file's path and, if the file on disk does not parse, the error
   in a red band: "aegis is still using the last version that parsed".
