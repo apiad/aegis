@@ -86,6 +86,7 @@ SCRIPTS = (
     "mcp",
     "bgtask",
     "argv",
+    "bash",
 )
 COMMANDS = (
     [
