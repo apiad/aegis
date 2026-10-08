@@ -9,6 +9,7 @@ import { Transcript } from "./transcript.js";
 import { TabOrder, renderTabs } from "./tabs.js";
 import { ago, money, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
+import { installKeys, renderKeys } from "./keys.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -159,6 +160,7 @@ function render() {
     follow(null);
     show("fleet");
     renderCards($("cards"), ordered, (id) => go(`#s=${id}`));
+    fleetMark(false);
     watchHost(true);
     drawBand();
     if (newView) drawQuota();
@@ -408,6 +410,40 @@ async function loadArchive() {
     onReopen: reopen,
     onRead: (id) => go(`#read=${id}`),
   });
+  fleetMark(false);
+}
+
+// The Fleet's selection: a card or an archive row, by log id, re-marked after
+// every redraw because both are rebuilt from scratch.
+let fleetSel = null;
+
+function fleetItems() {
+  return [...document.querySelectorAll("#cards .card, #arch-list tr[data-id]")];
+}
+
+function fleetMark(scroll) {
+  for (const n of document.querySelectorAll("#cards .sel, #arch-list .sel")) n.classList.remove("sel");
+  const n = fleetItems().find((x) => x.dataset.id === fleetSel);
+  if (!n) {
+    fleetSel = null;
+    return;
+  }
+  n.classList.add("sel");
+  if (scroll) n.scrollIntoView({ block: "nearest" });
+}
+
+function fleetMove(delta) {
+  const items = fleetItems();
+  const i = items.findIndex((x) => x.dataset.id === fleetSel);
+  const n = i < 0 ? items[0] : items[i + delta];
+  if (!n) return;
+  fleetSel = n.dataset.id;
+  fleetMark(true);
+}
+
+function fleetOpen() {
+  const n = fleetItems().find((x) => x.dataset.id === fleetSel);
+  if (n) go(n.classList.contains("card") ? `#s=${fleetSel}` : `#read=${fleetSel}`);
 }
 
 $("arch-q").addEventListener("input", () => {
@@ -564,14 +600,64 @@ $("sp-text").addEventListener("keydown", (ev) => {
 // -- tab bar and keys -----------------------------------------------------------
 $("tab-fleet").addEventListener("click", () => go("#fleet"));
 $("tab-add").addEventListener("click", () => go("#new"));
-document.addEventListener("keydown", (ev) => {
-  if (ev.altKey && /^Digit[0-9]$/.test(ev.code)) {
-    ev.preventDefault();
-    const n = Number(ev.code.slice(5));
-    if (n === 0) go("#fleet");
-    else if (ordered[n - 1]) go(`#s=${ordered[n - 1].log_id}`);
-  } else if (ev.key === "Escape" && route().view === "session" && !editing.size) interrupt();
-});
+// The ? list: drawn once from the key table.
+const keymap = $("keymap");
+renderKeys(keymap);
+const help = (open = keymap.hidden) => (keymap.hidden = !open);
+$("keys-btn").addEventListener("click", () => help());
+keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));
+
+// What each key in keys.js does. `input` and `editing` are declared below;
+// a key is pressed only after this module has run.
+installKeys(
+  {
+    composer() {
+      const v = route().view;
+      if (v === "session") input.focus();
+      // The directory, not the profile: Enter in a text field submits the form.
+      else if (v === "spawn") $("sp-cwd").focus();
+    },
+    browse() {
+      const v = route().view;
+      if (v === "session" || v === "read") {
+        $("tr").focus({ preventScroll: true });
+        transcript.pick();
+      } else if (v === "fleet") {
+        $("cards").focus({ preventScroll: true });
+        if (!fleetSel) fleetMove(1);
+      }
+    },
+    cycle(ev) {
+      const all = ["#fleet", ...ordered.map((m) => `#s=${m.log_id}`)];
+      const d = ev.code === "BracketRight" ? 1 : -1;
+      const i = all.indexOf(location.hash || "#fleet");
+      go(all[i < 0 ? (d > 0 ? 0 : all.length - 1) : (i + d + all.length) % all.length]);
+    },
+    next: () => transcript.move(1),
+    prev: () => transcript.move(-1),
+    turn: (ev) => transcript.moveTurn(ev.key === "J" ? 1 : -1),
+    edge: (ev) => transcript.edge(ev.key === "G"),
+    toggle: () => transcript.toggle(),
+    press: () => transcript.press(),
+    none() {},
+    fleetNext: () => fleetMove(1),
+    fleetPrev: () => fleetMove(-1),
+    fleetOpen,
+    filter: () => $("arch-q").focus(),
+    spawn: () => go("#new"),
+    tab(ev) {
+      const n = Number(ev.altKey ? ev.code.slice(5) : ev.key);
+      if (n === 0) go("#fleet");
+      else if (ordered[n - 1]) go(`#s=${ordered[n - 1].log_id}`);
+    },
+    escape() {
+      if (!keymap.hidden) help(false);
+      else if (route().view === "session" && !editing.size) interrupt();
+    },
+    help: () => help(),
+  },
+  () => (booted ? route().view : "boot"),
+);
 
 // -- composer ---------------------------------------------------------------
 const input = $("input");
