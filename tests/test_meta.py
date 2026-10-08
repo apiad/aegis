@@ -71,7 +71,7 @@ def test_rebuild_recovers_spec_claude_id_and_title(tmp_path: Path):
     s.close()
     m = rebuild(path)
     assert m["log_id"] == "20261006-x" and m["archived"] is True
-    assert (m["agent"], m["cwd"], m["claude_session_id"], m["title"]) == (
+    assert (m["agent"], m["cwd"], m["resume_id"], m["title"]) == (
         "opus",
         "/w",
         "cs-1",
@@ -119,4 +119,4 @@ def test_rebuild_applies_configure_records_and_the_last_session_id(tmp_path: Pat
     path.write_text("".join(json.dumps(r) + "\n" for r in rows))
     m = rebuild(path)
     assert (m["model"], m["effort"], m["permission"]) == ("sonnet", "max", "full")
-    assert m["claude_session_id"] == "after-clear"
+    assert m["resume_id"] == "after-clear"

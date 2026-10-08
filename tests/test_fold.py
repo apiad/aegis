@@ -319,7 +319,7 @@ def test_stopping_ends_running_calls_and_loses_unread_prompts():
 def test_resume_and_server_stopped_lines():
     r = Rec()
     r.own("server_stopped")
-    r.own("resume", claude_session_id="cs")
+    r.own("resume", resume_id="cs")
     f, _ = run(r)
     assert [e["summary"] for e in f.entries()] == [
         "the server stopped during a turn",
@@ -576,3 +576,22 @@ def test_a_set_model_note_does_not_take_a_queued_commands_place():
     assert [(e["kind"], e["title"], e["md"]) for e in f.entries()] == [
         ("command", "/compact", "Compacted")
     ]
+
+
+def test_init_and_exit_name_their_harness():
+    r = Rec()
+    r.claude(
+        {
+            "type": "system",
+            "subtype": "init",
+            "session_id": "s",
+            "model": "m",
+            "claude_code_version": "2.1",
+        }
+    )
+    r.own("exit", code=1, stderr_tail=[], harness="OpenCode")
+    r.own("exit", code=2, stderr_tail=[])  # a record from before the label
+    summaries = [e["summary"] for e in run(r)[0].entries()]
+    assert summaries[0] == "Claude Code 2.1 · m"
+    assert "OpenCode exited with code 1" in summaries
+    assert "claude exited with code 2" in summaries

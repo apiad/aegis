@@ -136,7 +136,7 @@ class Registry(Host):
             publish=self._publish,
             metas=self.metas,
             title=meta.get("title") or "",
-            claude_session_id=meta.get("claude_session_id"),
+            resume_id=meta.get("resume_id") or meta.get("claude_session_id"),
             created_at=meta.get("created_at"),
             last_activity=meta.get("last_activity"),
             last_status=meta.get("last_status") or "stopped",

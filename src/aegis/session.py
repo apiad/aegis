@@ -2,8 +2,8 @@
 it has one.
 
 A session exists without a process. ``stopped`` means there is none; the first
-prompt starts ``claude``, with ``--resume`` once Claude has given the session an
-id, and the store and the fold simply continue (Claude prints nothing old on
+prompt starts ``claude``, with ``--resume`` once the harness has given the session
+an id, and the store and the fold simply continue (Claude prints nothing old on
 resume, measured in issue #127). Only shutdown, Stop and Close end a process:
 a session waiting on its own background task wakes itself, so nothing stops an
 idle-looking one.
@@ -152,7 +152,7 @@ class Session:
         publish: Publish,
         metas: MetaStore,
         title: str = "",
-        claude_session_id: str | None = None,
+        resume_id: str | None = None,
         archived: bool = False,
         created_at: float | None = None,
         last_activity: float | None = None,
@@ -173,7 +173,7 @@ class Session:
         self.title = title
         self.store = store
         self.channel = f"transcript:{log_id}"
-        self.claude_session_id = claude_session_id
+        self.resume_id = resume_id
         self.archived = archived
         self.created_at = created_at or time.time()
         self.last_activity = last_activity or self.created_at
@@ -214,7 +214,7 @@ class Session:
             "title": self.title,
             **s.record(),
             "model_id": self.model_id,
-            "claude_session_id": self.claude_session_id,
+            "resume_id": self.resume_id,
             "archived": self.archived,
             "created_at": self.created_at,
             "last_activity": self.last_activity,
@@ -274,7 +274,7 @@ class Session:
         the binary is missing, leaving the session stopped."""
         if self.running:
             return
-        resume = self.claude_session_id
+        resume = self.resume_id
         mcp_config, system_prompt = self._host.spawn_args(self)
         argv = build_argv(
             self._claude_bin,
@@ -294,7 +294,7 @@ class Session:
         self._stopping = False
         self.open_tasks.clear()
         if resume:
-            self._record({"kind": "resume", "claude_session_id": resume})
+            self._record({"kind": "resume", "resume_id": resume})
         self._set(status="idle")
 
     async def _fetch_catalog(self, proc: ClaudeProcess) -> Catalog | None:
@@ -501,7 +501,7 @@ class Session:
                 if ev.model:
                     changes["model_id"] = ev.model
                 if ev.session_id:
-                    changes["claude_session_id"] = ev.session_id
+                    changes["resume_id"] = ev.session_id
             if isinstance(ev, Notice) and ev.task_id:
                 if ev.subtype == "task_started":
                     self.open_tasks.add(ev.task_id)
@@ -528,7 +528,14 @@ class Session:
             return
         self._proc = None
         self.open_tasks.clear()
-        self._record({"kind": "exit", "code": code, "stderr_tail": stderr_tail})
+        self._record(
+            {
+                "kind": "exit",
+                "code": code,
+                "stderr_tail": stderr_tail,
+                "harness": "Claude Code",
+            }
+        )
         self._set(status="stopped")
         self._host.exited(self, code, stderr_tail)
 

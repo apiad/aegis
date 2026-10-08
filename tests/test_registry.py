@@ -119,7 +119,7 @@ async def test_missing_and_damaged_metas_are_rebuilt_from_their_stores(world):
     r2 = world.registry()
     titles = sorted(m["title"] for m in r2.archived.values())
     assert titles == ["alpha prompt", "beta prompt"]
-    assert all(m["claude_session_id"] for m in r2.archived.values())
+    assert all(m["resume_id"] for m in r2.archived.values())
     assert "junk" not in r2.archived and "junk" not in r2.sessions
     reopened = r2.reopen(a.log_id)
     await reopened.send("/recall")
@@ -268,3 +268,25 @@ async def test_the_priming_never_leaves_the_server_from_the_archive(world):
     assert "priming" not in r.rename(s.log_id, None, "renamed")
     # The stored meta keeps it, so a reopened session resumes with it.
     assert r.archived[s.log_id]["priming"] == "secret text"
+
+
+def test_a_meta_from_before_the_rename_still_resumes(world):
+    from aegis.meta import MetaStore
+
+    MetaStore(world.roots.state_root / "sessions").write(
+        {
+            "log_id": "old-1",
+            "handle": "old-owl",
+            "agent": "opus",
+            "harness": "claude-code",
+            "model": "opus",
+            "effort": "high",
+            "permission": "full",
+            "cwd": str(world.roots.config_root),
+            "claude_session_id": "cs-old",
+            "created_at": 1.0,
+        }
+    )
+    r = world.registry()
+    assert r.sessions["old-1"].resume_id == "cs-old"
+    assert r.sessions["old-1"].meta()["resume_id"] == "cs-old"

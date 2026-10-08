@@ -345,7 +345,7 @@ def make_world(root: Path, n_open: int = 20, n_archived: int = 80) -> None:
             "effort": "low",
             "permission": "full",
             "cwd": str(root),
-            "claude_session_id": f"cs-{i}",
+            "resume_id": f"cs-{i}",
             "archived": i >= n_open,
             "created_at": 1_000_000.0 + i,
             "last_activity": 1_000_000.0 + i,

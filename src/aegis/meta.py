@@ -100,14 +100,14 @@ def rebuild(store_path: Path) -> dict | None:
     spawn = next((r for r in records if r.get("kind") == "spawn"), None)
     if spawn is None:
         return None
-    claude_id = None
+    resume_id = None
     for r in records:
         if r.get("src") == "claude":
             init = next(
                 (e for e in parse(r.get("line", "")) if isinstance(e, Init)), None
             )
             if init and init.session_id:
-                claude_id = init.session_id  # the last one: /clear starts anew
+                resume_id = init.session_id  # the last one: /clear starts anew
     first_send = next((r for r in records if r.get("kind") == "send"), None)
     spec = {k: spawn.get(k) for k in ("model", "effort", "permission")}
     for r in records:
@@ -126,7 +126,7 @@ def rebuild(store_path: Path) -> dict | None:
         "effort": spec["effort"],
         "permission": spec["permission"],
         "cwd": spawn.get("cwd"),
-        "claude_session_id": claude_id,
+        "resume_id": resume_id,
         "archived": True,
         "created_at": records[0].get("ts"),
         "last_activity": records[-1].get("ts"),

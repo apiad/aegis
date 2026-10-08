@@ -44,7 +44,7 @@ async def test_a_real_prompt_interrupt_stop_and_resume(tmp_path: Path):
             timeout=90,
             what="the first result",
         )
-        assert s.context_window and s.context_tokens and s.claude_session_id
+        assert s.context_window and s.context_tokens and s.resume_id
 
         await s.send(
             "Run exactly this bash command in the foreground: python3 -c 'import time; time.sleep(40)'"

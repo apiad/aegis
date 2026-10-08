@@ -35,6 +35,8 @@ class Init:
     session_id: str | None
     model: str | None
     version: str | None
+    # Who printed it, for the transcript's first line.
+    harness: str = "Claude Code"
 
 
 @dataclass(frozen=True)

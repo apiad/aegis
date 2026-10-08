@@ -211,7 +211,7 @@ class Fold:
                         "err",
                         ts,
                         d.ERROR_GLYPH,
-                        summary=f"claude exited with code {rec.get('code')}",
+                        summary=f"{rec.get('harness') or 'claude'} exited with code {rec.get('code')}",
                         detail={"tail": stderr, "collapsed": False},
                     )
                 )
@@ -481,7 +481,7 @@ class Fold:
             line = " · ".join(
                 x
                 for x in (
-                    f"Claude Code {ev.version}" if ev.version else "Claude Code",
+                    f"{ev.harness} {ev.version}" if ev.version else ev.harness,
                     ev.model,
                 )
                 if x
