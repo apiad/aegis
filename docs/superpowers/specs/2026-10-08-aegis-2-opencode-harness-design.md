@@ -97,15 +97,17 @@ class Harness(Protocol):
     src: str           # the store's src tag: "claude", "opencode"
     label: str         # "Claude Code", "OpenCode", for system entries
     tool_prefix: str   # "mcp__aegis__", "aegis_", for the primer
-    def process(self, spec: SpawnSpec, launch: Launch) -> Process: ...
-    def parser(self) -> Parser: ...
-    async def probe(self, cwd: Path, stderr_path: Path) -> Catalog: ...
+    bin: str
+    def process(self, launch: Launch) -> Process: ...
+    async def probe(self, spec: SpawnSpec, stderr_path: Path) -> Catalog: ...
 ```
 
 `Launch` carries what the registry decides and the harness only uses: the resume
 id, the MCP URL and token, the system prompt, the stderr path, and the
-`on_line` and `on_exit` callbacks. `Parser.feed(line) -> list[Event]` turns one
-stored line into events. Claude's parser is the existing stateless `parse`;
+`on_line`, `on_exit` and `on_error` callbacks. The parsers are not on the harness:
+`transcript.entries.PARSERS` maps a store's `src` tag to a parser factory, and the
+fold keeps one per tag. `Parser.feed(line) -> list[Event]` turns one stored line
+into events. Claude's parser is the existing stateless `parse`;
 OpenCode's keeps state across lines, because a part's events need the role of
 the message it belongs to.
 
@@ -138,8 +140,10 @@ http://127.0.0.1:<port>`). The environment carries:
   auth on every request, because any local process or page can reach a
   localhost port.
 
-Start waits for `/global/health` (15 s deadline), then subscribes to `/event`
-and waits for `server.connected`, so no event of the first turn can be missed.
+Start waits for the printed "listening" line (15 s deadline), then subscribes to
+`/event` and waits for `server.connected`, so no event of the first turn can be
+missed. A start that fails after the child listens ends the child before it
+raises, and the registry removes a session whose start raised.
 Then it creates the OpenCode session (`POST /session`), or, on resume, checks
 that `GET /session/{resume_id}` exists. Every request passes the cwd as
 `?directory=`. The process requests run on an `httpx.AsyncClient`, declared as
@@ -208,7 +212,9 @@ entry. Without one, as for Claude, the id stays `e<record>.<block>`.
 
 `Result.cost_usd` is the session's running total: the sum of the latest `cost`
 of each assistant message. The fold already turns a running total into the
-cost of one turn. `duration_ms` runs from the first `busy` status of the turn.
+cost of one turn. `duration_ms` runs from the first assistant message's
+`created` time to the last one's `completed` time; an exit, a stop or a server
+restart ends the turn for the parser too, so nothing of it leaks into the next.
 `is_error` is set when a `session.error` came before the idle event, and its
 `subtype` is the error's name (`MessageAbortedError` shows as "interrupted",
 through the fold's existing interrupt flag).
@@ -345,10 +351,12 @@ Go quota gauge (`quota/opencode.py`) is already wired and does not change.
   runs: a plain turn, a tool turn, a mid-turn prompt, an abort, a command, a
   `task` with a child session. `tests/test_opencode_stream.py` folds each and
   checks the entries.
-- **`tests/test_session.py`** runs the scenarios that apply to both harnesses
-  with each of them: send, mid-turn send, interrupt, resume after a restart,
-  inbox delivery, configure, stop, exit. Every one ends with the check that the
-  patches add up to a fresh fold.
+- **`tests/test_session_opencode.py`** runs the session scenarios against the
+  fake opencode (`tests/test_session.py` keeps Claude's): send, mid-turn send,
+  inbox delivery, interrupt, resume after a restart, a lost resume, configure,
+  commands, exit, and the failures the final review found (two sends to a
+  stopped session, a failed prompt, a failed restart). Every one ends with the
+  check that the patches add up to a fresh fold.
 - **Browser:** spawn the OpenCode agent from the new tab against the fake, and
   see text drawn before the turn ends.
 - **`make test-live`** gains an OpenCode session on `opencode-go/deepseek-v4-flash`,

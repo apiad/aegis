@@ -86,13 +86,17 @@ stored line through the parser its `src` tag names. Claude Code
 MCP token, like Claude's, is per process. Both parsers emit the same events, so
 the entry rules exist once. OpenCode's token deltas are the one thing folded and
 never stored: the part's closing update carries the whole text, so the live view
-is ahead of a fresh fold only while a part is open.
+is ahead of a fresh fold only while a part is open (a prompt read mid-turn while
+a part streams is the one known exception: live it sits after that part, and a
+reload puts it before).
 
 **A `/` line is resolved on the server, and a typo costs nothing.** `session.send`
 runs an aegis command (`commands.py`) as the operation it stands for, passes a name
-in the session's catalog to `claude` as typed, and refuses anything else: Claude
-answers an unknown command with the model. The catalog is Claude's own
-`initialize` answer, in memory by cwd, never on disk, so an upgraded CLI never
+in the session's catalog to its harness as typed (OpenCode's run through its
+command endpoint), and refuses anything else: Claude answers an unknown command
+with the model. The catalog is the harness's own (Claude's `initialize` answer,
+OpenCode's `/command` and `/config/providers`), in memory by harness and cwd,
+never on disk, so an upgraded CLI never
 meets a stale list. `/model`, `/effort` and `/permission` are aegis's, because the
 spec the next `--resume` is built from has to change with the process; they reach
 a live `claude` as control requests whose answers `ClaudeProcess.request` routes
