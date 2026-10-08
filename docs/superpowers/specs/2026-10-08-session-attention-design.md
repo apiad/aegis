@@ -159,8 +159,11 @@ The reply rules are the findings of the legacy probe over 40 real turn ends
 lowercase and end without a period, assent was the case the old suggester missed,
 and invented answers to open questions were most of what it offered.
 
-Compliance is measured, not assumed: `make test-live` runs a real session through
-a question turn, a work turn and a wait, and asserts the calls. On 2026-10-08
+Compliance is measured, not assumed: `make test-live` runs a real Sonnet session
+through a question turn, which must end in `turn_end` with `needs_you` and one to
+three replies, and a work turn, which must end in `turn_end` with `done`. Not yet
+measured live: `plan_update` compliance, a wait turn, and an open question that
+offers no replies (a #171 follow-up). On 2026-10-08
 Opus and Sonnet called turn_end on 6 of 6 question and work turns with this
 wording, Haiku in about 1 of 3, so the live test runs on Sonnet. The PR that
 lands the tools reports the rate over a week of Alex's sessions.
@@ -305,9 +308,11 @@ call `/mcp` with its own token.
   sits before the first unread; the pill's count and jumps; Alt+↑, Alt+↓, Alt+U;
   the order switch persists across a reload; the title count; a blinking tab stops
   when it is focused; a reply pill sends its text and every pill disappears.
-- **Live.** `make test-live` asserts a real session calls both tools in the three
-  scenarios above, offers replies after laying out options, and offers none after
-  an open question.
+- **Live.** `make test-live` runs a real Sonnet session through a question turn,
+  which must end in `turn_end` with `needs_you` and one to three replies, and a
+  work turn, which must end in `turn_end` with `done`. `plan_update` compliance, a
+  wait turn and an open question with no replies are not yet measured live (a #171
+  follow-up).
 - **Bench.** The `unread` flag and the attention rule must not raise the cost per
   stdout line; `make bench` runs on each PR.
 
