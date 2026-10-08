@@ -1160,7 +1160,9 @@ def test_reply_pills_send_their_text_and_all_disappear(server, page):
           return [m.getAttribute('class'), s.width, s.animationName, s.color];
         })""",
     )
-    ok = page.evaluate("getComputedStyle(document.getElementById('a2')).getPropertyValue('--ok').trim()")
+    ok = page.evaluate(
+        "getComputedStyle(document.getElementById('a2')).getPropertyValue('--ok').trim()"
+    )
     probe = page.evaluate(
         f"(() => {{ const d = document.createElement('i'); d.style.color = '{ok}';"
         " document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; })()"
