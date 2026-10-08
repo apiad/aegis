@@ -1153,6 +1153,23 @@ def test_reply_pills_send_their_text_and_all_disappear(server, page):
     page.press("#input", "Enter")
     turns_done(page, 2)
     page.wait_for_selector("#s-plan-sec:not([hidden]) >> text=fix")
+    marks = page.eval_on_selector_all(
+        "#s-plan > div > svg.ic",
+        """ms => ms.map(m => {
+          const s = getComputedStyle(m);
+          return [m.getAttribute('class'), s.width, s.animationName, s.color];
+        })""",
+    )
+    ok = page.evaluate("getComputedStyle(document.getElementById('a2')).getPropertyValue('--ok').trim()")
+    probe = page.evaluate(
+        f"(() => {{ const d = document.createElement('i'); d.style.color = '{ok}';"
+        " document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; })()"
+    )
+    assert [(c, w, a) for c, w, a, _ in marks] == [
+        ("ic done", "12px", "none"),
+        ("ic work", "12px", "none"),
+    ]
+    assert marks[0][3] == probe
     report(
         page,
         attention="needs_you",

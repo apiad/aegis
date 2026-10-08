@@ -336,12 +336,12 @@ function renderMeta(s) {
   $("s-ask").className = `askbox at-${s.attention}`;
   const plan = s.plan || [];
   $("s-plan-sec").hidden = !plan.length;
-  const mark = { done: "✓", doing: "◐", pending: "○" };
+  const mark = { done: "done", doing: "working", pending: "waiting" };
   $("s-plan").replaceChildren(
     ...plan.map((i) => {
       const d = document.createElement("div");
       d.className = i.state;
-      d.append(span("pm", mark[i.state] || ""), span("", i.text));
+      d.append(glyph(mark[i.state] || "waiting"), span("", i.text));
       return d;
     }),
   );
