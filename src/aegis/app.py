@@ -2,7 +2,7 @@
 
 Operations: ``agents.list``, ``session.spawn``, ``session.send`` (which
 resolves a ``/`` line first, ``commands.py``), ``session.read``,
-``session.configure``,
+``recap.request``, ``session.configure``,
 ``commands.list``, ``session.interrupt``, ``session.stop``, ``session.close``,
 ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``,
@@ -40,6 +40,7 @@ from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors
 from .queues import Queues
 from .quota import Quota
+from .recaps import Recaps
 from .ops import OpError, Registry as Ops
 from .registry import Registry
 from .roots import Roots
@@ -84,6 +85,11 @@ class SendParams(_Strict):
 class ReadParams(_Strict):
     log_id: str
     ids: list[str] = Field(max_length=500)
+
+
+class RecapParams(_Strict):
+    log_id: str
+    force: bool = False
 
 
 class ConfigureParams(_Strict):
@@ -178,6 +184,7 @@ class App:
         reg.catalogs = self.catalogs
         reg.mcp_url = f"{base_url.rstrip('/')}{MCP_PATH}" if base_url else None
         self.versions = Versions()
+        self.recaps = Recaps(self)
         self.registry = Ops()
         self._register()
         register_agent_ops(self)
@@ -198,6 +205,7 @@ class App:
         await self.quota.stop()
         await self.host.stop()
         await self.monitors.shutdown()
+        await self.recaps.shutdown()
         await self.sessions.shutdown()
 
     def publish(self, channel: str, ops: list[dict]) -> None:
@@ -434,6 +442,11 @@ class App:
             s = reg.open(p.log_id)
             n = s.read(p.ids)
             return {"read": n, "unread": len(s.unread)}
+
+        @r.op("recap.request", RecapParams)
+        async def recap_request(p: RecapParams, caller):
+            """A recap of where the session stands, for a person landing on its tab."""
+            return await self.recaps.request(reg.open(p.log_id), p.force)
 
         @r.op("session.configure", ConfigureParams)
         async def configure(p: ConfigureParams, caller):

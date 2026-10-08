@@ -13,7 +13,8 @@ draws").
 
 from __future__ import annotations
 
-# Per entry kind, the detail fields a closed row hides.
+# Per entry kind, the detail fields a closed row hides. A recap has none: its
+# detail is what its row shows, open or folded.
 LAZY: dict[str, tuple[str, ...]] = {
     "tool": ("args", "tail", "diff"),
     "system": ("tail",),

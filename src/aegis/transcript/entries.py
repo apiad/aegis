@@ -108,6 +108,10 @@ def _did(old: list[dict], new: list[dict], prev: str) -> str:
     return done[-1] if done else ""
 
 
+# The kinds a recap reads (recap._line).
+CONTENT_KINDS = frozenset({"user", "prose", "tool", "inbox"})
+
+
 class Fold:
     def __init__(self) -> None:
         self._entries: dict[str, dict] = {}
@@ -131,6 +135,12 @@ class Fold:
         self.standing: dict = EMPTY_STANDING
         self._turns = 0  # results seen
         self._report_turn = -1  # self._turns when the current report was made
+        self.last_index = -1  # the "i" of the last record applied
+        # The "i" of the last record that changed what a recap reads: a stop,
+        # an exit or a recap after it leaves the point a recap covers alone.
+        self.content_index = -1
+        self._recaps: list[str] = []  # recap entry ids no send has folded yet
+        self.last_recap_upto: int | None = None
 
     @property
     def rev(self) -> int:
@@ -168,6 +178,7 @@ class Fold:
         parse; a re-fold passes nothing and parses the stored line.
         """
         i, ts = record["i"], record.get("ts")
+        self.last_index = i
         self._rev = i
         src = record.get("src")
         if src in PARSERS:
@@ -179,8 +190,11 @@ class Fold:
             ops: list[dict] = []
             for k, ev in enumerate(evs):
                 ops += self._event(f"e{i}.{k}", ts, ev)
-            return ops
-        return self._own(i, ts, record)
+        else:
+            ops = self._own(i, ts, record)
+        if any(op.get("upsert", {}).get("kind") in CONTENT_KINDS for op in ops):
+            self.content_index = i
+        return ops
 
     def parse(self, src: str, line: str) -> list[Event]:
         """One stored or live line of harness ``src``, through this fold's parser."""
@@ -318,9 +332,15 @@ class Fold:
         if kind == "send":
             self._turn_open = True
             self._stand(report=None, turn_error="")
+            # The person is back and writing: the recap has done its job.
+            folded: list[dict] = []
+            for rid in self._recaps:
+                r = self._entries[rid]
+                folded += self._upsert({**r, "detail": {**r["detail"], "folded": True}})
+            self._recaps = []
             pid = f"pending:{i}"
             self._pending.append(pid)
-            return self._upsert(
+            return folded + self._upsert(
                 _entry(
                     pid,
                     "user",
@@ -353,6 +373,37 @@ class Fold:
                 }
             )
             return []
+        if kind == "recap":
+            # A refresh replaces the recap on screen: one full box, never two.
+            folded = []
+            for rid in self._recaps:
+                r = self._entries[rid]
+                if not r["detail"]["folded"]:
+                    folded += self._upsert(
+                        {**r, "detail": {**r["detail"], "folded": True}}
+                    )
+            self._recaps.append(f"e{i}")
+            self.last_recap_upto = rec.get("upto")
+            return folded + self._upsert(
+                _entry(
+                    f"e{i}",
+                    "recap",
+                    "ok",
+                    ts,
+                    d.RECAP_GLYPH,
+                    title="recap",
+                    summary=str(rec.get("context") or ""),
+                    detail={
+                        "context": rec.get("context") or "",
+                        "ask": rec.get("ask") or "",
+                        "model": rec.get("model") or "",
+                        "cost_usd": float(rec.get("cost_usd") or 0.0),
+                        "duration_ms": int(rec.get("duration_ms") or 0),
+                        "upto": rec.get("upto"),
+                        "folded": False,
+                    },
+                )
+            )
         if kind == "interrupt":
             self._interrupted = True
             return []

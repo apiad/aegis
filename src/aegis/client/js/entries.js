@@ -5,6 +5,7 @@
 // style; they compute nothing about tools.
 
 import markdownit from "../vendor/markdown-it.mjs";
+import { money } from "./fleet.js";
 import { icon } from "./glyphs.js";
 
 const md = markdownit({ html: false, linkify: true, breaks: false });
@@ -194,6 +195,31 @@ const RENDERERS = {
     }
     body.append(card);
     return row(e, "file", body);
+  },
+
+  recap(e) {
+    const det = e.detail || {};
+    const body = el("div", "body");
+    if (det.folded) {
+      body.append(el("span", "lbl", "recap · "), el("span", "ctx", det.context));
+      const r = row(e, "recap folded", body);
+      r.querySelector(".g").replaceChildren(icon("sparkle"));
+      return r;
+    }
+    const hd = el("div", "hd");
+    hd.append(icon("sparkle"), el("span", null, det.ask ? "recap · needs you" : "recap"));
+    body.append(hd, el("div", "ctx", det.context));
+    if (det.ask) body.append(el("div", "ask", det.ask));
+    const ft = el("div", "ft");
+    const secs = det.duration_ms ? `${(det.duration_ms / 1000).toFixed(1)}s` : "";
+    ft.append(el("span", null, [det.model, secs, det.cost_usd ? money(det.cost_usd) : ""].filter(Boolean).join(" · ")));
+    const again = el("button", "btn link refresh", "refresh");
+    again.dataset.recap = "force";
+    ft.append(again);
+    body.append(ft);
+    const r = row(e, "recap", body);
+    r.querySelector(".g").replaceChildren(icon("sparkle"));
+    return r;
   },
 
   error(e) {
