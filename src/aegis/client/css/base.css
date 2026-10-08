@@ -369,7 +369,7 @@ body{background:#000}
 #a2 .band .counts b{color:var(--strong);font-weight:600;min-width:1.6ch;text-align:right}
 #a2 .band .prov{font-size:11px;color:var(--faint);font-family:var(--font-chrome);margin:8px 0 2px}
 #a2 .band .prov:first-child{margin-top:0}
-@media (max-width:1100px){#a2 .band{grid-template-columns:1fr 1fr}#a2 .band .q{grid-column:1/-1}}
+@media (max-width:1100px){#a2 .band{grid-template-columns:1fr 1fr}#a2 .band>.q{grid-column:1/-1}}
 #a2 .gauge{display:grid;grid-template-columns:70px minmax(60px,1fr) 150px;gap:10px;align-items:center;font-size:12px;font-family:var(--font-chrome);color:var(--muted);margin:4px 0}
 #a2 .gauge .bar{margin:0;position:relative}
 #a2 .gauge .val{display:flex;gap:8px;justify-content:flex-end;white-space:nowrap}

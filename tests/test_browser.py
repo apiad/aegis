@@ -1432,3 +1432,23 @@ def test_reply_pills_send_their_text_and_all_disappear(server, page):
     assert page.locator("#replies .rp").count() == 0 or page.is_hidden("#replies")
     assert "at-done" in page.get_attribute("#s-status", "class").split()
     assert page.errors == []
+
+
+@pytest.mark.parametrize("width", [1000, 1100, 1366])
+def test_each_quota_bar_shares_a_row_with_its_label_and_value(
+    quota_server, browser, width
+):
+    errors: list = []
+    page = new_page(browser, errors)
+    page.set_viewport_size({"width": width, "height": 800})
+    page.goto(quota_server.url)
+    page.wait_for_selector("#band-quota .gauge")
+    rows = page.evaluate(
+        """[...document.querySelectorAll('#band-quota .gauge')]
+            .filter(g => g.children.length === 3)
+            .map(g => [...g.children].map(c => Math.round(c.getBoundingClientRect().top)))"""
+    )
+    assert rows, "no quota gauges drawn"
+    for tops in rows:
+        assert max(tops) - min(tops) < 12, tops
+    assert errors == []
