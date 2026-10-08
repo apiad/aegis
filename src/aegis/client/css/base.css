@@ -151,6 +151,8 @@ body{background:#000}
 /* Buttons inside the box, bottom right: send, and the mic when it comes. */
 #a2 .composer .acts{display:flex;gap:6px;align-items:center;padding:8px 8px 8px 0}
 #a2 .composer .acts .send{font-size:15px;line-height:1;padding:6px 12px;font-weight:600}
+#a2 .composer .acts .int{background:none;border:1px solid var(--rule);border-radius:6px;color:var(--err);font-size:12px;line-height:1;padding:7px 9px;cursor:pointer}
+#a2 .composer .acts .int[hidden]{display:none}
 #a2 .composer .chips{display:flex;gap:8px;margin-top:8px;align-items:center}
 /* the command menu, drawn above the composer */
 #a2 .composer{position:relative}

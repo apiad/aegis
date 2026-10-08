@@ -1486,3 +1486,25 @@ def test_close_asks_in_an_aegis_dialog_and_esc_cancels_without_interrupting(
     close_session(page)
     page.wait_for_selector("#a2[data-view=fleet]")
     assert tab_ids(page) == [] and native == [] and page.errors == []
+
+
+def test_the_interrupt_sits_beside_send_and_restart_sends_continue(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    assert page.locator("#stop").count() == 0, "the text Stop under the box is gone"
+    assert page.is_hidden("#interrupt")
+    page.fill("#input", "/sleep 5")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    box = page.locator(".composer .box").bounding_box()
+    btn = page.locator("#interrupt").bounding_box()
+    assert box["y"] <= btn["y"] and btn["y"] + btn["height"] <= box["y"] + box["height"]
+    assert page.is_disabled("#restart")
+    page.click("#interrupt")
+    turns_done(page, 1)
+    assert page.is_hidden("#interrupt")
+    page.click("#restart")
+    page.wait_for_selector(".row.user >> text=Continue")
+    turns_done(page, 2)
+    assert page.errors == []

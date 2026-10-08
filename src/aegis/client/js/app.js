@@ -371,7 +371,8 @@ function renderMeta(s) {
   $("s-mon-sec").hidden = !mons.length;
   renderMonitors($("s-monitors"), mons);
   const working = s.state === "working";
-  $("stop").hidden = !working;
+  $("interrupt").hidden = !working;
+  $("restart").disabled = working;
   $("working").hidden = !working;
   $("stop-session").disabled = s.state === "stopped";
   if (working && workingSince == null) workingSince = Date.now();
@@ -883,7 +884,10 @@ input.addEventListener("keydown", (ev) => {
   }
 });
 $("send").addEventListener("click", send);
-$("stop").addEventListener("click", interrupt);
+$("interrupt").addEventListener("click", interrupt);
+// A nudge after an interrupt, an error or a stop: a message to a stopped
+// session resumes it, so Restart is one sentence to the agent.
+$("restart").addEventListener("click", () => sendLine("Continue", false));
 
 $("stop-session").addEventListener("click", async () => {
   const s = focused();
