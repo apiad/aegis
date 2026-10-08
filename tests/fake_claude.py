@@ -132,6 +132,13 @@ MODELS = [
         "description": "Takes no effort level.",
     },
     {
+        "value": "claude-fake-old",
+        "resolvedModel": "claude-fake-old",
+        "displayName": "Fake Old",
+        "description": "Has no xhigh.",
+        "supportedEffortLevels": ["low", "medium", "high", "max"],
+    },
+    {
         "value": "retired",
         "resolvedModel": "fake-retired",
         "displayName": "Retired",

@@ -228,7 +228,7 @@ def test_the_composer_overrides_a_chip_resets_it_and_spawns_with_the_first_messa
     )
     assert max(tops) - min(tops) < 4, tops
 
-    page.fill("#sp-model", "sonnet")
+    page.select_option("#sp-model", "sonnet")
     assert page.inner_text("#sp-agent option:checked") == "opus*"
     assert "diff" in page.get_attribute("#sp-model", "class")
     page.click("#sp-reset")
@@ -255,6 +255,94 @@ def test_the_composer_overrides_a_chip_resets_it_and_spawns_with_the_first_messa
     assert page.input_value("#sp-effort") == "high", "a spawn clears the overrides"
     assert page.input_value("#sp-text") == ""
     assert page.errors == []
+
+
+def model_options(pg) -> list[list]:
+    return pg.eval_on_selector_all(
+        "#sp-model option", "os => os.map(o => [o.value, o.textContent])"
+    )
+
+
+def efforts_disabled(pg) -> list[str]:
+    return pg.eval_on_selector_all(
+        "#sp-effort option", "os => os.filter(o => o.disabled).map(o => o.value)"
+    )
+
+
+def test_the_model_picker_offers_every_model_claude_lists_and_spawns_with_the_choice(
+    server, page
+):
+    """#172: the picker was a datalist prefilled with the agent's model, and
+    Chromium filters a datalist by the field's text, so it offered only that
+    model. Headless Chromium draws no datalist popup at all, so what this pins
+    is that every model is an option a person can pick."""
+    page.goto(server.url)
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    # Claude's own list for this cwd, not the aliases aegis knows (no fable),
+    # and without the model claude marks disabled.
+    page.wait_for_function(
+        "[...document.querySelectorAll('#sp-model option')].length === 4"
+    )
+    assert model_options(page) == [
+        ["opus", "opus (current)"],
+        ["sonnet", "sonnet"],
+        ["haiku", "haiku"],
+        ["claude-fake-old", "claude-fake-old"],
+    ]
+    assert page.input_value("#sp-model") == "opus"
+
+    # The effort picker follows the model's levels.
+    page.select_option("#sp-model", "haiku")
+    assert page.is_disabled("#sp-effort"), "haiku takes no effort level"
+    page.select_option("#sp-model", "opus")
+    page.select_option("#sp-effort", "xhigh")
+    page.select_option("#sp-model", "claude-fake-old")
+    assert efforts_disabled(page) == ["xhigh"]
+    assert page.input_value("#sp-effort") == "high", "xhigh moves down to high"
+
+    page.select_option("#sp-model", "sonnet")
+    assert efforts_disabled(page) == []
+    assert page.inner_text("#sp-agent option:checked") == "opus*"
+    assert "diff" in page.get_attribute("#sp-model", "class")
+    assert page.inner_text("#sp-model option[value=opus]") == "opus (current)"
+    page.fill("#sp-text", "/argv")
+    page.press("#sp-text", "Enter")
+    page.wait_for_selector("#a2[data-view=session]")
+    turns_done(page, 1)
+    text = page.inner_text("#entries")
+    assert '"--model", "sonnet"' in text and '"--effort", "high"' in text
+
+    page.click("#tab-fleet")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert page.inner_text(".card .ln b") == "opus*", "the overridden mark shows"
+    assert page.errors == []
+
+
+def test_a_pinned_model_claude_lists_under_an_alias_is_offered_as_current(
+    tmp_path, fake_claude, page
+):
+    (tmp_path / ".aegis.yaml").write_text(
+        "default_agent: pinned\nagents:\n"
+        "  pinned: {harness: claude-code, model: fake-haiku, effort: low, permission: read}\n"
+    )
+    s = Server(tmp_path, fake_claude).start()
+    try:
+        page.goto(s.url)
+        page.click("#tab-add")
+        page.wait_for_function(
+            "[...document.querySelectorAll('#sp-model option')].length === 5"
+        )
+        assert model_options(page)[:2] == [
+            ["fake-haiku", "fake-haiku (current)"],
+            ["opus", "opus"],
+        ]
+        assert page.input_value("#sp-model") == "fake-haiku"
+        assert page.is_disabled("#sp-effort"), "fake-haiku is haiku: no effort"
+        assert page.is_hidden("#sp-reset")
+        assert page.errors == []
+    finally:
+        s.stop()
 
 
 def test_enter_in_the_model_or_cwd_field_moves_to_the_message_and_spawns_nothing(

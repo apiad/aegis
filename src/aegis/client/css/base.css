@@ -69,7 +69,7 @@ body{background:#000}
 #a2 .spawn textarea{width:100%;resize:none;background:none;border:none;outline:none;color:var(--strong);font-family:var(--font-ui);font-size:14px;line-height:1.45;max-height:40vh}
 #a2 .spawn .picks{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 #a2 .spawn .pick{field-sizing:content;max-width:30ch;background:var(--bg);border:1px solid var(--rule);border-radius:5px;padding:3px 8px;font-family:var(--font-chrome);font-size:11.5px;color:var(--ink);cursor:pointer}
-#a2 .spawn input.pick{min-width:8ch;cursor:text}
+#a2 .spawn .pick:disabled{opacity:.45;cursor:default}
 #a2 .spawn .pick.agent{border-color:var(--accent);color:var(--accent)}
 #a2 .spawn .pick.diff{color:var(--accent)}
 #a2 .spawn .reset{background:none;border:none;padding:0;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer}

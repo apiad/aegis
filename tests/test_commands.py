@@ -159,7 +159,12 @@ async def test_commands_list_puts_aegis_first_and_hides_what_it_shadows(app):
         "project",
         "skill",
     )
-    assert [m["value"] for m in r["models"]] == ["opus", "sonnet", "haiku"]
+    assert [m["value"] for m in r["models"]] == [
+        "opus",
+        "sonnet",
+        "haiku",
+        "claude-fake-old",
+    ]
     assert r["permissions"] == ["read", "write", "full", "auto"]
 
 
@@ -235,6 +240,46 @@ async def test_concurrent_lookups_after_a_restart_start_one_probe(
         assert inits(log) - before == 1
     finally:
         await b.shutdown()
+
+
+async def test_models_list_answers_before_any_session_with_one_probe(
+    tmp_path, fake_claude, monkeypatch
+):
+    """The new-tab composer asks for a cwd's models before a session runs
+    there (#172)."""
+    log = tmp_path / "init.log"
+    monkeypatch.setenv("FAKE_CLAUDE_INIT_LOG", str(log))
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    a = make_app(tmp_path, fake_claude)
+    await a.boot()
+    try:
+        for _ in range(2):
+            r = await a.registry.call("models.list", {"agent": "opus"})
+            assert [m["value"] for m in r["models"]][:3] == ["opus", "sonnet", "haiku"]
+            assert (
+                next(m for m in r["models"] if m["value"] == "haiku")["efforts"] == []
+            )
+        assert inits(log) == 1, "the cwd's catalog is kept"
+        assert list(a.sessions.open_sessions()) == []
+        with pytest.raises(OpError) as e:
+            await a.registry.call("models.list", {"agent": "opus", "cwd": "/"})
+        assert e.value.code == "bad_cwd"
+    finally:
+        await a.shutdown()
+
+
+async def test_models_list_is_empty_when_claude_gives_no_catalog(
+    tmp_path, fake_claude, monkeypatch
+):
+    monkeypatch.setenv("FAKE_CLAUDE_NO_INIT", "1")
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    a = make_app(tmp_path, fake_claude)
+    await a.boot()
+    try:
+        r = await a.registry.call("models.list", {})
+        assert r == {"models": []}
+    finally:
+        await a.shutdown()
 
 
 async def test_help_reaching_the_server_sends_nothing(app):

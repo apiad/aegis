@@ -510,6 +510,9 @@ $("reopen").addEventListener("click", () => {
 // An agent is a preset: picking one fills the other chips, and changing a chip
 // marks the agent `name*` until reset. Enter spawns and sends in one call.
 let roster = { agents: [], harnesses: [], models: {}, default: null, cwd: "" };
+// The models claude lists for the composer's cwd (`models.list`), each with
+// the effort levels it takes; null until claude has answered, or if it gave none.
+let cwdModels = null;
 const LAST_AGENT = "aegis.lastAgent";
 const PICKS = ["harness", "model", "effort", "permission"];
 
@@ -544,18 +547,79 @@ async function loadAgents() {
   $("sp-error").textContent = roster.agents.length ? "" : "No agents: add an agents: map to .aegis.yaml.";
   if (keep && usable.includes(keep)) {
     $("sp-agent").value = keep;
-    for (const k of PICKS) $(`sp-${k}`).value = before[k];
-    fillModels($("sp-harness").value);
+    $("sp-harness").value = before.harness;
+    fillModels($("sp-harness").value, before.model);
+    for (const k of ["effort", "permission"]) $(`sp-${k}`).value = before[k];
+    fillEfforts();
     markDiffs();
   } else if (start) pickAgent(start);
+  loadModels();
+}
+
+async function loadModels() {
+  const a = current();
+  if (!a) return;
+  const cwd = $("sp-cwd").value.trim() || null;
+  let models = null;
+  try {
+    models = (await conn.call("models.list", { agent: a.name, cwd })).models;
+  } catch {
+    // A bad cwd is reported when the spawn is tried; the names below still work.
+  }
+  if (($("sp-cwd").value.trim() || null) !== cwd) return; // a newer cwd is asking
+  cwdModels = models && models.length ? models : null;
+  fillModels($("sp-harness").value, $("sp-model").value);
+  fillEfforts();
+  markDiffs();
 }
 
 function current() {
   return roster.agents.find((a) => a.name === $("sp-agent").value);
 }
 
-function fillModels(harness) {
-  $("sp-models").replaceChildren(...(roster.models[harness] || []).map((m) => new Option(m, m)));
+// What the model picker offers: claude's own list when it gave one, else the
+// aliases and agents' models from `agents.list`. The agent's model is always
+// there, marked current, even a pinned id claude lists under its alias.
+function modelList(harness) {
+  if (cwdModels && harness === "claude-code") return cwdModels;
+  return (roster.models[harness] || []).map((v) => ({ value: v, resolved: v, label: v, doc: "", efforts: null }));
+}
+
+function modelInfo(value) {
+  return modelList($("sp-harness").value).find((m) => value === m.value || value === m.resolved);
+}
+
+function fillModels(harness, keep) {
+  const own = current()?.model;
+  const list = modelList(harness);
+  const values = list.map((m) => m.value);
+  if (own && !values.includes(own)) values.unshift(own);
+  $("sp-model").replaceChildren(
+    ...values.map((v) => {
+      const o = new Option(v === own ? `${v} (current)` : v, v);
+      const m = list.find((x) => x.value === v);
+      if (m && m.label !== v) o.title = m.doc ? `${m.label}: ${m.doc}` : m.label;
+      return o;
+    }),
+  );
+  $("sp-model").value = values.includes(keep) ? keep : own || values[0] || "";
+}
+
+// The effort picker follows the model: levels it does not take are disabled,
+// and a model that takes none (haiku) disables the picker, as claude ignores
+// --effort for it. A level the model lacks moves down to the nearest it has.
+function fillEfforts() {
+  const sel = $("sp-effort");
+  const m = modelInfo($("sp-model").value);
+  const levels = m && m.efforts;
+  sel.disabled = !!levels && levels.length === 0;
+  sel.title = sel.disabled ? `${m.label} takes no effort level` : "";
+  const order = [...sel.options].map((o) => o.value);
+  for (const o of sel.options) o.disabled = !!levels && levels.length > 0 && !levels.includes(o.value);
+  if (!sel.disabled && sel.selectedOptions[0]?.disabled) {
+    const i = order.indexOf(sel.value);
+    sel.value = levels.filter((l) => order.indexOf(l) <= i).pop() || levels[0];
+  }
 }
 
 function pickAgent(name) {
@@ -563,8 +627,10 @@ function pickAgent(name) {
   if (!a) return;
   $("sp-agent").value = a.name;
   $("sp-agent").dataset.picked = a.name;
-  fillModels(a.harness);
-  for (const k of PICKS) $(`sp-${k}`).value = a[k];
+  $("sp-harness").value = a.harness;
+  fillModels(a.harness, a.model);
+  for (const k of ["effort", "permission"]) $(`sp-${k}`).value = a[k];
+  fillEfforts();
   markDiffs();
 }
 
@@ -574,7 +640,7 @@ function overrides() {
   if (!a) return out;
   for (const k of PICKS) {
     const v = $(`sp-${k}`).value.trim();
-    if (v && v !== a[k]) out[k] = v;
+    if (v && v !== a[k] && !$(`sp-${k}`).disabled) out[k] = v;
   }
   return out;
 }
@@ -612,10 +678,17 @@ async function spawnFromComposer() {
 
 $("sp-agent").addEventListener("change", () => pickAgent($("sp-agent").value));
 $("sp-harness").addEventListener("change", () => {
-  fillModels($("sp-harness").value);
+  fillModels($("sp-harness").value, $("sp-model").value);
+  fillEfforts();
   markDiffs();
 });
-for (const k of ["model", "effort", "permission"]) $(`sp-${k}`).addEventListener("input", markDiffs);
+$("sp-model").addEventListener("change", () => {
+  fillEfforts();
+  markDiffs();
+});
+for (const k of ["effort", "permission"]) $(`sp-${k}`).addEventListener("input", markDiffs);
+// Commands and models come from the cwd's .claude/ and claude's config.
+$("sp-cwd").addEventListener("change", loadModels);
 $("sp-reset").addEventListener("click", () => pickAgent($("sp-agent").value));
 $("spawn").addEventListener("submit", (ev) => {
   ev.preventDefault();
