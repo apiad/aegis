@@ -104,6 +104,14 @@ def server(tmp_path: Path, fake_claude: str, fake_opencode: str):
     s.stop()
 
 
+@pytest.fixture
+def recap_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG + "recap: {agent: opus}\n")
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
+    yield s
+    s.stop()
+
+
 def seed_quota() -> None:
     """A Claude reading fresh enough that the server adopts it without asking,
     and an OpenCode Go reading 14 minutes old behind a live 429 backoff. The
@@ -1571,6 +1579,41 @@ def test_a_reply_that_lands_while_you_are_away_stays_unread_until_you_look(
     page.wait_for_selector(".row.prose .rm .ic.unread", state="attached")
     page.wait_for_function(
         "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+    )
+    assert page.errors == []
+
+
+def test_landing_after_two_replies_shows_a_recap_last_and_the_sparkle_makes_one(
+    recap_server, page
+):
+    page.goto(recap_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "first")
+    sid = page.evaluate("location.hash.slice(3)")
+    page.wait_for_function(
+        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+    )
+    page.fill("#input", "/sleep 1")
+    page.press("#input", "Enter")
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=1 unread", timeout=8000)
+    # one unread is under the threshold: make a second one land while away
+    page.click(f".tab[data-id='{sid}']")
+    page.fill("#input", "/sleep 1")
+    page.press("#input", "Enter")
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=2 unread", timeout=8000)
+    page.click(f".tab[data-id='{sid}']")
+    page.wait_for_selector(".row.recap .ctx >> text=recap of", timeout=8000)
+    assert page.eval_on_selector(
+        "#entries", "n => n.lastElementChild.classList.contains('recap')"
+    )
+    page.fill("#input", "thanks")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.recap.folded")
+    page.click("#nav-recap")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row.recap').length === 2", timeout=8000
     )
     assert page.errors == []
 

@@ -68,6 +68,7 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
 });
 installGlyphs();
 // The navigator: previous / next agent message, the position, and the latest.
+$("nav-recap").append(icon("sparkle"));
 $("nav-up").append(icon("up"));
 $("nav-down").append(icon("down"));
 $("jump").append(icon("latest"));
@@ -76,6 +77,7 @@ installBell($("bell"));
 $("nav-up").addEventListener("click", () => transcript.message(-1));
 $("nav-down").addEventListener("click", () => transcript.message(1));
 $("nav-pos").addEventListener("click", () => transcript.firstUnread());
+$("nav-recap").addEventListener("click", () => askRecap(true));
 // Every redraw of the transcript re-marks the selection, which asks for the
 // navigator, so it is drawn at most once a frame: position() walks every entry.
 let navFrame = 0;
@@ -359,7 +361,10 @@ function follow(id) {
     `transcript:${id}`,
     (entries) => {
       transcript.snapshot(entries || []);
-      if (!placed) transcript.setSince(sinceText(sessions.get(id)));
+      if (!placed) {
+        transcript.setSince(sinceText(sessions.get(id)));
+        askRecap(false); // the server decides whether it is worth one
+      }
       placed = true;
       // Read by scripts/bench.py: when the snapshot was drawn and painted.
       const mark = (window.__a2snapshot = { at: performance.now(), count: (entries || []).length });
@@ -500,6 +505,22 @@ async function loadVersion() {
   top.hidden = false;
 }
 setInterval(() => conn.open && loadVersion(), 3600 * 1000);
+
+// -- the recap -----------------------------------------------------------------
+// Asked on landing and by the sparkle or the row's refresh. The entry arrives on
+// the transcript channel; the answer only says why there is none.
+async function askRecap(force) {
+  if (!shown) return;
+  try {
+    const r = await conn.call("recap.request", { log_id: shown, force });
+    if (r.status === "off" || r.status === "failed") $("send-error").textContent = r.why;
+  } catch (e) {
+    $("send-error").textContent = e.message;
+  }
+}
+$("entries").addEventListener("click", (ev) => {
+  if (ev.target.closest("[data-recap=force]")) askRecap(true);
+});
 
 // -- Open natively on a sent file's card ------------------------------------
 $("entries").addEventListener("click", async (ev) => {
