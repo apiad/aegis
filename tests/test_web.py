@@ -8,7 +8,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from aegis.app import App
 from aegis.roots import make_roots
-from aegis.web import load_or_create_token, build_web
+from aegis.web import PROTO, load_or_create_token, build_web
 
 TOKEN = "t0ken"
 ORIGIN = {"origin": "http://testserver"}
@@ -40,9 +40,9 @@ class Conn:
         self.seen: list[dict] = []
 
     def hello(self):
-        self.ws.send_json({"t": "hello", "token": TOKEN, "proto": 1})
+        self.ws.send_json({"t": "hello", "token": TOKEN, "proto": PROTO})
         msg = self.ws.receive_json()
-        assert msg["t"] == "welcome" and msg["proto"] == 1
+        assert msg["t"] == "welcome" and msg["proto"] == PROTO
         return self
 
     def call(self, op, **params):
@@ -150,7 +150,7 @@ def test_a_wrong_token_is_refused(project, fake_claude):
         client_for(project, fake_claude) as c,
         c.websocket_connect("/ws", headers=ORIGIN) as ws,
     ):
-        ws.send_json({"t": "hello", "token": "nope", "proto": 1})
+        ws.send_json({"t": "hello", "token": "nope", "proto": PROTO})
         with pytest.raises(WebSocketDisconnect) as e:
             ws.receive_json()
         assert e.value.code == 4401
@@ -179,8 +179,8 @@ def test_another_protocol_version_is_refused(project, fake_claude):
         client_for(project, fake_claude) as c,
         c.websocket_connect("/ws", headers=ORIGIN) as ws,
     ):
-        ws.send_json({"t": "hello", "token": TOKEN, "proto": 2})
-        assert "protocol 1" in ws.receive_json()["message"]
+        ws.send_json({"t": "hello", "token": TOKEN, "proto": PROTO + 1})
+        assert f"protocol {PROTO}" in ws.receive_json()["message"]
         with pytest.raises(WebSocketDisconnect) as e:
             ws.receive_json()
         assert e.value.code == 4400
@@ -227,7 +227,7 @@ def test_spawn_send_and_watch_a_turn(project, fake_claude):
         snap = conn.until(
             lambda m: m["t"] == "snapshot" and m["channel"].startswith("transcript")
         )
-        assert snap["data"][0]["summary"].startswith("spawned opus")
+        assert snap["data"]["entries"][0]["summary"].startswith("spawned opus")
         assert conn.call("session.send", log_id=log_id, text="hi")["result"] is None
         conn.until(
             lambda m: (
@@ -373,14 +373,16 @@ def test_spawn_sends_the_prompt_and_marks_the_override(project, fake_claude):
         snap = conn.until(
             lambda m: m["t"] == "snapshot" and m["channel"].startswith("transcript")
         )
-        assert snap["data"][0]["summary"].startswith("spawned opus* · sonnet")
+        assert snap["data"]["entries"][0]["summary"].startswith(
+            "spawned opus* · sonnet"
+        )
 
         def has_prompt(rows):
             return any(
                 e.get("kind") == "user" and e.get("md") == "hello there" for e in rows
             )
 
-        if not has_prompt(snap["data"]):
+        if not has_prompt(snap["data"]["entries"]):
             conn.until(
                 lambda m: (
                     m["t"] == "patch"
@@ -527,7 +529,7 @@ def test_open_natively_only_for_a_browser_on_the_servers_desktop(
         TestClient(build_web(app, TOKEN, {"testserver"})) as c,
         c.websocket_connect("/ws", headers=ORIGIN) as ws,
     ):
-        ws.send_json({"t": "hello", "token": TOKEN, "proto": 1})
+        ws.send_json({"t": "hello", "token": TOKEN, "proto": PROTO})
         assert ws.receive_json()["native"] is False
         r = Conn(ws).call("file.open", **ref)
         assert r["error"]["code"] == "not_local"
@@ -542,7 +544,7 @@ def test_open_natively_only_for_a_browser_on_the_servers_desktop(
             "/ws", headers={"host": local, "origin": f"http://{local}"}
         ) as ws,
     ):
-        ws.send_json({"t": "hello", "token": TOKEN, "proto": 1})
+        ws.send_json({"t": "hello", "token": TOKEN, "proto": PROTO})
         assert ws.receive_json()["native"] is True
         conn = Conn(ws)
         assert "error" not in conn.call("file.open", **ref)
@@ -568,6 +570,144 @@ def test_open_natively_only_for_a_browser_on_the_servers_desktop(
             "/ws", headers={"host": local, "origin": f"http://{local}"}
         ) as ws,
     ):
-        ws.send_json({"t": "hello", "token": TOKEN, "proto": 1})
+        ws.send_json({"t": "hello", "token": TOKEN, "proto": PROTO})
         assert ws.receive_json()["native"] is False
         assert Conn(ws).call("file.open", **ref)["error"]["code"] == "not_local"
+
+
+def test_a_resubscribe_with_since_gets_only_what_changed(project, fake_claude):
+    with (
+        client_for(project, fake_claude) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        conn = Conn(ws).hello()
+        log_id = conn.call("session.spawn", agent="opus")["result"]["log_id"]
+        ch = f"transcript:{log_id}"
+
+        def snapshot(**extra):
+            ws.send_json({"t": "sub", "channel": ch, **extra})
+            return conn.until(lambda m: m["t"] == "snapshot" and m["channel"] == ch)[
+                "data"
+            ]
+
+        def turn(text):
+            conn.call("session.send", log_id=log_id, text=text)
+            conn.until(
+                lambda m: (
+                    m["t"] == "patch"
+                    and m["channel"] == ch
+                    and any(
+                        op.get("upsert", {}).get("summary", "").startswith("done in")
+                        for op in m["ops"]
+                    )
+                )
+            )
+
+        snapshot()  # subscribed, so the turns' patches reach us
+        turn("first")
+        full = snapshot()
+        assert "since" not in full and full["rev"] >= 0
+        turn("second")
+        delta = snapshot(since=full["rev"])
+        assert delta["since"] == full["rev"] and delta["rev"] > full["rev"]
+        assert delta["entries"] and all(
+            e["rev"] > full["rev"] for e in delta["entries"]
+        )
+        assert len(delta["entries"]) < len(full["entries"]) + 4
+        assert "since" not in snapshot(since=full["rev"] + 10_000)
+        conn.call("session.close", log_id=log_id)
+
+
+def test_a_read_reaches_a_tab_that_returns_with_since(project, fake_claude):
+    # A read makes no store record: the delta carries the flag anyway.
+    with client_for(project, fake_claude) as c:
+        with (
+            c.websocket_connect("/ws", headers=ORIGIN) as a,
+            c.websocket_connect("/ws", headers=ORIGIN) as b,
+        ):
+            ca, cb = Conn(a).hello(), Conn(b).hello()
+            log_id = ca.call("session.spawn", agent="opus")["result"]["log_id"]
+            ch = f"transcript:{log_id}"
+
+            def snapshot(conn, **extra):
+                conn.ws.send_json({"t": "sub", "channel": ch, **extra})
+                return conn.until(
+                    lambda m: m["t"] == "snapshot" and m["channel"] == ch
+                )["data"]
+
+            snapshot(ca)
+            ca.call("session.send", log_id=log_id, text="hello both")
+            ca.until(
+                lambda m: (
+                    m["t"] == "patch"
+                    and any(
+                        op.get("upsert", {}).get("summary", "").startswith("done in")
+                        for op in m["ops"]
+                    )
+                )
+            )
+            held = snapshot(cb)
+            (pid,) = [e["id"] for e in held["entries"] if e["kind"] == "prose"]
+            assert [e["unread"] for e in held["entries"] if e["id"] == pid] == [True]
+            cb.ws.send_json({"t": "unsub", "channel": ch})  # b leaves the tab
+            assert ca.call("session.read", log_id=log_id, ids=[pid])["result"] == {
+                "read": 1,
+                "unread": 0,
+            }
+            delta = snapshot(cb, since=held["rev"])  # and comes back
+            assert delta["since"] == held["rev"] == delta["rev"]
+            assert [(e["id"], e["unread"]) for e in delta["entries"]] == [(pid, False)]
+            ca.call("session.close", log_id=log_id)
+
+
+def test_transcript_detail_returns_what_the_wire_left_out(project, fake_claude):
+    with (
+        client_for(project, fake_claude) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        conn = Conn(ws).hello()
+        log_id = conn.call("session.spawn", agent="opus")["result"]["log_id"]
+        ch = f"transcript:{log_id}"
+        ws.send_json({"t": "sub", "channel": ch})
+        conn.until(lambda m: m["t"] == "snapshot" and m["channel"] == ch)
+        conn.call("session.send", log_id=log_id, text="/bash list it => SECRET-OUT")
+        patch = conn.until(
+            lambda m: (
+                m["t"] == "patch"
+                and m["channel"] == ch
+                and any(
+                    op.get("upsert", {}).get("kind") == "tool"
+                    and op["upsert"]["status"] == "ok"
+                    for op in m["ops"]
+                )
+            )
+        )
+        tool = next(
+            op["upsert"]
+            for op in patch["ops"]
+            if op.get("upsert", {}).get("kind") == "tool"
+        )
+        # The closed row keeps its one-line result; the tail stays behind.
+        assert "tail" not in tool["detail"] and tool["detail"]["more"] is True
+        (full,) = conn.call("transcript.detail", log_id=log_id, ids=[tool["id"]])[
+            "result"
+        ]
+        assert "SECRET-OUT" in full["detail"]["tail"] and full["rev"] == tool["rev"]
+        assert (
+            conn.call("transcript.detail", log_id=log_id, ids=["nope"])["result"] == []
+        )
+        assert (
+            conn.call("transcript.detail", log_id="nope", ids=["x"])["error"]["code"]
+            == "no_session"
+        )
+        assert (
+            conn.call("transcript.detail", log_id=log_id, ids=[])["error"]["code"]
+            == "bad_params"
+        )
+        assert (
+            conn.call("transcript.detail", log_id=log_id, ids=["x"] * 101)["error"][
+                "code"
+            ]
+            == "bad_params"
+        )
+        conn.call("session.close", log_id=log_id)

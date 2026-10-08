@@ -1,0 +1,1 @@
+- **The Fleet's quota bars keep their percentage beside them in a window under 1100 px.** A rule meant for the quota column also matched every quota bar, so each bar took a row of its own and its percentage dropped under it, cut off on the left.

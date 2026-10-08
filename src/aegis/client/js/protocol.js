@@ -1,9 +1,9 @@
 // The client end of the aegis protocol: one websocket, calls and channels.
 //
 // A channel delivers a snapshot, then patches numbered from 1. A gap in the
-// numbers, or a reconnect, means resubscribe and take a fresh snapshot.
+// numbers, or a reconnect, means resubscribe, saying which revision it holds.
 
-export const PROTO = 1;
+export const PROTO = 2;
 
 export class OpError extends Error {
   constructor(code, message) {
@@ -21,7 +21,7 @@ export class Connection {
     this.open = false;
     this.nextId = 0;
     this.pending = new Map(); // call id -> {resolve, reject}
-    this.subs = new Map(); // channel -> {seq, onSnapshot, onPatch, onError}
+    this.subs = new Map(); // channel -> {seq, onSnapshot, onPatch, onError, since}
     this.backoff = 500;
     this.stopped = false;
   }
@@ -104,8 +104,10 @@ export class Connection {
     });
   }
 
-  subscribe(channel, onSnapshot, onPatch, onError) {
-    this.subs.set(channel, { seq: 0, onSnapshot, onPatch, onError });
+  // since: optional () => the revision this subscriber holds, or null. A
+  // channel that keeps revisions answers a resubscribe with what changed.
+  subscribe(channel, onSnapshot, onPatch, onError, since) {
+    this.subs.set(channel, { seq: 0, onSnapshot, onPatch, onError, since });
     if (this.open) this._sendSub(channel);
     return () => {
       this.subs.delete(channel);
@@ -114,6 +116,9 @@ export class Connection {
   }
 
   _sendSub(channel) {
-    this.ws.send(JSON.stringify({ t: "sub", channel }));
+    const rev = this.subs.get(channel)?.since?.();
+    const msg = { t: "sub", channel };
+    if (Number.isInteger(rev)) msg.since = rev;
+    this.ws.send(JSON.stringify(msg));
   }
 }

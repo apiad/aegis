@@ -1,0 +1,1 @@
+- **A failed tool call starts closed, like every tool row.** Its red status and one-line result show on the closed row; open it for the output.
