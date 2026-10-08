@@ -735,8 +735,11 @@ def test_dictation_prepare_returns_the_base_and_keywords(
     )
     with TestClient(build_web(app, TOKEN, {"testserver"})) as c:
         with c.websocket_connect("/ws", headers=ORIGIN) as ws:
-            got = Conn(ws).hello().call("dictation.prepare")["result"]
+            conn = Conn(ws).hello()
+            conn.call("session.spawn", agent="opus", cwd="repo")
+            got = conn.call("dictation.prepare")["result"]
             assert got["base"] == f"/dictation/{pin_id()}/"
+            assert "repo" in got["keywords"]  # an open session's directory
             assert "pull request" in got["keywords"]
             assert "reviewer" in got["keywords"]  # an agent in the config
         r = c.get(f"/dictation/{pin_id()}/whistle.cact")

@@ -489,7 +489,7 @@ class App:
                 "base": f"/dictation/{self.dictation.id}/",
                 "keywords": dictation.keywords(
                     [s.handle for s in live],
-                    [s.cwd for s in live],
+                    [s.spec.cwd for s in live],
                     [*(a.name for a in snap.agents), *snap.queues],
                 ),
             }
