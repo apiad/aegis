@@ -39,6 +39,23 @@ export function money(usd) {
 const NEEDS = new Set(["needs_you", "error", "review"]);
 const group = (m) => (NEEDS.has(m.mark) ? "needs" : "rest");
 
+// Which session needs you most: what blocks on you, then failures, then results
+// to read, and within each the one waiting longest. A read review or done shows
+// the idle mark and drops out. last_activity is when the last turn ended, since
+// a read does not move it.
+const RANK = { needs_you: 0, error: 1, review: 2, done: 3 };
+const byWait = (a, b) => RANK[a.mark] - RANK[b.mark] || (a.last_activity || 0) - (b.last_activity || 0);
+
+// The sessions Alt+J walks, in order. A queue worker's result goes to whoever
+// enqueued it, so only its error is yours.
+// What places a card inside the needs-you group. Empty for the rest, which a
+// working session's every tick would otherwise regroup.
+const rank = (m) => (group(m) === "needs" ? `${m.mark}:${m.last_activity}` : "");
+
+export function byNeed(metas) {
+  return metas.filter((m) => Object.hasOwn(RANK, m.mark) && (!m.worker || m.mark === "error")).sort(byWait);
+}
+
 export function renderCards(box, metas, onOpen, order = "attention") {
   if (!metas.length) {
     box.replaceChildren(el("div", "empty", "No open sessions. Start one with +."));
@@ -49,7 +66,7 @@ export function renderCards(box, metas, onOpen, order = "attention") {
     return;
   }
   const out = [];
-  const needs = metas.filter((m) => group(m) === "needs");
+  const needs = metas.filter((m) => group(m) === "needs").sort(byWait);
   const rest = metas.filter((m) => group(m) === "rest");
   if (needs.length) out.push(el("div", "grp-h", "Needs you"), ...needs.map((m) => card(m, onOpen)));
   // With nobody needing you, the order bar's "Sessions" heading names the list.
@@ -58,12 +75,12 @@ export function renderCards(box, metas, onOpen, order = "attention") {
   box.replaceChildren(...out);
 }
 
-// One session's card redrawn where it stands. False when its group changed and
-// the caller must regroup with renderCards.
+// One session's card redrawn where it stands. False when its group, or its place
+// in the needs-you group, changed and the caller must regroup with renderCards.
 export function patchCard(box, m, onOpen, order = "attention") {
   const old = box.querySelector(`.card[data-id="${CSS.escape(m.log_id)}"]`);
   if (!old) return true;
-  if (order === "attention" && old.dataset.group !== group(m)) return false;
+  if (order === "attention" && (old.dataset.group !== group(m) || old.dataset.rank !== rank(m))) return false;
   old.replaceWith(card(m, onOpen));
   return true;
 }
@@ -78,6 +95,7 @@ function card(m, onOpen) {
   const c = el("div", `card ${m.state} at-${m.attention}`);
   c.dataset.id = m.log_id;
   c.dataset.group = group(m);
+  c.dataset.rank = rank(m);
   const hd = el("div", "hd");
   hd.append(markNode(m), el("span", "h", m.handle));
   if (m.worker) hd.append(el("span", "badge", `worker · ${m.worker.queue}`));
