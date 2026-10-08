@@ -13,6 +13,7 @@ import { installKeys, renderKeys } from "./keys.js";
 import { glyph, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
+import { installBell, setTitle, updatePing } from "./ping.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -64,6 +65,8 @@ installGlyphs();
 $("nav-up").append(icon("up"));
 $("nav-down").append(icon("down"));
 $("jump").append(icon("latest"));
+$("bell").append(icon("bell"));
+installBell($("bell"));
 $("nav-up").addEventListener("click", () => (transcript.message(-1), drawNav()));
 $("nav-down").addEventListener("click", () => (transcript.message(1), drawNav()));
 $("nav-pos").addEventListener("click", () => (transcript.firstUnread(), drawNav()));
@@ -194,12 +197,14 @@ function flushSessions() {
     fleetMark(false);
     drawBand();
   } else if (r.view === "session" && ids.has(r.id)) renderMeta(sessions.get(r.id));
+  updatePing([...sessions.values()], { onOpen: openSession });
 }
 
 function onSessions() {
   const ids = order.arrange([...sessions.values()].sort((a, b) => a.created_at - b.created_at).map((m) => m.log_id));
   ordered = ids.map((id) => sessions.get(id));
   render();
+  updatePing([...sessions.values()], { onOpen: openSession });
 }
 
 // -- rendering -----------------------------------------------------------------
@@ -237,13 +242,13 @@ function render() {
     drawBand();
     if (newView) drawQuota();
     if (!archiveLoaded) loadArchive();
-    document.title = "Fleet · aegis";
+    setTitle("Fleet · aegis");
   } else if (r.view === "spawn") {
     watchHost(false);
     follow(null);
     show("spawn");
     $("sp-text").focus();
-    document.title = "New session · aegis";
+    setTitle("New session · aegis");
   } else if (r.view === "session") {
     watchHost(false);
     // Shown first: follow() sizes the message box, which measures 0 while hidden.
@@ -411,7 +416,7 @@ function renderMeta(s) {
     s.state === "stopped"
       ? "Stopped; your next message resumes it."
       : "Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts.";
-  document.title = `${working ? "● " : ""}${s.title || s.handle} · aegis`;
+  setTitle(`${working ? "● " : ""}${s.title || s.handle} · aegis`);
 }
 
 setInterval(() => {

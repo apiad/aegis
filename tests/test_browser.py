@@ -1629,3 +1629,35 @@ def test_the_divider_is_drawn_on_its_row_when_scrolling_up_mounts_it(
     assert len(page.evaluate("window.__mountedSince")) == 1
     assert page.locator(".row.since").count() == 1
     assert page.errors == []
+
+
+def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
+    server, browser
+):
+    errors: list = []
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    ctx.grant_permissions(["notifications"])
+    pg = ctx.new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.add_init_script("""
+      window.__notes = [];
+      window.Notification = class { constructor(t, o) { window.__notes.push([t, o]); }
+        static get permission() { return 'granted'; }
+        static requestPermission() { return Promise.resolve('granted'); } };
+      Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
+    """)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg, "hello")
+    assert not pg.title().startswith("(")
+    pg.evaluate("window.__hidden = true")
+    report(pg, attention="needs_you", line="Merge or rebase?", replies=[])
+    pg.wait_for_function("() => document.title.startsWith('(1) ')", timeout=8000)
+    assert "dot" in pg.get_attribute("#favicon", "href")
+    pg.wait_for_function("() => window.__notes.length === 1", timeout=8000)
+    title, opts = pg.evaluate("window.__notes[0]")
+    assert opts["body"] == "Merge or rebase?"
+    pg.click("#tab-fleet")
+    assert pg.title().startswith("(1) Fleet")
+    assert errors == []
+    ctx.close()
