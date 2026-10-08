@@ -13,7 +13,7 @@ import { installKeys, renderKeys } from "./keys.js";
 import { glyph, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
-import { installBell, setTitle, updatePing } from "./ping.js";
+import { installBell, redrawFavicon, setTitle, updatePing } from "./ping.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -43,6 +43,7 @@ themePick.value = document.documentElement.dataset.theme;
 themePick.addEventListener("change", () => {
   document.documentElement.dataset.theme = themePick.value;
   localStorage.setItem("aegis.theme", themePick.value);
+  redrawFavicon();
 });
 
 // -- state ----------------------------------------------------------------
@@ -160,7 +161,12 @@ else {
         setChanged = false;
         changed.clear();
         onSessions();
-      } else if (!frame) frame = requestAnimationFrame(flushSessions);
+      } else {
+        if (!frame) frame = requestAnimationFrame(flushSessions);
+        // Not in the frame: a hidden tab runs no frames, and that is when the
+        // ping matters.
+        updatePing([...sessions.values()], { onOpen: openSession });
+      }
     },
   );
   conn.subscribe(
@@ -197,7 +203,6 @@ function flushSessions() {
     fleetMark(false);
     drawBand();
   } else if (r.view === "session" && ids.has(r.id)) renderMeta(sessions.get(r.id));
-  updatePing([...sessions.values()], { onOpen: openSession });
 }
 
 function onSessions() {

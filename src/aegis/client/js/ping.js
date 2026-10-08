@@ -14,9 +14,15 @@ export function setTitle(text) {
 }
 
 function favicon(n) {
-  const dot = n ? `<circle id="dot" cx="25" cy="7" r="6" fill="#e0a872" stroke="#11100e" stroke-width="2"/>` : "";
+  const accent = getComputedStyle(document.getElementById("a2")).getPropertyValue("--accent").trim();
+  const dot = n ? `<circle id="dot" cx="25" cy="7" r="6" fill="${accent}" stroke="#11100e" stroke-width="2"/>` : "";
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect x="2" y="4" width="24" height="24" rx="6" fill="#2a2721"/><text x="14" y="22" font-family="sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#f1ede2">a</text>${dot}</svg>`;
   document.getElementById("favicon").href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+// The dot takes the theme's accent, so a theme switch redraws it.
+export function redrawFavicon() {
+  favicon(count);
 }
 
 export function updatePing(metas, { onOpen }) {

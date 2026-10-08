@@ -10,6 +10,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -1639,24 +1640,67 @@ def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     ctx.grant_permissions(["notifications"])
     pg = ctx.new_page()
     pg.on("pageerror", lambda e: errors.append(str(e)))
+    # A hidden tab, as browsers make it: document.hidden is true and animation
+    # frames do not run. The flag survives a reload through sessionStorage.
     pg.add_init_script("""
       window.__notes = [];
+      window.__hidden = sessionStorage.getItem('hidden') === '1';
       window.Notification = class { constructor(t, o) { window.__notes.push([t, o]); }
         static get permission() { return 'granted'; }
         static requestPermission() { return Promise.resolve('granted'); } };
       Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
+      const raf = window.requestAnimationFrame.bind(window);
+      window.requestAnimationFrame = (cb) => (window.__hidden ? 0 : raf(cb));
     """)
     pg.goto(server.url)
     pg.wait_for_selector("#a2[data-view=fleet]")
+    first = spawn(pg, "hello")
     spawn(pg, "hello")
     assert not pg.title().startswith("(")
+    # While the page is visible, a session that needs you counts but sends no
+    # notification.
+    report(pg, attention="needs_you", line="Seen here?", replies=[])
+    pg.wait_for_function(
+        "() => document.title.startsWith('(1) ')", polling=100, timeout=8000
+    )
+    report(pg, attention="done", line="Done.", replies=[])
+    pg.wait_for_function("() => !document.title.startsWith('(')", timeout=8000)
+    assert pg.evaluate("window.__notes.length") == 0
     pg.evaluate("window.__hidden = true")
     report(pg, attention="needs_you", line="Merge or rebase?", replies=[])
-    pg.wait_for_function("() => document.title.startsWith('(1) ')", timeout=8000)
+    pg.wait_for_function(
+        "() => document.title.startsWith('(1) ')", polling=100, timeout=8000
+    )
     assert "dot" in pg.get_attribute("#favicon", "href")
-    pg.wait_for_function("() => window.__notes.length === 1", timeout=8000)
+    pg.wait_for_function("() => window.__notes.length === 1", polling=100, timeout=8000)
     title, opts = pg.evaluate("window.__notes[0]")
+    assert title.endswith(": needs you")
     assert opts["body"] == "Merge or rebase?"
+    # Another session's turn, still hidden: the one that needs you has not
+    # changed, so it does not notify again.
+    pg.evaluate("id => (location.hash = '#s=' + id)", first)
+    report(pg, attention="done", line="Done.", replies=[])
+    pg.wait_for_function(
+        "() => [...document.querySelectorAll('.row.sys .body')]"
+        ".filter(b => /^done in/.test(b.textContent)).length >= 2",
+        polling=100,
+        timeout=8000,
+    )
+    assert pg.title().startswith("(1) ")
+    assert pg.evaluate("window.__notes.length") == 1
+    # A page opened hidden while the session already needs you counts it but
+    # does not notify: nothing changed while the page was there.
+    pg.evaluate("sessionStorage.setItem('hidden', '1')")
+    pg.reload()
+    pg.wait_for_function(
+        "() => document.title.startsWith('(1) ')", polling=100, timeout=8000
+    )
+    assert pg.evaluate("window.__notes.length") == 0
+    pg.evaluate("sessionStorage.removeItem('hidden'); window.__hidden = false")
+    # The dot takes the theme's accent.
+    assert quote("#e0a872") in pg.get_attribute("#favicon", "href")
+    pg.select_option("#theme", "logbook")
+    assert quote("#2f5ba8") in pg.get_attribute("#favicon", "href")
     pg.click("#tab-fleet")
     assert pg.title().startswith("(1) Fleet")
     assert errors == []
