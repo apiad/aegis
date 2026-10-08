@@ -52,6 +52,7 @@ def test_window_carries_the_agents_report_and_plan_and_is_capped():
     }
     w = window([user(1, "go"), prose(2, "x" * 50_000)], {"e2.0"}, st)
     assert "Merge or rebase?" in w and "land it" in w
+    assert "user: go" in w
     assert len(w) <= 13_000
 
 
@@ -99,6 +100,14 @@ def test_parse_reads_the_envelope_and_never_raises():
     assert parse(so)[0] == RecapOut(context="c", ask="")
     assert parse("not json") == (None, 0.0, 0)
     assert parse(json.dumps({"result": "no object here"}))[0] is None
+    bad = json.dumps(
+        {
+            "result": '{"context": "c", "ask": ""}',
+            "total_cost_usd": "x",
+            "duration_ms": "y",
+        }
+    )
+    assert parse(bad) == (RecapOut(context="c", ask=""), 0.0, 0)
 
 
 def test_load_recap_names_an_agent_or_says_what_is_wrong(tmp_path):

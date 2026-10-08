@@ -25,6 +25,7 @@ MIN_UNREAD = 2
 LONG_WORDS = 300
 AWAY_S = 1800
 WINDOW_CHARS = 12_000
+ASK_CHARS = 600
 TIMEOUT_S = 60
 
 
@@ -94,8 +95,13 @@ def window(entries: list[dict], unread: set[str], standing: dict) -> str:
         if k is not None
     ]
     start = min(starts) if starts else 0
-    body = "\n".join(x for e in entries[start:] if (x := _line(e)))
-    body = body[-WINDOW_CHARS:]
+    lines = [x for e in entries[start:] if (x := _line(e))]
+    body = "\n".join(lines)[-WINDOW_CHARS:]
+    # The cut drops the oldest lines, which is where the person's message sits,
+    # and SYSTEM takes the recap's language from it: pin it back, shortened.
+    asks = [k for k, x in enumerate(lines) if x.startswith("user: ")]
+    if asks and len("\n".join(lines[asks[-1] :])) > WINDOW_CHARS:
+        body = f"{lines[asks[-1]][:ASK_CHARS]}\n[...]\n{body}"
     parts = [f"--- transcript ---\n{body}\n--- end ---"]
     report = standing.get("report")
     if report:
@@ -134,6 +140,14 @@ def argv(claude_bin: str, model: str, prompt: str) -> list[str]:
 _OBJ = re.compile(r"\{.*\}", re.S)
 
 
+def _number(value, kind: type[float] | type[int]) -> float | int:
+    """A bad cost or duration reads as 0, so the recap still lands."""
+    try:
+        return kind(value or 0)
+    except (TypeError, ValueError, OverflowError):
+        return kind(0)
+
+
 def parse(stdout: str) -> tuple[RecapOut | None, float, int]:
     """The envelope's structured answer, cost and time. Never raises."""
     try:
@@ -142,8 +156,8 @@ def parse(stdout: str) -> tuple[RecapOut | None, float, int]:
         return None, 0.0, 0
     if not isinstance(env, dict):
         return None, 0.0, 0
-    cost = float(env.get("total_cost_usd") or 0.0)
-    ms = int(env.get("duration_ms") or 0)
+    cost = _number(env.get("total_cost_usd"), float)
+    ms = _number(env.get("duration_ms"), int)
     candidates = []
     if isinstance(env.get("structured_output"), dict):
         candidates.append(env["structured_output"])
