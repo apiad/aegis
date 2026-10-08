@@ -44,8 +44,17 @@ Workspace at `.playground/opencode-probe/`, and #180 lists the numbers.
 
 ## Choices
 
-**`opencode serve` over HTTP, not ACP and not `opencode run`.** ACP carries no
-cost, no command list and no per-message model. `opencode run --format json` is
+**`opencode serve` over HTTP, not ACP and not `opencode run`.** `opencode acp`
+(measured on the same version, `.playground/opencode-probe/acp_probe.py`) streams
+text and reasoning chunks, reports tool calls with their input and output,
+lists commands, takes per-session MCP servers with headers, cancels in 0.11 s,
+loads and resumes sessions, and switches the model with `session/set_model`. It
+exposes no reasoning variant, so aegis could not set an OpenCode session's
+effort. It sends no title. It reports cost and context once per turn, with no
+per-step numbers, no context limit per model and no child sessions. Text
+arrives only as chunks, so the store would have to keep every chunk. ACP is the
+way to add a harness that speaks nothing richer, such as lovelaice, and a
+generic ACP harness can sit behind the same interface later. `opencode run --format json` is
 one process per prompt: a prompt cannot reach a running turn, an interrupt has to
 kill the process, and every turn pays the 2.5 s start. The HTTP server has an
 endpoint behind every feature above. The vision spec's non-goal "every signal
