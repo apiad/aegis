@@ -282,6 +282,15 @@ operation only, and only for a socket on loopback to a server with a desktop: a
 proxy's public name is a browser elsewhere, and an SSH tunnel to a headless box
 looks local but has nowhere to open the file.
 
+**Audio never leaves the browser.** Dictation transcribes in the page, with
+Cactus Whistle's WebAssembly build in two workers (`js/dictation.js`). The server
+keeps the pinned engine and model, downloaded once from Hugging Face and checked
+against their sha256, serves them at `/dictation/<pin>/` with an immutable cache
+header, and answers `dictation.prepare` with that base and the keywords that bias
+the model toward names it knows (`dictation.py`). Nothing carries samples, so
+dictation works through any proxy that serves the page, and the server pays
+nothing per word.
+
 **Performance is measured on every PR and never gates.** `scripts/bench.py`
 replays a recorded transcript through the fake harness in
 `tests/fake_claude.py`, and CI compares the PR's base and head on the same

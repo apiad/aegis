@@ -1,6 +1,6 @@
 # Dictation: a mic button that transcribes in the browser
 
-**Status: designed 2026-10-08, not built.** Closes #89. Designed with Alex in a
+**Status: built, 2026-10-08.** Closes #89. Designed with Alex in a
 brainstorm after a playground run on his own dictations and on his phone. The
 playground (page, Node harness, benchmark logs, phone reports) is in the
 workspace at `.playground/whistle-web/`, not in this repo.
@@ -197,6 +197,11 @@ composer's box. It has four states, drawn from one `data-state` attribute:
 `listening` stops; a press in `finishing` starts a new recording into the same
 textarea. Under `(pointer: coarse)` it gets the 44 px target like every other
 button.
+
+Sending a box that a recording targets (Enter, the send button, or starting the
+session from the new-tab box) first stops the recording and waits for its last
+piece, so what was said goes out with the rest instead of landing in an emptied
+box a few seconds later.
 
 Alt+M is one row in `keys.js`: it toggles dictation into the focused composer,
 or into the session composer when no text field has focus. Esc keeps its order
