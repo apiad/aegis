@@ -264,9 +264,8 @@ async def test_monitor_progress_and_fail(world, tmp_path):
     assert " · fail · " in inbox(a)[0]["title"]
 
 
-async def test_a_monitors_card_carries_its_commands_readings_and_eta(
-    world, tmp_path
-):
+@pytest.mark.slow  # three polls a second apart
+async def test_a_monitors_card_carries_its_commands_readings_and_eta(world, tmp_path):
     a = await world.spawn()
     pct = tmp_path / "pct"
     pct.write_text("0\n")
@@ -280,9 +279,13 @@ async def test_a_monitors_card_carries_its_commands_readings_and_eta(
             interval_s=1,
         ),
     )
-    for v in ("20", "40"):
-        await asyncio.sleep(1.5)
-        pct.write_text(v + "\n")
+    for prev, v in ((0, 20), (20, 40)):
+        await until(
+            lambda p=prev: a.wire()["monitors"][0]["progress"] == p,
+            timeout=5,
+            what=f"{prev}%",
+        )
+        pct.write_text(f"{v}\n")
     await until(
         lambda: a.wire()["monitors"][0]["progress"] == 40, timeout=5, what="40%"
     )
@@ -314,7 +317,8 @@ async def test_a_check_that_cannot_run_shows_its_exit_code_and_stderr(world):
         ),
     )
     await until(
-        lambda: a.wire()["monitors"][0]["broken"], what="the broken check reaches the card"
+        lambda: a.wire()["monitors"][0]["broken"],
+        what="the broken check reaches the card",
     )
     (m,) = a.wire()["monitors"]
     done = next(c for c in m["checks"] if c["kind"] == "done")

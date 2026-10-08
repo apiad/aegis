@@ -621,6 +621,77 @@ def test_a_monitor_with_no_reading_animates_and_one_with_a_reading_fills(
     assert page.errors == []
 
 
+def arm(page, **args):
+    page.fill("#input", f"/mcp monitor_start {json.dumps(args)}")
+    page.press("#input", "Enter")
+    page.wait_for_selector(f"#s-monitors .mon >> text={args['description']}")
+
+
+def test_hovering_a_monitor_opens_its_card_and_it_stays_open_as_readings_arrive(
+    server, page, tmp_path
+):
+    """The sidebar redraws on every session patch; the card must not close, or
+    lose its place, each time one of its monitor's readings arrives (#174)."""
+    pct = tmp_path / "pct"
+    pct.write_text("0\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    arm(
+        page,
+        description="a pct file",
+        done="false",
+        progress=f"cat {pct}",
+        interval_s=1,
+    )
+    page.hover("#s-monitors .mon")
+    page.wait_for_selector("#mcard.show")
+    card = page.inner_text("#mcard")
+    assert "a pct file" in card and f"cat {pct}" in card
+    assert "not yet" in card and "no progress" not in card
+    # Count every close: a card that closes and reopens on each redraw ends in the
+    # same state as one that stayed open, and flickers in between.
+    page.evaluate(
+        """() => { window.closes = 0; const c = document.getElementById("mcard");
+        new MutationObserver(() => { if (!c.classList.contains("show")) window.closes++; })
+          .observe(c, {attributes: true, attributeFilter: ["class"]}); }"""
+    )
+    page.wait_for_selector("#mcard.show .big .p >> text=0")
+    pct.write_text("20\n")
+    page.wait_for_selector("#mcard.show .big .p >> text=20")
+    pct.write_text("40\n")
+    page.wait_for_selector("#mcard.show .big .p >> text=40")
+    assert page.locator("#mcard .chart svg .dot").count() == 2
+    assert "ETA" in page.inner_text("#mcard .big .e")
+    assert "since progress first moved" in page.inner_text("#mcard .chart .basis")
+    assert "40% · ~" in page.inner_text("#s-monitors .mon .kv")
+    assert page.evaluate("window.closes") == 0
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#mcard:not(.show)", state="attached")
+    assert page.errors == []
+
+
+def test_a_monitor_whose_check_cannot_run_is_marked_and_its_card_says_why(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    arm(
+        page,
+        description="never passes",
+        done="no-such-aegis-cmd --status",
+        progress=None,
+        interval_s=1,
+    )
+    page.wait_for_selector("#s-monitors .mon.bad >> text=check fails")
+    page.hover("#s-monitors .mon")
+    page.wait_for_selector("#mcard.show .ck.bad")
+    bad = page.inner_text("#mcard .ck.bad")
+    assert "exit 127" in bad and "command not found" in bad
+    assert "no-such-aegis-cmd" in page.inner_text("#mcard .ck.bad .err")
+    assert "no progress command" in page.inner_text("#mcard .big")
+    assert page.errors == []
+
+
 def test_the_running_build_and_the_latest_release_show_in_the_top_bar_and_sidebar(
     server, page
 ):
