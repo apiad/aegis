@@ -1611,10 +1611,35 @@ def test_landing_after_two_replies_shows_a_recap_last_and_the_sparkle_makes_one(
     page.fill("#input", "thanks")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.recap.folded")
+    turns_done(page, 4)  # mid-turn, recap.request answers busy even when forced
     page.click("#nav-recap")
     page.wait_for_function(
         "() => document.querySelectorAll('.row.recap').length === 2", timeout=8000
     )
+    assert page.locator(".row.recap:not(.folded)").count() == 1
+    # a refresh with no send between folds the earlier recap: one full box
+    page.click("#nav-recap")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row.recap').length === 3", timeout=8000
+    )
+    assert page.locator(".row.recap:not(.folded)").count() == 1
+    assert page.errors == []
+
+
+def test_the_landing_recap_request_shows_no_hint_and_the_sparkle_does(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "one")
+    sid = page.evaluate("location.hash.slice(3)")
+    turns_done(page, 1)
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card[data-id='{sid}']")
+    page.click(f".tab[data-id='{sid}']")
+    page.wait_for_selector("#a2[data-view=session]")
+    page.wait_for_timeout(1000)  # the landing request's answer has come back
+    assert page.text_content("#send-error") == ""
+    page.click("#nav-recap")
+    page.wait_for_selector("#send-error >> text=recap: {agent:", timeout=4000)
     assert page.errors == []
 
 

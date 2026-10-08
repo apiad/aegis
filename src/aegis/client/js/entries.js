@@ -5,6 +5,7 @@
 // style; they compute nothing about tools.
 
 import markdownit from "../vendor/markdown-it.mjs";
+import { money } from "./fleet.js";
 import { icon } from "./glyphs.js";
 
 const md = markdownit({ html: false, linkify: true, breaks: false });
@@ -211,7 +212,7 @@ const RENDERERS = {
     if (det.ask) body.append(el("div", "ask", det.ask));
     const ft = el("div", "ft");
     const secs = det.duration_ms ? `${(det.duration_ms / 1000).toFixed(1)}s` : "";
-    ft.append(el("span", null, [det.model, secs, det.cost_usd ? `$${det.cost_usd.toFixed(4)}` : ""].filter(Boolean).join(" · ")));
+    ft.append(el("span", null, [det.model, secs, det.cost_usd ? money(det.cost_usd) : ""].filter(Boolean).join(" · ")));
     const again = el("button", "btn link refresh", "refresh");
     again.dataset.recap = "force";
     ft.append(again);

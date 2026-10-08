@@ -508,15 +508,20 @@ setInterval(() => conn.open && loadVersion(), 3600 * 1000);
 
 // -- the recap -----------------------------------------------------------------
 // Asked on landing and by the sparkle or the row's refresh. The entry arrives on
-// the transcript channel; the answer only says why there is none.
+// the transcript channel; the answer only says why there is none, and only to a
+// person who asked: the request on landing never writes a hint.
 async function askRecap(force) {
-  if (!shown) return;
+  const id = shown;
+  if (!id) return;
+  let why = "";
   try {
-    const r = await conn.call("recap.request", { log_id: shown, force });
-    if (r.status === "off" || r.status === "failed") $("send-error").textContent = r.why;
+    const r = await conn.call("recap.request", { log_id: id, force });
+    if (r.status === "off" || r.status === "failed") why = r.why;
+    else if (r.status === "busy") why = "the agent is still working; ask again when it is done";
   } catch (e) {
-    $("send-error").textContent = e.message;
+    why = e.message;
   }
+  if (force && why && shown === id) $("send-error").textContent = why;
 }
 $("entries").addEventListener("click", (ev) => {
   if (ev.target.closest("[data-recap=force]")) askRecap(true);
