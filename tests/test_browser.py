@@ -1597,6 +1597,7 @@ def test_a_reply_that_lands_while_you_are_away_stays_unread_until_you_look(
 def test_landing_after_two_replies_shows_a_recap_last_and_the_sparkle_makes_one(
     recap_server, page
 ):
+    frames = frames_on(page)
     page.goto(recap_server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page, "first")
@@ -1614,8 +1615,13 @@ def test_landing_after_two_replies_shows_a_recap_last_and_the_sparkle_makes_one(
     page.press("#input", "Enter")
     page.click("#tab-fleet")
     page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=2 unread", timeout=8000)
+    frames.clear()
     page.click(f".tab[data-id='{sid}']")
     page.wait_for_selector(".row.recap .ctx >> text=recap of", timeout=8000)
+    # The tab came back from the client's cache: its first frame was a delta,
+    # and that delta is what asked for the recap.
+    snaps = [f for f in frames if '"t": "snapshot"' in f and f"transcript:{sid}" in f]
+    assert snaps and '"since"' in snaps[0], snaps
     assert page.eval_on_selector(
         "#entries", "n => n.lastElementChild.classList.contains('recap')"
     )
