@@ -67,7 +67,9 @@ class Server:
         threading.Thread(target=self._pump, daemon=True).start()
         time.sleep(1)
 
-    def req(self, method: str, path: str, body: dict | None = None, timeout: float = 30):
+    def req(
+        self, method: str, path: str, body: dict | None = None, timeout: float = 30
+    ):
         r = urllib.request.Request(
             f"{self.base}{path}?directory={self.cwd}", method=method,
             data=None if body is None else json.dumps(body).encode(),
@@ -79,7 +81,8 @@ class Server:
 
     def _pump(self) -> None:
         r = urllib.request.Request(
-            f"{self.base}/event?directory={self.cwd}", headers={"authorization": self.auth}
+            f"{self.base}/event?directory={self.cwd}",
+            headers={"authorization": self.auth},
         )
         for line in urllib.request.urlopen(r, timeout=3600):
             if line.startswith(b"data:"):
@@ -104,7 +107,11 @@ class Server:
             info = p.get("info") if isinstance(p.get("info"), dict) else {}
             if e["type"] == "session.created" and info.get("parentID") in mine:
                 mine.add(info["id"])
-            owner = p.get("sessionID") or info.get("id") or (p.get("part") or {}).get("sessionID")
+            owner = (
+                p.get("sessionID")
+                or info.get("id")
+                or (p.get("part") or {}).get("sessionID")
+            )
             if e["type"] in KEEP and owner in mine:
                 out.append(json.dumps(e))
         (OUT / f"{name}.jsonl").write_text("\n".join(out) + "\n")
@@ -123,6 +130,7 @@ def main() -> None:
         (cwd / "notes.txt").write_text("alpha\nbeta\n")
         srv = Server(cwd)
         try:
+
             def turn(name: str, *texts: str, gap: float = 0, abort_after: float = 0):
                 n = len(srv.events)
                 sid = srv.req("POST", "/session", {})["id"]
@@ -142,7 +150,10 @@ def main() -> None:
             turn("midturn", "Run `sleep 6` in bash, then say A.",
                  "Also say B.", gap=3)  # fmt: skip
             turn("abort", "Run `sleep 30` in bash, then say finished.", abort_after=8)
-            turn("edit", "In notes.txt replace the word beta with gamma using the edit tool, then say done.")
+            turn(
+                "edit",
+                "In notes.txt replace the word beta with gamma using the edit tool, then say done.",
+            )
             turn("task", "Use the task tool with the general subagent to count the files "
                  "in this directory, then report the count in one line.")  # fmt: skip
             n = len(srv.events)

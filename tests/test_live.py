@@ -414,3 +414,97 @@ async def test_real_claude_ends_a_bash_call_on_a_counted_verdict(tmp_path: Path)
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)
+
+
+FLASH = "opencode-go/deepseek-v4-flash"
+
+
+async def test_a_real_opencode_session(tmp_path: Path):
+    """A prompt, an aegis tool call, an interrupt, a resume that keeps the
+    context, and a read session refused an edit. About a cent of Go."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    opencode = shutil.which("opencode")
+    assert opencode, "opencode is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        "agents:\n"
+        f"  deep: {{harness: opencode, model: {FLASH}, effort: high, permission: full}}\n"
+        f"  reader: {{harness: opencode, model: {FLASH}, effort: high, permission: read}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        opencode_bin=opencode,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+
+    def tools(s) -> list[dict]:
+        return [e for e in s.entries() if e["kind"] == "tool"]
+
+    def prose(s) -> list[str]:
+        return [e["md"] for e in s.entries() if e["kind"] == "prose"]
+
+    async def turn(s, text: str) -> None:
+        await s.send(text)
+        await until(lambda: s.status == "working", timeout=30, what="the turn to start")
+        await until(lambda: s.status == "idle", timeout=120, what=f"the turn {text!r}")
+
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "deep"})
+        s = app.sessions.sessions[r["log_id"]]
+        await turn(s, "Remember the word PELICAN. Reply with the single word OK.")
+        assert s.cost_usd and s.context_window and s.resume_id.startswith("ses_")
+
+        await turn(
+            s, "Call the aegis meta tool, then tell me in one line what it returned."
+        )
+        assert any(t["title"] == "meta" and t["status"] == "ok" for t in tools(s))
+
+        await s.send("Run exactly this bash command in the foreground: sleep 40")
+        await until(
+            lambda: any(t["status"] == "running" for t in tools(s)),
+            timeout=120,
+            what="the bash call",
+        )
+        await s.interrupt()
+        await until(
+            lambda: s.status == "idle", timeout=20, what="idle after the interrupt"
+        )
+        assert tools(s)[-1]["status"] == "err"
+        assert tools(s)[-1]["detail"]["result"] == "interrupted"
+
+        sid = s.resume_id
+        await s.stop()
+        await turn(s, "What word did I ask you to remember? Reply with that one word.")
+        assert "PELICAN" in prose(s)[-1].upper() and s.resume_id == sid
+
+        r = await app.registry.call("session.spawn", {"agent": "reader"})
+        reader = app.sessions.sessions[r["log_id"]]
+        await turn(
+            reader, "Use the write tool to create a file named x.txt containing hi."
+        )
+        assert not (tmp_path / "x.txt").exists()
+        # OpenCode drops a denied tool from the toolset, so a read session is
+        # never offered write, edit or bash; the full one makes the same file.
+        assert not [t for t in tools(reader) if t["title"] in ("Write", "Edit", "Bash")]
+        await turn(s, "Use the write tool to create a file named y.txt containing hi.")
+        assert (tmp_path / "y.txt").exists()
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+        await app.shutdown()

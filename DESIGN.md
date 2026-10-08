@@ -21,10 +21,11 @@ so stopping the server leaves it to reconnect (`window.py`). Later slices
 add the home server, links to other servers and plugin hosts, in the order the
 vision spec gives.
 
-**A session outlives its process.** A session is live (a `claude` child is
-running), stopped (none is), or archived (closed: no process, no tab). A prompt to
-a stopped session starts `claude --resume`, which prints nothing old, so the store
-and the fold simply continue. Only shutdown, Stop and Close end a process. Nothing
+**A session outlives its process.** A session is live (a harness child, `claude` or
+`opencode serve`, is running), stopped (none is), or archived (closed: no process,
+no tab). A prompt to a stopped session starts the harness again on the same
+conversation (`claude --resume`, or `opencode serve` and the same session id),
+which prints nothing old, so the store and the fold simply continue. Only shutdown, Stop and Close end a process. Nothing
 reaps idle sessions, because a Claude session waiting on its own background task
 wakes itself when the task ends, and stopping it would kill the task.
 
@@ -73,9 +74,19 @@ in which every subsystem needed its own fields.
 **Agents call the same operations, as MCP tools named after them.** An operation
 marked for agents is served at `/mcp` under its name with the dot as an underscore,
 so `monitor.start` is `mcp__aegis__monitor_start`. The caller is the session whose
-token the request carries; the token is minted for each `claude` process and rides
-in its `--mcp-config` header. No tool takes the caller's handle as an argument,
+token the request carries; the token is minted for each harness process and rides
+in the `X-Aegis-Session` header of its MCP config. No tool takes the caller's handle as an argument,
 because an argument can be wrong and the token cannot.
+
+**A harness is a module behind one interface.** `Session` asks a `Process`
+(`harness.py`) to start, send, interrupt, set and end, and the fold reads each
+stored line through the parser its `src` tag names. Claude Code
+(`claude/harness.py`) speaks stream-json on stdio; OpenCode
+(`opencode/process.py`) is one `opencode serve` per session over HTTP, because its
+MCP token, like Claude's, is per process. Both parsers emit the same events, so
+the entry rules exist once. OpenCode's token deltas are the one thing folded and
+never stored: the part's closing update carries the whole text, so the live view
+is ahead of a fresh fold only while a part is open.
 
 **A `/` line is resolved on the server, and a typo costs nothing.** `session.send`
 runs an aegis command (`commands.py`) as the operation it stands for, passes a name

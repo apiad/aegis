@@ -53,6 +53,7 @@ def _root(
             port=DEFAULT_PORT,
             host="127.0.0.1",
             claude="claude",
+            opencode="opencode",
             log_level="warning",
             window=True,
             browser=os.environ.get("AEGIS_BROWSER"),

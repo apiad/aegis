@@ -1,6 +1,7 @@
 # OpenCode sessions in aegis 2
 
-> **Status:** draft, 2026-10-08. Issue: [#180](https://github.com/apiad/aegis/issues/180).
+> **Status:** implemented, 2026-10-08. Plan: `docs/superpowers/plans/2026-10-08-aegis-2-opencode-harness.md`.
+> Issue: [#180](https://github.com/apiad/aegis/issues/180).
 > Related: [#78](https://github.com/apiad/aegis/issues/78) (ACP sessions never
 > streamed), [#49](https://github.com/apiad/aegis/issues/49) (no titles outside
 > Claude). Earlier work: the TUI-era ACP driver in `legacy/aegis/drivers/acp.py`
@@ -85,11 +86,9 @@ class Process(Protocol):
     pid: int | None
     running: bool
     async def start(self) -> None: ...
-    async def send(self, text: str) -> None: ...
-    async def command(self, name: str, args: str) -> None: ...
+    async def send(self, text: str) -> None: ...   # a "/name args" line is a command
     async def interrupt(self) -> None: ...
-    async def configure(self, model: str | None, effort: str | None,
-                        permission: str | None) -> str: ...
+    async def set(self, kind: str, value: str) -> None: ...
     async def catalog(self) -> Catalog: ...
     async def terminate(self) -> None: ...
 
@@ -110,9 +109,9 @@ stored line into events. Claude's parser is the existing stateless `parse`;
 OpenCode's keeps state across lines, because a part's events need the role of
 the message it belongs to.
 
-`configure` returns when the change applies (`""` now, `"next_turn"`,
-`"on_resume"`), which `Session.configure` records as it does today, and raises
-`ControlError` when the harness refuses. `HARNESSES` in `src/aegis/harness.py`
+`set` changes one of `model`, `effort` and `permission` and raises
+`ControlError` when the harness refuses. `Session.configure` still decides when a
+change applies (`""` now, `"next_turn"`, `"on_resume"`) and records it. `HARNESSES` in `src/aegis/harness.py`
 maps a name to its `Harness`, and `agents.SUPPORTED_HARNESSES` becomes its keys.
 
 The Claude implementation is a move: `ClaudeProcess`, `build_argv` and the
@@ -252,7 +251,9 @@ messages until the turn ends; nothing about it changes.
 `/name args`, where `name` is in the session's OpenCode catalog, goes to
 `POST /session/{id}/command` with the same model and variant. That call blocks
 until the turn ends, so it runs on its own task, and a failure is recorded as
-an error entry. aegis's own commands (`/model`, `/effort`, `/permission`,
+an error entry. The next send waits until OpenCode has echoed the command, or
+a prompt could overtake it. A command carries no `system`: the endpoint takes
+none. aegis's own commands (`/model`, `/effort`, `/permission`,
 `/rename`, `/title`, `/stop`, `/close`) are resolved before this, as today.
 `//rest` is sent as the prompt ` /rest`.
 
@@ -262,19 +263,18 @@ the session `error` if they never come.
 
 ### Model, effort and permission
 
-OpenCode takes the model and the variant with each prompt, so `configure`
-changes `model` and `effort` without a request: the next prompt carries them.
-It returns `"next_turn"` while a turn runs and `""` otherwise. The registry
-validates both against the catalog first, as it does for Claude: the model must
-be listed, and the effort must be one of that model's variants. A model with no
-variants takes no effort, so a spec's effort is not sent for it, and the
-spawn's system entry says "effort unused".
+OpenCode takes the model and the variant with each prompt, so `set` changes
+`model` and `effort` without a request: the next prompt carries them. The
+registry validates both against the catalog first, as it does for Claude: the
+model must be listed, and the effort must be one of that model's variants. A
+model with no variants takes no effort, so a spec's effort is not sent for it.
 
-The permission lives in the child's config, so `configure` keeps the new rules
-and returns `"next_turn"`. The next `send` or `command`, which only comes once
-the turn has ended, first restarts the child with the new config and resumes
-the same OpenCode session. The restart stays inside the OpenCode process
-object, so `Session` does not know it happened.
+The permission lives in the child's config, so `set` keeps the new rules. The
+next send after the turn has ended first restarts the child with the new
+config and resumes the same OpenCode session. The process counts itself busy
+from a send until OpenCode reports idle, so a prompt sent mid-turn never
+restarts it. The restart stays inside the OpenCode process object, so
+`Session` does not know it happened.
 
 aegis's four permissions map to rules in which nothing asks, because aegis has
 no approval prompt (see Out of scope):
@@ -305,8 +305,8 @@ and an OpenCode session in one cwd have different commands. A probe starts an
 
 The session takes `context_window` from its model's `window` when the catalog
 arrives and when the model changes, since OpenCode reports no window in its
-events. The model chip on the spawn form offers the catalog's models for
-OpenCode, and Claude's aliases for Claude, through `model_suggestions`.
+events. The model chip on the spawn form offers the models the agents name (and
+Claude's aliases for Claude); the `/model` menu in a session offers the catalog's.
 
 ### MCP and the primer
 

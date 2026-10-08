@@ -48,6 +48,13 @@ def pct(xs: list[float], q: float) -> float:
     return xs[min(len(xs) - 1, int(q * len(xs)))]
 
 
+OPENCODE_FIXTURE = ROOT / "tests" / "fixtures" / "opencode" / "tool.jsonl"
+
+
+def opencode_lines() -> list[str]:
+    return [ln for ln in OPENCODE_FIXTURE.read_text().splitlines() if ln]
+
+
 def claude_lines() -> list[str]:
     return [
         r["line"] for r in map(json.loads, FIXTURE.open()) if r.get("src") == "claude"
@@ -55,12 +62,14 @@ def claude_lines() -> list[str]:
 
 
 # -- 1. server cost per line --------------------------------------------------
-async def server_cost(rounds: int = 40) -> dict:
+async def server_cost(rounds: int = 40, harness: str = "claude-code") -> dict:
     from aegis.meta import MetaStore
     from aegis.session import Session, SpawnSpec
     from aegis.transcript.store import Store
 
-    lines = claude_lines()
+    opencode = harness == "opencode"
+    lines = opencode_lines() if opencode else claude_lines()
+    ids = ('"call_', '"prt_', '"msg_') if opencode else ('"toolu_',)
     samples: list[float] = []
     with tempfile.TemporaryDirectory() as tmp:
 
@@ -72,11 +81,12 @@ async def server_cost(rounds: int = 40) -> dict:
 
         s = Session(
             log_id="bench",
-            spec=SpawnSpec("b", "m", "low", "full", Path(tmp)),
+            spec=SpawnSpec("b", "m", "low", "full", Path(tmp), harness=harness),
             handle="bench-one",
             store=Store(Path(tmp) / "t.jsonl"),
             stderr_path=Path(tmp) / "e",
             claude_bin="true",
+            opencode_bin="true",
             publish=sink,
             metas=MetaStore(Path(tmp) / "sessions"),
         )
@@ -84,15 +94,17 @@ async def server_cost(rounds: int = 40) -> dict:
         for r in range(rounds):
             for line in lines:
                 if r:
-                    line = line.replace('"toolu_', f'"toolu_r{r}_')
+                    for prefix in ids:
+                        line = line.replace(prefix, f"{prefix}r{r}_")
                 t0 = time.perf_counter_ns()
                 s._on_line(line)
                 samples.append((time.perf_counter_ns() - t0) / 1000)
         s.store.close()
+    key = "server_line_opencode" if opencode else "server_line"
     return {
-        "server_line_p50_us": pct(samples, 0.5),
-        "server_line_p95_us": pct(samples, 0.95),
-        "server_lines": len(samples),
+        f"{key}_p50_us": pct(samples, 0.5),
+        f"{key}_p95_us": pct(samples, 0.95),
+        ("server_opencode_lines" if opencode else "server_lines"): len(samples),
     }
 
 
@@ -407,6 +419,7 @@ def main() -> None:
     from playwright.sync_api import sync_playwright
 
     metrics = asyncio.run(server_cost())
+    metrics.update(asyncio.run(server_cost(harness="opencode")))
     metrics.update(boot_cost())
     with sync_playwright() as p:
         metrics.update(browser_runs(p))
