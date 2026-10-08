@@ -127,11 +127,16 @@ def read_config(config_root: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def load_agents(config_root: Path) -> list[Agent]:
-    agents = read_config(config_root).get("agents")
+def agents_from(data: dict) -> list[Agent]:
+    """Every agent in a parsed config's ``agents:`` map."""
+    agents = data.get("agents")
     if not isinstance(agents, dict):
         return []
     return [_agent(name, raw) for name, raw in agents.items()]
+
+
+def load_agents(config_root: Path) -> list[Agent]:
+    return agents_from(read_config(config_root))
 
 
 def default_agent(config_root: Path) -> str | None:

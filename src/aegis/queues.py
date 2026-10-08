@@ -27,7 +27,7 @@ import secrets
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .agents import ConfigError, load_agents, read_config, resolve
 from .monitors import iso_now
@@ -65,14 +65,11 @@ class Task:
         return d
 
 
-def load_queues(config_root: Path) -> dict[str, dict]:
-    """Every queue in ``queues:``. A queue that does not name its agent and a
-    positive ``max_parallel`` is kept with an ``error``, so enqueueing on it
-    says what is wrong; nothing in .aegis.yaml is a default (agents.py)."""
-    try:
-        raw = read_config(config_root).get("queues")
-    except ConfigError:
-        return {}
+def queues_from(raw: Any) -> dict[str, dict]:
+    """Every queue in a parsed ``queues:`` map. A queue that does not name its
+    agent and a positive ``max_parallel`` is kept with an ``error``, so
+    enqueueing on it says what is wrong; nothing in .aegis.yaml is a default
+    (agents.py)."""
     if not isinstance(raw, dict):
         return {}
     out: dict[str, dict] = {}
@@ -92,6 +89,14 @@ def load_queues(config_root: Path) -> dict[str, dict]:
         else:
             out[str(name)] = {"agent": str(agent), "max_parallel": limit}
     return out
+
+
+def load_queues(config_root: Path) -> dict[str, dict]:
+    try:
+        raw = read_config(config_root).get("queues")
+    except ConfigError:
+        return {}
+    return queues_from(raw)
 
 
 class Queues:
