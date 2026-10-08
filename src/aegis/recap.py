@@ -48,9 +48,10 @@ SYSTEM = (
     "what actually happened over what the agent said it would do. LANGUAGE: write "
     "both fields in the language of the person's own messages (the lines marked "
     "`user:`), even when the agent answers in another language. `context` is one "
-    "sentence of at most 25 words. `ask` is one sentence saying what the person "
-    "must answer, decide or read, and is empty when the session needs nothing from "
-    "them. No preamble, no praise."
+    "sentence of at most 25 words. `ask` restates only a question or request the "
+    "agent actually put to the person, in the transcript or the AGENT REPORT; never "
+    "invent one. When the AGENT REPORT is done or review and the last agent message "
+    "asks nothing, `ask` is empty. No preamble, no praise."
 )
 
 

@@ -2,6 +2,7 @@ import json
 
 from aegis.recap import (
     AWAY_S,
+    SYSTEM,
     RecapOut,
     argv,
     load_recap,
@@ -129,3 +130,7 @@ def test_load_recap_names_an_agent_or_says_what_is_wrong(tmp_path):
     assert "claude-code" in load_recap(tmp_path)["error"]
     (tmp_path / ".aegis.yaml").write_text("recap: {}\n")
     assert "agent" in load_recap(tmp_path)["error"]
+
+
+def test_the_recap_never_invents_a_question():
+    assert "never invent" in SYSTEM
