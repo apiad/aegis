@@ -102,7 +102,7 @@ async def test_a_dead_process_is_an_error_until_the_next_send(world):
 
 async def test_a_parent_waits_on_a_working_child(world, published):
     a = await world.spawn()
-    said = await turn(a, mcp("session_spawn", agent="opus", prompt="/sleep 3"))
+    said = await turn(a, mcp("session_spawn", agent="opus", prompt="/sleep 1"))
     child = world.session(json.loads(said.removeprefix("mcp ok: "))["log_id"])
     await until(lambda: child.status == "working", timeout=8, what="the child working")
     assert a.wire()["attention"] == "waiting" and a.wire()["waiting_on"] == "1 session"
