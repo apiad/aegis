@@ -1120,3 +1120,34 @@ def test_clicking_the_model_chip_opens_the_menu_on_models(server, page):
     assert page.input_value("#input") == "/model "
     assert menu_rows(page)[:3] == ["opus", "sonnet", "haiku"]
     assert page.errors == []
+
+
+def test_a_chip_click_over_a_draft_keeps_the_draft(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.fill("#input", "keep me")
+    page.click("#chip-effort")
+    page.wait_for_selector("#cmd-filter")
+    assert page.input_value("#cmd-filter") == "/effort "
+    page.keyboard.type("lo")
+    page.keyboard.press("Enter")
+    page.keyboard.press("Enter")
+    page.wait_for_function(
+        "() => document.getElementById('chip-effort').textContent === 'low effort'"
+    )
+    assert page.input_value("#input") == "keep me"
+    assert page.errors == []
+
+
+def test_help_opens_the_menu_and_sends_nothing(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.fill("#input", "/help")
+    page.press("#input", "Enter")
+    page.wait_for_selector("#cmd-menu:not([hidden])")
+    assert page.input_value("#input") == "/"
+    assert menu_rows(page)[0] == "/model"
+    assert page.evaluate("document.querySelectorAll('.row.user').length") == 1
+    assert page.errors == []

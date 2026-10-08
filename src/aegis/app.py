@@ -236,8 +236,8 @@ class App:
     ) -> dict:
         if not (model or effort or permission):
             raise OpError("bad_params", "nothing to change")
-        if model or effort:
-            cat = await self.catalogs.get(s)
+        cat = await self.catalogs.get(s) if model or effort else None
+        if cat is not None:  # without one, claude itself refuses a bad value
             if model:
                 m = cat.model(model)
                 if m is None:
@@ -287,6 +287,8 @@ class App:
             return reg.rename(s.log_id, arg, None)
         if name == "title":
             return reg.rename(s.log_id, None, arg)
+        if name == "help":
+            return None  # the client opens its menu; nothing goes to claude
         if name == "stop":
             await s.stop()
             return s.wire()
@@ -370,7 +372,8 @@ class App:
                 name, arg = cmd
                 if name in commands.AEGIS:
                     return await self._command(s, name, arg)
-                if not (await self.catalogs.get(s)).has(name):
+                cat = await self.catalogs.get(s)
+                if cat is not None and cat.commands and not cat.has(name):
                     raise OpError(
                         "unknown_command",
                         f"no command /{name} in this session; "
@@ -397,9 +400,12 @@ class App:
             cat = await self.catalogs.get(reg.open(p.log_id))
             return {
                 "commands": commands.aegis_wire()
-                + cat.wire_commands(shadowed=commands.AEGIS),
-                "models": cat.wire_models(),
+                + (cat.wire_commands(shadowed=commands.AEGIS) if cat else []),
+                "models": cat.wire_models() if cat else [],
                 "permissions": list(PERMISSION_MODE),
+                # False: claude gave no command list, so the menu cannot tell
+                # an unknown name from one of claude's.
+                "complete": bool(cat and cat.commands),
             }
 
         @r.op("session.interrupt", LogParams)

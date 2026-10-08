@@ -5,7 +5,8 @@ and sends nothing to ``claude``, or one of the session's harness commands, which
 goes to ``claude`` as typed. ``//rest`` is a prompt: it is sent as `` /rest``,
 because Claude Code runs a line as a command only when the slash comes first.
 Any other ``/`` line is refused before it costs a turn: Claude answers an
-unknown command with the model.
+unknown command with the model. Without a catalog to check against, harness
+names pass through.
 
 The harness part of the list comes from ``initialize`` (``claude/control.py``)
 and is kept in memory by cwd, since commands come from the cwd's ``.claude/``
@@ -21,7 +22,6 @@ from pathlib import Path
 
 from .claude import control
 from .claude.control import Catalog
-from .ops import OpError
 from .session import Session
 
 
@@ -50,6 +50,8 @@ AEGIS: dict[str, Command] = {
         Command("title", "<text>", "Set this session's title"),
         Command("stop", "", "Stop the process and keep the session"),
         Command("close", "", "Close the session; it stays in the archive"),
+        # The browser answers it by opening the menu; it never reaches claude.
+        Command("help", "", "List every command"),
     )
 }
 
@@ -82,24 +84,48 @@ def aegis_wire() -> list[dict]:
 
 
 class Catalogs:
+    """Each cwd's catalog, from a live process's ``initialize`` or a probe.
+
+    A cwd whose ``claude`` gives no catalog (a CLI without ``initialize``, or
+    one that timed out) is remembered as such until a process there answers,
+    and ``get`` returns None: callers then pass harness names through, as
+    before slash commands existed, rather than refuse every one. Concurrent
+    lookups for one cwd share a single probe, so a burst of keystrokes after a
+    restart starts one ``claude``, not one per key."""
+
     def __init__(self, claude_bin: str, stderr_path: Path) -> None:
         self._claude_bin = claude_bin
         self._stderr = stderr_path
         self._by_cwd: dict[str, Catalog] = {}
+        self._failed: set[str] = set()
+        self._probing: dict[str, asyncio.Task[Catalog | None]] = {}
 
     def put(self, cwd: Path, catalog: Catalog) -> None:
         self._by_cwd[str(cwd)] = catalog
+        self._failed.discard(str(cwd))
 
-    async def get(self, s: Session) -> Catalog:
+    async def get(self, s: Session) -> Catalog | None:
+        key = str(s.spec.cwd)
         t = s.catalog_task
         if t is not None:
             await asyncio.wait([t])
             done = None if t.cancelled() else t.result()
             if done is not None:
                 return done
-        hit = self._by_cwd.get(str(s.spec.cwd))
-        if hit is not None:
-            return hit
+            if not t.cancelled():
+                self._failed.add(key)  # the live process gave none
+        if key in self._by_cwd:
+            return self._by_cwd[key]
+        if key in self._failed:
+            return None
+        probe = self._probing.get(key)
+        if probe is None:
+            probe = asyncio.create_task(self._probe(s))
+            self._probing[key] = probe
+            probe.add_done_callback(lambda _: self._probing.pop(key, None))
+        return await asyncio.shield(probe)
+
+    async def _probe(self, s: Session) -> Catalog | None:
         sp = s.spec
         try:
             cat = await control.probe(
@@ -110,11 +136,8 @@ class Catalogs:
                 sp.cwd,
                 self._stderr,
             )
-        except (control.ControlError, TimeoutError, OSError) as e:
-            raise OpError(
-                "no_catalog",
-                f"cannot list claude's commands: {e}; "
-                "start the line with // to send it as text",
-            ) from e
+        except (control.ControlError, TimeoutError, OSError):
+            self._failed.add(str(sp.cwd))
+            return None
         self.put(sp.cwd, cat)
         return cat

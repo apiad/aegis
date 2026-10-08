@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from aegis.app import App
@@ -139,7 +141,7 @@ async def test_commands_list_puts_aegis_first_and_hides_what_it_shadows(app):
     lid = await spawn(app)
     r = await app.registry.call("commands.list", {"log_id": lid})
     names = [c["name"] for c in r["commands"]]
-    assert names[:7] == [
+    assert names[:8] == [
         "model",
         "effort",
         "permission",
@@ -147,6 +149,7 @@ async def test_commands_list_puts_aegis_first_and_hides_what_it_shadows(app):
         "title",
         "stop",
         "close",
+        "help",
     ]
     assert names.count("model") == 1 and names.count("rename") == 1
     src = {c["name"]: c["source"] for c in r["commands"]}
@@ -177,3 +180,65 @@ async def test_a_stopped_session_after_a_restart_gets_its_catalog_from_a_probe(
         assert b.sessions.sessions[lid].pid is None
     finally:
         await b.shutdown()
+
+
+def inits(path) -> int:
+    return len(path.read_text().splitlines()) if path.exists() else 0
+
+
+async def test_without_a_catalog_claudes_commands_still_pass_through(
+    tmp_path, fake_claude, monkeypatch
+):
+    log = tmp_path / "init.log"
+    monkeypatch.setenv("FAKE_CLAUDE_NO_INIT", "1")
+    monkeypatch.setenv("FAKE_CLAUDE_INIT_LOG", str(log))
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    a = make_app(tmp_path, fake_claude)
+    await a.boot()
+    try:
+        lid = await spawn(a)
+        s = a.sessions.sessions[lid]
+        await send(a, lid, "/compact")
+        await until(lambda: s.status == "idle", what="/compact")
+        assert [e["title"] for e in s.entries() if e["kind"] == "command"] == [
+            "/compact"
+        ]
+        await s.stop()
+        for _ in range(2):
+            r = await a.registry.call("commands.list", {"log_id": lid})
+            assert r["complete"] is False and r["models"] == []
+            assert {c["source"] for c in r["commands"]} == {"aegis"}
+        assert inits(log) == 1, "a failed lookup is remembered, not probed again"
+    finally:
+        await a.shutdown()
+
+
+@pytest.mark.slow
+async def test_concurrent_lookups_after_a_restart_start_one_probe(
+    tmp_path, fake_claude, monkeypatch
+):
+    log = tmp_path / "init.log"
+    monkeypatch.setenv("FAKE_CLAUDE_INIT_LOG", str(log))
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    a = make_app(tmp_path, fake_claude)
+    await a.boot()
+    lid = await spawn(a)
+    await a.shutdown()
+    before = inits(log)
+    b = make_app(tmp_path, fake_claude)
+    await b.boot()
+    try:
+        rs = await asyncio.gather(
+            *(b.registry.call("commands.list", {"log_id": lid}) for _ in range(5))
+        )
+        assert all(r["complete"] for r in rs)
+        assert inits(log) - before == 1
+    finally:
+        await b.shutdown()
+
+
+async def test_help_reaching_the_server_sends_nothing(app):
+    lid = await spawn(app)
+    assert await send(app, lid, "/help") is None
+    records, _ = read_store(app.sessions.store_path(lid))
+    assert not [r for r in records if r.get("kind") == "send"]

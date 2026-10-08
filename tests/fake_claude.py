@@ -31,6 +31,9 @@ An interrupt ``control_request`` ends a running script with an error result.
 ``apply_flag_settings``, ``get_settings`` and ``set_permission_mode`` answer as
 Claude Code 2.1.283 does: an unknown model is an error, and an effort level the
 current model does not list is answered with success and not applied.
+``FAKE_CLAUDE_NO_INIT=1`` answers ``initialize`` with an error, as a CLI that
+does not know it would; ``FAKE_CLAUDE_INIT_LOG=<file>`` gets one line per
+``initialize`` received, so a test can count probes.
 
 ``--resume <id>`` keeps that session id, as Claude does; without it the fake
 mints one. Each id's prompts are appended to ``$FAKE_CLAUDE_HOME/<id>.prompts``
@@ -271,7 +274,13 @@ def control(msg: dict) -> None:
     if sub == "interrupt":
         interrupted.set()
     elif sub == "initialize":
-        body = {"commands": COMMANDS, "models": MODELS}
+        if os.environ.get("FAKE_CLAUDE_INIT_LOG"):
+            with open(os.environ["FAKE_CLAUDE_INIT_LOG"], "a") as f:
+                f.write(f"{os.getpid()}\n")
+        if os.environ.get("FAKE_CLAUDE_NO_INIT"):
+            error = "unknown subtype: initialize"
+        else:
+            body = {"commands": COMMANDS, "models": MODELS}
     elif sub == "set_model":
         m = _model(req.get("model"))
         if m is None:

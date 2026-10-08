@@ -100,7 +100,8 @@ next resume always agree with the process.
 | `/stop` | `session.stop` | |
 | `/close` | `session.close` | asks first, like the button |
 
-`/help` is a client action: it opens the menu. Nothing else is client-only.
+`/help` opens the menu. It is in the aegis list so an exact match ranks first,
+the browser answers it, and a `/help` that reaches the server sends nothing.
 
 ### `session.configure`: one operation for model, effort and permission
 
@@ -192,8 +193,14 @@ for an OpenCode harness in aegis 2.
   61 KB becomes 28 KB for 139 commands. The client asks once per focused session
   and again when a `configure` changes the model.
 - **Freshness.** Every process start refreshes the cwd's entry, so a new skill
-  shows up after the next resume. A `system/commands_changed` line, which the CLI
-  can emit, also triggers a refresh.
+  shows up after the next resume. The CLI's `system/commands_changed` line is not
+  read yet.
+- **No catalog.** A `claude` that answers `initialize` with an error, or not in
+  15 s, leaves its cwd marked as having none until a process there answers. Then
+  harness names pass through unchecked, as before this spec, and
+  `commands.list` says `"complete": false`, so the menu flags nothing. Lookups
+  for one cwd share one probe, so a burst of keystrokes after a restart starts
+  one `claude`.
 
 Plugins will add commands to the same list with `source` set to the plugin; the
 vision gives plugins slash commands, and this list is where they appear.

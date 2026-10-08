@@ -152,10 +152,10 @@ export class CommandMenu {
     return this.show();
   }
 
-  async openOverlay() {
+  async openOverlay(prefix = "/") {
     this.overlay = true;
     this.filter.hidden = false;
-    this.filter.value = "/";
+    this.filter.value = prefix;
     await this.show();
     this.filter.focus();
   }
@@ -178,9 +178,10 @@ export class CommandMenu {
     this.rows.replaceChildren(...this.items.map((it, i) => rowNode(it, i === this.at)));
   }
 
-  // Whether the line names a known command, for the composer's outline.
+  // Whether the line names a known command, for the composer's outline. An
+  // incomplete catalog (claude gave no command list) cannot tell.
   known(line) {
-    if (!this.catalog) return true;
+    if (!this.catalog || !this.catalog.complete) return true;
     const name = line.slice(1).split(/\s/)[0];
     return !name || this.catalog.commands.some((c) => c.name === name);
   }

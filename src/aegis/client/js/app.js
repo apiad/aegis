@@ -725,6 +725,14 @@ function focused() {
 async function sendLine(text, fromComposer) {
   const s = focused();
   if (!text || !s) return;
+  if (text === "/help") {
+    // The menu is the help: it lists every command with what it does.
+    if (fromComposer) menu.setLine("/");
+    menu.close();
+    if (fromComposer) menu.openInline();
+    else menu.openOverlay();
+    return;
+  }
   if (text === "/close" && !confirm(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`)) return;
   $("send-error").textContent = "";
   try {
@@ -746,20 +754,21 @@ async function sendLine(text, fromComposer) {
 
 const send = () => sendLine(input.value.trim(), true);
 
-// Catalogs per session, fetched when the menu first opens there.
+// Catalogs per session, fetched when the menu first opens there. The promise
+// is kept, so keystrokes that arrive while it loads wait for the same call
+// instead of each asking the server again.
 const catalogs = new Map();
 async function loadCatalog() {
   const s = focused();
   if (!s) return null;
-  if (!catalogs.has(s.log_id)) {
-    try {
-      catalogs.set(s.log_id, await conn.call("commands.list", { log_id: s.log_id }));
-    } catch (e) {
-      $("send-error").textContent = e.message;
-      return null;
-    }
+  if (!catalogs.has(s.log_id)) catalogs.set(s.log_id, conn.call("commands.list", { log_id: s.log_id }));
+  try {
+    return await catalogs.get(s.log_id);
+  } catch (e) {
+    catalogs.delete(s.log_id); // the next open asks again
+    $("send-error").textContent = e.message;
+    return null;
   }
-  return catalogs.get(s.log_id);
 }
 
 const menu = new CommandMenu({
@@ -785,6 +794,8 @@ for (const [id, cmd] of [
 ]) {
   $(id).classList.add("click");
   $(id).addEventListener("click", () => {
+    // Over a draft, the menu's own filter line, as Alt+/ does, so the draft stays.
+    if (input.value && !input.value.startsWith("/")) return menu.openOverlay(`/${cmd} `);
     input.value = `/${cmd} `;
     input.focus();
     menu.openInline();
