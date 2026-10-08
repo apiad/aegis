@@ -49,3 +49,18 @@ def test_the_primer_names_tools_by_the_harness_prefix(tmp_path):
         )
 
     assert "(mcp__aegis__*)" in primer(make("claude-code"), "zion")
+    assert "(aegis_*)" in primer(make("opencode"), "zion")
+
+
+def test_opencode_is_a_harness():
+    from aegis.opencode.harness import OpenCode
+
+    h = harness_for("opencode", "claude", "/bin/opencode")
+    assert isinstance(h, OpenCode)
+    assert (h.name, h.src, h.label, h.tool_prefix, h.bin) == (
+        "opencode",
+        "opencode",
+        "OpenCode",
+        "aegis_",
+        "/bin/opencode",
+    )

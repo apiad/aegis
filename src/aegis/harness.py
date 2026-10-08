@@ -84,4 +84,8 @@ def harness_for(name: str, claude_bin: str, opencode_bin: str) -> Harness:
         from .claude.harness import ClaudeCode
 
         return ClaudeCode(claude_bin)
+    if name == "opencode":
+        from .opencode.harness import OpenCode
+
+        return OpenCode(opencode_bin)
     raise ValueError(f"no harness named {name!r}")

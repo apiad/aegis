@@ -2,7 +2,9 @@
 
 It serves the v1 routes aegis uses on the port it prints, checks the basic
 auth OpenCode checks, and emits events in the shapes OpenCode 1.18.31 emits
-(``tests/fixtures/opencode/``). The text of a prompt picks a script:
+(``tests/fixtures/opencode/``). aegis sends every ``/`` line to
+``/session/{id}/command``, so the scripts are commands, listed by ``/command``
+and echoed as typed:
 
     /sleep N        a bash call that takes N seconds, then text. Prompts sent
                     meanwhile are echoed at once and answered after the call,
@@ -15,11 +17,12 @@ auth OpenCode checks, and emits events in the shapes OpenCode 1.18.31 emits
     /mcp T JSON     call tool T of the aegis MCP server in OPENCODE_CONFIG_CONTENT
                     with arguments JSON, as an aegis_T tool part.
     /task           a task call whose child session says one thing.
-    /body           text "body: <JSON of the prompt body received>".
+    /body           text "body: <JSON of the last prompt_async body received>".
     /config         text "config: <OPENCODE_CONFIG_CONTENT>".
     /recall         text listing the prompts this session id received before.
     /exit N         a stderr line, then exit with code N.
-    anything else   text "you said: <prompt>".
+
+A plain prompt is answered with text "you said: <prompt>".
 
 Text streams as an empty part, three deltas, then the full text. An assistant
 message costs $0.002 and reports 1,030 tokens. After its first turn a session
@@ -71,7 +74,25 @@ ZERO = {
     "cache": {"read": 0, "write": 0},
 }
 TEMPLATES = {"hello": "Say hello to $ARGUMENTS."}
+SCRIPTS = (
+    "sleep",
+    "stall",
+    "stream",
+    "fail",
+    "bash",
+    "edit",
+    "mcp",
+    "task",
+    "body",
+    "config",
+    "recall",
+    "exit",
+)
 COMMANDS = [
+    *(
+        {"name": w, "description": f"Fake script {w}.", "source": "command"}
+        for w in SCRIPTS
+    ),
     {"name": "hello", "description": "Greet someone.", "source": "command"},
     {"name": "review", "description": "Review the changes.", "source": "command"},
     {
@@ -136,6 +157,7 @@ class Sess:
         self.turns = 0
         self.first: str | None = None
         self.titled = False
+        self.last_body: dict = {}
         if parent is None:
             threading.Thread(target=worker, args=(self,), daemon=True).start()
 
@@ -381,7 +403,7 @@ def run(s: Sess, text: str, body: dict) -> None:
         words = [f"chunk{i} " for i in range(1, int(rest or 4) + 1)]
         m.text("".join(words), pace=0.25, chunks=words)
     elif word == "/body":
-        m.text("body: " + json.dumps(body, sort_keys=True))
+        m.text("body: " + json.dumps(s.last_body, sort_keys=True))
     elif word == "/config":
         m.text("config: " + json.dumps(CONFIG, sort_keys=True))
     elif word == "/recall":
@@ -419,6 +441,7 @@ def worker(s: Sess) -> None:
 def new_session() -> Sess:
     s = Sess(nid("ses"))
     sessions[s.id] = s
+    open(prompts_file(s.id), "a").close()  # OpenCode keeps a session from creation
     emit("session.created", sessionID=s.id, info=s.info())
     emit("session.updated", sessionID=s.id, info=s.info())
     emit("plugin.added", id="core/fake")  # noise aegis drops
@@ -492,6 +515,7 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
             if parts[2:] == ["prompt_async"]:
                 text = "".join(p.get("text", "") for p in body.get("parts") or [])
+                s.last_body = body
                 take_prompt(s, text, body)
                 return self._json(204, None)
             if parts[2:] == ["abort"]:
@@ -503,9 +527,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(
                         400, {"name": "CommandNotFound", "data": {"command": name}}
                     )
-                text = TEMPLATES.get(name, f"Run {name}.").replace(
-                    "$ARGUMENTS", body.get("arguments", "")
-                )
+                args = body.get("arguments", "")
+                if name in SCRIPTS:
+                    text = f"/{name} {args}".strip()
+                else:
+                    text = TEMPLATES.get(name, f"Run {name}.").replace(
+                        "$ARGUMENTS", args
+                    )
                 with s.cond:
                     before = s.turns
                 take_prompt(s, text, body)
