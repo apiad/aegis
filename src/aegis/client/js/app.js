@@ -71,10 +71,13 @@ installBell($("bell"));
 $("nav-up").addEventListener("click", () => (transcript.message(-1), drawNav()));
 $("nav-down").addEventListener("click", () => (transcript.message(1), drawNav()));
 $("nav-pos").addEventListener("click", () => (transcript.firstUnread(), drawNav()));
+// Shown with any entry, so the latest button is there before the first agent
+// message; with none, the position is empty and the arrows are off.
 function drawNav() {
   const { index, total, unread } = transcript.position();
-  $("nav").hidden = !total;
-  $("nav-pos").textContent = `${unread ? `${unread} unread · ` : ""}message ${index} of ${total}`;
+  $("nav").hidden = !transcript.entries.size;
+  $("nav-pos").textContent = total ? `${unread ? `${unread} unread · ` : ""}message ${index} of ${total}` : "";
+  $("nav-up").disabled = $("nav-down").disabled = !total;
 }
 // How the Fleet orders its cards: this browser's choice, like the tab order.
 let fleetOrder = localStorage.getItem("aegis.fleetOrder") || "attention";

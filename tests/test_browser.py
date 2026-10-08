@@ -1666,6 +1666,25 @@ def test_a_needs_you_tab_blinks_until_its_last_message_is_read(server, page):
     assert page.errors == []
 
 
+def test_the_latest_button_shows_before_any_agent_message(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/bash list => a.txt")  # a turn with no agent message
+    assert page.locator(".row.prose").count() == 0
+    page.wait_for_selector("#nav:not([hidden])")
+    assert page.is_visible("#jump")
+    assert page.inner_text("#nav-pos") == ""
+    assert page.is_disabled("#nav-up") and page.is_disabled("#nav-down")
+    page.fill("#input", "hello")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    page.wait_for_function(
+        "() => document.getElementById('nav-pos').textContent.includes('message ')"
+    )
+    assert page.is_enabled("#nav-up") and page.is_enabled("#nav-down")
+    assert page.errors == []
+
+
 def test_the_divider_stays_where_it_was_across_a_reconnect(server, page):
     page.add_init_script("""
       window.__sockets = [];
