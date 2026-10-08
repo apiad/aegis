@@ -1419,6 +1419,22 @@ def test_a_reply_read_on_screen_turns_its_mark_and_clears_the_done_badge(server,
     assert page.errors == []
 
 
+def test_a_reply_taller_than_the_view_becomes_read(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    # The fake claude quotes the prompt, so a tall prompt makes a tall reply.
+    spawn(page, "\n\n".join(f"line {i}" for i in range(120)))
+    # Never half visible: the row is more than twice the transcript's height.
+    assert page.evaluate(
+        "() => [...document.querySelectorAll('.row.prose')].at(-1).offsetHeight"
+        " > 2 * document.querySelector('#tr').clientHeight"
+    )
+    page.wait_for_function(
+        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+    )
+    assert page.errors == []
+
+
 def test_a_reply_that_lands_while_you_are_away_stays_unread_until_you_look(
     server, page
 ):
