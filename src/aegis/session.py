@@ -42,6 +42,7 @@ from .meta import MetaStore
 from .names import default_title
 from .transcript.entries import EMPTY_STANDING, Fold, fold_records
 from .transcript.store import Store, read_store
+from .transcript.wire import wire, wire_ops
 
 Publish = Callable[[str, list[dict]], None]
 
@@ -51,7 +52,14 @@ Publish = Callable[[str, list[dict]], None]
 # and go out together. Publishing them per line doubled the server's cost per
 # line in the bench (issue #127).
 _NOW = ("status", "handle", "title", "model_id", "standing")
-_SOON = ("activity", "cost_usd", "context_tokens", "context_window")
+_SOON = (
+    "activity",
+    "cost_usd",
+    "context_tokens",
+    "context_window",
+    "unread",
+    "recap_cost_usd",
+)
 PUBLISH_EVERY_S = 0.25
 
 
@@ -176,6 +184,9 @@ class Session:
         opencode_bin: str = "opencode",
         title_set: bool = False,
         standing: dict | None = None,
+        unread: list[str] | None = None,
+        last_read_at: float | None = None,
+        recap_cost_usd: float = 0.0,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
@@ -202,6 +213,12 @@ class Session:
         self._metas = metas
         self._interrupt_timeout = interrupt_timeout
         self._fold: Fold | None = None
+        # A read makes no store record, so the fold's revisions never see it. Per
+        # agent message, the fold's rev when it was read, so a delta since a rev
+        # still carries the flag; and the fold's rev when this process loaded it,
+        # since reads before then were not kept (snapshot).
+        self._read_rev: dict[str, int] = {}
+        self._reads_from: int | None = None
         self._proc: Process | None = None
         self._stopping = False
         self._interrupt_timer: asyncio.Task | None = None
@@ -221,6 +238,13 @@ class Session:
         # The fold's view of the agent's plan and last report; persisted so a
         # card at boot needs no store (DESIGN.md, boot reads meta files).
         self.standing: dict = standing or EMPTY_STANDING
+        # Agent messages (prose entries) no person has read yet, on any browser,
+        # and when someone last read. In the meta, so boot needs no store; a meta
+        # from before this has neither, and nothing old turns up unread.
+        self.unread: set[str] = set(unread or ())
+        self.last_read_at = last_read_at
+        # What this session's recaps cost (recaps.py), apart from its own turns.
+        self.recap_cost_usd = recap_cost_usd
         # The current process's catalog; None as a result when it did not answer.
         self.catalog_task: asyncio.Task[Catalog | None] | None = None
 
@@ -247,6 +271,9 @@ class Session:
             "held": self.held,
             "worker": self.worker,
             "standing": self.standing,
+            "unread": sorted(self.unread),
+            "last_read_at": self.last_read_at,
+            "recap_cost_usd": self.recap_cost_usd,
         }
 
     def wire(self) -> dict:
@@ -255,6 +282,7 @@ class Session:
         m.pop("held")
         m.pop("standing")
         m.pop("priming", None)  # the agent's text stays on the server
+        m["unread"] = len(self.unread)
         m["held_count"] = len(self.held)
         m["state"] = self.status
         m["model"] = self.model_id or self.spec.model
@@ -279,10 +307,72 @@ class Session:
                 self._fold = fold_records(records)
             else:
                 self._fold = Fold()
+            self._reads_from = self._fold.rev
         return self._fold
 
     def entries(self) -> list[dict]:
         return self.fold().entries()
+
+    def view(self) -> list[dict]:
+        """The entries as the transcript channel serves them (snapshot)."""
+        return self.snapshot()["entries"]
+
+    def snapshot(self, since: int | None = None) -> dict:
+        """The fold's snapshot as the channel serves it: wired, and each agent
+        message carrying whether it is unread. The fold's entries never carry
+        the flag, so a refold of the store still equals them. A read makes no
+        store record, so a delta also carries every agent message read since
+        ``since``; and every one, when ``since`` is from before this process
+        loaded the fold, whose earlier reads it does not know."""
+        fold = self.fold()
+        snap = fold.snapshot(since)
+        if "since" in snap:
+            since = snap["since"]
+            known = self._reads_from is not None and since > self._reads_from
+            read = {
+                e["id"]
+                for e in fold.entries()
+                if e["kind"] == "prose"
+                and (not known or self._read_rev.get(e["id"], -2) >= since)
+            }
+            if read:
+                # In the fold's order, as the delta lists its own entries.
+                got = {e["id"]: e for e in snap["entries"]}
+                snap["entries"] = [
+                    got.get(e["id"]) or wire(e)
+                    for e in fold.entries()
+                    if e["id"] in got or e["id"] in read
+                ]
+        snap["entries"] = [self._dress(e) for e in snap["entries"]]
+        return snap
+
+    def _dress(self, e: dict) -> dict:
+        return {**e, "unread": e["id"] in self.unread} if e["kind"] == "prose" else e
+
+    def _out(self, ops: list[dict]) -> list[dict]:
+        """Patch ops as the channel serves them: wired and dressed."""
+        return [
+            {"upsert": self._dress(op["upsert"])} if "upsert" in op else op
+            for op in wire_ops(ops)
+        ]
+
+    def read(self, ids: list[str]) -> int:
+        """A person read these agent messages; ids that are not unread are
+        ignored. Publishes the changed entries and the card at once."""
+        hit = [i for i in dict.fromkeys(ids) if i in self.unread]
+        if not hit:
+            return 0
+        fold = self.fold()
+        for i in hit:
+            self._read_rev[i] = fold.rev
+        # _set writes the meta; the card goes out at once below, not in a batch.
+        self._set(unread=self.unread - set(hit), last_read_at=time.time())
+        self._publish(
+            self.channel,
+            self._out([{"upsert": e} for i in hit if (e := fold.entry(i))]),
+        )
+        self._publish_now()
+        return len(hit)
 
     @property
     def pid(self) -> int | None:
@@ -512,12 +602,26 @@ class Session:
         """A plan or a turn report from the agent (agent_ops)."""
         self._record(record)
 
+    def add_recap_cost(self, cost: float) -> None:
+        self._set(recap_cost_usd=round(self.recap_cost_usd + cost, 6))
+
     def _record(self, record: dict, events: list | None = None) -> None:
         fold = self.fold()
         stored = self.store.append({"ts": time.time(), "src": "aegis", **record})
-        self.last_activity = stored["ts"]
+        if record.get("kind") != "recap":
+            # aegis talking to the person, not the session doing anything.
+            self.last_activity = stored["ts"]
         ops = fold.apply(stored, events)
-        self._publish(self.channel, ops)
+        new = [
+            op["upsert"]["id"]
+            for op in ops
+            if op.get("upsert", {}).get("kind") == "prose"
+        ]
+        if new:
+            # Before dressing the ops, so the new rows go out unread. "unread" is
+            # in _SOON: the card's count follows within PUBLISH_EVERY_S.
+            self._set(unread=self.unread | set(new))
+        self._publish(self.channel, self._out(ops))
         if fold.standing is not self.standing:
             self._set(standing=fold.standing)
             self.standing = fold.standing
@@ -565,7 +669,7 @@ class Session:
         events = fold.parse(self.harness.src, line)
         if events and all(isinstance(ev, Delta) for ev in events):
             # Never stored: the part's closing update carries the whole text.
-            self._publish(self.channel, fold.live(events))
+            self._publish(self.channel, self._out(fold.live(events)))
             self._set(
                 activity=fold.activity(),
                 **({"status": "working"} if self.status == "idle" else {}),

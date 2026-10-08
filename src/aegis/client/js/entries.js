@@ -5,6 +5,8 @@
 // style; they compute nothing about tools.
 
 import markdownit from "../vendor/markdown-it.mjs";
+import { money } from "./fleet.js";
+import { icon } from "./glyphs.js";
 
 const md = markdownit({ html: false, linkify: true, breaks: false });
 const defaultLink = md.renderer.rules.link_open || ((t, i, o, e, s) => s.renderToken(t, i, o));
@@ -53,10 +55,10 @@ function diffBlock(diff) {
 const RENDERERS = {
   user(e) {
     const body = el("div", "body", e.md);
-    if (e.detail?.tail) {
+    if (e.detail?.tail || e.detail?.more) {
       // A command OpenCode expanded: the line as typed, its template under it.
       const d = el("details");
-      d.append(el("summary", null, "template"), el("pre", "out", e.detail.tail));
+      d.append(el("summary", null, "template"), e.detail.tail ? el("pre", "out", e.detail.tail) : el("div", "loading", "loading…"));
       body.append(d);
     }
     return row(e, `user ${e.status}`, body);
@@ -72,14 +74,22 @@ const RENDERERS = {
   prose(e) {
     const body = markdown(e.md);
     body.classList.add("body");
-    return row(e, "prose", body);
+    const r = row(e, "prose", body);
+    // Only the live view carries the flag; an archived transcript draws no mark.
+    if (e.unread !== undefined) {
+      const rm = el("span", "rm");
+      rm.append(icon(e.unread ? "unread" : "read"));
+      r.append(rm);
+      r.classList.toggle("unread", e.unread);
+    }
+    return r;
   },
 
   thinking(e) {
     const body = el("div", "body");
-    if (e.md) {
+    if (e.md || e.detail?.more) {
       const d = el("details");
-      d.append(el("summary", null, e.title || "Thinking"), markdown(e.md));
+      d.append(el("summary", null, e.title || "Thinking"), e.md ? markdown(e.md) : el("div", "loading", "loading…"));
       body.append(d);
     } else {
       body.textContent = e.summary || "thought";
@@ -90,7 +100,6 @@ const RENDERERS = {
   tool(e) {
     const det = e.detail || {};
     const d = el("details");
-    if (det.collapsed === false) d.open = true;
     const line = el("summary", "line");
     const name = el("span", "tn", e.title);
     const label = el("span", "ta", e.summary);
@@ -101,6 +110,7 @@ const RENDERERS = {
     if (det.diff) more.append(diffBlock(det.diff));
     if (det.tail) more.append(el("pre", "out", det.tail));
     if (det.args) more.append(el("pre", "args", det.args));
+    if (det.more) more.append(el("div", "loading", "loading…"));
     if (more.childNodes.length) d.append(more);
     const body = el("div", "body");
     body.append(d);
@@ -109,9 +119,9 @@ const RENDERERS = {
 
   system(e) {
     const body = el("div", "body", e.summary);
-    if (e.detail?.tail) {
+    if (e.detail?.tail || e.detail?.more) {
       const d = el("details");
-      d.append(el("summary", null, "show"), el("pre", "out", e.detail.tail));
+      d.append(el("summary", null, "show"), e.detail.tail ? el("pre", "out", e.detail.tail) : el("div", "loading", "loading…"));
       body.append(d);
     }
     return row(e, "sys", body);
@@ -185,6 +195,31 @@ const RENDERERS = {
     }
     body.append(card);
     return row(e, "file", body);
+  },
+
+  recap(e) {
+    const det = e.detail || {};
+    const body = el("div", "body");
+    if (det.folded) {
+      body.append(el("span", "lbl", "recap · "), el("span", "ctx", det.context));
+      const r = row(e, "recap folded", body);
+      r.querySelector(".g").replaceChildren(icon("sparkle"));
+      return r;
+    }
+    const hd = el("div", "hd");
+    hd.append(icon("sparkle"), el("span", null, det.ask ? "recap · needs you" : "recap"));
+    body.append(hd, el("div", "ctx", det.context));
+    if (det.ask) body.append(el("div", "ask", det.ask));
+    const ft = el("div", "ft");
+    const secs = det.duration_ms ? `${(det.duration_ms / 1000).toFixed(1)}s` : "";
+    ft.append(el("span", null, [det.model, secs, det.cost_usd ? money(det.cost_usd) : ""].filter(Boolean).join(" · ")));
+    const again = el("button", "btn link refresh", "refresh");
+    again.dataset.recap = "force";
+    ft.append(again);
+    body.append(ft);
+    const r = row(e, "recap", body);
+    r.querySelector(".g").replaceChildren(icon("sparkle"));
+    return r;
   },
 
   error(e) {

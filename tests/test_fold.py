@@ -149,7 +149,6 @@ def test_tool_output_replaces_its_call_in_place():
         "ok",
         "3 passed",
     )
-    assert done["detail"]["collapsed"] is True
 
 
 def test_a_bash_row_is_named_by_its_opening_comment():
@@ -201,13 +200,13 @@ def test_a_failed_bash_verdict_skips_them_too():
     assert e["detail"]["result"] == "Exit code 2 · 1 failed, 3 passed"
 
 
-def test_a_failure_starts_open_with_its_tail():
+def test_a_failure_starts_closed_like_every_tool_row():
     r = Rec()
     r.call("t1", "Bash", {"command": "mmdc"})
     r.output("t1", "Exit code 1\nError: Parse error on line 9", is_error=True)
     f, _ = run(r)
     (e,) = f.entries()
-    assert e["status"] == "err" and e["detail"]["collapsed"] is False
+    assert e["status"] == "err" and "collapsed" not in e["detail"]
     assert e["detail"]["result"] == "Exit code 1 · Error: Parse error on line 9"
     assert "Parse error" in e["detail"]["tail"]
 
@@ -660,9 +659,25 @@ def test_standing_starts_empty_and_is_the_same_object_until_it_changes():
     rec = Rec()
     rec.own("send", text="hi")
     rec.echo("hi")
-    rec.text("hello")
     f, _ = run(rec)
     assert f.standing == EMPTY_STANDING
+
+
+def test_last_message_is_the_latest_agent_message_and_survives_a_refold():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.echo("go")
+    rec.text("first")
+    rec.call("task1", "Task", {"description": "look", "prompt": "look"})
+    rec.text("second")
+    rec.text("a subagent's text is not the turn's message", parent="task1")
+    rec.result()
+    f, _ = run(rec)
+    prose = [e["id"] for e in f.entries() if e["kind"] == "prose"]
+    assert len(prose) == 2
+    assert f.standing["last_message"] == prose[-1]
+    again, _ = run(rec)
+    assert again.standing == f.standing
 
 
 def test_a_plan_record_sets_the_plan_and_did_tracks_the_last_item_finished():
@@ -750,3 +765,79 @@ def test_a_turn_cut_by_a_server_restart_is_an_error_and_a_persons_stop_is_not():
     rec.own("stop")
     f, _ = run(rec)
     assert f.standing["turn_error"] == ""
+
+
+def test_a_recap_record_is_an_entry_and_a_send_folds_it():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.echo("go")
+    rec.text("done it")
+    rec.result()
+    rec.own(
+        "recap",
+        upto=3,
+        context="fixing it",
+        ask="merge?",
+        model="m",
+        cost_usd=0.004,
+        duration_ms=1800,
+    )
+    f, _ = run(rec)
+    (r,) = [e for e in f.entries() if e["kind"] == "recap"]
+    assert (
+        r["id"] == "e4"
+        and r["detail"]["context"] == "fixing it"
+        and r["detail"]["folded"] is False
+    )
+    assert f.last_index == 4
+    ops = f.apply(rec.own("send", text="next"))
+    assert any(
+        op.get("upsert", {}).get("id") == "e4" and op["upsert"]["detail"]["folded"]
+        for op in ops
+    )
+
+
+def test_every_recap_before_a_send_folds_and_stays_folded_on_a_refold():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.echo("go")
+    rec.text("done it")
+    rec.result()
+    rec.own("recap", upto=3, context="first", ask="")
+    rec.own("recap", upto=3, context="refreshed", ask="")
+    rec.own("send", text="next")
+    f, _ = run(rec)
+    recaps = [e for e in f.entries() if e["kind"] == "recap"]
+    assert [r["id"] for r in recaps] == ["e4", "e5"]
+    assert all(r["detail"]["folded"] for r in recaps)
+    g, _ = run(rec)
+    assert g.entries() == f.entries()
+
+
+def test_a_new_recap_folds_the_earlier_ones_without_a_send():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.echo("go")
+    rec.text("done it")
+    rec.result()
+    rec.own("recap", upto=3, context="first", ask="")
+    rec.own("recap", upto=3, context="refreshed", ask="")
+    f, _ = run(rec)
+    recaps = {e["id"]: e for e in f.entries() if e["kind"] == "recap"}
+    assert recaps["e4"]["detail"]["folded"] is True
+    assert recaps["e5"]["detail"]["folded"] is False
+    g, _ = run(rec)
+    assert g.entries() == f.entries()
+
+
+def test_a_stop_and_an_exit_after_the_prose_leave_the_content_index():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.echo("go")
+    rec.text("done it")
+    rec.result()
+    f, _ = run(rec)
+    assert f.content_index == 2
+    f.apply(rec.own("stop"))
+    f.apply(rec.own("exit", code=1, harness="claude"))
+    assert f.content_index == 2 and f.last_index == 5

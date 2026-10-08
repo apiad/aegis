@@ -1,0 +1,1 @@
+- **aegis works on a phone.** Below 760 px the tabs get their own row that scrolls sideways, ☰ opens the session's side panel as a drawer, and the Fleet band stacks. On a touch screen the reply chips, buttons and tool rows are at least 40 to 44 px tall, and Enter in the message box adds a line while ↵ sends.

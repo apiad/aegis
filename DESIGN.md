@@ -84,6 +84,31 @@ store, so the fold derives a session's `standing` and a refold gives the same
 card; the meta keeps it, so boot still reads no store. `attention.py` holds the
 precedence. No model reads a transcript to guess what a turn meant.
 
+**What a person has read is the server's, shared by every browser.** A session
+keeps the ids of the agent messages no person has read, and when someone last
+read, in its meta, so boot still reads no store; a new message joins the set as
+the fold publishes it, and only a person's `session.read` removes ids. The `unread`
+flag lives in the transcript channel's view, never in the fold's entries, so a
+refold of the store still equals them. A read makes no store record, so it moves
+no `rev`: a delta (`Session.snapshot`) also carries every agent message read since
+the revision the client holds, and every agent message when that revision is from
+before this process loaded the fold, whose earlier reads it never saw. A browser reports a message once its row
+has been at least half visible, or has filled half the view, for a second while
+the page is visible and focused. A done or review badge clears once the turn's last
+agent message is read, which `attention.card` decides as the card's `mark`.
+
+**A recap is aegis talking to the person, paid for once.** A browser that opens a
+tab asks `recap.request` once the first snapshot or delta lands, a tab restored
+from its cache included; the server decides whether the unread stretch is long
+enough, runs one `claude -p` on the agent named by `recap:` in `.aegis.yaml` (no
+tools, no settings, no MCP, an empty working directory, thinking off), and appends
+the answer as a `recap` record, so every browser receives the same entry. Nothing
+in it is lazy on the wire, and the send that folds it gives it that send's `rev`,
+so a tab returning with an older revision gets the folded row. One call
+runs per session at a time and a point in the transcript is never paid for twice
+unless a person forces it; the call kills its process when cancelled. Nothing in a
+recap is sent to the agent.
+
 **One registry, every caller.** Every action is one registered operation with a
 pydantic params model. A websocket `call` is one projection of the registry, MCP
 tools are another, and plugins add operations to it. Nothing reaches the client as
@@ -141,8 +166,9 @@ permission, so spawning is never a way to gain power. People can do anything.
 
 **The client knows no subsystem by name.** Server state reaches the browser as
 named channels: a snapshot on subscribe, then numbered patches. A gap in the
-numbers, or a reconnect, means resubscribe and take a fresh snapshot. Adding a
-subsystem adds operations and channels, never a protocol field.
+numbers, or a reconnect, means resubscribe, saying which revision it holds; a
+channel that keeps revisions answers with what changed after it, and any other
+with a fresh snapshot. Adding a subsystem adds operations and channels, never a protocol field.
 
 **Python decides, the browser draws.** Every fact and decision about a transcript
 entry is computed once in Python: its glyph, title, summary, status, the diff
@@ -150,6 +176,14 @@ window of an edit, and what collapses. The entry crosses the wire as data and th
 browser only turns it into markup. One copy of each fact means no drift, and a
 data protocol version fails loudly across a link where mismatched markup would
 break silently.
+
+**The wire carries no collapsed detail.** A tool's arguments, output and diff, a
+system note's tail and thinking text stay on the server until a row opens and
+asks for them with `transcript.detail` (`transcript/wire.py`). They were 75% of a
+snapshot's bytes over 80 real transcripts. Every entry carries `rev`, the store
+index of the record that last changed it, so a returning client asks for what
+changed since the revision it holds, and the client keeps the last 8 tabs it
+showed.
 
 **A renderer is a function that returns a Node.** The client is plain ES modules
 with no framework and no build step. A plugin's renderer has the same shape, so
@@ -175,11 +209,20 @@ W, N and Tab, and on Linux Alt+1…9 and Alt+←/→, for itself, so the chords 
 Alt keys it leaves free. Plain keys act only outside a text field and the view
 decides what they do: there is no mode. A selection, in the transcript or the
 Fleet, is held by id and re-marked after every redraw, because both replace their
-nodes on each patch.
+nodes on each patch. Esc closes, in order, a dialog, the drawer, the ? list and a
+monitor card, and only then interrupts.
 
 **A theme is one CSS file over one markup.** The markup carries everything any
 theme might show, and the base stylesheet reads only CSS variables. A theme sets
 the variables and a few overrides that decide what shows.
+
+**One page for every screen.** A phone gets the desktop's markup. Below 760 px
+one CSS block wraps the tab bar onto its own row, turns the side panel into a
+drawer (`data-side=open`, opened by ☰) and stacks the Fleet band; under
+`(pointer: coarse)` touch targets grow to 44 px and Enter in the composer adds a
+line. A second set of screens would be a second client to keep in step. The
+client asks through its own dialog (`js/dialog.js`), never the browser's:
+`tests/test_client_rules.py` fails on `confirm(`, `alert(` or `prompt(`.
 
 **The store keeps raw lines; entries are derived.** A transcript file holds the
 harness's raw stdout lines and what aegis did (spawn, send, interrupt, exit,
@@ -191,7 +234,10 @@ a resume reads the same file the live session wrote.
 snapshot on holds exactly the session's live entries, and those equal a fresh fold
 of the store. A reload and a live view must never disagree. The session tests check
 both after every scenario, because the first bug the browser found was a patch that
-left out an update the entries had.
+left out an update the entries had. A delta from any revision, applied to the
+entries as of that revision, equals the entries now, live ones included
+(tests/test_wire.py checks every cut of the fixtures and 40 earlier moments at
+every step of a stream).
 
 **A transcript is keyed by a log id minted at spawn, never by a handle.** Handles
 are reused; keying on them once merged unrelated conversations into one file in

@@ -10,10 +10,12 @@ import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { ago, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
 import { installKeys, renderKeys } from "./keys.js";
-import { glyph, installGlyphs, LABEL } from "./glyphs.js";
+import { glyph, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
+import { installBell, redrawFavicon, setTitle, updatePing } from "./ping.js";
+import { ask, cancelAsk } from "./dialog.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -43,6 +45,7 @@ themePick.value = document.documentElement.dataset.theme;
 themePick.addEventListener("change", () => {
   document.documentElement.dataset.theme = themePick.value;
   localStorage.setItem("aegis.theme", themePick.value);
+  redrawFavicon();
 });
 
 // -- state ----------------------------------------------------------------
@@ -53,8 +56,57 @@ let shown = null; // log_id whose transcript is subscribed
 let unsubTranscript = null;
 let workingSince = null;
 let booted = false;
-const transcript = new Transcript($("tr"), $("entries"), $("jump"));
+const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
+  // A failed report is retried by the next tick: the ids stay unread in the view.
+  // One call carries at most 500 ids, the operation's cap.
+  onRead: (ids) => {
+    if (!shown) return;
+    for (let i = 0; i < ids.length; i += 500) {
+      const batch = ids.slice(i, i + 500);
+      conn.call("session.read", { log_id: shown, ids: batch }).catch(() => batch.forEach((id) => transcript.sent.delete(id)));
+    }
+  },
+  onSelect: drawNav,
+  loadDetail: (ids) => {
+    const id = shown;
+    return conn.call("transcript.detail", { log_id: id, ids }).then((got) => (shown === id ? got : []));
+  },
+});
 installGlyphs();
+// The navigator: previous / next agent message, the position, and the latest.
+$("nav-recap").append(icon("sparkle"));
+$("nav-up").append(icon("up"));
+$("nav-down").append(icon("down"));
+$("jump").append(icon("latest"));
+$("bell").append(icon("bell"));
+installBell($("bell"));
+$("nav-up").addEventListener("click", () => transcript.message(-1));
+$("nav-down").addEventListener("click", () => transcript.message(1));
+$("nav-pos").addEventListener("click", () => transcript.firstUnread());
+$("nav-recap").addEventListener("click", () => askRecap(true));
+// Every redraw of the transcript re-marks the selection, which asks for the
+// navigator, so it is drawn at most once a frame: position() walks every entry.
+let navFrame = 0;
+function drawNav() {
+  if (!navFrame) navFrame = requestAnimationFrame(drawNavNow);
+}
+// Shown with any entry, so the latest button is there before the first agent
+// message; with none, the position is empty and the arrows are off. Unchanged
+// values are not written back.
+let navDrawn = {};
+function drawNavNow() {
+  navFrame = 0;
+  const { index, total, unread } = transcript.position();
+  const now = {
+    hidden: !transcript.entries.size,
+    text: total ? `${unread ? `${unread} unread · ` : ""}message ${index} of ${total}` : "",
+    off: !total,
+  };
+  if (now.hidden !== navDrawn.hidden) $("nav").hidden = now.hidden;
+  if (now.text !== navDrawn.text) $("nav-pos").textContent = now.text;
+  if (now.off !== navDrawn.off) $("nav-up").disabled = $("nav-down").disabled = now.off;
+  navDrawn = now;
+}
 // How the Fleet orders its cards: this browser's choice, like the tab order.
 let fleetOrder = localStorage.getItem("aegis.fleetOrder") || "attention";
 function markOrder() {
@@ -142,7 +194,12 @@ else {
         setChanged = false;
         changed.clear();
         onSessions();
-      } else if (!frame) frame = requestAnimationFrame(flushSessions);
+      } else {
+        if (!frame) frame = requestAnimationFrame(flushSessions);
+        // Not in the frame: a hidden tab runs no frames, and that is when the
+        // ping matters.
+        updatePing([...sessions.values()], { onOpen: openSession });
+      }
     },
   );
   conn.subscribe(
@@ -193,6 +250,7 @@ function onSessions() {
   const ids = order.arrange([...sessions.values()].sort((a, b) => a.created_at - b.created_at).map((m) => m.log_id));
   ordered = ids.map((id) => sessions.get(id));
   render();
+  updatePing([...sessions.values()], { onOpen: openSession });
 }
 
 // -- rendering -----------------------------------------------------------------
@@ -231,19 +289,19 @@ function render() {
     drawBand();
     if (newView) drawQuota();
     if (!archiveLoaded) loadArchive();
-    document.title = "Fleet · aegis";
+    setTitle("Fleet · aegis");
   } else if (r.view === "spawn") {
     watchHost(false);
     follow(null);
     show("spawn");
     $("sp-text").focus();
-    document.title = "New session · aegis";
+    setTitle("New session · aegis");
   } else if (r.view === "settings") {
     watchHost(false);
     follow(null);
     show("settings");
     if (newView) settings.open();
-    document.title = "Settings · aegis";
+    setTitle("Settings · aegis");
   } else if (r.view === "session") {
     watchHost(false);
     // Shown first: follow() sizes the message box, which measures 0 while hidden.
@@ -313,26 +371,63 @@ function drawQuota() {
 // Countdowns and the tick move with the clock; their unit is minutes.
 setInterval(drawQuota, 30 * 1000);
 
+// The last TAB_CACHE tabs left, newest last: a return to one shows it at once
+// and asks only for what changed since (transcript/wire.py, Fold.snapshot).
+const TAB_CACHE = 8;
+const kept = new Map(); // log_id -> transcript.stash()
+
 function follow(id) {
   if (shown === id) return;
+  closeSide();
   if (unsubTranscript) unsubTranscript();
   unsubTranscript = null;
-  transcript.clear();
+  if (shown) {
+    kept.delete(shown);
+    kept.set(shown, transcript.stash());
+    while (kept.size > TAB_CACHE) kept.delete(kept.keys().next().value);
+  } else transcript.clear();
+  drawNavNow(); // at once: the old session's navigator goes with its rows
   shown = id;
   if (!id) return;
+  const saved = kept.get(id);
+  if (saved) {
+    kept.delete(id);
+    transcript.restore(saved);
+  }
+  // The divider is placed by the first snapshot or delta after this switch,
+  // and kept across a resubscribe of the same session.
+  let placed = false;
   unsubTranscript = conn.subscribe(
     `transcript:${id}`,
-    (entries) => {
-      transcript.snapshot(entries || []);
+    (data) => {
+      if (data.since !== undefined) transcript.resume(data);
+      else transcript.snapshot(data);
+      if (!placed) {
+        transcript.setSince(sinceText(sessions.get(id)));
+        askRecap(false); // the server decides whether it is worth one
+      }
+      placed = true;
       // Read by scripts/bench.py: when the snapshot was drawn and painted.
-      const mark = (window.__a2snapshot = { at: performance.now(), count: (entries || []).length });
+      const mark = (window.__a2snapshot = { at: performance.now(), count: transcript.entries.size });
       requestAnimationFrame(() => (mark.painted = performance.now()));
     },
     (ops) => transcript.apply(ops),
+    undefined,
+    // Holding nothing, a full snapshot mounts only the last rows; a delta
+    // from -1 would mount every row through apply().
+    () => (transcript.rev >= 0 ? transcript.rev : null),
   );
   menu.close();
   $("input").value = localStorage.getItem(`aegis.draft.${id}`) || "";
   autosize();
+}
+
+// The divider's label: how long since this session was last read.
+function sinceText(s) {
+  const t = s?.last_read_at;
+  if (!t) return "new since you left";
+  const m = Math.round((Date.now() / 1000 - t) / 60);
+  return `new since you left · ${m < 60 ? `${m} min` : `${Math.round(m / 60)} h`}`;
 }
 
 function fmtTokens(n) {
@@ -388,7 +483,8 @@ function renderMeta(s) {
   $("s-mon-sec").hidden = !mons.length;
   renderMonitors($("s-monitors"), mons);
   const working = s.state === "working";
-  $("stop").hidden = !working;
+  $("interrupt").hidden = !working;
+  $("restart").disabled = working;
   $("working").hidden = !working;
   $("stop-session").disabled = s.state === "stopped";
   if (working && workingSince == null) workingSince = Date.now();
@@ -396,8 +492,10 @@ function renderMeta(s) {
   $("input").placeholder =
     s.state === "stopped"
       ? "Stopped; your next message resumes it."
-      : "Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts.";
-  document.title = `${working ? "● " : ""}${s.title || s.handle} · aegis`;
+      : touch.matches
+        ? "Message the agent. ↵ sends, / for commands."
+        : "Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts.";
+  setTitle(`${working ? "● " : ""}${s.title || s.handle} · aegis`);
 }
 
 setInterval(() => {
@@ -455,6 +553,31 @@ async function loadVersion() {
   top.hidden = false;
 }
 setInterval(() => conn.open && loadVersion(), 3600 * 1000);
+
+// -- the recap -----------------------------------------------------------------
+// Asked on landing and by the sparkle or the row's refresh. The entry arrives on
+// the transcript channel; the answer only says why there is none, and only to a
+// person who asked: the request on landing never writes a hint.
+async function askRecap(force) {
+  const id = shown;
+  if (!id) return;
+  let why = "";
+  try {
+    const r = await conn.call("recap.request", { log_id: id, force });
+    if (r.status === "off" || r.status === "failed") why = r.why;
+    else if (r.status === "busy") why = "the agent is still working; ask again when it is done";
+  } catch (e) {
+    why = e.message;
+  }
+  if (force && why && shown === id) $("send-error").textContent = why;
+}
+$("entries").addEventListener("click", (ev) => {
+  if (ev.target.closest("[data-recap=force]")) askRecap(true);
+});
+// Coming back to the page is landing again; the server decides.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && shown) askRecap(false);
+});
 
 // -- Open natively on a sent file's card ------------------------------------
 $("entries").addEventListener("click", async (ev) => {
@@ -724,6 +847,8 @@ installKeys(
     prev: () => transcript.move(-1),
     turn: (ev) => transcript.moveTurn(ev.key === "J" ? 1 : -1),
     edge: (ev) => transcript.edge(ev.key === "G"),
+    message: (ev) => transcript.message(ev.code === "ArrowUp" ? -1 : 1),
+    firstUnread: () => transcript.firstUnread(),
     toggle: () => transcript.toggle(),
     press: () => transcript.press(),
     none() {},
@@ -748,6 +873,8 @@ installKeys(
       } else menu.openOverlay();
     },
     escape() {
+      if (cancelAsk()) return;
+      if (root.dataset.side === "open") return closeSide();
       if (!keymap.hidden) help(false);
       else if (closeMonitorCard()) return;
       else if (route().view === "session" && !editing.size) interrupt();
@@ -759,6 +886,9 @@ installKeys(
 
 // -- composer ---------------------------------------------------------------
 const input = $("input");
+// On a touch screen Enter adds a line and the button sends: the key sits where
+// a mistap lands, and half a message costs a turn.
+const touch = matchMedia("(pointer: coarse)");
 
 function autosize() {
   input.style.height = "auto";
@@ -791,6 +921,9 @@ function drawReplies(s) {
   );
 }
 
+const askClose = (s) =>
+  ask(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`, { ok: "Close" });
+
 // A line from the composer, or from the menu's own filter (Alt+/ over a
 // draft), which leaves the composer alone. The server resolves "/" lines.
 async function sendLine(text, fromComposer) {
@@ -804,7 +937,7 @@ async function sendLine(text, fromComposer) {
     else menu.openOverlay();
     return;
   }
-  if (text === "/close" && !confirm(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`)) return;
+  if (text === "/close" && !(await askClose(s))) return;
   $("send-error").textContent = "";
   const box = $("replies");
   const was = box.hidden;
@@ -901,13 +1034,16 @@ input.addEventListener("input", async () => {
 });
 input.addEventListener("keydown", (ev) => {
   if (menu.onKey(ev)) return;
-  if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
+  if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing && !touch.matches) {
     ev.preventDefault();
     send();
   }
 });
 $("send").addEventListener("click", send);
-$("stop").addEventListener("click", interrupt);
+$("interrupt").addEventListener("click", interrupt);
+// A nudge after an interrupt, an error or a stop: a message to a stopped
+// session resumes it, so Restart is one sentence to the agent.
+$("restart").addEventListener("click", () => sendLine("Continue", false));
 
 $("stop-session").addEventListener("click", async () => {
   const s = focused();
@@ -922,13 +1058,29 @@ $("stop-session").addEventListener("click", async () => {
 $("close").addEventListener("click", async () => {
   const s = focused();
   if (!s) return;
-  if (!confirm(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`)) return;
+  if (!(await askClose(s))) return;
   try {
     await conn.call("session.close", { log_id: s.log_id });
     archiveLoaded = false;
   } catch (e) {
     $("side-error").textContent = e.message;
   }
+});
+
+// -- the drawer: the side panel on a phone (base.css, max-width 760px) --------
+const closeSide = () => delete root.dataset.side;
+// The header's height, for the drawer to start under it: it wraps to two rows
+// on a phone and grows with the safe area.
+const header = document.querySelector("#a2 > .tabs");
+new ResizeObserver(() => root.style.setProperty("--hdr", `${header.getBoundingClientRect().height}px`)).observe(header);
+$("side-btn").addEventListener("click", () => {
+  if (root.dataset.side === "open") closeSide();
+  else root.dataset.side = "open";
+});
+// The dimmed transcript is the session view's own ::after, so a tap on it
+// lands on the view itself and goes no further.
+document.querySelector(".v-session").addEventListener("click", (ev) => {
+  if (ev.target === ev.currentTarget && root.dataset.side === "open") closeSide();
 });
 
 // -- rename in place -------------------------------------------------------------

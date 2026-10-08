@@ -43,6 +43,7 @@ from ..claude.stream import (
 from .. import files
 from ..opencode.stream import Parser as OpenCodeParser
 from . import describe as d
+from .wire import wire
 
 
 class _Stateless:
@@ -85,7 +86,13 @@ def _entry(
 # item it finished last, its report on the turn that ended (turn_end), and why
 # that turn failed. Replaced as a whole when it changes, so a session compares
 # identity to know whether to publish.
-EMPTY_STANDING: dict = {"plan": [], "did": "", "report": None, "turn_error": ""}
+EMPTY_STANDING: dict = {
+    "plan": [],
+    "did": "",
+    "report": None,
+    "turn_error": "",
+    "last_message": "",
+}
 
 
 def _did(old: list[dict], new: list[dict], prev: str) -> str:
@@ -101,6 +108,10 @@ def _did(old: list[dict], new: list[dict], prev: str) -> str:
     return done[-1] if done else ""
 
 
+# The kinds a recap reads (recap._line).
+CONTENT_KINDS = frozenset({"user", "prose", "tool", "inbox"})
+
+
 class Fold:
     def __init__(self) -> None:
         self._entries: dict[str, dict] = {}
@@ -112,14 +123,53 @@ class Fold:
         self._parsers: dict[str, Any] = {}
         # Entries only deltas made, whose part has not closed yet.
         self._live: set[str] = set()
+        # The store index of the record being folded; stamped on every entry
+        # it changes as ``rev`` (-1 before the first record).
+        self._rev = -1
+        # Removed entry ids, by the rev that removed them. Kept after an id
+        # comes back, so a delta removes it first and appends it again, as a
+        # fresh fold orders it.
+        self._removed: dict[str, int] = {}
         # A prompt was sent or read and its turn has said nothing back yet.
         self._turn_open = False
         self.standing: dict = EMPTY_STANDING
         self._turns = 0  # results seen
         self._report_turn = -1  # self._turns when the current report was made
+        self.last_index = -1  # the "i" of the last record applied
+        # The "i" of the last record that changed what a recap reads: a stop,
+        # an exit or a recap after it leaves the point a recap covers alone.
+        self.content_index = -1
+        self._recaps: list[str] = []  # recap entry ids no send has folded yet
+        self.last_recap_upto: int | None = None
+
+    @property
+    def rev(self) -> int:
+        """The store index of the last record folded; -1 before the first."""
+        return self._rev
 
     def entries(self) -> list[dict]:
         return list(self._entries.values())
+
+    def entry(self, id: str) -> dict | None:
+        return self._entries.get(id)
+
+    def snapshot(self, since: int | None = None) -> dict:
+        """What a subscriber gets: every entry, or, given the ``rev`` it holds,
+        the entries changed after it and the ids removed after it. Live
+        entries are in every delta: deltas grow them without a store record,
+        so their ``rev`` does not move. A ``since`` this fold never reached
+        gets everything."""
+        entries = self.entries()
+        if since is None or not -1 <= since <= self._rev:
+            return {"rev": self._rev, "entries": [wire(e) for e in entries]}
+        return {
+            "rev": self._rev,
+            "since": since,
+            "removed": [i for i, r in self._removed.items() if r > since],
+            "entries": [
+                wire(e) for e in entries if e["rev"] > since or e["id"] in self._live
+            ],
+        }
 
     def apply(self, record: dict, events: list[Event] | None = None) -> list[dict]:
         """Fold one stored record; return the patch ops it caused.
@@ -128,6 +178,8 @@ class Fold:
         parse; a re-fold passes nothing and parses the stored line.
         """
         i, ts = record["i"], record.get("ts")
+        self.last_index = i
+        self._rev = i
         src = record.get("src")
         if src in PARSERS:
             evs = (
@@ -138,8 +190,11 @@ class Fold:
             ops: list[dict] = []
             for k, ev in enumerate(evs):
                 ops += self._event(f"e{i}.{k}", ts, ev)
-            return ops
-        return self._own(i, ts, record)
+        else:
+            ops = self._own(i, ts, record)
+        if any(op.get("upsert", {}).get("kind") in CONTENT_KINDS for op in ops):
+            self.content_index = i
+        return ops
 
     def parse(self, src: str, line: str) -> list[Event]:
         """One stored or live line of harness ``src``, through this fold's parser."""
@@ -262,11 +317,13 @@ class Fold:
         return ""
 
     def _upsert(self, e: dict) -> list[dict]:
+        e["rev"] = self._rev
         self._entries[e["id"]] = e
         return [{"upsert": e}]
 
     def _remove(self, id: str) -> list[dict]:
         self._entries.pop(id, None)
+        self._removed[id] = self._rev
         return [{"remove": id}]
 
     # -- what aegis itself did ---------------------------------------
@@ -275,9 +332,15 @@ class Fold:
         if kind == "send":
             self._turn_open = True
             self._stand(report=None, turn_error="")
+            # The person is back and writing: the recap has done its job.
+            folded: list[dict] = []
+            for rid in self._recaps:
+                r = self._entries[rid]
+                folded += self._upsert({**r, "detail": {**r["detail"], "folded": True}})
+            self._recaps = []
             pid = f"pending:{i}"
             self._pending.append(pid)
-            return self._upsert(
+            return folded + self._upsert(
                 _entry(
                     pid,
                     "user",
@@ -310,6 +373,37 @@ class Fold:
                 }
             )
             return []
+        if kind == "recap":
+            # A refresh replaces the recap on screen: one full box, never two.
+            folded = []
+            for rid in self._recaps:
+                r = self._entries[rid]
+                if not r["detail"]["folded"]:
+                    folded += self._upsert(
+                        {**r, "detail": {**r["detail"], "folded": True}}
+                    )
+            self._recaps.append(f"e{i}")
+            self.last_recap_upto = rec.get("upto")
+            return folded + self._upsert(
+                _entry(
+                    f"e{i}",
+                    "recap",
+                    "ok",
+                    ts,
+                    d.RECAP_GLYPH,
+                    title="recap",
+                    summary=str(rec.get("context") or ""),
+                    detail={
+                        "context": rec.get("context") or "",
+                        "ask": rec.get("ask") or "",
+                        "model": rec.get("model") or "",
+                        "cost_usd": float(rec.get("cost_usd") or 0.0),
+                        "duration_ms": int(rec.get("duration_ms") or 0),
+                        "upto": rec.get("upto"),
+                        "folded": False,
+                    },
+                )
+            )
         if kind == "interrupt":
             self._interrupted = True
             return []
@@ -553,9 +647,11 @@ class Fold:
                 self._live.discard(ev.key)
             if not ev.text.strip():
                 return []
-            return self._upsert(
+            ops = self._upsert(
                 _entry(eid, "prose", "ok", ts, d.PROSE_GLYPH, md=ev.text)
             )
+            self._stand(last_message=eid)
+            return ops
 
         if isinstance(ev, Thinking):
             eid = ev.key or id
@@ -603,7 +699,6 @@ class Fold:
             detail.update(
                 result=d.result_digest(name, ev.text, ev.is_error, pair),
                 tail=d.output_tail(ev.text),
-                collapsed=not ev.is_error,
             )
             if pair is not None and not ev.is_error:
                 removed, added, elided = d.diff_window(pair[1], pair[2])

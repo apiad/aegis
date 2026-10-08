@@ -4,13 +4,20 @@
 // mounts the PAGE before them. Every layout costs a hover hit test and a paint
 // that walk all mounted rows, and a keystroke always lays out, so mounting a
 // long transcript whole made typing cost grow with its length (#157). Mounted
-// rows are always a suffix of the transcript.
+// rows are always a suffix of the transcript. The data of a tab not on screen
+// is kept by app.js (stash and restore), and a row the wire sent without its
+// detail fetches it when it opens (transcript/wire.py).
 //
 // It follows the bottom while the reader is at the bottom; once they scroll
-// up, new entries raise the jump pill instead of moving the page. Rows skip
+// up, new entries light the navigator's latest button instead of moving the
+// page. Rows skip
 // layout off screen (content-visibility in base.css) and take their real
 // height when they near the viewport, so while following, a change in the
 // list's height pins it to the bottom again.
+//
+// It also watches what the reader has seen: an unread agent message on screen
+// for a second is reported through onRead. Only mounted unread rows are
+// observed, and a row is unobserved as it is replaced or dropped.
 
 import { render } from "./entries.js";
 
@@ -19,7 +26,7 @@ const PAGE = 100;
 const NEAR_TOP_PX = 400;
 
 export class Transcript {
-  constructor(scroller, list, jump) {
+  constructor(scroller, list, jump, { loadDetail, onRead = () => {}, onSelect = () => {} } = {}) {
     this.scroller = scroller;
     this.list = list;
     this.jump = jump;
@@ -29,6 +36,13 @@ export class Transcript {
     this.touched = new Set();
     this.following = true;
     this.selected = null; // an entry id: apply() replaces nodes, ids stay
+    this.sinceId = null; // the entry the "new since you left" divider sits above
+    this.sinceText = "";
+    this.onSelect = onSelect; // after every selection change: each path ends in mark()
+    this.loadDetail = loadDetail; // ids -> Promise of whole entries
+    this.rev = -1; // the highest revision seen: what a resubscribe asks since
+    this.full = new Map(); // id -> the whole entry, fetched when its row opened
+    this.fetching = new Set();
     // Tab walks the rows' summaries and buttons; the row holding focus is the selection.
     list.addEventListener("focusin", (ev) => {
       const r = ev.target.closest(".row");
@@ -38,7 +52,7 @@ export class Transcript {
     });
     scroller.addEventListener("scroll", () => {
       this.following = this.atBottom();
-      if (this.following) this.jump.hidden = true;
+      if (this.following) this.jump.classList.remove("new");
       if (scroller.scrollTop < NEAR_TOP_PX) this.mountEarlier();
     });
     jump.addEventListener("click", () => this.toBottom());
@@ -53,12 +67,60 @@ export class Transcript {
       (ev) => {
         const id = ev.target.closest(".row")?.dataset.id;
         if (id && this.touched.has(id)) this.opened.set(id, ev.target.open);
+        if (id && ev.target.open) this.fetch(id);
       },
       true, // toggle does not bubble
     );
     new ResizeObserver(() => {
       if (this.following) this.toBottom();
     }).observe(list);
+    // Reading: an unread agent message counts as read once its row has been
+    // seen for a second while the page is visible and focused. Seen means half
+    // of the row is visible, or it fills half the view: a reply taller than
+    // twice the view is never half visible. The observer calls back only when
+    // the ratio crosses a threshold, and a row five views tall never passes
+    // 0.2, so the thresholds step every 1%.
+    this.onRead = onRead;
+    this.since = new Map(); // id -> when it was first seen
+    this.sent = new Set(); // ids reported and not yet echoed back as read
+    this.watch = new IntersectionObserver(
+      (items) => {
+        for (const it of items) {
+          const id = it.target.dataset.id;
+          // Ids repeat across sessions: a late entry for a dropped node is not
+          // this session's row.
+          if (this.nodes.get(id) !== it.target) continue;
+          const seen =
+            it.isIntersecting &&
+            (it.intersectionRatio >= 0.5 ||
+              it.intersectionRect.height >= it.rootBounds.height / 2);
+          // A replaced row's new node keeps the time its old one was first seen.
+          if (!seen) this.since.delete(id);
+          else if (!this.since.has(id)) this.since.set(id, performance.now());
+        }
+      },
+      { root: scroller, threshold: Array.from({ length: 101 }, (_, i) => i / 100) },
+    );
+    const looking = () => document.visibilityState === "visible" && document.hasFocus();
+    const restart = () => {
+      for (const id of this.since.keys()) this.since.set(id, performance.now());
+    };
+    window.addEventListener("focus", restart);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") restart();
+    });
+    setInterval(() => {
+      if (!looking()) return;
+      const now = performance.now();
+      const ids = [];
+      for (const [id, t] of this.since) {
+        if (now - t >= 1000 && this.entries.get(id)?.unread && !this.sent.has(id)) ids.push(id);
+      }
+      if (ids.length) {
+        for (const id of ids) this.sent.add(id);
+        this.onRead(ids);
+      }
+    }, 300);
   }
 
   atBottom() {
@@ -69,24 +131,93 @@ export class Transcript {
   toBottom() {
     this.scroller.scrollTop = this.scroller.scrollHeight;
     this.following = true;
-    this.jump.hidden = true;
+    this.jump.classList.remove("new");
+  }
+
+  // The entry to draw: the fetched whole one while it is still current.
+  whole(e) {
+    const f = this.full.get(e.id);
+    return f && f.rev === e.rev ? f : e;
   }
 
   mount(e) {
-    const n = render(e);
+    const n = render(this.whole(e));
     if (this.opened.has(e.id)) {
       const d = n.querySelector("details");
       if (d) d.open = this.opened.get(e.id);
+      if (d?.open) this.fetch(e.id);
+    }
+    // Every path that mounts the divider's row draws the divider with it.
+    if (e.id === this.sinceId) {
+      n.classList.add("since");
+      n.dataset.since = this.sinceText;
     }
     this.nodes.set(e.id, n);
+    if (e.unread) this.watch.observe(n);
     return n;
   }
 
-  snapshot(entries) {
+  // A row opened: fetch what the wire left out, unless it is here and current.
+  // An upsert that lands while the fetch is out fetches again once it answers.
+  fetch(id) {
+    const e = this.entries.get(id);
+    if (!e?.detail?.more || this.whole(e) !== e || this.fetching.has(id)) return;
+    this.fetching.add(id);
+    this.loadDetail([id])
+      .then((got) => {
+        this.fetching.delete(id);
+        for (const f of got) {
+          this.full.set(f.id, f);
+          const cur = this.entries.get(f.id);
+          const old = this.nodes.get(f.id);
+          if (cur && old && cur.rev === f.rev) old.replaceWith(this.mount(cur));
+        }
+        this.mark();
+        const f = got.find((x) => x.id === id);
+        if (f && this.entries.get(id)?.rev !== f.rev && this.nodes.get(id)?.querySelector("details")?.open) this.fetch(id);
+      })
+      .catch(() => this.fetching.delete(id));
+  }
+
+  // A whole snapshot of the session already shown (a reconnect the server
+  // answers in full, a gap in the patches) keeps the divider where it was;
+  // switching sessions clears it (stash, clear).
+  snapshot(data) {
+    const { sinceId, sinceText } = this;
     this.clear();
-    for (const e of entries) this.entries.set(e.id, e);
+    this.sinceId = sinceId;
+    this.sinceText = sinceText;
+    this.rev = data.rev;
+    for (const e of data.entries) this.entries.set(e.id, e);
     const frag = document.createDocumentFragment();
-    for (const e of entries.slice(-WINDOW)) frag.append(this.mount(e));
+    for (const e of data.entries.slice(-WINDOW)) frag.append(this.mount(e));
+    this.list.replaceChildren(frag);
+    this.mark();
+    this.toBottom();
+  }
+
+  // A delta: what changed since the revision this tab held, removals first.
+  resume(data) {
+    this.apply([...data.removed.map((id) => ({ remove: id })), ...data.entries.map((e) => ({ upsert: e }))]);
+    this.rev = Math.max(this.rev, data.rev);
+  }
+
+  // Hands over this tab's data and starts empty; restore() takes it back.
+  stash() {
+    const s = { entries: this.entries, full: this.full, opened: this.opened, touched: this.touched, rev: this.rev };
+    this.entries = new Map();
+    this.full = new Map();
+    this.opened = new Map();
+    this.touched = new Set();
+    this.clear();
+    return s;
+  }
+
+  restore(s) {
+    this.clear();
+    Object.assign(this, { entries: s.entries, full: s.full, opened: s.opened, touched: s.touched, rev: s.rev });
+    const frag = document.createDocumentFragment();
+    for (const e of [...this.entries.values()].slice(-WINDOW)) frag.append(this.mount(e));
     this.list.replaceChildren(frag);
     this.mark();
     this.toBottom();
@@ -113,10 +244,18 @@ export class Transcript {
     for (const op of ops) {
       if (op.upsert) {
         const e = op.upsert;
+        if (e.rev > this.rev) this.rev = e.rev;
         const known = this.entries.has(e.id);
         this.entries.set(e.id, e);
+        if (!e.unread) {
+          this.sent.delete(e.id);
+          this.since.delete(e.id);
+        }
         const old = this.nodes.get(e.id);
-        if (old) old.replaceWith(this.mount(e));
+        if (old) {
+          this.watch.unobserve(old);
+          old.replaceWith(this.mount(e));
+        }
         else if (!known) {
           this.list.append(this.mount(e));
           added = true;
@@ -124,7 +263,12 @@ export class Transcript {
         // A known entry above the mounted rows changes only its data.
       } else if (op.remove !== undefined) {
         this.entries.delete(op.remove);
-        this.nodes.get(op.remove)?.remove();
+        const old = this.nodes.get(op.remove);
+        if (old) {
+          this.watch.unobserve(old);
+          old.remove();
+        }
+        this.since.delete(op.remove);
         this.nodes.delete(op.remove);
       }
     }
@@ -133,12 +277,14 @@ export class Transcript {
       while (this.nodes.size > WINDOW + PAGE) {
         const first = this.list.firstElementChild;
         this.nodes.delete(first.dataset.id);
+        this.watch.unobserve(first);
+        this.since.delete(first.dataset.id);
         first.remove();
       }
     }
     this.mark();
     if (this.following) this.toBottom();
-    else if (added) this.jump.hidden = false;
+    else if (added) this.jump.classList.add("new");
   }
 
   clear() {
@@ -146,8 +292,15 @@ export class Transcript {
     this.nodes.clear();
     this.opened.clear();
     this.touched.clear();
+    this.full.clear();
+    this.fetching.clear();
+    this.rev = -1;
     this.following = true;
     this.selected = null;
+    this.sinceId = null;
+    this.watch.disconnect();
+    this.since.clear();
+    this.sent.clear();
     this.list.replaceChildren();
   }
 
@@ -160,7 +313,40 @@ export class Transcript {
     const n = this.selected ? this.nodes.get(this.selected) : null;
     if (n) n.classList.add("sel");
     else this.selected = null;
+    this.list.querySelector(".row.since")?.classList.remove("since");
+    const s = this.sinceId ? this.nodes.get(this.sinceId) : null;
+    if (s) {
+      s.classList.add("since");
+      s.dataset.since = this.sinceText;
+    }
+    this.onSelect();
     return n;
+  }
+
+  // "New since you left": a style on the row it sits above, never a row of its
+  // own, so j/k and the navigator cannot land on it. Placed once, when the tab
+  // is opened, after the last read agent message before the first unread one,
+  // and left there while the tab stays open.
+  setSince(text) {
+    this.sinceText = text;
+    const ids = [...this.entries.keys()];
+    const firstUnread = ids.findIndex((id) => this.entries.get(id).unread);
+    if (firstUnread < 0) {
+      this.sinceId = null;
+    } else {
+      let at = firstUnread;
+      for (let i = firstUnread - 1; i >= 0; i--) {
+        const e = this.entries.get(ids[i]);
+        if (e.kind === "prose") break;
+        if (e.kind === "user") {
+          at = i;
+          break;
+        }
+        at = i;
+      }
+      this.sinceId = ids[at];
+    }
+    this.mark();
   }
 
   select(id) {
@@ -199,6 +385,30 @@ export class Transcript {
 
   moveTurn(delta) {
     this.move(delta, (n) => n.classList.contains("user"));
+  }
+
+  // -- the navigator: agent messages ---------------------------------------
+
+  isProse = (n) => n.classList.contains("prose");
+
+  message(delta) {
+    if (!this.selected) this.pick();
+    this.move(delta, this.isProse);
+  }
+
+  firstUnread() {
+    const id = [...this.entries.keys()].find((i) => this.entries.get(i).unread);
+    if (!id) return this.edge(true);
+    while (!this.nodes.has(id) && this.mountEarlier());
+    this.select(id);
+  }
+
+  // "2 unread · message 3 of 4": counts over every entry, not only the mounted.
+  position() {
+    const prose = [...this.entries.values()].filter((e) => e.kind === "prose");
+    const unread = prose.filter((e) => e.unread).length;
+    const at = this.selected ? prose.findIndex((e) => e.id === this.selected) : -1;
+    return { index: at < 0 ? prose.length : at + 1, total: prose.length, unread };
   }
 
   // The first entry is mounted on the way: an explicit jump may pay for it.

@@ -557,6 +557,86 @@ async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
         await asyncio.wait_for(task, 30)
 
 
+async def test_a_real_haiku_recap_of_a_spanish_session_is_in_spanish(
+    tmp_path: Path,
+):
+    """A real Sonnet session answers two Spanish prompts; a forced recap runs a
+    real Haiku over it, comes back in Spanish, and its cost lands on the record
+    and on the card (#171)."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        "agents:\n"
+        f"  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+        f"  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
+        "recap: {agent: haiku}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        for n, prompt in enumerate(
+            ("Explícame en dos frases qué es un rebase.", "¿Y un merge?"), 1
+        ):
+            await s.send(prompt)
+            await until(
+                lambda n=n: (
+                    s.status == "idle"
+                    and sum(e["kind"] == "user" for e in s.entries()) == n
+                    and s.entries()[-1]["kind"] != "user"
+                ),
+                timeout=120,
+                what=f"answer {n}",
+            )
+        out = await app.registry.call(
+            "recap.request", {"log_id": s.log_id, "force": True}
+        )
+        assert out["status"] == "made", out
+        (rec,) = [e for e in s.entries() if e["kind"] == "recap"]
+        context = rec["detail"]["context"]
+        print(f"\nrecap context: {context}\nrecap ask: {rec['detail']['ask']}")
+        print(f"recap cost: {rec['detail']['cost_usd']}")
+        assert context.strip(), rec
+        # A Spanish sentence can miss any short list of articles ("Explicar las
+        # diferencias entre rebase y merge en Git." in one run), so the list is
+        # wide, and an English stopword rules out an English answer.
+        words = f" {context.lower().rstrip('.')} "
+        spanish = (" el ", " la ", " los ", " las ", " de ", " del ", " que ")
+        spanish += (" en ", " y ", " entre ", " para ", " con ", " un ", " una ")
+        assert any(w in words for w in spanish), context
+        assert not any(w in words for w in (" the ", " and ", " of ", " to ")), context
+        assert rec["detail"]["cost_usd"] > 0, rec
+        # The card keeps the running sum rounded to 6 places (Session.add_recap_cost).
+        assert s.wire()["recap_cost_usd"] == round(rec["detail"]["cost_usd"], 6), (
+            s.wire()
+        )
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
 FLASH = "opencode-go/deepseek-v4-flash"
 
 

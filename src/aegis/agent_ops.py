@@ -149,7 +149,8 @@ def _render(e: dict, tools: bool) -> str | None:
             return None
         result = e["detail"].get("result") or e["status"]
         return f"tool {e['title']} {e['summary']} -> {result}"
-    if kind == "thinking":
+    if kind in ("thinking", "recap"):
+        # A recap is aegis talking to the person; another agent never reads it.
         return None
     if kind == "file":
         return (

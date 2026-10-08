@@ -1,14 +1,16 @@
 """The server's state and its operations, independent of any transport.
 
 Operations: ``agents.list``, ``session.spawn``, ``session.send`` (which
-resolves a ``/`` line first, ``commands.py``), ``session.configure``,
+resolves a ``/`` line first, ``commands.py``), ``session.read``,
+``recap.request``, ``session.configure``,
 ``commands.list``, ``session.interrupt``, ``session.stop``, ``session.close``,
 ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``,
-``quota.read``, and ``config.read``, ``config.write``, ``config.detect``,
-``config.doctor`` and ``config.propose`` (``config_ops.py``). Channels:
-``sessions`` (every open session's meta; patches ``upsert`` and ``remove``),
-``transcript:<log_id>`` (any session, archived included), ``quota`` (each
+``quota.read``, ``transcript.detail``, and ``config.read``, ``config.write``,
+``config.detect``, ``config.doctor`` and ``config.propose`` (``config_ops.py``).
+Channels: ``sessions`` (every open session's meta; patches ``upsert`` and
+``remove``), ``transcript:<log_id>`` (any session, archived included; a
+subscribe ``since`` a revision gets what changed after it), ``quota`` (each
 provider's windows; patches ``set``), ``host`` (CPU, RAM and disk while someone
 watches; patches ``set``) and ``config`` (``.aegis.yaml`` as aegis holds it;
 patches ``set``).
@@ -42,6 +44,7 @@ from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors
 from .queues import Queues
 from .quota import Quota
+from .recaps import Recaps
 from .ops import OpError, Registry as Ops
 from .registry import Registry
 from .roots import Roots
@@ -83,6 +86,16 @@ class SendParams(_Strict):
     text: str = Field(min_length=1)
 
 
+class ReadParams(_Strict):
+    log_id: str
+    ids: list[str] = Field(max_length=500)
+
+
+class RecapParams(_Strict):
+    log_id: str
+    force: bool = False
+
+
 class ConfigureParams(_Strict):
     log_id: str
     model: str | None = None
@@ -92,6 +105,11 @@ class ConfigureParams(_Strict):
 
 class LogParams(_Strict):
     log_id: str
+
+
+class DetailParams(_Strict):
+    log_id: str
+    ids: list[str] = Field(min_length=1, max_length=100)
 
 
 class RenameParams(_Strict):
@@ -173,6 +191,7 @@ class App:
         reg.catalogs = self.catalogs
         reg.mcp_url = f"{base_url.rstrip('/')}{MCP_PATH}" if base_url else None
         self.versions = Versions()
+        self.recaps = Recaps(self)
         self.registry = Ops()
         self._register()
         register_agent_ops(self)
@@ -199,6 +218,7 @@ class App:
         await self.quota.stop()
         await self.host.stop()
         await self.monitors.shutdown()
+        await self.recaps.shutdown()
         await self.sessions.shutdown()
 
     def _on_config(self, snap: Snapshot) -> None:
@@ -220,24 +240,33 @@ class App:
             self.channels.publish(channel, ops)
 
     def _sessions_key(self, op: dict) -> tuple[str, bool]:
-        """A session added or removed, or a change to its state, name, model or
-        attention, goes out at once: the page acts on them (Esc interrupts only a
-        working session, a spawn shows the new tab, a person answers a session
-        that needs them). The rest of a card can wait."""
+        """A session added or removed, or a change to its state, name, model,
+        attention, mark or blink, goes out at once: the page acts on them (Esc
+        interrupts only a working session, a spawn shows the new tab, a person
+        answers a session that needs them, a mark clearing or starting to blink
+        changes what a person acts on). The rest of a card can wait."""
         if "remove" in op:
             self._on_wire.pop(op["remove"], None)
             return op["remove"], True
         m = op["upsert"]
-        seen = (m["state"], m["title"], m["handle"], m["model"], m.get("attention"))
+        seen = (
+            m["state"],
+            m["title"],
+            m["handle"],
+            m["model"],
+            m.get("attention"),
+            m.get("mark"),
+            m.get("blink"),
+        )
         urgent = self._on_wire.get(m["log_id"]) != seen
         self._on_wire[m["log_id"]] = seen
         return m["log_id"], urgent
 
-    def _resolve(self, name: str):
+    def _resolve(self, name: str, since: int | None = None):
         if name == "sessions":
             return lambda: [s.wire() for s in self.sessions.open_sessions()]
         if name.startswith("transcript:"):
-            return self.sessions.transcript(name.removeprefix("transcript:"))
+            return self.sessions.transcript(name.removeprefix("transcript:"), since)
         if name == "quota":
             return self.quota.snapshot
         if name == "host":
@@ -432,6 +461,18 @@ class App:
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e
 
+        @r.op("session.read", ReadParams)
+        async def read(p: ReadParams, caller):
+            """A person read these agent messages, on any browser."""
+            s = reg.open(p.log_id)
+            n = s.read(p.ids)
+            return {"read": n, "unread": len(s.unread)}
+
+        @r.op("recap.request", RecapParams)
+        async def recap_request(p: RecapParams, caller):
+            """A recap of where the session stands, for a person landing on its tab."""
+            return await self.recaps.request(reg.open(p.log_id), p.force)
+
         @r.op("session.configure", ConfigureParams)
         async def configure(p: ConfigureParams, caller):
             return await self._configure(
@@ -451,6 +492,11 @@ class App:
                 # an unknown name from one of claude's.
                 "complete": bool(cat and cat.commands),
             }
+
+        @r.op("transcript.detail", DetailParams)
+        async def detail(p: DetailParams, caller):
+            """The whole entries for rows the wire sent without their detail."""
+            return reg.detail(p.log_id, p.ids)
 
         @r.op("session.interrupt", LogParams)
         async def interrupt(p: LogParams, caller):
