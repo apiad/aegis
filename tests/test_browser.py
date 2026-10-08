@@ -2396,3 +2396,127 @@ def test_returning_to_a_tab_receives_only_what_changed(server, page):
     assert sum(map(len, snaps)) < 1500, [len(f) for f in snaps]
     assert page.evaluate("document.querySelectorAll('#entries .row').length") >= 3
     assert rows >= 3 and page.errors == []
+
+
+# -- dictation ----------------------------------------------------------------
+# The stub engine in tests/fixtures/dictation answers each chunk with its length
+# and keyword count, so the client's cutting, ordering and insertion can be
+# checked without the 17.8 MB model.
+
+
+@pytest.fixture
+def dict_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    from aegis.dictation import PINS, pin_id
+
+    d = tmp_path / "dictation" / pin_id()
+    d.mkdir(parents=True)
+    stub = (Path(__file__).parent / "fixtures" / "dictation" / "needle.js").read_bytes()
+    for p in PINS:
+        (d / p.name).write_bytes(stub if p.name == "needle.js" else b"stub")
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    s = Server(tmp_path, fake_claude, fake_opencode)
+    s.env["AEGIS_DICTATION_DIR"] = str(d.parent)
+    s.start()
+    yield s
+    s.stop()
+
+
+def run_dictation(pg, body: str):
+    """Run ``body`` with the dictation module as ``m``, sine ``tone(s)`` and
+    silent ``gap(s)`` arrays, a ``source`` whose ``feed`` pushes samples in
+    100 ms blocks, and ``prepare`` answering the server's pinned base."""
+    from aegis.dictation import pin_id
+
+    return pg.evaluate(
+        """async ([base, body]) => {
+            const m = await import('/static/js/dictation.js');
+            const tone = (s) => Float32Array.from({ length: Math.round(s * 16000) }, (_, i) => 0.3 * Math.sin(i / 5));
+            const gap = (s) => new Float32Array(Math.round(s * 16000));
+            const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+            let push = null;
+            const source = async (on) => { push = on; return async () => {}; };
+            const feed = (...parts) => { for (const p of parts) for (let i = 0; i < p.length; i += 1600) push(p.subarray(i, i + 1600)); };
+            const prepare = async () => ({ base, keywords: ['aegis', 'pull request'] });
+            return await new (Object.getPrototypeOf(async function () {}).constructor)(
+                'm', 'tone', 'gap', 'sleep', 'source', 'feed', 'prepare', body,
+            )(m, tone, gap, sleep, source, feed, prepare);
+        }""",
+        [f"/dictation/{pin_id()}/", body],
+    )
+
+
+def test_dictation_cuts_at_the_first_pause_after_20s_and_at_30s_without_one(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const out = []; const c = new m.Chunker((a) => out.push(a.length / 16000));
+        for (const p of [tone(22), gap(0.5), tone(35), tone(3)])
+            for (let i = 0; i < p.length; i += 1600) c.push(p.subarray(i, i + 1600));
+        return { out, tail: c.finish().map((a) => a.length / 16000) };""",
+    )
+    assert len(got["out"]) == 2
+    assert 22.0 <= got["out"][0] <= 22.4, "the pause after 22 s"
+    assert 20.0 <= got["out"][1] <= 30.0, "no pause: the quietest point"
+    assert len(got["tail"]) == 2 and sum(got["tail"]) > 10
+
+
+def test_dictation_splits_a_long_tail_in_two_and_drops_silence(dict_server, page):
+    page.goto(dict_server.url)
+    halves, short, silent = run_dictation(
+        page,
+        """const fin = (...parts) => { const c = new m.Chunker(() => {}); for (const p of parts) c.push(p); return c.finish(); };
+        return [fin(tone(6), gap(0.3), tone(8)).map((x) => x.length / 16000),
+                fin(tone(4)).length, fin(gap(5)).length];""",
+    )
+    assert len(halves) == 2 and 5.9 <= halves[0] <= 6.4, "cut in the pause"
+    assert short == 1 and silent == 0
+
+
+def test_dictation_inserts_pieces_in_order_after_the_last_one_and_keeps_typing(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    text = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        el.value = 'Before. After.'; el.setSelectionRange(7, 7);
+        const errors = [];
+        const d = new m.Dictation({ prepare, onError: (e) => errors.push(e) });
+        await d.start({ el, key: null, current: () => null }, source);
+        feed(tone(21), gap(0.5));
+        while (!el.value.includes('kw=')) await sleep(20);
+        el.value += ' typed';
+        feed(tone(14), gap(0.3), tone(7.7));
+        await d.stop();
+        while (d.state !== 'idle') await sleep(20);
+        if (errors.length) throw new Error(errors.join('; '));
+        return el.value;""",
+    )
+    # The tail splits into a long first half (400 ms in the stub) and a short
+    # second half (50 ms), so the second finishes first and must wait.
+    secs = [float(s) for s in re.findall(r"\[(\d+\.\d)s kw=2\]", text)]
+    assert len(secs) == 3 and secs[0] > 20 and secs[1] > 12 > secs[2], text
+    assert text.startswith("Before. [21.") and text.endswith("] After. typed"), text
+
+
+def test_dictation_puts_late_text_in_the_draft_the_textarea_no_longer_shows(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        let showing = 'aegis.draft.a';
+        localStorage.setItem('aegis.draft.a', 'draft of a');
+        const d = new m.Dictation({ prepare });
+        await d.start({ el, key: 'aegis.draft.a', current: () => showing }, source);
+        feed(tone(3));
+        showing = 'aegis.draft.b'; el.value = 'b is shown';
+        await d.stop();
+        while (d.state !== 'idle') await sleep(20);
+        return [el.value, localStorage.getItem('aegis.draft.a')];""",
+    )
+    assert got[0] == "b is shown"
+    assert got[1].startswith("draft of a [3.0s kw=2]")
