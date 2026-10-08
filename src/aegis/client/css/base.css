@@ -173,6 +173,17 @@ body{background:#000}
 #a2 .composer .acts .send{font-size:15px;line-height:1;padding:6px 12px;font-weight:600}
 #a2 .composer .acts .int{background:none;border:1px solid var(--rule);border-radius:6px;color:var(--err);font-size:12px;line-height:1;padding:7px 9px;cursor:pointer}
 #a2 .composer .acts .int[hidden]{display:none}
+/* The mic: idle, loading (capturing while the model loads), listening (its
+   ring follows the input level, --level from app.js) and finishing. */
+#a2 .mic{display:inline-flex;align-items:center;justify-content:center;background:none;border:1px solid var(--rule);border-radius:6px;color:var(--ink);padding:5px 8px;cursor:pointer}
+#a2 .mic svg{width:15px;height:15px;fill:currentColor;stroke:currentColor;stroke-width:1.3}
+#a2 .mic[data-state=loading]{opacity:.6;animation:mic-pulse 1s ease-in-out infinite}
+#a2 .mic[data-state=listening]{color:var(--on-accent);background:var(--err);border-color:transparent;box-shadow:0 0 0 calc(var(--level,0) * 6px) color-mix(in srgb,var(--err) 35%,transparent)}
+#a2 .mic[data-state=finishing]{color:var(--err);border-color:var(--err)}
+#a2 .mic:disabled{opacity:.35;cursor:default}
+#a2 .spawn .mic{margin-left:auto}
+#a2 .spawn .mic + .send{margin-left:6px}
+@keyframes mic-pulse{50%{opacity:.25}}
 #a2 .composer .chips{display:flex;gap:8px;margin-top:8px;align-items:center}
 /* the command menu, drawn above the composer */
 #a2 .composer{position:relative}
@@ -590,7 +601,7 @@ body{background:#000}
 /* Touch, at any width: 44 px targets. */
 @media (pointer:coarse){
   #a2 .rp{min-height:44px;padding:10px 14px;font-size:14.5px}
-  #a2 .composer .acts .send,#a2 .composer .acts .int{min-width:44px;min-height:44px}
+  #a2 .composer .acts .send,#a2 .composer .acts .int,#a2 .mic{min-width:44px;min-height:44px}
   #a2 .tab{min-height:40px}
   #a2 .bell{min-width:44px;min-height:40px}
   #a2 .nav button{height:44px;min-width:44px}

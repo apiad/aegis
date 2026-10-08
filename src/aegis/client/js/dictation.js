@@ -165,11 +165,21 @@ export class Dictation {
     this.up = false;
     this.queue = [];
     this.next = 0;
+    this.waiters = []; // finish() calls waiting for idle
   }
 
   setState(s) {
     this.state = s;
     this.onState(s);
+    if (s === "idle") for (const r of this.waiters.splice(0)) r();
+  }
+
+  // Stop a recording into `el` and wait until its last piece is in, so a send
+  // carries everything that was said.
+  async finish(el) {
+    if (this.target?.el !== el || this.state === "idle") return;
+    await this.stop();
+    if (this.state !== "idle") await new Promise((r) => this.waiters.push(r));
   }
 
   async toggle(target) {

@@ -73,6 +73,7 @@
             <option value="read">perm read</option><option value="write">perm write</option>
             <option value="auto">perm auto</option><option value="full">perm full</option></select>
           <button type="button" class="reset" id="sp-reset" hidden>reset</button>
+          <button class="mic" id="sp-mic" type="button" data-state="idle" title="Dictate (Alt+M)" aria-label="Dictate"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" fill="none"/></svg></button>
           <button class="send" type="submit" id="sp-go" title="Start the session">↵</button>
         </div>
       </div>
@@ -97,7 +98,7 @@
         <div class="replies" id="replies" hidden></div>
         <div class="box">
           <textarea id="input" rows="1" placeholder="Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts."></textarea>
-          <div class="acts"><button class="int" id="interrupt" title="Interrupt (Esc)" aria-label="Interrupt" hidden>■</button><button class="send" id="send" title="Send (Enter)" aria-label="Send">↵</button></div>
+          <div class="acts"><button class="mic" id="mic" type="button" data-state="idle" title="Dictate (Alt+M)" aria-label="Dictate"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" fill="none"/></svg></button><button class="int" id="interrupt" title="Interrupt (Esc)" aria-label="Interrupt" hidden>■</button><button class="send" id="send" title="Send (Enter)" aria-label="Send">↵</button></div>
         </div>
         <div class="chips">
           <span class="chip" id="chip-model"></span><span class="chip" id="chip-effort"></span><span class="chip" id="chip-perm"></span>

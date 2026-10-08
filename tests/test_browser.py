@@ -2520,3 +2520,149 @@ def test_dictation_puts_late_text_in_the_draft_the_textarea_no_longer_shows(
     )
     assert got[0] == "b is shown"
     assert got[1].startswith("draft of a [3.0s kw=2]")
+
+
+@pytest.fixture
+def mic_page(tmp_path: Path):
+    """A page whose microphone is Chromium's fake device playing 4 s of tone
+    and 1 s of silence, on a loop, with the permission already granted."""
+    import math
+    import wave
+
+    wav = tmp_path / "speech.wav"
+    with wave.open(str(wav), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(
+            b"".join(
+                (int(9000 * math.sin(i / 5)) if i < 4 * 16000 else 0).to_bytes(
+                    2, "little", signed=True
+                )
+                for i in range(5 * 16000)
+            )
+        )
+    with playwright.sync_playwright() as p:
+        b = p.chromium.launch(
+            args=[
+                "--use-fake-ui-for-media-stream",
+                "--use-fake-device-for-media-stream",
+                f"--use-file-for-fake-audio-capture={wav}",
+            ]
+        )
+        ctx = b.new_context(
+            viewport={"width": 1280, "height": 800}, permissions=["microphone"]
+        )
+        errors: list = []
+        pg = ctx.new_page()
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.errors = errors
+        yield pg
+        b.close()
+
+
+def dictate_for(pg, mic: str, seconds: float, press=None) -> None:
+    (press or (lambda: pg.click(mic)))()
+    pg.wait_for_selector(f"{mic}[data-state=listening]", timeout=10000)
+    pg.wait_for_timeout(int(seconds * 1000))
+
+
+def test_the_mic_button_inserts_dictated_text_and_sends_nothing(dict_server, mic_page):
+    pg = mic_page
+    pg.goto(dict_server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg)
+    pg.fill("#input", "Look at")
+    dictate_for(pg, "#mic", 2.5)
+    pg.click("#mic")
+    pg.wait_for_selector("#mic[data-state=idle]", timeout=10000)
+    v = pg.input_value("#input")
+    assert re.fullmatch(r"Look at \[\d\.\ds kw=\d+\]", v), v
+    assert pg.locator(".row.sys .body", has_text="done in").count() == 0
+    assert pg.errors == []
+
+
+def test_enter_while_dictating_sends_what_was_said(dict_server, mic_page):
+    pg = mic_page
+    pg.goto(dict_server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg)
+    dictate_for(pg, "#mic", 2.5)
+    pg.press("#input", "Enter")
+    turns_done(pg, 1)
+    assert pg.get_attribute("#mic", "data-state") == "idle"
+    assert pg.input_value("#input") == ""
+    assert pg.locator(".row", has_text="kw=").count() >= 1, "the dictated text was sent"
+
+
+def test_alt_m_dictates_and_a_tab_switch_sends_late_text_to_its_own_draft(
+    dict_server, mic_page
+):
+    pg = mic_page
+    pg.goto(dict_server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(pg)
+    spawn(pg)
+    pg.click(f"#tablist .tab[data-id='{a}']")
+    pg.wait_for_function("(a) => location.hash === `#s=${a}`", arg=a)
+    pg.focus("#input")
+    dictate_for(pg, "#mic", 2.5, press=lambda: pg.keyboard.press("Alt+KeyM"))
+    pg.click(f"#tablist .tab:not([data-id='{a}'])")
+    pg.wait_for_selector("#mic[data-state=idle]", timeout=10000)
+    assert "kw=" not in pg.input_value("#input")
+    draft = pg.evaluate("(a) => localStorage.getItem(`aegis.draft.${a}`) || ''", a)
+    assert "kw=" in draft
+    pg.click(f"#tablist .tab[data-id='{a}']")
+    pg.wait_for_function("() => document.getElementById('input').value.includes('kw=')")
+    assert pg.errors == []
+
+
+def test_the_new_tab_box_dictates_too(dict_server, mic_page):
+    pg = mic_page
+    pg.goto(dict_server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.click("#tab-add")
+    pg.wait_for_selector("#a2[data-view=spawn]")
+    dictate_for(pg, "#sp-mic", 2.5)
+    pg.click("#sp-mic")
+    pg.wait_for_selector("#sp-mic[data-state=idle]", timeout=10000)
+    assert "kw=" in pg.input_value("#sp-text")
+    assert pg.get_attribute("#mic", "data-state") == "idle"
+
+
+def test_the_mic_is_disabled_without_a_microphone_api(dict_server, page):
+    page.add_init_script(
+        "Object.defineProperty(Navigator.prototype, 'mediaDevices', { get: () => undefined })"
+    )
+    page.goto(dict_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    assert page.locator("#mic").is_disabled()
+    assert "https" in page.get_attribute("#mic", "title")
+    page.focus("#input")
+    page.keyboard.press("Alt+KeyM")
+    assert page.get_attribute("#mic", "data-state") == "idle"
+
+
+def test_a_model_that_cannot_be_had_says_so_and_stops(
+    tmp_path, fake_claude, fake_opencode, mic_page
+):
+    blocked = tmp_path / "not-a-dir"
+    blocked.write_text("a file where the cache directory goes")
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    s = Server(tmp_path, fake_claude, fake_opencode)
+    s.env["AEGIS_DICTATION_DIR"] = str(blocked)
+    s.start()
+    try:
+        pg = mic_page
+        pg.goto(s.url)
+        pg.wait_for_selector("#a2[data-view=fleet]")
+        spawn(pg)
+        pg.click("#mic")
+        pg.wait_for_function(
+            "() => document.getElementById('send-error').textContent.includes('Dictation model unavailable')"
+        )
+        pg.wait_for_selector("#mic[data-state=idle]")
+        assert pg.input_value("#input") == ""
+    finally:
+        s.stop()
