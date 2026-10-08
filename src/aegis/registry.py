@@ -37,9 +37,9 @@ def mint_log_id() -> str:
 
 
 def _public(meta: dict) -> dict:
-    """A stored meta as a browser may see it: the agent's priming stays on the
-    server, like ``Session.wire`` keeps it."""
-    return {k: v for k, v in meta.items() if k != "priming"}
+    """A stored meta as a browser may see it: the agent's priming and its raw
+    standing stay on the server, like ``Session.wire`` keeps them."""
+    return {k: v for k, v in meta.items() if k not in ("priming", "standing")}
 
 
 class Registry(Host):

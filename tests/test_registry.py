@@ -306,3 +306,24 @@ async def test_the_priming_never_leaves_the_server_from_the_archive(world):
     assert "priming" not in r.rename(s.log_id, None, "renamed")
     # The stored meta keeps it, so a reopened session resumes with it.
     assert r.archived[s.log_id]["priming"] == "secret text"
+
+
+async def test_the_archive_list_ships_no_standing_or_priming(world):
+    sessions = world.roots.state_root / "sessions"
+    sessions.mkdir(parents=True)
+    meta = {
+        "log_id": "l000",
+        "handle": "h-0",
+        "archived": True,
+        "created_at": 0,
+        "last_activity": 0,
+        "profile": "opus",
+        "cwd": str(world.roots.config_root),
+        "priming": "You review.",
+        "standing": {"plan": [{"text": "x", "state": "doing"}], "did": ""},
+    }
+    (sessions / "l000.json").write_text(json.dumps(meta))
+    r = world.registry()
+    (m,) = r.archive(None, 10, None)
+    assert m["log_id"] == "l000"
+    assert "standing" not in m and "priming" not in m

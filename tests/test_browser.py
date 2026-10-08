@@ -492,6 +492,12 @@ def test_reopen_from_the_archive_and_rename(server, page, frames):
     page.locator(f"#arch-list tr[data-id='{a}'] button", has_text="Read").click()
     page.wait_for_selector("#a2[data-mode=read]")
     assert not page.is_visible(".composer") and not page.is_visible("#close")
+    # An archived meta carries no attention: the state alone, no glyph.
+    assert page.inner_text("#s-status").strip() == "archived"
+    assert page.locator("#s-status svg").count() == 0
+    assert not any(
+        c.startswith("at-") for c in page.get_attribute("#s-status", "class").split()
+    )
     page.click("#reopen")
     page.wait_for_selector("#a2[data-view=session][data-mode=live]")
     assert tab_ids(page) == [a]

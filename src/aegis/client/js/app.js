@@ -323,8 +323,14 @@ function renderMeta(s) {
   if (!editing.has("title")) $("s-title").textContent = s.title || "untitled";
   if (!editing.has("handle")) $("s-handle").textContent = s.handle;
   $("s-model").textContent = `Claude Code, ${s.model}`;
-  $("s-status").replaceChildren(glyph(s.attention), document.createTextNode(` ${LABEL[s.attention] || s.state}`));
-  $("s-status").className = `st at-${s.attention}`;
+  if (s.attention === undefined) {
+    // The archived read view: a stored meta has no attention, so the state alone.
+    $("s-status").textContent = s.state;
+    $("s-status").className = "st";
+  } else {
+    $("s-status").replaceChildren(glyph(s.attention), document.createTextNode(` ${LABEL[s.attention] || s.state}`));
+    $("s-status").className = `st at-${s.attention}`;
+  }
   $("s-ask").hidden = !s.attention_line;
   $("s-ask").textContent = s.attention_line || "";
   $("s-ask").className = `askbox at-${s.attention}`;
