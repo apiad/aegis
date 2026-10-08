@@ -114,6 +114,7 @@ class Queues:
         self._config = config
         self.tasks: dict[str, Task] = {}
         self._dispatching = False
+        self._again = False
 
     @property
     def queues(self) -> dict[str, dict]:
@@ -197,39 +198,54 @@ class Queues:
         return t
 
     async def dispatch(self) -> None:
+        """Start what the queues allow. A call that arrives while a dispatch is
+        running (a config change, a task finishing) makes that dispatch run
+        again, rather than being dropped: its loop read the old limits."""
         if self._dispatching:
+            self._again = True
             return
         self._dispatching = True
         try:
-            # A task logged on a queue that has since lost a field, or been
-            # removed, would wait forever for a slot; fail it with the reason.
-            for t in list(self.tasks.values()):
-                q = self.queues.get(t.queue)
-                if t.status == "pending" and (q is None or "error" in q):
-                    why = q["error"] if q else "it is no longer configured"
-                    self._fail(t, f"its queue {t.queue!r} in .aegis.yaml: {why}")
-            for name, q in self.queues.items():
-                if "error" in q:
-                    continue
-                while True:
-                    running = sum(
-                        1
-                        for t in self.tasks.values()
-                        if t.queue == name and t.status == "running"
-                    )
-                    pending = sorted(
-                        (
-                            t
-                            for t in self.tasks.values()
-                            if t.queue == name and t.status == "pending"
-                        ),
-                        key=lambda t: t.created_at,
-                    )
-                    if not pending or running >= q["max_parallel"]:
-                        break
-                    await self._start(pending[0], q)
+            while True:
+                self._again = False
+                await self._dispatch_once()
+                if not self._again:
+                    break
         finally:
             self._dispatching = False
+
+    async def _dispatch_once(self) -> None:
+        # A task logged on a queue that has since lost a field, or been
+        # removed, would wait forever for a slot; fail it with the reason.
+        # A moment with no file on disk is an editor saving (Vim and Emacs
+        # rename the old file away, a git checkout unlinks it), not a decision
+        # to drop the backlog: tasks wait for the file to come back.
+        present = self._config.current().exists
+        for t in list(self.tasks.values()):
+            q = self.queues.get(t.queue)
+            if present and t.status == "pending" and (q is None or "error" in q):
+                why = q["error"] if q else "it is no longer configured"
+                self._fail(t, f"its queue {t.queue!r} in .aegis.yaml: {why}")
+        for name, q in self.queues.items():
+            if "error" in q:
+                continue
+            while True:
+                running = sum(
+                    1
+                    for t in self.tasks.values()
+                    if t.queue == name and t.status == "running"
+                )
+                pending = sorted(
+                    (
+                        t
+                        for t in self.tasks.values()
+                        if t.queue == name and t.status == "pending"
+                    ),
+                    key=lambda t: t.created_at,
+                )
+                if not pending or running >= q["max_parallel"]:
+                    break
+                await self._start(pending[0], q)
 
     async def _start(self, t: Task, q: dict) -> None:
         try:

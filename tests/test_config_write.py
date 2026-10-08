@@ -208,3 +208,17 @@ def test_a_new_file_is_created_from_nothing(tmp_path):
     data = safe(p)
     assert list(data) == ["default_agent", "agents", "queues"]
     assert doc_from(data) == doc
+
+
+@pytest.mark.parametrize(
+    "text", ["- just\n- a list\n", "agents: !custom {a: 1}\n", "# only a comment\n"]
+)
+def test_a_write_over_a_file_the_server_cannot_read_is_refused(tmp_path, text):
+    # The writer refuses exactly what the reader refuses (config.load): a
+    # non-mapping top level, a tag the safe loader rejects, a comment-only file.
+    p = tmp_path / ".aegis.yaml"
+    p.write_text(text)
+    with pytest.raises(OpError) as e:
+        write(p, ConfigDoc(), stamp_of(p))
+    assert e.value.code == "bad_config"
+    assert p.read_text() == text

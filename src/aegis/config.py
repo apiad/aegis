@@ -350,6 +350,11 @@ def write(path: Path, doc: ConfigDoc, expected: Stamp | None) -> list[Finding]:
         raise OpError("stale", f"{path} changed on disk since it was read; reload it")
     if problems := validate(doc):
         return problems
+    if expected is not None and (error := load(path)[1]):
+        # The writer refuses what the reader refuses: a list at the top, a tag
+        # the safe loader rejects, a comment-only file. Writing over one would
+        # drop text the person has not seen the server read.
+        raise OpError("bad_config", f"{error}; fix it in an editor first")
     rt = YAML()
     rt.preserve_quotes = True
     data = None
