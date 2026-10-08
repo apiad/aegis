@@ -1508,3 +1508,74 @@ def test_the_interrupt_sits_beside_send_and_restart_sends_continue(server, page)
     page.wait_for_selector(".row.user >> text=Continue")
     turns_done(page, 2)
     assert page.errors == []
+
+
+def phone(browser, errors: list, landscape: bool = False):
+    size = {"width": 844, "height": 390} if landscape else {"width": 390, "height": 844}
+    pg = browser.new_context(viewport=size, has_touch=True, is_mobile=True).new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    return pg
+
+
+WIDER = """[...document.querySelectorAll('#a2 *')].filter(e => {
+  const r = e.getBoundingClientRect();
+  return r.width > 0 && (r.left < -1 || r.right > innerWidth + 1) && !e.closest('.tablist, .side, pre, .diff');
+}).map(e => e.className || e.tagName).slice(0, 5)"""
+
+
+def test_a_phone_reaches_tabs_the_drawer_and_the_chips(server, browser):
+    errors: list = []
+    page = phone(browser, errors)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "first")
+    b = spawn(page, "second")
+    assert page.evaluate(WIDER) == []
+    page.tap(f"#tablist .tab[data-id='{a}']")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
+    assert page.locator(".side").bounding_box()["x"] >= 389, "the drawer starts closed"
+    page.tap("#side-btn")
+    page.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
+    page.wait_for_timeout(250)  # the slide
+    assert page.locator(".side").bounding_box()["x"] < 390 - 300
+    assert page.is_visible("#restart") and page.is_visible("#close")
+    page.mouse.click(20, 400)  # the dimmed transcript
+    page.wait_for_function("document.getElementById('a2').dataset.side !== 'open'")
+    page.tap("#side-btn")
+    page.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
+    # The dimmed page covers the tab row, so the switch comes from elsewhere:
+    # the back button, or a link to the session.
+    page.evaluate("id => (location.hash = '#s=' + id)", b)
+    page.wait_for_function("document.getElementById('a2').dataset.side !== 'open'")
+    # Enter adds a line on a touch screen; the button sends.
+    page.tap("#input")
+    page.keyboard.type("one")
+    page.keyboard.press("Enter")
+    page.keyboard.type("two")
+    assert page.input_value("#input") == "one\ntwo"
+    page.tap("#send")
+    turns_done(page, 2)
+    # Reply chips: one per row, 44 px or taller, and a long one wraps.
+    page.evaluate(
+        """(() => { const r = document.getElementById('replies'); r.hidden = false;
+        r.innerHTML = '<span class=lbl>reply</span>' + ['Yes', 'No', 'x '.repeat(80)]
+          .map(t => '<button class=rp>' + t + '</button>').join(''); })()"""
+    )
+    chips = page.eval_on_selector_all(".rp", "bs => bs.map(b => b.getBoundingClientRect().toJSON())")
+    assert all(c["height"] >= 44 for c in chips)
+    assert len({round(c["x"]) for c in chips}) == 1 and chips[0]["width"] > 300
+    assert page.evaluate(WIDER) == []
+    assert errors == []
+
+
+def test_a_phone_in_landscape_gets_the_desktop_layout_with_touch_targets(
+    server, browser
+):
+    errors: list = []
+    page = phone(browser, errors, landscape=True)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    assert page.is_visible(".side") and page.is_hidden("#side-btn")
+    assert page.locator("#send").bounding_box()["height"] >= 44
+    assert errors == []

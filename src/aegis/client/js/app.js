@@ -298,6 +298,7 @@ setInterval(drawQuota, 30 * 1000);
 
 function follow(id) {
   if (shown === id) return;
+  closeSide();
   if (unsubTranscript) unsubTranscript();
   unsubTranscript = null;
   transcript.clear();
@@ -380,7 +381,9 @@ function renderMeta(s) {
   $("input").placeholder =
     s.state === "stopped"
       ? "Stopped; your next message resumes it."
-      : "Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts.";
+      : touch.matches
+        ? "Message the agent. ↵ sends, / for commands."
+        : "Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts.";
   document.title = `${working ? "● " : ""}${s.title || s.handle} · aegis`;
 }
 
@@ -722,6 +725,7 @@ installKeys(
     },
     escape() {
       if (cancelAsk()) return;
+      if (root.dataset.side === "open") return closeSide();
       if (!keymap.hidden) help(false);
       else if (closeMonitorCard()) return;
       else if (route().view === "session" && !editing.size) interrupt();
@@ -733,6 +737,9 @@ installKeys(
 
 // -- composer ---------------------------------------------------------------
 const input = $("input");
+// On a touch screen Enter adds a line and the button sends: the key sits where
+// a mistap lands, and half a message costs a turn.
+const touch = matchMedia("(pointer: coarse)");
 
 function autosize() {
   input.style.height = "auto";
@@ -878,7 +885,7 @@ input.addEventListener("input", async () => {
 });
 input.addEventListener("keydown", (ev) => {
   if (menu.onKey(ev)) return;
-  if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
+  if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing && !touch.matches) {
     ev.preventDefault();
     send();
   }
@@ -909,6 +916,18 @@ $("close").addEventListener("click", async () => {
   } catch (e) {
     $("side-error").textContent = e.message;
   }
+});
+
+// -- the drawer: the side panel on a phone (base.css, max-width 760px) --------
+const closeSide = () => delete root.dataset.side;
+$("side-btn").addEventListener("click", () => {
+  if (root.dataset.side === "open") closeSide();
+  else root.dataset.side = "open";
+});
+// The dimmed transcript is the session view's own ::after, so a tap on it
+// lands on the view itself and goes no further.
+document.querySelector(".v-session").addEventListener("click", (ev) => {
+  if (ev.target === ev.currentTarget && root.dataset.side === "open") closeSide();
 });
 
 // -- rename in place -------------------------------------------------------------
