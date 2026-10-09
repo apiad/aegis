@@ -1030,7 +1030,12 @@ def _artifact(page, server, body, n, title="Pick", caption=None):
     turns_done(page, n + 1)
     # Markdown eats the backslash of the skeleton's \" so the prose is no longer JSON.
     said = page.locator(".row.prose .md").last.inner_text()
-    made = dict(zip(("id", "path"), re.search(r'"id": "(art-[^"]+)", "path": "([^"]+)"', said).groups()))
+    made = dict(
+        zip(
+            ("id", "path"),
+            re.search(r'"id": "(art-[^"]+)", "path": "([^"]+)"', said).groups(),
+        )
+    )
     Path(made["path"]).write_text(SKELETON_WITH.format(body=body))
     page.fill("#input", f"/mcp artifact_send {json.dumps({'id': made['id']})}")
     page.press("#input", "Enter")
@@ -1051,7 +1056,9 @@ PICK = (
 )
 
 
-def test_an_artifact_lands_when_its_page_starts_and_a_click_reaches_the_agent(server, page):
+def test_an_artifact_lands_when_its_page_starts_and_a_click_reaches_the_agent(
+    server, page
+):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
@@ -1063,19 +1070,31 @@ def test_an_artifact_lands_when_its_page_starts_and_a_click_reaches_the_agent(se
     frame = page.locator(f".row.artifact iframe[data-artifact={aid}]")
     assert frame.get_attribute("sandbox") == "allow-scripts"
     inner = page.frame_locator(f"iframe[data-artifact={aid}]")
-    inner.locator("#st").filter(has_text="{}").wait_for()  # ready fired with the empty state
-    assert inner.locator("#ac").inner_text().startswith("#")  # the theme reached the frame
+    inner.locator("#st").filter(
+        has_text="{}"
+    ).wait_for()  # ready fired with the empty state
+    assert (
+        inner.locator("#ac").inner_text().startswith("#")
+    )  # the theme reached the frame
     page.locator("#probes iframe").wait_for(state="detached")  # the probe frame is gone
 
     inner.locator("#b").click()
-    page.wait_for_selector(f".row.inbox .from >> text=artifact:{aid} · submit", timeout=10000)
-    page.wait_for_selector(".row.artifact .acard[data-status=submitted] .done >> text=Picked B")
+    page.wait_for_selector(
+        f".row.inbox .from >> text=artifact:{aid} · submit", timeout=10000
+    )
+    page.wait_for_selector(
+        ".row.artifact .acard[data-status=submitted] .done >> text=Picked B"
+    )
     assert page.locator(".row.artifact iframe").count() == 0
     page.locator(".row.artifact button.show").click()
-    page.frame_locator(".row.artifact iframe").locator("html[data-status=submitted]").wait_for()
+    page.frame_locator(".row.artifact iframe").locator(
+        "html[data-status=submitted]"
+    ).wait_for()
 
     page.reload()
-    page.wait_for_selector(".row.artifact .acard[data-status=submitted] .done >> text=Picked B")
+    page.wait_for_selector(
+        ".row.artifact .acard[data-status=submitted] .done >> text=Picked B"
+    )
     assert page.errors == []
 
 
@@ -1088,24 +1107,39 @@ def test_a_page_that_throws_fails_the_send_and_shows_no_card(server, page):
     assert page.locator(".row.artifact").count() == 0
     page.locator("#probes iframe").wait_for(state="detached")
     # An error inside ready(), after the handshake, is caught by the grace window.
-    _, said = _artifact(page, server, "<script>aegis.ready(() => { aegis.state({}); later(); });</script>", 2)
+    _, said = _artifact(
+        page,
+        server,
+        "<script>aegis.ready(() => { aegis.state({}); later(); });</script>",
+        2,
+    )
     assert said.startswith("mcp error: page_error") and "later is not defined" in said
     assert page.locator(".row.artifact").count() == 0
-    assert [e for e in page.errors if "nope" not in str(e) and "later" not in str(e)] == []
+    assert [
+        e for e in page.errors if "nope" not in str(e) and "later" not in str(e)
+    ] == []
 
 
-def test_agent_state_is_pushed_without_reloading_the_frame_and_the_theme_follows(server, page):
+def test_agent_state_is_pushed_without_reloading_the_frame_and_the_theme_follows(
+    server, page
+):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
     aid, _ = _artifact(page, server, PICK, 0)
     inner = page.frame_locator(f"iframe[data-artifact={aid}]")
     inner.locator("#st").filter(has_text="{}").wait_for()
-    page.evaluate(f"document.querySelector('iframe[data-artifact={aid}]').dataset.mark = 'same'")
-    page.fill("#input", f"/mcp artifact_update {json.dumps({'id': aid, 'state': {'n': 7}})}")
+    page.evaluate(
+        f"document.querySelector('iframe[data-artifact={aid}]').dataset.mark = 'same'"
+    )
+    page.fill(
+        "#input", f"/mcp artifact_update {json.dumps({'id': aid, 'state': {'n': 7}})}"
+    )
     page.press("#input", "Enter")
     inner.locator("#st").filter(has_text='{"n":7}').wait_for()
-    assert page.get_attribute(f"iframe[data-artifact={aid}]", "data-mark") == "same"  # not remounted
+    assert (
+        page.get_attribute(f"iframe[data-artifact={aid}]", "data-mark") == "same"
+    )  # not remounted
     before = inner.locator("#ac").inner_text()
     pick(page, "#theme", "logbook")
     inner.locator("#ac").filter(has_not_text=before).wait_for()
@@ -1122,8 +1156,12 @@ def test_a_resend_swaps_the_frame_in_place(server, page):
     before = page.get_attribute(frame, "src")
     made = page.locator(".row.prose .md", has_text='"path"').last.inner_text()
     path = re.search(r'"path": "([^"]+)"', made).group(1)
-    Path(path).write_text(SKELETON_WITH.format(body=PICK.replace("B</button>", "C</button>")))
-    page.fill("#input", f"/mcp artifact_update {json.dumps({'id': aid, 'resend': True})}")
+    Path(path).write_text(
+        SKELETON_WITH.format(body=PICK.replace("B</button>", "C</button>"))
+    )
+    page.fill(
+        "#input", f"/mcp artifact_update {json.dumps({'id': aid, 'resend': True})}"
+    )
     page.press("#input", "Enter")
     turns_done(page, 3)
     page.wait_for_function(
@@ -1134,7 +1172,7 @@ def test_a_resend_swaps_the_frame_in_place(server, page):
     assert page.errors == []
 
 
-VERDICT_BOX ="""sel => {
+VERDICT_BOX = """sel => {
   const r = [...document.querySelectorAll('.row.tool')].pop();
   const box = q => r.querySelector(q).getBoundingClientRect().width;
   const v = r.querySelector('.tr2');
