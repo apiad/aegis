@@ -29,10 +29,14 @@ A change is done when:
 5. a user-visible change has a `changelog.d/` fragment, and a change to how the
    pieces fit has its spec under `docs/superpowers/specs/`, with a status that
    matches the code;
-6. Alex has smoke-tested that version himself through `bin/aegis-dev`
-   (`AEGIS_REF=<branch> aegis-dev`), ideally before the PR opens and always
-   before a release. Every check above is a proxy; his hands on the build are
-   the gate, and a merged PR he has not run is not done.
+6. Alex has smoke-tested that version himself. When a PR is ready, and before
+   every release, offer him the guided smoke test: the build under test runs
+   through `bin/aegis-dev` beside his own aegis, and an agent inside it walks
+   him through what changed, simplest first, asking after each step whether it
+   works. On a PR, fix in it what the tour finds that is easy; before a release,
+   file it as issues unless the fix on main is trivial. Every check above is a
+   proxy; his hands on the build are the gate, and a merged PR he has not run
+   is not done.
 
 Green tests against a server that booted before the change prove nothing about
 the change.

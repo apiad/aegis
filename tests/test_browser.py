@@ -4206,3 +4206,46 @@ def test_the_prose_view_counts_what_each_run_holds_and_mounts_as_you_scroll_up(
     # Each run is one row on screen.
     assert shown == total - sum(n - 1 for _, n in runs)
     assert page.errors == []
+
+
+def test_the_smoke_script_spawns_a_session_and_reads_its_question(server):
+    """scripts/smoke.py creates the tour's session over the websocket, as a
+    browser does, and `read --asked` waits on aegis's own turn_end record.
+    The prompt names turn_end too, so a check that greps the transcript for the
+    word passes before the agent has asked anything."""
+    script = Path(__file__).parents[1] / "scripts" / "smoke.py"
+    prompt = server.root / "tour.md"
+    prompt.write_text(
+        '/mcp turn_end {"attention": "needs_you", "line": "Does it work?"}'
+    )
+    out = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "spawn",
+            "--port",
+            str(server.port),
+            "--root",
+            str(server.root),
+            "--prompt-file",
+            str(prompt),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert out.returncode == 0, out.stderr
+    log_id = json.loads(out.stdout)["log_id"]
+    transcript = server.root / ".aegis" / "state" / "transcripts" / f"{log_id}.jsonl"
+    asked = [sys.executable, str(script), "read", "--asked", str(transcript)]
+    deadline = time.monotonic() + 15
+    while subprocess.run(asked).returncode != 0:
+        assert time.monotonic() < deadline, "the agent never asked"
+        time.sleep(0.2)
+    text = subprocess.run(
+        [sys.executable, str(script), "read", str(transcript)],
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert "### PERSON: /mcp turn_end" in text
+    assert "[turn_end needs_you] Does it work?" in text
