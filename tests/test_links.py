@@ -566,3 +566,141 @@ async def test_the_archive_merges_across_servers_and_pages(tmp_path, fake_claude
         await alpha.stop()
         if beta._server is not None and not beta._task.done():
             await beta.stop()
+
+
+# -- slice 3: agents across the link ----------------------------------------------
+def mcp(tool: str, **args) -> str:
+    return f"/mcp {tool} {json.dumps(args)}"
+
+
+async def turn(s, text: str, timeout: float = 8) -> str:
+    """Send a prompt, wait for the session's next idle, return its last prose."""
+    before = len([e for e in s.entries() if e["kind"] == "prose"])
+    await s.send(text)
+    await until(
+        lambda: (
+            s.status == "idle"
+            and len([e for e in s.entries() if e["kind"] == "prose"]) > before
+        ),
+        timeout=timeout,
+        what=f"the turn {text[:40]!r}",
+    )
+    return [e["md"] for e in s.entries() if e["kind"] == "prose"][-1]
+
+
+def inbox(s) -> list[dict]:
+    return [e for e in s.entries() if e["kind"] == "inbox"]
+
+
+async def test_a_handoff_reaches_a_session_on_the_linked_server(pair):
+    alpha, beta = pair
+    here, far = await alpha.spawn(), await beta.spawn()
+    out = await turn(
+        here,
+        mcp(
+            "peer_handoff", target=f"{far.handle}@beta", context="the plan is in PR 12"
+        ),
+    )
+    assert out.startswith("mcp ok:") and f"{far.handle}@beta" in out
+    await until(lambda: inbox(far), timeout=8, what="the delivery on beta")
+    (msg,) = inbox(far)
+    assert f"from agent:{here.handle}@alpha ({alpha.app.user})" in msg["md"]
+    assert "the plan is in PR 12" in msg["md"]
+
+
+async def test_a_handoff_with_interrupt_cuts_the_far_turn_first(pair):
+    alpha, beta = pair
+    here, far = await alpha.spawn(), await beta.spawn()
+    await far.send("/sleep 20")
+    await until(lambda: far.status == "working", what="beta's long turn")
+    out = await turn(
+        here,
+        mcp(
+            "peer_handoff",
+            target=f"{far.handle}@beta",
+            context="stop and read this",
+            interrupt=True,
+        ),
+    )
+    assert out.startswith("mcp ok:")
+    await until(lambda: inbox(far), timeout=10, what="the delivery after the cut")
+    assert far.status != "working" or inbox(far)
+
+
+async def test_session_list_shows_far_handles_and_states_only(pair):
+    alpha, beta = pair
+    here, far = await alpha.spawn(), await beta.spawn()
+    beta.app.sessions.rename(far.log_id, None, "a far title")
+    out = await turn(here, mcp("session_list"))
+    listed = json.loads(out.removeprefix("mcp ok: "))
+    (entry,) = [e for e in listed if e.get("server") == "beta"]
+    assert entry == {"handle": far.handle, "server": "beta", "state": far.status}
+
+
+async def test_reading_spawning_and_enqueueing_across_a_link_are_refused(pair):
+    alpha, beta = pair
+    here, far = await alpha.spawn(), await beta.spawn()
+    for call in (
+        mcp("peer_read", target=f"{far.handle}@beta"),
+        mcp("session_spawn", agent="opus@beta"),
+        mcp("queue_enqueue", queue="general@beta", payload="do it"),
+    ):
+        out = await turn(here, call)
+        assert out.startswith("mcp error:") and "not_across_links" in out, out
+    assert list(beta.app.sessions.sessions) == [far.log_id]
+
+
+async def test_beta_has_no_route_to_alpha(pair):
+    alpha, beta = pair
+    here, far = await alpha.spawn(), await beta.spawn()
+    out = await turn(
+        far, mcp("peer_handoff", target=f"{here.handle}@alpha", context="hello?")
+    )
+    assert out.startswith("mcp error:") and "unknown_server" in out
+    listed = json.loads((await turn(far, mcp("session_list"))).removeprefix("mcp ok: "))
+    assert all(e.get("server") in (None, "beta") for e in listed)
+    assert not inbox(here)
+
+
+async def test_peer_deliver_is_only_for_link_sockets(pair):
+    alpha, beta = pair
+    far = await beta.spawn()
+    params = {
+        "target": far.handle,
+        "context": "x",
+        "sender": {"handle": "h", "server": "alpha", "user": "u"},
+    }
+    async with Browser(beta) as b:
+        r = await b.call("peer.deliver", **params)
+        assert r["error"]["code"] == "not_a_link"
+    out = await turn(far, mcp("peer_deliver", **params))
+    assert out.startswith("mcp error:")
+    # A link may speak only for the server it linked as.
+    r = await alpha.app.links.get("beta").call_raw(
+        "peer.deliver",
+        {**params, "sender": {"handle": "h", "server": "gamma", "user": "u"}},
+    )
+    assert r["error"]["code"] == "not_a_link"
+    assert not inbox(far)
+
+
+async def test_no_text_written_on_beta_reaches_an_alpha_agent(pair):
+    """aegis never carries text written on the far server into an agent here:
+    not across a handoff, a session list, or any refused call."""
+    alpha, beta = pair
+    marker = "MARKER-WRITTEN-ON-BETA"
+    here, far = await alpha.spawn(), await beta.spawn()
+    beta.app.sessions.rename(far.log_id, None, f"title {marker}")
+    await turn(far, f"say {marker}")
+    for call in (
+        mcp("session_list"),
+        mcp("peer_handoff", target=f"{far.handle}@beta", context="hand over"),
+        mcp("peer_read", target=f"{far.handle}@beta"),
+        mcp("session_spawn", agent="opus@beta"),
+        mcp("queue_enqueue", queue="general@beta", payload="p"),
+        mcp("peer_handoff", target="nobody@beta", context="x"),
+    ):
+        await turn(here, call)
+    store = alpha.app.sessions.store_path(here.log_id).read_text()
+    assert marker not in store
+    assert marker in beta.app.sessions.store_path(far.log_id).read_text()

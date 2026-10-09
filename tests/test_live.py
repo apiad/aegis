@@ -729,3 +729,40 @@ async def test_a_real_opencode_session(tmp_path: Path):
         server.should_exit = True
         await asyncio.wait_for(task, 30)
         await app.shutdown()
+
+
+async def test_a_real_agent_hands_off_across_a_link(tmp_path: Path, fake_claude):
+    """A real Haiku on alpha finds handle@server in its primer and hands off to
+    a session on beta, a linked server; beta's session gets the header."""
+    from .test_links import Node, inbox
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    beta = await Node(tmp_path / "beta", "beta", fake_claude).start()
+    alpha = Node(tmp_path / "alpha", "alpha", claude)
+    (alpha.root / ".aegis.yaml").write_text(
+        f"agents:\n  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
+    )
+    await alpha.start()
+    try:
+        alpha.app.links.add("beta", beta.base, beta.token)
+        await until(
+            lambda: alpha.app.links.get("beta").state == "linked",
+            timeout=10,
+            what="the link",
+        )
+        far = await beta.spawn()
+        r = await alpha.app.registry.call("session.spawn", {"agent": "haiku"})
+        s = alpha.app.sessions.sessions[r["log_id"]]
+        await s.send(
+            f"Hand the message 'ping from alpha' to the session {far.handle}@beta with "
+            "the aegis peer_handoff tool. Then reply with the single word DONE."
+        )
+        await until(lambda: inbox(far), timeout=120, what="the handoff on beta")
+        (msg,) = inbox(far)
+        assert (
+            f"@alpha ({alpha.app.user})" in msg["md"] and "ping from alpha" in msg["md"]
+        )
+    finally:
+        await alpha.stop()
+        await beta.stop()

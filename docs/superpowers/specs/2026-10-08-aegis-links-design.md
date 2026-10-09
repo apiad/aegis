@@ -1,7 +1,8 @@
 # aegis links: zion uses the VPS, and nothing comes back
 
-**Status: approved, 2026-10-08** (issue #203); plan in
-`docs/superpowers/plans/2026-10-08-aegis-links.md`. Being built. Designed with
+**Status: built, 2026-10-08** (issue #203), following
+`docs/superpowers/plans/2026-10-08-aegis-links.md`. Where the build changed the
+design, this file says so in place. Designed with
 Alex in one brainstorm, with mockups over the real client. The mockups and the
 scripts that made them are in the workspace playground, not in this repo:
 `.playground/aegis-multi-server/build.py` builds `mockups.html` from the live

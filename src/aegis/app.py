@@ -504,6 +504,12 @@ class App:
             first message. Its permission can be at most yours. Returns its log
             id and handle. It does not report back: read it with peer_read,
             message it with peer_handoff."""
+            if p.agent and "@" in p.agent:
+                raise OpError(
+                    "not_across_links",
+                    f"{p.agent}: an agent spawns only on its own server; a person "
+                    "spawns on a linked one with /spawn agent@server",
+                )
             agents, default = self._agents()
             parent = reg.sessions.get(caller.log_id) if caller.is_agent else None
             spec = resolve(

@@ -17,9 +17,17 @@ static client, holds the sessions and runs each harness as its own child process
 A browser talks to it over one websocket. Closing the browser leaves the sessions
 running; stopping the server ends their processes, not the sessions. The window
 `aegis` opens is the user's browser started detached, never a child of the server,
-so stopping the server leaves it to reconnect (`window.py`). Later slices
-add the home server, links to other servers and plugin hosts, in the order the
-vision spec gives.
+so stopping the server leaves it to reconnect (`window.py`).
+
+**A server may link others, as their client.** A link (`links.py`) is one
+websocket this server opens to another, saying `hello` with that server's token,
+exactly as a browser does. The people on this server see and drive the linked
+server's sessions through it: a browser message naming another `server` goes
+down the link and comes back stamped with it. Links are kept in
+`<state>/links.json` (mode 0600, never `.aegis.yaml`, which is in git and read
+by both machines), and `aegis link add` or an edit to the file takes effect
+while the server runs. Plugin hosts come later, in the order the vision spec
+gives.
 
 **A session outlives its process.** A session is live (a harness child, `claude` or
 `opencode serve`, is running), stopped (none is), or archived (closed: no process,
@@ -163,6 +171,23 @@ mid-wait in the legacy tree.
 it can see, and changes only its own monitors, its own session's names and the
 tasks it enqueued. A session an agent spawns runs with at most the agent's own
 permission, so spawning is never a way to gain power. People can do anything.
+An agent never spawns, enqueues or reads on another server: across a link it
+only hands off, to `handle@server` (`not_across_links` otherwise).
+
+**A link is a client, and nothing travels from a linked server into an agent.**
+Alex's laptop must never run what someone else's token wrote, so a link only
+asks: it sends calls and subscriptions, and reads back `welcome`, `reply`,
+`snapshot`, `patch` and `error`, dropping anything else with a log line. It runs
+no request handler, so the linked server has no operation to call here and no
+route to this server's agents. What an agent here learns of a linked server is
+handles and states (`session.list`), the reply to its handoff, and errors; never
+a title, a transcript or anything else an agent there wrote.
+`tests/test_links.py::test_no_text_written_on_beta_reaches_an_alpha_agent` holds
+it. A socket with no `Origin` is a program, never a browser, and is accepted only
+as such a link; a link socket keys subscriptions by `sid` and is not relayed on.
+Before a second person gets a token on a linked server, that server must run
+each person's sessions apart and let only a session's owner write to it, or one
+person could steer another's session into handing off (the links spec).
 
 **The client knows no subsystem by name.** Server state reaches the browser as
 named channels: a snapshot on subscribe, then numbered patches. A gap in the

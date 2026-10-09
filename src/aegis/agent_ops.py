@@ -73,6 +73,19 @@ class Handoff(_Strict):
     interrupt: bool = Field(False, description="Cut the target's current turn first.")
 
 
+class Sender(_Strict):
+    handle: str
+    server: str
+    user: str
+
+
+class Deliver(_Strict):
+    target: str
+    context: str = Field(min_length=1)
+    interrupt: bool = False
+    sender: Sender
+
+
 class Read(_Strict):
     target: str = Field(description="A session's handle.")
     last: int = Field(30, ge=1, le=200, description="How many entries back.")
@@ -159,6 +172,20 @@ def _render(e: dict, tools: bool) -> str | None:
     return f"· {e['summary']}"
 
 
+ACROSS = (
+    "an agent on this server reaches a linked server only by handing off to a "
+    "session there (peer_handoff to handle@server); reading, spawning and "
+    "enqueueing on another server are for people"
+)
+
+
+def split_address(target: str, own: str) -> tuple[str, str | None]:
+    """``knuth@vps`` as ``("knuth", "vps")``; a bare handle, or this server's
+    own name, as ``(handle, None)``."""
+    handle, at, server = target.partition("@")
+    return (handle, None) if not at or server == own else (handle, server)
+
+
 def register_agent_ops(app: App) -> None:
     r = app.registry
     reg = app.sessions
@@ -168,7 +195,17 @@ def register_agent_ops(app: App) -> None:
             raise OpError("agents_only", "only an agent's session can do this")
         return reg.sessions[caller.log_id]
 
+    def here(target: str) -> str:
+        """The handle in an address that must be on this server."""
+        handle, server = split_address(target, app.server_name)
+        if server is not None:
+            raise OpError(
+                "not_across_links", f"{target} is on another server; {ACROSS}"
+            )
+        return handle
+
     def target(handle: str):
+        handle = here(handle)
         s = reg.by_handle(handle) or reg.sessions.get(handle)
         if s is None:
             if any(m.get("handle") == handle for m in reg.archived.values()):
@@ -250,6 +287,7 @@ def register_agent_ops(app: App) -> None:
         """Hand a self-contained task to a fresh worker on a queue. Returns at once
         with the task id; the worker's final message reaches your inbox when it
         finishes (with callback). Keep working meanwhile."""
+        here(p.queue)
         if p.queue not in app.queues.queues:
             known = ", ".join(sorted(app.queues.queues)) or "none configured"
             raise OpError("unknown_queue", f"no queue {p.queue!r}; queues: {known}")
@@ -292,7 +330,11 @@ def register_agent_ops(app: App) -> None:
     async def peer_handoff(p: Handoff, caller):
         """Give another session context or an instruction; it arrives as a user turn
         headed `> from agent:<you>`. A busy target gets it when its turn ends, unless
-        interrupt cuts that turn first."""
+        interrupt cuts that turn first. `handle@server` reaches a session on a
+        server this one links; nothing there can reach you back."""
+        handle, server = split_address(p.target, app.server_name)
+        if server is not None:
+            return await far_handoff(handle, server, p, caller)
         to = target(p.target)
         sender = (
             f"agent:{reg.sessions[caller.log_id].handle}"
@@ -308,6 +350,48 @@ def register_agent_ops(app: App) -> None:
             raise OpError("archived", f"{p.target} is archived") from e
         return f"{'held for' if held else 'landed at'} {to.handle}"
 
+    async def far_handoff(handle: str, server: str, p: Handoff, caller: Caller):
+        link = app.links.get(server)
+        if link is None:
+            raise OpError(
+                "unknown_server", f"this server links no server named {server}"
+            )
+        me = reg.sessions.get(caller.log_id) if caller.log_id else None
+        sender = {
+            "handle": me.handle if me else "user",
+            "server": app.server_name,
+            "user": app.user,
+        }
+        return await link.call(
+            "peer.deliver",
+            {
+                "target": handle,
+                "context": p.context,
+                "interrupt": p.interrupt,
+                "sender": sender,
+            },
+        )
+
+    @r.op("peer.deliver", Deliver)
+    async def peer_deliver(p: Deliver, caller):
+        """A handoff from an agent on a server that links this one. Only a link
+        socket may call it, and only in the name of the server it linked as."""
+        if caller.link is None or p.sender.server != caller.link:
+            raise OpError(
+                "not_a_link", "only a link, for its own server, delivers handoffs"
+            )
+        to = target(p.target)
+        if p.interrupt and to.status == "working":
+            await to.interrupt()
+        held = to.busy
+        who = f"agent:{p.sender.handle}@{p.sender.server} ({p.sender.user})"
+        try:
+            await to.deliver(f"> from {who} · {iso_now()}", p.context)
+        except Archived as e:
+            raise OpError("archived", f"{p.target} is archived") from e
+        where = f"{to.handle}@{app.server_name}"
+        return f"{'held for' if held else 'landed at'} {where}"
+
     @r.op("peer.read", Read, agent=True)
     async def peer_read(p: Read, caller):
         """The last entries of another session's transcript, one line each."""
@@ -317,8 +401,9 @@ def register_agent_ops(app: App) -> None:
 
     @r.op("session.list", NoArgs, agent=True)
     async def session_list(_, caller):
-        """The open sessions on this server."""
-        return [
+        """The open sessions on this server, then each linked server's by handle
+        and state alone, as `handle@server`: reach one with peer_handoff."""
+        out = [
             {
                 "handle": s.handle,
                 "title": s.title,
@@ -329,6 +414,30 @@ def register_agent_ops(app: App) -> None:
             }
             for s in reg.open_sessions()
         ]
+        if caller.link is None:  # a link asking is not relayed further
+            out += await far_sessions()
+        return out
+
+    async def far_sessions() -> list[dict]:
+        """Every linked server's open sessions, cut to handle and state: a title
+        is text an agent over there wrote, and nothing written there reaches an
+        agent here (links.py)."""
+        out = []
+        for link in app.links.up():
+            try:
+                listed = await link.call("session.list")
+            except OpError:
+                continue
+            for e in listed or []:
+                if isinstance(e, dict) and "server" not in e:
+                    out.append(
+                        {
+                            "handle": str(e.get("handle")),
+                            "server": link.name,
+                            "state": str(e.get("state")),
+                        }
+                    )
+        return out
 
     @r.op("file.send", FileSend, agent=True)
     async def file_send(p: FileSend, caller):
