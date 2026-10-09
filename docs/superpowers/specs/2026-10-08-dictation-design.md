@@ -256,8 +256,9 @@ sentence in the composer's existing `#send-error`:
 ## Out of scope
 
 - Dictation from a terminal, which aegis 2 does not have.
-- A live preview of words as you speak. Whistle transcribes whole chunks, and a
-  preview would mean transcribing the same audio again and again.
+- A live preview of words as you speak, at the time. Alex asked for it the
+  evening this shipped; it is designed in `2026-10-09-dictation-live-text-design.md`
+  (#210) as a provisional lane that a final pass corrects.
 - A per-user keyword list in `.aegis.yaml`. Add one when the derived list misses
   words that matter.
 - Sending on stop, or voice commands.
