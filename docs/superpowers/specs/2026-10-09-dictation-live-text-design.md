@@ -1,6 +1,6 @@
 # Dictation: text while you talk
 
-**Status: designed, 2026-10-09.** Issue #210. Extends the dictation shipped in
+**Status: built, 2026-10-09 (#218).** Issue #210. Extends the dictation shipped in
 2.3.0 (`2026-10-08-dictation-design.md`, #201), which put a live preview out of
 scope. Alex tried 2.3.0 on zion the evening it shipped, saw nothing for the first
 20 seconds and read it as the recording having stopped, and chose provisional
