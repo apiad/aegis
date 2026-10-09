@@ -7,8 +7,9 @@ persists it, do not change on every line of a turn (spec
 2026-10-09-plan-timing-design.md).
 
 ``clock`` is ``{"work_s", "idle_s", "at", "running"}``: the totals accrued up
-to ``at``, and what has run since (``"work"`` or ``"idle"``). ``None`` means
-no plan yet, and no time is kept. Every function returns the objects it was
+to ``at``, and what has run since: ``"work"``, ``"idle"``, or ``""`` once
+every item is done, so a finished plan's totals stop. ``None`` means no plan
+yet, and no time is kept. Every function returns the objects it was
 given when nothing changed, because the fold compares standing by identity.
 """
 
@@ -17,7 +18,7 @@ def accrue(
     plan: list[dict], clock: dict | None, ts: float
 ) -> tuple[list[dict], dict | None]:
     """Add the time from ``clock["at"]`` to ``ts`` to whatever is running."""
-    if clock is None or ts <= clock["at"]:
+    if clock is None or not clock["running"] or ts <= clock["at"]:
         return plan, clock
     dt = ts - clock["at"]
     if clock["running"] == "idle":
@@ -35,7 +36,7 @@ def switch(
     plan: list[dict], clock: dict | None, ts: float, running: str
 ) -> tuple[list[dict], dict | None]:
     """Accrue up to ``ts``, then run ``running`` from there."""
-    if clock is None or clock["running"] == running:
+    if clock is None or clock["running"] in ("", running):
         return plan, clock
     plan, clock = accrue(plan, clock, ts)
     assert clock is not None
@@ -47,7 +48,8 @@ def replan(
 ) -> tuple[list[dict], dict]:
     """A plan record. Items keep their time by text; a plan that shares no
     text with the last one is a new plan, and its clock starts at zero.
-    ``running`` is what a new clock runs; an existing clock keeps its own."""
+    ``running`` is what a new or restarted clock runs; a running clock keeps
+    its own. A plan whose items are all done stops the clock."""
     if clock is not None and [(i["text"], i["state"]) for i in old] == [
         (i["text"], i["state"]) for i in new
     ]:
@@ -61,4 +63,8 @@ def replan(
         {"text": i["text"], "state": i["state"], "work_s": times.get(i["text"], 0.0)}
         for i in new
     ]
+    if all(i["state"] == "done" for i in items):
+        clock = {**clock, "running": ""}
+    elif not clock["running"]:
+        clock = {**clock, "at": ts, "running": running}
     return items, clock

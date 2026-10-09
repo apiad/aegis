@@ -26,7 +26,7 @@ already holds.
 | What counts as idle | Time between turns when the turn handed back to the person | Only the person decides when they return, so no estimate can include it |
 | How an item is recognised across updates | By its exact text, as `_did` already does | A reworded item starts its clock again. Matching reworded items is out of scope |
 | What the ETA is based on | This plan's own pace | The plan history behind the workspace's `estimating-work` skill measures a different scale (whole plans in hours), and a session's pace is the best predictor of the same session |
-| When the ETA shows | Once at least one item is done | With nothing done there is no pace to extrapolate |
+| When the ETA shows | Once at least one item is done | With nothing done there is no pace to extrapolate; with everything done there is nothing left to estimate, so it hides again |
 | How the clock runs live | The browser adds `now - clock_at` to what the fold accrued | The fold only accrues on plan records and turn boundaries, so the standing does not change, and the meta is not rewritten, on every tool call |
 
 ## The measure
@@ -50,9 +50,17 @@ makes the following wait count as work. Compliance with `turn_end` is measured
 in #178; if it proves poor, the live attention (`waiting` versus anything else)
 can override the class of the open gap in the browser.
 
-Time inside a turn whose `Result` never came (the process died, aegis
-restarted) runs until the turn's last record; from there to the next opening is
-idle.
+Two exceptions keep a gap honest:
+
+- A turn the person opens with their own slash command (`/context`, `/compact`)
+  while the clock runs idle closes back to idle: a command does not end their
+  wait, and it never calls `turn_end`.
+- When the process ends (`stop`, `exit`, `close`, `reset`, `server_stopped`)
+  nothing is waited on any more, so the clock turns idle. A turn whose `Result`
+  never came worked until its last record; a work gap since a result ends at
+  the record that ended the process. An aegis restart during a work gap writes
+  no record (`server_stopped` is written only for a session that was working),
+  so that gap keeps counting work until the next turn: a known limit.
 
 Only time after the plan's first record counts. Time before the agent made a
 plan belongs to no plan.
@@ -65,6 +73,10 @@ not to any item: it is in the plan's total and so in its pace, but has no row.
 
 A plan whose items share no text with the previous plan is a new plan: its
 totals start from zero.
+
+A plan whose items are all done stops its clock (`running` is empty), so a
+finished plan's totals do not grow while the person keeps chatting. A later
+plan that reopens an item restarts it.
 
 ### The ETA
 
@@ -92,7 +104,8 @@ standing["clock"] = {
 ```
 
 `running` is `work` inside a turn and in a work gap, `idle` in an idle gap, and
-empty before the plan's first record. The `doing` item's live time is its
+empty once every item is done. `clock` is `None` before the plan's first
+record. The `doing` item's live time is its
 `work_s` plus `now - at` when `running` is `work`; the same addition gives the
 plan's live totals.
 

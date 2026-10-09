@@ -667,11 +667,22 @@ function fmtTokens(n) {
 }
 
 // The plan in the sidebar: totals in the heading, each item's time, and the
-// doing spinner turning only while the agent works.
+// doing spinner turning only while the agent works. The rows are rebuilt only
+// when the items change: a session publishes several times a second during a
+// turn, and a new row would restart the spinner's animation each time.
 function drawPlan(s) {
   const plan = s.plan || [];
   $("s-plan-sec").hidden = !plan.length;
   $("s-plan").classList.toggle("live", s.attention === "working");
+  const key = JSON.stringify([s.key, plan.map((i) => [i.text, i.state])]);
+  if ($("s-plan").dataset.key !== key) {
+    $("s-plan").dataset.key = key;
+    drawPlanRows(plan);
+  }
+  tickSidePlan(s);
+}
+
+function drawPlanRows(plan) {
   const mark = { done: "done", doing: "working", pending: "waiting" };
   $("s-plan").replaceChildren(
     ...plan.map((i) => {
@@ -681,7 +692,6 @@ function drawPlan(s) {
       return d;
     }),
   );
-  tickSidePlan(s);
 }
 
 // The parts that move with the clock, updated in place every second: a

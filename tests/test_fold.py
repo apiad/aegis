@@ -1100,3 +1100,30 @@ def test_the_clock_survives_a_refold():
     f, _ = run(r)
     again, _ = run(r)
     assert again.standing == f.standing
+
+
+def test_a_slash_command_while_the_session_waits_on_the_person_stays_idle():
+    r = Rec()
+    r.own("send", text="go")  # 1000
+    r.echo("go")  # 1001
+    r.own("plan", items=plan(("read", "doing")))  # 1002
+    r.own("turn_end", attention="needs_you", line="ok?", replies=[])  # 1003
+    r.result()  # 1004
+    r.wait(100)
+    r.own("send", text="/context")  # 1105
+    r.result()  # 1106: a local command, no turn_end
+    f, _ = run(r)
+    assert times(f)[1][3] == "idle"
+
+
+@pytest.mark.parametrize("kind", ["stop", "exit", "close"])
+def test_the_process_ending_during_a_work_gap_starts_idle(kind):
+    r = Rec()
+    r.own("send", text="go")  # 1000
+    r.echo("go")  # 1001
+    r.own("plan", items=plan(("read", "doing")))  # 1002
+    r.result()  # 1003: no turn_end, so the gap is work
+    r.wait(10)
+    r.own(kind, code=0)  # 1014
+    f, _ = run(r)
+    assert times(f) == ([12.0], (12.0, 0.0, 1014.0, "idle"))

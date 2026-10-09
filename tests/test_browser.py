@@ -3766,3 +3766,36 @@ def test_the_doing_spinner_turns_only_while_the_agent_works(server, page):
     page.wait_for_selector("#s-plan:not(.live)")
     assert page.eval_on_selector(spin, anim) == "none"
     assert page.errors == []
+
+
+def test_a_finished_plan_has_no_eta_and_a_stopped_clock_adds_nothing(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    got = page.evaluate(
+        """async () => {
+          const { planTimes } = await import('/static/js/plantime.js');
+          const plan = [{ text: "a", state: "done", work_s: 300 }];
+          const plan_clock = { work_s: 300, idle_s: 20, at: 10000, running: "" };
+          return planTimes({ plan, plan_clock }, 99999);
+        }"""
+    )
+    assert got == {"work": 300, "idle": 20, "items": [300], "left": None}
+    assert page.errors == []
+
+
+def test_the_sidebar_spinner_is_not_redrawn_when_the_session_publishes(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    plan = [{"text": "read", "state": "done"}, {"text": "fix", "state": "doing"}]
+    page.fill("#input", f"/mcp plan_update {json.dumps({'items': plan})}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    spin = "#s-plan > div.doing svg.ic"
+    page.wait_for_selector(spin)
+    page.eval_on_selector(spin, "m => { m.dataset.tag = 'kept'; }")
+    page.fill("#input", "/sleep 1")
+    page.press("#input", "Enter")
+    turns_done(page, 3)  # status, activity and cost all published meanwhile
+    assert page.eval_on_selector(spin, "m => m.dataset.tag || ''") == "kept"
+    assert page.errors == []

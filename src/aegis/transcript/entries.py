@@ -155,6 +155,9 @@ class Fold:
         # that dies without a result worked until its last record.
         self._ts: float | None = None
         self._prev_ts: float | None = None
+        # The person's own slash command opened this turn while the clock ran
+        # idle: a /context does not end their wait.
+        self._slash_idle = False
         self.standing: dict = EMPTY_STANDING
         self._turns = 0  # results seen
         self._report_turn = -1  # self._turns when the current report was made
@@ -250,10 +253,11 @@ class Fold:
             ops += self._upsert({**e, "md": (e.get("md") or "") + ev.text})
         return ops
 
-    def _end_turn(self) -> None:
-        """A turn ended without a result: each parser forgets it."""
-        if self._turn_open:
-            self._clock(self._prev_ts, "idle")
+    def _end_turn(self, ts: float | None = None) -> None:
+        """A turn ended without a result: each parser forgets it. The process
+        is gone, so nothing is being waited on: an open turn worked until its
+        last record, a gap since a result until ``ts``."""
+        self._clock(self._prev_ts if self._turn_open else ts, "idle")
         self._turn_open = False
         for p in self._parsers.values():
             end = getattr(p, "end_turn", None)
@@ -365,6 +369,12 @@ class Fold:
     def _own(self, i: int, ts: float | None, rec: dict) -> list[dict]:
         kind = rec.get("kind")
         if kind == "send":
+            clock = self.standing["clock"]
+            self._slash_idle = (
+                str(rec.get("text") or "").startswith("/")
+                and clock is not None
+                and clock["running"] == "idle"
+            )
             self._turn_open = True
             self._clock(ts, "work")
             self._stand(report=None, turn_error="")
@@ -459,7 +469,7 @@ class Fold:
             )
         if kind == "exit":
             stderr = "\n".join(rec.get("stderr_tail") or [])
-            self._end_turn()
+            self._end_turn(ts)
             self._stand(
                 turn_error=f"{rec.get('harness') or 'claude'} exited with code {rec.get('code')}"
             )
@@ -481,7 +491,7 @@ class Fold:
             )
         if kind in ("stop", "server_stopped"):
             line = "stopped" if kind == "stop" else "the server stopped during a turn"
-            self._end_turn()
+            self._end_turn(ts)
             if kind == "server_stopped":
                 self._stand(turn_error="the server stopped during a turn")
             return (
@@ -497,6 +507,7 @@ class Fold:
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary="resumed")
             )
         if kind == "close":
+            self._end_turn(ts)
             return self._upsert(
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary="closed")
             )
@@ -637,7 +648,7 @@ class Fold:
                 )
             )
         if kind == "reset":
-            self._end_turn()
+            self._end_turn(ts)
             return self._upsert(
                 _entry(
                     f"e{i}",
@@ -874,9 +885,9 @@ class Fold:
             # A turn that handed back to the person starts idle; one that ended
             # to wait on a monitor or a queue task keeps working (spec
             # 2026-10-09-plan-timing-design.md).
-            self._clock(
-                ts, "idle" if report is not None or error or interrupted else "work"
-            )
+            idle = report is not None or error or interrupted or self._slash_idle
+            self._clock(ts, "idle" if idle else "work")
+            self._slash_idle = False
             ops = self._end_calls("interrupted" if interrupted else "no result")
             ops += self._drop_live()
             self._turn_open = False

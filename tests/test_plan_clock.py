@@ -94,3 +94,21 @@ def test_switch_to_what_already_runs_changes_nothing():
     p0, c0 = items(("fix", "doing")), clock()
     p, c = switch(p0, c0, 1020.0, "work")
     assert p is p0 and c is c0
+
+
+def test_a_finished_plan_stops_its_clock():
+    old = items(("read", "doing"))
+    p, c = replan(old, clock(), [{"text": "read", "state": "done"}], 1030.0, "work")
+    assert p[0]["work_s"] == 30.0
+    assert c == clock(work_s=30.0, at=1030.0, running="")
+    assert accrue(p, c, 5000.0) == (p, c)
+    assert switch(p, c, 5000.0, "idle") == (p, c)
+
+
+def test_reopening_a_finished_plan_restarts_its_clock():
+    done = items(("read", "done"), work=[30.0])
+    stopped = clock(work_s=30.0, at=1030.0, running="")
+    new = [{"text": "read", "state": "done"}, {"text": "fix", "state": "doing"}]
+    p, c = replan(done, stopped, new, 2000.0, "work")
+    assert [i["work_s"] for i in p] == [30.0, 0.0]
+    assert c == clock(work_s=30.0, at=2000.0, running="work")

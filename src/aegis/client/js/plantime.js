@@ -20,6 +20,6 @@ export function planTimes(m, now = Date.now() / 1000) {
   const items = plan.map((i) => (i.work_s || 0) + (i.state === "doing" ? working : 0));
   const done = plan.filter((i) => i.state === "done").length;
   const doing = plan.findIndex((i) => i.state === "doing");
-  const left = done ? Math.max(0, (work / done) * (plan.length - done) - (doing < 0 ? 0 : items[doing])) : null;
+  const left = done && done < plan.length ? Math.max(0, (work / done) * (plan.length - done) - (doing < 0 ? 0 : items[doing])) : null;
   return { work, idle, items, left };
 }
