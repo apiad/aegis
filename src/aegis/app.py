@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import getpass
 from pathlib import Path
 from typing import Literal
 
@@ -40,6 +41,7 @@ from .claude.process import PERMISSION_MODE, ControlError
 from .config import Config, Snapshot
 from .config_ops import register_config_ops
 from .host import HostSampler
+from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors
 from .queues import Queues
@@ -123,6 +125,18 @@ class FileRef(_Strict):
     name: str
 
 
+class LinkAdd(_Strict):
+    url: str = Field(description="The far server's page URL, e.g. https://dev.example")
+    token: str = Field(min_length=1)
+    name: str | None = Field(
+        None, description="What it must call itself; omitted: whatever it does."
+    )
+
+
+class LinkName(_Strict):
+    name: str
+
+
 class ArchiveParams(_Strict):
     query: str | None = None
     server: str | None = Field(None, description="One server only; omitted: all.")
@@ -149,6 +163,7 @@ class App:
         server_name: str = "aegis",
         opencode_bin: str = "opencode",
         dictation_dir: Path | None = None,
+        user: str | None = None,
     ) -> None:
         self.roots = roots
         self.server_name = server_name
@@ -198,6 +213,10 @@ class App:
         reg.mcp_url = f"{base_url.rstrip('/')}{MCP_PATH}" if base_url else None
         self.versions = Versions()
         self.recaps = Recaps(self)
+        # Who the people on this server are, as a link tells the far side. One
+        # user per server for now: whoever started it (links.py).
+        self.user = user or getpass.getuser()
+        self.links = Links(roots.state_root, server_name, self.user, self.publish)
         self.registry = Ops()
         self._register()
         register_agent_ops(self)
@@ -215,12 +234,14 @@ class App:
         await self.queues.resume_after_boot(self.queues.boot())
         self.quota.start()
         self.host.start()
+        self.links.boot()
 
     async def shutdown(self) -> None:
         if self._config_task is not None:
             self._config_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._config_task
+        await self.links.shutdown()
         await self.quota.stop()
         await self.host.stop()
         await self.monitors.shutdown()
@@ -279,6 +300,8 @@ class App:
             return self.host.snapshot
         if name == "config":
             return lambda: self.config.current().wire()
+        if name == "links":
+            return self.links.wire
         return None
 
     def _agents(self):
@@ -613,6 +636,31 @@ class App:
                 files.open_natively(path)
             except (files.FileError, OSError) as e:
                 raise OpError("open_failed", str(e)) from e
+
+        @r.op("link.list")
+        async def link_list(_, caller):
+            """The servers this one links, with their state; never their tokens."""
+            return self.links.wire()
+
+        @r.op("link.add", LinkAdd)
+        async def link_add(p: LinkAdd, caller):
+            """Link another aegis server: connect once with its token, take the
+            name it gives itself, and keep the link in links.json."""
+            try:
+                welcome = await probe(p.url, p.token, self.server_name, self.user)
+            except LinkError as e:
+                raise OpError("link_refused", e.message) from e
+            name = str(welcome.get("server"))
+            if p.name and p.name != name:
+                raise OpError(
+                    "bad_link", f"that server calls itself {name}, not {p.name}"
+                )
+            self.links.add(name, p.url, p.token)
+            return {"name": name}
+
+        @r.op("link.remove", LinkName)
+        async def link_remove(p: LinkName, caller):
+            self.links.remove(p.name)
 
         @r.op("server.version")
         async def server_version(_, caller):

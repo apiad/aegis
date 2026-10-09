@@ -36,6 +36,9 @@ class Caller:
     # A person whose browser runs on the server's own desktop, so an action
     # like opening a file in a desktop app reaches them. Set by the transport.
     desktop: bool = False
+    # A person acting through a link from another aegis server: that server's
+    # name. Set by the transport from the link's hello (links.py).
+    link: str | None = None
 
     @property
     def is_agent(self) -> bool:

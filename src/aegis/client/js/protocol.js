@@ -6,7 +6,7 @@
 // The socket signs in with the HttpOnly cookie the server set; the page never
 // holds the token.
 
-export const PROTO = 2;
+export const PROTO = 3;
 
 export class OpError extends Error {
   constructor(code, message) {

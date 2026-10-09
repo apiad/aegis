@@ -1,5 +1,5 @@
-"""``aegis serve``, ``aegis init``, ``aegis doctor``, and ``aegis`` alone, which is
-``serve --window``.
+"""``aegis serve``, ``aegis init``, ``aegis doctor``, ``aegis link``, and ``aegis``
+alone, which is ``serve --window``.
 
 This is the only module that reads the process's working directory.
 
@@ -61,6 +61,7 @@ def _root(
             browser=os.environ.get("AEGIS_BROWSER"),
             origin=[],
             detach=False,
+            name=None,
         )
 
 
@@ -120,6 +121,7 @@ def _detach(
     origins: list[str],
     urls: list[str],
     opencode: str = "opencode",
+    name: str | None = None,
 ) -> None:
     """Run this serve again, undetached, in its own session; return once it listens.
 
@@ -144,6 +146,8 @@ def _detach(
     ]  # fmt: skip
     for o in origins:
         cmd += ["--origin", o]
+    if name:
+        cmd += ["--name", name]
     with log_path.open("a") as log:
         log.write(f"== {time.strftime('%Y-%m-%dT%H:%M:%S%z')} aegis serve --detach\n")
         log.flush()
@@ -229,6 +233,11 @@ def serve(
         help="Start in the background and return once it listens; output goes "
         "to <state>/serve.log, the pid to <state>/serve.pid.",
     ),
+    name: str | None = typer.Option(
+        None,
+        "--name",
+        help="This server's name, the @server in addresses; default: the hostname.",
+    ),
 ) -> None:
     """Serve Claude Code sessions to browser tabs."""
     import logging
@@ -266,7 +275,9 @@ def serve(
     url = f"http://{shown}:{port}/?token={token}"
     if detach:
         urls = [url, *(f"{o}/?token={token}" for o in origin)]
-        _detach(roots, host, local, port, claude, log_level, origin, urls, opencode)
+        _detach(
+            roots, host, local, port, claude, log_level, origin, urls, opencode, name
+        )
         if window:
             from .window import open_window
 
@@ -285,7 +296,7 @@ def serve(
         claude_bin=claude,
         opencode_bin=opencode,
         base_url=f"http://{local}:{port}",
-        server_name=_socket.gethostname(),
+        server_name=name or _socket.gethostname(),
     )
     web = build_web(app, token, allowed, origin)
     typer.echo(f"aegis serving {roots.config_root}")
@@ -456,6 +467,101 @@ def _open_running(state_root: Path, host: str, port: int, browser: str | None) -
         return False
     open_window(f"http://{host}:{port}/?token={token}", browser)
     return True
+
+
+link_app = typer.Typer(
+    add_completion=False,
+    help="Link other aegis servers: this one becomes their client, and they "
+    "can never reach it.",
+)
+app.add_typer(link_app, name="link")
+
+_ROOT_OPTION = typer.Option(
+    None, help="Config root; default: the nearest ancestor holding .aegis.yaml."
+)
+
+
+def _link_store(root: Path | None):
+    from .links import LinkStore
+    from .roots import make_roots
+
+    return LinkStore(make_roots(start=Path.cwd(), root=root).state_root / "links.json")
+
+
+@link_app.command("add")
+def link_add(
+    name: str = typer.Argument(..., help="What the far server calls itself."),
+    url: str = typer.Argument(..., help="Its page URL, e.g. https://dev.example"),
+    root: Path | None = _ROOT_OPTION,
+    server: str | None = typer.Option(
+        None, "--as", help="This server's name, if serve runs with --name."
+    ),
+) -> None:
+    """Link the server at URL. Reads its token from stdin, so it stays out of
+    the shell history: `ssh far cat .aegis/state/token | aegis link add far URL`."""
+    import getpass
+    import sys
+
+    from .links import Links, LinkError, probe
+    from .ops import OpError
+
+    token = sys.stdin.readline().strip()
+    if not token:
+        typer.echo("no token on stdin", err=True)
+        raise typer.Exit(1)
+    store = _link_store(root)
+    own = server or socket.gethostname()
+    try:
+        welcome = asyncio.run(probe(url, token, own, getpass.getuser()))
+    except LinkError as e:
+        typer.echo(f"not linked: {e.message}", err=True)
+        raise typer.Exit(1) from e
+    if welcome.get("server") != name:
+        typer.echo(
+            f"not linked: that server calls itself {welcome.get('server')}, not {name}",
+            err=True,
+        )
+        raise typer.Exit(1)
+    links = Links(store.path.parent, own, getpass.getuser(), lambda *_: None)
+    try:
+        links.check(name, url)
+    except OpError as e:
+        typer.echo(f"not linked: {e.message}", err=True)
+        raise typer.Exit(1) from e
+    entries = store.load()
+    entries.append(
+        {
+            "name": name,
+            "url": url.rstrip("/"),
+            "token": token,
+            "added": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+    )
+    store.save(entries)
+    typer.echo(f"linked {name} at {url}; a running server picks it up within a second")
+
+
+@link_app.command("remove")
+def link_remove(
+    name: str = typer.Argument(...), root: Path | None = _ROOT_OPTION
+) -> None:
+    """Forget a link."""
+    store = _link_store(root)
+    entries = store.load()
+    if not any(e["name"] == name for e in entries):
+        typer.echo(f"no link named {name}", err=True)
+        raise typer.Exit(1)
+    store.save([e for e in entries if e["name"] != name])
+    typer.echo(f"removed {name}")
+
+
+@link_app.command("list")
+def link_list(root: Path | None = _ROOT_OPTION) -> None:
+    """The links this server holds: names and URLs, never tokens."""
+    entries = _link_store(root).load()
+    for e in entries:
+        typer.echo(f"{e['name']:<16} {e['url']}")
+    typer.echo(f"{len(entries)} links")
 
 
 def main() -> None:
