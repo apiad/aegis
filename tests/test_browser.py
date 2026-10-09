@@ -1112,7 +1112,29 @@ def test_agent_state_is_pushed_without_reloading_the_frame_and_the_theme_follows
     assert page.errors == []
 
 
-VERDICT_BOX = """sel => {
+def test_a_resend_swaps_the_frame_in_place(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    frame = f"iframe[data-artifact={aid}]"
+    page.frame_locator(frame).locator("#st").filter(has_text="{}").wait_for()
+    before = page.get_attribute(frame, "src")
+    made = page.locator(".row.prose .md", has_text='"path"').last.inner_text()
+    path = re.search(r'"path": "([^"]+)"', made).group(1)
+    Path(path).write_text(SKELETON_WITH.format(body=PICK.replace("B</button>", "C</button>")))
+    page.fill("#input", f"/mcp artifact_update {json.dumps({'id': aid, 'resend': True})}")
+    page.press("#input", "Enter")
+    turns_done(page, 3)
+    page.wait_for_function(
+        "([sel, old]) => { const f = document.querySelector(sel); return f && f.getAttribute('src') !== old; }",
+        arg=[frame, before],
+    )
+    assert page.frame_locator(frame).locator("#b").inner_text() == "C"
+    assert page.errors == []
+
+
+VERDICT_BOX ="""sel => {
   const r = [...document.querySelectorAll('.row.tool')].pop();
   const box = q => r.querySelector(q).getBoundingClientRect().width;
   const v = r.querySelector('.tr2');

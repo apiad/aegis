@@ -23,12 +23,16 @@ function inOrder(id, fn) {
   const prev = chains.get(id) || Promise.resolve();
   const next = prev.then(fn, fn);
   chains.set(id, next);
+  const settle = () => { if (chains.get(id) === next) chains.delete(id); }; // the map never outgrows the calls in flight
+  next.then(settle, settle);
   return next;
 }
 
+let keyNow = () => null; // the session on screen, read when a message arrives
 export function setup(opts) {
-  call = opts.call; // (op, params, key?) -> Promise; key names the session, else the one shown
+  call = opts.call; // (op, params, key) -> Promise; key names the session
   entryOf = opts.entry;
+  keyNow = opts.key;
 }
 
 export function themeVars() {
@@ -47,10 +51,13 @@ export function theme() {
 // A probe request from the transcript channel: run the page hidden, report
 // once, to the session the request came from (the person may switch tabs
 // while the probe runs, so the answer never goes to "the session shown").
-export function probe(req, key) {
+export function probe(req, key, src) {
+  // src is req.url as the page may use it (entries.fileUrl): a linked server's
+  // path rebuilt under /via/<server>, or about:blank, which no probe is run on.
+  if (src === "about:blank") return;
   const f = document.createElement("iframe");
   f.setAttribute("sandbox", "allow-scripts");
-  f.src = req.url;
+  f.src = src;
   const p = { id: req.id, key, done: false, grace: 0, timer: 0 };
   p.timer = setTimeout(() => finish(f, null), PROBE_TIMEOUT_MS); // the server has given up too
   probes.set(f, p);
@@ -90,6 +97,7 @@ window.addEventListener("message", async (ev) => {
   }
   const id = frame.dataset.artifact;
   const e = entryOf(id);
+  const key = keyNow(); // captured now: a tab switch while the call waits must not reroute it
   const status = frame.dataset.status || e?.status || "live";
   if (m.method === "ui/initialize") {
     send(frame, { jsonrpc: "2.0", id: m.id, result: { artifact: id, state: e?.detail?.state ?? {}, theme: themeVars(), status } });
@@ -103,12 +111,15 @@ window.addEventListener("message", async (ev) => {
   const op = ops[m.method];
   if (!op) return;
   try {
-    await inOrder(id, () => call(op, { artifact_id: id, ...(m.params || {}) }));
+    await inOrder(id, () => call(op, { artifact_id: id, ...(m.params || {}) }, key));
     if (m.id !== undefined) send(frame, { jsonrpc: "2.0", id: m.id, result: "ok" });
     if (m.method === "aegis/submit") notify(frame, "aegis/status", { status: "submitted" });
   } catch (err) {
     if (m.id !== undefined) send(frame, { jsonrpc: "2.0", id: m.id, error: { code: err.code || "error", message: err.message } });
-    if (err.code === "not_live") notify(frame, "aegis/status", { status: entryOf(id)?.status || "closed" });
+    if (err.code === "not_live") {
+      const now = entryOf(id)?.status; // the closing patch may not have landed yet
+      notify(frame, "aegis/status", { status: now && now !== "live" ? now : "closed" });
+    }
   }
 });
 

@@ -8,7 +8,7 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, setFileBase } from "./entries.js";
+import { artifactStage, fileUrl, setFileBase } from "./entries.js";
 import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
@@ -94,7 +94,7 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
     return callFor(id, "transcript.detail", { ids }).then((got) => (shown === id ? got : []));
   },
 });
-artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id) });
+artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
 installGlyphs();
 // The navigator: previous / next agent message, the position, and the latest.
 $("nav-recap").append(icon("sparkle"));
@@ -639,7 +639,7 @@ function follow(id) {
       requestAnimationFrame(() => (mark.painted = performance.now()));
     },
     (ops) => {
-      for (const op of ops) if (op.probe) artifacts.probe(op.probe, id);
+      for (const op of ops) if (op.probe) artifacts.probe(op.probe, id, fileUrl(op.probe.url));
       transcript.apply(ops);
     },
     undefined,

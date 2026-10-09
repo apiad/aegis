@@ -231,11 +231,12 @@ const RENDERERS = {
     const bar = el("div", "fbar");
     const acts = el("span", "acts");
     const open = el("a", "btn open", "↗ Open");
-    open.href = fileBase + det.url;
+    open.href = fileUrl(det.url);
     open.target = "_blank";
     open.rel = "noopener noreferrer";
     acts.append(open);
     if (e.status !== "live") acts.prepend(el("button", "btn show", "Show"));
+    card.dataset.md = e.md || ""; // the caption's source, for update() to compare exactly
     bar.append(el("span", "ic", e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);
     card.append(bar);
     if (e.status === "live") card.append(artifactStage(e));
@@ -283,13 +284,22 @@ export function render(entry) {
   return (RENDERERS[entry.kind] || RENDERERS.system)(entry);
 }
 
+// A sent file's or artifact's URL as this page may use it: on a linked
+// server's transcript, only a path of the one shape /via serves, rebuilt here,
+// so no URL the far server chose reaches an href or a frame on this origin.
+export function fileUrl(url) {
+  if (fileBase === "") return url;
+  const ok = typeof url === "string" && /^\/files\/[A-Za-z0-9_-]+\/[^/?#]+$/.test(url);
+  return ok ? fileBase + url : "about:blank";
+}
+
 // The frame of an artifact's card, live or shown again read-only.
 export function artifactStage(e) {
   const stage = el("div", "stage html");
   const f = el("iframe");
   f.setAttribute("sandbox", "allow-scripts");
   f.loading = "lazy";
-  f.src = fileBase + e.detail.url;
+  f.src = fileUrl(e.detail.url);
   f.title = e.title;
   f.dataset.artifact = e.id;
   f.dataset.status = e.status;
@@ -304,7 +314,10 @@ const UPDATERS = {
     const card = node.querySelector(".acard");
     const frame = node.querySelector("iframe[data-artifact]");
     if (!card || card.dataset.status !== e.status || !frame) return false;
-    if ((node.querySelector(".cap")?.textContent || "") !== markdown(e.md || "").textContent) return false;
+    // A new caption, a new title or a new page (a resend) remounts the card.
+    if (card.dataset.md !== (e.md || "")) return false;
+    if (node.querySelector(".fbar .fn")?.textContent !== e.title) return false;
+    if (frame.getAttribute("src") !== fileUrl(e.detail?.url)) return false;
     if (e.detail?.state_by === "agent") frame.dispatchEvent(new CustomEvent("aegis:state", { detail: e.detail.state, bubbles: true }));
     return true;
   },
