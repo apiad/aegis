@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from aegis.agent_ops import LISTED
 from aegis.ops import OpError
 
 from .conftest import until
@@ -269,3 +270,24 @@ async def test_session_read_is_for_people_only(world):
             "session.read", {"log_id": a.log_id, "ids": []}, Caller("agent", a.log_id)
         )
     assert e.value.code == "not_for_agents"
+
+
+async def test_session_list_shows_another_sessions_card_and_plan(world):
+    """One agent follows another's plan and state (#234)."""
+    a, b = await world.spawn(), await world.spawn()
+    items = [{"text": "read", "state": "done"}, {"text": "fix", "state": "doing"}]
+    await turn(b, mcp("plan_update", items=items))
+    await turn(b, mcp("turn_end", attention="needs_you", line="Rebase or merge?"))
+    said = await turn(a, mcp("session_list"))
+    listed = {x["handle"]: x for x in json.loads(said.removeprefix("mcp ok: "))}
+    seen = listed[b.handle]
+    card = b.wire()
+    for key in LISTED:
+        assert seen[key] == card[key], key
+    assert (seen["attention"], seen["attention_line"]) == (
+        "needs_you",
+        "Rebase or merge?",
+    )
+    assert (seen["plan_now"], seen["plan_done"], seen["plan_total"]) == ("fix", 1, 2)
+    for left_out in ("replies", "mark", "blink", "monitors", "unread"):
+        assert left_out not in seen
