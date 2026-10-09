@@ -435,14 +435,21 @@ def test_a_sent_file_is_its_own_kind():
     )
     assert e["summary"] == "47 KB · image/png"
     assert e["md"] == "Weekly cost"
+    # A record from before file_send took a list: a set of one.
     assert e["detail"] == {
-        "file_id": "AbCdEfGhIjKlMnOpQrStUv",
-        "url": url,
-        "download": url + "?download=1",
-        "preview": "image",
-        "mime": "image/png",
-        "size": 48213,
-        "excerpt": None,
+        "files": [
+            {
+                "name": "informe año.png",
+                "summary": "47 KB · image/png",
+                "file_id": "AbCdEfGhIjKlMnOpQrStUv",
+                "url": url,
+                "download": url + "?download=1",
+                "preview": "image",
+                "mime": "image/png",
+                "size": 48213,
+                "excerpt": None,
+            }
+        ]
     }
 
 
@@ -841,3 +848,26 @@ def test_a_stop_and_an_exit_after_the_prose_leave_the_content_index():
     f.apply(rec.own("stop"))
     f.apply(rec.own("exit", code=1, harness="claude"))
     assert f.content_index == 2 and f.last_index == 5
+
+
+def _sent(name, **kw):
+    return {
+        "file_id": f"id-{name}",
+        "name": name,
+        "mime": "image/png",
+        "size": 2048,
+        "preview": "image",
+        "excerpt": None,
+        **kw,
+    }
+
+
+def test_a_file_set_folds_into_one_entry():
+    r = Rec()
+    r.own("file", caption=None, files=[_sent("a.png"), _sent("b.png", size=10)])
+    f = fold_records(r.records)
+    (e,) = f.entries()
+    assert f.activity() == "sent a.png +1"
+    assert e["title"] == "a.png +1" and e["summary"] == "2 files"
+    assert [f["name"] for f in e["detail"]["files"]] == ["a.png", "b.png"]
+    assert e["detail"]["files"][1]["summary"] == "10 B · image/png"

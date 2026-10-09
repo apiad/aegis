@@ -152,3 +152,29 @@ def test_window_carries_the_turn_error_after_the_report():
 def test_peer_read_never_shows_a_recap():
     e = {"kind": "recap", "summary": "fixing it", "detail": {}}
     assert _render(e, True) is None
+
+
+def test_peer_read_lists_every_file_of_a_set():
+    e = {
+        "kind": "file",
+        "title": "a.png +1",
+        "summary": "2 files",
+        "md": None,
+        "detail": {
+            "files": [
+                {
+                    "name": "a.png",
+                    "summary": "1 KB · image/png",
+                    "url": "/files/x/a.png",
+                },
+                {
+                    "name": "b.pdf",
+                    "summary": "3 KB · application/pdf",
+                    "url": "/files/y/b.pdf",
+                },
+            ]
+        },
+    }
+    assert _render(e, False) == (
+        "file: a.png (1 KB) /files/x/a.png\nfile: b.pdf (3 KB) /files/y/b.pdf"
+    )

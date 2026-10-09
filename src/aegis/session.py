@@ -595,7 +595,7 @@ class Session:
             self._set(status="error")
 
     def record_file(self, record: dict) -> None:
-        """A file sent by the agent (files.store's record plus a caption)."""
+        """The files one file_send sent (files.store's records) and its caption."""
         self._record(record)
 
     def report(self, record: dict) -> None:
