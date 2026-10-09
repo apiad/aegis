@@ -230,3 +230,85 @@ async def test_an_exit_leaves_the_session_stopped(cx):
     await cx.session.send("/exit 1")
     await until(lambda: cx.session.status == "stopped", timeout=5, what="stopped")
     assert any("Codex exited with code 1" in e["summary"] for e in cx.session.entries())
+
+
+async def test_a_prompt_sent_mid_turn_is_steered_into_the_same_turn(cx):
+    await cx.session.send("/sleep 0.6")
+    await until(
+        lambda: any(e["kind"] == "tool" for e in cx.session.entries()), what="the call"
+    )
+    await cx.session.send("steer this")
+    await until(
+        lambda: cx.done_lines() == 1 and cx.session.status == "idle",
+        timeout=5,
+        what="idle",
+    )
+    assert [e["status"] for e in cx.session.entries() if e["kind"] == "user"] == [
+        "ok",
+        "ok",
+    ]
+    assert "also: steer this" in cx.prose()[-1]
+
+
+async def test_a_steer_that_meets_an_ended_turn_starts_a_new_one(cx):
+    await cx.turn("first")
+    cx.session._proc._turn = "a-turn-that-ended"  # the race: our id is stale
+    await cx.turn("second")
+    assert cx.prose()[-1] == "you said: second"
+
+
+async def test_model_effort_and_permission_apply_from_the_next_turn_without_a_restart(
+    cx,
+):
+    pid = cx.session.pid
+    await cx.session.configure(model="openai/fake-flash", permission="read")
+    await cx.turn("/body")
+    body = json.loads(cx.prose()[-1].removeprefix("body: "))
+    assert (
+        body["model"] == "fake-flash" and "effort" not in body
+    )  # fake-flash has no efforts
+    assert body["sandboxPolicy"] == {"type": "readOnly", "networkAccess": False}
+    await cx.session.configure(model="openai/fake-pro", effort="low")
+    await cx.turn("/body")
+    body = json.loads(cx.prose()[-1].removeprefix("body: "))
+    assert body["model"] == "fake-pro" and body["effort"] == "low"
+    assert cx.session.pid == pid
+
+
+async def test_a_new_provider_restarts_the_child_on_the_same_thread(cx):
+    await cx.turn("remember HERON")
+    sid, pid = cx.session.resume_id, cx.session.pid
+    await cx.session.configure(model="other/fake-x")
+    await cx.turn("/recall")
+    assert cx.session.pid != pid and cx.session.resume_id == sid
+    assert "HERON" in cx.prose()[-1]
+
+
+async def test_a_skill_shows_as_typed_and_runs(cx):
+    await cx.turn("/bash echo hi => hi")
+    (u,) = [e for e in cx.session.entries() if e["kind"] == "user"]
+    assert u["md"] == "/bash echo hi => hi"
+    (t,) = [e for e in cx.session.entries() if e["kind"] == "tool"]
+    assert t["status"] == "ok"
+
+
+async def test_compact_and_review_are_codex_commands(cx):
+    await cx.turn("hello")
+    await cx.turn("/compact")
+    await cx.turn("/review the README")
+    users = [e["md"] for e in cx.session.entries() if e["kind"] == "user"]
+    assert users == ["hello", "/compact", "/review the README"]
+    assert cx.prose()[-1] == "you said: review: the README"
+
+
+async def test_an_unknown_command_fails_the_send_and_ends_the_turn(cx):
+    with pytest.raises(Exception):
+        await cx.session.send("/nosuch")
+    await until(lambda: cx.session.status == "idle", timeout=5, what="idle")
+
+
+async def test_the_catalog_has_the_fakes_models_skills_and_codex_commands(cx):
+    cat = await cx.session.catalog_task
+    assert [m.value for m in cat.models][:2] == ["openai/fake-pro", "openai/fake-flash"]
+    names = [c["name"] for c in cat.commands]
+    assert names[:2] == ["compact", "review"] and "sleep" in names
