@@ -37,6 +37,25 @@ def credentials_path() -> Path:
     return Path(os.environ.get("CLAUDE_CREDS", str(default)))
 
 
+def config_path() -> Path:
+    """Claude Code's own config, which names the signed-in account.
+    ``CLAUDE_CONFIG`` overrides."""
+    return Path(os.environ.get("CLAUDE_CONFIG", str(Path.home() / ".claude.json")))
+
+
+def account_id(path: Path | None = None) -> str | None:
+    """The signed-in account's uuid, or None. Never raises."""
+    try:
+        with (path or config_path()).open() as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    uuid = (data.get("oauthAccount") or {}).get("accountUuid")
+    return uuid if isinstance(uuid, str) and uuid else None
+
+
 def read_token(path: Path | None = None) -> str | None:
     """The OAuth access token, or None if there isn't a usable one.
 
@@ -130,6 +149,7 @@ PROVIDER = QuotaProvider(
     bar_windows=(("session", "5 hours"), ("weekly_all", "week")),
     fetch=fetch_quota,
     read_token=read_token,
+    account=account_id,
     # The usage endpoint 429s at a minute per process (#41). Three minutes,
     # shared through the cache, and a turn end may not ask sooner than one.
     poll_s=180.0,

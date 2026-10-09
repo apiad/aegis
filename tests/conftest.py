@@ -84,6 +84,7 @@ def _no_real_quota(tmp_path_factory, monkeypatch):
     Nor does any test download the dictation model into the real cache."""
     off = tmp_path_factory.mktemp("quota")
     monkeypatch.setenv("CLAUDE_CREDS", str(off / "claude-credentials.json"))
+    monkeypatch.setenv("CLAUDE_CONFIG", str(off / "claude.json"))
     monkeypatch.setenv("OPENCODE_AUTH", str(off / "opencode-auth.json"))
     monkeypatch.setenv("AEGIS_QUOTA_CACHE", str(off / "cache"))
     monkeypatch.setenv("AEGIS_DICTATION_DIR", str(off / "dictation"))

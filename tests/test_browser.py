@@ -2943,7 +2943,9 @@ def test_a_remote_tab_takes_prompts_and_the_far_store_has_them(linked, browser, 
     turns_done(page, 2)
     store = linked.beta.root / ".aegis" / "state" / "transcripts" / f"{lid}.jsonl"
     assert "hello across" in store.read_text()
-    assert not (linked.alpha.root / ".aegis" / "state" / "transcripts" / f"{lid}.jsonl").exists()
+    assert not (
+        linked.alpha.root / ".aegis" / "state" / "transcripts" / f"{lid}.jsonl"
+    ).exists()
     page.reload()  # the hash names a far session: it must come back, not bounce to the Fleet
     page.wait_for_selector("#a2[data-view=session]")
     assert page.evaluate("location.hash") == f"#s=beta/{lid}"
@@ -2970,3 +2972,43 @@ def test_a_dropped_link_greys_the_far_server_and_comes_back(linked, browser, pag
     page.click("#tab-fleet")
     page.wait_for_selector(f"{box} .card:not(.off)")
     assert not [e for e in page.errors if "server_offline" not in e]
+
+
+def test_spawn_on_a_linked_server_from_the_new_tab(linked, page):
+    page.goto(linked.alpha.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.click("#tab-add")
+    page.wait_for_selector("#sp-server:not([hidden])")
+    page.select_option("#sp-server", "beta")
+    page.wait_for_function(
+        "document.querySelector('#sp-agent').value === 'opus'"
+        " && document.querySelector('#sp-cwd').value.includes('beta')"
+    )
+    page.fill("#sp-text", "born on beta")
+    page.press("#sp-text", "Enter")
+    page.wait_for_selector("#a2[data-view=session]")
+    key = page.evaluate("location.hash.slice(3)")
+    assert key.startswith("beta/")
+    turns_done(page, 1)
+    store = linked.beta.root / ".aegis" / "state" / "transcripts" / f"{key[5:]}.jsonl"
+    assert "born on beta" in store.read_text()
+    page.wait_for_selector(f"#tablist .tab[data-id='{key}'] .where")
+    assert not page.errors
+
+
+def test_settings_lists_the_link_and_edits_the_far_config(linked, page):
+    page.goto(linked.alpha.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.click("#settings-btn")
+    page.wait_for_selector("#set-servers .link-beta")
+    assert "linked" in page.inner_text("#set-servers .link-beta")
+    assert "alpha" in page.inner_text("#set-path")
+    page.click("#set-srvpick button[data-server=beta]")
+    page.wait_for_function(
+        "document.querySelector('#set-path')?.textContent.includes('beta')"
+    )
+    page.click("#set-srvpick button[data-server='']")
+    page.wait_for_function(
+        "document.querySelector('#set-path')?.textContent.includes('alpha')"
+    )
+    assert not page.errors

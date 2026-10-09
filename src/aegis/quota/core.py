@@ -122,6 +122,10 @@ class QuotaProvider:
     # takes without complaint.
     poll_s: float = POLL_S
     turn_floor_s: float = 10.0
+    # What identifies the account the reading is of, read locally, or None. Only
+    # its hash goes on the wire, so two linked servers on one account can show
+    # its gauges once (links.py) without either learning the other's id.
+    account: Callable[[], str | None] = lambda: None
 
 
 def _severity(percent: float, given) -> str:

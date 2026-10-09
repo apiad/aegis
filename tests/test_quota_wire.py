@@ -83,6 +83,7 @@ async def test_a_reading_goes_on_the_wire_decided(tmp_path):
     assert claude | {"windows": None} == {
         "name": "claude",
         "label": "Claude",
+        "account": None,
         "state": "ok",
         "note": "",
         "read_at": round(WALL),

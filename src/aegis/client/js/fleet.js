@@ -211,9 +211,11 @@ export function renderBand(band, { metas, host, server, link = "", off = false }
 // The quota column, apart from the rest of the band: sessions patch up to four
 // times a second per working agent and quota about once a minute, and a
 // rebuilt row loses the hover tooltip that spells its reading out.
-export function renderBandQuota(band, { quota, now }) {
+// `same`: providers a band above already shows for the same account, drawn as
+// one line naming that server instead of their gauges again.
+export function renderBandQuota(band, { quota, now, same = [], home = "" }) {
   const providers = (quota && quota.providers) || [];
-  band.querySelector(".band-quota-col").hidden = !providers.length;
+  band.querySelector(".band-quota-col").hidden = !providers.length && !same.length;
   band.querySelector(".band-quota-age").textContent = quotaHeading(providers, now);
   const out = [];
   for (const p of providers) {
@@ -221,5 +223,6 @@ export function renderBandQuota(band, { quota, now }) {
     if (p.state === "failed") out.push(noteRow(p.note));
     else for (const w of p.windows) out.push(quotaRow(p, w, now));
   }
+  for (const p of same) out.push(el("div", "prov same", `${p.label} · same account as ${home}`));
   band.querySelector(".band-quota").replaceChildren(...out);
 }

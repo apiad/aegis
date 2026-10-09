@@ -47,7 +47,7 @@ from .monitors import Monitors
 from .queues import Queues
 from .quota import Quota
 from .recaps import Recaps
-from .ops import NoParams, OpError, Registry as Ops
+from .ops import Caller, NoParams, OpError, Registry as Ops
 from .registry import Registry
 from .roots import Roots
 from .session import PUBLISH_EVERY_S
@@ -388,8 +388,38 @@ class App:
         if name == "stop":
             await s.stop()
             return s.wire()
+        if name == "spawn":
+            return await self._spawn_line(commands.parse_spawn(arg))
         await reg.close(s.log_id)  # close
         return None
+
+    async def _spawn_line(self, line: commands.SpawnLine) -> dict:
+        """``/spawn``: a person starting a session, here or, with ``@server``, on
+        a linked server through the link. Nobody's child: no ``spawned_by``."""
+        params = {
+            k: v
+            for k, v in (
+                ("agent", line.agent),
+                ("prompt", line.prompt),
+                ("model", line.model),
+                ("effort", line.effort),
+                ("permission", line.permission),
+                ("cwd", line.cwd),
+            )
+            if v is not None
+        }
+        if line.server in (None, self.server_name):
+            r = await self.registry.call("session.spawn", params, Caller("user"))
+            return {**r, "server": self.server_name}
+        link = self.links.get(line.server)
+        if link is None:
+            raise OpError(
+                "unknown_server", f"this server links no server named {line.server}"
+            )
+        if link.state != "linked":
+            raise OpError("server_offline", f"{link.describe()}; nothing was started")
+        r = await link.call("session.spawn", params)
+        return {**r, "server": line.server}
 
     async def _archive(self, p: ArchiveParams) -> dict:
         positions = archive.decode(p.cursor)
@@ -423,6 +453,28 @@ class App:
 
         if only in (None, self.server_name):
             yield self.server_name, local
+        for link in self.links.up():
+            if only not in (None, link.name):
+                continue
+
+            async def far(query, limit, after, link=link):
+                cursor = archive.encode({link.name: after}) if after else None
+                try:
+                    r = await link.call(
+                        "archive.list",
+                        {
+                            "query": query,
+                            "limit": limit,
+                            "server": link.name,
+                            "cursor": cursor,
+                        },
+                    )
+                except OpError:
+                    return None  # down since the listing started: keep its place
+                last = archive.decode(r.get("cursor")).get(link.name)
+                return r.get("items", []), r.get("total", 0), last
+
+            yield link.name, far
 
     def _register(self) -> None:
         r = self.registry

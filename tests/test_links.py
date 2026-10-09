@@ -453,3 +453,116 @@ async def test_aegis_link_add_reads_the_token_from_stdin_and_checks_the_name(
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     rc, out = await run("remove", "beta")
     assert rc == 0 and json.loads(path.read_text()) == {"links": []}
+
+
+# -- slice 2: a person spawns on a linked server; the archive spans both ----------
+async def test_slash_spawn_spawns_on_a_linked_server(pair):
+    alpha, beta = pair
+    here = await alpha.spawn()
+    r = await alpha.app.registry.call(
+        "session.send", {"log_id": here.log_id, "text": "/spawn opus@beta first words"}
+    )
+    assert r["server"] == "beta"
+    far = beta.app.sessions.sessions[r["log_id"]]
+    assert (
+        far.spec.spawned_by is None and r["log_id"] not in alpha.app.sessions.sessions
+    )
+    await until(
+        lambda: far.status == "idle" and far.cost_usd, timeout=8, what="its first turn"
+    )
+    users = [e for e in far.entries() if e["kind"] == "user"]
+    assert users and "first words" in users[0]["md"]
+    # Without @server it starts on the server of the tab it was typed in.
+    r = await alpha.app.registry.call(
+        "session.send", {"log_id": here.log_id, "text": "/spawn opus"}
+    )
+    assert r["server"] == "alpha" and r["log_id"] in alpha.app.sessions.sessions
+
+
+async def test_slash_spawn_to_a_down_or_unknown_server_starts_nothing(pair):
+    alpha, beta = pair
+    here = await alpha.spawn()
+    with pytest.raises(OpError) as e:
+        await alpha.app.registry.call(
+            "session.send", {"log_id": here.log_id, "text": "/spawn opus@gamma go"}
+        )
+    assert e.value.code == "unknown_server"
+    before = len(beta.app.sessions.sessions)
+    await beta.stop()
+    await until(
+        lambda: alpha.app.links.get("beta").state == "offline",
+        timeout=10,
+        what="offline",
+    )
+    with pytest.raises(OpError) as e:
+        await alpha.app.registry.call(
+            "session.send", {"log_id": here.log_id, "text": "/spawn opus@beta go"}
+        )
+    assert e.value.code == "server_offline" and "nothing was started" in e.value.message
+    await beta.start()
+    assert len(beta.app.sessions.sessions) == before
+
+
+def seed_archive(node: Node, n: int, prefix: str) -> None:
+    store = node.root / ".aegis" / "state" / "sessions"
+    store.mkdir(parents=True, exist_ok=True)
+    for i in range(n):
+        meta = {
+            "log_id": f"{prefix}{i:03d}",
+            "handle": f"{prefix}-{i}",
+            "archived": True,
+            "last_activity": 1000.0 + (i // 4),  # ties, within and across servers
+            "title": f"{prefix} talk {i}",
+            "cwd": str(node.root),
+        }
+        (store / f"{meta['log_id']}.json").write_text(json.dumps(meta))
+
+
+async def test_the_archive_merges_across_servers_and_pages(tmp_path, fake_claude):
+    beta = Node(tmp_path / "beta", "beta", fake_claude)
+    alpha = Node(tmp_path / "alpha", "alpha", fake_claude)
+    seed_archive(alpha, 60, "a")
+    seed_archive(beta, 70, "b")
+    await beta.start()
+    await alpha.start()
+    try:
+        alpha.app.links.add("beta", beta.base, beta.token)
+        await until(
+            lambda: alpha.app.links.get("beta").state == "linked",
+            timeout=10,
+            what="linked",
+        )
+        seen, cursor, first = [], None, None
+        for _ in range(10):
+            r = await alpha.app.registry.call(
+                "archive.list", {"limit": 50, "cursor": cursor}
+            )
+            first = first or r
+            seen += [(m["server"], m["log_id"]) for m in r["items"]]
+            cursor = r["cursor"]
+            if cursor is None:
+                break
+        assert len(seen) == len(set(seen)) == 130
+        assert first["total"] == 130 and first["counts"] == {"alpha": 60, "beta": 70}
+        times = [1000 + int(lid[1:]) // 4 for _, lid in seen]
+        assert times == sorted(times, reverse=True)
+        only = await alpha.app.registry.call(
+            "archive.list", {"server": "beta", "limit": 5}
+        )
+        assert {m["server"] for m in only["items"]} == {"beta"} and only["counts"] == {
+            "beta": 70
+        }
+        await beta.stop()
+        await until(
+            lambda: alpha.app.links.get("beta").state == "offline",
+            timeout=10,
+            what="offline",
+        )
+        r = await alpha.app.registry.call("archive.list", {"limit": 50})
+        assert r["counts"] == {"alpha": 60} and {m["server"] for m in r["items"]} == {
+            "alpha"
+        }
+    finally:
+        await alpha.stop()
+        if beta._server is not None and not beta._task.done():
+            await beta.stop()

@@ -261,6 +261,8 @@ conn.subscribe("sessions", ...sessionHandlers(null));
 function onLinks(list) {
   links = list || [];
   linksLoaded = true;
+  settings.onLinks(links, conn.server);
+  drawServerPick();
   const names = new Set(links.map((l) => l.name));
   for (const [name, r] of remote) {
     if (names.has(name)) continue;
@@ -319,9 +321,9 @@ conn.subscribe(
 );
 conn.subscribe(
   "config",
-  (w) => settings.onConfig(w),
+  (w) => settings.onHomeConfig(w),
   (ops) => {
-    for (const op of ops) if (op.set) settings.onConfig(op.set);
+    for (const op of ops) if (op.set) settings.onHomeConfig(op.set);
     loadAgents();
   },
 );
@@ -524,7 +526,7 @@ function renderRemotes() {
       box.append(band, cards);
       host.append(box);
       const r = remote.get(l.name);
-      if (r) renderBandQuota(band, { quota: r.quota, now: nowS() });
+      if (r) renderBandQuota(band, { ...farQuota(r.quota), now: nowS() });
     }
     host.append(box); // keep the links' order
     const metas = on(l.name);
@@ -552,12 +554,21 @@ function drawSideQuota() {
   $("s-quota").replaceChildren(...rows, foot);
 }
 
+// A linked server's quota, less the providers this server already shows for
+// the same account (each reading names its account by a hash).
+function farQuota(q) {
+  const mine = new Set((quota.providers || []).filter((p) => p.account).map((p) => `${p.name}:${p.account}`));
+  const providers = q.providers || [];
+  const dup = (p) => p.account && mine.has(`${p.name}:${p.account}`);
+  return { quota: { providers: providers.filter((p) => !dup(p)) }, same: providers.filter(dup), home: conn.server };
+}
+
 function drawQuota() {
   if (root.dataset.view === "fleet") {
     renderBandQuota($("band"), { quota, now: nowS() });
     for (const box of $("remotes").children) {
       const r = remote.get(box.dataset.server);
-      if (r) renderBandQuota(box.querySelector(".band"), { quota: r.quota, now: nowS() });
+      if (r) renderBandQuota(box.querySelector(".band"), { ...farQuota(r.quota), now: nowS() });
     }
   } else if (root.dataset.view === "session") drawSideQuota();
 }
@@ -888,6 +899,38 @@ $("reopen").addEventListener("click", () => {
 // An agent is a preset: picking one fills the other chips, and changing a chip
 // marks the agent `name*` until reset. Enter spawns and sends in one call.
 let roster = { agents: [], harnesses: [], models: {}, default: null, cwd: "" };
+// The server a new session starts on: null for this one. Its directory line
+// names it once a server is linked, since a path exists on one machine only.
+let spServer = null;
+
+function drawServerPick() {
+  const pick = $("sp-server");
+  const show = links.length > 0;
+  pick.hidden = $("sp-sep").hidden = !show;
+  if (!show) {
+    if (spServer !== null) setSpServer(null);
+    return;
+  }
+  const opts = [new Option(conn.server || "this server", "")];
+  for (const l of links) {
+    const o = new Option(l.state === "linked" ? l.name : `${l.name} (${l.state})`, l.name);
+    o.disabled = l.state !== "linked";
+    opts.push(o);
+  }
+  pick.replaceChildren(...opts);
+  if (spServer && linkOf(spServer)?.state !== "linked") setSpServer(null);
+  pick.value = spServer || "";
+}
+
+function setSpServer(server) {
+  if (server === spServer) return;
+  spServer = server;
+  $("sp-server").value = server || "";
+  $("sp-cwd").value = ""; // the other machine's directories
+  delete $("sp-agent").dataset.picked;
+  loadAgents();
+}
+$("sp-server").addEventListener("change", () => setSpServer($("sp-server").value || null));
 const LAST_AGENT = "aegis.lastAgent";
 const PICKS = ["harness", "model", "effort", "permission"];
 
@@ -896,7 +939,7 @@ async function loadAgents() {
   // from values an edit to .aegis.yaml has since changed.
   const was = current();
   try {
-    roster = await conn.call("agents.list");
+    roster = await conn.call("agents.list", {}, spServer);
   } catch (e) {
     $("sp-error").textContent = e.message;
     return;
@@ -986,11 +1029,11 @@ async function spawnFromComposer() {
   const params = { agent: a.name, cwd: $("sp-cwd").value.trim() || null, ...overrides() };
   if (text) params.prompt = text;
   try {
-    const r = await conn.call("session.spawn", params);
+    const r = await conn.call("session.spawn", params, spServer);
     localStorage.setItem(LAST_AGENT, a.name);
     $("sp-text").value = "";
     pickAgent(a.name);
-    go(`#s=${r.log_id}`);
+    go(`#s=${keyOf(spServer, r.log_id)}`);
   } catch (e) {
     $("sp-error").textContent = e.message;
   } finally {

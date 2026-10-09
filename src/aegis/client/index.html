@@ -72,7 +72,7 @@
   <main class="view v-spawn">
     <form class="spawn" id="spawn">
       <div class="mark">aegis</div>
-      <input class="cwd" id="sp-cwd" spellcheck="false" aria-label="Working directory" title="Working directory: click to change">
+      <div class="cwdline"><select class="srvpick" id="sp-server" aria-label="Server" title="The server the session starts on" hidden></select><span class="srvsep" id="sp-sep" hidden>:</span><input class="cwd" id="sp-cwd" spellcheck="false" aria-label="Working directory" title="Working directory: click to change"></div>
       <div class="box">
         <textarea id="sp-text" rows="3" aria-label="First message"
           placeholder="What should the agent do? Enter starts the session and sends this; Shift+Enter adds a line."></textarea>
