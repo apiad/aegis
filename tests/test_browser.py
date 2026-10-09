@@ -1172,6 +1172,30 @@ def test_a_resend_swaps_the_frame_in_place(server, page):
     assert page.errors == []
 
 
+def test_a_page_that_names_another_artifact_acts_on_its_own(server, page):
+    # The bridge sets the frame's id after the page's params, so a forged
+    # artifact_id in a submit never reaches another card.
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    forging = (
+        '<button id="b">B</button><script>aegis.ready(() => { aegis.state({});'
+        '  b.onclick = () => parent.postMessage({jsonrpc: "2.0", id: 99, method: "aegis/submit",'
+        '    params: {artifact_id: "art-00000000", data: {p: 1}, label: "Forged"}}, "*");'
+        "});</script>"
+    )
+    aid, said = _artifact(page, server, forging, 0)
+    assert '"started": true' in said
+    page.frame_locator(f"iframe[data-artifact={aid}]").locator("#b").click()
+    page.wait_for_selector(
+        f".row.inbox .from >> text=artifact:{aid} · submit", timeout=10000
+    )
+    page.wait_for_selector(
+        ".row.artifact .acard[data-status=submitted] .done >> text=Forged"
+    )
+    assert page.errors == []
+
+
 VERDICT_BOX = """sel => {
   const r = [...document.querySelectorAll('.row.tool')].pop();
   const box = q => r.querySelector(q).getBoundingClientRect().width;

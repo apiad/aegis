@@ -345,6 +345,21 @@ async def test_errors_wake_once_per_turn(world, tmp_path):
     )
 
 
+async def test_a_long_error_wakes_the_agent_truncated(world, tmp_path):
+    a, aid = await landed(world, tmp_path)
+    assert (
+        await world.app.registry.call(
+            "artifact.error",
+            {"log_id": a.log_id, "artifact_id": aid, "message": "x" * 10_000},
+        )
+        == "ok"
+    )
+    await until(lambda: inbox(a) and a.status == "idle", what="the wake")
+    (m,) = inbox(a)
+    assert m["title"].startswith(f"artifact:{aid} · error")
+    assert len(m["md"]) < 5000
+
+
 async def test_a_restart_forgets_drafts_but_a_live_page_can_still_be_resent(
     world, tmp_path
 ):

@@ -14,7 +14,7 @@ import asyncio
 import shutil
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from . import artifacts, files
 from .artifacts import ArtifactError
@@ -29,6 +29,8 @@ class _Strict(BaseModel):
 
 
 Label = Field(min_length=1, max_length=artifacts.LABEL_MAX, pattern=r"^[^\n]+$")
+# Characters of a page's error message or stack kept in the wake.
+ERROR_MESSAGE_MAX = 4000
 
 
 class ArtifactCreate(_Strict):
@@ -84,6 +86,12 @@ class PageSubmit(PageRef):
 class PageError(PageRef):
     message: str
     stack: str = ""
+
+    @field_validator("message", "stack", mode="before")
+    @classmethod
+    def _cut(cls, v: object) -> object:
+        # A page's error is uncapped on its side; the wake carries at most this.
+        return v[:ERROR_MESSAGE_MAX] if isinstance(v, str) else v
 
 
 class Probed(_Strict):

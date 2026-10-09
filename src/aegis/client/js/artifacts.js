@@ -111,7 +111,8 @@ window.addEventListener("message", async (ev) => {
   const op = ops[m.method];
   if (!op) return;
   try {
-    await inOrder(id, () => call(op, { artifact_id: id, ...(m.params || {}) }, key));
+    // The frame's id last, so a page that sends its own artifact_id cannot name another.
+    await inOrder(id, () => call(op, { ...(m.params || {}), artifact_id: id }, key));
     if (m.id !== undefined) send(frame, { jsonrpc: "2.0", id: m.id, result: "ok" });
     if (m.method === "aegis/submit") notify(frame, "aegis/status", { status: "submitted" });
   } catch (err) {
