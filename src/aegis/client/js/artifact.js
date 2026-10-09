@@ -43,13 +43,23 @@
     } else if (m.id !== undefined && m.error) {
       console.warn(`aegis: ${m.error.code || ""} ${m.error.message || ""}`.trim());
     } else if (m.method === "aegis/state") {
-      for (const fn of stateFns) fn(m.params.state);
+      if (init) init.state = m.params?.state;  // a late ready() sees the latest
+      for (const fn of stateFns) fn(m.params?.state);
     } else if (m.method === "aegis/theme") {
-      applyTheme(m.params.theme);
+      applyTheme(m.params?.theme);
     } else if (m.method === "aegis/status") {
-      setStatus(m.params.status);
+      setStatus(m.params?.status || "closed");
     }
   });
+
+  // A state write waits for the next frame; an emit or submit that follows
+  // it must not overtake it, so both post the pending state first.
+  function flushState() {
+    if (!raf) return;
+    cancelAnimationFrame(raf);
+    raf = 0;
+    if (status === "live") request("aegis/state", { state: pending });
+  }
 
   window.aegis = {
     ready(fn) {
@@ -61,15 +71,18 @@
     },
     state(obj) {
       if (status !== "live") return warn("state");
+      if (init) init.state = obj;
       pending = obj;
-      if (!raf) raf = requestAnimationFrame(() => { raf = 0; request("aegis/state", { state: pending }); });
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; if (status === "live") request("aegis/state", { state: pending }); });
     },
     emit(name, data) {
       if (status !== "live") return warn("emit");
+      flushState();
       request("aegis/emit", { name, data: data ?? null });
     },
     submit(data, label) {
       if (status !== "live") return warn("submit");
+      flushState();
       request("aegis/submit", { data: data ?? null, label: String(label || "answered") });
     },
   };
@@ -78,13 +91,17 @@
   window.addEventListener("error", (ev) => errorOf(ev.message, ev.error?.stack || `${ev.filename}:${ev.lineno}`));
   window.addEventListener("unhandledrejection", (ev) => errorOf(ev.reason?.message || ev.reason, ev.reason?.stack));
 
-  const size = () => notify("aegis/size", { height: document.documentElement.scrollHeight });
-  document.addEventListener("DOMContentLoaded", () => {
+  // The root's scrollHeight inside a frame is at least the frame's height, so
+  // it could never shrink; the root's box is the content's height.
+  const size = () => notify("aegis/size", { height: Math.ceil(document.documentElement.getBoundingClientRect().height) });
+  function start() {
     new ResizeObserver(size).observe(document.documentElement);
     size();
     // After the inline scripts ran, so an error in them is reported before the
     // handshake and a probe sees it first.
     if (host) request("ui/initialize", {});
     else fire({}, {});
-  });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+  else start();  // included late: the DOM is already there
 })();
