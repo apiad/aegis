@@ -481,7 +481,7 @@ export class Transcript {
 
   press() {
     const n = this.selected ? this.nodes.get(this.selected) : null;
-    n?.querySelector("a.btn, button")?.click();
+    n?.querySelector("a.btn, button:not(.copy)")?.click();
   }
 
   // -- the fold levels ------------------------------------------------------

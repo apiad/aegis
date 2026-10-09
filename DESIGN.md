@@ -237,6 +237,9 @@ snapshot's bytes over 80 real transcripts. Every entry carries `rev`, the store
 index of the record that last changed it, so a returning client asks for what
 changed since the revision it holds, and the client keeps the last 8 tabs it
 showed.
+A tool's entry holds only the tail of its output (`describe.output_tail`);
+its copy button asks for the whole with `transcript.output`, which parses the
+store again.
 
 **A renderer is a function that returns a Node.** The client is plain ES modules
 with no framework and no build step. A plugin's renderer has the same shape, so

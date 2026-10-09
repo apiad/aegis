@@ -997,3 +997,20 @@ def fold_records(records: list[dict]) -> Fold:
     for r in records:
         f.apply(r)
     return f
+
+
+def tool_output(records: list[dict], tool_id: str) -> str | None:
+    """The whole output of tool call ``tool_id``, parsed again from the stored
+    lines; the last one wins, as in the fold. The fold keeps only its tail
+    (``describe.output_tail``); a person copying the output wants all of it."""
+    parsers: dict[str, Any] = {}
+    found = None
+    for r in records:
+        src = r.get("src")
+        if src not in PARSERS:
+            continue
+        p = parsers.get(src) or parsers.setdefault(src, PARSERS[src]())
+        for ev in p.feed(r.get("line", "")):
+            if isinstance(ev, ToolOutput) and ev.id == tool_id and not ev.parent:
+                found = ev.text
+    return found
