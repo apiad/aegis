@@ -1005,9 +1005,9 @@ def test_the_work_between_messages_folds_and_what_was_said_does_not():
     r.result()
     f, _ = run(r)
     assert [(e["kind"], e["fold"]) for e in f.entries()] == [
-        ("user", False),
-        ("thinking", True),
-        ("tool", True),
-        ("prose", False),
-        ("system", True),
+        ("user", 0),
+        ("thinking", 1),
+        ("tool", 1),
+        ("prose", 0),
+        ("system", 1),
     ]

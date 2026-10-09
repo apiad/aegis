@@ -176,7 +176,8 @@ body{background:#000}
 #a2 .runline .rs{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #a2 .runline:hover .rs{color:var(--muted)}
 #a2 .runline.running .rs{color:var(--accent)}
-#a2 .nav .fold[aria-pressed=true]{color:var(--accent)}
+#a2 .nav .fold[data-level="1"]{color:var(--accent)}
+#a2 .nav .fold[data-level="2"]{color:var(--accent);background:var(--accent-soft)}
 #a2 .row.working,#a2 .row.working .g{color:var(--accent)}
 #a2 .meta{color:var(--faint);margin-left:10px}
 #a2 .steps{color:var(--faint);margin-left:8px}
