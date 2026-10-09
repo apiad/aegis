@@ -2692,13 +2692,14 @@ def run_dictation(pg, body: str):
             const tone = (s) => Float32Array.from({ length: Math.round(s * 16000) }, (_, i) => 0.3 * Math.sin(i / 5));
             const gap = (s) => new Float32Array(Math.round(s * 16000));
             const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+            const until = async (f, ms = 15000) => { const t = Date.now(); while (!f()) { if (Date.now() - t > ms) throw new Error('timed out waiting for ' + f); await sleep(20); } };
             let push = null;
             const source = async (on) => { push = on; return async () => {}; };
             const feed = (...parts) => { for (const p of parts) for (let i = 0; i < p.length; i += 1600) push(p.subarray(i, i + 1600)); };
             const prepare = async () => ({ base, keywords: ['aegis', 'pull request'] });
             return await new (Object.getPrototypeOf(async function () {}).constructor)(
-                'm', 'tone', 'gap', 'sleep', 'source', 'feed', 'prepare', body,
-            )(m, tone, gap, sleep, source, feed, prepare);
+                'm', 'tone', 'gap', 'sleep', 'until', 'source', 'feed', 'prepare', body,
+            )(m, tone, gap, sleep, until, source, feed, prepare);
         }""",
         [f"/dictation/{pin_id()}/", body],
     )
@@ -2710,7 +2711,9 @@ def test_dictation_cuts_provisional_pieces_at_4_to_8s_and_a_final_past_20s(
     page.goto(dict_server.url)
     got = run_dictation(
         page,
-        """const out = []; const c = new m.Chunker((p) => out.push({ final: p.final, secs: p.parts.map((a) => +(a.length / 16000).toFixed(2)) }));
+        """const out = []; const port = new MessageChannel().port1;
+        // Emitted parts are handed to a worker, which detaches their buffers.
+        const c = new m.Chunker((p) => { out.push({ final: p.final, secs: p.parts.map((a) => +(a.length / 16000).toFixed(2)) }); port.postMessage(p.parts, p.parts.map((a) => a.buffer)); });
         for (const p of [tone(5), gap(0.5), tone(17), gap(0.5), tone(3)])
             for (let i = 0; i < p.length; i += 1600) c.push(p.subarray(i, i + 1600));
         return out;""",
@@ -2763,31 +2766,92 @@ def test_dictation_finish_returns_the_pending_piece_then_the_tail_in_halves(
     assert got["only"] == [{"final": True, "secs": [0.5]}], "a one-word recording is still transcribed"
 
 
-def test_dictation_inserts_pieces_in_order_after_the_last_one_and_keeps_typing(
+def test_dictation_shows_provisional_text_and_replaces_it_with_the_final(
     dict_server, page
 ):
     page.goto(dict_server.url)
-    text = run_dictation(
+    got = run_dictation(
         page,
         """const el = document.createElement('textarea'); document.body.append(el);
         el.value = 'Before. After.'; el.setSelectionRange(7, 7);
-        const errors = [];
+        const errors = [], seen = [];
+        el.addEventListener('input', () => seen.push(el.value));
         const d = new m.Dictation({ prepare, onError: (e) => errors.push(e) });
         await d.start({ el, key: null, current: () => null }, source);
-        feed(tone(21), gap(0.5));
-        while (!el.value.includes('kw=')) await sleep(20);
+        // Four 5 s phrases with pauses: pieces of 5.15 and 5.5 s, a final at 21.65 s.
+        for (let k = 0; k < 4; k++) feed(tone(5), gap(0.5));
+        await until(() => (/\\[2\\d\\.\\ds/.test(el.value)));
+        const afterFinal = el.value;
         el.value += ' typed';
-        feed(tone(14), gap(0.3), tone(7.7));
+        // Two phrases and 3 s pending at stop: an 11 s stretch plus the 3 s tail.
+        for (let k = 0; k < 2; k++) feed(tone(5), gap(0.5));
+        feed(tone(3));
         await d.stop();
-        while (d.state !== 'idle') await sleep(20);
+        await until(() => !(d.state !== 'idle'));
         if (errors.length) throw new Error(errors.join('; '));
+        return { seen, afterFinal, end: el.value };""",
+    )
+    prov = [v for v in got["seen"] if re.search(r"\[5\.\ds kw=2\]", v) and not re.search(r"\[2\d\.", v)]
+    assert len(prov) >= 4, got["seen"]
+    assert re.fullmatch(r"Before\. \[2\d\.\ds kw=2\] After\.", got["afterFinal"]), got["afterFinal"]
+    # At stop the 3 s pending piece showed first, then the 14 s stretch came back
+    # as two halves that replaced the provisional pieces together.
+    assert any(re.search(r"\[3\.[0-4]s kw=2\]", v) for v in got["seen"]), "the pending piece showed first"
+    assert re.fullmatch(
+        r"Before\. \[2\d\.\ds kw=2\] \[\d+\.\ds kw=2\] \[\d+\.\ds kw=2\] After\. typed", got["end"]
+    ), got["end"]
+
+
+def test_dictation_keeps_an_edit_inside_provisional_text_and_drops_the_final(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        const d = new m.Dictation({ prepare });
+        await d.start({ el, key: null, current: () => null }, source);
+        feed(tone(4.5), gap(0.5));
+        await until(() => (el.value.includes('kw=')));
+        el.value = el.value.replace('kw=2', 'EDITED');
+        for (let k = 0; k < 3; k++) feed(tone(5), gap(0.5));
+        await until(() => !(d.queue.length || d.workers.some((w) => w.job)));
+        await sleep(100);
+        await d.stop();
+        await until(() => !(d.state !== 'idle'));
         return el.value;""",
     )
-    # The tail splits into a long first half (400 ms in the stub) and a short
-    # second half (50 ms), so the second finishes first and must wait.
-    secs = [float(s) for s in re.findall(r"\[(\d+\.\d)s kw=2\]", text)]
-    assert len(secs) == 3 and secs[0] > 20 and secs[1] > 12 > secs[2], text
-    assert text.startswith("Before. [21.") and text.endswith("] After. typed"), text
+    assert got.startswith("[4.7s EDITED] [5.5s kw=2]"), got
+    assert not re.search(r"\[2\d\.", got), "the final over the edited span was dropped"
+
+
+def test_dictation_replaces_the_span_after_typing_before_it(dict_server, page):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        const d = new m.Dictation({ prepare });
+        await d.start({ el, key: null, current: () => null }, source);
+        feed(tone(4.5), gap(0.5));
+        await until(() => (el.value.includes('kw=')));
+        el.value = 'Typed first. ' + el.value;
+        for (let k = 0; k < 3; k++) feed(tone(5), gap(0.5));
+        await until(() => (/\\[2\\d\\.\\ds/.test(el.value)));
+        await d.stop();
+        await until(() => !(d.state !== 'idle'));
+        return el.value;""",
+    )
+    assert re.fullmatch(r"Typed first\. \[2\d\.\ds kw=2\]", got), got
+
+
+def test_dictation_picks_provisional_jobs_before_final_ones(dict_server, page):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """return [m.pick([{ final: true }, { final: true }, { final: false }]),
+                m.pick([{ final: true }]), m.pick([{ final: false }, { final: true }])];""",
+    )
+    assert got == [2, 0, 0]
 
 
 def test_dictation_puts_late_text_in_the_draft_the_textarea_no_longer_shows(
