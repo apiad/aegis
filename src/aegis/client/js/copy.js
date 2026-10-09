@@ -6,6 +6,10 @@
 // server for all of it (transcript.output); a linked server too old to answer
 // gets the tail. The renderers in entries.js draw the buttons; one listener on
 // the list serves them all, so a row a patch replaces needs no wiring.
+//
+// The buttons are not Tab stops: Tab walks the rows' summaries and their own
+// buttons, and one per message would put a stop before every row. The
+// keyboard copies with `c` on the selected row (copyRow, keys.js).
 
 import { icon } from "./glyphs.js";
 
@@ -18,6 +22,7 @@ export function copyButton(what) {
   const b = document.createElement("button");
   b.type = "button";
   b.className = "copy";
+  b.tabIndex = -1;
   b.dataset.copy = what;
   b.title = `Copy the ${what}`;
   b.setAttribute("aria-label", b.title);

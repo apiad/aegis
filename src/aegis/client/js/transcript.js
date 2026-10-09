@@ -28,6 +28,18 @@
 import { hhmm, render, update } from "./entries.js";
 
 const WINDOW = 200;
+
+// A row replaced while one of its controls has focus (a detail fetched, a
+// patch) hands the focus to the same control in its new node. Without it, an
+// answer landing after Tab reached the row's summary dropped the focus on the
+// page, and the next Enter went nowhere.
+const FOCUSABLE = "summary, button, a[href]";
+function swap(old, n) {
+  const a = document.activeElement;
+  const at = a && old.contains(a) ? [...old.querySelectorAll(FOCUSABLE)].indexOf(a) : -1;
+  old.replaceWith(n);
+  if (at >= 0) n.querySelectorAll(FOCUSABLE)[at]?.focus({ preventScroll: true });
+}
 const PAGE = 100;
 const NEAR_TOP_PX = 400;
 
@@ -182,7 +194,7 @@ export class Transcript {
           this.full.set(f.id, f);
           const cur = this.entries.get(f.id);
           const old = this.nodes.get(f.id);
-          if (cur && old && cur.rev === f.rev) old.replaceWith(this.mount(cur));
+          if (cur && old && cur.rev === f.rev) swap(old, this.mount(cur));
         }
         this.fold();
         this.mark();
@@ -292,7 +304,7 @@ export class Transcript {
           if (update(e, old)) this.nodes.set(e.id, old);
           else {
             this.watch.unobserve(old);
-            old.replaceWith(this.mount(e));
+            swap(old, this.mount(e));
           }
         }
         else if (!known) {
