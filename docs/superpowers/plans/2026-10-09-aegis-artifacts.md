@@ -15,7 +15,7 @@
 ## Global Constraints
 
 - Artifact id: `f"art-{secrets.token_hex(4)}"`; it is the entry id in the fold and the name in inbox headers.
-- Draft path: `<state_root>/artifacts/<id>/index.html`; the directory is removed at boot and when a draft is closed unsent.
+- Draft path: `<state_root>/artifacts/<id>/index.html`; the directory is removed when a draft is closed unsent, never at boot (it is the working copy a resend reads).
 - Caps, as module constants in `artifacts.py` that tests lower: `MAX_STATE_BYTES = 64 * 1024`, `LABEL_MAX = 140`, `EMITS_PER_MINUTE = 20`, `STATE_EVERY_S = 1.0`, `PROBE_TIMEOUT_S = 3.0`, `EVENTS_KEPT = 20`, `STACK_LINES = 5`, `TITLE_MAX = 140`.
 - Event names: `re.compile(r"[a-z][a-z0-9_-]{0,31}")`, full match, never `submit`, `error` or `close`.
 - Operation names: `artifact.create`, `artifact.send`, `artifact.read`, `artifact.update`, `artifact.close` (agents, `agent=True`); `artifact.state`, `artifact.emit`, `artifact.submit`, `artifact.error`, `artifact.probed` (people only).
@@ -1045,6 +1045,23 @@ async def landed(world, tmp_path, page=PAGE):
     return a, made["id"]
 
 
+async def test_a_submit_during_a_resend_probe_wins_and_the_new_page_is_dropped(world, tmp_path, monkeypatch):
+    monkeypatch.setattr(artifacts, "PROBE_TIMEOUT_S", 2.0)
+    a, aid = await landed(world, tmp_path)
+    (tmp_path / ".aegis" / "state" / "artifacts" / aid / "index.html").write_text(PAGE.replace("B<", "C<"))
+    world.app.channels.subscribe(a.channel, lambda msg: None)  # a browser, so the probe waits
+    await a.send(mcp("artifact_update", id=aid, resend=True))
+    await until(lambda: a.status == "working", what="the resend")
+    await asyncio.sleep(0.2)
+    await world.app.registry.call("artifact.submit", {"log_id": a.log_id, "artifact_id": aid, "data": {"p": "b"}, "label": "Picked B"})
+    await until(lambda: a.status == "idle" and len(inbox(a)) == 1, timeout=10, what="the late submit and the refused resend")
+    said = [e["md"] for e in a.entries() if e["kind"] == "prose"][-2]
+    assert said.startswith("mcp error: not_live"), said
+    (e,) = arts(a)
+    assert e["status"] == "submitted"
+    assert len([p for p in (tmp_path / ".aegis" / "state" / "files").iterdir()]) == 1  # the new snapshot is gone
+
+
 async def test_a_submit_wakes_the_agent_and_a_second_is_refused(world, tmp_path):
     a, aid = await landed(world, tmp_path)
     reg = world.app.registry
@@ -1108,13 +1125,16 @@ async def test_errors_wake_once_per_turn(world, tmp_path):
     assert await reg.call("artifact.error", {"log_id": a.log_id, "artifact_id": aid, "message": "boom3", "stack": ""}) == "ok"
 
 
-async def test_drafts_do_not_survive_a_restart(world, tmp_path):
-    a = await world.spawn()
-    made = ok(await turn(a, mcp("artifact_create", title="T")))
-    path = tmp_path / ".aegis" / "state" / "artifacts" / made["id"] / "index.html"
-    assert path.exists()
+async def test_a_restart_forgets_drafts_but_a_live_page_can_still_be_resent(world, tmp_path):
+    a, aid = await landed(world, tmp_path)
+    draft = ok(await turn(a, mcp("artifact_create", title="D")))
     await world.restart()
-    assert not path.exists()
+    a = world.session(a.log_id)
+    said = await turn(a, mcp("artifact_send", id=draft["id"]))
+    assert said.startswith("mcp error: no_artifact")  # the board forgot the draft
+    (tmp_path / ".aegis" / "state" / "artifacts" / aid / "index.html").write_text(PAGE.replace("B<", "Z<"))
+    re = ok(await turn(a, mcp("artifact_update", id=aid, resend=True)))  # its working copy survived
+    assert arts(a)[0]["detail"]["url"] == re["url"]
 ```
 
 In `tests/test_agents.py`, the set asserted by `test_the_tools_are_named_after_their_operations_and_take_no_handle` gains `"artifact_create", "artifact_send", "artifact_read", "artifact_update", "artifact_close"`.
@@ -1247,12 +1267,19 @@ def register_artifact_ops(app: App) -> None:
         except files.FileError as e:
             raise OpError(e.code, e.message) from e
         url = files.url(rec["file_id"], rec["name"])
+        landed = False
         try:
             started = await s.artifacts.probe(a, url, app.channels.subscribers(s.channel))
+            if a.status not in ("draft", "live"):
+                # The person answered the old page while the probe ran.
+                raise ArtifactError("not_live", f"{a.id} was {a.status} while the new page was probed")
+            s.artifacts.land(a, rec["file_id"], rec["name"], caption, started)
+            landed = True
         except ArtifactError as e:
-            shutil.rmtree(app.roots.state_root / "files" / rec["file_id"], ignore_errors=True)
             raise _err(e) from e
-        s.artifacts.land(a, rec["file_id"], rec["name"], caption, started)
+        finally:
+            if not landed:  # a failed probe, a late submit, an interrupt: nothing is served
+                shutil.rmtree(app.roots.state_root / "files" / rec["file_id"], ignore_errors=True)
         return {"id": a.id, "url": url, "started": started}
 
     # -- agents ------------------------------------------------------------------
@@ -1270,8 +1297,12 @@ def register_artifact_ops(app: App) -> None:
         page, the card collapsing to `label`; `aegis.onState(fn)` hears your
         artifact_update. Answers reach you as a user turn headed
         `> from artifact:<id> · submit|<event>|error · …` with the JSON in a
-        code block. Keep the skeleton's script tag and stylesheet link, or drop
-        the stylesheet for your own look."""
+        code block. Rules the checks cannot catch: an event name is one word,
+        `[a-z][a-z0-9_-]{0,31}`, never `submit`, `error` or `close`; state,
+        event data and the submit's data are at most 64 KB each; at most 20
+        emits a minute; a submit's label is one line of at most 140
+        characters. Keep the skeleton's script tag and stylesheet link, or
+        drop the stylesheet for your own look."""
         s = own(caller)
         if p.state is not None:
             _sized(p.state, "state")
@@ -1400,7 +1431,7 @@ def register_artifact_ops(app: App) -> None:
         return "ok" if s.artifacts.probed(p.probe_id, p.started, p.message, p.stack) else "dropped"
 ```
 
-In `app.py`: `from .artifact_ops import register_artifact_ops` and `from .artifacts import drop_all_drafts`; in `__init__` after `register_config_ops(self)`: `register_artifact_ops(self)`; in `boot()` before `self.sessions.boot()`: `drop_all_drafts(roots.state_root)` (use `self.roots.state_root`); add the ten names to the module docstring's operation list.
+In `app.py`: `from .artifact_ops import register_artifact_ops`; in `__init__` after `register_config_ops(self)`: `register_artifact_ops(self)`; add the ten names to the module docstring's operation list. Boot does not touch `<state>/artifacts/`: it holds the working copy of every landed page, which a resend after a restart reads; a draft never sent is simply absent from the board after a restart (its file stays, a few KB, until the folder is cleaned by hand).
 
 - [ ] **Step 4: Run the tests to verify they pass**
 

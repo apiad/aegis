@@ -268,7 +268,9 @@ frame may still raise.
 Five aegis records, `src: aegis`, in the session's store. A draft is not a
 record: it is a file under `<state>/artifacts/<id>/` and an entry in the
 session's in-memory map, so a draft never sent leaves nothing in the
-transcript, and a restart forgets drafts (their files are deleted at boot).
+transcript, and a restart forgets it (the board is rebuilt from the fold,
+where a draft never was). The folder is never wiped at boot: it also holds
+the working copy of every landed page, which a resend after a restart reads.
 
 | Record | Fields | Effect in the fold |
 |---|---|---|
