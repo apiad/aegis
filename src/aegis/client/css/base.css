@@ -50,7 +50,20 @@ body{background:#000}
 #a2 .dialog .q{margin:0 0 16px;color:var(--strong);font-size:14px;line-height:1.45}
 #a2 .dialog .acts{display:flex;gap:10px;justify-content:flex-end}
 #a2 .theme-pick{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--faint);padding:0 4px 6px}
-#a2 .theme-pick select{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:2px 6px;font-size:11.5px}
+#a2 .theme-pick pick-chip{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:2px 6px;font-size:11.5px;color:var(--ink)}
+/* pick-chip: the chip is the host; the input inside sizes to its text and the
+   list hangs under it (js/pick.js). */
+#a2 pick-chip{position:relative;display:inline-flex;align-items:center;cursor:pointer}
+#a2 pick-chip:focus-within{border-color:var(--accent)}
+#a2 pick-chip input{field-sizing:content;min-width:3ch;max-width:30ch;background:none;border:none;outline:none;padding:0 14px 0 0;color:inherit;font:inherit;cursor:inherit}
+#a2 pick-chip:after{content:"";position:absolute;right:7px;top:50%;width:5px;height:5px;border:solid currentColor;border-width:0 1px 1px 0;transform:translateY(-70%) rotate(45deg);opacity:.55;pointer-events:none}
+#a2 pick-chip .menu{position:absolute;left:-1px;top:calc(100% + 4px);min-width:calc(100% + 2px);max-height:240px;overflow:auto;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:4px;z-index:6;box-shadow:0 6px 18px rgba(0,0,0,.25);font-family:var(--font-chrome);font-size:12px;color:var(--strong);cursor:default}
+#a2 pick-chip .menu[hidden]{display:none}
+#a2 pick-chip .opt{padding:4px 8px;border-radius:4px;white-space:nowrap;cursor:pointer}
+#a2 pick-chip .opt.on{background:var(--accent-soft)}
+#a2 pick-chip .opt b{color:var(--accent);font-weight:600}
+#a2 pick-chip .opt.free{color:var(--muted);font-style:italic}
+#a2 pick-chip .opt[aria-disabled=true]{color:var(--faint);cursor:default}
 #a2 .dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none}
 #a2 .dot.ready{background:var(--ok)}#a2 .dot.err{background:var(--err)}#a2 .dot.ghost{background:var(--faint)}
 
@@ -77,13 +90,16 @@ body{background:#000}
 #a2 .spawn .box{width:100%;display:grid;gap:10px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:12px 14px}
 #a2 .spawn .box:focus-within{border-color:var(--accent)}
 #a2 .spawn textarea{width:100%;resize:none;background:none;border:none;outline:none;color:var(--strong);font-family:var(--font-ui);font-size:14px;line-height:1.45;max-height:40vh}
-#a2 .spawn .picks{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-#a2 .spawn .pick{field-sizing:content;max-width:30ch;background:var(--bg);border:1px solid var(--rule);border-radius:5px;padding:3px 8px;font-family:var(--font-chrome);font-size:11.5px;color:var(--ink);cursor:pointer}
-#a2 .spawn input.pick{min-width:8ch;cursor:text}
+/* The chips wrap on the left; the actions keep the bottom-right corner however
+   long a model id gets (#207). */
+#a2 .spawn .picks{display:flex;gap:6px;align-items:flex-end}
+#a2 .spawn .chips{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#a2 .spawn .acts{flex:none;display:flex;gap:6px;align-items:center}
+#a2 .spawn .pick{max-width:30ch;background:var(--bg);border:1px solid var(--rule);border-radius:5px;padding:3px 8px;font-family:var(--font-chrome);font-size:11.5px;color:var(--ink);cursor:pointer}
 #a2 .spawn .pick.agent{border-color:var(--accent);color:var(--accent)}
 #a2 .spawn .pick.diff{color:var(--accent)}
 #a2 .spawn .reset{background:none;border:none;padding:0;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer}
-#a2 .spawn .send{margin-left:auto;background:var(--accent);color:var(--on-accent);border:none;border-radius:6px;padding:4px 12px;font-weight:600;cursor:pointer}
+#a2 .spawn .send{background:var(--accent);color:var(--on-accent);border:none;border-radius:6px;padding:4px 12px;font-weight:600;cursor:pointer}
 #a2 .spawn .err-text{margin:0}
 #a2 .spawn .err-text:empty{display:none}
 #a2 .pa{display:flex;gap:10px;justify-content:flex-end;align-items:center}
@@ -513,8 +529,9 @@ body{background:#000}
 #a2 .set-name:focus{border-bottom-color:var(--accent)}
 #a2 .set-name::placeholder{color:var(--faint)}
 #a2 .settings .picks{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-#a2 .settings .pick{field-sizing:content;max-width:36ch;background:var(--bg);border:1px solid var(--rule);border-radius:5px;padding:3px 8px;font-family:var(--font-chrome);font-size:11.5px;color:var(--ink);cursor:pointer}
-#a2 .settings input.pick{min-width:10ch;cursor:text}
+#a2 .settings .pick{max-width:36ch;background:var(--bg);border:1px solid var(--rule);border-radius:5px;padding:3px 8px;font-family:var(--font-chrome);font-size:11.5px;color:var(--ink);cursor:pointer}
+#a2 .settings input.pick{field-sizing:content;min-width:10ch;cursor:text}
+#a2 .settings pick-chip input{max-width:36ch}
 #a2 .settings .pick:hover{border-color:var(--faint)}
 #a2 .settings .pick:focus{outline:none;border-color:var(--accent)}
 #a2 .set-default{background:none;border:1px solid transparent;border-radius:5px;padding:1px 7px;font-family:var(--font-chrome);font-size:11px;color:var(--faint);cursor:pointer}
@@ -607,6 +624,7 @@ body{background:#000}
 @media (pointer:coarse){
   #a2 .rp{min-height:44px;padding:10px 14px;font-size:14.5px}
   #a2 .composer .acts .send,#a2 .composer .acts .int,#a2 .mic{min-width:44px;min-height:44px}
+  #a2 pick-chip .opt{min-height:44px;display:flex;align-items:center}
   #a2 .tab{min-height:40px}
   #a2 .bell{min-width:44px;min-height:40px}
   #a2 .nav button{height:44px;min-width:44px}

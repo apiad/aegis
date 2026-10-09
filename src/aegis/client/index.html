@@ -27,13 +27,7 @@
     <button class="keys-btn bell" id="bell" title="Turn on desktop notifications"></button>
     <button class="side-btn" id="side-btn" title="Session details" aria-label="Session details">☰</button>
     <button class="keys-btn" id="keys-btn" title="Keyboard (?)">?</button>
-    <label class="theme-pick">Theme
-      <select id="theme">
-        <option value="ink">Ink</option>
-        <option value="logbook">Logbook</option>
-        <option value="syalia">Syalia</option>
-      </select>
-    </label>
+    <span class="theme-pick">Theme <pick-chip id="theme" name="theme" aria-label="Theme"></pick-chip></span>
   </header>
 
   <main class="view v-boot">
@@ -75,19 +69,18 @@
         <textarea id="sp-text" rows="3" aria-label="First message"
           placeholder="What should the agent do? Enter starts the session and sends this; Shift+Enter adds a line."></textarea>
         <div class="picks">
-          <select class="pick agent" id="sp-agent" aria-label="Agent"></select>
-          <select class="pick" id="sp-harness" aria-label="Harness"></select>
-          <input class="pick" id="sp-model" list="sp-models" spellcheck="false" aria-label="Model">
-          <datalist id="sp-models"></datalist>
-          <select class="pick" id="sp-effort" aria-label="Effort">
-            <option value="low">effort low</option><option value="medium">effort medium</option>
-            <option value="high">effort high</option><option value="xhigh">effort xhigh</option><option value="max">effort max</option></select>
-          <select class="pick" id="sp-permission" aria-label="Permission">
-            <option value="read">perm read</option><option value="write">perm write</option>
-            <option value="auto">perm auto</option><option value="full">perm full</option></select>
-          <button type="button" class="reset" id="sp-reset" hidden>reset</button>
-          <button class="mic" id="sp-mic" type="button" data-state="idle" title="Dictate (Alt+M)" aria-label="Dictate"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" fill="none"/></svg></button>
-          <button class="send" type="submit" id="sp-go" title="Start the session">↵</button>
+          <div class="chips">
+            <pick-chip class="pick agent" id="sp-agent" name="agent" aria-label="Agent"></pick-chip>
+            <pick-chip class="pick" id="sp-harness" name="harness" aria-label="Harness"></pick-chip>
+            <pick-chip class="pick" id="sp-model" name="model" aria-label="Model" free></pick-chip>
+            <pick-chip class="pick" id="sp-effort" name="effort" aria-label="Effort"></pick-chip>
+            <pick-chip class="pick" id="sp-permission" name="permission" aria-label="Permission"></pick-chip>
+            <button type="button" class="reset" id="sp-reset" hidden>reset</button>
+          </div>
+          <div class="acts">
+            <button class="mic" id="sp-mic" type="button" data-state="idle" title="Dictate (Alt+M)" aria-label="Dictate"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" fill="none"/></svg></button>
+            <button class="send" type="submit" id="sp-go" title="Start the session">↵</button>
+          </div>
         </div>
       </div>
       <p class="err-text" id="sp-error"></p>

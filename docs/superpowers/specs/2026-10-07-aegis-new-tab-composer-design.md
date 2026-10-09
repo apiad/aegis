@@ -145,13 +145,18 @@ card shows the agent as `opus*` when `overridden` is not empty.
    Enter spawns and sends · Shift+Enter new line
 ```
 
+- **Every chip** is a `pick-chip` (`js/pick.js`), not a native select: a click
+  or a keystroke opens a filterable list under it, the arrows walk the matches,
+  Enter picks and Esc keeps what was there. The chips wrap on the left of the
+  row; the mic and send buttons keep the bottom-right corner however long a
+  model id gets (#207, 2026-10-08).
 - **The agent chip** fills the other chips. Changing any other chip marks the
   agent `opus*`, paints the changed chip's value in the accent colour, and shows
   `reset`, which restores the preset's values.
 - **The harness chip** lists every harness; unsupported ones are disabled, as an
   agent with an unsupported harness is today.
 - **The model chip** offers the suggestions from `agents.list` for the selected
-  harness and accepts any typed model id.
+  harness and accepts any typed model id, shown as the first row of its list.
 - **The working directory** is the line under the wordmark; a click makes it
   editable.
 - **Enter** calls `session.spawn` with the agent, the changed fields only, the

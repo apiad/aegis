@@ -7,6 +7,8 @@
 // An agent is drawn as a card whose chips are the new-tab composer's, so a
 // preset looks like the session it starts.
 
+import "./pick.js";
+
 const h = (tag, props = {}, ...kids) => {
   const el = Object.assign(document.createElement(tag), props);
   el.append(...kids.filter((k) => k != null && k !== false));
@@ -20,9 +22,9 @@ const button = (text, id, onclick, className = "btn") => {
 };
 
 function select(name, values, value, label = (v) => v) {
-  const s = h("select", { name, className: "pick" });
-  for (const v of values) s.append(new Option(label(v), v));
-  if (value && !values.includes(value)) s.append(new Option(`${value} (unknown)`, value));
+  const s = h("pick-chip", { name, className: "pick" });
+  s.options = values.map((v) => ({ value: v, label: label(v) }));
+  if (value && !values.includes(value)) s.options = [...s.options, { value, label: `${value} (unknown)` }];
   s.value = value || "";
   return s;
 }
@@ -169,7 +171,7 @@ export class Settings {
 
   modelOptions(harness) {
     const f = this.found.find((f) => f.harness === harness);
-    return (f ? f.models : []).map((m) => new Option(m.free ? `${m.label} (free)` : m.label, m.value));
+    return (f ? f.models : []).map((m) => ({ value: m.value, label: m.free ? `${m.label} (free)` : m.label }));
   }
 
   agents() {
@@ -189,11 +191,12 @@ export class Settings {
     const card = h("div", { className: "set-agent" });
     card.dataset.row = `agents.${a.name}`;
     const isDefault = this.doc.default_agent === a.name && a.name !== "";
-    const models = h("datalist", { id: `set-models-${i}` }, ...this.modelOptions(a.harness));
     const name = h("input", { name: "name", value: a.name, spellcheck: false, placeholder: "name", className: "set-name" });
     const harness = select("harness", v.harnesses, a.harness, (x) => this.harnessLabel(x));
-    const model = h("input", { name: "model", value: a.model, spellcheck: false, placeholder: "model", className: "pick" });
-    model.setAttribute("list", models.id);
+    const model = h("pick-chip", { name: "model", className: "pick" });
+    model.setAttribute("free", "");
+    model.options = this.modelOptions(a.harness);
+    model.value = a.model;
     const effort = select("effort", ["", ...v.efforts], a.effort, (x) => (x ? `effort ${x}` : "effort?"));
     const permission = select("permission", ["", ...v.permissions], a.permission, (x) => (x ? `perm ${x}` : "perm?"));
     const priming = h("textarea", { name: "priming", value: a.priming || "", rows: 4, placeholder: "A system prompt every session of this agent starts with." });
@@ -209,7 +212,7 @@ export class Settings {
           for (const q of this.doc.queues) if (q.agent === was) q.agent = el.value;
           this.refreshNames();
         }
-        if (el.name === "harness") models.replaceChildren(...this.modelOptions(el.value));
+        if (el.name === "harness") model.options = this.modelOptions(el.value);
         this.touch();
       });
     }
@@ -226,7 +229,7 @@ export class Settings {
       this.draw();
     }, "link danger");
     const fold = h("details", { className: "set-priming", open: !!a.priming }, h("summary", { textContent: a.priming ? "Priming" : "Add a priming" }), priming);
-    card.append(name, h("div", { className: "picks" }, harness, model, models, effort, permission), h("div", { className: "set-card-foot" }, fold, star, del));
+    card.append(name, h("div", { className: "picks" }, harness, model, effort, permission), h("div", { className: "set-card-foot" }, fold, star, del));
     if (isDefault) card.classList.add("is-default");
     return card;
   }
@@ -235,8 +238,8 @@ export class Settings {
   // here would replace the Save button under a click that blurred the name.
   refreshNames() {
     const names = this.doc.agents.map((a) => a.name);
-    this.box.querySelectorAll(".set-queue select[name=agent]").forEach((sel, i) => {
-      sel.replaceChildren(...names.map((n) => new Option(n, n)));
+    this.box.querySelectorAll(".set-queue pick-chip[name=agent]").forEach((sel, i) => {
+      sel.options = names;
       sel.value = this.doc.queues[i].agent;
     });
   }

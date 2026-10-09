@@ -221,8 +221,10 @@ one CSS block wraps the tab bar onto its own row, turns the side panel into a
 drawer (`data-side=open`, opened by ☰) and stacks the Fleet band; under
 `(pointer: coarse)` touch targets grow to 44 px and Enter in the composer adds a
 line. A second set of screens would be a second client to keep in step. The
-client asks through its own dialog (`js/dialog.js`), never the browser's:
-`tests/test_client_rules.py` fails on `confirm(`, `alert(` or `prompt(`.
+client asks through its own dialog (`js/dialog.js`), never the browser's, and
+picks through its own chip (`js/pick.js`, a filterable list under the chip),
+never a native select: `tests/test_client_rules.py` fails on `confirm(`,
+`alert(`, `prompt(` or `<select`.
 
 **The store keeps raw lines; entries are derived.** A transcript file holds the
 harness's raw stdout lines and what aegis did (spawn, send, interrupt, exit,

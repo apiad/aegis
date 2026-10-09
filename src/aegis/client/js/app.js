@@ -16,6 +16,7 @@ import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { installBell, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
+import "./pick.js";
 import { Dictation } from "./dictation.js";
 
 const $ = (id) => document.getElementById(id);
@@ -32,6 +33,11 @@ const nowS = () => Date.now() / 1000;
 
 // -- theme ----------------------------------------------------------------
 const themePick = $("theme");
+themePick.options = [
+  { value: "ink", label: "Ink" },
+  { value: "logbook", label: "Logbook" },
+  { value: "syalia", label: "Syalia" },
+];
 themePick.value = document.documentElement.dataset.theme;
 themePick.addEventListener("change", () => {
   document.documentElement.dataset.theme = themePick.value;
@@ -710,21 +716,15 @@ async function loadAgents() {
   // A reconnect or a config change rebuilds the options; the chips keep what
   // the person set and follow the agent everywhere else.
   const before = Object.fromEntries(PICKS.map((k) => [k, $(`sp-${k}`).value]));
-  $("sp-harness").replaceChildren(
-    ...roster.harnesses.map((h) => {
-      const o = new Option(h.supported ? h.name : `${h.name} (not supported yet)`, h.name);
-      o.disabled = !h.supported;
-      return o;
-    }),
-  );
-  $("sp-agent").replaceChildren(
-    ...roster.agents.map((a) => {
-      const why = a.error || (a.enabled ? "" : `${a.harness} is not supported yet`);
-      const o = new Option(why ? `${a.name} (${why})` : a.name, a.name);
-      o.disabled = !a.enabled;
-      return o;
-    }),
-  );
+  $("sp-harness").options = roster.harnesses.map((h) => ({
+    value: h.name,
+    label: h.supported ? h.name : `${h.name} (not supported yet)`,
+    disabled: !h.supported,
+  }));
+  $("sp-agent").options = roster.agents.map((a) => {
+    const why = a.error || (a.enabled ? "" : `${a.harness} is not supported yet`);
+    return { value: a.name, label: why ? `${a.name} (${why})` : a.name, disabled: !a.enabled };
+  });
   const usable = roster.agents.filter((a) => a.enabled).map((a) => a.name);
   const keep = $("sp-agent").dataset.picked;
   const start = [keep, localStorage.getItem(LAST_AGENT), roster.default].find((n) => usable.includes(n)) || usable[0];
@@ -748,7 +748,7 @@ function current() {
 }
 
 function fillModels(harness) {
-  $("sp-models").replaceChildren(...(roster.models[harness] || []).map((m) => new Option(m, m)));
+  $("sp-model").options = roster.models[harness] || [];
 }
 
 function pickAgent(name) {
@@ -778,8 +778,7 @@ function markDiffs() {
   for (const k of PICKS) $(`sp-${k}`).classList.toggle("diff", k in diff);
   const changed = Object.keys(diff).length > 0;
   $("sp-reset").hidden = !changed;
-  const opt = $("sp-agent").selectedOptions[0];
-  if (a && opt) opt.textContent = changed ? `${a.name}*` : a.name;
+  $("sp-agent").suffix = changed ? "*" : "";
 }
 
 async function spawnFromComposer() {
@@ -804,6 +803,8 @@ async function spawnFromComposer() {
   }
 }
 
+$("sp-effort").options = ["low", "medium", "high", "xhigh", "max"].map((e) => ({ value: e, label: `effort ${e}` }));
+$("sp-permission").options = ["read", "write", "auto", "full"].map((p) => ({ value: p, label: `perm ${p}` }));
 $("sp-agent").addEventListener("change", () => pickAgent($("sp-agent").value));
 $("sp-harness").addEventListener("change", () => {
   fillModels($("sp-harness").value);
@@ -816,10 +817,10 @@ $("spawn").addEventListener("submit", (ev) => {
   spawnFromComposer();
 });
 // Enter in a field would submit the form and spawn a half-written session;
-// there it means "done with this field".
+// there it means "done with this field". In an open chip it is the chip's pick.
 for (const id of ["sp-model", "sp-cwd"]) {
   $(id).addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter" && !ev.isComposing) {
+    if (ev.key === "Enter" && !ev.isComposing && !ev.defaultPrevented) {
       ev.preventDefault();
       $("sp-text").focus();
     }

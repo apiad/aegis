@@ -225,33 +225,43 @@ def spawn(pg, prompt: str | None = None) -> str:
     return pg.evaluate("location.hash.slice(3)")
 
 
+def pick(pg, sel: str, text: str) -> None:
+    """Type into a pick-chip and take its first match."""
+    pg.click(f"{sel} input")
+    pg.fill(f"{sel} input", text)
+    pg.press(f"{sel} input", "Enter")
+
+
+def picked(pg, sel: str) -> str:
+    return pg.evaluate(f"document.querySelector('{sel}').value")
+
+
 def test_the_composer_overrides_a_chip_resets_it_and_spawns_with_the_first_message(
     server, page
 ):
     page.goto(server.url)
     page.click("#tab-add")
     page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
-    assert page.input_value("#sp-model") == "opus"
+    assert picked(page, "#sp-model") == "opus"
     assert page.is_hidden("#sp-reset")
-    # A select sizes to its longest option; the chips must still sit on one row.
     tops = page.eval_on_selector_all(
         "#spawn .pick, #sp-go", "els => els.map(e => e.getBoundingClientRect().top)"
     )
     assert max(tops) - min(tops) < 4, tops
 
-    page.fill("#sp-model", "sonnet")
-    assert page.inner_text("#sp-agent option:checked") == "opus*"
+    pick(page, "#sp-model", "sonnet")
+    assert page.input_value("#sp-agent input") == "opus*"
     assert "diff" in page.get_attribute("#sp-model", "class")
     page.click("#sp-reset")
-    assert page.input_value("#sp-model") == "opus"
-    assert page.inner_text("#sp-agent option:checked") == "opus"
+    assert picked(page, "#sp-model") == "opus"
+    assert page.input_value("#sp-agent input") == "opus"
     assert page.is_hidden("#sp-reset")
 
     page.fill("#sp-text", "/argv")
     page.press("#sp-text", "Shift+Enter")
     assert page.evaluate("document.querySelector('#a2').dataset.view") == "spawn"
     page.fill("#sp-text", "/argv")
-    page.select_option("#sp-effort", "max")
+    pick(page, "#sp-effort", "max")
     page.press("#sp-text", "Enter")
     page.wait_for_selector("#a2[data-view=session]")
     turns_done(page, 1)
@@ -263,8 +273,61 @@ def test_the_composer_overrides_a_chip_resets_it_and_spawns_with_the_first_messa
     assert page.inner_text(".card .ln b") == "opus*"
     page.click("#tab-add")
     page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
-    assert page.input_value("#sp-effort") == "high", "a spawn clears the overrides"
+    assert picked(page, "#sp-effort") == "high", "a spawn clears the overrides"
     assert page.input_value("#sp-text") == ""
+    assert page.errors == []
+
+
+def test_the_chips_filter_as_you_type_and_a_long_model_keeps_the_send_button_in_the_corner(
+    server, page
+):
+    (server.root / ".aegis.yaml").write_text(
+        CONFIG
+        + "  fable: {harness: claude-code, model: claude-fable-5-1, effort: high, permission: full}\n"
+    )
+    page.set_viewport_size({"width": 560, "height": 720})
+    page.goto(server.url)
+    page.click("#tab-add")
+    page.wait_for_function(
+        "document.querySelector('#sp-agent').options.some(o => o.value === 'fable')"
+    )
+    assert page.evaluate("document.querySelectorAll('select, datalist').length") == 0
+
+    pick(page, "#sp-agent", "fab")
+    assert picked(page, "#sp-agent") == "fable"
+    assert picked(page, "#sp-model") == "claude-fable-5-1"
+    # The chips wrap onto two rows; the send button keeps the corner (#207).
+    send = page.evaluate(
+        "document.querySelector('#sp-go').getBoundingClientRect().toJSON()"
+    )
+    box = page.evaluate(
+        "document.querySelector('#spawn .box').getBoundingClientRect().toJSON()"
+    )
+    chips = page.evaluate(
+        "[...document.querySelectorAll('#spawn .pick')].map(e => e.getBoundingClientRect().toJSON())"
+    )
+    assert len({round(c["top"]) for c in chips}) >= 2, chips
+    assert all(c["right"] <= send["left"] for c in chips), (send, chips)
+    assert all(c["bottom"] <= send["bottom"] + 1 for c in chips), (send, chips)
+    assert box["right"] - send["right"] < 20, (box, send)
+
+    # Esc keeps the value; the arrows walk the list; a click takes a row.
+    page.click("#sp-effort input")
+    page.fill("#sp-effort input", "max")
+    page.press("#sp-effort input", "Escape")
+    assert picked(page, "#sp-effort") == "high"
+    assert page.input_value("#sp-effort input") == "effort high"
+    page.press("#sp-permission input", "ArrowDown")
+    page.press("#sp-permission input", "ArrowDown")
+    page.press("#sp-permission input", "Enter")
+    assert picked(page, "#sp-permission") == "read"
+    page.click("#sp-effort input")
+    page.click("#sp-effort .opt:has-text('effort low')")
+    assert picked(page, "#sp-effort") == "low"
+    # The model chip takes an id no option names.
+    pick(page, "#sp-model", "claude-opus-5-5")
+    assert picked(page, "#sp-model") == "claude-opus-5-5"
+    assert page.input_value("#sp-agent input") == "fable*"
     assert page.errors == []
 
 
@@ -275,7 +338,7 @@ def test_enter_in_the_model_or_cwd_field_moves_to_the_message_and_spawns_nothing
     page.click("#tab-add")
     page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
     page.fill("#sp-text", "half written")
-    for field in ("#sp-model", "#sp-cwd"):
+    for field in ("#sp-model input", "#sp-cwd"):
         page.focus(field)
         page.press(field, "Enter")
         assert page.evaluate("document.activeElement.id") == "sp-text"
@@ -354,7 +417,7 @@ def test_a_session_from_spawn_to_close(server, page):
 
     bg = "getComputedStyle(document.getElementById('a2')).getPropertyValue('--bg').trim()"
     before = page.evaluate(bg)
-    page.select_option("#theme", "logbook")
+    pick(page, "#theme", "logbook")
     assert page.evaluate(bg) != before == "#11100e"
 
     close_session(page)
@@ -1327,7 +1390,7 @@ def test_an_opencode_session_streams_and_calls_aegis(server, page):
     page.goto(server.url)
     page.click("#tab-add")
     page.wait_for_function("document.querySelector('#sp-agent').value !== ''")
-    page.select_option("#sp-agent", "deepseek")
+    pick(page, "#sp-agent", "deepseek")
     page.click("#sp-go")
     page.wait_for_selector("#a2[data-view=session]")
     # Subscribed before the stream starts: the text can only arrive as patches.
@@ -1495,7 +1558,7 @@ def test_settings_saves_an_edit_to_the_file_and_the_composer_follows(
     settings_server, page
 ):
     open_settings(page, settings_server.url)
-    page.select_option('.set-agent[data-row="agents.opus"] select[name=effort]', "max")
+    pick(page, '.set-agent[data-row="agents.opus"] pick-chip[name=effort]', "max")
     page.click("#set-save")
     page.wait_for_function(
         "document.querySelector('#set-status').textContent === 'Saved'"
@@ -1591,7 +1654,7 @@ def test_renaming_an_agent_carries_to_the_queues_that_run_it(settings_server, pa
     page.wait_for_selector('.set-queue[data-row="queues.q"]')
     page.fill('.set-agent[data-row="agents.opus"] input[name=name]', "big")
     assert (
-        page.input_value('.set-queue[data-row="queues.q"] select[name=agent]') == "big"
+        picked(page, '.set-queue[data-row="queues.q"] pick-chip[name=agent]') == "big"
     )
     page.click("#set-save")
     page.wait_for_function(
@@ -2227,7 +2290,7 @@ def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     pg.evaluate("sessionStorage.removeItem('hidden'); window.__hidden = false")
     # The dot takes the theme's accent.
     assert quote("#e0a872") in pg.get_attribute("#favicon", "href")
-    pg.select_option("#theme", "logbook")
+    pick(pg, "#theme", "logbook")
     assert quote("#2f5ba8") in pg.get_attribute("#favicon", "href")
     pg.click("#tab-fleet")
     assert pg.title().startswith("(1) Fleet")
