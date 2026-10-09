@@ -1,8 +1,9 @@
 # aegis: agents see aegis running
 
-**Status: designed, 2026-10-09** (part 1 is issue #234, part 2 is issue #235).
-Designed with Alex in a brainstorm, text only. No plan yet; each part gets its
-own plan and its own PR, part 1 first.
+**Status: part 1 implemented, 2026-10-09** (issue #234), following
+`docs/superpowers/plans/2026-10-09-agents-see-sessions.md`. Part 2 (issue
+#235) is designed and has no plan yet. Designed with Alex in a brainstorm,
+text only.
 
 ## What this delivers
 

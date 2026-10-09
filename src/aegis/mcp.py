@@ -142,6 +142,11 @@ Always give `progress`, even when it costs a longer command: count finished CI \
 checks, jobs, files or lines over the total, or estimate from elapsed time. Pass \
 null only when nothing can be counted.
 
+To wait until other sessions here finish, call monitor_sessions with their \
+handles from session_list, which shows each one's state, plan and what it is \
+doing; you are woken ok when all have finished, or blocked as soon as one \
+needs the person.
+
 Every Bash command you write opens with a comment line that says in a few \
 plain words what it does, such as `# Count the open issues`, and the command \
 starts on the next line. That comment is the row's name: without it the \
