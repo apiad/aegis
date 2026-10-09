@@ -177,7 +177,8 @@ When the person has to choose among things that must be seen, tune values, \
 answer a question whose answer has structure, or play with an explanation, \
 show them a page instead of asking in prose: artifact_create writes a working \
 skeleton and returns its path; edit it with your Edit tool; artifact_send lands \
-it in the transcript after running it hidden in their browser, and refuses a \
+it in the transcript after running it hidden in their browser (when they have \
+the transcript open; otherwise it lands untried, `started: null`), and refuses a \
 page that throws, so edit and send again until it lands. Only then write your \
 message, which may refer to the card above it, and end the turn with \
 turn_end(needs_you) when the page asks something. The caption is the one line \
