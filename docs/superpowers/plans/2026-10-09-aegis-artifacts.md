@@ -1163,7 +1163,7 @@ import asyncio
 import shutil
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from . import artifacts, files
 from .artifacts import ArtifactError, Board
@@ -1178,6 +1178,7 @@ class _Strict(BaseModel):
 
 
 Label = Field(min_length=1, max_length=artifacts.LABEL_MAX, pattern=r"^[^\n]+$")
+ERROR_MESSAGE_MAX = 4000  # characters of a page's error message or stack kept in the wake
 
 
 class ArtifactCreate(_Strict):
@@ -1225,6 +1226,12 @@ class PageSubmit(PageRef):
 class PageError(PageRef):
     message: str
     stack: str = ""
+
+    @field_validator("message", "stack", mode="before")
+    @classmethod
+    def _cut(cls, v: object) -> object:
+        # A page's error is uncapped on its side; the wake carries at most this.
+        return v[:ERROR_MESSAGE_MAX] if isinstance(v, str) else v
 
 
 class Probed(_Strict):
@@ -1727,6 +1734,26 @@ def test_a_page_that_throws_fails_the_send_and_shows_no_card(server, page):
     assert [e for e in page.errors if "nope" not in str(e) and "later" not in str(e)] == []
 
 
+def test_a_page_that_names_another_artifact_acts_on_its_own(server, page):
+    # The bridge sets the frame's id after the page's params, so a forged
+    # artifact_id in a submit never reaches another card.
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    forging = (
+        '<button id="b">B</button><script>aegis.ready(() => {'
+        '  b.onclick = () => parent.postMessage({jsonrpc: "2.0", id: 99, method: "aegis/submit",'
+        '    params: {artifact_id: "art-00000000", data: {p: 1}, label: "Forged"}}, "*");'
+        "});</script>"
+    )
+    aid, said = _artifact(page, server, forging, 0)
+    assert '"started": true' in said
+    page.frame_locator(f"iframe[data-artifact={aid}]").locator("#b").click()
+    page.wait_for_selector(f".row.inbox .from >> text=artifact:{aid} · submit", timeout=10000)
+    page.wait_for_selector(".row.artifact .acard[data-status=submitted] .done >> text=Forged")
+    assert page.errors == []
+
+
 def test_agent_state_is_pushed_without_reloading_the_frame_and_the_theme_follows(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -1869,7 +1896,8 @@ window.addEventListener("message", async (ev) => {
   const op = ops[m.method];
   if (!op) return;
   try {
-    await inOrder(id, () => call(op, { artifact_id: id, ...(m.params || {}) }, key));
+    // The frame's id last, so a page that sends its own artifact_id cannot name another.
+    await inOrder(id, () => call(op, { ...(m.params || {}), artifact_id: id }, key));
     if (m.id !== undefined) send(frame, { jsonrpc: "2.0", id: m.id, result: "ok" });
     if (m.method === "aegis/submit") notify(frame, "aegis/status", { status: "submitted" });
   } catch (err) {
@@ -2119,11 +2147,14 @@ framed exactly like a sent HTML file, so its script runs in an opaque origin
 that the websocket refuses. Its only path to the server is `postMessage` to
 the host page, whose bridge (`client/js/artifacts.js`) answers only windows it
 mounted and calls four person operations with the artifact id the frame's row
-carries, never one the page sent. Every payload is capped and emits are
-rate-limited on the server. A page's answer reaches the agent through the
-inbox like a monitor's wake, so a click mid-turn is held. A page lands only
-after the static checks and a hidden run in a browser (`Board.probe`): a page
-that throws is a tool error, not a card.
+carries, set after the page's own parameters so one the page sent never wins.
+Every payload is capped (state and data by size, a label by length, an error
+by truncation) and emits are rate-limited on the server. A page's answer
+reaches the agent through the inbox like a monitor's wake, so a click mid-turn
+is held. A page lands only after the static checks and, when a browser has the
+transcript open, a hidden run there (`Board.probe`): a page that throws is a
+tool error, not a card; with no browser open it lands marked unproved, and the
+first browser to mount it reports an error to the inbox.
 ```
 
 - [ ] **Step 4: The changelog fragment** `changelog.d/217-artifacts.added.md`:
@@ -2131,8 +2162,9 @@ that throws is a tool error, not a card.
 ```markdown
 - **Agents hand the person an interactive page and hear the answer.**
   `artifact_create` writes a working skeleton, the agent edits it,
-  `artifact_send` runs it hidden in the browser and lands it in the transcript
-  only when it starts. A click, a submit or a script error reaches the agent
+  `artifact_send` runs it hidden in the browser, when one has the transcript
+  open, and lands it in the transcript only when it starts (with none open it
+  lands unproved). A click, a submit or a script error reaches the agent
   as an inbox turn; state the page keeps is read with `artifact_read`; the
   agent pushes new state or a new page with `artifact_update`. Until now an
   agent could only send a static file and ask in prose.
