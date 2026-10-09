@@ -1,6 +1,7 @@
 # aegis links: zion uses the VPS, and nothing comes back
 
-**Status: designed, 2026-10-08** (issue #203). Nothing is built. Designed with
+**Status: approved, 2026-10-08** (issue #203); plan in
+`docs/superpowers/plans/2026-10-08-aegis-links.md`. Being built. Designed with
 Alex in one brainstorm, with mockups over the real client. The mockups and the
 scripts that made them are in the workspace playground, not in this repo:
 `.playground/aegis-multi-server/build.py` builds `mockups.html` from the live
@@ -141,13 +142,17 @@ One per entry in `links.json`, started at boot and when a link is added. It:
 - checks `welcome`: the protocol must equal its own and the name must equal the
   one recorded when the link was added, else the link is marked
   `mismatch` with both values and stays down;
-- multiplexes every browser's subscriptions onto one socket. A channel two
-  browsers watch is subscribed once; the link keeps the last snapshot and
-  patches per channel and fans them out. A browser that subscribes to a channel
-  the link already holds gets the link's copy at once;
-- reconnects with backoff from 1 s to 30 s after a drop, and resubscribes each
-  channel with the revision it holds (`since`), so a reconnect costs what
-  changed;
+- carries every browser's subscriptions on one socket. Each forwarded
+  subscription has a link-unique `sid`, and on a link socket the VPS keys
+  subscriptions by `sid` instead of by channel name, so two browsers watching
+  the same channel get their own numbered patches. Changed from the first draft,
+  which subscribed once and fanned out: that needed a cache of each channel's
+  snapshot and patches, and the link cannot apply a channel's patches without
+  knowing its format;
+- reconnects with backoff from 1 s to 30 s after a drop. Subscriptions do not
+  survive a drop: the `links` channel tells each browser the link is back, and
+  the browser resubscribes with the revision it holds (`since`), as it does when
+  its own socket reconnects, so a reconnect costs what changed;
 - answers a browser's call to a down link with `server_offline`, naming the
   server and how long it has been down.
 
@@ -261,8 +266,8 @@ Every item below is drawn in the mockups.
 
 ### Tabs
 
-- One tab bar. A tab is a server and a log id, and its URL hash is `#vps/<log_id>`
-  for a remote tab; local tabs keep `#<log_id>`.
+- One tab bar. A tab is a server and a log id, and its URL hash is
+  `#s=vps/<log_id>` for a remote tab; local tabs keep `#s=<log_id>`.
 - A remote tab shows its title and handle as today, then a small tag with the
   server's name.
 - The VPS's open sessions are the VPS's tabs, shown to every browser homed on
@@ -354,7 +359,7 @@ One list, below every server block.
 | A handoff to a server that is down | `server_offline` at once, with how long it has been down |
 | A handoff to a handle the VPS does not have | The VPS's own `no_session` error, prefixed with the server |
 | The VPS sends a frame zion did not ask for | Dropped and logged once per kind |
-| Two browsers watch the same VPS channel | One subscription on the link, fanned out |
+| Two browsers watch the same VPS channel | Two subscriptions on the one link socket, each with its own `sid` |
 | A token is revoked on the VPS | `hello` fails with 4401; the link is marked `unauthorized` and stops retrying until the token is replaced |
 
 ## Slices
