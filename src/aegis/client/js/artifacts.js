@@ -124,6 +124,5 @@ window.addEventListener("message", async (ev) => {
   }
 });
 
-// entries.js asks, through a DOM event, for a state push or a status change on a frame it kept.
+// entries.js asks, through a DOM event, for a state push on a frame it kept.
 document.addEventListener("aegis:state", (ev) => notify(ev.target, "aegis/state", { state: ev.detail }));
-document.addEventListener("aegis:status", (ev) => notify(ev.target, "aegis/status", { status: ev.detail }));

@@ -102,11 +102,6 @@ def drop_draft(state_root: Path, id: str) -> None:
     shutil.rmtree(draft_dir(state_root, id), ignore_errors=True)
 
 
-def drop_all_drafts(state_root: Path) -> None:
-    """At boot: a draft never sent is gone with the process that held it."""
-    shutil.rmtree(state_root / "artifacts", ignore_errors=True)
-
-
 def check(text: str) -> None:
     """The two mistakes that leave a page that looks fine and never answers."""
     if SCRIPT_SRC not in text:
