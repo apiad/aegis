@@ -1,8 +1,9 @@
 # aegis: how long each plan item took, how long the session waited on you, and when it will finish
 
-**Status: designed, 2026-10-09** (issue #228). Designed with Alex in a brainstorm
-in a session tab, from the plan as `2026-10-08-session-attention-design.md` left
-it. Not yet planned or built.
+**Status: implemented, 2026-10-09** (issue #228), following
+`docs/superpowers/plans/2026-10-09-plan-timing.md`. Designed with Alex in a
+brainstorm in a session tab, from the plan as
+`2026-10-08-session-attention-design.md` left it.
 
 ## What this delivers
 
