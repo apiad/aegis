@@ -144,7 +144,9 @@ async def test_real_claude_arms_a_monitor_through_the_endpoint_and_is_woken(
 
 
 async def test_real_claude_waits_on_another_session_and_is_woken(tmp_path: Path):
-    """The primer's monitor_sessions paragraph, followed by a real model."""
+    """The primer's monitor_sessions paragraph, followed by a real model. The
+    watched session runs on Sonnet: Haiku at low effort ended its turn without
+    turn_end, which a waiter rightly does not read as finished."""
     import asyncio
 
     import uvicorn
@@ -159,6 +161,7 @@ async def test_real_claude_waits_on_another_session_and_is_woken(tmp_path: Path)
     assert claude, "claude is not on PATH"
     (tmp_path / ".aegis.yaml").write_text(
         f"agents:\n  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
+        f"  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
     )
     port = _free_port()
     app = App(
@@ -174,7 +177,7 @@ async def test_real_claude_waits_on_another_session_and_is_woken(tmp_path: Path)
     task = asyncio.create_task(server.serve())
     await until(lambda: server.started, timeout=10, what="uvicorn")
     try:
-        r = await app.registry.call("session.spawn", {"agent": "haiku"})
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
         busy = app.sessions.sessions[r["log_id"]]
         r = await app.registry.call("session.spawn", {"agent": "haiku"})
         s = app.sessions.sessions[r["log_id"]]

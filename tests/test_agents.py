@@ -428,6 +428,7 @@ async def test_waiting_on_sessions_wakes_ok_once_every_one_finished(world):
     a, b, c = await world.spawn(), await world.spawn(), await world.spawn()
     held = await hold(b)
     assert b.wire()["attention"] == "waiting"
+    await turn(c, mcp("turn_end", attention="done", line="Done."))
     said = await turn(a, wait_on(b.handle, c.handle))
     assert said.startswith("mcp ok: ")
     await until(
@@ -442,6 +443,7 @@ async def test_waiting_on_sessions_wakes_ok_once_every_one_finished(world):
     assert m["checks"] == []
     assert inbox(a) == []
     await turn(b, mcp("monitor_cancel", monitor_id=held))
+    await turn(b, mcp("turn_end", attention="done", line="Done."))
     await until(lambda: inbox(a), timeout=5, what="the wake")
     (wake,) = inbox(a)
     assert " · ok · " in wake["title"]
@@ -470,6 +472,7 @@ async def test_a_session_that_needs_the_person_ends_the_wait_blocked(world):
 async def test_sessions_already_finished_wake_the_waiter_after_its_turn(world):
     """Review focus 3: nothing to wait for still answers, once the turn ends."""
     a, b = await world.spawn(), await world.spawn()
+    await turn(b, mcp("turn_end", attention="review", line="Read the diff."))
     await turn(a, wait_on(b.handle))
     await until(lambda: inbox(a), timeout=5, what="the wake")
     # The wake can land as soon as the arming turn ends, so the last prose may
@@ -515,6 +518,46 @@ async def test_waiting_on_sessions_refuses_itself_unknown_far_and_archived(world
     said = await turn(a, mcp("monitor_sessions", description="x", sessions=[]))
     assert said.startswith("mcp error"), said
     assert a.wire()["monitors"] == []
+
+
+async def test_a_turn_that_ends_without_turn_end_is_not_finished(world):
+    """A turn ended to wait on a queue task, or interrupted by the person, says
+    nothing; reading that silence as done released the waiter early (review I1,
+    I2). Only an explicit turn_end finishes a watched session."""
+    a, b = await world.spawn(), await world.spawn()
+    held = await hold(b)
+    await turn(a, wait_on(b.handle))
+    # Its wait ends in a turn that calls no turn_end: idle, and silent.
+    await turn(b, mcp("monitor_cancel", monitor_id=held))
+    await until(
+        lambda: a.wire()["monitors"][0]["sessions"][0]["attention"] == "idle",
+        timeout=3,
+        what="b read as idle",
+    )
+    (m,) = a.wire()["monitors"]
+    assert m["sessions"][0]["state"] == "running" and inbox(a) == []
+    await turn(b, mcp("turn_end", attention="done", line="Shipped."))
+    await until(lambda: inbox(a), timeout=5, what="the wake")
+    assert " · ok · " in inbox(a)[0]["title"]
+
+
+async def test_a_session_silent_past_the_grace_ends_the_wait_blocked(
+    world, monkeypatch
+):
+    """Silence held past the grace is not a transient: the waiter is told,
+    rather than released early or left waiting until the timeout. Haiku at low
+    effort ends turns with no turn_end (seen in the live test)."""
+    import aegis.monitors
+
+    monkeypatch.setattr(aegis.monitors, "SILENT_GRACE_S", 0.5)
+    a, b = await world.spawn(), await world.spawn()
+    held = await hold(b)
+    await turn(a, wait_on(b.handle))
+    await turn(b, mcp("monitor_cancel", monitor_id=held))
+    await until(lambda: inbox(a), timeout=5, what="the blocked wake")
+    (wake,) = inbox(a)
+    assert " · blocked · " in wake["title"]
+    assert f"{b.handle} went idle without saying it finished" in wake["md"]
 
 
 @pytest.mark.slow  # a restart

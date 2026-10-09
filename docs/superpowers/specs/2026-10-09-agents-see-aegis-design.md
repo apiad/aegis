@@ -93,9 +93,19 @@ On each check, every listed session is classified from its attention card:
 
 | class | when |
 |---|---|
-| finished | attention is `done` or `review`, or the session is closed |
+| finished | its last turn called `turn_end` with `done` or `review`, or the session is closed |
 | blocked | attention is `needs_you` or `error` |
-| running | attention is `working` or `waiting` |
+| running | attention is `working` or `waiting`, or its last turn ended without `turn_end` (shown as `idle`) |
+
+A turn that says nothing is not finished. The card reads it as `done`, but a
+turn ended to wait on a queue task carries no `turn_end`, and neither does one
+the person interrupted or stopped; counting either as finished released the
+waiter early (found in the branch review). Only an explicit `turn_end` ends the
+wait. Silence that lasts past a grace of two minutes is not passing (a stop, an
+interrupt, an agent that skips `turn_end`, as Haiku at low effort did in the
+live test), and it ends the wait `blocked` with "went idle without saying it
+finished", so the waiter tells the person instead of waiting out the timeout.
+The grace covers the few seconds a queue worker takes to close and deliver.
 
 - All finished: the monitor ends `ok`, like a bash monitor whose `done`
   passed, naming each session and how it ended.

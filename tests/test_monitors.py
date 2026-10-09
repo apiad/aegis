@@ -122,3 +122,18 @@ def test_a_session_monitor_round_trips_through_its_saved_form():
         sessions=[{"log_id": "x", "handle": "ada-lovelace"}],
     )
     assert Monitor(**asdict(m)) == m
+
+
+def test_a_session_monitor_has_no_eta():
+    """Sessions of different sizes give finished-over-listed no rate (review M2)."""
+    m = Monitor(
+        id="m",
+        owner="o",
+        description="d",
+        done="",
+        cwd="/",
+        started_at=0.0,
+        sessions=[{"log_id": "x", "handle": "ada-lovelace"}],
+        readings=[[0.0, 0], [10.0, 50]],
+    )
+    assert m.card()["eta_at"] is None and m.card()["eta_basis"] is None

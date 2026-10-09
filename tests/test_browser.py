@@ -865,6 +865,10 @@ def test_a_monitor_on_sessions_counts_them_in_its_row_and_card(server, page):
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool")
     idle = spawn(page)
+    done = {"attention": "done", "line": "Done."}
+    page.fill("#input", f"/mcp turn_end {json.dumps(done)}")
+    page.press("#input", "Enter")
+    turns_done(page, 1)
     spawn(page)
     args = {
         "description": "wait for the others",

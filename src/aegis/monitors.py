@@ -48,6 +48,12 @@ READINGS_KEPT = 100
 # closed session is finished: its work is over, whatever its last turn said.
 FINISHED = frozenset({"done", "review", "closed"})
 BLOCKED = frozenset({"needs_you", "error"})
+# A watched session idle after a turn with no turn_end is still running for
+# this long: ending a turn to wait on a queue task leaves it silent for the few
+# seconds a worker takes to close and deliver. Past it the silence is not
+# passing (a stop, an interrupt, an agent that skips turn_end), and the waiter
+# is told rather than released early or left waiting until the timeout.
+SILENT_GRACE_S = 120.0
 
 
 def classify(attention: str) -> str:
@@ -118,7 +124,8 @@ class Monitor:
         return changed
 
     def card(self) -> dict:
-        due = eta(self.started_at, self.readings)
+        # Sessions of different sizes give finished-over-listed no rate.
+        due = None if self.sessions else eta(self.started_at, self.readings)
         checks = []
         if not self.sessions:
             for kind in ("done", "progress", "fail"):
@@ -301,7 +308,7 @@ class Monitors:
             )
 
     def _read_sessions(self, m: Monitor) -> list[dict]:
-        rows = []
+        rows, now = [], time.time()
         for r in m.sessions:
             s = self._registry.sessions.get(r["log_id"])
             if s is None:
@@ -310,15 +317,24 @@ class Monitors:
                 c = self._registry.card(s)
                 attention, handle = c["attention"], s.handle
                 line = c["attention_line"]
-            rows.append(
-                {
-                    "log_id": r["log_id"],
-                    "handle": handle,
-                    "attention": attention,
-                    "state": classify(attention),
-                    "line": line,
-                }
-            )
+                # The card reads a turn that said nothing as done. A turn ended
+                # to wait on a queue task, or interrupted by the person, says
+                # nothing too, and releasing the waiter then would be early:
+                # only an explicit turn_end finishes a watched session.
+                if attention == "done" and not s.standing.get("report"):
+                    attention = "idle"
+            row = {
+                "log_id": r["log_id"],
+                "handle": handle,
+                "attention": attention,
+                "state": classify(attention),
+                "line": line,
+            }
+            if attention == "idle":
+                row["silent_since"] = r.get("silent_since") or now
+                if now - row["silent_since"] >= SILENT_GRACE_S:
+                    row["state"] = "blocked"
+            rows.append(row)
         return rows
 
     async def _watch_sessions(self, m: Monitor) -> None:
@@ -432,7 +448,10 @@ def verdict(kind: str, rc: int | None, out: str, err: str) -> tuple[str, bool]:
 
 def _said(row: dict) -> str:
     """A blocked session in a wake: who, why, and its own line if it gave one."""
-    why = "needs you" if row["attention"] == "needs_you" else "hit an error"
+    why = {
+        "needs_you": "needs you",
+        "idle": "went idle without saying it finished",
+    }.get(row["attention"], "hit an error")
     return f"{row['handle']} {why}" + (f": {row['line']}" if row["line"] else "")
 
 
