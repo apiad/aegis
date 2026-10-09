@@ -284,3 +284,50 @@ def test_parse_spawn_refuses_a_flag_without_a_value_and_an_unknown_flag():
         with pytest.raises(OpError) as e:
             parse_spawn(bad)
         assert e.value.code == "bad_spawn"
+
+
+async def first_user_md(app, log_id) -> str:
+    s = app.sessions.sessions[log_id]
+    await until(lambda: s.status == "idle", what="the spawned session's first turn")
+    return next(e["md"] for e in s.entries() if e["kind"] == "user")
+
+
+async def test_slash_spawn_carries_the_tab_it_was_typed_in(app):
+    lid = await spawn(app)
+    src = app.sessions.sessions[lid]
+    await send(app, lid, "the flaky test is test_reconnect_after_sleep")
+    await until(lambda: src.status == "idle", what="the source's turn")
+    r = await send(app, lid, "/spawn opus verify this test")
+    md = await first_user_md(app, r["log_id"])
+    assert f"`{src.handle}`" in md
+    assert "user: the flaky test is test_reconnect_after_sleep" in md
+    assert f'peer_read with target "{src.handle}"' in md
+    assert f'peer_handoff to "{src.handle}"' in md
+    assert md.endswith("The person's task: verify this test")
+    assert app.sessions.sessions[r["log_id"]].title == "verify this test"
+
+
+async def test_slash_spawn_from_an_empty_tab_sends_the_bare_prompt(app):
+    lid = await spawn(app)
+    r = await send(app, lid, "/spawn opus verify this test")
+    assert await first_user_md(app, r["log_id"]) == "verify this test"
+
+
+def test_spawn_tail_keeps_the_persons_lines_and_fences_backticks():
+    from aegis.agent_ops import SPAWN_TAIL_CHARS, spawn_tail
+
+    long = "x" * SPAWN_TAIL_CHARS
+    entries = [
+        {"kind": "user", "md": "old question"},
+        {"kind": "prose", "md": "old answer"},
+        {"kind": "user", "md": "q1"},
+        {"kind": "prose", "md": long},
+        {"kind": "user", "md": "q2 ```code```"},
+        {"kind": "prose", "md": "a2"},
+        {"kind": "user", "md": "q3"},
+        {"kind": "prose", "md": "a3"},
+    ]
+    tail = spawn_tail(entries)
+    assert "old question" not in tail
+    assert all(f"user: {q}" in tail for q in ("q1", "q2 ```code```", "q3"))
+    assert "a3" in tail and len(tail) <= SPAWN_TAIL_CHARS

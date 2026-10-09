@@ -16,9 +16,10 @@ from pydantic import BaseModel, Field, model_validator
 
 from . import files
 from .monitors import iso_now
-from .names import valid_handle
+from .names import SPAWN_HEAD, SPAWN_TASK, valid_handle
 from .ops import Caller, OpError
 from .session import Archived
+from .transcript.entries import CONTENT_KINDS
 
 if TYPE_CHECKING:
     from .app import App
@@ -177,6 +178,69 @@ def _render(e: dict, tools: bool) -> str | None:
     if kind == "artifact":
         return f"artifact: {e['title']} ({e['status']})"
     return f"· {e['summary']}"
+
+
+# What a /spawn opening carries of the tab it was typed in: the last few turns,
+# the person's words whole, the agent's prose trimmed to fit. The legacy tree
+# measured why tools stay out: a tail filled from the newest event was tool
+# calls, and 42% of its windows held none of the person's words.
+SPAWN_TAIL_TURNS = 3
+SPAWN_TAIL_CHARS = 8000
+
+
+def spawn_tail(entries: list[dict]) -> str:
+    """The last ``SPAWN_TAIL_TURNS`` turns as ``peer_read`` renders them, without
+    tools or status notes, at most ``SPAWN_TAIL_CHARS``: the person's lines first, then the
+    agent's newest-first, so the line with the referent is the last to go."""
+    starts = [i for i, e in enumerate(entries) if e["kind"] == "user"]
+    first = starts[-SPAWN_TAIL_TURNS] if len(starts) >= SPAWN_TAIL_TURNS else 0
+    lines = [
+        (e["kind"], x)
+        for e in entries[first:]
+        if e["kind"] in CONTENT_KINDS and (x := _render(e, False))
+    ]
+    keep = [False] * len(lines)
+    left = SPAWN_TAIL_CHARS
+    order = [i for i, (k, _) in enumerate(lines) if k == "user"][::-1]
+    order += [i for i, (k, _) in enumerate(lines) if k != "user"][::-1]
+    for i in order:
+        if len(lines[i][1]) + 1 <= left:
+            keep[i] = True
+            left -= len(lines[i][1]) + 1
+    return "\n".join(x for (_, x), k in zip(lines, keep) if k)
+
+
+def spawn_opening(source, prompt: str, home: str | None) -> str:
+    """The first message of a session a person ``/spawn``\\ s from tab ``source``:
+    where they typed it, the tail of that tab, how to read more and how to
+    answer, then their words. ``home`` is this server's name when the new
+    session is on a linked server, which cannot read ``source``: it gets the
+    tail and an address to hand off to. A tab with nothing in it yet gives the
+    bare prompt, since a pointer at an empty transcript buys a wasted call.
+
+    The wording is the legacy tree's (spec 2026-08-10, spawn with provenance):
+    the person started it while standing in another tab, rather than that tab's
+    agent delegating, so the new agent works for the person."""
+    tail = spawn_tail(source.entries())
+    if not tail:
+        return prompt
+    fence = "`" * max(3, max(map(len, re.findall("`+", tail)), default=0) + 1)
+    to = f"{source.handle}@{home}" if home else source.handle
+    read = (
+        ""
+        if home
+        else f'Read more of it with peer_read with target "{source.handle}" '
+        "before you start, unless the task is plainly self-contained. "
+    )
+    return (
+        f"{SPAWN_HEAD}`{source.handle}`, and this probably refers to what is happening "
+        f"there. Below is its recent tail.\n\n{fence}text\n{tail}\n{fence}\n\n"
+        f"{read}The tail is a snapshot taken when you were spawned; "
+        f"`{source.handle}` has kept going since.\n\n"
+        "Then do the work: you are an agent with your own tab, not a question "
+        f'being answered. When you are done, hand the result back with peer_handoff to "{to}" '
+        f"if it matters there.{SPAWN_TASK}{prompt}"
+    )
 
 
 ACROSS = (
