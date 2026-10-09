@@ -248,15 +248,25 @@ Alt keys it leaves free. Plain keys act only outside a text field and the view
 decides what they do: there is no mode. A selection, in the transcript or the
 Fleet, is held by id and re-marked after every redraw, because both replace their
 nodes on each patch. Esc closes, in order, a dialog, the drawer, the ? list and a
-monitor card, and only then interrupts.
+monitor card or a panel row's card, and only then interrupts.
 
 **A theme is one CSS file over one markup.** The markup carries everything any
 theme might show, and the base stylesheet reads only CSS variables. A theme sets
 the variables and a few overrides that decide what shows.
 
+**The session panel is rows that open cards.** Each section of the panel is a
+compact row (`.peek`) that holds its own card (`.pcard`) in the markup, so the
+code that fills a row fills its card, and an open card stays current.
+`js/side.js` only moves them: on a desktop the card is fixed beside the panel,
+level with its row, and opens on hover or keyboard focus; in the drawer a tap
+opens it under the row. Usage shows the quota the session spends, matched on the
+`harness` each provider carries on the wire, and for OpenCode on the provider
+its model names. The panel's width and whether it is collapsed
+(`data-side=closed`) belong to the browser, in localStorage, as the theme does.
+
 **One page for every screen.** A phone gets the desktop's markup. Below 760 px
 one CSS block wraps the tab bar onto its own row, turns the side panel into a
-drawer (`data-side=open`, opened by ☰) and stacks the Fleet band; under
+drawer (`data-side=open`, opened by the panel button) and stacks the Fleet band; under
 `(pointer: coarse)` touch targets grow to 44 px and Enter in the composer adds a
 line. A second set of screens would be a second client to keep in step. The
 client asks through its own dialog (`js/dialog.js`), never the browser's, and

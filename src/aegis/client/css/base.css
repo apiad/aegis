@@ -259,6 +259,7 @@ body{background:#000}
 #a2 .pcard .big .of{color:var(--muted)}
 #a2 .pcard .big .c{margin-left:auto;font-family:var(--font-mono);font-size:15px;color:var(--strong)}
 #a2 .pcard .gauge{grid-template-columns:44px minmax(40px,1fr) auto}
+#a2 .pcard .plan{font-family:var(--font-ui)}
 /* tiles: the numbers a glance needs */
 #a2 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 #a2 .tile{min-width:0}
