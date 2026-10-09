@@ -41,7 +41,7 @@ reading the VPS tab, or through the PR the VPS agent opens.
 |---|---|---|
 | Who uses it in this version | Alex alone: one person, two servers. The wire carries a `user` from day one | Per-user tokens and per-user quota are a later spec. A `user` field now means that spec changes no protocol |
 | What a token is | A token stands for a user. The default token belongs to the Linux user who ran `aegis` | Alex: so later tokens can be minted per person, and quota counted per person |
-| What sits in front of the VPS | Nothing but the token. #191 removes Caddy's basic auth first | Alex: the current PRs merge before this lands |
+| What sits in front of the VPS | Nothing but the token. #191 removed Caddy's basic auth, and dev.apiad.net has answered to the token alone since 2026-10-08 | Alex: design for a token-only aegis |
 | What a link is | zion acting as one more websocket client of the VPS, holding the VPS's token | The VPS then needs no new trust: it only answers calls and sends patches for channels zion subscribed to, as it does for a browser. A server-to-server protocol would be a second thing to secure |
 | Which way a link carries traffic | One way. zion calls and subscribes; the VPS answers. A frame the VPS starts is dropped | Alex: "Yudi cannot, under any circumstance, run code on my laptop" |
 | Who may spawn across a link | People only, from zion's client. Agents never spawn on another server, and never enqueue there | Alex, simplifying the vision's rule. An agent that wants work done on the VPS hands it to an agent a person started there |
@@ -205,7 +205,7 @@ another `--name` and re-adding its links elsewhere.
 `server` is a link, does this:
 
 1. zion calls `peer.deliver` down the link with the sender's handle, zion's
-   name, the user, and the context.
+   name, the user, the context and `interrupt`.
 2. The VPS delivers it to the session named `handle` through its inbox, under
    the header `> from agent:<handle>@<server> (<user>) · <iso time>`, held while
    the session works, as every inbox message is.
@@ -213,9 +213,10 @@ another `--name` and re-adding its links elsewhere.
    `held for knuth@vps`.
 
 `peer.deliver` is an operation only a link socket may call, so an agent on the
-VPS cannot call it and a browser cannot either. `interrupt=true` is refused
-across a link: interrupting a turn changes a session, and an agent changes only
-what it created.
+VPS cannot call it and a browser cannot either. `interrupt=true` works as it
+does locally: the VPS cuts the target's turn, then delivers. Whether an agent
+should interrupt a session it did not start is a question for local handoffs
+too, and is tracked in #206.
 
 `handle@<own name>` means the caller's own server, the same as a bare handle.
 
@@ -396,8 +397,7 @@ Each is usable on its own, in this order.
   - A beta agent hands off to `x@alpha`, calls `session.list`, and finds no
     alpha in either.
   - An alpha agent calls `peer.read`, `session.spawn` and `queue.enqueue` on
-    beta and gets `not_across_links`; `peer.handoff` with `interrupt=true` to
-    beta is refused.
+    beta and gets `not_across_links`.
   - A browser socket on beta tries `peer.deliver` and is refused.
   - A marker string written into a beta session's transcript and title never
     appears in anything alpha's fake claude reads on stdin, across a handoff, a
@@ -405,7 +405,8 @@ Each is usable on its own, in this order.
     first run adds titles to `session.list` on purpose and watches it go red.
 - **The handoff** (slice 3): an alpha agent hands off to a beta session; beta's
   fake claude receives one user turn with the header naming the alpha sender,
-  alpha's server and the user.
+  alpha's server and the user. With `interrupt=true` and beta's
+  session mid-turn, beta's turn is cut first, then the message lands.
 - **Live** (`make test-live`): one real Claude Haiku on alpha hands off to a
   session on beta, and beta's transcript shows the header.
 - **Bench.** `make bench` gains one row: a transcript replayed through a link,
@@ -414,9 +415,10 @@ Each is usable on its own, in this order.
 
 ## Deploying
 
-1. **Precondition:** #191 is merged and deployed, so dev.apiad.net answers to
-   the token alone. Caddy already passes `/ws` and blocks only `/mcp`, so the
-   link needs no Caddy change.
+1. **Precondition, met:** #191 is merged and deployed, so dev.apiad.net answers
+   to the token alone. A socket still proves the token in its `hello`, which is
+   what a link does, and Caddy passes `/ws` and blocks only `/mcp`, so the link
+   needs no Caddy change.
 2. Release with protocol 3, then upgrade zion and the VPS to the same version
    (`know-how/releasing.md`; the VPS redeploy is in the workspace memory for
    dev.apiad.net). Until both are upgraded the band shows the mismatch.
@@ -434,8 +436,8 @@ Each is usable on its own, in this order.
   linked server into an agent.** With its reason (Alex's laptop never runs what
   someone else's token wrote), its mechanism (the link client handles five frame
   kinds and runs no request handler) and its test.
-- "Agents change only what they created" gains: and never spawn, enqueue, read
-  or interrupt on another server.
+- "Agents change only what they created" gains: and never spawn, enqueue or
+  read on another server.
 
 ## Out of scope
 
