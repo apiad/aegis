@@ -2225,3 +2225,18 @@ EOF
 - [ ] A real `aegis serve` from the branch with the fake claude: create, break, fix and land one artifact from the composer; submit it; reload; switch themes. Screenshot the live card and the collapsed card.
 - [ ] Mark this plan's status done, push, open the PR closing #217 with: what was measured (bench, the browser run), what was tried and dropped (the probe grace window's value if it moved, the `hidden` attribute if Chromium refused to load the probe frame), and what was left out (slice 2).
 - [ ] Stop at the PR: Alex merges.
+
+---
+
+## Post-review fixes (final whole-branch review, 2026-10-09)
+
+Rulings by the controller after the final review; each is a small change on top of Tasks 1 to 7.
+
+1. **No echo on unchanged state.** The fold stamps `detail.state_rev` with the store index of the record that last set the state (the `artifact` record that created the entry, and every `artifact_state` record). `artifactStage` sets `f.dataset.stateRev` at mount; `UPDATERS.artifact` pushes `aegis:state` only when `e.detail.state_by === "agent"` and `String(e.detail.state_rev) !== frame.dataset.stateRev`, then updates the dataset. Browser test `test_an_emit_never_echoes_the_agents_state`: a page whose `onState` increments a counter shown in `#n`, emits twice (two buttons or one button clicked twice); `#n` must still read `0`; then `/mcp artifact_update {state: {...}}` makes it read `1`.
+2. **One error wake per landed page.** `Artifact` gains `error_count: int = 0` and `errored: bool = False` (both reset in `Board.land`); `Board.error_wakes(id)` returns True once and sets `errored`, every later call increments `error_count` and returns False; `Board.read` returns `errors: a.error_count` (0 before the first). `Session.turns` and `errored_turn` go away. The bridge forwards only the first `aegis/error` a mounted frame raises (a `data-errored` flag on the frame). e2e `test_errors_wake_once_per_turn` becomes `test_errors_wake_once_per_landed_page`: the second error is dropped even after a `turn()` ends, `artifact_read` shows `errors: 2`, and a resend re-arms (one more error wakes again).
+3. **The real skeleton runs in CI.** `_artifact` in `tests/test_browser.py` reads the draft at `made["path"]`, replaces `<!-- controls go here -->` with the test's markup and the line `// wire the controls; answer with aegis.submit / aegis.emit / aegis.state` with the test's `ready` body, and writes it back; `SKELETON_WITH` goes away. The test pages become a `(markup, ready_body)` pair; `PICK` and the throwing pages adapt (an inline-script error page puts `nope();` in the markup as its own `<script>`).
+4. **A label is cut, never refused.** `artifact.js` `submit`: `label: String(label || "answered").split("\n")[0].slice(0, 140)`.
+5. **Dead code goes.** `drop_all_drafts` leaves `artifacts.py`; the `aegis:status` listener leaves `artifacts.js` (nothing dispatches it).
+6. **`started: null` has two causes.** The `artifact_send` docstring and the primer say "null when no browser was open, or none answered within 3 s".
+7. **Page records never move `last_activity`.** `Session._record` excludes `artifact_state` and `artifact_event` the way it excludes `recap`: a person's click is not the session doing anything, and the needs-you order must not change while they drag a slider.
+8. **Archiving flushes the board.** `Registry.close` calls `s.artifacts.flush_all()` before `s.store.close()`.

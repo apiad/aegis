@@ -45,7 +45,7 @@ for a page. The agent sends a file and asks in prose.
 | Order in the transcript | Artifact first, then the prose that refers to it | The prose is written once, after the page is proven; a card above its discussion reads like a figure. The caption is the lead line, and a lesson can carry its text inside the page |
 | State writes | Coalesced on the server to one record a second, and always before an emit, submit, close or update | A slider fires sixty times a second; the store is append-only |
 | Echo | The host pushes state into a frame only when the agent wrote it | A browser's own write pushed back would loop with a page that re-sends on receipt |
-| Errors in the page | One inbox message per artifact per agent turn | A loop in the page's JS costs one message, not a hundred |
+| Errors in the page | One inbox message per landed page, re-armed by a resend; later errors are counted and shown by `artifact_read` | A loop in the page's JS costs one message, not a hundred, and not one per turn for as long as the card is mounted (the first cut, once per turn, woke the agent after every turn it took) |
 | After submit or close | The card collapses to the label; Show re-mounts the frame read-only | The transcript keeps the exchange; the frame stays available to look at |
 | Attention | No new rule | The agent ends its turn with `turn_end(needs_you)` after a question artifact, as after any question |
 
@@ -84,7 +84,8 @@ artifact.read(id: str)
 ```
 
 `status` is `draft`, `live`, `submitted` or `closed`. `state` is the latest
-write from the page or the agent. `events` is the last 20 emits, oldest first,
+write from the page or the agent. `errors` counts the script errors the page
+raised since it landed (only the first woke the agent). `events` is the last 20 emits, oldest first,
 each `{name, data, ts}`. `submitted` is the submit's data and `label` its label,
 both null until then. Never wakes anyone; this is the silent channel.
 
@@ -112,9 +113,9 @@ leaves no record.
 
 Three layers, cheapest first.
 
-**The skeleton is tested.** What `artifact.create` writes is the browser
-test's fixture, read from the same source, so if the skeleton stops working CI
-goes red. With `artifact.css` doing the styling, an agent that starts from it
+**The skeleton is tested.** The browser tests fill the draft `artifact.create`
+wrote, replacing only its two placeholder lines, so the real skeleton runs in
+CI on every push and goes red if it stops working. With `artifact.css` doing the styling, an agent that starts from it
 and only adds its controls has little to get wrong. The skeleton:
 
 ```html
@@ -180,8 +181,9 @@ The page talks to `window.aegis`:
   artifact live. `name` is one word, `[a-z][a-z0-9_-]*`, at most 32
   characters, and never `submit`, `error` or `close`.
 - `aegis.submit(obj, label)` wakes the agent with the answer and ends the
-  artifact. `label` is one line of at most 140 characters; it is what the
-  collapsed card shows.
+  artifact. `label` is one line of at most 140 characters, which the script
+  enforces by cutting (so a long label never makes Submit silently fail); it
+  is what the collapsed card shows.
 - `aegis.onState(fn)` runs `fn(state)` each time the agent pushes state with
   `artifact_update`.
 
@@ -254,8 +256,9 @@ each taking `log_id` and `artifact_id`:
 - `artifact.submit(data, label)`: records the submit, sets the status, wakes
   the agent. Refused with `not_live` after the first; the bridge then tells the
   page the status so it disables itself.
-- `artifact.error(message, stack)`: wakes the agent once per artifact per
-  agent turn; later errors in the same turn are counted and dropped.
+- `artifact.error(message, stack)`: wakes the agent once per landed page
+  (a resend re-arms it); later errors are counted, never delivered, and the
+  count is in `artifact.read`'s `errors`.
 - `artifact.probed(probe_id, started, message?, stack?)`: the outcome of a
   probe frame; answers to a probe the server no longer waits on are dropped.
 
@@ -318,7 +321,9 @@ Picked layout B
 ````
 
 An emit puts its name where `submit` is, and its data in the block. An error
-puts `error` there, then the message and the first five lines of the stack.
+puts `error` there, then the message and the first five lines of the stack;
+the bridge forwards only the first error a mounted frame raises, and the server
+wakes only once per landed page.
 The body is a code block so the agent reads it as data; labels and data are
 never rendered as HTML anywhere.
 
