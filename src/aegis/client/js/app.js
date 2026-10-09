@@ -961,13 +961,14 @@ function drawServerPick() {
     if (spServer !== null) setSpServer(null);
     return;
   }
-  const opts = [new Option(conn.server || "this server", "")];
-  for (const l of links) {
-    const o = new Option(l.state === "linked" ? l.name : `${l.name} (${l.state})`, l.name);
-    o.disabled = l.state !== "linked";
-    opts.push(o);
-  }
-  pick.replaceChildren(...opts);
+  pick.options = [
+    { value: "", label: conn.server || "this server" },
+    ...links.map((l) => ({
+      value: l.name,
+      label: l.state === "linked" ? l.name : `${l.name} (${l.state})`,
+      disabled: l.state !== "linked",
+    })),
+  ];
   if (spServer && linkOf(spServer)?.state !== "linked") setSpServer(null);
   pick.value = spServer || "";
 }

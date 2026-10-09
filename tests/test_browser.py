@@ -282,6 +282,7 @@ def test_the_composer_overrides_a_chip_resets_it_and_spawns_with_the_first_messa
     page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
     assert picked(page, "#sp-model") == "opus"
     assert page.is_hidden("#sp-reset")
+    assert page.is_hidden("#sp-server")  # no linked server, no server chip
     tops = page.eval_on_selector_all(
         "#spawn .pick, #sp-go", "els => els.map(e => e.getBoundingClientRect().top)"
     )
@@ -3046,7 +3047,7 @@ def test_spawn_on_a_linked_server_from_the_new_tab(linked, page):
     page.wait_for_selector("#a2[data-view=fleet]")
     page.click("#tab-add")
     page.wait_for_selector("#sp-server:not([hidden])")
-    page.select_option("#sp-server", "beta")
+    pick(page, "#sp-server", "beta")
     page.wait_for_function(
         "document.querySelector('#sp-agent').value === 'opus'"
         " && document.querySelector('#sp-cwd').value.includes('beta')"
