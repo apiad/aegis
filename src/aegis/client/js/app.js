@@ -22,6 +22,7 @@ import { installBell, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
 import "./pick.js";
 import { Dictation } from "./dictation.js";
+import { dur, planTimes } from "./plantime.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -665,6 +666,40 @@ function fmtTokens(n) {
   return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
 }
 
+// The plan in the sidebar: totals in the heading, each item's time, and the
+// doing spinner turning only while the agent works.
+function drawPlan(s) {
+  const plan = s.plan || [];
+  $("s-plan-sec").hidden = !plan.length;
+  $("s-plan").classList.toggle("live", s.attention === "working");
+  const mark = { done: "done", doing: "working", pending: "waiting" };
+  $("s-plan").replaceChildren(
+    ...plan.map((i) => {
+      const d = document.createElement("div");
+      d.className = i.state;
+      d.append(glyph(mark[i.state] || "waiting"), span("", i.text), span("t", ""));
+      return d;
+    }),
+  );
+  tickSidePlan(s);
+}
+
+// The parts that move with the clock, updated in place every second: a
+// redraw would restart the spinner's animation each time.
+function tickSidePlan(s) {
+  const plan = s.plan || [];
+  const t = planTimes(s);
+  const done = plan.filter((i) => i.state === "done").length;
+  let head = `Plan ${done}/${plan.length}`;
+  if (t) head += ` · ${dur(t.work)} work · ${dur(t.idle)} idle`;
+  if (t && t.left != null) head += ` · ~${dur(t.left)} left`;
+  $("s-plan-h").textContent = head;
+  const cells = $("s-plan").querySelectorAll(":scope > div > .t");
+  plan.forEach((i, k) => {
+    if (cells[k]) cells[k].textContent = t && i.state !== "pending" ? dur(t.items[k]) : "";
+  });
+}
+
 function renderMeta(s) {
   if (!s) return;
   if (!editing.has("title")) $("s-title").textContent = s.title || "untitled";
@@ -681,17 +716,7 @@ function renderMeta(s) {
   $("s-ask").hidden = !s.attention_line;
   $("s-ask").textContent = s.attention_line || "";
   $("s-ask").className = `askbox at-${s.attention}`;
-  const plan = s.plan || [];
-  $("s-plan-sec").hidden = !plan.length;
-  const mark = { done: "done", doing: "working", pending: "waiting" };
-  $("s-plan").replaceChildren(
-    ...plan.map((i) => {
-      const d = document.createElement("div");
-      d.className = i.state;
-      d.append(glyph(mark[i.state] || "waiting"), span("", i.text));
-      return d;
-    }),
-  );
+  drawPlan(s);
   drawReplies(s);
   $("s-cwd").textContent = s.cwd;
   $("chip-model").textContent = s.model;
@@ -742,6 +767,10 @@ setInterval(() => {
       c.querySelector(".when").textContent = ago(m.last_activity);
       tickPlan(c, m);
     }
+  }
+  if (root.dataset.view === "session" && shown) {
+    const s = sessions.get(shown);
+    if (s && (s.plan || []).length) tickSidePlan(s);
   }
 }, 1000);
 

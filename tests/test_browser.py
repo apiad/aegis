@@ -3722,3 +3722,47 @@ def test_a_card_from_before_plan_times_draws_the_bar_without_times(server, page)
     )
     assert got == ["1/2", ""]
     assert page.errors == []
+
+
+def test_the_sidebar_shows_plan_totals_and_each_items_time(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    plan = [
+        {"text": "read", "state": "done"},
+        {"text": "fix", "state": "doing"},
+        {"text": "ship", "state": "pending"},
+    ]
+    page.fill("#input", f"/mcp plan_update {json.dumps({'items': plan})}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    page.wait_for_selector("#s-plan-sec:not([hidden]) >> text=ship")
+    head = page.inner_text("#s-plan-h")
+    assert head == "Plan 1/3 · <1m work · <1m idle · ~<1m left"
+    cells = page.eval_on_selector_all(
+        "#s-plan > div .t", "ts => ts.map(t => t.textContent)"
+    )
+    assert cells == ["<1m", "<1m", ""]
+    assert page.errors == []
+
+
+def test_the_doing_spinner_turns_only_while_the_agent_works(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    plan = [{"text": "read", "state": "done"}, {"text": "fix", "state": "doing"}]
+    page.fill("#input", f"/mcp plan_update {json.dumps({'items': plan})}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    spin = "#s-plan > div.doing svg.ic"
+    anim = "m => getComputedStyle(m).animationName"
+    page.wait_for_selector(spin)
+    assert page.eval_on_selector(spin, anim) == "none"
+    page.fill("#input", "/sleep 3")
+    page.press("#input", "Enter")
+    page.wait_for_selector("#s-plan.live")
+    assert page.eval_on_selector(spin, anim) == "a2spin"
+    turns_done(page, 3)
+    page.wait_for_selector("#s-plan:not(.live)")
+    assert page.eval_on_selector(spin, anim) == "none"
+    assert page.errors == []
