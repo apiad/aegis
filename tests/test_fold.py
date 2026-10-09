@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from aegis.transcript.entries import EMPTY_STANDING, Fold, fold_records
 from aegis.transcript.store import read_store
 
@@ -10,11 +12,17 @@ class Rec:
 
     def __init__(self):
         self.records = []
+        self.skew = 0.0
 
     def _add(self, **kw):
-        r = {"i": len(self.records), "ts": 1000.0 + len(self.records), **kw}
+        ts = 1000.0 + len(self.records) + self.skew
+        r = {"i": len(self.records), "ts": ts, **kw}
         self.records.append(r)
         return r
+
+    def wait(self, s: float) -> None:
+        """The next record comes ``s`` seconds later than it otherwise would."""
+        self.skew += s
 
     def own(self, kind, **kw):
         return self._add(src="aegis", kind=kind, **kw)
@@ -691,7 +699,10 @@ def test_a_plan_record_sets_the_plan_and_did_tracks_the_last_item_finished():
     rec = Rec()
     rec.own("plan", items=plan(("read", "doing"), ("fix", "pending")))
     f, _ = run(rec)
-    assert f.standing["plan"] == plan(("read", "doing"), ("fix", "pending"))
+    assert [(i["text"], i["state"]) for i in f.standing["plan"]] == [
+        ("read", "doing"),
+        ("fix", "pending"),
+    ]
     assert f.standing["did"] == ""
     before = f.standing
     f.apply(rec.own("plan", items=plan(("read", "done"), ("fix", "doing"))))
@@ -987,6 +998,135 @@ def test_a_peek_opens_its_file_inside_the_row_it_was_asked_from():
     assert peek["ts"] == r.records[-2]["ts"]
     assert [x["name"] for x in peek["files"]] == ["a.png"]
     assert f.entry("t1")["detail"]["result"] == "1 line"
+
+
+def times(f):
+    c = f.standing["clock"]
+    work = [i["work_s"] for i in f.standing["plan"]]
+    return work, (c["work_s"], c["idle_s"], c["at"], c["running"])
+
+
+def test_no_plan_keeps_no_clock():
+    r = Rec()
+    r.own("send", text="go")
+    r.echo("go")
+    r.result()
+    f, _ = run(r)
+    assert f.standing["clock"] is None
+
+
+def test_a_wait_on_a_monitor_is_work_for_the_doing_item():
+    r = Rec()
+    r.own("send", text="go")  # 1000
+    r.echo("go")  # 1001
+    r.own("plan", items=plan(("read", "doing"), ("fix", "pending")))  # 1002
+    r.wait(100)
+    r.result()  # 1103: no turn_end, so the gap is work
+    r.wait(50)
+    r.own("send", text="> from monitor:m1 · done")  # 1154
+    r.echo("> from monitor:m1 · done")  # 1155
+    r.own("plan", items=plan(("read", "done"), ("fix", "doing")))  # 1156
+    f, _ = run(r)
+    assert times(f) == ([154.0, 0.0], (154.0, 0.0, 1156.0, "work"))
+
+
+@pytest.mark.parametrize("close", ["turn_end", "failed", "interrupted"])
+def test_a_turn_that_hands_back_to_the_person_starts_idle(close):
+    r = Rec()
+    r.own("send", text="go")  # 1000
+    r.echo("go")  # 1001
+    r.own("plan", items=plan(("read", "doing")))  # 1002
+    if close == "turn_end":
+        r.own("turn_end", attention="needs_you", line="ok?", replies=[])
+    elif close == "interrupted":
+        r.own("interrupt")
+    else:
+        r.text("trying")
+    if close == "failed":
+        r.result(is_error=True, subtype="error_during_execution")  # 1004
+    else:
+        r.result()  # 1004
+    r.wait(600)
+    r.own("send", text="yes")  # 1605
+    f, _ = run(r)
+    assert times(f) == ([2.0], (2.0, 601.0, 1605.0, "work"))
+
+
+def test_work_with_nothing_doing_counts_for_the_plan_only():
+    r = Rec()
+    r.own("send", text="go")  # 1000
+    r.echo("go")  # 1001
+    r.own("plan", items=plan(("read", "doing"), ("fix", "pending")))  # 1002
+    r.own("plan", items=plan(("read", "done"), ("fix", "pending")))  # 1003
+    r.wait(10)
+    r.own("plan", items=plan(("read", "done"), ("fix", "doing")))  # 1014
+    f, _ = run(r)
+    assert times(f) == ([1.0, 0.0], (12.0, 0.0, 1014.0, "work"))
+
+
+def test_a_plan_with_no_text_in_common_starts_from_zero():
+    r = Rec()
+    r.own("send", text="go")  # 1000
+    r.echo("go")  # 1001
+    r.own("plan", items=plan(("read", "doing")))  # 1002
+    r.wait(30)
+    r.own("plan", items=plan(("other", "doing")))  # 1033
+    f, _ = run(r)
+    assert times(f) == ([0.0], (0.0, 0.0, 1033.0, "work"))
+
+
+def test_a_turn_with_no_result_works_until_its_last_record():
+    r = Rec()
+    r.own("send", text="go")  # 1000
+    r.echo("go")  # 1001
+    r.own("plan", items=plan(("read", "doing")))  # 1002
+    r.text("reading")  # 1003
+    r.wait(500)
+    r.own("server_stopped")  # 1504
+    r.own("send", text="again")  # 1505
+    f, _ = run(r)
+    assert times(f) == ([1.0], (1.0, 502.0, 1505.0, "work"))
+
+
+def test_the_clock_survives_a_refold():
+    r = Rec()
+    r.own("send", text="go")
+    r.echo("go")
+    r.own("plan", items=plan(("read", "doing"), ("fix", "pending")))
+    r.own("turn_end", attention="done", line="read it", replies=[])
+    r.result()
+    r.wait(40)
+    r.own("send", text="next")
+    f, _ = run(r)
+    again, _ = run(r)
+    assert again.standing == f.standing
+
+
+def test_a_slash_command_while_the_session_waits_on_the_person_stays_idle():
+    r = Rec()
+    r.own("send", text="go")  # 1000
+    r.echo("go")  # 1001
+    r.own("plan", items=plan(("read", "doing")))  # 1002
+    r.own("turn_end", attention="needs_you", line="ok?", replies=[])  # 1003
+    r.result()  # 1004
+    r.wait(100)
+    r.own("send", text="/context")  # 1105
+    r.result()  # 1106: a local command, no turn_end
+    f, _ = run(r)
+    assert times(f)[1][3] == "idle"
+
+
+@pytest.mark.parametrize("kind", ["stop", "exit", "close"])
+def test_the_process_ending_during_a_work_gap_starts_idle(kind):
+    r = Rec()
+    r.own("send", text="go")  # 1000
+    r.echo("go")  # 1001
+    r.own("plan", items=plan(("read", "doing")))  # 1002
+    r.result()  # 1003: no turn_end, so the gap is work
+    r.wait(10)
+    r.own(kind, code=0)  # 1014
+    f, _ = run(r)
+    assert times(f) == ([12.0], (12.0, 0.0, 1014.0, "idle"))
 
 
 def test_the_work_between_messages_folds_and_what_was_said_does_not():

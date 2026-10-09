@@ -22,6 +22,8 @@ import re
 from collections import deque
 from typing import Any
 
+from .. import files
+from ..artifacts import EVENTS_KEPT
 from ..claude.stream import (
     CommandEcho,
     CommandOutput,
@@ -40,10 +42,9 @@ from ..claude.stream import (
     ToolOutput,
     parse,
 )
-from .. import files
-from ..artifacts import EVENTS_KEPT
 from ..opencode.stream import Parser as OpenCodeParser
 from . import describe as d
+from .plan_clock import replan, switch
 from .wire import wire
 
 
@@ -111,6 +112,7 @@ EMPTY_STANDING: dict = {
     "report": None,
     "turn_error": "",
     "last_message": "",
+    "clock": None,
 }
 
 
@@ -167,6 +169,13 @@ class Fold:
         self._removed: dict[str, int] = {}
         # A prompt was sent or read and its turn has said nothing back yet.
         self._turn_open = False
+        # The ts of the last record applied and of the one before it: a turn
+        # that dies without a result worked until its last record.
+        self._ts: float | None = None
+        self._prev_ts: float | None = None
+        # The person's own slash command opened this turn while the clock ran
+        # idle: a /context does not end their wait.
+        self._slash_idle = False
         self.standing: dict = EMPTY_STANDING
         self._turns = 0  # results seen
         self._report_turn = -1  # self._turns when the current report was made
@@ -213,6 +222,7 @@ class Fold:
         parse; a re-fold passes nothing and parses the stored line.
         """
         i, ts = record["i"], record.get("ts")
+        self._prev_ts, self._ts = self._ts, ts
         self.last_index = i
         self._rev = i
         src = record.get("src")
@@ -261,8 +271,11 @@ class Fold:
             ops += self._upsert({**e, "md": (e.get("md") or "") + ev.text})
         return ops
 
-    def _end_turn(self) -> None:
-        """A turn ended without a result: each parser forgets it."""
+    def _end_turn(self, ts: float | None = None) -> None:
+        """A turn ended without a result: each parser forgets it. The process
+        is gone, so nothing is being waited on: an open turn worked until its
+        last record, a gap since a result until ``ts``."""
+        self._clock(self._prev_ts if self._turn_open else ts, "idle")
         self._turn_open = False
         for p in self._parsers.values():
             end = getattr(p, "end_turn", None)
@@ -286,6 +299,13 @@ class Fold:
         return None
 
     # -- helpers -------------------------------------------------------
+    def _clock(self, ts: float | None, running: str) -> None:
+        """Run ``running`` on the plan's clock from ``ts`` (plan_clock.py)."""
+        if ts is None:
+            return
+        plan, clock = switch(self.standing["plan"], self.standing["clock"], ts, running)
+        self._stand(plan=plan, clock=clock)
+
     def _stand(self, **changes: Any) -> None:
         if any(self.standing.get(k) != v for k, v in changes.items()):
             self.standing = {**self.standing, **changes}
@@ -367,7 +387,14 @@ class Fold:
     def _own(self, i: int, ts: float | None, rec: dict) -> list[dict]:
         kind = rec.get("kind")
         if kind == "send":
+            clock = self.standing["clock"]
+            self._slash_idle = (
+                str(rec.get("text") or "").startswith("/")
+                and clock is not None
+                and clock["running"] == "idle"
+            )
             self._turn_open = True
+            self._clock(ts, "work")
             self._stand(report=None, turn_error="")
             # The person is back and writing: the recap has done its job.
             folded: list[dict] = []
@@ -395,9 +422,17 @@ class Fold:
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary=line)
             )
         if kind == "plan":
-            items = list(rec.get("items") or [])
+            items, clock = replan(
+                self.standing["plan"],
+                self.standing["clock"],
+                list(rec.get("items") or []),
+                ts if ts is not None else 0.0,
+                "work" if self._turn_open else "idle",
+            )
             self._stand(
-                plan=items, did=_did(self.standing["plan"], items, self.standing["did"])
+                plan=items,
+                clock=clock,
+                did=_did(self.standing["plan"], items, self.standing["did"]),
             )
             return []
         if kind == "turn_end":
@@ -452,7 +487,7 @@ class Fold:
             )
         if kind == "exit":
             stderr = "\n".join(rec.get("stderr_tail") or [])
-            self._end_turn()
+            self._end_turn(ts)
             self._stand(
                 turn_error=f"{rec.get('harness') or 'claude'} exited with code {rec.get('code')}"
             )
@@ -474,7 +509,7 @@ class Fold:
             )
         if kind in ("stop", "server_stopped"):
             line = "stopped" if kind == "stop" else "the server stopped during a turn"
-            self._end_turn()
+            self._end_turn(ts)
             if kind == "server_stopped":
                 self._stand(turn_error="the server stopped during a turn")
             return (
@@ -490,6 +525,7 @@ class Fold:
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary="resumed")
             )
         if kind == "close":
+            self._end_turn(ts)
             return self._upsert(
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary="closed")
             )
@@ -630,7 +666,7 @@ class Fold:
                 )
             )
         if kind == "reset":
-            self._end_turn()
+            self._end_turn(ts)
             return self._upsert(
                 _entry(
                     f"e{i}",
@@ -673,6 +709,7 @@ class Fold:
             if pid is not None:
                 ops += self._remove(pid)
             self._turn_open = True
+            self._clock(ts, "work")
             if ev.text.startswith("> from "):
                 # An inbox message: a monitor wake, a queue result, a handoff.
                 header = ev.text.splitlines()[0].removeprefix("> from ").strip()
@@ -863,6 +900,12 @@ class Fold:
             if ev.is_error and not interrupted:
                 error = f"turn failed ({ev.subtype or 'error'})"
             self._stand(report=report, turn_error=error)
+            # A turn that handed back to the person starts idle; one that ended
+            # to wait on a monitor or a queue task keeps working (spec
+            # 2026-10-09-plan-timing-design.md).
+            idle = report is not None or error or interrupted or self._slash_idle
+            self._clock(ts, "idle" if idle else "work")
+            self._slash_idle = False
             ops = self._end_calls("interrupted" if interrupted else "no result")
             ops += self._drop_live()
             self._turn_open = False

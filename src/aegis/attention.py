@@ -69,4 +69,7 @@ def card(
         "plan_did": standing.get("did") or "",
         "plan_done": sum(1 for i in plan if i["state"] == "done"),
         "plan_total": len(plan),
+        # Work and idle so far (transcript/plan_clock.py); the browser adds the
+        # time running since "at", and computes the pace and the ETA.
+        "plan_clock": standing.get("clock"),
     }
