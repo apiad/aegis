@@ -216,15 +216,12 @@ async def test_archive_filters_and_pages(world):
         }
         (sessions / f"l{i}.json").write_text(json.dumps(meta))
     r = world.registry()
-    assert [m["log_id"] for m in r.archive(None, 3, None)] == ["l9", "l8", "l7"]
-    assert [m["log_id"] for m in r.archive(None, 3, 7.0)] == ["l6", "l5", "l4"]
-    assert [m["log_id"] for m in r.archive("DEPLOY", 50, None)] == [
-        "l9",
-        "l7",
-        "l5",
-        "l3",
-        "l1",
-    ]
+    items, total, last = r.archive(None, 3, None)
+    assert [m["log_id"] for m in items] == ["l9", "l8", "l7"] and total == 10
+    assert [m["log_id"] for m in r.archive(None, 3, last)[0]] == ["l6", "l5", "l4"]
+    items, total, _ = r.archive("DEPLOY", 50, None)
+    assert [m["log_id"] for m in items] == ["l9", "l7", "l5", "l3", "l1"]
+    assert total == 5
 
 
 async def test_a_failed_spawn_leaves_nothing_on_disk(world, tmp_path):
@@ -313,7 +310,7 @@ async def test_a_meta_from_before_agents_boots_with_its_agent_name(world):
     assert s.wire()["agent"] == "opus"
     # Closed, it is found in the archive by its agent's name (Step 9).
     await r.close("old")
-    assert [m["log_id"] for m in r.archive("opus", 10, None)] == ["old"]
+    assert [m["log_id"] for m in r.archive("opus", 10, None)[0]] == ["old"]
 
 
 async def test_the_priming_never_leaves_the_server_from_the_archive(world):
@@ -323,7 +320,7 @@ async def test_the_priming_never_leaves_the_server_from_the_archive(world):
     )
     s = await r.spawn(spec)
     await r.close(s.log_id)
-    (listed,) = r.archive(None, 10, None)
+    (listed,) = r.archive(None, 10, None)[0]
     assert listed["agent"] == "rev" and "priming" not in listed
     assert "priming" not in r.rename(s.log_id, None, "renamed")
     # The stored meta keeps it, so a reopened session resumes with it.
@@ -390,6 +387,6 @@ async def test_the_archive_list_ships_no_standing_or_priming(world):
     }
     (sessions / "l000.json").write_text(json.dumps(meta))
     r = world.registry()
-    (m,) = r.archive(None, 10, None)
+    (m,) = r.archive(None, 10, None)[0]
     assert m["log_id"] == "l000"
     assert "standing" not in m and "priming" not in m

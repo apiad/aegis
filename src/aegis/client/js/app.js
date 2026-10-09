@@ -620,23 +620,36 @@ $("entries").addEventListener("click", async (ev) => {
 
 // -- archive -------------------------------------------------------------------
 let archived = [];
+let archiveCursor = null; // the next page's cursor; null: nothing more
+let archiveTotal = 0; // the first page's count of everything matching
 let archiveLoaded = false;
 let archiveTimer = null;
 
-async function loadArchive() {
+// The first page, or with `more` the next one after what is shown. A button
+// asks for more, never scrolling: the page grows only when a person asks.
+async function loadArchive(more = false) {
   archiveLoaded = true;
+  const q = $("arch-q").value.trim();
+  const params = q ? { query: q } : {};
+  if (more && archiveCursor) params.cursor = archiveCursor;
   try {
-    const q = $("arch-q").value.trim();
-    archived = await conn.call("archive.list", q ? { query: q } : {});
+    const r = await conn.call("archive.list", params);
+    archived = more ? [...archived, ...r.items] : r.items;
+    archiveCursor = r.cursor;
+    if (!more) archiveTotal = r.total;
   } catch (e) {
-    archived = [];
+    if (!more) [archived, archiveCursor, archiveTotal] = [[], null, 0];
   }
   renderArchive($("arch-list"), archived, {
     onReopen: reopen,
     onRead: (id) => go(`#read=${id}`),
   });
+  $("arch-more").hidden = !archived.length;
+  $("arch-count").textContent = `Showing ${archived.length} of ${Math.max(archiveTotal, archived.length)}`;
+  $("arch-next").hidden = !archiveCursor;
   fleetMark(false);
 }
+$("arch-next").addEventListener("click", () => loadArchive(true));
 
 // The Fleet's selection: a card or an archive row, by log id, re-marked after
 // every redraw because both are rebuilt from scratch.

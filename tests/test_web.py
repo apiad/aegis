@@ -260,7 +260,9 @@ def test_spawn_send_and_watch_a_turn(project, fake_claude):
             conn.call("session.send", log_id=log_id, text="x")["error"]["code"]
             == "archived"
         )
-        assert [m["log_id"] for m in conn.call("archive.list")["result"]] == [log_id]
+        assert [m["log_id"] for m in conn.call("archive.list")["result"]["items"]] == [
+            log_id
+        ]
         reopened = conn.call("session.reopen", log_id=log_id)["result"]
         assert reopened["state"] == "stopped"
         assert (

@@ -491,6 +491,39 @@ def test_close_in_one_browser_removes_the_tab_in_another(server, browser, page):
 SLOW_FRAMES = "const raf = window.requestAnimationFrame; window.requestAnimationFrame = (f) => setTimeout(() => raf(f), 300);"
 
 
+def test_the_archive_pages_past_fifty(tmp_path, fake_claude, fake_opencode, page):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    store = tmp_path / ".aegis" / "state" / "sessions"
+    store.mkdir(parents=True)
+    for i in range(120):
+        meta = {
+            "log_id": f"20261001-000000-{i:06x}",
+            "handle": f"old-{i}",
+            "archived": True,
+            "last_activity": 1_700_000_000.0 + i // 3,
+            "title": f"old talk {i}",
+            "cwd": str(tmp_path),
+        }
+        (store / f"{meta['log_id']}.json").write_text(json.dumps(meta))
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
+    try:
+        page.goto(s.url)
+        page.wait_for_selector("#a2[data-view=fleet]")
+        page.wait_for_selector("#arch-count >> text=Showing 50 of 120")
+        assert page.locator("#arch-list tr[data-id]").count() == 50
+        page.click("#arch-next")
+        page.wait_for_selector("#arch-count >> text=Showing 100 of 120")
+        page.click("#arch-next")
+        page.wait_for_selector("#arch-count >> text=Showing 120 of 120")
+        assert not page.is_visible("#arch-next")
+        rows = page.eval_on_selector_all(
+            "#arch-list tr[data-id]", "rs => rs.map(r => r.dataset.id)"
+        )
+        assert len(rows) == len(set(rows)) == 120
+    finally:
+        s.stop()
+
+
 @pytest.mark.parametrize("frames", ["normal", "slow"])
 def test_reopen_from_the_archive_and_rename(server, page, frames):
     if frames == "slow":

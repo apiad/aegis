@@ -25,7 +25,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from . import commands, dictation, files
+from . import archive, commands, dictation, files
 from .agent_ops import register_agent_ops
 from .agents import (
     EFFORTS,
@@ -125,8 +125,11 @@ class FileRef(_Strict):
 
 class ArchiveParams(_Strict):
     query: str | None = None
+    server: str | None = Field(None, description="One server only; omitted: all.")
     limit: int = Field(default=50, ge=1, le=200)
-    before: float | None = None
+    cursor: str | None = Field(
+        None, description="The cursor the last page returned; omitted: the first."
+    )
 
 
 def _dead(e: Exception) -> OpError:
@@ -148,6 +151,7 @@ class App:
         dictation_dir: Path | None = None,
     ) -> None:
         self.roots = roots
+        self.server_name = server_name
         self.claude_bin = claude_bin
         self.opencode_bin = opencode_bin
         self.dictation = dictation.Store(dictation_dir or dictation.default_dir())
@@ -364,6 +368,39 @@ class App:
         await reg.close(s.log_id)  # close
         return None
 
+    async def _archive(self, p: ArchiveParams) -> dict:
+        positions = archive.decode(p.cursor)
+        pages: dict[str, tuple[list[dict], archive.Position | None]] = {}
+        counts: dict[str, int] = {}
+        for name, fetch in self._archive_sources(p.server):
+            if name in positions and positions[name] is None:
+                continue  # exhausted on an earlier page
+            got = await fetch(p.query, p.limit, positions.get(name))
+            if got is None:
+                continue  # a linked server that is down keeps its place
+            items, total, last = got
+            pages[name] = ([{**m, "server": name} for m in items], last)
+            counts[name] = total
+        items, positions = archive.merge(pages, p.limit, positions)
+        more = any(v is not None for v in positions.values()) or any(
+            name not in positions for name in pages
+        )
+        return {
+            "items": items,
+            "total": sum(counts.values()),
+            "counts": counts,
+            "cursor": archive.encode(positions) if more else None,
+        }
+
+    def _archive_sources(self, only: str | None):
+        """Each server an archive listing reads, with how to fetch a page."""
+
+        async def local(query, limit, after):
+            return self.sessions.archive(query, limit, after)
+
+        if only in (None, self.server_name):
+            yield self.server_name, local
+
     def _register(self) -> None:
         r = self.registry
         reg = self.sessions
@@ -555,7 +592,10 @@ class App:
 
         @r.op("archive.list", ArchiveParams)
         async def archive_list(p: ArchiveParams, caller):
-            return reg.archive(p.query, p.limit, p.before)
+            """A page of closed sessions, newest first, across this server and
+            the servers it links (archive.py). ``total`` and ``counts`` are of
+            the servers this page read; the first page reads every one."""
+            return await self._archive(p)
 
         @r.op("file.open", FileRef)
         async def file_open(p: FileRef, caller):

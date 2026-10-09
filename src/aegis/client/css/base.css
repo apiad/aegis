@@ -257,6 +257,8 @@ body{background:#000}
 #a2 .archive-head{display:flex;align-items:center;gap:14px;margin-bottom:10px}
 #a2 .archive-head h3{margin:0;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
 #a2 .archive-head input{flex:1;max-width:420px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 10px;font-size:12.5px}
+#a2 .arch-more{display:flex;align-items:center;gap:14px;padding:14px 8px;font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+#a2 .arch-more[hidden]{display:none}
 #a2 .tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 #a2 .tbl th{text-align:left;font-weight:500;color:var(--faint);padding:6px 8px;border-bottom:1px solid var(--rule);font-family:var(--font-chrome);font-size:11.5px}
 #a2 .tbl td{padding:7px 8px;border-bottom:1px solid var(--rule);color:var(--ink)}
