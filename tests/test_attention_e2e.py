@@ -272,6 +272,16 @@ async def test_session_read_is_for_people_only(world):
     assert e.value.code == "not_for_agents"
 
 
+async def test_session_list_reads_the_same_model_before_and_after_init(world):
+    """Two sessions of one agent, one that has run a turn and one that has not,
+    list the same model; the resolved id is its own field, null until named (#243)."""
+    a, b = await world.spawn(), await world.spawn()
+    said = await turn(a, mcp("session_list"))
+    listed = {x["handle"]: x for x in json.loads(said.removeprefix("mcp ok: "))}
+    assert listed[a.handle]["model"] == listed[b.handle]["model"]
+    assert listed[a.handle]["model_id"] and listed[b.handle]["model_id"] is None
+
+
 async def test_session_list_shows_another_sessions_card_and_plan(world):
     """One agent follows another's plan and state (#234)."""
     a, b = await world.spawn(), await world.spawn()

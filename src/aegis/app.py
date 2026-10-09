@@ -292,6 +292,7 @@ class App:
             m["title"],
             m["handle"],
             m["model"],
+            m.get("model_id"),
             m.get("attention"),
             m.get("mark"),
             m.get("blink"),

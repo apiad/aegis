@@ -60,7 +60,8 @@ Each entry for a session on this server adds:
 
 | field | from |
 |---|---|
-| `model` | `model_id`, else the spec's model |
+| `model` | the spec's model, as configured (`default` when none; #243) |
+| `model_id` | `Session.meta()`: what the harness resolved it to, null until its first init (#243) |
 | `cost_usd`, `context_tokens`, `context_window` | `Session.meta()` |
 | `last_activity` | `Session.meta()` |
 | `attention`, `attention_line`, `waiting_on` | `attention.card()` |
