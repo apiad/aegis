@@ -1,8 +1,10 @@
 """The ETA and the check verdicts a monitor's card carries (#174)."""
 
+from dataclasses import asdict
+
 import pytest
 
-from aegis.monitors import Monitor, eta, verdict
+from aegis.monitors import Monitor, classify, eta, verdict
 
 
 def test_no_reading_or_no_move_has_no_eta():
@@ -71,3 +73,52 @@ def test_a_missing_command_inside_a_pipeline_is_still_broken():
         "not yet",
         False,
     )
+
+
+@pytest.mark.parametrize(
+    ("attention", "state"),
+    [
+        ("done", "finished"),
+        ("review", "finished"),
+        ("closed", "finished"),
+        ("needs_you", "blocked"),
+        ("error", "blocked"),
+        ("working", "running"),
+        ("waiting", "running"),
+    ],
+)
+def test_each_attention_classifies_for_a_session_wait(attention, state):
+    assert classify(attention) == state
+
+
+def test_a_session_monitors_card_lists_its_sessions_and_no_checks():
+    row = {
+        "handle": "ada-lovelace",
+        "attention": "working",
+        "state": "running",
+        "line": "",
+    }
+    m = Monitor(
+        id="m",
+        owner="o",
+        description="d",
+        done="",
+        cwd="/",
+        sessions=[{"log_id": "x", **row}],
+    )
+    c = m.card()
+    assert c["checks"] == [] and c["sessions"] == [row] and not c["broken"]
+    bash = Monitor(id="m", owner="o", description="d", done="false", cwd="/")
+    assert bash.card()["sessions"] is None
+
+
+def test_a_session_monitor_round_trips_through_its_saved_form():
+    m = Monitor(
+        id="m",
+        owner="o",
+        description="d",
+        done="",
+        cwd="/",
+        sessions=[{"log_id": "x", "handle": "ada-lovelace"}],
+    )
+    assert Monitor(**asdict(m)) == m

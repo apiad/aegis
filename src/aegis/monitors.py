@@ -15,6 +15,12 @@ nothing, so a 10-second monitor does not patch every browser every 10 seconds;
 that is why a check reports ``since`` (when its result began) and not when it
 last ran.
 
+A monitor can watch sessions instead of running bash (``monitor_sessions``):
+it reads each one's attention card every interval and ends ``ok`` when all
+have finished, or ``blocked`` as soon as one needs the person or failed, so a
+waiting agent can say what holds it up instead of sitting out the timeout.
+Sessions are kept by log id, so a rename does not lose one.
+
 Monitors are kept in ``<state>/monitors.json`` and re-armed at boot; a wake to
 a stopped owner resumes it.
 """
@@ -38,6 +44,19 @@ if TYPE_CHECKING:
 log = logging.getLogger("aegis.monitors")
 CONDITION_LIMIT_S = 30.0
 READINGS_KEPT = 100
+# What a watched session's attention means to a monitor waiting on it. A
+# closed session is finished: its work is over, whatever its last turn said.
+FINISHED = frozenset({"done", "review", "closed"})
+BLOCKED = frozenset({"needs_you", "error"})
+
+
+def classify(attention: str) -> str:
+    """finished, blocked or running, for a monitor waiting on a session."""
+    if attention in FINISHED:
+        return "finished"
+    if attention in BLOCKED:
+        return "blocked"
+    return "running"
 
 
 def iso_now() -> str:
@@ -70,6 +89,8 @@ class Monitor:
     last_progress: int | None = None
     readings: list[list[float]] = field(default_factory=list)  # [time, percent]
     checks: dict[str, dict] = field(default_factory=dict)  # kind -> last result
+    # Watched sessions, for a monitor that waits on sessions instead of bash.
+    sessions: list[dict] = field(default_factory=list)
 
     def read(self, t: float, value: int) -> None:
         """Keep a reading when it differs from the last. Trimming drops the
@@ -99,9 +120,12 @@ class Monitor:
     def card(self) -> dict:
         due = eta(self.started_at, self.readings)
         checks = []
-        for kind in ("done", "progress", "fail"):
-            cmd = getattr(self, kind)
-            checks.append({"kind": kind, "cmd": cmd, **(self.checks.get(kind) or {})})
+        if not self.sessions:
+            for kind in ("done", "progress", "fail"):
+                cmd = getattr(self, kind)
+                checks.append(
+                    {"kind": kind, "cmd": cmd, **(self.checks.get(kind) or {})}
+                )
         return {
             "id": self.id,
             "description": self.description,
@@ -114,6 +138,11 @@ class Monitor:
             "eta_at": due[0] if due else None,
             "eta_basis": due[1] if due else None,
             "checks": checks,
+            "sessions": [
+                {k: r.get(k, "") for k in ("handle", "attention", "state", "line")}
+                for r in self.sessions
+            ]
+            or None,
             "broken": any(c.get("bad") for c in checks),
         }
 
@@ -226,6 +255,9 @@ class Monitors:
 
     async def _watch(self, m: Monitor) -> None:
         try:
+            if m.sessions:
+                await self._watch_sessions(m)
+                return
             if not Path(m.cwd).is_dir():
                 await self._end(m, "fail", f"its cwd {m.cwd} does not exist")
                 return
@@ -267,6 +299,51 @@ class Monitors:
             await self._end(
                 m, "fail", f"the monitor itself failed: {type(e).__name__}: {e}"
             )
+
+    def _read_sessions(self, m: Monitor) -> list[dict]:
+        rows = []
+        for r in m.sessions:
+            s = self._registry.sessions.get(r["log_id"])
+            if s is None:
+                attention, handle, line = "closed", r["handle"], ""
+            else:
+                c = self._registry.card(s)
+                attention, handle = c["attention"], s.handle
+                line = c["attention_line"]
+            rows.append(
+                {
+                    "log_id": r["log_id"],
+                    "handle": handle,
+                    "attention": attention,
+                    "state": classify(attention),
+                    "line": line,
+                }
+            )
+        return rows
+
+    async def _watch_sessions(self, m: Monitor) -> None:
+        while True:
+            if time.time() - m.started_at > m.timeout_s:
+                await self._end(
+                    m, "timeout", f"it ran out of time after {_elapsed(m.timeout_s)}"
+                )
+                return
+            rows = self._read_sessions(m)
+            if rows != m.sessions:
+                m.sessions = rows
+                done = sum(1 for r in rows if r["state"] == "finished")
+                m.last_progress = round(100 * done / len(rows))
+                m.read(time.time(), m.last_progress)
+                self._publish(m)
+            blocked = [r for r in rows if r["state"] == "blocked"]
+            if blocked:
+                await self._end(m, "blocked", "; ".join(map(_said, blocked)))
+                return
+            if all(r["state"] == "finished" for r in rows):
+                ended = ", ".join(f"{r['handle']} {r['attention']}" for r in rows)
+                await self._end(m, "ok", f"every session finished: {ended}")
+                return
+            await asyncio.sleep(m.interval_s)
 
     async def _end(self, m: Monitor, outcome: str, why: str) -> None:
         self.items.pop(m.id, None)
@@ -351,6 +428,12 @@ def verdict(kind: str, rc: int | None, out: str, err: str) -> tuple[str, bool]:
     if kind == "done":
         return ("passed" if rc == 0 else "not yet"), False
     return ("failed" if rc == 0 else "not failing"), False
+
+
+def _said(row: dict) -> str:
+    """A blocked session in a wake: who, why, and its own line if it gave one."""
+    why = "needs you" if row["attention"] == "needs_you" else "hit an error"
+    return f"{row['handle']} {why}" + (f": {row['line']}" if row["line"] else "")
 
 
 def _last_line(text: str) -> str:
