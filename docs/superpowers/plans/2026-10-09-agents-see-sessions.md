@@ -44,7 +44,7 @@ Not covered by a test, on purpose: two agents waiting on each other both stay `w
 - Consumes: `Session.wire()` (already includes `model`, `cost_usd`, `context_tokens`, `context_window`, `last_activity` and every key of `attention.card()`).
 - Produces: each local `session_list` entry has keys `handle, title, state, cwd, worker, you` plus every name in `LISTED`.
 
-- [ ] **Step 1: Write the failing test** (append to `tests/test_attention_e2e.py`)
+- [x] **Step 1: Write the failing test** (append to `tests/test_attention_e2e.py`)
 
 ```python
 async def test_session_list_shows_another_sessions_card_and_plan(world):
@@ -71,12 +71,12 @@ and add to the imports at the top of the file:
 from aegis.agent_ops import LISTED
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_attention_e2e.py::test_session_list_shows_another_sessions_card_and_plan -q`
 Expected: FAIL with `ImportError: cannot import name 'LISTED'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/aegis/agent_ops.py`, after the `FAR_ERRORS` dict:
 
@@ -130,12 +130,12 @@ Replace the body of `session_list`:
         return out
 ```
 
-- [ ] **Step 4: Run the new test and the existing session_list tests**
+- [x] **Step 4: Run the new test and the existing session_list tests**
 
 Run: `uv run pytest tests/test_attention_e2e.py tests/test_agents.py -q -k "session_list or own_session or card_and_plan" && uv run pytest tests/test_links.py -q -k session_list`
 Expected: PASS. `test_session_list_shows_far_handles_and_states_only` must still pass unchanged.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "feat(agents): session_list carries each session's card and plan (#234)" -- src/aegis/agent_ops.py tests/test_attention_e2e.py
@@ -157,7 +157,7 @@ git commit -m "feat(agents): session_list carries each session's card and plan (
   - `Monitor.card()["sessions"]`: `None` for a bash monitor, else a list of `{"handle", "attention", "state", "line"}`. `card()["checks"]` is `[]` for a session monitor.
   - `Monitors.start(owner, cwd, description=..., done="", sessions=[{"log_id", "handle"}, ...], interval_s=..., timeout_s=...)` arms one.
 
-- [ ] **Step 1: Write the failing tests** (append to `tests/test_monitors.py`; extend its import to `from aegis.monitors import Monitor, classify, eta, verdict` and add `from dataclasses import asdict`)
+- [x] **Step 1: Write the failing tests** (append to `tests/test_monitors.py`; extend its import to `from aegis.monitors import Monitor, classify, eta, verdict` and add `from dataclasses import asdict`)
 
 ```python
 @pytest.mark.parametrize(
@@ -196,12 +196,12 @@ def test_a_session_monitor_round_trips_through_its_saved_form():
     assert Monitor(**asdict(m)) == m
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_monitors.py -q`
 Expected: FAIL with `ImportError: cannot import name 'classify'`.
 
-- [ ] **Step 3: Implement in `src/aegis/monitors.py`**
+- [x] **Step 3: Implement in `src/aegis/monitors.py`**
 
 Add to the module docstring, after its first paragraph:
 
@@ -336,12 +336,12 @@ def _said(row: dict) -> str:
     return f"{row['handle']} {why}" + (f": {row['line']}" if row["line"] else "")
 ```
 
-- [ ] **Step 4: Run the monitor tests**
+- [x] **Step 4: Run the monitor tests**
 
 Run: `uv run pytest tests/test_monitors.py -q`
 Expected: PASS, the new tests and the eight old ones.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "feat(monitors): a monitor can wait on sessions instead of bash (#234)" -- src/aegis/monitors.py tests/test_monitors.py
@@ -359,7 +359,7 @@ git commit -m "feat(monitors): a monitor can wait on sessions instead of bash (#
 - Consumes: `Monitors.start(..., done="", sessions=[{"log_id", "handle"}])` and `Monitor.card()["sessions"]` from Task 2; the local helpers `own`, `target` and `roster` inside `register_agent_ops`.
 - Produces: the agent tool `monitor_sessions(description: str, sessions: list[str], interval_s: float = 10, timeout_s: float = 14400)`, returning `{"monitor_id", "other_live_monitors"}`; errors `not_yourself`, `no_session`, `archived`, `not_across_links`.
 
-- [ ] **Step 1: Write the failing tests** (in `tests/test_agents.py`, after the last monitor test)
+- [x] **Step 1: Write the failing tests** (in `tests/test_agents.py`, after the last monitor test)
 
 ```python
 # -- waiting on sessions ------------------------------------------------------------
@@ -480,12 +480,12 @@ async def test_a_session_monitor_survives_a_restart(world):
     assert m["sessions"][0]["handle"] == b.handle
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_agents.py -q -k "sessions or needs_the_person or rename_and_a_close"`
 Expected: FAIL; the fake claude prints `mcp error` for an unknown tool `monitor_sessions`.
 
-- [ ] **Step 3: Implement in `src/aegis/agent_ops.py`**
+- [x] **Step 3: Implement in `src/aegis/agent_ops.py`**
 
 After `class MonitorStart`:
 
@@ -540,16 +540,16 @@ After the `monitor_start` op:
 
 Add `"monitor_sessions"` to the set of tool names in `test_the_tools_are_named_after_their_operations_and_take_no_handle`.
 
-- [ ] **Step 4: Run the new tests and the whole monitor and agents files**
+- [x] **Step 4: Run the new tests and the whole monitor and agents files**
 
 Run: `uv run pytest tests/test_agents.py tests/test_attention_e2e.py tests/test_monitors.py -q -m "not slow" && uv run pytest tests/test_agents.py -q -k survives_a_restart`
 Expected: PASS. If an unmarked test exceeds 3 s, find out why before marking it slow: every wait here polls at 1 s.
 
-- [ ] **Step 5: Break it on purpose**
+- [x] **Step 5: Break it on purpose**
 
 In `classify`, temporarily move `"review"` from `FINISHED` to `BLOCKED`; run `uv run pytest tests/test_monitors.py -q`; confirm the parametrized `review` case fails. Then remove `"closed"` from `FINISHED` and confirm `test_a_watched_session_is_followed_through_a_rename_and_a_close` fails. Restore both and re-run until green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -m "feat(agents): monitor_sessions waits on other sessions (#234)" -- src/aegis/agent_ops.py tests/test_agents.py
@@ -567,7 +567,7 @@ git commit -m "feat(agents): monitor_sessions waits on other sessions (#234)" --
 - Consumes: the card's `sessions` (Task 2): `null`, or a list of `{handle, attention, state, line}`; `progress` as finished over listed, in percent.
 - Produces: the row reads `N of M · <age>`; the card's big number reads `N of M`, and a "Sessions" section with one `.ck` per session (`.ck.bad` when blocked) replaces "Checks".
 
-- [ ] **Step 1: Write the failing browser test**
+- [x] **Step 1: Write the failing browser test**
 
 ```python
 def test_a_monitor_on_sessions_counts_them_in_its_row_and_card(server, page):
@@ -598,12 +598,12 @@ def test_a_monitor_on_sessions_counts_them_in_its_row_and_card(server, page):
 
 `spawn()` returns the log id, and `monitor_sessions` resolves a log id as it resolves a handle (`target()` tries `reg.sessions.get(handle)` second).
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_browser.py -q -k monitor_on_sessions`
 Expected: FAIL on `text=1 of 2` (the row shows `50%`), or on `page.errors` from `hasProgressCmd` reading `.cmd` of `undefined`.
 
-- [ ] **Step 3: Implement in `src/aegis/client/js/monitors.js`**
+- [x] **Step 3: Implement in `src/aegis/client/js/monitors.js`**
 
 Replace `hasProgressCmd` and add `tally` below it:
 
@@ -654,12 +654,12 @@ and the `checks` constant:
     : h("div", "checks", h("h5", null, "Checks"), ...m.checks.map(check));
 ```
 
-- [ ] **Step 4: Run the browser monitor tests**
+- [x] **Step 4: Run the browser monitor tests**
 
 Run: `uv run pytest tests/test_browser.py -q -k monitor`
 Expected: PASS, the new test and the four existing monitor tests. Then `uv run pytest tests/test_client_rules.py -q` (PASS).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "feat(web): a monitor on sessions shows N of M and its sessions (#234)" -- src/aegis/client/js/monitors.js tests/test_browser.py
@@ -675,7 +675,7 @@ git commit -m "feat(web): a monitor on sessions shows N of M and its sessions (#
 - Modify: `docs/superpowers/specs/2026-10-09-agents-see-aegis-design.md` (status line)
 - Create: `changelog.d/234-agents-see-sessions.added.md`
 
-- [ ] **Step 1: Primer.** After the sentence ending "Pass null only when nothing can be counted." in `src/aegis/mcp.py`, add (keep the file's `\` line continuations):
+- [x] **Step 1: Primer.** After the sentence ending "Pass null only when nothing can be counted." in `src/aegis/mcp.py`, add (keep the file's `\` line continuations):
 
 ```
 To wait until other sessions here finish, call monitor_sessions with their \
@@ -687,7 +687,7 @@ needs the person.
 Run: `uv run pytest tests/test_meta.py tests/test_agents.py -q -m "not slow" -k "meta or primer"`
 Expected: PASS. If a test pins the primer's text, update it to include the new sentence.
 
-- [ ] **Step 2: DESIGN.md.** After the sentence "People can do anything." in the paragraph "**Agents change only what they created.**", add:
+- [x] **Step 2: DESIGN.md.** After the sentence "People can do anything." in the paragraph "**Agents change only what they created.**", add:
 
 ```
 Reading includes waiting: `monitor_sessions` watches other sessions' attention
@@ -696,7 +696,7 @@ person, and `session_list` shows each card and plan. Neither changes the
 sessions it watches.
 ```
 
-- [ ] **Step 3: Spec status.** Replace the spec's status paragraph with:
+- [x] **Step 3: Spec status.** Replace the spec's status paragraph with:
 
 ```
 **Status: part 1 implemented, 2026-10-09** (issue #234), following
@@ -705,7 +705,7 @@ sessions it watches.
 text only.
 ```
 
-- [ ] **Step 4: Changelog fragment** `changelog.d/234-agents-see-sessions.added.md`:
+- [x] **Step 4: Changelog fragment** `changelog.d/234-agents-see-sessions.added.md`:
 
 ```
 - **Agents see other sessions and wait on them.** `session_list` now carries
@@ -720,7 +720,7 @@ text only.
 Run: `make changelog-check && make lint-docs`
 Expected: both exit 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "docs: primer, DESIGN.md and changelog for waiting on sessions (#234)" -- src/aegis/mcp.py DESIGN.md docs/superpowers/specs/2026-10-09-agents-see-aegis-design.md changelog.d/234-agents-see-sessions.added.md
@@ -733,7 +733,7 @@ git commit -m "docs: primer, DESIGN.md and changelog for waiting on sessions (#2
 **Files:**
 - Test: `tests/test_live.py` (after `test_real_claude_arms_a_monitor_through_the_endpoint_and_is_woken`)
 
-- [ ] **Step 1: Write the live test**
+- [x] **Step 1: Write the live test**
 
 ```python
 async def test_real_claude_waits_on_another_session_and_is_woken(tmp_path: Path):
@@ -798,18 +798,18 @@ async def test_real_claude_waits_on_another_session_and_is_woken(tmp_path: Path)
         await asyncio.wait_for(task, 30)
 ```
 
-- [ ] **Step 2: Run the live suite**
+- [x] **Step 2: Run the live suite**
 
 Run: `make test-live`
 Expected: PASS, the new test included. It spends a few cents of Haiku. If Haiku does not reach for `monitor_sessions` in 2 runs of 3, run the test on `SONNET` as `test_real_claude_names_a_bash_call...` does, and say so in the PR body.
 
-- [ ] **Step 3: Commit the live test**
+- [x] **Step 3: Commit the live test**
 
 ```bash
 git commit -m "test(live): a real session waits on another with monitor_sessions (#234)" -- tests/test_live.py
 ```
 
-- [ ] **Step 4: The gates.** Run each and read its exit code directly, never through a pipe:
+- [x] **Step 4: The gates.** Run each and read its exit code directly, never through a pipe:
 
 ```bash
 make format-check
@@ -819,9 +819,9 @@ make bench
 
 Expected: all exit 0. `make check` includes the browser tests. Keep `make bench`'s table for the PR body.
 
-- [ ] **Step 5: Exercise it in a browser against a fresh server.** Start `aegis serve` from this worktree on a free port with a throwaway state root (never against Workspace's live state; see the workspace memory "aegis config walks up to Workspace"). Open three tabs: in one run `/sleep 60`, in the second ask the agent to wait for the first with `monitor_sessions`, and check that its sidebar row reads "0 of 1", that the card lists the session as `working`, and that the wake arrives when the sleep ends. Note what you saw in the PR body.
+- [x] **Step 5: Exercise it in a browser against a fresh server.** Start `aegis serve` from this worktree on a free port with a throwaway state root (never against Workspace's live state; see the workspace memory "aegis config walks up to Workspace"). Open three tabs: in one run `/sleep 60`, in the second ask the agent to wait for the first with `monitor_sessions`, and check that its sidebar row reads "0 of 1", that the card lists the session as `working`, and that the wake arrives when the sleep ends. Note what you saw in the PR body.
 
-- [ ] **Step 6: Push and open the PR**
+- [x] **Step 6: Push and open the PR**
 
 ```bash
 git push -u origin agents-see-aegis
@@ -830,4 +830,4 @@ gh pr create --title "Agents see other sessions and wait on them (#234)" --body-
 
 The body says: closes #234; what was measured (the `make bench` table; the live test's model and pass count); what was tried and rejected (a `sessions` field on `monitor_start`, rejected because of #165); what is left out (part 2, #235). It ends with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 
-- [ ] **Step 7: Hand it to Alex for the smoke test.** Ask Alex to run the branch with `AEGIS_REF=agents-see-aegis aegis-dev` and try his own case: "when the une-tools sessions finish, cut a release". The PR merges only on green CI and after he has run it.
+- [x] **Step 7: Hand it to Alex for the smoke test.** Ask Alex to run the branch with `AEGIS_REF=agents-see-aegis aegis-dev` and try his own case: "when the une-tools sessions finish, cut a release". The PR merges only on green CI and after he has run it.
