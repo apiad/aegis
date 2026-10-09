@@ -175,6 +175,9 @@ mid-wait in the legacy tree.
 it can see, and changes only its own monitors, its own session's names and the
 tasks it enqueued. A session an agent spawns runs with at most the agent's own
 permission, so spawning is never a way to gain power. People can do anything.
+A person's `/spawn` makes nobody's child, but its first message carries the
+last turns of the tab it was typed in and that tab's handle, so the new agent
+can find the referent of a three-word task (`agent_ops.spawn_opening`).
 An agent never spawns, enqueues or reads on another server: across a link it
 only hands off, to `handle@server` (`not_across_links` otherwise).
 

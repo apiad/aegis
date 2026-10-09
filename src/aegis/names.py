@@ -66,8 +66,18 @@ def mint_handle(taken: set[str], rng: random.Random | None = None) -> str:
     return f"{base}-{i}"
 
 
+# The first and last markers of a /spawn opening (agent_ops.spawn_opening), here
+# so a rewording cannot stop the title from finding the task: every spawned tab
+# would be titled with the same preamble.
+SPAWN_HEAD = "The person started you from inside another conversation, tab "
+SPAWN_TASK = "\n\nThe person's task: "
+
+
 def default_title(text: str) -> str:
-    """The first non-empty line of a prompt, cut at 60 characters."""
+    """The first non-empty line of a prompt, cut at 60 characters; of a /spawn
+    opening, of the task the person typed, which comes last."""
+    if text.startswith(SPAWN_HEAD) and SPAWN_TASK in text:
+        text = text.rsplit(SPAWN_TASK, 1)[1]
     line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
     return (
         line if len(line) <= TITLE_DEFAULT_MAX else line[: TITLE_DEFAULT_MAX - 1] + "…"

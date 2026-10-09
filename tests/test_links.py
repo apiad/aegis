@@ -479,6 +479,23 @@ async def test_slash_spawn_spawns_on_a_linked_server(pair):
     assert r["server"] == "alpha" and r["log_id"] in alpha.app.sessions.sessions
 
 
+async def test_slash_spawn_on_a_linked_server_carries_the_tail_not_a_read(pair):
+    alpha, beta = pair
+    here = await alpha.spawn()
+    await alpha.app.registry.call(
+        "session.send", {"log_id": here.log_id, "text": "the bug is in the relay"}
+    )
+    await until(lambda: here.status == "idle", what="the source's turn")
+    r = await alpha.app.registry.call(
+        "session.send", {"log_id": here.log_id, "text": "/spawn opus@beta fix it"}
+    )
+    far = beta.app.sessions.sessions[r["log_id"]]
+    await until(lambda: far.status == "idle", timeout=8, what="its first turn")
+    md = next(e["md"] for e in far.entries() if e["kind"] == "user")
+    assert "user: the bug is in the relay" in md and "peer_read" not in md
+    assert f'peer_handoff to "{here.handle}@alpha"' in md
+
+
 async def test_slash_spawn_to_a_down_or_unknown_server_starts_nothing(pair):
     alpha, beta = pair
     here = await alpha.spawn()

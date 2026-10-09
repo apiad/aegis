@@ -2,6 +2,11 @@
 
 **Status:** implemented (2026-08-10); tail assembly and framing corrected
 (2026-09-27) — see *What measurement changed* below
+in the legacy tree; ported to aegis 2 on 2026-10-09 (#231), where 2.0 had
+dropped it. aegis 2's version is `agent_ops.spawn_opening`: the same wording
+with aegis 2's tool names, a tail of user, prose and inbox lines at most 8,000
+characters with the person's lines kept first, and no degrade reason on the
+confirmation yet.
 **Spec:** `docs/superpowers/specs/2026-08-10-aegis-spawn-with-provenance-design.md`
 
 ## The gap
