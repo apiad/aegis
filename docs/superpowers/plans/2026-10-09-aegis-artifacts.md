@@ -1773,6 +1773,15 @@ const MAX_HEIGHT = () => Math.round(window.innerHeight * 0.7);
 let call = async () => {};
 let entryOf = () => null;
 const probes = new Map(); // iframe -> {id, log_id, timer, grace, done}
+// A page posts state, then emit or submit, in order; each becomes its own
+// call, so one artifact's calls are chained to reach the server in that order.
+const chains = new Map(); // artifact id -> the last call's promise
+function inOrder(id, fn) {
+  const prev = chains.get(id) || Promise.resolve();
+  const next = prev.then(fn, fn);
+  chains.set(id, next);
+  return next;
+}
 
 export function setup(opts) {
   call = opts.call;
@@ -1849,7 +1858,7 @@ window.addEventListener("message", async (ev) => {
   const op = ops[m.method];
   if (!op) return;
   try {
-    await call(op, { artifact_id: id, ...(m.params || {}) });
+    await inOrder(id, () => call(op, { artifact_id: id, ...(m.params || {}) }));
     if (m.id !== undefined) send(frame, { jsonrpc: "2.0", id: m.id, result: "ok" });
     if (m.method === "aegis/submit") notify(frame, "aegis/status", { status: "submitted" });
   } catch (err) {
