@@ -79,7 +79,7 @@ aegis</code></pre>
 
     <article class="step" data-step="together">
       <h3>They hand work to each other</h3>
-      <p>Every agent gets aegis's tools over MCP. It hands a task to a queue of workers and hears back when one finishes, starts a monitor on a CI run and ends its turn instead of polling, reads what another session is doing, and gives that session context or an instruction.</p>
+      <p>Every agent gets aegis's tools over MCP. It hands a task to a queue of workers and hears back when one finishes, starts a monitor on a CI run and ends its turn instead of polling, reads what another session is doing, and gives that session context or an instruction. It can also wait on other sessions: <code>monitor_sessions</code> wakes it when they have all finished, or as soon as one needs you.</p>
       <p>Every answer lands in the transcript as a new turn, headed by whoever sent it: a monitor, a queue task or another agent.</p>
     </article>
 
@@ -282,9 +282,11 @@ aegis</code></pre>
 progress: gh run view 4821 --json jobs -q '[.jobs[]|select(.status=="completed")]|length*100/6'</pre></div></details></div></div>
                 <div class="row tool ok comms" data-show="together" data-feature="together"><span class="t">11:20</span><span class="g comms">⇄</span><div class="body"><details><summary class="line"><span class="tn">queue_enqueue</span><span class="ta">general · Write the migration for the audit table</span><span class="tr2">task#12 · quiet-lovelace</span></summary></details></div></div>
                 <div class="row tool ok comms" data-show="together" data-feature="together"><span class="t">11:21</span><span class="g comms">⇄</span><div class="body"><details><summary class="line"><span class="tn">peer_read</span><span class="ta">calm-dijkstra, last 8 entries</span><span class="tr2">8 lines</span></summary></details></div></div>
-                <div class="row prose ok" data-show="together"><span class="t">11:21</span><span class="g">⏺</span><div class="body"><div class="md"><p>CI is watched, the migration is with a worker, and calm-dijkstra is still on the tokenizer. Ending the turn until something comes back.</p></div></div><span class="rm"><svg class="ic read"><use href="#g-read"/></svg></span></div>
+                <div class="row tool ok comms" data-show="together" data-feature="together"><span class="t">11:21</span><span class="g comms">⇄</span><div class="body"><details><summary class="line"><span class="tn">monitor_sessions</span><span class="ta">the tokenizer port and the migration</span><span class="tr2">mon-3a2f · 2 sessions</span></summary></details></div></div>
+                <div class="row prose ok" data-show="together"><span class="t">11:21</span><span class="g">⏺</span><div class="body"><div class="md"><p>CI is watched, the migration is with a worker, and calm-dijkstra is still on the tokenizer. I will rebase once both of them have finished. Ending the turn until something comes back.</p></div></div><span class="rm"><svg class="ic read"><use href="#g-read"/></svg></span></div>
                 <div class="row inbox" data-show="together" data-feature="together"><span class="t">11:34</span><span class="g">⇄</span><div class="body"><div class="from">monitor:mon-7c1e · ok · 14m</div><div class="md"><p>The run finished: 6 of 6 jobs completed, conclusion success.</p></div></div></div>
                 <div class="row inbox" data-show="together" data-feature="together"><span class="t">11:41</span><span class="g">⇄</span><div class="body"><div class="from">queue:general · task#12 · ok · 2026-10-09T11:41:07Z</div><div class="md"><p>Migration 0042 adds the audit table with its two indexes. The migration test passes forward and back. Committed on the branch as 3f9c2a1.</p></div></div></div>
+                <div class="row inbox" data-show="together" data-feature="together"><span class="t">11:42</span><span class="g">⇄</span><div class="body"><div class="from">monitor:mon-3a2f · ok · 2026-10-09T11:42:30Z</div><div class="md"><p>the tokenizer port and the migration: ok, every session finished: calm-dijkstra done, quiet-lovelace done, after 21m 9s.</p></div></div></div>
                 <div class="row inbox" data-show="together" data-feature="links"><span class="t">11:43</span><span class="g">⇄</span><div class="body"><div class="from">agent:brisk-turing@vps · 2026-10-09T11:43:52Z</div><div class="md"><p>Cold start on staging: p50 1.8 s, p95 3.1 s over 50 runs. The websocket fix does not move it.</p></div></div></div>
 
                 <!-- slate-hamming: an artifact -->
@@ -471,11 +473,12 @@ progress: gh run view 4821 --json jobs -q '[.jobs[]|select(.status=="completed")
       <dl class="tools">
         <div><dt>peer_handoff</dt><dd>Give another session context or an instruction, here or on a linked server (<code>handle@server</code>). It arrives as a new turn.</dd></div>
         <div><dt>peer_read</dt><dd>The last entries of another session's transcript, one line each.</dd></div>
-        <div><dt>session_list</dt><dd>The open sessions on this server.</dd></div>
+        <div><dt>session_list</dt><dd>What every open session is doing: its mark and line, what it waits on, its plan, its model and spend.</dd></div>
         <div><dt>session_spawn</dt><dd>Start a session from an agent preset, with at most your own permission.</dd></div>
         <div><dt>queue_enqueue</dt><dd>Hand a self-contained task to a fresh worker on a queue. The result arrives as a turn when the worker finishes.</dd></div>
         <div><dt>task_status, task_cancel, task_resume</dt><dd>Follow a task, cancel it, or put its worker back to work with its conversation intact.</dd></div>
         <div><dt>monitor_start, monitor_list, monitor_cancel</dt><dd>Watch a long process with bash conditions, and be woken when one holds, fails or times out.</dd></div>
+        <div><dt>monitor_sessions</dt><dd>Wait on other sessions, and be woken when they have all finished or as soon as one needs you.</dd></div>
       </dl>
     </div>
     <div>
