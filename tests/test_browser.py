@@ -2655,6 +2655,86 @@ def test_dictation_replaces_the_span_after_typing_before_it(dict_server, page):
     assert re.fullmatch(r"Typed first\. \[2\d\.\ds kw=2\]", got), got
 
 
+def test_dictation_keeps_provisional_text_when_the_final_cannot_be_transcribed(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        const errors = [];
+        const failing = async () => ({ ...(await prepare()), keywords: ['FAIL'] });
+        const d = new m.Dictation({ prepare: failing, onError: (e) => errors.push(e) });
+        await d.start({ el, key: null, current: () => null }, source);
+        for (let k = 0; k < 4; k++) feed(tone(5), gap(0.5));
+        await until(() => errors.length > 0);
+        await until(() => !d.queue.length && !d.workers.some((w) => w.job));
+        await d.stop();
+        await until(() => d.state === 'idle');
+        return { value: el.value, errors };""",
+    )
+    assert re.fullmatch(r"(\[5\.\ds kw=1\] ){3}\[5\.\ds kw=1\]", got["value"]), got[
+        "value"
+    ]
+    assert len(got["errors"]) == 1 and re.match(
+        r"A piece of 2\d\.\d s could not be transcribed", got["errors"][0]
+    ), got["errors"]
+
+
+def test_dictation_goes_on_at_the_edit_when_a_deletion_covers_its_place(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        el.value = 'Before. After.'; el.setSelectionRange(7, 7);
+        const d = new m.Dictation({ prepare });
+        await d.start({ el, key: null, current: () => null }, source);
+        feed(tone(4.5), gap(0.5));
+        await until(() => el.value.includes('kw='));
+        // A selection from inside "Before." to the end, deleted.
+        el.value = 'Bef';
+        feed(tone(5), gap(0.5));
+        await until(() => el.value.includes('[5.'));
+        const after = el.value;
+        el.value = '';
+        feed(tone(5), gap(0.5));
+        await until(() => /\\[5\\.\\ds kw=2\\]$/.test(el.value) && el.value.length < 20);
+        await d.stop();
+        await until(() => d.state === 'idle');
+        return { after, cleared: el.value };""",
+    )
+    assert got["after"] == "Bef [5.5s kw=2]", got["after"]
+    assert got["cleared"] == "[5.5s kw=2]", got["cleared"]
+
+
+def test_dictation_does_not_hold_provisional_text_behind_a_final_in_flight(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        const seen = [];
+        el.addEventListener('input', () => seen.push(el.value));
+        const d = new m.Dictation({ prepare });
+        await d.start({ el, key: null, current: () => null }, source);
+        // The final (400 ms in the stub) and a fifth piece (50 ms) go out together.
+        for (let k = 0; k < 5; k++) feed(tone(5), gap(0.5));
+        await until(() => /\\[2\\d\\.\\ds/.test(el.value) && (el.value.match(/kw=2/g) || []).length === 2);
+        await d.stop();
+        await until(() => d.state === 'idle');
+        return seen;""",
+    )
+    fifth = next(
+        i for i, v in enumerate(got) if len(re.findall(r"\[5\.\ds kw=2\]", v)) == 5
+    )
+    final = next(i for i, v in enumerate(got) if re.search(r"\[2\d\.\ds kw=2\]", v))
+    assert fifth < final, got
+    assert re.fullmatch(r"\[2\d\.\ds kw=2\] \[5\.5s kw=2\]", got[final]), got[final]
+
+
 def test_dictation_picks_provisional_jobs_before_final_ones(dict_server, page):
     page.goto(dict_server.url)
     got = run_dictation(
