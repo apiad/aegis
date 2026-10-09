@@ -143,6 +143,72 @@ async def test_real_claude_arms_a_monitor_through_the_endpoint_and_is_woken(
         await asyncio.wait_for(task, 30)
 
 
+async def test_real_claude_waits_on_another_session_and_is_woken(tmp_path: Path):
+    """The primer's monitor_sessions paragraph, followed by a real model."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "haiku"})
+        busy = app.sessions.sessions[r["log_id"]]
+        r = await app.registry.call("session.spawn", {"agent": "haiku"})
+        s = app.sessions.sessions[r["log_id"]]
+        await busy.send(
+            "Run the shell command `sleep 25`, then reply with the word SLEPT."
+        )
+        await until(lambda: busy.status == "working", timeout=60, what="busy working")
+        await s.send(
+            f"Wait, using aegis, until the session {busy.handle} has finished, "
+            "then reply with the single word FINISHED."
+        )
+        await until(
+            lambda: any(m.sessions for m in app.monitors.of(s.log_id)),
+            timeout=120,
+            what="a session monitor armed by Claude",
+        )
+        await until(
+            lambda: any(
+                "FINISHED" in (e.get("md") or "")
+                for e in s.entries()
+                if e["kind"] == "prose"
+            ),
+            timeout=180,
+            what="the wake and Claude's answer",
+        )
+        calls = [e["title"] for e in s.entries() if e["kind"] == "tool"]
+        assert "monitor_sessions" in calls
+        wakes = [e["title"] for e in s.entries() if e["kind"] == "inbox"]
+        assert any(" · ok · " in w for w in wakes), wakes
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
 async def test_real_claude_sends_a_file_and_the_link_serves_it(tmp_path: Path):
     """The real binary finds file_send from its description and hands over two
     files it wrote in one call; the entry's links serve the same bytes."""
