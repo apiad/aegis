@@ -55,6 +55,13 @@ def opencode_lines() -> list[str]:
     return [ln for ln in OPENCODE_FIXTURE.read_text().splitlines() if ln]
 
 
+CODEX_FIXTURE = ROOT / "tests" / "fixtures" / "codex" / "tool.jsonl"
+
+
+def codex_lines() -> list[str]:
+    return [ln for ln in CODEX_FIXTURE.read_text().splitlines() if ln]
+
+
 def claude_lines() -> list[str]:
     return [
         r["line"] for r in map(json.loads, FIXTURE.open()) if r.get("src") == "claude"
@@ -67,9 +74,13 @@ async def server_cost(rounds: int = 40, harness: str = "claude-code") -> dict:
     from aegis.session import Session, SpawnSpec
     from aegis.transcript.store import Store
 
-    opencode = harness == "opencode"
-    lines = opencode_lines() if opencode else claude_lines()
-    ids = ('"call_', '"prt_', '"msg_') if opencode else ('"toolu_',)
+    lines = {"opencode": opencode_lines, "codex": codex_lines}.get(
+        harness, claude_lines
+    )()
+    ids = {
+        "opencode": ('"call_', '"prt_', '"msg_'),
+        "codex": ('"call-', '"msg_', '"rs_'),
+    }.get(harness, ('"toolu_',))
     samples: list[float] = []
     with tempfile.TemporaryDirectory() as tmp:
 
@@ -87,6 +98,7 @@ async def server_cost(rounds: int = 40, harness: str = "claude-code") -> dict:
             stderr_path=Path(tmp) / "e",
             claude_bin="true",
             opencode_bin="true",
+            codex_bin="true",
             publish=sink,
             metas=MetaStore(Path(tmp) / "sessions"),
         )
@@ -100,11 +112,12 @@ async def server_cost(rounds: int = 40, harness: str = "claude-code") -> dict:
                 s._on_line(line)
                 samples.append((time.perf_counter_ns() - t0) / 1000)
         s.store.close()
-    key = "server_line_opencode" if opencode else "server_line"
+    tag = "" if harness == "claude-code" else f"_{harness}"
+    key = f"server_line{tag}"
     return {
         f"{key}_p50_us": pct(samples, 0.5),
         f"{key}_p95_us": pct(samples, 0.95),
-        ("server_opencode_lines" if opencode else "server_lines"): len(samples),
+        (f"server{tag}_lines" if tag else "server_lines"): len(samples),
     }
 
 
@@ -443,6 +456,7 @@ def main() -> None:
 
     metrics = asyncio.run(server_cost())
     metrics.update(asyncio.run(server_cost(harness="opencode")))
+    metrics.update(asyncio.run(server_cost(harness="codex")))
     metrics.update(boot_cost())
     with sync_playwright() as p:
         metrics.update(browser_runs(p))
