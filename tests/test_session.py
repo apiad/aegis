@@ -104,6 +104,18 @@ async def test_a_prompt_runs_a_turn(h):
     assert h.session.title == "hello" and h.session.resume_id
 
 
+async def test_text_streams_before_the_turn_ends_and_no_delta_is_stored(h):
+    def prose() -> list[str]:
+        return [e["md"] for e in h.session.entries() if e["kind"] == "prose"]
+
+    await h.session.send("/stream 4")
+    await until(lambda: any("chunk1" in m for m in prose()), what="the first chunk")
+    assert not any("chunk4" in m for m in prose()), "drawn while it streams"
+    await until(lambda: h.session.status == "idle", timeout=5, what="the end")
+    assert prose() == ["chunk1 chunk2 chunk3 chunk4"]
+    assert '"stream_event"' not in h.path.read_text()
+
+
 async def test_the_store_is_named_by_the_log_id(h):
     assert h.path.name == "log-abc.jsonl" and h.path.exists()
 

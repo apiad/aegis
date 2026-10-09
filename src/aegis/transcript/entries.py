@@ -40,24 +40,17 @@ from ..claude.stream import (
     Thinking,
     ToolCall,
     ToolOutput,
-    parse,
 )
+from ..claude.stream import Parser as ClaudeParser
 from ..opencode.stream import Parser as OpenCodeParser
 from . import describe as d
 from .plan_clock import replan, switch
 from .wire import wire
 
 
-class _Stateless:
-    """Claude's stream-json needs no memory between lines."""
-
-    def feed(self, line: str) -> list[Event]:
-        return parse(line)
-
-
 # The store's src tag -> a parser factory. A fold keeps one parser per tag, so
-# a harness whose events need earlier lines (OpenCode's) sees them in order.
-PARSERS: dict[str, Any] = {"claude": _Stateless, "opencode": OpenCodeParser}
+# a harness whose events need earlier lines sees them in order.
+PARSERS: dict[str, Any] = {"claude": ClaudeParser, "opencode": OpenCodeParser}
 
 
 # From which fold level of the browser's view a kind folds: 1, the work between
@@ -281,6 +274,13 @@ class Fold:
             end = getattr(p, "end_turn", None)
             if end is not None:
                 end()
+
+    def _unlive(self, key: str | None) -> list[dict]:
+        """The live entry a whole block replaces, gone; nothing on a reload."""
+        if key is None or key not in self._live:
+            return []
+        self._live.discard(key)
+        return self._remove(key)
 
     def _drop_live(self) -> list[dict]:
         """Entries only deltas made, whose part never closed."""
@@ -799,11 +799,12 @@ class Fold:
 
         if isinstance(ev, Text):
             eid = ev.key or id
+            gone = self._unlive(ev.replaces)
             if ev.key:
                 self._live.discard(ev.key)
             if not ev.text.strip():
-                return []
-            ops = self._upsert(
+                return gone
+            ops = gone + self._upsert(
                 _entry(eid, "prose", "ok", ts, d.PROSE_GLYPH, md=ev.text)
             )
             self._stand(last_message=eid)
@@ -811,11 +812,12 @@ class Fold:
 
         if isinstance(ev, Thinking):
             eid = ev.key or id
+            gone = self._unlive(ev.replaces)
             if ev.key:
                 self._live.discard(ev.key)
                 if not ev.text.strip():
-                    return []  # an opening part
-            return self._upsert(
+                    return gone  # an opening part
+            return gone + self._upsert(
                 _entry(
                     eid,
                     "thinking",
