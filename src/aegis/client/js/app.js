@@ -859,7 +859,7 @@ function renderMeta(s) {
   const born = s.created_at ? ` · started ${new Date(s.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "";
   $("c-sub").textContent = `${s.handle}${born}`;
   $("s-harness").textContent = s.harness_label || s.harness || "";
-  $("s-model").textContent = s.model;
+  $("s-model").textContent = s.model_id && s.model_id !== s.model ? `${s.model} → ${s.model_id}` : s.model;
   $("s-effort").textContent = s.effort || "";
   $("s-perm").textContent = s.permission || "";
   $("s-server").textContent = s.server || conn.server || "this server";
@@ -878,6 +878,7 @@ function renderMeta(s) {
   drawReplies(s);
   $("s-cwd").textContent = s.cwd;
   $("chip-model").textContent = s.model;
+  $("chip-model").title = s.model_id || "";
   $("chip-effort").textContent = `${s.effort} effort`;
   $("chip-perm").textContent = s.permission;
   const p = sideProvider(s);

@@ -1985,6 +1985,26 @@ def test_the_menu_completes_a_model_and_esc_closes_it_without_interrupting(
     assert page.errors == []
 
 
+def test_the_chip_keeps_the_configured_model_and_the_panel_adds_the_resolved_id(
+    server, page
+):
+    """The id the harness names after its first init is not what the chip
+    flips to (#243)."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    turns_done(page, 1)
+    page.hover("#p-session")
+    page.wait_for_selector("#p-session .pcard", state="visible")
+    page.wait_for_function(
+        "document.getElementById('s-model').textContent.includes(' → ')"
+    )
+    configured, resolved = page.inner_text("#s-model").split(" → ")
+    assert page.inner_text("#chip-model") == configured != resolved
+    assert page.get_attribute("#chip-model", "title") == resolved
+    assert page.errors == []
+
+
 def test_alt_slash_with_a_draft_runs_a_command_and_keeps_the_draft(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")

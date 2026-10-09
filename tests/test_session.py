@@ -100,8 +100,19 @@ async def test_a_prompt_runs_a_turn(h):
     assert ("user", "ok") in kinds and ("prose", "ok") in kinds
     assert not [k for k in kinds if k[1] == "pending"]
     assert h.session.context_window == 200000 and h.session.context_tokens == 1030
-    assert h.session.wire()["model"] == "fake-model"
+    assert h.session.wire()["model"] == "opus"
+    assert h.session.wire()["model_id"] == "fake-model"
     assert h.session.title == "hello" and h.session.resume_id
+
+
+async def test_the_configured_model_and_the_resolved_id_are_apart_from_spawn_on(h):
+    """The harness names the resolved id with its first init; until then it is
+    null, and `model` is the configured value either side of it (#243)."""
+    s = h.session
+    assert (s.wire()["model"], s.wire()["model_id"]) == ("opus", None)
+    await s.send("hello")
+    await until(lambda: s.model_id == "fake-model", what="the init")
+    assert (s.wire()["model"], s.wire()["model_id"]) == ("opus", "fake-model")
 
 
 async def test_text_streams_before_the_turn_ends_and_no_delta_is_stored(h):
