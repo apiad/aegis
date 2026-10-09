@@ -67,7 +67,9 @@ def test_the_skeleton_loads_the_script_and_the_stylesheet_and_calls_ready():
     assert '<link rel="stylesheet" href="/static/css/artifact.css">' in html
     assert "<title>Pick a layout</title>" in html and "<h2>Pick a layout</h2>" in html
     assert "aegis.ready(" in html
-    check(html)  # the skeleton passes its own checks
+    with pytest.raises(ArtifactError) as e:
+        check(html)  # unedited, the skeleton answers nothing, and the check says so
+    assert e.value.code == "no_answer"
 
 
 def test_a_title_is_escaped_in_the_skeleton():
@@ -180,8 +182,7 @@ SKELETON = """\
 <!-- controls go here -->
 <script>
   aegis.ready((state, theme) => {{
-    // wire the controls; answer with aegis.submit(data, label),
-    // aegis.emit(name, data) or aegis.state(data)
+    // wire the controls; answer with aegis.submit / aegis.emit / aegis.state
   }});
 </script>
 </body>

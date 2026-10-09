@@ -129,8 +129,7 @@ and only adds its controls has little to get wrong. The skeleton:
 <!-- controls go here -->
 <script>
   aegis.ready((state, theme) => {
-    // wire the controls; answer with aegis.submit(data, label),
-    // aegis.emit(name, data) or aegis.state(data)
+    // wire the controls; answer with aegis.submit / aegis.emit / aegis.state
   });
 </script>
 </body>
@@ -141,7 +140,8 @@ and only adds its controls has little to get wrong. The skeleton:
 load `/static/js/artifact.js` is refused with `no_script`, and one whose text
 calls none of `aegis.submit`, `aegis.emit` or `aegis.state` with `no_answer`,
 each with a one-line hint. These are the two mistakes that leave a page that
-looks fine and can never answer. Nothing else is linted: browsers parse
+looks fine and can never answer; the unedited skeleton fails the second one on
+purpose, so its comment names no call. Nothing else is linted: browsers parse
 anything, and external scripts such as d3 from a CDN are allowed.
 
 **The probe.** The server publishes an `artifact.probe` request on the
