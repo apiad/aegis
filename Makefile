@@ -1,7 +1,8 @@
-.PHONY: check lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-live test-browser bench coverage know-how site-css
+.PHONY: check lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-slow test-live test-browser bench coverage know-how site-css
 
-# Every gate. The tests run before typecheck so a type error cannot hide a
-# failing suite; both block.
+# Every gate, on the fast lane: the tests marked slow, the browser tests among
+# them, are `test-slow`'s. The tests run before typecheck so a type error cannot
+# hide a failing suite; both block.
 check: format lint lint-docs changelog-check test typecheck
 
 # Doc drift (.rift.yaml). Not in CI: rift is private and not on PyPI, so a
@@ -50,6 +51,12 @@ test-cov:
 # Everything hermetic, slow tests included.
 test-all:
 	uv run pytest -q -n auto --cov=aegis --cov-report=term-missing
+
+# Every test the fast lane skips, serially, as CI runs them: the browser tests,
+# restarts, detached servers. With `check` it is what CI runs; AGENTS.md's done
+# line names both (tests/test_lanes.py holds them together).
+test-slow:
+	uv run pytest -q -m "slow and not live"
 
 # The client in headless Chromium against a real `aegis serve` and the fake
 # claude. Marked slow too, so `make test` skips them; CI runs them.

@@ -110,7 +110,7 @@ no user-facing doc.
 3. Bump `version` in `pyproject.toml`.
 4. **Bump the `aegis-harness` version line in `uv.lock`** (surgical edit),
    then verify with `uv sync --inexact --locked --group dev`.
-5. Run the suite locally: `make check`. A red run is a regression; do not
+5. Run the suite locally: `make check` and `make test-slow`. A red run is a regression; do not
    re-roll it.
 6. Commit `chore(release): vX.Y.Z`, push `main`.
 7. `git tag -a vX.Y.Z -m "Release vX.Y.Z"` and `git push origin vX.Y.Z`.

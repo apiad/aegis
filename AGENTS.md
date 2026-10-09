@@ -19,7 +19,8 @@ false by a commit that adds a module, a tool or a test.
 
 A change is done when:
 
-1. `make check` passes, browser tests included;
+1. `make check` and `make test-slow` pass. `make check` runs the fast lane only;
+   the browser tests are all marked slow, so they run in `make test-slow`;
 2. it has been exercised in a browser against an `aegis serve` started after the
    change, and, for a change to how agents use aegis, by a real Claude Code
    session (`make test-live`);
@@ -95,7 +96,8 @@ eliminated are worth writing down — they stop the next agent repeating them.
 
 ## Working here
 
-`make check` runs every gate; `make test` is the fast lane to iterate on.
+`make check` runs every gate on the fast lane; `make test` is that lane alone, to
+iterate on; `make test-slow` runs the tests both skip, browser tests included.
 `make know-how` prints the procedure docs, one `when:` line each; read the ones
 that match the task. Use `uv`, never pip. Python 3.13 or newer.
 
