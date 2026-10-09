@@ -69,6 +69,8 @@ Fleet and your tab bar with a server tag, and they take prompts, interrupts and
 closes from here. An agent here hands work to one there with
 `peer_handoff(target="knuth@vps")`. The link goes one way: the far server can
 never reach the one that linked it, so a shared server cannot touch your laptop.
+Both servers need aegis 2.4.0 or newer; an older far server refuses the link
+with an HTTP 403, and `aegis link add` says so.
 
 ## Agents that write their own interface
 
