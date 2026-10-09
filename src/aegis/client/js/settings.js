@@ -6,6 +6,10 @@
 //
 // An agent is drawn as a card whose chips are the new-tab composer's, so a
 // preset looks like the session it starts.
+//
+// The Servers section lists the servers this one links (links.py), and a
+// picker points the form at a linked server's .aegis.yaml: the same `config.*`
+// operations and `config` channel, sent through the link.
 
 import "./pick.js";
 
@@ -46,6 +50,60 @@ export class Settings {
     this.checked = false; // whether `findings` is a doctor run
     this.allChecks = false; // the full list of checks is open
     this.status = "";
+    this.server = null; // the server whose config the form edits; null: this one
+    this.home = ""; // this server's name
+    this.links = []; // the `links` channel
+    this.homeWire = null;
+    this.unsubFar = null;
+    this.linkError = "";
+  }
+
+  call(op, params = {}) {
+    return this.conn.call(op, params, this.server);
+  }
+
+  // This server's config: shown unless the picker is on a linked server.
+  onHomeConfig(wire) {
+    this.homeWire = wire;
+    if (this.server === null) this.onConfig(wire);
+  }
+
+  onLinks(links, home) {
+    this.links = links;
+    this.home = home;
+    if (this.server && !links.some((l) => l.name === this.server)) this.pick(null);
+    else if (this.box.isConnected && this.box.offsetParent !== null && !this.dirty) this.draw();
+  }
+
+  // Point the form at a server: its config replaces the form, edits and all.
+  pick(server) {
+    if (server === this.server) return;
+    this.unsubFar?.();
+    this.unsubFar = null;
+    this.server = server;
+    this.wire = null;
+    this.doc = null;
+    this.dirty = false;
+    this.findings = null;
+    this.found = [];
+    if (server === null) {
+      if (this.homeWire) this.onConfig(this.homeWire);
+    } else
+      this.unsubFar = this.conn.subscribe(
+        "config",
+        (w) => this.onConfig(w),
+        (ops) => {
+          for (const op of ops) if (op.set) this.onConfig(op.set);
+        },
+        (e) => {
+          this.status = e.message;
+          this.draw();
+        },
+        undefined,
+        server,
+      );
+    this.draw();
+    this.open();
   }
 
   // A config from the channel. An untouched form follows the file; an edited
@@ -71,7 +129,7 @@ export class Settings {
     this.draw();
     if (this.found.length) return;
     try {
-      this.found = await this.conn.call("config.detect");
+      this.found = await this.call("config.detect");
     } catch (e) {
       this.status = e.message;
     }
@@ -86,11 +144,13 @@ export class Settings {
 
   draw() {
     const w = this.wire;
-    if (!w || !this.doc) return this.box.replaceChildren(h("p", { className: "notice", textContent: "Loading…" }));
-    if (!w.exists && !this.dirty) return this.box.replaceChildren(this.empty());
+    if (!w || !this.doc)
+      return this.box.replaceChildren(this.servers(), h("p", { className: "notice", textContent: "Loading…" }));
+    if (!w.exists && !this.dirty) return this.box.replaceChildren(this.servers(), this.empty());
     const page = h(
       "div",
       { className: "set-page" },
+      this.servers(),
       this.head(),
       w.error && h("p", { className: "set-alert err", id: "set-error", textContent: `The file on disk does not parse, so aegis is still using the last version that did. ${w.error}` }),
       this.stale &&
@@ -109,6 +169,74 @@ export class Settings {
     );
     this.box.replaceChildren(page, this.bar());
     this.mark();
+  }
+
+  // The servers: this one, each link with its state, and a form to add one.
+  servers() {
+    const since = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const state = (l) =>
+      l.state === "linked"
+        ? `linked${l.rtt_ms != null ? ` · ${l.rtt_ms} ms` : ""}`
+        : l.state === "offline"
+          ? `offline since ${since(l.since)}`
+          : `${l.state}${l.error ? `: ${l.error}` : ""}`;
+    const rows = [
+      h("tr", {}, h("td", {}, h("b", { textContent: this.home })), h("td", { className: "m", textContent: "this server" }), h("td", {}, h("span", { className: "set-pill ok", textContent: "serving" })), h("td")),
+      ...this.links.map((l) =>
+        h(
+          "tr",
+          { className: `set-link link-${l.name}` },
+          h("td", {}, h("b", { textContent: l.name })),
+          h("td", { className: "m", textContent: l.url }),
+          h("td", {}, h("span", { className: `set-pill ${l.state === "linked" ? "ok" : "bad"}`, textContent: state(l) })),
+          h("td", {}, button("Remove", null, () => this.unlink(l.name))),
+        ),
+      ),
+    ];
+    const url = h("input", { className: "set-in", id: "set-link-url", placeholder: "https://dev.example", spellcheck: false });
+    const token = h("input", { className: "set-in", id: "set-link-token", placeholder: "its token; kept in links.json, never in .aegis.yaml", type: "password" });
+    const add = button("Link", "set-link-add", () => this.link(url.value.trim(), token.value.trim()), "btn primary");
+    const picker =
+      this.links.length > 0 &&
+      h(
+        "div",
+        { className: "set-srvpick", id: "set-srvpick" },
+        h("span", { textContent: "Editing the config of" }),
+        ...[null, ...this.links.map((l) => l.name)].map((name) => {
+          const b = button(name ?? this.home, null, () => this.pick(name), `btn${name === this.server ? " primary" : ""}`);
+          b.dataset.server = name ?? "";
+          return b;
+        }),
+      );
+    return h(
+      "section",
+      { className: "set-servers", id: "set-servers" },
+      h("h3", { textContent: "Servers" }),
+      h("p", { className: "set-none", textContent: "A linked server's sessions show in the Fleet and the tab bar. Nothing on it can reach this machine." }),
+      h("table", { className: "tbl" }, ...rows),
+      h("div", { className: "set-linkrow" }, url, token, add),
+      this.linkError && h("p", { className: "err-text", id: "set-link-error", textContent: this.linkError }),
+      picker,
+    );
+  }
+
+  async link(url, token) {
+    this.linkError = "";
+    try {
+      await this.conn.call("link.add", { url, token });
+    } catch (e) {
+      this.linkError = e.message;
+    }
+    this.draw();
+  }
+
+  async unlink(name) {
+    try {
+      await this.conn.call("link.remove", { name });
+    } catch (e) {
+      this.linkError = e.message;
+    }
+    this.draw();
   }
 
   head() {
@@ -323,7 +451,7 @@ export class Settings {
     this.saving = true;
     this.drawBar();
     try {
-      const r = await this.conn.call("config.write", { doc: this.doc, stamp: this.stamp });
+      const r = await this.call("config.write", { doc: this.doc, stamp: this.stamp });
       if (r.saved) {
         this.wire = r.config;
         this.load(r.config);
@@ -350,7 +478,7 @@ export class Settings {
       b.textContent = "Checking…";
     }
     try {
-      this.findings = await this.conn.call("config.doctor");
+      this.findings = await this.call("config.doctor");
       this.checked = true;
     } catch (e) {
       this.status = e.message;
@@ -379,7 +507,7 @@ export class Settings {
 
   async setup() {
     try {
-      this.doc = await this.conn.call("config.propose");
+      this.doc = await this.call("config.propose");
     } catch (e) {
       this.status = e.message;
       return this.draw();

@@ -130,6 +130,11 @@ Messages from others reach you as user turns that start with a header line: \
 task#<id> · ok|error · …` when a task you enqueued finishes, `> from agent:<handle> \
 · …` when another agent hands you something. Treat the body as an instruction.
 
+Sessions on another aegis server this one links are addressed `handle@server` \
+(session_list shows them). You reach one only with peer_handoff; reading, \
+spawning and enqueueing there are for people. Nothing on a linked server can \
+reach you.
+
 To wait on a long process (tests, a build, a download), never sleep or poll: call \
 monitor_start with a bash `done` condition and a `progress` command echoing 0 to \
 100, then end your turn. You are woken when it finishes, fails or times out. \

@@ -22,6 +22,7 @@ from pathlib import Path
 
 from .claude import control
 from .claude.control import Catalog
+from .ops import OpError
 from .session import Session
 
 
@@ -49,6 +50,12 @@ AEGIS: dict[str, Command] = {
         Command("rename", "<handle>", "Rename this session's handle"),
         Command("title", "<text>", "Set this session's title"),
         Command("stop", "", "Stop the process and keep the session"),
+        Command(
+            "spawn",
+            "<agent>[@server] [prompt]",
+            "Start a session, here or on a linked server; flags: --model, "
+            "--effort, --permission, --cwd",
+        ),
         Command("close", "", "Close the session; it stays in the archive"),
         # The browser answers it by opening the menu; it never reaches claude.
         Command("help", "", "List every command"),
@@ -64,6 +71,47 @@ def split(text: str) -> tuple[str, str] | None:
     if not parts:
         return None
     return parts[0], parts[1].strip() if len(parts) > 1 else ""
+
+
+SPAWN_FLAGS = ("model", "effort", "permission", "cwd")
+SPAWN_USAGE = (
+    "usage: /spawn <agent>[@server] [--model m] [--effort e] [--cwd path] [prompt]"
+)
+
+
+@dataclass(frozen=True)
+class SpawnLine:
+    agent: str
+    server: str | None = None
+    prompt: str | None = None
+    model: str | None = None
+    effort: str | None = None
+    permission: str | None = None
+    cwd: str | None = None
+
+
+def parse_spawn(arg: str) -> SpawnLine:
+    """``/spawn``'s argument: the agent, its ``@server``, leading flags, and the
+    rest of the line as the prompt, verbatim (the legacy tree's command, with
+    ``@server`` and ``--cwd`` added)."""
+    rest = arg.strip()
+    head, _, rest = rest.partition(" ")
+    agent, at, server = head.partition("@")
+    if not agent or (at and not server):
+        raise OpError("bad_spawn", SPAWN_USAGE)
+    flags: dict[str, str] = {}
+    rest = rest.lstrip()
+    while rest.startswith("--"):
+        word, _, rest = rest.partition(" ")
+        name = word[2:]
+        if name not in SPAWN_FLAGS:
+            raise OpError("bad_spawn", f"no flag --{name}; {SPAWN_USAGE}")
+        value, _, rest = rest.lstrip().partition(" ")
+        if not value:
+            raise OpError("bad_spawn", f"--{name} needs a value; {SPAWN_USAGE}")
+        flags[name] = value
+        rest = rest.lstrip()
+    return SpawnLine(agent, server or None, rest or None, **flags)
 
 
 def escape(text: str) -> str:

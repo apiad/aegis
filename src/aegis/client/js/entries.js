@@ -16,6 +16,13 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   return defaultLink(tokens, idx, options, env, self);
 };
 
+// Where a sent file's URL is fetched from: "" on this server, `/via/<server>`
+// for a transcript from a linked one (web.py streams it from there).
+let fileBase = "";
+export function setFileBase(base) {
+  fileBase = base;
+}
+
 export function markdown(text) {
   const div = document.createElement("div");
   div.className = "md";
@@ -140,7 +147,16 @@ const RENDERERS = {
     // An agent's file_send, as a card: a bar with the name and the actions,
     // the preview below. The preview kind was decided at send (files.py);
     // Open natively shows only where the server said so (#a2[data-native]).
-    const det = e.detail || {};
+    const det = { ...(e.detail || {}) };
+    const remote = fileBase !== "";
+    if (remote) {
+      // A linked server's card: every link is rebuilt here from a path of the
+      // one shape /via serves, so no URL the far server chose reaches an href
+      // or a frame on this origin (a javascript: download ran with the cookie).
+      const ok = typeof det.url === "string" && /^\/files\/[A-Za-z0-9_-]+\/[^/?#]+$/.test(det.url);
+      det.url = ok ? fileBase + det.url : "about:blank";
+      det.download = ok ? `${det.url}?download=1` : "about:blank";
+    }
     const body = el("div", "body");
     if (e.md) {
       const cap = markdown(e.md);
@@ -160,7 +176,7 @@ const RENDERERS = {
     native.dataset.name = e.title;
     const dl = el("a", "btn dl", "↓ Download");
     dl.href = det.download;
-    acts.append(open, native, dl);
+    acts.append(open, ...(remote ? [] : [native]), dl); // never natively from a linked server
     bar.append(el("span", "ic", e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);
     card.append(bar);
     const pv = det.preview;
@@ -173,7 +189,9 @@ const RENDERERS = {
       view.addEventListener("click", () => window.open(det.url, "_blank", "noopener"));
     } else if (pv === "pdf" || pv === "html") {
       view = el("iframe");
-      if (pv === "html") view.setAttribute("sandbox", "allow-scripts");
+      // A linked server's frame is sandboxed unless it is a PDF, which /via
+      // serves as application/pdf whatever the far server says.
+      if (pv === "html" || (remote && !/\.pdf$/i.test(det.url))) view.setAttribute("sandbox", "allow-scripts");
       view.loading = "lazy";
       view.src = det.url;
       view.title = e.title;

@@ -19,6 +19,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from .archive import Position, page as archive_page
 from . import attention
 from .harness import harness_for
 from .meta import MetaStore, rebuild
@@ -369,28 +370,11 @@ class Registry(Host):
         return _public(meta)
 
     def archive(
-        self, query: str | None, limit: int, before: float | None
-    ) -> list[dict]:
-        q = (query or "").lower()
-        items = sorted(
-            self.archived.values(),
-            key=lambda m: m.get("last_activity") or 0,
-            reverse=True,
-        )
-        out = []
-        for m in items:
-            if before is not None and (m.get("last_activity") or 0) >= before:
-                continue
-            hay = " ".join(
-                str(m.get(k) or "")
-                for k in ("title", "handle", "cwd", "agent", "profile")
-            ).lower()
-            if q and q not in hay:
-                continue
-            out.append(_public(m))
-            if len(out) >= limit:
-                break
-        return out
+        self, query: str | None, limit: int, after: Position | None
+    ) -> tuple[list[dict], int, Position | None]:
+        """A page of the archive, newest first, after ``after`` (archive.py)."""
+        items, total, last = archive_page(self.archived.values(), query, limit, after)
+        return [_public(m) for m in items], total, last
 
     async def shutdown(self) -> None:
         for s in list(self.sessions.values()):

@@ -20,12 +20,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import getpass
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from . import commands, dictation, files
+from . import archive, commands, dictation, files
 from .agent_ops import register_agent_ops
 from .agents import (
     EFFORTS,
@@ -40,12 +41,13 @@ from .claude.process import PERMISSION_MODE, ControlError
 from .config import Config, Snapshot
 from .config_ops import register_config_ops
 from .host import HostSampler
+from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors
 from .queues import Queues
 from .quota import Quota
 from .recaps import Recaps
-from .ops import NoParams, OpError, Registry as Ops
+from .ops import Caller, NoParams, OpError, Registry as Ops
 from .registry import Registry
 from .roots import Roots
 from .session import PUBLISH_EVERY_S
@@ -123,10 +125,25 @@ class FileRef(_Strict):
     name: str
 
 
+class LinkAdd(_Strict):
+    url: str = Field(description="The far server's page URL, e.g. https://dev.example")
+    token: str = Field(min_length=1)
+    name: str | None = Field(
+        None, description="What it must call itself; omitted: whatever it does."
+    )
+
+
+class LinkName(_Strict):
+    name: str
+
+
 class ArchiveParams(_Strict):
     query: str | None = None
+    server: str | None = Field(None, description="One server only; omitted: all.")
     limit: int = Field(default=50, ge=1, le=200)
-    before: float | None = None
+    cursor: str | None = Field(
+        None, description="The cursor the last page returned; omitted: the first."
+    )
 
 
 def _dead(e: Exception) -> OpError:
@@ -146,8 +163,10 @@ class App:
         server_name: str = "aegis",
         opencode_bin: str = "opencode",
         dictation_dir: Path | None = None,
+        user: str | None = None,
     ) -> None:
         self.roots = roots
+        self.server_name = server_name
         self.claude_bin = claude_bin
         self.opencode_bin = opencode_bin
         self.dictation = dictation.Store(dictation_dir or dictation.default_dir())
@@ -194,6 +213,10 @@ class App:
         reg.mcp_url = f"{base_url.rstrip('/')}{MCP_PATH}" if base_url else None
         self.versions = Versions()
         self.recaps = Recaps(self)
+        # Who the people on this server are, as a link tells the far side. One
+        # user per server for now: whoever started it (links.py).
+        self.user = user or getpass.getuser()
+        self.links = Links(roots.state_root, server_name, self.user, self.publish)
         self.registry = Ops()
         self._register()
         register_agent_ops(self)
@@ -211,12 +234,14 @@ class App:
         await self.queues.resume_after_boot(self.queues.boot())
         self.quota.start()
         self.host.start()
+        self.links.boot()
 
     async def shutdown(self) -> None:
         if self._config_task is not None:
             self._config_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._config_task
+        await self.links.shutdown()
         await self.quota.stop()
         await self.host.stop()
         await self.monitors.shutdown()
@@ -275,6 +300,8 @@ class App:
             return self.host.snapshot
         if name == "config":
             return lambda: self.config.current().wire()
+        if name == "links":
+            return self.links.wire
         return None
 
     def _agents(self):
@@ -333,7 +360,7 @@ class App:
             raise _dead(e) from e
         return s.wire()
 
-    async def _command(self, s, name: str, arg: str):
+    async def _command(self, s, name: str, arg: str, caller: Caller = Caller("user")):
         """Run an aegis command typed in the composer."""
         cmd = commands.AEGIS[name]
         if cmd.hint.startswith("<") and not arg:
@@ -361,8 +388,106 @@ class App:
         if name == "stop":
             await s.stop()
             return s.wire()
+        if name == "spawn":
+            return await self._spawn_line(commands.parse_spawn(arg), caller)
         await reg.close(s.log_id)  # close
         return None
+
+    async def _spawn_line(self, line: commands.SpawnLine, caller: Caller) -> dict:
+        """``/spawn``: a person starting a session, here or, with ``@server``, on
+        a linked server through the link. Nobody's child: no ``spawned_by``."""
+        params = {
+            k: v
+            for k, v in (
+                ("agent", line.agent),
+                ("prompt", line.prompt),
+                ("model", line.model),
+                ("effort", line.effort),
+                ("permission", line.permission),
+                ("cwd", line.cwd),
+            )
+            if v is not None
+        }
+        if line.server in (None, self.server_name):
+            r = await self.registry.call("session.spawn", params, caller)
+            return {**r, "server": self.server_name}
+        if caller.link is not None:
+            raise OpError("not_relayed", "a link is not relayed to another server")
+        link = self.links.get(line.server)
+        if link is None:
+            raise OpError(
+                "unknown_server", f"this server links no server named {line.server}"
+            )
+        if link.state != "linked":
+            raise OpError("server_offline", f"{link.describe()}; nothing was started")
+        r = await link.call("session.spawn", params)
+        return {**r, "server": line.server}
+
+    async def _archive(self, p: ArchiveParams, caller: Caller) -> dict:
+        positions = archive.decode(p.cursor)
+        # A link asking reads this server's archive only: links are not relayed.
+        only = self.server_name if caller.link is not None else p.server
+        pages: dict[str, tuple[list[dict], archive.Position | None]] = {}
+        counts: dict[str, int] = {}
+        for name, fetch in self._archive_sources(only):
+            if name in positions and positions[name] is None:
+                continue  # exhausted on an earlier page
+            got = await fetch(p.query, p.limit, positions.get(name))
+            if got is None:
+                continue  # a linked server that is down keeps its place
+            items, total, last = got
+            pages[name] = ([{**m, "server": name} for m in items], last)
+            counts[name] = total
+        items, positions = archive.merge(pages, p.limit, positions)
+        more = any(v is not None for v in positions.values()) or any(
+            name not in positions for name in pages
+        )
+        # A linked server that is down is named, so its rows are visibly missing.
+        offline = [
+            link.name
+            for link in self.links.links()
+            if link.state != "linked"
+            and only in (None, link.name)
+            and caller.link is None
+        ]
+        return {
+            "items": items,
+            "total": sum(counts.values()),
+            "counts": counts,
+            "offline": offline,
+            "cursor": archive.encode(positions) if more else None,
+        }
+
+    def _archive_sources(self, only: str | None):
+        """Each server an archive listing reads, with how to fetch a page."""
+
+        async def local(query, limit, after):
+            return self.sessions.archive(query, limit, after)
+
+        if only in (None, self.server_name):
+            yield self.server_name, local
+        for link in self.links.up():
+            if only not in (None, link.name):
+                continue
+
+            async def far(query, limit, after, link=link):
+                cursor = archive.encode({link.name: after}) if after else None
+                try:
+                    r = await link.call(
+                        "archive.list",
+                        {
+                            "query": query,
+                            "limit": limit,
+                            "server": link.name,
+                            "cursor": cursor,
+                        },
+                    )
+                except OpError:
+                    return None  # down since the listing started: keep its place
+                last = archive.decode(r.get("cursor")).get(link.name)
+                return r.get("items", []), r.get("total", 0), last
+
+            yield link.name, far
 
     def _register(self) -> None:
         r = self.registry
@@ -392,6 +517,12 @@ class App:
             first message. Its permission can be at most yours. Returns its log
             id and handle. It does not report back: read it with peer_read,
             message it with peer_handoff."""
+            if p.agent and "@" in p.agent:
+                raise OpError(
+                    "not_across_links",
+                    f"{p.agent}: an agent spawns only on its own server; a person "
+                    "spawns on a linked one with /spawn agent@server",
+                )
             agents, default = self._agents()
             parent = reg.sessions.get(caller.log_id) if caller.is_agent else None
             spec = resolve(
@@ -445,7 +576,7 @@ class App:
             if cmd is not None:
                 name, arg = cmd
                 if name in commands.AEGIS:
-                    return await self._command(s, name, arg)
+                    return await self._command(s, name, arg, caller)
                 cat = await self.catalogs.get(s)
                 if cat is not None and cat.commands and not cat.has(name):
                     raise OpError(
@@ -555,7 +686,10 @@ class App:
 
         @r.op("archive.list", ArchiveParams)
         async def archive_list(p: ArchiveParams, caller):
-            return reg.archive(p.query, p.limit, p.before)
+            """A page of closed sessions, newest first, across this server and
+            the servers it links (archive.py). ``total`` and ``counts`` are of
+            the servers this page read; the first page reads every one."""
+            return await self._archive(p, caller)
 
         @r.op("file.open", FileRef)
         async def file_open(p: FileRef, caller):
@@ -573,6 +707,31 @@ class App:
                 files.open_natively(path)
             except (files.FileError, OSError) as e:
                 raise OpError("open_failed", str(e)) from e
+
+        @r.op("link.list")
+        async def link_list(_, caller):
+            """The servers this one links, with their state; never their tokens."""
+            return self.links.wire()
+
+        @r.op("link.add", LinkAdd)
+        async def link_add(p: LinkAdd, caller):
+            """Link another aegis server: connect once with its token, take the
+            name it gives itself, and keep the link in links.json."""
+            try:
+                welcome = await probe(p.url, p.token, self.server_name, self.user)
+            except LinkError as e:
+                raise OpError("link_refused", e.message) from e
+            name = str(welcome.get("server"))
+            if p.name and p.name != name:
+                raise OpError(
+                    "bad_link", f"that server calls itself {name}, not {p.name}"
+                )
+            self.links.add(name, p.url, p.token)
+            return {"name": name}
+
+        @r.op("link.remove", LinkName)
+        async def link_remove(p: LinkName, caller):
+            self.links.remove(p.name)
 
         @r.op("server.version")
         async def server_version(_, caller):

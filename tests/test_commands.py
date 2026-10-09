@@ -141,13 +141,14 @@ async def test_commands_list_puts_aegis_first_and_hides_what_it_shadows(app):
     lid = await spawn(app)
     r = await app.registry.call("commands.list", {"log_id": lid})
     names = [c["name"] for c in r["commands"]]
-    assert names[:8] == [
+    assert names[:9] == [
         "model",
         "effort",
         "permission",
         "rename",
         "title",
         "stop",
+        "spawn",
         "close",
         "help",
     ]
@@ -258,3 +259,28 @@ def test_every_script_the_fake_runs_is_in_the_catalog_it_advertises():
     for group in re.findall(r"word in \(([^)]*)\)", source):
         handled |= set(re.findall(r'"/([a-z]+)"', group))
     assert handled <= {c["name"] for c in fake_claude.COMMANDS}
+
+
+# -- /spawn (links.py makes @server reach a linked server) -------------------------
+from aegis.commands import parse_spawn  # noqa: E402
+
+
+def test_parse_spawn_takes_the_agent_alone():
+    line = parse_spawn("opus")
+    assert (line.agent, line.server, line.prompt) == ("opus", None, None)
+
+
+def test_parse_spawn_takes_a_server_flags_and_the_prompt_verbatim():
+    line = parse_spawn(
+        'opus@vps --model sonnet --effort low --cwd repos/x fix "it" -- now --model'
+    )
+    assert (line.agent, line.server) == ("opus", "vps")
+    assert (line.model, line.effort, line.cwd) == ("sonnet", "low", "repos/x")
+    assert line.prompt == 'fix "it" -- now --model'
+
+
+def test_parse_spawn_refuses_a_flag_without_a_value_and_an_unknown_flag():
+    for bad in ("opus --model", "opus --colour red do it", "@vps do it", "opus@ go"):
+        with pytest.raises(OpError) as e:
+            parse_spawn(bad)
+        assert e.value.code == "bad_spawn"

@@ -34,6 +34,7 @@ class Server:
         self.opencode = opencode
         self.releases = root / "pypi.json"
         self.env: dict[str, str] = {}
+        self.args: list[str] = []
         self.proc = None
         self.url = ""
 
@@ -60,6 +61,7 @@ class Server:
                 *(["--opencode", self.opencode] if self.opencode else []),
                 "--log-level",
                 "info",
+                *self.args,
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -102,6 +104,42 @@ def server(tmp_path: Path, fake_claude: str, fake_opencode: str):
     s = Server(tmp_path, fake_claude, fake_opencode).start()
     yield s
     s.stop()
+
+
+class Linked:
+    """Two servers, alpha linked to beta through `aegis link add`."""
+
+    def __init__(self, root: Path, claude: str, opencode: str):
+        self.beta = Server(root / "beta", claude, opencode)
+        self.alpha = Server(root / "alpha", claude, opencode)
+        for s, name in ((self.beta, "beta"), (self.alpha, "alpha")):
+            s.root.mkdir()
+            (s.root / ".aegis.yaml").write_text(CONFIG)
+            s.args = ["--name", name]
+
+    def start(self) -> "Linked":
+        self.beta.start()
+        token = (self.beta.root / ".aegis" / "state" / "token").read_text().strip()
+        base = f"http://127.0.0.1:{self.beta.port}"
+        link = subprocess.run(
+            [sys.executable, "-m", "aegis", "link", "add", "beta", base,
+             "--root", str(self.alpha.root), "--as", "alpha"],
+            input=token + "\n", capture_output=True, text=True, timeout=30,
+        )  # fmt: skip
+        assert link.returncode == 0, link.stdout + link.stderr
+        self.alpha.start()
+        return self
+
+    def stop(self) -> None:
+        self.alpha.stop()
+        self.beta.stop()
+
+
+@pytest.fixture
+def linked(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    pair = Linked(tmp_path, fake_claude, fake_opencode).start()
+    yield pair
+    pair.stop()
 
 
 @pytest.fixture
@@ -554,6 +592,39 @@ def test_close_in_one_browser_removes_the_tab_in_another(server, browser, page):
 # A slow runner paints late: a frame 300 ms out makes any redraw left to the
 # next frame visible to the test (#161's CI failure).
 SLOW_FRAMES = "const raf = window.requestAnimationFrame; window.requestAnimationFrame = (f) => setTimeout(() => raf(f), 300);"
+
+
+def test_the_archive_pages_past_fifty(tmp_path, fake_claude, fake_opencode, page):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    store = tmp_path / ".aegis" / "state" / "sessions"
+    store.mkdir(parents=True)
+    for i in range(120):
+        meta = {
+            "log_id": f"20261001-000000-{i:06x}",
+            "handle": f"old-{i}",
+            "archived": True,
+            "last_activity": 1_700_000_000.0 + i // 3,
+            "title": f"old talk {i}",
+            "cwd": str(tmp_path),
+        }
+        (store / f"{meta['log_id']}.json").write_text(json.dumps(meta))
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
+    try:
+        page.goto(s.url)
+        page.wait_for_selector("#a2[data-view=fleet]")
+        page.wait_for_selector("#arch-count >> text=Showing 50 of 120")
+        assert page.locator("#arch-list tr[data-id]").count() == 50
+        page.click("#arch-next")
+        page.wait_for_selector("#arch-count >> text=Showing 100 of 120")
+        page.click("#arch-next")
+        page.wait_for_selector("#arch-count >> text=Showing 120 of 120")
+        assert not page.is_visible("#arch-next")
+        rows = page.eval_on_selector_all(
+            "#arch-list tr[data-id]", "rs => rs.map(r => r.dataset.id)"
+        )
+        assert len(rows) == len(set(rows)) == 120
+    finally:
+        s.stop()
 
 
 @pytest.mark.parametrize("frames", ["normal", "slow"])
@@ -2355,6 +2426,9 @@ def test_the_interrupt_sits_beside_send_and_restart_sends_continue(server, page)
     page.fill("#input", "/sleep 5")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
+    # The card's state is drawn on the next frame (#158), so the row can land
+    # a frame before the button shows: wait for what a person sees.
+    page.wait_for_selector("#interrupt", state="visible")
     box = page.locator(".composer .box").bounding_box()
     btn = page.locator("#interrupt").bounding_box()
     assert box["y"] <= btn["y"] and btn["y"] + btn["height"] <= box["y"] + box["height"]
@@ -2896,3 +2970,153 @@ def test_a_rotated_token_shows_the_login_instead_of_retrying(server, page):
     (server.root / ".aegis" / "state" / "token").unlink()
     server.start()
     page.wait_for_selector("#login", state="visible", timeout=15000)
+
+
+# -- links: alpha shows and drives beta's sessions (links.py) ---------------------
+def beta_session(linked, browser, prompt: str = "from beta") -> str:
+    """A session started on beta from beta's own page; its log id."""
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.goto(linked.beta.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    lid = spawn(pg, prompt)
+    pg.close()
+    return lid
+
+
+def test_a_linked_servers_sessions_show_under_its_band(linked, browser, page):
+    lid = beta_session(linked, browser)
+    page.goto(linked.alpha.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    box = "#remotes .remote[data-server=beta]"
+    page.wait_for_selector(f"{box} .card[data-id='beta/{lid}']")
+    assert page.inner_text(f"{box} .band-server") == "beta"
+    assert "linked" in page.inner_text(f"{box} .band-link")
+    assert page.locator("#cards .card").count() == 0  # alpha holds none itself
+    tab = page.locator(f"#tablist .tab[data-id='beta/{lid}']")
+    assert tab.locator(".where").inner_text() == "beta"
+    assert not page.errors
+
+
+def test_a_remote_tab_takes_prompts_and_the_far_store_has_them(linked, browser, page):
+    lid = beta_session(linked, browser)
+    page.goto(linked.alpha.url)
+    page.click(f"#tablist .tab[data-id='beta/{lid}']")
+    page.wait_for_selector("#a2[data-view=session]")
+    assert page.evaluate("location.hash") == f"#s=beta/{lid}"
+    turns_done(page, 1)  # the first turn, folded on beta, drawn on alpha
+    page.fill("#input", "hello across")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    store = linked.beta.root / ".aegis" / "state" / "transcripts" / f"{lid}.jsonl"
+    assert "hello across" in store.read_text()
+    assert not (
+        linked.alpha.root / ".aegis" / "state" / "transcripts" / f"{lid}.jsonl"
+    ).exists()
+    page.reload()  # the hash names a far session: it must come back, not bounce to the Fleet
+    page.wait_for_selector("#a2[data-view=session]")
+    assert page.evaluate("location.hash") == f"#s=beta/{lid}"
+    assert not page.errors
+
+
+def test_a_dropped_link_greys_the_far_server_and_comes_back(linked, browser, page):
+    lid = beta_session(linked, browser)
+    page.goto(linked.alpha.url)
+    box = "#remotes .remote[data-server=beta]"
+    page.wait_for_selector(f"{box} .card[data-id='beta/{lid}']")
+    linked.beta.stop()
+    page.wait_for_selector(f"{box} .band.off")
+    page.wait_for_selector(f"{box} .card.off")
+    assert "offline since" in page.inner_text(f"{box} .band-link")
+    page.click(f"{box} .card")
+    page.wait_for_selector("#a2[data-view=session]")
+    assert page.is_disabled("#input")
+    linked.beta.start()
+    page.wait_for_selector("#input:not([disabled])", timeout=20000)
+    page.fill("#input", "after the drop")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    page.click("#tab-fleet")
+    page.wait_for_selector(f"{box} .card:not(.off)")
+    assert not [e for e in page.errors if "server_offline" not in e]
+
+
+def test_spawn_on_a_linked_server_from_the_new_tab(linked, page):
+    page.goto(linked.alpha.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.click("#tab-add")
+    page.wait_for_selector("#sp-server:not([hidden])")
+    page.select_option("#sp-server", "beta")
+    page.wait_for_function(
+        "document.querySelector('#sp-agent').value === 'opus'"
+        " && document.querySelector('#sp-cwd').value.includes('beta')"
+    )
+    page.fill("#sp-text", "born on beta")
+    page.press("#sp-text", "Enter")
+    page.wait_for_selector("#a2[data-view=session]")
+    key = page.evaluate("location.hash.slice(3)")
+    assert key.startswith("beta/")
+    turns_done(page, 1)
+    store = linked.beta.root / ".aegis" / "state" / "transcripts" / f"{key[5:]}.jsonl"
+    assert "born on beta" in store.read_text()
+    page.wait_for_selector(f"#tablist .tab[data-id='{key}'] .where")
+    assert not page.errors
+
+
+def test_settings_lists_the_link_and_edits_the_far_config(linked, page):
+    page.goto(linked.alpha.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.click("#settings-btn")
+    page.wait_for_selector("#set-servers .link-beta")
+    assert "linked" in page.inner_text("#set-servers .link-beta")
+    assert "alpha" in page.inner_text("#set-path")
+    page.click("#set-srvpick button[data-server=beta]")
+    page.wait_for_function(
+        "document.querySelector('#set-path')?.textContent.includes('beta')"
+    )
+    page.click("#set-srvpick button[data-server='']")
+    page.wait_for_function(
+        "document.querySelector('#set-path')?.textContent.includes('alpha')"
+    )
+    assert not page.errors
+
+
+def test_a_far_file_card_links_only_through_via(linked, browser, page):
+    f = linked.beta.root / "report.html"
+    f.write_text("<h1>from beta</h1>")
+    lid = beta_session(
+        linked, browser, f"/mcp file_send {json.dumps({'path': str(f)})}"
+    )
+    page.goto(linked.alpha.url)
+    page.click(f"#tablist .tab[data-id='beta/{lid}']")
+    page.wait_for_selector(".fcard .fbar .dl")
+    dl = page.get_attribute(".fcard .dl", "href")
+    assert dl.startswith("/via/beta/files/") and dl.endswith(
+        "/report.html?download=1"
+    ), dl
+    assert page.get_attribute(".fcard .open", "href") == dl.removesuffix("?download=1")
+    assert page.get_attribute(".fcard iframe", "sandbox") == "allow-scripts"
+    assert page.locator(".fcard .native").count() == 0
+    got = page.request.get(f"http://127.0.0.1:{linked.alpha.port}{dl}")
+    assert got.status == 200 and "attachment" in got.headers["content-disposition"]
+    assert not page.errors
+
+
+def test_the_archive_filters_by_server_and_names_one_that_is_down(
+    linked, browser, page
+):
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.goto(linked.beta.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    lid = spawn(pg, "to be archived on beta")
+    close_session(pg)
+    pg.close()
+    page.goto(linked.alpha.url)
+    page.wait_for_selector(f"#arch-list tr[data-id='beta/{lid}'] .where >> text=beta")
+    page.wait_for_selector("#arch-servers button[data-server=beta] >> text=1")
+    page.click("#arch-servers button[data-server=beta]")
+    page.wait_for_selector("#arch-servers button.on[data-server=beta]")
+    assert page.locator("#arch-list tr[data-id]").count() == 1
+    linked.beta.stop()
+    page.wait_for_selector("#arch-servers .off >> text=beta offline", timeout=20000)

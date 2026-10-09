@@ -13,6 +13,16 @@ Behind a reverse proxy the browser sends the public name and an https origin,
 which the loopback rule refuses. ``serve --origin https://dev.example`` names
 one such origin: a socket is accepted when its ``Host`` is that origin's host
 and its ``Origin`` is that origin, exactly. The token is still required.
+
+A socket with no ``Origin`` comes from a program, never a browser, which always
+sends one; it is accepted only as a link from another aegis server, whose
+``hello`` says ``link: {server, user}`` and carries the token (links.py). A link
+socket keys its subscriptions by ``sid``, so it can carry several to one
+channel, may not open files on this server's desktop, and is not relayed on.
+
+A browser message naming another ``server`` goes down the link to it; what
+comes back gets ``server`` stamped on it. Agents' sent files on a linked server
+are streamed through ``/via/<server>/files/…``.
 """
 
 from __future__ import annotations
@@ -26,18 +36,19 @@ import logging
 import os
 import time
 import secrets
-import socket
 from collections.abc import Iterable
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from starlette.applications import Starlette
+import httpx
 from starlette.responses import (
     FileResponse,
     JSONResponse,
     PlainTextResponse,
     RedirectResponse,
     Response,
+    StreamingResponse,
 )
 from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
@@ -46,11 +57,11 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from . import files
 from .app import App
 from .channels import Sub
+from .links import PROTO
 from .ops import Caller, OpError
 
 log = logging.getLogger("aegis.web")
 
-PROTO = 2
 HELLO_TIMEOUT_S = 5.0
 CLIENT_DIR = Path(__file__).parent / "client"
 
@@ -94,6 +105,13 @@ def load_or_create_token(state_root: Path) -> str:
     with os.fdopen(fd, "w") as f:
         f.write(token + "\n")
     return token
+
+
+def _loggable(params: object) -> object:
+    """Params as the log may see them: a token never reaches a log line."""
+    if isinstance(params, dict) and "token" in params:
+        return {**params, "token": "***"}
+    return params
 
 
 def public_origin(value: str) -> str:
@@ -157,7 +175,7 @@ def build_web(
         return signed_in(Response(status_code=204), request)
 
     manifest = {
-        "name": f"aegis · {socket.gethostname()}",
+        "name": f"aegis · {app.server_name}",
         "short_name": "aegis",
         "start_url": "/",
         "scope": "/",
@@ -220,11 +238,52 @@ def build_web(
             path, headers={"Cache-Control": "public, max-age=31536000, immutable"}
         )
 
+    async def via_file(request):
+        """A sent file on a linked server, streamed from it. The id stays the
+        secret; the headers are this server's own, from the file's name
+        (files.via_headers), because the far server is not trusted to say how
+        its bytes may run on this origin."""
+        p = request.path_params
+        host = request.headers.get("host", "")
+        link = app.links.get(p["server"])
+        if link is None or not (host in allowed_hosts or host in public):
+            return PlainTextResponse("Not Found", status_code=404)
+        download = request.query_params.get("download") == "1"
+        url = f"{link.url}{files.url(p['file_id'], p['name'])}"
+        client = httpx.AsyncClient(timeout=httpx.Timeout(30, read=None))
+        try:
+            # Identity: the bytes go out as they arrive, under this server's
+            # own Content-Type, so they must not be compressed on the way in.
+            upstream = await client.send(
+                client.build_request(
+                    "GET", url, headers={"accept-encoding": "identity"}
+                ),
+                stream=True,
+            )
+        except httpx.HTTPError:
+            await client.aclose()
+            return PlainTextResponse("Bad Gateway", status_code=502)
+        if upstream.status_code != 200:
+            await upstream.aclose()
+            await client.aclose()
+            return PlainTextResponse("Not Found", status_code=404)
+
+        async def body():
+            try:
+                async for chunk in upstream.aiter_raw():
+                    yield chunk
+            finally:
+                await upstream.aclose()
+                await client.aclose()
+
+        return StreamingResponse(body(), headers=files.via_headers(p["name"], download))
+
     async def ws(websocket: WebSocket) -> None:
         host = websocket.headers.get("host", "")
-        origin = websocket.headers.get("origin", "")
+        origin = websocket.headers.get("origin")
         local = host in allowed_hosts and origin == f"http://{host}"
-        if not local and public.get(host) != origin:
+        program = origin is None and (host in allowed_hosts or host in public)
+        if not local and not program and public.get(host) != origin:
             await websocket.close(code=BAD_ORIGIN)
             return
         await websocket.accept()
@@ -234,8 +293,16 @@ def build_web(
             with contextlib.suppress(Exception):
                 await websocket.close(code=NO_HELLO)
             return
-        given = hello.get("token") if isinstance(hello, dict) else None
-        if not isinstance(given, str):
+        if not isinstance(hello, dict):
+            hello = {}
+        # Only a program (no Origin) can be a link: a browser saying so is not.
+        link = hello.get("link") if program else None
+        via = link.get("server") if isinstance(link, dict) else None
+        if program and not isinstance(via, str):
+            await websocket.close(code=BAD_ORIGIN)  # a program that is not a link
+            return
+        given = hello.get("token")
+        if not isinstance(given, str) and not program:
             given = websocket.cookies.get(cookie)
         if hello.get("t") != "hello" or not valid(given):
             await websocket.close(code=BAD_TOKEN)
@@ -255,21 +322,47 @@ def build_web(
         desktop = (
             local and host.rpartition(":")[0] in LOOPBACK and files.opener() is not None
         )
-        caller = Caller("user", desktop=desktop)
+        caller = Caller(
+            "user", desktop=desktop, link=via if isinstance(via, str) else None
+        )
         out: asyncio.Queue[dict] = asyncio.Queue()
+        # This socket's subscriptions forwarded down links: <bid>:<channel>.
+        bid = secrets.token_hex(6)
 
         async def writer() -> None:
             while True:
                 msg = await out.get()
                 await websocket.send_text(json.dumps(msg, ensure_ascii=False))
 
+        def far(server: object):
+            """The link a message names, or None when it is for this server."""
+            if server is None or server == app.server_name:
+                return None
+            if caller.link is not None:
+                raise OpError("not_relayed", "a link is not relayed to another server")
+            found = app.links.get(str(server))
+            if found is None:
+                raise OpError(
+                    "unknown_server", f"this server links no server named {server}"
+                )
+            return found
+
         async def handle_call(msg: dict) -> None:
             reply: dict = {"t": "reply", "id": msg.get("id")}
+            server = msg.get("server")
+            if server is not None:
+                reply["server"] = server
             op = str(msg.get("op"))
             t0 = time.monotonic()
-            log.info("call %s %s", op, msg.get("params"))
+            log.info("call %s %s", op, _loggable(msg.get("params")))
             try:
-                reply["result"] = await app.registry.call(op, msg.get("params"), caller)
+                link = far(server)
+                if link is not None:
+                    reply.update(await link.call_raw(op, msg.get("params")))
+                else:
+                    reply["result"] = await app.registry.call(
+                        op, msg.get("params"), caller
+                    )
             except OpError as e:
                 reply["error"] = {"code": e.code, "message": e.message}
             except Exception as e:  # an operation bug must not kill the socket
@@ -291,13 +384,22 @@ def build_web(
             {
                 "t": "welcome",
                 "proto": PROTO,
-                "server": socket.gethostname(),
+                "server": app.server_name,
                 "native": desktop,
             }
         )
         write_task = asyncio.create_task(writer())
         subs: dict[str, Sub] = {}
+        forwarded: dict[str, tuple] = {}  # sid -> (link, server, channel)
         calls: set[asyncio.Task] = set()
+
+        def restamp(server: str, channel: str):
+            def send(m: dict) -> None:
+                m = {k: v for k, v in m.items() if k != "sid"}
+                out.put_nowait({**m, "server": server, "channel": channel})
+
+            return send
+
         try:
             while True:
                 msg = await websocket.receive_json()
@@ -306,32 +408,65 @@ def build_web(
                     task = asyncio.create_task(handle_call(msg))
                     calls.add(task)
                     task.add_done_callback(calls.discard)
-                elif t == "sub":
+                elif t in ("sub", "unsub"):
                     ch = str(msg.get("channel"))
+                    server = msg.get("server")
+                    # A link names each subscription; a browser's is its channel.
+                    key = str(msg.get("sid") or ch) if caller.link else ch
+                    try:
+                        link = far(server)
+                    except OpError as e:
+                        out.put_nowait(
+                            {
+                                "t": "error",
+                                "channel": ch,
+                                "server": server,
+                                "error": {"code": e.code, "message": e.message},
+                            }
+                        )
+                        continue
+                    if link is not None:
+                        sid = f"{bid}:{server}:{ch}"
+                        if sid in forwarded:
+                            forwarded.pop(sid)[0].unsub(sid)
+                        if t == "sub":
+                            since = msg.get("since")
+                            if not isinstance(since, int) or isinstance(since, bool):
+                                since = None
+                            forwarded[sid] = (link, server, ch)
+                            link.sub(sid, ch, since, restamp(str(server), ch))
+                        continue
+                    if key in subs:
+                        app.channels.unsubscribe(subs.pop(key))
+                    if t == "unsub":
+                        continue
                     since = msg.get("since")
                     if not isinstance(since, int) or isinstance(since, bool):
                         since = None
-                    if ch in subs:
-                        app.channels.unsubscribe(subs.pop(ch))
+                    send = out.put_nowait
+                    if caller.link and msg.get("sid"):
+                        sid = msg["sid"]
+
+                        def send(m: dict, sid=sid) -> None:
+                            out.put_nowait({**m, "sid": sid})
+
                     try:
-                        subs[ch] = app.channels.subscribe(ch, out.put_nowait, since)
+                        subs[key] = app.channels.subscribe(ch, send, since)
                     except OpError as e:
-                        out.put_nowait(
+                        send(
                             {
                                 "t": "error",
                                 "channel": ch,
                                 "error": {"code": e.code, "message": e.message},
                             }
                         )
-                elif t == "unsub":
-                    sub = subs.pop(str(msg.get("channel")), None)
-                    if sub is not None:
-                        app.channels.unsubscribe(sub)
         except (WebSocketDisconnect, ValueError, RuntimeError):
             pass
         finally:
             for sub in subs.values():
                 app.channels.unsubscribe(sub)
+            for sid, (link, _, _) in forwarded.items():
+                link.unsub(sid)
             write_task.cancel()
 
     @contextlib.asynccontextmanager
@@ -349,6 +484,7 @@ def build_web(
             Route("/manifest.webmanifest", webmanifest),
             Mount("/static", ClientFiles(directory=CLIENT_DIR)),
             Route("/files/{file_id}/{name}", sent_file),
+            Route("/via/{server}/files/{file_id}/{name}", via_file),
             Route("/dictation/{pin}/{name}", dictation_file),
             WebSocketRoute("/ws", ws),
             *app.mcp_app.routes,

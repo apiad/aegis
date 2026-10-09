@@ -80,6 +80,7 @@ def public_client(project: Path, claude_bin: str, origins: list[str]) -> TestCli
 
 
 PUBLIC = {"host": "dev.example", "origin": "https://dev.example"}
+PUBLIC_NO_ORIGIN = {"host": "dev.example"}
 
 
 @pytest.mark.parametrize("headers", [PUBLIC, ORIGIN])
@@ -99,10 +100,9 @@ def test_a_public_origin_is_accepted_and_loopback_still_is(
         {"host": "dev.example", "origin": "http://dev.example"},
         {"host": "evil.example", "origin": "https://dev.example"},
         {"host": "dev.example", "origin": "https://evil.example"},
-        {"host": "dev.example"},
         {"host": "dev.example:8742", "origin": "https://dev.example"},
     ],
-    ids=["other-scheme", "other-host", "other-origin", "no-origin", "host-with-port"],
+    ids=["other-scheme", "other-host", "other-origin", "host-with-port"],
 )
 def test_only_the_exact_public_origin_is_accepted(project, fake_claude, headers):
     with public_client(project, fake_claude, ["https://dev.example"]) as c:
@@ -162,7 +162,6 @@ def test_a_wrong_token_is_refused(project, fake_claude):
     "headers",
     [
         {"origin": "http://evil.example"},
-        {},
         {"origin": "http://evil.example:8742", "host": "evil.example:8742"},
     ],
 )
@@ -174,6 +173,34 @@ def test_foreign_origins_and_hosts_are_refused(project, fake_claude, headers):
         ):
             ws.receive_json()
         assert e.value.code == 4403
+
+
+@pytest.mark.parametrize("headers", [{}, PUBLIC_NO_ORIGIN], ids=["local", "public"])
+def test_a_socket_with_no_origin_is_refused_unless_it_is_a_link(
+    project, fake_claude, headers
+):
+    """Browsers always send Origin; a socket without one is a program, and the
+    only program aegis talks to is another aegis server's link (links.py)."""
+    with public_client(project, fake_claude, ["https://dev.example"]) as c:
+        with (
+            pytest.raises(WebSocketDisconnect) as e,
+            c.websocket_connect("/ws", headers=headers) as ws,
+        ):
+            ws.send_json({"t": "hello", "token": TOKEN, "proto": PROTO})
+            ws.receive_json()
+        assert e.value.code == 4403
+        with c.websocket_connect("/ws", headers=headers) as ws:
+            link = {"server": "zion", "user": "alex"}
+            ws.send_json({"t": "hello", "token": TOKEN, "proto": PROTO, "link": link})
+            assert ws.receive_json()["t"] == "welcome"
+        with (
+            pytest.raises(WebSocketDisconnect) as e,
+            c.websocket_connect("/ws", headers=headers) as ws,
+        ):
+            link = {"server": "zion", "user": "alex"}
+            ws.send_json({"t": "hello", "token": "nope", "proto": PROTO, "link": link})
+            ws.receive_json()
+        assert e.value.code == 4401
 
 
 def test_another_protocol_version_is_refused(project, fake_claude):
@@ -260,7 +287,9 @@ def test_spawn_send_and_watch_a_turn(project, fake_claude):
             conn.call("session.send", log_id=log_id, text="x")["error"]["code"]
             == "archived"
         )
-        assert [m["log_id"] for m in conn.call("archive.list")["result"]] == [log_id]
+        assert [m["log_id"] for m in conn.call("archive.list")["result"]["items"]] == [
+            log_id
+        ]
         reopened = conn.call("session.reopen", log_id=log_id)["result"]
         assert reopened["state"] == "stopped"
         assert (

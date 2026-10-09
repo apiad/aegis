@@ -6,7 +6,7 @@
 const URGENT = new Set(["needs_you", "error"]);
 let count = 0;
 let base = "aegis";
-let seen = null; // log_id -> attention, after the first draw
+let seen = null; // session key -> attention, after the first draw
 
 export function setTitle(text) {
   base = text;
@@ -32,17 +32,17 @@ export function updatePing(metas, { onOpen }) {
     setTitle(base);
     favicon(n);
   }
-  const now = new Map(metas.map((m) => [m.log_id, m.attention]));
+  const now = new Map(metas.map((m) => [m.key, m.attention]));
   if (seen !== null && document.hidden && "Notification" in window && Notification.permission === "granted") {
     for (const m of metas) {
-      if (!URGENT.has(m.attention) || seen.get(m.log_id) === m.attention) continue;
+      if (!URGENT.has(m.attention) || seen.get(m.key) === m.attention) continue;
       const note = new Notification(`${m.title || m.handle}: ${m.attention === "error" ? "error" : "needs you"}`, {
         body: m.attention_line || "",
-        tag: `${m.log_id}:${m.attention}:${m.attention_line || ""}`,
+        tag: `${m.key}:${m.attention}:${m.attention_line || ""}`,
       });
       note.onclick = () => {
         window.focus();
-        onOpen(m.log_id);
+        onOpen(m.key);
       };
     }
   }

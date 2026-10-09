@@ -63,14 +63,18 @@ def _sniff_text(path: Path) -> bool:
 def classify(path: Path) -> tuple[str, str]:
     """(mime, preview), the preview one of image, pdf, html, markdown, text,
     audio, video, other."""
-    mime = mimetypes.guess_type(path.name)[0] or ""
-    if path.suffix.lower() in (".md", ".markdown"):
+    return classify_name(path.name, lambda: _sniff_text(path))
+
+
+def classify_name(name: str, sniff=lambda: False) -> tuple[str, str]:
+    """``classify`` from a name alone; ``sniff`` says whether an unknown type is
+    text, and a file not on this disk is never sniffed."""
+    mime = mimetypes.guess_type(name)[0] or ""
+    if Path(name).suffix.lower() in (".md", ".markdown"):
         return "text/markdown", "markdown"
     if not mime or mime == "application/octet-stream":
         return (
-            ("text/plain", "text")
-            if _sniff_text(path)
-            else ("application/octet-stream", "other")
+            ("text/plain", "text") if sniff() else ("application/octet-stream", "other")
         )
     major, _, minor = mime.partition("/")
     if major == "image":
@@ -167,6 +171,19 @@ def find(state_root: Path, file_id: str, name: str) -> Path | None:
 
 def headers(path: Path, download: bool) -> dict[str, str]:
     mime, preview = classify(path)
+    return _policy(path.name, mime, preview, download)
+
+
+def via_headers(name: str, download: bool) -> dict[str, str]:
+    """The headers for a linked server's file streamed through ``/via``: decided
+    here from its name, as for a file of this server's own. Nothing the far
+    server sent is kept, because what it serves runs on this server's origin,
+    next to the cookie that drives every agent here (web.py)."""
+    mime, preview = classify_name(name)
+    return _policy(name, mime, preview, download)
+
+
+def _policy(name: str, mime: str, preview: str, download: bool) -> dict[str, str]:
     h = {
         "X-Content-Type-Options": "nosniff",
         "Referrer-Policy": "no-referrer",
@@ -174,7 +191,7 @@ def headers(path: Path, download: bool) -> dict[str, str]:
         "Content-Type": mime,
     }
     if download or preview == "other":
-        h["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(path.name)}"
+        h["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(name)}"
         return h
     if preview in ("markdown", "text"):
         h["Content-Type"] = "text/plain; charset=utf-8"

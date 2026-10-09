@@ -44,9 +44,9 @@
 
   <main class="view v-fleet">
     <section class="band" id="band">
-      <div><h5 id="band-server">server</h5><div class="counts" id="band-counts"></div></div>
-      <div><h5>Host</h5><div id="band-host"></div></div>
-      <div class="q" id="band-quota-col" hidden><h5><span>Quota</span><span class="age" id="band-quota-age"></span></h5><div id="band-quota"></div></div>
+      <div><h5><span class="band-server" id="band-server">server</span><span class="band-link"></span></h5><div class="counts band-counts" id="band-counts"></div></div>
+      <div><h5>Host</h5><div class="band-host" id="band-host"></div></div>
+      <div class="q band-quota-col" id="band-quota-col" hidden><h5><span>Quota</span><span class="age band-quota-age" id="band-quota-age"></span></h5><div class="band-quota" id="band-quota"></div></div>
     </section>
     <div class="order"><h3>Sessions</h3>
       <div class="seg" id="fleet-order">
@@ -55,16 +55,18 @@
       </div>
     </div>
     <section class="cards" id="cards" tabindex="-1"></section>
+    <div id="remotes"></div>
     <section class="archive">
-      <div class="archive-head"><h3>Archive</h3><input id="arch-q" placeholder="Filter by title, handle or directory" spellcheck="false"></div>
+      <div class="archive-head"><h3>Archive</h3><input id="arch-q" placeholder="Filter by title, handle or directory" spellcheck="false"><div class="arch-servers" id="arch-servers" hidden></div></div>
       <div id="arch-list"></div>
+      <div class="arch-more" id="arch-more" hidden><span id="arch-count"></span><button class="btn" id="arch-next" type="button">Show 50 more</button></div>
     </section>
   </main>
 
   <main class="view v-spawn">
     <form class="spawn" id="spawn">
       <div class="mark">aegis</div>
-      <input class="cwd" id="sp-cwd" spellcheck="false" aria-label="Working directory" title="Working directory: click to change">
+      <div class="cwdline"><select class="srvpick" id="sp-server" aria-label="Server" title="The server the session starts on" hidden></select><span class="srvsep" id="sp-sep" hidden>:</span><input class="cwd" id="sp-cwd" spellcheck="false" aria-label="Working directory" title="Working directory: click to change"></div>
       <div class="box">
         <textarea id="sp-text" rows="3" aria-label="First message"
           placeholder="What should the agent do? Enter starts the session and sends this; Shift+Enter adds a line."></textarea>

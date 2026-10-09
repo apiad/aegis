@@ -20,6 +20,8 @@ Claude endpoint 429s when several pollers ask (#41).
 
 from __future__ import annotations
 
+import hashlib
+
 import asyncio
 import logging
 import os
@@ -60,12 +62,22 @@ def _retry_at(state: QuotaState, wall: float) -> int | None:
     return round(wall + state.retry_in_s) if state.retry_in_s > 0 else None
 
 
+def account_hash(account: str | None) -> str | None:
+    """Twelve hex digits of the account's SHA-256: enough to tell two accounts
+    apart on one screen, nothing to recover the id from."""
+    return hashlib.sha256(account.encode()).hexdigest()[:12] if account else None
+
+
 def provider_wire(
     provider: QuotaProvider, state: QuotaState, *, now: datetime, wall: float
 ) -> dict | None:
     """One provider on the wire, or None when it has nothing to say: no
     credentials (a rail not in use), or no reading and no failure yet."""
-    head = {"name": provider.name, "label": provider.label}
+    head = {
+        "name": provider.name,
+        "label": provider.label,
+        "account": account_hash(provider.account()),
+    }
     note = FAILURE_TEXT.get(state.failure, state.failure)
     if state.snapshot is None:
         if not state.failure or state.failure == "no_credentials":
