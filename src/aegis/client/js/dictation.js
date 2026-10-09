@@ -5,15 +5,21 @@
 // dictations and phone (docs/superpowers/specs/2026-10-08-dictation-design.md).
 
 export const SR = 16000;
-// Chunks stay long while you talk: 20 s gave 27.7% WER against 30.9% at 10 s.
-const MIN_CUT = 20 * SR;
-const MAX_CUT = 30 * SR; // Whistle's longest single pass
+// Two lanes (docs/superpowers/specs/2026-10-09-dictation-live-text-design.md):
+// provisional pieces of 4 to 8 s that show words a second after a pause, and
+// final pieces of 20 to 28 s made of them, whose text replaces the provisional
+// text. Joined-up finals measured 29.4% WER against 30.4% for a plain 20 s cut.
+const PREVIEW_MIN = 4 * SR;
+const PREVIEW_MAX = 8 * SR;
+const FINAL_MIN = 20 * SR;
 const PAUSE = 0.3 * SR;
 const QUIET = 0.01;
+// A piece with under a second of voice is what hallucinates ("Thank you."): it
+// is never transcribed alone. Silence itself comes back empty from the engine.
+const VOICE = 1.0;
 // At stop, a longer tail is split across both workers: the wait after stop is
 // the one you feel, and two halves finish 1.9 times sooner than the whole.
 const SPLIT_OVER = 10 * SR;
-const SILENT = 0.001;
 const FRAME = 0.2 * SR;
 const HOP = 0.05 * SR;
 
@@ -35,6 +41,23 @@ export function quietest(a, from, to) {
     }
   }
   return at;
+}
+
+// Seconds of 200 ms frames, 50 ms apart, whose RMS is over the pause threshold.
+export function voiceSecs(a) {
+  let n = 0;
+  for (let s = 0; s + FRAME <= a.length; s += HOP) if (rms(a, s, s + FRAME) > QUIET) n++;
+  return n * (HOP / SR);
+}
+
+function concat(parts) {
+  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
+  return out;
 }
 
 // A streaming box-filter resampler from the context's rate to 16 kHz. Asking
@@ -64,41 +87,60 @@ export function resampler(inRate) {
   };
 }
 
+// Cuts the 16 kHz stream into pieces for the two lanes. `emit` gets
+// { parts, final }: a provisional piece has one part; a final piece is the
+// stretch since the previous final cut (one part), or at stop its two halves.
 export class Chunker {
   constructor(emit) {
     this.emit = emit;
-    this.buf = new Float32Array(0);
+    this.buf = new Float32Array(0); // not yet cut
+    this.stretch = []; // pieces cut since the last final, voiced or not
   }
 
   push(samples) {
-    const m = new Float32Array(this.buf.length + samples.length);
-    m.set(this.buf);
-    m.set(samples, this.buf.length);
-    this.buf = m;
+    this.buf = concat([this.buf, samples]);
     for (;;) {
       const n = this.buf.length;
-      if (n >= MIN_CUT && rms(this.buf, n - PAUSE, n) < QUIET) this.cut(n - PAUSE / 2);
-      else if (n >= MAX_CUT) this.cut(quietest(this.buf, MIN_CUT, MAX_CUT));
+      if (n >= PREVIEW_MIN && rms(this.buf, n - PAUSE, n) < QUIET) this.cut(n - PAUSE / 2);
+      else if (n >= PREVIEW_MAX) this.cut(quietest(this.buf, PREVIEW_MIN, PREVIEW_MAX));
       else return;
     }
   }
 
   cut(at) {
-    const chunk = this.buf.slice(0, at);
+    const piece = this.buf.slice(0, at);
     this.buf = this.buf.slice(at);
-    this.emit(chunk);
+    this.stretch.push(piece);
+    if (voiceSecs(piece) >= VOICE) this.emit({ parts: [piece], final: false });
+    if (this.stretch.reduce((n, p) => n + p.length, 0) >= FINAL_MIN) {
+      const audio = concat(this.stretch);
+      this.stretch = [];
+      if (voiceSecs(audio) >= VOICE) this.emit({ parts: [audio], final: true });
+    }
   }
 
-  // What is left at stop, as the pieces to transcribe: none if it is silence,
-  // two halves cut at the quiet point of its middle third if it is long.
-  finish() {
+  // The pieces at stop, in order: what was pending as a provisional piece, then
+  // the stretch as a final, in two halves cut at the quiet point of its middle
+  // third when it is long. A stretch with under a second of voice is dropped,
+  // unless it is all the recording has (`onlyPiece`).
+  finish(onlyPiece = false) {
+    const out = [];
     const t = this.buf;
     this.buf = new Float32Array(0);
-    if (!t.length || rms(t) < SILENT) return [];
-    if (t.length <= SPLIT_OVER) return [t];
-    const third = Math.floor(t.length / 3);
-    const at = quietest(t, third, 2 * third);
-    return [t.slice(0, at), t.slice(at)];
+    if (t.length) {
+      this.stretch.push(t);
+      if (voiceSecs(t) >= VOICE) out.push({ parts: [t], final: false });
+    }
+    const audio = concat(this.stretch);
+    this.stretch = [];
+    if (!audio.length || (voiceSecs(audio) < VOICE && !onlyPiece)) return out;
+    if (audio.length <= SPLIT_OVER) out.push({ parts: [audio], final: true });
+    else {
+      const third = Math.floor(audio.length / 3);
+      const at = quietest(audio, third, 2 * third);
+      out.push({ parts: [audio.slice(0, at), audio.slice(at)], final: true });
+    }
+    return out;
   }
 }
 
