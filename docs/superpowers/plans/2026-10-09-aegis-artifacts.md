@@ -1742,6 +1742,7 @@ def test_a_page_that_names_another_artifact_acts_on_its_own(server, page):
     spawn(page)
     forging = (
         '<button id="b">B</button><script>aegis.ready(() => {'
+        "  aegis.state({});"  # one real call, so the static check lets the page through
         '  b.onclick = () => parent.postMessage({jsonrpc: "2.0", id: 99, method: "aegis/submit",'
         '    params: {artifact_id: "art-00000000", data: {p: 1}, label: "Forged"}}, "*");'
         "});</script>"
