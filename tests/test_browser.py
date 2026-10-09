@@ -388,6 +388,78 @@ def test_enter_in_the_model_or_cwd_field_moves_to_the_message_and_spawns_nothing
     assert page.evaluate("document.querySelectorAll('#tablist .tab').length") == 0
 
 
+@pytest.fixture
+def catalog_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    """A server whose Claude catalog lists a model no alias or agent names."""
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    s = Server(tmp_path, fake_claude, fake_opencode)
+    s.env["FAKE_CLAUDE_EXTRA_MODEL"] = "claude-fable-5-1"
+    s.start()
+    yield s
+    s.stop()
+
+
+def model_rows(pg) -> list[str]:
+    return pg.eval_on_selector_all(
+        "#sp-model .opt", "els => els.map(e => e.textContent)"
+    )
+
+
+def test_the_model_chip_offers_every_model_claude_can_run_and_nothing_it_cannot(
+    catalog_server, page
+):
+    """#172: the list is Claude's own catalog, not a fixed set of aliases."""
+    page.goto(catalog_server.url)
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    page.wait_for_function(
+        "document.querySelector('#sp-model').options.some(o => o.value === 'claude-fable-5-1')"
+    )
+    page.click("#sp-model input")
+    # `fable` is an alias the CLI no longer lists, and `retired` is disabled.
+    assert model_rows(page) == ["opus", "sonnet", "haiku", "claude-fable-5-1"]
+    assert page.inner_text("#sp-model .opt.on") == "opus", (
+        "the agent's model is current"
+    )
+    page.click("#sp-model .opt:has-text('claude-fable-5-1')")
+    assert picked(page, "#sp-model") == "claude-fable-5-1"
+    assert "diff" in page.get_attribute("#sp-model", "class")
+    assert page.input_value("#sp-agent input") == "opus*"
+    page.fill("#sp-text", "/argv")
+    page.press("#sp-text", "Enter")
+    page.wait_for_selector("#a2[data-view=session]")
+    turns_done(page, 1)
+    assert '"--model", "claude-fable-5-1"' in page.inner_text("#entries")
+    assert page.errors == []
+
+
+def test_the_model_chip_lists_what_opencode_can_reach_and_filters_it(server, page):
+    """#241: an OpenCode agent's chip lists the models its catalog holds."""
+    page.goto(server.url)
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    pick(page, "#sp-agent", "deepseek")
+    assert picked(page, "#sp-model") == "opencode-go/fake-pro"
+    page.wait_for_function(
+        "document.querySelector('#sp-model').options.some(o => o.value === 'opencode-go/fake-plain')"
+    )
+    page.click("#sp-model input")
+    assert sorted(model_rows(page)) == [
+        "opencode-go/fake-flash (free)",
+        "opencode-go/fake-plain",
+        "opencode-go/fake-pro",
+        "opencode-go/fake-video",
+    ]
+    assert page.inner_text("#sp-model .opt.on") == "opencode-go/fake-pro"
+    page.fill("#sp-model input", "flash")
+    assert model_rows(page)[-1] == "opencode-go/fake-flash (free)"
+    page.press("#sp-model input", "Enter")
+    assert picked(page, "#sp-model") == "opencode-go/fake-flash"
+    assert "diff" in page.get_attribute("#sp-model", "class")
+    assert page.input_value("#sp-agent input") == "deepseek*"
+    assert page.errors == []
+
+
 def test_a_failed_spawn_keeps_the_text_and_says_why(server, page):
     page.goto(server.url)
     page.click("#tab-add")
