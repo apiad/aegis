@@ -1114,6 +1114,31 @@ async def test_caps_are_enforced_before_anything_reaches_the_agent(world, tmp_pa
     assert inbox(a) == []
 
 
+async def test_a_probes_error_is_truncated_in_the_failed_send(world, tmp_path, monkeypatch):
+    monkeypatch.setattr(artifacts, "PROBE_TIMEOUT_S", 2.0)
+    a = await world.spawn()
+    made = ok(await turn(a, mcp("artifact_create", title="T")))
+    (tmp_path / ".aegis" / "state" / "artifacts" / made["id"] / "index.html").write_text(PAGE)
+    probes = []
+    original = world.app.channels.publish
+
+    def publish(channel, ops):
+        probes.extend(op["probe"] for op in ops if "probe" in op)
+        original(channel, ops)
+
+    world.app.channels.publish = publish
+    world.app.channels.subscribe(a.channel, lambda msg: None)
+    await a.send(mcp("artifact_send", id=made["id"]))
+    await until(lambda: probes, what="the probe request")
+    await world.app.registry.call(
+        "artifact.probed",
+        {"log_id": a.log_id, "probe_id": probes[0]["id"], "started": False, "message": "x" * 10_000, "stack": ""},
+    )
+    await until(lambda: a.status == "idle", what="the turn")
+    said = [e["md"] for e in a.entries() if e["kind"] == "prose"][-1]
+    assert said.startswith("mcp error: page_error") and len(said) < 5000
+
+
 async def test_errors_wake_once_per_turn(world, tmp_path):
     a, aid = await landed(world, tmp_path)
     reg = world.app.registry
@@ -1223,18 +1248,22 @@ class PageSubmit(PageRef):
     label: str = Label
 
 
-class PageError(PageRef):
-    message: str
-    stack: str = ""
+class _CutError(BaseModel):
+    """A page's error text is uncapped on its side; what reaches the agent, as
+    a wake or as a failed send, carries at most ERROR_MESSAGE_MAX of each."""
 
-    @field_validator("message", "stack", mode="before")
+    @field_validator("message", "stack", mode="before", check_fields=False)
     @classmethod
     def _cut(cls, v: object) -> object:
-        # A page's error is uncapped on its side; the wake carries at most this.
         return v[:ERROR_MESSAGE_MAX] if isinstance(v, str) else v
 
 
-class Probed(_Strict):
+class PageError(PageRef, _CutError):
+    message: str
+    stack: str = ""
+
+
+class Probed(_Strict, _CutError):
     log_id: str
     probe_id: str
     started: bool
@@ -1319,12 +1348,15 @@ def register_artifact_ops(app: App) -> None:
 
     @r.op("artifact.send", ArtifactId, agent=True)
     async def send(p: ArtifactId, caller):
-        """Land the draft in your transcript. The page is checked and run
-        hidden in the person's browser first: a page that throws is refused
-        with `page_error` and the message, and nothing is shown, so edit the
-        draft and send again. Only then write your message, which may refer to
-        the card above it, and end the turn with turn_end(needs_you) when the
-        page asks something."""
+        """Land the draft in your transcript. The page is checked and, when
+        the person's browser has this transcript open, run hidden there first:
+        a page that throws is refused with `page_error` and the message, and
+        nothing is shown, so edit the draft and send again. `started` is true
+        when the page ran, null when no browser was open to try it (it landed
+        untried; a script error then reaches your inbox when someone opens
+        it). Only then write your message, which may refer to the card above
+        it, and end the turn with turn_end(needs_you) when the page asks
+        something."""
         s = own(caller)
         try:
             a = s.artifacts.get(p.id)
@@ -2062,7 +2094,8 @@ When the person has to choose among things that must be seen, tune values, \
 answer a question whose answer has structure, or play with an explanation, \
 show them a page instead of asking in prose: artifact_create writes a working \
 skeleton and returns its path; edit it with your Edit tool; artifact_send lands \
-it in the transcript after running it hidden in their browser, and refuses a \
+it in the transcript after running it hidden in their browser (when they have \
+the transcript open; otherwise it lands untried, `started: null`), and refuses a \
 page that throws, so edit and send again until it lands. Only then write your \
 message, which may refer to the card above it, and end the turn with \
 turn_end(needs_you) when the page asks something. The caption is the one line \
@@ -2148,14 +2181,17 @@ framed exactly like a sent HTML file, so its script runs in an opaque origin
 that the websocket refuses. Its only path to the server is `postMessage` to
 the host page, whose bridge (`client/js/artifacts.js`) answers only windows it
 mounted and calls four person operations with the artifact id the frame's row
-carries, set after the page's own parameters so one the page sent never wins.
-Every payload is capped (state and data by size, a label by length, an error
-by truncation) and emits are rate-limited on the server. A page's answer
-reaches the agent through the inbox like a monitor's wake, so a click mid-turn
-is held. A page lands only after the static checks and, when a browser has the
-transcript open, a hidden run there (`Board.probe`): a page that throws is a
-tool error, not a card; with no browser open it lands marked unproved, and the
-first browser to mount it reports an error to the inbox.
+carries, set after the page's own parameters so one the page sent never wins;
+the probe's answer is the fifth operation and names no artifact. Every payload
+is capped (state and data by size, a label by length, an error by truncation
+on both the wake and the probe) and emits are rate-limited, because the page
+is agent-written code whose answers land in the agent's context and on disk.
+A page's answer reaches the agent through the inbox like a monitor's wake, so
+a click mid-turn is held. A page lands only after the static checks and, when
+a browser has the transcript open, a hidden run there (`Board.probe`): a page
+that throws is a tool error, not a card; with no browser open it lands with
+`started` unset, and the first browser to mount it reports an error to the
+inbox.
 ```
 
 - [ ] **Step 4: The changelog fragment** `changelog.d/217-artifacts.added.md`:
@@ -2165,7 +2201,7 @@ first browser to mount it reports an error to the inbox.
   `artifact_create` writes a working skeleton, the agent edits it,
   `artifact_send` runs it hidden in the browser, when one has the transcript
   open, and lands it in the transcript only when it starts (with none open it
-  lands unproved). A click, a submit or a script error reaches the agent
+  lands untried and the agent is told so). A click, a submit or a script error reaches the agent
   as an inbox turn; state the page keeps is read with `artifact_read`; the
   agent pushes new state or a new page with `artifact_update`. Until now an
   agent could only send a static file and ask in prose.
