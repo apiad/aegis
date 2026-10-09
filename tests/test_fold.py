@@ -987,3 +987,27 @@ def test_a_peek_opens_its_file_inside_the_row_it_was_asked_from():
     assert peek["ts"] == r.records[-2]["ts"]
     assert [x["name"] for x in peek["files"]] == ["a.png"]
     assert f.entry("t1")["detail"]["result"] == "1 line"
+
+
+def test_the_work_between_messages_folds_and_what_was_said_does_not():
+    r = Rec()
+    r.own("send", text="go")
+    r.echo("go")
+    r.claude(
+        {
+            "type": "assistant",
+            "message": {"content": [{"type": "thinking", "thinking": "hm"}]},
+        }
+    )
+    r.call("t1", "Bash", {"command": "ls"})
+    r.output("t1", "a")
+    r.text("done")
+    r.result()
+    f, _ = run(r)
+    assert [(e["kind"], e["fold"]) for e in f.entries()] == [
+        ("user", False),
+        ("thinking", True),
+        ("tool", True),
+        ("prose", False),
+        ("system", True),
+    ]
