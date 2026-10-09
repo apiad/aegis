@@ -871,3 +871,30 @@ def test_a_file_set_folds_into_one_entry():
     assert e["title"] == "a.png +1" and e["summary"] == "2 files"
     assert [f["name"] for f in e["detail"]["files"]] == ["a.png", "b.png"]
     assert e["detail"]["files"][1]["summary"] == "10 B · image/png"
+
+
+def test_a_file_tools_row_carries_the_path_it_used():
+    r = Rec()
+    r.call("t1", "Read", {"file_path": "/x/a.py"})
+    r.output("t1", "print(1)")
+    r.call("t2", "NotebookEdit", {"notebook_path": "/x/n.ipynb", "new_source": ""})
+    r.call("t3", "Bash", {"command": "ls"})
+    f = fold_records(r.records)
+    assert f.entry("t1")["detail"]["path"] == "/x/a.py"
+    assert f.entry("t2")["detail"]["path"] == "/x/n.ipynb"
+    assert "path" not in f.entry("t3")["detail"]
+
+
+def test_a_peek_opens_its_file_inside_the_row_it_was_asked_from():
+    r = Rec()
+    r.call("t1", "Read", {"file_path": "/x/a.png"})
+    r.output("t1", "png")
+    before = fold_records(r.records).entries()
+    r.own("peek", entry="t1", files=[_sent("a.png")])
+    r.own("peek", entry="nope", files=[_sent("b.png")])
+    f = fold_records(r.records)
+    assert [e["id"] for e in f.entries()] == [e["id"] for e in before]
+    peek = f.entry("t1")["detail"]["peek"]
+    assert peek["ts"] == r.records[-2]["ts"]
+    assert [x["name"] for x in peek["files"]] == ["a.png"]
+    assert f.entry("t1")["detail"]["result"] == "1 line"

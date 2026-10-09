@@ -489,6 +489,22 @@ class Fold:
                     detail={"files": sent},
                 )
             )
+        if kind == "peek":
+            # A file tool's file, copied because the person asked to see it:
+            # it opens inside that tool's row, the latest copy replacing any.
+            row = self._entries.get(str(rec.get("entry")))
+            if row is None or row["kind"] != "tool":
+                return []
+            sent = [_sent_file(f) for f in rec.get("files") or []]
+            return self._upsert(
+                {
+                    **row,
+                    "detail": {
+                        **row["detail"],
+                        "peek": {"ts": ts, "glyph": d.FILE_GLYPH, "files": sent},
+                    },
+                }
+            )
         if kind == "configure":
             parts = [
                 f"{k} → {rec[k]}"
@@ -684,6 +700,9 @@ class Fold:
 
         if isinstance(ev, ToolCall):
             self._calls[ev.id] = ev
+            detail = {"args": d.format_tool_args(ev.name, ev.input), "steps": 0}
+            if path := d.file_path(ev.name, ev.input):
+                detail["path"] = path  # what the row's "show file" copies (file.peek)
             return self._upsert(
                 _entry(
                     ev.id,
@@ -693,7 +712,7 @@ class Fold:
                     d.tool_glyph(ev.name),
                     title=d.tool_title(ev.name),
                     summary=d.tool_label(ev.name, ev.input),
-                    detail={"args": d.format_tool_args(ev.name, ev.input), "steps": 0},
+                    detail=detail,
                 )
             )
 

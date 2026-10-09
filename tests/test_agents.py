@@ -18,6 +18,7 @@ import uvicorn
 
 from aegis import files
 from aegis.app import App
+from aegis.ops import OpError
 from aegis.roots import make_roots
 from aegis.web import build_web
 
@@ -581,6 +582,36 @@ async def test_one_bad_path_fails_the_call_before_any_file_is_copied(world, tmp_
     assert said.startswith("mcp error: too_large") and "big.bin" in said
     assert files_sent(a) == []
     assert (set(stored.iterdir()) if stored.exists() else set()) == before
+
+
+async def test_a_person_peeks_at_the_file_a_tool_row_read(world, tmp_path):
+    a = await world.spawn()
+    notes = tmp_path / "notes.md"
+    notes.write_text("# Notes\n")
+    await turn(a, f"/read {notes}")
+    await turn(a, "/fail")
+    read, bash = [e for e in a.entries() if e["kind"] == "tool"]
+    assert read["detail"]["path"] == str(notes)
+
+    notes.write_text("# Notes, edited since\n")
+    peek = world.app.registry.call
+    sent = await peek("file.peek", {"log_id": a.log_id, "entry_id": read["id"]})
+    (f,) = a.fold().entry(read["id"])["detail"]["peek"]["files"]
+    assert sent == [{"url": f["url"], "name": "notes.md", "size": 22}]
+    assert f["excerpt"] == "# Notes, edited since"
+    assert files_sent(a) == [], "a peek is not a file the agent sent"
+    async with httpx.AsyncClient() as c:
+        assert (await c.get(world.base + f["url"])).content == notes.read_bytes()
+
+    with pytest.raises(OpError) as e:
+        await peek("file.peek", {"log_id": a.log_id, "entry_id": bash["id"]})
+    assert e.value.code == "no_path"
+    notes.unlink()
+    stored = set((world.app.roots.state_root / "files").iterdir())
+    with pytest.raises(OpError) as e:
+        await peek("file.peek", {"log_id": a.log_id, "entry_id": read["id"]})
+    assert e.value.code == "not_found"
+    assert set((world.app.roots.state_root / "files").iterdir()) == stored
 
 
 async def test_a_relative_path_resolves_against_the_session_cwd(world, tmp_path):

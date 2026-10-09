@@ -1028,6 +1028,33 @@ def test_a_set_of_files_is_one_card_that_pages_between_them(server, page):
     assert page.errors == []
 
 
+def test_a_read_rows_file_opens_inside_the_row_on_request(server, page):
+    notes = server.root / "notes.md"
+    notes.write_text("# Notes\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    page.fill("#input", f"/read {notes}")
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    row = page.locator(".row.tool")
+    row.locator("summary").click()
+    row.locator(".peek").click()
+    card = row.locator(".fcard")
+    card.wait_for()
+    assert card.locator(".fn").inner_text() == "notes.md"
+    assert card.locator(".stage .md h1").inner_text() == "Notes"
+    assert "as of" in row.locator(".peekcap").inner_text()
+    assert row.locator("details").get_attribute("open") is not None
+
+    notes.write_text("# Changed\n")
+    row.locator(".peek").click()
+    row.locator(".stage .md h1", has_text="Changed").wait_for()
+    assert row.locator(".fcard").count() == 1
+    assert page.locator(".row.file").count() == 0
+    assert page.errors == []
+
+
 def test_open_natively_shows_only_on_the_servers_desktop_and_opens_the_copy(
     server, browser, page
 ):

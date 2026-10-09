@@ -306,6 +306,11 @@ body{background:#000}
 #a2 .fbar .count{color:var(--muted);font-size:11.5px;font-variant-numeric:tabular-nums;min-width:3.2em;text-align:center}
 #a2 .fbar .native{display:none}
 #a2[data-native] .fbar .native{display:inline-flex}
+#a2 .peekbar{display:flex;align-items:center;gap:10px;margin:6px 0}
+#a2 .peekbar .btn{padding:3px 10px;font-size:11.5px}
+#a2 .peekerr{color:var(--err);font-size:11.5px}
+#a2 .peekcap{color:var(--faint);font-size:11px;margin:4px 0}
+#a2 .more .fcard{margin-bottom:8px}
 #a2 .fcard .stage{border-top:1px solid var(--rule);background:var(--bg)}
 #a2 .fcard .stage.image{display:flex;justify-content:center;padding:12px}
 #a2 .fcard .stage img{max-width:100%;max-height:360px;border-radius:4px;cursor:zoom-in}

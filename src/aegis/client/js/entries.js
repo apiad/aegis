@@ -23,6 +23,72 @@ export function setFileBase(base) {
   fileBase = base;
 }
 
+// A set of sent files as one card: a bar with the name and the actions, the
+// preview below. A set pages in place (‹ ›), and a preview is built only when
+// its file is shown. The preview kind was decided at send (files.py); Open
+// natively shows only where the server said so (#a2[data-native]).
+function fileCard(files, glyph) {
+  const sent = files.map((f) => ({ ...f }));
+  const remote = fileBase !== "";
+  if (remote) {
+    // A linked server's card: every link is rebuilt here from a path of the
+    // one shape /via serves, so no URL the far server chose reaches an href
+    // or a frame on this origin (a javascript: download ran with the cookie).
+    for (const f of sent) {
+      const ok = typeof f.url === "string" && /^\/files\/[A-Za-z0-9_-]+\/[^/?#]+$/.test(f.url);
+      f.url = ok ? fileBase + f.url : "about:blank";
+      f.download = ok ? `${f.url}?download=1` : "about:blank";
+    }
+  }
+  const card = el("div", "fcard");
+  const bar = el("div", "fbar");
+  const name = el("span", "fn");
+  const size = el("span", "fs");
+  const acts = el("span", "acts");
+  const open = el("a", "btn primary open", "↗ Open");
+  open.target = "_blank";
+  open.rel = "noopener noreferrer";
+  const native = el("button", "btn native", "⧉ Open natively");
+  native.title = "Open in the desktop app for it";
+  const dl = el("a", "btn dl", "↓ Download");
+  acts.append(open, ...(remote ? [] : [native]), dl); // never natively from a linked server
+  bar.append(el("span", "ic", glyph), name, size);
+  const prev = el("button", "btn prev", "‹");
+  const next = el("button", "btn next", "›");
+  const count = el("span", "count");
+  if (sent.length > 1) {
+    prev.title = "Previous file";
+    next.title = "Next file";
+    const pager = el("span", "pager");
+    pager.append(prev, count, next);
+    bar.append(pager);
+  }
+  bar.append(acts);
+  card.append(bar);
+  let at = 0;
+  let stage = null;
+  const show = (i) => {
+    at = i;
+    const f = sent[i];
+    name.textContent = f.name;
+    size.textContent = f.summary;
+    open.href = f.url;
+    dl.href = f.download;
+    native.dataset.fileId = f.file_id;
+    native.dataset.name = f.name;
+    count.textContent = `${i + 1} / ${sent.length}`;
+    prev.disabled = i === 0;
+    next.disabled = i === sent.length - 1;
+    stage?.remove();
+    stage = preview(f, remote);
+    if (stage) card.append(stage);
+  };
+  prev.addEventListener("click", () => show(at - 1));
+  next.addEventListener("click", () => show(at + 1));
+  show(0);
+  return card;
+}
+
 // One sent file's preview, or null when the browser cannot draw one.
 function preview(f, remote) {
   const pv = f.preview;
@@ -149,6 +215,18 @@ const RENDERERS = {
     line.append(name, label, el("span", "tr2", e.status === "running" ? "" : det.result || ""));
     d.append(line);
     const more = el("div", "more");
+    if (det.path && fileBase === "") {
+      // A file tool's row: the person can see its file without the agent
+      // sending it (file.peek). Not on a linked server's row: the op is local.
+      const bar = el("div", "peekbar");
+      const b = el("button", "btn peek", det.peek ? "↻ Show the file again" : "▤ Show the file");
+      b.dataset.entry = e.id;
+      bar.append(b, el("span", "peekerr"));
+      more.append(bar);
+    }
+    if (det.peek) {
+      more.append(el("div", "peekcap", `as of ${hhmm(det.peek.ts)}`), fileCard(det.peek.files, det.peek.glyph));
+    }
     if (det.diff) more.append(diffBlock(det.diff));
     if (det.tail) more.append(el("pre", "out", det.tail));
     if (det.args) more.append(el("pre", "args", det.args));
@@ -179,78 +257,17 @@ const RENDERERS = {
   },
 
   file(e) {
-    // An agent's file_send, as a card: a bar with the name and the actions,
-    // the preview below. A set of files pages in place (‹ ›), and a preview is
-    // built only when its file is shown. The preview kind was decided at send
-    // (files.py); Open natively shows only where the server said so
-    // (#a2[data-native]).
+    // An agent's file_send, as a card (fileCard) under its caption.
     const det = e.detail || {};
     // A linked server older than sets sends its one file's fields on the detail.
-    const sent = (det.files || [{ ...det, name: e.title, summary: e.summary }]).map((f) => ({ ...f }));
-    const remote = fileBase !== "";
-    if (remote) {
-      // A linked server's card: every link is rebuilt here from a path of the
-      // one shape /via serves, so no URL the far server chose reaches an href
-      // or a frame on this origin (a javascript: download ran with the cookie).
-      for (const f of sent) {
-        const ok = typeof f.url === "string" && /^\/files\/[A-Za-z0-9_-]+\/[^/?#]+$/.test(f.url);
-        f.url = ok ? fileBase + f.url : "about:blank";
-        f.download = ok ? `${f.url}?download=1` : "about:blank";
-      }
-    }
+    const sent = det.files || [{ ...det, name: e.title, summary: e.summary }];
     const body = el("div", "body");
     if (e.md) {
       const cap = markdown(e.md);
       cap.classList.add("cap");
       body.append(cap);
     }
-    const card = el("div", "fcard");
-    const bar = el("div", "fbar");
-    const name = el("span", "fn");
-    const size = el("span", "fs");
-    const acts = el("span", "acts");
-    const open = el("a", "btn primary open", "↗ Open");
-    open.target = "_blank";
-    open.rel = "noopener noreferrer";
-    const native = el("button", "btn native", "⧉ Open natively");
-    native.title = "Open in the desktop app for it";
-    const dl = el("a", "btn dl", "↓ Download");
-    acts.append(open, ...(remote ? [] : [native]), dl); // never natively from a linked server
-    bar.append(el("span", "ic", e.glyph), name, size);
-    const prev = el("button", "btn prev", "‹");
-    const next = el("button", "btn next", "›");
-    const count = el("span", "count");
-    if (sent.length > 1) {
-      prev.title = "Previous file";
-      next.title = "Next file";
-      const pager = el("span", "pager");
-      pager.append(prev, count, next);
-      bar.append(pager);
-    }
-    bar.append(acts);
-    card.append(bar);
-    let at = 0;
-    let stage = null;
-    const show = (i) => {
-      at = i;
-      const f = sent[i];
-      name.textContent = f.name;
-      size.textContent = f.summary;
-      open.href = f.url;
-      dl.href = f.download;
-      native.dataset.fileId = f.file_id;
-      native.dataset.name = f.name;
-      count.textContent = `${i + 1} / ${sent.length}`;
-      prev.disabled = i === 0;
-      next.disabled = i === sent.length - 1;
-      stage?.remove();
-      stage = preview(f, remote);
-      if (stage) card.append(stage);
-    };
-    prev.addEventListener("click", () => show(at - 1));
-    next.addEventListener("click", () => show(at + 1));
-    show(0);
-    body.append(card);
+    body.append(fileCard(sent, e.glyph));
     return row(e, "file", body);
   },
 
