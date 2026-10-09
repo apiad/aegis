@@ -2704,33 +2704,63 @@ def run_dictation(pg, body: str):
     )
 
 
-def test_dictation_cuts_at_the_first_pause_after_20s_and_at_30s_without_one(
+def test_dictation_cuts_provisional_pieces_at_4_to_8s_and_a_final_past_20s(
     dict_server, page
 ):
     page.goto(dict_server.url)
     got = run_dictation(
         page,
-        """const out = []; const c = new m.Chunker((a) => out.push(a.length / 16000));
-        for (const p of [tone(22), gap(0.5), tone(35), tone(3)])
+        """const out = []; const c = new m.Chunker((p) => out.push({ final: p.final, secs: p.parts.map((a) => +(a.length / 16000).toFixed(2)) }));
+        for (const p of [tone(5), gap(0.5), tone(17), gap(0.5), tone(3)])
             for (let i = 0; i < p.length; i += 1600) c.push(p.subarray(i, i + 1600));
-        return { out, tail: c.finish().map((a) => a.length / 16000) };""",
+        return out;""",
     )
-    assert len(got["out"]) == 2
-    assert 22.0 <= got["out"][0] <= 22.4, "the pause after 22 s"
-    assert 20.0 <= got["out"][1] <= 30.0, "no pause: the quietest point"
-    assert len(got["tail"]) == 2 and sum(got["tail"]) > 10
+    prov = [p for p in got if not p["final"]]
+    fin = [p for p in got if p["final"]]
+    assert 5.0 <= prov[0]["secs"][0] <= 5.4, "the pause after 5 s cuts the first piece"
+    # A pure tone has no quiet point, so the cut inside [4 s, 8 s] is wherever
+    # rounding puts it: assert the range, not the place.
+    assert all(4.0 <= p["secs"][0] <= 8.0 for p in prov[1:]), prov
+    assert len(fin) == 1 and len(fin[0]["secs"]) == 1
+    idx = got.index(fin[0])
+    before = [p["secs"][0] for p in got[:idx]]
+    assert 20 <= fin[0]["secs"][0] <= 28 and sum(before[:-1]) < 20, "closed at the first boundary past 20 s"
+    assert abs(fin[0]["secs"][0] - sum(before)) < 0.05, "the final is exactly the joined provisional pieces"
 
 
-def test_dictation_splits_a_long_tail_in_two_and_drops_silence(dict_server, page):
+def test_dictation_voice_gate_skips_quiet_pieces_but_the_final_spans_them(
+    dict_server, page
+):
     page.goto(dict_server.url)
-    halves, short, silent = run_dictation(
+    got = run_dictation(
         page,
-        """const fin = (...parts) => { const c = new m.Chunker(() => {}); for (const p of parts) c.push(p); return c.finish(); };
-        return [fin(tone(6), gap(0.3), tone(8)).map((x) => x.length / 16000),
-                fin(tone(4)).length, fin(gap(5)).length];""",
+        """const out = []; const c = new m.Chunker((p) => out.push({ final: p.final, secs: +(p.parts[0].length / 16000).toFixed(1) }));
+        const quiet = [tone(0.5), gap(3.5)];
+        for (let k = 0; k < 6; k++) for (const p of quiet) for (let i = 0; i < p.length; i += 1600) c.push(p.subarray(i, i + 1600));
+        return { out, voiced: m.voiceSecs(tone(2)), quiet: m.voiceSecs(gap(2)), sliver: m.voiceSecs(tone(0.5)) };""",
     )
-    assert len(halves) == 2 and 5.9 <= halves[0] <= 6.4, "cut in the pause"
-    assert short == 1 and silent == 0
+    assert got["voiced"] >= 1.8 and got["quiet"] == 0 and 0.3 <= got["sliver"] <= 0.6
+    assert [p for p in got["out"] if not p["final"]] == [], "no provisional piece had a second of voice"
+    fin = [p for p in got["out"] if p["final"]]
+    assert len(fin) == 1 and fin[0]["secs"] >= 20, "the final still spans the quiet pieces"
+
+
+def test_dictation_finish_returns_the_pending_piece_then_the_tail_in_halves(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const fin = (only, ...parts) => { const c = new m.Chunker(() => {}); for (const p of parts) c.push(p); return c.finish(only).map((p) => ({ final: p.final, secs: p.parts.map((a) => +(a.length / 16000).toFixed(1)) })); };
+        return { long: fin(false, tone(6), gap(0.3), tone(8)), short: fin(false, tone(4)),
+                 silent: fin(false, gap(5)), sliver: fin(false, tone(0.5)), only: fin(true, tone(0.5)) };""",
+    )
+    long = got["long"]
+    assert all(not p["final"] for p in long[:-1]) and long[-1]["final"]
+    assert len(long[-1]["secs"]) == 2 and 14.1 <= sum(long[-1]["secs"]) <= 14.4, "the 14.3 s stretch splits in two"
+    assert got["short"] == [{"final": False, "secs": [4.0]}, {"final": True, "secs": [4.0]}]
+    assert got["silent"] == [] and got["sliver"] == []
+    assert got["only"] == [{"final": True, "secs": [0.5]}], "a one-word recording is still transcribed"
 
 
 def test_dictation_inserts_pieces_in_order_after_the_last_one_and_keeps_typing(
