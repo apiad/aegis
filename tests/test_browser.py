@@ -857,6 +857,37 @@ def test_a_monitor_whose_check_cannot_run_is_marked_and_its_card_says_why(server
     assert page.errors == []
 
 
+def test_a_monitor_on_sessions_counts_them_in_its_row_and_card(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    busy = spawn(page)
+    page.fill("#input", "/sleep 30")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool")
+    idle = spawn(page)
+    done = {"attention": "done", "line": "Done."}
+    page.fill("#input", f"/mcp turn_end {json.dumps(done)}")
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    spawn(page)
+    args = {
+        "description": "wait for the others",
+        "sessions": [busy, idle],
+        "interval_s": 1,
+    }
+    page.fill("#input", f"/mcp monitor_sessions {json.dumps(args)}")
+    page.press("#input", "Enter")
+    page.wait_for_selector("#s-monitors .mon >> text=1 of 2")
+    page.hover("#s-monitors .mon")
+    page.wait_for_selector("#mcard.show")
+    card = page.inner_text("#mcard")
+    # "Checks" still names the interval in the facts; the section is Sessions.
+    assert page.inner_text("#mcard .checks h5").lower() == "sessions"
+    assert "working" in card and "done" in card
+    assert "1 of 2" in page.inner_text("#mcard .big")
+    assert page.errors == []
+
+
 def test_the_running_build_and_the_latest_release_show_in_the_top_bar_and_sidebar(
     server, page
 ):

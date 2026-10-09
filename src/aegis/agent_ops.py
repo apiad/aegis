@@ -52,6 +52,21 @@ class MonitorStart(_Strict):
     )
 
 
+class MonitorSessions(_Strict):
+    description: str = Field(
+        min_length=1,
+        description="What is being waited on, shown on the card and in the wake.",
+    )
+    sessions: list[str] = Field(
+        min_length=1,
+        max_length=20,
+        description="Handles of open sessions on this server, from session_list.",
+    )
+    interval_s: float = Field(10, ge=1, le=3600)
+    # Other sessions' work runs longer than a build.
+    timeout_s: float = Field(4 * 3600, gt=0, le=7 * 86400)
+
+
 class MonitorId(_Strict):
     monitor_id: str
 
@@ -262,6 +277,26 @@ FAR_ERRORS = {
 }
 USER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
+# What session_list adds from a session's card, so one agent can follow
+# another's plan and state. replies, mark and blink describe the person's tab,
+# not the session, and stay out.
+LISTED = (
+    "model",
+    "cost_usd",
+    "context_tokens",
+    "context_window",
+    "last_activity",
+    "attention",
+    "attention_line",
+    "waiting_on",
+    "plan",
+    "plan_now",
+    "plan_did",
+    "plan_done",
+    "plan_total",
+    "plan_clock",
+)
+
 
 def split_address(target: str, own: str) -> tuple[str, str | None]:
     """``knuth@vps`` as ``("knuth", "vps")``; a bare handle, or this server's
@@ -333,6 +368,35 @@ def register_agent_ops(app: App) -> None:
             done=p.done,
             fail=p.fail,
             progress=p.progress,
+            interval_s=p.interval_s,
+            timeout_s=p.timeout_s,
+        )
+        return {"monitor_id": m.id, "other_live_monitors": roster(s.log_id, m.id)}
+
+    @r.op("monitor.sessions", MonitorSessions, agent=True)
+    async def monitor_sessions(p: MonitorSessions, caller):
+        """Wait for other sessions on this server to finish, without polling.
+        You are woken `ok` when every one has finished (its last turn ended done
+        or for review, or it was closed), `blocked` as soon as one needs the
+        person or hit an error, naming it, and `timeout` otherwise. Pick the
+        handles from session_list. Returns at once; end your turn after calling
+        it. monitor_cancel stops it."""
+        s = own(caller)
+        picked: dict[str, dict] = {}
+        for handle in p.sessions:
+            t = target(handle)
+            if t.log_id == s.log_id:
+                raise OpError(
+                    "not_yourself",
+                    "a session cannot wait for itself: its own wait keeps it waiting",
+                )
+            picked.setdefault(t.log_id, {"log_id": t.log_id, "handle": t.handle})
+        m = app.monitors.start(
+            s.log_id,
+            str(s.spec.cwd),
+            description=p.description,
+            done="",
+            sessions=list(picked.values()),
             interval_s=p.interval_s,
             timeout_s=p.timeout_s,
         )
@@ -500,19 +564,24 @@ def register_agent_ops(app: App) -> None:
 
     @r.op("session.list", NoArgs, agent=True)
     async def session_list(_, caller):
-        """The open sessions on this server, then each linked server's by handle
-        and state alone, as `handle@server`: reach one with peer_handoff."""
-        out = [
-            {
-                "handle": s.handle,
-                "title": s.title,
-                "state": s.status,
-                "cwd": str(s.spec.cwd),
-                "worker": s.worker,
-                "you": caller.log_id == s.log_id,
-            }
-            for s in reg.open_sessions()
-        ]
+        """The open sessions on this server, each with its state, what it needs
+        (attention and its line, what it waits on), its plan and what it is
+        doing now, its model and spend; then each linked server's by handle and
+        state alone, as `handle@server`: reach one with peer_handoff."""
+        out = []
+        for s in reg.open_sessions():
+            w = s.wire()
+            out.append(
+                {
+                    "handle": s.handle,
+                    "title": s.title,
+                    "state": s.status,
+                    "cwd": str(s.spec.cwd),
+                    "worker": s.worker,
+                    "you": caller.log_id == s.log_id,
+                    **{k: w.get(k) for k in LISTED},
+                }
+            )
         if caller.link is None:  # a link asking is not relayed further
             out += await far_sessions()
         return out
