@@ -60,6 +60,7 @@ def _root(
             host="127.0.0.1",
             claude="claude",
             opencode="opencode",
+            codex="codex",
             log_level="warning",
             window=True,
             browser=os.environ.get("AEGIS_BROWSER"),
@@ -133,6 +134,7 @@ def _detach(
     urls: list[str],
     opencode: str = "opencode",
     name: str | None = None,
+    codex: str = "codex",
 ) -> None:
     """Run this serve again, undetached, in its own session; return once it listens.
 
@@ -153,6 +155,7 @@ def _detach(
         "--host", host,
         "--claude", claude,
         "--opencode", opencode,
+        "--codex", codex,
         "--log-level", log_level,
     ]  # fmt: skip
     for o in origins:
@@ -215,6 +218,7 @@ def serve(
     ),
     claude: str = typer.Option("claude", help="The claude executable to run."),
     opencode: str = typer.Option("opencode", help="The opencode executable to run."),
+    codex: str = typer.Option("codex", help="The codex executable to run."),
     log_level: str = typer.Option(
         "warning", help="debug, info, warning or error; info logs every operation."
     ),
@@ -287,7 +291,17 @@ def serve(
     if detach:
         urls = [url, *(f"{o}/?token={token}" for o in origin)]
         _detach(
-            roots, host, local, port, claude, log_level, origin, urls, opencode, name
+            roots,
+            host,
+            local,
+            port,
+            claude,
+            log_level,
+            origin,
+            urls,
+            opencode,
+            name,
+            codex,
         )
         if window:
             from .window import open_window
@@ -306,6 +320,7 @@ def serve(
         roots,
         claude_bin=claude,
         opencode_bin=opencode,
+        codex_bin=codex,
         base_url=f"http://{local}:{port}",
         server_name=name or _socket.gethostname(),
     )
@@ -322,8 +337,8 @@ def serve(
 MARK = {"ok": "ok   ", "warn": "warn ", "error": "ERROR"}
 
 
-def _bins(claude: str, opencode: str) -> dict[str, str]:
-    return {"claude-code": claude, "opencode": opencode}
+def _bins(claude: str, opencode: str, codex: str) -> dict[str, str]:
+    return {"claude-code": claude, "opencode": opencode, "codex": codex}
 
 
 def _report(findings) -> int:
@@ -343,6 +358,7 @@ def doctor(
     ),
     claude: str = typer.Option("claude", help="The claude executable to check."),
     opencode: str = typer.Option("opencode", help="The opencode executable to check."),
+    codex: str = typer.Option("codex", help="The codex executable to check."),
 ) -> None:
     """Check .aegis.yaml, the harnesses it names and the state directory."""
     from .doctor import doctor as run_doctor
@@ -351,7 +367,7 @@ def doctor(
     start = Path.cwd()
     roots = make_roots(start=start, root=root)
     findings = asyncio.run(
-        run_doctor(roots, _bins(claude, opencode), start=None if root else start)
+        run_doctor(roots, _bins(claude, opencode, codex), start=None if root else start)
     )
     raise typer.Exit(1 if _report(findings) else 0)
 
@@ -444,6 +460,7 @@ def init(
     opencode: str = typer.Option(
         "opencode", help="The opencode executable to look for."
     ),
+    codex: str = typer.Option("codex", help="The codex executable to look for."),
 ) -> None:
     """Write a first .aegis.yaml from the harnesses installed here."""
     from .config import write
@@ -466,7 +483,7 @@ def init(
             f"Create a new aegis root at {target}?", default=True
         ):
             raise typer.Exit(1)
-    bins = _bins(claude, opencode)
+    bins = _bins(claude, opencode, codex)
     found = asyncio.run(detect(target, bins))
     for f in found:
         if f.bin is None:

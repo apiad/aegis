@@ -41,6 +41,25 @@ def fake_opencode(tmp_path: Path) -> str:
     return str(path)
 
 
+FAKE_CODEX = Path(__file__).parent / "fake_codex.py"
+
+
+@pytest.fixture
+def fake_codex(tmp_path: Path) -> str:
+    """An executable that runs the fake codex app-server, as a session would."""
+    path = tmp_path / "bin-codex" / "codex"
+    path.parent.mkdir()
+    home = tmp_path / "fake-codex-home"
+    home.mkdir()
+    path.write_text(
+        f'#!/bin/sh\nexport FAKE_CODEX_HOME="{home}"\n'
+        f'export FAKE_CODEX_LOG="{tmp_path / "fake-codex.log"}"\n'
+        f'exec "{sys.executable}" "{FAKE_CODEX}" "$@"\n'
+    )
+    path.chmod(path.stat().st_mode | stat.S_IEXEC)
+    return str(path)
+
+
 async def until(pred, timeout: float = 3.0, what: str = "condition") -> None:
     end = asyncio.get_running_loop().time() + timeout
     while not pred():

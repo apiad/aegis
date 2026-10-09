@@ -14,6 +14,14 @@ unknown id has no price: callers count its tokens as unpriced rather than guess,
 because charging zero and charging another model's rate are both silent.
 Haiku 5.5 is left out: its rate depends on the prompt's size, which a usage
 record does not carry.
+
+OpenAI's rates are copied from https://developers.openai.com/api/docs/pricing
+on the day in ``OPENAI_AS_OF``: standard processing, short context (under 272K
+tokens), so a long-context request is undercharged. OpenAI charges a cache
+write at its own rate, which is both write fields here. A Codex model is priced
+only when it is ``openai/<id>`` with an id here, or any provider's ``:free``
+model (OpenRouter's suffix for a model that costs nothing); everything else,
+the Codex models that page does not list included, is unpriced.
 """
 
 from __future__ import annotations
@@ -107,3 +115,30 @@ def prices_for(model: str | None) -> Prices | None:
     name = model.split("[", 1)[0].strip().lower()
     name = ALIASES.get(name, name)
     return PRICES.get(name) or PRICES.get(_DATED.sub("", name))
+
+
+OPENAI_AS_OF = "2026-10-09"
+
+
+def _o(inp: str, cached: str, write: str, out: str) -> Prices:
+    return Prices(
+        Decimal(inp), Decimal(out), Decimal(write), Decimal(write), Decimal(cached)
+    )
+
+
+OPENAI: dict[str, Prices] = {
+    "gpt-6-astra": _o("10", "1", "12.50", "50"),
+    "gpt-6.1-sol": _o("2", "0.10", "2.50", "10"),
+    "gpt-6-luna": _o("0.10", "0.01", "0.125", "0.50"),
+    "gpt-5.6-sol": _o("4", "0.40", "5", "20"),
+}
+
+
+def codex_prices_for(model: str | None) -> Prices | None:
+    """The rates for a Codex model (``provider/model``), or None."""
+    if not model:
+        return None
+    provider, _, model_id = model.partition("/")
+    if model_id.endswith(":free"):
+        return _ZERO
+    return OPENAI.get(model_id) if provider == "openai" else None

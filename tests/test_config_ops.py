@@ -70,7 +70,7 @@ async def test_doctor_detect_and_propose(app, monkeypatch):
     findings = await app.registry.call("config.doctor", {})
     assert not [f for f in findings if f["level"] == "error"]
     found = await app.registry.call("config.detect", {})
-    assert [f["harness"] for f in found] == ["claude-code", "opencode"]
+    assert [f["harness"] for f in found] == ["claude-code", "opencode", "codex"]
     doc = await app.registry.call("config.propose", {})
     assert doc["default_agent"] == "opus"
     assert len(calls) == 1, "detect and propose share one probe within DETECT_TTL_S"

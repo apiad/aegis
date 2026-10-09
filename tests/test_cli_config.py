@@ -77,6 +77,8 @@ def test_init_with_no_harness_writes_nothing(tmp_path):
         str(tmp_path / "x"),
         "--opencode",
         str(tmp_path / "y"),
+        "--codex",
+        str(tmp_path / "z"),
     )
     assert r.exit_code == 1 and "No harness" in r.output
     assert not (tmp_path / ".aegis.yaml").exists()

@@ -177,6 +177,7 @@ class App:
         base_url: str | None = None,
         server_name: str = "aegis",
         opencode_bin: str = "opencode",
+        codex_bin: str = "codex",
         dictation_dir: Path | None = None,
         user: str | None = None,
     ) -> None:
@@ -184,6 +185,7 @@ class App:
         self.server_name = server_name
         self.claude_bin = claude_bin
         self.opencode_bin = opencode_bin
+        self.codex_bin = codex_bin
         self.dictation = dictation.Store(dictation_dir or dictation.default_dir())
         self.channels = Channels(self._resolve)
         # Every session's card changes go out together, a few times a second at
@@ -200,6 +202,7 @@ class App:
             claude_bin,
             interrupt_timeout,
             opencode_bin=opencode_bin,
+            codex_bin=codex_bin,
         )
         self.tokens = Tokens()
         self.monitors = Monitors(self.sessions, roots.state_root / "monitors.json")
@@ -240,7 +243,9 @@ class App:
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
 
     def _bin(self, harness: str) -> str:
-        return self.opencode_bin if harness == "opencode" else self.claude_bin
+        return {"opencode": self.opencode_bin, "codex": self.codex_bin}.get(
+            harness, self.claude_bin
+        )
 
     async def boot(self) -> None:
         self._config_task = asyncio.create_task(self.config.watch())

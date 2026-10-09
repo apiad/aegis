@@ -183,6 +183,7 @@ class Session:
         held: list[dict] | None = None,
         worker: dict | None = None,
         opencode_bin: str = "opencode",
+        codex_bin: str = "codex",
         title_set: bool = False,
         standing: dict | None = None,
         unread: list[str] | None = None,
@@ -209,7 +210,7 @@ class Session:
         self.model_id = model_id
         self.status = "stopped"
         self._stderr_path = stderr_path
-        self.harness = harness_for(spec.harness, claude_bin, opencode_bin)
+        self.harness = harness_for(spec.harness, claude_bin, opencode_bin, codex_bin)
         self._publish = publish
         self._metas = metas
         self._interrupt_timeout = interrupt_timeout

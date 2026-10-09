@@ -61,7 +61,7 @@ def sessions(state_dir: Path) -> Iterator[StoredSession]:
 class Line:
     ts: str | None
     src: str
-    # The parsed harness line for src "claude" and "opencode", else the aegis
+    # The parsed harness line for src "claude", "opencode" and "codex", else the aegis
     # record itself.
     obj: dict
     # The text as stored, for the readers that search it.
@@ -85,7 +85,7 @@ def lines(path: Path) -> Iterator[Line]:
                 continue
             src = str(rec.get("src") or "")
             obj = rec
-            if src in ("claude", "opencode"):
+            if src in ("claude", "opencode", "codex"):
                 try:
                     obj = json.loads(rec.get("line") or "")
                 except (ValueError, TypeError):

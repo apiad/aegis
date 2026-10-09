@@ -233,10 +233,12 @@ def test_agents_list(project, fake_claude):
     assert r["harnesses"] == [
         {"name": "claude-code", "supported": True},
         {"name": "opencode", "supported": True},
+        {"name": "codex", "supported": True},
     ]
     assert r["models"] == {
         "claude-code": ["opus", "claude-sonnet-5"],
         "opencode": ["opencode-go/fake-pro"],
+        "codex": [],
     }
     assert r["cwd"] == str(project)
 

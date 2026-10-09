@@ -42,6 +42,7 @@ from ..claude.stream import (
     ToolOutput,
 )
 from ..claude.stream import Parser as ClaudeParser
+from ..codex.stream import Parser as CodexParser
 from ..opencode.stream import Parser as OpenCodeParser
 from . import describe as d
 from .plan_clock import replan, switch
@@ -50,7 +51,11 @@ from .wire import wire
 
 # The store's src tag -> a parser factory. A fold keeps one parser per tag, so
 # a harness whose events need earlier lines sees them in order.
-PARSERS: dict[str, Any] = {"claude": ClaudeParser, "opencode": OpenCodeParser}
+PARSERS: dict[str, Any] = {
+    "claude": ClaudeParser,
+    "opencode": OpenCodeParser,
+    "codex": CodexParser,
+}
 
 
 # From which fold level of the browser's view a kind folds: 1, the work between

@@ -123,6 +123,7 @@ def test_model_suggestions_are_the_models_agents_name_without_duplicates(tmp_pat
     assert model_suggestions(agents) == {
         "claude-code": ["opus", "claude-sonnet-5"],
         "opencode": ["opencode-go/x"],
+        "codex": [],
     }
 
 

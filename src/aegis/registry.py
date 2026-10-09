@@ -43,7 +43,9 @@ def _public(meta: dict) -> dict:
     standing stay on the server, like ``Session.wire`` keeps them. It carries
     the harness's label as the wire does, for the side panel's model line."""
     out = {k: v for k, v in meta.items() if k not in ("priming", "standing")}
-    harness = harness_for(meta.get("harness") or "claude-code", "claude", "opencode")
+    harness = harness_for(
+        meta.get("harness") or "claude-code", "claude", "opencode", "codex"
+    )
     out["harness_label"] = harness.label
     return out
 
@@ -56,11 +58,13 @@ class Registry(Host):
         claude_bin: str = "claude",
         interrupt_timeout: float = 10.0,
         opencode_bin: str = "opencode",
+        codex_bin: str = "codex",
     ) -> None:
         self.roots = roots
         self._publish = publish
         self._claude_bin = claude_bin
         self._opencode_bin = opencode_bin
+        self._codex_bin = codex_bin
         self._interrupt_timeout = interrupt_timeout
         self.metas = MetaStore(roots.state_root / "sessions")
         self.sessions: dict[str, Session] = {}
@@ -190,6 +194,7 @@ class Registry(Host):
             stderr_path=self._stderr_path(meta["log_id"]),
             claude_bin=self._claude_bin,
             opencode_bin=self._opencode_bin,
+            codex_bin=self._codex_bin,
             publish=self._publish,
             metas=self.metas,
             title=meta.get("title") or "",
