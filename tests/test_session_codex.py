@@ -1,7 +1,5 @@
-import asyncio
 import json
 import os
-import signal
 from pathlib import Path
 
 import pytest
