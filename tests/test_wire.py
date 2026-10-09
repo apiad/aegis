@@ -193,3 +193,34 @@ def test_snapshots_carry_projected_entries():
     assert "tail" not in e["detail"] and e["detail"]["more"] is True
     (d,) = f.snapshot(-1)["entries"]
     assert "tail" not in d["detail"]
+
+
+def test_an_artifacts_records_rebuild_from_every_cut_and_events_are_lazy():
+    r = Rec()
+    r.own("send", text="go")
+    r.echo("go")
+    r.own(
+        "artifact",
+        artifact_id="art-aaaa0009",
+        file_id="F",
+        name="index.html",
+        title="T",
+        caption="c",
+        state={"n": 0},
+        started=True,
+    )
+    for n in range(3):
+        r.own("artifact_state", artifact_id="art-aaaa0009", state={"n": n}, by="page")
+    r.own("artifact_event", artifact_id="art-aaaa0009", name="hover", data=1)
+    r.own("artifact_submit", artifact_id="art-aaaa0009", data={"p": 1}, label="done")
+    r.text("thanks")
+    r.result()
+    final = fold_records(r.records)
+    want = final.snapshot()["entries"]
+    for k in range(len(r.records) + 1):
+        held = fold_records(r.records[:k]).snapshot()
+        assert rebuild(held["entries"], final.snapshot(held["rev"])) == want, k
+    art = next(e for e in want if e["kind"] == "artifact")
+    assert "events" not in art["detail"] and art["detail"]["more"] is True
+    assert art["detail"]["state"] == {"n": 2}  # state rides the wire
+    assert art["detail"]["state_rev"] == 5  # and so does the record that set it

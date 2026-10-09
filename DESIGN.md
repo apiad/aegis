@@ -333,6 +333,24 @@ operation only, and only for a socket on loopback to a server with a desktop: a
 proxy's public name is a browser elsewhere, and an SSH tunnel to a headless box
 looks local but has nowhere to open the file.
 
+**An artifact is a sent page with a way back, and the way back is the bridge.**
+An agent's interactive page (`artifacts.py`, `artifact_ops.py`) is served and
+framed exactly like a sent HTML file, so its script runs in an opaque origin
+that the websocket refuses. Its only path to the server is `postMessage` to
+the host page, whose bridge (`client/js/artifacts.js`) answers only windows it
+mounted and calls four person operations with the artifact id the frame's row
+carries, set after the page's own parameters so one the page sent never wins;
+the probe's answer is the fifth operation and names no artifact. Every payload
+is capped (state and data by size, a label by length, an error by truncation
+on both the wake and the probe) and emits are rate-limited, because the page
+is agent-written code whose answers land in the agent's context and on disk.
+A page's answer reaches the agent through the inbox like a monitor's wake, so
+a click mid-turn is held. A page lands only after the static checks and, when
+a browser has the transcript open, a hidden run there (`Board.probe`): a page
+that throws is a tool error, not a card; with no browser open it lands with
+`started` unset, and the first browser to mount it reports an error to the
+inbox.
+
 **Audio never leaves the browser.** Dictation transcribes in the page, with
 Cactus Whistle's WebAssembly build in two workers (`js/dictation.js`). The client
 cuts speech into provisional pieces of 4 to 8 s whose text lands at once, and

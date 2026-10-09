@@ -271,6 +271,39 @@ const RENDERERS = {
     return row(e, "file", body);
   },
 
+  artifact(e) {
+    // An agent's interactive page: a card like a file's, the frame while
+    // live, one line with the label after. Status and label were decided in
+    // the fold; the frame's state is handed over by js/artifacts.js on init.
+    const det = e.detail || {};
+    const body = el("div", "body");
+    if (e.md) {
+      const cap = markdown(e.md);
+      cap.classList.add("cap");
+      body.append(cap);
+    }
+    const card = el("div", "fcard acard");
+    card.dataset.status = e.status;
+    const bar = el("div", "fbar");
+    const acts = el("span", "acts");
+    const open = el("a", "btn open", "↗ Open");
+    open.href = fileUrl(det.url);
+    open.target = "_blank";
+    open.rel = "noopener noreferrer";
+    acts.append(open);
+    if (e.status !== "live") acts.prepend(el("button", "btn show", "Show"));
+    card.dataset.md = e.md || ""; // the caption's source, for update() to compare exactly
+    bar.append(el("span", "ic", e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);
+    card.append(bar);
+    if (e.status === "live") card.append(artifactStage(e));
+    else {
+      const what = det.label || (e.status === "closed" ? "closed by the agent" : "answered");
+      card.append(el("div", "done", `${what} · ${hhmm(det.ended_ts)}`));
+    }
+    body.append(card);
+    return row(e, "artifact", body);
+  },
+
   recap(e) {
     const det = e.detail || {};
     const body = el("div", "body");
@@ -305,4 +338,54 @@ const RENDERERS = {
 
 export function render(entry) {
   return (RENDERERS[entry.kind] || RENDERERS.system)(entry);
+}
+
+// A sent file's or artifact's URL as this page may use it: on a linked
+// server's transcript, only a path of the one shape /via serves, rebuilt here,
+// so no URL the far server chose reaches an href or a frame on this origin.
+export function fileUrl(url) {
+  if (fileBase === "") return url;
+  const ok = typeof url === "string" && /^\/files\/[A-Za-z0-9_-]+\/[^/?#]+$/.test(url);
+  return ok ? fileBase + url : "about:blank";
+}
+
+// The frame of an artifact's card, live or shown again read-only.
+export function artifactStage(e) {
+  const stage = el("div", "stage html");
+  const f = el("iframe");
+  f.setAttribute("sandbox", "allow-scripts");
+  f.loading = "lazy";
+  f.src = fileUrl(e.detail.url);
+  f.title = e.title;
+  f.dataset.artifact = e.id;
+  f.dataset.status = e.status;
+  f.dataset.stateRev = String(e.detail.state_rev); // the state it starts with
+  stage.append(f);
+  return stage;
+}
+
+// A row updated in place, so a live frame is not reloaded by every patch.
+// True when the node now shows the entry; false when it must be remounted.
+const UPDATERS = {
+  artifact(e, node) {
+    const card = node.querySelector(".acard");
+    const frame = node.querySelector("iframe[data-artifact]");
+    if (!card || card.dataset.status !== e.status || !frame) return false;
+    // A new caption, a new title or a new page (a resend) remounts the card.
+    if (card.dataset.md !== (e.md || "")) return false;
+    if (node.querySelector(".fbar .fn")?.textContent !== e.title) return false;
+    if (frame.getAttribute("src") !== fileUrl(e.detail?.url)) return false;
+    // Only a state the agent set since the frame last had one: every page
+    // record patches this entry, and an emit must not echo the state back.
+    const rev = String(e.detail?.state_rev);
+    if (e.detail?.state_by === "agent" && rev !== frame.dataset.stateRev) {
+      frame.dataset.stateRev = rev;
+      frame.dispatchEvent(new CustomEvent("aegis:state", { detail: e.detail.state, bubbles: true }));
+    }
+    return true;
+  },
+};
+export function update(e, node) {
+  const u = UPDATERS[e.kind];
+  return u ? u(e, node) : false;
 }

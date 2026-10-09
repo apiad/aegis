@@ -19,7 +19,7 @@
 // for a second is reported through onRead. Only mounted unread rows are
 // observed, and a row is unobserved as it is replaced or dropped.
 
-import { render } from "./entries.js";
+import { render, update } from "./entries.js";
 
 const WINDOW = 200;
 const PAGE = 100;
@@ -253,8 +253,11 @@ export class Transcript {
         }
         const old = this.nodes.get(e.id);
         if (old) {
-          this.watch.unobserve(old);
-          old.replaceWith(this.mount(e));
+          if (update(e, old)) this.nodes.set(e.id, old);
+          else {
+            this.watch.unobserve(old);
+            old.replaceWith(this.mount(e));
+          }
         }
         else if (!known) {
           this.list.append(this.mount(e));

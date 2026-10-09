@@ -7,7 +7,11 @@ resolves a ``/`` line first, ``commands.py``), ``session.read``,
 ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``, ``file.peek``,
 ``quota.read``, ``transcript.detail``, and ``config.read``, ``config.write``,
-``config.detect``, ``config.doctor`` and ``config.propose`` (``config_ops.py``).
+``config.detect``, ``config.doctor`` and ``config.propose`` (``config_ops.py``),
+and ``artifact.create``, ``artifact.send``, ``artifact.read``,
+``artifact.update``, ``artifact.close``, ``artifact.state``, ``artifact.emit``,
+``artifact.submit``, ``artifact.error`` and ``artifact.probed``
+(``artifact_ops.py``).
 Channels: ``sessions`` (every open session's meta; patches ``upsert`` and
 ``remove``), ``transcript:<log_id>`` (any session, archived included; a
 subscribe ``since`` a revision gets what changed after it), ``quota`` (each
@@ -28,6 +32,7 @@ from pydantic import BaseModel, Field
 
 from . import archive, commands, dictation, files
 from .agent_ops import register_agent_ops
+from .artifact_ops import register_artifact_ops
 from .agents import (
     EFFORTS,
     HARNESSES,
@@ -226,6 +231,7 @@ class App:
         self._register()
         register_agent_ops(self)
         register_config_ops(self)
+        register_artifact_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
 
     def _bin(self, harness: str) -> str:

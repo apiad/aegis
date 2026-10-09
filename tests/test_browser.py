@@ -1089,6 +1089,216 @@ def test_open_natively_shows_only_on_the_servers_desktop_and_opens_the_copy(
     assert page.errors == []
 
 
+CONTROLS = "<!-- controls go here -->"
+WIRING = "// wire the controls; answer with aegis.submit / aegis.emit / aegis.state"
+
+
+def _artifact(page, server, body, n, title="Pick", caption=None):
+    """Create a draft through the fake claude, fill it, send it. ``body`` is
+    ``(markup, ready_body)``: the markup replaces the skeleton's controls
+    placeholder and the ready body its wiring comment, so the skeleton
+    artifact_create really writes is the one these tests run. ``n`` is how many
+    turns the page has seen done; two more happen here. Returns the artifact id
+    and the send's last prose line."""
+    args = {"title": title} | ({"caption": caption} if caption else {})
+    page.fill("#input", f"/mcp artifact_create {json.dumps(args)}")
+    page.press("#input", "Enter")
+    turns_done(page, n + 1)
+    # Markdown eats the backslash of the skeleton's \" so the prose is no longer JSON.
+    said = page.locator(".row.prose .md").last.inner_text()
+    made = dict(
+        zip(
+            ("id", "path"),
+            re.search(r'"id": "(art-[^"]+)", "path": "([^"]+)"', said).groups(),
+        )
+    )
+    markup, ready = body
+    draft = Path(made["path"])
+    text = draft.read_text()
+    assert CONTROLS in text and WIRING in text, "the skeleton lost a placeholder"
+    draft.write_text(text.replace(CONTROLS, markup).replace(WIRING, ready))
+    page.fill("#input", f"/mcp artifact_send {json.dumps({'id': made['id']})}")
+    page.press("#input", "Enter")
+    turns_done(page, n + 2)
+    return made["id"], page.locator(".row.prose .md").last.inner_text()
+
+
+PICK = (
+    '<button id="b">B</button><span id="st"></span><span id="ac"></span>',
+    "st.textContent = JSON.stringify(state);"
+    "  const accent = () => (ac.textContent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());"
+    "  accent(); setInterval(accent, 100);"
+    '  b.onclick = () => aegis.submit({pick: "b"}, "Picked B");'
+    "  aegis.onState((s) => (st.textContent = JSON.stringify(s)));",
+)
+
+
+def test_an_artifact_lands_when_its_page_starts_and_a_click_reaches_the_agent(
+    server, page
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    aid, said = _artifact(page, server, PICK, 0, caption="Pick **one**")
+    assert '"started": true' in said
+    card = page.locator(".row.artifact .acard")
+    assert card.get_attribute("data-status") == "live"
+    assert "one" in page.locator(".row.artifact .cap strong").inner_text()
+    frame = page.locator(f".row.artifact iframe[data-artifact={aid}]")
+    assert frame.get_attribute("sandbox") == "allow-scripts"
+    inner = page.frame_locator(f"iframe[data-artifact={aid}]")
+    inner.locator("#st").filter(
+        has_text="{}"
+    ).wait_for()  # ready fired with the empty state
+    assert (
+        inner.locator("#ac").inner_text().startswith("#")
+    )  # the theme reached the frame
+    page.locator("#probes iframe").wait_for(state="detached")  # the probe frame is gone
+
+    inner.locator("#b").click()
+    page.wait_for_selector(
+        f".row.inbox .from >> text=artifact:{aid} · submit", timeout=10000
+    )
+    page.wait_for_selector(
+        ".row.artifact .acard[data-status=submitted] .done >> text=Picked B"
+    )
+    assert page.locator(".row.artifact iframe").count() == 0
+    page.locator(".row.artifact button.show").click()
+    page.frame_locator(".row.artifact iframe").locator(
+        "html[data-status=submitted]"
+    ).wait_for()
+
+    page.reload()
+    page.wait_for_selector(
+        ".row.artifact .acard[data-status=submitted] .done >> text=Picked B"
+    )
+    assert page.errors == []
+
+
+def test_a_page_that_throws_fails_the_send_and_shows_no_card(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    # An inline script's error, raised before the handshake.
+    _, said = _artifact(
+        page, server, ("<script>nope();</script>", "aegis.state({});"), 0
+    )
+    assert said.startswith("mcp error: page_error") and "nope is not defined" in said
+    assert page.locator(".row.artifact").count() == 0
+    page.locator("#probes iframe").wait_for(state="detached")
+    # An error inside ready(), after the handshake, is caught by the grace window.
+    _, said = _artifact(page, server, ("", "aegis.state({}); later();"), 2)
+    assert said.startswith("mcp error: page_error") and "later is not defined" in said
+    assert page.locator(".row.artifact").count() == 0
+    assert [
+        e for e in page.errors if "nope" not in str(e) and "later" not in str(e)
+    ] == []
+
+
+def test_agent_state_is_pushed_without_reloading_the_frame_and_the_theme_follows(
+    server, page
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    inner = page.frame_locator(f"iframe[data-artifact={aid}]")
+    inner.locator("#st").filter(has_text="{}").wait_for()
+    page.evaluate(
+        f"document.querySelector('iframe[data-artifact={aid}]').dataset.mark = 'same'"
+    )
+    page.fill(
+        "#input", f"/mcp artifact_update {json.dumps({'id': aid, 'state': {'n': 7}})}"
+    )
+    page.press("#input", "Enter")
+    inner.locator("#st").filter(has_text='{"n":7}').wait_for()
+    assert (
+        page.get_attribute(f"iframe[data-artifact={aid}]", "data-mark") == "same"
+    )  # not remounted
+    before = inner.locator("#ac").inner_text()
+    pick(page, "#theme", "logbook")
+    inner.locator("#ac").filter(has_not_text=before).wait_for()
+    assert page.errors == []
+
+
+def test_a_resend_swaps_the_frame_in_place(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    frame = f"iframe[data-artifact={aid}]"
+    page.frame_locator(frame).locator("#st").filter(has_text="{}").wait_for()
+    before = page.get_attribute(frame, "src")
+    made = page.locator(".row.prose .md", has_text='"path"').last.inner_text()
+    path = re.search(r'"path": "([^"]+)"', made).group(1)
+    Path(path).write_text(Path(path).read_text().replace("B</button>", "C</button>"))
+    page.fill(
+        "#input", f"/mcp artifact_update {json.dumps({'id': aid, 'resend': True})}"
+    )
+    page.press("#input", "Enter")
+    turns_done(page, 3)
+    page.wait_for_function(
+        "([sel, old]) => { const f = document.querySelector(sel); return f && f.getAttribute('src') !== old; }",
+        arg=[frame, before],
+    )
+    assert page.frame_locator(frame).locator("#b").inner_text() == "C"
+    assert page.errors == []
+
+
+def test_a_page_that_names_another_artifact_acts_on_its_own(server, page):
+    # The bridge sets the frame's id after the page's params, so a forged
+    # artifact_id in a submit never reaches another card.
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    forging = (
+        '<button id="b">B</button>',
+        "aegis.state({});"
+        '  b.onclick = () => parent.postMessage({jsonrpc: "2.0", id: 99, method: "aegis/submit",'
+        '    params: {artifact_id: "art-00000000", data: {p: 1}, label: "Forged"}}, "*");',
+    )
+    aid, said = _artifact(page, server, forging, 0)
+    assert '"started": true' in said
+    page.frame_locator(f"iframe[data-artifact={aid}]").locator("#b").click()
+    page.wait_for_selector(
+        f".row.inbox .from >> text=artifact:{aid} · submit", timeout=10000
+    )
+    page.wait_for_selector(
+        ".row.artifact .acard[data-status=submitted] .done >> text=Forged"
+    )
+    assert page.errors == []
+
+
+def test_an_emit_never_echoes_the_agents_state(server, page):
+    # Every page record patches the card; only a state the agent set anew is
+    # pushed into the frame, so a page's own emit does not hand it back.
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    counting = (
+        '<button id="e">E</button><span id="n">0</span>',
+        "let k = 0;"
+        "  aegis.onState(() => (n.textContent = String(++k)));"
+        '  e.onclick = () => aegis.emit("poke", {});',
+    )
+    aid, said = _artifact(page, server, counting, 0)
+    assert '"started": true' in said
+    inner = page.frame_locator(f"iframe[data-artifact={aid}]")
+    inner.locator("#e").click()
+    inner.locator("#e").click()
+    page.locator(f".row.inbox .from >> text=artifact:{aid} · poke").nth(1).wait_for(
+        timeout=10000
+    )
+    page.wait_for_timeout(300)  # a push the second patch caused has had time to land
+    assert inner.locator("#n").inner_text() == "0"
+    page.fill(
+        "#input", f"/mcp artifact_update {json.dumps({'id': aid, 'state': {'k': 1}})}"
+    )
+    page.press("#input", "Enter")
+    inner.locator("#n").filter(has_text="1").wait_for()
+    assert page.errors == []
+
+
 VERDICT_BOX = """sel => {
   const r = [...document.querySelectorAll('.row.tool')].pop();
   const box = q => r.querySelector(q).getBoundingClientRect().width;

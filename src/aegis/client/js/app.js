@@ -8,7 +8,8 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { setFileBase } from "./entries.js";
+import { artifactStage, fileUrl, setFileBase } from "./entries.js";
+import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
@@ -46,6 +47,7 @@ themePick.addEventListener("change", () => {
   document.documentElement.dataset.theme = themePick.value;
   localStorage.setItem("aegis.theme", themePick.value);
   redrawFavicon();
+  artifacts.theme();
 });
 
 // -- state ----------------------------------------------------------------
@@ -92,6 +94,7 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
     return callFor(id, "transcript.detail", { ids }).then((got) => (shown === id ? got : []));
   },
 });
+artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
 installGlyphs();
 // The navigator: previous / next agent message, the position, and the latest.
 $("nav-recap").append(icon("sparkle"));
@@ -635,7 +638,10 @@ function follow(id) {
       const mark = (window.__a2snapshot = { at: performance.now(), count: transcript.entries.size });
       requestAnimationFrame(() => (mark.painted = performance.now()));
     },
-    (ops) => transcript.apply(ops),
+    (ops) => {
+      for (const op of ops) if (op.probe) artifacts.probe(op.probe, id, fileUrl(op.probe.url));
+      transcript.apply(ops);
+    },
     undefined,
     // Holding nothing, a full snapshot mounts only the last rows; a delta
     // from -1 would mount every row through apply().
@@ -820,6 +826,18 @@ $("entries").addEventListener("click", async (ev) => {
   } finally {
     setTimeout(() => (b.disabled = false), 800);
   }
+});
+
+// Show on a finished artifact's card: the frame again, read-only.
+$("entries").addEventListener("click", (ev) => {
+  const b = ev.target.closest(".acard .show");
+  if (!b) return;
+  const rowEl = b.closest(".row");
+  const e = transcript.entries.get(rowEl.dataset.id);
+  const card = rowEl.querySelector(".acard");
+  const old = card.querySelector(".stage");
+  if (old) old.remove();
+  else card.append(artifactStage(e));
 });
 
 // -- Show the file a Read, Write or Edit row used -------------------------------

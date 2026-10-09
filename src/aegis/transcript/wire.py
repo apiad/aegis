@@ -19,6 +19,7 @@ LAZY: dict[str, tuple[str, ...]] = {
     "tool": ("args", "tail", "diff", "peek"),
     "system": ("tail",),
     "user": ("tail",),
+    "artifact": ("events",),
 }
 
 

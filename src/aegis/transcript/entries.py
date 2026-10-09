@@ -41,6 +41,7 @@ from ..claude.stream import (
     parse,
 )
 from .. import files
+from ..artifacts import EVENTS_KEPT
 from ..opencode.stream import Parser as OpenCodeParser
 from . import describe as d
 from .wire import wire
@@ -323,6 +324,8 @@ class Fold:
                 continue
             if e["kind"] == "file":
                 return _cut(f"sent {e['title']}")
+            if e["kind"] == "artifact":
+                return _cut(f"showed {e['title']}")
             if e["kind"] == "user" and self._turn_open:
                 return "waiting for the model"
             if e["kind"] in ("prose", "user") and e.get("md"):
@@ -488,6 +491,78 @@ class Fold:
                     md=rec.get("caption"),
                     detail={"files": sent},
                 )
+            )
+        if kind == "artifact":
+            aid = str(rec.get("artifact_id"))
+            old = self._entries.get(aid)
+            det = (
+                dict(old["detail"])
+                if old
+                else {
+                    "state": rec.get("state"),
+                    "state_by": "agent",
+                    # The record that last set the state: a browser pushes the
+                    # agent's state into a live frame only when this moved, so
+                    # a page's own emit never echoes the state back to it.
+                    "state_rev": i,
+                    "events": [],
+                    "submitted": None,
+                    "label": None,
+                    "ended_ts": None,
+                }
+            )
+            det.update(
+                artifact_id=aid,
+                file_id=rec.get("file_id"),
+                url=files.url(str(rec.get("file_id")), str(rec.get("name"))),
+                started=rec.get("started"),
+            )
+            status = old["status"] if old else "live"
+            return self._upsert(
+                _entry(
+                    aid,
+                    "artifact",
+                    status,
+                    old["ts"] if old else ts,
+                    d.ARTIFACT_GLYPH,
+                    title=str(rec.get("title") or ""),
+                    summary=status,
+                    md=rec.get("caption"),
+                    detail=det,
+                )
+            )
+        if kind in (
+            "artifact_state",
+            "artifact_event",
+            "artifact_submit",
+            "artifact_close",
+        ):
+            e = self._entries.get(str(rec.get("artifact_id")))
+            if e is None:
+                return []  # a record for a page that never landed here
+            det = dict(e["detail"])
+            status = e["status"]
+            if kind == "artifact_state":
+                det["state"], det["state_by"], det["state_rev"] = (
+                    rec.get("state"),
+                    rec.get("by") or "page",
+                    i,
+                )
+            elif kind == "artifact_event":
+                det["events"] = (
+                    det["events"]
+                    + [{"name": rec.get("name"), "data": rec.get("data"), "ts": ts}]
+                )[-EVENTS_KEPT:]
+            elif kind == "artifact_submit":
+                status = "submitted"
+                det.update(
+                    submitted=rec.get("data"), label=rec.get("label"), ended_ts=ts
+                )
+            else:
+                status = "closed"
+                det.update(label=rec.get("label"), ended_ts=ts)
+            return self._upsert(
+                {**e, "status": status, "summary": status, "detail": det}
             )
         if kind == "peek":
             # A file tool's file, copied because the person asked to see it:
