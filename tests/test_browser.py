@@ -2693,13 +2693,14 @@ def run_dictation(pg, body: str):
             const gap = (s) => new Float32Array(Math.round(s * 16000));
             const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
             const until = async (f, ms = 15000) => { const t = Date.now(); while (!f()) { if (Date.now() - t > ms) throw new Error('timed out waiting for ' + f); await sleep(20); } };
-            let push = null;
-            const source = async (on) => { push = on; return async () => {}; };
+            let push = null, ended = null;
+            const source = async (on, end) => { push = on; ended = end; return async () => {}; };
+            const endCapture = (why) => ended(why);
             const feed = (...parts) => { for (const p of parts) for (let i = 0; i < p.length; i += 1600) push(p.subarray(i, i + 1600)); };
             const prepare = async () => ({ base, keywords: ['aegis', 'pull request'] });
             return await new (Object.getPrototypeOf(async function () {}).constructor)(
-                'm', 'tone', 'gap', 'sleep', 'until', 'source', 'feed', 'prepare', body,
-            )(m, tone, gap, sleep, until, source, feed, prepare);
+                'm', 'tone', 'gap', 'sleep', 'until', 'source', 'feed', 'prepare', 'endCapture', body,
+            )(m, tone, gap, sleep, until, source, feed, prepare, endCapture);
         }""",
         [f"/dictation/{pin_id()}/", body],
     )
@@ -2873,6 +2874,30 @@ def test_dictation_puts_late_text_in_the_draft_the_textarea_no_longer_shows(
     )
     assert got[0] == "b is shown"
     assert got[1].startswith("draft of a [3.0s kw=2]")
+
+
+def test_dictation_says_why_when_the_browser_ends_the_capture(dict_server, page):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        const errors = [], states = [];
+        const d = new m.Dictation({ prepare, onError: (e) => errors.push(e), onState: (s) => states.push(s) });
+        await d.start({ el, key: null, current: () => null }, source);
+        feed(tone(3));
+        endCapture('track');
+        await until(() => d.state === 'idle');
+        const first = { errors: [...errors], text: el.value };
+        await d.start({ el, key: null, current: () => null }, source);
+        feed(tone(2));
+        await d.stop('button');
+        await until(() => d.state === 'idle');
+        return { first, errors, states };""",
+    )
+    assert got["first"]["errors"] == ["Microphone stopped: the browser ended the microphone"]
+    assert "[3.0s" in got["first"]["text"], "what was said before the track ended still lands"
+    assert len(got["errors"]) == 1, "a stop the person asked for says nothing"
+    assert got["states"][-1] == "idle"
 
 
 @pytest.fixture
