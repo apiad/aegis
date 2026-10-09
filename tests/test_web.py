@@ -885,3 +885,13 @@ def test_the_manifest_names_the_server_and_its_icons_load(project, fake_claude):
         }
         page = c.get("/").text
         assert '<link rel="manifest" href="/manifest.webmanifest">' in page
+
+
+def test_the_artifact_script_and_stylesheet_are_served(project, fake_claude):
+    c = client_for(project, fake_claude)
+    js = c.get("/static/js/artifact.js")
+    assert js.status_code == 200 and "javascript" in js.headers["content-type"]
+    assert "ui/initialize" in js.text and "aegis/submit" in js.text
+    css = c.get("/static/css/artifact.css")
+    assert css.status_code == 200 and "text/css" in css.headers["content-type"]
+    assert "var(--accent)" in css.text
