@@ -1014,6 +1014,104 @@ def test_open_natively_shows_only_on_the_servers_desktop_and_opens_the_copy(
     assert page.errors == []
 
 
+SKELETON_WITH = (
+    '<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/static/css/artifact.css">'
+    '<script src="/static/js/artifact.js"></script><body><h2>Pick</h2>{body}</body>'
+)
+
+
+def _artifact(page, server, body, n, title="Pick", caption=None):
+    """Create a draft through the fake claude, write ``body`` into it, send it.
+    ``n`` is how many turns the page has seen done; two more happen here.
+    Returns the artifact id and the send's last prose line."""
+    args = {"title": title} | ({"caption": caption} if caption else {})
+    page.fill("#input", f"/mcp artifact_create {json.dumps(args)}")
+    page.press("#input", "Enter")
+    turns_done(page, n + 1)
+    # Markdown eats the backslash of the skeleton's \" so the prose is no longer JSON.
+    said = page.locator(".row.prose .md").last.inner_text()
+    made = dict(zip(("id", "path"), re.search(r'"id": "(art-[^"]+)", "path": "([^"]+)"', said).groups()))
+    Path(made["path"]).write_text(SKELETON_WITH.format(body=body))
+    page.fill("#input", f"/mcp artifact_send {json.dumps({'id': made['id']})}")
+    page.press("#input", "Enter")
+    turns_done(page, n + 2)
+    return made["id"], page.locator(".row.prose .md").last.inner_text()
+
+
+PICK = (
+    '<button id="b">B</button><span id="st"></span><span id="ac"></span>'
+    "<script>aegis.ready((state) => {"
+    "  st.textContent = JSON.stringify(state);"
+    "  const accent = () => (ac.textContent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());"
+    "  accent(); setInterval(accent, 100);"
+    '  b.onclick = () => aegis.submit({pick: "b"}, "Picked B");'
+    "});"
+    "aegis.onState((s) => (st.textContent = JSON.stringify(s)));"
+    "</script>"
+)
+
+
+def test_an_artifact_lands_when_its_page_starts_and_a_click_reaches_the_agent(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    aid, said = _artifact(page, server, PICK, 0, caption="Pick **one**")
+    assert '"started": true' in said
+    card = page.locator(".row.artifact .acard")
+    assert card.get_attribute("data-status") == "live"
+    assert "one" in page.locator(".row.artifact .cap strong").inner_text()
+    frame = page.locator(f".row.artifact iframe[data-artifact={aid}]")
+    assert frame.get_attribute("sandbox") == "allow-scripts"
+    inner = page.frame_locator(f"iframe[data-artifact={aid}]")
+    inner.locator("#st").filter(has_text="{}").wait_for()  # ready fired with the empty state
+    assert inner.locator("#ac").inner_text().startswith("#")  # the theme reached the frame
+    page.locator("#probes iframe").wait_for(state="detached")  # the probe frame is gone
+
+    inner.locator("#b").click()
+    page.wait_for_selector(f".row.inbox .from >> text=artifact:{aid} · submit", timeout=10000)
+    page.wait_for_selector(".row.artifact .acard[data-status=submitted] .done >> text=Picked B")
+    assert page.locator(".row.artifact iframe").count() == 0
+    page.locator(".row.artifact button.show").click()
+    page.frame_locator(".row.artifact iframe").locator("html[data-status=submitted]").wait_for()
+
+    page.reload()
+    page.wait_for_selector(".row.artifact .acard[data-status=submitted] .done >> text=Picked B")
+    assert page.errors == []
+
+
+def test_a_page_that_throws_fails_the_send_and_shows_no_card(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    _, said = _artifact(page, server, "<script>aegis.state({}); nope();</script>", 0)
+    assert said.startswith("mcp error: page_error") and "nope is not defined" in said
+    assert page.locator(".row.artifact").count() == 0
+    page.locator("#probes iframe").wait_for(state="detached")
+    # An error inside ready(), after the handshake, is caught by the grace window.
+    _, said = _artifact(page, server, "<script>aegis.ready(() => { aegis.state({}); later(); });</script>", 2)
+    assert said.startswith("mcp error: page_error") and "later is not defined" in said
+    assert page.locator(".row.artifact").count() == 0
+    assert page.errors == []
+
+
+def test_agent_state_is_pushed_without_reloading_the_frame_and_the_theme_follows(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    inner = page.frame_locator(f"iframe[data-artifact={aid}]")
+    inner.locator("#st").filter(has_text="{}").wait_for()
+    page.evaluate(f"document.querySelector('iframe[data-artifact={aid}]').dataset.mark = 'same'")
+    page.fill("#input", f"/mcp artifact_update {json.dumps({'id': aid, 'state': {'n': 7}})}")
+    page.press("#input", "Enter")
+    inner.locator("#st").filter(has_text='{"n":7}').wait_for()
+    assert page.get_attribute(f"iframe[data-artifact={aid}]", "data-mark") == "same"  # not remounted
+    before = inner.locator("#ac").inner_text()
+    pick(page, "#theme", "logbook")
+    inner.locator("#ac").filter(has_not_text=before).wait_for()
+    assert page.errors == []
+
+
 VERDICT_BOX = """sel => {
   const r = [...document.querySelectorAll('.row.tool')].pop();
   const box = q => r.querySelector(q).getBoundingClientRect().width;
