@@ -183,3 +183,17 @@ def test_a_fetch_stamps_its_reading_on_the_clock_that_counts_sleep(monkeypatch):
         "tok", opener=lambda req, timeout=None: _Resp(json.dumps(LIVE).encode())
     )
     assert snap.fetched_at == 42.0
+
+
+def test_a_reading_names_its_account_by_hash_only(tmp_path, monkeypatch):
+    from aegis.quota import account_hash
+    from aegis.quota.claude import PROVIDER, account_id
+
+    cfg = tmp_path / "claude.json"
+    monkeypatch.setenv("CLAUDE_CONFIG", str(cfg))
+    assert PROVIDER.account() is None
+    cfg.write_text(json.dumps({"oauthAccount": {"accountUuid": "uuid-1"}}))
+    assert account_id() == "uuid-1"
+    h = account_hash(PROVIDER.account())
+    assert h is not None and len(h) == 12 and "uuid" not in h
+    assert account_hash("uuid-2") != h and account_hash(None) is None
