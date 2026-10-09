@@ -100,7 +100,7 @@ export function quotaSideRow(p, w, now) {
   const kv = el("div", "kv");
   const proj = projection(w);
   kv.append(
-    el("span", null, `${p.label} ${w.label}`),
+    el("span", null, w.label),
     el("span", `sv ${stale ? "" : w.severity}`, `${Math.round(w.percent)}%${proj ? ` ${proj}` : ""}`),
   );
   const dim = el("div", "kv dim");
@@ -118,6 +118,44 @@ export function hostRow(label, pct, tail) {
   if (tail) val.append(el("span", "rst", tail));
   g.append(el("span", null, label), bar("h", pct, sev, null), val);
   return g;
+}
+
+// One number of the sidebar's at-a-glance rows: a label, the value, and a thin
+// bar when the value is a share. `small` follows the value, as a projection.
+export function tile(label, value, { pct = null, kind = "", severity = "normal", tick = null, small = "", title = "" } = {}) {
+  const t = el("div", `tile ${severity}`);
+  if (title) t.title = title;
+  const v = el("div", "v", value);
+  if (small) v.append(el("small", null, small));
+  t.append(el("div", "k", label), v);
+  if (pct != null) t.append(bar(kind, pct, severity, tick));
+  return t;
+}
+
+export function quotaTile(p, w, now) {
+  const stale = p.state === "stale";
+  const t = tile(w.label, `${Math.round(w.percent)}%`, {
+    pct: w.percent,
+    kind: "q",
+    severity: stale ? "stale" : w.severity,
+    tick: stale ? null : elapsed(w, now),
+    small: !stale && w.projected != null && w.projected >= PROJECT_FROM ? `→${w.projected}` : "",
+  });
+  t.dataset.kind = w.kind;
+  return t;
+}
+
+// The quota a session spends: the provider of its harness, and for OpenCode
+// the one its model names (`opencode-go/deepseek-v4-pro` spends OpenCode Go;
+// `openrouter/...` spends nothing aegis reads). None when aegis reads no quota
+// for it.
+export function providerFor(s, providers) {
+  if (!s) return null;
+  return (
+    providers.find(
+      (p) => p.harness === s.harness && (s.harness !== "opencode" || (s.model || "").startsWith(`${p.name}/`)),
+    ) || null
+  );
 }
 
 export function noteRow(note) {
