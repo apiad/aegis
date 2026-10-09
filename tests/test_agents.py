@@ -127,6 +127,7 @@ async def test_the_tools_are_named_after_their_operations_and_take_no_handle(wor
         "monitor_start",
         "monitor_cancel",
         "monitor_list",
+        "monitor_sessions",
         "queue_enqueue",
         "task_status",
         "task_cancel",
@@ -395,6 +396,135 @@ async def test_a_monitor_survives_a_restart_and_resumes_a_stopped_owner(
     flag.touch()
     await until(lambda: inbox(a2), timeout=12, what="the wake after the restart")
     await until(lambda: a2.status == "idle", what="the resumed turn")
+
+
+# -- waiting on sessions ------------------------------------------------------------
+def wait_on(*handles: str, **kw) -> str:
+    return mcp(
+        "monitor_sessions",
+        description="the others",
+        sessions=list(handles),
+        interval_s=1,
+        **kw,
+    )
+
+
+async def hold(s) -> str:
+    """Keep ``s`` running: a live monitor of its own makes it ``waiting``."""
+    said = await turn(
+        s,
+        mcp(
+            "monitor_start",
+            description="hold",
+            done="false",
+            progress=None,
+            interval_s=60,
+        ),
+    )
+    return json.loads(said.removeprefix("mcp ok: "))["monitor_id"]
+
+
+async def test_waiting_on_sessions_wakes_ok_once_every_one_finished(world):
+    a, b, c = await world.spawn(), await world.spawn(), await world.spawn()
+    held = await hold(b)
+    assert b.wire()["attention"] == "waiting"
+    said = await turn(a, wait_on(b.handle, c.handle))
+    assert said.startswith("mcp ok: ")
+    await until(
+        lambda: a.wire()["monitors"] and a.wire()["monitors"][0]["progress"] == 50,
+        what="1 of 2 finished",
+    )
+    (m,) = a.wire()["monitors"]
+    assert [(r["handle"], r["state"]) for r in m["sessions"]] == [
+        (b.handle, "running"),
+        (c.handle, "finished"),
+    ]
+    assert m["checks"] == []
+    assert inbox(a) == []
+    await turn(b, mcp("monitor_cancel", monitor_id=held))
+    await until(lambda: inbox(a), timeout=5, what="the wake")
+    (wake,) = inbox(a)
+    assert " · ok · " in wake["title"]
+    assert f"{b.handle} done" in wake["md"] and f"{c.handle} done" in wake["md"]
+    assert a.wire()["monitors"] == []
+
+
+async def test_a_session_that_needs_the_person_ends_the_wait_blocked(world):
+    a, b = await world.spawn(), await world.spawn()
+    await hold(b)
+    await turn(a, wait_on(b.handle))
+    await until(
+        lambda: (
+            a.wire()["monitors"]
+            and a.wire()["monitors"][0]["sessions"][0]["state"] == "running"
+        ),
+        what="b running",
+    )
+    await turn(b, mcp("turn_end", attention="needs_you", line="Rebase or merge?"))
+    await until(lambda: inbox(a), timeout=5, what="the blocked wake")
+    (wake,) = inbox(a)
+    assert " · blocked · " in wake["title"]
+    assert f"{b.handle} needs you: Rebase or merge?" in wake["md"]
+
+
+async def test_sessions_already_finished_wake_the_waiter_after_its_turn(world):
+    """Review focus 3: nothing to wait for still answers, once the turn ends."""
+    a, b = await world.spawn(), await world.spawn()
+    await turn(a, wait_on(b.handle))
+    await until(lambda: inbox(a), timeout=5, what="the wake")
+    # The wake can land as soon as the arming turn ends, so the last prose may
+    # already be the answer to it; the tool's reply is the one before.
+    prose = [e["md"] for e in a.entries() if e["kind"] == "prose"]
+    assert any(x.startswith("mcp ok: ") for x in prose)
+    assert " · ok · " in inbox(a)[0]["title"]
+
+
+async def test_a_watched_session_is_followed_through_a_rename_and_a_close(world):
+    """Review focus 1, 2 and 4: kept by log id, listed once, closed is finished."""
+    a, b = await world.spawn(), await world.spawn()
+    await hold(b)
+    await turn(a, wait_on(b.handle, b.handle))
+    (m,) = a.wire()["monitors"]
+    assert len(m["sessions"]) == 1
+    await turn(b, mcp("session_rename", handle="renamed-peer"))
+    await until(
+        lambda: a.wire()["monitors"][0]["sessions"][0]["handle"] == "renamed-peer",
+        timeout=3,
+        what="the new handle on the card",
+    )
+    await world.app.registry.call("session.close", {"log_id": b.log_id})
+    await until(lambda: inbox(a), timeout=5, what="the wake")
+    (wake,) = inbox(a)
+    assert " · ok · " in wake["title"] and "renamed-peer closed" in wake["md"]
+
+
+async def test_waiting_on_sessions_refuses_itself_unknown_far_and_archived(world):
+    """Review focus 5, and the addresses target() already refuses."""
+    a, b = await world.spawn(), await world.spawn()
+    cases = (
+        ([a.handle], "not_yourself"),
+        (["no-such-one"], "no_session"),
+        ([f"{b.handle}@far"], "not_across_links"),
+    )
+    for handles, code in cases:
+        said = await turn(a, wait_on(*handles))
+        assert said.startswith(f"mcp error: {code}"), said
+    await world.app.registry.call("session.close", {"log_id": b.log_id})
+    said = await turn(a, wait_on(b.handle))
+    assert said.startswith("mcp error: archived"), said
+    said = await turn(a, mcp("monitor_sessions", description="x", sessions=[]))
+    assert said.startswith("mcp error"), said
+    assert a.wire()["monitors"] == []
+
+
+@pytest.mark.slow  # a restart
+async def test_a_session_monitor_survives_a_restart(world):
+    a, b = await world.spawn(), await world.spawn()
+    await hold(b)
+    await turn(a, wait_on(b.handle))
+    await world.restart()
+    (m,) = world.session(a.log_id).wire()["monitors"]
+    assert m["sessions"][0]["handle"] == b.handle
 
 
 # -- queues ------------------------------------------------------------------------

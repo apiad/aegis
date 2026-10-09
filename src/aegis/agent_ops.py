@@ -52,6 +52,21 @@ class MonitorStart(_Strict):
     )
 
 
+class MonitorSessions(_Strict):
+    description: str = Field(
+        min_length=1,
+        description="What is being waited on, shown on the card and in the wake.",
+    )
+    sessions: list[str] = Field(
+        min_length=1,
+        max_length=20,
+        description="Handles of open sessions on this server, from session_list.",
+    )
+    interval_s: float = Field(10, ge=1, le=3600)
+    # Other sessions' work runs longer than a build.
+    timeout_s: float = Field(4 * 3600, gt=0, le=7 * 86400)
+
+
 class MonitorId(_Strict):
     monitor_id: str
 
@@ -353,6 +368,35 @@ def register_agent_ops(app: App) -> None:
             done=p.done,
             fail=p.fail,
             progress=p.progress,
+            interval_s=p.interval_s,
+            timeout_s=p.timeout_s,
+        )
+        return {"monitor_id": m.id, "other_live_monitors": roster(s.log_id, m.id)}
+
+    @r.op("monitor.sessions", MonitorSessions, agent=True)
+    async def monitor_sessions(p: MonitorSessions, caller):
+        """Wait for other sessions on this server to finish, without polling.
+        You are woken `ok` when every one has finished (its last turn ended done
+        or for review, or it was closed), `blocked` as soon as one needs the
+        person or hit an error, naming it, and `timeout` otherwise. Pick the
+        handles from session_list. Returns at once; end your turn after calling
+        it. monitor_cancel stops it."""
+        s = own(caller)
+        picked: dict[str, dict] = {}
+        for handle in p.sessions:
+            t = target(handle)
+            if t.log_id == s.log_id:
+                raise OpError(
+                    "not_yourself",
+                    "a session cannot wait for itself: its own wait keeps it waiting",
+                )
+            picked.setdefault(t.log_id, {"log_id": t.log_id, "handle": t.handle})
+        m = app.monitors.start(
+            s.log_id,
+            str(s.spec.cwd),
+            description=p.description,
+            done="",
+            sessions=list(picked.values()),
             interval_s=p.interval_s,
             timeout_s=p.timeout_s,
         )
