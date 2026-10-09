@@ -662,6 +662,20 @@ def test_close_in_one_browser_removes_the_tab_in_another(server, browser, page):
     assert errors == [] and page.errors == []
 
 
+def test_a_closed_session_is_in_the_archive_without_a_reload(server, page):
+    """#160: the Fleet's archive was read before the Close and nothing read it
+    again, so the closed session appeared only after a reload."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.wait_for_selector("#arch-list .empty")  # the archive is loaded, empty
+    spawn(page, "stays")
+    b = spawn(page, "goes")
+    close_session(page)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.wait_for_selector(f"#arch-list tr[data-id='{b}']", timeout=5000)
+    assert page.errors == []
+
+
 # A slow runner paints late: a frame 300 ms out makes any redraw left to the
 # next frame visible to the test (#161's CI failure).
 SLOW_FRAMES = "const raf = window.requestAnimationFrame; window.requestAnimationFrame = (f) => setTimeout(() => raf(f), 300);"
@@ -1892,7 +1906,6 @@ def test_fleet_cards_and_archive_rows_walk_with_j_and_open_with_enter(server, pa
     a, b = spawn(page, "alpha"), spawn(page, "beta")
     close_session(page)  # b goes to the archive
     page.wait_for_selector("#a2[data-view=fleet]")
-    page.reload()  # the archive misses a Close until a reload (#160)
     page.wait_for_selector(f"#arch-list tr[data-id='{b}']")
     sel = "document.querySelector('#cards .sel, #arch-list .sel')?.dataset.id ?? null"
     page.keyboard.press("Alt+,")
