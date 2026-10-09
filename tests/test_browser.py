@@ -1886,6 +1886,22 @@ def test_a_selected_row_keeps_its_selection_when_it_updates_and_enter_opens_it(
     assert page.errors == []
 
 
+def test_a_row_redrawn_under_the_keyboard_keeps_its_focus(server, page):
+    """A running tool row with focus on its summary is redrawn when the tool
+    ends; the focus moves to the summary of the new node, not to the page."""
+    page.goto(server.url)
+    spawn(page)
+    page.fill("#input", "/sleep 1")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    page.focus(".row.tool.running summary")
+    old = page.evaluate_handle("document.activeElement")
+    turns_done(page, 1)
+    assert page.evaluate("o => !o.isConnected", old), "the row was redrawn"
+    assert page.evaluate("document.activeElement.matches('.row.tool.ok summary')")
+    assert page.errors == []
+
+
 def test_fleet_cards_and_archive_rows_walk_with_j_and_open_with_enter(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")

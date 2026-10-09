@@ -113,7 +113,9 @@ def test_the_c_key_copies_the_selected_row(server, page):  # noqa: F811
         "document.querySelector('.row.sel > .body > .copy').dataset.state === 'done'"
     )
     assert page.evaluate("navigator.clipboard.readText()") == REPLY
-    # Tab reaches a copy button like any other button.
-    page.locator(".row.prose").last.locator(":scope > .body > .copy").focus()
-    page.wait_for_function("getComputedStyle(document.activeElement).opacity === '1'")
+    # No copy button is a Tab stop: Tab walks the summaries; `c` is the key.
+    stops = page.evaluate(
+        "[...document.querySelectorAll('button.copy')].map(b => b.tabIndex)"
+    )
+    assert stops and set(stops) == {-1}
     assert page.errors == []
