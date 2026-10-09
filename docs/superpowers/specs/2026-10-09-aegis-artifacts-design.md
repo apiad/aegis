@@ -218,9 +218,9 @@ Messages, JSON-RPC 2.0:
 | From | Method | Params | Answer |
 |---|---|---|---|
 | page | `ui/initialize` | `{}` | `{artifact, state, theme, status}` |
-| page | `aegis/state` (notification) | `{state}` | |
-| page | `aegis/emit` (notification) | `{name, data}` | |
-| page | `aegis/submit` (notification) | `{data, label}` | |
+| page | `aegis/state` (request) | `{state}` | `"ok"`, or the refusal as the error |
+| page | `aegis/emit` (request) | `{name, data}` | `"ok"`, or the refusal as the error |
+| page | `aegis/submit` (request) | `{data, label}` | `"ok"`, or the refusal as the error |
 | page | `aegis/size` (notification) | `{height}` | |
 | page | `aegis/error` (notification) | `{message, stack}` | |
 | host | `aegis/state` (notification) | `{state}` | |
