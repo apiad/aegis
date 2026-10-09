@@ -1723,7 +1723,8 @@ def test_a_page_that_throws_fails_the_send_and_shows_no_card(server, page):
     _, said = _artifact(page, server, "<script>aegis.ready(() => { aegis.state({}); later(); });</script>", 2)
     assert said.startswith("mcp error: page_error") and "later is not defined" in said
     assert page.locator(".row.artifact").count() == 0
-    assert page.errors == []
+    # The pages threw on purpose; the browser reports those from the frame.
+    assert [e for e in page.errors if "nope" not in str(e) and "later" not in str(e)] == []
 
 
 def test_agent_state_is_pushed_without_reloading_the_frame_and_the_theme_follows(server, page):
@@ -1784,7 +1785,7 @@ function inOrder(id, fn) {
 }
 
 export function setup(opts) {
-  call = opts.call;
+  call = opts.call; // (op, params, key?) -> Promise; key names the session, else the one shown
   entryOf = opts.entry;
 }
 
@@ -1801,12 +1802,14 @@ export function theme() {
   for (const f of document.querySelectorAll("iframe[data-artifact]")) notify(f, "aegis/theme", { theme: vars });
 }
 
-// A probe request from the transcript channel: run the page hidden, report once.
-export function probe(req, logId) {
+// A probe request from the transcript channel: run the page hidden, report
+// once, to the session the request came from (the person may switch tabs
+// while the probe runs, so the answer never goes to "the session shown").
+export function probe(req, key) {
   const f = document.createElement("iframe");
   f.setAttribute("sandbox", "allow-scripts");
   f.src = req.url;
-  const p = { id: req.id, log_id: logId, done: false, grace: 0, timer: 0 };
+  const p = { id: req.id, key, done: false, grace: 0, timer: 0 };
   p.timer = setTimeout(() => finish(f, null), PROBE_TIMEOUT_MS); // the server has given up too
   probes.set(f, p);
   document.getElementById("probes").append(f);
@@ -1820,7 +1823,7 @@ function finish(frame, outcome) {
   clearTimeout(p.grace);
   probes.delete(frame);
   frame.remove();
-  if (outcome) call("artifact.probed", { log_id: p.log_id, probe_id: p.id, ...outcome });
+  if (outcome) call("artifact.probed", { probe_id: p.id, ...outcome }, p.key);
 }
 
 function frameOf(source) {
@@ -1957,9 +1960,9 @@ with `import { render, update } from "./entries.js";`.
 
 `app.js`:
 - `import * as artifacts from "./artifacts.js";` and `import { artifactStage } from "./entries.js";`
-- after `callFor` is defined: `artifacts.setup({ call: (op, params) => callFor(shown, op, params), entry: (id) => transcript.entries.get(id) });` (place it after `transcript` is constructed);
+- after `callFor` is defined: `artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id) });` (place it after `transcript` is constructed);
 - in the theme `change` listener: `artifacts.theme();`
-- in the transcript subscription's patch handler: `(ops) => { for (const op of ops) if (op.probe) artifacts.probe(op.probe, where.log_id); transcript.apply(ops); }`
+- in the transcript subscription's patch handler: `(ops) => { for (const op of ops) if (op.probe) artifacts.probe(op.probe, id); transcript.apply(ops); }` (`id` is the session key the subscription was opened for, so a probe answers to its own session even after a tab switch)
 - a click handler next to the Open-natively one:
 
 ```js
@@ -1980,7 +1983,7 @@ $("entries").addEventListener("click", (ev) => {
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `uv run pytest -q -m browser -k "artifact or sent_file or long_transcript"` then `uv run pytest -q tests/test_client_rules.py`
+Run: `uv run pytest -q -m browser -k "artifact or page_that_throws or agent_state_is_pushed or sent_file or long_transcript"` then `uv run pytest -q tests/test_client_rules.py`
 Expected: all pass. Then start `uv run aegis serve` in a scratch root with the fake claude, land one artifact from the composer with `/mcp artifact_create …` and look at the card in all three themes.
 
 - [ ] **Step 5: Commit**
