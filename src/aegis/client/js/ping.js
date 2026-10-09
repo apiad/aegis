@@ -3,6 +3,8 @@
 // session enters one of those states while the page is hidden. The states are
 // decided in Python; this only counts them and notices transitions.
 
+import { MARK } from "./mark.js";
+
 const URGENT = new Set(["needs_you", "error"]);
 let count = 0;
 let base = "aegis";
@@ -15,8 +17,8 @@ export function setTitle(text) {
 
 function favicon(n) {
   const accent = getComputedStyle(document.getElementById("a2")).getPropertyValue("--accent").trim();
-  const dot = n ? `<circle id="dot" cx="25" cy="7" r="6" fill="${accent}" stroke="#11100e" stroke-width="2"/>` : "";
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect x="2" y="4" width="24" height="24" rx="6" fill="#2a2721"/><text x="14" y="22" font-family="sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#f1ede2">a</text>${dot}</svg>`;
+  const dot = n ? `<circle id="dot" cx="50" cy="14" r="12" fill="${accent}" stroke="#11100e" stroke-width="4"/>` : "";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#11100e"/><g transform="translate(32 32) scale(.94) translate(-32 -32)">${MARK}</g>${dot}</svg>`;
   document.getElementById("favicon").href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
