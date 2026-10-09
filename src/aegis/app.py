@@ -31,7 +31,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from . import archive, commands, dictation, files
-from .agent_ops import register_agent_ops
+from .agent_ops import register_agent_ops, spawn_opening
 from .artifact_ops import register_artifact_ops
 from .agents import (
     EFFORTS,
@@ -400,18 +400,21 @@ class App:
             await s.stop()
             return s.wire()
         if name == "spawn":
-            return await self._spawn_line(commands.parse_spawn(arg), caller)
+            return await self._spawn_line(commands.parse_spawn(arg), caller, s)
         await reg.close(s.log_id)  # close
         return None
 
-    async def _spawn_line(self, line: commands.SpawnLine, caller: Caller) -> dict:
+    async def _spawn_line(self, line: commands.SpawnLine, caller: Caller, s) -> dict:
         """``/spawn``: a person starting a session, here or, with ``@server``, on
-        a linked server through the link. Nobody's child: no ``spawned_by``."""
+        a linked server through the link. Nobody's child: no ``spawned_by``, but
+        its prompt carries the tail of tab ``s``, where it was typed."""
+        far = None if line.server == self.server_name else line.server
+        prompt = line.prompt and spawn_opening(s, line.prompt, far and self.server_name)
         params = {
             k: v
             for k, v in (
                 ("agent", line.agent),
-                ("prompt", line.prompt),
+                ("prompt", prompt),
                 ("model", line.model),
                 ("effort", line.effort),
                 ("permission", line.permission),
@@ -419,20 +422,18 @@ class App:
             )
             if v is not None
         }
-        if line.server in (None, self.server_name):
+        if far is None:
             r = await self.registry.call("session.spawn", params, caller)
             return {**r, "server": self.server_name}
         if caller.link is not None:
             raise OpError("not_relayed", "a link is not relayed to another server")
-        link = self.links.get(line.server)
+        link = self.links.get(far)
         if link is None:
-            raise OpError(
-                "unknown_server", f"this server links no server named {line.server}"
-            )
+            raise OpError("unknown_server", f"this server links no server named {far}")
         if link.state != "linked":
             raise OpError("server_offline", f"{link.describe()}; nothing was started")
         r = await link.call("session.spawn", params)
-        return {**r, "server": line.server}
+        return {**r, "server": far}
 
     async def _archive(self, p: ArchiveParams, caller: Caller) -> dict:
         positions = archive.decode(p.cursor)
