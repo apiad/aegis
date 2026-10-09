@@ -33,7 +33,8 @@ An interrupt ``control_request`` ends a running script with an error result.
 Claude Code 2.1.283 does: an unknown model is an error, and an effort level the
 current model does not list is answered with success and not applied.
 ``FAKE_CLAUDE_NO_INIT=1`` answers ``initialize`` with an error, as a CLI that
-does not know it would; ``FAKE_CLAUDE_INIT_LOG=<file>`` gets one line per
+does not know it would; ``FAKE_CLAUDE_EXTRA_MODEL=<id>`` adds one model to
+MODELS, one no config names; ``FAKE_CLAUDE_INIT_LOG=<file>`` gets one line per
 ``initialize`` received, so a test can count probes.
 
 ``--resume <id>`` keeps that session id, as Claude does; without it the fake
@@ -150,6 +151,17 @@ MODELS = [
         "disabled": True,
     },
 ]
+if os.environ.get("FAKE_CLAUDE_EXTRA_MODEL"):
+    _extra = os.environ["FAKE_CLAUDE_EXTRA_MODEL"]
+    MODELS.append(
+        {
+            "value": _extra,
+            "resolvedModel": _extra,
+            "displayName": _extra,
+            "description": "In no config.",
+            "supportedEffortLevels": LEVELS,
+        }
+    )
 SESSION_ID = (
     sys.argv[sys.argv.index("--resume") + 1]
     if "--resume" in sys.argv

@@ -1166,6 +1166,10 @@ $("reopen").addEventListener("click", () => {
 // An agent is a preset: picking one fills the other chips, and changing a chip
 // marks the agent `name*` until reset. Enter spawns and sends in one call.
 let roster = { agents: [], harnesses: [], models: {}, default: null, cwd: "" };
+// What each harness can run, by server: the catalog `config.detect` reads from
+// the harness itself, the one the server validates a model change against. The
+// agents' own models are on offer until it answers, and after it.
+let spModels = { server: undefined, by: {} };
 // The server a new session starts on: null for this one. Its directory line
 // names it once a server is linked, since a path exists on one machine only.
 let spServer = null;
@@ -1240,14 +1244,34 @@ async function loadAgents() {
     fillModels($("sp-harness").value);
     markDiffs();
   } else if (start) pickAgent(start);
+  loadSpModels();
 }
 
 function current() {
   return roster.agents.find((a) => a.name === $("sp-agent").value);
 }
 
+async function loadSpModels() {
+  const server = spServer;
+  let found;
+  try {
+    found = await conn.call("config.detect", {}, server);
+  } catch {
+    return; // the agents' models stay on offer, and any text is still taken
+  }
+  if (server !== spServer) return;
+  spModels = { server, by: Object.fromEntries(found.map((f) => [f.harness, f.models])) };
+  fillModels($("sp-harness").value);
+}
+
 function fillModels(harness) {
-  $("sp-model").options = roster.models[harness] || [];
+  const listed = spModels.server === spServer ? spModels.by[harness] || [] : [];
+  const have = new Set(listed.map((m) => m.value));
+  const named = (roster.models[harness] || []).filter((m) => !have.has(m));
+  $("sp-model").options = [
+    ...listed.map((m) => ({ value: m.value, label: m.free ? `${m.value} (free)` : m.value })),
+    ...named,
+  ];
 }
 
 function pickAgent(name) {
