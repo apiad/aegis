@@ -1,6 +1,7 @@
 """Artifacts end to end: the fake claude calls the real tools over /mcp, and
 the person's side is called through the registry as the browser would."""
 
+import asyncio
 import json
 
 import httpx
@@ -178,6 +179,43 @@ async def landed(world, tmp_path, page=PAGE):
     return a, made["id"]
 
 
+async def test_a_submit_during_a_resend_probe_wins_and_the_new_page_is_dropped(
+    world, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(artifacts, "PROBE_TIMEOUT_S", 2.0)
+    a, aid = await landed(world, tmp_path)
+    (tmp_path / ".aegis" / "state" / "artifacts" / aid / "index.html").write_text(
+        PAGE.replace("B<", "C<")
+    )
+    world.app.channels.subscribe(
+        a.channel, lambda msg: None
+    )  # a browser, so the probe waits
+    await a.send(mcp("artifact_update", id=aid, resend=True))
+    await until(lambda: a.status == "working", what="the resend")
+    await asyncio.sleep(0.2)
+    await world.app.registry.call(
+        "artifact.submit",
+        {
+            "log_id": a.log_id,
+            "artifact_id": aid,
+            "data": {"p": "b"},
+            "label": "Picked B",
+        },
+    )
+    await until(
+        lambda: a.status == "idle" and len(inbox(a)) == 1,
+        timeout=10,
+        what="the late submit and the refused resend",
+    )
+    said = [e["md"] for e in a.entries() if e["kind"] == "prose"][-2]
+    assert said.startswith("mcp error: not_live"), said
+    (e,) = arts(a)
+    assert e["status"] == "submitted"
+    assert (
+        len([p for p in (tmp_path / ".aegis" / "state" / "files").iterdir()]) == 1
+    )  # the new snapshot is gone
+
+
 async def test_a_submit_wakes_the_agent_and_a_second_is_refused(world, tmp_path):
     a, aid = await landed(world, tmp_path)
     reg = world.app.registry
@@ -307,10 +345,19 @@ async def test_errors_wake_once_per_turn(world, tmp_path):
     )
 
 
-async def test_drafts_do_not_survive_a_restart(world, tmp_path):
-    a = await world.spawn()
-    made = ok(await turn(a, mcp("artifact_create", title="T")))
-    path = tmp_path / ".aegis" / "state" / "artifacts" / made["id"] / "index.html"
-    assert path.exists()
+async def test_a_restart_forgets_drafts_but_a_live_page_can_still_be_resent(
+    world, tmp_path
+):
+    a, aid = await landed(world, tmp_path)
+    draft = ok(await turn(a, mcp("artifact_create", title="D")))
     await world.restart()
-    assert not path.exists()
+    a = world.session(a.log_id)
+    said = await turn(a, mcp("artifact_send", id=draft["id"]))
+    assert said.startswith("mcp error: no_artifact")  # the board forgot the draft
+    (tmp_path / ".aegis" / "state" / "artifacts" / aid / "index.html").write_text(
+        PAGE.replace("B<", "Z<")
+    )
+    re = ok(
+        await turn(a, mcp("artifact_update", id=aid, resend=True))
+    )  # its working copy survived
+    assert arts(a)[0]["detail"]["url"] == re["url"]

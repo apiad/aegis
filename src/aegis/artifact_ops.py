@@ -129,16 +129,27 @@ def register_artifact_ops(app: App) -> None:
         except files.FileError as e:
             raise OpError(e.code, e.message) from e
         url = files.url(rec["file_id"], rec["name"])
+        landed = False
         try:
             started = await s.artifacts.probe(
                 a, url, app.channels.subscribers(s.channel)
             )
+            if a.status not in ("draft", "live"):
+                # The person answered the old page while the probe ran.
+                raise ArtifactError(
+                    "not_live", f"{a.id} was {a.status} while the new page was probed"
+                )
+            s.artifacts.land(a, rec["file_id"], rec["name"], caption, started)
+            landed = True
         except ArtifactError as e:
-            shutil.rmtree(
-                app.roots.state_root / "files" / rec["file_id"], ignore_errors=True
-            )
             raise _err(e) from e
-        s.artifacts.land(a, rec["file_id"], rec["name"], caption, started)
+        finally:
+            if (
+                not landed
+            ):  # a failed probe, a late submit, an interrupt: nothing is served
+                shutil.rmtree(
+                    app.roots.state_root / "files" / rec["file_id"], ignore_errors=True
+                )
         return {"id": a.id, "url": url, "started": started}
 
     # -- agents ------------------------------------------------------------------
@@ -156,8 +167,12 @@ def register_artifact_ops(app: App) -> None:
         page, the card collapsing to `label`; `aegis.onState(fn)` hears your
         artifact_update. Answers reach you as a user turn headed
         `> from artifact:<id> · submit|<event>|error · …` with the JSON in a
-        code block. Keep the skeleton's script tag and stylesheet link, or drop
-        the stylesheet for your own look."""
+        code block. Rules the checks cannot catch: an event name is one word,
+        `[a-z][a-z0-9_-]{0,31}`, never `submit`, `error` or `close`; state,
+        event data and the submit's data are at most 64 KB each; at most 20
+        emits a minute; a submit's label is one line of at most 140
+        characters. Keep the skeleton's script tag and stylesheet link, or
+        drop the stylesheet for your own look."""
         s = own(caller)
         if p.state is not None:
             _sized(p.state, "state")

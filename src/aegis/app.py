@@ -44,7 +44,6 @@ from .agents import (
 from .channels import Channels, Throttle
 from .claude.process import PERMISSION_MODE, ControlError
 from .config import Config, Snapshot
-from .artifacts import drop_all_drafts
 from .config_ops import register_config_ops
 from .host import HostSampler
 from .links import LinkError, Links, probe
@@ -235,7 +234,6 @@ class App:
 
     async def boot(self) -> None:
         self._config_task = asyncio.create_task(self.config.watch())
-        drop_all_drafts(self.roots.state_root)
         self.sessions.boot()
         self.monitors.boot()
         self.monitors.arm_all()
