@@ -3633,3 +3633,43 @@ def test_the_archive_filters_by_server_and_names_one_that_is_down(
     assert page.locator("#arch-list tr[data-id]").count() == 1
     linked.beta.stop()
     page.wait_for_selector("#arch-servers .off >> text=beta offline", timeout=20000)
+
+
+def test_plan_times_add_the_running_clock_and_extrapolate_the_pace(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    got = page.evaluate(
+        """async () => {
+          const { dur, planTimes } = await import('/static/js/plantime.js');
+          const plan = [
+            { text: "a", state: "done", work_s: 300 },
+            { text: "b", state: "doing", work_s: 60 },
+            { text: "c", state: "pending", work_s: 0 },
+          ];
+          const at = 10000;
+          const clock = (running) => ({ work_s: 400, idle_s: 50, at, running });
+          const work = planTimes({ plan, plan_clock: clock("work") }, at + 120);
+          const idle = planTimes({ plan, plan_clock: clock("idle") }, at + 120);
+          const skew = planTimes({ plan, plan_clock: clock("work") }, at - 30);
+          const none = planTimes(
+            { plan: [{ text: "a", state: "doing" }], plan_clock: { work_s: 0, idle_s: 0, at, running: "work" } },
+            at + 10,
+          );
+          return {
+            durs: [dur(0), dur(59), dur(60), dur(359), dur(3600), dur(4320)],
+            work, idle, skew, none,
+            old: planTimes({ plan }),
+          };
+        }"""
+    )
+    assert got["durs"] == ["<1m", "<1m", "1m", "5m", "1h0m", "1h12m"]
+    # Working: 120 s more on the plan and on "b". Pace 520/1 = 520 s; 2 not done;
+    # minus b's 180 s: 860 s left.
+    assert got["work"] == {"work": 520, "idle": 50, "items": [300, 180, 0], "left": 860}
+    # Idle: the work clock stands still, so the ETA does not move: 400 × 2 − 60.
+    assert got["idle"] == {"work": 400, "idle": 170, "items": [300, 60, 0], "left": 740}
+    # The browser's clock behind the server's: nothing negative.
+    assert got["skew"] == {"work": 400, "idle": 50, "items": [300, 60, 0], "left": 740}
+    assert got["none"]["left"] is None and got["none"]["items"] == [10]
+    assert got["old"] is None
+    assert page.errors == []
