@@ -265,26 +265,28 @@ def test_dictation_shows_provisional_text_and_replaces_it_with_the_final(
         el.addEventListener('input', () => seen.push(el.value));
         const d = new m.Dictation({ prepare, onError: (e) => errors.push(e) });
         await d.start({ el, key: null, current: () => null }, source);
-        feed(tone(21), gap(0.5));
-        while (!/\\[2\\d\\.\\ds/.test(el.value)) await sleep(20);
+        // Four 5 s phrases with pauses: pieces of 5.15 and 5.5 s, a final at 21.65 s.
+        for (let k = 0; k < 4; k++) feed(tone(5), gap(0.5));
+        await until(() => (/\\[2\\d\\.\\ds/.test(el.value)));
         const afterFinal = el.value;
         el.value += ' typed';
-        feed(tone(14), gap(0.3), tone(7.7));
+        // Two phrases and 3 s pending at stop: an 11 s stretch plus the 3 s tail.
+        for (let k = 0; k < 2; k++) feed(tone(5), gap(0.5));
+        feed(tone(3));
         await d.stop();
-        while (d.state !== 'idle') await sleep(20);
+        await until(() => !(d.state !== 'idle'));
         if (errors.length) throw new Error(errors.join('; '));
         return { seen, afterFinal, end: el.value };""",
     )
-    # Provisional pieces of 8, 8 and 5.x s showed first, then one final replaced them.
-    prov = [v for v in got["seen"] if re.search(r"\[[4-8]\.\ds kw=2\]", v) and not re.search(r"\[2\d\.", v)]
-    assert prov, got["seen"]
+    prov = [v for v in got["seen"] if re.search(r"\[5\.\ds kw=2\]", v) and not re.search(r"\[2\d\.", v)]
+    assert len(prov) >= 4, got["seen"]
     assert re.fullmatch(r"Before\. \[2\d\.\ds kw=2\] After\.", got["afterFinal"]), got["afterFinal"]
-    # The tail at stop: a 7.7 s provisional piece, then two final halves replacing
-    # the pieces of that stretch (8 + 6.x + 7.7 s), both inserted together.
+    # At stop the 3 s pending piece showed first, then the 14 s stretch came back
+    # as two halves that replaced the provisional pieces together.
+    assert any(re.search(r"\[3\.[0-4]s kw=2\]", v) for v in got["seen"]), "the pending piece showed first"
     assert re.fullmatch(
-        r"Before\. \[2\d\.\ds kw=2\] \[1?\d\.\ds kw=2\] \[\d+\.\ds kw=2\] After\. typed", got["end"]
+        r"Before\. \[2\d\.\ds kw=2\] \[\d+\.\ds kw=2\] \[\d+\.\ds kw=2\] After\. typed", got["end"]
     ), got["end"]
-    assert "[7.7s kw=2]" in " ".join(got["seen"]), "the pending piece showed before the final"
 
 
 def test_dictation_keeps_an_edit_inside_provisional_text_and_drops_the_final(
@@ -297,16 +299,16 @@ def test_dictation_keeps_an_edit_inside_provisional_text_and_drops_the_final(
         const d = new m.Dictation({ prepare });
         await d.start({ el, key: null, current: () => null }, source);
         feed(tone(4.5), gap(0.5));
-        while (!el.value.includes('kw=')) await sleep(20);
+        await until(() => (el.value.includes('kw=')));
         el.value = el.value.replace('kw=2', 'EDITED');
-        feed(tone(17), gap(0.5));
-        while (d.state !== 'listening' || d.queue.length || d.workers.some((w) => w.job)) await sleep(20);
+        for (let k = 0; k < 3; k++) feed(tone(5), gap(0.5));
+        await until(() => !(d.queue.length || d.workers.some((w) => w.job)));
         await sleep(100);
         await d.stop();
-        while (d.state !== 'idle') await sleep(20);
+        await until(() => !(d.state !== 'idle'));
         return el.value;""",
     )
-    assert "EDITED" in got, got
+    assert got.startswith("[4.7s EDITED] [5.5s kw=2]"), got
     assert not re.search(r"\[2\d\.", got), "the final over the edited span was dropped"
 
 
@@ -318,12 +320,12 @@ def test_dictation_replaces_the_span_after_typing_before_it(dict_server, page):
         const d = new m.Dictation({ prepare });
         await d.start({ el, key: null, current: () => null }, source);
         feed(tone(4.5), gap(0.5));
-        while (!el.value.includes('kw=')) await sleep(20);
+        await until(() => (el.value.includes('kw=')));
         el.value = 'Typed first. ' + el.value;
-        feed(tone(17), gap(0.5));
-        while (!/\\[2\\d\\.\\ds/.test(el.value)) await sleep(20);
+        for (let k = 0; k < 3; k++) feed(tone(5), gap(0.5));
+        await until(() => (/\\[2\\d\\.\\ds/.test(el.value)));
         await d.stop();
-        while (d.state !== 'idle') await sleep(20);
+        await until(() => !(d.state !== 'idle'));
         return el.value;""",
     )
     assert re.fullmatch(r"Typed first\. \[2\d\.\ds kw=2\]", got), got
