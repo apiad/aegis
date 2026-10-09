@@ -46,15 +46,15 @@ export function renderTabs(list, metas, focusId, actions) {
 
 // One session's tab redrawn where it stands; the others keep their nodes.
 export function patchTab(list, m, focusId, actions) {
-  list.querySelector(`.tab[data-id="${CSS.escape(m.log_id)}"]`)?.replaceWith(tab(m, focusId, actions));
+  list.querySelector(`.tab[data-id="${CSS.escape(m.key)}"]`)?.replaceWith(tab(m, focusId, actions));
 }
 
 function tab(m, focusId, { onFocus, onMove }) {
   const t = document.createElement("div");
-  t.className = `tab${m.log_id === focusId ? " on" : ""}${m.state === "stopped" ? " stopped" : ""}`;
+  t.className = `tab${m.key === focusId ? " on" : ""}${m.state === "stopped" ? " stopped" : ""}${m.off ? " off" : ""}`;
   t.classList.toggle("blink", !!m.blink);
   t.draggable = true;
-  t.dataset.id = m.log_id;
+  t.dataset.id = m.key;
   t.title = `${m.handle}: ${m.title || "untitled"} (${LABEL[m.attention] || m.state})`;
   const mark = markNode(m);
   const name = document.createElement("span");
@@ -64,9 +64,11 @@ function tab(m, focusId, { onFocus, onMove }) {
   handle.className = "srv";
   handle.textContent = m.title ? m.handle : "";
   t.append(mark, name, handle);
-  t.addEventListener("click", () => onFocus(m.log_id));
+  // A session on a linked server carries that server's name (links.py).
+  if (m.server) t.append(Object.assign(document.createElement("span"), { className: "where", textContent: m.server }));
+  t.addEventListener("click", () => onFocus(m.key));
   t.addEventListener("dragstart", (ev) => {
-    ev.dataTransfer.setData("text/aegis-tab", m.log_id);
+    ev.dataTransfer.setData("text/aegis-tab", m.key);
     ev.dataTransfer.effectAllowed = "move";
     t.classList.add("dragging");
   });
@@ -82,7 +84,7 @@ function tab(m, focusId, { onFocus, onMove }) {
     ev.preventDefault();
     t.classList.remove("drop");
     const id = ev.dataTransfer.getData("text/aegis-tab");
-    if (id && id !== m.log_id) onMove(id, m.log_id);
+    if (id && id !== m.key) onMove(id, m.key);
   });
   return t;
 }

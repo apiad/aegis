@@ -78,7 +78,7 @@ export function renderCards(box, metas, onOpen, order = "attention") {
 // One session's card redrawn where it stands. False when its group, or its place
 // in the needs-you group, changed and the caller must regroup with renderCards.
 export function patchCard(box, m, onOpen, order = "attention") {
-  const old = box.querySelector(`.card[data-id="${CSS.escape(m.log_id)}"]`);
+  const old = box.querySelector(`.card[data-id="${CSS.escape(m.key)}"]`);
   if (!old) return true;
   if (order === "attention" && (old.dataset.group !== group(m) || old.dataset.rank !== rank(m))) return false;
   old.replaceWith(card(m, onOpen));
@@ -92,8 +92,8 @@ export function markNode(m) {
 }
 
 function card(m, onOpen) {
-  const c = el("div", `card ${m.state} at-${m.attention}`);
-  c.dataset.id = m.log_id;
+  const c = el("div", `card ${m.state} at-${m.attention}${m.off ? " off" : ""}`);
+  c.dataset.id = m.key;
   c.dataset.group = group(m);
   c.dataset.rank = rank(m);
   const hd = el("div", "hd");
@@ -127,7 +127,7 @@ function card(m, onOpen) {
   ft.append(el("span", "ctx", `${pct}%`));
   parts.push(bar, ft);
   c.append(...parts);
-  c.addEventListener("click", () => onOpen(m.log_id));
+  c.addEventListener("click", () => onOpen(m.key));
   return c;
 }
 
@@ -148,16 +148,16 @@ export function renderArchive(box, items, { onReopen, onRead }) {
   t.append(head);
   for (const m of items) {
     const tr = el("tr");
-    tr.dataset.id = m.log_id;
+    tr.dataset.id = m.key;
     const actions = el("td", "acts");
     const read = el("button", "btn", "Read");
-    read.addEventListener("click", () => onRead(m.log_id));
+    read.addEventListener("click", () => onRead(m.key));
     const re = el("button", "btn primary", "Reopen");
-    re.addEventListener("click", () => onReopen(m.log_id));
+    re.addEventListener("click", () => onReopen(m.key));
     actions.append(read, re);
     tr.append(
       el("td", null, m.title || "untitled"),
-      el("td", "m", m.handle),
+      handleCell(m),
       el("td", "m", cwdTail(m.cwd)),
       el("td", "m", ago(m.last_activity)),
       el("td", "m", money(m.cost_usd)),
@@ -168,13 +168,23 @@ export function renderArchive(box, items, { onReopen, onRead }) {
   box.replaceChildren(t);
 }
 
+// A handle, with its server's tag when the row is from a linked server.
+function handleCell(m) {
+  const td = el("td", "m", m.handle);
+  if (m.server) td.append(el("span", "where", m.server));
+  return td;
+}
+
 const ATTENTION_ORDER = ["needs_you", "error", "review", "working", "waiting", "done"];
 
 // The band over the cards: this server's sessions by attention and its host.
 // Counts and the average context come from the sessions the client already
 // holds; the host meters from the host channel.
-export function renderBand(band, { metas, host, server }) {
-  band.querySelector("#band-server").textContent = server || "server";
+// `link` is the line beside a linked server's name: its host, its state.
+export function renderBand(band, { metas, host, server, link = "", off = false }) {
+  band.querySelector(".band-server").textContent = server || "server";
+  band.querySelector(".band-link").textContent = link;
+  band.classList.toggle("off", off);
   const counts = new Map();
   for (const m of metas) counts.set(m.attention, (counts.get(m.attention) || 0) + 1);
   const rows = ATTENTION_ORDER.filter((a) => counts.get(a)).map((a) => {
@@ -182,7 +192,7 @@ export function renderBand(band, { metas, host, server }) {
     d.append(glyph(a), el("b", null, String(counts.get(a))), document.createTextNode(a === "needs_you" ? "need you" : LABEL[a]));
     return d;
   });
-  band.querySelector("#band-counts").replaceChildren(...(rows.length ? rows : [el("div", "empty", "no sessions")]));
+  band.querySelector(".band-counts").replaceChildren(...(rows.length ? rows : [el("div", "empty", "no sessions")]));
 
   const meters = [];
   if (host) {
@@ -195,7 +205,7 @@ export function renderBand(band, { metas, host, server }) {
     const avg = Math.round(live.reduce((a, m) => a + Math.min(100, (100 * m.context_tokens) / m.context_window), 0) / live.length);
     meters.push(hostRow("Context", avg, `avg of ${live.length} live`));
   }
-  band.querySelector("#band-host").replaceChildren(...meters);
+  band.querySelector(".band-host").replaceChildren(...meters);
 }
 
 // The quota column, apart from the rest of the band: sessions patch up to four
@@ -203,13 +213,13 @@ export function renderBand(band, { metas, host, server }) {
 // rebuilt row loses the hover tooltip that spells its reading out.
 export function renderBandQuota(band, { quota, now }) {
   const providers = (quota && quota.providers) || [];
-  band.querySelector("#band-quota-col").hidden = !providers.length;
-  band.querySelector("#band-quota-age").textContent = quotaHeading(providers, now);
+  band.querySelector(".band-quota-col").hidden = !providers.length;
+  band.querySelector(".band-quota-age").textContent = quotaHeading(providers, now);
   const out = [];
   for (const p of providers) {
     out.push(el("div", "prov", providerLine(p, now)));
     if (p.state === "failed") out.push(noteRow(p.note));
     else for (const w of p.windows) out.push(quotaRow(p, w, now));
   }
-  band.querySelector("#band-quota").replaceChildren(...out);
+  band.querySelector(".band-quota").replaceChildren(...out);
 }

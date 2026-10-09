@@ -16,6 +16,13 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   return defaultLink(tokens, idx, options, env, self);
 };
 
+// Where a sent file's URL is fetched from: "" on this server, `/via/<server>`
+// for a transcript from a linked one (web.py streams it from there).
+let fileBase = "";
+export function setFileBase(base) {
+  fileBase = base;
+}
+
 export function markdown(text) {
   const div = document.createElement("div");
   div.className = "md";
@@ -140,7 +147,9 @@ const RENDERERS = {
     // An agent's file_send, as a card: a bar with the name and the actions,
     // the preview below. The preview kind was decided at send (files.py);
     // Open natively shows only where the server said so (#a2[data-native]).
-    const det = e.detail || {};
+    const det = { ...(e.detail || {}) };
+    if (det.url) det.url = fileBase + det.url;
+    const remote = fileBase !== "";
     const body = el("div", "body");
     if (e.md) {
       const cap = markdown(e.md);
@@ -160,7 +169,7 @@ const RENDERERS = {
     native.dataset.name = e.title;
     const dl = el("a", "btn dl", "↓ Download");
     dl.href = det.download;
-    acts.append(open, native, dl);
+    acts.append(open, ...(remote ? [] : [native]), dl); // never natively from a linked server
     bar.append(el("span", "ic", e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);
     card.append(bar);
     const pv = det.preview;

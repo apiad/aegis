@@ -34,6 +34,7 @@ class Server:
         self.opencode = opencode
         self.releases = root / "pypi.json"
         self.env: dict[str, str] = {}
+        self.args: list[str] = []
         self.proc = None
         self.url = ""
 
@@ -60,6 +61,7 @@ class Server:
                 *(["--opencode", self.opencode] if self.opencode else []),
                 "--log-level",
                 "info",
+                *self.args,
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -102,6 +104,42 @@ def server(tmp_path: Path, fake_claude: str, fake_opencode: str):
     s = Server(tmp_path, fake_claude, fake_opencode).start()
     yield s
     s.stop()
+
+
+class Linked:
+    """Two servers, alpha linked to beta through `aegis link add`."""
+
+    def __init__(self, root: Path, claude: str, opencode: str):
+        self.beta = Server(root / "beta", claude, opencode)
+        self.alpha = Server(root / "alpha", claude, opencode)
+        for s, name in ((self.beta, "beta"), (self.alpha, "alpha")):
+            s.root.mkdir()
+            (s.root / ".aegis.yaml").write_text(CONFIG)
+            s.args = ["--name", name]
+
+    def start(self) -> "Linked":
+        self.beta.start()
+        token = (self.beta.root / ".aegis" / "state" / "token").read_text().strip()
+        base = f"http://127.0.0.1:{self.beta.port}"
+        link = subprocess.run(
+            [sys.executable, "-m", "aegis", "link", "add", "beta", base,
+             "--root", str(self.alpha.root), "--as", "alpha"],
+            input=token + "\n", capture_output=True, text=True, timeout=30,
+        )  # fmt: skip
+        assert link.returncode == 0, link.stdout + link.stderr
+        self.alpha.start()
+        return self
+
+    def stop(self) -> None:
+        self.alpha.stop()
+        self.beta.stop()
+
+
+@pytest.fixture
+def linked(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    pair = Linked(tmp_path, fake_claude, fake_opencode).start()
+    yield pair
+    pair.stop()
 
 
 @pytest.fixture
@@ -2865,3 +2903,70 @@ def test_a_rotated_token_shows_the_login_instead_of_retrying(server, page):
     (server.root / ".aegis" / "state" / "token").unlink()
     server.start()
     page.wait_for_selector("#login", state="visible", timeout=15000)
+
+
+# -- links: alpha shows and drives beta's sessions (links.py) ---------------------
+def beta_session(linked, browser, prompt: str = "from beta") -> str:
+    """A session started on beta from beta's own page; its log id."""
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.goto(linked.beta.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    lid = spawn(pg, prompt)
+    pg.close()
+    return lid
+
+
+def test_a_linked_servers_sessions_show_under_its_band(linked, browser, page):
+    lid = beta_session(linked, browser)
+    page.goto(linked.alpha.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    box = "#remotes .remote[data-server=beta]"
+    page.wait_for_selector(f"{box} .card[data-id='beta/{lid}']")
+    assert page.inner_text(f"{box} .band-server") == "beta"
+    assert "linked" in page.inner_text(f"{box} .band-link")
+    assert page.locator("#cards .card").count() == 0  # alpha holds none itself
+    tab = page.locator(f"#tablist .tab[data-id='beta/{lid}']")
+    assert tab.locator(".where").inner_text() == "beta"
+    assert not page.errors
+
+
+def test_a_remote_tab_takes_prompts_and_the_far_store_has_them(linked, browser, page):
+    lid = beta_session(linked, browser)
+    page.goto(linked.alpha.url)
+    page.click(f"#tablist .tab[data-id='beta/{lid}']")
+    page.wait_for_selector("#a2[data-view=session]")
+    assert page.evaluate("location.hash") == f"#s=beta/{lid}"
+    turns_done(page, 1)  # the first turn, folded on beta, drawn on alpha
+    page.fill("#input", "hello across")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    store = linked.beta.root / ".aegis" / "state" / "transcripts" / f"{lid}.jsonl"
+    assert "hello across" in store.read_text()
+    assert not (linked.alpha.root / ".aegis" / "state" / "transcripts" / f"{lid}.jsonl").exists()
+    page.reload()  # the hash names a far session: it must come back, not bounce to the Fleet
+    page.wait_for_selector("#a2[data-view=session]")
+    assert page.evaluate("location.hash") == f"#s=beta/{lid}"
+    assert not page.errors
+
+
+def test_a_dropped_link_greys_the_far_server_and_comes_back(linked, browser, page):
+    lid = beta_session(linked, browser)
+    page.goto(linked.alpha.url)
+    box = "#remotes .remote[data-server=beta]"
+    page.wait_for_selector(f"{box} .card[data-id='beta/{lid}']")
+    linked.beta.stop()
+    page.wait_for_selector(f"{box} .band.off")
+    page.wait_for_selector(f"{box} .card.off")
+    assert "offline since" in page.inner_text(f"{box} .band-link")
+    page.click(f"{box} .card")
+    page.wait_for_selector("#a2[data-view=session]")
+    assert page.is_disabled("#input")
+    linked.beta.start()
+    page.wait_for_selector("#input:not([disabled])", timeout=20000)
+    page.fill("#input", "after the drop")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    page.click("#tab-fleet")
+    page.wait_for_selector(f"{box} .card:not(.off)")
+    assert not [e for e in page.errors if "server_offline" not in e]
