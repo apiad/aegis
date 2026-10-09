@@ -1781,12 +1781,16 @@ function inOrder(id, fn) {
   const prev = chains.get(id) || Promise.resolve();
   const next = prev.then(fn, fn);
   chains.set(id, next);
+  const settle = () => { if (chains.get(id) === next) chains.delete(id); }; // the map never outgrows the calls in flight
+  next.then(settle, settle);
   return next;
 }
 
+let keyNow = () => null; // the session on screen, read when a message arrives
 export function setup(opts) {
-  call = opts.call; // (op, params, key?) -> Promise; key names the session, else the one shown
+  call = opts.call; // (op, params, key) -> Promise; key names the session
   entryOf = opts.entry;
+  keyNow = opts.key;
 }
 
 export function themeVars() {
@@ -1805,10 +1809,13 @@ export function theme() {
 // A probe request from the transcript channel: run the page hidden, report
 // once, to the session the request came from (the person may switch tabs
 // while the probe runs, so the answer never goes to "the session shown").
-export function probe(req, key) {
+export function probe(req, key, src) {
+  // src is req.url as the page may use it (entries.fileUrl): a linked server's
+  // path rebuilt under /via/<server>, or about:blank, which no probe is run on.
+  if (src === "about:blank") return;
   const f = document.createElement("iframe");
   f.setAttribute("sandbox", "allow-scripts");
-  f.src = req.url;
+  f.src = src;
   const p = { id: req.id, key, done: false, grace: 0, timer: 0 };
   p.timer = setTimeout(() => finish(f, null), PROBE_TIMEOUT_MS); // the server has given up too
   probes.set(f, p);
@@ -1848,6 +1855,7 @@ window.addEventListener("message", async (ev) => {
   }
   const id = frame.dataset.artifact;
   const e = entryOf(id);
+  const key = keyNow(); // captured now: a tab switch while the call waits must not reroute it
   const status = frame.dataset.status || e?.status || "live";
   if (m.method === "ui/initialize") {
     send(frame, { jsonrpc: "2.0", id: m.id, result: { artifact: id, state: e?.detail?.state ?? {}, theme: themeVars(), status } });
@@ -1861,12 +1869,15 @@ window.addEventListener("message", async (ev) => {
   const op = ops[m.method];
   if (!op) return;
   try {
-    await inOrder(id, () => call(op, { artifact_id: id, ...(m.params || {}) }));
+    await inOrder(id, () => call(op, { artifact_id: id, ...(m.params || {}) }, key));
     if (m.id !== undefined) send(frame, { jsonrpc: "2.0", id: m.id, result: "ok" });
     if (m.method === "aegis/submit") notify(frame, "aegis/status", { status: "submitted" });
   } catch (err) {
     if (m.id !== undefined) send(frame, { jsonrpc: "2.0", id: m.id, error: { code: err.code || "error", message: err.message } });
-    if (err.code === "not_live") notify(frame, "aegis/status", { status: entryOf(id)?.status || "closed" });
+    if (err.code === "not_live") {
+      const now = entryOf(id)?.status; // the closing patch may not have landed yet
+      notify(frame, "aegis/status", { status: now && now !== "live" ? now : "closed" });
+    }
   }
 });
 
@@ -1894,11 +1905,12 @@ document.addEventListener("aegis:status", (ev) => notify(ev.target, "aegis/statu
     const bar = el("div", "fbar");
     const acts = el("span", "acts");
     const open = el("a", "btn open", "↗ Open");
-    open.href = fileBase + det.url;
+    open.href = fileUrl(det.url);
     open.target = "_blank";
     open.rel = "noopener noreferrer";
     acts.append(open);
     if (e.status !== "live") acts.prepend(el("button", "btn show", "Show"));
+    card.dataset.md = e.md || ""; // the caption's source, for update() to compare exactly
     bar.append(el("span", "ic", e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);
     card.append(bar);
     if (e.status === "live") card.append(artifactStage(e));
@@ -1912,13 +1924,22 @@ document.addEventListener("aegis:status", (ev) => notify(ev.target, "aegis/statu
 ```
 
 ```js
+// A sent file's or artifact's URL as this page may use it: on a linked
+// server's transcript, only a path of the one shape /via serves, rebuilt here,
+// so no URL the far server chose reaches an href or a frame on this origin.
+export function fileUrl(url) {
+  if (fileBase === "") return url;
+  const ok = typeof url === "string" && /^\/files\/[A-Za-z0-9_-]+\/[^/?#]+$/.test(url);
+  return ok ? fileBase + url : "about:blank";
+}
+
 // The frame of an artifact's card, live or shown again read-only.
 export function artifactStage(e) {
   const stage = el("div", "stage html");
   const f = el("iframe");
   f.setAttribute("sandbox", "allow-scripts");
   f.loading = "lazy";
-  f.src = fileBase + e.detail.url;
+  f.src = fileUrl(e.detail.url);
   f.title = e.title;
   f.dataset.artifact = e.id;
   f.dataset.status = e.status;
@@ -1933,7 +1954,10 @@ const UPDATERS = {
     const card = node.querySelector(".acard");
     const frame = node.querySelector("iframe[data-artifact]");
     if (!card || card.dataset.status !== e.status || !frame) return false;
-    if ((node.querySelector(".cap")?.textContent || "") !== markdown(e.md || "").textContent) return false;
+    // A new caption, a new title or a new page (a resend) remounts the card.
+    if (card.dataset.md !== (e.md || "")) return false;
+    if (node.querySelector(".fbar .fn")?.textContent !== e.title) return false;
+    if (frame.getAttribute("src") !== fileUrl(e.detail?.url)) return false;
     if (e.detail?.state_by === "agent") frame.dispatchEvent(new CustomEvent("aegis:state", { detail: e.detail.state, bubbles: true }));
     return true;
   },
@@ -1959,10 +1983,10 @@ export function update(e, node) {
 with `import { render, update } from "./entries.js";`.
 
 `app.js`:
-- `import * as artifacts from "./artifacts.js";` and `import { artifactStage } from "./entries.js";`
-- after `callFor` is defined: `artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id) });` (place it after `transcript` is constructed);
+- `import * as artifacts from "./artifacts.js";` and `import { artifactStage, fileUrl } from "./entries.js";`
+- after `callFor` is defined: `artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });` (place it after `transcript` is constructed);
 - in the theme `change` listener: `artifacts.theme();`
-- in the transcript subscription's patch handler: `(ops) => { for (const op of ops) if (op.probe) artifacts.probe(op.probe, id); transcript.apply(ops); }` (`id` is the session key the subscription was opened for, so a probe answers to its own session even after a tab switch)
+- in the transcript subscription's patch handler: `(ops) => { for (const op of ops) if (op.probe) artifacts.probe(op.probe, id, fileUrl(op.probe.url)); transcript.apply(ops); }` (`id` is the session key the subscription was opened for, so a probe answers to its own session even after a tab switch; `fileUrl` runs after `setFileBase`, which the subscription set for this session, so a linked server's probe loads through `/via/<server>` and a URL of any other shape is not probed)
 - a click handler next to the Open-natively one:
 
 ```js
