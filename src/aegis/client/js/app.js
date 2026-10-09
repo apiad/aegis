@@ -11,7 +11,7 @@ import { Transcript } from "./transcript.js";
 import { artifactStage, fileUrl, setFileBase } from "./entries.js";
 import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
-import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
+import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan } from "./fleet.js";
 import { age, quotaSideRow } from "./gauges.js";
 import { installKeys, renderKeys } from "./keys.js";
 import { glyph, icon, installGlyphs, LABEL } from "./glyphs.js";
@@ -738,7 +738,10 @@ setInterval(() => {
   if (workingSince != null) $("working-meta").textContent = `${Math.round((Date.now() - workingSince) / 1000)}s, Esc interrupts`;
   if (root.dataset.view === "fleet") for (const c of document.querySelectorAll(".card")) {
     const m = sessions.get(c.dataset.id);
-    if (m) c.querySelector(".when").textContent = ago(m.last_activity);
+    if (m) {
+      c.querySelector(".when").textContent = ago(m.last_activity);
+      tickPlan(c, m);
+    }
   }
 }, 1000);
 

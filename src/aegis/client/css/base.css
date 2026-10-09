@@ -479,6 +479,12 @@ body{background:#000}
 #a2 .card .pl .k{color:var(--faint)}
 #a2 .card .pl .now span:last-child{color:var(--strong)}
 #a2 .card .ft .prog{color:var(--faint)}
+#a2 .card .ft .prog{display:inline-flex;align-items:center;gap:6px}
+#a2 .pbar{display:inline-flex;gap:1px;width:48px;height:6px}
+#a2 .pbar i{flex:1;min-width:0;background:var(--rule);border-radius:1px}
+#a2 .pbar i.done{background:var(--ok)}#a2 .pbar i.doing{background:var(--accent)}
+#a2 .pbar.live i.doing{animation:a2pulse 1.4s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){#a2 .pbar.live i.doing{animation:none}}
 #a2 .grp-h{grid-column:1/-1;font-family:var(--font-head);font-size:12px;color:var(--faint);margin-top:4px}
 #a2 .order{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 0}
 #a2 .order h3{margin:0;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}

@@ -3673,3 +3673,52 @@ def test_plan_times_add_the_running_clock_and_extrapolate_the_pace(server, page)
     assert got["none"]["left"] is None and got["none"]["items"] == [10]
     assert got["old"] is None
     assert page.errors == []
+
+
+def test_the_card_shows_the_plan_bar_count_eta_and_the_current_items_time(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    plan = [
+        {"text": "read", "state": "done"},
+        {"text": "fix", "state": "doing"},
+        {"text": "ship", "state": "pending"},
+    ]
+    page.fill("#input", f"/mcp plan_update {json.dumps({'items': plan})}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    page.click("#tab-fleet")
+    card = f"#cards .card[data-id='{sid}']"
+    page.wait_for_selector(f"{card} .ft .prog .pbar")
+    classes = page.eval_on_selector_all(
+        f"{card} .pbar i", "is => is.map(i => i.className)"
+    )
+    assert classes == ["done", "doing", ""]
+    text = "e => e.textContent"  # inner_text would trim the leading space
+    assert page.eval_on_selector(f"{card} .ft .prog .pt", text) == "1/3 · ~<1m"
+    assert page.eval_on_selector(f"{card} .pl .now .t", text) == " · <1m"
+    # Not working: the doing segment holds still.
+    anim = "i => getComputedStyle(i).animationName"
+    assert page.eval_on_selector(f"{card} .pbar i.doing", anim) == "none"
+    assert page.errors == []
+
+
+def test_a_card_from_before_plan_times_draws_the_bar_without_times(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    got = page.evaluate(
+        """async () => {
+          const { tickPlan } = await import('/static/js/fleet.js');
+          const c = document.createElement('div');
+          c.innerHTML = '<div class="pl"><div class="now"><span class="t"></span></div></div>'
+            + '<div class="ft"><span class="prog"><span class="pt"></span></span></div>';
+          tickPlan(c, {
+            plan: [{ text: 'a', state: 'done' }, { text: 'b', state: 'doing' }],
+            plan_done: 1,
+            plan_total: 2,
+          });
+          return [c.querySelector('.pt').textContent, c.querySelector('.t').textContent];
+        }"""
+    )
+    assert got == ["1/2", ""]
+    assert page.errors == []
