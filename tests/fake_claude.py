@@ -13,6 +13,9 @@ stdout. The text of a prompt picks a script:
     /big           a Read whose result is 2 MB on one line.
     /exit N        a few stderr lines, then exit with code N.
     /recall        text listing the prompts this session id received before.
+    /stream N      N words of text, one every 0.25 s, then a result. With
+                   --include-partial-messages each word is a stream_event delta
+                   as Claude 2.1.291 sends it; without, the text arrives whole.
     /argv          text "argv: <JSON of the process's argv after the binary>".
     /mcp T JSON    call tool T of the aegis MCP server named in --mcp-config with
                    arguments JSON, as a tool call and its result, then a result.
@@ -97,6 +100,7 @@ SCRIPTS = (
     "argv",
     "bash",
     "read",
+    "stream",
 )
 COMMANDS = (
     [
@@ -233,6 +237,43 @@ def assistant(*blocks: dict) -> None:
             },
         }
     )
+
+
+def stream_text(text: str) -> None:
+    """One text block, word by word, as Claude streams it with partial
+    messages: the assistant line lands before the block's stop."""
+    partial = "--include-partial-messages" in sys.argv
+    mid = f"msg_{uuid.uuid4().hex}"
+
+    def event(ev: dict) -> None:
+        if partial:
+            emit({"type": "stream_event", "event": ev, "parent_tool_use_id": None})
+
+    event({"type": "message_start", "message": {"id": mid, "content": []}})
+    event(
+        {
+            "type": "content_block_start",
+            "index": 0,
+            "content_block": {"type": "text", "text": ""},
+        }
+    )
+    for k, word in enumerate(text.split(" ")):
+        delta = {"type": "text_delta", "text": word if k == 0 else " " + word}
+        event({"type": "content_block_delta", "index": 0, "delta": delta})
+        time.sleep(0.25)
+    emit(
+        {
+            "type": "assistant",
+            "message": {
+                "id": mid,
+                "content": [{"type": "text", "text": text}],
+                "usage": {"input_tokens": 10, "output_tokens": 20},
+            },
+        }
+    )
+    event({"type": "content_block_stop", "index": 0})
+    event({"type": "message_delta", "delta": {"stop_reason": "end_turn"}})
+    event({"type": "message_stop"})
 
 
 def result(
@@ -531,6 +572,9 @@ def run(text: str) -> None:
             result()
 
         threading.Thread(target=finish, daemon=True).start()
+    elif word == "/stream":
+        stream_text(" ".join(f"chunk{k}" for k in range(1, int(arg or 3) + 1)))
+        result()
     elif word == "/argv":
         assistant({"type": "text", "text": "argv: " + json.dumps(sys.argv[1:])})
         result()

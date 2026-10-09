@@ -146,11 +146,14 @@ stored line through the parser its `src` tag names. Claude Code
 (`claude/harness.py`) speaks stream-json on stdio; OpenCode
 (`opencode/process.py`) is one `opencode serve` per session over HTTP, because its
 MCP token, like Claude's, is per process. Both parsers emit the same events, so
-the entry rules exist once. OpenCode's token deltas are the one thing folded and
-never stored: the part's closing update carries the whole text, so the live view
-is ahead of a fresh fold only while a part is open (a prompt read mid-turn while
-a part streams is the one known exception: live it sits after that part, and a
-reload puts it before).
+the entry rules exist once. Token deltas, OpenCode's and Claude's
+(`--include-partial-messages`), are the one thing folded and never stored: the
+part's closing update carries the whole text, so the live view is ahead of a
+fresh fold only while a part is open. OpenCode's closing update keeps the part's
+id; Claude's is the assistant line for that block, whose row replaces the one its
+deltas drew (`claude/stream.py`). A prompt OpenCode reads mid-turn while a part
+streams is the one known exception: live it sits after that part, and a reload
+puts it before.
 
 **A `/` line is resolved on the server, and a typo costs nothing.** `session.send`
 runs an aegis command (`commands.py`) as the operation it stands for, passes a name
@@ -297,7 +300,7 @@ never a native select: `tests/test_client_rules.py` fails on `confirm(`,
 `alert(`, `prompt(` or `<select`.
 
 **The store keeps raw lines; entries are derived.** A transcript file holds the
-harness's raw stdout lines and what aegis did (spawn, send, interrupt, exit,
+harness's raw stdout lines but its token deltas, and what aegis did (spawn, send, interrupt, exit,
 close), each with its receive time and its own index. Entries are folded from them
 on load, with deterministic ids, so a better summary applies to old transcripts and
 a resume reads the same file the live session wrote.

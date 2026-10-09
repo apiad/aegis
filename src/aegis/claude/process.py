@@ -59,6 +59,8 @@ def build_argv(
         "--output-format",
         "stream-json",
         "--replay-user-messages",
+        # Text and thinking stream as deltas (stream.Parser), never stored.
+        "--include-partial-messages",
         "--verbose",
         "--permission-mode",
         PERMISSION_MODE.get(permission, permission),
