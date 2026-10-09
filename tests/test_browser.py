@@ -2133,7 +2133,9 @@ def test_reply_pills_send_their_text_and_all_disappear(server, page):
     page.click("#replies .rp >> text=rebase onto main")
     page.wait_for_selector("#replies", state="hidden")
     turns_done(page, 4)
-    assert "rebase onto main" in page.inner_text(".row.user >> nth=-1")
+    # textContent: the echo's row is new, and a content-visibility:auto row
+    # reads empty through innerText until a frame has drawn it (#238, #161).
+    assert "rebase onto main" in page.text_content(".row.user >> nth=-1")
     assert page.locator("#replies .rp").count() == 0 or page.is_hidden("#replies")
     assert "at-done" in page.get_attribute("#s-status", "class").split()
     assert page.errors == []
@@ -2324,11 +2326,14 @@ def test_a_tall_reply_that_lands_off_screen_becomes_read_when_you_scroll_into_it
     page.wait_for_function("() => document.querySelector('#input').value === ''")
     page.wait_for_selector(".row.user.pending")
     # Until the scroll event lands, the transcript still follows and an update
-    # takes it back down, so scroll up until it stays.
+    # takes it back down, so scroll up until it stays. A top with nothing below
+    # it is still the bottom: the pending row lays out at its placeholder height
+    # first, and when its real height lands the transcript, still following,
+    # goes down to it (#229). So up means at the top and not at the bottom.
     page.wait_for_function(
         """() => {
             const tr = document.querySelector('#tr');
-            const up = tr.scrollTop === 0;
+            const up = tr.scrollTop === 0 && tr.scrollHeight - tr.clientHeight >= 48;
             tr.scrollTop = 0;
             return up;
         }""",
@@ -2340,6 +2345,7 @@ def test_a_tall_reply_that_lands_off_screen_becomes_read_when_you_scroll_into_it
     )
     page.wait_for_timeout(1500)
     assert page.evaluate("() => document.querySelector('#tr').scrollTop") == 0
+    assert "new" in page.get_attribute("#jump", "class").split()  # lit, not followed
     assert page.evaluate(f"() => !!{tall}.querySelector('.rm .ic.unread')")
     # The top edge comes in first, then the row covers the view in steps, as
     # a reader scrolling down meets it.
