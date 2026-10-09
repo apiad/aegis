@@ -245,6 +245,16 @@ that changed. Mounting a long transcript whole and rebuilding every tab per patc
 made typing cost grow with the transcript's length and the number of sessions
 (#157, #158).
 
+**Folding hides rows, it never unmounts them.** From which fold level a kind
+folds is a fact on the entry (`fold`: 0 never, 1 the work, 2 also what arrived
+and what was shown; `transcript/entries.py`). The client draws each run of
+consecutive entries folded at the reader's level as one line on its first
+mounted row and hides the rest, so the mounted rows stay a suffix of the
+transcript and the window, the trim and the reader's place work unchanged; the
+walks (j/k, the first row on screen) skip hidden rows. The line is counted from
+the run's data, not its rows, so a run that starts above the mounted rows still
+says all it holds.
+
 **A key is one row in one table.** `client/js/keys.js` holds every key the client
 answers and the one `keydown` listener that dispatches from it; the `?` list is drawn
 from the same table, so it cannot name a key that does nothing. Chrome keeps Ctrl+T,

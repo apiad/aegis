@@ -1127,3 +1127,27 @@ def test_the_process_ending_during_a_work_gap_starts_idle(kind):
     r.own(kind, code=0)  # 1014
     f, _ = run(r)
     assert times(f) == ([12.0], (12.0, 0.0, 1014.0, "idle"))
+
+
+def test_the_work_between_messages_folds_and_what_was_said_does_not():
+    r = Rec()
+    r.own("send", text="go")
+    r.echo("go")
+    r.claude(
+        {
+            "type": "assistant",
+            "message": {"content": [{"type": "thinking", "thinking": "hm"}]},
+        }
+    )
+    r.call("t1", "Bash", {"command": "ls"})
+    r.output("t1", "a")
+    r.text("done")
+    r.result()
+    f, _ = run(r)
+    assert [(e["kind"], e["fold"]) for e in f.entries()] == [
+        ("user", 0),
+        ("thinking", 1),
+        ("tool", 1),
+        ("prose", 0),
+        ("system", 1),
+    ]

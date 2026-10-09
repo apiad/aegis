@@ -131,6 +131,18 @@ function drawNavNow() {
   if (now.off !== navDrawn.off) $("nav-up").disabled = $("nav-down").disabled = now.off;
   navDrawn = now;
 }
+// The fold level: this browser's choice, for every tab. z steps through
+// everything shown, the work folded, and all but the messages.
+const FOLDS = ["Everything shown", "Tool calls and thinking folded", "Only messages shown"];
+$("nav-fold").append(icon("fold"));
+function foldLevel(level) {
+  transcript.setFoldLevel(level);
+  $("nav-fold").dataset.level = String(level);
+  $("nav-fold").title = `${FOLDS[level]}. Press for: ${FOLDS[(level + 1) % 3].toLowerCase()} (Z)`;
+  localStorage.setItem("aegis.foldLevel", String(level));
+}
+foldLevel(Number(localStorage.getItem("aegis.foldLevel")) % 3 || 0);
+$("nav-fold").addEventListener("click", () => foldLevel((transcript.foldLevel + 1) % 3));
 // How the Fleet orders its cards: this browser's choice, like the tab order.
 let fleetOrder = localStorage.getItem("aegis.fleetOrder") || "attention";
 function markOrder() {
@@ -1251,6 +1263,7 @@ installKeys(
     firstUnread: () => transcript.firstUnread(),
     toggle: () => transcript.toggle(),
     press: () => transcript.press(),
+    foldLevel: () => foldLevel((transcript.foldLevel + 1) % 3),
     none() {},
     fleetNext: () => fleetMove(1),
     fleetPrev: () => fleetMove(-1),

@@ -1,33 +1,139 @@
-"""Draw the app icons: an amber hexagon outline on Ink's background.
+"""Draw the app icons: the Gorgoneion, amber on Ink's background.
 
     uv run --with pillow python scripts/make_icons.py
 
-Pillow is not a dependency of aegis; the PNGs are committed. The maskable icon
-keeps the hexagon inside the central 80%, the safe zone a launcher may crop to.
+The aegis carried the Gorgon's head on its breast (Iliad 5.738). The mark is
+that head: a solid disc with the eye knocked out, and six serpents that grow
+from inside the disc, so they join it without a seam, and wave in an S out to
+a point. Every stroke is at least 1.25 px at 16 px, the size of a browser tab.
+
+Pillow is not a dependency of aegis; the PNGs are committed, and so is
+`src/aegis/client/js/mark.js`, the same geometry as SVG for the favicon that
+`ping.js` redraws. The maskable icon keeps the mark inside the central 80%,
+the safe zone a launcher may crop to. The PNGs are drawn at four times their
+size and scaled down, because Pillow does not antialias polygons.
 """
 
 import math
+import shutil
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-OUT = Path(__file__).parents[1] / "src" / "aegis" / "client" / "icons"
+ROOT = Path(__file__).parents[1]
+OUT = ROOT / "src" / "aegis" / "client" / "icons"
+SITE = ROOT / "site"
+MARK_JS = ROOT / "src" / "aegis" / "client" / "js" / "mark.js"
 BG, FG = "#11100e", "#e0a872"
+
+# The mark lives in a 64-unit box centred on C.
+C = 32.0
+HEAD = 14.5
+SERPENTS = 6
+ROOT_R, TIP_R = 8.0, 31.0
+SWIRL = 0.5
+ROOT_W, TIP_W = 8.5, 1.6
+EYE_W, EYE_H, PUPIL = 20.0, 10.0, 3.6
+
+
+def polar(r: float, a: float) -> tuple[float, float]:
+    return C + r * math.cos(a), C + r * math.sin(a)
+
+
+def cubic(ps, t: float) -> tuple[float, float]:
+    (x0, y0), (x1, y1), (x2, y2), (x3, y3) = ps
+    u = 1 - t
+    return (
+        u**3 * x0 + 3 * t * u**2 * x1 + 3 * t * t * u * x2 + t**3 * x3,
+        u**3 * y0 + 3 * t * u**2 * y1 + 3 * t * t * u * y2 + t**3 * y3,
+    )
+
+
+def serpent(a: float, steps: int) -> list[tuple[float, float]]:
+    """One serpent as a closed outline: an S-curved spine, thick at the root."""
+    span = TIP_R - ROOT_R
+    spine = (
+        polar(ROOT_R, a),
+        polar(ROOT_R + 0.45 * span, a - SWIRL),
+        polar(ROOT_R + 0.75 * span, a + SWIRL * 0.55),
+        polar(TIP_R, a - SWIRL * 0.25),
+    )
+    left, right = [], []
+    for i in range(steps + 1):
+        t = i / steps
+        x, y = cubic(spine, t)
+        (ax, ay), (bx, by) = (
+            cubic(spine, min(t + 1e-3, 1)),
+            cubic(spine, max(t - 1e-3, 0)),
+        )
+        n = math.hypot(ax - bx, ay - by)
+        nx, ny = -(ay - by) / n, (ax - bx) / n
+        w = (ROOT_W + (TIP_W - ROOT_W) * t**1.3) / 2
+        left.append((x + nx * w, y + ny * w))
+        right.append((x - nx * w, y - ny * w))
+    return left + right[::-1]
+
+
+def serpents(steps: int) -> list[list[tuple[float, float]]]:
+    return [
+        serpent(-math.pi / 2 + 2 * math.pi * k / SERPENTS, steps)
+        for k in range(SERPENTS)
+    ]
+
+
+def eye(steps: int) -> list[tuple[float, float]]:
+    """The almond: two quadratic arcs meeting at the corners."""
+    pts = []
+    for sign in (-1, 1):
+        for i in range(steps):
+            t = i / steps
+            x = C - EYE_W / 2 + EYE_W * t
+            y = C + sign * 2 * t * (1 - t) * EYE_H
+            pts.append((x, y) if sign < 0 else (2 * C - x, y))
+    return pts
 
 
 def draw(size: int, scale: float) -> Image.Image:
-    im = Image.new("RGB", (size, size), BG)
-    r = size * scale / 2
-    c = size / 2
-    pts = [
-        (
-            c + r * math.cos(math.radians(60 * k - 90)),
-            c + r * math.sin(math.radians(60 * k - 90)),
-        )
-        for k in range(6)
-    ]
-    ImageDraw.Draw(im).polygon(pts, outline=FG, width=max(2, size // 22))
-    return im
+    ss = size * 4
+    im = Image.new("RGB", (ss, ss), BG)
+    d = ImageDraw.Draw(im)
+    k = ss * scale / (2 * TIP_R)
+
+    def at(p: tuple[float, float]) -> tuple[float, float]:
+        return ss / 2 + (p[0] - C) * k, ss / 2 + (p[1] - C) * k
+
+    c = at((C, C))
+    d.ellipse(
+        [c[0] - HEAD * k, c[1] - HEAD * k, c[0] + HEAD * k, c[1] + HEAD * k], fill=FG
+    )
+    for s in serpents(48):
+        d.polygon([at(p) for p in s], fill=FG)
+    d.polygon([at(p) for p in eye(32)], fill=BG)
+    d.ellipse(
+        [c[0] - PUPIL * k, c[1] - PUPIL * k, c[0] + PUPIL * k, c[1] + PUPIL * k],
+        fill=FG,
+    )
+    return im.resize((size, size), Image.LANCZOS)
+
+
+def svg_path(polys: list[list[tuple[float, float]]]) -> str:
+    return " ".join(
+        "M" + " ".join(f"{x:.1f} {y:.1f}" for x, y in p) + "Z" for p in polys
+    )
+
+
+def mark_js() -> str:
+    body = (
+        f'<circle cx="{C:g}" cy="{C:g}" r="{HEAD:g}" fill="{FG}"/>'
+        f'<path fill="{FG}" d="{svg_path(serpents(14))}"/>'
+        f'<path fill="{BG}" d="{svg_path([eye(10)])}"/>'
+        f'<circle cx="{C:g}" cy="{C:g}" r="{PUPIL:g}" fill="{FG}"/>'
+    )
+    return (
+        "// Generated by scripts/make_icons.py; edit that, not this.\n"
+        "// The Gorgoneion as SVG elements in a 64-unit box, for the favicon.\n"
+        f"export const MARK = '{body}';\n"
+    )
 
 
 def main() -> None:
@@ -35,6 +141,9 @@ def main() -> None:
     draw(192, 0.72).save(OUT / "aegis-192.png")
     draw(512, 0.72).save(OUT / "aegis-512.png")
     draw(512, 0.56).save(OUT / "aegis-maskable-512.png")
+    for name in ("aegis-192.png", "aegis-512.png"):
+        shutil.copyfile(OUT / name, SITE / name)
+    MARK_JS.write_text(mark_js())
 
 
 if __name__ == "__main__":

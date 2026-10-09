@@ -60,6 +60,23 @@ class _Stateless:
 PARSERS: dict[str, Any] = {"claude": _Stateless, "opencode": OpenCodeParser}
 
 
+# From which fold level of the browser's view a kind folds: 1, the work between
+# what was said; 2, also what arrived and what was shown along the way. A
+# message of yours or the agent's (user, command, prose) never folds. The
+# browser draws each run of consecutive folded entries as one line
+# (js/transcript.js).
+FOLD_LEVEL = {
+    "tool": 1,
+    "thinking": 1,
+    "system": 1,
+    "inbox": 2,
+    "file": 2,
+    "artifact": 2,
+    "error": 2,
+    "recap": 2,
+}
+
+
 def _entry(
     id: str,
     kind: str,
@@ -81,6 +98,7 @@ def _entry(
         "summary": summary,
         "md": md,
         "detail": detail or {},
+        "fold": FOLD_LEVEL.get(kind, 0),
     }
 
 

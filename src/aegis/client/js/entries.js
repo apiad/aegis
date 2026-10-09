@@ -138,7 +138,7 @@ function el(tag, cls, text) {
   return n;
 }
 
-function hhmm(ts) {
+export function hhmm(ts) {
   if (!ts) return "";
   const d = new Date(ts * 1000);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
