@@ -226,18 +226,21 @@ async def test_the_link_reconnects_and_says_so(pair):
         r = await b.call("agents.list", server="beta")
         assert r["error"]["code"] == "server_offline"
         await beta.start()
+
+        def states() -> list[str]:
+            return [
+                op["set"][0]["state"]
+                for f in b.of("links")
+                if f["t"] == "patch"
+                for op in f["ops"]
+            ]
+
+        # What the browser was told, not alpha's own state: the patch reaches the
+        # socket a moment after the link is up.
         await until(
-            lambda: alpha.app.links.get("beta").state == "linked",
-            timeout=15,
-            what="linked again",
+            lambda: states()[-1:] == ["linked"], timeout=15, what="linked again"
         )
-        states = [
-            op["set"][0]["state"]
-            for f in b.of("links")
-            if f["t"] == "patch"
-            for op in f["ops"]
-        ]
-        assert "offline" in states and states[-1] == "linked"
+        assert "offline" in states()
 
 
 async def test_a_wrong_token_stops_retrying(tmp_path, fake_claude):
@@ -453,6 +456,38 @@ async def test_aegis_link_add_reads_the_token_from_stdin_and_checks_the_name(
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     rc, out = await run("remove", "beta")
     assert rc == 0 and json.loads(path.read_text()) == {"links": []}
+
+
+async def test_a_far_server_older_than_links_is_named_not_a_bare_403(tmp_path):
+    """#244: 2.3.0 closes any socket whose Origin is not its own page, so a link,
+    which sends none, was refused with the library's `HTTP 403` and no cause."""
+    import sys
+    from http import HTTPStatus
+
+    def refuse(connection, request):
+        return connection.respond(HTTPStatus.FORBIDDEN, "origin\n")
+
+    port = _free_port()
+    url = f"http://127.0.0.1:{port}"
+    root = tmp_path / "gamma"
+    root.mkdir()
+    (root / ".aegis.yaml").write_text(CONFIG)
+    async with ws_serve(lambda ws: None, "127.0.0.1", port, process_request=refuse):
+        with pytest.raises(links.LinkError) as e:
+            await links.probe(url, "tok", "gamma", "me")
+        assert e.value.state == "mismatch"
+        assert "HTTP 403" in e.value.message and "2.4.0" in e.value.message
+        assert "predates links" in e.value.message
+
+        p = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "aegis", "link", "add", "old", url,
+            "--root", str(root),
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )  # fmt: skip
+        out, _ = await p.communicate(b"tok\n")
+    assert p.returncode == 1
+    assert "predates links" in out.decode() and "2.4.0" in out.decode()
 
 
 # -- slice 2: a person spawns on a linked server; the archive spans both ----------

@@ -288,7 +288,11 @@ class Session:
         m["unread"] = len(self.unread)
         m["held_count"] = len(self.held)
         m["state"] = self.status
-        m["model"] = self.model_id or self.spec.model
+        # What was configured, from spawn on; model_id (in the meta already) is
+        # the id the harness resolved it to, null until its first init. One field
+        # holding the alias and then the id made two sessions of one agent read
+        # differently depending on whether a turn had run (#243).
+        m["model"] = self.spec.model or "default"
         m["harness_label"] = self.harness.label
         m.update(self._host.card(self))
         return m

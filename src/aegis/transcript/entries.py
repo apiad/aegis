@@ -40,8 +40,8 @@ from ..claude.stream import (
     Thinking,
     ToolCall,
     ToolOutput,
-    parse,
 )
+from ..claude.stream import Parser as ClaudeParser
 from ..codex.stream import Parser as CodexParser
 from ..opencode.stream import Parser as OpenCodeParser
 from . import describe as d
@@ -49,17 +49,10 @@ from .plan_clock import replan, switch
 from .wire import wire
 
 
-class _Stateless:
-    """Claude's stream-json needs no memory between lines."""
-
-    def feed(self, line: str) -> list[Event]:
-        return parse(line)
-
-
 # The store's src tag -> a parser factory. A fold keeps one parser per tag, so
-# a harness whose events need earlier lines (OpenCode's) sees them in order.
+# a harness whose events need earlier lines sees them in order.
 PARSERS: dict[str, Any] = {
-    "claude": _Stateless,
+    "claude": ClaudeParser,
     "opencode": OpenCodeParser,
     "codex": CodexParser,
 }
@@ -286,6 +279,13 @@ class Fold:
             end = getattr(p, "end_turn", None)
             if end is not None:
                 end()
+
+    def _unlive(self, key: str | None) -> list[dict]:
+        """The live entry a whole block replaces, gone; nothing on a reload."""
+        if key is None or key not in self._live:
+            return []
+        self._live.discard(key)
+        return self._remove(key)
 
     def _drop_live(self) -> list[dict]:
         """Entries only deltas made, whose part never closed."""
@@ -804,11 +804,12 @@ class Fold:
 
         if isinstance(ev, Text):
             eid = ev.key or id
+            gone = self._unlive(ev.replaces)
             if ev.key:
                 self._live.discard(ev.key)
             if not ev.text.strip():
-                return []
-            ops = self._upsert(
+                return gone
+            ops = gone + self._upsert(
                 _entry(eid, "prose", "ok", ts, d.PROSE_GLYPH, md=ev.text)
             )
             self._stand(last_message=eid)
@@ -816,11 +817,12 @@ class Fold:
 
         if isinstance(ev, Thinking):
             eid = ev.key or id
+            gone = self._unlive(ev.replaces)
             if ev.key:
                 self._live.discard(ev.key)
                 if not ev.text.strip():
-                    return []  # an opening part
-            return self._upsert(
+                    return gone  # an opening part
+            return gone + self._upsert(
                 _entry(
                     eid,
                     "thinking",
@@ -1000,3 +1002,20 @@ def fold_records(records: list[dict]) -> Fold:
     for r in records:
         f.apply(r)
     return f
+
+
+def tool_output(records: list[dict], tool_id: str) -> str | None:
+    """The whole output of tool call ``tool_id``, parsed again from the stored
+    lines; the last one wins, as in the fold. The fold keeps only its tail
+    (``describe.output_tail``); a person copying the output wants all of it."""
+    parsers: dict[str, Any] = {}
+    found = None
+    for r in records:
+        src = r.get("src")
+        if src not in PARSERS:
+            continue
+        p = parsers.get(src) or parsers.setdefault(src, PARSERS[src]())
+        for ev in p.feed(r.get("line", "")):
+            if isinstance(ev, ToolOutput) and ev.id == tool_id and not ev.parent:
+                found = ev.text
+    return found

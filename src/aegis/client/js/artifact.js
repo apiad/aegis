@@ -19,6 +19,16 @@
   const notify = (method, params) => post({ jsonrpc: "2.0", method, params });
   const warn = (what) => console.warn(`aegis.${what}: this artifact is ${status}`);
 
+  // What the server accepts as a submit's label (artifacts.LABEL_MAX and
+  // PageSubmit.label): one non-empty line of at most 140 code points, well
+  // formed. A longer or multi-line label is cut; one that cuts to nothing
+  // becomes "answered". tests/test_artifact_label.py holds this to the server.
+  const LABEL_MAX = 140;
+  const labelOf = (label) => {
+    const line = String(label || "").toWellFormed().split("\n")[0];
+    return [...line].slice(0, LABEL_MAX).join("") || "answered";
+  };
+
   function applyTheme(vars) {
     for (const [k, v] of Object.entries(vars || {})) document.documentElement.style.setProperty(k, v);
   }
@@ -83,7 +93,7 @@
     submit(data, label) {
       if (status !== "live") return warn("submit");
       flushState();
-      request("aegis/submit", { data: data ?? null, label: String(label || "answered").split("\n")[0].slice(0, 140) });
+      request("aegis/submit", { data: data ?? null, label: labelOf(label) });
     },
   };
 

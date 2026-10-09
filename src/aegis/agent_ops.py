@@ -282,6 +282,7 @@ USER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 # not the session, and stay out.
 LISTED = (
     "model",
+    "model_id",
     "cost_usd",
     "context_tokens",
     "context_window",
@@ -566,8 +567,10 @@ def register_agent_ops(app: App) -> None:
     async def session_list(_, caller):
         """The open sessions on this server, each with its state, what it needs
         (attention and its line, what it waits on), its plan and what it is
-        doing now, its model and spend; then each linked server's by handle and
-        state alone, as `handle@server`: reach one with peer_handoff."""
+        doing now, its model (`model` as configured, `model_id` as the harness
+        resolved it, null until it has) and spend; then each linked server's by
+        handle and state alone, as `handle@server`: reach one with
+        peer_handoff."""
         out = []
         for s in reg.open_sessions():
             w = s.wire()

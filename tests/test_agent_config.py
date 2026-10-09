@@ -109,18 +109,19 @@ def test_malformed_config_names_the_file(tmp_path):
         load_agents(write(tmp_path, "agents: [1, 2\n"))
 
 
-def test_model_suggestions_put_aliases_first_without_duplicates(tmp_path):
+def test_model_suggestions_are_the_models_agents_name_without_duplicates(tmp_path):
     agents = load_agents(
         write(
             tmp_path,
             "agents:\n"
             "  a: {harness: claude-code, model: opus, effort: high, permission: full}\n"
             "  b: {harness: claude-code, model: claude-sonnet-5, effort: high, permission: full}\n"
-            "  c: {harness: opencode, model: opencode-go/x, effort: high, permission: full}\n",
+            "  c: {harness: opencode, model: opencode-go/x, effort: high, permission: full}\n"
+            "  d: {harness: claude-code, model: opus, effort: low, permission: read}\n",
         )
     )
     assert model_suggestions(agents) == {
-        "claude-code": ["opus", "sonnet", "haiku", "fable", "claude-sonnet-5"],
+        "claude-code": ["opus", "claude-sonnet-5"],
         "opencode": ["opencode-go/x"],
         "codex": [],
     }

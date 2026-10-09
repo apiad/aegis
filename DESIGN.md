@@ -153,11 +153,14 @@ a new provider restarts it. Its process writes `aegis/*` lines of its own for wh
 only a response carries (the version, the thread, each turn's model), and kills
 its process group after any exit, because a grandchild of a dead child held the
 thread's writer lease and the child's pipes. The parsers emit the same events, so
-the entry rules exist once. OpenCode's and Codex's token deltas are the one thing
-folded and never stored: the part's closing update carries the whole text, so the live view
-is ahead of a fresh fold only while a part is open (a prompt read mid-turn while
-a part streams is the one known exception: live it sits after that part, and a
-reload puts it before).
+the entry rules exist once. Token deltas, OpenCode's, Codex's and Claude's
+(`--include-partial-messages`), are the one thing folded and never stored: the
+part's closing update carries the whole text, so the live view is ahead of a
+fresh fold only while a part is open. OpenCode's closing update keeps the part's
+id; Claude's is the assistant line for that block, whose row replaces the one its
+deltas drew (`claude/stream.py`). A prompt OpenCode reads mid-turn while a part
+streams is the one known exception: live it sits after that part, and a reload
+puts it before.
 
 **A `/` line is resolved on the server, and a typo costs nothing.** `session.send`
 runs an aegis command (`commands.py`) as the operation it stands for, passes a name
@@ -241,6 +244,9 @@ snapshot's bytes over 80 real transcripts. Every entry carries `rev`, the store
 index of the record that last changed it, so a returning client asks for what
 changed since the revision it holds, and the client keeps the last 8 tabs it
 showed.
+A tool's entry holds only the tail of its output (`describe.output_tail`);
+its copy button asks for the whole with `transcript.output`, which parses the
+store again.
 
 **A renderer is a function that returns a Node.** The client is plain ES modules
 with no framework and no build step. A plugin's renderer has the same shape, so
@@ -304,7 +310,7 @@ never a native select: `tests/test_client_rules.py` fails on `confirm(`,
 `alert(`, `prompt(` or `<select`.
 
 **The store keeps raw lines; entries are derived.** A transcript file holds the
-harness's raw stdout lines and what aegis did (spawn, send, interrupt, exit,
+harness's raw stdout lines but its token deltas, and what aegis did (spawn, send, interrupt, exit,
 close), each with its receive time and its own index. Entries are folded from them
 on load, with deterministic ids, so a better summary applies to old transcripts and
 a resume reads the same file the live session wrote.

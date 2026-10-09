@@ -5,6 +5,133 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-09
+
+### Added
+
+- **`aegis usage`, `aegis usage repo` and `aegis usage repos` are back.** 2.0
+  dropped them with the legacy tree, so `/cost-report` ran a pinned 0.42.0 that
+  cannot read aegis 2's store. They now read aegis's own transcripts, imported
+  legacy sessions included, plus `~/.claude/projects` and any `--extra-root`
+  (gzipped or not), with the old attribution bands, coverage check and JSON.
+  Prices come from a new table copied from Anthropic's pricing page: the old one
+  charged 1-hour cache writes a quarter too much and had no Opus 5.5 or Fable
+  rates. OpenCode work is reported as unpriced rather than left out.
+
+- **One aegis shows and drives another: links.** `aegis link add vps
+  https://dev.example` (the token on stdin) makes this server a client of the
+  far one. Its sessions appear in the Fleet under their own band, with the far
+  server's host meters and quota, and in the tab bar with a server tag; they
+  take prompts, interrupts and closes from here. A link that drops greys its
+  band, cards and tabs and comes back on its own. The far server can never
+  reach this one: the link reads replies and channel patches and nothing else.
+  Both servers need this release or newer: an older far server refuses the
+  link with a bare HTTP 403 (#244).
+
+- **`aegis import-legacy` brings the sessions of aegis before 2.0 into the
+  archive.** Since 2.0 the legacy state directory was moved aside and read by
+  nothing, so every older conversation was out of reach; on zion that was 1,665
+  logs. The command rewrites each one as an archived session that the archive
+  lists and a tab reads, skips sessions with no content, and skips what it
+  already imported when run again. Reopening one resumes its Claude session only
+  while Claude Code still keeps it.
+
+- **A landing page at apiad.github.io/aegis, and a README that says what aegis
+  is.** Both now open with aegis as a programmable multi-agent meta-harness and
+  explain its three parts: it runs the `claude` and `opencode` you already pay
+  for, its agents hand work to each other across linked machines, and they
+  write pages into the transcript that answer back. The landing page has one
+  aegis window beside the text, synced both ways: scrolling shows each feature
+  in it, and hovering or clicking a piece of the window finds its feature. The
+  window is markup copied from the client's own DOM and styled by its own CSS
+  (`scripts/site_css.py`, checked by `tests/test_site.py`), and it acts like the
+  client where that is cheap: tabs, fold levels, the panel's cards, the layout
+  picker, the theme. `site/` on main is published from Actions and replaces the
+  pre-2.0 mkdocs site.
+
+- **Dictation shows words while you talk.** Text landed only every 20 seconds,
+  and the first 20 looked like nothing was happening. Now each pause puts the
+  words on screen about a second later, and a final pass over every 20-to-28
+  second stretch replaces them with the text that stays. Pieces with under a
+  second of voice are no longer transcribed alone, which is where `Thank you.`
+  came from; and a recording the browser ends on its own says so.
+
+- **A Read, Write or Edit row can show its file.** Open the row and press *Show the file*: aegis copies the file the tool used, as it is now, and opens its card inside the row, with the preview and the Open and Download links of a sent file. The agent does not have to send it, and never sees that you looked. The card stays in the row after a reload and in the archive; pressing the button again replaces it with a fresh copy. Rows from a linked server do not offer it (#214).
+
+- **Agents hand the person an interactive page and hear the answer.**
+  `artifact_create` writes a working skeleton, the agent edits it,
+  `artifact_send` runs it hidden in the browser, when one has the transcript
+  open, and lands it in the transcript only when it starts (with none open it
+  lands untried and the agent is told so). A click, a submit or a script error reaches the agent
+  as an inbox turn; state the page keeps is read with `artifact_read`; the
+  agent pushes new state or a new page with `artifact_update`. Until now an
+  agent could only send a static file and ask in prose.
+
+- **Fold a transcript down to the conversation.** The new button in the navigator above the message box, `z` in the transcript or `Alt+Z` anywhere steps through three levels. The first shows everything. The second folds each stretch of tool calls, thinking and system notes between two messages into one line that says what it holds, such as `3 tool calls · Edit ×2, Bash · 3 thoughts · 1 failed · 42s`, or names the tool it is running now. Inbox rows (monitor wakes, queue results, handoffs), sent files, pages, errors and recaps stay. The third folds everything except your messages and the agent's replies. Click a line, or press Enter on it, to open that stretch alone. The level is kept per browser and applies to every tab. Over 151 real transcripts the second level leaves 38% of the rows on screen (#223).
+
+- **The plan says how long each item took and how much work is left.** A
+  Fleet card shows a segmented bar, the count and an estimate of the work
+  left (`▰▰▰▰▱▱▱▱ 4/8 · ~12m`), and the current item's time on its `now`
+  row. The sidebar adds the plan's work and idle time and each item's time,
+  and the spinner on the item in progress turns only while the agent works.
+  Waiting on a monitor or a queue task counts as work; waiting on you is idle
+  and never enters the estimate. Everything comes from timestamps aegis
+  already stored; the agent reports nothing new.
+
+- **Agents see other sessions and wait on them.** `session_list` now carries
+  each session's attention and its line, what it waits on, its plan with what
+  it is doing now, its model and its spend. The new `monitor_sessions` tool
+  waits until a list of sessions has finished and wakes the agent `ok`, or
+  `blocked` as soon as one needs you or goes quiet for two minutes without
+  saying it finished, so "when the une-tools sessions finish, cut a release"
+  works without polling. Only a session whose last turn called `turn_end`
+  counts as finished. Its card in the sidebar reads
+  "1 of 2" and lists each session (#234).
+
+### Changed
+
+- **`file_send` takes a list of files and shows them as one card.** The tool's `path` is now `paths`, one to twenty files, so an agent sends a flow's screenshots or a pair of PDFs in one call instead of stacking a card per file. The card pages through the set with ‹ › and an `n / N` counter, and builds each preview only when its file is shown. Every file is checked before any is copied, so a call with one bad path fails whole and leaves no copies in the state root. Transcripts recorded before keep rendering as they did (#214).
+
+- **The icon is the Gorgoneion.** The app icon was an amber hexagon outline and the
+  tab favicon a lowercase "a" on a grey tile. Neither one referred to the aegis, and
+  both lost their detail in a 16 px tab. Both are now the Gorgon's head that the aegis
+  carries on its breast: a solid head with the eye knocked out and six serpents. The
+  dot for sessions that need you still sits on the favicon in the theme's accent.
+
+- **The session panel is compact, collapsible and resizable.** Each section is
+  one short row, and its details open in a card beside the panel on hover or
+  keyboard focus, or under the row on a tap in the phone's drawer. A new Host
+  row shows the session's server's CPU, RAM and disk. The plan keeps the last
+  two finished steps and everything still to do, and its card holds the whole
+  list. Stop, Restart and Close are one row of three equal cells with icons;
+  under 230 px they keep only the icons. The panel button in the top bar, or
+  Alt+B, collapses the panel on a desktop, and dragging its left edge sets the
+  width between 200 and 480 px (double-click resets it to 260). This browser
+  keeps both.
+
+### Fixed
+
+- **The archive shows every closed session, not the newest 50.** The client
+  never asked for a second page, so on a server with 110 sessions 60 could not
+  be reached, and the timestamp cursor skipped a session that shared its time
+  with the last row of a page. The Fleet now says `Showing 50 of 120` and
+  pages with Show 50 more; `archive.list` takes a cursor and returns the page,
+  the total and a count per server.
+
+- **An archived session's side panel no longer reads "undefined".** The model
+  line prints the harness's label, which only a live session's card carried, so
+  every archived session showed "undefined, <model>".
+
+- **The new-tab composer's chips are type-ahead pickers, and the send button keeps its corner.** The agent, harness, model, effort, permission and theme chips were native selects: drawn in the operating system's chrome, outside the theme, and answering a keystroke by jumping to the next option starting with that letter. Each is now a chip that opens a filterable list under it: type a fragment, arrow through the matches, Enter picks, Esc keeps what was there, and the model chip takes any id typed into it. Settings draws its agent and queue cards with the same chips. An agent whose model is a full id such as `claude-fable-5-1` used to widen the row until the mic and send buttons wrapped onto a line of their own; the chips now wrap on the left and the buttons stay bottom-right (#207).
+
+- **An OpenCode session showed Claude's quota.** The panel always drew the
+  `claude` provider. The quota channel now names each provider's harness, and
+  the panel shows the provider the session spends: Claude for Claude Code,
+  OpenCode Go for an `opencode-go/...` model, and a note saying aegis reads no
+  quota for any other model.
+
+- **`/spawn` tells the new agent where you typed it again.** Since 2.0 a spawned agent got only the words after the agent name, with no idea which tab or conversation they referred to. Its first message now carries the last three turns of the tab you typed `/spawn` in (your words whole, the agent's prose trimmed to fit, no tool calls), how to read more of that tab with `peer_read`, and how to hand the result back with `peer_handoff`. On a linked server it gets the tail and a `handle@server` to hand off to, since it cannot read across the link. A tab with nothing said in it yet still sends the bare prompt (#231).
+
 ## [2.3.0] - 2026-10-08
 
 ### Added

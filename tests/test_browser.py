@@ -388,6 +388,78 @@ def test_enter_in_the_model_or_cwd_field_moves_to_the_message_and_spawns_nothing
     assert page.evaluate("document.querySelectorAll('#tablist .tab').length") == 0
 
 
+@pytest.fixture
+def catalog_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    """A server whose Claude catalog lists a model no alias or agent names."""
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    s = Server(tmp_path, fake_claude, fake_opencode)
+    s.env["FAKE_CLAUDE_EXTRA_MODEL"] = "claude-fable-5-1"
+    s.start()
+    yield s
+    s.stop()
+
+
+def model_rows(pg) -> list[str]:
+    return pg.eval_on_selector_all(
+        "#sp-model .opt", "els => els.map(e => e.textContent)"
+    )
+
+
+def test_the_model_chip_offers_every_model_claude_can_run_and_nothing_it_cannot(
+    catalog_server, page
+):
+    """#172: the list is Claude's own catalog, not a fixed set of aliases."""
+    page.goto(catalog_server.url)
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    page.wait_for_function(
+        "document.querySelector('#sp-model').options.some(o => o.value === 'claude-fable-5-1')"
+    )
+    page.click("#sp-model input")
+    # `fable` is an alias the CLI no longer lists, and `retired` is disabled.
+    assert model_rows(page) == ["opus", "sonnet", "haiku", "claude-fable-5-1"]
+    assert page.inner_text("#sp-model .opt.on") == "opus", (
+        "the agent's model is current"
+    )
+    page.click("#sp-model .opt:has-text('claude-fable-5-1')")
+    assert picked(page, "#sp-model") == "claude-fable-5-1"
+    assert "diff" in page.get_attribute("#sp-model", "class")
+    assert page.input_value("#sp-agent input") == "opus*"
+    page.fill("#sp-text", "/argv")
+    page.press("#sp-text", "Enter")
+    page.wait_for_selector("#a2[data-view=session]")
+    turns_done(page, 1)
+    assert '"--model", "claude-fable-5-1"' in page.inner_text("#entries")
+    assert page.errors == []
+
+
+def test_the_model_chip_lists_what_opencode_can_reach_and_filters_it(server, page):
+    """#241: an OpenCode agent's chip lists the models its catalog holds."""
+    page.goto(server.url)
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    pick(page, "#sp-agent", "deepseek")
+    assert picked(page, "#sp-model") == "opencode-go/fake-pro"
+    page.wait_for_function(
+        "document.querySelector('#sp-model').options.some(o => o.value === 'opencode-go/fake-plain')"
+    )
+    page.click("#sp-model input")
+    assert sorted(model_rows(page)) == [
+        "opencode-go/fake-flash (free)",
+        "opencode-go/fake-plain",
+        "opencode-go/fake-pro",
+        "opencode-go/fake-video",
+    ]
+    assert page.inner_text("#sp-model .opt.on") == "opencode-go/fake-pro"
+    page.fill("#sp-model input", "flash")
+    assert model_rows(page)[-1] == "opencode-go/fake-flash (free)"
+    page.press("#sp-model input", "Enter")
+    assert picked(page, "#sp-model") == "opencode-go/fake-flash"
+    assert "diff" in page.get_attribute("#sp-model", "class")
+    assert page.input_value("#sp-agent input") == "deepseek*"
+    assert page.errors == []
+
+
 def test_a_failed_spawn_keeps_the_text_and_says_why(server, page):
     page.goto(server.url)
     page.click("#tab-add")
@@ -590,6 +662,20 @@ def test_close_in_one_browser_removes_the_tab_in_another(server, browser, page):
     assert errors == [] and page.errors == []
 
 
+def test_a_closed_session_is_in_the_archive_without_a_reload(server, page):
+    """#160: the Fleet's archive was read before the Close and nothing read it
+    again, so the closed session appeared only after a reload."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.wait_for_selector("#arch-list .empty")  # the archive is loaded, empty
+    spawn(page, "stays")
+    b = spawn(page, "goes")
+    close_session(page)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.wait_for_selector(f"#arch-list tr[data-id='{b}']", timeout=5000)
+    assert page.errors == []
+
+
 # A slow runner paints late: a frame 300 ms out makes any redraw left to the
 # next frame visible to the test (#161's CI failure).
 SLOW_FRAMES = "const raf = window.requestAnimationFrame; window.requestAnimationFrame = (f) => setTimeout(() => raf(f), 300);"
@@ -744,7 +830,9 @@ def test_a_monitor_shows_in_the_sidebar_and_its_wake_arrives_as_an_inbox_row(
     page.fill("#input", f"/mcp monitor_start {args}")
     page.press("#input", "Enter")
     page.wait_for_selector("#s-mon-sec:not([hidden]) .mon >> text=wait for the flag")
-    assert page.inner_text(".row.tool .tn") == "monitor_start"
+    # textContent: a new content-visibility:auto row reads '' through innerText
+    # until a frame has drawn it (#238).
+    assert page.text_content(".row.tool .tn") == "monitor_start"
     page.click("#tab-fleet")
     page.wait_for_selector(".card .mons >> text=1 monitor")
     page.locator(".card").first.click()
@@ -1091,6 +1179,9 @@ def test_a_rows_card_opens_beside_the_panel_and_closes(server, page):
     assert card.is_hidden()
     page.hover("#p-session")
     card.wait_for(state="visible")
+    # The card slides in from 6px to the right (@starting-style), and its box
+    # carries the transform: read it once the slide has ended (#255).
+    card.evaluate("c => Promise.all(c.getAnimations().map(a => a.finished))")
     box = card.bounding_box()
     side = page.locator("#side").bounding_box()
     row = page.locator("#p-session").bounding_box()
@@ -1289,9 +1380,11 @@ def test_a_read_rows_file_opens_inside_the_row_on_request(server, page):
     row.locator(".peek").click()
     card = row.locator(".fcard")
     card.wait_for()
-    assert card.locator(".fn").inner_text() == "notes.md"
-    assert card.locator(".stage .md h1").inner_text() == "Notes"
-    assert "as of" in row.locator(".peekcap").inner_text()
+    # textContent: the peek redraws the row as a new node, which reads '' through
+    # innerText until a frame has drawn it (#238).
+    assert card.locator(".fn").text_content() == "notes.md"
+    assert card.locator(".stage .md h1").text_content() == "Notes"
+    assert "as of" in row.locator(".peekcap").text_content()
     assert row.locator("details").get_attribute("open") is not None
 
     notes.write_text("# Changed\n")
@@ -1814,13 +1907,28 @@ def test_a_selected_row_keeps_its_selection_when_it_updates_and_enter_opens_it(
     assert page.errors == []
 
 
+def test_a_row_redrawn_under_the_keyboard_keeps_its_focus(server, page):
+    """A running tool row with focus on its summary is redrawn when the tool
+    ends; the focus moves to the summary of the new node, not to the page."""
+    page.goto(server.url)
+    spawn(page)
+    page.fill("#input", "/sleep 1")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    page.focus(".row.tool.running summary")
+    old = page.evaluate_handle("document.activeElement")
+    turns_done(page, 1)
+    assert page.evaluate("o => !o.isConnected", old), "the row was redrawn"
+    assert page.evaluate("document.activeElement.matches('.row.tool.ok summary')")
+    assert page.errors == []
+
+
 def test_fleet_cards_and_archive_rows_walk_with_j_and_open_with_enter(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     a, b = spawn(page, "alpha"), spawn(page, "beta")
     close_session(page)  # b goes to the archive
     page.wait_for_selector("#a2[data-view=fleet]")
-    page.reload()  # the archive misses a Close until a reload (#160)
     page.wait_for_selector(f"#arch-list tr[data-id='{b}']")
     sel = "document.querySelector('#cards .sel, #arch-list .sel')?.dataset.id ?? null"
     page.keyboard.press("Alt+,")
@@ -1913,6 +2021,26 @@ def test_the_menu_completes_a_model_and_esc_closes_it_without_interrupting(
     assert page.errors == []
 
 
+def test_the_chip_keeps_the_configured_model_and_the_panel_adds_the_resolved_id(
+    server, page
+):
+    """The id the harness names after its first init is not what the chip
+    flips to (#243)."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    turns_done(page, 1)
+    page.hover("#p-session")
+    page.wait_for_selector("#p-session .pcard", state="visible")
+    page.wait_for_function(
+        "document.getElementById('s-model').textContent.includes(' → ')"
+    )
+    configured, resolved = page.inner_text("#s-model").split(" → ")
+    assert page.inner_text("#chip-model") == configured != resolved
+    assert page.get_attribute("#chip-model", "title") == resolved
+    assert page.errors == []
+
+
 def test_alt_slash_with_a_draft_runs_a_command_and_keeps_the_draft(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -2001,11 +2129,12 @@ def test_an_opencode_session_streams_and_calls_aegis(server, page):
     # Subscribed before the stream starts: the text can only arrive as patches.
     page.fill("#input", "/stream 6")
     page.press("#input", "Enter")
-    page.wait_for_function(
+    # The text as it stood when chunk1 landed, read in the same call: innerText
+    # of an undrawn row is '', which has no chunk6 in it either (#238).
+    prose = page.wait_for_function(
         "[...document.querySelectorAll('.row.prose .body')]"
-        ".some(b => b.textContent.includes('chunk1'))"
-    )
-    prose = page.inner_text(".row.prose .body")
+        ".map(b => b.textContent).find(t => t.includes('chunk1'))"
+    ).json_value()
     assert "chunk6" not in prose, "the text is drawn while it streams"
     turns_done(page, 1)
     page.hover("#p-session")
@@ -2133,7 +2262,9 @@ def test_reply_pills_send_their_text_and_all_disappear(server, page):
     page.click("#replies .rp >> text=rebase onto main")
     page.wait_for_selector("#replies", state="hidden")
     turns_done(page, 4)
-    assert "rebase onto main" in page.inner_text(".row.user >> nth=-1")
+    # textContent: the echo's row is new, and a content-visibility:auto row
+    # reads empty through innerText until a frame has drawn it (#238, #161).
+    assert "rebase onto main" in page.text_content(".row.user >> nth=-1")
     assert page.locator("#replies .rp").count() == 0 or page.is_hidden("#replies")
     assert "at-done" in page.get_attribute("#s-status", "class").split()
     assert page.errors == []
@@ -2324,11 +2455,14 @@ def test_a_tall_reply_that_lands_off_screen_becomes_read_when_you_scroll_into_it
     page.wait_for_function("() => document.querySelector('#input').value === ''")
     page.wait_for_selector(".row.user.pending")
     # Until the scroll event lands, the transcript still follows and an update
-    # takes it back down, so scroll up until it stays.
+    # takes it back down, so scroll up until it stays. A top with nothing below
+    # it is still the bottom: the pending row lays out at its placeholder height
+    # first, and when its real height lands the transcript, still following,
+    # goes down to it (#229). So up means at the top and not at the bottom.
     page.wait_for_function(
         """() => {
             const tr = document.querySelector('#tr');
-            const up = tr.scrollTop === 0;
+            const up = tr.scrollTop === 0 && tr.scrollHeight - tr.clientHeight >= 48;
             tr.scrollTop = 0;
             return up;
         }""",
@@ -2340,6 +2474,7 @@ def test_a_tall_reply_that_lands_off_screen_becomes_read_when_you_scroll_into_it
     )
     page.wait_for_timeout(1500)
     assert page.evaluate("() => document.querySelector('#tr').scrollTop") == 0
+    assert "new" in page.get_attribute("#jump", "class").split()  # lit, not followed
     assert page.evaluate(f"() => !!{tall}.querySelector('.rm .ic.unread')")
     # The top edge comes in first, then the row covers the view in steps, as
     # a reader scrolling down meets it.
@@ -2979,7 +3114,9 @@ def test_the_interrupt_sits_beside_send_and_restart_sends_continue(server, page)
     assert page.is_disabled("#restart")
     page.click("#interrupt")
     turns_done(page, 1)
-    assert page.is_hidden("#interrupt")
+    # The server sends the "interrupted" row before the idle state, and the
+    # card draws that state on the frame after it lands (#158): wait for it.
+    page.wait_for_selector("#interrupt", state="hidden", timeout=5000)
     page.click("#restart")
     page.wait_for_selector(".row.user >> text=Continue")
     turns_done(page, 2)
@@ -4206,3 +4343,46 @@ def test_the_prose_view_counts_what_each_run_holds_and_mounts_as_you_scroll_up(
     # Each run is one row on screen.
     assert shown == total - sum(n - 1 for _, n in runs)
     assert page.errors == []
+
+
+def test_the_smoke_script_spawns_a_session_and_reads_its_question(server):
+    """scripts/smoke.py creates the tour's session over the websocket, as a
+    browser does, and `read --asked` waits on aegis's own turn_end record.
+    The prompt names turn_end too, so a check that greps the transcript for the
+    word passes before the agent has asked anything."""
+    script = Path(__file__).parents[1] / "scripts" / "smoke.py"
+    prompt = server.root / "tour.md"
+    prompt.write_text(
+        '/mcp turn_end {"attention": "needs_you", "line": "Does it work?"}'
+    )
+    out = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "spawn",
+            "--port",
+            str(server.port),
+            "--root",
+            str(server.root),
+            "--prompt-file",
+            str(prompt),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert out.returncode == 0, out.stderr
+    log_id = json.loads(out.stdout)["log_id"]
+    transcript = server.root / ".aegis" / "state" / "transcripts" / f"{log_id}.jsonl"
+    asked = [sys.executable, str(script), "read", "--asked", str(transcript)]
+    deadline = time.monotonic() + 15
+    while subprocess.run(asked).returncode != 0:
+        assert time.monotonic() < deadline, "the agent never asked"
+        time.sleep(0.2)
+    text = subprocess.run(
+        [sys.executable, str(script), "read", str(transcript)],
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert "### PERSON: /mcp turn_end" in text
+    assert "[turn_end needs_you] Does it work?" in text

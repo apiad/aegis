@@ -7,13 +7,18 @@ Claude ran itself, never echoed), ``CommandEcho`` (a prompt command or skill),
 One assistant line can carry several content blocks, so ``parse`` returns a
 list. Valid JSON of a type nothing here handles is ``Ignored``; a line that is
 not a JSON object is ``Garbled`` and is shown, never fatal.
+
+A live session runs with ``--include-partial-messages``, so its text and
+thinking also arrive as ``stream_event`` deltas. ``Parser`` turns each into one
+``Delta`` and keeps the little state that needs; ``parse`` is the stateless
+reading of any one line, and sees a delta as ``Ignored``.
 """
 
 from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 
@@ -47,6 +52,9 @@ class Text:
     # A harness that updates one part in place (OpenCode) names it; the entry
     # id is then the key. Claude's blocks have none.
     key: str | None = None
+    # Claude's whole block names the live entry its deltas drew, which it
+    # replaces; a reload saw no delta, so there is none to replace.
+    replaces: str | None = None
 
 
 @dataclass(frozen=True)
@@ -55,6 +63,7 @@ class Thinking:
     parent: str | None
     usage: Usage | None
     key: str | None = None
+    replaces: str | None = None
 
 
 @dataclass(frozen=True)
@@ -265,6 +274,10 @@ def parse(line: str) -> list[Event]:
         return [Garbled(raw=line)]
     if not isinstance(obj, dict):
         return [Garbled(raw=line)]
+    return _parse(obj)
+
+
+def _parse(obj: dict) -> list[Event]:
     etype = str(obj.get("type"))
     parent = _str(obj.get("parent_tool_use_id"))
 
@@ -399,3 +412,78 @@ def parse(line: str) -> list[Event]:
         return [Ignored(type=etype)]
 
     return [Ignored(type=etype)]
+
+
+_DELTAS = {"text_delta": ("prose", "text"), "thinking_delta": ("thinking", "thinking")}
+
+
+class Parser:
+    """A live or stored Claude stream, line by line.
+
+    Every ``stream_event`` line is one ``Delta``, so the session never stores
+    it: the ``assistant`` line that closes a block carries its whole text. A
+    top-level text or thinking delta is keyed ``<message id>.<block index>``,
+    and the Text or Thinking of the assistant line that closes that block
+    ``replaces`` the same key. Claude prints one assistant line per block, in
+    block order (claude 2.1.291), so that key is counted from assistant lines
+    alone, and a reload computes it without ever seeing a delta. A subagent's
+    deltas draw nothing: its steps fold into the call that started it."""
+
+    def __init__(self) -> None:
+        self.message: str | None = None  # the top-level message streaming now
+        self.closed: tuple[str | None, int] = (None, 0)  # its blocks closed so far
+
+    def feed(self, line: str) -> list[Event]:
+        try:
+            obj: Any = json.loads(line)
+        except ValueError:
+            return [Garbled(raw=line)]
+        if not isinstance(obj, dict):
+            return [Garbled(raw=line)]
+        if obj.get("type") == "stream_event":
+            return [self._delta(obj)]
+        events = _parse(obj)
+        message = obj.get("message")
+        if (
+            obj.get("type") == "assistant"
+            and obj.get("parent_tool_use_id") is None
+            and isinstance(message, dict)
+            and isinstance(message.get("id"), str)
+            and isinstance(message.get("content"), list)
+        ):
+            events = self._close(message["id"], message["content"], events)
+        return events
+
+    def _delta(self, obj: dict) -> Delta:
+        ev = obj.get("event")
+        if not isinstance(ev, dict) or obj.get("parent_tool_use_id") is not None:
+            return Delta(key="", kind="", text="")
+        if ev.get("type") == "message_start":
+            msg = ev.get("message")
+            self.message = _str(msg.get("id")) if isinstance(msg, dict) else None
+        d = ev.get("delta")
+        if ev.get("type") != "content_block_delta" or not isinstance(d, dict):
+            return Delta(key="", kind="", text="")
+        kind, field = _DELTAS.get(str(d.get("type")), ("", ""))
+        text, index = d.get(field), ev.get("index")
+        if not (kind and self.message and isinstance(index, int)):
+            return Delta(key="", kind="", text="")
+        if not isinstance(text, str) or not text:
+            return Delta(key="", kind="", text="")  # redacted thinking is empty
+        return Delta(key=f"{self.message}.{index}", kind=kind, text=text)
+
+    def _close(self, mid: str, content: list, events: list[Event]) -> list[Event]:
+        n = self.closed[1] if self.closed[0] == mid else 0
+        keys = []
+        for b in content:
+            if isinstance(b, dict) and b.get("type") in ("text", "thinking"):
+                keys.append(f"{mid}.{n}")
+            n += 1
+        self.closed = (mid, n)
+        it = iter(keys)
+        return [
+            replace(ev, replaces=next(it, None))
+            if isinstance(ev, (Text, Thinking))
+            else ev
+            for ev in events
+        ]

@@ -31,9 +31,6 @@ from .session import SpawnSpec
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 HARNESSES = ("claude-code", "opencode", "codex")
 SUPPORTED_HARNESSES = HARNESSES
-# Claude Code's --model aliases (`claude --help`), offered before the models
-# the agents name.
-MODEL_ALIASES = {"claude-code": ("opus", "sonnet", "haiku", "fable")}
 FIELDS = ("harness", "model", "effort", "permission")
 # Least to most: an agent spawns sessions with at most its own permission.
 PERMISSION_ORDER = ("read", "write", "auto", "full")
@@ -144,11 +141,12 @@ def load_agents(config_root: Path) -> list[Agent]:
 
 
 def model_suggestions(agents: list[Agent]) -> dict[str, list[str]]:
-    """Per harness, what the model chip offers: the CLI's aliases, then every
-    model an agent of that harness names."""
+    """Per harness, every model an agent of that harness names. The chip offers
+    what the harness can run from its own catalog (``config.detect``); these
+    are what it falls back to, and what it adds that the catalog lacks."""
     out: dict[str, list[str]] = {}
     for h in HARNESSES:
-        models = list(MODEL_ALIASES.get(h, ()))
+        models: list[str] = []
         for a in agents:
             if a.harness == h and a.model and a.model not in models:
                 models.append(a.model)

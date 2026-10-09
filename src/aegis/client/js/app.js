@@ -9,6 +9,7 @@
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
 import { artifactStage, fileUrl, setFileBase } from "./entries.js";
+import { copyRow, installCopy } from "./copy.js";
 import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan } from "./fleet.js";
@@ -97,6 +98,12 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
   },
 });
 artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
+const copyDeps = {
+  entry: (id) => transcript.entries.get(id),
+  output: (id) => callFor(shown, "transcript.output", { id }).then((r) => r.text),
+  detail: (id) => callFor(shown, "transcript.detail", { ids: [id] }).then((got) => got[0]),
+};
+installCopy($("entries"), copyDeps);
 installGlyphs();
 // The navigator: previous / next agent message, the position, and the latest.
 $("nav-recap").append(icon("sparkle"));
@@ -261,6 +268,9 @@ function sessionHandlers(server) {
         } else if (op.remove !== undefined) {
           sessions.delete(keyOf(server, op.remove));
           setChanged = true;
+          // The server archives a session before it publishes the removal, so
+          // this is the moment the archive gains a row, wherever it was closed.
+          archiveLoaded = false;
         }
       }
       // A session added or removed redraws at once: a reply that navigates
@@ -859,7 +869,7 @@ function renderMeta(s) {
   const born = s.created_at ? ` · started ${new Date(s.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "";
   $("c-sub").textContent = `${s.handle}${born}`;
   $("s-harness").textContent = s.harness_label || s.harness || "";
-  $("s-model").textContent = s.model;
+  $("s-model").textContent = s.model_id && s.model_id !== s.model ? `${s.model} → ${s.model_id}` : s.model;
   $("s-effort").textContent = s.effort || "";
   $("s-perm").textContent = s.permission || "";
   $("s-server").textContent = s.server || conn.server || "this server";
@@ -878,6 +888,7 @@ function renderMeta(s) {
   drawReplies(s);
   $("s-cwd").textContent = s.cwd;
   $("chip-model").textContent = s.model;
+  $("chip-model").title = s.model_id || "";
   $("chip-effort").textContent = `${s.effort} effort`;
   $("chip-perm").textContent = s.permission;
   const p = sideProvider(s);
@@ -1166,6 +1177,10 @@ $("reopen").addEventListener("click", () => {
 // An agent is a preset: picking one fills the other chips, and changing a chip
 // marks the agent `name*` until reset. Enter spawns and sends in one call.
 let roster = { agents: [], harnesses: [], models: {}, default: null, cwd: "" };
+// What each harness can run, by server: the catalog `config.detect` reads from
+// the harness itself, the one the server validates a model change against. The
+// agents' own models are on offer until it answers, and after it.
+let spModels = { server: undefined, by: {} };
 // The server a new session starts on: null for this one. Its directory line
 // names it once a server is linked, since a path exists on one machine only.
 let spServer = null;
@@ -1240,14 +1255,34 @@ async function loadAgents() {
     fillModels($("sp-harness").value);
     markDiffs();
   } else if (start) pickAgent(start);
+  loadSpModels();
 }
 
 function current() {
   return roster.agents.find((a) => a.name === $("sp-agent").value);
 }
 
+async function loadSpModels() {
+  const server = spServer;
+  let found;
+  try {
+    found = await conn.call("config.detect", {}, server);
+  } catch {
+    return; // the agents' models stay on offer, and any text is still taken
+  }
+  if (server !== spServer) return;
+  spModels = { server, by: Object.fromEntries(found.map((f) => [f.harness, f.models])) };
+  fillModels($("sp-harness").value);
+}
+
 function fillModels(harness) {
-  $("sp-model").options = roster.models[harness] || [];
+  const listed = spModels.server === spServer ? spModels.by[harness] || [] : [];
+  const have = new Set(listed.map((m) => m.value));
+  const named = (roster.models[harness] || []).filter((m) => !have.has(m));
+  $("sp-model").options = [
+    ...listed.map((m) => ({ value: m.value, label: m.free ? `${m.value} (free)` : m.value })),
+    ...named,
+  ];
 }
 
 function pickAgent(name) {
@@ -1394,6 +1429,7 @@ installKeys(
     firstUnread: () => transcript.firstUnread(),
     toggle: () => transcript.toggle(),
     press: () => transcript.press(),
+    copy: () => transcript.selected && copyRow(transcript.selected, transcript.nodes.get(transcript.selected), copyDeps),
     foldLevel: () => foldLevel((transcript.foldLevel + 1) % 3),
     none() {},
     fleetNext: () => fleetMove(1),
@@ -1639,7 +1675,6 @@ $("close").addEventListener("click", async () => {
   if (!(await askClose(s))) return;
   try {
     await callFor(s.key, "session.close");
-    archiveLoaded = false;
   } catch (e) {
     $("side-error").textContent = e.message;
   }

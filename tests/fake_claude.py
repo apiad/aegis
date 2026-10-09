@@ -9,10 +9,14 @@ stdout. The text of a prompt picks a script:
     /deafsleep N   the same, but it ignores interrupts.
     /fail          a Bash call that fails.
     /bash D => OUT a Bash call described D whose output is OUT, then a result.
+    /md TEXT       TEXT as the reply, each literal \\n a newline, then a result.
     /notice        three system notices and nothing else.
     /big           a Read whose result is 2 MB on one line.
     /exit N        a few stderr lines, then exit with code N.
     /recall        text listing the prompts this session id received before.
+    /stream N      N words of text, one every 0.25 s, then a result. With
+                   --include-partial-messages each word is a stream_event delta
+                   as Claude 2.1.291 sends it; without, the text arrives whole.
     /argv          text "argv: <JSON of the process's argv after the binary>".
     /mcp T JSON    call tool T of the aegis MCP server named in --mcp-config with
                    arguments JSON, as a tool call and its result, then a result.
@@ -33,7 +37,8 @@ An interrupt ``control_request`` ends a running script with an error result.
 Claude Code 2.1.283 does: an unknown model is an error, and an effort level the
 current model does not list is answered with success and not applied.
 ``FAKE_CLAUDE_NO_INIT=1`` answers ``initialize`` with an error, as a CLI that
-does not know it would; ``FAKE_CLAUDE_INIT_LOG=<file>`` gets one line per
+does not know it would; ``FAKE_CLAUDE_EXTRA_MODEL=<id>`` adds one model to
+MODELS, one no config names; ``FAKE_CLAUDE_INIT_LOG=<file>`` gets one line per
 ``initialize`` received, so a test can count probes.
 
 ``--resume <id>`` keeps that session id, as Claude does; without it the fake
@@ -96,7 +101,9 @@ SCRIPTS = (
     "bgtask",
     "argv",
     "bash",
+    "md",
     "read",
+    "stream",
 )
 COMMANDS = (
     [
@@ -150,6 +157,17 @@ MODELS = [
         "disabled": True,
     },
 ]
+if os.environ.get("FAKE_CLAUDE_EXTRA_MODEL"):
+    _extra = os.environ["FAKE_CLAUDE_EXTRA_MODEL"]
+    MODELS.append(
+        {
+            "value": _extra,
+            "resolvedModel": _extra,
+            "displayName": _extra,
+            "description": "In no config.",
+            "supportedEffortLevels": LEVELS,
+        }
+    )
 SESSION_ID = (
     sys.argv[sys.argv.index("--resume") + 1]
     if "--resume" in sys.argv
@@ -233,6 +251,43 @@ def assistant(*blocks: dict) -> None:
             },
         }
     )
+
+
+def stream_text(text: str) -> None:
+    """One text block, word by word, as Claude streams it with partial
+    messages: the assistant line lands before the block's stop."""
+    partial = "--include-partial-messages" in sys.argv
+    mid = f"msg_{uuid.uuid4().hex}"
+
+    def event(ev: dict) -> None:
+        if partial:
+            emit({"type": "stream_event", "event": ev, "parent_tool_use_id": None})
+
+    event({"type": "message_start", "message": {"id": mid, "content": []}})
+    event(
+        {
+            "type": "content_block_start",
+            "index": 0,
+            "content_block": {"type": "text", "text": ""},
+        }
+    )
+    for k, word in enumerate(text.split(" ")):
+        delta = {"type": "text_delta", "text": word if k == 0 else " " + word}
+        event({"type": "content_block_delta", "index": 0, "delta": delta})
+        time.sleep(0.25)
+    emit(
+        {
+            "type": "assistant",
+            "message": {
+                "id": mid,
+                "content": [{"type": "text", "text": text}],
+                "usage": {"input_tokens": 10, "output_tokens": 20},
+            },
+        }
+    )
+    event({"type": "content_block_stop", "index": 0})
+    event({"type": "message_delta", "delta": {"stop_reason": "end_turn"}})
+    event({"type": "message_stop"})
 
 
 def result(
@@ -457,6 +512,9 @@ def run(text: str) -> None:
         )
         tool_output(tid, out)
         result()
+    elif word == "/md":
+        assistant({"type": "text", "text": arg.replace("\\n", "\n")})
+        result()
     elif word == "/read":
         tid = tool_id()
         assistant(
@@ -531,6 +589,9 @@ def run(text: str) -> None:
             result()
 
         threading.Thread(target=finish, daemon=True).start()
+    elif word == "/stream":
+        stream_text(" ".join(f"chunk{k}" for k in range(1, int(arg or 3) + 1)))
+        result()
     elif word == "/argv":
         assistant({"type": "text", "text": "argv: " + json.dumps(sys.argv[1:])})
         result()

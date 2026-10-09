@@ -27,7 +27,7 @@ from .names import TITLE_MAX, mint_handle, valid_handle
 from .ops import OpError
 from .roots import Roots
 from .session import Host, Session, SpawnSpec
-from .transcript.entries import Fold, fold_records
+from .transcript.entries import Fold, fold_records, tool_output
 from .transcript.store import Store, read_store
 
 log = logging.getLogger("aegis.registry")
@@ -287,6 +287,14 @@ class Registry(Host):
         else:
             raise OpError("no_session", f"no session {log_id!r}")
         return [e for e in map(fold.entry, ids) if e is not None]
+
+    def output(self, log_id: str, entry_id: str) -> str | None:
+        """A tool row's whole output, which its entry holds only the tail of;
+        None when the store has no output for it."""
+        if log_id not in self.sessions and log_id not in self.archived:
+            raise OpError("no_session", f"no session {log_id!r}")
+        path = self.store_path(log_id)
+        return tool_output(read_store(path)[0], entry_id) if path.exists() else None
 
     def _archived_fold(self, log_id: str) -> Fold:
         path = self.store_path(log_id)
