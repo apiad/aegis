@@ -12,7 +12,8 @@ import { artifactStage, fileUrl, setFileBase } from "./entries.js";
 import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards } from "./fleet.js";
-import { age, quotaSideRow } from "./gauges.js";
+import { age, countdown, elapsed, hostRow, hostSeverity, providerFor, quotaSideRow, quotaTile, tile } from "./gauges.js";
+import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
 import { installKeys, renderKeys } from "./keys.js";
 import { glyph, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
@@ -27,8 +28,8 @@ const $ = (id) => document.getElementById(id);
 const root = $("a2");
 
 // Quota is one subscription for the page: the band and the sidebar both draw
-// it. Host is subscribed only while the Fleet view shows, so a server nobody
-// watches samples nothing.
+// it. Host is subscribed only while a view shows it, the Fleet every server's
+// and a session its own server's, so a server nobody watches samples nothing.
 let quota = { providers: [] };
 let host = null;
 let unsubHost = null;
@@ -314,7 +315,7 @@ function onLinks(list) {
     archiveLoaded = false;
     if (booted && root.dataset.view === "fleet") loadArchive();
   }
-  if (root.dataset.view === "fleet") watchHost(true);
+  if (root.dataset.view === "fleet") watchHost("all");
   if (booted) onSessions();
 }
 conn.subscribe(
@@ -418,32 +419,35 @@ function render() {
     renderCards($("cards"), local(), openSession, fleetOrder);
     renderRemotes();
     fleetMark(false);
-    watchHost(true);
+    watchHost("all");
     drawBand();
     if (newView) drawQuota();
     if (!archiveLoaded) loadArchive();
     setTitle("Fleet · aegis");
   } else if (r.view === "spawn") {
-    watchHost(false);
+    watchHost(null);
     follow(null);
     show("spawn");
     $("sp-text").focus();
     setTitle("New session · aegis");
   } else if (r.view === "settings") {
-    watchHost(false);
+    watchHost(null);
     follow(null);
     show("settings");
     if (newView) settings.open();
     setTitle("Settings · aegis");
   } else if (r.view === "session") {
-    watchHost(false);
+    watchHost(forKey(r.id).server || "");
     // Shown first: follow() sizes the message box, which measures 0 while hidden.
     show("session");
     follow(r.id);
     renderMeta(sessions.get(r.id));
-    if (newView) drawQuota();
+    if (newView) {
+      drawQuota();
+      drawSideHost();
+    }
   } else {
-    watchHost(false);
+    watchHost(forKey(r.id).server || "");
     show("session");
     follow(r.id);
     const m = archived.find((x) => x.key === r.id);
@@ -453,46 +457,54 @@ function render() {
   }
 }
 
-function watchHost(on) {
+// `want`: "all" for the Fleet, a server's name for a session ("" is this
+// one), null for nothing.
+function watchHost(want) {
+  const wants = (name) => want === "all" || want === name;
   for (const [name, r] of remote) {
-    if (on && !r.unsubHost)
+    if (wants(name) && !r.unsubHost)
       r.unsubHost = conn.subscribe(
         "host",
         (snap) => {
           r.host = snap;
-          drawBand();
+          drawHost();
         },
         (ops) => {
           for (const op of ops) if ("set" in op) r.host = op.set;
-          drawBand();
+          drawHost();
         },
         undefined,
         undefined,
         name,
       );
-    else if (!on && r.unsubHost) {
+    else if (!wants(name) && r.unsubHost) {
       r.unsubHost();
       r.unsubHost = null;
       r.host = null;
     }
   }
-  if (on && !unsubHost) {
+  if (wants("") && !unsubHost) {
     unsubHost = conn.subscribe(
       "host",
       (snap) => {
         host = snap;
-        drawBand();
+        drawHost();
       },
       (ops) => {
         for (const op of ops) if ("set" in op) host = op.set;
-        drawBand();
+        drawHost();
       },
     );
-  } else if (!on && unsubHost) {
+  } else if (!wants("") && unsubHost) {
     unsubHost();
     unsubHost = null;
     host = null;
   }
+}
+
+function drawHost() {
+  if (root.dataset.view === "fleet") drawBand();
+  else if (root.dataset.view === "session") drawSideHost();
 }
 
 function drawBand() {
@@ -553,22 +565,123 @@ function renderRemotes() {
   drawBand();
 }
 
-function drawSideQuota() {
-  const p = quota.providers.find((x) => x.name === "claude");
-  $("s-quota-sec").hidden = !p;
-  if (!p) return;
+// -- the session panel: usage and host (side.js opens their cards) ----------
+// The panel follows the session it shows: the quota its harness and model
+// spend, the host of its server.
+let sideSession = null;
+let sideQuotaKey = null; // the provider the card's quota rows were drawn for
+let sideTilesSig = null;
+
+const quotaOf = (server) => (server ? remote.get(server)?.quota : quota) || { providers: [] };
+const hostOf = (server) => (server ? remote.get(server)?.host : host);
+const sideProvider = (s) => providerFor(s, quotaOf(s.server || "").providers || []);
+
+function ctxPct(s) {
+  if (s.context_tokens == null || !s.context_window) return null;
+  return Math.min(100, Math.round((100 * s.context_tokens) / s.context_window));
+}
+
+// The tiles and the card's context: on every patch of the session, rebuilt
+// only when what they show changed.
+function drawSideUsage(s) {
   const now = nowS();
-  const rows = p.state === "failed" ? [] : p.windows.map((w) => quotaSideRow(p, w, now));
-  const foot = document.createElement("div");
-  foot.className = "kv dim";
-  const note = document.createElement("span");
-  if (p.state === "ok") note.textContent = `read ${ago(p.read_at)}`; // "read just now", "read 2m ago"
-  else {
-    note.className = "gnote";
-    note.textContent = p.state === "stale" ? `${p.note}, reading ${age(now - p.read_at)} old` : p.note;
+  const p = sideProvider(s);
+  const windows = p && p.state !== "failed" ? p.windows : [];
+  const pct = ctxPct(s);
+  const tokens = s.context_tokens != null ? fmtTokens(s.context_tokens) : null;
+  const cost = money(s.cost_usd);
+
+  $("s-tokens").textContent = tokens ?? "no turn yet";
+  $("s-of").textContent = tokens == null ? "" : s.context_window ? `of ${fmtTokens(s.context_window)} · ${pct}%` : "tokens";
+  $("s-bar").style.width = `${pct || 0}%`;
+  $("s-ctxbar").hidden = !s.context_window;
+  $("s-ctxnote").textContent =
+    tokens != null && !s.context_window ? `${s.harness_label} does not report the model's window, so there is no share of it.` : "";
+  $("s-cost").textContent = cost;
+
+  // With a share of the window, context leads and the quota follows; without
+  // one, the quota's windows take the row and context moves to the foot.
+  const lead = pct != null || !windows.length;
+  const shown = windows.slice(0, lead ? 2 : 3);
+  const left = !windows.length ? "" : lead ? cost : `${tokens ? `${tokens} ctx · ` : ""}${cost}`;
+  const next = shown.find((w) => w.resets_at != null);
+  const right = next ? `↻ ${countdown(next.resets_at - now)}` : "";
+  const sig = JSON.stringify([
+    pct,
+    tokens,
+    cost,
+    p && p.state,
+    shown.map((w) => [w.kind, Math.round(w.percent), w.severity, w.projected, Math.round(100 * (elapsed(w, now) || 0))]),
+    left,
+    right,
+  ]);
+  if (sig === sideTilesSig) return;
+  sideTilesSig = sig;
+  const tiles = [];
+  if (lead) tiles.push(tile("context", pct != null ? `${pct}%` : tokens ?? "–", { pct }));
+  for (const w of shown) tiles.push(quotaTile(p, w, now));
+  if (!windows.length) {
+    tiles.push(tile("cost", cost));
+    tiles.push(tile("quota", p ? "error" : "none", { severity: p ? "stale" : "normal", title: p ? p.note : "" }));
   }
-  foot.append(note);
-  $("s-quota").replaceChildren(...rows, foot);
+  $("s-tiles").replaceChildren(...tiles);
+  $("s-foot-l").textContent = left;
+  $("s-foot-r").textContent = right;
+  $("s-foot").hidden = !left && !right;
+}
+
+// The card's quota rows: on a quota patch, the timer, a change of view, or a
+// session that now spends another provider; never on a plain sessions patch.
+function drawSideQuota(s) {
+  const p = sideProvider(s);
+  sideQuotaKey = `${s.server || ""}:${p ? p.name : ""}`;
+  const now = nowS();
+  $("s-quota-head").textContent = p ? `Quota · ${p.label}` : "Quota";
+  const head = $("s-quota-age");
+  if (!p) {
+    head.textContent = "";
+    const what = s.harness === "opencode" ? (s.model || "").split("/")[0] || "this model" : s.harness_label;
+    const n = document.createElement("p");
+    n.className = "cnote";
+    n.textContent = `aegis reads no quota for ${what}.`;
+    $("s-quota").replaceChildren(n);
+    return;
+  }
+  head.textContent = p.read_at != null ? `read ${ago(p.read_at)}` : ""; // "read just now", "read 2m ago"
+  const rows = p.state === "failed" ? [] : p.windows.map((w) => quotaSideRow(p, w, now));
+  if (p.state !== "ok") {
+    const n = document.createElement("p");
+    n.className = "cnote gnote";
+    n.textContent = p.state === "stale" ? `${p.note}; this reading is ${age(now - p.read_at)} old.` : p.note;
+    rows.push(n);
+  }
+  $("s-quota").replaceChildren(...rows);
+}
+
+function drawSideHost() {
+  const s = sideSession;
+  const server = s?.server || "";
+  const h = s && hostOf(server);
+  $("s-host-sec").hidden = !h;
+  if (!h) return;
+  const name = server || conn.server || "this server";
+  $("s-host-name").textContent = name;
+  $("s-host-head").textContent = `Host · ${name}`;
+  const meter = (label, pct) => tile(label, `${pct}%`, { pct, kind: "h", severity: hostSeverity(pct) });
+  const tiles = [meter("CPU", h.cpu), meter("RAM", h.ram.pct)];
+  const rows = [hostRow("CPU", h.cpu, ""), hostRow("RAM", h.ram.pct, `${h.ram.used_gb} / ${h.ram.total_gb} GB`)];
+  if (h.disk) {
+    tiles.push(meter("disk", h.disk.pct));
+    rows.push(hostRow("Disk", h.disk.pct, `${h.disk.used_gb} / ${h.disk.total_gb} GB`));
+  }
+  $("s-host-tiles").replaceChildren(...tiles);
+  $("s-host-rows").replaceChildren(...rows);
+  const live = (s.server ? on(s.server) : local()).filter((m) => m.state !== "stopped");
+  const sized = live.filter((m) => m.context_window && m.context_tokens);
+  $("s-host-live").textContent = String(live.length);
+  $("s-host-ctx").textContent = sized.length
+    ? `${Math.round(sized.reduce((a, m) => a + Math.min(100, (100 * m.context_tokens) / m.context_window), 0) / sized.length)}%`
+    : "–";
 }
 
 // A linked server's quota, less the providers this server already shows for
@@ -587,7 +700,11 @@ function drawQuota() {
       const r = remote.get(box.dataset.server);
       if (r) renderBandQuota(box.querySelector(".band"), { ...farQuota(r.quota), now: nowS() });
     }
-  } else if (root.dataset.view === "session") drawSideQuota();
+  } else if (root.dataset.view === "session" && sideSession) {
+    drawSideQuota(sideSession);
+    sideTilesSig = null; // the countdowns and ticks moved
+    drawSideUsage(sideSession);
+  }
 }
 
 // Countdowns and the tick move with the clock; their unit is minutes.
@@ -669,7 +786,15 @@ function renderMeta(s) {
   if (!s) return;
   if (!editing.has("title")) $("s-title").textContent = s.title || "untitled";
   if (!editing.has("handle")) $("s-handle").textContent = s.handle;
-  $("s-model").textContent = `${s.harness_label}, ${s.model}`;
+  sideSession = s;
+  $("c-title").textContent = s.title || "untitled";
+  const born = s.created_at ? ` · started ${new Date(s.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "";
+  $("c-sub").textContent = `${s.handle}${born}`;
+  $("s-harness").textContent = s.harness_label || s.harness || "";
+  $("s-model").textContent = s.model;
+  $("s-effort").textContent = s.effort || "";
+  $("s-perm").textContent = s.permission || "";
+  $("s-server").textContent = s.server || conn.server || "this server";
   if (s.attention === undefined) {
     // The archived read view: a stored meta has no attention, so the state alone.
     $("s-status").textContent = s.state;
@@ -684,32 +809,29 @@ function renderMeta(s) {
   const plan = s.plan || [];
   $("s-plan-sec").hidden = !plan.length;
   const mark = { done: "done", doing: "working", pending: "waiting" };
-  $("s-plan").replaceChildren(
-    ...plan.map((i) => {
-      const d = document.createElement("div");
-      d.className = i.state;
-      d.append(glyph(mark[i.state] || "waiting"), span("", i.text));
-      return d;
-    }),
-  );
+  const item = (i) => {
+    const d = document.createElement("div");
+    d.className = i.state;
+    d.append(glyph(mark[i.state] || "waiting"), span("", i.text));
+    return d;
+  };
+  // The panel keeps the two items done last and everything still to do; the
+  // rest is one line whose card holds the whole plan.
+  const open = plan.findIndex((i) => i.state !== "done");
+  const from = Math.max(0, (open < 0 ? plan.length : open) - 2);
+  $("s-plan").replaceChildren(...plan.slice(from).map(item));
+  $("s-plan-count").textContent = `${plan.filter((i) => i.state === "done").length} of ${plan.length}`;
+  $("p-plan").hidden = !from;
+  $("s-plan-more").textContent = `+ ${from} done above`;
+  $("s-plan-all").replaceChildren(...(from ? plan.map(item) : []));
   drawReplies(s);
   $("s-cwd").textContent = s.cwd;
   $("chip-model").textContent = s.model;
   $("chip-effort").textContent = `${s.effort} effort`;
   $("chip-perm").textContent = s.permission;
-  if (s.context_tokens != null) {
-    const pct = s.context_window ? Math.min(100, Math.round((100 * s.context_tokens) / s.context_window)) : null;
-    $("s-tokens").textContent = s.context_window
-      ? `${fmtTokens(s.context_tokens)} of ${fmtTokens(s.context_window)}`
-      : `${fmtTokens(s.context_tokens)} tokens`;
-    $("s-pct").textContent = pct == null ? "" : `${pct}%`;
-    $("s-bar").style.width = `${pct || 0}%`;
-  } else {
-    $("s-tokens").textContent = "no turn yet";
-    $("s-pct").textContent = "";
-    $("s-bar").style.width = "0%";
-  }
-  $("s-cost").textContent = money(s.cost_usd);
+  const p = sideProvider(s);
+  if (`${s.server || ""}:${p ? p.name : ""}` !== sideQuotaKey) drawSideQuota(s);
+  drawSideUsage(s);
   const mons = s.monitors || [];
   $("s-mon-sec").hidden = !mons.length;
   renderMonitors($("s-monitors"), mons);
@@ -776,6 +898,11 @@ async function loadVersion() {
   $("ver-base").textContent = run.version || "";
   const mark = v.status === "current" ? [span("ok", "✓ current")] : behind ? [span("upd", "↑ update")] : [];
   $("ver-latest").replaceChildren(span("v", v.latest || "unknown"), ...mark);
+  $("ver-line").replaceChildren(
+    span("", "aegis"),
+    span("v", shown),
+    ...(dev ? [span("tag", "dev")] : behind ? [span("upd", "↑ update")] : v.status === "current" ? [span("ok", "✓")] : []),
+  );
   $("ver-sec").hidden = false;
 
   const top = $("ver-top");
@@ -1234,10 +1361,11 @@ installKeys(
       if (cancelAsk()) return;
       if (root.dataset.side === "open") return closeSide();
       if (!keymap.hidden) help(false);
-      else if (closeMonitorCard()) return;
+      else if (closeMonitorCard() || closeCard()) return;
       else if (route().view === "session" && !editing.size) interrupt();
     },
     help: () => help(),
+    side: () => toggleSide(),
   },
   () => (booted ? route().view : "boot"),
 );
@@ -1458,16 +1586,24 @@ $("close").addEventListener("click", async () => {
   }
 });
 
-// -- the drawer: the side panel on a phone (base.css, max-width 760px) --------
-const closeSide = () => delete root.dataset.side;
+// -- the panel: a drawer on a phone (base.css, max-width 760px), collapsible
+// and resizable on a desktop (side.js) ------------------------------------------
+const drawerMode = matchMedia("(max-width: 760px)");
+initSide({ onCardOpen: () => closeMonitorCard() });
+// Closing the drawer returns to the desktop state this browser keeps.
+const closeSide = () => {
+  if (root.dataset.side === "open") restState();
+};
+function toggleSide() {
+  if (!drawerMode.matches) return toggleCollapsed();
+  if (root.dataset.side === "open") closeSide();
+  else root.dataset.side = "open";
+}
 // The header's height, for the drawer to start under it: it wraps to two rows
 // on a phone and grows with the safe area.
 const header = document.querySelector("#a2 > .tabs");
 new ResizeObserver(() => root.style.setProperty("--hdr", `${header.getBoundingClientRect().height}px`)).observe(header);
-$("side-btn").addEventListener("click", () => {
-  if (root.dataset.side === "open") closeSide();
-  else root.dataset.side = "open";
-});
+$("side-btn").addEventListener("click", toggleSide);
 // The dimmed transcript is the session view's own ::after, so a tap on it
 // lands on the view itself and goes no further.
 document.querySelector(".v-session").addEventListener("click", (ev) => {
