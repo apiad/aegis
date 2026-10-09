@@ -334,6 +334,39 @@ def doctor(
     raise typer.Exit(1 if _report(findings) else 0)
 
 
+@app.command("import-legacy")
+def import_legacy(
+    source: Path = typer.Argument(
+        ..., help="The legacy tree's state directory, the one holding sessions/."
+    ),
+    root: Path | None = typer.Option(
+        None, help="Config root; default: the nearest ancestor holding .aegis.yaml."
+    ),
+) -> None:
+    """Copy the sessions of aegis before 2.0 into the archive, to read.
+
+    Sessions already imported are skipped, so it is safe to run again. A running
+    server lists the new ones after a restart."""
+    from .legacy_import import import_legacy as run
+    from .roots import legacy_state, make_roots
+
+    roots = make_roots(start=Path.cwd(), root=root)
+    if not (source / "sessions").is_dir():
+        typer.echo(f"no sessions/ in {source}: not a legacy state directory")
+        raise typer.Exit(2)
+    if found := legacy_state(roots.state_root):
+        typer.echo(
+            f"{roots.state_root} holds legacy state ({', '.join(found)}); "
+            "move it aside and import from there"
+        )
+        raise typer.Exit(2)
+    r = run(source, roots.state_root)
+    typer.echo(
+        f"{r.imported} imported, {r.already} already imported, "
+        f"{r.empty} empty skipped, {r.damaged_lines} damaged lines skipped"
+    )
+
+
 def _ask(doc, found):
     """``doc`` as the person answers for it, each value offered as the default."""
     import click

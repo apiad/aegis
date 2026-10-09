@@ -20,6 +20,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from . import attention
+from .harness import harness_for
 from .meta import MetaStore, rebuild
 from .names import TITLE_MAX, mint_handle, valid_handle
 from .ops import OpError
@@ -38,8 +39,12 @@ def mint_log_id() -> str:
 
 def _public(meta: dict) -> dict:
     """A stored meta as a browser may see it: the agent's priming and its raw
-    standing stay on the server, like ``Session.wire`` keeps them."""
-    return {k: v for k, v in meta.items() if k not in ("priming", "standing")}
+    standing stay on the server, like ``Session.wire`` keeps them. It carries
+    the harness's label as the wire does, for the side panel's model line."""
+    out = {k: v for k, v in meta.items() if k not in ("priming", "standing")}
+    harness = harness_for(meta.get("harness") or "claude-code", "claude", "opencode")
+    out["harness_label"] = harness.label
+    return out
 
 
 class Registry(Host):

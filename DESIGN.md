@@ -39,7 +39,11 @@ its store and the session lands in the archive. Boot writes to no store, except 
 `.aegis/state/` under the config root, where the legacy tree kept its own in
 another format. `aegis serve` refuses to start on a state directory holding the
 legacy tree's marker files, and says to move it to `.aegis/legacy-state/`; mixing
-the two would have each read files the other wrote. Of `.aegis.yaml`, aegis reads
+the two would have each read files the other wrote. `aegis import-legacy` crosses
+that line once, in one direction: it rewrites each legacy log as the stream-json
+lines Claude would have printed, into aegis's own store as an archived session,
+so the fold reads it like any other and nothing reads the legacy directory again
+(`legacy_import.py`). Of `.aegis.yaml`, aegis reads
 the `agents:` and `queues:` maps and `default_agent`, and nothing in them is a
 default: an agent names its harness, model, effort and permission, a queue its
 agent and `max_parallel`, and one that does not is reported by name rather than
