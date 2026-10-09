@@ -8,13 +8,18 @@ follows at `docs/superpowers/plans/2026-10-09-aegis-artifacts.md`.
 
 ## What this delivers
 
-An agent writes an HTML page, calls `artifact_send`, and the page runs live in
+An agent asks aegis for a page, edits it, and sends it. The page runs live in
 its transcript. The person clicks, drags, types or picks, and the page sends
 the result back: a submit wakes the agent with the answer and collapses the
 card to one line, an event wakes the agent and leaves the page live, and a
 state write is kept silently for the agent to read when it wants. The agent can
-push new state into a live page, swap the page for another, or withdraw it.
-The page can take the theme's colors and type, or bring its own.
+push new state into a live page, re-send the page after editing it, or
+withdraw it. The page can take the theme's colors and type, or bring its own.
+
+A page that does not start never reaches the transcript: the send checks it,
+runs it in a hidden frame in the person's browser, and answers the agent with
+the error, so the agent iterates until a working page lands and the person
+only ever sees that one.
 
 Three uses drove the design: a decision ("pick one of these three layouts",
 "tune the accent and the spacing, then confirm"), an explanation (a
@@ -31,11 +36,13 @@ for a page. The agent sends a file and asks in prose.
 
 | Question | Decision | Why |
 |---|---|---|
-| What the page speaks | A small aegis script, `/static/js/artifact.js`, exposing four calls | The agent writes the page from scratch for each task; four calls fit in one primer paragraph. MCP Apps' ten-method handshake is built around a tool's result, not an agent posting a page and waiting, and no MCP App is being shipped into aegis today |
+| What the page speaks | A small aegis script, `/static/js/artifact.js`, exposing four calls | The agent writes the page for each task; four calls fit in one primer paragraph. MCP Apps' ten-method handshake is built around a tool's result, not an agent posting a page and waiting, and no MCP App is being shipped into aegis today |
 | The wire under the script | JSON-RPC 2.0 over `postMessage`, the shape MCP Apps uses | Hosting an MCP App later is a shim over the same bridge, not a rewrite |
-| Where the HTML comes from | A path on disk, copied and served like `file_send` | Agents write files anyway; inline HTML in a tool call is paid for twice, in the call and in the transcript |
+| Where the HTML starts | `artifact_create` writes the skeleton to a file aegis owns and returns its path; every other tool takes the id | The agent never types the boilerplate, the skeleton is the one CI tests, and a tool that takes a path can be given the wrong one |
+| What lands | Only a page that passed the static checks and started in a browser | A broken card in the transcript costs the person a look and the agent a turn; a tool error costs one edit |
 | Who can answer | Anyone with the session open | The vision's rule: session UI is shared, the arrangement is private |
 | How the agent hears | The inbox, headed `> from artifact:<id> · …` | Held mid-turn and delivered when the turn ends, like a monitor or a handoff; nothing is injected at a tool boundary |
+| Order in the transcript | Artifact first, then the prose that refers to it | The prose is written once, after the page is proven; a card above its discussion reads like a figure. The caption is the lead line, and a lesson can carry its text inside the page |
 | State writes | Coalesced on the server to one record a second, and always before an emit, submit, close or update | A slider fires sixty times a second; the store is append-only |
 | Echo | The host pushes state into a frame only when the agent wrote it | A browser's own write pushed back would loop with a page that re-sends on receipt |
 | Errors in the page | One inbox message per artifact per agent turn | A loop in the page's JS costs one message, not a hundred |
@@ -44,73 +51,120 @@ for a page. The agent sends a file and asks in prose.
 
 ## The tools
 
-Four agent operations, served as MCP tools under their names with the dot as
+Five agent operations, served as MCP tools under their names with the dot as
 an underscore. Each touches only the caller's own session, the `own(caller)`
 rule `file.send` uses. An artifact id is `art-<8 hex>`, minted like a
-monitor's, and is what the inbox headers name.
+monitor's, and is what the inbox headers name. No tool takes a path.
 
 ```
-artifact.send(path: str, caption: str | None = None, state: dict | None = None)
-  -> {id, url}
+artifact.create(title: str, caption: str | None = None, state: dict | None = None)
+  -> {id, path, html}
 ```
 
-`path` resolves like `file.send`'s: against the session's working directory,
-`~` expanded. The file is copied under a fresh file id and served at
-`/files/<file_id>/<name>`. Refused with `not_html` when `files.classify` does
-not say `html`, and with `file.send`'s own errors otherwise. `state` is the
-JSON the page receives on init; it may be anything up to 64 KB.
+Writes the skeleton below to `<state>/artifacts/<id>/index.html`, the draft,
+with `title` as its heading, and returns the path the agent edits with its own
+Edit tool and the file's text, so the agent needs no Read before its first
+edit. `caption` is the Markdown line shown above the card. `state` is the JSON
+the page receives on init, up to 64 KB.
+
+```
+artifact.send(id: str) -> {id, url, started: bool | None}
+```
+
+Lands the draft: the static checks, a snapshot of the draft under a fresh file
+id served at `/files/<file_id>/<name>`, then the probe (below). Only when the
+probe passes, or no browser is open to run it, is the `artifact` record
+written and the card shown. A failed send raises and lands nothing, so the
+agent edits the draft and sends again. `started` is `true` when a browser ran
+the page, `null` when none was open.
 
 ```
 artifact.read(id: str)
   -> {status, state, events, submitted, label}
 ```
 
-`status` is `live`, `submitted` or `closed`. `state` is the latest write from
-the page or the agent. `events` is the last 20 emits, oldest first, each
-`{name, data, ts}`. `submitted` is the submit's data and `label` its label,
+`status` is `draft`, `live`, `submitted` or `closed`. `state` is the latest
+write from the page or the agent. `events` is the last 20 emits, oldest first,
+each `{name, data, ts}`. `submitted` is the submit's data and `label` its label,
 both null until then. Never wakes anyone; this is the silent channel.
 
 ```
-artifact.update(id: str, state: dict | None = None, path: str | None = None,
-                caption: str | None = None)
-  -> {id, url}
+artifact.update(id: str, state: dict | None = None, caption: str | None = None,
+                resend: bool = False)
+  -> {id, url, started}
 ```
 
-Pushes `state` into every live frame of the artifact, swaps the document for
-the file at `path` (a new file id, the state carried over unless `state` is
-also given), or changes the caption. Refused with `not_live` once the artifact
-is submitted or closed.
+Pushes `state` into every live frame of the artifact, changes the caption, or
+with `resend` snapshots the edited draft again and swaps the document, through
+the same checks and probe as a send, with the state carried over unless
+`state` is also given. Refused with `not_live` once the artifact is submitted
+or closed.
 
 ```
 artifact.close(id: str, label: str | None = None) -> "closed"
 ```
 
 The agent withdraws a live artifact. The card collapses to `label`, or to
-"closed by the agent".
+"closed by the agent". A draft that was never sent is closed the same way and
+leaves no record.
 
-## The page
+## Getting the first version right
 
-A page includes one script and talks to `window.aegis`:
+Three layers, cheapest first.
+
+**The skeleton is tested.** What `artifact.create` writes is the browser
+test's fixture, read from the same source, so if the skeleton stops working CI
+goes red. With `artifact.css` doing the styling, an agent that starts from it
+and only adds its controls has little to get wrong. The skeleton:
 
 ```html
 <!doctype html>
+<html lang="en">
 <meta charset="utf-8">
+<title>Pick a layout</title>
 <link rel="stylesheet" href="/static/css/artifact.css">
 <script src="/static/js/artifact.js"></script>
+<body>
 <h2>Pick a layout</h2>
-<div class="row">
-  <button data-pick="a">A · two columns</button>
-  <button data-pick="b">B · one column</button>
-</div>
+<!-- controls go here -->
 <script>
   aegis.ready((state, theme) => {
-    for (const b of document.querySelectorAll("[data-pick]"))
-      b.onclick = () => aegis.submit({layout: b.dataset.pick}, `Picked layout ${b.dataset.pick.toUpperCase()}`);
+    // wire the controls; answer with aegis.submit(data, label),
+    // aegis.emit(name, data) or aegis.state(data)
   });
 </script>
+</body>
+</html>
 ```
 
-The four calls:
+**Static checks at send.** Before anything is served: a draft that does not
+load `/static/js/artifact.js` is refused with `no_script`, and one whose text
+calls none of `aegis.submit`, `aegis.emit` or `aegis.state` with `no_answer`,
+each with a one-line hint. These are the two mistakes that leave a page that
+looks fine and can never answer. Nothing else is linted: browsers parse
+anything, and external scripts such as d3 from a CDN are allowed.
+
+**The probe.** The server publishes an `artifact.probe` request on the
+session's transcript channel, carrying the snapshot's URL and a probe id. Every
+browser with the session open mounts the page in a hidden sandboxed frame,
+outside the transcript, and answers `artifact.probed` with the outcome of
+`ui/initialize`: started, or the first error the page raised before it, with
+its message and stack. The first answer wins; later ones and answers to an
+unknown probe id are dropped; the frame is removed either way. The server waits
+three seconds. Started: the record is written and the tool returns. Error: the
+snapshot is deleted, nothing is recorded, and the tool raises `page_error` with
+the message and the first five lines of the stack, so the agent sees
+"ReferenceError: d3 is not defined at index.html:14" in its own turn and fixes
+the draft before it asks the person anything. No browser open: nothing can be
+probed, the record is written with `started: null`, and the first browser to
+mount it reports an error, if any, to the inbox.
+
+The failed sends show as the harness's own tool rows with an error mark, which
+is the right trace of the iteration; the transcript shows one card.
+
+## The page
+
+The page talks to `window.aegis`:
 
 - `aegis.ready(fn)` runs `fn(state, theme)` once the host has answered the
   handshake. `state` is the agent's initial state, or the latest one after a
@@ -138,18 +192,19 @@ Open link still shows the document.
 `/static/css/artifact.css` is optional. It styles the body, headings, buttons,
 inputs, labels, `.row` and `.card` from the theme variables (`--bg`, `--ink`,
 `--accent`, `--surface`, `--rule`, `--font-ui`, `--font-mono`, `--r`), so a
-page that links it looks like a part of aegis without writing CSS. A page that
-wants its own look does not link it.
+page that keeps the skeleton's link looks like a part of aegis without writing
+CSS. A page that wants its own look drops the link.
 
 ## The bridge
 
 `client/js/artifacts.js` holds one `message` listener on `window` and a map
-from a frame's `contentWindow` to `{log_id, artifact_id, frame}`. A message is
-accepted only when `event.source` is a mapped window; that binds every message
-to one artifact, so a page can never name another. The page posts to `*`,
-because its origin is opaque and it cannot know the host's; the host posts
-back to the frame's `contentWindow` with target `*` for the same reason, and
-the content of those messages is state, theme and status, nothing secret.
+from a frame's `contentWindow` to `{log_id, artifact_id, frame}`, probe frames
+included. A message is accepted only when `event.source` is a mapped window;
+that binds every message to one artifact, so a page can never name another.
+The page posts to `*`, because its origin is opaque and it cannot know the
+host's; the host posts back to the frame's `contentWindow` with target `*` for
+the same reason, and the content of those messages is state, theme and status,
+nothing secret.
 
 Messages, JSON-RPC 2.0:
 
@@ -168,8 +223,10 @@ Messages, JSON-RPC 2.0:
 `ui/initialize` keeps MCP Apps' name because it is the one message both
 protocols have and the one a compatibility shim would start from; the others
 are aegis's. Nothing in the bridge is a tool call: the page reaches the server
-only through the four person operations below, with the artifact id the host
-holds, never one the page sent.
+only through the person operations below, with the artifact id the host holds,
+never one the page sent. In a probe frame the bridge answers `ui/initialize`
+with status `probe`, forwards the first `aegis/error` as the probe's outcome,
+and drops everything else.
 
 The theme map is read once per switch from `getComputedStyle` on the page's
 root, for the variables the base stylesheet declares, and pushed to every
@@ -178,7 +235,7 @@ frame scrolls inside.
 
 ## The person operations
 
-Four operations in `app.py`, callable from the websocket and not by agents,
+Five operations in `app.py`, callable from the websocket and not by agents,
 each taking `log_id` and `artifact_id`:
 
 - `artifact.state(state)`: replaces the state. Over 64 KB is refused with
@@ -192,6 +249,8 @@ each taking `log_id` and `artifact_id`:
   page the status so it disables itself.
 - `artifact.error(message, stack)`: wakes the agent once per artifact per
   agent turn; later errors in the same turn are counted and dropped.
+- `artifact.probed(probe_id, started, message?, stack?)`: the outcome of a
+  probe frame; answers to a probe the server no longer waits on are dropped.
 
 Each is refused with `no_artifact` for an id the session does not have, and
 `not_live` for a submitted or closed one, except `error`, which a read-only
@@ -199,24 +258,27 @@ frame may still raise.
 
 ## Records and the fold
 
-Five aegis records, `src: aegis`, in the session's store:
+Five aegis records, `src: aegis`, in the session's store. A draft is not a
+record: it is a file under `<state>/artifacts/<id>/` and an entry in the
+session's in-memory map, so a draft never sent leaves nothing in the
+transcript, and a restart forgets drafts (their files are deleted at boot).
 
 | Record | Fields | Effect in the fold |
 |---|---|---|
-| `artifact` | `artifact_id, file_id, name, caption, state` | creates the entry, status `live` |
+| `artifact` | `artifact_id, file_id, name, caption, state, started` | creates the entry, status `live` |
 | `artifact_state` | `artifact_id, state, by` (`page` or `agent`) | replaces the entry's state |
 | `artifact_event` | `artifact_id, name, data` | appends to the entry's events, keeping the last 20 |
 | `artifact_submit` | `artifact_id, data, label` | status `submitted`, sets `submitted` and `label` |
 | `artifact_close` | `artifact_id, label` | status `closed`, sets `label` |
 
-An `artifact.update` with a new path writes a second `artifact` record with
-the same `artifact_id` and the new file; the fold swaps the document and keeps
-status, events and state. A caption change alone is the same record with the
-old file. The entry's state and events travel as detail (`transcript/wire.py`),
-fetched when the row mounts; the row itself carries status, label, caption,
-name and URL. Every decision about the card is made in the fold: the preview
-is always `html` and the frame's sandbox is always `allow-scripts`, so the
-client reads neither from the file.
+A resend writes a second `artifact` record with the same `artifact_id` and the
+new file; the fold swaps the document and keeps status, events and state. A
+caption change alone is the same record with the old file. The entry's state
+and events travel as detail (`transcript/wire.py`), fetched when the row
+mounts; the row itself carries status, label, caption, name and URL. Every
+decision about the card is made in the fold: the preview is always `html` and
+the frame's sandbox is always `allow-scripts`, so the client reads neither from
+the file.
 
 State coalescing lives in `Session`: a page's write replaces an in-memory
 latest and marks it dirty; a record is written when one second has passed
@@ -227,9 +289,9 @@ sees every write that mattered and at most one a second of the rest; a reload
 or a refold agrees with the live view at every record, which the delta tests
 check at every cut as they do for every other kind.
 
-The in-memory latest and the error-per-turn set live on the `Session` and are
-not in the meta: boot reads only metas, and after a restart the latest is the
-last record, which is at most a second old.
+The in-memory latest, the drafts, the pending probes and the error-per-turn
+set live on the `Session` and are not in the meta: boot reads only metas, and
+after a restart the latest is the last record, which is at most a second old.
 
 ## Waking the agent
 
@@ -249,13 +311,22 @@ puts `error` there, then the message and the first five lines of the stack.
 The body is a code block so the agent reads it as data; labels and data are
 never rendered as HTML anywhere.
 
-The primer gains one paragraph after the `file_send` one: when to send an
-artifact instead of asking in prose (a choice among things that have to be
+## Telling the agent
+
+The primer gains one paragraph after the `file_send` one. It says when to send
+an artifact instead of asking in prose: a choice among things that have to be
 seen, values that have to be tuned, a question whose answer has structure, an
-explanation that is better played with), the four calls, the header the answer
-arrives under, and that the turn still ends with `turn_end(needs_you)`.
-`artifact_send`'s docstring carries the skeleton above, so an agent that has
-only the tool list can still write a page.
+explanation that is better played with. It gives the order of work: create,
+edit the draft, send until it lands, and only then write the message, which
+refers to the card above it, and end the turn with `turn_end(needs_you)` when
+the artifact asks something. The caption is the one line the person reads
+before the card, and a lesson that needs its text beside its controls puts the
+text inside the page. It names the four calls and the header the answer
+arrives under. The prose comes after the card because it is written once, when
+the page is proven, and nothing written before a failed send is wasted.
+`artifact_create`'s docstring carries the four calls, so an agent that has only
+the tool list can still write a page; `meta` lists the tools as it does today.
+Both harnesses get everything through MCP.
 
 ## The card
 
@@ -274,7 +345,8 @@ so an artifact scrolled far up is unmounted and re-inits from the server's
 state when it comes back. A row's patch with a new state from the agent is
 pushed to its mounted frame; a patch whose state came from a page is not.
 `artifacts.js` registers the frames `entries.js` mounts and unregisters them
-when the row is removed, and `app.js` tells it on a theme switch.
+when the row is removed, mounts and removes probe frames on `artifact.probe`,
+and `app.js` tells it on a theme switch.
 
 ## Security
 
@@ -282,25 +354,33 @@ Unchanged from `file_send`: the document is served with
 `Content-Security-Policy: sandbox allow-scripts` and framed with
 `sandbox="allow-scripts"`, so its origin is opaque and the websocket's origin
 check refuses it. New: the page reaches the server only through the bridge,
-only through the four person operations, only for the artifact the host bound
-its window to. The server caps every payload and rate-limits emits. Agent text
-is untrusted as before: captions render as Markdown with raw HTML off, labels
-and data as text and code.
+only through the person operations, only for the artifact the host bound its
+window to. The server caps every payload and rate-limits emits. Agent text is
+untrusted as before: captions render as Markdown with raw HTML off, labels and
+data as text and code. The draft file is written by the server under the state
+root and read back only through the static checks and the snapshot; its name
+is fixed, so no path from the agent is ever opened.
 
 ## Tests
 
-- `tests/test_artifacts.py`: the five records fold to the entry at every cut
-  and the delta equals the fold (the `test_wire.py` fixtures gain an artifact
-  scenario); coalescing writes one record a second and one before each
-  boundary; refusals (`not_html`, `too_large`, `bad_name`, `rate_limited`,
+- `tests/test_artifacts.py`: `create` writes the skeleton and returns it; the
+  five records fold to the entry at every cut and the delta equals the fold
+  (the `test_wire.py` fixtures gain an artifact scenario); a resend swaps the
+  file and keeps the rest; coalescing writes one record a second and one
+  before each boundary; the static checks (`no_script`, `no_answer`); a failed
+  probe deletes the snapshot and records nothing; no browser gives
+  `started: null`; refusals (`too_large`, `bad_name`, `rate_limited`,
   `not_live`, `no_artifact`); one error message per artifact per turn; the
-  header and body format; `artifact.read` answers from memory.
+  header and body format; `artifact.read` answers from memory; a draft never
+  sent is gone after a restart.
 - Browser (`tests/test_browser_*.py`, headless Chromium against a real
-  `aegis serve`): the fake claude sends a fixture page that calls `ready`,
-  writes state, emits and submits; the test clicks inside the frame, reads the
-  inbox turn the fake claude receives, sees the card collapse to the label,
-  reloads and sees the same card, switches the theme and sees the frame's
-  variables change.
+  `aegis serve`): the fake claude creates an artifact, the test fills the
+  draft from the skeleton with a button, sends, sees the probe pass and the
+  card appear; clicks inside the frame, reads the inbox turn the fake claude
+  receives, sees the card collapse to the label, reloads and sees the same
+  card, switches the theme and sees the frame's variables change; a draft
+  with a thrown error at load fails the send with `page_error` and shows no
+  card.
 - `make test-live`: a real Claude session asked to offer two layouts in an
   artifact and to report the pick.
 - `make bench` in the PR body, as for every change.
@@ -310,5 +390,6 @@ and data as text and code.
 The docked canvas and its native edits (text in spans, moving layout pieces),
 with its versioned layout, is slice 2. Also out: two people editing one live
 artifact at once (last writer wins here), MCP Apps compatibility, files from
-the person to an agent, an agent reading another session's artifacts, and
-artifacts on the Fleet view.
+the person to an agent, an agent reading another session's artifacts,
+artifacts on the Fleet view, and a server-side headless browser for the probe
+when no browser is open.
