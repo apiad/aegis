@@ -901,7 +901,7 @@ EOF
 
 **Files:**
 - Create: `src/aegis/artifact_ops.py`
-- Modify: `src/aegis/app.py` (`__init__`: `register_artifact_ops(self)`; `boot`: `drop_all_drafts`; module docstring's operation list)
+- Modify: `src/aegis/app.py` (`__init__`: `register_artifact_ops(self)`; module docstring's operation list)
 - Test: `tests/test_artifacts_e2e.py`, `tests/test_agents.py` (the tool-name set at line 137)
 
 **Interfaces:**
