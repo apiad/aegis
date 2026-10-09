@@ -8,6 +8,7 @@ enqueued (the vision's security model). People can do anything.
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
 
@@ -15,6 +16,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from . import files
 from .monitors import iso_now
+from .names import valid_handle
 from .ops import Caller, OpError
 from .session import Archived
 
@@ -177,6 +179,19 @@ ACROSS = (
     "session there (peer_handoff to handle@server); reading, spawning and "
     "enqueueing on another server are for people"
 )
+
+
+# What an agent here may learn of a linked server, all of it composed here from
+# values checked here: the far server may be hostile, so none of its text is
+# passed on (DESIGN.md, "A link is a client").
+FAR_STATES = frozenset({"idle", "working", "stopped", "error"})
+FAR_ERRORS = {
+    "no_session": "no open session {handle}@{server}",
+    "archived": "{handle}@{server} is archived",
+    "server_offline": "{server} is not linked right now",
+    "timeout": "{server} did not answer in time",
+}
+USER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
 def split_address(target: str, own: str) -> tuple[str, str | None]:
@@ -362,15 +377,24 @@ def register_agent_ops(app: App) -> None:
             "server": app.server_name,
             "user": app.user,
         }
-        return await link.call(
-            "peer.deliver",
-            {
-                "target": handle,
-                "context": p.context,
-                "interrupt": p.interrupt,
-                "sender": sender,
-            },
-        )
+        try:
+            r = await link.call(
+                "peer.deliver",
+                {
+                    "target": handle,
+                    "context": p.context,
+                    "interrupt": p.interrupt,
+                    "sender": sender,
+                },
+            )
+        except OpError as e:
+            if e.code in FAR_ERRORS:
+                raise OpError(
+                    e.code, FAR_ERRORS[e.code].format(handle=handle, server=server)
+                ) from None
+            raise OpError("far_error", f"{server} refused the handoff") from None
+        held = isinstance(r, dict) and r.get("held") is True
+        return f"{'held for' if held else 'landed at'} {handle}@{server}"
 
     @r.op("peer.deliver", Deliver)
     async def peer_deliver(p: Deliver, caller):
@@ -379,6 +403,13 @@ def register_agent_ops(app: App) -> None:
         if caller.link is None or p.sender.server != caller.link:
             raise OpError(
                 "not_a_link", "only a link, for its own server, delivers handoffs"
+            )
+        # The header is one line a person and an agent trust: nothing in it may
+        # start another.
+        sender_ok = valid_handle(p.sender.handle) or p.sender.handle == "user"
+        if not (sender_ok and USER.match(p.sender.user)):
+            raise OpError(
+                "bad_sender", "a sender is a handle and a user name, one line each"
             )
         to = target(p.target)
         if p.interrupt and to.status == "working":
@@ -389,8 +420,7 @@ def register_agent_ops(app: App) -> None:
             await to.deliver(f"> from {who} · {iso_now()}", p.context)
         except Archived as e:
             raise OpError("archived", f"{p.target} is archived") from e
-        where = f"{to.handle}@{app.server_name}"
-        return f"{'held for' if held else 'landed at'} {where}"
+        return {"held": held}
 
     @r.op("peer.read", Read, agent=True)
     async def peer_read(p: Read, caller):
@@ -428,15 +458,13 @@ def register_agent_ops(app: App) -> None:
                 listed = await link.call("session.list")
             except OpError:
                 continue
-            for e in listed or []:
-                if isinstance(e, dict) and "server" not in e:
-                    out.append(
-                        {
-                            "handle": str(e.get("handle")),
-                            "server": link.name,
-                            "state": str(e.get("state")),
-                        }
-                    )
+            for e in listed if isinstance(listed, list) else []:
+                if not isinstance(e, dict) or "server" in e:
+                    continue
+                handle, state = e.get("handle"), e.get("state")
+                ok = isinstance(handle, str) and valid_handle(handle)
+                if ok and state in FAR_STATES:
+                    out.append({"handle": handle, "server": link.name, "state": state})
         return out
 
     @r.op("file.send", FileSend, agent=True)

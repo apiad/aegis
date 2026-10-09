@@ -477,6 +477,9 @@ class Links:
     def get(self, name: str) -> Link | None:
         return self._links.get(name)
 
+    def links(self) -> list[Link]:
+        return list(self._links.values())
+
     def up(self) -> list[Link]:
         return [link for link in self._links.values() if link.state == "linked"]
 

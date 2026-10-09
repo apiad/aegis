@@ -46,6 +46,7 @@ themePick.addEventListener("change", () => {
 const sessions = new Map(); // key -> meta, from every server's `sessions` channel
 let links = []; // the home server's links, from the `links` channel
 let linksLoaded = false; // the first `links` snapshot has arrived
+let linksSig = ""; // the links' names and states the archive was last read for
 const remote = new Map(); // linked server -> {unsubs, quota, host, unsubHost, loaded, state}
 
 // A session's key, and back. Server names never hold a slash (links.py).
@@ -297,6 +298,13 @@ function onLinks(list) {
     r.state = l.state;
   }
   for (const [k, m] of sessions) if (m.server) sessions.set(k, { ...m, off: isOff(m.server) });
+  // Which servers are up changes what the archive can list: read it again.
+  const sig = links.map((l) => `${l.name}:${l.state}`).join(",");
+  if (sig !== linksSig) {
+    linksSig = sig;
+    archiveLoaded = false;
+    if (booted && root.dataset.view === "fleet") loadArchive();
+  }
   if (root.dataset.view === "fleet") watchHost(true);
   if (booted) onSessions();
 }
@@ -812,6 +820,9 @@ $("entries").addEventListener("click", async (ev) => {
 let archived = [];
 let archiveCursor = null; // the next page's cursor; null: nothing more
 let archiveTotal = 0; // the first page's count of everything matching
+let archiveServer = null; // the server filter: null for every server
+let archiveCounts = {}; // the first page's count per server
+let archiveOffline = []; // linked servers that were down for the first page
 let archiveLoaded = false;
 let archiveTimer = null;
 
@@ -821,6 +832,7 @@ async function loadArchive(more = false) {
   archiveLoaded = true;
   const q = $("arch-q").value.trim();
   const params = q ? { query: q } : {};
+  if (archiveServer) params.server = archiveServer;
   if (more && archiveCursor) params.cursor = archiveCursor;
   try {
     const r = await conn.call("archive.list", params);
@@ -828,7 +840,11 @@ async function loadArchive(more = false) {
     const items = r.items.map((m) => withKey(m, m.server && m.server !== conn.server ? m.server : null));
     archived = more ? [...archived, ...items] : items;
     archiveCursor = r.cursor;
-    if (!more) archiveTotal = r.total;
+    if (!more) {
+      archiveTotal = r.total;
+      if (!archiveServer) archiveCounts = r.counts || {};
+      archiveOffline = r.offline || [];
+    }
   } catch (e) {
     if (!more) [archived, archiveCursor, archiveTotal] = [[], null, 0];
   }
@@ -839,7 +855,35 @@ async function loadArchive(more = false) {
   $("arch-more").hidden = !archived.length;
   $("arch-count").textContent = `Showing ${archived.length} of ${Math.max(archiveTotal, archived.length)}`;
   $("arch-next").hidden = !archiveCursor;
+  drawArchiveServers();
   fleetMark(false);
+}
+
+// The archive's server filter, once a server is linked: every server with its
+// count, and a down one named so its rows are not silently missing.
+function drawArchiveServers() {
+  const box = $("arch-servers");
+  box.hidden = !links.length;
+  if (!links.length) return;
+  const all = Object.values(archiveCounts).reduce((a, n) => a + n, 0);
+  const pick = (label, server, n) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.server = server || "";
+    b.className = archiveServer === server ? "on" : "";
+    b.append(label, Object.assign(document.createElement("b"), { textContent: n }));
+    b.addEventListener("click", () => {
+      archiveServer = server;
+      loadArchive();
+    });
+    return b;
+  };
+  const off = (name) => Object.assign(document.createElement("span"), { className: "off", textContent: `${name} offline` });
+  box.replaceChildren(
+    pick("All", null, all),
+    ...Object.entries(archiveCounts).map(([name, n]) => pick(name, name === conn.server ? conn.server : name, n)),
+    ...archiveOffline.map(off),
+  );
 }
 $("arch-next").addEventListener("click", () => loadArchive(true));
 

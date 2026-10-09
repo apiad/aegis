@@ -360,7 +360,7 @@ class App:
             raise _dead(e) from e
         return s.wire()
 
-    async def _command(self, s, name: str, arg: str):
+    async def _command(self, s, name: str, arg: str, caller: Caller = Caller("user")):
         """Run an aegis command typed in the composer."""
         cmd = commands.AEGIS[name]
         if cmd.hint.startswith("<") and not arg:
@@ -389,11 +389,11 @@ class App:
             await s.stop()
             return s.wire()
         if name == "spawn":
-            return await self._spawn_line(commands.parse_spawn(arg))
+            return await self._spawn_line(commands.parse_spawn(arg), caller)
         await reg.close(s.log_id)  # close
         return None
 
-    async def _spawn_line(self, line: commands.SpawnLine) -> dict:
+    async def _spawn_line(self, line: commands.SpawnLine, caller: Caller) -> dict:
         """``/spawn``: a person starting a session, here or, with ``@server``, on
         a linked server through the link. Nobody's child: no ``spawned_by``."""
         params = {
@@ -409,8 +409,10 @@ class App:
             if v is not None
         }
         if line.server in (None, self.server_name):
-            r = await self.registry.call("session.spawn", params, Caller("user"))
+            r = await self.registry.call("session.spawn", params, caller)
             return {**r, "server": self.server_name}
+        if caller.link is not None:
+            raise OpError("not_relayed", "a link is not relayed to another server")
         link = self.links.get(line.server)
         if link is None:
             raise OpError(
@@ -421,11 +423,13 @@ class App:
         r = await link.call("session.spawn", params)
         return {**r, "server": line.server}
 
-    async def _archive(self, p: ArchiveParams) -> dict:
+    async def _archive(self, p: ArchiveParams, caller: Caller) -> dict:
         positions = archive.decode(p.cursor)
+        # A link asking reads this server's archive only: links are not relayed.
+        only = self.server_name if caller.link is not None else p.server
         pages: dict[str, tuple[list[dict], archive.Position | None]] = {}
         counts: dict[str, int] = {}
-        for name, fetch in self._archive_sources(p.server):
+        for name, fetch in self._archive_sources(only):
             if name in positions and positions[name] is None:
                 continue  # exhausted on an earlier page
             got = await fetch(p.query, p.limit, positions.get(name))
@@ -438,10 +442,19 @@ class App:
         more = any(v is not None for v in positions.values()) or any(
             name not in positions for name in pages
         )
+        # A linked server that is down is named, so its rows are visibly missing.
+        offline = [
+            link.name
+            for link in self.links.links()
+            if link.state != "linked"
+            and only in (None, link.name)
+            and caller.link is None
+        ]
         return {
             "items": items,
             "total": sum(counts.values()),
             "counts": counts,
+            "offline": offline,
             "cursor": archive.encode(positions) if more else None,
         }
 
@@ -563,7 +576,7 @@ class App:
             if cmd is not None:
                 name, arg = cmd
                 if name in commands.AEGIS:
-                    return await self._command(s, name, arg)
+                    return await self._command(s, name, arg, caller)
                 cat = await self.catalogs.get(s)
                 if cat is not None and cat.commands and not cat.has(name):
                     raise OpError(
@@ -676,7 +689,7 @@ class App:
             """A page of closed sessions, newest first, across this server and
             the servers it links (archive.py). ``total`` and ``counts`` are of
             the servers this page read; the first page reads every one."""
-            return await self._archive(p)
+            return await self._archive(p, caller)
 
         @r.op("file.open", FileRef)
         async def file_open(p: FileRef, caller):

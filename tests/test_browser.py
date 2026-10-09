@@ -3012,3 +3012,44 @@ def test_settings_lists_the_link_and_edits_the_far_config(linked, page):
         "document.querySelector('#set-path')?.textContent.includes('alpha')"
     )
     assert not page.errors
+
+
+def test_a_far_file_card_links_only_through_via(linked, browser, page):
+    f = linked.beta.root / "report.html"
+    f.write_text("<h1>from beta</h1>")
+    lid = beta_session(
+        linked, browser, f"/mcp file_send {json.dumps({'path': str(f)})}"
+    )
+    page.goto(linked.alpha.url)
+    page.click(f"#tablist .tab[data-id='beta/{lid}']")
+    page.wait_for_selector(".fcard .fbar .dl")
+    dl = page.get_attribute(".fcard .dl", "href")
+    assert dl.startswith("/via/beta/files/") and dl.endswith(
+        "/report.html?download=1"
+    ), dl
+    assert page.get_attribute(".fcard .open", "href") == dl.removesuffix("?download=1")
+    assert page.get_attribute(".fcard iframe", "sandbox") == "allow-scripts"
+    assert page.locator(".fcard .native").count() == 0
+    got = page.request.get(f"http://127.0.0.1:{linked.alpha.port}{dl}")
+    assert got.status == 200 and "attachment" in got.headers["content-disposition"]
+    assert not page.errors
+
+
+def test_the_archive_filters_by_server_and_names_one_that_is_down(
+    linked, browser, page
+):
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.goto(linked.beta.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    lid = spawn(pg, "to be archived on beta")
+    close_session(pg)
+    pg.close()
+    page.goto(linked.alpha.url)
+    page.wait_for_selector(f"#arch-list tr[data-id='beta/{lid}'] .where >> text=beta")
+    page.wait_for_selector("#arch-servers button[data-server=beta] >> text=1")
+    page.click("#arch-servers button[data-server=beta]")
+    page.wait_for_selector("#arch-servers button.on[data-server=beta]")
+    assert page.locator("#arch-list tr[data-id]").count() == 1
+    linked.beta.stop()
+    page.wait_for_selector("#arch-servers .off >> text=beta offline", timeout=20000)

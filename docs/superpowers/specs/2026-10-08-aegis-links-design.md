@@ -238,6 +238,20 @@ too, and is tracked in #206.
   `handle@server` reaches an agent on a linked server by handoff only, and
   nothing on a linked server can reach you.
 
+### Against a hostile far server
+
+Changed in review: the first build passed the far server's handoff reply, its
+error messages and its session handles to the zion agent as they came. A far
+server that is compromised could then write into a zion agent's context. zion
+now composes every string an agent sees: a handoff reply is `landed at` or
+`held for` plus the address the zion agent gave; an error is worded here from an
+allowlist of codes (`no_session`, `archived`, `server_offline`, `timeout`), and
+any other is `far_error` with no far text; a session list entry is kept only if
+its handle passes `valid_handle` and its state is one of four. And only a socket
+with no `Origin` may say it is a link, so a browser on the VPS cannot forge a
+handoff from zion; a sender's handle and user are checked so no header line can
+be forged inside them.
+
 ### Why not more
 
 A zion agent that could read VPS transcripts would carry VPS text into its own
@@ -286,8 +300,12 @@ Every item below is drawn in the mockups.
   it read. A recap is asked of the VPS and runs on its Claude Code.
 - A VPS agent's `file_send` URL is relative to the VPS. Through zion the client
   rewrites it to `/via/vps/files/<id>/<name>`, which zion streams from the VPS.
-  The 128-bit id stays the secret, and the VPS's sandbox headers reach the
-  browser unchanged. Open natively is refused for a remote file.
+  The 128-bit id stays the secret. Changed in review: the first draft passed the
+  VPS's headers through, and a hostile VPS could then serve HTML with no
+  sandbox on zion's origin, where its script holds the cookie. zion now decides
+  every header from the file's name, as for its own files, and the client builds
+  every link on a far file card from a `/files/<id>/<name>` path, never from a
+  URL the far server sent. Open natively is refused for a remote file.
 
 ### Spawning
 

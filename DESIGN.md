@@ -179,13 +179,22 @@ Alex's laptop must never run what someone else's token wrote, so a link only
 asks: it sends calls and subscriptions, and reads back `welcome`, `reply`,
 `snapshot`, `patch` and `error`, dropping anything else with a log line. It runs
 no request handler, so the linked server has no operation to call here and no
-route to this server's agents. What an agent here learns of a linked server is
-handles and states (`session.list`), the reply to its handoff, and errors; never
-a title, a transcript or anything else an agent there wrote.
-`tests/test_links.py::test_no_text_written_on_beta_reaches_an_alpha_agent` holds
-it. A socket with no `Origin` is a program, never a browser, and is accepted only
-as such a link; a link socket keys subscriptions by `sid` and is not relayed on.
-Before a second person gets a token on a linked server, that server must run
+route to this server's agents. The linked server is treated as hostile: an agent
+here sees only strings this server composed from far values it checked, a
+handle that passes `valid_handle`, a state from a fixed set, whether a handoff
+was held, and errors this server words from an allowlist of codes. Never a
+title, a transcript, a reply or an error message the far side wrote.
+`tests/test_links.py::test_a_hostile_far_server_puts_no_text_into_an_agent_here`
+holds it against a far server that puts a marker in everything. The same goes
+for the browser: a linked server's sent file reaches this origin only through
+`/via`, under headers this server decides from the file's name
+(`files.via_headers`), and the client rebuilds every far file link from a path
+of that one shape, since a page or a `javascript:` URL running on this origin
+holds the cookie that drives every agent here. A socket with no `Origin` is a
+program, never a browser, and only such a socket may say it is a link; a link
+socket keys subscriptions by `sid` and is not relayed on. "A link" means any
+holder of the token that says so: per-link credentials come with per-user
+tokens. Before a second person gets a token on a linked server, that server must run
 each person's sessions apart and let only a session's owner write to it, or one
 person could steer another's session into handing off (the links spec).
 

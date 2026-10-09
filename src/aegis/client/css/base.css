@@ -648,3 +648,10 @@ body{background:#000}
 #a2 .set-linkrow .set-in{flex:1;min-width:0;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 9px;font-family:var(--font-mono);font-size:12px;color:var(--ink)}
 #a2 .set-srvpick{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:12.5px;color:var(--muted)}
 #a2 .band .prov.same{color:var(--faint)}
+/* The archive's server filter. */
+#a2 .arch-servers{display:inline-flex;align-items:center;border:1px solid var(--rule);border-radius:var(--r);overflow:hidden;font-family:var(--font-mono);font-size:12px}
+#a2 .arch-servers[hidden]{display:none}
+#a2 .arch-servers button{background:var(--surface);color:var(--muted);border:0;border-right:1px solid var(--rule);padding:5px 10px;cursor:pointer;font:inherit}
+#a2 .arch-servers button.on{background:var(--accent-soft);color:var(--strong)}
+#a2 .arch-servers button b{margin-left:6px;color:var(--faint);font-weight:500}
+#a2 .arch-servers .off{padding:5px 10px;color:var(--err)}

@@ -148,8 +148,15 @@ const RENDERERS = {
     // the preview below. The preview kind was decided at send (files.py);
     // Open natively shows only where the server said so (#a2[data-native]).
     const det = { ...(e.detail || {}) };
-    if (det.url) det.url = fileBase + det.url;
     const remote = fileBase !== "";
+    if (remote) {
+      // A linked server's card: every link is rebuilt here from a path of the
+      // one shape /via serves, so no URL the far server chose reaches an href
+      // or a frame on this origin (a javascript: download ran with the cookie).
+      const ok = typeof det.url === "string" && /^\/files\/[A-Za-z0-9_-]+\/[^/?#]+$/.test(det.url);
+      det.url = ok ? fileBase + det.url : "about:blank";
+      det.download = ok ? `${det.url}?download=1` : "about:blank";
+    }
     const body = el("div", "body");
     if (e.md) {
       const cap = markdown(e.md);
@@ -182,7 +189,9 @@ const RENDERERS = {
       view.addEventListener("click", () => window.open(det.url, "_blank", "noopener"));
     } else if (pv === "pdf" || pv === "html") {
       view = el("iframe");
-      if (pv === "html") view.setAttribute("sandbox", "allow-scripts");
+      // A linked server's frame is sandboxed unless it is a PDF, which /via
+      // serves as application/pdf whatever the far server says.
+      if (pv === "html" || (remote && !/\.pdf$/i.test(det.url))) view.setAttribute("sandbox", "allow-scripts");
       view.loading = "lazy";
       view.src = det.url;
       view.title = e.title;

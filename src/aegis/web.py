@@ -65,18 +65,6 @@ log = logging.getLogger("aegis.web")
 HELLO_TIMEOUT_S = 5.0
 CLIENT_DIR = Path(__file__).parent / "client"
 
-# Headers a linked server's sent file keeps on its way through /via.
-VIA_HEADERS = (
-    "content-type",
-    "content-length",
-    "content-disposition",
-    "content-security-policy",
-    "x-content-type-options",
-    "cache-control",
-    "etag",
-    "last-modified",
-)
-
 # Close codes, in the 4000 range websockets leave to applications.
 BAD_ORIGIN = 4403
 BAD_TOKEN = 4401
@@ -117,6 +105,13 @@ def load_or_create_token(state_root: Path) -> str:
     with os.fdopen(fd, "w") as f:
         f.write(token + "\n")
     return token
+
+
+def _loggable(params: object) -> object:
+    """Params as the log may see them: a token never reaches a log line."""
+    if isinstance(params, dict) and "token" in params:
+        return {**params, "token": "***"}
+    return params
 
 
 def public_origin(value: str) -> str:
@@ -245,18 +240,26 @@ def build_web(
 
     async def via_file(request):
         """A sent file on a linked server, streamed from it. The id stays the
-        secret and the far server's headers, its sandbox included, pass through."""
+        secret; the headers are this server's own, from the file's name
+        (files.via_headers), because the far server is not trusted to say how
+        its bytes may run on this origin."""
         p = request.path_params
         host = request.headers.get("host", "")
         link = app.links.get(p["server"])
         if link is None or not (host in allowed_hosts or host in public):
             return PlainTextResponse("Not Found", status_code=404)
+        download = request.query_params.get("download") == "1"
         url = f"{link.url}{files.url(p['file_id'], p['name'])}"
-        if request.query_params.get("download") == "1":
-            url += "?download=1"
         client = httpx.AsyncClient(timeout=httpx.Timeout(30, read=None))
         try:
-            upstream = await client.send(client.build_request("GET", url), stream=True)
+            # Identity: the bytes go out as they arrive, under this server's
+            # own Content-Type, so they must not be compressed on the way in.
+            upstream = await client.send(
+                client.build_request(
+                    "GET", url, headers={"accept-encoding": "identity"}
+                ),
+                stream=True,
+            )
         except httpx.HTTPError:
             await client.aclose()
             return PlainTextResponse("Bad Gateway", status_code=502)
@@ -273,8 +276,7 @@ def build_web(
                 await upstream.aclose()
                 await client.aclose()
 
-        kept = {k: v for k, v in upstream.headers.items() if k.lower() in VIA_HEADERS}
-        return StreamingResponse(body(), headers=kept)
+        return StreamingResponse(body(), headers=files.via_headers(p["name"], download))
 
     async def ws(websocket: WebSocket) -> None:
         host = websocket.headers.get("host", "")
@@ -293,7 +295,8 @@ def build_web(
             return
         if not isinstance(hello, dict):
             hello = {}
-        link = hello.get("link")
+        # Only a program (no Origin) can be a link: a browser saying so is not.
+        link = hello.get("link") if program else None
         via = link.get("server") if isinstance(link, dict) else None
         if program and not isinstance(via, str):
             await websocket.close(code=BAD_ORIGIN)  # a program that is not a link
@@ -351,7 +354,7 @@ def build_web(
                 reply["server"] = server
             op = str(msg.get("op"))
             t0 = time.monotonic()
-            log.info("call %s %s", op, msg.get("params"))
+            log.info("call %s %s", op, _loggable(msg.get("params")))
             try:
                 link = far(server)
                 if link is not None:
