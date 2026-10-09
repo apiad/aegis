@@ -120,7 +120,10 @@ class AppServer:
 
 
 def open_thread(s: AppServer, model: str, cwd: Path) -> str:
-    s.own("aegis/initialize", s.call("initialize", {"clientInfo": {"name": "aegis", "version": "record"}}))
+    s.own(
+        "aegis/initialize",
+        s.call("initialize", {"clientInfo": {"name": "aegis", "version": "record"}}),
+    )
     s.send({"method": "initialized"})
     th = s.call("thread/start", {"cwd": str(cwd), "model": model, "modelProvider": "openrouter",
                                  "sandbox": "danger-full-access", "approvalPolicy": "never"})  # fmt: skip
@@ -129,7 +132,10 @@ def open_thread(s: AppServer, model: str, cwd: Path) -> str:
 
 
 def start_turn(s: AppServer, tid: str, model: str, text: str) -> str:
-    s.own("aegis/turn", {"model": f"openrouter/{model}", "effort": "", "permission": "full"})
+    s.own(
+        "aegis/turn",
+        {"model": f"openrouter/{model}", "effort": "", "permission": "full"},
+    )
     t = s.call("turn/start", {"threadId": tid, "model": model,
                               "input": [{"type": "text", "text": text, "text_elements": []}],
                               "sandboxPolicy": {"type": "dangerFullAccess"}})  # fmt: skip
@@ -137,7 +143,9 @@ def start_turn(s: AppServer, tid: str, model: str, text: str) -> str:
 
 
 def ended(s: AppServer, tid: str) -> dict:
-    return s.wait(lambda m: m.get("method") == "turn/completed" and m["params"]["threadId"] == tid)
+    return s.wait(
+        lambda m: m.get("method") == "turn/completed" and m["params"]["threadId"] == tid
+    )
 
 
 def command_started(s: AppServer) -> dict:
@@ -151,19 +159,25 @@ def run(name: str, s: AppServer, model: str, cwd: Path) -> None:
         start_turn(s, tid, model, "Reply with the single word OK.")
         ended(s, tid)
     elif name == "tool":
-        start_turn(s, tid, model, "Run the shell command `echo hi` and reply with its output.")
+        start_turn(
+            s, tid, model, "Run the shell command `echo hi` and reply with its output."
+        )
         ended(s, tid)
     elif name == "mcp":
         start_turn(s, tid, model, "Call the aegis whoami tool and repeat its answer.")
         ended(s, tid)
     elif name == "steer":
-        turn = start_turn(s, tid, model, "Run the shell command `sleep 8`, then say finished.")
+        turn = start_turn(
+            s, tid, model, "Run the shell command `sleep 8`, then say finished."
+        )
         command_started(s)
         s.call("turn/steer", {"threadId": tid, "expectedTurnId": turn,
                               "input": [{"type": "text", "text": "Also say the word MANGO.", "text_elements": []}]})  # fmt: skip
         ended(s, tid)
     elif name == "interrupt":
-        turn = start_turn(s, tid, model, "Run the shell command `sleep 60`, then say finished.")
+        turn = start_turn(
+            s, tid, model, "Run the shell command `sleep 60`, then say finished."
+        )
         command_started(s)
         s.call("turn/interrupt", {"threadId": tid, "turnId": turn})
         ended(s, tid)
@@ -195,7 +209,9 @@ def mcp_server(port: int) -> None:
         return "you are session " + get_http_headers().get("x-aegis-session", "<none>")
 
     threading.Thread(
-        target=lambda: mcp.run(transport="http", host="127.0.0.1", port=port, path="/mcp"),
+        target=lambda: mcp.run(
+            transport="http", host="127.0.0.1", port=port, path="/mcp"
+        ),
         daemon=True,
     ).start()
     for _ in range(100):
@@ -206,7 +222,16 @@ def mcp_server(port: int) -> None:
     raise TimeoutError("the MCP stand-in did not listen")
 
 
-SCENARIOS = ("plain", "tool", "mcp", "steer", "interrupt", "subagent", "compact", "patch")
+SCENARIOS = (
+    "plain",
+    "tool",
+    "mcp",
+    "steer",
+    "interrupt",
+    "subagent",
+    "compact",
+    "patch",
+)
 
 
 def main() -> int:
