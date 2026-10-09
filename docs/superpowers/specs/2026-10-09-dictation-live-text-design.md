@@ -106,12 +106,14 @@ half the time.
 ### The chunker: two lanes over one buffer
 
 `Chunker` keeps the 16 kHz samples since the last final cut and the provisional
-pieces emitted from them. Its `emit` receives one of two shapes:
+pieces emitted from them. Its `emit` receives `{ parts, final }`:
 
-- `{ audio, final: false }`: a provisional piece, 4 to 8 s;
-- `{ audio, final: true }`: a final piece whose audio is the whole stretch since
+- `{ parts: [audio], final: false }`: a provisional piece, 4 to 8 s;
+- `{ parts, final: true }`: a final piece whose audio is the whole stretch since
   the previous final cut, including any provisional piece that was skipped by the
-  voice gate. It replaces every provisional piece emitted since that cut.
+  voice gate, in one part, or in two at stop when the tail is split. It replaces
+  every provisional piece emitted since that cut. Emitted parts are copies: the
+  worker takes a part's buffer away, and the stretch keeps its own.
 
 Cutting a provisional piece follows the 2.3.0 rule with smaller numbers: once the
 pending audio holds 4 s, a 300 ms window under RMS 0.01 cuts at its middle; at
@@ -126,8 +128,8 @@ is over 0.01, and returns their count times 0.05. A provisional piece with under
 pass hears it. A final piece with under 1 s of voice is not emitted either, and
 no provisional piece of its stretch was, so nothing is replaced.
 
-`finish(onlyPiece)` returns the pieces at stop, in order: the pending audio as a
-provisional piece if it passes the gate, then the stretch as a final. A stretch
+`finish(onlyPiece)` returns the same shapes at stop, in order: the pending audio
+as a provisional piece if it passes the gate, then the stretch as a final. A stretch
 longer than 10 s is split at the quietest 200 ms of its middle third into two
 final pieces that share one replacement, so a fast second half never lands before
 a slow first half and the two texts replace the provisional text together. A
@@ -144,7 +146,11 @@ provisional, else the first final.
 
 Insertion keeps the 2.3.0 rule for provisional pieces, in id order, at the
 recording's offset, with a space between pieces, and now records each inserted
-piece's text and its range. When a group's pieces are all done, their texts are
+piece's text and its range. Before each write the recording compares the text
+with what it last wrote: the first differing character is where the person
+edited, and every recorded range and the offset at or after it move by the
+length of the edit. So typing before dictated text, or after it, leaves the next
+piece and the final landing where they belong. When a group's pieces are all done, their texts are
 joined with spaces and replace the span from the first covered piece's start to
 the last covered piece's end, if the textarea still holds exactly the text that
 was inserted there. The recording's offset moves by the difference in length when
