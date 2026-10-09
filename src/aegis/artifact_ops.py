@@ -198,9 +198,9 @@ def register_artifact_ops(app: App) -> None:
         the person's browser has this transcript open, run hidden there first:
         a page that throws is refused with `page_error` and the message, and
         nothing is shown, so edit the draft and send again. `started` is true
-        when the page ran, null when no browser was open to try it (it landed
-        untried; a script error then reaches your inbox when someone opens
-        it). Only then write your message, which may refer to the card above
+        when the page ran, null when no browser was open, or none answered
+        within 3 s (it landed untried; a script error then reaches your inbox
+        when someone opens it). Only then write your message, which may refer to the card above
         it, and end the turn with turn_end(needs_you) when the page asks
         something."""
         s = own(caller)
