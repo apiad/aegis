@@ -104,10 +104,12 @@ export class PickChip extends HTMLElement {
     return o ? o.label : v;
   }
 
-  // The chip at rest: the current value's label.
+  // The chip at rest: the value's label, or the value itself when the chip is
+  // free, because that is what gets written (Settings shows `sonnet`, not
+  // `Sonnet`, for a model typed as `sonnet`).
   show() {
     if (!this.input || this.isOpen) return;
-    this.input.value = this.label() + this._suffix;
+    this.input.value = (this.free ? this._value : this.label()) + this._suffix;
   }
 
   open(query) {

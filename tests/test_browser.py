@@ -308,7 +308,9 @@ def test_the_chips_filter_as_you_type_and_a_long_model_keeps_the_send_button_in_
     )
     assert len({round(c["top"]) for c in chips}) >= 2, chips
     assert all(c["right"] <= send["left"] for c in chips), (send, chips)
-    assert all(c["bottom"] <= send["bottom"] + 1 for c in chips), (send, chips)
+    # On the last chip row: the buttons are centred on it, and the mic is a
+    # few pixels taller than the send in some fonts.
+    assert abs(max(c["bottom"] for c in chips) - send["bottom"]) < 6, (send, chips)
     assert box["right"] - send["right"] < 20, (box, send)
 
     # Esc keeps the value; the arrows walk the list; a click takes a row.
