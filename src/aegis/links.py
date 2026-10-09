@@ -41,7 +41,12 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from websockets.asyncio.client import ClientConnection, connect
-from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidURI
+from websockets.exceptions import (
+    ConnectionClosed,
+    InvalidHandshake,
+    InvalidStatus,
+    InvalidURI,
+)
 
 from .ops import OpError
 
@@ -49,6 +54,9 @@ log = logging.getLogger("aegis.links")
 
 # The client protocol's version, spoken by browsers and links alike.
 PROTO = 3
+
+# The release that first speaks links; both ends of one need it.
+LINKS_SINCE = "2.4.0"
 
 HELLO_TIMEOUT_S = 10.0
 CALL_TIMEOUT_S = 15.0
@@ -92,6 +100,18 @@ async def _hello(
         ws = await connect(
             ws_url(url), open_timeout=HELLO_TIMEOUT_S, max_size=None, ping_interval=20
         )
+    except InvalidStatus as e:
+        # A link sends no Origin, and a server from before links closes any
+        # socket whose Origin is not its own page: the handshake fails with a
+        # 403 before there is a hello to answer, so its version cannot be read:
+        # nothing before the refusal carries one.
+        if e.response.status_code == 403:
+            raise LinkError(
+                "mismatch",
+                f"{url} refused the connection (HTTP 403). It most likely "
+                f"predates links: both servers need aegis {LINKS_SINCE} or newer",
+            ) from e
+        raise LinkError("offline", f"cannot reach {url}: {e}") from e
     except (OSError, TimeoutError, InvalidHandshake, InvalidURI, ValueError) as e:
         raise LinkError("offline", f"cannot reach {url}: {e}") from e
     try:
