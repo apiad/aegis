@@ -170,6 +170,9 @@ async def test_a_child_that_ignores_stdin_is_ended_by_its_group(
     tmp_path, fake_codex, monkeypatch
 ):
     monkeypatch.setenv("FAKE_CODEX_HANG", "1")
+    monkeypatch.setattr(
+        "aegis.codex.process.TERM_GRACE_S", 0.5
+    )  # the gate caps a test at 3 s
     h = CX(tmp_path, fake_codex)
     await h.session.start()
     await h.turn("hello")

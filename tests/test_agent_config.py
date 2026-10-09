@@ -122,6 +122,7 @@ def test_model_suggestions_put_aliases_first_without_duplicates(tmp_path):
     assert model_suggestions(agents) == {
         "claude-code": ["opus", "sonnet", "haiku", "fable", "claude-sonnet-5"],
         "opencode": ["opencode-go/x"],
+        "codex": [],
     }
 
 

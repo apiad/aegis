@@ -82,7 +82,8 @@ def provider_model(provider: str, m: dict) -> Model | None:
         return None
     value = f"{provider}/{mid}"
     window = m.get("context_length")
-    pricing = m.get("pricing") if isinstance(m.get("pricing"), dict) else {}
+    raw = m.get("pricing")
+    pricing: dict = raw if isinstance(raw, dict) else {}
     params = m.get("supported_parameters") or []
     return Model(
         value=value,
