@@ -273,7 +273,7 @@ theme might show, and the base stylesheet reads only CSS variables. A theme sets
 the variables and a few overrides that decide what shows.
 
 **The session panel is rows that open cards.** Each section of the panel is a
-compact row (`.peek`) that holds its own card (`.pcard`) in the markup, so the
+compact row (`.prow`) that holds its own card (`.pcard`) in the markup, so the
 code that fills a row fills its card, and an open card stays current.
 `js/side.js` only moves them: on a desktop the card is fixed beside the panel,
 level with its row, and opens on hover or keyboard focus; in the drawer a tap

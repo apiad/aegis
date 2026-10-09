@@ -2,7 +2,7 @@
 // width, and collapsing it. What the rows say is app.js's; this file only moves
 // them.
 //
-// A row (.peek) holds its own card (.pcard) in the markup, so the code that
+// A row (.prow) holds its own card (.pcard) in the markup, so the code that
 // fills the panel fills the card too, and a card stays current while it is
 // open. On a desktop the card is fixed to the left of the panel, level with its
 // row, and opens on hover or focus. In the phone's drawer there is no hover:
@@ -117,7 +117,7 @@ export function initSide({ onCardOpen } = {}) {
   side = document.getElementById("side");
   grip = document.getElementById("side-grip");
   if (onCardOpen) onOpen = onCardOpen;
-  for (const el of side.querySelectorAll(".peek")) wire(el);
+  for (const el of side.querySelectorAll(".prow")) wire(el);
   setWidth(Number(localStorage.getItem(W_KEY)) || DEFAULT_W, false);
   restState();
 
