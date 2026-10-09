@@ -34,6 +34,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from .artifacts import Board
 from .claude.control import Catalog
 from .claude.process import ControlError
 from .claude.stream import TURN_BEARING, Delta, Init, Notice, Result, Title
@@ -247,6 +248,8 @@ class Session:
         self.recap_cost_usd = recap_cost_usd
         # The current process's catalog; None as a result when it did not answer.
         self.catalog_task: asyncio.Task[Catalog | None] | None = None
+        self.turns = 0
+        self.artifacts = Board(self)
 
     # -- what the outside sees -------------------------------------------
     def meta(self) -> dict:
@@ -300,6 +303,11 @@ class Session:
         """Mid-turn, or starting one to deliver held messages."""
         return self.status == "working" or self._flushing
 
+    @property
+    def state_root(self) -> Path:
+        """Where this session's drafts and sent files live."""
+        return self.store.path.parents[1]
+
     def fold(self) -> Fold:
         if self._fold is None:
             if self.store.path.exists():
@@ -308,6 +316,7 @@ class Session:
             else:
                 self._fold = Fold()
             self._reads_from = self._fold.rev
+            self.artifacts.load(self._fold.entries())
         return self._fold
 
     def entries(self) -> list[dict]:
@@ -569,6 +578,7 @@ class Session:
     async def shutdown(self) -> None:
         """The server is stopping: end the process, record nothing, and keep the
         last status in the meta so a mid-turn session is marked at next boot."""
+        self.artifacts.flush_all()
         if self._proc is not None:
             self.last_status = self.status
             await self._end_process()
@@ -597,6 +607,15 @@ class Session:
     def record_file(self, record: dict) -> None:
         """A file sent by the agent (files.store's record plus a caption)."""
         self._record(record)
+
+    def record_artifact(self, record: dict) -> None:
+        """A record from the session's artifacts board (artifacts.py)."""
+        self._record(record)
+
+    def notify(self, ops: list[dict]) -> None:
+        """An op on the transcript channel that is no entry: a probe request. It
+        is not in any snapshot, so a browser that subscribes later never sees it."""
+        self._publish(self.channel, ops)
 
     def report(self, record: dict) -> None:
         """A plan or a turn report from the agent (agent_ops)."""
@@ -711,6 +730,7 @@ class Session:
             self._publish_now()  # waiting on a background task shows on the card
             self._host.status_changed(self)
         if any(isinstance(ev, Result) for ev in events):
+            self.turns += 1
             if self.held:
                 self._flushing = True
                 asyncio.get_running_loop().create_task(self._flush_held())
