@@ -9,9 +9,10 @@
 //
 // Typing filters the options with the command menu's scorer; ArrowUp/Down,
 // Enter and Esc are the command menu's. `free` (the model chip) lets a typed
-// value through that no option names, as the first row of the list. A pick
-// fires `input` and `change`, as a select does; keystrokes inside the chip
-// stay inside it.
+// value through that no option names, as the first row of the list, and takes
+// every keystroke as the value at once, as the text field it replaces did. A
+// pick fires `input` and `change`, as a select does; keystrokes inside the
+// chip stay inside it.
 
 import { fuzzy } from "./commands.js";
 
@@ -45,14 +46,12 @@ export class PickChip extends HTMLElement {
     this.input.addEventListener("click", () => (this.isOpen ? null : this.open("")));
     this.input.addEventListener("input", (ev) => {
       ev.stopPropagation();
+      if (!this.isOpen) this._before = this._value;
+      if (this.free) this.set(this.input.value.trim());
       this.open(this.input.value);
     });
     this.input.addEventListener("keydown", (ev) => this.onKey(ev));
-    this.input.addEventListener("blur", () => {
-      const typed = this.input.value.trim();
-      if (this.free && typed && typed !== this.label() + this._suffix) this.commit(typed);
-      else this.close();
-    });
+    this.input.addEventListener("blur", () => this.close());
     this.list.addEventListener("mousedown", (ev) => {
       const r = ev.target.closest("[role=option]");
       if (!r) return;
@@ -112,6 +111,7 @@ export class PickChip extends HTMLElement {
   }
 
   open(query) {
+    if (!this.isOpen) this._before = this._value;
     this.list.hidden = false;
     this.input.setAttribute("aria-expanded", "true");
     this.render(query);
@@ -169,16 +169,27 @@ export class PickChip extends HTMLElement {
     this.commit(r.value);
   }
 
-  commit(v) {
-    const changed = v !== this._value;
+  // The value, told to whoever listens. The chip's text is left alone.
+  set(v) {
+    if (v === this._value) return;
     this._value = v;
+    this.dispatchEvent(new Event("input", { bubbles: true }));
+    this.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  commit(v) {
     this.list.hidden = true;
     this.input.setAttribute("aria-expanded", "false");
+    this.set(v);
     this.show();
-    if (changed) {
-      this.dispatchEvent(new Event("input", { bubbles: true }));
-      this.dispatchEvent(new Event("change", { bubbles: true }));
-    }
+  }
+
+  // Esc: what was there when the list opened.
+  revert() {
+    this.list.hidden = true;
+    this.input.setAttribute("aria-expanded", "false");
+    this.set(this._before ?? this._value);
+    this.show();
   }
 
   onKey(ev) {
@@ -192,8 +203,8 @@ export class PickChip extends HTMLElement {
       this.accept();
     } else if (ev.key === "Escape" && this.isOpen) {
       ev.preventDefault();
-      this.close();
-    } else if (ev.key === "Tab" && this.isOpen && !this.free) {
+      this.revert();
+    } else if (ev.key === "Tab" && this.isOpen) {
       this.close();
     }
   }

@@ -1581,16 +1581,14 @@ def test_an_edit_on_disk_reloads_the_open_settings_page(settings_server, page):
 
 def test_an_edit_on_disk_under_unsaved_edits_offers_reload(settings_server, page):
     open_settings(page, settings_server.url)
-    page.fill('.set-agent[data-row="agents.opus"] input[name=model]', "sonnet")
+    model = '.set-agent[data-row="agents.opus"] pick-chip[name=model]'
+    page.fill(model + " input", "sonnet")
     (settings_server.root / ".aegis.yaml").write_text(SETTINGS_CONFIG + "# changed\n")
     page.wait_for_selector("#set-stale", timeout=5000)
-    assert (
-        page.input_value('.set-agent[data-row="agents.opus"] input[name=model]')
-        == "sonnet"
-    )
+    assert page.input_value(model + " input") == "sonnet"
     page.click("#set-reload")
     page.wait_for_function(
-        "document.querySelector('.set-agent[data-row=\"agents.opus\"] input[name=model]').value === 'opus'"
+        "document.querySelector('.set-agent[data-row=\"agents.opus\"] pick-chip[name=model]').value === 'opus'"
     )
 
 
@@ -1605,15 +1603,16 @@ def test_run_doctor_marks_the_row(settings_server, page):
 
 def test_typing_in_settings_survives_session_patches(settings_server, page):
     open_settings(page, settings_server.url)
-    box = '.set-agent[data-row="agents.opus"] input[name=model]'
+    box = '.set-agent[data-row="agents.opus"] pick-chip[name=model] input'
     page.click(box)
+    page.keyboard.press("End")
     page.keyboard.type("-x")
     page.evaluate(
         "window.dispatchEvent(new HashChangeEvent('hashchange'))"
     )  # a render() with no view change
     page.keyboard.type("y")
     assert page.input_value(box) == "opus-xy"
-    assert page.evaluate("document.activeElement.name") == "model"
+    assert page.evaluate("document.activeElement.closest('pick-chip').name") == "model"
 
 
 @pytest.fixture
