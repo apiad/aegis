@@ -1,10 +1,10 @@
 # aegis: artifacts, interactive pages an agent hands to the person
 
-**Status: designed, 2026-10-09** (issue #217). Designed with Alex in a
+**Status: implemented, 2026-10-09** (issue #217), following
+`docs/superpowers/plans/2026-10-09-aegis-artifacts.md`. Designed with Alex in a
 brainstorm, text only. Slice 1 of the "decision panels in transcripts" section
 of `2026-10-05-aegis-2-vision-design.md`. The docked, editable canvas with
-native text edits and layout moves is slice 2 and has no spec yet. The plan
-follows at `docs/superpowers/plans/2026-10-09-aegis-artifacts.md`.
+native text edits and layout moves is slice 2 and has no spec yet.
 
 ## What this delivers
 

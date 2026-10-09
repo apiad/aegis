@@ -197,6 +197,74 @@ async def test_real_claude_sends_a_file_and_the_link_serves_it(tmp_path: Path):
         await asyncio.wait_for(task, 30)
 
 
+async def test_real_claude_lands_an_artifact_and_hears_the_pick(tmp_path: Path):
+    """The real binary finds artifact_create and artifact_send from their
+    descriptions, lands a page with two choices, and answers the pick the
+    person makes through the page."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    base = f"http://127.0.0.1:{port}"
+    app = App(make_roots(tmp_path, None), claude_bin=claude, base_url=base)
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "haiku"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "Offer me two layouts, A and B, as an aegis artifact with one button "
+            "each, captioned 'Pick a layout'. Then end your turn and wait for my pick."
+        )
+        await until(
+            lambda: (
+                s.status == "idle" and any(e["kind"] == "artifact" for e in s.entries())
+            ),
+            timeout=180,
+            what="the artifact",
+        )
+        (art,) = [e for e in s.entries() if e["kind"] == "artifact"]
+        assert art["status"] == "live"
+        await app.registry.call(
+            "artifact.submit",
+            {
+                "log_id": s.log_id,
+                "artifact_id": art["id"],
+                "data": {"layout": "B"},
+                "label": "Picked B",
+            },
+        )
+        await until(
+            lambda: (
+                s.status == "idle"
+                and "B"
+                in ([e["md"] for e in s.entries() if e["kind"] == "prose"] or [""])[-1]
+            ),
+            timeout=120,
+            what="the answer",
+        )
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
 async def test_real_claude_runs_the_doctor_and_names_what_is_wrong(tmp_path: Path):
     """The real binary finds config_doctor from its description, and its
     findings are enough to name the key aegis does not read."""
