@@ -308,6 +308,41 @@ async def test_caps_are_enforced_before_anything_reaches_the_agent(
     assert inbox(a) == []
 
 
+async def test_a_probes_error_is_truncated_in_the_failed_send(
+    world, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(artifacts, "PROBE_TIMEOUT_S", 2.0)
+    a = await world.spawn()
+    made = ok(await turn(a, mcp("artifact_create", title="T")))
+    (
+        tmp_path / ".aegis" / "state" / "artifacts" / made["id"] / "index.html"
+    ).write_text(PAGE)
+    probes = []
+    original = world.app.channels.publish
+
+    def publish(channel, ops):
+        probes.extend(op["probe"] for op in ops if "probe" in op)
+        original(channel, ops)
+
+    world.app.channels.publish = publish
+    world.app.channels.subscribe(a.channel, lambda msg: None)
+    await a.send(mcp("artifact_send", id=made["id"]))
+    await until(lambda: probes, what="the probe request")
+    await world.app.registry.call(
+        "artifact.probed",
+        {
+            "log_id": a.log_id,
+            "probe_id": probes[0]["id"],
+            "started": False,
+            "message": "x" * 10_000,
+            "stack": "",
+        },
+    )
+    await until(lambda: a.status == "idle", what="the turn")
+    said = [e["md"] for e in a.entries() if e["kind"] == "prose"][-1]
+    assert said.startswith("mcp error: page_error") and len(said) < 5000
+
+
 async def test_errors_wake_once_per_turn(world, tmp_path):
     a, aid = await landed(world, tmp_path)
     reg = world.app.registry

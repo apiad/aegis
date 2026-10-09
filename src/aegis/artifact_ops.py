@@ -83,18 +83,22 @@ class PageSubmit(PageRef):
     label: str = Label
 
 
-class PageError(PageRef):
-    message: str
-    stack: str = ""
+class _CutError(BaseModel):
+    """A page's error text is uncapped on its side; what reaches the agent, as
+    a wake or as a failed send, carries at most ERROR_MESSAGE_MAX of each."""
 
-    @field_validator("message", "stack", mode="before")
+    @field_validator("message", "stack", mode="before", check_fields=False)
     @classmethod
     def _cut(cls, v: object) -> object:
-        # A page's error is uncapped on its side; the wake carries at most this.
         return v[:ERROR_MESSAGE_MAX] if isinstance(v, str) else v
 
 
-class Probed(_Strict):
+class PageError(PageRef, _CutError):
+    message: str
+    stack: str = ""
+
+
+class Probed(_Strict, _CutError):
     log_id: str
     probe_id: str
     started: bool
@@ -190,12 +194,15 @@ def register_artifact_ops(app: App) -> None:
 
     @r.op("artifact.send", ArtifactId, agent=True)
     async def send(p: ArtifactId, caller):
-        """Land the draft in your transcript. The page is checked and run
-        hidden in the person's browser first: a page that throws is refused
-        with `page_error` and the message, and nothing is shown, so edit the
-        draft and send again. Only then write your message, which may refer to
-        the card above it, and end the turn with turn_end(needs_you) when the
-        page asks something."""
+        """Land the draft in your transcript. The page is checked and, when
+        the person's browser has this transcript open, run hidden there first:
+        a page that throws is refused with `page_error` and the message, and
+        nothing is shown, so edit the draft and send again. `started` is true
+        when the page ran, null when no browser was open to try it (it landed
+        untried; a script error then reaches your inbox when someone opens
+        it). Only then write your message, which may refer to the card above
+        it, and end the turn with turn_end(needs_you) when the page asks
+        something."""
         s = own(caller)
         try:
             a = s.artifacts.get(p.id)
