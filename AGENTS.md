@@ -28,7 +28,11 @@ A change is done when:
 4. DESIGN.md describes the code as it now is;
 5. a user-visible change has a `changelog.d/` fragment, and a change to how the
    pieces fit has its spec under `docs/superpowers/specs/`, with a status that
-   matches the code.
+   matches the code;
+6. Alex has smoke-tested that version himself through `bin/aegis-dev`
+   (`AEGIS_REF=<branch> aegis-dev`), ideally before the PR opens and always
+   before a release. Every check above is a proxy; his hands on the build are
+   the gate, and a merged PR he has not run is not done.
 
 Green tests against a server that booted before the change prove nothing about
 the change.
