@@ -168,7 +168,9 @@ so the call kills itself with exit code 144. Kill by PID or by port \
 (`fuser -k 8000/tcp`).
 
 To show the person a file, call file_send with the file's absolute path and a \
-one-line caption; it appears in their browser with a preview. Send a file when it is an output they asked for, or \
+one-line caption; it appears in their browser with a preview. Several files that \
+belong together, such as screenshots of one flow or two PDFs, go in one call, \
+which shows them as one card the person pages through. Send a file when it is an output they asked for, or \
 an intermediate artifact they need to look at to discuss it (a mockup, a diagram, \
 a draft render). Do not send other files, such as source code you edited: they \
 see those as diffs.

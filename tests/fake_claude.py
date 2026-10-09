@@ -96,6 +96,7 @@ SCRIPTS = (
     "bgtask",
     "argv",
     "bash",
+    "read",
 )
 COMMANDS = (
     [
@@ -455,6 +456,22 @@ def run(text: str) -> None:
             }
         )
         tool_output(tid, out)
+        result()
+    elif word == "/read":
+        tid = tool_id()
+        assistant(
+            {
+                "type": "tool_use",
+                "id": tid,
+                "name": "Read",
+                "input": {"file_path": arg},
+            }
+        )
+        try:
+            tool_output(tid, open(arg).read())
+        except OSError as e:
+            tool_output(tid, str(e), is_error=True)
+        assistant({"type": "text", "text": "Read it."})
         result()
     elif word == "/notice":
         for sub in ("hook_started", "thinking_tokens", "task_notification"):

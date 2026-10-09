@@ -604,7 +604,11 @@ class Session:
             self._set(status="error")
 
     def record_file(self, record: dict) -> None:
-        """A file sent by the agent (files.store's record plus a caption)."""
+        """The files one file_send sent (files.store's records) and its caption."""
+        self._record(record)
+
+    def record_peek(self, record: dict) -> None:
+        """A tool row's file, copied because the person asked to see it."""
         self._record(record)
 
     def record_artifact(self, record: dict) -> None:
@@ -626,7 +630,12 @@ class Session:
     def _record(self, record: dict, events: list | None = None) -> None:
         fold = self.fold()
         stored = self.store.append({"ts": time.time(), "src": "aegis", **record})
-        if record.get("kind") not in ("recap", "artifact_state", "artifact_event"):
+        if record.get("kind") not in (
+            "recap",
+            "peek",
+            "artifact_state",
+            "artifact_event",
+        ):
             # aegis talking to the person, not the session doing anything; nor
             # a person acting on a page, so the needs-you order holds still
             # while they drag a slider.

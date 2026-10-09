@@ -144,8 +144,8 @@ async def test_real_claude_arms_a_monitor_through_the_endpoint_and_is_woken(
 
 
 async def test_real_claude_sends_a_file_and_the_link_serves_it(tmp_path: Path):
-    """The real binary finds file_send from its description and hands over a
-    file it wrote; the transcript entry's link serves the same bytes."""
+    """The real binary finds file_send from its description and hands over two
+    files it wrote in one call; the entry's links serve the same bytes."""
     import asyncio
 
     import httpx
@@ -176,9 +176,10 @@ async def test_real_claude_sends_a_file_and_the_link_serves_it(tmp_path: Path):
         r = await app.registry.call("session.spawn", {"agent": "haiku"})
         s = app.sessions.sessions[r["log_id"]]
         await s.send(
-            "Write a file named haiku.md in your working directory holding a "
-            "three-line poem about pelicans, then hand it to me with the aegis "
-            "tool for sending files, captioned 'A pelican haiku'. Then end your turn."
+            "Write two files in your working directory: haiku.md, a three-line "
+            "poem about pelicans, and notes.txt, one line saying why. Then hand "
+            "both to me in a single call of the aegis tool for sending files, "
+            "captioned 'A pelican haiku'. Then end your turn."
         )
         await until(
             lambda: (
@@ -188,10 +189,13 @@ async def test_real_claude_sends_a_file_and_the_link_serves_it(tmp_path: Path):
             what="the file sent by Claude",
         )
         (e,) = [e for e in s.entries() if e["kind"] == "file"]
-        assert e["title"] == "haiku.md" and e["detail"]["preview"] == "markdown"
+        sent = {f["name"]: f for f in e["detail"]["files"]}
+        assert set(sent) == {"haiku.md", "notes.txt"}
+        assert sent["haiku.md"]["preview"] == "markdown"
         async with httpx.AsyncClient() as c:
-            got = await c.get(base + e["detail"]["url"])
-        assert got.content == (tmp_path / "haiku.md").read_bytes()
+            for name, f in sent.items():
+                got = await c.get(base + f["url"])
+                assert got.content == (tmp_path / name).read_bytes()
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)

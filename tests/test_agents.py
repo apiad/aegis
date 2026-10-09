@@ -8,6 +8,7 @@ way a real Claude Code process reaches them.
 
 import asyncio
 import json
+import os
 import socket
 from pathlib import Path
 
@@ -15,7 +16,9 @@ import httpx
 import pytest
 import uvicorn
 
+from aegis import files
 from aegis.app import App
+from aegis.ops import OpError
 from aegis.roots import make_roots
 from aegis.web import build_web
 
@@ -534,20 +537,86 @@ async def test_an_agent_sends_a_file_and_the_link_serves_its_bytes(world, tmp_pa
     (tmp_path / "out").mkdir()
     chart = tmp_path / "out" / "chart.png"
     chart.write_bytes(b"first png")
-    said = await turn(a, mcp("file_send", path="out/chart.png", caption="Weekly"))
-    first = json.loads(said.removeprefix("mcp ok: "))
+    said = await turn(a, mcp("file_send", paths=["out/chart.png"], caption="Weekly"))
+    (first,) = json.loads(said.removeprefix("mcp ok: "))
     assert first["name"] == "chart.png" and first["size"] == 9
     assert first["mime"] == "image/png" and first["url"].startswith("/files/")
     (e,) = files_sent(a)
-    assert e["md"] == "Weekly" and e["detail"]["url"] == first["url"]
+    assert e["md"] == "Weekly" and e["detail"]["files"][0]["url"] == first["url"]
 
     chart.write_bytes(b"second png")
-    said = await turn(a, mcp("file_send", path=str(chart)))
-    second = json.loads(said.removeprefix("mcp ok: "))
+    said = await turn(a, mcp("file_send", paths=[str(chart)]))
+    (second,) = json.loads(said.removeprefix("mcp ok: "))
     assert second["url"] != first["url"]
     async with httpx.AsyncClient() as c:
         assert (await c.get(world.base + first["url"])).content == b"first png"
         assert (await c.get(world.base + second["url"])).content == b"second png"
+
+
+async def test_several_files_go_out_as_one_entry_in_the_order_sent(world, tmp_path):
+    a = await world.spawn()
+    for name in ("b.png", "a.pdf", "c.md"):
+        (tmp_path / name).write_bytes(name.encode())
+    said = await turn(
+        a, mcp("file_send", paths=["b.png", "a.pdf", "c.md"], caption="Three")
+    )
+    sent = json.loads(said.removeprefix("mcp ok: "))
+    assert [f["name"] for f in sent] == ["b.png", "a.pdf", "c.md"]
+    (e,) = files_sent(a)
+    assert e["md"] == "Three" and e["summary"] == "3 files"
+    assert [f["name"] for f in e["detail"]["files"]] == ["b.png", "a.pdf", "c.md"]
+    assert [f["url"] for f in e["detail"]["files"]] == [f["url"] for f in sent]
+    assert [f["preview"] for f in e["detail"]["files"]] == ["image", "pdf", "markdown"]
+    assert e["detail"]["files"][2]["excerpt"] == "c.md"
+    async with httpx.AsyncClient() as c:
+        for f in sent:
+            assert (await c.get(world.base + f["url"])).content == f["name"].encode()
+
+
+async def test_one_bad_path_fails_the_call_before_any_file_is_copied(world, tmp_path):
+    a = await world.spawn()
+    (tmp_path / "a.png").write_bytes(b"png")
+    (tmp_path / "big.bin").write_bytes(b"")
+    stored = world.app.roots.state_root / "files"
+    before = set(stored.iterdir()) if stored.exists() else set()
+    said = await turn(a, mcp("file_send", paths=["a.png", "gone.png"]))
+    assert said.startswith("mcp error: not_found") and "gone.png" in said
+    assert "session's working directory" in said
+    os.truncate(tmp_path / "big.bin", files.MAX_BYTES + 1)
+    said = await turn(a, mcp("file_send", paths=["a.png", "big.bin"]))
+    assert said.startswith("mcp error: too_large") and "big.bin" in said
+    assert files_sent(a) == []
+    assert (set(stored.iterdir()) if stored.exists() else set()) == before
+
+
+async def test_a_person_peeks_at_the_file_a_tool_row_read(world, tmp_path):
+    a = await world.spawn()
+    notes = tmp_path / "notes.md"
+    notes.write_text("# Notes\n")
+    await turn(a, f"/read {notes}")
+    await turn(a, "/fail")
+    read, bash = [e for e in a.entries() if e["kind"] == "tool"]
+    assert read["detail"]["path"] == str(notes)
+
+    notes.write_text("# Notes, edited since\n")
+    peek = world.app.registry.call
+    sent = await peek("file.peek", {"log_id": a.log_id, "entry_id": read["id"]})
+    (f,) = a.fold().entry(read["id"])["detail"]["peek"]["files"]
+    assert sent == [{"url": f["url"], "name": "notes.md", "size": 22}]
+    assert f["excerpt"] == "# Notes, edited since"
+    assert files_sent(a) == [], "a peek is not a file the agent sent"
+    async with httpx.AsyncClient() as c:
+        assert (await c.get(world.base + f["url"])).content == notes.read_bytes()
+
+    with pytest.raises(OpError) as e:
+        await peek("file.peek", {"log_id": a.log_id, "entry_id": bash["id"]})
+    assert e.value.code == "no_path"
+    notes.unlink()
+    stored = set((world.app.roots.state_root / "files").iterdir())
+    with pytest.raises(OpError) as e:
+        await peek("file.peek", {"log_id": a.log_id, "entry_id": read["id"]})
+    assert e.value.code == "not_found"
+    assert set((world.app.roots.state_root / "files").iterdir()) == stored
 
 
 async def test_a_relative_path_resolves_against_the_session_cwd(world, tmp_path):
@@ -555,14 +624,14 @@ async def test_a_relative_path_resolves_against_the_session_cwd(world, tmp_path)
     (tmp_path / "sub" / "notes.md").write_text("# Notes\n")
     r = await world.app.registry.call("session.spawn", {"agent": "opus", "cwd": "sub"})
     s = world.session(r["log_id"])
-    said = await turn(s, mcp("file_send", path="notes.md"))
-    assert json.loads(said.removeprefix("mcp ok: "))["name"] == "notes.md"
-    assert files_sent(s)[0]["detail"]["excerpt"] == "# Notes"
+    said = await turn(s, mcp("file_send", paths=["notes.md"]))
+    assert json.loads(said.removeprefix("mcp ok: "))[0]["name"] == "notes.md"
+    assert files_sent(s)[0]["detail"]["files"][0]["excerpt"] == "# Notes"
 
 
 async def test_a_directory_is_not_a_file(world, tmp_path):
     a = await world.spawn()
-    said = await turn(a, mcp("file_send", path="."))
+    said = await turn(a, mcp("file_send", paths=["."]))
     assert said.startswith("mcp error: not_a_file")
     assert files_sent(a) == []
 
@@ -573,7 +642,7 @@ async def test_a_missing_relative_path_says_where_it_looked(world, tmp_path):
     a = await world.spawn()
     (tmp_path / "out").mkdir()
     (tmp_path / "out" / "chart.png").write_bytes(b"png")
-    said = await turn(a, mcp("file_send", path="chart.png"))
+    said = await turn(a, mcp("file_send", paths=["chart.png"]))
     assert said.startswith("mcp error: not_found")
     assert f"session's working directory, {tmp_path}" in said
     assert "absolute path" in said

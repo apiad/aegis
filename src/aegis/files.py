@@ -38,10 +38,11 @@ _TEXT_APPS = ("json", "yaml", "xml", "javascript", "toml", "x-sh", "sql")
 
 
 class FileError(Exception):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, path: Path | None = None) -> None:
         super().__init__(f"{code}: {message}")
         self.code = code
         self.message = message
+        self.path = path
 
 
 def _sniff_text(path: Path) -> bool:
@@ -125,15 +126,42 @@ def url(file_id: str, name: str) -> str:
     return f"/files/{file_id}/{quote(name)}"
 
 
-def store(state_root: Path, src: Path) -> dict:
-    """Copy ``src`` under a fresh id; the store record's body, without caption."""
+def check(src: Path) -> int:
+    """``src``'s size, or the FileError that sending it would raise."""
     if not src.exists():
-        raise FileError("not_found", f"{src} does not exist")
+        raise FileError("not_found", f"{src} does not exist", src)
     if not src.is_file():
-        raise FileError("not_a_file", f"{src} is not a regular file")
+        raise FileError("not_a_file", f"{src} is not a regular file", src)
+    if not os.access(src, os.R_OK):
+        raise FileError("unreadable", f"cannot read {src}", src)
     size = src.stat().st_size
     if size > MAX_BYTES:
-        raise FileError("too_large", f"{src} is {size} bytes; the limit is {MAX_BYTES}")
+        raise FileError(
+            "too_large", f"{src} is {size} bytes; the limit is {MAX_BYTES}", src
+        )
+    return size
+
+
+def store_all(state_root: Path, srcs: list[Path]) -> list[dict]:
+    """Copy every one of ``srcs``, or none: all are checked before the first
+    copy, and a copy that fails anyway removes the ones made before it, so a
+    failed send leaves nothing in the state root."""
+    for src in srcs:
+        check(src)
+    done: list[dict] = []
+    try:
+        for src in srcs:
+            done.append(store(state_root, src))
+    except FileError:
+        for rec in done:
+            shutil.rmtree(state_root / "files" / rec["file_id"], ignore_errors=True)
+        raise
+    return done
+
+
+def store(state_root: Path, src: Path) -> dict:
+    """Copy ``src`` under a fresh id; the store record's body, without caption."""
+    size = check(src)
     mime, preview = classify(src)
     file_id = secrets.token_urlsafe(16)
     root = state_root / "files"
@@ -146,7 +174,7 @@ def store(state_root: Path, src: Path) -> dict:
         shutil.copyfile(src, part)
     except OSError as e:
         part.unlink(missing_ok=True)
-        raise FileError("unreadable", f"cannot read {src}: {e}") from e
+        raise FileError("unreadable", f"cannot read {src}: {e}", src) from e
     folder = root / file_id
     folder.mkdir()
     dest = folder / src.name

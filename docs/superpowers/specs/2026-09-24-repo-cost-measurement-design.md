@@ -1,7 +1,9 @@
 # Measuring what a repo cost to build — design
 
-**Status:** implemented 2026-09-24. `src/aegis/cost/`, `aegis usage repo`,
-`aegis usage repos`, `aegis_repo_cost`. Plan and its rulings:
+**Status:** implemented 2026-09-24 in the legacy tree; ported to aegis 2 on
+2026-10-08 as `src/aegis/usage/` (`aegis usage`, `aegis usage repo`,
+`aegis usage repos`), with the changes listed under "The aegis 2 port" at the
+end. Plan and its rulings:
 `docs/superpowers/plans/2026-09-24-repo-cost-measurement.md`.
 
 `aegis usage` answers "what did my sessions cost, by month, by model, by tool".
@@ -205,3 +207,37 @@ over four stores. The gap is the two foreign stores plus the pricing method, and
 `docs/usage.md` carries that
 explanation in its own paragraph, which is what makes the gap inspectable
 instead of alarming.
+
+## The aegis 2 port
+
+aegis 2 dropped the legacy tree and with it this engine (#134). The port keeps
+the attribution, the bands, the coverage check and the JSON shape, and changes
+what the engine reads and how it prices:
+
+- **One aegis store instead of three.** aegis 2 keeps Claude's stream-json
+  lines verbatim in `transcripts/<log_id>.jsonl` (`usage/store.py`), with the
+  message id, the model and the 5-minute/1-hour cache split. Legacy sessions
+  reach it through `aegis import-legacy` (#204), so `sessions/` and `backfill/`
+  are no longer read. `claude-import/` is read when named with `--extra-root`,
+  which now takes `.jsonl.gz` too.
+- **No id, no count.** A legacy `ToolUse` event repeats its message's usage
+  without the message id. Imported, each one charged its message again: on
+  `repos/rift` since 2026-09-20 that was 14% more calls and 22% more cache reads
+  than the legacy engine. The store reader skips assistant lines without an id,
+  as the legacy reader skipped such events, and the two engines then agree on
+  calls, sessions, hours and every token class within 0.2%.
+- **Writes without the split wait for the measured share.** An imported line
+  reports only a total of cache writes; it is split by the 1-hour share of every
+  line that did report it, the aegis store included, so `--no-foreign` no longer
+  leaves the share at zero.
+- **A price table of its own.** `usage/prices.py` holds each rate as published
+  (pricing page, 2026-10-08) instead of deriving rates from multiples. The
+  legacy engine priced a 1-hour write at twice the 5-minute rate, 2.5x input
+  where the price is 2x, and had no Opus 5.5 or Fable entry; Fable 5.1 and Opus
+  5.5 also read the cache at 0.025x and 0.05x input, not 0.1x. An id the table
+  does not know is unpriced, never guessed.
+- **OpenCode sessions count as unpriced work**, from the tokens on their
+  `step-finish` parts.
+- **No MCP tool and no cache.** `aegis_repo_cost` and the `--json` cache it read
+  are gone; aegis 2 has no consumer for them.
+

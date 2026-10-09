@@ -957,7 +957,7 @@ def test_a_sent_file_previews_in_the_transcript_with_open_and_download(server, p
     spawn(page)
     sends = (("dot.png", "The **chart**"), ("report.html", None), ("notes.md", None))
     for n, (path, caption) in enumerate(sends, 1):
-        args = {"path": path} | ({"caption": caption} if caption else {})
+        args = {"paths": [path]} | ({"caption": caption} if caption else {})
         page.fill("#input", f"/mcp file_send {json.dumps(args)}")
         page.press("#input", "Enter")
         turns_done(page, n)  # one at a time: prompts sent mid-turn share a turn
@@ -981,6 +981,81 @@ def test_a_sent_file_previews_in_the_transcript_with_open_and_download(server, p
     assert page.errors == []
 
 
+def test_a_set_of_files_is_one_card_that_pages_between_them(server, page):
+    (server.root / "dot.png").write_bytes(PNG)
+    (server.root / "notes.md").write_text("# Notes\n")
+    (server.root / "log.txt").write_text("line one\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    args = {"paths": ["dot.png", "notes.md", "log.txt"], "caption": "Three"}
+    page.fill("#input", f"/mcp file_send {json.dumps(args)}")
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    card = page.locator(".row.file")
+    assert card.count() == 1 and card.locator(".cap").inner_text() == "Three"
+    bar = card.locator(".fbar")
+    assert bar.locator(".count").inner_text() == "1 / 3"
+    assert bar.locator(".fn").inner_text() == "dot.png"
+    assert bar.locator(".prev").is_disabled() and not bar.locator(".next").is_disabled()
+    first = bar.locator("a.open").get_attribute("href")
+    assert card.locator(".stage").count() == 1 and card.locator("img").count() == 1
+
+    bar.locator(".next").click()
+    assert bar.locator(".count").inner_text() == "2 / 3"
+    assert bar.locator(".fn").inner_text() == "notes.md"
+    assert card.locator(".stage").count() == 1 and card.locator("img").count() == 0
+    assert card.locator(".stage .md h1").inner_text() == "Notes"
+    second = bar.locator("a.open").get_attribute("href")
+    assert second != first and second.endswith("/notes.md")
+    assert bar.locator("a.dl").get_attribute("href") == second + "?download=1"
+    assert bar.locator(".native").get_attribute("data-name") == "notes.md"
+
+    bar.locator(".next").click()
+    assert bar.locator(".fn").inner_text() == "log.txt"
+    assert card.locator(".stage pre").inner_text() == "line one"
+    assert bar.locator(".next").is_disabled()
+    bar.locator(".prev").click()
+    bar.locator(".prev").click()
+    assert bar.locator(".count").inner_text() == "1 / 3"
+    assert bar.locator("a.open").get_attribute("href") == first
+    assert page.request.get(server.url.split("/?")[0] + first).body() == PNG
+
+    # A single file keeps the card it always had: no pager.
+    page.fill("#input", f"/mcp file_send {json.dumps({'paths': ['dot.png']})}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    assert page.locator(".row.file").nth(1).locator(".pager").count() == 0
+    assert page.errors == []
+
+
+def test_a_read_rows_file_opens_inside_the_row_on_request(server, page):
+    notes = server.root / "notes.md"
+    notes.write_text("# Notes\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    page.fill("#input", f"/read {notes}")
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    row = page.locator(".row.tool")
+    row.locator("summary").click()
+    row.locator(".peek").click()
+    card = row.locator(".fcard")
+    card.wait_for()
+    assert card.locator(".fn").inner_text() == "notes.md"
+    assert card.locator(".stage .md h1").inner_text() == "Notes"
+    assert "as of" in row.locator(".peekcap").inner_text()
+    assert row.locator("details").get_attribute("open") is not None
+
+    notes.write_text("# Changed\n")
+    row.locator(".peek").click()
+    row.locator(".stage .md h1", has_text="Changed").wait_for()
+    assert row.locator(".fcard").count() == 1
+    assert page.locator(".row.file").count() == 0
+    assert page.errors == []
+
+
 def test_open_natively_shows_only_on_the_servers_desktop_and_opens_the_copy(
     server, browser, page
 ):
@@ -988,7 +1063,7 @@ def test_open_natively_shows_only_on_the_servers_desktop_and_opens_the_copy(
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     sid = spawn(page)
-    page.fill("#input", f"/mcp file_send {json.dumps({'path': 'dot.png'})}")
+    page.fill("#input", f"/mcp file_send {json.dumps({'paths': ['dot.png']})}")
     page.press("#input", "Enter")
     turns_done(page, 1)
     native = page.locator(".row.file .fbar .native")
@@ -2827,72 +2902,271 @@ def run_dictation(pg, body: str):
             const tone = (s) => Float32Array.from({ length: Math.round(s * 16000) }, (_, i) => 0.3 * Math.sin(i / 5));
             const gap = (s) => new Float32Array(Math.round(s * 16000));
             const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-            let push = null;
-            const source = async (on) => { push = on; return async () => {}; };
+            const until = async (f, ms = 15000) => { const t = Date.now(); while (!f()) { if (Date.now() - t > ms) throw new Error('timed out waiting for ' + f); await sleep(20); } };
+            let push = null, ended = null;
+            const source = async (on, end) => { push = on; ended = end; return async () => {}; };
+            const endCapture = (why) => ended(why);
             const feed = (...parts) => { for (const p of parts) for (let i = 0; i < p.length; i += 1600) push(p.subarray(i, i + 1600)); };
             const prepare = async () => ({ base, keywords: ['aegis', 'pull request'] });
             return await new (Object.getPrototypeOf(async function () {}).constructor)(
-                'm', 'tone', 'gap', 'sleep', 'source', 'feed', 'prepare', body,
-            )(m, tone, gap, sleep, source, feed, prepare);
+                'm', 'tone', 'gap', 'sleep', 'until', 'source', 'feed', 'prepare', 'endCapture', body,
+            )(m, tone, gap, sleep, until, source, feed, prepare, endCapture);
         }""",
         [f"/dictation/{pin_id()}/", body],
     )
 
 
-def test_dictation_cuts_at_the_first_pause_after_20s_and_at_30s_without_one(
+def test_dictation_cuts_provisional_pieces_at_4_to_8s_and_a_final_past_20s(
     dict_server, page
 ):
     page.goto(dict_server.url)
     got = run_dictation(
         page,
-        """const out = []; const c = new m.Chunker((a) => out.push(a.length / 16000));
-        for (const p of [tone(22), gap(0.5), tone(35), tone(3)])
+        """const out = []; const port = new MessageChannel().port1;
+        // Emitted parts are handed to a worker, which detaches their buffers.
+        const c = new m.Chunker((p) => { out.push({ final: p.final, secs: p.parts.map((a) => +(a.length / 16000).toFixed(2)) }); port.postMessage(p.parts, p.parts.map((a) => a.buffer)); });
+        for (const p of [tone(5), gap(0.5), tone(17), gap(0.5), tone(3)])
             for (let i = 0; i < p.length; i += 1600) c.push(p.subarray(i, i + 1600));
-        return { out, tail: c.finish().map((a) => a.length / 16000) };""",
+        return out;""",
     )
-    assert len(got["out"]) == 2
-    assert 22.0 <= got["out"][0] <= 22.4, "the pause after 22 s"
-    assert 20.0 <= got["out"][1] <= 30.0, "no pause: the quietest point"
-    assert len(got["tail"]) == 2 and sum(got["tail"]) > 10
-
-
-def test_dictation_splits_a_long_tail_in_two_and_drops_silence(dict_server, page):
-    page.goto(dict_server.url)
-    halves, short, silent = run_dictation(
-        page,
-        """const fin = (...parts) => { const c = new m.Chunker(() => {}); for (const p of parts) c.push(p); return c.finish(); };
-        return [fin(tone(6), gap(0.3), tone(8)).map((x) => x.length / 16000),
-                fin(tone(4)).length, fin(gap(5)).length];""",
+    prov = [p for p in got if not p["final"]]
+    fin = [p for p in got if p["final"]]
+    assert 5.0 <= prov[0]["secs"][0] <= 5.4, "the pause after 5 s cuts the first piece"
+    # A pure tone has no quiet point, so the cut inside [4 s, 8 s] is wherever
+    # rounding puts it: assert the range, not the place.
+    assert all(4.0 <= p["secs"][0] <= 8.0 for p in prov[1:]), prov
+    assert len(fin) == 1 and len(fin[0]["secs"]) == 1
+    idx = got.index(fin[0])
+    before = [p["secs"][0] for p in got[:idx]]
+    assert 20 <= fin[0]["secs"][0] <= 28 and sum(before[:-1]) < 20, (
+        "closed at the first boundary past 20 s"
     )
-    assert len(halves) == 2 and 5.9 <= halves[0] <= 6.4, "cut in the pause"
-    assert short == 1 and silent == 0
+    assert abs(fin[0]["secs"][0] - sum(before)) < 0.05, (
+        "the final is exactly the joined provisional pieces"
+    )
 
 
-def test_dictation_inserts_pieces_in_order_after_the_last_one_and_keeps_typing(
+def test_dictation_voice_gate_skips_quiet_pieces_but_the_final_spans_them(
     dict_server, page
 ):
     page.goto(dict_server.url)
-    text = run_dictation(
+    got = run_dictation(
+        page,
+        """const out = []; const c = new m.Chunker((p) => out.push({ final: p.final, secs: +(p.parts[0].length / 16000).toFixed(1) }));
+        const quiet = [tone(0.5), gap(3.5)];
+        for (let k = 0; k < 6; k++) for (const p of quiet) for (let i = 0; i < p.length; i += 1600) c.push(p.subarray(i, i + 1600));
+        return { out, voiced: m.voiceSecs(tone(2)), quiet: m.voiceSecs(gap(2)), sliver: m.voiceSecs(tone(0.5)) };""",
+    )
+    assert got["voiced"] >= 1.8 and got["quiet"] == 0 and 0.3 <= got["sliver"] <= 0.6
+    assert [p for p in got["out"] if not p["final"]] == [], (
+        "no provisional piece had a second of voice"
+    )
+    fin = [p for p in got["out"] if p["final"]]
+    assert len(fin) == 1 and fin[0]["secs"] >= 20, (
+        "the final still spans the quiet pieces"
+    )
+
+
+def test_dictation_finish_returns_the_pending_piece_then_the_tail_in_halves(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const fin = (only, ...parts) => { const c = new m.Chunker(() => {}); for (const p of parts) c.push(p); return c.finish(only).map((p) => ({ final: p.final, secs: p.parts.map((a) => +(a.length / 16000).toFixed(1)) })); };
+        return { long: fin(false, tone(6), gap(0.3), tone(8)), short: fin(false, tone(4)),
+                 silent: fin(false, gap(5)), sliver: fin(false, tone(0.5)), only: fin(true, tone(0.5)) };""",
+    )
+    long = got["long"]
+    assert all(not p["final"] for p in long[:-1]) and long[-1]["final"]
+    assert len(long[-1]["secs"]) == 2 and 14.1 <= sum(long[-1]["secs"]) <= 14.4, (
+        "the 14.3 s stretch splits in two"
+    )
+    assert got["short"] == [
+        {"final": False, "secs": [4.0]},
+        {"final": True, "secs": [4.0]},
+    ]
+    assert got["silent"] == [] and got["sliver"] == []
+    assert got["only"] == [{"final": True, "secs": [0.5]}], (
+        "a one-word recording is still transcribed"
+    )
+
+
+def test_dictation_shows_provisional_text_and_replaces_it_with_the_final(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    got = run_dictation(
         page,
         """const el = document.createElement('textarea'); document.body.append(el);
         el.value = 'Before. After.'; el.setSelectionRange(7, 7);
-        const errors = [];
+        const errors = [], seen = [];
+        el.addEventListener('input', () => seen.push(el.value));
         const d = new m.Dictation({ prepare, onError: (e) => errors.push(e) });
         await d.start({ el, key: null, current: () => null }, source);
-        feed(tone(21), gap(0.5));
-        while (!el.value.includes('kw=')) await sleep(20);
+        // Four 5 s phrases with pauses: pieces of 5.15 and 5.5 s, a final at 21.65 s.
+        for (let k = 0; k < 4; k++) feed(tone(5), gap(0.5));
+        await until(() => (/\\[2\\d\\.\\ds/.test(el.value)));
+        const afterFinal = el.value;
         el.value += ' typed';
-        feed(tone(14), gap(0.3), tone(7.7));
+        // Two phrases and 3 s pending at stop: an 11 s stretch plus the 3 s tail.
+        for (let k = 0; k < 2; k++) feed(tone(5), gap(0.5));
+        feed(tone(3));
         await d.stop();
-        while (d.state !== 'idle') await sleep(20);
+        await until(() => !(d.state !== 'idle'));
         if (errors.length) throw new Error(errors.join('; '));
+        return { seen, afterFinal, end: el.value };""",
+    )
+    prov = [
+        v
+        for v in got["seen"]
+        if re.search(r"\[5\.\ds kw=2\]", v) and not re.search(r"\[2\d\.", v)
+    ]
+    assert len(prov) >= 4, got["seen"]
+    assert re.fullmatch(r"Before\. \[2\d\.\ds kw=2\] After\.", got["afterFinal"]), got[
+        "afterFinal"
+    ]
+    # At stop the 3 s pending piece showed first, then the 14 s stretch came back
+    # as two halves that replaced the provisional pieces together.
+    assert any(re.search(r"\[3\.[0-4]s kw=2\]", v) for v in got["seen"]), (
+        "the pending piece showed first"
+    )
+    assert re.fullmatch(
+        r"Before\. \[2\d\.\ds kw=2\] \[\d+\.\ds kw=2\] \[\d+\.\ds kw=2\] After\. typed",
+        got["end"],
+    ), got["end"]
+
+
+def test_dictation_keeps_an_edit_inside_provisional_text_and_drops_the_final(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        const d = new m.Dictation({ prepare });
+        await d.start({ el, key: null, current: () => null }, source);
+        feed(tone(4.5), gap(0.5));
+        await until(() => (el.value.includes('kw=')));
+        el.value = el.value.replace('kw=2', 'EDITED');
+        for (let k = 0; k < 3; k++) feed(tone(5), gap(0.5));
+        await until(() => !(d.queue.length || d.workers.some((w) => w.job)));
+        await sleep(100);
+        await d.stop();
+        await until(() => !(d.state !== 'idle'));
         return el.value;""",
     )
-    # The tail splits into a long first half (400 ms in the stub) and a short
-    # second half (50 ms), so the second finishes first and must wait.
-    secs = [float(s) for s in re.findall(r"\[(\d+\.\d)s kw=2\]", text)]
-    assert len(secs) == 3 and secs[0] > 20 and secs[1] > 12 > secs[2], text
-    assert text.startswith("Before. [21.") and text.endswith("] After. typed"), text
+    assert got.startswith("[4.7s EDITED] [5.5s kw=2]"), got
+    assert not re.search(r"\[2\d\.", got), "the final over the edited span was dropped"
+
+
+def test_dictation_replaces_the_span_after_typing_before_it(dict_server, page):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        const d = new m.Dictation({ prepare });
+        await d.start({ el, key: null, current: () => null }, source);
+        feed(tone(4.5), gap(0.5));
+        await until(() => (el.value.includes('kw=')));
+        el.value = 'Typed first. ' + el.value;
+        for (let k = 0; k < 3; k++) feed(tone(5), gap(0.5));
+        await until(() => (/\\[2\\d\\.\\ds/.test(el.value)));
+        await d.stop();
+        await until(() => !(d.state !== 'idle'));
+        return el.value;""",
+    )
+    assert re.fullmatch(r"Typed first\. \[2\d\.\ds kw=2\]", got), got
+
+
+def test_dictation_keeps_provisional_text_when_the_final_cannot_be_transcribed(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        const errors = [];
+        const failing = async () => ({ ...(await prepare()), keywords: ['FAIL'] });
+        const d = new m.Dictation({ prepare: failing, onError: (e) => errors.push(e) });
+        await d.start({ el, key: null, current: () => null }, source);
+        for (let k = 0; k < 4; k++) feed(tone(5), gap(0.5));
+        await until(() => errors.length > 0);
+        await until(() => !d.queue.length && !d.workers.some((w) => w.job));
+        await d.stop();
+        await until(() => d.state === 'idle');
+        return { value: el.value, errors };""",
+    )
+    assert re.fullmatch(r"(\[5\.\ds kw=1\] ){3}\[5\.\ds kw=1\]", got["value"]), got[
+        "value"
+    ]
+    assert len(got["errors"]) == 1 and re.match(
+        r"A piece of 2\d\.\d s could not be transcribed", got["errors"][0]
+    ), got["errors"]
+
+
+def test_dictation_goes_on_at_the_edit_when_a_deletion_covers_its_place(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        el.value = 'Before. After.'; el.setSelectionRange(7, 7);
+        const d = new m.Dictation({ prepare });
+        await d.start({ el, key: null, current: () => null }, source);
+        feed(tone(4.5), gap(0.5));
+        await until(() => el.value.includes('kw='));
+        // A selection from inside "Before." to the end, deleted.
+        el.value = 'Bef';
+        feed(tone(5), gap(0.5));
+        await until(() => el.value.includes('[5.'));
+        const after = el.value;
+        el.value = '';
+        feed(tone(5), gap(0.5));
+        await until(() => /\\[5\\.\\ds kw=2\\]$/.test(el.value) && el.value.length < 20);
+        await d.stop();
+        await until(() => d.state === 'idle');
+        return { after, cleared: el.value };""",
+    )
+    assert got["after"] == "Bef [5.5s kw=2]", got["after"]
+    assert got["cleared"] == "[5.5s kw=2]", got["cleared"]
+
+
+def test_dictation_does_not_hold_provisional_text_behind_a_final_in_flight(
+    dict_server, page
+):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        const seen = [];
+        el.addEventListener('input', () => seen.push(el.value));
+        const d = new m.Dictation({ prepare });
+        await d.start({ el, key: null, current: () => null }, source);
+        // The final (400 ms in the stub) and a fifth piece (50 ms) go out together.
+        for (let k = 0; k < 5; k++) feed(tone(5), gap(0.5));
+        await until(() => /\\[2\\d\\.\\ds/.test(el.value) && (el.value.match(/kw=2/g) || []).length === 2);
+        await d.stop();
+        await until(() => d.state === 'idle');
+        return seen;""",
+    )
+    fifth = next(
+        i for i, v in enumerate(got) if len(re.findall(r"\[5\.\ds kw=2\]", v)) == 5
+    )
+    final = next(i for i, v in enumerate(got) if re.search(r"\[2\d\.\ds kw=2\]", v))
+    assert fifth < final, got
+    assert re.fullmatch(r"\[2\d\.\ds kw=2\] \[5\.5s kw=2\]", got[final]), got[final]
+
+
+def test_dictation_picks_provisional_jobs_before_final_ones(dict_server, page):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """return [m.pick([{ final: true }, { final: true }, { final: false }]),
+                m.pick([{ final: true }]), m.pick([{ final: false }, { final: true }])];""",
+    )
+    assert got == [2, 0, 0]
 
 
 def test_dictation_puts_late_text_in_the_draft_the_textarea_no_longer_shows(
@@ -2914,6 +3188,34 @@ def test_dictation_puts_late_text_in_the_draft_the_textarea_no_longer_shows(
     )
     assert got[0] == "b is shown"
     assert got[1].startswith("draft of a [3.0s kw=2]")
+
+
+def test_dictation_says_why_when_the_browser_ends_the_capture(dict_server, page):
+    page.goto(dict_server.url)
+    got = run_dictation(
+        page,
+        """const el = document.createElement('textarea'); document.body.append(el);
+        const errors = [], states = [];
+        const d = new m.Dictation({ prepare, onError: (e) => errors.push(e), onState: (s) => states.push(s) });
+        await d.start({ el, key: null, current: () => null }, source);
+        feed(tone(3));
+        endCapture('track');
+        await until(() => d.state === 'idle');
+        const first = { errors: [...errors], text: el.value };
+        await d.start({ el, key: null, current: () => null }, source);
+        feed(tone(2));
+        await d.stop('button');
+        await until(() => d.state === 'idle');
+        return { first, errors, states };""",
+    )
+    assert got["first"]["errors"] == [
+        "Microphone stopped: the browser ended the microphone"
+    ]
+    assert "[3.0s" in got["first"]["text"], (
+        "what was said before the track ended still lands"
+    )
+    assert len(got["errors"]) == 1, "a stop the person asked for says nothing"
+    assert got["states"][-1] == "idle"
 
 
 @pytest.fixture
@@ -3296,7 +3598,7 @@ def test_a_far_file_card_links_only_through_via(linked, browser, page):
     f = linked.beta.root / "report.html"
     f.write_text("<h1>from beta</h1>")
     lid = beta_session(
-        linked, browser, f"/mcp file_send {json.dumps({'path': str(f)})}"
+        linked, browser, f"/mcp file_send {json.dumps({'paths': [str(f)]})}"
     )
     page.goto(linked.alpha.url)
     page.click(f"#tablist .tab[data-id='beta/{lid}']")

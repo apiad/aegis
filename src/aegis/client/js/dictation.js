@@ -1,19 +1,27 @@
 // Dictation: the mic button's whole client side. The browser captures the mic,
-// resamples it to 16 kHz, cuts it into chunks at pauses and transcribes each in
-// one of two Whistle workers, so no audio leaves the page (DESIGN.md, "Audio
-// never leaves the browser"). The numbers below were measured on Alex's own
-// dictations and phone (docs/superpowers/specs/2026-10-08-dictation-design.md).
+// resamples it to 16 kHz, cuts it into provisional pieces at pauses and, every
+// 20 s or so, re-transcribes the stretch as one final piece whose text replaces
+// them, in one of two Whistle workers, so no audio leaves the page (DESIGN.md,
+// "Audio never leaves the browser"). The numbers below were measured on Alex's
+// own dictations and phone (docs/superpowers/specs/2026-10-08-dictation-design.md
+// and 2026-10-09-dictation-live-text-design.md).
 
 export const SR = 16000;
-// Chunks stay long while you talk: 20 s gave 27.7% WER against 30.9% at 10 s.
-const MIN_CUT = 20 * SR;
-const MAX_CUT = 30 * SR; // Whistle's longest single pass
+// Two lanes (docs/superpowers/specs/2026-10-09-dictation-live-text-design.md):
+// provisional pieces of 4 to 8 s that show words a second after a pause, and
+// final pieces of 20 to 28 s made of them, whose text replaces the provisional
+// text. Joined-up finals measured 29.4% WER against 30.4% for a plain 20 s cut.
+const PREVIEW_MIN = 4 * SR;
+const PREVIEW_MAX = 8 * SR;
+const FINAL_MIN = 20 * SR;
 const PAUSE = 0.3 * SR;
 const QUIET = 0.01;
+// A piece with under a second of voice is what hallucinates ("Thank you."): it
+// is never transcribed alone. Silence itself comes back empty from the engine.
+const VOICE = 1.0;
 // At stop, a longer tail is split across both workers: the wait after stop is
 // the one you feel, and two halves finish 1.9 times sooner than the whole.
 const SPLIT_OVER = 10 * SR;
-const SILENT = 0.001;
 const FRAME = 0.2 * SR;
 const HOP = 0.05 * SR;
 
@@ -35,6 +43,23 @@ export function quietest(a, from, to) {
     }
   }
   return at;
+}
+
+// Seconds of 200 ms frames, 50 ms apart, whose RMS is over the pause threshold.
+export function voiceSecs(a) {
+  let n = 0;
+  for (let s = 0; s + FRAME <= a.length; s += HOP) if (rms(a, s, s + FRAME) > QUIET) n++;
+  return n * (HOP / SR);
+}
+
+function concat(parts) {
+  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
+  return out;
 }
 
 // A streaming box-filter resampler from the context's rate to 16 kHz. Asking
@@ -64,46 +89,73 @@ export function resampler(inRate) {
   };
 }
 
+// Cuts the 16 kHz stream into pieces for the two lanes. `emit` gets
+// { parts, final }: a provisional piece has one part; a final piece is the
+// stretch since the previous final cut (one part), or at stop its two halves.
 export class Chunker {
   constructor(emit) {
     this.emit = emit;
-    this.buf = new Float32Array(0);
+    this.buf = new Float32Array(0); // not yet cut
+    this.stretch = []; // pieces cut since the last final, voiced or not
   }
 
   push(samples) {
-    const m = new Float32Array(this.buf.length + samples.length);
-    m.set(this.buf);
-    m.set(samples, this.buf.length);
-    this.buf = m;
+    this.buf = concat([this.buf, samples]);
     for (;;) {
       const n = this.buf.length;
-      if (n >= MIN_CUT && rms(this.buf, n - PAUSE, n) < QUIET) this.cut(n - PAUSE / 2);
-      else if (n >= MAX_CUT) this.cut(quietest(this.buf, MIN_CUT, MAX_CUT));
+      if (n >= PREVIEW_MIN && rms(this.buf, n - PAUSE, n) < QUIET) this.cut(n - PAUSE / 2);
+      else if (n >= PREVIEW_MAX) this.cut(quietest(this.buf, PREVIEW_MIN, PREVIEW_MAX));
       else return;
     }
   }
 
   cut(at) {
-    const chunk = this.buf.slice(0, at);
+    const piece = this.buf.slice(0, at);
     this.buf = this.buf.slice(at);
-    this.emit(chunk);
+    this.stretch.push(piece);
+    // A copy: the worker takes the emitted buffer away, and the stretch keeps this one.
+    if (voiceSecs(piece) >= VOICE) this.emit({ parts: [piece.slice()], final: false });
+    if (this.stretch.reduce((n, p) => n + p.length, 0) >= FINAL_MIN) {
+      const audio = concat(this.stretch);
+      this.stretch = [];
+      if (voiceSecs(audio) >= VOICE) this.emit({ parts: [audio], final: true });
+    }
   }
 
-  // What is left at stop, as the pieces to transcribe: none if it is silence,
-  // two halves cut at the quiet point of its middle third if it is long.
-  finish() {
+  // The pieces at stop, in order: what was pending as a provisional piece, then
+  // the stretch as a final, in two halves cut at the quiet point of its middle
+  // third when it is long. A stretch with under a second of voice is dropped,
+  // unless it is all the recording has (`onlyPiece`).
+  finish(onlyPiece = false) {
+    const out = [];
     const t = this.buf;
     this.buf = new Float32Array(0);
-    if (!t.length || rms(t) < SILENT) return [];
-    if (t.length <= SPLIT_OVER) return [t];
-    const third = Math.floor(t.length / 3);
-    const at = quietest(t, third, 2 * third);
-    return [t.slice(0, at), t.slice(at)];
+    if (t.length) {
+      this.stretch.push(t);
+      if (voiceSecs(t) >= VOICE) out.push({ parts: [t.slice()], final: false });
+    }
+    const audio = concat(this.stretch);
+    this.stretch = [];
+    if (!audio.length || (voiceSecs(audio) < VOICE && !onlyPiece)) return out;
+    if (audio.length <= SPLIT_OVER) out.push({ parts: [audio], final: true });
+    else {
+      const third = Math.floor(audio.length / 3);
+      const at = quietest(audio, third, 2 * third);
+      out.push({ parts: [audio.slice(0, at), audio.slice(at)], final: true });
+    }
+    return out;
   }
 }
 
+// A stop the person did not ask for says why; the four they ask for say nothing.
+const STOPPED = {
+  track: "Microphone stopped: the browser ended the microphone",
+  suspended: "Microphone stopped: the browser suspended the audio",
+};
+
 // The microphone, mono at 16 kHz. Resolves to the function that stops it.
-export async function micSource(onSamples) {
+// `onEnd` fires once with "track" or "suspended" if the browser ends the capture.
+export async function micSource(onSamples, onEnd = () => {}) {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
   });
@@ -122,31 +174,111 @@ export async function micSource(onSamples) {
   ctx.createMediaStreamSource(stream).connect(node).connect(mute).connect(ctx.destination);
   const rs = resampler(ctx.sampleRate);
   node.port.onmessage = ({ data }) => onSamples(rs(data));
+  let closing = false;
+  stream.getAudioTracks()[0].addEventListener("ended", () => !closing && onEnd("track"));
+  ctx.addEventListener("statechange", () => !closing && ctx.state !== "running" && onEnd("suspended"));
   return async () => {
+    closing = true;
     node.port.onmessage = null;
     stream.getTracks().forEach((t) => t.stop());
     await ctx.close();
   };
 }
 
-// A piece of text into the recording's target: at the place the last piece
-// ended, or at the end of the session's draft if the textarea now shows
-// another session.
-function insert(rec, text) {
-  if (!text) return;
+// Where a recording's text goes: the textarea while it still shows the draft
+// the recording started in, else that draft in localStorage.
+function doc(rec) {
   const t = rec.target;
   if (t.key === null || t.current() === t.key) {
-    const v = t.el.value;
-    const at = Math.min(rec.at, v.length);
-    const before = v.slice(0, at);
-    const piece = (before && !/\s$/.test(before) ? " " : "") + text;
-    t.el.value = before + piece + v.slice(at);
-    rec.at = at + piece.length;
-    t.el.dispatchEvent(new Event("input", { bubbles: true }));
-  } else {
-    const v = localStorage.getItem(t.key) || "";
-    localStorage.setItem(t.key, v + (v && !/\s$/.test(v) ? " " : "") + text);
+    return {
+      kind: "box",
+      get: () => t.el.value,
+      set: (v) => {
+        t.el.value = v;
+        t.el.dispatchEvent(new Event("input", { bubbles: true }));
+      },
+    };
   }
+  return { kind: "draft", get: () => localStorage.getItem(t.key) || "", set: (v) => localStorage.setItem(t.key, v) };
+}
+
+// The text as it is now, with the recording's offsets carried through whatever
+// the person typed or deleted since the last write. The common prefix and
+// suffix bound their edit: a position past it shifts by the edit's length, a
+// position inside it moves to the edit's end, so a deletion that covers the
+// insertion point goes on at the deletion. When the text moved to the
+// session's draft, dictation goes on at its end.
+function sync(rec, d) {
+  const v = d.get();
+  if (rec.knownKind !== d.kind) rec.at = d.kind === "draft" ? v.length : Math.min(rec.at, v.length);
+  else if (rec.known !== v) {
+    const k = rec.known;
+    const n = Math.min(v.length, k.length);
+    let i = 0;
+    while (i < n && v[i] === k[i]) i++;
+    let j = 0;
+    while (j < n - i && v[v.length - 1 - j] === k[k.length - 1 - j]) j++;
+    const oldEnd = k.length - j;
+    const newEnd = v.length - j;
+    const move = (p) => (p >= oldEnd ? p + newEnd - oldEnd : p > i ? Math.min(p, newEnd) : p);
+    for (const it of rec.placed) Object.assign(it, { from: move(it.from), to: move(it.to) });
+    rec.at = move(rec.at);
+  }
+  return v;
+}
+
+function write(rec, d, v) {
+  d.set(v);
+  rec.known = v;
+  rec.knownKind = d.kind;
+}
+
+// A separating space when the text before the insertion point does not end in one.
+const lead = (before, text) => (before && !/\s$/.test(before) ? " " : "") + text;
+
+// A provisional piece: at the place the last piece ended, remembered as the
+// exact string inserted and its range.
+function insert(rec, item, text) {
+  if (!text) return;
+  const d = doc(rec);
+  const v = sync(rec, d);
+  const at = Math.min(rec.at, v.length);
+  const piece = lead(v.slice(0, at), text);
+  write(rec, d, v.slice(0, at) + piece + v.slice(at));
+  Object.assign(item, { piece, from: at, to: at + piece.length });
+  rec.placed.push(item);
+  rec.at = at + piece.length;
+}
+
+// A final: replaces the provisional text it covers if that text is still there,
+// at its recorded range or wherever it moved to; else the person edited it and
+// the final is dropped. With nothing to cover it inserts like a piece.
+function replace(rec, item, text) {
+  const covered = item.covers.filter((c) => c.piece);
+  if (!covered.length) return insert(rec, item, text);
+  const d = doc(rec);
+  const v = sync(rec, d);
+  const expected = covered.map((c) => c.piece).join("");
+  let from = covered[0].from;
+  if (v.slice(from, from + expected.length) !== expected) {
+    from = v.indexOf(expected);
+    if (from < 0 || v.indexOf(expected, from + 1) >= 0) return;
+  }
+  const to = from + expected.length;
+  const piece = text ? lead(v.slice(0, from), text) : "";
+  write(rec, d, v.slice(0, from) + piece + v.slice(to));
+  Object.assign(item, { piece, from, to: from + piece.length });
+  const delta = piece.length - expected.length;
+  rec.placed = rec.placed.filter((it) => !covered.includes(it));
+  for (const it of rec.placed) if (it.from >= to) Object.assign(it, { from: it.from + delta, to: it.to + delta });
+  rec.placed.push(item);
+  if (rec.at >= to) rec.at += delta;
+}
+
+// The job a free worker takes: the first provisional one, else the oldest.
+export function pick(queue) {
+  const i = queue.findIndex((j) => !j.final);
+  return i < 0 ? 0 : i;
 }
 
 // One recording listens at a time; earlier ones may still have pieces in
@@ -178,12 +310,12 @@ export class Dictation {
   // carries everything that was said.
   async finish(el) {
     if (this.target?.el !== el || this.state === "idle") return;
-    await this.stop();
+    await this.stop("send");
     if (this.state !== "idle") await new Promise((r) => this.waiters.push(r));
   }
 
-  async toggle(target) {
-    if (this.rec) return this.stop();
+  async toggle(target, reason = "button") {
+    if (this.rec) return this.stop(reason);
     return this.start(target);
   }
 
@@ -192,22 +324,29 @@ export class Dictation {
     const rec = {
       target,
       at: target.el.selectionStart ?? target.el.value.length,
-      order: [],
-      done: new Map(),
+      items: [], // in order, awaiting insertion
+      pending: [], // provisional items since the last final
+      placed: [], // inserted items whose ranges a final may still replace
+      known: "", // the text as this recording last wrote it, and where
+      knownKind: null,
+      emitted: 0,
       keywords: "",
       stopped: false,
       stopCapture: null,
     };
-    rec.chunker = new Chunker((a) => this.enqueue(rec, a));
+    rec.chunker = new Chunker((p) => this.enqueue(rec, p));
     this.rec = rec;
     this.target = target;
     this.recs.add(rec);
     this.setState(this.up ? "listening" : "loading");
     try {
-      rec.stopCapture = await source((s) => {
-        this.onLevel(rms(s));
-        rec.chunker.push(s);
-      });
+      rec.stopCapture = await source(
+        (s) => {
+          this.onLevel(rms(s));
+          rec.chunker.push(s);
+        },
+        (why) => this.rec === rec && this.stop(why),
+      );
     } catch (e) {
       return this.abort(rec, `Microphone unavailable: ${e?.message ?? e}`);
     }
@@ -223,15 +362,16 @@ export class Dictation {
     this.dispatch();
   }
 
-  async stop() {
+  async stop(reason = "button") {
     const rec = this.rec;
     if (!rec) return;
     this.rec = null;
     rec.stopped = true;
     if (rec.stopCapture) await rec.stopCapture();
     this.onLevel(0);
-    for (const piece of rec.chunker.finish()) this.enqueue(rec, piece);
+    for (const p of rec.chunker.finish(rec.emitted === 0)) this.enqueue(rec, p);
     this.settle();
+    if (STOPPED[reason]) this.onError(STOPPED[reason]);
   }
 
   boot(base) {
@@ -262,10 +402,14 @@ export class Dictation {
     return this.ready;
   }
 
-  enqueue(rec, audio) {
-    const id = this.next++;
-    rec.order.push(id);
-    this.queue.push({ id, audio, rec, secs: audio.length / SR }); // the buffer is transferred away
+  enqueue(rec, { parts, final }) {
+    const item = { final, jobs: parts.length, texts: [], covers: final ? rec.pending.splice(0) : [] };
+    rec.items.push(item);
+    rec.emitted++;
+    if (!final) rec.pending.push(item);
+    parts.forEach((audio, i) => {
+      this.queue.push({ id: this.next++, i, audio, item, rec, final, secs: audio.length / SR }); // the buffer is transferred away
+    });
     this.dispatch();
   }
 
@@ -273,7 +417,7 @@ export class Dictation {
     if (!this.up) return;
     for (const w of this.workers) {
       if (w.job || !this.queue.length) continue;
-      const job = this.queue.shift();
+      const job = this.queue.splice(pick(this.queue), 1)[0];
       w.job = job;
       w.w.postMessage({ type: "transcribe", id: job.id, audio: job.audio, keywords: job.rec.keywords }, [job.audio.buffer]);
     }
@@ -283,23 +427,37 @@ export class Dictation {
     const job = w.job;
     w.job = null;
     if (!job) return;
-    const rec = job.rec;
-    if (data.type === "text") rec.done.set(job.id, data.text);
+    const { rec, item } = job;
+    if (data.type === "text") item.texts[job.i] = data.text;
     else {
-      rec.done.set(job.id, "");
+      item.texts[job.i] = "";
+      item.failed = true;
       this.onError(`A piece of ${job.secs.toFixed(1)} s could not be transcribed: ${data.message}`);
     }
-    while (rec.order.length && rec.done.has(rec.order[0])) {
-      const id = rec.order.shift();
-      insert(rec, rec.done.get(id));
-      rec.done.delete(id);
+    item.jobs--;
+    // Provisional pieces land in order. A final lands as soon as its parts are
+    // done and the pieces it covers are placed, so it never holds back the
+    // provisional text behind it. A final with a failed part leaves the
+    // provisional text as it is: a wrong half must not wipe words on screen.
+    for (let i = 0; i < rec.items.length; ) {
+      const it = rec.items[i];
+      if (it.jobs > 0 || (it.final && !it.covers.every((c) => c.done))) {
+        if (!it.final) break;
+        i++;
+        continue;
+      }
+      rec.items.splice(i, 1);
+      it.done = true;
+      const text = it.texts.filter(Boolean).join(" ");
+      if (!it.final) insert(rec, it, text);
+      else if (!it.failed) replace(rec, it, text);
     }
     this.dispatch();
     this.settle();
   }
 
   settle() {
-    for (const r of this.recs) if (r !== this.rec && !r.order.length) this.recs.delete(r);
+    for (const r of this.recs) if (r !== this.rec && !r.items.length) this.recs.delete(r);
     if (!this.rec) this.setState(this.recs.size ? "finishing" : "idle");
   }
 
@@ -309,7 +467,7 @@ export class Dictation {
     if (rec.stopCapture) rec.stopCapture();
     this.onLevel(0);
     this.queue = this.queue.filter((j) => j.rec !== rec);
-    rec.order = [];
+    rec.items = [];
     this.recs.delete(rec);
     this.onError(message);
     this.settle();

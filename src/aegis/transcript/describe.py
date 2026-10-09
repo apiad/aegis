@@ -112,7 +112,7 @@ def tool_label(name: str, inp: dict) -> str:
         if inp.get("description"):
             return str(inp["description"])
         return _trunc(inp.get("command", ""), 60)
-    if name in ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit"):
+    if name in FILE_TOOLS:
         tail = _tail(str(inp.get("file_path") or inp.get("notebook_path") or ""))
         verb = {"Read": "read", "Write": "write"}.get(name, "edit")
         return f"{verb} {tail}" if tail else verb
@@ -190,6 +190,15 @@ def diff_window(
     shown_a = added[: max(0, max_lines - len(shown_r))]
     elided = len(removed) + len(added) - len(shown_r) - len(shown_a)
     return shown_r, shown_a, elided
+
+
+FILE_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit")
+
+
+def file_path(name: str, inp: dict) -> str | None:
+    """The file a file tool read or changed, else None."""
+    path = inp.get("file_path") or inp.get("notebook_path")
+    return path if name in FILE_TOOLS and isinstance(path, str) else None
 
 
 def edit_pair(name: str, inp: dict) -> tuple[str, str, str] | None:

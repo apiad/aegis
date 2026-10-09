@@ -609,7 +609,7 @@ function follow(id) {
     while (kept.size > TAB_CACHE) kept.delete(kept.keys().next().value);
   } else transcript.clear();
   drawNavNow(); // at once: the old session's navigator goes with its rows
-  if (dictation.target?.el === input) dictation.stop(); // a recording belongs to its session
+  if (dictation.target?.el === input) dictation.stop("tab"); // a recording belongs to its session
   shown = id;
   if (!id) return;
   const saved = kept.get(id);
@@ -838,6 +838,20 @@ $("entries").addEventListener("click", (ev) => {
   const old = card.querySelector(".stage");
   if (old) old.remove();
   else card.append(artifactStage(e));
+});
+
+// -- Show the file a Read, Write or Edit row used -------------------------------
+$("entries").addEventListener("click", async (ev) => {
+  const b = ev.target.closest(".peekbar .peek");
+  if (!b) return;
+  b.disabled = true;
+  try {
+    // The row comes back with the card in it; this node is replaced.
+    await conn.call("file.peek", { log_id: forKey(shown).log_id, entry_id: b.dataset.entry });
+  } catch (e) {
+    b.nextElementSibling.textContent = e.message;
+    b.disabled = false;
+  }
 });
 
 // -- archive -------------------------------------------------------------------
@@ -1157,7 +1171,7 @@ installKeys(
     dictate() {
       const v = route().view;
       if (!navigator.mediaDevices || (v !== "session" && v !== "spawn")) return;
-      dictation.toggle(v === "spawn" ? spawnTarget() : sessionTarget());
+      dictation.toggle(v === "spawn" ? spawnTarget() : sessionTarget(), "key");
     },
     browse() {
       const v = route().view;
@@ -1258,8 +1272,8 @@ if (!navigator.mediaDevices) {
     b.title = "Dictation needs https or localhost";
   }
 }
-$("mic").addEventListener("click", () => dictation.toggle(sessionTarget()));
-$("sp-mic").addEventListener("click", () => dictation.toggle(spawnTarget()));
+$("mic").addEventListener("click", () => dictation.toggle(sessionTarget(), "button"));
+$("sp-mic").addEventListener("click", () => dictation.toggle(spawnTarget(), "button"));
 // On a touch screen Enter adds a line and the button sends: the key sits where
 // a mistap lands, and half a message costs a turn.
 const touch = matchMedia("(pointer: coarse)");

@@ -5,7 +5,7 @@ resolves a ``/`` line first, ``commands.py``), ``session.read``,
 ``recap.request``, ``dictation.prepare``, ``session.configure``,
 ``commands.list``, ``session.interrupt``, ``session.stop``, ``session.close``,
 ``session.reopen``,
-``session.rename``, ``archive.list``, ``server.version``, ``file.open``,
+``session.rename``, ``archive.list``, ``server.version``, ``file.open``, ``file.peek``,
 ``quota.read``, ``transcript.detail``, and ``config.read``, ``config.write``,
 ``config.detect``, ``config.doctor`` and ``config.propose`` (``config_ops.py``),
 and ``artifact.create``, ``artifact.send``, ``artifact.read``,
@@ -128,6 +128,11 @@ class RenameParams(_Strict):
 class FileRef(_Strict):
     file_id: str
     name: str
+
+
+class PeekParams(_Strict):
+    log_id: str
+    entry_id: str
 
 
 class LinkAdd(_Strict):
@@ -713,6 +718,30 @@ class App:
                 files.open_natively(path)
             except (files.FileError, OSError) as e:
                 raise OpError("open_failed", str(e)) from e
+
+        @r.op("file.peek", PeekParams)
+        async def file_peek(p: PeekParams, caller):
+            """Copy the file a Read, Write or Edit row used, as it is now, and
+            open it inside that row. The person's way to see a file the agent
+            did not send; the agent never sees it."""
+            s = reg.open(p.log_id)
+            row = s.fold().entry(p.entry_id)
+            raw = row["detail"].get("path") if row and row["kind"] == "tool" else None
+            if not raw:
+                raise OpError("no_path", "that row used no file")
+            path = Path(raw).expanduser()
+            if not path.is_absolute():
+                path = s.spec.cwd / path
+            try:
+                (rec,) = await asyncio.to_thread(
+                    files.store_all, self.roots.state_root, [path]
+                )
+            except files.FileError as e:
+                raise OpError(e.code, e.message) from e
+            sent = {k: v for k, v in rec.items() if k != "kind"}
+            s.record_peek({"kind": "peek", "entry": p.entry_id, "files": [sent]})
+            url = files.url(rec["file_id"], rec["name"])
+            return [{"url": url, "name": rec["name"], "size": rec["size"]}]
 
         @r.op("link.list")
         async def link_list(_, caller):
