@@ -80,12 +80,14 @@ the page, `null` when none was open.
 
 ```
 artifact.read(id: str)
-  -> {status, state, events, submitted, label}
+  -> {status, state, events, submitted, label, errors}
 ```
 
 `status` is `draft`, `live`, `submitted` or `closed`. `state` is the latest
-write from the page or the agent. `errors` counts the script errors the page
-raised since it landed (only the first woke the agent). `events` is the last 20 emits, oldest first,
+write from the page or the agent. `errors` counts the script errors the server
+heard after the first, which woke the agent (a browser forwards only a mounted
+frame's first error, so a loop in one frame costs one wake and one count at
+most). `events` is the last 20 emits, oldest first,
 each `{name, data, ts}`. `submitted` is the submit's data and `label` its label,
 both null until then. Never wakes anyone; this is the silent channel.
 
