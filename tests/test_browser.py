@@ -1105,7 +1105,9 @@ def test_a_page_that_throws_fails_the_send_and_shows_no_card(server, page):
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
     # An inline script's error, raised before the handshake.
-    _, said = _artifact(page, server, ("<script>nope();</script>", "aegis.state({});"), 0)
+    _, said = _artifact(
+        page, server, ("<script>nope();</script>", "aegis.state({});"), 0
+    )
     assert said.startswith("mcp error: page_error") and "nope is not defined" in said
     assert page.locator(".row.artifact").count() == 0
     page.locator("#probes iframe").wait_for(state="detached")
