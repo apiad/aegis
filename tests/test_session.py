@@ -316,7 +316,7 @@ async def test_a_report_is_published_at_once_and_survives_a_rebuild(
     await s.start()
     n = len(h.published)
     s.report({"kind": "plan", "items": [{"text": "read", "state": "doing"}]})
-    assert s.standing["plan"] == [{"text": "read", "state": "doing"}]
+    assert [(i["text"], i["state"]) for i in s.standing["plan"]] == [("read", "doing")]
     cards = [
         op["upsert"] for ch, ops in h.published[n:] if ch == "sessions" for op in ops
     ]
@@ -324,7 +324,8 @@ async def test_a_report_is_published_at_once_and_survives_a_rebuild(
     assert "standing" not in cards[-1]  # the card carries derived fields, not the dict
     await s.shutdown()
     meta = h.metas.read_all()[0][0]
-    assert meta["standing"]["plan"] == [{"text": "read", "state": "doing"}]
+    plan = meta["standing"]["plan"]
+    assert [(i["text"], i["state"]) for i in plan] == [("read", "doing")]
     again = h.make(standing=meta["standing"])
     assert again.standing == meta["standing"]
     # A record adopts the fold's object, so later records compare by identity.
