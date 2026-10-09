@@ -78,7 +78,8 @@ Do not edit `CHANGELOG.md` directly. The releaser collates.
 
 ```bash
 make test          # the fast lane
-make check         # every gate
+make check         # every gate, on the fast lane
+make test-slow     # what the fast lane skips: every browser test, restarts
 rift check         # CI cannot run this one — rift is private, not on PyPI
 ```
 
