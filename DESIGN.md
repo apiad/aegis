@@ -148,8 +148,8 @@ stored line through the parser its `src` tag names. Claude Code
 (`opencode/process.py`) is one `opencode serve` per session over HTTP, because its
 MCP token, like Claude's, is per process. Codex (`codex/process.py`) is one
 `codex app-server` per session over JSON-RPC on stdio, for the same reason, and
-the only harness whose model, effort and sandbox travel with every turn, so a
-change never restarts it. Its process writes `aegis/*` lines of its own for what
+the only harness whose model, effort and sandbox travel with every turn, so only
+a new provider restarts it. Its process writes `aegis/*` lines of its own for what
 only a response carries (the version, the thread, each turn's model), and kills
 its process group after any exit, because a grandchild of a dead child held the
 thread's writer lease and the child's pipes. The parsers emit the same events, so

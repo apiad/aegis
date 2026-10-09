@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -326,3 +327,44 @@ async def test_a_free_model_shows_zero_cost(tmp_path, fake_codex):
     await h.turn("hello")
     assert h.session.cost_usd == 0
     await h.session.stop()
+
+
+async def test_a_restart_that_fails_leaves_no_child_behind(
+    tmp_path, fake_codex, monkeypatch
+):
+    monkeypatch.setenv("FAKE_CODEX_FAIL_RESUME", "1")
+    h = CX(tmp_path, fake_codex)
+    await h.session.start()
+    await h.turn("hello")
+    await h.session.configure(model="other/fake-x")
+    with pytest.raises(Exception):
+        await h.session.send("again")
+    pids = h.pids("START") + h.pids("LEASE")
+    assert len(h.pids("START")) == 2, "the restart started a second child"
+    await until(
+        lambda: not any(alive(p) for p in pids), timeout=3, what="every child gone"
+    )
+    await h.session.stop()
+
+
+async def test_a_stop_during_a_provider_restart_leaves_no_child(
+    tmp_path, fake_codex, monkeypatch
+):
+    import contextlib
+
+    monkeypatch.setenv("FAKE_CODEX_HANG", "1")
+    monkeypatch.setattr("aegis.codex.process.TERM_GRACE_S", 0.3)
+    h = CX(tmp_path, fake_codex)
+    await h.session.start()
+    await h.turn("hello")
+    await h.session.configure(model="other/fake-x")
+    send = asyncio.create_task(h.session.send("again"))
+    await asyncio.sleep(0.1)  # the restart is waiting for the old child to end
+    await h.session.stop()
+    with contextlib.suppress(Exception):
+        await send
+    await asyncio.sleep(0.5)  # long enough for a late spawn to have happened
+    pids = h.pids("START") + h.pids("LEASE")
+    await until(
+        lambda: not any(alive(p) for p in pids), timeout=2, what="every child gone"
+    )

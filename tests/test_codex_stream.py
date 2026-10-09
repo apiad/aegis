@@ -313,3 +313,21 @@ def test_a_priced_model_costs_its_requests_and_a_free_one_costs_nothing():
     assert r.cost_usd == pytest.approx(
         float(codex_prices_for("openai/gpt-6.1-sol").input)
     )
+
+
+def test_the_aegis_servers_tools_are_named_as_claude_names_them():
+    from aegis.codex.config import SERVER
+
+    p = Parser()
+    p.feed(
+        line("aegis/thread", thread={"id": "t1", "model": "m", "modelProvider": "p"})
+    )
+    item = {
+        "type": "mcpToolCall",
+        "id": "c1",
+        "server": SERVER,
+        "tool": "meta",
+        "arguments": {},
+    }
+    (call,) = p.feed(line("item/started", threadId="t1", turnId="u", item=item))
+    assert call.name == "mcp__aegis__meta"

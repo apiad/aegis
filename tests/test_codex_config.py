@@ -1,5 +1,6 @@
 from aegis.claude.control import Model
 from aegis.codex.config import (
+    SERVER,
     PERMISSIONS,
     SANDBOX_MODE,
     SANDBOX_POLICY,
@@ -26,12 +27,12 @@ def test_argv_overrides_come_after_the_subcommand():
     assert a[:2] == ["codex", "app-server"]
     assert a[2:6] == ["--disable", "plugins", "--disable", "remote_plugin"]
     joined = " ".join(a)
-    assert 'mcp_servers.aegis.url="http://127.0.0.1:9/mcp"' in joined
+    assert f'mcp_servers.{SERVER}.url="http://127.0.0.1:9/mcp"' in joined
     assert (
-        f'mcp_servers.aegis.env_http_headers={{"X-Aegis-Session"="{TOKEN_ENV}"}}'
+        f'mcp_servers.{SERVER}.env_http_headers={{"X-Aegis-Session"="{TOKEN_ENV}"}}'
         in joined
     )
-    assert 'mcp_servers.aegis.default_tools_approval_mode="approve"' in joined
+    assert f'mcp_servers.{SERVER}.default_tools_approval_mode="approve"' in joined
     assert f'shell_environment_policy.exclude=["{TOKEN_ENV}"]' in joined
     assert a[-2:] == ["-c", 'approval_policy="never"']
 
@@ -96,3 +97,15 @@ def test_the_catalog_has_codex_models_skills_the_provider_and_the_current_model(
 def test_a_provider_entry_without_an_id_is_skipped():
     assert provider_model("p", {"name": "x"}) is None
     assert isinstance(provider_model("p", {"id": "m"}), Model)
+
+
+def test_the_aegis_server_has_a_name_no_person_uses():
+    from aegis.codex.config import SERVER
+
+    assert SERVER != "aegis"
+    assert f"mcp_servers.{SERVER}.url=" in " ".join(argv("codex", "http://h/mcp"))
+
+
+def test_argv_keeps_the_persons_own_excludes():
+    joined = " ".join(argv("codex", "http://h/mcp", exclude=["AWS_*"]))
+    assert f'shell_environment_policy.exclude=["AWS_*", "{TOKEN_ENV}"]' in joined

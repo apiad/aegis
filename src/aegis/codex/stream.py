@@ -50,6 +50,7 @@ from ..claude.stream import (
     Usage,
 )
 from ..usage.prices import codex_prices_for
+from .config import SERVER
 
 LABEL = "Codex"
 OWN = "aegis/"
@@ -140,7 +141,8 @@ def _calls(item: dict) -> list[tuple[str, str, dict]]:
     if kind == "commandExecution":
         return [(iid, "Bash", {"command": _shell(item)})]
     if kind == "mcpToolCall":
-        name = f"mcp__{item.get('server')}__{item.get('tool')}"
+        server = "aegis" if item.get("server") == SERVER else item.get("server")
+        name = f"mcp__{server}__{item.get('tool')}"
         return [(iid, name, _dict(item.get("arguments")))]
     if kind == "webSearch":
         return [(iid, "WebSearch", {"query": str(item.get("query") or "")})]

@@ -89,7 +89,17 @@ command line would put the token in `ps` output for every user on the machine.
 `shell_environment_policy` passes that variable to the shells the model runs
 (`env | grep -c AEGIS_SESSION_TOKEN` printed 1), so the command line also sets
 `shell_environment_policy.exclude=["AEGIS_SESSION_TOKEN"]`; with it the shell
-saw 0 and the MCP call still carried the token.
+saw 0 and the MCP call still carried the token. A `-c` value replaces the person's own
+list, so aegis reads `shell_environment_policy.exclude` from their
+`config.toml` and passes the union.
+
+**aegis's server has a name of its own.** `-c` sets one key at a time and
+merges with the person's file. A person's own `[mcp_servers.aegis]` table, a
+stdio command or `enabled = false`, stopped Codex from starting or disabled
+aegis's tools (the final review measured both on 0.162.1). The server is
+`aegis_session`, so Codex shows the model `mcp__aegis_session__<op>`; the
+harness's `tool_prefix` says so to the primer, and the parser names the calls
+`mcp__aegis__<op>` as the fold expects.
 
 **The user's own `CODEX_HOME`.** The child uses `~/.codex` (or `$CODEX_HOME`),
 so it shares the login, the providers, the skills and the AGENTS.md handling
@@ -105,10 +115,10 @@ the file.
 ```
 codex app-server
   --disable plugins --disable remote_plugin
-  -c mcp_servers.aegis.url="<aegis /mcp URL>"
-  -c mcp_servers.aegis.env_http_headers={"X-Aegis-Session"="AEGIS_SESSION_TOKEN"}
-  -c mcp_servers.aegis.default_tools_approval_mode="approve"
-  -c shell_environment_policy.exclude=["AEGIS_SESSION_TOKEN"]
+  -c mcp_servers.aegis_session.url="<aegis /mcp URL>"
+  -c mcp_servers.aegis_session.env_http_headers={"X-Aegis-Session"="AEGIS_SESSION_TOKEN"}
+  -c mcp_servers.aegis_session.default_tools_approval_mode="approve"
+  -c shell_environment_policy.exclude=[<the person's own list>, "AEGIS_SESSION_TOKEN"]
   -c approval_policy="never"
 ```
 
@@ -298,8 +308,9 @@ update, since `model/list` carries no window.
 
 `codex/config.py` builds the `-c` flags from `launch.mcp` and the permission
 table, with no I/O, as `opencode/config.py`'s `child_config` does for OpenCode.
-The `Codex` harness sets `tool_prefix = "mcp__aegis__"`, the name Codex shows,
-so the primer (`mcp.py`) names the tools as it does for Claude. The rest of the
+The `Codex` harness sets `tool_prefix = "mcp__aegis_session__"`, the name
+Codex shows for the server, so the primer (`mcp.py`) names the tools the way
+the model sees them. The rest of the
 primer is the same.
 
 ### Titles

@@ -7,6 +7,7 @@ from pathlib import Path
 from ..claude.control import Catalog
 from ..harness import Launch
 from .process import CodexProcess, probe
+from .config import SERVER
 from .stream import LABEL
 
 
@@ -14,7 +15,8 @@ class Codex:
     name = "codex"
     src = "codex"
     label = LABEL
-    tool_prefix = "mcp__aegis__"
+    # The name Codex shows the model for aegis's server (config.SERVER).
+    tool_prefix = f"mcp__{SERVER}__"
 
     def __init__(self, bin: str) -> None:
         self.bin = bin

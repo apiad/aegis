@@ -23,6 +23,7 @@ import asyncio
 import json
 import os
 import signal
+import tomllib
 from collections import deque
 from pathlib import Path
 from typing import Any
@@ -101,6 +102,8 @@ class CodexProcess:
         self._skills: dict[str, str] = {}
         self._restart = False
         self._quiet = False
+        # terminate() was called: nothing may start a child after it.
+        self._closed = False
 
     # -- what the session reads --------------------------------------
     @property
@@ -130,7 +133,7 @@ class CodexProcess:
         mcp = self._launch.mcp
         self._launch.stderr_path.parent.mkdir(parents=True, exist_ok=True)
         self._proc = await asyncio.create_subprocess_exec(
-            *argv(self._bin, mcp[0] if mcp else None),
+            *argv(self._bin, mcp[0] if mcp else None, person_excludes()),
             cwd=self._launch.cwd,
             env=child_env(os.environ, mcp),
             stdin=asyncio.subprocess.PIPE,
@@ -213,6 +216,7 @@ class CodexProcess:
         self._launch.on_exit(code, list(self._tail))
 
     async def terminate(self) -> None:
+        self._closed = True
         await self._end_child()
 
     async def _end_child(self) -> None:
@@ -430,10 +434,19 @@ class CodexProcess:
             return
         self._restart = False
         await self._end_child()
+        if self._closed:
+            raise ConnectionResetError("codex app-server was stopped")
         try:
             await self._spawn()
+            if self._closed:  # stopped while the new child started
+                raise ConnectionResetError("codex app-server was stopped")
             await self._open(self._thread)
-        except (RpcError, OSError, TimeoutError) as e:
+        except (RpcError, OSError, TimeoutError, KeyError, TypeError) as e:
+            # A child that started must not outlive a failed restart: it would
+            # hold the thread's writer lease and nothing would end it.
+            await self._end_child()
+            if self._closed:
+                raise ConnectionResetError("codex app-server was stopped") from e
             # _end_child silenced the old child's exit, so this one says it.
             self._launch.on_exit(-1, [*self._tail, f"the restart failed: {e}"])
             raise ConnectionResetError(f"codex app-server did not restart: {e}") from e
@@ -497,6 +510,19 @@ class CodexProcess:
             for d in data
             if isinstance(d, dict) and (m := provider_model(provider, d))
         ]
+
+
+def person_excludes() -> list[str]:
+    """The shell exclude list in the person's Codex config, which aegis's own
+    ``-c`` would replace (``config.argv`` keeps it). Nothing on any failure."""
+    home = os.environ.get("CODEX_HOME") or str(Path.home() / ".codex")
+    try:
+        with open(Path(home) / "config.toml", "rb") as f:
+            policy = tomllib.load(f).get("shell_environment_policy") or {}
+    except (OSError, tomllib.TOMLDecodeError):
+        return []
+    found = policy.get("exclude") if isinstance(policy, dict) else None
+    return [str(x) for x in found] if isinstance(found, list) else []
 
 
 async def probe(bin: str, cwd: Path, stderr_path: Path, model: str = "") -> Catalog:

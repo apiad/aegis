@@ -9,6 +9,11 @@ Measured on codex-cli 0.162.1 (spec ``2026-10-09-aegis-2-codex-harness-design.md
   policy hands that variable to the model's shell, so it is excluded there.
 - Under ``approval_policy="never"`` an MCP call fails unless its server says
   ``default_tools_approval_mode="approve"``.
+- ``-c`` sets one key at a time and merges with the person's file, so a
+  ``[mcp_servers.aegis]`` table of their own (a stdio command, ``enabled =
+  false``) broke or disabled aegis's server. aegis's server has a name nobody
+  else uses (``SERVER``), and the token's exclusion is added to the person's
+  own ``exclude`` list, which ``-c`` would otherwise replace.
 - The plugin features clone a marketplace on every start, and that ``git
   fetch`` outlived the server and held the thread's writer lease.
 - aegis has no approval prompt, so nothing asks: the four permissions are
@@ -19,12 +24,13 @@ Measured on codex-cli 0.162.1 (spec ``2026-10-09-aegis-2-codex-harness-design.md
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ..claude.control import Catalog, Model, _doc
 
 TOKEN_ENV = "AEGIS_SESSION_TOKEN"
+SERVER = "aegis_session"
 DISABLED = ("plugins", "remote_plugin")
 PERMISSIONS = ("read", "write", "auto", "full")
 SANDBOX_MODE = {
@@ -51,18 +57,20 @@ def split_model(model: str) -> tuple[str, str]:
     return provider, model_id
 
 
-def argv(bin: str, mcp_url: str | None) -> list[str]:
+def argv(bin: str, mcp_url: str | None, exclude: Sequence[str] = ()) -> list[str]:
+    """``exclude`` is the person's own shell exclude list, kept."""
     out = [bin, "app-server"]
     for feature in DISABLED:
         out += ["--disable", feature]
     if mcp_url is not None:
         from ..mcp import HEADER
 
+        hidden = [*dict.fromkeys([*exclude, TOKEN_ENV])]
         out += [
-            "-c", f"mcp_servers.aegis.url={json.dumps(mcp_url)}",
-            "-c", f'mcp_servers.aegis.env_http_headers={{"{HEADER}"="{TOKEN_ENV}"}}',
-            "-c", 'mcp_servers.aegis.default_tools_approval_mode="approve"',
-            "-c", f'shell_environment_policy.exclude=["{TOKEN_ENV}"]',
+            "-c", f"mcp_servers.{SERVER}.url={json.dumps(mcp_url)}",
+            "-c", f'mcp_servers.{SERVER}.env_http_headers={{"{HEADER}"="{TOKEN_ENV}"}}',
+            "-c", f'mcp_servers.{SERVER}.default_tools_approval_mode="approve"',
+            "-c", f"shell_environment_policy.exclude={json.dumps(hidden)}",
         ]  # fmt: skip
     return out + ["-c", 'approval_policy="never"']
 

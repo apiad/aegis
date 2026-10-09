@@ -34,7 +34,7 @@ Codex's plugin clone held the thread. A resume while that pid lives fails with
 "already has an active writer"; a clean exit (stdin closed) ends it.
 ``FAKE_CODEX_LOG=<file>`` gets ``START <pid>``, ``LEASE <pid>`` and one line
 per request method. ``FAKE_CODEX_HANG=1`` ignores a closed stdin, so only a
-signal ends it.
+signal ends it. ``FAKE_CODEX_FAIL_RESUME=1`` refuses every ``thread/resume``.
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ def note(method: str, **params) -> None:
 
 def mcp_url() -> str | None:
     for a in sys.argv:
-        if a.startswith("mcp_servers.aegis.url="):
+        if a.startswith("mcp_servers.") and ".url=" in a:
             return json.loads(a.split("=", 1)[1])
     return None
 
@@ -356,6 +356,8 @@ def handle(msg: dict) -> dict | None:
                 "platformFamily": "unix", "platformOs": "linux"}  # fmt: skip
     if method == "thread/start":
         return open_thread(p, None)
+    if method == "thread/resume" and os.environ.get("FAKE_CODEX_FAIL_RESUME"):
+        raise ValueError("the fake refuses to resume")
     if method == "thread/resume":
         return open_thread(p, p["threadId"])
     if method == "model/list":
