@@ -43,7 +43,9 @@ own token, so no tool asks who is calling.
 - `peer_handoff` gives work to another session. It arrives there as a new turn
   headed `> from agent:<handle>`.
 - `peer_read` reads the last entries of another session's transcript, and
-  `session_list` lists the open sessions.
+  `session_list` shows what every open session is doing: its mark and the line
+  that goes with it, what it waits on, its plan and the step it is on, its model
+  and what it has spent.
 - `session_spawn` opens a new session from a configured agent.
 - `queue_enqueue` hands a task to a queue: a pool of worker sessions with one
   agent and a limit on how many run at once. The result comes back as a turn in
@@ -53,6 +55,10 @@ own token, so no tool asks who is calling.
   and `progress`, and wakes the agent when one of them passes or the timeout
   does. The agent ends its turn instead of polling, and the monitor sits in its
   panel with a progress bar and an ETA.
+- `monitor_sessions` waits on other sessions instead of a command. It wakes the
+  agent `ok` when every one of them has finished, or `blocked` as soon as one
+  needs you or fails, so "when these three are done, cut the release" needs no
+  polling either.
 - `plan_update` and `turn_end` tell you what the agent is doing and how each turn
   ended: a question for you, something to read, or finished work, with up to
   three replies you send with one tap.
