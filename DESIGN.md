@@ -175,6 +175,9 @@ mid-wait in the legacy tree.
 it can see, and changes only its own monitors, its own session's names and the
 tasks it enqueued. A session an agent spawns runs with at most the agent's own
 permission, so spawning is never a way to gain power. People can do anything.
+A person's `/spawn` makes nobody's child, but its first message carries the
+last turns of the tab it was typed in and that tab's handle, so the new agent
+can find the referent of a three-word task (`agent_ops.spawn_opening`).
 An agent never spawns, enqueues or reads on another server: across a link it
 only hands off, to `handle@server` (`not_across_links` otherwise).
 
@@ -239,6 +242,16 @@ at once. The page redraws once a frame, and only the tab and card of a session
 that changed. Mounting a long transcript whole and rebuilding every tab per patch
 made typing cost grow with the transcript's length and the number of sessions
 (#157, #158).
+
+**Folding hides rows, it never unmounts them.** From which fold level a kind
+folds is a fact on the entry (`fold`: 0 never, 1 the work, 2 also what arrived
+and what was shown; `transcript/entries.py`). The client draws each run of
+consecutive entries folded at the reader's level as one line on its first
+mounted row and hides the rest, so the mounted rows stay a suffix of the
+transcript and the window, the trim and the reader's place work unchanged; the
+walks (j/k, the first row on screen) skip hidden rows. The line is counted from
+the run's data, not its rows, so a run that starts above the mounted rows still
+says all it holds.
 
 **A key is one row in one table.** `client/js/keys.js` holds every key the client
 answers and the one `keydown` listener that dispatches from it; the `?` list is drawn

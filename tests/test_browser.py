@@ -3859,3 +3859,145 @@ def test_the_archive_filters_by_server_and_names_one_that_is_down(
     assert page.locator("#arch-list tr[data-id]").count() == 1
     linked.beta.stop()
     page.wait_for_selector("#arch-servers .off >> text=beta offline", timeout=20000)
+
+
+def run_lines(pg) -> list[str]:
+    return pg.evaluate(
+        "[...document.querySelectorAll('#entries .runline .rs')].map(s => s.textContent)"
+    )
+
+
+def test_the_fold_levels_fold_the_work_then_all_but_the_messages(server, page):
+    (server.root / "notes.md").write_text("# Notes\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/bash Count the files => 3")
+    page.fill("#input", "/fail")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    first, second = row_ids(page, ".tool")
+    # spawned, the init line, then the first turn's "done in", right after its tool
+    note = row_ids(page, ".sys")[2]
+    assert run_lines(page) == []
+
+    page.click("#nav-fold")
+    assert page.get_attribute("#nav-fold", "data-level") == "1"
+    # A run draws one line on its first row; what was said stays as it was.
+    assert run_lines(page) == [
+        "1 tool call · Bash · 1 note",
+        "1 tool call · Bash · 1 failed",
+    ]
+    for tid in (first, second):
+        assert page.is_visible(f'.row[data-id="{tid}"] .runline')
+        assert not page.is_visible(f'.row[data-id="{tid}"] .body')
+    assert not page.is_visible(f'.row[data-id="{note}"]')
+    assert page.is_visible(".row.prose")
+    assert page.locator(".row.user").count() == 2
+    assert all(page.is_visible(f'.row[data-id="{u}"]') for u in row_ids(page, ".user"))
+
+    # Clicking the line opens that run alone, and clicking it again folds it.
+    page.click(f'.row[data-id="{first}"] .runline')
+    assert page.is_visible(f'.row[data-id="{first}"] .body')
+    assert page.is_visible(f'.row[data-id="{note}"]')
+    assert not page.is_visible(f'.row[data-id="{second}"] .body')
+    page.click(f'.row[data-id="{first}"] .runline')
+    assert not page.is_visible(f'.row[data-id="{note}"]')
+
+    # j/k walk what is shown, and Enter on a line opens its run.
+    rows = row_ids(page)
+    page.keyboard.press("Alt+,")
+    page.keyboard.press("G")
+    assert selected(page) == rows[-1]
+    walk = (
+        ("k", row_ids(page, ".prose")[0]),
+        ("k", second),
+        ("k", row_ids(page, ".user")[1]),
+        ("k", first),  # past the hidden note
+        ("j", row_ids(page, ".user")[1]),  # and past it going down
+        ("k", first),
+    )
+    for key, want in walk:
+        page.keyboard.press(key)
+        assert selected(page) == want, key
+    page.keyboard.press("Enter")
+    assert page.is_visible(f'.row[data-id="{note}"]')
+    page.keyboard.press("j")
+    assert selected(page) == note
+
+    # z goes on to level 2, where only the messages stay: a sent file folds
+    # into the run of the call that sent it.
+    page.keyboard.press("z")
+    assert page.get_attribute("#nav-fold", "data-level") == "2"
+    page.fill("#input", '/mcp file_send {"paths": ["notes.md"]}')
+    page.press("#input", "Enter")
+    turns_done(page, 3)
+    page.wait_for_selector(".row.file", state="attached")
+    assert not page.is_visible(".row.file")
+    assert run_lines(page)[-1] == "1 tool call · file_send · 1 file"
+    assert page.is_visible(".row.prose")
+    assert page.locator(".row.user:visible").count() == 3
+
+    # Then everything is shown; Alt+Z from the message box goes back to level
+    # 1, where the file stays; the level survives a reload.
+    page.keyboard.press("Alt+,")
+    page.keyboard.press("z")
+    assert page.get_attribute("#nav-fold", "data-level") == "0"
+    assert run_lines(page) == []
+    assert page.is_visible(f'.row[data-id="{second}"] .body')
+    page.focus("#input")
+    page.keyboard.press("Alt+z")
+    assert page.input_value("#input") == ""
+    assert page.get_attribute("#nav-fold", "data-level") == "1"
+    assert page.is_visible(".row.file")
+    assert run_lines(page)[-1] == "1 tool call · file_send"
+    page.reload()
+    page.wait_for_selector(f'.row[data-id="{second}"] .runline')
+    assert page.get_attribute("#nav-fold", "data-level") == "1"
+    assert page.errors == []
+
+
+def test_the_prose_view_counts_what_each_run_holds_and_mounts_as_you_scroll_up(
+    replay_server, page
+):
+    page.goto(replay_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.evaluate("localStorage.setItem('aegis.foldLevel', '1')")
+    spawn(page)
+    page.fill("#input", "replay")
+    page.press("#input", "Enter")
+    page.wait_for_function(
+        "document.getElementById('s-status').textContent.trim() === 'done'",
+        timeout=60_000,
+    )
+    page.reload()
+    page.wait_for_function("window.__a2snapshot && window.__a2snapshot.painted")
+    total = page.evaluate("window.__a2snapshot.count")
+    # Scrolling up mounts pages until every entry is a row, even though most
+    # of each page is hidden.
+    for _ in range(50):
+        if page.locator(ROWS).count() >= total:
+            break
+        page.evaluate("document.getElementById('tr').scrollTop = 0")
+        page.wait_for_timeout(50)
+    assert page.locator(ROWS).count() == total
+    # Every line counts exactly the rows its run holds: the line's row and the
+    # hidden rows after it, up to the next row shown.
+    runs = page.evaluate(
+        """[...document.querySelectorAll('#entries > .row[data-fold=head]')].map(h => {
+             let n = 1, r = h.nextElementSibling;
+             while (r && r.dataset.fold === 'in') { n++; r = r.nextElementSibling; }
+             return [h.querySelector('.runline .rs').textContent, n];
+           })"""
+    )
+    assert len(runs) > 20
+    for text, n in runs:
+        counted = sum(
+            int(m) for m in re.findall(r"(\d+) (?:tool calls?|thoughts?|notes?)", text)
+        )
+        assert counted == n, (text, n)
+    shown = page.evaluate(
+        "[...document.querySelectorAll('#entries > .row')].filter(r => r.offsetParent).length"
+    )
+    # Each run is one row on screen.
+    assert shown == total - sum(n - 1 for _, n in runs)
+    assert page.errors == []
