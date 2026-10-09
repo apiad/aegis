@@ -980,7 +980,7 @@ async def test_create_send_read_update_close(world, tmp_path):
     assert re["url"] != sent["url"] and arts(a)[0]["detail"]["url"] == re["url"]
     assert arts(a)[0]["detail"]["state"] == {"n": 2}  # carried over
 
-    assert ok(await turn(a, mcp("artifact_close", id=made["id"], label="never mind"))) == "closed"
+    assert await turn(a, mcp("artifact_close", id=made["id"], label="never mind")) == "mcp ok: closed"
     assert arts(a)[0]["status"] == "closed" and arts(a)[0]["detail"]["label"] == "never mind"
     said = await turn(a, mcp("artifact_update", id=made["id"], state={}))
     assert said.startswith("mcp error: not_live")
@@ -1314,6 +1314,8 @@ def register_artifact_ops(app: App) -> None:
         s = own(caller)
         if p.state is None and p.caption is None and not p.resend:
             raise OpError("bad_params", "nothing to change")
+        if p.state is not None:
+            _sized(p.state, "state")  # before a resend swaps the page
         try:
             a = s.artifacts.live(p.id)
             if p.resend:
@@ -1324,7 +1326,6 @@ def register_artifact_ops(app: App) -> None:
             else:
                 out = {"id": a.id, "url": files.url(a.file_id, a.name), "started": a.started}
             if p.state is not None:
-                _sized(p.state, "state")
                 s.artifacts.state(a.id, p.state, "agent")
         except ArtifactError as e:
             raise _err(e) from e
