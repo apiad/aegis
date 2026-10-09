@@ -1,6 +1,6 @@
 # Artifacts Implementation Plan
 
-**Status: planned, 2026-10-09.** Branch `feat/artifacts`, issue #217.
+**Status: done, 2026-10-09.** Branch `feat/artifacts`, issue #217; executed subagent-driven on the aegis `general` queue, every task reviewed, one post-review fix wave (the section at the end). Follow-ups: #219, #220, #221.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
