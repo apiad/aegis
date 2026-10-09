@@ -334,7 +334,10 @@ proxy's public name is a browser elsewhere, and an SSH tunnel to a headless box
 looks local but has nowhere to open the file.
 
 **Audio never leaves the browser.** Dictation transcribes in the page, with
-Cactus Whistle's WebAssembly build in two workers (`js/dictation.js`). The server
+Cactus Whistle's WebAssembly build in two workers (`js/dictation.js`). The client
+cuts speech into provisional pieces of 4 to 8 s whose text lands at once, and
+every 20 s or so re-transcribes the stretch as one final piece that replaces it;
+a piece with under a second of voice is never transcribed alone. The server
 keeps the pinned engine and model, downloaded once from Hugging Face and checked
 against their sha256, serves them at `/dictation/<pin>/` with an immutable cache
 header, and answers `dictation.prepare` with that base and the keywords that bias
