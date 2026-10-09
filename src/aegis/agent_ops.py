@@ -171,6 +171,8 @@ def _render(e: dict, tools: bool) -> str | None:
         return (
             f"file: {e['title']} ({e['summary'].split(' · ')[0]}) {e['detail']['url']}"
         )
+    if kind == "artifact":
+        return f"artifact: {e['title']} ({e['status']})"
     return f"· {e['summary']}"
 
 

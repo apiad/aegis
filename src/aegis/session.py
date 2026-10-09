@@ -626,7 +626,8 @@ class Session:
             self._set(standing=fold.standing)
             self.standing = fold.standing
         if any(
-            op.get("upsert", {}).get("kind") in ("user", "prose", "tool", "file")
+            op.get("upsert", {}).get("kind")
+            in ("user", "prose", "tool", "file", "artifact")
             for op in ops
         ):
             self._set(activity=fold.activity())

@@ -841,3 +841,89 @@ def test_a_stop_and_an_exit_after_the_prose_leave_the_content_index():
     f.apply(rec.own("stop"))
     f.apply(rec.own("exit", code=1, harness="claude"))
     assert f.content_index == 2 and f.last_index == 5
+
+
+def test_an_artifact_folds_to_one_entry_that_its_later_records_update():
+    r = Rec()
+    r.own(
+        "artifact",
+        artifact_id="art-aaaa0001",
+        file_id="F1",
+        name="index.html",
+        title="Pick",
+        caption="Pick one",
+        state={"n": 0},
+        started=True,
+    )
+    r.own("artifact_state", artifact_id="art-aaaa0001", state={"n": 1}, by="page")
+    r.own("artifact_event", artifact_id="art-aaaa0001", name="hover", data={"n": 1})
+    r.own(
+        "artifact_submit",
+        artifact_id="art-aaaa0001",
+        data={"pick": "b"},
+        label="Picked B",
+    )
+    f, ops = run(r)
+    (e,) = f.entries()
+    assert e["id"] == "art-aaaa0001" and e["kind"] == "artifact"
+    assert e["status"] == "submitted" and e["summary"] == "submitted"
+    assert e["title"] == "Pick" and e["md"] == "Pick one" and e["glyph"] == "▣"
+    d = e["detail"]
+    assert d["url"] == "/files/F1/index.html" and d["started"] is True
+    assert d["state"] == {"n": 1} and d["state_by"] == "page"
+    assert d["events"] == [{"name": "hover", "data": {"n": 1}, "ts": 1002.0}]
+    assert d["submitted"] == {"pick": "b"} and d["label"] == "Picked B"
+    assert d["ended_ts"] == 1003.0 and e["rev"] == 3
+    assert all(op["upsert"]["id"] == "art-aaaa0001" for step in ops for op in step)
+
+
+def test_a_resend_swaps_the_file_and_keeps_the_rest_and_a_close_collapses():
+    r = Rec()
+    r.own(
+        "artifact",
+        artifact_id="art-aaaa0002",
+        file_id="F1",
+        name="index.html",
+        title="T",
+        caption=None,
+        state=None,
+        started=None,
+    )
+    r.own("artifact_state", artifact_id="art-aaaa0002", state={"k": 1}, by="agent")
+    r.own(
+        "artifact",
+        artifact_id="art-aaaa0002",
+        file_id="F2",
+        name="index.html",
+        title="T",
+        caption="now",
+        state=None,
+        started=True,
+    )
+    r.own("artifact_close", artifact_id="art-aaaa0002", label=None)
+    f, _ = run(r)
+    (e,) = f.entries()
+    assert e["detail"]["url"] == "/files/F2/index.html" and e["md"] == "now"
+    assert e["detail"]["state"] == {"k": 1} and e["detail"]["state_by"] == "agent"
+    assert e["status"] == "closed" and e["detail"]["label"] is None
+    assert f.activity() == "showed T"
+
+
+def test_events_keep_the_last_twenty_and_a_record_for_an_unknown_artifact_is_ignored():
+    r = Rec()
+    r.own("artifact_state", artifact_id="art-nope0000", state={}, by="page")
+    r.own(
+        "artifact",
+        artifact_id="art-aaaa0003",
+        file_id="F",
+        name="index.html",
+        title="T",
+        caption=None,
+        state=None,
+        started=None,
+    )
+    for n in range(25):
+        r.own("artifact_event", artifact_id="art-aaaa0003", name="tick", data=n)
+    f, _ = run(r)
+    (e,) = f.entries()
+    assert [ev["data"] for ev in e["detail"]["events"]] == list(range(5, 25))
