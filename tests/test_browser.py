@@ -3641,7 +3641,8 @@ def run_lines(pg) -> list[str]:
     )
 
 
-def test_the_prose_view_folds_each_run_of_work_into_one_line(server, page):
+def test_the_fold_levels_fold_the_work_then_all_but_the_messages(server, page):
+    (server.root / "notes.md").write_text("# Notes\n")
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page, "/bash Count the files => 3")
@@ -3654,7 +3655,7 @@ def test_the_prose_view_folds_each_run_of_work_into_one_line(server, page):
     assert run_lines(page) == []
 
     page.click("#nav-fold")
-    assert page.get_attribute("#nav-fold", "aria-pressed") == "true"
+    assert page.get_attribute("#nav-fold", "data-level") == "1"
     # A run draws one line on its first row; what was said stays as it was.
     assert run_lines(page) == [
         "1 tool call · Bash · 1 note",
@@ -3697,18 +3698,35 @@ def test_the_prose_view_folds_each_run_of_work_into_one_line(server, page):
     page.keyboard.press("j")
     assert selected(page) == note
 
-    # z turns it off; Alt+Z turns it on while typing; it survives a reload.
+    # z goes on to level 2, where only the messages stay: a sent file folds
+    # into the run of the call that sent it.
     page.keyboard.press("z")
-    assert page.get_attribute("#nav-fold", "aria-pressed") == "false"
+    assert page.get_attribute("#nav-fold", "data-level") == "2"
+    page.fill("#input", '/mcp file_send {"paths": ["notes.md"]}')
+    page.press("#input", "Enter")
+    turns_done(page, 3)
+    page.wait_for_selector(".row.file", state="attached")
+    assert not page.is_visible(".row.file")
+    assert run_lines(page)[-1] == "1 tool call · file_send · 1 file"
+    assert page.is_visible(".row.prose")
+    assert page.locator(".row.user:visible").count() == 3
+
+    # Then everything is shown; Alt+Z from the message box goes back to level
+    # 1, where the file stays; the level survives a reload.
+    page.keyboard.press("Alt+,")
+    page.keyboard.press("z")
+    assert page.get_attribute("#nav-fold", "data-level") == "0"
     assert run_lines(page) == []
     assert page.is_visible(f'.row[data-id="{second}"] .body')
     page.focus("#input")
     page.keyboard.press("Alt+z")
     assert page.input_value("#input") == ""
-    assert len(run_lines(page)) == 2
+    assert page.get_attribute("#nav-fold", "data-level") == "1"
+    assert page.is_visible(".row.file")
+    assert run_lines(page)[-1] == "1 tool call · file_send"
     page.reload()
     page.wait_for_selector(f'.row[data-id="{second}"] .runline')
-    assert page.get_attribute("#nav-fold", "aria-pressed") == "true"
+    assert page.get_attribute("#nav-fold", "data-level") == "1"
     assert page.errors == []
 
 
@@ -3717,7 +3735,7 @@ def test_the_prose_view_counts_what_each_run_holds_and_mounts_as_you_scroll_up(
 ):
     page.goto(replay_server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
-    page.evaluate("localStorage.setItem('aegis.proseView', '1')")
+    page.evaluate("localStorage.setItem('aegis.foldLevel', '1')")
     spawn(page)
     page.fill("#input", "replay")
     page.press("#input", "Enter")

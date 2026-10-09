@@ -42,8 +42,8 @@ export const KEYS = [
   {
     scope: "global",
     label: "Alt+Z",
-    desc: "Prose view: fold tool calls and thinking into one line per run",
-    action: "proseView",
+    desc: "Fold: everything shown, then tool calls and thinking, then all but the messages",
+    action: "foldLevel",
     match: alt("KeyZ"),
   },
   {
@@ -78,7 +78,7 @@ export const KEYS = [
     native: true,
   },
   { scope: "session", label: "o", desc: "Press the row's first button", action: "press", match: key("o") },
-  { scope: "session", label: "z", desc: "Prose view on or off", action: "proseView", match: key("z") },
+  { scope: "session", label: "z", desc: "The next fold level", action: "foldLevel", match: key("z") },
   // Documents the browser's own Tab; it never matches.
   { scope: "session", label: "Tab", desc: "Walk the buttons from the selected row on", action: "none", match: () => false },
   { scope: "session", label: "i  /", desc: "Back to the message box", action: "composer", match: key("i", "/") },

@@ -19,9 +19,10 @@
 // for a second is reported through onRead. Only mounted unread rows are
 // observed, and a row is unobserved as it is replaced or dropped.
 //
-// The prose view folds the work between what was said: each run of entries
-// the server marked `fold` is drawn as one line on its first mounted row, and
-// the rest of the run is hidden (fold()). Hidden rows stay mounted, so the
+// The fold levels hide the work between what was said: at level 1 the tool
+// calls, thinking and notes, at level 2 everything but the messages. Each run
+// of entries whose `fold` (set by the server) is within the level is drawn as
+// one line on its first mounted row, and the rest of the run is hidden (fold()). Hidden rows stay mounted, so the
 // window above still holds; the walks below skip them.
 
 import { hhmm, render, update } from "./entries.js";
@@ -48,7 +49,7 @@ export class Transcript {
     this.rev = -1; // the highest revision seen: what a resubscribe asks since
     this.full = new Map(); // id -> the whole entry, fetched when its row opened
     this.fetching = new Set();
-    this.proseView = false;
+    this.foldLevel = 0; // 0 everything shown; 1 the work folded; 2 all but the messages
     this.openRuns = new Set(); // the first entry id of each run the reader opened
     this.headOf = new Map(); // id of a hidden row -> id of the row drawing its run's line
     this.marked = false; // some mounted row carries a fold mark
@@ -356,7 +357,7 @@ export class Transcript {
     if (n) n.classList.add("sel");
     else this.selected = null;
     this.list.querySelector(".row.since")?.classList.remove("since");
-    const s = this.sinceId ? this.nodes.get(this.sinceId) : null;
+    const s = this.sinceId ? this.nodes.get(this.headOf.get(this.sinceId) ?? this.sinceId) : null;
     if (s) {
       s.classList.add("since");
       s.dataset.since = this.sinceText;
@@ -483,13 +484,13 @@ export class Transcript {
     n?.querySelector("a.btn, button")?.click();
   }
 
-  // -- the prose view -------------------------------------------------------
+  // -- the fold levels ------------------------------------------------------
 
   // The row the reader looks at stays on screen across the switch.
-  setProseView(on) {
+  setFoldLevel(level) {
     const at = this.selected || this.inView()?.dataset.id;
-    this.proseView = on;
-    this.list.classList.toggle("prose-view", on);
+    this.foldLevel = level;
+    this.list.classList.toggle("prose-view", level > 0);
     this.fold();
     if (this.selected) this.selected = this.headOf.get(this.selected) ?? this.selected;
     this.mark();
@@ -506,16 +507,16 @@ export class Transcript {
     this.select(head.dataset.id);
   }
 
-  // Each run of consecutive `fold` entries gets its line on its first mounted
+  // Each run of consecutive entries folded at this level gets its line on its first mounted
   // row; the rest of the run is hidden while the run is closed. The line is
   // counted from the whole run's data, so a run that starts above the mounted
   // rows still says all it holds. A run of system notes alone stays as it is:
   // each is one line already. A node whose part did not change is not written.
   fold() {
-    if (!this.proseView && !this.marked) return; // off, and no row left to undo
+    if (!this.foldLevel && !this.marked) return; // off, and no row left to undo
     this.headOf.clear();
     const marked = new Set();
-    if (this.proseView) {
+    if (this.foldLevel) {
       let run = [];
       const close = (next) => {
         const rows = run.map((e) => this.nodes.get(e.id)).filter(Boolean);
@@ -538,7 +539,7 @@ export class Transcript {
         run = [];
       };
       for (const e of this.entries.values()) {
-        if (e.fold) run.push(e);
+        if (e.fold && e.fold <= this.foldLevel) run.push(e);
         else if (run.length) close(e);
       }
       if (run.length) close(null);
@@ -581,14 +582,23 @@ function drawLine(head, run, next, open) {
   b.title = open ? "Fold these steps" : "Show these steps";
 }
 
+// What the rest of a run holds, by kind, in this order: "2 notes".
+const COUNTED = [
+  ["thinking", "thought"],
+  ["system", "note"],
+  ["inbox", "inbox message"],
+  ["file", "file"],
+  ["artifact", "page"],
+  ["error", "error"],
+  ["recap", "recap"],
+];
+
 // "14 tool calls · Bash ×8, Read ×3, Edit · 2 thoughts · 1 failed · 4m 12s".
 // The time runs from the run's first entry to the entry after it; a run still
-// working names the tool it is in instead.
+// working names the tool it is in instead. A card of several files counts each.
 function runText(run, next) {
   const count = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
   const tools = run.filter((e) => e.kind === "tool");
-  const thoughts = run.filter((e) => e.kind === "thinking").length;
-  const notes = run.length - tools.length - thoughts;
   const parts = [];
   if (tools.length) {
     const by = new Map();
@@ -598,8 +608,10 @@ function runText(run, next) {
     if (names.length > 4) listed.push(`${names.length - 4} more`);
     parts.push(count(tools.length, "tool call"), listed.join(", "));
   }
-  if (thoughts) parts.push(count(thoughts, "thought"));
-  if (notes) parts.push(count(notes, "note"));
+  for (const [kind, one] of COUNTED) {
+    const n = run.filter((e) => e.kind === kind).reduce((a, e) => a + (e.detail?.files?.length || 1), 0);
+    if (n) parts.push(count(n, one));
+  }
   const failed = tools.filter((e) => e.status === "err").length;
   if (failed) parts.push(`${failed} failed`);
   const live = tools.find((e) => e.status === "running");
