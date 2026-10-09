@@ -174,7 +174,7 @@ def test_a_legacy_log_reads_like_an_archived_session(tmp_path):
     )
 
     r = boot(tmp_path)
-    [meta] = r.archive(None, 10, None)
+    [meta] = r.archive(None, 10, None)[0]
     assert meta["handle"] == "placid-perlis"
     assert meta["harness_label"] == "Claude Code"
     assert meta["title"] == "next chapter"
