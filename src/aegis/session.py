@@ -626,8 +626,10 @@ class Session:
     def _record(self, record: dict, events: list | None = None) -> None:
         fold = self.fold()
         stored = self.store.append({"ts": time.time(), "src": "aegis", **record})
-        if record.get("kind") != "recap":
-            # aegis talking to the person, not the session doing anything.
+        if record.get("kind") not in ("recap", "artifact_state", "artifact_event"):
+            # aegis talking to the person, not the session doing anything; nor
+            # a person acting on a page, so the needs-you order holds still
+            # while they drag a slider.
             self.last_activity = stored["ts"]
         ops = fold.apply(stored, events)
         new = [

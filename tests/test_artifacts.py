@@ -222,6 +222,22 @@ def test_one_error_wakes_per_landed_page(tmp_path, fake_claude):
     assert s.artifacts.error_wakes(a.id) is True
 
 
+def test_a_person_acting_on_a_page_never_moves_last_activity(tmp_path, fake_claude):
+    # A click is not the session doing anything: the needs-you order must not
+    # change while someone drags a slider. A submit ends the page and counts.
+    h = Harness(tmp_path, fake_claude)
+    s = h.session
+    a = s.artifacts.create("T", None, None)
+    s.artifacts.land(a, "F", "index.html", None, None)
+    landed = s.last_activity
+    s.artifacts.state(a.id, {"n": 1}, "page")
+    s.artifacts.event(a.id, "hover", {"n": 1})
+    assert len(art_entries(s)[0]["detail"]["events"]) == 1  # both were recorded
+    assert s.last_activity == landed
+    s.artifacts.submit(a.id, {"p": 1}, "done")
+    assert s.last_activity > landed
+
+
 def test_a_restart_reloads_landed_artifacts_from_the_store_and_forgets_drafts(
     tmp_path, fake_claude
 ):
