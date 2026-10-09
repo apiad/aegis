@@ -59,6 +59,11 @@ class _Stateless:
 PARSERS: dict[str, Any] = {"claude": _Stateless, "opencode": OpenCodeParser}
 
 
+# The kinds the prose view folds: the work between what was said. The browser
+# draws each run of consecutive folded entries as one line (js/transcript.js).
+FOLDED = frozenset({"tool", "thinking", "system"})
+
+
 def _entry(
     id: str,
     kind: str,
@@ -80,6 +85,7 @@ def _entry(
         "summary": summary,
         "md": md,
         "detail": detail or {},
+        "fold": kind in FOLDED,
     }
 
 

@@ -130,6 +130,15 @@ function drawNavNow() {
   if (now.off !== navDrawn.off) $("nav-up").disabled = $("nav-down").disabled = now.off;
   navDrawn = now;
 }
+// The prose view: this browser's choice, for every tab.
+$("nav-fold").append(icon("fold"));
+function proseView(on) {
+  transcript.setProseView(on);
+  $("nav-fold").setAttribute("aria-pressed", String(on));
+  localStorage.setItem("aegis.proseView", on ? "1" : "0");
+}
+proseView(localStorage.getItem("aegis.proseView") === "1");
+$("nav-fold").addEventListener("click", () => proseView(!transcript.proseView));
 // How the Fleet orders its cards: this browser's choice, like the tab order.
 let fleetOrder = localStorage.getItem("aegis.fleetOrder") || "attention";
 function markOrder() {
@@ -1209,6 +1218,7 @@ installKeys(
     firstUnread: () => transcript.firstUnread(),
     toggle: () => transcript.toggle(),
     press: () => transcript.press(),
+    proseView: () => proseView(!transcript.proseView),
     none() {},
     fleetNext: () => fleetMove(1),
     fleetPrev: () => fleetMove(-1),
