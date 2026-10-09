@@ -321,6 +321,13 @@ report still runs) and framed with `sandbox`: on aegis's own origin their script
 could open the websocket, which the browser signs in with its cookie, and drive
 every agent; the sandbox's opaque origin fails the socket's origin check
 (`files.py`).
+One `file_send` is one record and one card, however many files it carries.
+Every file is checked before the first is copied, and a copy that fails anyway
+takes the earlier ones with it, so a refused send leaves nothing in the state
+root (`files.store_all`).
+A Read, Write or Edit row carries the path its tool used, and the person can
+ask for that file (`file.peek`): it is copied the same way, as it is at that
+moment, and its card opens inside the row. The agent never sees it.
 Open natively runs the desktop's opener on the server, so it is a person's
 operation only, and only for a socket on loopback to a server with a desktop: a
 proxy's public name is a browser elsewhere, and an SSH tunnel to a headless box

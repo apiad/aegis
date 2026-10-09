@@ -112,6 +112,22 @@ def _did(old: list[dict], new: list[dict], prev: str) -> str:
 CONTENT_KINDS = frozenset({"user", "prose", "tool", "inbox"})
 
 
+def _sent_file(rec: dict) -> dict:
+    """One sent file as its card shows it (files.store's record)."""
+    url = files.url(str(rec.get("file_id")), str(rec.get("name")))
+    return {
+        "name": str(rec.get("name")),
+        "summary": f"{files.human_size(int(rec.get('size') or 0))} · {rec.get('mime')}",
+        "file_id": rec.get("file_id"),
+        "url": url,
+        "download": f"{url}?download=1",
+        "preview": rec.get("preview"),
+        "mime": rec.get("mime"),
+        "size": rec.get("size"),
+        "excerpt": rec.get("excerpt"),
+    }
+
+
 class Fold:
     def __init__(self) -> None:
         self._entries: dict[str, dict] = {}
@@ -457,7 +473,9 @@ class Fold:
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary="closed")
             )
         if kind == "file":
-            url = files.url(str(rec.get("file_id")), str(rec.get("name")))
+            # One record per file_send; a record from before sets is one file.
+            sent = [_sent_file(f) for f in rec.get("files") or [rec]]
+            more = len(sent) - 1
             return self._upsert(
                 _entry(
                     f"e{i}",
@@ -465,19 +483,27 @@ class Fold:
                     "ok",
                     ts,
                     d.FILE_GLYPH,
-                    title=str(rec.get("name")),
-                    summary=f"{files.human_size(int(rec.get('size') or 0))} · {rec.get('mime')}",
+                    title=sent[0]["name"] + (f" +{more}" if more else ""),
+                    summary=f"{len(sent)} files" if more else sent[0]["summary"],
                     md=rec.get("caption"),
-                    detail={
-                        "file_id": rec.get("file_id"),
-                        "url": url,
-                        "download": f"{url}?download=1",
-                        "preview": rec.get("preview"),
-                        "mime": rec.get("mime"),
-                        "size": rec.get("size"),
-                        "excerpt": rec.get("excerpt"),
-                    },
+                    detail={"files": sent},
                 )
+            )
+        if kind == "peek":
+            # A file tool's file, copied because the person asked to see it:
+            # it opens inside that tool's row, the latest copy replacing any.
+            row = self._entries.get(str(rec.get("entry")))
+            if row is None or row["kind"] != "tool":
+                return []
+            sent = [_sent_file(f) for f in rec.get("files") or []]
+            return self._upsert(
+                {
+                    **row,
+                    "detail": {
+                        **row["detail"],
+                        "peek": {"ts": ts, "glyph": d.FILE_GLYPH, "files": sent},
+                    },
+                }
             )
         if kind == "configure":
             parts = [
@@ -674,6 +700,9 @@ class Fold:
 
         if isinstance(ev, ToolCall):
             self._calls[ev.id] = ev
+            detail = {"args": d.format_tool_args(ev.name, ev.input), "steps": 0}
+            if path := d.file_path(ev.name, ev.input):
+                detail["path"] = path  # what the row's "show file" copies (file.peek)
             return self._upsert(
                 _entry(
                     ev.id,
@@ -683,7 +712,7 @@ class Fold:
                     d.tool_glyph(ev.name),
                     title=d.tool_title(ev.name),
                     summary=d.tool_label(ev.name, ev.input),
-                    detail={"args": d.format_tool_args(ev.name, ev.input), "steps": 0},
+                    detail=detail,
                 )
             )
 

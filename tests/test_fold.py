@@ -435,14 +435,21 @@ def test_a_sent_file_is_its_own_kind():
     )
     assert e["summary"] == "47 KB · image/png"
     assert e["md"] == "Weekly cost"
+    # A record from before file_send took a list: a set of one.
     assert e["detail"] == {
-        "file_id": "AbCdEfGhIjKlMnOpQrStUv",
-        "url": url,
-        "download": url + "?download=1",
-        "preview": "image",
-        "mime": "image/png",
-        "size": 48213,
-        "excerpt": None,
+        "files": [
+            {
+                "name": "informe año.png",
+                "summary": "47 KB · image/png",
+                "file_id": "AbCdEfGhIjKlMnOpQrStUv",
+                "url": url,
+                "download": url + "?download=1",
+                "preview": "image",
+                "mime": "image/png",
+                "size": 48213,
+                "excerpt": None,
+            }
+        ]
     }
 
 
@@ -841,3 +848,53 @@ def test_a_stop_and_an_exit_after_the_prose_leave_the_content_index():
     f.apply(rec.own("stop"))
     f.apply(rec.own("exit", code=1, harness="claude"))
     assert f.content_index == 2 and f.last_index == 5
+
+
+def _sent(name, **kw):
+    return {
+        "file_id": f"id-{name}",
+        "name": name,
+        "mime": "image/png",
+        "size": 2048,
+        "preview": "image",
+        "excerpt": None,
+        **kw,
+    }
+
+
+def test_a_file_set_folds_into_one_entry():
+    r = Rec()
+    r.own("file", caption=None, files=[_sent("a.png"), _sent("b.png", size=10)])
+    f = fold_records(r.records)
+    (e,) = f.entries()
+    assert f.activity() == "sent a.png +1"
+    assert e["title"] == "a.png +1" and e["summary"] == "2 files"
+    assert [f["name"] for f in e["detail"]["files"]] == ["a.png", "b.png"]
+    assert e["detail"]["files"][1]["summary"] == "10 B · image/png"
+
+
+def test_a_file_tools_row_carries_the_path_it_used():
+    r = Rec()
+    r.call("t1", "Read", {"file_path": "/x/a.py"})
+    r.output("t1", "print(1)")
+    r.call("t2", "NotebookEdit", {"notebook_path": "/x/n.ipynb", "new_source": ""})
+    r.call("t3", "Bash", {"command": "ls"})
+    f = fold_records(r.records)
+    assert f.entry("t1")["detail"]["path"] == "/x/a.py"
+    assert f.entry("t2")["detail"]["path"] == "/x/n.ipynb"
+    assert "path" not in f.entry("t3")["detail"]
+
+
+def test_a_peek_opens_its_file_inside_the_row_it_was_asked_from():
+    r = Rec()
+    r.call("t1", "Read", {"file_path": "/x/a.png"})
+    r.output("t1", "png")
+    before = fold_records(r.records).entries()
+    r.own("peek", entry="t1", files=[_sent("a.png")])
+    r.own("peek", entry="nope", files=[_sent("b.png")])
+    f = fold_records(r.records)
+    assert [e["id"] for e in f.entries()] == [e["id"] for e in before]
+    peek = f.entry("t1")["detail"]["peek"]
+    assert peek["ts"] == r.records[-2]["ts"]
+    assert [x["name"] for x in peek["files"]] == ["a.png"]
+    assert f.entry("t1")["detail"]["result"] == "1 line"

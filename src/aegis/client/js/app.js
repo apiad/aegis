@@ -822,6 +822,20 @@ $("entries").addEventListener("click", async (ev) => {
   }
 });
 
+// -- Show the file a Read, Write or Edit row used -------------------------------
+$("entries").addEventListener("click", async (ev) => {
+  const b = ev.target.closest(".peekbar .peek");
+  if (!b) return;
+  b.disabled = true;
+  try {
+    // The row comes back with the card in it; this node is replaced.
+    await conn.call("file.peek", { log_id: forKey(shown).log_id, entry_id: b.dataset.entry });
+  } catch (e) {
+    b.nextElementSibling.textContent = e.message;
+    b.disabled = false;
+  }
+});
+
 // -- archive -------------------------------------------------------------------
 let archived = [];
 let archiveCursor = null; // the next page's cursor; null: nothing more

@@ -95,13 +95,15 @@ class Read(_Strict):
 
 
 class FileSend(_Strict):
-    path: str = Field(
+    paths: list[Annotated[str, Field(min_length=1)]] = Field(
         min_length=1,
-        description="The file's absolute path. A relative one resolves against "
-        "your session's working directory, not your shell's last cd.",
+        max_length=20,
+        description="The files' absolute paths, in the order to show them: one "
+        "card pages through them. A relative path resolves against your "
+        "session's working directory, not your shell's last cd.",
     )
     caption: str | None = Field(
-        None, description="A line of Markdown shown above the file."
+        None, description="A line of Markdown shown above the files."
     )
 
 
@@ -168,8 +170,9 @@ def _render(e: dict, tools: bool) -> str | None:
         # A recap is aegis talking to the person; another agent never reads it.
         return None
     if kind == "file":
-        return (
-            f"file: {e['title']} ({e['summary'].split(' · ')[0]}) {e['detail']['url']}"
+        return "\n".join(
+            f"file: {f['name']} ({f['summary'].split(' · ')[0]}) {f['url']}"
+            for f in e["detail"]["files"]
         )
     return f"· {e['summary']}"
 
@@ -469,33 +472,37 @@ def register_agent_ops(app: App) -> None:
 
     @r.op("file.send", FileSend, agent=True)
     async def file_send(p: FileSend, caller):
-        """Hand a file to the person: it shows in your transcript with a preview
-        when the browser can draw one, and Open and Download links. The file is
-        copied, so later changes to it are not seen."""
+        """Hand files to the person: one card in your transcript, paging
+        through them, with a preview when the browser can draw one, and Open
+        and Download links. The files are copied, so later changes to them are
+        not seen. If one cannot be sent, none is."""
         s = own(caller)
-        path = Path(p.path).expanduser()
-        relative = not path.is_absolute()
-        if relative:
-            path = s.spec.cwd / path
+        paths = [Path(x).expanduser() for x in p.paths]
+        relative = {s.spec.cwd / x for x in paths if not x.is_absolute()}
+        paths = [s.spec.cwd / x if not x.is_absolute() else x for x in paths]
         try:
-            rec = await asyncio.to_thread(files.store, app.roots.state_root, path)
+            recs = await asyncio.to_thread(files.store_all, app.roots.state_root, paths)
         except files.FileError as e:
             # Agents write files after a cd in the shell, which does not carry
             # over, then send the bare name (seen in Alex's first smoke test).
             hint = (
                 f"; a relative path resolves against your session's working "
                 f"directory, {s.spec.cwd}; pass the file's absolute path"
-                if relative and e.code == "not_found"
+                if e.path in relative and e.code == "not_found"
                 else ""
             )
             raise OpError(e.code, e.message + hint) from e
-        s.record_file({**rec, "caption": p.caption})
-        return {
-            "url": files.url(rec["file_id"], rec["name"]),
-            "name": rec["name"],
-            "size": rec["size"],
-            "mime": rec["mime"],
-        }
+        sent = [{k: v for k, v in r.items() if k != "kind"} for r in recs]
+        s.record_file({"kind": "file", "files": sent, "caption": p.caption})
+        return [
+            {
+                "url": files.url(r["file_id"], r["name"]),
+                "name": r["name"],
+                "size": r["size"],
+                "mime": r["mime"],
+            }
+            for r in recs
+        ]
 
     @r.op("plan.update", PlanUpdate, agent=True)
     async def plan_update(p: PlanUpdate, caller):

@@ -957,7 +957,7 @@ def test_a_sent_file_previews_in_the_transcript_with_open_and_download(server, p
     spawn(page)
     sends = (("dot.png", "The **chart**"), ("report.html", None), ("notes.md", None))
     for n, (path, caption) in enumerate(sends, 1):
-        args = {"path": path} | ({"caption": caption} if caption else {})
+        args = {"paths": [path]} | ({"caption": caption} if caption else {})
         page.fill("#input", f"/mcp file_send {json.dumps(args)}")
         page.press("#input", "Enter")
         turns_done(page, n)  # one at a time: prompts sent mid-turn share a turn
@@ -981,6 +981,81 @@ def test_a_sent_file_previews_in_the_transcript_with_open_and_download(server, p
     assert page.errors == []
 
 
+def test_a_set_of_files_is_one_card_that_pages_between_them(server, page):
+    (server.root / "dot.png").write_bytes(PNG)
+    (server.root / "notes.md").write_text("# Notes\n")
+    (server.root / "log.txt").write_text("line one\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    args = {"paths": ["dot.png", "notes.md", "log.txt"], "caption": "Three"}
+    page.fill("#input", f"/mcp file_send {json.dumps(args)}")
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    card = page.locator(".row.file")
+    assert card.count() == 1 and card.locator(".cap").inner_text() == "Three"
+    bar = card.locator(".fbar")
+    assert bar.locator(".count").inner_text() == "1 / 3"
+    assert bar.locator(".fn").inner_text() == "dot.png"
+    assert bar.locator(".prev").is_disabled() and not bar.locator(".next").is_disabled()
+    first = bar.locator("a.open").get_attribute("href")
+    assert card.locator(".stage").count() == 1 and card.locator("img").count() == 1
+
+    bar.locator(".next").click()
+    assert bar.locator(".count").inner_text() == "2 / 3"
+    assert bar.locator(".fn").inner_text() == "notes.md"
+    assert card.locator(".stage").count() == 1 and card.locator("img").count() == 0
+    assert card.locator(".stage .md h1").inner_text() == "Notes"
+    second = bar.locator("a.open").get_attribute("href")
+    assert second != first and second.endswith("/notes.md")
+    assert bar.locator("a.dl").get_attribute("href") == second + "?download=1"
+    assert bar.locator(".native").get_attribute("data-name") == "notes.md"
+
+    bar.locator(".next").click()
+    assert bar.locator(".fn").inner_text() == "log.txt"
+    assert card.locator(".stage pre").inner_text() == "line one"
+    assert bar.locator(".next").is_disabled()
+    bar.locator(".prev").click()
+    bar.locator(".prev").click()
+    assert bar.locator(".count").inner_text() == "1 / 3"
+    assert bar.locator("a.open").get_attribute("href") == first
+    assert page.request.get(server.url.split("/?")[0] + first).body() == PNG
+
+    # A single file keeps the card it always had: no pager.
+    page.fill("#input", f"/mcp file_send {json.dumps({'paths': ['dot.png']})}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    assert page.locator(".row.file").nth(1).locator(".pager").count() == 0
+    assert page.errors == []
+
+
+def test_a_read_rows_file_opens_inside_the_row_on_request(server, page):
+    notes = server.root / "notes.md"
+    notes.write_text("# Notes\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    page.fill("#input", f"/read {notes}")
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    row = page.locator(".row.tool")
+    row.locator("summary").click()
+    row.locator(".peek").click()
+    card = row.locator(".fcard")
+    card.wait_for()
+    assert card.locator(".fn").inner_text() == "notes.md"
+    assert card.locator(".stage .md h1").inner_text() == "Notes"
+    assert "as of" in row.locator(".peekcap").inner_text()
+    assert row.locator("details").get_attribute("open") is not None
+
+    notes.write_text("# Changed\n")
+    row.locator(".peek").click()
+    row.locator(".stage .md h1", has_text="Changed").wait_for()
+    assert row.locator(".fcard").count() == 1
+    assert page.locator(".row.file").count() == 0
+    assert page.errors == []
+
+
 def test_open_natively_shows_only_on_the_servers_desktop_and_opens_the_copy(
     server, browser, page
 ):
@@ -988,7 +1063,7 @@ def test_open_natively_shows_only_on_the_servers_desktop_and_opens_the_copy(
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     sid = spawn(page)
-    page.fill("#input", f"/mcp file_send {json.dumps({'path': 'dot.png'})}")
+    page.fill("#input", f"/mcp file_send {json.dumps({'paths': ['dot.png']})}")
     page.press("#input", "Enter")
     turns_done(page, 1)
     native = page.locator(".row.file .fbar .native")
@@ -3086,7 +3161,7 @@ def test_a_far_file_card_links_only_through_via(linked, browser, page):
     f = linked.beta.root / "report.html"
     f.write_text("<h1>from beta</h1>")
     lid = beta_session(
-        linked, browser, f"/mcp file_send {json.dumps({'path': str(f)})}"
+        linked, browser, f"/mcp file_send {json.dumps({'paths': [str(f)]})}"
     )
     page.goto(linked.alpha.url)
     page.click(f"#tablist .tab[data-id='beta/{lid}']")
