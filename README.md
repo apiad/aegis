@@ -112,8 +112,11 @@ transcript, so the workplace grows with what its agents build.
   that opens on hover: the session, the plan, the monitors, usage and quota, and
   the host's CPU, RAM and disk. Alt+B collapses the panel, and you drag its edge
   to resize it.
-- **Files from agents.** `file_send` hands you a file as a card with a preview
-  (images, PDF, HTML, Markdown, text, audio, video), Open and Download.
+- **Files from agents.** `file_send` hands you one file, or a set of up to
+  twenty as one card that pages with ‹ ›, with a preview (images, PDF, HTML,
+  Markdown, text, audio, video), Open and Download. A Read, Write or Edit row
+  also has *Show the file*, which opens the file that tool used, as it is now,
+  inside the row.
 - **Monitors you can read.** Hovering a monitor opens its readings chart, its
   timing and each of its commands with the last exit code and stderr line, so a
   check that cannot run shows red instead of looking like one still waiting.
