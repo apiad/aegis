@@ -2728,8 +2728,12 @@ def test_dictation_cuts_provisional_pieces_at_4_to_8s_and_a_final_past_20s(
     assert len(fin) == 1 and len(fin[0]["secs"]) == 1
     idx = got.index(fin[0])
     before = [p["secs"][0] for p in got[:idx]]
-    assert 20 <= fin[0]["secs"][0] <= 28 and sum(before[:-1]) < 20, "closed at the first boundary past 20 s"
-    assert abs(fin[0]["secs"][0] - sum(before)) < 0.05, "the final is exactly the joined provisional pieces"
+    assert 20 <= fin[0]["secs"][0] <= 28 and sum(before[:-1]) < 20, (
+        "closed at the first boundary past 20 s"
+    )
+    assert abs(fin[0]["secs"][0] - sum(before)) < 0.05, (
+        "the final is exactly the joined provisional pieces"
+    )
 
 
 def test_dictation_voice_gate_skips_quiet_pieces_but_the_final_spans_them(
@@ -2744,9 +2748,13 @@ def test_dictation_voice_gate_skips_quiet_pieces_but_the_final_spans_them(
         return { out, voiced: m.voiceSecs(tone(2)), quiet: m.voiceSecs(gap(2)), sliver: m.voiceSecs(tone(0.5)) };""",
     )
     assert got["voiced"] >= 1.8 and got["quiet"] == 0 and 0.3 <= got["sliver"] <= 0.6
-    assert [p for p in got["out"] if not p["final"]] == [], "no provisional piece had a second of voice"
+    assert [p for p in got["out"] if not p["final"]] == [], (
+        "no provisional piece had a second of voice"
+    )
     fin = [p for p in got["out"] if p["final"]]
-    assert len(fin) == 1 and fin[0]["secs"] >= 20, "the final still spans the quiet pieces"
+    assert len(fin) == 1 and fin[0]["secs"] >= 20, (
+        "the final still spans the quiet pieces"
+    )
 
 
 def test_dictation_finish_returns_the_pending_piece_then_the_tail_in_halves(
@@ -2761,10 +2769,17 @@ def test_dictation_finish_returns_the_pending_piece_then_the_tail_in_halves(
     )
     long = got["long"]
     assert all(not p["final"] for p in long[:-1]) and long[-1]["final"]
-    assert len(long[-1]["secs"]) == 2 and 14.1 <= sum(long[-1]["secs"]) <= 14.4, "the 14.3 s stretch splits in two"
-    assert got["short"] == [{"final": False, "secs": [4.0]}, {"final": True, "secs": [4.0]}]
+    assert len(long[-1]["secs"]) == 2 and 14.1 <= sum(long[-1]["secs"]) <= 14.4, (
+        "the 14.3 s stretch splits in two"
+    )
+    assert got["short"] == [
+        {"final": False, "secs": [4.0]},
+        {"final": True, "secs": [4.0]},
+    ]
     assert got["silent"] == [] and got["sliver"] == []
-    assert got["only"] == [{"final": True, "secs": [0.5]}], "a one-word recording is still transcribed"
+    assert got["only"] == [{"final": True, "secs": [0.5]}], (
+        "a one-word recording is still transcribed"
+    )
 
 
 def test_dictation_shows_provisional_text_and_replaces_it_with_the_final(
@@ -2792,14 +2807,23 @@ def test_dictation_shows_provisional_text_and_replaces_it_with_the_final(
         if (errors.length) throw new Error(errors.join('; '));
         return { seen, afterFinal, end: el.value };""",
     )
-    prov = [v for v in got["seen"] if re.search(r"\[5\.\ds kw=2\]", v) and not re.search(r"\[2\d\.", v)]
+    prov = [
+        v
+        for v in got["seen"]
+        if re.search(r"\[5\.\ds kw=2\]", v) and not re.search(r"\[2\d\.", v)
+    ]
     assert len(prov) >= 4, got["seen"]
-    assert re.fullmatch(r"Before\. \[2\d\.\ds kw=2\] After\.", got["afterFinal"]), got["afterFinal"]
+    assert re.fullmatch(r"Before\. \[2\d\.\ds kw=2\] After\.", got["afterFinal"]), got[
+        "afterFinal"
+    ]
     # At stop the 3 s pending piece showed first, then the 14 s stretch came back
     # as two halves that replaced the provisional pieces together.
-    assert any(re.search(r"\[3\.[0-4]s kw=2\]", v) for v in got["seen"]), "the pending piece showed first"
+    assert any(re.search(r"\[3\.[0-4]s kw=2\]", v) for v in got["seen"]), (
+        "the pending piece showed first"
+    )
     assert re.fullmatch(
-        r"Before\. \[2\d\.\ds kw=2\] \[\d+\.\ds kw=2\] \[\d+\.\ds kw=2\] After\. typed", got["end"]
+        r"Before\. \[2\d\.\ds kw=2\] \[\d+\.\ds kw=2\] \[\d+\.\ds kw=2\] After\. typed",
+        got["end"],
     ), got["end"]
 
 
@@ -2894,8 +2918,12 @@ def test_dictation_says_why_when_the_browser_ends_the_capture(dict_server, page)
         await until(() => d.state === 'idle');
         return { first, errors, states };""",
     )
-    assert got["first"]["errors"] == ["Microphone stopped: the browser ended the microphone"]
-    assert "[3.0s" in got["first"]["text"], "what was said before the track ended still lands"
+    assert got["first"]["errors"] == [
+        "Microphone stopped: the browser ended the microphone"
+    ]
+    assert "[3.0s" in got["first"]["text"], (
+        "what was said before the track ended still lands"
+    )
     assert len(got["errors"]) == 1, "a stop the person asked for says nothing"
     assert got["states"][-1] == "idle"
 
