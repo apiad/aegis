@@ -41,12 +41,15 @@ function dur(seconds) {
 
 const late = (m) => m.eta_at != null && nowS() > m.eta_at;
 const measured = (m) => m.progress != null && !m.broken;
-const hasProgressCmd = (m) => !!m.checks.find((c) => c.kind === "progress").cmd;
+const hasProgressCmd = (m) => !!m.checks.find((c) => c.kind === "progress")?.cmd;
+// A monitor on sessions counts them instead of a percent: "1 of 2".
+const tally = (m) => `${m.sessions.filter((r) => r.state === "finished").length} of ${m.sessions.length}`;
 
 // -- the row ------------------------------------------------------------------
 function rowRight(m, span) {
   const tail = (t) => h("span", "eta", ` · ${t}`);
-  if (m.broken) span.replaceChildren("check fails");
+  if (m.sessions) span.replaceChildren(tally(m), tail(age(nowS() - m.started_at)));
+  else if (m.broken) span.replaceChildren("check fails");
   else if (!m.progress) span.replaceChildren("watching", tail(age(nowS() - m.started_at)));
   else if (late(m)) span.replaceChildren(`${m.progress}%`, tail(`${age(nowS() - m.eta_at)} late`));
   else if (m.eta_at != null) span.replaceChildren(`${m.progress}%`, tail(`~${age(m.eta_at - nowS())}`));
@@ -177,6 +180,16 @@ function check(c) {
   );
 }
 
+// -- one watched session: its handle and what it last said ---------------------
+function watched(r) {
+  return h(
+    "div",
+    `ck${r.state === "blocked" ? " bad" : ""}`,
+    h("div", "h", h("span", "k", r.handle), h("span", "res", (r.attention || "not read yet").replace("_", " "))),
+    r.line && h("div", "err", r.line),
+  );
+}
+
 // -- the card -----------------------------------------------------------------
 function card(m, live) {
   const pill = m.broken
@@ -186,9 +199,11 @@ function card(m, live) {
       : h("span", "pill", "watching");
   const hd = h("div", "hd", h("div", "t", h("div", "d", m.description), pill), h("div", "sub", m.id));
 
-  const left = measured(m)
-    ? h("span", "p", String(m.progress), h("small", null, "%"))
-    : h("span", "p unk", !hasProgressCmd(m) ? "no progress command" : m.broken ? "no reading" : "no reading yet");
+  const left = m.sessions
+    ? h("span", "p", tally(m))
+    : measured(m)
+      ? h("span", "p", String(m.progress), h("small", null, "%"))
+      : h("span", "p unk", !hasProgressCmd(m) ? "no progress command" : m.broken ? "no reading" : "no reading yet");
   const at = h("div", "at"), inn = h("div", "in"), e = h("div", "e", at, inn);
   const drawEta = () => {
     if (m.eta_at != null && !late(m)) {
@@ -236,7 +251,9 @@ function card(m, live) {
     h("dt", null, "Checks"), h("dd", null, `every ${dur(m.interval_s)}`),
     h("dt", null, "Times out"), h("dd", null, clock(m.started_at + m.timeout_s), outIn),
   );
-  const checks = h("div", "checks", h("h5", null, "Checks"), ...m.checks.map(check));
+  const checks = m.sessions
+    ? h("div", "checks", h("h5", null, "Sessions"), ...m.sessions.map(watched))
+    : h("div", "checks", h("h5", null, "Checks"), ...m.checks.map(check));
   const cwd = h("span", "path", m.cwd);
   cwd.title = m.cwd;
   const ft = h("div", "ft", cwd, h("span", "hint", "Esc closes"));
