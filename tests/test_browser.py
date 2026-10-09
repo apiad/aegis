@@ -816,7 +816,9 @@ def test_a_monitor_shows_in_the_sidebar_and_its_wake_arrives_as_an_inbox_row(
     page.fill("#input", f"/mcp monitor_start {args}")
     page.press("#input", "Enter")
     page.wait_for_selector("#s-mon-sec:not([hidden]) .mon >> text=wait for the flag")
-    assert page.inner_text(".row.tool .tn") == "monitor_start"
+    # textContent: a new content-visibility:auto row reads '' through innerText
+    # until a frame has drawn it (#238).
+    assert page.text_content(".row.tool .tn") == "monitor_start"
     page.click("#tab-fleet")
     page.wait_for_selector(".card .mons >> text=1 monitor")
     page.locator(".card").first.click()
@@ -1163,6 +1165,9 @@ def test_a_rows_card_opens_beside_the_panel_and_closes(server, page):
     assert card.is_hidden()
     page.hover("#p-session")
     card.wait_for(state="visible")
+    # The card slides in from 6px to the right (@starting-style), and its box
+    # carries the transform: read it once the slide has ended (#255).
+    card.evaluate("c => Promise.all(c.getAnimations().map(a => a.finished))")
     box = card.bounding_box()
     side = page.locator("#side").bounding_box()
     row = page.locator("#p-session").bounding_box()
@@ -1361,9 +1366,11 @@ def test_a_read_rows_file_opens_inside_the_row_on_request(server, page):
     row.locator(".peek").click()
     card = row.locator(".fcard")
     card.wait_for()
-    assert card.locator(".fn").inner_text() == "notes.md"
-    assert card.locator(".stage .md h1").inner_text() == "Notes"
-    assert "as of" in row.locator(".peekcap").inner_text()
+    # textContent: the peek redraws the row as a new node, which reads '' through
+    # innerText until a frame has drawn it (#238).
+    assert card.locator(".fn").text_content() == "notes.md"
+    assert card.locator(".stage .md h1").text_content() == "Notes"
+    assert "as of" in row.locator(".peekcap").text_content()
     assert row.locator("details").get_attribute("open") is not None
 
     notes.write_text("# Changed\n")
@@ -2093,11 +2100,12 @@ def test_an_opencode_session_streams_and_calls_aegis(server, page):
     # Subscribed before the stream starts: the text can only arrive as patches.
     page.fill("#input", "/stream 6")
     page.press("#input", "Enter")
-    page.wait_for_function(
+    # The text as it stood when chunk1 landed, read in the same call: innerText
+    # of an undrawn row is '', which has no chunk6 in it either (#238).
+    prose = page.wait_for_function(
         "[...document.querySelectorAll('.row.prose .body')]"
-        ".some(b => b.textContent.includes('chunk1'))"
-    )
-    prose = page.inner_text(".row.prose .body")
+        ".map(b => b.textContent).find(t => t.includes('chunk1'))"
+    ).json_value()
     assert "chunk6" not in prose, "the text is drawn while it streams"
     turns_done(page, 1)
     page.hover("#p-session")
@@ -3077,7 +3085,9 @@ def test_the_interrupt_sits_beside_send_and_restart_sends_continue(server, page)
     assert page.is_disabled("#restart")
     page.click("#interrupt")
     turns_done(page, 1)
-    assert page.is_hidden("#interrupt")
+    # The server sends the "interrupted" row before the idle state, and the
+    # card draws that state on the frame after it lands (#158): wait for it.
+    page.wait_for_selector("#interrupt", state="hidden", timeout=5000)
     page.click("#restart")
     page.wait_for_selector(".row.user >> text=Continue")
     turns_done(page, 2)
