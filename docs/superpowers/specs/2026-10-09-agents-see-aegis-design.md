@@ -75,10 +75,18 @@ is already the case for `peer_read`; the rule that keeps far text out
 
 ### A monitor that waits on sessions
 
-`monitor_start` takes a new field, `sessions: list[str]` of handles, as the
-alternative to `done`. Exactly one of the two is given; `fail` and `progress`
-are rejected with `sessions`, because the server computes both. `interval_s`,
-`timeout_s` and `description` mean what they mean today.
+A new tool, `monitor_sessions(description, sessions, interval_s=10,
+timeout_s=4h)`, arms a monitor that watches a list of handles instead of
+running bash. It is a tool of its own rather than a `sessions` field on
+`monitor_start` because `monitor_start` requires `progress` on purpose (#165),
+and a schema where `progress` is required for one mode and meaningless for the
+other is one a model reads wrong. The monitor it makes is an ordinary monitor:
+`monitor_list` shows it and `monitor_cancel` stops it. The timeout defaults to
+four hours because other sessions' work runs longer than a build.
+
+Each session is kept by log id, so a watched session renamed after arming is
+still followed, and listing one handle twice watches it once. A session cannot
+wait for itself: its own wait would keep it `waiting` forever.
 
 On each check, every listed session is classified from its attention card:
 
@@ -88,7 +96,8 @@ On each check, every listed session is classified from its attention card:
 | blocked | attention is `needs_you` or `error` |
 | running | attention is `working` or `waiting` |
 
-- All finished: the monitor ends `done`.
+- All finished: the monitor ends `ok`, like a bash monitor whose `done`
+  passed, naming each session and how it ended.
 - Any blocked: the monitor ends with the new outcome `blocked`, naming the
   session and its `attention_line`, so the agent can tell Alex "une-base-manda
   is asking you something; the release waits". Waiting through a question would
