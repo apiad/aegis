@@ -52,8 +52,7 @@ SKELETON = """\
 <!-- controls go here -->
 <script>
   aegis.ready((state, theme) => {{
-    // wire the controls; answer with aegis.submit(data, label),
-    // aegis.emit(name, data) or aegis.state(data)
+    // wire the controls; answer with aegis.submit / aegis.emit / aegis.state
   }});
 </script>
 </body>
@@ -121,7 +120,11 @@ def valid_event(name: str) -> bool:
 
 
 def json_size(obj) -> int:
-    return len(json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode())
+    return len(
+        json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode(
+            "utf-8", "surrogatepass"
+        )
+    )
 
 
 def header(id: str, kind: str) -> str:
