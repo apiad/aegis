@@ -151,13 +151,18 @@ outside the transcript, and answers `artifact.probed` with the outcome of
 `ui/initialize`: started, or the first error the page raised before it, with
 its message and stack. The first answer wins; later ones and answers to an
 unknown probe id are dropped; the frame is removed either way. The server waits
-three seconds. Started: the record is written and the tool returns. Error: the
+three seconds. The page posts `ui/initialize` after its inline scripts ran, so
+an error in them arrives instead of the handshake; an error inside `ready`
+arrives just after it, so the browser waits a short grace (250 ms) after the
+handshake before reporting started. Started: the record is written and the
+tool returns. Error: the
 snapshot is deleted, nothing is recorded, and the tool raises `page_error` with
 the message and the first five lines of the stack, so the agent sees
 "ReferenceError: d3 is not defined at index.html:14" in its own turn and fixes
-the draft before it asks the person anything. No browser open: nothing can be
-probed, the record is written with `started: null`, and the first browser to
-mount it reports an error, if any, to the inbox.
+the draft before it asks the person anything. No browser open, or none answered within the three seconds (a background tab
+the browser throttles): nothing was proved, the record is written with
+`started: null`, and the first browser to mount it reports an error, if any,
+to the inbox.
 
 The failed sends show as the harness's own tool rows with an error mark, which
 is the right trace of the iteration; the transcript shows one card.
@@ -177,6 +182,8 @@ The page talks to `window.aegis`:
 - `aegis.submit(obj, label)` wakes the agent with the answer and ends the
   artifact. `label` is one line of at most 140 characters; it is what the
   collapsed card shows.
+- `aegis.onState(fn)` runs `fn(state)` each time the agent pushes state with
+  `artifact_update`.
 
 What the script does besides: it reports the document's height through a
 `ResizeObserver` on `documentElement` so the frame grows with the page; it
@@ -272,10 +279,12 @@ transcript, and a restart forgets drafts (their files are deleted at boot).
 | `artifact_close` | `artifact_id, label` | status `closed`, sets `label` |
 
 A resend writes a second `artifact` record with the same `artifact_id` and the
-new file; the fold swaps the document and keeps status, events and state. A
-caption change alone is the same record with the old file. The entry's state
-and events travel as detail (`transcript/wire.py`), fetched when the row
-mounts; the row itself carries status, label, caption, name and URL. Every
+new file; the fold swaps the document and keeps status, events and state (a
+second `artifact` record never touches state). A caption change alone is the
+same record with the old file. The entry's events travel as lazy detail
+(`transcript/wire.py`); its state rides the wire with the row, because the
+frame needs it the moment it mounts and it is capped at 64 KB. The row also
+carries status, label, caption, name and URL. Every
 decision about the card is made in the fold: the preview is always `html` and
 the frame's sandbox is always `allow-scripts`, so the client reads neither from
 the file.
@@ -342,10 +351,13 @@ A new entry kind, `artifact`, rendered in `entries.js` beside `file`:
 
 The frame is mounted only while its row is, like every row (`transcript.js`),
 so an artifact scrolled far up is unmounted and re-inits from the server's
-state when it comes back. A row's patch with a new state from the agent is
-pushed to its mounted frame; a patch whose state came from a page is not.
-`artifacts.js` registers the frames `entries.js` mounts and unregisters them
-when the row is removed, mounts and removes probe frames on `artifact.probe`,
+state when it comes back. A patch to a live artifact's row updates the row in
+place and keeps its frame (`transcript.js` asks the renderer first), because a
+remount would reload the page on every state write; only a change of status
+or caption remounts. A patch with a new state from the agent is pushed to the
+frame; a patch whose state came from a page is not. `artifacts.js` finds a
+frame by the artifact id its row carries, mounts and removes probe frames on
+`artifact.probe`,
 and `app.js` tells it on a theme switch.
 
 ## Security
