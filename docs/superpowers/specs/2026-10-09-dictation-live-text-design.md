@@ -150,10 +150,16 @@ piece's text and its range. Before each write the recording compares the text
 with what it last wrote: the first differing character is where the person
 edited, and every recorded range and the offset at or after it move by the
 length of the edit. So typing before dictated text, or after it, leaves the next
-piece and the final landing where they belong. When a group's pieces are all done, their texts are
-joined with spaces and replace the span from the first covered piece's start to
-the last covered piece's end, if the textarea still holds exactly the text that
-was inserted there. The recording's offset moves by the difference in length when
+piece and the final landing where they belong. When a group's pieces are all done, and the pieces it covers are placed, their
+texts are joined with spaces and replace the span from the first covered piece's
+start to the last covered piece's end, if the textarea still holds exactly the
+text that was inserted there. A final lands as soon as that holds, even while a
+later provisional piece is still in flight, and a provisional piece never waits
+for a final: on the phone a final of 20 to 28 s takes 8 to 12 s, and holding the
+next piece behind it would blank the screen for up to 6 s every stretch. Pieces
+placed after the span move by the difference in length. A final with a part
+that failed to transcribe is dropped and the provisional text stays, with the
+error under the composer: a wrong half must not wipe words already on screen. The recording's offset moves by the difference in length when
 it sat at or after the span. If the span no longer matches, the person edited it:
 the group's text is dropped. A group that covers no provisional piece (every one
 was skipped by the gate, or it is the one-word recording) inserts its text at the
@@ -169,8 +175,9 @@ moved to another session, on the draft string instead of the textarea value.
 `AudioContext`'s `statechange`; when the track ends or the context leaves
 `running` during a recording, it calls the stop callback with `track` or
 `suspended`, the recording finishes as if the button had been pressed, and
-`onError` shows `Microphone stopped: <reason>`. The four requested reasons show
-nothing. `app.js` passes the reason at each of its calls: the mic button, Alt+M,
+`onError` shows `Microphone stopped: the browser ended the microphone` or
+`Microphone stopped: the browser suspended the audio`. The four requested
+reasons show nothing. `app.js` passes the reason at each of its calls: the mic button, Alt+M,
 `send` and `follow`.
 
 ### The button
@@ -196,8 +203,10 @@ provisional lane makes `listening` show text within seconds, which is what the
 - **Queue order.** With both workers busy on finals (the stub takes 400 ms for a
   piece of 12 s or more), a provisional piece enqueued after a final piece is
   transcribed before it.
-- **Stop reasons.** A `source` whose returned track emits `ended` stops the
-  recording and shows `Microphone stopped: track`; a button stop shows nothing.
+- **Stop reasons.** A `source` whose end hook fires with `track` stops the
+  recording and shows `Microphone stopped: the browser ended the microphone`; a
+  button stop shows nothing. The listeners in `micSource` itself are checked by
+  reading, not by a test: the fake microphone never ends its track.
 - **Live** (`make test-live`). Unchanged: the LibriSpeech clip's final text keeps
   WER under 15%.
 - **By hand**, on `aegis serve` from the branch: Alex dictates on zion and on his

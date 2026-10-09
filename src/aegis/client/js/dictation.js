@@ -202,20 +202,27 @@ function doc(rec) {
   return { kind: "draft", get: () => localStorage.getItem(t.key) || "", set: (v) => localStorage.setItem(t.key, v) };
 }
 
-// The text as it is now, with the recording's offsets moved past whatever the
-// person typed or deleted since the last write: the first differing character
-// is where their edit sits, and everything at or after it shifts by its length.
-// When the text moved to the session's draft, dictation goes on at its end.
+// The text as it is now, with the recording's offsets carried through whatever
+// the person typed or deleted since the last write. The common prefix and
+// suffix bound their edit: a position past it shifts by the edit's length, a
+// position inside it moves to the edit's end, so a deletion that covers the
+// insertion point goes on at the deletion. When the text moved to the
+// session's draft, dictation goes on at its end.
 function sync(rec, d) {
   const v = d.get();
   if (rec.knownKind !== d.kind) rec.at = d.kind === "draft" ? v.length : Math.min(rec.at, v.length);
   else if (rec.known !== v) {
-    const n = Math.min(v.length, rec.known.length);
+    const k = rec.known;
+    const n = Math.min(v.length, k.length);
     let i = 0;
-    while (i < n && v[i] === rec.known[i]) i++;
-    const delta = v.length - rec.known.length;
-    for (const it of rec.placed) if (it.from >= i) Object.assign(it, { from: it.from + delta, to: it.to + delta });
-    if (rec.at >= i) rec.at += delta;
+    while (i < n && v[i] === k[i]) i++;
+    let j = 0;
+    while (j < n - i && v[v.length - 1 - j] === k[k.length - 1 - j]) j++;
+    const oldEnd = k.length - j;
+    const newEnd = v.length - j;
+    const move = (p) => (p >= oldEnd ? p + newEnd - oldEnd : p > i ? Math.min(p, newEnd) : p);
+    for (const it of rec.placed) Object.assign(it, { from: move(it.from), to: move(it.to) });
+    rec.at = move(rec.at);
   }
   return v;
 }
@@ -261,9 +268,11 @@ function replace(rec, item, text) {
   const piece = text ? lead(v.slice(0, from), text) : "";
   write(rec, d, v.slice(0, from) + piece + v.slice(to));
   Object.assign(item, { piece, from, to: from + piece.length });
+  const delta = piece.length - expected.length;
   rec.placed = rec.placed.filter((it) => !covered.includes(it));
+  for (const it of rec.placed) if (it.from >= to) Object.assign(it, { from: it.from + delta, to: it.to + delta });
   rec.placed.push(item);
-  if (rec.at >= to) rec.at += piece.length - expected.length;
+  if (rec.at >= to) rec.at += delta;
 }
 
 // The job a free worker takes: the first provisional one, else the oldest.
@@ -422,14 +431,26 @@ export class Dictation {
     if (data.type === "text") item.texts[job.i] = data.text;
     else {
       item.texts[job.i] = "";
+      item.failed = true;
       this.onError(`A piece of ${job.secs.toFixed(1)} s could not be transcribed: ${data.message}`);
     }
     item.jobs--;
-    while (rec.items.length && rec.items[0].jobs === 0) {
-      const it = rec.items.shift();
+    // Provisional pieces land in order. A final lands as soon as its parts are
+    // done and the pieces it covers are placed, so it never holds back the
+    // provisional text behind it. A final with a failed part leaves the
+    // provisional text as it is: a wrong half must not wipe words on screen.
+    for (let i = 0; i < rec.items.length; ) {
+      const it = rec.items[i];
+      if (it.jobs > 0 || (it.final && !it.covers.every((c) => c.done))) {
+        if (!it.final) break;
+        i++;
+        continue;
+      }
+      rec.items.splice(i, 1);
+      it.done = true;
       const text = it.texts.filter(Boolean).join(" ");
-      if (it.final) replace(rec, it, text);
-      else insert(rec, it, text);
+      if (!it.final) insert(rec, it, text);
+      else if (!it.failed) replace(rec, it, text);
     }
     this.dispatch();
     this.settle();
