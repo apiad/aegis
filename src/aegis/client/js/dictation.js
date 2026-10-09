@@ -147,8 +147,15 @@ export class Chunker {
   }
 }
 
+// A stop the person did not ask for says why; the four they ask for say nothing.
+const STOPPED = {
+  track: "Microphone stopped: the browser ended the microphone",
+  suspended: "Microphone stopped: the browser suspended the audio",
+};
+
 // The microphone, mono at 16 kHz. Resolves to the function that stops it.
-export async function micSource(onSamples) {
+// `onEnd` fires once with "track" or "suspended" if the browser ends the capture.
+export async function micSource(onSamples, onEnd = () => {}) {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
   });
@@ -167,7 +174,11 @@ export async function micSource(onSamples) {
   ctx.createMediaStreamSource(stream).connect(node).connect(mute).connect(ctx.destination);
   const rs = resampler(ctx.sampleRate);
   node.port.onmessage = ({ data }) => onSamples(rs(data));
+  let closing = false;
+  stream.getAudioTracks()[0].addEventListener("ended", () => !closing && onEnd("track"));
+  ctx.addEventListener("statechange", () => !closing && ctx.state !== "running" && onEnd("suspended"));
   return async () => {
+    closing = true;
     node.port.onmessage = null;
     stream.getTracks().forEach((t) => t.stop());
     await ctx.close();
@@ -320,10 +331,13 @@ export class Dictation {
     this.recs.add(rec);
     this.setState(this.up ? "listening" : "loading");
     try {
-      rec.stopCapture = await source((s) => {
-        this.onLevel(rms(s));
-        rec.chunker.push(s);
-      });
+      rec.stopCapture = await source(
+        (s) => {
+          this.onLevel(rms(s));
+          rec.chunker.push(s);
+        },
+        (why) => this.rec === rec && this.stop(why),
+      );
     } catch (e) {
       return this.abort(rec, `Microphone unavailable: ${e?.message ?? e}`);
     }
@@ -348,6 +362,7 @@ export class Dictation {
     this.onLevel(0);
     for (const p of rec.chunker.finish(rec.emitted === 0)) this.enqueue(rec, p);
     this.settle();
+    if (STOPPED[reason]) this.onError(STOPPED[reason]);
   }
 
   boot(base) {
