@@ -2362,6 +2362,9 @@ def test_the_interrupt_sits_beside_send_and_restart_sends_continue(server, page)
     page.fill("#input", "/sleep 5")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
+    # The card's state is drawn on the next frame (#158), so the row can land
+    # a frame before the button shows: wait for what a person sees.
+    page.wait_for_selector("#interrupt", state="visible")
     box = page.locator(".composer .box").bounding_box()
     btn = page.locator("#interrupt").bounding_box()
     assert box["y"] <= btn["y"] and btn["y"] + btn["height"] <= box["y"] + box["height"]
