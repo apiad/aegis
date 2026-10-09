@@ -84,3 +84,46 @@ def opencode_store(state: Path, log_id: str, cwd: Path, ts: str, *steps: dict) -
     (state / "sessions" / f"{log_id}.json").write_text(
         json.dumps({"log_id": log_id, "handle": log_id, "harness": "opencode"})
     )
+
+
+def codex_turn(model: str) -> dict:
+    """CodexProcess's own line naming the model a turn was sent with."""
+    return {
+        "method": "aegis/turn",
+        "params": {"model": model, "effort": "", "permission": "full"},
+    }
+
+
+def codex_usage(turn: str, *, inp: int, cached: int = 0, out: int = 0) -> dict:
+    """One model request's tokens, as Codex reports them."""
+    last = {
+        "inputTokens": inp,
+        "cachedInputTokens": cached,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": out,
+        "reasoningOutputTokens": 0,
+        "totalTokens": inp + out,
+    }
+    return {
+        "method": "thread/tokenUsage/updated",
+        "params": {
+            "threadId": "t1",
+            "turnId": turn,
+            "tokenUsage": {"last": last, "total": last},
+        },
+    }
+
+
+def codex_store(state: Path, log_id: str, cwd: Path, ts: str, *lines: dict) -> None:
+    """One Codex session holding ``lines``, all at ``ts``."""
+    (state / "transcripts").mkdir(parents=True, exist_ok=True)
+    (state / "sessions").mkdir(parents=True, exist_ok=True)
+    records = [
+        {"ts": epoch(ts), "src": "aegis", "kind": "spawn", "cwd": str(cwd)},
+    ] + [{"ts": epoch(ts), "src": "codex", "line": json.dumps(ln)} for ln in lines]
+    (state / "transcripts" / f"{log_id}.jsonl").write_text(
+        "".join(json.dumps({"i": i, **r}) + "\n" for i, r in enumerate(records))
+    )
+    (state / "sessions" / f"{log_id}.json").write_text(
+        json.dumps({"log_id": log_id, "handle": log_id, "harness": "codex"})
+    )

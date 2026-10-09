@@ -9,7 +9,7 @@ from aegis.usage.prices import prices_for
 from aegis.usage.scan import Scanner
 
 from .stores import assistant as _assistant
-from .stores import opencode_step, opencode_store
+from .stores import codex_store, codex_turn, codex_usage, opencode_step, opencode_store
 from .stores import store as _store
 
 
@@ -284,3 +284,32 @@ def test_an_opencode_step_counts_once_as_unpriced_work(tmp_path, repo_path):
     assert session.unpriced["calls"] == 1
     assert session.unpriced["tokens"] == 500 + 100 + 5000
     assert _cost(scanner) == 0
+
+
+def test_codex_requests_are_priced_by_their_turns_model(tmp_path, repo_path):
+    """Each usage line is one request, priced with the model of the aegis/turn
+    line before it: an OpenAI model at its rates, a :free model at zero, and a
+    model with no price counted as unpriced work."""
+    from aegis.usage.prices import codex_prices_for
+
+    state = tmp_path / ".aegis" / "state"
+    codex_store(
+        state, "20260602-140000-cccccc", repo_path, "2026-06-02T14:05:00Z",
+        codex_turn("openai/gpt-6.1-sol"),
+        codex_usage("u1", inp=1_000_000),
+        codex_usage("u1", inp=1_000_000),
+        codex_turn("openrouter/nvidia/x:free"),
+        codex_usage("u2", inp=1_000_000),
+        codex_turn("openai/gpt-test"),
+        codex_usage("u3", inp=700, out=300),
+    )  # fmt: skip
+
+    scanner = _scanner(repo_path)
+    scanner.run([], state, foreign=False)
+
+    [session] = scanner.sessions.values()
+    assert _calls(scanner) == 4
+    assert _cost(scanner) == pytest.approx(
+        2 * float(codex_prices_for("openai/gpt-6.1-sol").input)
+    )
+    assert session.unpriced["calls"] == 1 and session.unpriced["tokens"] == 1000

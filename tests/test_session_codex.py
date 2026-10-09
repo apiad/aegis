@@ -312,3 +312,14 @@ async def test_the_catalog_has_the_fakes_models_skills_and_codex_commands(cx):
     assert [m.value for m in cat.models][:2] == ["openai/fake-pro", "openai/fake-flash"]
     names = [c["name"] for c in cat.commands]
     assert names[:2] == ["compact", "review"] and "sleep" in names
+
+
+async def test_a_free_model_shows_zero_cost(tmp_path, fake_codex):
+    h = CX(tmp_path, fake_codex)
+    h.session.spec = h.session.spec.__class__(
+        "cx", "openrouter/fake:free", "", "full", tmp_path, harness="codex"
+    )
+    await h.session.start()
+    await h.turn("hello")
+    assert h.session.cost_usd == 0
+    await h.session.stop()

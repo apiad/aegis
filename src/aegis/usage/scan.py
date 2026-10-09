@@ -11,7 +11,9 @@ Cost is priced from tokens through ``prices.py``, never taken from Claude's
 running ``total_cost_usd``: Claude Code's files do not carry it, and a model
 without a price is counted as unpriced rather than charged at another's rate.
 Only Claude sessions are priced. An OpenCode session's tokens, from its
-``step-finish`` parts, are counted as unpriced work.
+``step-finish`` parts, are counted as unpriced work. A Codex session's requests,
+from its ``thread/tokenUsage/updated`` lines, are priced by ``codex_prices_for``
+with the model of their turn's ``aegis/turn`` line.
 """
 
 from __future__ import annotations
@@ -36,7 +38,7 @@ from .locality import (
     module_of,
     repos_mentioned,
 )
-from .prices import prices_for
+from .prices import codex_prices_for, prices_for
 from .store import lines, sessions, split_cache
 
 log = logging.getLogger(__name__)
@@ -108,7 +110,12 @@ def _cost_of(
 ) -> float | None:
     """Price one call; None when there is no price for it. Only Claude Code
     sessions have prices: another harness's model ids are not Claude's."""
-    prices = prices_for(model) if provider == DEFAULT_PROVIDER else None
+    if provider == DEFAULT_PROVIDER:
+        prices = prices_for(model)
+    elif provider == "codex":
+        prices = codex_prices_for(model)
+    else:
+        prices = None
     if prices is None:
         return None
     return float(prices.cost(inp=inp, out=out, cc5=cc5, cc1=cc1, cache_read=cache_read))
@@ -313,12 +320,13 @@ class Scanner:
             )
             key = f"aegis:{stored.log_id}"
             cwd: str | None = None
-            model = DEFAULT_MODEL
+            # A Codex request never borrows Claude's default model's price.
+            model = "" if stored.harness == "codex" else DEFAULT_MODEL
             for line in lines(stored.path):
                 if line.src == "aegis" and line.obj.get("kind") == "spawn":
                     cwd = line.obj.get("cwd") or cwd
                     continue
-                if line.src != "claude" and line.src != "opencode":
+                if line.src not in ("claude", "opencode", "codex"):
                     continue
                 obj = line.obj
                 if obj.get("type") == "system" and obj.get("subtype") == "init":
@@ -327,6 +335,9 @@ class Scanner:
                     continue
                 scan = self._session(key, "aegis", cwd, provider)
                 self._note_paths(scan, line.raw)
+                if line.src == "codex":
+                    model = self._codex_request(scan, line.ts or "", obj, model)
+                    continue
                 if line.src == "opencode":
                     self._opencode_step(scan, line.ts or "", obj)
                     continue
@@ -385,6 +396,34 @@ class Scanner:
             cc1=0,
             cache_read=int(cache.get("read") or 0),
         )
+
+    def _codex_request(self, scan: SessionScan, ts: str, obj: dict, model: str) -> str:
+        """Codex reports each request's tokens in ``thread/tokenUsage/updated``;
+        its model is the one its turn was sent with (``aegis/turn``). Returns
+        the model in force after this line. Each usage line is one request: the
+        store holds each once, and aegis's store is the only one Codex lines
+        are in, so there is nothing to deduplicate."""
+        params = obj.get("params") or {}
+        if obj.get("method") == "aegis/turn":
+            return str(params.get("model") or model)
+        if obj.get("method") != "thread/tokenUsage/updated":
+            return model
+        last = (params.get("tokenUsage") or {}).get("last")
+        if not isinstance(last, dict):
+            return model
+        cached = int(last.get("cachedInputTokens") or 0)
+        write = int(last.get("cacheWriteInputTokens") or 0)
+        self._add(
+            scan,
+            ts,
+            model,
+            inp=max(0, int(last.get("inputTokens") or 0) - cached - write),
+            out=int(last.get("outputTokens") or 0),
+            cc5=write,
+            cc1=0,
+            cache_read=cached,
+        )
+        return model
 
     def _add_call(self, call: tuple, cc1_share: float) -> None:
         scan, ts, model, inp, out, cc5, cc1, cache_read = call

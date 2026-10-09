@@ -49,6 +49,7 @@ from ..claude.stream import (
     ToolOutput,
     Usage,
 )
+from ..usage.prices import codex_prices_for
 
 LABEL = "Codex"
 OWN = "aegis/"
@@ -409,8 +410,19 @@ class Parser:
 
     # -- usage, names, deltas ----------------------------------------
     def _price(self, u: Usage) -> float | None:
-        """What one request cost, or None when the model has no price (Task 7)."""
-        return None
+        """What one request cost at the turn's model's rates, or None."""
+        prices = codex_prices_for(self.model)
+        if prices is None:
+            return None
+        return float(
+            prices.cost(
+                inp=u.input,
+                out=u.output,
+                cc5=u.cache_creation,
+                cc1=0,
+                cache_read=u.cache_read,
+            )
+        )
 
     def _token_usage(self, p: dict) -> list[Event]:
         ok, parent = self._whose(p.get("threadId"))

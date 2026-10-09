@@ -272,3 +272,44 @@ def test_a_shell_call_shows_the_command_codex_ran_not_its_wrapper():
             id="c1", name="Bash", input={"command": "ls -la"}, parent=None, usage=None
         )
     ]
+
+
+def test_a_priced_model_costs_its_requests_and_a_free_one_costs_nothing():
+    from aegis.usage.prices import codex_prices_for
+
+    assert (
+        codex_prices_for("openrouter/nvidia/x:free").cost(
+            inp=10**6, out=10**6, cc5=0, cc1=0, cache_read=0
+        )
+        == 0
+    )
+    assert codex_prices_for("openrouter/paid/x") is None
+    assert codex_prices_for("ollama/qwen") is None
+    p = Parser()
+    p.feed(
+        line(
+            "aegis/thread",
+            thread={"id": "t1", "model": "gpt-6.1-sol", "modelProvider": "openai"},
+        )
+    )
+    p.feed(line("turn/started", threadId="t1", turn={"id": "u1"}))
+    last = {
+        "inputTokens": 1_000_000,
+        "cachedInputTokens": 0,
+        "outputTokens": 0,
+        "totalTokens": 1_000_000,
+    }
+    p.feed(
+        line(
+            "thread/tokenUsage/updated",
+            threadId="t1",
+            turnId="u1",
+            tokenUsage={"last": last, "total": last},
+        )
+    )
+    (r,) = p.feed(
+        line("turn/completed", threadId="t1", turn={"id": "u1", "status": "completed"})
+    )
+    assert r.cost_usd == pytest.approx(
+        float(codex_prices_for("openai/gpt-6.1-sol").input)
+    )
