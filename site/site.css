@@ -1,0 +1,159 @@
+/* The landing page around the mockups. The mockups themselves are styled by
+   client.css, the client's own stylesheet with its #a2 scope rewritten to .a2,
+   so a frame here is the real UI's rules applied to hand-written markup. */
+
+:root{
+  --bg:#0d0c0b;--paper:#11100e;--rule:#2a2721;--surface:#191814;
+  --ink:#dcd9cf;--strong:#f1ede2;--muted:#8a867b;--faint:#6f6b62;--accent:#e0a872;
+  --serif:'SS4',Georgia,serif;--mono:'JBM',ui-monospace,monospace;
+  --col:min(1180px,calc(100vw - 48px));
+}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--serif);font-size:17.5px;line-height:1.6}
+a{color:var(--strong);text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:3px}
+a:hover{text-decoration-color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+h1,h2,h3{font-weight:400;margin:0;color:var(--strong);letter-spacing:-.01em}
+p{margin:0 0 1em;max-width:64ch}
+code{font-family:var(--mono);font-size:.84em;background:var(--surface);padding:1px 6px;border-radius:4px;color:var(--strong)}
+pre code{background:none;padding:0;font-size:inherit}
+
+/* nav */
+.top{width:var(--col);margin:0 auto;display:flex;gap:26px;align-items:baseline;padding:22px 0 0;font-family:var(--mono);font-size:13.5px}
+.top a{color:var(--muted);text-decoration:none}
+.top a:hover{color:var(--strong)}
+.top .mark{color:var(--strong);font-size:16px;margin-right:auto}
+.mark{font-family:var(--mono);text-decoration:none}
+
+/* hero */
+.hero{width:var(--col);margin:0 auto;padding:88px 0 0}
+.hero h1{font-size:clamp(38px,6vw,68px);line-height:1.05;max-width:14ch}
+.hero .lede{margin:30px 0 0;font-size:clamp(17px,1.6vw,20px);max-width:62ch;color:var(--ink)}
+.install{margin:38px 0 0;display:grid;gap:12px;max-width:62ch}
+.install pre{margin:0;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:16px 20px;font-family:var(--mono);font-size:14.5px;line-height:1.7;color:var(--strong);overflow:auto}
+.install .note{color:var(--muted);font-size:15px;margin:0}
+.hero-frame{margin-top:64px}
+
+/* a window with the client inside */
+.frame{background:var(--paper);border:1px solid var(--rule);border-radius:10px;overflow:hidden;box-shadow:0 30px 80px -30px rgba(0,0,0,.8)}
+.frame .a2{height:100%;min-height:0}
+.hero-frame .a2{height:640px}
+.a2 .view{overflow:hidden}
+.a2 .tr{overflow:hidden}
+.a2 .side{overflow:hidden}
+.frame button,.frame .tab,.frame select,.frame textarea,.frame .card,.frame .rp,.frame .btn{pointer-events:none}
+.a2 .cmd-menu[hidden]{display:none}
+.a2 .cmd-menu{display:none}
+.a2 .replies{display:none}
+.a2 .row.file .fcard .stage svg{display:block;padding:8px 10px 2px}
+
+/* the scroll section */
+.scroll{width:var(--col);margin:140px auto 0;display:grid;grid-template-columns:minmax(300px,5fr) minmax(0,8fr);gap:56px;align-items:start}
+.steps h2,.plain h2{font-size:clamp(28px,3.4vw,40px);line-height:1.15}
+.steps .intro{color:var(--muted);margin:16px 0 0}
+.step{padding:38vh 0 0;min-height:60vh}
+.step:first-of-type{padding-top:22vh}
+.step:last-of-type{min-height:50vh;padding-bottom:8vh}
+.step h3{font-size:24px;line-height:1.25;margin-bottom:14px;position:relative}
+.step h3::before{content:"";position:absolute;left:-22px;top:.55em;width:10px;height:2px;background:var(--rule);transition:background .3s,width .3s}
+.step.on h3::before{background:var(--accent);width:14px}
+.step p{color:var(--ink);transition:color .4s}
+.step:not(.on) p,.step:not(.on) h3{color:var(--muted)}
+.step:not(.on) h3{color:var(--muted)}
+.stage-col{position:sticky;top:48px}
+.stage{height:min(600px,calc(100vh - 96px))}
+.stage .a2{height:100%;transition:width .45s cubic-bezier(.2,.7,.2,1),margin .45s cubic-bezier(.2,.7,.2,1)}
+.stage-col .stage{zoom:.86}
+
+/* what each step does to the stage. The spotlight dims the rest. */
+.stage [data-page]{display:none}
+.stage[data-step=transcript] [data-page=a],.stage[data-step=sidebar] [data-page=a],.stage[data-step=replies] [data-page=a],.stage[data-step=phone] [data-page=a]{display:grid}
+.stage[data-step=tools] [data-page=b]{display:grid}
+.stage .spot{transition:opacity .4s,box-shadow .4s}
+.stage[data-step=fleet] .band,.stage[data-step=fleet] .order{opacity:.35}
+.stage[data-step=gauges] .order,.stage[data-step=gauges] .cards{opacity:.3}
+.stage[data-step=gauges] .band{position:relative;box-shadow:inset 0 0 0 1px var(--accent)}
+.stage[data-step=sidebar] .col{opacity:.3}
+.stage[data-step=transcript] .side{opacity:.3}
+.stage[data-step=transcript] .composer,.stage[data-step=sidebar] .composer,.stage[data-step=tools] .composer{opacity:.3}
+.stage[data-step=replies] .tr,.stage[data-step=replies] .side{opacity:.3}
+.stage[data-step=replies] .cmd-menu{display:block}
+.stage[data-step=replies] .replies,.stage[data-step=phone] .replies{display:flex}
+.stage[data-step=tools] .side{opacity:.3}
+.stage[data-step=tools] .tr{padding-top:8px}
+.stage[data-step=tools] .a2 .tabs .tab.on{box-shadow:inset 0 2px 0 var(--comms)}
+.stage .band,.stage .order,.stage .cards,.stage .col,.stage .side,.stage .composer,.stage .tr{transition:opacity .45s}
+/* The band's columns are sized for a 1100 px window; the stage is narrower. */
+.stage .band{grid-template-columns:minmax(120px,.5fr) 1fr 1.4fr;gap:20px}
+.stage .gauge{grid-template-columns:52px minmax(40px,1fr) max-content}
+.stage[data-step=tools] .composer{display:none}
+
+/* the phone step: the client's own 760 px rules, applied by class instead of viewport */
+.stage[data-step=phone] .a2{width:390px;margin:0 auto;border-left:1px solid var(--rule);border-right:1px solid var(--rule)}
+.stage[data-step=phone] .a2 .tabs{flex-wrap:wrap;padding:4px 6px 0}
+.stage[data-step=phone] .a2 .tablist{order:9;flex:1 0 100%;margin:2px -6px 0;padding:0 6px;border-top:1px solid var(--rule)}
+.stage[data-step=phone] .a2 .tabs .ver-top,.stage[data-step=phone] .a2 .tablist .tab .srv,.stage[data-step=phone] .a2 .keys-btn{display:none}
+.stage[data-step=phone] .a2 .side-btn{display:block;background:none;border:0;color:var(--muted);font-size:18px;min-width:44px;cursor:pointer}
+.stage[data-step=phone] .a2 .v-session{grid-template-columns:minmax(0,1fr);position:relative}
+.stage[data-step=phone] .a2 .side{position:absolute;top:0;right:0;bottom:0;width:min(330px,88%);z-index:3;box-shadow:-8px 0 24px rgba(0,0,0,.5);transform:none;display:block}
+.stage[data-step=phone] .a2 .v-session::after{content:"";position:absolute;inset:0;z-index:2;background:rgba(0,0,0,.5)}
+.stage[data-step=phone] .a2 .tr{padding:12px 12px 6px}
+.stage[data-step=phone] .a2 .tr:before{left:22px}
+.stage[data-step=phone] .a2 .replies{flex-direction:column;align-items:stretch}
+.stage[data-step=phone] .a2 .replies .lbl{display:none}
+.stage[data-step=phone] .a2 .rp{min-height:44px;padding:10px 14px;font-size:14.5px}
+.stage[data-step=phone] .a2 .composer .acts .send,.stage[data-step=phone] .a2 .mic{min-width:44px;min-height:44px}
+.stage .a2 .side-btn{display:none}
+
+/* plain sections */
+.plain{width:var(--col);margin:150px auto 0;max-width:var(--col)}
+.plain>p{margin-top:22px}
+.code{margin:28px 0 22px;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:18px 22px;font-family:var(--mono);font-size:13.5px;line-height:1.65;color:var(--ink);overflow:auto;max-width:72ch}
+.code .k{color:var(--accent)}
+.tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:22px 40px;margin:36px 0 0}
+.tools div{display:grid;gap:4px}
+.tools dt{font-family:var(--mono);font-size:14px;color:var(--strong)}
+.tools dd{margin:0;font-size:15.5px;color:var(--muted);line-height:1.5}
+.themes{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:22px;margin-top:30px}
+.frame.small{box-shadow:none;background:none;border:0;border-radius:0;overflow:visible}
+.frame.small .a2{height:200px;border:1px solid var(--rule);border-radius:8px;overflow:hidden;display:grid;grid-template-rows:auto 1fr}
+.frame.small .a2 .tr{padding:12px 14px}
+.frame.small .a2 .row.prose{grid-template-columns:var(--row-cols)}
+.frame.small .cap{margin:10px 0 0;font-family:var(--mono);font-size:13px;color:var(--muted)}
+[data-theme=logbook] .a2{color-scheme:light}
+
+/* footer */
+footer{width:var(--col);margin:150px auto 0;padding:34px 0 60px;border-top:1px solid var(--rule);font-size:15px;color:var(--muted)}
+footer .cols{display:grid;grid-template-columns:2fr 1fr 1fr;gap:40px}
+footer .mark{font-size:16px;display:inline-block;margin-bottom:10px}
+footer p{color:var(--muted);max-width:48ch}
+footer ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+footer a{color:var(--muted)}
+footer a:hover{color:var(--strong)}
+
+/* narrow pages: the steps and the stage stack, the stage pinned under the top */
+@media (max-width:980px){
+  .scroll{grid-template-columns:1fr;gap:0}
+  .stage-col{order:-1;top:0;z-index:5;padding:8px 0;background:linear-gradient(var(--bg) 85%,transparent)}
+  .stage-col .stage{zoom:.7;height:min(420px,52vh)}
+  .step{padding:12vh 0 0;min-height:52vh}
+  .step:first-of-type{padding-top:6vh}
+  .step h3::before{display:none}
+  .hero-frame .a2{height:520px;zoom:.7}
+  footer .cols{grid-template-columns:1fr 1fr}
+  footer .cols>div{grid-column:1/-1}
+}
+@media (max-width:620px){
+  :root{--col:calc(100vw - 32px)}
+  body{font-size:16.5px}
+  .top{gap:16px;flex-wrap:wrap}
+  .top a:not(.mark){font-size:12.5px}
+  .hero{padding-top:56px}
+  .hero-frame .a2{zoom:.5;height:560px}
+  .stage-col .stage{zoom:.55;height:min(400px,50vh)}
+}
+@media (prefers-reduced-motion:reduce){
+  .stage .a2,.stage .band,.stage .order,.stage .cards,.stage .col,.stage .side,.stage .composer,.stage .tr,.step p,.step h3::before{transition:none}
+  .a2 .ic.work{animation:none}
+}

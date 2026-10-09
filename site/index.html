@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aegis: a workplace for coding agents</title>
+<meta name="description" content="aegis serve runs Claude Code and OpenCode sessions on your machine and serves them to browser tabs. Agents in it get monitors, queues of workers and handoffs over MCP.">
+<meta property="og:title" content="aegis: a workplace for coding agents">
+<meta property="og:description" content="Sessions in tabs, a Fleet that says who needs you, and tools for the agents themselves. uv tool install aegis-harness.">
+<meta property="og:image" content="https://apiad.github.io/aegis/aegis-512.png">
+<meta name="theme-color" content="#0b0a09">
+<link rel="icon" href="aegis-192.png">
+<link rel="stylesheet" href="client.css">
+<link rel="stylesheet" href="site.css">
+</head>
+<body data-theme="ink">
+<svg id="glyphs" width="0" height="0" aria-hidden="true" style="position:absolute">
+<defs>
+<symbol id="g-need" viewBox="0 0 16 16"><rect x="1" y="1" width="14" height="14" rx="4" fill="currentColor"/><path d="M6.2 5.9a1.8 1.8 0 1 1 2.5 1.65c-.5.2-.7.55-.7 1.05" style="stroke:var(--knock)" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="11.1" r="1" style="fill:var(--knock)"/></symbol>
+<symbol id="g-err" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" style="stroke:var(--knock)" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="g-rev" viewBox="0 0 16 16"><rect x="1" y="1" width="14" height="14" rx="4" fill="currentColor"/><path d="M3.4 8s1.8-3 4.6-3 4.6 3 4.6 3-1.8 3-4.6 3S3.4 8 3.4 8z" style="fill:var(--knock)"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/></symbol>
+<symbol id="g-wait" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor" opacity=".28"/><path d="M8 4.4V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="g-done" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M5 8.3l2 2 4-4.3" style="stroke:var(--knock)" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="g-unread" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3.2" fill="currentColor"/></symbol>
+<symbol id="g-read" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 8.4l2.9 2.9 5.9-6.4"/></symbol>
+<symbol id="g-work" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="8" cy="8" r="5.4" opacity=".25"/><path d="M8 2.6a5.4 5.4 0 0 1 5.4 5.4"/></symbol>
+<symbol id="g-sparkle" viewBox="0 0 16 16" fill="currentColor"><path d="M7 1.8l1.2 3.4 3.4 1.2-3.4 1.2L7 11 5.8 7.6 2.4 6.4l3.4-1.2z"/><path d="M12.2 9.6l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6z"/></symbol>
+</defs>
+</svg>
+
+<nav class="top">
+  <a class="mark" href="#">aegis</a>
+  <a href="#install">Install</a>
+  <a href="#features">What you get</a>
+  <a href="#configure">Configure</a>
+  <a href="#tools">Tools</a>
+  <a href="https://github.com/apiad/aegis">GitHub</a>
+  <a href="https://pypi.org/project/aegis-harness/">PyPI</a>
+</nav>
+
+<header class="hero" id="install">
+  <h1>A workplace for coding agents.</h1>
+  <p class="lede"><code>aegis serve</code> runs Claude Code and OpenCode sessions on your machine and serves them to browser tabs: a Fleet view, shared tabs, a transcript per session, and an archive. The agents in it get monitors, queues of workers and handoffs over MCP, and an inbox that delivers what those produce.</p>
+  <div class="install">
+    <pre><code>uv tool install aegis-harness
+cd ~/your/project
+aegis</code></pre>
+    <p class="note">The last line serves and opens a browser window. <span id="ver">Version 2.3.0</span> on PyPI, MIT licence, Python 3.13 or newer.</p>
+  </div>
+
+  <div class="frame hero-frame" aria-label="The Fleet view of aegis">
+    <div class="a2" data-view="fleet">
+      <header class="tabs">
+        <div class="tab home on">Fleet</div>
+        <div class="tablist">
+          <div class="tab"><svg class="ic need"><use href="#g-need"/></svg><span class="tname">Flaky CI: the websocket test…</span><span class="srv">keen-noether</span></div>
+          <div class="tab"><svg class="ic err"><use href="#g-err"/></svg><span class="tname">Release 2.4.0</span><span class="srv">amber-hopper</span></div>
+          <div class="tab"><svg class="ic work"><use href="#g-work"/></svg><span class="tname">Port the parser…</span><span class="srv">calm-dijkstra</span></div>
+          <div class="tab stopped"><span class="dot ready"></span><span class="tname">Docs: configuration</span><span class="srv">plain-curie</span></div>
+        </div>
+        <div class="tab add">+</div>
+        <div class="gap"></div>
+        <div class="servers"><span class="dot ready"></span><span>studio</span><span class="ver-top">2.3.0</span></div>
+        <button class="keys-btn" type="button">Settings</button>
+        <button class="keys-btn" type="button">?</button>
+        <label class="theme-pick">Theme <select><option>Ink</option></select></label>
+      </header>
+      <main class="view v-fleet">
+        <section class="band">
+          <div><h5>studio</h5><div class="counts">
+            <div><svg class="ic need"><use href="#g-need"/></svg><b>2</b> need you</div>
+            <div><svg class="ic work"><use href="#g-work"/></svg><b>2</b> working</div>
+            <div><svg class="ic wait"><use href="#g-wait"/></svg><b>1</b> waiting</div>
+            <div><svg class="ic done"><use href="#g-done"/></svg><b>1</b> done</div>
+          </div></div>
+          <div><h5>Host</h5>
+            <div class="gauge"><span>CPU</span><div class="bar h"><i style="width:38%"></i></div><span class="val"><b>38%</b></span></div>
+            <div class="gauge"><span>RAM</span><div class="bar h"><i style="width:41%"></i></div><span class="val"><b>41%</b><span class="rst">12.9 / 31.3 GB</span></span></div>
+            <div class="gauge"><span>Disk</span><div class="bar h"><i style="width:62%"></i></div><span class="val"><b>62%</b><span class="rst">88 / 142 GB</span></span></div>
+            <div class="gauge"><span>Context</span><div class="bar h"><i style="width:31%"></i></div><span class="val"><b>31%</b><span class="rst">avg of 4 live</span></span></div>
+          </div>
+          <div class="q"><h5><span>Quota</span><span class="age">read 40s ago</span></h5>
+            <div class="prov">Claude</div>
+            <div class="gauge"><span>5 hours</span><div class="bar q"><i style="width:22%"></i><span class="tick" style="left:34%"></span></div><span class="val"><b>22%</b><span class="proj">→ 64%</span><span class="rst">↻ 3h 10m</span></span></div>
+            <div class="gauge"><span>week</span><div class="bar q"><i style="width:61%"></i><span class="tick" style="left:70%"></span></div><span class="val"><b>61%</b><span class="rst">↻ 2d 4h</span></span></div>
+            <div class="prov">OpenCode Go</div>
+            <div class="gauge"><span>month</span><div class="bar q"><i style="width:45%"></i><span class="tick" style="left:52%"></span></div><span class="val"><b>45%</b><span class="proj">→ 87%</span><span class="rst">↻ 16d 9h</span></span></div>
+          </div>
+        </section>
+        <div class="order"><h3>Sessions</h3><div class="seg"><button class="on" type="button">Needs you first</button><button type="button">Tab order</button></div></div>
+        <section class="cards">
+          <div class="grp-h">Needs you</div>
+          <div class="card running at-needs_you">
+            <div class="hd"><svg class="ic need"><use href="#g-need"/></svg><span class="h">keen-noether</span><span class="s at-needs_you">needs you</span></div>
+            <div class="ttl">Flaky CI: the websocket test that waits forever</div>
+            <div class="ask at-needs_you">Two fixes pass locally. Cap the wait at 25 s, or mock the socket? I lean to the cap.</div>
+            <div class="ln"><b>reviewer</b>claude-opus-5-5 · acme/api</div>
+            <div class="pl"><div class="now"><span class="k">now</span><span>Ask Alex which fix to land</span></div><div><span class="k">did</span><span>Run the test 20 times and read the hung runs</span></div></div>
+            <div class="bar thin"><i style="width:23%"></i></div>
+            <div class="ft"><span class="when">2m ago</span><span>$4.12</span><span class="mons">1 monitor</span><span class="prog">plan 2/5</span><span class="ctx">23%</span></div>
+          </div>
+          <div class="card running at-error">
+            <div class="hd"><svg class="ic err"><use href="#g-err"/></svg><span class="h">amber-hopper</span><span class="s at-error">error</span></div>
+            <div class="ttl">Release 2.4.0: build, tag, publish</div>
+            <div class="ask at-error">uv.lock is out of date; the publish gate refused the tag.</div>
+            <div class="ln"><b>opus</b>claude-opus-5-5 · acme/api</div>
+            <div class="bar thin"><i style="width:18%"></i></div>
+            <div class="ft"><span class="when">6m ago</span><span>$1.80</span><span class="ctx">18%</span></div>
+          </div>
+          <div class="grp-h">Everything else</div>
+          <div class="card running at-working">
+            <div class="hd"><svg class="ic work"><use href="#g-work"/></svg><span class="h">calm-dijkstra</span><span class="s at-working">working</span></div>
+            <div class="ttl">Port the parser to the new tokenizer</div>
+            <div class="ln"><b>opus</b>claude-opus-5-5 · acme/api</div>
+            <div class="act">Bash · Run the parser suite against the fixtures</div>
+            <div class="bar thin"><i style="width:40%"></i></div>
+            <div class="ft"><span class="when">just now</span><span>$8.52</span><span class="unr">2 unread</span><span class="ctx">40%</span></div>
+          </div>
+          <div class="card running at-working">
+            <div class="hd"><svg class="ic work"><use href="#g-work"/></svg><span class="h">quiet-lovelace</span><span class="badge">worker · general</span><span class="s at-working">working</span></div>
+            <div class="ttl">Write the migration for the audit table</div>
+            <div class="ln"><b>opus</b>claude-opus-5-5 · acme/api</div>
+            <div class="act">Edit · migrations/0042_audit.py</div>
+            <div class="bar thin"><i style="width:12%"></i></div>
+            <div class="ft"><span class="when">30s ago</span><span>$0.94</span><span class="ctx">12%</span></div>
+          </div>
+          <div class="card running at-waiting">
+            <div class="hd"><svg class="ic wait"><use href="#g-wait"/></svg><span class="h">brisk-turing</span><span class="s at-waiting">waiting · 1 monitor</span></div>
+            <div class="ttl">Benchmark the cold start on the staging box</div>
+            <div class="ln"><b>opus</b>claude-opus-5-5 · acme/infra</div>
+            <div class="bar thin"><i style="width:55%"></i></div>
+            <div class="ft"><span class="when">14m ago</span><span>$3.07</span><span class="mons">1 monitor</span><span class="ctx">55%</span></div>
+          </div>
+          <div class="card stopped at-done">
+            <div class="hd"><svg class="ic done"><use href="#g-done"/></svg><span class="h">plain-curie</span><span class="s at-done">done</span></div>
+            <div class="ttl">Docs: the configuration page</div>
+            <div class="ln"><b>opus</b>claude-opus-5-5 · acme/docs</div>
+            <div class="bar thin"><i style="width:67%"></i></div>
+            <div class="ft"><span class="when">1h 12m ago</span><span>$5.31</span><span class="unr">3 unread</span><span class="ctx">67%</span></div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+</header>
+
+<section class="scroll" id="features">
+  <div class="steps">
+    <h2>What you get</h2>
+    <p class="intro">Scroll. The window on the right follows the feature you are reading.</p>
+
+    <article class="step" data-step="fleet">
+      <h3>A Fleet that says who needs you</h3>
+      <p>Each tab and Fleet card carries one of six marks: working, needs you, error, review, waiting or done. The Fleet orders cards by that mark and puts the ones that block on you first, oldest wait on top. Alt+J goes to the session that has waited longest.</p>
+      <p>aegis knows what you have read on every browser. The page title counts the sessions that need you, and a review you already read drops out of the group.</p>
+    </article>
+
+    <article class="step" data-step="transcript">
+      <h3>A transcript that reads well</h3>
+      <p>A tool row closes on a one-line verdict, a failure in red. The output and the diff load when you open a row. Agent prose renders as Markdown in a reading face. A prompt sent mid-turn shows as pending until the agent reads it, and Esc interrupts.</p>
+    </article>
+
+    <article class="step" data-step="sidebar">
+      <h3>The plan, the monitors, the cost</h3>
+      <p>The sidebar carries what the agent reported: its plan with the item it is on, its monitors with their progress and ETA, the context window as a bar, the cost so far, and your Claude quota windows. Hovering a monitor opens its readings chart and each of its checks with the last exit code, so a check that cannot run shows red instead of looking like one still waiting.</p>
+    </article>
+
+    <article class="step" data-step="replies">
+      <h3>One tap to answer</h3>
+      <p>An agent ends each turn by saying how it ended and may offer up to three replies, which you send with one tap. <code>/model</code>, <code>/effort</code> and <code>/permission</code> switch a running session; <code>/</code> opens a menu that completes them, and an unknown command is refused rather than sent as a prompt. Alt+M dictates into the box, transcribed in the browser.</p>
+    </article>
+
+    <article class="step" data-step="tools">
+      <h3>Tools for the agents themselves</h3>
+      <p>Over MCP an agent starts a monitor with a bash <code>done</code> condition and is woken when it holds, hands a self-contained task to a fresh worker on a queue, reads a peer's transcript or hands it an instruction, and gives you a file that shows as a card with a preview. What those produce comes back as an inbox entry in the transcript.</p>
+    </article>
+
+    <article class="step" data-step="phone">
+      <h3>On a phone</h3>
+      <p>Below 760 px the tabs get their own row, the side panel becomes a drawer, and touch targets are 44 px. Chrome installs aegis from its menu as an app named after the server. A return to one of the last eight tabs, or a reconnect after the phone slept, sends only what changed.</p>
+    </article>
+
+    <article class="step" data-step="gauges">
+      <h3>The gauges</h3>
+      <p>The Fleet band carries the session counts, the host's CPU, RAM and disk, the average context of the live sessions, and your Claude and OpenCode Go quota windows: the share already spent, where the window is heading at this pace, and when it resets.</p>
+    </article>
+  </div>
+
+  <div class="stage-col">
+    <div class="frame stage" id="stage" data-step="fleet" aria-label="The aegis window, changing with the feature you read">
+      <div class="a2" data-view="fleet">
+        <header class="tabs">
+          <div class="tab home">Fleet</div>
+          <div class="tablist">
+            <div class="tab on"><svg class="ic need"><use href="#g-need"/></svg><span class="tname">Flaky CI: the websocket…</span><span class="srv">keen-noether</span></div>
+            <div class="tab"><svg class="ic work"><use href="#g-work"/></svg><span class="tname">Port the parser…</span><span class="srv">calm-dijkstra</span></div>
+            <div class="tab"><svg class="ic wait"><use href="#g-wait"/></svg><span class="tname">Benchmark the cold start</span><span class="srv">brisk-turing</span></div>
+          </div>
+          <div class="tab add">+</div>
+          <div class="gap"></div>
+          <div class="servers"><span class="dot ready"></span><span>studio</span><span class="ver-top">2.3.0</span></div>
+          <button class="keys-btn" type="button">Settings</button>
+          <button class="keys-btn" type="button">?</button>
+          <button class="side-btn" type="button" aria-label="Session details">☰</button>
+        </header>
+
+        <main class="view v-fleet">
+          <section class="band">
+            <div><h5>studio</h5><div class="counts">
+              <div><svg class="ic need"><use href="#g-need"/></svg><b>1</b> need you</div>
+              <div><svg class="ic work"><use href="#g-work"/></svg><b>1</b> working</div>
+              <div><svg class="ic wait"><use href="#g-wait"/></svg><b>1</b> waiting</div>
+            </div></div>
+            <div><h5>Host</h5>
+              <div class="gauge"><span>CPU</span><div class="bar h"><i style="width:38%"></i></div><span class="val"><b>38%</b></span></div>
+              <div class="gauge"><span>RAM</span><div class="bar h"><i style="width:41%"></i></div><span class="val"><b>41%</b><span class="rst">12.9 / 31.3 GB</span></span></div>
+              <div class="gauge"><span>Disk</span><div class="bar h"><i style="width:62%"></i></div><span class="val"><b>62%</b><span class="rst">88 / 142 GB</span></span></div>
+            </div>
+            <div class="q"><h5><span>Quota</span><span class="age">read 40s ago</span></h5>
+              <div class="prov">Claude</div>
+              <div class="gauge"><span>5 hours</span><div class="bar q"><i style="width:22%"></i><span class="tick" style="left:34%"></span></div><span class="val"><b>22%</b><span class="proj">→ 64%</span><span class="rst">↻ 3h 10m</span></span></div>
+              <div class="gauge warning"><span>week</span><div class="bar q warning"><i style="width:81%"></i><span class="tick" style="left:70%"></span></div><span class="val"><b>81%</b><span class="proj">→ 100%</span><span class="rst">↻ 2d 4h</span></span></div>
+            </div>
+          </section>
+          <div class="order"><h3>Sessions</h3><div class="seg"><button class="on" type="button">Needs you first</button><button type="button">Tab order</button></div></div>
+          <section class="cards">
+            <div class="grp-h">Needs you</div>
+            <div class="card running at-needs_you">
+              <div class="hd"><svg class="ic need"><use href="#g-need"/></svg><span class="h">keen-noether</span><span class="s at-needs_you">needs you</span></div>
+              <div class="ttl">Flaky CI: the websocket test that waits forever</div>
+              <div class="ask at-needs_you">Two fixes pass locally. Cap the wait at 25 s, or mock the socket? I lean to the cap.</div>
+              <div class="ln"><b>reviewer</b>claude-opus-5-5 · acme/api</div>
+              <div class="pl"><div class="now"><span class="k">now</span><span>Ask which fix to land</span></div><div><span class="k">did</span><span>Run the test 20 times and read the hung runs</span></div></div>
+              <div class="bar thin"><i style="width:23%"></i></div>
+              <div class="ft"><span class="when">2m ago</span><span>$4.12</span><span class="mons">1 monitor</span><span class="prog">plan 2/5</span><span class="ctx">23%</span></div>
+            </div>
+            <div class="grp-h">Everything else</div>
+            <div class="card running at-working">
+              <div class="hd"><svg class="ic work"><use href="#g-work"/></svg><span class="h">calm-dijkstra</span><span class="s at-working">working</span></div>
+              <div class="ttl">Port the parser to the new tokenizer</div>
+              <div class="ln"><b>opus</b>claude-opus-5-5 · acme/api</div>
+              <div class="act">Bash · Run the parser suite against the fixtures</div>
+              <div class="bar thin"><i style="width:40%"></i></div>
+              <div class="ft"><span class="when">just now</span><span>$8.52</span><span class="unr">2 unread</span><span class="ctx">40%</span></div>
+            </div>
+            <div class="card running at-waiting">
+              <div class="hd"><svg class="ic wait"><use href="#g-wait"/></svg><span class="h">brisk-turing</span><span class="s at-waiting">waiting · 1 monitor</span></div>
+              <div class="ttl">Benchmark the cold start on the staging box</div>
+              <div class="ln"><b>opus</b>claude-opus-5-5 · acme/infra</div>
+              <div class="bar thin"><i style="width:55%"></i></div>
+              <div class="ft"><span class="when">14m ago</span><span>$3.07</span><span class="mons">1 monitor</span><span class="ctx">55%</span></div>
+            </div>
+          </section>
+        </main>
+
+        <main class="view v-session">
+          <section class="col">
+            <div class="tr">
+              <div id="entries">
+                <div class="row user ok" data-page="a"><span class="t">10:02</span><span class="g">❯</span><div class="body">The websocket test hangs CI for hours sometimes. Find out why and propose a fix.</div></div>
+                <div class="row tool ok" data-page="a"><span class="t">10:02</span><span class="g">⌬</span><div class="body"><details><summary class="line"><span class="tn">Bash</span><span class="ta">Run the websocket test 20 times</span><span class="tr2">20 runs, 3 hung</span></summary></details></div></div>
+                <div class="row tool ok" data-page="a"><span class="t">10:04</span><span class="g">📖</span><div class="body"><details><summary class="line"><span class="tn">Read</span><span class="ta">tests/test_ws.py</span><span class="tr2">212 lines</span></summary></details></div></div>
+                <div class="row prose ok" data-page="a"><span class="t">10:05</span><span class="g">⏺</span><div class="body"><div class="md"><p>The hang is a race. The test awaits <code>recv()</code> with no timeout, and when the server closes first that await never returns. Three of twenty runs hit it here, so CI hits it about once a day.</p></div></div><span class="rm"><svg class="ic read"><use href="#g-read"/></svg></span></div>
+                <div class="row tool err" data-page="a"><span class="t">10:05</span><span class="g">✎</span><div class="body"><details open><summary class="line"><span class="tn">Edit</span><span class="ta">tests/test_ws.py</span><span class="tr2">old_string not found</span></summary><div class="more"><pre class="out">String to replace not found in file.
+String:     msg = await ws.recv()</pre></div></details></div></div>
+                <div class="row tool ok" data-page="a"><span class="t">10:06</span><span class="g">✎</span><div class="body"><details open><summary class="line"><span class="tn">Edit</span><span class="ta">tests/test_ws.py</span><span class="tr2">1 line changed</span></summary><div class="more"><div class="diff"><div class="path">tests/test_ws.py</div><div class="del">-     msg = await ws.recv()</div><div class="add">+     msg = await asyncio.wait_for(ws.recv(), timeout=25)</div></div></div></details></div></div>
+                <div class="row tool ok" data-page="a"><span class="t">10:07</span><span class="g">⌬</span><div class="body"><details><summary class="line"><span class="tn">Bash</span><span class="ta">Run the suite</span><span class="tr2">142 passed in 31.2s</span></summary></details></div></div>
+                <div class="row prose ok" data-page="a"><span class="t">10:08</span><span class="g">⏺</span><div class="body"><div class="md"><p>Two fixes pass locally. Capping the wait at 25 s fails the run loudly instead of hanging it. Mocking the socket removes the race from the test but also the thing it tests. I lean to the cap.</p></div></div><span class="rm"><svg class="ic unread"><use href="#g-unread"/></svg></span></div>
+
+                <div class="row tool ok comms" data-page="b"><span class="t">11:20</span><span class="g comms">⇄</span><div class="body"><details open><summary class="line"><span class="tn">monitor_start</span><span class="ta">the full suite in CI, done when the run is no longer in progress</span><span class="tr2">mon_7c1e · every 60s · 25m</span></summary><div class="more"><pre class="args">done: gh run view 4821 --json status -q .status | grep -qv in_progress
+progress: gh run view 4821 --json jobs -q '[.jobs[]|select(.status=="completed")]|length*100/6'</pre></div></details></div></div>
+                <div class="row tool ok comms" data-page="b"><span class="t">11:20</span><span class="g comms">⇄</span><div class="body"><details><summary class="line"><span class="tn">queue_enqueue</span><span class="ta">general · Write the migration for the audit table</span><span class="tr2">task#12 · quiet-lovelace</span></summary></details></div></div>
+                <div class="row tool ok comms" data-page="b"><span class="t">11:21</span><span class="g comms">⇄</span><div class="body"><details><summary class="line"><span class="tn">peer_read</span><span class="ta">calm-dijkstra, last 8 entries</span><span class="tr2">8 lines</span></summary></details></div></div>
+                <div class="row inbox ok" data-page="b"><span class="t">11:34</span><span class="g">⇄</span><div class="body"><div class="from">from monitor:mon_7c1e · done · 14m</div><div class="md"><p>The run finished: 6 of 6 jobs completed, conclusion success.</p></div></div></div>
+                <div class="row inbox ok" data-page="b"><span class="t">11:41</span><span class="g">⇄</span><div class="body"><div class="from">from queue:general · task#12 · ok</div><div class="md"><p>Migration 0042 adds the audit table with its two indexes. The migration test passes forward and back. Committed on the branch as 3f9c2a1.</p></div></div></div>
+                <div class="row file ok" data-page="b"><span class="t">11:42</span><span class="g">▤</span><div class="body"><div class="cap">The timing of the 20 runs, hung ones in red.</div><div class="fcard"><div class="fbar"><span class="ic">▤</span><span class="fn">ws-runs.png</span><span class="fs">48 KB</span><span class="acts"><a class="btn primary open">↗ Open</a><a class="btn dl">↓ Download</a></span></div><div class="stage img"><svg viewBox="0 0 320 90" width="100%" height="96" aria-hidden="true"><g fill="var(--ok)"><rect x="8" y="50" width="10" height="30"/><rect x="23" y="44" width="10" height="36"/><rect x="38" y="52" width="10" height="28"/><rect x="53" y="47" width="10" height="33"/><rect x="83" y="49" width="10" height="31"/><rect x="98" y="43" width="10" height="37"/><rect x="113" y="51" width="10" height="29"/><rect x="128" y="46" width="10" height="34"/><rect x="143" y="50" width="10" height="30"/><rect x="173" y="48" width="10" height="32"/><rect x="188" y="45" width="10" height="35"/><rect x="203" y="52" width="10" height="28"/><rect x="233" y="49" width="10" height="31"/><rect x="248" y="44" width="10" height="36"/><rect x="263" y="47" width="10" height="33"/><rect x="278" y="50" width="10" height="30"/><rect x="293" y="46" width="10" height="34"/></g><g fill="var(--err)"><rect x="68" y="8" width="10" height="72"/><rect x="158" y="8" width="10" height="72"/><rect x="218" y="8" width="10" height="72"/></g><line x1="4" y1="80.5" x2="316" y2="80.5" stroke="var(--rule)"/></svg></div></div></div></div>
+              </div>
+            </div>
+            <div class="composer">
+              <div class="cmd-menu" id="cmd-menu">
+                <div class="cmd-row on"><span class="nm">/<b>mo</b>del</span><span class="hn">&lt;name&gt;</span><span class="dc">Switch this session's model</span><span class="src">aegis</span></div>
+                <div class="cmd-row"><span class="nm">/effort</span><span class="hn">low…max</span><span class="dc">Change reasoning effort</span><span class="src">aegis</span></div>
+                <div class="cmd-row"><span class="nm">/permission</span><span class="hn">read|write|auto|full</span><span class="dc">Change what the agent may do</span><span class="src">aegis</span></div>
+                <div class="cmd-row"><span class="nm">/rename</span><span class="hn">&lt;handle&gt;</span><span class="dc">Rename the session</span><span class="src">aegis</span></div>
+                <div class="cmd-row"><span class="nm">/review</span><span class="hn"></span><span class="dc">Review the current changes</span><span class="src">claude</span></div>
+              </div>
+              <div class="replies" id="replies"><span class="lbl">reply</span><button class="rp" type="button">cap it at 25 s</button><button class="rp" type="button">mock the socket</button><button class="rp" type="button">show me both diffs</button></div>
+              <div class="box">
+                <textarea rows="1" placeholder="Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts." aria-label="Message"></textarea>
+                <div class="acts"><button class="mic" type="button" data-state="idle" aria-label="Dictate"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" fill="none"/></svg></button><button class="send" type="button" aria-label="Send">↵</button></div>
+              </div>
+              <div class="chips"><span class="chip click">claude-opus-5-5</span><span class="chip click">high effort</span><span class="chip click">full</span></div>
+            </div>
+          </section>
+          <aside class="side">
+            <div class="sec"><h4>Session</h4>
+              <div class="title">Flaky CI: the websocket test that waits forever</div>
+              <div class="kv"><span class="handle">keen-noether</span><span class="st"><svg class="ic need"><use href="#g-need"/></svg> needs you</span></div>
+              <div class="kv"><span>Claude Code, claude-opus-5-5</span></div>
+              <div class="kv dim"><span class="path">/home/sam/acme/api</span></div>
+              <div class="askbox at-needs_you">Two fixes pass locally. Cap the wait at 25 s, or mock the socket? I lean to the cap.</div>
+            </div>
+            <div class="sec"><h4>Plan</h4><div class="plan">
+              <div class="done"><svg class="ic done"><use href="#g-done"/></svg><span>Run the test 20 times and read the hung runs</span></div>
+              <div class="done"><svg class="ic done"><use href="#g-done"/></svg><span>Find the race in test_ws.py</span></div>
+              <div class="doing"><svg class="ic work"><use href="#g-work"/></svg><span>Ask which fix to land</span></div>
+              <div><svg class="ic wait"><use href="#g-wait"/></svg><span>Land it in a worktree and open the PR</span></div>
+              <div><svg class="ic wait"><use href="#g-wait"/></svg><span>Watch CI with a monitor</span></div>
+            </div></div>
+            <div class="sec"><h4>Monitors</h4>
+              <div class="mon"><div class="kv"><span>the full suite in CI</span><span class="r">67% <span class="eta">· ~6m</span></span></div><div class="bar"><i style="width:67%"></i></div></div>
+            </div>
+            <div class="sec"><h4>Context</h4>
+              <div class="bar"><i style="width:23%"></i></div>
+              <div class="kv"><span>231k of 1000k</span><span>23%</span></div>
+              <div class="kv"><span>Cost</span><span>$4.12</span></div>
+            </div>
+            <div class="sec"><h4>Quota</h4>
+              <div class="qrow"><div class="kv"><span>Claude 5 hours</span><span class="sv">22% → 64%</span></div><div class="bar q"><i style="width:22%"></i><span class="tick" style="left:34%"></span></div><div class="kv dim"><span>resets in 3h 10m</span><span>13:18</span></div></div>
+              <div class="qrow warning"><div class="kv"><span>Claude week</span><span class="sv warning">81%</span></div><div class="bar q warning"><i style="width:81%"></i><span class="tick" style="left:70%"></span></div><div class="kv dim"><span>resets in 2d 4h</span><span>Mon 14:00</span></div></div>
+            </div>
+            <div class="sec acts live-only"><button class="btn" type="button">Stop</button><button class="btn" type="button">Restart</button><button class="btn" type="button">Close</button></div>
+          </aside>
+        </main>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="plain" id="configure">
+  <h2>One file configures it</h2>
+  <p>aegis reads <code>.aegis.yaml</code> at the root of your project. An agent is a preset of harness, model, effort and permission; a queue names the agent its workers run as and how many run at once. The new tab starts from a preset and can change any field for that session. <code>aegis init</code> writes a first file from the harnesses installed on the machine, <code>aegis doctor</code> names every problem by its place in the file, and the server follows the file as it changes.</p>
+  <pre class="code"><code><span class="k">default_agent</span>: opus
+<span class="k">agents</span>:
+  <span class="k">opus</span>: {harness: claude-code, model: opus, effort: high, permission: full}
+  <span class="k">reviewer</span>:
+    <span class="k">harness</span>: claude-code
+    <span class="k">model</span>: opus
+    <span class="k">effort</span>: max
+    <span class="k">permission</span>: read
+    <span class="k">priming</span>: |
+      You review changes for correctness and report findings by severity.
+  <span class="k">local</span>: {harness: opencode, model: ollama/qwen3:32b, effort: medium, permission: write}
+<span class="k">queues</span>:
+  <span class="k">general</span>: {agent: opus, max_parallel: 5}
+<span class="k">recap</span>: {agent: opus}</code></pre>
+  <p>Permission is <code>read</code> for plan mode, <code>write</code> to accept edits, <code>auto</code>, or <code>full</code> to bypass permissions. The optional <code>recap</code> names the agent that writes a two-sentence recap when you come back to a tab after a while.</p>
+</section>
+
+<section class="plain" id="tools">
+  <h2>What an agent can call</h2>
+  <p>Every session's harness connects to <code>/mcp</code> with its own token, so no tool asks who is calling. The tools are named <code>mcp__aegis__&lt;verb&gt;</code>.</p>
+  <dl class="tools">
+    <div><dt>monitor_start</dt><dd>Watch a long process without polling: bash conditions run on an interval and the session is woken when one holds, fails or times out.</dd></div>
+    <div><dt>monitor_cancel</dt><dd>Stop one of your monitors. No wake is sent.</dd></div>
+    <div><dt>monitor_list</dt><dd>Your live monitors.</dd></div>
+    <div><dt>queue_enqueue</dt><dd>Hand a self-contained task to a fresh worker on a queue. Returns at once; the result arrives in your inbox when the worker finishes.</dd></div>
+    <div><dt>task_status</dt><dd>A task's status, its worker, and its result once finished.</dd></div>
+    <div><dt>task_cancel</dt><dd>Cancel a task you enqueued: drop it if pending, stop and archive its worker if running.</dd></div>
+    <div><dt>task_resume</dt><dd>Put a failed or cancelled task's worker back to work, with its conversation intact.</dd></div>
+    <div><dt>peer_handoff</dt><dd>Give another session context or an instruction; it arrives as a user turn.</dd></div>
+    <div><dt>peer_read</dt><dd>The last entries of another session's transcript, one line each.</dd></div>
+    <div><dt>session_list</dt><dd>The open sessions on this server.</dd></div>
+    <div><dt>session_spawn</dt><dd>Start a session from an agent preset, overriding any of its fields.</dd></div>
+    <div><dt>session_rename</dt><dd>Rename your session: a handle and a title.</dd></div>
+    <div><dt>plan_update</dt><dd>Keep your plan where the person can see it: on your tab's card and in its sidebar.</dd></div>
+    <div><dt>turn_end</dt><dd>Say how the turn ended and offer up to three replies. It sets the mark on your tab and the line on your card.</dd></div>
+    <div><dt>file_send</dt><dd>Hand a file to the person: a card in the transcript with a preview, Open and Download.</dd></div>
+    <div><dt>agents_list</dt><dd>The agents you can spawn, each a preset of harness, model, effort and permission.</dd></div>
+    <div><dt>config_doctor</dt><dd>Check .aegis.yaml, the harnesses it names and the state directory.</dd></div>
+    <div><dt>quota_read</dt><dd>How much of each subscription window is left, per provider.</dd></div>
+    <div><dt>meta</dt><dd>How aegis works for you, and its tools.</dd></div>
+  </dl>
+</section>
+
+<section class="plain" id="themes">
+  <h2>Three themes</h2>
+  <p>Ink is the warm dark palette of the terminal app aegis used to be. Logbook is a daylight lab notebook with times in the margin. Syalia is the house design system, with tool calls as chips.</p>
+  <div class="themes">
+    <div class="frame small" data-theme="ink"><div class="a2 swatch">
+      <header class="tabs"><div class="tab home">Fleet</div><div class="tablist"><div class="tab on"><svg class="ic need"><use href="#g-need"/></svg><span class="tname">Flaky CI</span></div></div><div class="gap"></div></header>
+      <div class="tr"><div class="row user ok"><span class="t">10:02</span><span class="g">❯</span><div class="body">Find out why and propose a fix.</div></div><div class="row tool ok"><span class="t">10:02</span><span class="g">⌬</span><div class="body"><div class="line"><span class="tn">Bash</span><span class="ta">Run the test 20 times</span><span class="tr2">3 hung</span></div></div></div><div class="row prose ok"><span class="t">10:05</span><span class="g">⏺</span><div class="body"><div class="md"><p>The hang is a race in <code>recv()</code>.</p></div></div></div></div>
+    </div><p class="cap">Ink</p></div>
+    <div class="frame small" data-theme="logbook"><div class="a2 swatch">
+      <header class="tabs"><div class="tab home">Fleet</div><div class="tablist"><div class="tab on"><svg class="ic need"><use href="#g-need"/></svg><span class="tname">Flaky CI</span></div></div><div class="gap"></div></header>
+      <div class="tr"><div class="row user ok"><span class="t">10:02</span><span class="g">❯</span><div class="body">Find out why and propose a fix.</div></div><div class="row tool ok"><span class="t">10:02</span><span class="g">⌬</span><div class="body"><div class="line"><span class="tn">Bash</span><span class="ta">Run the test 20 times</span><span class="tr2">3 hung</span></div></div></div><div class="row prose ok"><span class="t">10:05</span><span class="g">⏺</span><div class="body"><div class="md"><p>The hang is a race in <code>recv()</code>.</p></div></div></div></div>
+    </div><p class="cap">Logbook</p></div>
+    <div class="frame small" data-theme="syalia"><div class="a2 swatch">
+      <header class="tabs"><div class="tab home">Fleet</div><div class="tablist"><div class="tab on"><svg class="ic need"><use href="#g-need"/></svg><span class="tname">Flaky CI</span></div></div><div class="gap"></div></header>
+      <div class="tr"><div class="row user ok"><span class="t">10:02</span><span class="g">❯</span><div class="body">Find out why and propose a fix.</div></div><div class="row tool ok"><span class="t">10:02</span><span class="g">⌬</span><div class="body"><div class="line"><span class="tn">Bash</span><span class="ta">Run the test 20 times</span><span class="tr2">3 hung</span></div></div></div><div class="row prose ok"><span class="t">10:05</span><span class="g">⏺</span><div class="body"><div class="md"><p>The hang is a race in <code>recv()</code>.</p></div></div></div></div>
+    </div><p class="cap">Syalia</p></div>
+  </div>
+</section>
+
+<section class="plain" id="serve">
+  <h2>Where it runs</h2>
+  <p><code>aegis serve</code> listens on loopback at port 8742 and prints a URL with a token. Opening it once signs that browser in: the token moves into an HttpOnly cookie that lasts a year. <code>aegis serve -d</code> detaches and outlives the terminal or the SSH connection. Behind a reverse proxy, <code>--origin https://dev.example</code> names the public origin, and the proxy terminates TLS. Agents reach <code>/mcp</code> on loopback, so do not proxy it. A restart brings sessions back stopped, and the next prompt resumes each one.</p>
+</section>
+
+<footer>
+  <div class="cols">
+    <div><a class="mark" href="#">aegis</a><p>MIT licence. Published on PyPI as <code>aegis-harness</code>. Until 2.0 aegis was a terminal app; <code>pip install "aegis-harness&lt;2"</code> gets the last release of it.</p></div>
+    <ul>
+      <li><a href="https://github.com/apiad/aegis">Source on GitHub</a></li>
+      <li><a href="https://github.com/apiad/aegis/blob/main/CHANGELOG.md">Changelog</a></li>
+      <li><a href="https://github.com/apiad/aegis/issues">Issues</a></li>
+      <li><a href="https://pypi.org/project/aegis-harness/">PyPI</a></li>
+    </ul>
+    <ul>
+      <li><a href="https://github.com/apiad/aegis/blob/main/README.md">README</a></li>
+      <li><a href="https://github.com/apiad/aegis/blob/main/DESIGN.md">Design</a></li>
+      <li><a href="https://github.com/apiad/aegis/tree/main/docs/superpowers/specs">Specs</a></li>
+      <li><a href="https://github.com/apiad">Alejandro Piad</a></li>
+    </ul>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>
