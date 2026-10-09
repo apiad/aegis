@@ -226,18 +226,21 @@ async def test_the_link_reconnects_and_says_so(pair):
         r = await b.call("agents.list", server="beta")
         assert r["error"]["code"] == "server_offline"
         await beta.start()
+
+        def states() -> list[str]:
+            return [
+                op["set"][0]["state"]
+                for f in b.of("links")
+                if f["t"] == "patch"
+                for op in f["ops"]
+            ]
+
+        # What the browser was told, not alpha's own state: the patch reaches the
+        # socket a moment after the link is up.
         await until(
-            lambda: alpha.app.links.get("beta").state == "linked",
-            timeout=15,
-            what="linked again",
+            lambda: states()[-1:] == ["linked"], timeout=15, what="linked again"
         )
-        states = [
-            op["set"][0]["state"]
-            for f in b.of("links")
-            if f["t"] == "patch"
-            for op in f["ops"]
-        ]
-        assert "offline" in states and states[-1] == "linked"
+        assert "offline" in states()
 
 
 async def test_a_wrong_token_stops_retrying(tmp_path, fake_claude):
