@@ -8,7 +8,6 @@
 @font-face{font-family:'SS4';font-weight:400;font-style:italic;src:url('fonts/serif-400i.woff2') format('woff2')}
 @font-face{font-family:'SS4';font-weight:600;src:url('fonts/serif-600.woff2') format('woff2')}
 @font-face{font-family:'SpaceG';font-weight:300 700;src:url('fonts/spacegrotesk.woff2') format('woff2')}
-
 /* Base styles. They read only the variables a theme sets (themes/*.css), so a
    new theme is a copy of one variable block plus a few overrides. */
 *{box-sizing:border-box}
@@ -61,7 +60,20 @@ body{background:#000}
 .a2 .dialog .q{margin:0 0 16px;color:var(--strong);font-size:14px;line-height:1.45}
 .a2 .dialog .acts{display:flex;gap:10px;justify-content:flex-end}
 .a2 .theme-pick{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--faint);padding:0 4px 6px}
-.a2 .theme-pick select{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:2px 6px;font-size:11.5px}
+.a2 .theme-pick pick-chip{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:2px 6px;font-size:11.5px;color:var(--ink)}
+/* pick-chip: the chip is the host; the input inside sizes to its text and the
+   list hangs under it (js/pick.js). */
+.a2 pick-chip{position:relative;display:inline-flex;align-items:center;cursor:pointer}
+.a2 pick-chip:focus-within{border-color:var(--accent)}
+.a2 pick-chip input{field-sizing:content;min-width:3ch;max-width:30ch;background:none;border:none;outline:none;padding:0 14px 0 0;color:inherit;font:inherit;cursor:inherit}
+.a2 pick-chip:after{content:"";position:absolute;right:7px;top:50%;width:5px;height:5px;border:solid currentColor;border-width:0 1px 1px 0;transform:translateY(-70%) rotate(45deg);opacity:.55;pointer-events:none}
+.a2 pick-chip .menu{position:absolute;left:-1px;top:calc(100% + 4px);min-width:calc(100% + 2px);max-height:240px;overflow:auto;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:4px;z-index:6;box-shadow:0 6px 18px rgba(0,0,0,.25);font-family:var(--font-chrome);font-size:12px;color:var(--strong);cursor:default}
+.a2 pick-chip .menu[hidden]{display:none}
+.a2 pick-chip .opt{padding:4px 8px;border-radius:4px;white-space:nowrap;cursor:pointer}
+.a2 pick-chip .opt.on{background:var(--accent-soft)}
+.a2 pick-chip .opt b{color:var(--accent);font-weight:600}
+.a2 pick-chip .opt.free{color:var(--muted);font-style:italic}
+.a2 pick-chip .opt[aria-disabled=true]{color:var(--faint);cursor:default}
 .a2 .dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none}
 .a2 .dot.ready{background:var(--ok)}.a2 .dot.err{background:var(--err)}.a2 .dot.ghost{background:var(--faint)}
 
@@ -69,7 +81,7 @@ body{background:#000}
 .a2 .view{display:none;min-height:0}
 .a2[data-view=boot] .v-boot{display:grid;place-items:center}
 .a2[data-view=spawn] .v-spawn{display:grid;place-items:center;overflow:auto;padding:48px 20px}
-.a2[data-view=session] .v-session{display:grid;grid-template-columns:1fr 260px}
+.a2[data-view=session] .v-session{display:grid;grid-template-columns:minmax(0,1fr) var(--side-w,260px);position:relative}
 .a2[data-view=fleet] .v-fleet{display:block;overflow:auto}
 .a2[data-mode=read] .composer,.a2[data-mode=read] .side .live-only{display:none}
 .a2:not([data-mode=read]) .read-only{display:none}
@@ -88,13 +100,16 @@ body{background:#000}
 .a2 .spawn .box{width:100%;display:grid;gap:10px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:12px 14px}
 .a2 .spawn .box:focus-within{border-color:var(--accent)}
 .a2 .spawn textarea{width:100%;resize:none;background:none;border:none;outline:none;color:var(--strong);font-family:var(--font-ui);font-size:14px;line-height:1.45;max-height:40vh}
-.a2 .spawn .picks{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.a2 .spawn .pick{field-sizing:content;max-width:30ch;background:var(--bg);border:1px solid var(--rule);border-radius:5px;padding:3px 8px;font-family:var(--font-chrome);font-size:11.5px;color:var(--ink);cursor:pointer}
-.a2 .spawn input.pick{min-width:8ch;cursor:text}
+/* The chips wrap on the left; the actions keep the bottom-right corner however
+   long a model id gets (#207). */
+.a2 .spawn .picks{display:flex;gap:6px;align-items:flex-end}
+.a2 .spawn .chips{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.a2 .spawn .acts{flex:none;display:flex;gap:6px;align-items:center}
+.a2 .spawn .pick{max-width:30ch;background:var(--bg);border:1px solid var(--rule);border-radius:5px;padding:3px 8px;font-family:var(--font-chrome);font-size:11.5px;color:var(--ink);cursor:pointer}
 .a2 .spawn .pick.agent{border-color:var(--accent);color:var(--accent)}
 .a2 .spawn .pick.diff{color:var(--accent)}
 .a2 .spawn .reset{background:none;border:none;padding:0;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer}
-.a2 .spawn .send{margin-left:auto;background:var(--accent);color:var(--on-accent);border:none;border-radius:6px;padding:4px 12px;font-weight:600;cursor:pointer}
+.a2 .spawn .send{background:var(--accent);color:var(--on-accent);border:none;border-radius:6px;padding:4px 12px;font-weight:600;cursor:pointer}
 .a2 .spawn .err-text{margin:0}
 .a2 .spawn .err-text:empty{display:none}
 .a2 .pa{display:flex;gap:10px;justify-content:flex-end;align-items:center}
@@ -163,6 +178,16 @@ body{background:#000}
 .a2 .row.think summary{cursor:pointer}
 .a2 .row.think .md{font-family:var(--font-prose);font-size:14px;color:var(--muted);margin-top:4px}
 .a2 .row.sys{color:var(--faint);font-size:11.5px}
+/* the prose view: a run of work as one line, on the run's first row (js/transcript.js) */
+.a2 #entries.prose-view .row[data-fold=in]:not(.run-open){display:none}
+.a2 #entries.prose-view .row[data-fold=head]:not(.run-open)>:not(.runline){display:none}
+.a2 .runline{grid-column:1/-1;display:grid;grid-template-columns:var(--row-cols);column-gap:10px;width:100%;padding:0;border:none;background:none;text-align:left;cursor:pointer;font:inherit;font-style:normal;font-family:var(--font-mono);font-size:12px;color:var(--faint)}
+.a2 .row.run-open>.runline{margin-bottom:6px}
+.a2 .runline .rs{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a2 .runline:hover .rs{color:var(--muted)}
+.a2 .runline.running .rs{color:var(--accent)}
+.a2 .nav .fold[data-level="1"]{color:var(--accent)}
+.a2 .nav .fold[data-level="2"]{color:var(--accent);background:var(--accent-soft)}
 .a2 .row.working,.a2 .row.working .g{color:var(--accent)}
 .a2 .meta{color:var(--faint);margin-left:10px}
 .a2 .steps{color:var(--faint);margin-left:8px}
@@ -219,11 +244,72 @@ body{background:#000}
 .a2 .send,.a2 .btn.primary{background:var(--accent);color:var(--on-accent);border-color:transparent;font-weight:500}
 .a2 .send:disabled,.a2 .btn:disabled{opacity:.45;cursor:default}
 
-/* sidebar */
-.a2 .side{padding:16px;overflow:auto;background:var(--side);border-left:1px solid var(--rule)}
-.a2 .side .sec{margin-bottom:18px}
-.a2 .side h4{margin:0 0 8px;font-weight:500;font-size:12px;color:var(--faint);font-family:var(--font-head)}
-.a2 .side .title{font-size:14px;color:var(--strong);margin-bottom:6px;font-family:var(--font-head)}
+/* sidebar: compact rows, each with a card that opens on hover (js/side.js) */
+.a2 .side{padding:14px 14px 10px;overflow:auto;background:var(--side);border-left:1px solid var(--rule);display:flex;flex-direction:column;gap:16px;min-width:0}
+.a2 .side h4{margin:0 0 7px;font-weight:500;font-size:11.5px;color:var(--faint);font-family:var(--font-head);display:flex;justify-content:space-between;gap:8px}
+.a2 .side h4 .aside{font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a2 .side .title{font-size:14px;color:var(--strong);line-height:1.3;font-family:var(--font-head);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.a2 .side .sline{display:flex;align-items:center;gap:8px;margin-top:5px;font-family:var(--font-chrome);font-size:11.5px;color:var(--muted)}
+.a2 .side .sline .handle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.a2 .side .sline .st{margin-left:auto;white-space:nowrap}
+.a2 .prow{position:relative;margin:-6px -8px;padding:6px 8px;border-radius:var(--r);outline:none;cursor:default}
+.a2 .prow:hover,.a2 .prow.open,.a2 .prow:focus-visible{background:var(--raised)}
+.a2 .prow.more{margin:3px -8px -4px;padding:3px 8px 3px 30px;font-family:var(--font-mono);font-size:11px;color:var(--faint)}
+/* the card: fixed to the left of the panel, level with its row */
+.a2 .pcard{position:fixed;left:0;top:0;z-index:20;width:340px;max-height:calc(100vh - 24px);overflow:auto;
+  background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);
+  box-shadow:0 18px 48px rgba(0,0,0,.38),0 2px 8px rgba(0,0,0,.2);font-family:var(--font-chrome);font-size:12px;color:var(--muted);cursor:auto;
+  display:none;transition:opacity .12s ease,transform .12s ease}
+/* A closed card is out of layout, so it costs a keystroke nothing. */
+.a2 .prow.open>.pcard{display:block}
+@starting-style{.a2 .prow.open>.pcard{opacity:0;transform:translateX(6px)}}
+@media (prefers-reduced-motion:reduce){.a2 .pcard{transition:none}}
+.a2 .pcard .chd{padding:12px 16px 10px;border-bottom:1px solid var(--rule)}
+.a2 .pcard .chd .t{color:var(--strong);font-family:var(--font-ui);font-size:13.5px;font-weight:500;line-height:1.35}
+.a2 .pcard .chd .sub{margin-top:4px;color:var(--faint);font-size:11px;font-family:var(--font-mono)}
+.a2 .pcard .csec{padding:11px 16px 12px}
+.a2 .pcard .csec+.csec{border-top:1px solid var(--rule)}
+.a2 .pcard h5{margin:0 0 8px;font-weight:500;font-size:11px;color:var(--faint);font-family:var(--font-head);display:flex;justify-content:space-between;gap:10px}
+.a2 .pcard h5>span+span{font-weight:400;text-align:right}
+.a2 .pcard .kv{margin:4px 0}
+.a2 .pcard .kv>span:first-child{color:var(--faint);flex:none}
+.a2 .pcard .kv>span:last-child{color:var(--ink);text-align:right;min-width:0;overflow-wrap:anywhere}
+.a2 .pcard .cnote{margin:8px 0 0;color:var(--faint);font-size:11px;line-height:1.45}
+.a2 .pcard .cnote:empty{display:none}
+.a2 .pcard .big{display:flex;align-items:baseline;gap:8px;margin:2px 0 8px}
+.a2 .pcard .big .p{font-family:var(--font-mono);font-size:24px;color:var(--strong);font-weight:500;letter-spacing:-.5px;line-height:1}
+.a2 .pcard .big .of{color:var(--muted)}
+.a2 .pcard .big .c{margin-left:auto;font-family:var(--font-mono);font-size:15px;color:var(--strong)}
+.a2 .pcard .gauge{grid-template-columns:44px minmax(40px,1fr) auto}
+.a2 .pcard .plan{font-family:var(--font-ui)}
+.a2 .side #s-plan-h{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* tiles: the numbers a glance needs */
+.a2 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.a2 .tile{min-width:0}
+.a2 .tile .k{font-family:var(--font-mono);font-size:10.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.a2 .tile .v{font-family:var(--font-mono);font-size:15px;color:var(--strong);font-weight:500;margin:1px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.a2 .tile .v small{font-size:10.5px;font-weight:400;margin-left:3px}
+.a2 .tile .bar{height:3px;margin:0;position:relative;overflow:visible}
+.a2 .tile .bar .tick{top:-2px;bottom:-2px}
+.a2 .tile.warning .v{color:var(--warn)}
+.a2 .tile.critical .v{color:var(--err)}
+.a2 .tile.stale .v{color:var(--faint)}
+.a2 .side .foot{display:flex;justify-content:space-between;gap:8px;margin-top:9px;font-family:var(--font-mono);font-size:11px;color:var(--faint);white-space:nowrap}
+.a2 .side .foot>span{overflow:hidden;text-overflow:ellipsis}
+/* the actions: one row of equal cells, labels dropped on a narrow panel */
+.a2 .side-acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:auto}
+.a2 .side-acts.read-only{grid-template-columns:minmax(0,1fr)}
+.a2 .side-acts .sub{margin:0 0 2px}
+.a2 .act{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:0;padding:8px 4px 7px;border:1px solid var(--rule);border-radius:var(--r);background:var(--surface);color:var(--ink);font-size:11.5px;cursor:pointer}
+.a2 .act svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;color:var(--muted)}
+.a2 .act:hover:not(:disabled){border-color:var(--faint);color:var(--strong)}
+.a2 .act:hover:not(:disabled) svg{color:var(--strong)}
+.a2 .act.stop:hover:not(:disabled),.a2 .act.stop:hover:not(:disabled) svg{border-color:var(--err);color:var(--err)}
+.a2 .act:disabled{opacity:.4;cursor:default}
+.a2 .act.primary{flex-direction:row;gap:7px;padding:8px;background:var(--accent);color:var(--on-accent);border-color:transparent;font-weight:500}
+.a2 .act.primary svg{color:var(--on-accent)}
+.a2 .side.narrow .side-acts .act:not(.primary){padding:9px 4px}
+.a2 .side.narrow .side-acts .act:not(.primary) span{display:none}
 .a2 .kv{display:flex;justify-content:space-between;gap:8px;font-size:12px;margin:3px 0;color:var(--muted);font-family:var(--font-chrome)}
 .a2 .kv.dim{color:var(--faint)}
 .a2 .kv .path{overflow-wrap:anywhere;font-family:var(--font-mono);font-size:11px}
@@ -233,7 +319,9 @@ body{background:#000}
 .a2 .st.at-error{color:var(--err)}.a2 .st.at-done{color:var(--ok)}
 
 /* the running aegis and the latest release, in the sidebar and the top bar */
-.a2 .side .ver{border-top:1px solid var(--rule);padding-top:12px}
+.a2 .side .ver{border-top:1px solid var(--rule);padding-top:8px;font-family:var(--font-mono);font-size:11px;color:var(--faint)}
+.a2 .side .ver>.prow{display:flex;gap:6px;align-items:center;margin:-4px -8px;padding:4px 8px}
+.a2 .side .ver>.prow>span{display:flex;gap:6px;align-items:center}
 .a2 .ver .v{font-family:var(--font-mono);color:var(--ink)}
 .a2 .ver .kv.dim .v{color:var(--faint)}
 .a2 .tag{font-size:10.5px;padding:0 6px;border-radius:4px;margin-left:6px;border:1px solid var(--comms);color:var(--comms)}
@@ -268,6 +356,8 @@ body{background:#000}
 .a2 .archive-head{display:flex;align-items:center;gap:14px;margin-bottom:10px}
 .a2 .archive-head h3{margin:0;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
 .a2 .archive-head input{flex:1;max-width:420px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 10px;font-size:12.5px}
+.a2 .arch-more{display:flex;align-items:center;gap:14px;padding:14px 8px;font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+.a2 .arch-more[hidden]{display:none}
 .a2 .tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .a2 .tbl th{text-align:left;font-weight:500;color:var(--faint);padding:6px 8px;border-bottom:1px solid var(--rule);font-family:var(--font-chrome);font-size:11.5px}
 .a2 .tbl td{padding:7px 8px;border-bottom:1px solid var(--rule);color:var(--ink)}
@@ -280,7 +370,6 @@ body{background:#000}
 .a2 .editable{cursor:text;border-radius:4px}
 .a2 .editable:hover{background:var(--raised)}
 .a2 input.rename{width:100%;background:var(--bg);border:1px solid var(--accent);border-radius:4px;padding:2px 6px;font:inherit;color:var(--strong)}
-.a2 .side .acts{display:flex;gap:8px}
 .a2 .side .sub{color:var(--faint);font-size:12px;margin:0 0 8px}
 
 /* files an agent sent: a card, a bar of actions, the preview below */
@@ -293,8 +382,17 @@ body{background:#000}
 .a2 .fbar .fs{color:var(--faint);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex-shrink:3}
 .a2 .fbar .acts{margin-left:auto;display:flex;gap:6px;flex-shrink:0}
 .a2 .fbar .btn{padding:5px 11px;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;font-family:var(--font-ui)}
+.a2 .fbar .pager{margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0}
+.a2 .fbar .pager+.acts{margin-left:0}
+.a2 .fbar .pager .btn{padding:3px 9px;font-size:14px;line-height:1}
+.a2 .fbar .count{color:var(--muted);font-size:11.5px;font-variant-numeric:tabular-nums;min-width:3.2em;text-align:center}
 .a2 .fbar .native{display:none}
 .a2[data-native] .fbar .native{display:inline-flex}
+.a2 .peekbar{display:flex;align-items:center;gap:10px;margin:6px 0}
+.a2 .peekbar .btn{padding:3px 10px;font-size:11.5px}
+.a2 .peekerr{color:var(--err);font-size:11.5px}
+.a2 .peekcap{color:var(--faint);font-size:11px;margin:4px 0}
+.a2 .more .fcard{margin-bottom:8px}
 .a2 .fcard .stage{border-top:1px solid var(--rule);background:var(--bg)}
 .a2 .fcard .stage.image{display:flex;justify-content:center;padding:12px}
 .a2 .fcard .stage img{max-width:100%;max-height:360px;border-radius:4px;cursor:zoom-in}
@@ -303,6 +401,10 @@ body{background:#000}
 .a2 .fcard .stage pre.excerpt{font-family:var(--font-mono);font-size:12px;line-height:1.45;white-space:pre;color:var(--ink)}
 .a2 .fcard .stage video{display:block;max-width:100%;max-height:360px;margin:0 auto}
 .a2 .fcard .stage audio{display:block;width:100%;padding:8px}
+.a2 .acard .stage iframe{height:240px;background:var(--bg)}
+.a2 .acard .done{padding:10px 12px;color:var(--muted);font-family:var(--font-chrome);font-size:12.5px;border-top:1px solid var(--rule)}
+.a2 .acard[data-status=submitted] .fbar .ic{color:var(--ok)}
+#probes{position:fixed;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
 
 /* inbox rows, monitors, workers */
 .a2 .row.inbox .g{color:var(--comms)}
@@ -438,6 +540,7 @@ body{background:#000}
 .a2 .side .qrow .bar{position:relative;overflow:visible;margin:4px 0 0}
 .a2 .side .qrow .bar .tick{top:-1px;bottom:-1px}
 .a2 .side .gnote{color:var(--warn)}
+.a2 .pcard .qrow{margin-bottom:10px}
 
 /* attention: glyphs, cards, groups, the order switch (js/glyphs.js) */
 .a2{--knock:var(--bg)}
@@ -459,6 +562,12 @@ body{background:#000}
 .a2 .card .pl .k{color:var(--faint)}
 .a2 .card .pl .now span:last-child{color:var(--strong)}
 .a2 .card .ft .prog{color:var(--faint)}
+.a2 .card .ft .prog{display:inline-flex;align-items:center;gap:6px}
+.a2 .pbar{display:inline-flex;gap:1px;width:48px;height:6px}
+.a2 .pbar i{flex:1;min-width:0;background:var(--rule);border-radius:1px}
+.a2 .pbar i.done{background:var(--ok)}.a2 .pbar i.doing{background:var(--accent)}
+.a2 .pbar.live i.doing{animation:a2pulse 1.4s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.a2 .pbar.live i.doing{animation:none}}
 .a2 .grp-h{grid-column:1/-1;font-family:var(--font-head);font-size:12px;color:var(--faint);margin-top:4px}
 .a2 .order{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 0}
 .a2 .order h3{margin:0;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
@@ -471,9 +580,10 @@ body{background:#000}
 .a2 .askbox.at-error{background:var(--err-bg);border-left-color:var(--err);color:var(--err)}
 .a2 .st .ic{width:13px;height:13px}
 .a2 .plan{display:grid;gap:5px;font-size:12.5px}
-.a2 .plan div{display:grid;grid-template-columns:16px 1fr;gap:6px;color:var(--muted)}
+.a2 .plan div{display:grid;grid-template-columns:16px 1fr auto;gap:6px;color:var(--muted)}
 .a2 .plan>.done{color:var(--faint)}.a2 .plan>.doing{color:var(--strong)}
-.a2 .plan .ic{width:12px;height:12px;margin-top:3px}.a2 .plan .ic.work{animation:none}
+.a2 .plan .ic{width:12px;height:12px;margin-top:3px}.a2 .plan:not(.live) .ic.work{animation:none}
+.a2 .plan .t{color:var(--faint);font-family:var(--font-chrome);font-size:11.5px}
 .a2 .replies{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 9px 2px}
 .a2 .replies .lbl{font-family:var(--font-chrome);font-size:11px;color:var(--faint);margin-right:2px}
 .a2 .rp{font-family:var(--font-ui);font-size:13px;color:var(--strong);background:var(--surface);border:1px solid var(--rule);border-radius:999px;padding:5px 13px;cursor:pointer;line-height:1.3;text-align:left}
@@ -524,8 +634,9 @@ body{background:#000}
 .a2 .set-name:focus{border-bottom-color:var(--accent)}
 .a2 .set-name::placeholder{color:var(--faint)}
 .a2 .settings .picks{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.a2 .settings .pick{field-sizing:content;max-width:36ch;background:var(--bg);border:1px solid var(--rule);border-radius:5px;padding:3px 8px;font-family:var(--font-chrome);font-size:11.5px;color:var(--ink);cursor:pointer}
-.a2 .settings input.pick{min-width:10ch;cursor:text}
+.a2 .settings .pick{max-width:36ch;background:var(--bg);border:1px solid var(--rule);border-radius:5px;padding:3px 8px;font-family:var(--font-chrome);font-size:11.5px;color:var(--ink);cursor:pointer}
+.a2 .settings input.pick{field-sizing:content;min-width:10ch;cursor:text}
+.a2 .settings pick-chip input{max-width:36ch}
 .a2 .settings .pick:hover{border-color:var(--faint)}
 .a2 .settings .pick:focus{outline:none;border-color:var(--accent)}
 .a2 .set-default{background:none;border:1px solid transparent;border-radius:5px;padding:1px 7px;font-family:var(--font-chrome);font-size:11px;color:var(--faint);cursor:pointer}
@@ -582,7 +693,22 @@ body{background:#000}
 .a2 .nav .spark{color:var(--accent)}
 
 /* narrow and touch: last, so these win over the rules above */
-.a2 .side-btn{display:none}
+/* the panel's button: collapses it on a desktop, opens the drawer on a phone */
+.a2 .side-btn{display:none;place-items:center;width:30px;padding:0;margin:0 4px 6px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);color:var(--muted);cursor:pointer}
+.a2[data-view=session] .side-btn{display:grid}
+.a2 .side-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.4}
+.a2 .side-btn:hover{color:var(--strong)}
+.a2 .grip{display:none}
+@media (min-width:761px){
+  .a2:not([data-side=closed]) .side-btn{color:var(--accent)}
+  .a2[data-side=closed] .v-session{grid-template-columns:minmax(0,1fr)}
+  .a2[data-side=closed] .v-session>.side,.a2[data-side=closed] .v-session>.grip{display:none}
+  /* the resize grip: on the panel's left edge, wider than the line it draws */
+  .a2 .v-session>.grip{display:block;position:absolute;top:0;bottom:0;right:calc(var(--side-w,260px) - 4px);width:9px;cursor:col-resize;z-index:6;touch-action:none}
+  .a2 .grip:after{content:"";position:absolute;left:4px;top:0;bottom:0;width:1px;transition:background .12s}
+  .a2 .grip:hover:after,.a2[data-resizing] .grip:after{background:var(--accent);left:3px;width:2px}
+  .a2[data-resizing],.a2[data-resizing] *{cursor:col-resize !important;user-select:none}
+}
 /* A phone: the desktop markup, wrapped. Tabs take their own scrolling row, the
    side panel slides in as a drawer (data-side=open), the band stacks. */
 @media (max-width:760px){
@@ -594,7 +720,10 @@ body{background:#000}
   .a2 .tablist .tab .tname{max-width:16ch}
   .a2 .theme-pick{font-size:0;gap:0}
   .a2 .keys-btn:not(.bell){display:none}
-  .a2[data-view=session] .side-btn{display:block;background:none;border:0;color:var(--muted);font-size:18px;min-width:44px;cursor:pointer}
+  .a2[data-view=session] .side-btn{min-width:44px;margin-bottom:4px}
+  /* no hover in the drawer: a tap opens a row's card under it */
+  .a2 .pcard{position:static;width:auto;max-height:none;margin:8px 0 2px;box-shadow:none;transition:none}
+  .a2 .prow.open>.pcard{display:block}
   .a2[data-view=session] .v-session{grid-template-columns:minmax(0,1fr)}
   /* The drawer and its dimmed page start under the header (--hdr, its height,
      kept by app.js), so ☰ and the tabs stay tappable while it is open. */
@@ -618,6 +747,7 @@ body{background:#000}
 @media (pointer:coarse){
   .a2 .rp{min-height:44px;padding:10px 14px;font-size:14.5px}
   .a2 .composer .acts .send,.a2 .composer .acts .int,.a2 .mic{min-width:44px;min-height:44px}
+  .a2 pick-chip .opt{min-height:44px;display:flex;align-items:center}
   .a2 .tab{min-height:40px}
   .a2 .bell{min-width:44px;min-height:40px}
   .a2 .nav button{height:44px;min-width:44px}
@@ -627,6 +757,43 @@ body{background:#000}
 .a2 .note{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:40;padding:7px 14px;border:1px solid var(--rule);border-radius:999px;background:var(--raised);color:var(--muted);font-family:var(--font-chrome);font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.25)}
 .a2 .note[hidden]{display:none}
 
+/* Linked servers (links.py): a server's tag, its band and cards under this
+   server's, and what goes grey while its link is down. */
+.a2 .where{font:500 10px/1 var(--font-mono);letter-spacing:.02em;color:var(--muted);border:1px solid var(--rule);border-radius:4px;padding:2px 5px;margin-left:6px;flex:none;align-self:center}
+.a2 .band .band-link{font-weight:400;color:var(--faint);margin-left:8px;text-transform:none;letter-spacing:0}
+.a2 .band.off .band-link{color:var(--err)}
+.a2 .band.off .band-counts,.a2 .band.off .band-host,.a2 .band.off .q{opacity:.45}
+.a2 #remotes .remote > .band{border-top:1px solid var(--rule)}
+.a2 .card.off{opacity:.5;filter:grayscale(.6)}
+.a2 .tab.off{opacity:.45}
+/* A full bar scrolls sideways; a tab gives up its title first, then its handle,
+   and keeps its server's tag. */
+.a2 .tablist .tab{flex:0 1 auto;min-width:0}
+.a2 .tablist .tab .tname{flex:0 3 auto;min-width:4ch}
+.a2 .tablist .tab .srv{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* The new tab's directory line names the server once one is linked. */
+.a2 .spawn .cwdline{display:flex;align-items:center;justify-content:center;gap:6px;width:100%}
+.a2 .spawn .cwdline .cwd{flex:1;min-width:0}
+.a2 .spawn .cwdline .srvpick:not([hidden]) + .srvsep + .cwd{text-align:left}
+.a2 .spawn .srvpick{background:none;border:none;font-family:var(--font-mono);font-size:12px;color:var(--accent);cursor:pointer}
+.a2 .spawn .srvsep{font-family:var(--font-mono);font-size:12px;color:var(--faint)}
+/* Settings: the servers this one links. */
+.a2 .set-servers{margin:0 0 22px}
+.a2 .set-servers h3{margin:0 0 4px;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
+.a2 .set-pill{font-family:var(--font-mono);font-size:11px;border:1px solid var(--rule);border-radius:4px;padding:2px 6px}
+.a2 .set-pill.ok{color:var(--ok)}
+.a2 .set-pill.bad{color:var(--err)}
+.a2 .set-linkrow{display:flex;gap:8px;margin-top:10px}
+.a2 .set-linkrow .set-in{flex:1;min-width:0;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 9px;font-family:var(--font-mono);font-size:12px;color:var(--ink)}
+.a2 .set-srvpick{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:12.5px;color:var(--muted)}
+.a2 .band .prov.same{color:var(--faint)}
+/* The archive's server filter. */
+.a2 .arch-servers{display:inline-flex;align-items:center;border:1px solid var(--rule);border-radius:var(--r);overflow:hidden;font-family:var(--font-mono);font-size:12px}
+.a2 .arch-servers[hidden]{display:none}
+.a2 .arch-servers button{background:var(--surface);color:var(--muted);border:0;border-right:1px solid var(--rule);padding:5px 10px;cursor:pointer;font:inherit}
+.a2 .arch-servers button.on{background:var(--accent-soft);color:var(--strong)}
+.a2 .arch-servers button b{margin-left:6px;color:var(--faint);font-weight:500}
+.a2 .arch-servers .off{padding:5px 10px;color:var(--err)}
 /* Ink: the TUI's warm dark palette and amber accent; glyphs on a thread. */
 [data-theme=ink] .a2{
   --bg:#11100e;--chrome:#0b0a09;--side:#0d0c0b;--surface:#191814;--raised:#1d1b17;--rule:#2a2721;
@@ -639,7 +806,6 @@ body{background:#000}
   --prose-size:16.5px;--r:6px;--r-lg:10px;--time:none;--thread:block;--row-cols:22px 1fr;--fill:var(--accent);
 }
 [data-theme=ink] .a2 .side .title{font-family:var(--font-ui)}
-
 /* Logbook: daylight lab notebook; times in the margin, a rule between turns. */
 [data-theme=logbook] .a2{
   --bg:#fbfbfa;--chrome:#eef0f2;--side:#f3f4f6;--surface:#ffffff;--raised:#eef0f2;--rule:#dfe2e6;
@@ -654,7 +820,6 @@ body{background:#000}
 [data-theme=logbook] .a2 .row.user{border-top:1px solid var(--rule);padding-top:12px;margin-top:6px}
 [data-theme=logbook] .a2 .row.user .body{background:none;border-left:3px solid var(--accent);border-radius:0;padding:0 0 0 12px;font-weight:500}
 [data-theme=logbook] .a2 .row.tool .line{border-bottom:1px dotted var(--rule)}
-
 /* Syalia: the house design system; tool calls as chips, the gradient on the active tab. */
 [data-theme=syalia] .a2{
   --bg:#060a17;--chrome:#0b1222;--side:#0b1222;--surface:#0f172a;--raised:#1e293b;--rule:#22304a;

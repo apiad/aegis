@@ -1,4 +1,4 @@
-.PHONY: check lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-live test-browser bench coverage know-how
+.PHONY: check lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-live test-browser bench coverage know-how site-css
 
 # Every gate. The tests run before typecheck so a type error cannot hide a
 # failing suite; both block.
@@ -55,6 +55,10 @@ test-all:
 # claude. Marked slow too, so `make test` skips them; CI runs them.
 test-browser:
 	uv run pytest -q -m browser
+
+# The landing page's copy of the client's CSS (tests/test_site.py checks it).
+site-css:
+	uv run python scripts/site_css.py
 
 # The transcript path, measured (scripts/bench.py). Reports, never gates.
 bench:
