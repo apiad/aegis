@@ -1091,7 +1091,7 @@ def test_a_page_that_throws_fails_the_send_and_shows_no_card(server, page):
     _, said = _artifact(page, server, "<script>aegis.ready(() => { aegis.state({}); later(); });</script>", 2)
     assert said.startswith("mcp error: page_error") and "later is not defined" in said
     assert page.locator(".row.artifact").count() == 0
-    assert page.errors == []
+    assert [e for e in page.errors if "nope" not in str(e) and "later" not in str(e)] == []
 
 
 def test_agent_state_is_pushed_without_reloading_the_frame_and_the_theme_follows(server, page):

@@ -94,7 +94,7 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
     return callFor(id, "transcript.detail", { ids }).then((got) => (shown === id ? got : []));
   },
 });
-artifacts.setup({ call: (op, params) => callFor(shown, op, params), entry: (id) => transcript.entries.get(id) });
+artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id) });
 installGlyphs();
 // The navigator: previous / next agent message, the position, and the latest.
 $("nav-recap").append(icon("sparkle"));
@@ -639,7 +639,7 @@ function follow(id) {
       requestAnimationFrame(() => (mark.painted = performance.now()));
     },
     (ops) => {
-      for (const op of ops) if (op.probe) artifacts.probe(op.probe, where.log_id);
+      for (const op of ops) if (op.probe) artifacts.probe(op.probe, id);
       transcript.apply(ops);
     },
     undefined,

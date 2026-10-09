@@ -15,7 +15,7 @@ const MAX_HEIGHT = () => Math.round(window.innerHeight * 0.7);
 
 let call = async () => {};
 let entryOf = () => null;
-const probes = new Map(); // iframe -> {id, log_id, timer, grace, done}
+const probes = new Map(); // iframe -> {id, key, timer, grace, done}
 // A page posts state, then emit or submit, in order; each becomes its own
 // call, so one artifact's calls are chained to reach the server in that order.
 const chains = new Map(); // artifact id -> the last call's promise
@@ -27,7 +27,7 @@ function inOrder(id, fn) {
 }
 
 export function setup(opts) {
-  call = opts.call;
+  call = opts.call; // (op, params, key?) -> Promise; key names the session, else the one shown
   entryOf = opts.entry;
 }
 
@@ -44,12 +44,14 @@ export function theme() {
   for (const f of document.querySelectorAll("iframe[data-artifact]")) notify(f, "aegis/theme", { theme: vars });
 }
 
-// A probe request from the transcript channel: run the page hidden, report once.
-export function probe(req, logId) {
+// A probe request from the transcript channel: run the page hidden, report
+// once, to the session the request came from (the person may switch tabs
+// while the probe runs, so the answer never goes to "the session shown").
+export function probe(req, key) {
   const f = document.createElement("iframe");
   f.setAttribute("sandbox", "allow-scripts");
   f.src = req.url;
-  const p = { id: req.id, log_id: logId, done: false, grace: 0, timer: 0 };
+  const p = { id: req.id, key, done: false, grace: 0, timer: 0 };
   p.timer = setTimeout(() => finish(f, null), PROBE_TIMEOUT_MS); // the server has given up too
   probes.set(f, p);
   document.getElementById("probes").append(f);
@@ -63,7 +65,7 @@ function finish(frame, outcome) {
   clearTimeout(p.grace);
   probes.delete(frame);
   frame.remove();
-  if (outcome) call("artifact.probed", { log_id: p.log_id, probe_id: p.id, ...outcome });
+  if (outcome) call("artifact.probed", { probe_id: p.id, ...outcome }, p.key);
 }
 
 function frameOf(source) {
