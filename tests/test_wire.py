@@ -223,3 +223,4 @@ def test_an_artifacts_records_rebuild_from_every_cut_and_events_are_lazy():
     art = next(e for e in want if e["kind"] == "artifact")
     assert "events" not in art["detail"] and art["detail"]["more"] is True
     assert art["detail"]["state"] == {"n": 2}  # state rides the wire
+    assert art["detail"]["state_rev"] == 5  # and so does the record that set it

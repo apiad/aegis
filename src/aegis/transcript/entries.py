@@ -491,6 +491,10 @@ class Fold:
                 else {
                     "state": rec.get("state"),
                     "state_by": "agent",
+                    # The record that last set the state: a browser pushes the
+                    # agent's state into a live frame only when this moved, so
+                    # a page's own emit never echoes the state back to it.
+                    "state_rev": i,
                     "events": [],
                     "submitted": None,
                     "label": None,
@@ -529,9 +533,10 @@ class Fold:
             det = dict(e["detail"])
             status = e["status"]
             if kind == "artifact_state":
-                det["state"], det["state_by"] = (
+                det["state"], det["state_by"], det["state_rev"] = (
                     rec.get("state"),
                     rec.get("by") or "page",
+                    i,
                 )
             elif kind == "artifact_event":
                 det["events"] = (

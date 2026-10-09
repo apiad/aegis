@@ -303,6 +303,7 @@ export function artifactStage(e) {
   f.title = e.title;
   f.dataset.artifact = e.id;
   f.dataset.status = e.status;
+  f.dataset.stateRev = String(e.detail.state_rev); // the state it starts with
   stage.append(f);
   return stage;
 }
@@ -318,7 +319,13 @@ const UPDATERS = {
     if (card.dataset.md !== (e.md || "")) return false;
     if (node.querySelector(".fbar .fn")?.textContent !== e.title) return false;
     if (frame.getAttribute("src") !== fileUrl(e.detail?.url)) return false;
-    if (e.detail?.state_by === "agent") frame.dispatchEvent(new CustomEvent("aegis:state", { detail: e.detail.state, bubbles: true }));
+    // Only a state the agent set since the frame last had one: every page
+    // record patches this entry, and an emit must not echo the state back.
+    const rev = String(e.detail?.state_rev);
+    if (e.detail?.state_by === "agent" && rev !== frame.dataset.stateRev) {
+      frame.dataset.stateRev = rev;
+      frame.dispatchEvent(new CustomEvent("aegis:state", { detail: e.detail.state, bubbles: true }));
+    }
     return true;
   },
 };

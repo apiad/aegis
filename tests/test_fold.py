@@ -871,6 +871,7 @@ def test_an_artifact_folds_to_one_entry_that_its_later_records_update():
     d = e["detail"]
     assert d["url"] == "/files/F1/index.html" and d["started"] is True
     assert d["state"] == {"n": 1} and d["state_by"] == "page"
+    assert d["state_rev"] == 1  # the artifact_state record, not the event after it
     assert d["events"] == [{"name": "hover", "data": {"n": 1}, "ts": 1002.0}]
     assert d["submitted"] == {"pick": "b"} and d["label"] == "Picked B"
     assert d["ended_ts"] == 1003.0 and e["rev"] == 3
@@ -905,6 +906,7 @@ def test_a_resend_swaps_the_file_and_keeps_the_rest_and_a_close_collapses():
     (e,) = f.entries()
     assert e["detail"]["url"] == "/files/F2/index.html" and e["md"] == "now"
     assert e["detail"]["state"] == {"k": 1} and e["detail"]["state_by"] == "agent"
+    assert e["detail"]["state_rev"] == 1  # the resend did not set the state
     assert e["status"] == "closed" and e["detail"]["label"] is None
     assert f.activity() == "showed T"
 
@@ -926,4 +928,5 @@ def test_events_keep_the_last_twenty_and_a_record_for_an_unknown_artifact_is_ign
         r.own("artifact_event", artifact_id="art-aaaa0003", name="tick", data=n)
     f, _ = run(r)
     (e,) = f.entries()
+    assert e["detail"]["state_rev"] == 1  # the artifact record that created it
     assert [ev["data"] for ev in e["detail"]["events"]] == list(range(5, 25))

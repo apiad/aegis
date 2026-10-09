@@ -1194,6 +1194,36 @@ def test_a_page_that_names_another_artifact_acts_on_its_own(server, page):
     assert page.errors == []
 
 
+def test_an_emit_never_echoes_the_agents_state(server, page):
+    # Every page record patches the card; only a state the agent set anew is
+    # pushed into the frame, so a page's own emit does not hand it back.
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    counting = (
+        '<button id="e">E</button><span id="n">0</span>',
+        "let k = 0;"
+        "  aegis.onState(() => (n.textContent = String(++k)));"
+        '  e.onclick = () => aegis.emit("poke", {});',
+    )
+    aid, said = _artifact(page, server, counting, 0)
+    assert '"started": true' in said
+    inner = page.frame_locator(f"iframe[data-artifact={aid}]")
+    inner.locator("#e").click()
+    inner.locator("#e").click()
+    page.locator(f".row.inbox .from >> text=artifact:{aid} · poke").nth(1).wait_for(
+        timeout=10000
+    )
+    page.wait_for_timeout(300)  # a push the second patch caused has had time to land
+    assert inner.locator("#n").inner_text() == "0"
+    page.fill(
+        "#input", f"/mcp artifact_update {json.dumps({'id': aid, 'state': {'k': 1}})}"
+    )
+    page.press("#input", "Enter")
+    inner.locator("#n").filter(has_text="1").wait_for()
+    assert page.errors == []
+
+
 VERDICT_BOX = """sel => {
   const r = [...document.querySelectorAll('.row.tool')].pop();
   const box = q => r.querySelector(q).getBoundingClientRect().width;
