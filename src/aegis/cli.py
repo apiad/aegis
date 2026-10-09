@@ -1,5 +1,5 @@
-"""``aegis serve``, ``aegis init``, ``aegis doctor``, ``aegis link``, and ``aegis``
-alone, which is ``serve --window``.
+"""``aegis serve``, ``aegis init``, ``aegis doctor``, ``aegis link``, ``aegis usage``,
+and ``aegis`` alone, which is ``serve --window``.
 
 This is the only module that reads the process's working directory.
 
@@ -22,6 +22,10 @@ HELP = "aegis: a web-native workplace for coding agents."
 DEFAULT_PORT = 8742
 
 app = typer.Typer(add_completion=False, help=HELP)
+
+from .usage.cli import app as usage_app  # noqa: E402
+
+app.add_typer(usage_app, name="usage", help="What the agents' work cost.")
 
 
 def _version(value: bool) -> None:
@@ -63,6 +67,13 @@ def _root(
             detach=False,
             name=None,
         )
+
+
+def roots_here(root: Path | None):
+    """The roots for a command run here, for the subcommand groups (usage)."""
+    from .roots import make_roots
+
+    return make_roots(start=Path.cwd(), root=root)
 
 
 def _port_free(host: str, port: int) -> bool:
