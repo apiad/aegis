@@ -1,6 +1,7 @@
 # Codex sessions in aegis 2
 
-> **Status:** design, not implemented, 2026-10-09.
+> **Status:** implemented 2026-10-09, except the ChatGPT quota gauge
+> (plan Task 7), which waits on one real `codex login`.
 > Issue: [#105](https://github.com/apiad/aegis/issues/105).
 > Plan: `docs/superpowers/plans/2026-10-09-aegis-2-codex-harness.md`.
 > Template: `2026-10-08-aegis-2-opencode-harness-design.md`, whose harness

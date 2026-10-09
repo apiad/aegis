@@ -29,10 +29,11 @@ by both machines), and `aegis link add` or an edit to the file takes effect
 while the server runs. Plugin hosts come later, in the order the vision spec
 gives.
 
-**A session outlives its process.** A session is live (a harness child, `claude` or
-`opencode serve`, is running), stopped (none is), or archived (closed: no process,
+**A session outlives its process.** A session is live (a harness child, `claude`,
+`opencode serve` or `codex app-server`, is running), stopped (none is), or archived (closed: no process,
 no tab). A prompt to a stopped session starts the harness again on the same
-conversation (`claude --resume`, or `opencode serve` and the same session id),
+conversation (`claude --resume`, `opencode serve` and the same session id, or
+`thread/resume` on the same Codex thread),
 which prints nothing old, so the store and the fold simply continue. Only shutdown, Stop and Close end a process. Nothing
 reaps idle sessions, because a Claude session waiting on its own background task
 wakes itself when the task ends, and stopping it would kill the task.
@@ -145,9 +146,15 @@ because an argument can be wrong and the token cannot.
 stored line through the parser its `src` tag names. Claude Code
 (`claude/harness.py`) speaks stream-json on stdio; OpenCode
 (`opencode/process.py`) is one `opencode serve` per session over HTTP, because its
-MCP token, like Claude's, is per process. Both parsers emit the same events, so
-the entry rules exist once. OpenCode's token deltas are the one thing folded and
-never stored: the part's closing update carries the whole text, so the live view
+MCP token, like Claude's, is per process. Codex (`codex/process.py`) is one
+`codex app-server` per session over JSON-RPC on stdio, for the same reason, and
+the only harness whose model, effort and sandbox travel with every turn, so a
+change never restarts it. Its process writes `aegis/*` lines of its own for what
+only a response carries (the version, the thread, each turn's model), and kills
+its process group after any exit, because a grandchild of a dead child held the
+thread's writer lease and the child's pipes. The parsers emit the same events, so
+the entry rules exist once. OpenCode's and Codex's token deltas are the one thing
+folded and never stored: the part's closing update carries the whole text, so the live view
 is ahead of a fresh fold only while a part is open (a prompt read mid-turn while
 a part streams is the one known exception: live it sits after that part, and a
 reload puts it before).

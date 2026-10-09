@@ -1,7 +1,7 @@
 # aegis
 
 aegis is a programmable multi-agent meta-harness. It runs the coding agents you
-already pay for, Claude Code and OpenCode, side by side in one browser workplace.
+already pay for, Claude Code, OpenCode and Codex, side by side in one browser workplace.
 Its agents hand work to each other and wait on each other, on one machine or
 across several. And when prose is not enough, they write the interface they need
 into the conversation.
@@ -18,14 +18,14 @@ newer, MIT license.
 ## Bring your own subscriptions
 
 aegis calls no model. Each session is the vendor's own command-line agent,
-`claude` or `opencode`, started by aegis under the account you already use: a
-Claude Pro or Max plan, OpenCode Go, OpenCode Zen, or any provider OpenCode
-reaches. aegis holds no API key and charges nothing per token, and your prompts go
+`claude`, `opencode` or `codex`, started by aegis under the account you already
+use: a Claude Pro or Max plan, OpenCode Go, OpenCode Zen, a ChatGPT plan, or any
+provider OpenCode or Codex reaches. aegis holds no API key and charges nothing per token, and your prompts go
 from the CLI to the vendor as they would from a terminal.
 
-On top of the two CLIs, aegis adds what neither has on its own:
+On top of the three CLIs, aegis adds what none has on its own:
 
-- Sessions of both harnesses in one tab bar, each with its own model, effort and
+- Sessions of every harness in one tab bar, each with its own model, effort and
   permission. `/model`, `/effort` and `/permission` change them on a running
   session.
 - The quota of each subscription: Claude's 5-hour and weekly windows, and OpenCode
@@ -139,6 +139,7 @@ default_agent: opus
 agents:
   opus: {harness: claude-code, model: opus, effort: high, permission: full}
   deepseek: {harness: opencode, model: opencode-go/deepseek-v4-pro, effort: high, permission: full}
+  sol: {harness: codex, model: openai/gpt-6.1-sol, effort: high, permission: full}
   reviewer:
     harness: claude-code
     model: opus
@@ -156,8 +157,10 @@ model, effort and permission for that session. Its `priming` is appended to
 aegis's own system prompt. Nothing has a default: an agent names all four fields,
 a queue names its agent and `max_parallel`, and one that does not is shown with
 what is missing. `permission` is `read` (plan mode), `write` (accept edits),
-`auto` or `full` (bypass permissions). An OpenCode agent names its model as
-`provider/model`. `recap` names the agent that writes a two-sentence recap when
+`auto` or `full` (bypass permissions). An OpenCode or Codex agent names its
+model as `provider/model`, such as `openai/gpt-6.1-sol` or
+`openrouter/nvidia/nemotron-3-super-120b-a12b:free`, where the provider is one
+Codex knows from its own `~/.codex/config.toml`. `recap` names the agent that writes a two-sentence recap when
 you come back to a tab after a while; without it nothing is called.
 
 `aegis init` writes a first file from the harnesses installed on the machine, and
