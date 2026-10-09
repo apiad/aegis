@@ -10,7 +10,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import unquote
 
 import pytest
 
@@ -2790,6 +2790,14 @@ def test_the_divider_is_drawn_on_its_row_when_scrolling_up_mounts_it(
     assert page.errors == []
 
 
+def favicon_dot(pg) -> str | None:
+    """The fill of the favicon's dot, or None when it has none. The mark itself
+    is amber, so a colour found anywhere in the SVG says nothing about the dot."""
+    svg = unquote(pg.get_attribute("#favicon", "href").split(",", 1)[1])
+    m = re.search(r'<circle id="dot"[^>]*fill="([^"]+)"', svg)
+    return m.group(1) if m else None
+
+
 def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     server, browser
 ):
@@ -2815,6 +2823,7 @@ def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     first = spawn(pg, "hello")
     spawn(pg, "hello")
     assert not pg.title().startswith("(")
+    assert favicon_dot(pg) is None
     # While the page is visible, a session that needs you counts but sends no
     # notification.
     report(pg, attention="needs_you", line="Seen here?", replies=[])
@@ -2829,7 +2838,7 @@ def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     pg.wait_for_function(
         "() => document.title.startsWith('(1) ')", polling=100, timeout=8000
     )
-    assert "dot" in pg.get_attribute("#favicon", "href")
+    assert favicon_dot(pg) is not None
     pg.wait_for_function("() => window.__notes.length === 1", polling=100, timeout=8000)
     title, opts = pg.evaluate("window.__notes[0]")
     assert title.endswith(": needs you")
@@ -2856,9 +2865,9 @@ def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     assert pg.evaluate("window.__notes.length") == 0
     pg.evaluate("sessionStorage.removeItem('hidden'); window.__hidden = false")
     # The dot takes the theme's accent.
-    assert quote("#e0a872") in pg.get_attribute("#favicon", "href")
+    assert favicon_dot(pg) == "#e0a872"
     pick(pg, "#theme", "logbook")
-    assert quote("#2f5ba8") in pg.get_attribute("#favicon", "href")
+    assert favicon_dot(pg) == "#2f5ba8"
     pg.click("#tab-fleet")
     assert pg.title().startswith("(1) Fleet")
     assert errors == []
