@@ -83,7 +83,7 @@
     submit(data, label) {
       if (status !== "live") return warn("submit");
       flushState();
-      request("aegis/submit", { data: data ?? null, label: String(label || "answered") });
+      request("aegis/submit", { data: data ?? null, label: String(label || "answered").split("\n")[0].slice(0, 140) });
     },
   };
 
