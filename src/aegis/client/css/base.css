@@ -71,7 +71,7 @@ body{background:#000}
 #a2 .view{display:none;min-height:0}
 #a2[data-view=boot] .v-boot{display:grid;place-items:center}
 #a2[data-view=spawn] .v-spawn{display:grid;place-items:center;overflow:auto;padding:48px 20px}
-#a2[data-view=session] .v-session{display:grid;grid-template-columns:1fr 260px}
+#a2[data-view=session] .v-session{display:grid;grid-template-columns:minmax(0,1fr) var(--side-w,260px);position:relative}
 #a2[data-view=fleet] .v-fleet{display:block;overflow:auto}
 #a2[data-mode=read] .composer,#a2[data-mode=read] .side .live-only{display:none}
 #a2:not([data-mode=read]) .read-only{display:none}
@@ -234,11 +234,72 @@ body{background:#000}
 #a2 .send,#a2 .btn.primary{background:var(--accent);color:var(--on-accent);border-color:transparent;font-weight:500}
 #a2 .send:disabled,#a2 .btn:disabled{opacity:.45;cursor:default}
 
-/* sidebar */
-#a2 .side{padding:16px;overflow:auto;background:var(--side);border-left:1px solid var(--rule)}
-#a2 .side .sec{margin-bottom:18px}
-#a2 .side h4{margin:0 0 8px;font-weight:500;font-size:12px;color:var(--faint);font-family:var(--font-head)}
-#a2 .side .title{font-size:14px;color:var(--strong);margin-bottom:6px;font-family:var(--font-head)}
+/* sidebar: compact rows, each with a card that opens on hover (js/side.js) */
+#a2 .side{padding:14px 14px 10px;overflow:auto;background:var(--side);border-left:1px solid var(--rule);display:flex;flex-direction:column;gap:16px;min-width:0}
+#a2 .side h4{margin:0 0 7px;font-weight:500;font-size:11.5px;color:var(--faint);font-family:var(--font-head);display:flex;justify-content:space-between;gap:8px}
+#a2 .side h4 .aside{font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2 .side .title{font-size:14px;color:var(--strong);line-height:1.3;font-family:var(--font-head);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#a2 .side .sline{display:flex;align-items:center;gap:8px;margin-top:5px;font-family:var(--font-chrome);font-size:11.5px;color:var(--muted)}
+#a2 .side .sline .handle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+#a2 .side .sline .st{margin-left:auto;white-space:nowrap}
+#a2 .prow{position:relative;margin:-6px -8px;padding:6px 8px;border-radius:var(--r);outline:none;cursor:default}
+#a2 .prow:hover,#a2 .prow.open,#a2 .prow:focus-visible{background:var(--raised)}
+#a2 .prow.more{margin:3px -8px -4px;padding:3px 8px 3px 30px;font-family:var(--font-mono);font-size:11px;color:var(--faint)}
+/* the card: fixed to the left of the panel, level with its row */
+#a2 .pcard{position:fixed;left:0;top:0;z-index:20;width:340px;max-height:calc(100vh - 24px);overflow:auto;
+  background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);
+  box-shadow:0 18px 48px rgba(0,0,0,.38),0 2px 8px rgba(0,0,0,.2);font-family:var(--font-chrome);font-size:12px;color:var(--muted);cursor:auto;
+  display:none;transition:opacity .12s ease,transform .12s ease}
+/* A closed card is out of layout, so it costs a keystroke nothing. */
+#a2 .prow.open>.pcard{display:block}
+@starting-style{#a2 .prow.open>.pcard{opacity:0;transform:translateX(6px)}}
+@media (prefers-reduced-motion:reduce){#a2 .pcard{transition:none}}
+#a2 .pcard .chd{padding:12px 16px 10px;border-bottom:1px solid var(--rule)}
+#a2 .pcard .chd .t{color:var(--strong);font-family:var(--font-ui);font-size:13.5px;font-weight:500;line-height:1.35}
+#a2 .pcard .chd .sub{margin-top:4px;color:var(--faint);font-size:11px;font-family:var(--font-mono)}
+#a2 .pcard .csec{padding:11px 16px 12px}
+#a2 .pcard .csec+.csec{border-top:1px solid var(--rule)}
+#a2 .pcard h5{margin:0 0 8px;font-weight:500;font-size:11px;color:var(--faint);font-family:var(--font-head);display:flex;justify-content:space-between;gap:10px}
+#a2 .pcard h5>span+span{font-weight:400;text-align:right}
+#a2 .pcard .kv{margin:4px 0}
+#a2 .pcard .kv>span:first-child{color:var(--faint);flex:none}
+#a2 .pcard .kv>span:last-child{color:var(--ink);text-align:right;min-width:0;overflow-wrap:anywhere}
+#a2 .pcard .cnote{margin:8px 0 0;color:var(--faint);font-size:11px;line-height:1.45}
+#a2 .pcard .cnote:empty{display:none}
+#a2 .pcard .big{display:flex;align-items:baseline;gap:8px;margin:2px 0 8px}
+#a2 .pcard .big .p{font-family:var(--font-mono);font-size:24px;color:var(--strong);font-weight:500;letter-spacing:-.5px;line-height:1}
+#a2 .pcard .big .of{color:var(--muted)}
+#a2 .pcard .big .c{margin-left:auto;font-family:var(--font-mono);font-size:15px;color:var(--strong)}
+#a2 .pcard .gauge{grid-template-columns:44px minmax(40px,1fr) auto}
+#a2 .pcard .plan{font-family:var(--font-ui)}
+#a2 .side #s-plan-h{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* tiles: the numbers a glance needs */
+#a2 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+#a2 .tile{min-width:0}
+#a2 .tile .k{font-family:var(--font-mono);font-size:10.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#a2 .tile .v{font-family:var(--font-mono);font-size:15px;color:var(--strong);font-weight:500;margin:1px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#a2 .tile .v small{font-size:10.5px;font-weight:400;margin-left:3px}
+#a2 .tile .bar{height:3px;margin:0;position:relative;overflow:visible}
+#a2 .tile .bar .tick{top:-2px;bottom:-2px}
+#a2 .tile.warning .v{color:var(--warn)}
+#a2 .tile.critical .v{color:var(--err)}
+#a2 .tile.stale .v{color:var(--faint)}
+#a2 .side .foot{display:flex;justify-content:space-between;gap:8px;margin-top:9px;font-family:var(--font-mono);font-size:11px;color:var(--faint);white-space:nowrap}
+#a2 .side .foot>span{overflow:hidden;text-overflow:ellipsis}
+/* the actions: one row of equal cells, labels dropped on a narrow panel */
+#a2 .side-acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:auto}
+#a2 .side-acts.read-only{grid-template-columns:minmax(0,1fr)}
+#a2 .side-acts .sub{margin:0 0 2px}
+#a2 .act{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:0;padding:8px 4px 7px;border:1px solid var(--rule);border-radius:var(--r);background:var(--surface);color:var(--ink);font-size:11.5px;cursor:pointer}
+#a2 .act svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;color:var(--muted)}
+#a2 .act:hover:not(:disabled){border-color:var(--faint);color:var(--strong)}
+#a2 .act:hover:not(:disabled) svg{color:var(--strong)}
+#a2 .act.stop:hover:not(:disabled),#a2 .act.stop:hover:not(:disabled) svg{border-color:var(--err);color:var(--err)}
+#a2 .act:disabled{opacity:.4;cursor:default}
+#a2 .act.primary{flex-direction:row;gap:7px;padding:8px;background:var(--accent);color:var(--on-accent);border-color:transparent;font-weight:500}
+#a2 .act.primary svg{color:var(--on-accent)}
+#a2 .side.narrow .side-acts .act:not(.primary){padding:9px 4px}
+#a2 .side.narrow .side-acts .act:not(.primary) span{display:none}
 #a2 .kv{display:flex;justify-content:space-between;gap:8px;font-size:12px;margin:3px 0;color:var(--muted);font-family:var(--font-chrome)}
 #a2 .kv.dim{color:var(--faint)}
 #a2 .kv .path{overflow-wrap:anywhere;font-family:var(--font-mono);font-size:11px}
@@ -248,7 +309,9 @@ body{background:#000}
 #a2 .st.at-error{color:var(--err)}#a2 .st.at-done{color:var(--ok)}
 
 /* the running aegis and the latest release, in the sidebar and the top bar */
-#a2 .side .ver{border-top:1px solid var(--rule);padding-top:12px}
+#a2 .side .ver{border-top:1px solid var(--rule);padding-top:8px;font-family:var(--font-mono);font-size:11px;color:var(--faint)}
+#a2 .side .ver>.prow{display:flex;gap:6px;align-items:center;margin:-4px -8px;padding:4px 8px}
+#a2 .side .ver>.prow>span{display:flex;gap:6px;align-items:center}
 #a2 .ver .v{font-family:var(--font-mono);color:var(--ink)}
 #a2 .ver .kv.dim .v{color:var(--faint)}
 #a2 .tag{font-size:10.5px;padding:0 6px;border-radius:4px;margin-left:6px;border:1px solid var(--comms);color:var(--comms)}
@@ -297,7 +360,6 @@ body{background:#000}
 #a2 .editable{cursor:text;border-radius:4px}
 #a2 .editable:hover{background:var(--raised)}
 #a2 input.rename{width:100%;background:var(--bg);border:1px solid var(--accent);border-radius:4px;padding:2px 6px;font:inherit;color:var(--strong)}
-#a2 .side .acts{display:flex;gap:8px}
 #a2 .side .sub{color:var(--faint);font-size:12px;margin:0 0 8px}
 
 /* files an agent sent: a card, a bar of actions, the preview below */
@@ -468,6 +530,7 @@ body{background:#000}
 #a2 .side .qrow .bar{position:relative;overflow:visible;margin:4px 0 0}
 #a2 .side .qrow .bar .tick{top:-1px;bottom:-1px}
 #a2 .side .gnote{color:var(--warn)}
+#a2 .pcard .qrow{margin-bottom:10px}
 
 /* attention: glyphs, cards, groups, the order switch (js/glyphs.js) */
 #a2{--knock:var(--bg)}
@@ -620,7 +683,22 @@ body{background:#000}
 #a2 .nav .spark{color:var(--accent)}
 
 /* narrow and touch: last, so these win over the rules above */
-#a2 .side-btn{display:none}
+/* the panel's button: collapses it on a desktop, opens the drawer on a phone */
+#a2 .side-btn{display:none;place-items:center;width:30px;padding:0;margin:0 4px 6px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);color:var(--muted);cursor:pointer}
+#a2[data-view=session] .side-btn{display:grid}
+#a2 .side-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.4}
+#a2 .side-btn:hover{color:var(--strong)}
+#a2 .grip{display:none}
+@media (min-width:761px){
+  #a2:not([data-side=closed]) .side-btn{color:var(--accent)}
+  #a2[data-side=closed] .v-session{grid-template-columns:minmax(0,1fr)}
+  #a2[data-side=closed] .v-session>.side,#a2[data-side=closed] .v-session>.grip{display:none}
+  /* the resize grip: on the panel's left edge, wider than the line it draws */
+  #a2 .v-session>.grip{display:block;position:absolute;top:0;bottom:0;right:calc(var(--side-w,260px) - 4px);width:9px;cursor:col-resize;z-index:6;touch-action:none}
+  #a2 .grip:after{content:"";position:absolute;left:4px;top:0;bottom:0;width:1px;transition:background .12s}
+  #a2 .grip:hover:after,#a2[data-resizing] .grip:after{background:var(--accent);left:3px;width:2px}
+  #a2[data-resizing],#a2[data-resizing] *{cursor:col-resize !important;user-select:none}
+}
 /* A phone: the desktop markup, wrapped. Tabs take their own scrolling row, the
    side panel slides in as a drawer (data-side=open), the band stacks. */
 @media (max-width:760px){
@@ -632,7 +710,10 @@ body{background:#000}
   #a2 .tablist .tab .tname{max-width:16ch}
   #a2 .theme-pick{font-size:0;gap:0}
   #a2 .keys-btn:not(.bell){display:none}
-  #a2[data-view=session] .side-btn{display:block;background:none;border:0;color:var(--muted);font-size:18px;min-width:44px;cursor:pointer}
+  #a2[data-view=session] .side-btn{min-width:44px;margin-bottom:4px}
+  /* no hover in the drawer: a tap opens a row's card under it */
+  #a2 .pcard{position:static;width:auto;max-height:none;margin:8px 0 2px;box-shadow:none;transition:none}
+  #a2 .prow.open>.pcard{display:block}
   #a2[data-view=session] .v-session{grid-template-columns:minmax(0,1fr)}
   /* The drawer and its dimmed page start under the header (--hdr, its height,
      kept by app.js), so ☰ and the tabs stay tappable while it is open. */

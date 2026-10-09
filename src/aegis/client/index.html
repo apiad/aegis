@@ -25,7 +25,7 @@
     <div class="servers"><span class="dot ghost" id="conn-dot"></span><span id="conn-text">connecting</span><span class="ver-top" id="ver-top" hidden></span></div>
     <button class="keys-btn" id="settings-btn" title="Settings (Alt+S)">Settings</button>
     <button class="keys-btn bell" id="bell" title="Turn on desktop notifications"></button>
-    <button class="side-btn" id="side-btn" title="Session details" aria-label="Session details">☰</button>
+    <button class="side-btn" id="side-btn" title="Session panel (Alt+B)" aria-label="Session panel"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M10 2.5v11"/></svg></button>
     <button class="keys-btn" id="keys-btn" title="Keyboard (?)">?</button>
     <span class="theme-pick">Theme <pick-chip id="theme" name="theme" aria-label="Theme"></pick-chip></span>
   </header>
@@ -115,31 +115,77 @@
         </div>
       </div>
     </section>
-    <aside class="side">
+    <div class="grip" id="side-grip" title="Drag to resize; double-click for the default width"></div>
+    <aside class="side" id="side">
       <div class="sec"><h4>Session</h4>
-        <div class="title editable" id="s-title" title="Click to rename"></div>
-        <div class="kv"><span class="handle editable" id="s-handle" title="Click to rename"></span><span class="st" id="s-status"></span></div>
-        <div class="kv"><span id="s-model"></span></div>
-        <div class="kv dim"><span class="path" id="s-cwd"></span></div>
+        <div class="prow" id="p-session" tabindex="0">
+          <div class="title editable" id="s-title" title="Click to rename"></div>
+          <div class="sline"><span class="handle editable" id="s-handle" title="Click to rename"></span><span class="st" id="s-status"></span></div>
+          <div class="pcard">
+            <div class="chd"><div class="t" id="c-title"></div><div class="sub" id="c-sub"></div></div>
+            <div class="csec">
+              <div class="kv"><span>harness</span><span id="s-harness"></span></div>
+              <div class="kv"><span>model</span><span id="s-model"></span></div>
+              <div class="kv"><span>effort</span><span id="s-effort"></span></div>
+              <div class="kv"><span>permission</span><span id="s-perm"></span></div>
+              <div class="kv"><span>directory</span><span class="path" id="s-cwd"></span></div>
+              <div class="kv"><span>server</span><span id="s-server"></span></div>
+              <p class="cnote">Click the title or the handle to rename.</p>
+            </div>
+          </div>
+        </div>
         <div class="askbox" id="s-ask" hidden></div>
       </div>
-      <div class="sec" id="s-plan-sec" hidden><h4 id="s-plan-h">Plan</h4><div class="plan" id="s-plan"></div></div>
+      <div class="sec" id="s-plan-sec" hidden><h4 id="s-plan-h">Plan</h4>
+        <div class="plan" id="s-plan"></div>
+        <div class="prow more" id="p-plan" tabindex="0" hidden><span id="s-plan-more"></span>
+          <div class="pcard"><div class="csec"><h5 id="s-plan-card-h">Plan</h5><div class="plan" id="s-plan-all"></div></div></div>
+        </div>
+      </div>
       <div class="sec" id="s-mon-sec" hidden><h4>Monitors</h4><div id="s-monitors"></div></div>
-      <div class="sec"><h4>Context</h4>
-        <div class="bar"><i id="s-bar" style="width:0%"></i></div>
-        <div class="kv"><span id="s-tokens">no turn yet</span><span id="s-pct"></span></div>
-        <div class="kv"><span>Cost</span><span id="s-cost">$0.00</span></div>
+      <div class="sec"><h4>Usage</h4>
+        <div class="prow" id="p-usage" tabindex="0">
+          <div class="tiles" id="s-tiles"></div>
+          <div class="foot" id="s-foot"><span id="s-foot-l"></span><span id="s-foot-r"></span></div>
+          <div class="pcard">
+            <div class="csec"><h5><span>Context</span><span>this session</span></h5>
+              <div class="big"><span class="p" id="s-tokens">no turn yet</span><span class="of" id="s-of"></span><span class="c" id="s-cost">$0.00</span></div>
+              <div class="bar" id="s-ctxbar"><i id="s-bar" style="width:0%"></i></div>
+              <p class="cnote" id="s-ctxnote"></p>
+            </div>
+            <div class="csec" id="s-quota-sec"><h5><span id="s-quota-head">Quota</span><span id="s-quota-age"></span></h5><div id="s-quota"></div></div>
+          </div>
+        </div>
       </div>
-      <div class="sec" id="s-quota-sec" hidden><h4>Quota</h4><div id="s-quota"></div></div>
-      <div class="sec acts live-only"><button class="btn" id="stop-session" title="End the process; the next message resumes it">Stop</button><button class="btn" id="restart" title="Send “Continue”">Restart</button><button class="btn" id="close" title="Archive it: the tab goes away in every browser">Close</button></div>
-      <div class="sec read-only"><p class="sub">Archived. Reopen it to continue the conversation.</p><button class="btn primary" id="reopen">Reopen</button></div>
-      <div class="sec ver" id="ver-sec" hidden><h4 id="ver-head">aegis</h4>
-        <div class="kv"><span>running</span><span id="ver-run"></span></div>
-        <div class="kv dim" id="ver-ref-row" hidden><span>ref</span><span class="path" id="ver-ref"></span></div>
-        <div class="kv dim" id="ver-base-row" hidden><span>base</span><span class="v" id="ver-base"></span></div>
-        <div class="kv"><span>latest</span><span id="ver-latest"></span></div>
+      <div class="sec" id="s-host-sec" hidden><h4><span>Host</span><span class="aside" id="s-host-name"></span></h4>
+        <div class="prow" id="p-host" tabindex="0">
+          <div class="tiles" id="s-host-tiles"></div>
+          <div class="pcard">
+            <div class="csec"><h5><span id="s-host-head">Host</span><span>every 5 s</span></h5><div id="s-host-rows"></div></div>
+            <div class="csec">
+              <div class="kv"><span>live sessions</span><span id="s-host-live"></span></div>
+              <div class="kv"><span>average context</span><span id="s-host-ctx"></span></div>
+            </div>
+          </div>
+        </div>
       </div>
+      <div class="side-acts live-only">
+        <button class="act stop" id="stop-session" title="Stop: end the process; the next message resumes it"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/></svg><span>Stop</span></button>
+        <button class="act" id="restart" title="Restart: send “Continue”"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.5v3h-3"/></svg><span>Restart</span></button>
+        <button class="act" id="close" title="Close: archive it; the tab goes away in every browser"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="3" rx="1"/><path d="M3 6v6.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6M6.5 9h3"/></svg><span>Close</span></button>
+      </div>
+      <div class="side-acts read-only"><p class="sub">Archived. Reopen it to continue the conversation.</p><button class="act primary" id="reopen"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2.5 2.5v3h3"/></svg><span>Reopen</span></button></div>
       <p class="sub err-text" id="side-error"></p>
+      <div class="ver" id="ver-sec" hidden>
+        <div class="prow" id="p-ver" tabindex="0"><span id="ver-line"></span>
+          <div class="pcard"><div class="csec"><h5 id="ver-head">aegis</h5>
+            <div class="kv"><span>running</span><span id="ver-run"></span></div>
+            <div class="kv dim" id="ver-ref-row" hidden><span>ref</span><span class="path" id="ver-ref"></span></div>
+            <div class="kv dim" id="ver-base-row" hidden><span>base</span><span class="v" id="ver-base"></span></div>
+            <div class="kv"><span>latest</span><span id="ver-latest"></span></div>
+          </div></div>
+        </div>
+      </div>
     </aside>
   </main>
   <div class="keymap" id="keymap" hidden></div>

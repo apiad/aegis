@@ -905,6 +905,9 @@ def test_the_running_build_and_the_latest_release_show_in_the_top_bar_and_sideba
 
     spawn(page)
     page.wait_for_selector("#ver-sec:not([hidden])")
+    assert page.text_content("#ver-line").startswith(f"aegis{shown}")
+    page.hover("#p-ver")  # the details are the line's card
+    page.wait_for_selector("#p-ver .pcard", state="visible")
     assert page.inner_text("#ver-head") == f"aegis on {socket.gethostname()}"
     assert page.inner_text("#ver-run").startswith(shown)
     assert page.inner_text("#ver-latest").startswith("99.0.0")
@@ -932,9 +935,19 @@ def test_the_fleet_band_and_the_sidebar_show_quota_and_the_host(quota_server, pa
     assert "CPU" in page.inner_text("#band-host")
 
     spawn(page)
-    page.wait_for_selector("#s-quota .qrow.critical")
-    assert "Claude 5 hours" in page.inner_text("#s-quota")
-    assert "OpenCode" not in page.inner_text("#s-quota")
+    # At a glance: the Claude session's 5-hour window, red, with its projection.
+    five = page.locator("#s-tiles .tile[data-kind=session]")
+    five.wait_for()
+    assert "critical" in five.get_attribute("class")
+    assert re.search(r"71%→18\d", five.inner_text().replace("\n", ""))
+    page.wait_for_selector("#s-host-sec:not([hidden]) #s-host-tiles .tile")
+    assert "CPU" in page.inner_text("#s-host-tiles")
+    # The details are the row's card.
+    page.hover("#p-usage")
+    page.wait_for_selector("#s-quota .qrow.critical", state="visible")
+    assert page.inner_text("#s-quota-head") == "Quota · Claude"
+    assert "5 hours" in page.inner_text("#s-quota")
+    assert "OpenCode" not in page.inner_text("#p-usage")
     assert page.errors == []
 
 
@@ -956,12 +969,214 @@ def test_quota_rows_survive_session_updates_so_their_tooltip_stays(
     assert page.evaluate(f"document.querySelector('{row}').__kept === true")
 
     page.click("#cards .card")
-    page.wait_for_selector("#s-quota .qrow")
+    page.wait_for_selector("#s-quota .qrow", state="attached")
     page.evaluate("document.querySelector('#s-quota .qrow').__kept = true")
     page.fill("#input", "again")
     page.press("#input", "Enter")
     turns_done(page, 2)
     assert page.evaluate("document.querySelector('#s-quota .qrow').__kept === true")
+    assert page.errors == []
+
+
+ROUTER = "  router: {provider: opencode, model: openrouter/fake-qwen, effort: high, permission: full}\n"
+
+
+@pytest.fixture
+def harness_quota_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG + ROUTER)
+    seed_quota()
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
+    yield s
+    s.stop()
+
+
+def spawn_agent(pg, agent: str, prompt: str = "hello") -> None:
+    pg.click("#tab-add")
+    pg.wait_for_selector("#a2[data-view=spawn]")
+    pg.wait_for_function("document.querySelector('#sp-agent').value !== ''")
+    pick(pg, "#sp-agent", agent)
+    pg.fill("#sp-text", prompt)
+    pg.press("#sp-text", "Enter")
+    pg.wait_for_selector("#a2[data-view=session]")
+    turns_done(pg, 1)
+
+
+TILES = (
+    "[...document.querySelectorAll('#s-tiles .tile')]"
+    ".map(t => t.dataset.kind || t.querySelector('.k').textContent)"
+)
+
+
+def test_usage_shows_the_quota_the_session_spends(harness_quota_server, page):
+    """The panel used to show Claude's quota for every session (#227). A
+    session spends its harness's provider, and for OpenCode the one its model
+    names; a model aegis reads no quota for says so."""
+    page.goto(harness_quota_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn_agent(page, "opus")
+    page.wait_for_function(f"{TILES}.join() === 'context,session,weekly_all'")
+
+    spawn_agent(page, "deepseek")
+    page.wait_for_function(f"{TILES}.join() === 'context,rolling'")
+    page.hover("#p-usage")
+    page.wait_for_selector("#p-usage .pcard", state="visible")
+    assert page.inner_text("#s-quota-head") == "Quota · OpenCode Go"
+    assert "this reading is" in page.inner_text("#s-quota")  # the stale seed
+    page.mouse.move(5, 300)
+
+    spawn_agent(page, "router")
+    page.wait_for_function(f"{TILES}.join() === 'context,cost,quota'")
+    assert page.inner_text("#s-tiles .tile:last-child .v") == "none"
+    page.hover("#p-usage")
+    page.wait_for_selector("#p-usage .pcard", state="visible")
+    assert page.inner_text("#s-quota") == "aegis reads no quota for openrouter."
+    assert page.errors == []
+
+
+def side_width(pg) -> int:
+    return pg.evaluate(
+        "Math.round(document.getElementById('side').getBoundingClientRect().width)"
+    )
+
+
+def drag_panel(pg, width: int) -> None:
+    """Drag the panel's left edge until the panel is `width` px wide."""
+    g = pg.locator("#side-grip").bounding_box()
+    side = pg.locator("#side").bounding_box()
+    y = g["y"] + 100
+    pg.mouse.move(g["x"] + g["width"] / 2, y)
+    pg.mouse.down()
+    pg.mouse.move(side["x"] + side["width"] - width, y, steps=4)
+    pg.mouse.up()
+    pg.wait_for_function(
+        "w => Math.round(document.getElementById('side').getBoundingClientRect().width) === w",
+        arg=width,
+    )
+
+
+ACTS = """bs => bs.map(b => {
+  const r = b.getBoundingClientRect();
+  return {left: r.left, right: r.right, width: r.width, icon: !!b.querySelector('svg'),
+          label: getComputedStyle(b.querySelector('span')).display};
+})"""
+
+
+def test_the_actions_are_one_row_of_equal_cells_with_icons(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    row = page.locator(".side-acts.live-only").bounding_box()
+    cells = page.eval_on_selector_all(".side-acts.live-only .act", ACTS)
+    assert [c["icon"] for c in cells] == [True, True, True]
+    widths = [c["width"] for c in cells]
+    assert max(widths) - min(widths) < 1, widths
+    # The row is covered edge to edge.
+    assert abs(cells[0]["left"] - row["x"]) < 1
+    assert abs(cells[-1]["right"] - (row["x"] + row["width"])) < 1
+    assert all(c["label"] != "none" for c in cells)
+    # A narrow panel keeps the row and drops the labels.
+    drag_panel(page, 205)
+    cells = page.eval_on_selector_all(".side-acts.live-only .act", ACTS)
+    widths = [c["width"] for c in cells]
+    assert max(widths) - min(widths) < 1, widths
+    assert all(c["label"] == "none" for c in cells)
+    assert page.errors == []
+
+
+def test_a_rows_card_opens_beside_the_panel_and_closes(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    card = page.locator("#p-session .pcard")
+    assert card.is_hidden()
+    page.hover("#p-session")
+    card.wait_for(state="visible")
+    box = card.bounding_box()
+    side = page.locator("#side").bounding_box()
+    row = page.locator("#p-session").bounding_box()
+    assert box["x"] + box["width"] <= side["x"] - 8, "left of the panel"
+    assert abs(box["y"] - max(12, row["y"] - 8)) < 2, "level with its row"
+    assert "permission" in card.inner_text() and "full" in card.inner_text()
+    # The pointer crosses the gap into the card, and the card stays.
+    page.mouse.move(box["x"] + box["width"] - 10, box["y"] + 20, steps=5)
+    page.wait_for_timeout(300)
+    assert card.is_visible()
+    page.mouse.move(5, 500)
+    card.wait_for(state="hidden")
+    # The keyboard: focus opens a card, Esc closes it before it interrupts.
+    page.evaluate("document.getElementById('p-usage').focus({focusVisible: true})")
+    page.wait_for_selector("#p-usage .pcard", state="visible")
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#p-usage .pcard", state="hidden")
+    assert page.errors == []
+
+
+def test_the_panel_collapses_and_resizes_and_the_browser_keeps_both(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "first")
+    spawn(page, "second")
+    drag_panel(page, 380)
+    page.reload()
+    page.wait_for_selector("#a2[data-view=session]")
+    assert side_width(page) == 380
+    page.dblclick("#side-grip")
+    page.wait_for_function(
+        "document.getElementById('side').getBoundingClientRect().width === 260"
+    )
+    wide = page.locator(".v-session .col").bounding_box()["width"]
+    page.keyboard.press("Alt+b")
+    page.wait_for_selector("#side", state="hidden")
+    assert page.locator(".v-session .col").bounding_box()["width"] >= wide + 255
+    # Another tab keeps it collapsed, and so does a reload.
+    page.click(f"#tablist .tab[data-id='{a}']")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
+    assert page.is_hidden("#side")
+    page.reload()
+    page.wait_for_selector("#a2[data-view=session]")
+    assert page.is_hidden("#side")
+    page.click("#side-btn")
+    page.wait_for_selector("#side", state="visible")
+    assert side_width(page) == 260
+    assert page.errors == []
+
+
+def test_the_plan_keeps_what_is_left_and_its_card_holds_the_rest(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    plan = [{"text": f"step {i}", "state": "done"} for i in range(1, 6)]
+    plan += [
+        {"text": "step 6", "state": "doing"},
+        {"text": "step 7", "state": "pending"},
+    ]
+    page.fill("#input", f"/mcp plan_update {json.dumps({'items': plan})}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    page.wait_for_selector("#s-plan-sec:not([hidden]) >> text=step 7")
+    texts = "ds => ds.map(d => d.querySelector('span').textContent)"
+    assert page.eval_on_selector_all("#s-plan > div", texts) == [
+        "step 4",
+        "step 5",
+        "step 6",
+        "step 7",
+    ]
+    assert page.inner_text("#s-plan-more") == "+ 3 done above"
+    assert page.inner_text("#s-plan-h").startswith("Plan 5/7")
+    page.hover("#p-plan")
+    page.wait_for_selector("#p-plan .pcard", state="visible")
+    assert page.eval_on_selector_all("#s-plan-all > div", texts) == [
+        f"step {i}" for i in range(1, 8)
+    ]  # Each row's clock finds its own item in either list: the pending step has
+    # no time, and the panel's rows match the card's last four.
+    times = "ds => ds.map(d => d.querySelector('.t').textContent)"
+    page.wait_for_function(
+        "document.querySelector('#s-plan-all > div .t').textContent !== ''"
+    )
+    full = page.eval_on_selector_all("#s-plan-all > div", times)
+    assert full[-1] == "" and all(full[:-1])
+    assert page.eval_on_selector_all("#s-plan > div", times) == full[3:]
+
     assert page.errors == []
 
 
@@ -1793,7 +2008,10 @@ def test_an_opencode_session_streams_and_calls_aegis(server, page):
     prose = page.inner_text(".row.prose .body")
     assert "chunk6" not in prose, "the text is drawn while it streams"
     turns_done(page, 1)
-    assert page.inner_text("#s-model") == "OpenCode, opencode-go/fake-pro"
+    page.hover("#p-session")
+    page.wait_for_selector("#p-session .pcard", state="visible")
+    assert page.inner_text("#s-harness") == "OpenCode"
+    assert page.inner_text("#s-model") == "opencode-go/fake-pro"
     page.wait_for_function(
         "document.querySelector('#s-cost').textContent === '$0.0020'"
     )
@@ -2797,6 +3015,14 @@ def test_a_phone_reaches_tabs_the_drawer_and_the_chips(server, browser):
     page.wait_for_timeout(250)  # the slide
     assert page.locator(".side").bounding_box()["x"] < 390 - 300
     assert page.is_visible("#restart") and page.is_visible("#close")
+    # No hover here: a tap opens a row's card under the row, inside the drawer.
+    page.tap("#p-usage .tiles")
+    card = page.locator("#p-usage .pcard")
+    card.wait_for(state="visible")
+    cb, row = card.bounding_box(), page.locator("#p-usage .tiles").bounding_box()
+    assert cb["y"] > row["y"] and cb["x"] >= page.locator(".side").bounding_box()["x"]
+    page.tap("#p-usage .tiles")
+    card.wait_for(state="hidden")
     page.mouse.click(20, 400)  # the dimmed transcript
     page.wait_for_function("document.getElementById('a2').dataset.side !== 'open'")
     # The header stays above the dimmed page: ☰ closes the drawer, and a tab
@@ -2841,7 +3067,7 @@ def test_a_phone_in_landscape_gets_the_desktop_layout_with_touch_targets(
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
-    assert page.is_visible(".side") and page.is_hidden("#side-btn")
+    assert page.is_visible(".side") and page.is_visible("#side-btn")
     assert page.locator("#send").bounding_box()["height"] >= 44
     assert errors == []
 

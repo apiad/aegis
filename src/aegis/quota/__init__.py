@@ -76,6 +76,8 @@ def provider_wire(
     head = {
         "name": provider.name,
         "label": provider.label,
+        # The sidebar shows the provider a session spends, matched on this.
+        "harness": provider.harness,
         "account": account_hash(provider.account()),
     }
     note = FAILURE_TEXT.get(state.failure, state.failure)
