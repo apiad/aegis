@@ -94,7 +94,12 @@ them something to read, or just finished, only the agent knows, and it says so
 with `turn_end`; its plan comes from `plan_update`. Both are aegis records in the
 store, so the fold derives a session's `standing` and a refold gives the same
 card; the meta keeps it, so boot still reads no store. `attention.py` holds the
-precedence. No model reads a transcript to guess what a turn meant.
+precedence. No model reads a transcript to guess what a turn meant. The fold also
+times the plan from the records' `ts`: work is time inside a turn and after a
+turn that did not hand back to the person, idle is the rest, and each item gets
+the work done while it was `doing`. It accrues only at a plan record and at turn
+boundaries (`transcript/plan_clock.py`); the browser adds the time running since,
+so a turn's lines do not rewrite the meta.
 
 **What a person has read is the server's, shared by every browser.** A session
 keeps the ids of the agent messages no person has read, and when someone last

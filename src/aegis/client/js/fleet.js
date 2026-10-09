@@ -3,6 +3,7 @@
 
 import { glyph, LABEL } from "./glyphs.js";
 import { hostRow, noteRow, providerLine, quotaHeading, quotaRow } from "./gauges.js";
+import { dur, planTimes } from "./plantime.js";
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -108,7 +109,7 @@ function card(m, onOpen) {
   parts.push(sub);
   if (m.plan_now || m.plan_did) {
     const pl = el("div", "pl");
-    if (m.plan_now) pl.append(planRow("now", m.plan_now, "now"));
+    if (m.plan_now) pl.append(planRow("now", m.plan_now, "now", el("span", "t")));
     if (m.plan_did) pl.append(planRow("did", m.plan_did, ""));
     parts.push(pl);
   }
@@ -123,18 +124,41 @@ function card(m, onOpen) {
   if (m.unread) ft.append(el("span", "unr", `${m.unread} unread`));
   const mons = (m.monitors || []).length;
   if (mons) ft.append(el("span", "mons", `${mons} monitor${mons > 1 ? "s" : ""}`));
-  if (m.plan_total) ft.append(el("span", "prog", `plan ${m.plan_done}/${m.plan_total}`));
+  if (m.plan_total) ft.append(planProg(m));
   ft.append(el("span", "ctx", `${pct}%`));
   parts.push(bar, ft);
   c.append(...parts);
+  tickPlan(c, m);
   c.addEventListener("click", () => onOpen(m.key));
   return c;
 }
 
-function planRow(key, text, cls) {
+function planRow(key, text, cls, tail) {
   const d = el("div", cls);
-  d.append(el("span", "k", key), el("span", null, text));
+  const body = el("span", null, text);
+  if (tail) body.append(tail);
+  d.append(el("span", "k", key), body);
   return d;
+}
+
+// One segment per item: done filled, doing pulsing while the agent works.
+function planProg(m) {
+  const bar = el("span", `pbar${m.attention === "working" ? " live" : ""}`);
+  for (const i of m.plan || []) bar.append(el("i", i.state === "pending" ? "" : i.state));
+  const prog = el("span", "prog");
+  prog.append(bar, el("span", "pt"));
+  return prog;
+}
+
+// The parts of a card that move with the clock: the count and ETA, and the
+// current item's time. Called when the card is drawn and every second after.
+export function tickPlan(c, m) {
+  const t = planTimes(m);
+  const pt = c.querySelector(".ft .prog .pt");
+  if (pt) pt.textContent = `${m.plan_done}/${m.plan_total}${t && t.left != null ? ` · ~${dur(t.left)}` : ""}`;
+  const now = c.querySelector(".pl .now .t");
+  const doing = (m.plan || []).findIndex((i) => i.state === "doing");
+  if (now) now.textContent = t && doing >= 0 ? ` · ${dur(t.items[doing])}` : "";
 }
 
 export function renderArchive(box, items, { onReopen, onRead }) {

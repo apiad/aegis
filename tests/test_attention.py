@@ -95,3 +95,10 @@ def test_review_and_done_clear_when_the_last_message_is_read_and_needs_you_blink
         last_unread=last_unread,
     )
     assert (c["mark"], c["blink"]) == (mark, blink)
+
+
+def test_the_card_carries_the_plans_clock_and_none_without_one():
+    clock = {"work_s": 60.0, "idle_s": 5.0, "at": 1000.0, "running": "work"}
+    assert a(st(clock=clock))["plan_clock"] == clock
+    assert a(st())["plan_clock"] is None
+    assert a({"plan": [], "did": ""})["plan_clock"] is None  # a meta from before

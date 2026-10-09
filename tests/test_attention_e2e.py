@@ -68,6 +68,8 @@ async def test_the_plan_reaches_the_card(world):
         1,
         2,
     )
+    assert c["plan_clock"]["running"] in ("work", "idle")
+    assert all(isinstance(i["work_s"], float) for i in c["plan"])
 
 
 async def test_a_live_monitor_is_waiting_and_cancelling_it_is_done(world):

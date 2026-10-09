@@ -118,6 +118,7 @@ async def test_boot_takes_the_standing_from_the_meta(world):
     r = world.registry()
     (s,) = r.open_sessions()
     assert s.wire()["plan_now"] == "write the test"
+    assert s.wire()["plan_clock"] is None
 
 
 async def test_boot_takes_the_read_state_from_the_meta(world):

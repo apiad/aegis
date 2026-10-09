@@ -1123,7 +1123,7 @@ def test_the_plan_keeps_what_is_left_and_its_card_holds_the_rest(server, page):
     page.press("#input", "Enter")
     turns_done(page, 2)
     page.wait_for_selector("#s-plan-sec:not([hidden]) >> text=step 7")
-    texts = "ds => ds.map(d => d.textContent)"
+    texts = "ds => ds.map(d => d.querySelector('span').textContent)"
     assert page.eval_on_selector_all("#s-plan > div", texts) == [
         "step 4",
         "step 5",
@@ -1131,12 +1131,21 @@ def test_the_plan_keeps_what_is_left_and_its_card_holds_the_rest(server, page):
         "step 7",
     ]
     assert page.inner_text("#s-plan-more") == "+ 3 done above"
-    assert page.inner_text("#s-plan-count") == "5 of 7"
+    assert page.inner_text("#s-plan-h").startswith("Plan 5/7")
     page.hover("#p-plan")
     page.wait_for_selector("#p-plan .pcard", state="visible")
     assert page.eval_on_selector_all("#s-plan-all > div", texts) == [
         f"step {i}" for i in range(1, 8)
-    ]
+    ]  # Each row's clock finds its own item in either list: the pending step has
+    # no time, and the panel's rows match the card's last four.
+    times = "ds => ds.map(d => d.querySelector('.t').textContent)"
+    page.wait_for_function(
+        "document.querySelector('#s-plan-all > div .t').textContent !== ''"
+    )
+    full = page.eval_on_selector_all("#s-plan-all > div", times)
+    assert full[-1] == "" and all(full[:-1])
+    assert page.eval_on_selector_all("#s-plan > div", times) == full[3:]
+
     assert page.errors == []
 
 
@@ -3859,6 +3868,171 @@ def test_the_archive_filters_by_server_and_names_one_that_is_down(
     assert page.locator("#arch-list tr[data-id]").count() == 1
     linked.beta.stop()
     page.wait_for_selector("#arch-servers .off >> text=beta offline", timeout=20000)
+
+
+def test_plan_times_add_the_running_clock_and_extrapolate_the_pace(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    got = page.evaluate(
+        """async () => {
+          const { dur, planTimes } = await import('/static/js/plantime.js');
+          const plan = [
+            { text: "a", state: "done", work_s: 300 },
+            { text: "b", state: "doing", work_s: 60 },
+            { text: "c", state: "pending", work_s: 0 },
+          ];
+          const at = 10000;
+          const clock = (running) => ({ work_s: 400, idle_s: 50, at, running });
+          const work = planTimes({ plan, plan_clock: clock("work") }, at + 120);
+          const idle = planTimes({ plan, plan_clock: clock("idle") }, at + 120);
+          const skew = planTimes({ plan, plan_clock: clock("work") }, at - 30);
+          const none = planTimes(
+            { plan: [{ text: "a", state: "doing" }], plan_clock: { work_s: 0, idle_s: 0, at, running: "work" } },
+            at + 10,
+          );
+          return {
+            durs: [dur(0), dur(59), dur(60), dur(359), dur(3600), dur(4320)],
+            work, idle, skew, none,
+            old: planTimes({ plan }),
+          };
+        }"""
+    )
+    assert got["durs"] == ["<1m", "<1m", "1m", "5m", "1h0m", "1h12m"]
+    # Working: 120 s more on the plan and on "b". Pace 520/1 = 520 s; 2 not done;
+    # minus b's 180 s: 860 s left.
+    assert got["work"] == {"work": 520, "idle": 50, "items": [300, 180, 0], "left": 860}
+    # Idle: the work clock stands still, so the ETA does not move: 400 × 2 − 60.
+    assert got["idle"] == {"work": 400, "idle": 170, "items": [300, 60, 0], "left": 740}
+    # The browser's clock behind the server's: nothing negative.
+    assert got["skew"] == {"work": 400, "idle": 50, "items": [300, 60, 0], "left": 740}
+    assert got["none"]["left"] is None and got["none"]["items"] == [10]
+    assert got["old"] is None
+    assert page.errors == []
+
+
+def test_the_card_shows_the_plan_bar_count_eta_and_the_current_items_time(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    plan = [
+        {"text": "read", "state": "done"},
+        {"text": "fix", "state": "doing"},
+        {"text": "ship", "state": "pending"},
+    ]
+    page.fill("#input", f"/mcp plan_update {json.dumps({'items': plan})}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    page.click("#tab-fleet")
+    card = f"#cards .card[data-id='{sid}']"
+    page.wait_for_selector(f"{card} .ft .prog .pbar")
+    classes = page.eval_on_selector_all(
+        f"{card} .pbar i", "is => is.map(i => i.className)"
+    )
+    assert classes == ["done", "doing", ""]
+    text = "e => e.textContent"  # inner_text would trim the leading space
+    assert page.eval_on_selector(f"{card} .ft .prog .pt", text) == "1/3 · ~<1m"
+    assert page.eval_on_selector(f"{card} .pl .now .t", text) == " · <1m"
+    # Not working: the doing segment holds still.
+    anim = "i => getComputedStyle(i).animationName"
+    assert page.eval_on_selector(f"{card} .pbar i.doing", anim) == "none"
+    assert page.errors == []
+
+
+def test_a_card_from_before_plan_times_draws_the_bar_without_times(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    got = page.evaluate(
+        """async () => {
+          const { tickPlan } = await import('/static/js/fleet.js');
+          const c = document.createElement('div');
+          c.innerHTML = '<div class="pl"><div class="now"><span class="t"></span></div></div>'
+            + '<div class="ft"><span class="prog"><span class="pt"></span></span></div>';
+          tickPlan(c, {
+            plan: [{ text: 'a', state: 'done' }, { text: 'b', state: 'doing' }],
+            plan_done: 1,
+            plan_total: 2,
+          });
+          return [c.querySelector('.pt').textContent, c.querySelector('.t').textContent];
+        }"""
+    )
+    assert got == ["1/2", ""]
+    assert page.errors == []
+
+
+def test_the_sidebar_shows_plan_totals_and_each_items_time(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    plan = [
+        {"text": "read", "state": "done"},
+        {"text": "fix", "state": "doing"},
+        {"text": "ship", "state": "pending"},
+    ]
+    page.fill("#input", f"/mcp plan_update {json.dumps({'items': plan})}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    page.wait_for_selector("#s-plan-sec:not([hidden]) >> text=ship")
+    head = page.inner_text("#s-plan-h")
+    assert head == "Plan 1/3 · <1m work · <1m idle · ~<1m left"
+    cells = page.eval_on_selector_all(
+        "#s-plan > div .t", "ts => ts.map(t => t.textContent)"
+    )
+    assert cells == ["<1m", "<1m", ""]
+    assert page.errors == []
+
+
+def test_the_doing_spinner_turns_only_while_the_agent_works(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    plan = [{"text": "read", "state": "done"}, {"text": "fix", "state": "doing"}]
+    page.fill("#input", f"/mcp plan_update {json.dumps({'items': plan})}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    spin = "#s-plan > div.doing svg.ic"
+    anim = "m => getComputedStyle(m).animationName"
+    page.wait_for_selector(spin)
+    assert page.eval_on_selector(spin, anim) == "none"
+    page.fill("#input", "/sleep 3")
+    page.press("#input", "Enter")
+    page.wait_for_selector("#s-plan.live")
+    assert page.eval_on_selector(spin, anim) == "a2spin"
+    turns_done(page, 3)
+    page.wait_for_selector("#s-plan:not(.live)")
+    assert page.eval_on_selector(spin, anim) == "none"
+    assert page.errors == []
+
+
+def test_a_finished_plan_has_no_eta_and_a_stopped_clock_adds_nothing(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    got = page.evaluate(
+        """async () => {
+          const { planTimes } = await import('/static/js/plantime.js');
+          const plan = [{ text: "a", state: "done", work_s: 300 }];
+          const plan_clock = { work_s: 300, idle_s: 20, at: 10000, running: "" };
+          return planTimes({ plan, plan_clock }, 99999);
+        }"""
+    )
+    assert got == {"work": 300, "idle": 20, "items": [300], "left": None}
+    assert page.errors == []
+
+
+def test_the_sidebar_spinner_is_not_redrawn_when_the_session_publishes(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    plan = [{"text": "read", "state": "done"}, {"text": "fix", "state": "doing"}]
+    page.fill("#input", f"/mcp plan_update {json.dumps({'items': plan})}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    spin = "#s-plan > div.doing svg.ic"
+    page.wait_for_selector(spin)
+    page.eval_on_selector(spin, "m => { m.dataset.tag = 'kept'; }")
+    page.fill("#input", "/sleep 1")
+    page.press("#input", "Enter")
+    turns_done(page, 3)  # status, activity and cost all published meanwhile
+    assert page.eval_on_selector(spin, "m => m.dataset.tag || ''") == "kept"
 
 
 def run_lines(pg) -> list[str]:

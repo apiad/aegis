@@ -272,6 +272,7 @@ body{background:#000}
 #a2 .pcard .big .c{margin-left:auto;font-family:var(--font-mono);font-size:15px;color:var(--strong)}
 #a2 .pcard .gauge{grid-template-columns:44px minmax(40px,1fr) auto}
 #a2 .pcard .plan{font-family:var(--font-ui)}
+#a2 .side #s-plan-h{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* tiles: the numbers a glance needs */
 #a2 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 #a2 .tile{min-width:0}
@@ -551,6 +552,12 @@ body{background:#000}
 #a2 .card .pl .k{color:var(--faint)}
 #a2 .card .pl .now span:last-child{color:var(--strong)}
 #a2 .card .ft .prog{color:var(--faint)}
+#a2 .card .ft .prog{display:inline-flex;align-items:center;gap:6px}
+#a2 .pbar{display:inline-flex;gap:1px;width:48px;height:6px}
+#a2 .pbar i{flex:1;min-width:0;background:var(--rule);border-radius:1px}
+#a2 .pbar i.done{background:var(--ok)}#a2 .pbar i.doing{background:var(--accent)}
+#a2 .pbar.live i.doing{animation:a2pulse 1.4s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){#a2 .pbar.live i.doing{animation:none}}
 #a2 .grp-h{grid-column:1/-1;font-family:var(--font-head);font-size:12px;color:var(--faint);margin-top:4px}
 #a2 .order{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 0}
 #a2 .order h3{margin:0;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
@@ -563,9 +570,10 @@ body{background:#000}
 #a2 .askbox.at-error{background:var(--err-bg);border-left-color:var(--err);color:var(--err)}
 #a2 .st .ic{width:13px;height:13px}
 #a2 .plan{display:grid;gap:5px;font-size:12.5px}
-#a2 .plan div{display:grid;grid-template-columns:16px 1fr;gap:6px;color:var(--muted)}
+#a2 .plan div{display:grid;grid-template-columns:16px 1fr auto;gap:6px;color:var(--muted)}
 #a2 .plan>.done{color:var(--faint)}#a2 .plan>.doing{color:var(--strong)}
-#a2 .plan .ic{width:12px;height:12px;margin-top:3px}#a2 .plan .ic.work{animation:none}
+#a2 .plan .ic{width:12px;height:12px;margin-top:3px}#a2 .plan:not(.live) .ic.work{animation:none}
+#a2 .plan .t{color:var(--faint);font-family:var(--font-chrome);font-size:11.5px}
 #a2 .replies{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 9px 2px}
 #a2 .replies .lbl{font-family:var(--font-chrome);font-size:11px;color:var(--faint);margin-right:2px}
 #a2 .rp{font-family:var(--font-ui);font-size:13px;color:var(--strong);background:var(--surface);border:1px solid var(--rule);border-radius:999px;padding:5px 13px;cursor:pointer;line-height:1.3;text-align:left}
