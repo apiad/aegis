@@ -29,7 +29,7 @@ from .roots import CONFIG_FILE
 from .session import SpawnSpec
 
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
-HARNESSES = ("claude-code", "opencode")
+HARNESSES = ("claude-code", "opencode", "codex")
 SUPPORTED_HARNESSES = HARNESSES
 # Claude Code's --model aliases (`claude --help`), offered before the models
 # the agents name.
@@ -43,10 +43,14 @@ OPENCODE_MODEL = (
     "an OpenCode model is provider/model, such as opencode-go/deepseek-v4-pro"
 )
 
+CODEX_MODEL = "a Codex model is provider/model, such as openai/gpt-5.5"
+
 
 def _model_error(harness: str, model: str) -> str | None:
     if harness == "opencode" and "/" not in model:
         return OPENCODE_MODEL
+    if harness == "codex" and "/" not in model:
+        return CODEX_MODEL
     return None
 
 

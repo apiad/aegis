@@ -33,7 +33,11 @@ def register_config_ops(app: App) -> None:
     cache: dict[str, tuple[float, list[Found]]] = {}
 
     def bins() -> dict[str, str]:
-        return {"claude-code": app.claude_bin, "opencode": app.opencode_bin}
+        return {
+            "claude-code": app.claude_bin,
+            "opencode": app.opencode_bin,
+            "codex": app.codex_bin,
+        }
 
     async def detected() -> list[Found]:
         hit = cache.get("found")

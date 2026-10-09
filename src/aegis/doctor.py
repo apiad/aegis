@@ -42,7 +42,7 @@ from .session import SpawnSpec
 
 VERSION_TIMEOUT_S = 5.0
 PROBE_TIMEOUT_S = 20.0
-LABELS = {"claude-code": "Claude Code", "opencode": "OpenCode"}
+LABELS = {"claude-code": "Claude Code", "opencode": "OpenCode", "codex": "Codex"}
 
 
 @dataclass(frozen=True)
@@ -81,7 +81,7 @@ async def _version(bin: str) -> str:
 
 
 async def _catalog(name: str, bins: dict[str, str], cwd: Path) -> Catalog:
-    h = harness_for(name, bins["claude-code"], bins["opencode"])
+    h = harness_for(name, bins["claude-code"], bins["opencode"], bins["codex"])
     spec = SpawnSpec(
         agent="doctor", model="", effort="", permission="read", cwd=cwd, harness=name
     )

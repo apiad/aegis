@@ -14,8 +14,10 @@ queues:
 """
 
 
-def bins(claude: str, opencode: str) -> dict[str, str]:
-    return {"claude-code": claude, "opencode": opencode}
+def bins(
+    claude: str, opencode: str, codex: str = "codex-not-installed"
+) -> dict[str, str]:
+    return {"claude-code": claude, "opencode": opencode, "codex": codex}
 
 
 async def run(tmp_path: Path, text: str | None, claude: str, opencode: str):
@@ -126,7 +128,8 @@ async def test_legacy_state_is_an_error_and_the_doctor_writes_nothing(
 async def test_detect_finds_both_fakes_with_their_models(
     tmp_path, fake_claude, fake_opencode
 ):
-    claude, opencode = await detect(tmp_path, bins(fake_claude, fake_opencode))
+    claude, opencode, codex = await detect(tmp_path, bins(fake_claude, fake_opencode))
+    assert codex.error == "codex-not-installed is not on PATH"
     assert (claude.harness, claude.version, claude.error) == (
         "claude-code",
         "0.0-fake (Claude Code)",
