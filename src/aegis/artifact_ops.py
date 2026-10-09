@@ -218,7 +218,9 @@ def register_artifact_ops(app: App) -> None:
     @r.op("artifact.read", ArtifactId, agent=True)
     async def read(p: ArtifactId, caller):
         """The page's status (draft, live, submitted, closed), its latest state,
-        its last 20 events, and the submit's data and label. Wakes nobody."""
+        its last 20 events, the submit's data and label, and `errors`: the
+        script errors the page raised after the first, which woke you and
+        was the only one to. Wakes nobody."""
         s = own(caller)
         try:
             return s.artifacts.read(p.id)

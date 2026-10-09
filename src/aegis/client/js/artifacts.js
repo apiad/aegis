@@ -110,6 +110,12 @@ window.addEventListener("message", async (ev) => {
   const ops = { "aegis/state": "artifact.state", "aegis/emit": "artifact.emit", "aegis/submit": "artifact.submit", "aegis/error": "artifact.error" };
   const op = ops[m.method];
   if (!op) return;
+  if (m.method === "aegis/error") {
+    // The server wakes the agent once per landed page; a frame's later errors
+    // (a loop in its JS) would only be counted, so they never leave it.
+    if (frame.dataset.errored) return;
+    frame.dataset.errored = "1";
+  }
   try {
     // The frame's id last, so a page that sends its own artifact_id cannot name another.
     await inOrder(id, () => call(op, { ...(m.params || {}), artifact_id: id }, key));

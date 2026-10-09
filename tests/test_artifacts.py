@@ -190,6 +190,7 @@ def test_submit_and_close_end_the_artifact_and_a_second_is_refused(
         "events": [],
         "submitted": {"p": "b"},
         "label": "Picked B",
+        "errors": 0,
     }
     with pytest.raises(ArtifactError) as e:
         s.artifacts.submit(a.id, {}, "again")
@@ -206,14 +207,18 @@ def test_submit_and_close_end_the_artifact_and_a_second_is_refused(
         s.artifacts.get(c.id)
 
 
-def test_one_error_wakes_per_artifact_per_turn(tmp_path, fake_claude):
+def test_one_error_wakes_per_landed_page(tmp_path, fake_claude):
     h = Harness(tmp_path, fake_claude)
     s = h.session
     a = s.artifacts.create("T", None, None)
     s.artifacts.land(a, "F", "index.html", None, None)
+    assert s.artifacts.read(a.id)["errors"] == 0
     assert s.artifacts.error_wakes(a.id) is True
     assert s.artifacts.error_wakes(a.id) is False
-    s.turns += 1  # what _on_line does on a result
+    assert s.artifacts.error_wakes(a.id) is False
+    assert s.artifacts.read(a.id)["errors"] == 2
+    s.artifacts.land(a, "F2", "index.html", None, None)  # a resend
+    assert s.artifacts.read(a.id)["errors"] == 0
     assert s.artifacts.error_wakes(a.id) is True
 
 

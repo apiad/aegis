@@ -3,7 +3,7 @@
 The pure parts live here: the skeleton ``artifact_create`` writes, the static
 checks a send runs before anything is served, the inbox text a page's answer
 arrives under, and the caps. The per-session runtime (drafts, the latest
-state, coalescing, probes, the error-per-turn cap) is ``Board`` below, held by
+state, coalescing, probes, one error wake per landed page) is ``Board`` below, held by
 ``Session.artifacts``. The operations are in ``artifact_ops.py``; the fold in
 ``transcript/entries.py``.
 
@@ -162,7 +162,8 @@ class Artifact:
     dirty: bool = False  # a page's write not yet recorded
     last_written: float = 0.0
     emit_times: deque = field(default_factory=deque)
-    errored_turn: int = -1
+    errored: bool = False  # the landed page's first error woke the agent
+    error_count: int = 0  # errors after that one, dropped
 
 
 class Board:
@@ -202,6 +203,7 @@ class Board:
             "events": list(a.events),
             "submitted": a.submitted,
             "label": a.label,
+            "errors": a.error_count,
         }
 
     # -- lifecycle -------------------------------------------------------------
@@ -220,6 +222,7 @@ class Board:
         started: bool | None,
     ) -> None:
         self.flush(a.id)
+        a.errored, a.error_count = False, 0  # a new page earns its own error wake
         a.status, a.file_id, a.name, a.caption, a.started = (
             "live",
             file_id,
@@ -328,11 +331,16 @@ class Board:
         )
 
     def error_wakes(self, id: str) -> bool:
+        """True for the first error a landed page raises; every later one is
+        counted for ``read`` and dropped. A loop in the page's JS then costs one
+        message, and a card left mounted does not wake the agent after every
+        turn it takes; a resend lands a new page and re-arms it."""
         a = self.get(id)
-        if a.errored_turn == self._s.turns:
-            return False
-        a.errored_turn = self._s.turns
-        return True
+        if not a.errored:
+            a.errored = True
+            return True
+        a.error_count += 1
+        return False
 
     # -- probes --------------------------------------------------------------
     async def probe(self, a: Artifact, url: str, subscribers: int) -> bool | None:

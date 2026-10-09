@@ -248,7 +248,6 @@ class Session:
         self.recap_cost_usd = recap_cost_usd
         # The current process's catalog; None as a result when it did not answer.
         self.catalog_task: asyncio.Task[Catalog | None] | None = None
-        self.turns = 0
         self.artifacts = Board(self)
 
     # -- what the outside sees -------------------------------------------
@@ -730,7 +729,6 @@ class Session:
             self._publish_now()  # waiting on a background task shows on the card
             self._host.status_changed(self)
         if any(isinstance(ev, Result) for ev in events):
-            self.turns += 1
             if self.held:
                 self._flushing = True
                 asyncio.get_running_loop().create_task(self._flush_held())

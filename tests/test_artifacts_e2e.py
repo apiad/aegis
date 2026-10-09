@@ -73,6 +73,7 @@ async def test_create_send_read_update_close(world, tmp_path):
         "events": [],
         "submitted": None,
         "label": None,
+        "errors": 0,
     }
     upd = ok(
         await turn(
@@ -343,7 +344,7 @@ async def test_a_probes_error_is_truncated_in_the_failed_send(
     assert said.startswith("mcp error: page_error") and len(said) < 5000
 
 
-async def test_errors_wake_once_per_turn(world, tmp_path):
+async def test_errors_wake_once_per_landed_page(world, tmp_path):
     a, aid = await landed(world, tmp_path)
     reg = world.app.registry
     assert (
@@ -371,13 +372,24 @@ async def test_errors_wake_once_per_turn(world, tmp_path):
         m["title"].startswith(f"artifact:{aid} · error")
         and "boom\n```\nat x:1\n```" in m["md"]
     )
+    # The wake's turn has ended: a mounted card's next error is still dropped.
     assert (
         await reg.call(
             "artifact.error",
             {"log_id": a.log_id, "artifact_id": aid, "message": "boom3", "stack": ""},
         )
-        == "ok"
+        == "dropped"
     )
+    assert ok(await turn(a, mcp("artifact_read", id=aid)))["errors"] == 2
+    ok(await turn(a, mcp("artifact_update", id=aid, resend=True)))
+    assert (
+        await reg.call(
+            "artifact.error",
+            {"log_id": a.log_id, "artifact_id": aid, "message": "boom4", "stack": ""},
+        )
+        == "ok"
+    )  # the resend landed a new page, which earns its own wake
+    await until(lambda: len(inbox(a)) == 2 and a.status == "idle", what="the rewake")
 
 
 async def test_a_long_error_wakes_the_agent_truncated(world, tmp_path):
