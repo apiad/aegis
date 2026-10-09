@@ -1014,16 +1014,17 @@ def test_open_natively_shows_only_on_the_servers_desktop_and_opens_the_copy(
     assert page.errors == []
 
 
-SKELETON_WITH = (
-    '<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/static/css/artifact.css">'
-    '<script src="/static/js/artifact.js"></script><body><h2>Pick</h2>{body}</body>'
-)
+CONTROLS = "<!-- controls go here -->"
+WIRING = "// wire the controls; answer with aegis.submit / aegis.emit / aegis.state"
 
 
 def _artifact(page, server, body, n, title="Pick", caption=None):
-    """Create a draft through the fake claude, write ``body`` into it, send it.
-    ``n`` is how many turns the page has seen done; two more happen here.
-    Returns the artifact id and the send's last prose line."""
+    """Create a draft through the fake claude, fill it, send it. ``body`` is
+    ``(markup, ready_body)``: the markup replaces the skeleton's controls
+    placeholder and the ready body its wiring comment, so the skeleton
+    artifact_create really writes is the one these tests run. ``n`` is how many
+    turns the page has seen done; two more happen here. Returns the artifact id
+    and the send's last prose line."""
     args = {"title": title} | ({"caption": caption} if caption else {})
     page.fill("#input", f"/mcp artifact_create {json.dumps(args)}")
     page.press("#input", "Enter")
@@ -1036,7 +1037,11 @@ def _artifact(page, server, body, n, title="Pick", caption=None):
             re.search(r'"id": "(art-[^"]+)", "path": "([^"]+)"', said).groups(),
         )
     )
-    Path(made["path"]).write_text(SKELETON_WITH.format(body=body))
+    markup, ready = body
+    draft = Path(made["path"])
+    text = draft.read_text()
+    assert CONTROLS in text and WIRING in text, "the skeleton lost a placeholder"
+    draft.write_text(text.replace(CONTROLS, markup).replace(WIRING, ready))
     page.fill("#input", f"/mcp artifact_send {json.dumps({'id': made['id']})}")
     page.press("#input", "Enter")
     turns_done(page, n + 2)
@@ -1044,15 +1049,12 @@ def _artifact(page, server, body, n, title="Pick", caption=None):
 
 
 PICK = (
-    '<button id="b">B</button><span id="st"></span><span id="ac"></span>'
-    "<script>aegis.ready((state) => {"
-    "  st.textContent = JSON.stringify(state);"
+    '<button id="b">B</button><span id="st"></span><span id="ac"></span>',
+    "st.textContent = JSON.stringify(state);"
     "  const accent = () => (ac.textContent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());"
     "  accent(); setInterval(accent, 100);"
     '  b.onclick = () => aegis.submit({pick: "b"}, "Picked B");'
-    "});"
-    "aegis.onState((s) => (st.textContent = JSON.stringify(s)));"
-    "</script>"
+    "  aegis.onState((s) => (st.textContent = JSON.stringify(s)));",
 )
 
 
@@ -1102,17 +1104,13 @@ def test_a_page_that_throws_fails_the_send_and_shows_no_card(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
-    _, said = _artifact(page, server, "<script>aegis.state({}); nope();</script>", 0)
+    # An inline script's error, raised before the handshake.
+    _, said = _artifact(page, server, ("<script>nope();</script>", "aegis.state({});"), 0)
     assert said.startswith("mcp error: page_error") and "nope is not defined" in said
     assert page.locator(".row.artifact").count() == 0
     page.locator("#probes iframe").wait_for(state="detached")
     # An error inside ready(), after the handshake, is caught by the grace window.
-    _, said = _artifact(
-        page,
-        server,
-        "<script>aegis.ready(() => { aegis.state({}); later(); });</script>",
-        2,
-    )
+    _, said = _artifact(page, server, ("", "aegis.state({}); later();"), 2)
     assert said.startswith("mcp error: page_error") and "later is not defined" in said
     assert page.locator(".row.artifact").count() == 0
     assert [
@@ -1156,9 +1154,7 @@ def test_a_resend_swaps_the_frame_in_place(server, page):
     before = page.get_attribute(frame, "src")
     made = page.locator(".row.prose .md", has_text='"path"').last.inner_text()
     path = re.search(r'"path": "([^"]+)"', made).group(1)
-    Path(path).write_text(
-        SKELETON_WITH.format(body=PICK.replace("B</button>", "C</button>"))
-    )
+    Path(path).write_text(Path(path).read_text().replace("B</button>", "C</button>"))
     page.fill(
         "#input", f"/mcp artifact_update {json.dumps({'id': aid, 'resend': True})}"
     )
@@ -1179,10 +1175,10 @@ def test_a_page_that_names_another_artifact_acts_on_its_own(server, page):
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
     forging = (
-        '<button id="b">B</button><script>aegis.ready(() => { aegis.state({});'
+        '<button id="b">B</button>',
+        "aegis.state({});"
         '  b.onclick = () => parent.postMessage({jsonrpc: "2.0", id: 99, method: "aegis/submit",'
-        '    params: {artifact_id: "art-00000000", data: {p: 1}, label: "Forged"}}, "*");'
-        "});</script>"
+        '    params: {artifact_id: "art-00000000", data: {p: 1}, label: "Forged"}}, "*");',
     )
     aid, said = _artifact(page, server, forging, 0)
     assert '"started": true' in said
