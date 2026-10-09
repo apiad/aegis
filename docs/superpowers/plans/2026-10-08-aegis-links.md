@@ -46,14 +46,14 @@
 - Produces: `archive.merge(pages: dict[str, tuple[list[dict], Position | None]], limit: int, positions: dict) -> tuple[list[dict], dict]`: merge per-server pages, take `limit`, return the items and the new positions (Task 4 uses it).
 - Produces: `archive.list` params `{query?, server?, limit=50, cursor?}` and result `{items, total, counts: {server: n}, cursor}`; every item carries `server`.
 
-- [ ] Write `tests/test_archive.py`: `test_page_orders_newest_first`, `test_page_after_a_position_skips_nothing_on_ties` (five metas with the same `last_activity`, paged by 2, every id exactly once), `test_page_counts_the_total_matching_the_query`, `test_cursor_round_trips_and_a_bad_one_is_refused`, `test_merge_takes_the_newest_across_servers_and_keeps_positions` (two servers, 3+3 items interleaved, limit 4, then the second page from the returned positions gives the remaining 2 with no repeats).
-- [ ] Run `uv run pytest tests/test_archive.py -q`; expect import errors.
-- [ ] Write `src/aegis/archive.py` with the functions above.
-- [ ] Rewrite `Registry.archive(query, limit, after)` to return `archive.page(self.archived.values(), …)` mapped through `_public`; update `test_archive_filters_and_pages` to the new signature (the `>=` timestamp case becomes the tie case).
-- [ ] `archive.list` in `app.py`: decode the cursor, page the local archive at `positions.get(self.server_name)`, return `{items (each with server), total, counts: {name: total}, cursor: encode({name: pos}) or None}`.
-- [ ] Client: `loadArchive(reset)` keeps `archived` and `archiveCursor`; the first load resets, "Show 50 more" appends; the footer reads `Showing N of TOTAL`; the button is hidden when `cursor` is null. A query change resets.
-- [ ] Browser test `test_the_archive_pages_past_fifty`: seed 120 archived metas on disk, open the Fleet, see 50 rows and `Showing 50 of 120`, click twice, see 120 and no button.
-- [ ] Run the touched tests; commit `feat(archive): page past the newest 50, with a cursor that never skips a tie (#203)` plus a `changelog.d/203-archive-paging.fixed.md` fragment.
+- [x] Write `tests/test_archive.py`: `test_page_orders_newest_first`, `test_page_after_a_position_skips_nothing_on_ties` (five metas with the same `last_activity`, paged by 2, every id exactly once), `test_page_counts_the_total_matching_the_query`, `test_cursor_round_trips_and_a_bad_one_is_refused`, `test_merge_takes_the_newest_across_servers_and_keeps_positions` (two servers, 3+3 items interleaved, limit 4, then the second page from the returned positions gives the remaining 2 with no repeats).
+- [x] Run `uv run pytest tests/test_archive.py -q`; expect import errors.
+- [x] Write `src/aegis/archive.py` with the functions above.
+- [x] Rewrite `Registry.archive(query, limit, after)` to return `archive.page(self.archived.values(), …)` mapped through `_public`; update `test_archive_filters_and_pages` to the new signature (the `>=` timestamp case becomes the tie case).
+- [x] `archive.list` in `app.py`: decode the cursor, page the local archive at `positions.get(self.server_name)`, return `{items (each with server), total, counts: {name: total}, cursor: encode({name: pos}) or None}`.
+- [x] Client: `loadArchive(reset)` keeps `archived` and `archiveCursor`; the first load resets, "Show 50 more" appends; the footer reads `Showing N of TOTAL`; the button is hidden when `cursor` is null. A query change resets.
+- [x] Browser test `test_the_archive_pages_past_fifty`: seed 120 archived metas on disk, open the Fleet, see 50 rows and `Showing 50 of 120`, click twice, see 120 and no button.
+- [x] Run the touched tests; commit `feat(archive): page past the newest 50, with a cursor that never skips a tie (#203)` plus a `changelog.d/203-archive-paging.fixed.md` fragment.
 
 ### Task 2: the link (slice 1, server side)
 
@@ -76,7 +76,7 @@ Wire, as `web.py` will speak it:
 - A browser frame with `server` other than the home's name goes down that link; the reply, snapshot, patch or error comes back with `server` added (and the browser's own `id`/`channel` restored).
 - The link client accepts `welcome`, `reply`, `snapshot`, `patch`, `error`, and drops anything else with one log line per kind.
 
-- [ ] Write `tests/test_links.py` with two in-process servers (a `Pair` fixture modelled on `tests/test_agents.py::World`: `alpha` and `beta` Apps with `server_name`, uvicorn on free ports, alpha linked to beta through `Links.add`). Tests:
+- [x] Write `tests/test_links.py` with two in-process servers (a `Pair` fixture modelled on `tests/test_agents.py::World`: `alpha` and `beta` Apps with `server_name`, uvicorn on free ports, alpha linked to beta through `Links.add`). Tests:
   - `test_a_link_comes_up_and_names_the_far_server`
   - `test_a_browser_on_alpha_calls_and_subscribes_on_beta` (a raw websocket client on alpha: `call {server: beta, op: agents.list}`, `sub {server: beta, channel: sessions}`; spawn on beta through it and see the `upsert` arrive with `server: beta`)
   - `test_two_subscriptions_to_one_channel_are_independent` (two alpha sockets subscribe to beta's `sessions`; one unsubscribes; the other still gets patches)
@@ -87,10 +87,10 @@ Wire, as `web.py` will speak it:
   - `test_links_json_is_0600_and_tokens_never_reach_the_wire` (the `links` channel and `link.list` carry no token)
   - `test_a_link_socket_cannot_open_files_on_the_desktop` (`file.open` over a link socket gets `not_local`)
   - `test_a_sent_file_is_streamed_through_via` (`GET /via/beta/files/<id>/<name>` on alpha returns beta's bytes and its sandbox headers)
-- [ ] `test_web.py`: the `no-origin` case stays 4403; add `test_a_socket_with_no_origin_is_accepted_only_as_a_link` (hello with `link` and the right token: welcome; with `link` and a wrong token: 4401).
-- [ ] Run them; expect failures.
-- [ ] Implement `ops.Caller.link`; `links.py`; the `web.py` changes; `App.links`, the `links` channel and `link.add`, `link.remove`, `link.list` (people only); `serve --name`; `aegis link add|remove|list` (token from stdin, `probe` first, name check).
-- [ ] Run `tests/test_links.py tests/test_web.py`; commit `feat(links): zion links another aegis as a client of it (#203)`.
+- [x] `test_web.py`: the `no-origin` case stays 4403; add `test_a_socket_with_no_origin_is_accepted_only_as_a_link` (hello with `link` and the right token: welcome; with `link` and a wrong token: 4401).
+- [x] Run them; expect failures.
+- [x] Implement `ops.Caller.link`; `links.py`; the `web.py` changes; `App.links`, the `links` channel and `link.add`, `link.remove`, `link.list` (people only); `serve --name`; `aegis link add|remove|list` (token from stdin, `probe` first, name check).
+- [x] Run `tests/test_links.py tests/test_web.py`; commit `feat(links): zion links another aegis as a client of it (#203)`.
 
 ### Task 3: the person's client (slice 1, browser side)
 
@@ -103,11 +103,11 @@ Wire, as `web.py` will speak it:
 - Produces in `protocol.js`: `conn.call(op, params, server)` and `conn.subscribe(channel, onSnapshot, onPatch, onError, since, server)`; a subscription's key is `server ? server + "\u0000" + channel : channel`.
 - Produces in `app.js`: a session key `key(m) = m.server ? `${m.server}/${m.log_id}` : m.log_id`; every meta from a linked server carries `server` and `key`; `forKey(key) -> {server, log_id}`; `callFor(key, op, params)`.
 
-- [ ] Browser fixture `linked` in `test_browser.py`: two `Server` processes, `--name alpha` and `--name beta`, alpha linked by `aegis link add beta <url>` with beta's token on stdin.
-- [ ] Tests: `test_a_linked_servers_sessions_show_under_its_band` (spawn on beta through beta's own page; alpha's Fleet shows a `beta` band and the card), `test_a_remote_tab_carries_its_tag_and_takes_prompts` (open the beta tab on alpha, send `hello`, see the fake's answer, and see it in beta's store), `test_a_dropped_link_greys_the_band_and_comes_back` (stop beta: band says offline, card `.off`, composer disabled; restart beta: live again with no reload).
-- [ ] Run them; expect failures.
-- [ ] Implement the client changes; remote bands are built from a `<template>` of the band and card grid; the tab bar scrolls sideways and the focused tab scrolls into view.
-- [ ] Run the browser tests touched; commit `feat(links): the Fleet and tabs show a linked server's sessions (#203)` plus `changelog.d/203-links.added.md`.
+- [x] Browser fixture `linked` in `test_browser.py`: two `Server` processes, `--name alpha` and `--name beta`, alpha linked by `aegis link add beta <url>` with beta's token on stdin.
+- [x] Tests: `test_a_linked_servers_sessions_show_under_its_band` (spawn on beta through beta's own page; alpha's Fleet shows a `beta` band and the card), `test_a_remote_tab_carries_its_tag_and_takes_prompts` (open the beta tab on alpha, send `hello`, see the fake's answer, and see it in beta's store), `test_a_dropped_link_greys_the_band_and_comes_back` (stop beta: band says offline, card `.off`, composer disabled; restart beta: live again with no reload).
+- [x] Run them; expect failures.
+- [x] Implement the client changes; remote bands are built from a `<template>` of the band and card grid; the tab bar scrolls sideways and the focused tab scrolls into view.
+- [x] Run the browser tests touched; commit `feat(links): the Fleet and tabs show a linked server's sessions (#203)` plus `changelog.d/203-links.added.md`.
 
 ### Task 4: spawning, Settings, files and the merged archive (slice 2)
 
@@ -120,9 +120,9 @@ Wire, as `web.py` will speak it:
 - Produces: `/spawn` result `{log_id, handle, server}`; the client opens no tab focus for it.
 - Produces: quota provider readings carry `account: str | None`, the first 12 hex digits of SHA-256 of the account id (Claude: `oauthAccount.accountUuid` in `~/.claude.json`, overridable with `CLAUDE_CONFIG`; OpenCode Go: of its key).
 
-- [ ] Tests: `test_parse_spawn_*` (agent only, `@server`, flags then prompt, prompt verbatim with quotes and dashes, missing agent), `test_slash_spawn_spawns_on_a_linked_server` (in the `Pair`: `/spawn opus@beta do it` sent to an alpha session creates a beta session with that first message and no `spawned_by`), `test_slash_spawn_to_a_down_link_starts_nothing`, `test_the_archive_merges_across_servers_and_pages` (60 archived on alpha, 70 on beta with interleaved times and ties, paged by 50: 130 distinct rows, newest first, counts per server; beta down: alpha's rows and `counts.beta` absent), `test_quota_reading_names_its_account_by_hash`, browser `test_spawn_on_a_linked_server_from_the_new_tab`.
-- [ ] Implement; Settings gains the Servers section (link list from the `links` channel, add with URL and token, remove) and a server picker that sends the config editor's calls and subscription to the picked server.
-- [ ] Run the touched tests; commit `feat(links): spawn on a linked server, its files, Settings and the merged archive (#203)`.
+- [x] Tests: `test_parse_spawn_*` (agent only, `@server`, flags then prompt, prompt verbatim with quotes and dashes, missing agent), `test_slash_spawn_spawns_on_a_linked_server` (in the `Pair`: `/spawn opus@beta do it` sent to an alpha session creates a beta session with that first message and no `spawned_by`), `test_slash_spawn_to_a_down_link_starts_nothing`, `test_the_archive_merges_across_servers_and_pages` (60 archived on alpha, 70 on beta with interleaved times and ties, paged by 50: 130 distinct rows, newest first, counts per server; beta down: alpha's rows and `counts.beta` absent), `test_quota_reading_names_its_account_by_hash`, browser `test_spawn_on_a_linked_server_from_the_new_tab`.
+- [x] Implement; Settings gains the Servers section (link list from the `links` channel, add with URL and token, remove) and a server picker that sends the config editor's calls and subscription to the picked server.
+- [x] Run the touched tests; commit `feat(links): spawn on a linked server, its files, Settings and the merged archive (#203)`.
 
 ### Task 5: agents across the link (slice 3)
 
@@ -134,7 +134,7 @@ Wire, as `web.py` will speak it:
 - Produces: `split_address(target: str, own: str) -> tuple[str, str | None]` (`knuth@vps` → `("knuth", "vps")`; own name or no `@` → server None).
 - Produces: `peer.deliver` params `{target, context, interrupt, sender: {handle, server, user}}`, callable only by a caller with `link` set; header `> from agent:<handle>@<server> (<user>) · <iso>`.
 
-- [ ] Tests in the `Pair`, each driving an alpha fake-claude session through `/mcp <tool> <json>`:
+- [x] Tests in the `Pair`, each driving an alpha fake-claude session through `/mcp <tool> <json>`:
   - `test_a_handoff_reaches_a_session_on_the_linked_server` (beta's session gets one user turn with the header)
   - `test_a_handoff_with_interrupt_cuts_the_far_turn_first`
   - `test_session_list_shows_far_handles_and_states_only`
@@ -142,13 +142,13 @@ Wire, as `web.py` will speak it:
   - `test_beta_has_no_route_to_alpha` (a beta agent's `peer_handoff` to `x@alpha` fails with `unknown_server`; its `session_list` has no alpha)
   - `test_peer_deliver_is_only_for_link_sockets` (a browser socket on beta and an agent on beta both refused)
   - `test_no_text_written_on_beta_reaches_an_alpha_agent` (a marker in a beta session's title and transcript; after a handoff, a `session_list` and every refused call, alpha's agent store holds no marker). Prove it can fail: add `title` to the far entries of `session.list`, see it red, revert.
-- [ ] Live test `test_a_real_agent_hands_off_across_a_link` (`make test-live`).
-- [ ] Implement; DESIGN.md gains the rule "A link is a client, and nothing travels from a linked server into an agent" and the process-model paragraph; the spec's status flips to built.
-- [ ] Run `tests/test_links.py`; commit `feat(links): a zion agent hands off to handle@server; nothing comes back (#203)`.
+- [x] Live test `test_a_real_agent_hands_off_across_a_link` (`make test-live`).
+- [x] Implement; DESIGN.md gains the rule "A link is a client, and nothing travels from a linked server into an agent" and the process-model paragraph; the spec's status flips to built.
+- [x] Run `tests/test_links.py`; commit `feat(links): a zion agent hands off to handle@server; nothing comes back (#203)`.
 
 ### Finish
 
-- [ ] `make format-check lint typecheck changelog-check lint-docs` and `make test`; the browser tests touched; `make bench` and its table in the PR body.
-- [ ] Exercise it the way Alex will: two `aegis serve` on zion (scratch roots), linked, in a real browser through saidkick or Playwright with screenshots; spawn, prompt, kill and restart the far one.
-- [ ] A fresh reviewer on the whole branch; fix what it finds.
-- [ ] Open the PR (`Closes #203`), with what was measured and what was left out.
+- [x] `make format-check lint typecheck changelog-check lint-docs` and `make test`; the browser tests touched; `make bench` and its table in the PR body.
+- [x] Exercise it the way Alex will: two `aegis serve` on zion (scratch roots), linked, in a real browser through saidkick or Playwright with screenshots; spawn, prompt, kill and restart the far one.
+- [x] A fresh reviewer on the whole branch; fix what it finds.
+- [x] Open the PR (`Closes #203`), with what was measured and what was left out.
