@@ -316,6 +316,7 @@ class Registry(Host):
         await s.stop()
         del self.sessions[log_id]
         s.archived = True
+        s.artifacts.flush_all()  # a page's last coalesced write, before the store shuts
         s.store.close()
         meta = s.meta()
         self.metas.write(meta)
