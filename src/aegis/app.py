@@ -6,7 +6,7 @@ resolves a ``/`` line first, ``commands.py``), ``session.read``,
 ``commands.list``, ``session.interrupt``, ``session.stop``, ``session.close``,
 ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``, ``file.peek``,
-``quota.read``, ``transcript.detail``, and ``config.read``, ``config.write``,
+``quota.read``, ``transcript.detail``, ``transcript.output``, and ``config.read``, ``config.write``,
 ``config.detect``, ``config.doctor`` and ``config.propose`` (``config_ops.py``),
 and ``artifact.create``, ``artifact.send``, ``artifact.read``,
 ``artifact.update``, ``artifact.close``, ``artifact.state``, ``artifact.emit``,
@@ -117,6 +117,11 @@ class LogParams(_Strict):
 class DetailParams(_Strict):
     log_id: str
     ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class OutputParams(_Strict):
+    log_id: str
+    id: str
 
 
 class RenameParams(_Strict):
@@ -662,6 +667,15 @@ class App:
         async def detail(p: DetailParams, caller):
             """The whole entries for rows the wire sent without their detail."""
             return reg.detail(p.log_id, p.ids)
+
+        @r.op("transcript.output", OutputParams)
+        async def output(p: OutputParams, caller):
+            """A tool row's whole output, for its copy button: the entry holds
+            only the tail. A thread, because it parses the whole store."""
+            text = await asyncio.to_thread(reg.output, p.log_id, p.id)
+            if text is None:
+                raise OpError("no_output", f"no output for {p.id!r}")
+            return {"text": text}
 
         @r.op("session.interrupt", LogParams)
         async def interrupt(p: LogParams, caller):

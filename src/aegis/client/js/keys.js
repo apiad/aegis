@@ -79,6 +79,7 @@ export const KEYS = [
     native: true,
   },
   { scope: "session", label: "o", desc: "Press the row's first button", action: "press", match: key("o") },
+  { scope: "session", label: "c", desc: "Copy the row's message or output", action: "copy", match: key("c") },
   { scope: "session", label: "z", desc: "The next fold level", action: "foldLevel", match: key("z") },
   // Documents the browser's own Tab; it never matches.
   { scope: "session", label: "Tab", desc: "Walk the buttons from the selected row on", action: "none", match: () => false },

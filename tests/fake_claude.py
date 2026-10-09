@@ -9,6 +9,7 @@ stdout. The text of a prompt picks a script:
     /deafsleep N   the same, but it ignores interrupts.
     /fail          a Bash call that fails.
     /bash D => OUT a Bash call described D whose output is OUT, then a result.
+    /md TEXT       TEXT as the reply, each literal \\n a newline, then a result.
     /notice        three system notices and nothing else.
     /big           a Read whose result is 2 MB on one line.
     /exit N        a few stderr lines, then exit with code N.
@@ -100,6 +101,7 @@ SCRIPTS = (
     "bgtask",
     "argv",
     "bash",
+    "md",
     "read",
     "stream",
 )
@@ -509,6 +511,9 @@ def run(text: str) -> None:
             }
         )
         tool_output(tid, out)
+        result()
+    elif word == "/md":
+        assistant({"type": "text", "text": arg.replace("\\n", "\n")})
         result()
     elif word == "/read":
         tid = tool_id()

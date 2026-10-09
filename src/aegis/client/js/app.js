@@ -9,6 +9,7 @@
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
 import { artifactStage, fileUrl, setFileBase } from "./entries.js";
+import { copyRow, installCopy } from "./copy.js";
 import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan } from "./fleet.js";
@@ -97,6 +98,12 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
   },
 });
 artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
+const copyDeps = {
+  entry: (id) => transcript.entries.get(id),
+  output: (id) => callFor(shown, "transcript.output", { id }).then((r) => r.text),
+  detail: (id) => callFor(shown, "transcript.detail", { ids: [id] }).then((got) => got[0]),
+};
+installCopy($("entries"), copyDeps);
 installGlyphs();
 // The navigator: previous / next agent message, the position, and the latest.
 $("nav-recap").append(icon("sparkle"));
@@ -1422,6 +1429,7 @@ installKeys(
     firstUnread: () => transcript.firstUnread(),
     toggle: () => transcript.toggle(),
     press: () => transcript.press(),
+    copy: () => transcript.selected && copyRow(transcript.selected, transcript.nodes.get(transcript.selected), copyDeps),
     foldLevel: () => foldLevel((transcript.foldLevel + 1) % 3),
     none() {},
     fleetNext: () => fleetMove(1),

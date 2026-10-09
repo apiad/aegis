@@ -5,6 +5,7 @@
 // style; they compute nothing about tools.
 
 import markdownit from "../vendor/markdown-it.mjs";
+import { copyButton } from "./copy.js";
 import { money } from "./fleet.js";
 import { icon } from "./glyphs.js";
 
@@ -128,6 +129,7 @@ export function markdown(text) {
   const div = document.createElement("div");
   div.className = "md";
   div.innerHTML = md.render(text || "");
+  for (const pre of div.querySelectorAll("pre")) pre.append(copyButton("code"));
   return div;
 }
 
@@ -169,6 +171,7 @@ const RENDERERS = {
       d.append(el("summary", null, "template"), e.detail.tail ? el("pre", "out", e.detail.tail) : el("div", "loading", "loading…"));
       body.append(d);
     }
+    body.append(copyButton("message"));
     return row(e, `user ${e.status}`, body);
   },
 
@@ -182,6 +185,7 @@ const RENDERERS = {
   prose(e) {
     const body = markdown(e.md);
     body.classList.add("body");
+    body.append(copyButton("message"));
     const r = row(e, "prose", body);
     // Only the live view carries the flag; an archived transcript draws no mark.
     if (e.unread !== undefined) {
@@ -213,6 +217,7 @@ const RENDERERS = {
     const label = el("span", "ta", e.summary);
     if (det.steps) label.append(el("span", "steps", `${det.steps} steps`));
     line.append(name, label, el("span", "tr2", e.status === "running" ? "" : det.result || ""));
+    if (e.status !== "running") line.append(copyButton("output"));
     d.append(line);
     const more = el("div", "more");
     if (det.path && fileBase === "") {
@@ -252,7 +257,7 @@ const RENDERERS = {
     const body = el("div", "body");
     body.append(el("div", "from", e.title));
     const text = (e.md || "").split("\n").filter((l) => !l.startsWith("> from ")).join("\n");
-    body.append(markdown(text));
+    body.append(markdown(text), copyButton("message"));
     return row(e, "inbox", body);
   },
 

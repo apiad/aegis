@@ -754,6 +754,52 @@ def stub_dictation(root: Path) -> Path:
     return root
 
 
+def test_transcript_output_returns_a_tool_s_whole_output_not_its_tail(
+    project, fake_claude
+):
+    """The copy button's text: the entry keeps the last 40 lines, the store all."""
+    lines = [f"line {n}" for n in range(1, 101)]
+    (project / "long.txt").write_text("\n".join(lines) + "\n")
+    with (
+        client_for(project, fake_claude) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        conn = Conn(ws).hello()
+        log_id = conn.call("session.spawn", agent="opus")["result"]["log_id"]
+        ch = f"transcript:{log_id}"
+        ws.send_json({"t": "sub", "channel": ch})
+        conn.until(lambda m: m["t"] == "snapshot" and m["channel"] == ch)
+        conn.call("session.send", log_id=log_id, text=f"/read {project / 'long.txt'}")
+        patch = conn.until(
+            lambda m: (
+                m["t"] == "patch"
+                and m["channel"] == ch
+                and any(
+                    op.get("upsert", {}).get("kind") == "tool"
+                    and op["upsert"]["status"] == "ok"
+                    for op in m["ops"]
+                )
+            )
+        )
+        (tid,) = [
+            op["upsert"]["id"]
+            for op in patch["ops"]
+            if op.get("upsert", {}).get("kind") == "tool"
+        ]
+        (full,) = conn.call("transcript.detail", log_id=log_id, ids=[tid])["result"]
+        assert full["detail"]["tail"].splitlines() == lines[-40:]
+        whole = "\n".join(lines) + "\n"
+        out = conn.call("transcript.output", log_id=log_id, id=tid)["result"]
+        assert out == {"text": whole}
+        err = conn.call("transcript.output", log_id=log_id, id="nope")["error"]
+        assert err["code"] == "no_output"
+        err = conn.call("transcript.output", log_id="nope", id=tid)["error"]
+        assert err["code"] == "no_session"
+        conn.call("session.close", log_id=log_id)  # an archived one reads its store
+        out = conn.call("transcript.output", log_id=log_id, id=tid)["result"]
+        assert out == {"text": whole}
+
+
 def test_dictation_prepare_returns_the_base_and_keywords(
     project, fake_claude, tmp_path
 ):

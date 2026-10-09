@@ -141,6 +141,22 @@ body{background:#000}
 #a2 .md th,#a2 .md td{border:1px solid var(--rule);padding:4px 8px;text-align:left}
 #a2 .md blockquote{margin:0 0 .6em;padding-left:12px;border-left:2px solid var(--rule);color:var(--muted)}
 #a2 code{font-family:var(--font-mono);font-size:.82em;background:var(--raised);padding:1px 5px;border-radius:4px}
+/* Copy (js/copy.js): a message's and a code block's sit in their top-right
+   corner, a tool's at the end of its line. Each shows while its row or block
+   is hovered, its row selected, or itself focused or confirming; a screen
+   without hover always shows them, faint. */
+#a2 button.copy{display:inline-flex;align-items:center;gap:4px;padding:2px 5px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);color:var(--faint);font:400 11px/1 var(--font-chrome);font-style:normal;cursor:pointer;opacity:0;transition:opacity .12s}
+#a2 button.copy .ic{width:12px;height:12px;vertical-align:0}
+#a2 button.copy span:empty{display:none}
+#a2 button.copy:hover{color:var(--strong);border-color:var(--faint)}
+#a2 button.copy:focus-visible{opacity:1;outline:1px solid var(--accent);outline-offset:1px}
+#a2 button.copy[data-state=done]{opacity:1;color:var(--ok)}
+#a2 button.copy[data-state=err]{opacity:1;color:var(--err)}
+#a2 .row>.body:has(>button.copy),#a2 .md pre{position:relative}
+#a2 .row>.body>button.copy,#a2 .md pre>button.copy{position:absolute;top:4px;right:4px;z-index:1}
+#a2 .row:hover>.body>button.copy,#a2 .row.sel>.body>button.copy,#a2 .md pre:hover>button.copy,#a2 .row.tool:hover .line>button.copy,#a2 .row.tool.sel .line>button.copy{opacity:1}
+#a2 .row.tool .line>button.copy{flex:none;align-self:center}
+@media (hover:none){#a2 button.copy{opacity:.6}}
 
 #a2 .row.tool,#a2 .row.think,#a2 .row.sys,#a2 .row.error,#a2 .row.working{font-family:var(--font-mono);font-size:12.5px}
 #a2 .row.tool details>summary{list-style:none;cursor:pointer}
