@@ -261,6 +261,9 @@ function sessionHandlers(server) {
         } else if (op.remove !== undefined) {
           sessions.delete(keyOf(server, op.remove));
           setChanged = true;
+          // The server archives a session before it publishes the removal, so
+          // this is the moment the archive gains a row, wherever it was closed.
+          archiveLoaded = false;
         }
       }
       // A session added or removed redraws at once: a reply that navigates
@@ -1664,7 +1667,6 @@ $("close").addEventListener("click", async () => {
   if (!(await askClose(s))) return;
   try {
     await callFor(s.key, "session.close");
-    archiveLoaded = false;
   } catch (e) {
     $("side-error").textContent = e.message;
   }
