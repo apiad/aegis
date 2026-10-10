@@ -26,24 +26,31 @@ class _Strict(BaseModel):
 class SearchParams(_Strict):
     since: str | None = Field(
         None,
-        description="First day: 2026-10-09, today, yesterday, or a span such as 7d.",
+        description="First day: 2026-10-09, today, yesterday, or 7d (the last 7 days).",
     )
     until: str | None = Field(
         None, description="Last day, included, in the same forms."
     )
     pattern: str | None = Field(
         None,
-        description='Words to find in the entries\' text: words, "quoted phrases", OR.',
+        description='Words or "quoted phrases" to find, OR between alternatives.',
     )
     path: str | None = Field(
         None,
-        description="A file or directory: only entries that wrote under it. Relative to the aegis root, or absolute.",
+        description="A file or directory: only entries that wrote under it. Relative to the aegis root (the directory holding .aegis.yaml) or absolute.",
     )
     session: str | None = Field(
         None, description="A session's handle, past or present, or its log id."
     )
     repo: str | None = Field(None, description="A repo's directory: only its entries.")
-    kind: list[Kind] | None = Field(None, description="Only these kinds.")
+    kind: list[Kind] | None = Field(
+        None,
+        description=(
+            "Only these kinds. turn: a turn that changed files or ended with a "
+            "turn_end line; commit; pr; plan: a plan item turning done; note: a "
+            "journal_note; session: spawned, renamed, closed."
+        ),
+    )
     limit: int = Field(50, ge=1, le=500)
 
 
@@ -105,7 +112,8 @@ def register_journal_ops(app: "App") -> None:
         """Ask what was done on this server: commits, pull requests, finished plan
         items, turns that changed files, and the decisions, blockers and
         milestones agents noted. Filter by days, a pattern, a path the entries
-        wrote under, a session, a repo or kinds. Newest first, grouped by day."""
+        wrote under, a session, a repo or kinds. Newest first, grouped by day. Each
+        entry names the session's handle, which peer_read takes."""
         hits, cut, _ = await asyncio.to_thread(run, p)
         return render.text(hits, cut, root)
 
