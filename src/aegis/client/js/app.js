@@ -113,7 +113,9 @@ $("find-next").append(icon("down"));
 $("find-close").append(icon("close"));
 installGlyphs();
 // The navigator: previous / next agent message, the position, and the latest.
-$("nav-recap").append(icon("sparkle"));
+$("nav-recap").prepend(icon("sparkle"));
+$("nav-needs").prepend(glyph("needs_you"));
+$("nav-last").append(icon("start"));
 $("nav-up").append(icon("up"));
 $("nav-down").append(icon("down"));
 $("jump").append(icon("latest"));
@@ -129,6 +131,8 @@ installBell($("bell"));
 $("nav-up").addEventListener("click", () => transcript.message(-1));
 $("nav-down").addEventListener("click", () => transcript.message(1));
 $("nav-pos").addEventListener("click", () => transcript.firstUnread());
+$("nav-last").addEventListener("click", () => transcript.lastMessage());
+$("nav-needs").addEventListener("click", () => nextNeed());
 $("nav-recap").addEventListener("click", () => askRecap(true));
 // Every redraw of the transcript re-marks the selection, which asks for the
 // navigator, so it is drawn at most once a frame: position() walks every entry.
@@ -137,26 +141,42 @@ function drawNav() {
   if (!navFrame) navFrame = requestAnimationFrame(drawNavNow);
 }
 // Shown with any entry, so the latest button is there before the first agent
-// message; with none, the position is empty and the arrows are off. Unchanged
-// values are not written back.
+// message; with none, the position is empty and the arrows are off. The label
+// is only "3/4", so the pill fits a phone; the words are its name. The needs
+// button counts the other sessions Alt+J would open. Unchanged values are not
+// written back.
 let navDrawn = {};
 function drawNavNow() {
   navFrame = 0;
   const { index, total, unread } = transcript.position();
+  const r = route();
+  const needs = byNeed(ordered).filter((m) => r.view !== "session" || m.key !== r.id).length;
   const now = {
     hidden: !transcript.entries.size,
-    text: total ? `${unread ? `${unread} unread · ` : ""}message ${index} of ${total}` : "",
+    text: total ? `${index}/${total}` : "",
+    label: total ? `${unread ? `${unread} unread · ` : ""}message ${index} of ${total}` : "",
+    unread: unread > 0,
     off: !total,
+    needs,
   };
   if (now.hidden !== navDrawn.hidden) $("nav").hidden = now.hidden;
   if (now.text !== navDrawn.text) $("nav-pos").textContent = now.text;
-  if (now.off !== navDrawn.off) $("nav-up").disabled = $("nav-down").disabled = now.off;
+  if (now.label !== navDrawn.label) {
+    $("nav-pos").setAttribute("aria-label", now.label);
+    $("nav-pos").title = `${now.label}. First unread (Alt+U)`;
+  }
+  if (now.unread !== navDrawn.unread) $("nav-pos").classList.toggle("unread", now.unread);
+  if (now.off !== navDrawn.off) $("nav-up").disabled = $("nav-down").disabled = $("nav-last").disabled = now.off;
+  if (now.needs !== navDrawn.needs) {
+    $("nav-needs").disabled = !needs;
+    $("nav-needs-n").textContent = needs ? String(needs) : "";
+  }
   navDrawn = now;
 }
 // The fold level: this browser's choice, for every tab. z steps through
 // everything shown, the work folded, and all but the messages.
 const FOLDS = ["Everything shown", "Tool calls and thinking folded", "Only messages shown"];
-$("nav-fold").append(icon("fold"));
+$("nav-fold").prepend(icon("fold"));
 function foldLevel(level) {
   transcript.setFoldLevel(level);
   $("nav-fold").dataset.level = String(level);
@@ -406,12 +426,14 @@ function flushSessions() {
     fleetMark(false);
     drawBand();
   } else if (r.view === "session" && ids.has(r.id)) renderMeta(sessions.get(r.id));
+  drawNav(); // the needs count
 }
 
 function onSessions() {
   const ids = order.arrange([...sessions.values()].sort((a, b) => a.created_at - b.created_at).map((m) => m.key));
   ordered = ids.map((id) => sessions.get(id));
   render();
+  drawNav(); // the needs count
   updatePing([...sessions.values()], { onOpen: openSession });
 }
 
@@ -1413,6 +1435,20 @@ $("settings-btn").addEventListener("click", () => go("#settings"));
 keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));
 const palette = new Palette($("palette"), () => route().view);
 
+// Alt+J and the navigator's button. In byNeed's order, from the tab after this
+// one; from the top when this one is not in the list, as after reading a
+// review, which drops it.
+function nextNeed() {
+  const list = byNeed(ordered);
+  if (!list.length) return note("Nobody needs you");
+  const r = route();
+  const i = r.view === "session" ? list.findIndex((m) => m.key === r.id) : -1;
+  const id = list[(i + 1) % list.length].key;
+  if (list[i]?.key === id) return transcript.firstUnread(); // the only one, and open
+  landUnread = id;
+  go(`#s=${id}`);
+}
+
 // What each key in keys.js does. `input` and `editing` are declared below;
 // a key is pressed only after this module has run.
 installKeys(
@@ -1438,18 +1474,7 @@ installKeys(
         if (!fleetSel) fleetMove(1);
       }
     },
-    // In byNeed's order, from the tab after this one; from the top when this one
-    // is not in the list, as after reading a review, which drops it.
-    needs() {
-      const list = byNeed(ordered);
-      if (!list.length) return note("Nobody needs you");
-      const r = route();
-      const i = r.view === "session" ? list.findIndex((m) => m.key === r.id) : -1;
-      const id = list[(i + 1) % list.length].key;
-      if (list[i]?.key === id) return transcript.firstUnread(); // the only one, and open
-      landUnread = id;
-      go(`#s=${id}`);
-    },
+    needs: nextNeed,
     tabPrev: () => cycle(-1),
     tabNext: () => cycle(1),
     next: () => transcript.move(1),

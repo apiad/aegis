@@ -20,6 +20,7 @@ const SPRITE = `<defs>
 <symbol id="g-down" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></symbol>
 <symbol id="g-close" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></symbol>
 <symbol id="g-latest" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5v8M4.6 7.3L8 10.7l3.4-3.4M3.8 13.5h8.4"/></symbol>
+<symbol id="g-start" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13.5v-8M4.6 8.7L8 5.3l3.4 3.4M3.8 2.5h8.4"/></symbol>
 <symbol id="g-fold" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3.5h10M3 12.5h10M5.5 6.5L8 9l2.5-2.5"/></symbol>
 <symbol id="g-bell" viewBox="0 0 16 16"><path d="M8 2.5a3.5 3.5 0 0 0-3.5 3.5v2.6L3.2 11h9.6l-1.3-2.4V6A3.5 3.5 0 0 0 8 2.5zM6.6 12.6a1.5 1.5 0 0 0 2.8 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol>
 <symbol id="g-gear" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4.5h3M9.5 4.5h4M2.5 11.5h6M12.5 11.5h1"/><circle cx="7.5" cy="4.5" r="1.8"/><circle cx="10.5" cy="11.5" r="1.8"/></symbol>

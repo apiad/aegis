@@ -491,6 +491,20 @@ export class Transcript {
     this.select(id);
   }
 
+  // The last agent message's first line at the top, where its reading starts;
+  // the latest button goes to its end. Stops following, as reveal() does.
+  lastMessage() {
+    const last = [...this.entries.values()].findLast((e) => e.kind === "prose");
+    if (!last) return;
+    while (!this.nodes.has(last.id) && this.mountEarlier());
+    const n = this.nodes.get(last.id);
+    if (!n) return;
+    this.following = false;
+    this.selected = last.id;
+    this.mark();
+    n.scrollIntoView({ block: "start" });
+  }
+
   // "2 unread · message 3 of 4": counts over every entry, not only the mounted.
   position() {
     const prose = [...this.entries.values()].filter((e) => e.kind === "prose");

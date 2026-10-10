@@ -211,22 +211,32 @@ body{background:#000}
 #a2 .runline .rs{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #a2 .runline:hover .rs{color:var(--muted)}
 #a2 .runline.running .rs{color:var(--accent)}
-#a2 .nav .fold[data-level="1"]{color:var(--accent)}
-#a2 .nav .fold[data-level="2"]{color:var(--accent);background:var(--accent-soft)}
+#a2 .act.fold[data-level="1"],#a2 .act.fold[data-level="1"] svg{color:var(--accent)}
+#a2 .act.fold[data-level="2"],#a2 .act.fold[data-level="2"] svg{color:var(--accent);background:var(--accent-soft)}
 #a2 .row.working,#a2 .row.working .g{color:var(--accent)}
 #a2 .meta{color:var(--faint);margin-left:10px}
 #a2 .steps{color:var(--faint);margin-left:8px}
 /* the divider and the navigator */
 #a2 .row.since::before{content:attr(data-since);grid-column:1/-1;display:flex;align-items:center;gap:10px;margin:6px 0 10px;font-family:var(--font-chrome);font-size:11px;color:var(--accent);background:linear-gradient(var(--accent),var(--accent)) left 50%/calc(50% - 15ch) 1px no-repeat,linear-gradient(var(--accent),var(--accent)) right 50%/calc(50% - 15ch) 1px no-repeat;justify-content:center}
-#a2 .nav{position:absolute;right:14px;bottom:calc(var(--composer-h,94px) + 10px);z-index:3;display:flex;align-items:center;border:1px solid var(--rule);background:var(--raised);border-radius:999px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.25);font-family:var(--font-chrome)}
+/* Small enough for a phone (#299): no visible overflow clip, so a touch
+   pointer's taller hit area (below) reaches past the pill's edge. Recap and
+   fold sit in the side panel (.side-acts.view). */
+#a2 .nav{position:absolute;right:14px;bottom:calc(var(--composer-h,94px) + 10px);z-index:3;display:flex;align-items:center;border:1px solid var(--rule);background:var(--raised);border-radius:999px;box-shadow:0 4px 14px rgba(0,0,0,.25);font-family:var(--font-chrome)}
 #a2 .nav[hidden]{display:none}
-#a2 .nav button{border:none;background:none;color:var(--strong);height:30px;padding:0 10px;cursor:pointer;display:grid;place-items:center}
+#a2 .nav button{position:relative;border:none;background:none;color:var(--strong);height:30px;min-width:30px;padding:0 7px;cursor:pointer;display:grid;place-items:center}
 #a2 .nav button+button{border-left:1px solid var(--rule)}
-#a2 .nav .pos{font-size:12px;color:var(--muted)}
+#a2 .nav .pos{display:flex;align-items:center;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
 #a2 .nav .pos:empty{display:none}
+#a2 .nav .pos.unread{color:var(--accent)}
+#a2 .nav .pos.unread::after{content:"";display:inline-block;width:5px;height:5px;margin-left:4px;border-radius:50%;background:var(--accent);vertical-align:2px}
 #a2 .nav button:disabled{opacity:.4;cursor:default}
 #a2 .nav .latest.new{color:var(--accent)}
 #a2 .nav .ic{width:15px;height:15px}
+#a2 .nav .needs:disabled .ic.need{color:var(--muted)}
+#a2 .nav .needs .n{position:absolute;top:1px;right:1px;min-width:13px;height:13px;padding:0 3px;border-radius:7px;background:var(--accent);color:var(--on-accent);font-size:9.5px;line-height:13px;font-weight:600}
+#a2 .nav .needs .n:empty{display:none}
+#a2 .side-acts.view{grid-template-columns:repeat(2,minmax(0,1fr))}
+#a2 .side-acts.view~.side-acts{margin-top:0}
 /* the find bar (js/find.js): the navigator's pill, at the top */
 #a2 .find{position:absolute;right:14px;top:10px;z-index:3;display:flex;align-items:center;border:1px solid var(--rule);background:var(--raised);border-radius:999px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.25);font-family:var(--font-chrome)}
 #a2 .find input{width:24ch;height:30px;padding:0 4px 0 14px;background:none;border:none;outline:none;color:var(--strong);font-size:12.5px}
@@ -764,7 +774,7 @@ body{background:#000}
 #a2 .row.recap .btn.link{background:none;border:none;padding:0;color:var(--muted);text-decoration:underline;font-size:11px}
 #a2 .row.recap.folded .body{font-size:12.5px;color:var(--muted)}
 #a2 .row.recap.folded .lbl{color:var(--accent);font-family:var(--font-chrome)}
-#a2 .nav .spark{color:var(--accent)}
+#a2 .act.spark svg{color:var(--accent)}
 
 /* narrow and touch: last, so these win over the rules above */
 /* the panel's button: collapses it on a desktop, opens the drawer on a phone */
@@ -855,7 +865,8 @@ body{background:#000}
   #a2 pick-chip .opt{min-height:44px;display:flex;align-items:center}
   #a2 .tab{min-height:40px}
   #a2 .keys-btn.bell{min-width:44px;min-height:40px}
-  #a2 .nav button{height:44px;min-width:44px}
+  #a2 .nav button{height:34px;min-width:36px}
+  #a2 .nav button::before{content:"";position:absolute;inset:-5px 0}
   #a2 .tr{padding-bottom:66px}
   #a2 .row.tool details>summary{padding:9px 0}
   #a2 .btn{min-height:44px}
