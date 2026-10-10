@@ -5,6 +5,104 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-10-10
+
+### Added
+
+- **Codex sessions.** An agent whose harness is `codex` runs `codex app-server`
+  and behaves like a Claude or OpenCode session: streamed text, mid-turn prompts
+  through `turn/steer`, interrupts, resume, aegis tools over MCP, subagents as
+  Task rows, and model, effort and permission changes that need no restart unless the
+  provider changes. The
+  card prices OpenAI models at their published rates and free OpenRouter models
+  at zero. A model is `provider/model`, such as `openai/gpt-6.1-sol` or
+  `openrouter/nvidia/nemotron-3-super-120b-a12b:free`.
+
+- **Messages, code blocks and tool output have a copy button.** It shows when
+  the row or block is hovered or focused, and `c` copies the selected row. It
+  copies the raw text: a message's Markdown, a block's code, and a tool's whole
+  output, which the server reads back from the store because a row keeps only
+  the last 40 lines. Copying meant drag-selecting, which in a long transcript
+  also caught the neighbouring rows.
+
+- **Ctrl+K (⌘K on a Mac) opens a command palette.** It lists the client's
+  actions that apply to the view you are in, each with its keys, narrows them as
+  you type, runs the chosen one with Enter and closes with Esc. The dozen-plus
+  Alt shortcuts could be found only by pressing `?`. The palette, the `?` list
+  and the keys now read one registry in `keys.js`, so an action added there shows
+  in all three.
+
+- **Ctrl+F finds text anywhere in the open transcript.** The browser's find saw
+  only the rows mounted and laid out, and none of a closed row's output, so most
+  of a long session could not be searched. With the transcript focused, Ctrl+F
+  (Cmd+F on a Mac) opens a find bar that searches every entry: the text the
+  page holds, and through a new `transcript.search` operation the tool output,
+  arguments, diffs and thinking the page fetches only when a row opens. Matches
+  are highlighted; Enter and Shift+Enter step through them, opening the folded
+  run and the closed row they are in; the bar shows "n of m" and Esc closes it.
+  A second Ctrl+F inside the bar is the browser's own find (#250).
+
+- **A finished session archives from the Fleet in one click, and closing it asks nothing.** A Fleet card whose attention is `done` has an Archive button that closes the session like Close does, without opening it; no other state shows it. Close and `/close` skip the confirmation for a done session and ask exactly as before for any other.
+- **A middle click on a Fleet card or a tab closes the session.** It takes the same path as Close: at once for a done session, with the confirmation for any other.
+
+- **Agents can close sessions with `session_close`.** Closing six finished
+  workers used to take a hand-written websocket call with the server's token. A
+  session the agent spawned, or a worker whose task it enqueued, now closes at
+  once when it is done, into the archive like the Close button. Any other close,
+  including the agent's own session, is refused first with what that session is
+  doing, who started it and a suggestion to ask the person, and goes through on a
+  second call with the one-time token the refusal carries (valid five minutes).
+
+### Changed
+
+- **A finished queue worker's card fades and sinks on the Fleet.** A worker whose
+  task is over kept a card identical to a live session's, so a batch of finished
+  workers crowded out the sessions that still needed you. Its card is now faded and
+  sorted after the live cards, and it leaves the "Needs you" group; it stays
+  clickable and returns to full weight under the pointer or the selection. A failed
+  task or an errored worker keeps its full-weight card, and so does any stopped
+  session whose turn errored.
+
+### Fixed
+
+- **A closed session shows in the Fleet's archive at once.** The archive was
+  read before the Close and nothing read it again, so the session appeared only
+  after a reload. The client now rereads the archive when a session leaves the
+  open list, wherever it was closed (#160).
+
+- **The new-tab model chip lists every model the agent's harness can run.** It
+  offered four fixed Claude aliases plus the models `.aegis.yaml` names, which
+  missed most of what Claude Code lists and nothing at all for OpenCode, whose
+  153 models never appeared. The chip now reads the harness's own catalog, the
+  one the server validates a model change against, and type-ahead filters it.
+  The agent's model stays marked as current. (#172, #241)
+
+- **A submit from an artifact page no longer vanishes on an odd label.** `aegis.submit(data, label)` cut the label by UTF-16 units and let an empty first line through, so a label that started with a newline, or whose cut landed inside an emoji, was refused by the server and the person saw nothing happen. The page now cuts by code points, repairs lone surrogates and sends `answered` when the first line is empty.
+
+- **A session's model no longer changes meaning after its first turn.** `session_list` and the fleet card showed the configured alias (`opus`) until the harness's first init and the resolved id (`claude-opus-5-5`) after, so two sessions from one agent looked different for no reason. `model` is now what was configured from spawn on, and `model_id` is the resolved id, null until the harness names it. The settings panel shows `opus → claude-opus-5-5`; the header chip keeps the alias and carries the id as its tooltip.
+
+- **Linking to a server older than links says why it failed.** `aegis link add`
+  against a server from before 2.4.0 printed a bare `HTTP 403`. It now says the
+  far server most likely predates links and that both ends need 2.4.0 or newer,
+  and the README states the requirement (#244).
+
+- **A submit the server refuses now shows on the artifact's card.** When an agent's page sent data over 64 KB, or answered an artifact that was no longer live, the refusal only reached the page's console and Submit looked dead. The card now shows `Not sent:` and the server's reason until a submit lands, and the page script gets the same reason through `aegis.onStatus` and `<html data-refused>` to render in its own look.
+
+- **aegis works on a phone without things covering each other.** The message
+  navigator floats above the composer however tall it grows, and the transcript
+  keeps room for it at its foot, so it no longer hides the reply suggestions or
+  the last line. The composer opens one line tall, its text
+  centred on the buttons and at 16 px so iOS does not zoom in. The monitor card
+  opens as a sheet over the drawer instead of behind it. Settings has a button,
+  the header's icons are their real size, a Fleet card's footer wraps whole
+  items, and tabs keep their titles and scroll sideways (#280).
+
+- **A Claude session's text streams into the transcript as it is written.**
+  aegis did not pass `--include-partial-messages` to `claude`, so a reply landed
+  one whole message at a time, while an OpenCode reply already streamed. Claude's
+  text and thinking deltas now draw a live row that the finished block replaces,
+  and, as with OpenCode, the deltas are never written to the transcript store.
+
 ## [2.4.0] - 2026-10-09
 
 ### Added

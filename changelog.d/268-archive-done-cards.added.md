@@ -1,2 +1,0 @@
-- **A finished session archives from the Fleet in one click, and closing it asks nothing.** A Fleet card whose attention is `done` has an Archive button that closes the session like Close does, without opening it; no other state shows it. Close and `/close` skip the confirmation for a done session and ask exactly as before for any other.
-- **A middle click on a Fleet card or a tab closes the session.** It takes the same path as Close: at once for a done session, with the confirmation for any other.
