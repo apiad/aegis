@@ -102,6 +102,13 @@
         <button class="down" id="nav-down" title="Next agent message (Alt+↓)"></button>
         <button class="latest" id="jump" title="Latest (G)"></button>
       </div>
+      <div class="find" id="find" hidden>
+        <input id="find-q" spellcheck="false" autocomplete="off" placeholder="Find in transcript" aria-label="Find in this transcript">
+        <span class="count" id="find-n" aria-live="polite"></span>
+        <button class="prev" id="find-prev" title="Previous match (Shift+Enter)" aria-label="Previous match"></button>
+        <button class="next" id="find-next" title="Next match (Enter)" aria-label="Next match"></button>
+        <button class="close" id="find-close" title="Close (Esc)" aria-label="Close"></button>
+      </div>
       <div class="composer" id="composer">
         <div class="cmd-menu" id="cmd-menu" hidden><input id="cmd-filter" hidden spellcheck="false" placeholder="/command"><div id="cmd-rows"></div></div>
         <div class="replies" id="replies" hidden></div>

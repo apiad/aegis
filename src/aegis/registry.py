@@ -29,6 +29,7 @@ from .roots import Roots
 from .session import Host, Session, SpawnSpec
 from .transcript.entries import Fold, fold_records, tool_output
 from .transcript.store import Store, read_store
+from .transcript.wire import withheld_text
 
 log = logging.getLogger("aegis.registry")
 Publish = Callable[[str, list[dict]], None]
@@ -288,14 +289,26 @@ class Registry(Host):
     def detail(self, log_id: str, ids: list[str]) -> list[dict]:
         """The whole entries ``ids`` name, for rows the wire sent without
         their detail (transcript/wire.py); unknown ids are left out."""
+        fold = self._fold(log_id)
+        return [e for e in map(fold.entry, ids) if e is not None]
+
+    def search(self, log_id: str, q: str) -> list[str]:
+        """The ids of the entries whose withheld detail holds ``q``, ignoring
+        case: the part of a transcript the browser cannot search itself."""
+        q = q.lower()
+        return [
+            e["id"]
+            for e in self._fold(log_id).entries()
+            if q in withheld_text(e).lower()
+        ]
+
+    def _fold(self, log_id: str) -> Fold:
         s = self.sessions.get(log_id)
         if s is not None:
-            fold = s.fold()
-        elif log_id in self.archived:
-            fold = self._archived_fold(log_id)
-        else:
-            raise OpError("no_session", f"no session {log_id!r}")
-        return [e for e in map(fold.entry, ids) if e is not None]
+            return s.fold()
+        if log_id in self.archived:
+            return self._archived_fold(log_id)
+        raise OpError("no_session", f"no session {log_id!r}")
 
     def output(self, log_id: str, entry_id: str) -> str | None:
         """A tool row's whole output, which its entry holds only the tail of;

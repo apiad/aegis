@@ -10,6 +10,7 @@ import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
 import { artifactStage, fileUrl, setFileBase } from "./entries.js";
 import { copyRow, installCopy } from "./copy.js";
+import { Find } from "./find.js";
 import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan } from "./fleet.js";
@@ -105,6 +106,10 @@ const copyDeps = {
   detail: (id) => callFor(shown, "transcript.detail", { ids: [id] }).then((got) => got[0]),
 };
 installCopy($("entries"), copyDeps);
+const find = new Find($("find"), transcript, (q) => callFor(shown, "transcript.search", { q }).then((r) => r.ids));
+$("find-prev").append(icon("up"));
+$("find-next").append(icon("down"));
+$("find-close").append(icon("close"));
 installGlyphs();
 // The navigator: previous / next agent message, the position, and the latest.
 $("nav-recap").append(icon("sparkle"));
@@ -750,6 +755,7 @@ function follow(id) {
     while (kept.size > TAB_CACHE) kept.delete(kept.keys().next().value);
   } else transcript.clear();
   drawNavNow(); // at once: the old session's navigator goes with its rows
+  find.close(false); // it searched the old session
   if (dictation.target?.el === input) dictation.stop("tab"); // a recording belongs to its session
   shown = id;
   if (!id) return;
@@ -1429,6 +1435,7 @@ installKeys(
     messageNext: () => transcript.message(1),
     firstUnread: () => transcript.firstUnread(),
     toggle: () => transcript.toggle(),
+    find: () => find.open(),
     press: () => transcript.press(),
     copy: () => transcript.selected && copyRow(transcript.selected, transcript.nodes.get(transcript.selected), copyDeps),
     foldLevel: () => foldLevel((transcript.foldLevel + 1) % 3),
@@ -1457,7 +1464,7 @@ installKeys(
       if (cancelAsk()) return;
       if (root.dataset.side === "open") return closeSide();
       if (!keymap.hidden) help(false);
-      else if (closeMonitorCard() || closeCard()) return;
+      else if (find.close() || closeMonitorCard() || closeCard()) return;
       else if (route().view === "session" && !editing.size) interrupt();
     },
     help: () => help(),

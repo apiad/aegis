@@ -39,3 +39,18 @@ def wire(e: dict) -> dict:
 def wire_ops(ops: list[dict]) -> list[dict]:
     """Patch ops as a browser receives them."""
     return [{"upsert": wire(op["upsert"])} if "upsert" in op else op for op in ops]
+
+
+def withheld_text(e: dict) -> str:
+    """The text an open row shows that ``wire`` kept from the browser: a tool's
+    arguments, output tail and diff, a note's or command's tail, and thinking.
+    The find bar searches it here (``transcript.search``), since the browser
+    holds the rest. A peek's file card and a page's events are not text a row
+    shows, so they are not searched."""
+    if e["kind"] == "thinking":
+        return e.get("md") or ""
+    d, lazy = e["detail"], LAZY.get(e["kind"], ())
+    parts = [d[k] for k in ("args", "tail") if k in lazy and d.get(k)]
+    if diff := d.get("diff"):
+        parts += [diff["path"], *diff["removed"], *diff["added"]]
+    return "\n".join(parts)

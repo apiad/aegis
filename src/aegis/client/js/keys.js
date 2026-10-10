@@ -95,6 +95,13 @@ export const ACTIONS = [
   },
   { id: "press", title: "Press the row's first button", keys: [on("session", "o", key("o"))] },
   { id: "copy", title: "Copy the row's message or output", keys: [on("session", "c", key("c"))] },
+  // Outside a text field: inside the find bar's box, a second press is the browser's own find.
+  {
+    id: "find",
+    title: "Find in this transcript; press again for the browser's find",
+    when: ["session", "read"],
+    keys: [on("session", MAC ? "⌘F" : "Ctrl+F", mod("f"))],
+  },
   // Documents the browser's own Tab; it never matches.
   {
     id: "walk",
