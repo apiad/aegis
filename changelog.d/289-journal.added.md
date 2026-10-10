@@ -4,4 +4,7 @@
   `journal_search` (by day, words, a path, a session) and add decisions and
   blockers with `journal_note`; people use the Journal view (Alt+L), the sidebar's
   Journal row, or `aegis journal search` and `aegis journal rebuild` in a shell. A
-  closed session's transcript now ends with a "closed" row.
+  closed session's transcript now ends with a "closed" row. The Journal view has one
+  search box that fuzzy-matches an entry's text, paths, kind and every name its
+  session has had, the header opens it from a book icon, and the theme picker has
+  moved from the header into Settings, under "This browser".
