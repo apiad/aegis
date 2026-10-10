@@ -43,3 +43,21 @@ def build(
     if session:
         q.log_ids = db.log_ids(con, session)
     return q
+
+
+def literal(pattern: str) -> str:
+    """The pattern as plain words: each one quoted, so FTS5 ANDs them and
+    punctuation such as the dot in notes.md is just text."""
+    return " ".join('"' + w.replace('"', '""') + '"' for w in pattern.split())
+
+
+def search(con: sqlite3.Connection, q: db.Query):
+    """db.search, but a pattern FTS5 cannot parse is retried once as literal
+    words (q.pattern becomes that form, so a later db.counts agrees). Deliberate
+    FTS5 syntax parses the first time and is untouched. BadPattern if neither
+    form parses."""
+    try:
+        return db.search(con, q)
+    except db.BadPattern:
+        q.pattern = literal(q.pattern)
+        return db.search(con, q)

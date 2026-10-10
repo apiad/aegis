@@ -347,11 +347,30 @@ async def test_an_old_handle_still_finds_the_session(world):
     assert "renamed from" in said and "spawned in" in said
 
 
-async def test_a_bad_pattern_is_an_error_naming_it(world):
-    """Review focus 2."""
+async def test_a_pattern_that_is_not_fts5_is_searched_as_literal_words(world):
+    """notes.md and an unbalanced quote do not parse as FTS5; they are retried
+    as quoted words, so no pattern ends in bad_pattern."""
     a = await world.spawn()
-    said = await turn(a, mcp("journal_search", pattern='"unclosed'))
-    assert said.startswith("mcp error: bad_pattern") and "unclosed" in said
+    await turn(
+        a, mcp("journal_note", text="edited notes.md and unclosed", tag="decision")
+    )
+    world.app.journal.flush()
+    for pattern in ("notes.md", '"unclosed', "notes.md unclosed"):
+        said = await turn(a, mcp("journal_search", pattern=pattern))
+        assert "edited notes.md and unclosed" in said, pattern
+    out = await world.app.registry.call(
+        "journal.rows", {"pattern": "notes.md", "counts": True}
+    )
+    assert out["rows"] and out["counts"]
+
+
+async def test_deliberate_fts5_syntax_is_not_made_literal(world):
+    a = await world.spawn()
+    await turn(a, mcp("journal_note", text="alpha only", tag="decision"))
+    await turn(a, mcp("journal_note", text="beta only", tag="decision"))
+    world.app.journal.flush()
+    said = await turn(a, mcp("journal_search", pattern="alpha OR beta"))
+    assert "alpha only" in said and "beta only" in said
 
 
 async def test_journal_rows_is_for_people_and_note_for_agents(world):
@@ -377,6 +396,12 @@ async def test_the_cli_searches_and_rebuilds(world):
     runner = CliRunner()
     out = runner.invoke(cli, ["journal", "search", "cli", "--root", str(world.root)])
     assert out.exit_code == 0 and "milestone: cli can see this" in out.output
+    await turn(a, mcp("journal_note", text="edited notes.md", tag="decision"))
+    world.app.journal.flush()
+    out = runner.invoke(
+        cli, ["journal", "search", "notes.md", "--root", str(world.root)]
+    )
+    assert out.exit_code == 0 and "decision: edited notes.md" in out.output
     out = runner.invoke(cli, ["journal", "rebuild", "--root", str(world.root)])
     assert out.exit_code == 0 and out.output.strip().endswith("entries")
     out = runner.invoke(

@@ -34,7 +34,7 @@ def search(
     """Entries newest first, grouped by day."""
     from ..cli import roots_here
     from . import db, render
-    from .query import build
+    from .query import build, search as find
 
     roots = roots_here(root)
     file = roots.state_root / "journal.db"
@@ -56,7 +56,7 @@ def search(
             kinds=kind,
             limit=limit,
         )
-        hits, cut = db.search(con, q)
+        hits, cut = find(con, q)
     except ValueError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(2) from None

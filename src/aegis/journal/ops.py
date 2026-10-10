@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from ..ops import OpError
 from . import db, render
-from .query import build
+from .query import build, search
 
 if TYPE_CHECKING:
     from ..app import App
@@ -97,7 +97,7 @@ def register_journal_ops(app: "App") -> None:
             except ValueError as e:
                 raise OpError("bad_params", str(e)) from None
             try:
-                hits, cut = db.search(con, q)
+                hits, cut = search(con, q)
                 c = db.counts(con, q) if counts else None
             except db.BadPattern as e:
                 raise OpError(
