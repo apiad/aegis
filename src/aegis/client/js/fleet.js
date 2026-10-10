@@ -209,8 +209,13 @@ export function renderArchive(box, items, { onReopen, onRead }) {
   for (const m of items) {
     const tr = el("tr");
     tr.dataset.id = m.key;
+    // A click anywhere but a button reads it, as Enter on a selected row does;
+    // a phone hides the Read button and keeps this.
+    tr.addEventListener("click", (ev) => {
+      if (!ev.target.closest("button")) onRead(m.key);
+    });
     const actions = el("td", "acts");
-    const read = el("button", "btn", "Read");
+    const read = el("button", "btn read", "Read");
     read.addEventListener("click", () => onRead(m.key));
     const re = el("button", "btn primary", "Reopen");
     re.addEventListener("click", () => onReopen(m.key));
