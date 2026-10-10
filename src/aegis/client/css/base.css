@@ -277,6 +277,9 @@ body{background:#000}
 #a2 .chip.att .ax{background:none;border:none;color:var(--muted);cursor:pointer;padding:0 2px;font-size:13px;line-height:1}
 #a2 .chip.att .ax:hover{color:var(--strong)}
 #a2 .composer.dropping .box{border-color:var(--accent);border-style:dashed}
+/* With the paperclip, three 44 px touch buttons and the textarea's own width
+   (from its cols) outgrew a 390 px phone: the textarea takes only what is left. */
+#a2 .composer textarea{width:0}
 #a2 .clip svg path{fill:none}
 #a2 .row.user .body .fcard.att{white-space:normal;font-size:13px}
 #a2 .row.user .body .fcard.after{margin-top:8px}
