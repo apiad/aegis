@@ -4828,3 +4828,68 @@ def test_the_journal_lists_a_turn_and_opens_its_transcript_at_it(server, page, t
     page.wait_for_selector("#a2[data-view=session]")
     page.wait_for_selector(".row.sel")
     assert page.errors == []
+
+
+def write_many(pg, root: Path, n: int) -> None:
+    """One session, n turns, each of which writes its own file."""
+    spawn(pg, f"/write {root}/w0.md => 0")
+    for i in range(1, n):
+        pg.fill("#input", f"/write {root}/w{i}.md => {i}")
+        pg.press("#input", "Enter")
+        # The transcript mounts a window of rows, so count nothing: wait for
+        # a finished turn after this turn's message.
+        pg.wait_for_function(
+            "f => { const r = [...document.querySelectorAll('.row')];"
+            " const at = r.findIndex(x => x.classList.contains('user') && x.textContent.includes(f));"
+            " return at >= 0 && r.slice(at).some(x => /done in/.test(x.textContent)); }",
+            arg=f"w{i}.md",
+        )
+
+
+JROWS = "[...document.querySelectorAll('.journal .jrow .x')].map(x => x.textContent)"
+
+
+def test_the_journal_pages_once_when_show_more_is_pressed_twice(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    write_many(page, tmp_path, 105)
+    page.keyboard.press("Alt+KeyL")
+    page.wait_for_selector(".journal .jrow")
+    page.wait_for_function("document.querySelectorAll('.journal .jrow').length === 50")
+    page.evaluate(
+        "() => { const b = document.querySelector('#journal .btn'); b.click(); b.click(); }"
+    )
+    page.wait_for_function("document.querySelectorAll('.journal .jrow').length >= 100")
+    page.wait_for_timeout(500)
+    rows = page.evaluate(JROWS)
+    assert len(rows) == 100, len(rows)
+    assert len(set(rows)) == len(rows), "a page was appended twice"
+    assert page.errors == []
+
+
+def test_the_journal_keeps_its_length_and_focus_when_an_entry_lands(
+    server, browser, page, tmp_path
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    write_many(page, tmp_path, 105)
+    page.keyboard.press("Alt+KeyL")
+    page.wait_for_function("document.querySelectorAll('.journal .jrow').length === 50")
+    page.click("#journal .btn")
+    page.wait_for_function("document.querySelectorAll('.journal .jrow').length === 100")
+    focused = page.evaluate(
+        "() => { const r = document.querySelectorAll('.journal .jrow')[20]; r.focus(); return r.dataset.id; }"
+    )
+    assert focused
+    other_errors: list = []
+    other = new_page(browser, other_errors)
+    other.goto(server.url)
+    other.wait_for_selector("#a2[data-view=fleet]")
+    spawn(other, f"/write {tmp_path}/later.md => x")
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.journal .jrow .x')].some(x => x.textContent.includes('later.md'))"
+    )
+    assert page.locator(".journal .jrow").count() >= 100
+    assert page.evaluate("document.activeElement.dataset.id") == focused
+    assert page.errors == [] and other_errors == []
+    other.close()

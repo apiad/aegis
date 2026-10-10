@@ -28,6 +28,8 @@ export class Journal {
     this.rows = [];
     this.more = false;
     this.timer = null;
+    this.patchTimer = null;
+    this.seq = 0; // the newest request; an older answer is dropped
     this.drawn = false;
   }
 
@@ -53,7 +55,9 @@ export class Journal {
     this.kind.options = KINDS.map((k) => ({ value: k, label: k || "every kind" }));
     this.kind.value = "";
     for (const n of [this.q, this.path, this.session, this.kind, this.day]) {
-      n.addEventListener("input", () => {
+      n.addEventListener("input", (e) => {
+        // The chip's own input fires on typing in its list; only a pick counts.
+        if (n === this.kind && e.target !== n) return;
         clearTimeout(this.timer);
         this.timer = setTimeout(() => this.load(false), 200);
       });
@@ -67,13 +71,16 @@ export class Journal {
     this.q.focus();
   }
 
-  // A patch on the journal channel: reload only while the view shows.
+  // A patch on the journal channel: reload only while the view shows, as long
+  // as the list already is, so a paged list keeps its length.
   changed() {
-    if (this.drawn && this.box.offsetParent !== null) this.load(false);
+    if (!this.drawn || this.box.offsetParent === null) return;
+    clearTimeout(this.patchTimer);
+    this.patchTimer = setTimeout(() => this.load(false, Math.max(PAGE, this.rows.length)), 300);
   }
 
-  params(offset) {
-    const p = { limit: PAGE, offset };
+  params(offset, limit = PAGE) {
+    const p = { limit, offset };
     const set = (k, v) => {
       if (v.trim()) p[k] = v.trim();
     };
@@ -88,22 +95,30 @@ export class Journal {
     return p;
   }
 
-  async load(more) {
+  async load(more, limit = PAGE) {
+    if (more && this.moreBtn.disabled) return; // a page is already on its way
+    const n = ++this.seq;
+    this.moreBtn.disabled = true;
     let res;
     try {
-      res = await this.conn.call("journal.rows", this.params(more ? this.rows.length : 0));
+      res = await this.conn.call("journal.rows", this.params(more ? this.rows.length : 0, limit));
     } catch (e) {
+      if (n !== this.seq) return;
+      this.moreBtn.disabled = false;
       this.rows = [];
       this.more = false;
       this.render(e.message);
       return;
     }
+    if (n !== this.seq) return;
+    this.moreBtn.disabled = false;
     this.rows = more ? this.rows.concat(res.rows) : res.rows;
     this.more = res.more;
     this.render();
   }
 
   render(failed) {
+    const held = this.list.contains(document.activeElement) ? document.activeElement.dataset.id : null;
     const out = [];
     let day = null;
     for (const r of this.rows) {
@@ -113,6 +128,8 @@ export class Journal {
       }
       const row = el("div", `jrow k-${r.kind}`);
       row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      row.dataset.id = r.id;
       const body = el("span", "x", (r.tag ? `${r.tag}: ` : "") + r.text);
       if (r.paths.length) {
         body.append(el("span", "p", r.paths.join("  ") + (r.more ? `  +${r.more} more` : "")));
@@ -120,12 +137,15 @@ export class Journal {
       row.append(el("span", "t", r.time), el("span", "g", r.glyph), el("span", "h", r.handle), body);
       row.addEventListener("click", () => this.onOpen(r));
       row.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") this.onOpen(r);
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        this.onOpen(r);
       });
       out.push(row);
     }
     if (!out.length) out.push(el("div", "empty", failed || "Nothing in the journal matches."));
     this.list.replaceChildren(...out);
+    if (held) out.find((n) => n.dataset?.id === held)?.focus();
     this.foot.textContent = failed ? "" : `${this.rows.length} entries${this.more ? ", more below" : ""}`;
     this.moreBtn.hidden = !this.more;
   }
