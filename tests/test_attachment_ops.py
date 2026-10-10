@@ -12,7 +12,7 @@ from aegis.transcript.entries import fold_records
 from aegis.transcript.store import read_store
 from aegis.web import _loggable
 
-from .conftest import until
+from .conftest import argv_of, until
 
 CONFIG = "default_agent: opus\nagents:\n  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
 
@@ -194,3 +194,11 @@ def test_a_chunk_never_reaches_the_log():
     )
     assert got == {"log_id": "l", "upload_id": "u", "offset": 0, "data": "<400 chars>"}
     assert _loggable({"token": "s"}) == {"token": "***"}
+
+
+async def test_claude_starts_with_its_inbox_as_an_added_dir(app):
+    lid = await spawn(app)
+    s = app.sessions.sessions[lid]
+    argv = await argv_of(s)
+    assert argv[argv.index("--add-dir") + 1] == str(s.inbox)
+    assert s.inbox.is_dir() and s.inbox.stat().st_mode & 0o777 == 0o700

@@ -41,6 +41,7 @@ class ClaudeSession:
             launch.resume_id,
             **({"mcp_config": mcp_config} if mcp_config else {}),
             system_prompt=launch.system_prompt,
+            add_dirs=launch.read_dirs,
         )
         self._proc = ClaudeProcess(
             argv, launch.cwd, launch.stderr_path, launch.on_line, launch.on_exit

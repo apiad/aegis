@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from pathlib import Path
 
@@ -309,3 +310,11 @@ async def test_an_interrupt_that_cannot_reach_the_child_still_times_out(
         await until(lambda: h.session.status == "error", what="the deadline")
     finally:
         await h.session.stop()
+
+
+async def test_opencode_may_read_its_inbox_under_write(oc):
+    await oc.session.configure(permission="write")
+    await oc.turn("/config")
+    cfg = json.loads(oc.prose()[-1].removeprefix("config: "))
+    ext = cfg["permission"]["external_directory"]
+    assert ext == {"*": "deny", f"{oc.session.inbox}/*": "allow"}

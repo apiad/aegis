@@ -419,6 +419,7 @@ class Session:
 
         resume = self.resume_id
         mcp, system_prompt = self._host.spawn_args(self)
+        inbox = attachments.ensure_inbox(self.state_root, self.log_id)
         proc = self.harness.process(
             Launch(
                 cwd=self.spec.cwd,
@@ -432,6 +433,7 @@ class Session:
                 on_line=self._on_line,
                 on_exit=on_exit,
                 on_error=self._on_error,
+                read_dirs=(inbox,),
             )
         )
         # Before the start: a harness can speak while it starts (OpenCode's
