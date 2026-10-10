@@ -398,7 +398,7 @@ class Session:
     # -- operations --------------------------------------------------------
     async def start(self) -> None:
         """A brand-new session: record the spawn, then start ``claude``."""
-        self._record({"kind": "spawn", **self.spec.record()})
+        self._record({"kind": "spawn", **self.spec.record(), "handle": self.handle})
         await self.ensure_running()
 
     async def ensure_running(self) -> None:

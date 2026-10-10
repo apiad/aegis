@@ -349,6 +349,7 @@ class Registry(Host):
         if self.monitors is not None:
             self.monitors.drop_owner(log_id)
         await s.stop()
+        s.report({"kind": "close"})
         del self.sessions[log_id]
         s.archived = True
         s.artifacts.flush_all()  # a page's last coalesced write, before the store shuts
@@ -372,6 +373,10 @@ class Registry(Host):
         return s
 
     def rename(self, log_id: str, handle: str | None, title: str | None) -> dict:
+        """Set a session's handle and/or title. An open session records a
+        ``name`` record in its store when it gets a handle; an archived session
+        has no open store, so its rename stays meta-only and the journal does
+        not see it."""
         if log_id not in self.sessions and log_id not in self.archived:
             raise OpError("no_session", f"no session {log_id!r}")
         if handle is not None:
@@ -394,6 +399,8 @@ class Registry(Host):
             if title is not None:
                 s.title_set = True
             s._set(**changes)
+            if handle is not None:
+                s.report({"kind": "name", "handle": s.handle, "title": s.title})
             self.metas.write(s.meta())
             return s.wire()
         meta = self.archived[log_id]

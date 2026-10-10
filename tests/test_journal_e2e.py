@@ -2,6 +2,9 @@
 
 import pytest
 
+from aegis.transcript.entries import fold_records
+from aegis.transcript.store import read_store
+
 from .test_agents import CONFIG, World, turn
 
 
@@ -24,3 +27,25 @@ async def test_the_fake_runs_a_command_writes_and_edits(world):
     tools = [e for e in a.entries() if e["kind"] == "tool"]
     assert [e["title"] for e in tools][-3:] == ["Bash", "Write", "Edit"]
     assert all(e["status"] == "ok" for e in tools[-3:])
+
+
+def _records(world, log_id):
+    return read_store(world.app.sessions.store_path(log_id))[0]
+
+
+async def test_the_spawn_record_names_the_handle_and_a_rename_is_recorded(world):
+    a = await world.spawn()
+    first = a.handle
+    world.app.sessions.rename(a.log_id, "new-name", None)
+    recs = _records(world, a.log_id)
+    assert [r["handle"] for r in recs if r.get("kind") == "spawn"] == [first]
+    assert [r["handle"] for r in recs if r.get("kind") == "name"] == ["new-name"]
+
+
+async def test_closing_records_a_close_that_the_fold_draws(world):
+    a = await world.spawn()
+    log_id = a.log_id
+    await world.app.sessions.close(log_id)
+    recs = _records(world, log_id)
+    assert recs[-1]["kind"] == "close"
+    assert fold_records(recs).entries()[-1]["summary"] == "closed"
