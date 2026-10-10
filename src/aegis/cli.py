@@ -79,6 +79,12 @@ def roots_here(root: Path | None):
     return make_roots(start=Path.cwd(), root=root)
 
 
+def path_here(path: str) -> str:
+    """A path typed at this shell, absolute: a relative one is read from the
+    shell's directory, as a person means it, not from the config root."""
+    return str(Path.cwd() / Path(path).expanduser())
+
+
 def _port_free(host: str, port: int) -> bool:
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
     with socket.socket(family, socket.SOCK_STREAM) as s:

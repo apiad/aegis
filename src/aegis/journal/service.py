@@ -143,8 +143,10 @@ class Journal:
             self._q.put(("feed", log_id, handle, store_path, record, events))
 
     def rebuild(self) -> int:
-        """Empty the file and derive it again from every store. Synchronous."""
-        con, _ = db.connect(self.path)
+        """Empty the file and derive it again from every store. Synchronous.
+        A file SQLite cannot read is set aside first, as at start."""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        con, _ = self._open()
         try:
             token = _token()
             db.clear(con, mark=token)

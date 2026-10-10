@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import click
 import typer
 
 app = typer.Typer(
@@ -23,16 +24,21 @@ def search(
         None, help="First day: 2026-10-09, today, yesterday or 7d."
     ),
     until: str = typer.Option(None, help="Last day, included."),
-    path: str = typer.Option(None, help="Only entries that wrote under this path."),
+    path: str = typer.Option(
+        None,
+        help="Only entries that wrote under this path; a relative one is read from here.",
+    ),
     session: str = typer.Option(None, help="A handle, past or present, or a log id."),
     kind: list[str] = typer.Option(
-        None, help="turn, commit, pr, plan, note or session."
+        None,
+        click_type=click.Choice(["turn", "commit", "pr", "plan", "note", "session"]),
+        help="turn, commit, pr, plan, note or session.",
     ),
     limit: int = typer.Option(50, help="At most this many entries."),
     root: Path | None = _ROOT,
 ) -> None:
     """Entries newest first, grouped by day."""
-    from ..cli import roots_here
+    from ..cli import path_here, roots_here
     from . import db, render
     from .query import build, search as find
 
@@ -51,7 +57,7 @@ def search(
             since=since,
             until=until,
             pattern=pattern,
-            path=path,
+            path=path_here(path) if path else None,
             session=session,
             kinds=kind,
             limit=limit,

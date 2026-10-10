@@ -543,3 +543,44 @@ async def test_a_heredoc_commit_from_outside_the_repo_names_its_files(world, tmp
     again = Journal(world.app.roots.state_root, None, db_path=tmp_path / "again.db")
     again.rebuild()
     assert dump(tmp_path / "again.db") == live
+
+
+async def test_the_cli_reads_a_relative_path_from_the_shells_directory(
+    world, monkeypatch
+):
+    from typer.testing import CliRunner
+
+    from aegis.cli import app as cli
+
+    (world.root / "sub").mkdir()
+    a = await world.spawn()
+    await turn(a, f"/write {world.root / 'sub' / 'a.py'} => x")
+    world.app.journal.flush()
+    monkeypatch.chdir(world.root / "sub")
+    out = CliRunner().invoke(
+        cli, ["journal", "search", "--path", "a.py", "--root", str(world.root)]
+    )
+    assert out.exit_code == 0 and "1 entries" in out.output, out.output
+
+
+def test_the_cli_rebuilds_over_a_corrupt_file_and_refuses_an_unknown_kind(tmp_path):
+    from typer.testing import CliRunner
+
+    from aegis.cli import app as cli
+
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    state = tmp_path / ".aegis" / "state"
+    (state / "transcripts").mkdir(parents=True)
+    fixture = Path(__file__).parent / "fixtures" / "session.jsonl"
+    (state / "transcripts" / "20260101-000000-abcdef.jsonl").write_text(
+        fixture.read_text()
+    )
+    (state / "journal.db").write_bytes(b"this is not a database" * 100)
+    runner = CliRunner()
+    out = runner.invoke(cli, ["journal", "rebuild", "--root", str(tmp_path)])
+    assert out.exit_code == 0 and out.output.strip() == "3 entries", out.output
+    assert len(list(state.glob("journal.db.corrupt-*"))) == 1
+    out = runner.invoke(
+        cli, ["journal", "search", "--kind", "commits", "--root", str(tmp_path)]
+    )
+    assert out.exit_code == 2 and "commits" in out.output, out.output
