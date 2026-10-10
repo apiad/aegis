@@ -88,6 +88,17 @@ def test_a_commit_row_sends_its_hash_apart_with_marks_in_each():
     assert note["hash"] == "" and note["text"] == "a b" and note["marks"] == [0]
 
 
+def test_the_rows_day_label_says_today_for_the_servers_today():
+    now = time.time()
+    hits = [
+        db.Hit(i, ts, "L", "h", "note", "decision", "x", None, None, False, [])
+        for i, ts in enumerate((now, now - 86400))
+    ]
+    today, yesterday = render.rows(hits, "/root", set())
+    assert today["day"] == time.strftime("%Y-%m-%d %a · today", time.localtime(now))
+    assert yesterday["day"] == time.strftime("%Y-%m-%d %a", time.localtime(now - 86400))
+
+
 def test_a_path_query_in_a_worktree_names_the_main_checkout(tmp_path):
     """A path query inside a git repo with a worktree names the main checkout."""
     import subprocess

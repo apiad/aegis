@@ -236,7 +236,7 @@ export class Journal {
       if (r.day !== day) {
         day = r.day;
         const head = el("div", "jday-h");
-        head.append(el("span", null, day.startsWith(this.today) ? `${day} · today` : day));
+        head.append(el("span", null, day));
         thread = el("div", "jthread");
         const group = el("section", "jday");
         group.append(head, thread);

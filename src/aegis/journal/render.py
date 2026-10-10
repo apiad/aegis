@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import time
 
+from . import when
 from .db import Hit
 
 GLYPH = {
@@ -77,14 +78,17 @@ def rows(
     hits: list[Hit], root: str, open_ids: set[str], marks: list[list[int]] | None = None
 ) -> list[dict]:
     """``marks``: per hit, the indices in its text the view's box matched. A
-    commit's hash comes apart from its text, each with its own marks."""
+    commit's hash comes apart from its text, each with its own marks. ``day``
+    is the label the view's day pill shows, which names the server's today."""
+    today = when.today()
     out = []
     for i, h in enumerate(hits):
         commit, commit_marks, text, text_marks = _hash(h, marks[i] if marks else [])
+        day = _day(h.ts)
         out.append(
             {
                 "id": h.id,
-                "day": _day(h.ts),
+                "day": f"{day} · today" if day.startswith(today) else day,
                 "time": _time(h.ts),
                 "glyph": GLYPH.get(h.kind, "·"),
                 "kind": h.kind,
