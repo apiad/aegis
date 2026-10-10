@@ -50,7 +50,7 @@ def test_a_commit_lists_its_files_from_either_checkout(repo):
 
 
 def test_a_removed_worktree_still_lists_its_commit(repo):
-    """Review focus 3: git runs from the nearest directory that still exists."""
+    """git runs from the nearest directory that still exists."""
     wt = repo / ".claude/worktrees/t"
     (wt / "c.py").write_text("z\n")
     git("add", "c.py", cwd=wt)
@@ -59,3 +59,17 @@ def test_a_removed_worktree_still_lists_its_commit(repo):
     git("worktree", "remove", "--force", str(wt), cwd=repo)
     assert not wt.exists()
     assert commit_files(str(wt), h) == ["c.py"]
+
+
+def test_commit_files_handles_non_ascii_names(repo):
+    wt = repo / ".claude/worktrees/t"
+    (wt / "café.py").write_text("x\n")
+    git("add", "café.py", cwd=wt)
+    git("commit", "-q", "-m", "add café", cwd=wt)
+    h = git("rev-parse", "HEAD", cwd=wt).strip()
+    assert commit_files(str(wt), h) == ["café.py"]
+
+
+def test_name_does_not_raise_on_nul_byte():
+    result = name("a\0b")
+    assert result == (None, "a\0b")
