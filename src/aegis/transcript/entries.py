@@ -102,8 +102,10 @@ def _entry(
 
 # What a session stands on between turns, for its card: the agent's plan, the
 # item it finished last, its report on the turn that ended (turn_end), and why
-# that turn failed. Replaced as a whole when it changes, so a session compares
-# identity to know whether to publish.
+# that turn failed. For the nudges (nudges.py): when and how the last turn
+# ended, the plan clock's work at the last plan record, and which nudges were
+# sent since they were last armed. Replaced as a whole when it changes, so a
+# session compares identity to know whether to publish.
 EMPTY_STANDING: dict = {
     "plan": [],
     "did": "",
@@ -111,7 +113,26 @@ EMPTY_STANDING: dict = {
     "turn_error": "",
     "last_message": "",
     "clock": None,
+    "ended": None,
+    "plan_mark": None,
+    "nudged": [],
 }
+
+NUDGE_HEADER = "> from aegis:nudge · "
+
+
+def _nudged(prev: list[str], text: str) -> list[str]:
+    """Which nudges stay sent after a send of ``text``. A send carrying nudges
+    adds theirs; any other send is a new idle stretch and re-arms the idle
+    nudge. Only a plan record re-arms the plan nudge."""
+    kinds = [
+        ln.removeprefix(NUDGE_HEADER).split(" · ")[0]
+        for ln in text.splitlines()
+        if ln.startswith(NUDGE_HEADER)
+    ]
+    if not kinds:
+        return [k for k in prev if k != "idle"]
+    return sorted({*prev, *kinds})
 
 
 def _did(old: list[dict], new: list[dict], prev: str) -> str:
@@ -407,7 +428,11 @@ class Fold:
             )
             self._turn_open = True
             self._clock(ts, "work")
-            self._stand(report=None, turn_error="")
+            self._stand(
+                report=None,
+                turn_error="",
+                nudged=_nudged(self.standing["nudged"], str(rec.get("text") or "")),
+            )
             # The person is back and writing: the recap has done its job.
             folded: list[dict] = []
             for rid in self._recaps:
@@ -446,10 +471,19 @@ class Fold:
                 ts if ts is not None else 0.0,
                 "work" if self._turn_open else "idle",
             )
+            # The work done when the agent last touched its plan: an unchanged
+            # plan record leaves the clock where it was, so add what ran since.
+            mark = clock["work_s"] + (
+                max(0.0, (ts or 0.0) - clock["at"])
+                if clock["running"] == "work"
+                else 0.0
+            )
             self._stand(
                 plan=items,
                 clock=clock,
                 did=_did(self.standing["plan"], items, self.standing["did"]),
+                plan_mark=round(mark, 1),
+                nudged=[k for k in self.standing["nudged"] if k != "plan"],
             )
             return []
         if kind == "turn_end":
@@ -941,6 +975,18 @@ class Fold:
             # 2026-10-09-plan-timing-design.md).
             idle = report is not None or error or interrupted or self._slash_idle
             self._clock(ts, "idle" if idle else "work")
+            how = (
+                "interrupted"
+                if interrupted
+                else "error"
+                if error
+                else "command"
+                if self._slash_idle
+                else "reported"
+                if report is not None
+                else "silent"
+            )
+            self._stand(ended={"at": ts, "how": how})
             self._slash_idle = False
             ops = self._end_calls("interrupted" if interrupted else "no result")
             ops += self._drop_live()
