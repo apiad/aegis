@@ -5238,6 +5238,24 @@ def test_the_journal_count_line_is_the_servers_total_not_the_page(server, page):
     assert page.errors == []
 
 
+def test_a_phone_gets_a_journal_placeholder_that_fits(server, browser):
+    errors: list = []
+    pg = phone(browser, errors)
+    pg.goto(server.url + "#journal")
+    pg.wait_for_selector(".journal .jq")
+    q = ".journal .jq"
+    assert pg.get_attribute(q, "placeholder") == "Search: words, paths, sessions"
+    fits = "e => e.scrollWidth <= e.clientWidth"
+    assert pg.eval_on_selector(q, "e => getComputedStyle(e).textOverflow") == "ellipsis"
+    pg.set_viewport_size({"width": 1000, "height": 800})
+    pg.wait_for_function(
+        "document.querySelector('.journal .jq').placeholder.startsWith('Search the journal')"
+    )
+    assert pg.eval_on_selector(q, fits)
+    assert errors == []
+    pg.close()
+
+
 def test_the_journal_reloads_a_list_paged_past_500_rows(
     server, browser, page, tmp_path
 ):

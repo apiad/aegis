@@ -744,7 +744,7 @@ body{background:#000}
 .a2 .jsearch:focus-within{border-color:var(--accent)}
 .a2 .jsearch svg{width:15px;height:15px;flex:none;fill:none;stroke:var(--faint);stroke-width:1.4;stroke-linecap:round}
 .a2 .jsearch:focus-within svg{stroke:var(--accent)}
-.a2 .jsearch .jq{flex:1;min-width:0;background:none;border:0;outline:none;padding:7px 0;color:var(--strong);font-family:var(--font-ui);font-size:14px}
+.a2 .jsearch .jq{flex:1;min-width:0;background:none;border:0;outline:none;padding:7px 0;color:var(--strong);font-family:var(--font-ui);font-size:14px;text-overflow:ellipsis}
 .a2 .jsearch .jq::placeholder{color:var(--faint);opacity:1}
 .a2 .jwhen{flex:none;font-family:var(--font-mono);font-size:11px;color:var(--muted);background:var(--bg);border:1px solid var(--rule);border-radius:999px;padding:3px 11px;cursor:pointer;white-space:nowrap}
 .a2 .jwhen:hover,.a2 .jwhen:focus-visible{color:var(--strong);border-color:var(--faint);outline:none}

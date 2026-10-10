@@ -119,11 +119,14 @@ export class Journal {
   draw() {
     if (this.drawn) return;
     this.drawn = true;
-    this.q = Object.assign(el("input", "jq"), {
-      placeholder: "Search the journal: words, a path, a session…",
-      spellcheck: false,
-      autocomplete: "off",
-    });
+    this.q = Object.assign(el("input", "jq"), { spellcheck: false, autocomplete: "off" });
+    // A phone's box has room for the short hint only.
+    const narrow = matchMedia("(max-width:640px)");
+    const hint = () => {
+      this.q.placeholder = narrow.matches ? "Search: words, paths, sessions" : "Search the journal: words, a path, a session…";
+    };
+    hint();
+    narrow.addEventListener("change", hint);
     this.q.setAttribute("autocapitalize", "off");
     this.q.setAttribute("autocorrect", "off");
     this.q.setAttribute("aria-label", "Search the journal");
