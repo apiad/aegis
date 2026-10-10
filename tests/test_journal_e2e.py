@@ -364,3 +364,22 @@ async def test_journal_rows_is_for_people_and_note_for_agents(world):
         await world.app.registry.call("journal.note", {"text": "x", "tag": "decision"})
     out = await world.app.registry.call("journal.rows", {"counts": True})
     assert set(out) == {"rows", "more", "counts"}
+
+
+async def test_the_cli_searches_and_rebuilds(world):
+    from typer.testing import CliRunner
+
+    from aegis.cli import app as cli
+
+    a = await world.spawn()
+    await turn(a, mcp("journal_note", text="cli can see this", tag="milestone"))
+    world.app.journal.flush()
+    runner = CliRunner()
+    out = runner.invoke(cli, ["journal", "search", "cli", "--root", str(world.root)])
+    assert out.exit_code == 0 and "milestone: cli can see this" in out.output
+    out = runner.invoke(cli, ["journal", "rebuild", "--root", str(world.root)])
+    assert out.exit_code == 0 and out.output.strip().endswith("entries")
+    out = runner.invoke(
+        cli, ["journal", "search", "--since", "tuesday", "--root", str(world.root)]
+    )
+    assert out.exit_code == 2 and "not a day" in out.output

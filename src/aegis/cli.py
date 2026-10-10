@@ -1,5 +1,5 @@
 """``aegis serve``, ``aegis init``, ``aegis doctor``, ``aegis link``, ``aegis usage``,
-and ``aegis`` alone, which is ``serve --window``.
+``aegis journal``, and ``aegis`` alone, which is ``serve --window``.
 
 This is the only module that reads the process's working directory.
 
@@ -23,8 +23,10 @@ DEFAULT_PORT = 8742
 
 app = typer.Typer(add_completion=False, help=HELP)
 
+from .journal.cli import app as journal_app  # noqa: E402
 from .usage.cli import app as usage_app  # noqa: E402
 
+app.add_typer(journal_app, name="journal")
 app.add_typer(usage_app, name="usage", help="What the agents' work cost.")
 
 
