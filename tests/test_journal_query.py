@@ -18,10 +18,12 @@ def test_days_are_local_and_until_ends_its_day():
     assert when.bound(None, end=False) is None
     with pytest.raises(ValueError, match="not a day"):
         when.bound("tuesday", end=False)
+    with pytest.raises(ValueError, match="not a day"):
+        when.bound("9999-12-31", end=True)
 
 
 def test_a_loose_path_query_names_the_same_prefix(tmp_path):
-    """Review focus 5: trailing slash, .., a file."""
+    """A path query names the same prefix whether it has a trailing slash, a .., or is absolute."""
     root = tmp_path.resolve()
     (root / "src" / "client").mkdir(parents=True)
     con, _ = db.connect(root / "j.db")
@@ -68,3 +70,46 @@ def test_rows_say_whether_the_session_is_open():
         and row["source"] == "t9"
         and row["time"] == "12:00"
     )
+
+
+def test_a_path_query_in_a_worktree_names_the_main_checkout(tmp_path):
+    """A path query inside a git repo with a worktree names the main checkout."""
+    import subprocess
+
+    root = tmp_path.resolve()
+    subprocess.run(
+        ["git", "init", "-q"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "test"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@test"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    (root / "src").mkdir()
+    wt_path = root / ".claude" / "worktrees" / "t"
+    subprocess.run(
+        ["git", "worktree", "add", "-q", "-b", "topic", str(wt_path)],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    con, _ = db.connect(root / "j.db")
+    worktree_result = query.build(con, str(root), path=str(wt_path / "src")).path
+    main_result = query.build(con, str(root), path=str(root / "src")).path
+    assert worktree_result == main_result == str(root / "src")
+
+
+def test_empty_text_renders_zero_entries():
+    """render.text with no hits returns zero entries."""
+    out = render.text([], False, "/root")
+    assert out == "0 entries"

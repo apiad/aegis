@@ -32,4 +32,9 @@ def bound(text: str | None, *, end: bool, now: float | None = None) -> float | N
             raise ValueError(
                 f"not a day: {text!r} (use 2026-10-09, today, yesterday or 7d)"
             ) from None
-    return _start(day + dt.timedelta(days=1) if end else day)
+    try:
+        return _start(day + dt.timedelta(days=1) if end else day)
+    except OverflowError:
+        raise ValueError(
+            f"not a day: {text!r} (use 2026-10-09, today, yesterday or 7d)"
+        ) from None
