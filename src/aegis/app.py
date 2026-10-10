@@ -15,7 +15,8 @@ Channels: ``sessions`` (every open session's meta; patches ``upsert`` and
 ``remove``), ``transcript:<log_id>`` (any session, archived included; a
 subscribe ``since`` a revision gets what changed after it), ``quota`` (each
 provider's windows; patches ``set``), ``host`` (CPU, RAM and disk while someone
-watches; patches ``set``) and ``config`` (``.aegis.yaml`` as aegis holds it;
+watches; patches ``set``), ``journal`` (when its rows last changed; patches
+``set``) and ``config`` (``.aegis.yaml`` as aegis holds it;
 patches ``set``).
 """
 
@@ -50,6 +51,7 @@ from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors
 from .queues import Queues
+from .journal.service import Journal
 from .quota import Quota
 from .recaps import Recaps
 from .ops import Caller, NoParams, OpError, Registry as Ops
@@ -230,6 +232,8 @@ class App:
             server_name,
         )
         reg.quota = self.quota
+        self.journal = Journal(roots.state_root, self.publish)
+        reg.journal = self.journal
         self.catalogs = commands.Catalogs(
             roots.state_root / "stderr" / "catalog-probe.log"
         )
@@ -262,6 +266,7 @@ class App:
         self.quota.start()
         self.host.start()
         self.links.boot()
+        self.journal.start()
 
     async def shutdown(self) -> None:
         if self._config_task is not None:
@@ -274,6 +279,7 @@ class App:
         await self.monitors.shutdown()
         await self.recaps.shutdown()
         await self.sessions.shutdown()
+        self.journal.stop()
 
     def _on_config(self, snap: Snapshot) -> None:
         """Every change to .aegis.yaml, however it was made: the page and the
@@ -326,6 +332,8 @@ class App:
             return self.quota.snapshot
         if name == "host":
             return self.host.snapshot
+        if name == "journal":
+            return self.journal.snapshot
         if name == "config":
             return lambda: self.config.current().wire()
         if name == "links":

@@ -78,6 +78,9 @@ class Host:
 
     def turn_ended(self, session: "Session") -> None: ...
 
+    def recorded(self, session: "Session", record: dict, events: list | None) -> None:
+        """A record was stored and folded: the journal derives from it."""
+
     def status_changed(self, session: "Session") -> None:
         """The session's status, or what it waits on, changed: a parent waiting
         on it re-derives."""
@@ -666,6 +669,7 @@ class Session:
             for op in ops
         ):
             self._set(activity=fold.activity())
+        self._host.recorded(self, stored, events)
 
     def _set(self, **changes: object) -> None:
         changes = {k: v for k, v in changes.items() if getattr(self, k) != v}

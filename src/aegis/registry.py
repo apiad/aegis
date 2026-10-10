@@ -77,6 +77,7 @@ class Registry(Host):
         self.monitors = None
         self.queues = None
         self.quota = None
+        self.journal = None
         self.catalogs = None
 
     # -- the Host a session asks ----------------------------------------------
@@ -96,6 +97,16 @@ class Registry(Host):
             self.queues.turn_ended(session)
         if self.quota is not None:
             self.quota.turn_ended()
+
+    def recorded(self, session: Session, record: dict, events: list | None) -> None:
+        if self.journal is not None:
+            self.journal.recorded(
+                session.log_id,
+                session.handle,
+                self.store_path(session.log_id),
+                record,
+                events,
+            )
 
     def exited(self, session: Session, code: int, stderr_tail: list[str]) -> None:
         if self.tokens is not None:
