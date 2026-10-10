@@ -3548,6 +3548,23 @@ def test_a_phone_sees_the_monitor_card_every_reply_and_a_one_line_composer(
                size: parseFloat(s.fontSize) }; })()""")
     assert abs(text["mid"] - (send["y"] + send["height"] / 2)) <= 2, text
     assert text["size"] >= 16
+    # Scrolled to the end, the last row clears the navigator floating over the
+    # transcript's foot (the smoke test of 2.5.0: it hid the last line).
+    page.fill("#input", "long " * 400)
+    page.tap("#send")
+    turns_done(page, 1)
+    assert page.evaluate(
+        "(() => { const t = document.getElementById('tr'); return t.scrollHeight > 2 * t.clientHeight; })()"
+    )
+    page.wait_for_selector("#nav:not([hidden])")
+    page.tap("#jump")
+    page.wait_for_function(
+        "(() => { const t = document.getElementById('tr'); return t.scrollHeight - t.clientHeight - t.scrollTop < 2; })()"
+    )
+    last = page.evaluate(
+        "document.querySelector('#entries > .row:last-of-type').getBoundingClientRect().bottom"
+    )
+    assert last <= rect("#nav")["y"], "the navigator covers the last row"
     # Three replies stack in the composer; the navigator stays above all of them.
     page.evaluate(
         """(() => { const r = document.getElementById('replies'); r.hidden = false;

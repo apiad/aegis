@@ -129,7 +129,9 @@ body{background:#000}
 
 /* transcript */
 .a2 .col{display:grid;grid-template-rows:1fr auto;min-height:0;position:relative}
-.a2 .tr{overflow-y:auto;padding:18px 22px 8px;position:relative}
+/* The bottom padding is the navigator's room: it floats over the transcript's
+   foot, and without it covers the last row. */
+.a2 .tr{overflow-y:auto;padding:18px 22px 52px;position:relative}
 .a2 .tr:before{content:"";display:var(--thread);position:absolute;left:32px;top:24px;bottom:0;width:1px;background:var(--rule)}
 .a2 .row{display:grid;grid-template-columns:var(--row-cols);column-gap:10px;margin:0 0 9px;min-width:0}
 .a2 .row .t{display:var(--time);width:38px;font-family:var(--font-mono);font-size:11px;color:var(--faint);line-height:1.9}
@@ -785,7 +787,7 @@ body{background:#000}
     padding-bottom:max(16px,env(safe-area-inset-bottom))}
   .a2[data-side=open] .side{transform:none}
   .a2[data-side=open] .v-session:after{content:"";position:fixed;inset:var(--hdr,0px) 0 0 0;z-index:29;background:rgba(0,0,0,.5)}
-  .a2 .tr{padding:12px 12px 6px}
+  .a2 .tr{padding:12px 12px 52px}
   .a2 .tr:before{left:22px}
   .a2 .composer{padding:6px 8px max(8px,env(safe-area-inset-bottom))}
   /* One line of text centred on the 44 px buttons: 16+24+16 = 6+44+6. At 16 px
@@ -810,6 +812,7 @@ body{background:#000}
   .a2 .tab{min-height:40px}
   .a2 .keys-btn.bell{min-width:44px;min-height:40px}
   .a2 .nav button{height:44px;min-width:44px}
+  .a2 .tr{padding-bottom:66px}
   .a2 .row.tool details>summary{padding:9px 0}
   .a2 .btn{min-height:44px}
 }
