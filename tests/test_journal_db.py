@@ -105,6 +105,7 @@ def test_clear_rolls_back_on_error(tmp_path):
     locker = sqlite3.connect(test_db)
     locker.execute("BEGIN IMMEDIATE")
     try:
+        c.execute("PRAGMA busy_timeout=100")
         db.clear(c)
         assert False, "Expected database locked error"
     except sqlite3.OperationalError:
@@ -172,6 +173,8 @@ def test_path_root_matches_all_entries(con):
     hits, _ = db.search(con, db.Query(path="/r/"))
     assert len(hits) == 3
     hits, _ = db.search(con, db.Query(path="/r"))
+    assert len(hits) == 3
+    hits, _ = db.search(con, db.Query(path="/"))
     assert len(hits) == 3
 
 
