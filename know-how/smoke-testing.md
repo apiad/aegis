@@ -55,6 +55,7 @@ The prompt's rules, which the first tour showed work:
 - talk to Alex in his language, short messages;
 - keep the tour as the plan (`plan_update`), one step per turn, and end each
   turn with `turn_end(attention="needs_you", replies=["funciona", "no funciona"])`;
+- a scripted reply is at most 80 characters, or `turn_end` refuses it;
 - when something fails, keep Alex's words, do not debug, move on;
 - ask before anything that spends quota (an OpenCode session) or reaches
   another server;
