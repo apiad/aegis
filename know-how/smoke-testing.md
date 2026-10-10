@@ -33,6 +33,15 @@ path; `--window` opens the app window on his desktop. Without `-d` the server
 dies with the shell that started it, which on 2026-10-09 was a resumed
 session. Note the commit `aegis-dev` prints: the tour names it.
 
+**On the VPS, Alex holds the tour on his phone**, which is not on the tailnet,
+so the build needs a public name: an A record `smoke.syalia.dev` to the VPS
+(the `managing-syalia-dns` skill; a `*.syalia.dev` wildcard points elsewhere)
+and a Caddy site proxying it to :8791 with `/mcp` answering 404, as
+`dev.apiad.net` does. Drop `--window` and add
+`--origin https://smoke.syalia.dev`: without it the page loads and its socket
+is refused, so the phone shows "disconnected, retrying" (2026-10-10). Take the
+record and the site down when the tour is over.
+
 ## 3. Write the tour
 
 List what changed: on a PR its own `changelog.d/` fragments, before a release
