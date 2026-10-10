@@ -5121,6 +5121,30 @@ def test_a_journal_kind_chip_narrows_to_that_kind(server, page, tmp_path):
     assert page.errors == []
 
 
+def test_the_header_opens_the_journal_from_a_book_icon(server, browser, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    btn = page.locator("#journal-btn")
+    assert btn.get_attribute("aria-label") == "Journal"
+    assert btn.get_attribute("title") == "Journal (Alt+L)"
+    assert btn.locator("svg path").count() == 2 and btn.inner_text().strip() == ""
+    btn.click()
+    page.wait_for_selector("#a2[data-view=journal]")
+    assert "on" in btn.get_attribute("class").split()
+    assert page.errors == []
+    errors: list = []
+    pg = phone(browser, errors)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    box = pg.locator("#journal-btn").bounding_box()
+    assert box and box["x"] + box["width"] <= 390 and box["width"] >= 40
+    assert pg.evaluate(WIDER) == []
+    pg.tap("#journal-btn")
+    pg.wait_for_selector("#a2[data-view=journal]")
+    assert errors == []
+    pg.close()
+
+
 def test_the_journal_reloads_a_list_paged_past_500_rows(
     server, browser, page, tmp_path
 ):

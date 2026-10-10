@@ -794,10 +794,12 @@ body{background:#000}
 
 /* narrow and touch: last, so these win over the rules above */
 /* the panel's button: collapses it on a desktop, opens the drawer on a phone */
-.a2 .side-btn{display:none;place-items:center;width:30px;padding:0;margin:0 4px 6px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);color:var(--muted);cursor:pointer}
+/* the Journal's button: the same icon button, in every view */
+.a2 .side-btn,.a2 .jr-btn{display:grid;place-items:center;width:30px;padding:0;margin:0 4px 6px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);color:var(--muted);cursor:pointer}
+.a2 .side-btn{display:none}
 .a2[data-view=session] .side-btn{display:grid}
-.a2 .side-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.4}
-.a2 .side-btn:hover{color:var(--strong)}
+.a2 .side-btn svg,.a2 .jr-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.a2 .side-btn:hover,.a2 .jr-btn:hover{color:var(--strong)}
 .a2 .grip{display:none}
 @media (min-width:761px){
   .a2:not([data-side=closed]) .side-btn{color:var(--accent)}
@@ -819,11 +821,11 @@ body{background:#000}
   .a2 .tablist .tab .srv{display:none}
   .a2 .tablist .tab .tname{max-width:16ch}
   .a2 .theme-pick{font-size:0;gap:0}
-  .a2 .keys-btn:not(.bell):not(.set-btn):not(.jr-btn){display:none}
+  .a2 .keys-btn:not(.bell):not(.set-btn){display:none}
   /* the header's buttons: bare icons, the tap target kept by (pointer:coarse) */
-  .a2 .tabs .keys-btn.bell,.a2 .tabs .set-btn,.a2[data-view=session] .side-btn{display:grid;place-items:center;background:none;border-color:transparent;margin:0 0 4px;padding:0}
-  .a2 .tabs .set-btn{min-width:40px}
-  .a2 .tabs .keys-btn.bell .ic,.a2 .tabs .set-btn .ic{width:18px;height:18px}
+  .a2 .tabs .keys-btn.bell,.a2 .tabs .set-btn,.a2 .tabs .jr-btn,.a2[data-view=session] .side-btn{display:grid;place-items:center;background:none;border-color:transparent;margin:0 0 4px;padding:0}
+  .a2 .tabs .set-btn,.a2 .tabs .jr-btn{min-width:40px}
+  .a2 .tabs .keys-btn.bell .ic,.a2 .tabs .set-btn .ic,.a2 .tabs .jr-btn svg{width:18px;height:18px}
   .a2 .set-btn .lbl{display:none}
   .a2 .set-btn .ic{display:inline-block}
   .a2 .journal{padding:12px 12px 24px}
