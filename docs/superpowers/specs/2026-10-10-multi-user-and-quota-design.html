@@ -251,7 +251,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · tokens, quota gate and restarts</span>
-  <span class="st"><span class="pill acc">draft, awaiting Alex's review</span><span class="pill">2026-10-10</span><span class="pill">#311 · #312</span></span>
+  <span class="st"><span class="pill acc">draft, awaiting review</span><span class="pill">2026-10-10</span><span class="pill">#311 · #312</span></span>
 </div>
 
 <div class="wrap">
@@ -286,8 +286,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <main>
 <h1>Tokens with owners, a quota gate over the shared pool, and restarts that continue</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-10-multi-user-and-quota-design.html</span><span>·</span><span>not started</span><span>·</span><span>source: Alex's voice note of 2026-10-10 and the conversation after it</span></div>
-<p class="lede">aegis is going onto the Syalia VPS, where Daniel and Vivian will work and where Alex's vps and zion will link in. This spec gives each token a name, a role and a quota policy, so a person, a linked server or an AFK job can only start agents while the shared subscription has room for them. It also makes a restart of aegis continue the turns it interrupted, because the quota stop and the restart both interrupt work and must give it back intact.</p>
+<div class="meta"><span>docs/superpowers/specs/2026-10-10-multi-user-and-quota-design.html</span><span>·</span><span>not started</span></div>
+<p class="lede">A team server is an aegis that several people use, and that their own machines link into. This spec gives each token a name, a role and a quota policy, so a person, a linked server or an AFK job can only start agents while the shared subscription has room for them. It also makes a restart of aegis continue the turns it interrupted, because the quota stop and the restart both interrupt work and must give it back intact.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
 <div class="trio">
@@ -312,26 +312,26 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </div>
 
 <h2 id="decisions"><span class="n">02</span>Decisions</h2>
-<p><span class="who">Alex</span> marks a decision Alex made. <span class="who q">proposed</span> marks one this spec proposes and Alex has not ruled on.</p>
+<p><span class="who">maintainer</span> marks a decision the maintainer made in review. <span class="who q">proposed</span> marks one this spec proposes and nobody has ruled on yet.</p>
 <table class="tbl">
 <thead><tr><th>Question</th><th>Decision</th><th>Why</th></tr></thead>
 <tbody>
-<tr><td>What a user is</td><td>A token, with a name, a role and a policy. Not necessarily a person</td><td class="why"><span class="who">Alex</span> The same mechanism limits Daniel, the link from zion, and future AFK jobs. "Un agente en zion no puede gastar más de ciertos tokens en Syalia."</td></tr>
-<tr><td>Pool or per-user share</td><td>One pool per provider. A policy is a set of lines on the pool's gauges</td><td class="why"><span class="who">Alex</span> What Vivian does not use stays available to the others. Lines on a shared gauge need no attribution of spend to tokens.</td></tr>
-<tr><td>Slice 1 of the quota</td><td>Pool thresholds only. Per-token metering comes later</td><td class="why"><span class="who">Alex</span> The thresholds use the gauges aegis already reads. Metering needs new bookkeeping of tokens per turn.</td></tr>
-<tr><td>Providers</td><td>Claude and OpenCode, each with its own pool and its own lines</td><td class="why"><span class="who">Alex</span> "Igual con OpenCode." Both already have quota readers.</td></tr>
-<tr><td>Roles</td><td><code>admin</code> and <code>member</code>. No read-only role</td><td class="why"><span class="who">Alex</span> An admin talks to every agent, the others read every agent and change only their own. A read-only role waits until someone needs one.</td></tr>
-<tr><td>The middle band</td><td><code>pace</code>: open while the projected spend at reset is at most 100%</td><td class="why"><span class="who">Alex</span> The agent's reading of "solo mientras la cuota restante sea mayor que el 50% del budget que queda", accepted on review: a token may start work while the week is not being spent faster than it passes.</td></tr>
-<tr><td>Editing tokens</td><td>In Settings, for admins only, as well as from the command line</td><td class="why"><span class="who">Alex</span> Adding, revoking and setting a token's policy are routine admin work and belong beside the links they gate.</td></tr>
-<tr><td>Editing policies</td><td>In Settings, with a policy editor: a gauge-shaped track per window with a launch handle and a stop handle</td><td class="why"><span class="who">Alex</span> "Token quota and all of it should be editable in settings with a proper UI." Section 06 is that design.</td></tr>
-<tr><td>Agents spawning across links</td><td>Allowed, gated on the far server by the link token's policy. Reading, sending and enqueueing across stay closed</td><td class="why"><span class="who">Alex</span> The links spec refused it because such an agent "would spend the VPS's quota on its own judgment". The far server's policy now decides that. See section 07.</td></tr>
-<tr><td>What a member may change in Settings</td><td>Only what lives in the browser: the theme and the other <code>localStorage</code> preferences</td><td class="why"><span class="who">Alex</span> Nothing that writes <code>.aegis.yaml</code>, <code>links.json</code> or <code>tokens.json</code>.</td></tr>
-<tr><td>Revoking the admin token</td><td>Allowed. aegis generates a new one at once</td><td class="why"><span class="who">Alex</span> A leaked admin token must be replaceable from the browser, and regenerating it means a server can never be left without an admin.</td></tr>
+<tr><td>What a user is</td><td>A token, with a name, a role and a policy. Not necessarily a person</td><td class="why"><span class="who">maintainer</span> The same mechanism limits a colleague, a laptop that links in, and an unattended job.</td></tr>
+<tr><td>Pool or per-user share</td><td>One pool per provider. A policy is a set of lines on the pool's gauges</td><td class="why"><span class="who">maintainer</span> What one member does not use stays available to the others. Lines on a shared gauge need no attribution of spend to tokens.</td></tr>
+<tr><td>Slice 1 of the quota</td><td>Pool thresholds only. Per-token metering comes later</td><td class="why"><span class="who">maintainer</span> The thresholds use the gauges aegis already reads. Metering needs new bookkeeping of tokens per turn.</td></tr>
+<tr><td>Providers</td><td>Claude and OpenCode, each with its own pool and its own lines</td><td class="why"><span class="who">maintainer</span> Both already have quota readers.</td></tr>
+<tr><td>Roles</td><td><code>admin</code> and <code>member</code>. No read-only role</td><td class="why"><span class="who">maintainer</span> An admin talks to every agent, the others read every agent and change only their own. A read-only role waits until someone needs one.</td></tr>
+<tr><td>The middle band</td><td><code>pace</code>: open while the projected spend at reset is at most 100%</td><td class="why"><span class="who">maintainer</span> Accepted in review: a token may start work while the week is not being spent faster than it passes.</td></tr>
+<tr><td>Editing tokens</td><td>In Settings, for admins only, as well as from the command line</td><td class="why"><span class="who">maintainer</span> Adding, revoking and setting a token's policy are routine admin work and belong beside the links they gate.</td></tr>
+<tr><td>Editing policies</td><td>In Settings, with a policy editor: a gauge-shaped track per window with a launch handle and a stop handle</td><td class="why"><span class="who">maintainer</span> Policies change often enough that they should not need a text editor. Section 06 is that design.</td></tr>
+<tr><td>Agents spawning across links</td><td>Allowed, gated on the far server by the link token's policy. Reading, sending and enqueueing across stay closed</td><td class="why"><span class="who">maintainer</span> The links spec refused it because such an agent would spend the far server's quota on its own judgment. The far server's policy now decides that. See section 07.</td></tr>
+<tr><td>What a member may change in Settings</td><td>Only what lives in the browser: the theme and the other <code>localStorage</code> preferences</td><td class="why"><span class="who">maintainer</span> Nothing that writes <code>.aegis.yaml</code>, <code>links.json</code> or <code>tokens.json</code>.</td></tr>
+<tr><td>Revoking the admin token</td><td>Allowed. aegis generates a new one at once</td><td class="why"><span class="who">maintainer</span> A leaked admin token must be replaceable from the browser, and regenerating it means a server can never be left without an admin.</td></tr>
 <tr><td>What a stop does</td><td>Interrupt the turn, keep the session, hold its messages, continue it on reopen</td><td class="why">Killing a session loses its context, and the work was not wrong, only early. The interrupt and the continue reuse the restart mechanism below.</td></tr>
-<tr><td>Held work across restarts</td><td>Survives, and is sent at boot if the owner's gate is open</td><td class="why"><span class="who">Alex</span> "No se pierda trabajo en held."</td></tr>
-<tr><td>What a restart continues</td><td>Turns interrupted by aegis's own clean shutdown. Never a harness that failed on its own</td><td class="why"><span class="who">Alex</span> Restarting a failed harness could loop.</td></tr>
-<tr><td>A crash of aegis itself</td><td>Continued once. A turn that a crash already interrupted is not continued after a second crash</td><td class="why"><span class="who">Alex</span> Wanted if the effort is reasonable, and it is: the meta already says which sessions were working. #269 shows a turn can take the server down, so the guard for a crash is one continue, not two.</td></tr>
-<tr><td>Isolation between people</td><td>Ownership only. Same Linux user, same checkout, same <code>~/.claude</code></td><td class="why"><span class="who">Alex</span> Accepted on review. The people are colleagues. What needs protecting is the subscription and each other's sessions from accidental steering, not a hostile user. The links spec's precondition asks for more; see <a href="#links">Links</a>.</td></tr>
+<tr><td>Held work across restarts</td><td>Survives, and is sent at boot if the owner's gate is open</td><td class="why"><span class="who">maintainer</span> Work waiting for quota or for a restart is never lost.</td></tr>
+<tr><td>What a restart continues</td><td>Turns interrupted by aegis's own clean shutdown. Never a harness that failed on its own</td><td class="why"><span class="who">maintainer</span> Restarting a failed harness could loop.</td></tr>
+<tr><td>A crash of aegis itself</td><td>Continued once. A turn that a crash already interrupted is not continued after a second crash</td><td class="why"><span class="who">maintainer</span> Worth it if the effort is reasonable, and it is: the meta already says which sessions were working. #269 shows a turn can take the server down, so the guard for a crash is one continue, not two.</td></tr>
+<tr><td>Isolation between people</td><td>Ownership only. Same Linux user, same checkout, same <code>~/.claude</code></td><td class="why"><span class="who">maintainer</span> Accepted in review. The users of a team server share one codebase and trust each other. What needs protecting is the subscription and each other's sessions from accidental steering, not a hostile user. The links spec's precondition asks for more; see <a href="#links">Links</a>.</td></tr>
 <tr><td>A harness without a gauge</td><td>Closed to a member unless its policy names that provider</td><td class="why">Codex has no quota reader. Failing open would let a member spend an account aegis cannot see.</td></tr>
 <tr><td>A stale gauge</td><td>Use the last reading for 15 minutes, then close the gate. Never stop on a stale reading</td><td class="why">The Claude usage endpoint answers 429 when polled often (#41). Interrupting work because a poll failed would punish the wrong thing.</td></tr>
 </tbody>
@@ -404,9 +404,9 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <span class="k">"default_policy"</span>: {<span class="k">"claude"</span>: {<span class="k">"launch_below"</span>: {<span class="k">"session"</span>: 50, <span class="k">"weekly_all"</span>: <span class="s">"pace"</span>},
                                  <span class="k">"stop_above"</span>:   {<span class="k">"session"</span>: 90, <span class="k">"weekly_all"</span>: 90}}},
   <span class="k">"tokens"</span>: [
-    {<span class="k">"name"</span>: <span class="s">"daniel"</span>, <span class="k">"role"</span>: <span class="s">"member"</span>, <span class="k">"sha256"</span>: <span class="s">"9f2c…"</span>},
-    {<span class="k">"name"</span>: <span class="s">"vivian"</span>, <span class="k">"role"</span>: <span class="s">"member"</span>, <span class="k">"sha256"</span>: <span class="s">"41ab…"</span>},
-    {<span class="k">"name"</span>: <span class="s">"zion"</span>,   <span class="k">"role"</span>: <span class="s">"member"</span>, <span class="k">"sha256"</span>: <span class="s">"c07e…"</span>,
+    {<span class="k">"name"</span>: <span class="s">"ben"</span>, <span class="k">"role"</span>: <span class="s">"member"</span>, <span class="k">"sha256"</span>: <span class="s">"9f2c…"</span>},
+    {<span class="k">"name"</span>: <span class="s">"cara"</span>, <span class="k">"role"</span>: <span class="s">"member"</span>, <span class="k">"sha256"</span>: <span class="s">"41ab…"</span>},
+    {<span class="k">"name"</span>: <span class="s">"laptop"</span>, <span class="k">"role"</span>: <span class="s">"member"</span>, <span class="k">"sha256"</span>: <span class="s">"c07e…"</span>,
      <span class="k">"policy"</span>: {<span class="k">"claude"</span>:   {<span class="k">"launch_below"</span>: {<span class="k">"session"</span>: 70}, <span class="k">"stop_above"</span>: {<span class="k">"session"</span>: 90}},
                 <span class="k">"opencode-go"</span>: {}}}
   ]
@@ -445,8 +445,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <p>Every action that changes something records the principal next to the <code>log_id</code> it already records: who started a session, who typed a prompt, who enqueued a task. The transcript shows the name on a prompt that someone other than the owner typed, which only an admin can do.</p>
 
 <h3 id="links">Links</h3>
-<p>A link presents a token like any browser. Today that is the far server's only token, so a link has full power there (<code>web.py:304-309</code>). After this change Alex mints a member token on the Syalia server for each server that links in, <code>vps</code> and later <code>zion</code>, and gives each its own policy. The far side resolves the link to that principal and ignores the <code>user</code> its hello claims.</p>
-<p>The links spec (<code>2026-10-08-aegis-links-design.md:109-115</code>) set a precondition: no second person gets a token on a server anyone links to until sessions are isolated per user and only a session's owner can prompt, configure, interrupt or close it. This spec meets the second half. It does not meet the first: every session still runs as the same Linux user in the same checkout, so Daniel's agent can write a file that Alex's session later reads, and a branch it pushes can reach zion through git. <span class="who q">proposed</span> Accept that gap for the Syalia server, because the people there are colleagues sharing one codebase, and they would pull each other's branches anyway. Per-user Linux accounts become the next spec if someone outside that circle gets a token.</p>
+<p>A link presents a token like any browser. Today that is the far server's only token, so a link has full power there (<code>web.py:304-309</code>). After this change the far server's admin mints a member token for each server that links in, and gives each its own policy. The far side resolves the link to that principal and ignores the <code>user</code> its hello claims.</p>
+<p>The links spec (<code>2026-10-08-aegis-links-design.md:109-115</code>) set a precondition: no second person gets a token on a server anyone links to until sessions are isolated per user and only a session's owner can prompt, configure, interrupt or close it. This spec meets the second half. It does not meet the first: every session still runs as the same Linux user in the same checkout, so one member's agent can write a file that another member's session later reads, and a branch it pushes can reach a linked laptop through git. <span class="who">maintainer</span> Accept that gap for a team server whose users share one codebase and would pull each other's branches anyway. Per-user Linux accounts become the next spec when a server needs to hold users who do not trust each other.</p>
 
 <h3 id="settings">Settings</h3>
 <p>Settings (<code>client/js/settings.js</code>) already splits cleanly in two. The theme, fold level, tab order and drafts live in the browser's <code>localStorage</code>. Agents, queues and the default agent are written to <code>.aegis.yaml</code> by <code>config.write</code>, and servers to <code>links.json</code> by <code>link.add</code> and <code>link.remove</code>. A member sees the first group and "Run doctor", and a line saying server settings are edited by an admin. An admin sees everything, plus a Tokens section beside Servers.</p>
@@ -459,7 +459,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <h3 id="pool">The pool</h3>
 <p>A pool is the set of accounts aegis draws on for one provider, named as the quota readers name them: <code>claude</code> and <code>opencode-go</code>. In this spec each pool has one account, the one the server's Unix user is signed into, and its reading is the reading <code>quota.read</code> already returns. A session draws on the pool of its harness: Claude Code on <code>claude</code>, OpenCode on <code>opencode-go</code>, Codex on none.</p>
 <p>Several accounts per provider need one Claude profile per account (<code>CLAUDE_CONFIG_DIR</code>, #151). When that lands, a pool's reading for the gate becomes the mean of its accounts' percentages, and each new session goes to the least-used account. Policies do not change, because they already name pools and not accounts.</p>
-<p>One constraint from Anthropic's terms shapes what goes into a pool. The Claude Code legal page says "advertised usage limits for Pro and Max plans assume ordinary, individual usage", and allows an API key to be used by "the customer's own authorized users" when it is billed to the key's owner. Alex's own tokens (zion, AFK jobs) on his Max account are individual use. Daniel and Vivian should draw on an API key from the Console or a Team plan, which the pool accepts the same way once #151 lands.</p>
+<p>One constraint from Anthropic's terms shapes what goes into a pool. The Claude Code legal page says "advertised usage limits for Pro and Max plans assume ordinary, individual usage", and allows an API key to be used by "the customer's own authorized users" when it is billed to the key's owner. A server owner's own tokens, such as a laptop that links in or an unattended job, on the owner's Pro or Max account are individual use. Other people should draw on an API key from the Console or a Team plan, which the pool accepts the same way once #151 lands.</p>
 
 <h3 id="policy">The policy</h3>
 <p>A policy maps a pool name to two sets of lines, keyed by the window <code>kind</code> that <code>quota.read</code> reports: <code>session</code> (5 hours) and <code>weekly_all</code> for Claude, <code>rolling</code>, <code>weekly</code> and <code>monthly</code> for OpenCode Go.</p>
@@ -503,7 +503,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <li>Messages that reach those sessions afterwards are held, as at any closed gate.</li>
 <li>When the token's <code>launch_below</code> lines are met again, aegis reopens it. Each session interrupted by quota gets the continue message below, followed by its held messages in one turn. Pending tasks dispatch.</li>
 </ol>
-<pre>aegis paused your turn because daniel's quota line was reached (claude session at 91%, line 90).
+<pre>aegis paused your turn because ben's quota line was reached (claude session at 91%, line 90).
 The pool has room again. Continue where you left off.</pre>
 <p>The interrupt, the <code>interrupted_by</code> field and the continue message are the same machinery the restart section uses, with a different reason.</p>
 
@@ -512,7 +512,7 @@ The pool has room again. Continue where you left off.</pre>
 <div class="seg" id="seg"><button class="on" data-v="fleet">Fleet card</button><button data-v="refused">Refused spawn</button><button data-v="theirs">Someone else's session</button></div>
 <div id="view-fleet" class="duo">
   <div class="fcard">
-    <div class="hd"><span class="mark wait"></span><span>refactor-ingest</span><span class="chip own">daniel</span><span class="chip">waiting for quota</span></div>
+    <div class="hd"><span class="mark wait"></span><span>refactor-ingest</span><span class="chip own">ben</span><span class="chip">waiting for quota</span></div>
     <div class="ttl">Split the ingest pipeline into stages</div>
     <div class="ln">paused at claude 5 h 91% · reopens below 50% · window resets 21:40</div>
   </div>
@@ -525,10 +525,10 @@ The pool has room again. Continue where you left off.</pre>
   </div>
 </div>
 <div id="view-refused" hidden>
-  <div class="notice err"><span class="lbl">not started</span>vivian cannot start a Claude session now: claude 5 h is at 63%, and vivian's line is 50%. It opens again when the window drops below 50%, at the latest when it resets at 21:40.</div>
+  <div class="notice err"><span class="lbl">not started</span>cara cannot start a Claude session now: claude 5 h is at 63%, and cara's line is 50%. It opens again when the window drops below 50%, at the latest when it resets at 21:40.</div>
 </div>
 <div id="view-theirs" hidden>
-  <div class="composer"><textarea disabled placeholder="alex's session. You can read it; only alex can write to it."></textarea><button disabled>send</button></div>
+  <div class="composer"><textarea disabled placeholder="ana's session. You can read it; only ana can write to it."></textarea><button disabled>send</button></div>
 </div>
 <p>A session waiting for quota gets a new attention state, <code>waiting</code>, drawn as a hollow amber mark, so the Fleet tells it apart from an idle session and from an error. Every card and tab shows its owner's name when the viewer is not the owner.</p>
 
@@ -546,18 +546,18 @@ The pool has room again. Continue where you left off.</pre>
 <li><b>Saving.</b> Policy edits mark the page dirty and go out with the existing save bar, in the same Save as agents and queues, through <code>token.policy</code>. Add and revoke act at once, like linking and removing a server, because each one shows or kills a secret.</li>
 </ul>
 <h3 id="editor-try">Try the editor</h3>
-<p><span class="try">try it</span>Drag the handles, tick pace, change a pool's mode, customize daniel, add a token. The chips recompute against the sample readings in the strip. Sample data.</p>
+<p><span class="try">try it</span>Drag the handles, tick pace, change a pool's mode, customize ben, add a token. The chips recompute against the sample readings in the strip. Sample data.</p>
 <div class="a2mock" id="tokmock">
   <div class="set-section-head"><h3>Tokens</h3><span class="set-none">Who may use this server, and how much of the pool each may spend.</span></div>
   <div class="poolnow" id="poolnow"></div>
   <div class="set-agents" id="tokcards"></div>
-  <div class="set-linkrow"><input class="set-in" id="tk-name" placeholder="name, e.g. vivian"><select class="pick" id="tk-role"><option>member</option><option>admin</option></select><button class="btn primary" id="tk-add">Add token</button></div>
+  <div class="set-linkrow"><input class="set-in" id="tk-name" placeholder="name, e.g. dan"><select class="pick" id="tk-role"><option>member</option><option>admin</option></select><button class="btn primary" id="tk-add">Add token</button></div>
   <div id="tk-once"></div>
   <div class="set-bar" id="tk-bar"><span id="tk-status">No changes</span><button class="btn" id="tk-discard">Discard</button><button class="btn primary" id="tk-save">Save changes</button></div>
 </div>
 
 <h2 id="across"><span class="n">07</span>Agents across links</h2>
-<p>The links spec kept agents from spawning on a linked server, and gave the reason (<code>2026-10-08-aegis-links-design.md:255-261</code>): an agent that could spawn on the VPS "would spend the VPS's quota on its own judgment". A link now presents a token with a policy, and the far server gates every spawn by that policy, so the far server's owner decides how much a linked server's agents may spend. That removes the reason, and this spec lifts the rule for spawning.</p>
+<p>The links spec kept agents from spawning on a linked server, and gave the reason (<code>2026-10-08-aegis-links-design.md:255-261</code>): an agent that could spawn on a linked server would spend that server's quota on its own judgment. A link now presents a token with a policy, and the far server gates every spawn by that policy, so the far server's owner decides how much a linked server's agents may spend. That removes the reason, and this spec lifts the rule for spawning.</p>
 <ul>
 <li><code>session.spawn</code> with <code>agent@server</code> is allowed to agents. The near side caps the far session's permission at the spawning agent's own, as it already does for a local child (<code>app.py:605-614</code>), and sends the spawn over the link with the agent's handle in the params as <code>spawned_by</code>.</li>
 <li>The far side treats the call like any spawn from the link's principal: the gate decides, the session is owned by the link's token, and <code>spawned_by</code> is recorded for the transcript and the journal. It is provenance and never authorization, because the far side cannot check it.</li>
@@ -578,7 +578,7 @@ The pool has room again. Continue where you left off.</pre>
 <li>its meta says <code>last_status: "working"</code>, written by <code>Session.shutdown</code>; or</li>
 <li>its last transcript record is an exit by SIGTERM or SIGKILL (codes 143, 137, -15, -9) stamped at or after <code>stopping_at</code> minus 5 seconds.</li>
 </ul>
-<p>The second rule exists because <code>aegis-web.service</code> on the VPS runs with <code>KillMode=control-group</code>: systemd sends SIGTERM to every harness at the same moment as to aegis, and a harness can exit before <code>Session.shutdown</code> runs. Its exit is then recorded as code 143 and its <code>last_status</code> as stopped (#269). The deploy guide will set <code>KillMode=mixed</code>, but aegis must not depend on the unit file being right.</p>
+<p>The second rule exists because a systemd unit runs with <code>KillMode=control-group</code> unless it says otherwise: systemd sends SIGTERM to every harness at the same moment as to aegis, and a harness can exit before <code>Session.shutdown</code> runs. Its exit is then recorded as code 143 and its <code>last_status</code> as stopped (#269). The deploy guide will set <code>KillMode=mixed</code>, but aegis must not depend on the unit file being right.</p>
 <p>A continued session receives the message queue workers receive today, sent through the gate, so a session whose owner is over quota stays held instead:</p>
 <pre>The server restarted while you were working. Continue where you left off.</pre>
 <p>Then every session with held messages sends them, also through the gate. Queue workers move onto this same path, so there is one implementation.</p>
@@ -591,12 +591,12 @@ The pool has room again. Continue where you left off.</pre>
 <p>The meta gains <code>restart_continues</code>, a count. aegis adds one each time it continues a session after a restart and resets it to zero when a turn ends without error. After a clean restart aegis continues a session while the count is below 2. After a crash it continues only when the count is 0, because #269 shows a turn can take the server down, and continuing that turn twice would crash it twice. When aegis declines, it marks the turn failed with the line "restarts interrupted this turn more than once; continue it by hand". Continues after a quota stop do not count, because a quota stop says nothing about the turn itself.</p>
 
 <h2 id="delivery"><span class="n">09</span>Delivery</h2>
-<p>Three PRs from <code>origin/main</code>, in this order, each through issue, worktree, PR and Alex's smoke test. This spec rides on the first.</p>
+<p>Three PRs from <code>origin/main</code>, in this order, each through issue, worktree, PR and the maintainer's smoke test. This spec rides on the first.</p>
 <div class="steps">
-  <div class="step"><div class="n"></div><div><h4>Restarts that continue (#312)</h4><p><code>server.json</code>, <code>interrupted_by</code>, the continue path shared with queue workers, continuing once after a crash with the leftover-harness check, held messages sent at boot, the loop guard. Useful on the VPS the day it lands, and the quota stop builds on it.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>Restarts that continue (#312)</h4><p><code>server.json</code>, <code>interrupted_by</code>, the continue path shared with queue workers, continuing once after a crash with the leftover-harness check, held messages sent at boot, the loop guard. Useful on every server the day it lands, and the quota stop builds on it.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>Tokens and owners (#311, part 1)</h4><p><code>tokens.json</code>, the <code>aegis token</code> commands and the Tokens section in Settings, the principal on <code>Caller</code>, <code>owner</code> on sessions and tasks, the member checks on ops, links resolved to their token, owner names and the read-only composer in the client.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>The quota gate (#311, part 2)</h4><p>Policies, <code>may_start</code> at the three start points, stop and reopen in the quota loop, the <code>waiting</code> state, the refusal notice and the policy lines on a member's gauge. The policy editor in Settings, and agents spawning across links, which only become safe once the far side gates them.</p></div></div>
-  <div class="step"><div class="n"></div><div><h4>Deploy on the Syalia VPS, with Alex</h4><p>Install aegis there, set <code>KillMode=mixed</code>, mint tokens for daniel, vivian, vps and zion with their policies, and link vps and zion to it. This step needs the Syalia server's details and Alex at the keyboard.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>Deploy a team server</h4><p>Install aegis, set <code>KillMode=mixed</code> in its unit, mint a token for each person and for each server that links in, give each a policy, and link those servers to it. The deploy guide gains these steps.</p></div></div>
 </div>
 
 <h2 id="testing"><span class="n">10</span>Testing</h2>
@@ -629,11 +629,10 @@ The pool has room again. Continue where you left off.</pre>
 
 <h2 id="nongoals"><span class="n">11</span>Non-goals and open questions</h2>
 <ul>
-<li><b>Per-token metering.</b> A cap such as "zion spends at most N tokens a week" needs aegis to sum the usage each turn reports, per owner and window. It is the next quota slice, after this one has run on the Syalia server.</li>
+<li><b>Per-token metering.</b> A cap such as "a linked laptop spends at most N tokens a week" needs aegis to sum the usage each turn reports, per owner and window. It is the next quota slice, after this one has run on a team server.</li>
 <li><b>Several accounts per pool.</b> Needs #151. The policy format already allows it.</li>
 <li><b>Agents enqueueing across links.</b> A far queue is the natural home for AFK work, but a spawn already covers it. Enqueueing waits until a spawn across links has been used and shows what a queue would add.</li>
 <li><b>Per-user Linux accounts.</b> Not in this spec; see <a href="#links">Links</a> for the gap that leaves.</li>
-<li><b>Open: the middle band.</b> Is <code>pace</code> what Alex meant by "mayor que el 50% del budget que queda"? If he meant a share of what is left, the rule becomes "open while the remaining percentage is at least half of what remained when the week started", and the tester changes accordingly.</li>
 </ul>
 
 </main>
@@ -645,10 +644,10 @@ const $ = (id) => document.getElementById(id);
 // Sample tokens, mirroring the tokens.json example above.
 const DEFAULT = {launch: {session: 50, weekly_all: "pace"}, stop: {session: 90, weekly_all: 90}};
 const TOKENS = [
-  {name: "alex", role: "admin", policy: null},
-  {name: "daniel", role: "member", policy: DEFAULT},
-  {name: "vivian", role: "member", policy: DEFAULT},
-  {name: "zion", role: "member", policy: {launch: {session: 70}, stop: {session: 90}}},
+  {name: "ana", role: "admin", policy: null},
+  {name: "ben", role: "member", policy: DEFAULT},
+  {name: "cara", role: "member", policy: DEFAULT},
+  {name: "laptop", role: "member", policy: {launch: {session: 70}, stop: {session: 90}}},
 ];
 
 function describe(p) {
@@ -701,10 +700,10 @@ const POOLS = {
 let DEF = {"claude": {mode: "lines", lines: {session: {launch: 50, stop: 90}, weekly_all: {launch: "pace", stop: 90}}},
            "opencode-go": {mode: "open"}, "codex": {mode: "closed"}};
 let TOK = [
-  {name: "alex", role: "admin", owner: true, used: "now", policy: null},
-  {name: "daniel", role: "member", used: "12 min ago", policy: null},
-  {name: "vivian", role: "member", used: "never", policy: null},
-  {name: "zion", role: "member", used: "2 h ago", policy: {"claude": {mode: "lines", lines: {session: {launch: 70, stop: 90}}},
+  {name: "ana", role: "admin", owner: true, used: "now", policy: null},
+  {name: "ben", role: "member", used: "12 min ago", policy: null},
+  {name: "cara", role: "member", used: "never", policy: null},
+  {name: "laptop", role: "member", used: "2 h ago", policy: {"claude": {mode: "lines", lines: {session: {launch: 70, stop: 90}}},
                                                            "opencode-go": {mode: "open"}, "codex": {mode: "closed"}}},
 ];
 let saved = clone({DEF, TOK}), dirty = false, justSaved = false, once = "";
