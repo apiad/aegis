@@ -688,16 +688,19 @@ async def test_a_running_task_resumes_after_a_restart(world):
         what="worker",
     )
     await world.restart()
-    t2 = world.app.queues.tasks[task_id]
-    worker = world.session(t2.worker)
-    await until(
-        lambda: any("server restarted" in (e.get("md") or "") for e in inbox(worker)),
-        timeout=12,
-        what="the nudge",
-    )
     a2 = world.session(a.log_id)
     await until(lambda: inbox(a2), timeout=12, what="the callback after the restart")
-    assert world.app.queues.tasks[task_id].status == "completed"
+    t2 = world.app.queues.tasks[task_id]
+    assert t2.status == "completed"
+    # The fake answers the nudge at once, so the worker can complete and be
+    # archived tens of ms after the restart (#266): read it through the
+    # registry, which keeps an archived session's transcript.
+    worker = world.app.sessions.transcript(t2.worker)()["entries"]
+    assert any(
+        "server restarted" in (e.get("md") or "")
+        for e in worker
+        if e["kind"] == "inbox"
+    )
 
 
 # -- files -------------------------------------------------------------------------
