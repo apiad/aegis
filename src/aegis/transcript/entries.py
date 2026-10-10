@@ -738,7 +738,7 @@ class Fold:
                     )
                 )
             attached = ((carried or {}).get("detail") or {}).get("files")
-            if attached:
+            if carried is not None and attached:
                 # The person's row shows what they typed and one card; the
                 # path block the agent read stays in the store's text.
                 return ops + self._upsert(
