@@ -361,6 +361,8 @@ body{background:#000}
 #a2 .card .hd{display:flex;align-items:center;gap:8px}
 #a2 .card .hd .h{font-family:var(--font-chrome);color:var(--strong);font-weight:500}
 #a2 .card .hd .s{color:var(--faint);font-family:var(--font-chrome);margin-left:auto}
+#a2 .card .hd .btn.archive{padding:2px 9px;font-size:11.5px;font-family:var(--font-chrome);flex:none}
+#a2 .card .hd .btn.archive:hover{border-color:var(--faint)}
 #a2 .card .ttl{font-family:var(--font-head);color:var(--strong);font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #a2[data-theme=ink] .card .ttl,[data-theme=ink] #a2 .card .ttl{font-family:var(--font-ui)}
 #a2 .card .ln{color:var(--muted);font-family:var(--font-chrome);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

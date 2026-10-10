@@ -480,8 +480,12 @@ def tab_ids(pg) -> list[str]:
 
 
 def close_session(pg) -> None:
-    """Close the shown session through the aegis dialog."""
+    """Close the shown session: through the aegis dialog, which a done session
+    skips (#268)."""
+    done = "at-done" in (pg.get_attribute("#s-status", "class") or "").split()
     pg.click("#close")
+    if done:
+        return
     pg.wait_for_selector("#dialog .ok", state="visible")
     pg.click("#dialog .ok")
 
@@ -3278,6 +3282,149 @@ def test_close_asks_in_an_aegis_dialog_and_esc_cancels_without_interrupting(
     close_session(page)
     page.wait_for_selector("#a2[data-view=fleet]")
     assert tab_ids(page) == [] and native == [] and page.errors == []
+
+
+def test_close_on_a_done_session_asks_nothing_and_on_any_other_it_asks(server, page):
+    """#268: a done session has nothing left to lose, so Close and /close skip
+    the dialog; review, needs_you and working still ask."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.click("#close")  # a plain turn ends done
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert tab_ids(page) == [] and page.is_hidden("#dialog")
+    b = spawn(page, "hello")
+    page.fill("#input", "/close")
+    page.press("#input", "Enter")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert b not in tab_ids(page) and page.is_hidden("#dialog")
+    for attention in ("review", "needs_you"):
+        c = spawn(page, "hello")
+        report(page, attention=attention, line="Look.", replies=[])
+        turns_done(page, 2)
+        page.click("#close")
+        page.wait_for_selector("#dialog .ok", state="visible")
+        page.click("#dialog .cancel")
+        page.fill("#input", "/close")
+        page.press("#input", "Enter")
+        page.wait_for_selector("#dialog .ok", state="visible")
+        page.click("#dialog .cancel")
+        assert c in tab_ids(page), attention
+    assert page.errors == []
+
+
+OPENED = "__hashes.filter(u => u && u.startsWith('#s='))"
+
+
+def test_the_archive_button_shows_on_done_cards_only_and_closes_without_opening(
+    server, page
+):
+    """#268: the Fleet card of a done session has an Archive button; the other
+    states have none. It closes the session like Close, and the click does not
+    open it."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.wait_for_selector("#arch-list .empty")  # the archive is loaded, empty
+    done, done2 = spawn(page, "hello"), spawn(page, "hello")
+    review = spawn(page, "hello")
+    report(page, attention="review", line="Read this.", replies=[])
+    turns_done(page, 2)
+    asks = spawn(page, "hello")
+    report(page, attention="needs_you", line="Which?", replies=[])
+    turns_done(page, 2)
+    busy = spawn(page)
+    page.fill("#input", "/sleep 30")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    broken = spawn(page)
+    page.fill("#input", "/exit 3")
+    page.press("#input", "Enter")
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card[data-id='{broken}'].at-error", timeout=8000)
+
+    def attention(sid: str) -> str:
+        return page.get_attribute(f".card[data-id='{sid}']", "class")
+
+    assert "at-done" in attention(done) and "at-review" in attention(review)
+    assert "at-needs_you" in attention(asks) and "at-working" in attention(busy)
+    have = page.eval_on_selector_all(
+        ".card",
+        "cs => cs.filter(c => c.querySelector('.archive')).map(c => c.dataset.id)",
+    )
+    assert sorted(have) == sorted([done, done2])
+
+    # The mouse: archived, still on the Fleet, no dialog, and in the archive.
+    # Closing the session shown would route back to the Fleet, so what proves
+    # the click opened nothing is that the address never named a session.
+    page.evaluate(
+        "window.__hashes = [];"
+        "const push = history.pushState.bind(history);"
+        "history.pushState = (s, t, u) => { __hashes.push(u); push(s, t, u); }"
+    )
+    page.click(f".card[data-id='{done}'] .archive")
+    page.wait_for_selector(f"#arch-list tr[data-id='{done}']", timeout=5000)
+    assert page.locator(f".card[data-id='{done}']").count() == 0
+    assert page.evaluate("document.getElementById('a2').dataset.view") == "fleet"
+    assert page.evaluate(OPENED) == []
+    assert page.is_hidden("#dialog") and done not in tab_ids(page)
+
+    # The keyboard: Tab reaches the button and Enter presses it, opening nothing.
+    page.focus(f".card[data-id='{done2}'] .archive")
+    page.keyboard.press("Enter")
+    page.wait_for_selector(f"#arch-list tr[data-id='{done2}']", timeout=5000)
+    assert page.evaluate(OPENED) == []
+    assert page.evaluate("document.getElementById('a2').dataset.view") == "fleet"
+    assert page.locator(".card .archive").count() == 0
+    assert page.errors == []
+
+
+def test_a_middle_click_on_a_card_or_a_tab_closes_it_and_asks_unless_done(server, page):
+    """#268: a middle click is Close, through the same path as the button: at
+    once for a done session, with the dialog for any other."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.wait_for_selector("#arch-list .empty")  # the archive is loaded, empty
+    a, b = spawn(page, "hello"), spawn(page, "hello")
+    busy = spawn(page)
+    page.fill("#input", "/sleep 30")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card[data-id='{a}'] .archive")
+    # The press itself is claimed, or Linux pastes and other systems autoscroll.
+    pressed = (
+        "sel => document.querySelector(sel).dispatchEvent("
+        "new MouseEvent('mousedown', {button: 1, bubbles: true, cancelable: true}))"
+    )
+    assert page.evaluate(pressed, f".card[data-id='{a}']") is False
+    assert page.evaluate(pressed, f".tab[data-id='{a}']") is False
+    page.evaluate(
+        "window.__hashes = [];"
+        "const push = history.pushState.bind(history);"
+        "history.pushState = (s, t, u) => { __hashes.push(u); push(s, t, u); }"
+    )
+
+    page.click(f".card[data-id='{a}']", button="middle")
+    page.wait_for_selector(f"#arch-list tr[data-id='{a}']", timeout=5000)
+    assert page.evaluate(OPENED) == [] and page.is_hidden("#dialog")
+    assert page.evaluate("document.getElementById('a2').dataset.view") == "fleet"
+
+    page.click(f".tab[data-id='{b}']", button="middle")
+    page.wait_for_selector(f"#arch-list tr[data-id='{b}']", timeout=5000)
+    assert page.evaluate(OPENED) == [] and page.is_hidden("#dialog")
+    assert tab_ids(page) == [busy]
+
+    # Not done: the dialog, on a tab and on a card, and Cancel keeps it open.
+    page.click(f".tab[data-id='{busy}']", button="middle")
+    page.wait_for_selector("#dialog .ok", state="visible")
+    page.click("#dialog .cancel")
+    assert tab_ids(page) == [busy]
+    page.click(f".card[data-id='{busy}']", button="middle")
+    page.wait_for_selector("#dialog .ok", state="visible")
+    page.click("#dialog .ok")
+    page.wait_for_selector(f"#arch-list tr[data-id='{busy}']", timeout=5000)
+    assert tab_ids(page) == [] and page.evaluate(OPENED) == []
+    assert page.errors == []
 
 
 def test_the_interrupt_sits_beside_send_and_restart_sends_continue(server, page):

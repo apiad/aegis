@@ -64,33 +64,33 @@ export function byNeed(metas) {
   return metas.filter((m) => Object.hasOwn(RANK, m.mark) && (!m.worker || m.mark === "error")).sort(byWait);
 }
 
-export function renderCards(box, metas, onOpen, order = "attention") {
+export function renderCards(box, metas, onOpen, order = "attention", onClose = () => {}) {
   if (!metas.length) {
     box.replaceChildren(el("div", "empty", "No open sessions. Start one with +."));
     return;
   }
   if (order !== "attention") {
-    box.replaceChildren(...metas.map((m) => card(m, onOpen)));
+    box.replaceChildren(...metas.map((m) => card(m, onOpen, onClose)));
     return;
   }
   const out = [];
   const needs = metas.filter((m) => group(m) === "needs").sort(byWait);
   // Finished workers sink below the live cards; the sort is stable.
   const rest = metas.filter((m) => group(m) === "rest").sort((a, b) => finished(a) - finished(b));
-  if (needs.length) out.push(el("div", "grp-h", "Needs you"), ...needs.map((m) => card(m, onOpen)));
+  if (needs.length) out.push(el("div", "grp-h", "Needs you"), ...needs.map((m) => card(m, onOpen, onClose)));
   // With nobody needing you, the order bar's "Sessions" heading names the list.
   if (rest.length && needs.length) out.push(el("div", "grp-h", "Everything else"));
-  out.push(...rest.map((m) => card(m, onOpen)));
+  out.push(...rest.map((m) => card(m, onOpen, onClose)));
   box.replaceChildren(...out);
 }
 
 // One session's card redrawn where it stands. False when its group, or its place
 // in the needs-you group, changed and the caller must regroup with renderCards.
-export function patchCard(box, m, onOpen, order = "attention") {
+export function patchCard(box, m, onOpen, order = "attention", onClose = () => {}) {
   const old = box.querySelector(`.card[data-id="${CSS.escape(m.key)}"]`);
   if (!old) return true;
   if (order === "attention" && (old.dataset.group !== group(m) || old.dataset.rank !== rank(m) || old.classList.contains("finished") !== finished(m))) return false;
-  old.replaceWith(card(m, onOpen));
+  old.replaceWith(card(m, onOpen, onClose));
   return true;
 }
 
@@ -100,7 +100,7 @@ export function markNode(m) {
   return glyph(m.mark || m.attention);
 }
 
-function card(m, onOpen) {
+function card(m, onOpen, onClose) {
   const c = el("div", `card ${m.state} at-${m.attention}${m.off ? " off" : ""}${finished(m) ? " finished" : ""}`);
   c.dataset.id = m.key;
   c.dataset.group = group(m);
@@ -110,6 +110,7 @@ function card(m, onOpen) {
   if (m.worker) hd.append(el("span", "badge", `worker · ${m.worker.queue}`));
   const label = m.attention === "waiting" && m.waiting_on ? `waiting · ${m.waiting_on}` : LABEL[m.attention] || m.state;
   hd.append(el("span", `s at-${m.attention}`, label));
+  if (m.attention === "done") hd.append(archiveButton(m, onClose));
   const parts = [hd, el("div", "ttl", m.title || "untitled")];
   if (m.attention_line) parts.push(el("div", `ask at-${m.attention}`, m.attention_line));
   const sub = el("div", "ln");
@@ -137,8 +138,35 @@ function card(m, onOpen) {
   parts.push(bar, ft);
   c.append(...parts);
   tickPlan(c, m);
-  c.addEventListener("click", () => onOpen(m.key));
+  // A control inside the card is its own: a click on it opens nothing.
+  c.addEventListener("click", (ev) => {
+    if (!ev.target.closest("button")) onOpen(m.key);
+  });
+  closeOnMiddle(c, () => onClose(m.key));
   return c;
+}
+
+// A middle click is Close, on a card or a tab alike. The default of its
+// mousedown is autoscroll, or a paste on Linux, so that is stopped first.
+export function closeOnMiddle(node, close) {
+  node.addEventListener("mousedown", (ev) => {
+    if (ev.button === 1) ev.preventDefault();
+  });
+  node.addEventListener("auxclick", (ev) => {
+    if (ev.button !== 1) return;
+    ev.preventDefault();
+    close();
+  });
+}
+
+// Close for a finished session, from the Fleet. A real button, so Tab reaches
+// it and Enter or Space presses it like the archive rows' Read and Reopen.
+function archiveButton(m, onClose) {
+  const b = el("button", "btn archive", "Archive");
+  b.type = "button";
+  b.title = "Close this session; it stays in the archive";
+  b.addEventListener("click", () => onClose(m.key));
+  return b;
 }
 
 function planRow(key, text, cls, tail) {

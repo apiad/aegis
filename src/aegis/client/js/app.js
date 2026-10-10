@@ -387,8 +387,8 @@ function flushSessions() {
   for (const id of ids) if (sessions.has(id)) patchTab($("tablist"), sessions.get(id), r.view === "session" ? r.id : null, tabActions);
   if (r.view === "fleet") {
     const home = [...ids].filter((id) => !sessions.get(id)?.server);
-    const regroup = home.some((id) => !patchCard($("cards"), sessions.get(id), openSession, fleetOrder));
-    if (regroup) renderCards($("cards"), local(), openSession, fleetOrder);
+    const regroup = home.some((id) => !patchCard($("cards"), sessions.get(id), openSession, fleetOrder, closeById));
+    if (regroup) renderCards($("cards"), local(), openSession, fleetOrder, closeById);
     if (home.length < ids.size) renderRemotes();
     fleetMark(false);
     drawBand();
@@ -404,8 +404,15 @@ function onSessions() {
 
 // -- rendering -----------------------------------------------------------------
 const openSession = (id) => go(`#s=${id}`);
+// Close for the Fleet's Archive button and a middle click on a card or a tab:
+// the session as it is now, not as the card or tab drew it.
+const closeById = (id) => {
+  const s = sessions.get(id);
+  if (s) closeSession(s);
+};
 const tabActions = {
   onFocus: openSession,
+  onClose: closeById,
   onMove: (id, before) => {
     order.move(id, before);
     onSessions();
@@ -440,7 +447,7 @@ function render() {
   if (r.view === "fleet") {
     follow(null);
     show("fleet");
-    renderCards($("cards"), local(), openSession, fleetOrder);
+    renderCards($("cards"), local(), openSession, fleetOrder, closeById);
     renderRemotes();
     fleetMark(false);
     watchHost("all");
@@ -583,7 +590,7 @@ function renderRemotes() {
     }
     host.append(box); // keep the links' order
     const metas = on(l.name);
-    if (metas.length) renderCards(box.querySelector(".cards"), metas, openSession, fleetOrder);
+    if (metas.length) renderCards(box.querySelector(".cards"), metas, openSession, fleetOrder, closeById);
     else box.querySelector(".cards").replaceChildren();
   }
   drawBand();
@@ -1543,6 +1550,19 @@ function drawReplies(s) {
 
 const askClose = (s) =>
   ask(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`, { ok: "Close" });
+// The one rule for when closing asks: a done session has nothing left to lose,
+// anything else may be mid-work. The Close button, /close and the Fleet's
+// Archive button all pass through it.
+const confirmClose = async (s) => s.attention === "done" || (await askClose(s));
+
+async function closeSession(s) {
+  if (!(await confirmClose(s))) return;
+  try {
+    await callFor(s.key, "session.close");
+  } catch (e) {
+    $("side-error").textContent = e.message;
+  }
+}
 
 // A line from the composer, or from the menu's own filter (Alt+/ over a
 // draft), which leaves the composer alone. The server resolves "/" lines.
@@ -1557,7 +1577,7 @@ async function sendLine(text, fromComposer) {
     else menu.openOverlay();
     return;
   }
-  if (text === "/close" && !(await askClose(s))) return;
+  if (text === "/close" && !(await confirmClose(s))) return;
   $("send-error").textContent = "";
   const box = $("replies");
   const was = box.hidden;
@@ -1678,15 +1698,9 @@ $("stop-session").addEventListener("click", async () => {
   }
 });
 
-$("close").addEventListener("click", async () => {
+$("close").addEventListener("click", () => {
   const s = focused();
-  if (!s) return;
-  if (!(await askClose(s))) return;
-  try {
-    await callFor(s.key, "session.close");
-  } catch (e) {
-    $("side-error").textContent = e.message;
-  }
+  if (s) closeSession(s);
 });
 
 // -- the panel: a drawer on a phone (base.css, max-width 760px), collapsible
