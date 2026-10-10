@@ -3,6 +3,8 @@
 // them into markup, plus the two things that move with the clock: the tick at
 // the share of the window already gone, and the countdown to its reset.
 
+import { icon } from "./glyphs.js";
+
 export const PROJECT_FROM = 80; // the projection prints from here, as quota's PACE_WARN_AT
 
 function el(tag, cls, text) {
@@ -62,8 +64,15 @@ function bar(kind, pct, severity, tick) {
   return b;
 }
 
+// A sprite icon followed by its text, as one span.
+function marked(cls, name, text) {
+  const n = el("span", cls);
+  n.append(icon(name), text);
+  return n;
+}
+
 function projection(w) {
-  return w.projected != null && w.projected >= PROJECT_FROM ? `→ ${w.projected}%` : "";
+  return w.projected != null && w.projected >= PROJECT_FROM ? marked("proj", "arrow", ` ${w.projected}%`) : null;
 }
 
 // The whole reading as a sentence, for the hover title.
@@ -86,8 +95,8 @@ export function quotaRow(p, w, now) {
   const val = el("span", "val");
   val.append(el("b", null, `${Math.round(w.percent)}%`));
   const proj = projection(w);
-  if (proj) val.append(el("span", "proj", proj));
-  if (w.resets_at != null) val.append(el("span", "rst", `↻ ${countdown(w.resets_at - now)}`));
+  if (proj) val.append(proj);
+  if (w.resets_at != null) val.append(marked("rst", "again", ` ${countdown(w.resets_at - now)}`));
   g.append(el("span", null, w.label), bar("q", w.percent, w.severity, elapsed(w, now)), val);
   return g;
 }
@@ -99,10 +108,9 @@ export function quotaSideRow(p, w, now) {
   r.title = sentence(p, w, now);
   const kv = el("div", "kv");
   const proj = projection(w);
-  kv.append(
-    el("span", null, w.label),
-    el("span", `sv ${stale ? "" : w.severity}`, `${Math.round(w.percent)}%${proj ? ` ${proj}` : ""}`),
-  );
+  const sv = el("span", `sv ${stale ? "" : w.severity}`, `${Math.round(w.percent)}%`);
+  if (proj) sv.append(" ", proj);
+  kv.append(el("span", null, w.label), sv);
   const dim = el("div", "kv dim");
   if (w.resets_at != null)
     dim.append(el("span", null, `resets in ${countdown(w.resets_at - now)}`), el("span", null, clock(w.resets_at)));
@@ -126,7 +134,11 @@ export function tile(label, value, { pct = null, kind = "", severity = "normal",
   const t = el("div", `tile ${severity}`);
   if (title) t.title = title;
   const v = el("div", "v", value);
-  if (small) v.append(el("small", null, small));
+  if (small) {
+    const sm = el("small");
+    sm.append(small);
+    v.append(sm);
+  }
   t.append(el("div", "k", label), v);
   if (pct != null) t.append(bar(kind, pct, severity, tick));
   return t;
@@ -139,7 +151,7 @@ export function quotaTile(p, w, now) {
     kind: "q",
     severity: stale ? "stale" : w.severity,
     tick: stale ? null : elapsed(w, now),
-    small: !stale && w.projected != null && w.projected >= PROJECT_FROM ? `→${w.projected}` : "",
+    small: !stale && w.projected != null && w.projected >= PROJECT_FROM ? marked(null, "arrow", String(w.projected)) : "",
   });
   t.dataset.kind = w.kind;
   return t;
