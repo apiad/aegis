@@ -66,6 +66,8 @@ own token, so no tool asks who is calling.
 - `plan_update` and `turn_end` tell you what the agent is doing and how each turn
   ended: a question for you, something to read, or finished work, with up to
   three replies you send with one tap.
+- `journal_search` asks what was done on this server, by day, words, a path or
+  a session, and `journal_note` adds a decision or a blocker to it.
 
 The same works across machines. `aegis link add vps https://dev.example` makes
 this server a client of another aegis. The far server's sessions appear in your
@@ -106,6 +108,15 @@ transcript, so the workplace grows with what its agents build.
   you, error, review, waiting or done. The page title counts the sessions that
   need you, and Alt+J goes to the one that has waited longest. aegis knows what
   you have read in every browser.
+- **Nudges.** An agent that ends a turn without saying how and then sits idle
+  for 10 minutes is asked once where it stands. One that works 15 minutes
+  without touching an unfinished plan is reminded once to update it. Both
+  arrive as rows headed `aegis:nudge`, never as your message.
+- **The journal.** aegis records what was done from the transcripts: commits,
+  pull requests, plan items done and turns that changed files. The Journal view
+  (the book in the header, or Alt+L) searches it with one fuzzy box over every
+  field, the side panel shows a session's own entries, and `aegis journal
+  search` does the same in a shell.
 - **The plan, timed.** The agent's plan shows how long each item took, the work
   and idle time so far, and an estimate of the work left. Time spent waiting on
   you never enters the estimate.

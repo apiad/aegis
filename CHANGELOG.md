@@ -5,6 +5,92 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-10-10
+
+### Added
+
+- **aegis keeps a journal of what was done, and agents and people can search it.**
+  Commits, pull requests, plan items turning done and turns that changed files are
+  recorded from the transcripts without anyone writing them down. Agents ask with
+  `journal_search` (by day, words, a path, a session) and add decisions and
+  blockers with `journal_note`; people use the Journal view (Alt+L), the sidebar's
+  Journal row, or `aegis journal search` and `aegis journal rebuild` in a shell. A
+  closed session's transcript now ends with a "closed" row. The Journal view has one
+  search box that fuzzy-matches an entry's text, paths, kind and every name its
+  session has had, the header opens it from a book icon, and the theme picker has
+  moved from the header into Settings, under "This browser".
+
+- **Attach files to a message.** Drop, paste or pick files in a session's
+  message box, or in a new tab's first message. Each uploads as a chip with its progress, and when you send,
+  the files land in the session's inbox and the agent reads their absolute
+  paths after your text. Your message shows them as one card that pages. It
+  works on sessions of a linked server. Agents cannot attach files.
+
+- **aegis nudges an agent that drifts.** An agent whose last turn ended with
+  no `turn_end` and that has sat 10 minutes with nothing to wait on is asked
+  once what it is doing: done, needs you, or something else. An agent that has
+  worked 15 minutes without touching a plan that still has items not done is
+  told, once per plan, to update it or carry on. Both arrive as inbox rows
+  headed `aegis:nudge`, never as your message. A question to you, a wait on a
+  monitor or task, an interrupt and queue workers are left alone. Of 232 turns
+  in the vps stores, 151 ended with no `turn_end`, and the card read each as
+  done.
+
+### Changed
+
+- **Reply suggestions end the transcript instead of sitting on the message
+  box.** Three pills grew the composer to 260 px of an 844 px phone screen for
+  as long as the turn went unanswered. They now follow the last row, scroll
+  away with the transcript on phone and desktop, and short ones share a line.
+  A click still sends the reply and clears them.
+
+- **Every mark in the UI is a themed SVG icon.** The transcript's gutter drew
+  📖, 🔎 and 🌐 as colour emoji and the rest (✎ ⌬ ✻ ⏺ ❯ ⇄ ▤ ▣) in whatever
+  font the system fell back to, so a row looked different on every machine and
+  ignored the theme. The gutter, the send and interrupt buttons, the run
+  carets, the file card's buttons, the version marks and the quota gauges now
+  draw from the one icon sprite, in the theme's colours. A linked server still
+  on an older aegis keeps its characters.
+- **The new tab carries the brand.** The Gorgoneion in the theme's accent,
+  then "ægis" in Source Serif 4, the same in every theme.
+- **The tab title no longer starts with ● while the agent works.**
+
+- **The transcript's navigator fits a phone.** At 390 px with touch it was
+  376 × 46 px, the whole width of the screen, because every button grew to
+  44 px and the label read "4 unread · message 4 of 4" over two lines. It is now
+  299 × 36 px: the buttons draw at 34 px and still take a 44 px tap, and the
+  label reads "4/4", accent with a dot when some are unread, the words in its
+  tooltip. Two buttons are new: the next session that needs you (Alt+J, with
+  a count, greyed when nobody does), and the start of the last agent message,
+  where the latest button goes to its end.
+
+### Fixed
+
+- **`aegis init` asks again after a typo instead of crashing.** `uvx` installs
+  Typer 0.27, whose prompt no longer catches a bad choice, so a mistyped answer
+  to `aegis init` ended in a traceback. It now says why and asks again, and the
+  lock moves to Typer 0.27.3 so the tests run what users get.
+
+- **The Fleet's archive fits a phone.** Its six-column table made the Fleet
+  507 px wide on a 390 px screen, with Reopen past the edge and the server
+  filter cut to its first button. Below 760 px a row is now its title over
+  handle · where · age · cost, with Reopen on the right, and the server filter
+  wraps under the search box. A click on an archive row opens Read on every
+  screen, as Enter on a selected row already did (#295).
+
+- **A read or write Claude Code session can call aegis's own tools.** Claude
+  Code refused every aegis tool in plan mode, which `read` maps to, and in
+  acceptEdits, which `write` maps to, and on Haiku in `auto`, so those
+  sessions could not end a turn with `turn_end`, keep a plan, or answer a
+  nudge. aegis now lets its own tools through in every mode and decides itself
+  what a read session may call: its own card (`turn_end`, `plan_update`,
+  `session_rename`), reading (`session_list`, `peer_read` and the status
+  tools), waiting on other sessions, and `file_send`. A read session is
+  refused `monitor_start`, which runs a shell command, the artifact tools, and
+  anything that acts on another session: spawn, close, handoff and enqueue.
+  The same rule now holds for OpenCode and Codex, whose read sessions could
+  call every aegis tool, and it follows a live `/permission` change (#305).
+
 ## [2.5.0] - 2026-10-10
 
 ### Added
