@@ -4978,3 +4978,47 @@ def test_enter_twice_during_an_upload_sends_once(server, page, tmp_path):
     assert page.locator(".row.user").count() == 1
     assert page.text_content("#send-error") == ""
     assert page.errors == []
+
+
+def open_new_tab(pg):
+    pg.click("#tab-add")
+    pg.wait_for_selector("#a2[data-view=spawn]")
+    pg.wait_for_function("document.querySelector('#sp-agent').value !== ''")
+
+
+def test_a_new_tab_sends_its_attachments_with_the_first_message(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    open_new_tab(page)
+    shot = tmp_path / "shot.png"
+    shot.write_bytes(PNG)
+    notes = tmp_path / "notes.txt"
+    notes.write_text("hello\n")
+    page.set_input_files("#sp-attach-pick", [str(shot), str(notes)])
+    assert page.locator("#sp-atts .chip.att").count() == 2
+    page.fill("#sp-text", "look at these")
+    page.press("#sp-text", "Enter")
+    page.wait_for_selector("#a2[data-view=session]")
+    turns_done(page, 1)
+    row = page.locator(".row.user").last
+    assert row.locator(".fcard .count").inner_text() == "1 / 2"
+    assert "look at these" in row.inner_text()
+    lid = page.evaluate("location.hash.slice(3)")
+    (got,) = inbox_of(server, lid).glob("*-notes.txt")
+    assert got.read_text() == "hello\n"
+    assert page.locator(".row.user").count() == 1  # the text went once, with the files
+    assert page.errors == []
+
+
+def test_a_new_tab_with_files_and_no_text_starts_and_sends_them(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    open_new_tab(page)
+    f = tmp_path / "a.txt"
+    f.write_text("x")
+    page.set_input_files("#sp-attach-pick", [str(f)])
+    page.click("#sp-go")
+    page.wait_for_selector("#a2[data-view=session]")
+    turns_done(page, 1)
+    assert page.locator(".row.user").last.locator(".fcard").count() == 1
+    assert page.errors == []

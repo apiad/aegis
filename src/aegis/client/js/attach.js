@@ -2,7 +2,9 @@
 // uploading in 256 KB base64 chunks (attachment.put) as soon as it is added,
 // so Send waits only for what is still in flight. The server stages them
 // until session.send names them (attachments.py). A chunk resent after a
-// reconnect is acknowledged by the server, never written twice.
+// reconnect is acknowledged by the server, never written twice. With `hold`
+// (the new-tab composer, whose session does not exist yet) chips only hold
+// their files until take() hands them to the session that was started.
 
 const CHUNK = 256 * 1024;
 const PARALLEL = 3;
@@ -34,10 +36,11 @@ function el(tag, cls, text) {
 export class Attachments {
   // call(key, op, params) runs an operation on the server holding the
   // session keyed `key`; waitOnline() resolves once the socket is open again.
-  constructor(tray, { call, waitOnline }) {
+  constructor(tray, { call, waitOnline, hold = false }) {
     this.tray = tray;
     this.call = call;
     this.waitOnline = waitOnline;
+    this.hold = hold;
     this.byKey = new Map();
     this.key = null;
     this.queue = [];
@@ -54,17 +57,25 @@ export class Attachments {
     return this.byKey.get(key) || [];
   }
 
-  add(files) {
-    if (!this.key) return;
-    const items = this.list(this.key).slice();
+  add(files, key = this.key) {
+    if (!key) return;
+    const items = this.list(key).slice();
     for (const file of files) {
-      const it = { key: this.key, file, name: file.name, size: file.size, sent: 0, upload_id: null, state: "queued", error: "" };
+      const state = this.hold ? "held" : "queued";
+      const it = { key, file, name: file.name, size: file.size, sent: 0, upload_id: null, state, error: "" };
       items.push(it);
-      this.queue.push(it);
+      if (!this.hold) this.queue.push(it);
     }
-    this.byKey.set(this.key, items);
-    this.draw();
+    this.byKey.set(key, items);
+    if (key === this.key) this.draw();
     this.pump();
+  }
+
+  // The held files of `key`, in order, and the chips gone.
+  take(key) {
+    const files = this.list(key).map((it) => it.file);
+    this.clear(key);
+    return files;
   }
 
   pump() {

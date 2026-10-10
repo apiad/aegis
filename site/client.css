@@ -278,6 +278,12 @@ body{background:#000}
 /* attachments: a tray of chips above the message box (js/attach.js) */
 .a2 .composer .atts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 .a2 .composer .atts[hidden]{display:none}
+/* The new tab's tray holds its files until the session exists. */
+.a2 .spawn .atts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.a2 .spawn .atts[hidden]{display:none}
+.a2 .spawn .clip + .mic{margin-left:6px}
+.a2 .spawn.dropping .box{border-color:var(--accent);border-style:dashed}
+.a2 .chip.att.held .ab{display:none}
 .a2 .chip.att{position:relative;display:inline-flex;align-items:center;gap:6px;overflow:hidden;color:var(--ink);max-width:260px}
 .a2 .chip.att .an{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .a2 .chip.att .as{color:var(--faint)}

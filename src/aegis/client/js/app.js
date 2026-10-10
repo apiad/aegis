@@ -1345,13 +1345,18 @@ async function spawnFromComposer() {
   await dictation.finish($("sp-text"));
   const text = $("sp-text").value.trim();
   const params = { agent: a.name, cwd: $("sp-cwd").value.trim() || null, ...overrides() };
-  if (text) params.prompt = text;
+  // With files, the session starts empty: they upload into its inbox and go
+  // out with the text as its first message (sendFirst).
+  const held = spAtts.list("spawn").length > 0;
+  if (text && !held) params.prompt = text;
   try {
     const r = await conn.call("session.spawn", params, spServer);
     localStorage.setItem(LAST_AGENT, a.name);
     $("sp-text").value = "";
     pickAgent(a.name);
-    go(`#s=${keyOf(spServer, r.log_id)}`);
+    const key = keyOf(spServer, r.log_id);
+    go(`#s=${key}`);
+    if (held) sendFirst(key, text, spAtts.take("spawn"));
   } catch (e) {
     $("sp-error").textContent = e.message;
   } finally {
@@ -1500,53 +1505,71 @@ function cycle(d) {
 const input = $("input");
 
 // -- attachments: chips above the box, uploading as they arrive (attach.js) --
-const atts = new Attachments($("atts"), {
-  call: callFor,
-  waitOnline: () =>
-    new Promise((resolve) => {
-      const t = setInterval(() => {
-        if (conn.open) {
-          clearInterval(t);
-          resolve();
-        }
-      }, 500);
-    }),
-});
-$("attach").addEventListener("click", () => $("attach-pick").click());
-$("attach-pick").addEventListener("change", (ev) => {
-  atts.add([...ev.target.files]);
-  ev.target.value = "";
-});
+const waitOnline = () =>
+  new Promise((resolve) => {
+    const t = setInterval(() => {
+      if (conn.open) {
+        clearInterval(t);
+        resolve();
+      }
+    }, 500);
+  });
+const atts = new Attachments($("atts"), { call: callFor, waitOnline });
+// The new tab's files wait as chips until its session exists (spawnFromComposer).
+const spAtts = new Attachments($("sp-atts"), { call: callFor, waitOnline, hold: true });
+spAtts.show("spawn");
+for (const [btn, pick, tray, key] of [
+  ["attach", "attach-pick", atts, null],
+  ["sp-attach", "sp-attach-pick", spAtts, "spawn"],
+]) {
+  $(btn).addEventListener("click", () => $(pick).click());
+  $(pick).addEventListener("change", (ev) => {
+    tray.add([...ev.target.files], key ?? undefined);
+    ev.target.value = "";
+  });
+}
 // A pasted screenshot is called image.png by every browser: name it by time.
-input.addEventListener("paste", (ev) => {
+function pasted(ev) {
   const got = [...(ev.clipboardData?.files || [])];
-  if (!got.length) return;
+  if (!got.length) return null;
   ev.preventDefault();
   const at = new Date().toTimeString().slice(0, 8).replaceAll(":", "");
-  atts.add(
-    got.map((f, i) => {
-      const ext = (f.type.split("/")[1] || "bin").replace(/[^a-z0-9]/g, "");
-      return new File([f], `pasted-${at}${i ? `-${i + 1}` : ""}.${ext}`, { type: f.type });
-    }),
-  );
+  return got.map((f, i) => {
+    const ext = (f.type.split("/")[1] || "bin").replace(/[^a-z0-9]/g, "");
+    return new File([f], `pasted-${at}${i ? `-${i + 1}` : ""}.${ext}`, { type: f.type });
+  });
+}
+input.addEventListener("paste", (ev) => {
+  const files = pasted(ev);
+  if (files) atts.add(files);
+});
+$("sp-text").addEventListener("paste", (ev) => {
+  const files = pasted(ev);
+  if (files) spAtts.add(files, "spawn");
 });
 // A file dropped anywhere on a session's page attaches to it; anywhere else
 // the browser would navigate away to the file.
 const carriesFiles = (ev) => ev.dataTransfer?.types.includes("Files");
 const onSession = () => $("a2").dataset.view === "session";
+const onSpawn = () => $("a2").dataset.view === "spawn";
 document.addEventListener("dragover", (ev) => {
   if (!carriesFiles(ev)) return;
   ev.preventDefault();
   $("composer").classList.toggle("dropping", onSession());
+  $("spawn").classList.toggle("dropping", onSpawn());
 });
 document.addEventListener("dragleave", (ev) => {
-  if (!ev.relatedTarget) $("composer").classList.remove("dropping");
+  if (ev.relatedTarget) return;
+  $("composer").classList.remove("dropping");
+  $("spawn").classList.remove("dropping");
 });
 document.addEventListener("drop", (ev) => {
   if (!carriesFiles(ev)) return;
   ev.preventDefault();
   $("composer").classList.remove("dropping");
+  $("spawn").classList.remove("dropping");
   if (onSession()) atts.add([...ev.dataTransfer.files]);
+  else if (onSpawn()) spAtts.add([...ev.dataTransfer.files], "spawn");
 });
 
 // -- dictation: the mic in both message boxes (dictation.js) ----------------
@@ -1676,6 +1699,29 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
 
 // Sessions whose send waits on its uploads: a second Enter there does nothing.
 const waiting = new Set();
+
+// A new tab's first message when it carried files: they upload into the
+// session just started, then go out with the text, as a composer send would.
+async function sendFirst(key, text, files) {
+  atts.add(files, key);
+  waiting.add(key);
+  try {
+    await atts.settled(key);
+  } finally {
+    waiting.delete(key);
+  }
+  const ready = atts.ready(key);
+  if (ready.error) {
+    $("send-error").textContent = ready.error;
+    return;
+  }
+  try {
+    await callFor(key, "session.send", { text, attachments: ready.ids });
+    atts.clear(key);
+  } catch (e) {
+    $("send-error").textContent = e.message;
+  }
+}
 const send = async () => {
   await dictation.finish(input); // what was said goes out with the rest
   const s = focused();

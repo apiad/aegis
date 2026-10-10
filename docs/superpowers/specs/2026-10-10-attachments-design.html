@@ -275,6 +275,7 @@ Attached files:
 <ul>
 <li>Files arrive by drop anywhere on a session's page, by paste in the message box, or through a paperclip button beside the microphone. A drop outside a session's page is swallowed instead of navigating the tab to the file.</li>
 <li>Uploads start at once, one chunk in flight per file and three files at a time.</li>
+<li>A new tab takes files the same three ways. Its session does not exist yet, so the chips only hold the files; Enter starts the session without a prompt, uploads them into its inbox, and sends the text with them as its first message (found in the smoke test).</li>
 <li>Enter while a file uploads waits for it and then sends; it never sends the text alone. A failed chip shows the error, keeps the message from sending, and retries when clicked.</li>
 <li>Chips belong to the tab and survive switching tabs. A dropped socket resumes each upload from the same chunk. After a server restart the staging is gone and the chips say so.</li>
 </ul>
