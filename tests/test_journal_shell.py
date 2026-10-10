@@ -56,3 +56,45 @@ def test_pull_requests_opened_and_merged():
         == "merged #12"
     )
     assert pull_request("gh pr view 12", "anything") is None
+
+
+def test_degenerate_inputs_never_raise():
+    """Malformed commands should yield nothing, never an error."""
+    # Redirect-only lines should not raise IndexError
+    assert writes("echo a >\n>\n", "/w") == []
+    # Lone redirect operator
+    assert writes(">", "/w") == []
+    # Unclosed quote
+    assert commits("echo 'unclosed", "") == []
+    # Empty string
+    assert commits("", "") == []
+    # Only comment
+    assert workdir("# just a comment", "/w") == "/w"
+    assert writes("# just a comment", "/w") == []
+    # All functions should handle these gracefully
+    assert pull_request("", "") is None
+
+
+def test_workdir_git_c_not_confused_with_other_options():
+    """git commit --amend -C HEAD should not treat HEAD as a directory."""
+    assert workdir("git commit --amend -C HEAD", "/w") == "/w"
+    # But git -C should still work
+    assert workdir("git -C ../b status", "/w/a") == "/w/b"
+    # Mixed: leading options then -C flag
+    assert workdir("git -c user.name=x -C /tmp status", "/w") == "/tmp"
+
+
+def test_writes_preserves_heredoc_marker_line_redirect():
+    """Heredoc marker line should be parsed to detect its redirect or pipe."""
+    assert writes("cat <<EOF > a.txt\nx\nEOF", "/w") == ["/w/a.txt"]
+    assert writes("cat <<EOF | tee b.txt\nx\nEOF", "/w") == ["/w/b.txt"]
+    # Heredoc with quote marker
+    assert writes("cat <<'EOF' > c.txt\nx > y\nEOF", "/w") == ["/w/c.txt"]
+
+
+def test_writes_strips_leading_paren_and_env_vars():
+    """Leading parens and VAR=value should be skipped."""
+    assert writes("(cd /x && echo a > b.txt)", "/w") == ["/x/b.txt"]
+    assert writes("FOO=1 echo x > y.txt", "/w") == ["/w/y.txt"]
+    # VAR=value assignments should be skipped before commands
+    assert writes("VAR=val1 VAR2=val2 echo hi > z.txt", "/w") == ["/w/z.txt"]
