@@ -957,7 +957,7 @@ async function drawSideJournal(key, force = false) {
   $("s-journal-peek").replaceChildren(...res.rows.slice(0, 2).map((r) => {
     const line = document.createElement("div");
     line.className = `k-${r.kind}`;
-    line.append(span("g", r.glyph), span("x", (r.tag ? `${r.tag}: ` : "") + r.text), span("t", r.time));
+    line.append(span("g", r.glyph), span("x", (r.tag ? `${r.tag}: ` : "") + (r.hash ? `${r.hash} ` : "") + r.text), span("t", r.time));
     return line;
   }));
   $("s-journal-peek").hidden = false;

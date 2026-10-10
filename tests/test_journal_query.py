@@ -72,6 +72,22 @@ def test_rows_say_whether_the_session_is_open():
     )
 
 
+def test_a_commit_row_sends_its_hash_apart_with_marks_in_each():
+    """The view draws the hash as its own chip; marks index the text it shows."""
+    text = "1a2b3c4 feat: x · main"
+    hits = [db.Hit(1, NOON, "L", "h", "commit", "", text, None, None, False, [])]
+    [row] = render.rows(hits, "/root", set(), [[0, 1, 8, 9, 14]])
+    assert row["hash"] == "1a2b3c4" and row["text"] == "feat: x · main"
+    assert row["hash_marks"] == [0, 1] and row["marks"] == [0, 1, 6]
+    [note] = render.rows(
+        [db.Hit(2, NOON, "L", "h", "note", "decision", "a b", None, None, False, [])],
+        "/root",
+        set(),
+        [[0]],
+    )
+    assert note["hash"] == "" and note["text"] == "a b" and note["marks"] == [0]
+
+
 def test_a_path_query_in_a_worktree_names_the_main_checkout(tmp_path):
     """A path query inside a git repo with a worktree names the main checkout."""
     import subprocess

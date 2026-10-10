@@ -63,26 +63,42 @@ def text(
     return "\n".join(out)
 
 
+def _hash(h: Hit, marks: list[int]) -> tuple[str, list[int], str, list[int]]:
+    """A commit's short hash apart from the rest of its text, and the marks
+    split between them, each indexed into its own part."""
+    sp = h.text.find(" ") if h.kind == "commit" else -1
+    if sp <= 0:
+        return "", [], h.text, marks
+    head = [m for m in marks if m < sp]
+    return h.text[:sp], head, h.text[sp + 1 :], [m - sp - 1 for m in marks if m > sp]
+
+
 def rows(
     hits: list[Hit], root: str, open_ids: set[str], marks: list[list[int]] | None = None
 ) -> list[dict]:
-    """``marks``: per hit, the indices in its text the view's box matched."""
-    return [
-        {
-            "id": h.id,
-            "day": _day(h.ts),
-            "time": _time(h.ts),
-            "glyph": GLYPH.get(h.kind, "·"),
-            "kind": h.kind,
-            "tag": h.tag,
-            "handle": h.handle,
-            "log_id": h.log_id,
-            "open": h.log_id in open_ids,
-            "text": h.text,
-            "paths": [shown(p, root) for p in h.paths[:SHOWN]],
-            "more": max(0, len(h.paths) - SHOWN),
-            "source": h.source,
-            "marks": marks[i] if marks else [],
-        }
-        for i, h in enumerate(hits)
-    ]
+    """``marks``: per hit, the indices in its text the view's box matched. A
+    commit's hash comes apart from its text, each with its own marks."""
+    out = []
+    for i, h in enumerate(hits):
+        commit, commit_marks, text, text_marks = _hash(h, marks[i] if marks else [])
+        out.append(
+            {
+                "id": h.id,
+                "day": _day(h.ts),
+                "time": _time(h.ts),
+                "glyph": GLYPH.get(h.kind, "·"),
+                "kind": h.kind,
+                "tag": h.tag,
+                "handle": h.handle,
+                "log_id": h.log_id,
+                "open": h.log_id in open_ids,
+                "hash": commit,
+                "hash_marks": commit_marks,
+                "text": text,
+                "paths": [shown(p, root) for p in h.paths[:SHOWN]],
+                "more": max(0, len(h.paths) - SHOWN),
+                "source": h.source,
+                "marks": text_marks,
+            }
+        )
+    return out

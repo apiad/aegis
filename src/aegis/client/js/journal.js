@@ -22,9 +22,9 @@ function glass() {
   return s;
 }
 
-// `text` with the code points at `marks` (offset by `from`) in <mark>s, runs
-// of marked letters in one. The server counts code points, so this does too.
-function marked(chars, from, marks) {
+// `chars` with the code points at `marks` in <mark>s, runs of marked letters
+// in one. The server counts code points, so this does too.
+function marked(chars, marks) {
   const out = [];
   let run = "";
   let on = false;
@@ -34,7 +34,7 @@ function marked(chars, from, marks) {
     run = "";
   };
   chars.forEach((c, i) => {
-    const m = marks.has(from + i);
+    const m = marks.has(i);
     if (m !== on) {
       flush();
       on = m;
@@ -63,15 +63,12 @@ export function entry(r, who = true) {
   }
   const x = el("div", "x");
   if (r.tag) x.append(el("span", "jtag", r.tag));
-  const chars = Array.from(r.text);
-  const marks = new Set(r.marks || []);
-  // A commit's text starts with its short hash.
-  const sp = r.kind === "commit" ? chars.indexOf(" ") : -1;
-  if (sp > 0) {
+  if (r.hash) {
     const hash = el("span", "hash");
-    hash.append(...marked(chars.slice(0, sp), 0, marks));
-    x.append(hash, " ", ...marked(chars.slice(sp + 1), sp + 1, marks));
-  } else x.append(...marked(chars, 0, marks));
+    hash.append(...marked(Array.from(r.hash), new Set(r.hash_marks)));
+    x.append(hash, " ");
+  }
+  x.append(...marked(Array.from(r.text), new Set(r.marks)));
   body.append(x);
   if (r.paths.length) {
     const ps = el("div", "ps");
