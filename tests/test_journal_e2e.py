@@ -364,6 +364,32 @@ async def test_a_pattern_that_is_not_fts5_is_searched_as_literal_words(world):
     assert out["rows"] and out["counts"]
 
 
+async def test_wildcard_and_near_patterns_that_error_are_searched_as_words(world):
+    from typer.testing import CliRunner
+
+    from aegis.cli import app as cli
+
+    a = await world.spawn()
+    await turn(a, mcp("journal_note", text="edited x.py today", tag="decision"))
+    world.app.journal.flush()
+    for pattern in ("*.py", "*", "**", "*a", "*.py today", "NEAR(a b, x)"):
+        said = await turn(a, mcp("journal_search", pattern=pattern))
+        assert "mcp error" not in said, (pattern, said)
+    for pattern in ("*.py", "NEAR(a b, x)"):
+        out = CliRunner().invoke(
+            cli, ["journal", "search", pattern, "--root", str(world.root)]
+        )
+        assert out.exit_code == 0, (pattern, out.output)
+
+
+async def test_a_whitespace_pattern_is_no_pattern(world):
+    a = await world.spawn()
+    await turn(a, mcp("journal_note", text="some entry", tag="decision"))
+    world.app.journal.flush()
+    said = await turn(a, mcp("journal_search", pattern="   "))
+    assert "some entry" in said and "mcp error" not in said
+
+
 async def test_deliberate_fts5_syntax_is_not_made_literal(world):
     a = await world.spawn()
     await turn(a, mcp("journal_note", text="alpha only", tag="decision"))

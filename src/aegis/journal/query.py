@@ -52,12 +52,20 @@ def literal(pattern: str) -> str:
 
 
 def search(con: sqlite3.Connection, q: db.Query):
-    """db.search, but a pattern FTS5 cannot parse is retried once as literal
+    """db.search, but a pattern FTS5 will not run is retried once as literal
     words (q.pattern becomes that form, so a later db.counts agrees). Deliberate
-    FTS5 syntax parses the first time and is untouched. BadPattern if neither
-    form parses."""
+    FTS5 syntax runs the first time and is untouched. Lock contention is not a
+    pattern problem and is re-raised. db.BadPattern if the literal form fails too."""
     try:
         return db.search(con, q)
-    except db.BadPattern:
-        q.pattern = literal(q.pattern)
+    except (db.BadPattern, sqlite3.OperationalError) as err:
+        msg = str(err).lower()
+        if not q.pattern or "locked" in msg or "busy" in msg:
+            raise
+    q.pattern = literal(q.pattern)
+    try:
         return db.search(con, q)
+    except sqlite3.OperationalError as err:
+        if "locked" in str(err).lower() or "busy" in str(err).lower():
+            raise
+        raise db.BadPattern(str(err)) from err
