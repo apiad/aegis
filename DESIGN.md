@@ -190,6 +190,13 @@ mid-wait in the legacy tree.
 it can see, and changes only its own monitors, its own session's names and the
 tasks it enqueued. A session an agent spawns runs with at most the agent's own
 permission, so spawning is never a way to gain power. People can do anything.
+Closing is the one exception, and it asks for a second thought: `session_close`
+closes at once only a session the agent spawned, or a worker whose task it
+enqueued, whose attention is done. Anything else, the caller's own session
+included, is refused with a prose account of that session (who started it, its
+state, attention, plan step and last activity) and a one-time token bound to the
+caller and the target; the same call with the token closes it, because a person
+may be reading that tab (`confirm.py`).
 Reading includes waiting: `monitor_sessions` watches other sessions' attention
 cards and wakes its owner when all have finished or one is blocked on the
 person, and `session_list` shows each card and plan. Neither changes the
