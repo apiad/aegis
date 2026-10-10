@@ -3593,6 +3593,72 @@ def test_a_phone_reaches_tabs_the_drawer_and_the_chips(server, browser):
     assert errors == []
 
 
+def archived(root: Path, n: int) -> list[str]:
+    """Seed `n` archived sessions with phone-length titles; newest first."""
+    store = root / ".aegis" / "state" / "sessions"
+    store.mkdir(parents=True)
+    ids = []
+    for i in range(n):
+        meta = {
+            "log_id": f"20261001-000000-{i:06x}",
+            "handle": f"fleet-archive-{i}",
+            "archived": True,
+            "last_activity": 1_790_000_000.0 + i,
+            "title": f"Fix the archive overflow on a phone, attempt {i}",
+            "cwd": str(root / "repos" / "aegis"),
+            "cost_usd": 3.4 + i,
+        }
+        (store / f"{meta['log_id']}.json").write_text(json.dumps(meta))
+        ids.append(meta["log_id"])
+    return ids[::-1]
+
+
+def test_a_phone_fits_the_archive_and_a_tap_on_a_row_reads_it(
+    tmp_path, fake_claude, fake_opencode, browser
+):
+    """#295: the archive's six-column table made the Fleet 507 px wide at 390,
+    with Reopen off screen, and squeezed the server filter to its first button."""
+    linked = Linked(tmp_path, fake_claude, fake_opencode)
+    ids = archived(linked.alpha.root, 6)
+    linked.start()
+    try:
+        errors: list = []
+        page = phone(browser, errors)
+        page.goto(linked.alpha.url)
+        page.wait_for_selector("#arch-servers:not([hidden])")
+        page.wait_for_selector(f"#arch-list tr[data-id='{ids[0]}']")
+        fleet = page.eval_on_selector(".v-fleet", "v => [v.scrollWidth, v.clientWidth]")
+        assert fleet[0] <= fleet[1], f"the Fleet scrolls sideways: {fleet}"
+        assert page.evaluate(WIDER) == []
+        servers = page.eval_on_selector(
+            "#arch-servers", "s => [s.scrollWidth, s.clientWidth]"
+        )
+        assert servers[0] <= servers[1], f"the server filter is cut: {servers}"
+        row = page.locator(f"#arch-list tr[data-id='{ids[0]}']")
+        assert row.bounding_box()["height"] <= 64, "a row is two lines and a button"
+        assert page.is_hidden(f"#arch-list tr[data-id='{ids[0]}'] .btn.read")
+        reopen = row.locator(".btn.primary").bounding_box()
+        assert reopen["x"] + reopen["width"] <= 390 and reopen["height"] >= 44
+        row.locator("td").first.tap()
+        page.wait_for_function("id => location.hash === '#read=' + id", arg=ids[0])
+        assert errors == []
+    finally:
+        linked.stop()
+
+
+def test_a_click_on_an_archive_row_reads_it(tmp_path, fake_claude, fake_opencode, page):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    ids = archived(tmp_path, 2)
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
+    try:
+        page.goto(s.url)
+        page.click(f"#arch-list tr[data-id='{ids[1]}'] td.m >> nth=1")
+        page.wait_for_function("id => location.hash === '#read=' + id", arg=ids[1])
+        assert page.errors == []
+    finally:
+        s.stop()
+
+
 def test_a_phone_sees_the_monitor_card_every_reply_and_a_one_line_composer(
     server, browser
 ):

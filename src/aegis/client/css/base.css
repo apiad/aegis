@@ -435,6 +435,7 @@ body{background:#000}
 #a2 .tbl td{padding:7px 8px;border-bottom:1px solid var(--rule);color:var(--ink)}
 #a2 .tbl td.m{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
 #a2 .tbl tr.sel td{background:var(--accent-soft)}
+#a2 #arch-list tr[data-id]{cursor:pointer}
 #a2 .tbl td.acts{text-align:right;white-space:nowrap}
 #a2 .tbl td.acts .btn{margin-left:6px;padding:3px 10px}
 
@@ -825,6 +826,25 @@ body{background:#000}
   #a2 .band{grid-template-columns:minmax(0,1fr);gap:14px;padding:12px 14px}
   #a2 .gauge{grid-template-columns:62px minmax(0,1fr) max-content;gap:8px}
   #a2 .cards{padding:12px;gap:10px}
+  /* The archive (#295): a row is its title over handle · where · age · cost,
+     with Reopen on the right, and a tap on the row reads it. The server filter
+     keeps its width and wraps under the search box rather than shrinking. */
+  #a2 .archive{padding:4px 12px 24px}
+  #a2 .archive-head{flex-wrap:wrap;gap:8px 12px}
+  #a2 .archive-head input{flex:1 1 180px;min-width:0;max-width:none}
+  #a2 .arch-servers{flex:none;max-width:100%;overflow-x:auto}
+  #a2 #arch-list .tbl,#a2 #arch-list tbody{display:block}
+  #a2 #arch-list tr:not([data-id]){display:none}
+  /* The meta line's cells start at 0 wide (min-width:0) and fill up to their
+     text, short ones first, so the handle and the directory are the ones cut. */
+  #a2 #arch-list tr[data-id]{display:grid;grid-template-columns:repeat(4,auto);justify-content:start;align-content:center;row-gap:2px;position:relative;min-height:60px;padding:8px 92px 8px 4px;border-bottom:1px solid var(--rule)}
+  #a2 #arch-list tr.sel{background:var(--accent-soft)}
+  #a2 #arch-list td{display:block;padding:0;border:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:none}
+  #a2 #arch-list td:first-child{grid-column:1/-1;contain:inline-size;font-size:13.5px}
+  #a2 #arch-list td.m{font-size:11.5px}
+  #a2 #arch-list td.m+td.m:before{content:"·";margin:0 6px;color:var(--faint)}
+  #a2 #arch-list td.acts{position:absolute;top:0;right:0;bottom:0;display:flex;align-items:center;overflow:visible}
+  #a2 #arch-list td.acts .read{display:none}
   #a2[data-view=spawn] .v-spawn{padding:16px 10px;place-items:start stretch}
 }
 @media (prefers-reduced-motion:reduce){#a2 .side{transition:none}}
