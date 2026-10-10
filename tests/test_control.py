@@ -152,3 +152,15 @@ def test_each_read_dir_is_an_added_dir():
     argv = build_argv("claude", "opus", "high", "read", add_dirs=(Path("/s/inbox/l"),))
     assert argv[argv.index("--add-dir") + 1] == "/s/inbox/l"
     assert "--add-dir" not in build_argv("claude", "opus", "high", "read")
+
+
+def test_every_permission_lets_aegis_tools_through_a_hook():
+    """Plan mode refuses an MCP call an allow rule names; a hook's allow
+    passes it, and aegis's registry decides what a read session may call (#305)."""
+    import json
+
+    for permission in ("read", "write", "auto", "full"):
+        argv = build_argv("claude", "opus", "high", permission)
+        (rule,) = json.loads(argv[argv.index("--settings") + 1])["hooks"]["PreToolUse"]
+        assert rule["matcher"] == "mcp__aegis__.*"
+        assert '"permissionDecision": "allow"' in rule["hooks"][0]["command"]
