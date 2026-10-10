@@ -181,7 +181,10 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 .a2mock .pol{grid-column:1/-1;display:grid;gap:10px;margin-top:4px;padding-top:10px;border-top:1px dashed var(--rule)}
 .a2mock .poolrow{display:grid;grid-template-columns:108px minmax(0,1fr);gap:8px 12px;align-items:start}
 .a2mock .poolrow .pl{font:500 12px var(--font-chrome);color:var(--strong);padding-top:4px}
-.a2mock .winrow{display:grid;grid-template-columns:84px minmax(0,1fr) 205px;gap:12px;align-items:center;margin:2px 0}
+.a2mock .winrow{display:grid;grid-template-columns:96px minmax(0,1fr) 190px;grid-template-areas:"name track read";gap:4px 12px;align-items:center;margin:2px 0}
+.a2mock .winrow .wl{grid-area:name;display:flex;flex-direction:column;gap:3px}
+.a2mock .winrow .track{grid-area:track}
+.a2mock .winrow .wv{grid-area:read}
 .a2mock .winrow label{font:11.5px var(--font-chrome);color:var(--muted);display:flex;gap:5px;align-items:center;cursor:pointer}
 .a2mock .winrow input[type=checkbox]{accent-color:var(--accent);margin:0}
 .a2mock .track{position:relative;height:6px;background:var(--raised);border-radius:3px;margin:18px 7px 8px;touch-action:none}
@@ -200,7 +203,47 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 .a2mock .pace span{position:absolute;bottom:13px;left:50%;transform:translateX(-50%);font:10.5px var(--font-chrome);color:var(--ok);white-space:nowrap}
 .a2mock .wv{font:11px var(--font-chrome);color:var(--faint);display:flex;flex-direction:column;gap:3px}
 .a2mock .modeline{display:flex;gap:10px;align-items:center;margin-bottom:2px}
-.a2mock .notice{margin:10px 0 0}
+.a2mock .notice{margin:10px 0 0;overflow-wrap:anywhere}
+/* Phones. The client's own breakpoint for Settings is 640px (base.css:775), where
+   .set-agent drops to one column; the editor follows it. */
+@media (max-width:640px){
+  .a2mock{padding:2px 12px 0}
+  .a2mock .set-agent{grid-template-columns:1fr;padding:10px 12px}
+  .a2mock .poolnow{grid-template-columns:1fr 1fr;padding:8px 10px;gap:6px 16px}
+  .a2mock .poolrow{grid-template-columns:1fr;gap:4px}
+  .a2mock .poolrow .pl{padding-top:0}
+  .a2mock .modeline{flex-wrap:wrap}
+  .a2mock .winrow{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"name read" "track track";margin:6px 0 2px}
+  .a2mock .winrow .wl{flex-direction:row;gap:14px}
+  .a2mock .winrow .wv{text-align:right}
+  .a2mock .track{margin:20px 11px 10px}
+  .a2mock .winrow.off .track{display:none}
+  .a2mock .set-linkrow{flex-wrap:wrap}
+  .a2mock .set-linkrow .set-in{flex-basis:100%}
+  .a2mock .set-linkrow .btn{flex:1}
+}
+/* Fingers: a bigger dot, and a hit area wider than the dot. */
+@media (pointer:coarse){
+  .a2mock .h{width:20px;height:20px;margin:-10px 0 0 -10px}
+  .a2mock .h::before{content:"";position:absolute;inset:-12px}
+  .a2mock .h span{bottom:18px}
+}
+/* The spec page itself on a phone: tables become stacked rows, chrome keeps its tab. */
+@media (max-width:640px){
+  .chrome .st .pill:not(.acc){display:none}
+  .chrome{gap:8px;padding:0 10px}
+  .chrome .tab{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;padding:0 8px}
+  .chrome .st{min-width:0}
+  .chrome .st .pill{overflow:hidden;text-overflow:ellipsis;max-width:40vw}
+  .tbl thead{display:none}
+  .tbl,.tbl tbody,.tbl tr,.tbl td{display:block;width:auto}
+  .tbl tr{padding:10px 0;border-bottom:1px solid var(--rule)}
+  .tbl td{border:0;padding:2px 0}
+  .tbl td:first-child{white-space:normal;margin-bottom:2px}
+  code{overflow-wrap:anywhere}
+  .prow2{grid-template-columns:70px 1fr;gap:2px 10px}
+  .prow2 .pol,.prow2 .st{grid-column:2}
+}
 </style>
 </head>
 <body>
@@ -499,6 +542,7 @@ The pool has room again. Continue where you left off.</pre>
 <li><b>A policy editor per pool.</b> Each pool has a mode: closed, open without lines, or lines. Codex has no gauge, so it offers only closed and open. With lines, each window of the pool is a row with a checkbox to use it and a track drawn like the quota gauge: the current fill, a green launch handle and a red stop handle. The handles drag, and also move with the arrow keys, one point at a time or five with Shift. The launch handle can never pass the stop handle.</li>
 <li><b>Pace.</b> A window with a known span (a week, a month) has a pace box. With it ticked the launch line is not a handle: it is drawn where the time tick is, because "projected spend at reset at most 100%" is the same as "usage at most the share of the window that has passed". It moves on its own as the week goes by.</li>
 <li><b>Add a token.</b> The same row Servers uses to add a link: a name, a role and Add. The token appears once below it with a copy button.</li>
+<li><b>On a phone.</b> Below 640px, the breakpoint where Settings already drops agent cards to one column (<code>base.css:775</code>), each card is one column, a pool's name sits above its mode, and a window takes two lines: its name, pace box and readout on the first, a full-width track on the second. A window that is not used hides its track. On a touch screen the handles grow to 20px with a hit area about 44px wide. The pool strip shows two pools side by side.</li>
 <li><b>Saving.</b> Policy edits mark the page dirty and go out with the existing save bar, in the same Save as agents and queues, through <code>token.policy</code>. Add and revoke act at once, like linking and removing a server, because each one shows or kills a secret.</li>
 </ul>
 <h3 id="editor-try">Try the editor</h3>
@@ -573,6 +617,7 @@ The pool has room again. Continue where you left off.</pre>
 <li>Revoking the admin token: <code>&lt;state&gt;/token</code> changes, a second admin browser is refused, the browser that revoked stays signed in.<span class="b">slow</span></li>
 <li>The policy editor in a real browser: drag a stop handle, press Shift+ArrowLeft on a launch handle, tick pace, save; <code>tokens.json</code> holds the new lines and the gate applies them at the next reading.<span class="b">slow</span></li>
 <li>A launch handle dragged past the stop handle stops one point short of it.<span class="b">slow</span></li>
+<li>Settings at a 390px viewport with touch: the document is no wider than the viewport, and a stop handle can be dragged with a touch.<span class="b">slow</span></li>
 <li>An agent spawns <code>x@far</code> over a link holding a member token: the far session is owned by that token and records <code>spawned_by</code>; the agent gets <code>handle@far</code> back.<span class="b">slow</span></li>
 <li>The same spawn with the far pool above the link token's launch line: the agent's tool result is <code>quota_closed</code> with the window and its reset time.<span class="b">fast</span></li>
 <li>That agent then calls <code>peer_read</code> and <code>queue_enqueue</code> on the far session and server: both still fail with <code>not_across_links</code>.<span class="b">fast</span></li>
@@ -682,20 +727,21 @@ const chips = (pol) => Object.entries(POOLS).map(([k, p]) => {
   const s = poolState(pol[k], p);
   return `<span class="set-pill ${s === "open" ? "ok" : s === "stopped" ? "bad" : "warn"}">${p.label} ${s}</span>`;
 }).join("");
-const readout = (l) => `launch ${l.launch === "pace" ? "while on pace" : "below " + l.launch + "%"} · stop at ${l.stop}%`;
+const readout = (l) => `start ${l.launch === "pace" ? "on pace" : "below " + l.launch + "%"} · stop at ${l.stop}%`;
 
 function winrow(pp, w, who, k) {
   const l = pp.lines[w.kind], d = `data-who="${who}" data-pool="${k}" data-win="${w.kind}"`;
   const paceBox = (on, checked) => w.pace ? `<label><input type="checkbox" data-act="pace" ${d} ${checked ? "checked" : ""} ${on ? "" : "disabled"}>pace</label>` : "";
-  if (!l) return `<div class="winrow off"><label><input type="checkbox" data-act="use" ${d}>${w.label}</label><div class="track"><i style="width:${w.pct}%"></i></div><span class="wv"><span class="rd">not used</span>${paceBox(false, false)}</span></div>`;
+  const name = (on, pace) => `<div class="wl"><label><input type="checkbox" data-act="use" ${d} ${on ? "checked" : ""}>${w.label}</label>${paceBox(on, pace)}</div>`;
+  if (!l) return `<div class="winrow off">${name(false, false)}<div class="track"><i style="width:${w.pct}%"></i></div><span class="wv"><span class="rd">not used</span></span></div>`;
   const pace = l.launch === "pace", lpos = pace ? w.elapsed : l.launch;
   const launch = pace ? `<span class="pace" style="left:${w.elapsed}%"><span>pace</span></span>`
     : `<button class="h l" ${d} data-h="launch" style="left:${l.launch}%" aria-label="${w.label} launch line"><span>${l.launch}</span></button>`;
-  return `<div class="winrow"><label><input type="checkbox" data-act="use" ${d} checked>${w.label}</label>`
+  return `<div class="winrow">${name(true, pace)}`
     + `<div class="track" ${d}><i style="width:${w.pct}%"></i><span class="zone closed" style="left:${lpos}%;width:${Math.max(0, l.stop - lpos)}%"></span>`
     + `<span class="zone stop" style="left:${l.stop}%;right:0"></span>${launch}`
     + `<button class="h s" ${d} data-h="stop" style="left:${l.stop}%" aria-label="${w.label} stop line"><span>${l.stop}</span></button></div>`
-    + `<span class="wv"><span class="rd">${readout(l)}</span>${paceBox(true, pace)}</span></div>`;
+    + `<span class="wv"><span class="rd">${readout(l)}</span></span></div>`;
 }
 function editor(pol, who) {
   return `<div class="pol">` + Object.entries(POOLS).map(([k, p]) => {
