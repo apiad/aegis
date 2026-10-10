@@ -316,7 +316,7 @@ mark{background:var(--accent-soft);color:var(--strong);border-radius:2px}
 <table class="tbl">
 <thead><tr><th>kind</th><th>derived from</th><th>text</th><th>touches</th></tr></thead>
 <tbody>
-<tr><td>turn</td><td>a turn that wrote files, or ended with <code>turn_end</code> done or review</td><td>the <code>turn_end</code> line, else the first 120 characters of the prompt</td><td>every file written in the turn</td></tr>
+<tr><td>turn</td><td>a turn that wrote files, or ended with <code>turn_end</code> done or review</td><td>the <code>turn_end</code> line, else the first 120 characters of the prompt, else the turn's first prose line</td><td>every file written in the turn</td></tr>
 <tr><td>commit</td><td><code>git commit</code> output in a Bash result</td><td>subject, short hash, branch</td><td>the commit's files</td></tr>
 <tr><td>pr</td><td><code>gh pr create</code> or <code>gh pr merge</code> output</td><td>title and URL</td><td>none</td></tr>
 <tr><td>plan</td><td>a plan item turning done</td><td>the item</td><td>none</td></tr>
@@ -513,12 +513,17 @@ mark{background:var(--accent-soft);color:var(--strong);border-radius:2px}
 <tr><td>Backfill</td><td><code>journal.db</code> records a finished backfill in <code>PRAGMA application_id</code>. An interrupted or halted backfill resumes at the next start, and a rebuild that races one uses a per-run token so a cleared file is never marked complete. A corrupt <code>journal.db</code> is set aside and rebuilt at start.</td><td class="why">The first trigger was "fresh database only", which left a half-filled index after a crash.</td></tr>
 <tr><td>Boot order</td><td>The journal starts before the sessions boot.</td><td class="why">Records written at boot, such as <code>server_stopped</code>, are journaled.</td></tr>
 <tr><td>Renames</td><td>A rename leaves <code>last_activity</code> alone and is recorded only when the handle changes.</td><td class="why">A rename is not work, and a repeated one is noise.</td></tr>
+<tr><td>Commit repos</td><td>The session's directory comes from the harness's init line, and a leading <code>cd</code> in Claude's Bash moves it for the agent's later calls. A line that opens a quote is read joined with the lines that close it, so the heredoc commit form keeps its <code>cd</code>. Each commit takes the directory of its own git command. A hash the guessed repo lacks is looked for where the turn wrote, and one found nowhere names no repo.</td><td class="why">Rebuilt from the real state, all 12 commits had lost their files and were filed under the workspace root.</td></tr>
+<tr><td>Failed Bash calls</td><td>A Bash call that fails still makes its commit and pull request rows; a failed Write or Edit still touches nothing.</td><td class="why">A rejected push, or <code>gh pr merge</code> run from a worktree, fails after the work is done.</td></tr>
+<tr><td>Turn names</td><td>A turn without a prompt reads its first prose line, else a background task's notice; a slash command's echo is a prompt.</td><td class="why">39 of 140 turn rows on the real state read "a turn".</td></tr>
+<tr><td>View days</td><td>With every filter empty the Journal view shows the server's today. A pattern, path, session or kind searches every day until the person picks a date.</td><td class="why">"What touched this file" is rarely about today only, and the browser's date can differ from the server's.</td></tr>
 </tbody>
 </table>
 <h3 id="limits">Known limits</h3>
 <ul>
   <li>Renames of archived sessions are not journaled.</li>
   <li>A <code>git commit -q</code> prints no line, so it makes no commit entry.</li>
+  <li>Only a leading <code>cd</code> in Claude's own Bash calls moves the session's directory. A <code>cd</code> after other work, in a subshell or to a variable is not followed, and a worktree entered mid-turn is known from the next turn's init line.</li>
   <li>After a rebuild, uncommitted edits made in a since-removed worktree are named by their path inside the main checkout, so a path query misses them. Commits still name their files through git.</li>
   <li>A store that raises during a backfill is logged and skipped, and the backfill still completes. Its rows return at the next <code>aegis journal rebuild</code>.</li>
 </ul>
