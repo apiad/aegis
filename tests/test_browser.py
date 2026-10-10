@@ -4978,12 +4978,13 @@ def test_the_sidebar_journal_row_is_current_after_time_on_the_fleet(
     other.close()
 
 
-def _journal_entries(server, n: int, ts: float, text: str) -> None:
-    """n notes straight into the server's journal.db, as if journaled at ts."""
+def _journal_entries(server, n: int, ts: float, text: str, first: int = 0) -> None:
+    """n notes straight into the server's journal.db, as if journaled at ts;
+    ``first`` numbers their ids past an earlier call's."""
     from aegis.journal import db
 
     con, _ = db.connect(server.root / ".aegis" / "state" / "journal.db")
-    for k in range(n):
+    for k in range(first, first + n):
         e = db.Entry(f"20260101-000000-{k:06d}", 0, 0, ts, "old-hand", None,
                      "note", "decision", f"{text} {k}", None, False, [])  # fmt: skip
         db.insert(con, e)
@@ -4995,7 +4996,6 @@ def test_the_journal_searches_every_day_once_a_filter_is_set_and_today_is_the_se
 ):
     """The browser's timezone puts it on another date than the server: the
     view still opens on the server's today, and a pattern searches every day."""
-    from datetime import timedelta
     from zoneinfo import ZoneInfo
 
     today = time.strftime("%Y-%m-%d")
@@ -5014,27 +5014,111 @@ def test_the_journal_searches_every_day_once_a_filter_is_set_and_today_is_the_se
     _journal_entries(server, 1, time.time() - 3 * 86400, "chose the zebra layout")
     pg.keyboard.press("Alt+KeyL")
     pg.locator(".journal .jrow", has_text="today.md").first.wait_for()
-    assert pg.input_value(".journal .jday") == today
+    assert pg.inner_text(".journal .jwhen") == "today"
+    assert pg.inner_text(".journal .jday-h").startswith(today)
     assert "zebra" not in pg.inner_text(".journal .jlist")
     pg.fill(".journal .jq", "zebra")
     pg.locator(".journal .jrow", has_text="chose the zebra layout").wait_for()
-    assert pg.input_value(".journal .jday") == ""
+    assert pg.inner_text(".journal .jwhen") == "any day"
     pg.fill(".journal .jq", "nothingmatchesthis")
     pg.wait_for_selector(".journal .jlist .empty")
     assert "any day" in pg.inner_text(".journal .jlist .empty")
-    # Every filter empty again: back to the server's today.
+    # The box empty again: back to the server's today.
     pg.fill(".journal .jq", "")
     pg.locator(".journal .jrow", has_text="today.md").first.wait_for()
-    assert pg.input_value(".journal .jday") == today
-    # A day the person picks holds, filters or not.
-    old = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
-    pg.fill(".journal .jday", old)
-    pg.locator(".journal .jrow", has_text="chose the zebra layout").wait_for()
-    pg.fill(".journal .jq", "nothingmatchesthis")
-    pg.wait_for_selector(".journal .jlist .empty")
-    assert old in pg.inner_text(".journal .jlist .empty")
+    assert pg.inner_text(".journal .jwhen") == "today"
     assert errors == []
     pg.close()
+
+
+def test_the_journal_day_chip_toggles_today_and_any_day(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    _journal_entries(server, 1, time.time() - 3 * 86400, "chose the zebra layout")
+    _journal_entries(server, 1, time.time(), "a fresh call", first=1)
+    page.keyboard.press("Alt+KeyL")
+    page.locator(".journal .jrow", has_text="a fresh call").wait_for()
+    assert "zebra" not in page.inner_text(".journal .jlist")
+    page.click(".journal .jwhen")
+    page.locator(".journal .jrow", has_text="chose the zebra layout").wait_for()
+    assert page.inner_text(".journal .jwhen") == "any day"
+    # A day the person picks holds once they type.
+    page.click(".journal .jwhen")
+    page.wait_for_function(
+        "!document.querySelector('.journal .jlist').textContent.includes('zebra')"
+    )
+    page.fill(".journal .jq", "zebra")
+    page.wait_for_selector(".journal .jlist .empty")
+    assert page.inner_text(".journal .jwhen") == "today"
+    assert "today" in page.inner_text(".journal .jlist .empty")
+    assert page.errors == []
+
+
+def test_the_journal_box_finds_a_path_fuzzily_and_marks_what_matched(
+    server, page, tmp_path
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    (tmp_path / "scratch").mkdir()
+    spawn(page, f"/write {tmp_path / 'scratch' / 'notes.md'} => hi")
+    _journal_entries(server, 1, time.time(), "chose the zebra layout")
+    page.keyboard.press("Alt+KeyL")
+    page.locator(".journal .jrow", has_text="zebra").wait_for()
+    page.fill(".journal .jq", "scra")
+    page.wait_for_selector(".journal .jcount >> text=matching “scra”")
+    assert "zebra" not in page.inner_text(".journal .jlist")
+    assert page.locator(".journal .jrow .pchip", has_text="scratch").count() >= 1
+    page.fill(".journal .jq", "zebr")
+    row = page.locator(".journal .jrow", has_text="zebra")
+    row.wait_for()
+    assert page.locator(".journal .jrow").count() == 1
+    assert row.locator("mark").all_inner_texts() == ["zebr"]
+    assert "matching “zebr”" in page.inner_text(".journal .jcount")
+    assert page.errors == []
+
+
+def test_the_journal_box_finds_a_renamed_sessions_entries_by_an_old_handle(
+    server, page, tmp_path
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, f"/write {tmp_path / 'before.md'} => hi")
+    old = page.inner_text("#s-handle")
+    page.click("#s-handle")
+    page.fill("#s-handle input", "fresh-name")
+    page.press("#s-handle input", "Enter")
+    page.wait_for_function(
+        "document.querySelector('#s-handle').textContent === 'fresh-name'"
+    )
+    _journal_entries(server, 1, time.time(), "chose the zebra layout")
+    page.keyboard.press("Alt+KeyL")
+    page.locator(".journal .jrow", has_text="zebra").wait_for()
+    page.fill(".journal .jq", old.upper())
+    page.wait_for_selector(f".journal .jcount >> text=matching “{old.upper()}”")
+    assert "zebra" not in page.inner_text(".journal .jlist")
+    assert page.locator(".journal .jrow", has_text="before.md").count() >= 1
+    assert page.errors == []
+
+
+def test_a_journal_kind_chip_narrows_to_that_kind(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, f"/write {tmp_path / 'kinds.md'} => hi")
+    _journal_entries(server, 1, time.time(), "chose the zebra layout")
+    page.keyboard.press("Alt+KeyL")
+    page.locator(".journal .jrow", has_text="kinds.md").first.wait_for()
+    page.click(".journal .jkind[data-kind=note]")
+    page.wait_for_function(
+        "!document.querySelector('.journal .jlist').textContent.includes('kinds.md')"
+    )
+    kinds = "[...document.querySelectorAll('.journal .jrow')].map(r => r.className)"
+    assert all("k-note" in c for c in page.evaluate(kinds))
+    assert (
+        page.get_attribute(".journal .jkind[data-kind=note]", "aria-pressed") == "true"
+    )
+    page.click(".journal .jkind[data-kind='']")
+    page.locator(".journal .jrow", has_text="kinds.md").first.wait_for()
+    assert page.errors == []
 
 
 def test_the_journal_reloads_a_list_paged_past_500_rows(
