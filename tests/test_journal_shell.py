@@ -98,3 +98,25 @@ def test_writes_strips_leading_paren_and_env_vars():
     assert writes("FOO=1 echo x > y.txt", "/w") == ["/w/y.txt"]
     # VAR=value assignments should be skipped before commands
     assert writes("VAR=val1 VAR2=val2 echo hi > z.txt", "/w") == ["/w/z.txt"]
+
+
+def test_workdir_git_c_probes():
+    """Ensure -C is only a git option when among git's leading options."""
+    # -C is a git option
+    assert workdir("git -C repo commit -m x", "/w") == "/w/repo"
+    assert workdir("git -C src/foo status", "/w") == "/w/src/foo"
+    # -C is NOT a git option (it's a subcommand option)
+    assert workdir("git commit -C /abc", "/w") == "/w"
+    assert workdir("git status -C /tmp", "/w") == "/w"
+
+
+def test_workdir_git_c_stacking():
+    """Multiple -C flags stack: each is resolved relative to previous."""
+    assert workdir("git -c user.name=x -C ../b commit", "/w/a") == "/w/b"
+    assert workdir("git -C a -C b status", "/w") == "/w/a/b"
+
+
+def test_writes_with_env_vars_and_commands():
+    """Commands with leading VAR= should work correctly."""
+    # FOO=1 tee x should detect x as a tee argument
+    assert writes("FOO=1 tee x", "/w") == ["/w/x"]

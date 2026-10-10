@@ -50,6 +50,31 @@ def _skip_preamble(argv: list[str]) -> int:
     return i
 
 
+def _git_dir(argv: list[str], base: str) -> str:
+    """The directory a `git ...` command runs in: each -C among git's options
+    (before the subcommand) moves it; the first word not starting with "-" is
+    the subcommand and ends the scan."""
+    k = 1
+    while k < len(argv):
+        w = argv[k]
+        if w == "-C" and k + 1 < len(argv):
+            base = _resolve(argv[k + 1], base)
+            k += 2
+        elif w in (
+            "-c",
+            "--git-dir",
+            "--work-tree",
+            "--namespace",
+            "--exec-path",
+        ) and k + 1 < len(argv):
+            k += 2
+        elif w.startswith("-"):
+            k += 1
+        else:
+            break
+    return base
+
+
 def _commands(body: str) -> list[list[str]]:
     """Each simple command's words, split at && || ; | and newlines."""
 
@@ -108,20 +133,8 @@ def workdir(command: str, cwd: str) -> str:
         if cmd == "cd" and len(argv) > start + 1:
             base = _resolve(argv[start + 1], base)
         elif cmd == "git":
-            # Look for -C flag in git's leading options (before subcommand).
-            # -C is a git option only if it comes before any git subcommand words.
-            # Git subcommands are the first non-option, non-flag-arg word.
-            # To avoid matching subcommand options like 'commit -C HEAD',
-            # we only accept -C if its argument looks like a path.
-            for i in range(start + 1, len(argv) - 1):
-                if argv[i] == "-C":
-                    dir_arg = argv[i + 1]
-                    # Accept -C if arg looks like a path (/, ., ~, ..) or absolute
-                    if not dir_arg.startswith("-") and (
-                        dir_arg.startswith(("/", ".", "~")) or dir_arg.startswith("..")
-                    ):
-                        return _resolve(dir_arg, base)
-            return base
+            # Use argv starting at the git word (after VAR= skip)
+            return _git_dir(argv[start:], base)
     return base
 
 
@@ -142,7 +155,7 @@ def writes(command: str, cwd: str) -> list[str]:
         for k, t in enumerate(argv[:-1]):
             if t in (">", ">>") and not argv[k + 1].startswith("/dev/"):
                 out.add(_resolve(argv[k + 1], base))
-        words = [w for w in argv if w not in (">", ">>")]
+        words = [w for w in argv[start:] if w not in (">", ">>")]
         if not words:
             continue
         args = [w for w in words[1:] if not w.startswith("-")]
