@@ -99,45 +99,42 @@ def test_counts_by_kind_and_a_schema_change_resets(tmp_path):
 
 
 def test_clear_rolls_back_on_error(tmp_path):
-    c, _ = db.connect(tmp_path / "clear_test.db")
+    test_db = tmp_path / "clear_test.db"
+    c, _ = db.connect(test_db)
     db.insert(c, entry(1))
-    locker = sqlite3.connect(tmp_path / "clear_test.db")
+    locker = sqlite3.connect(test_db)
     locker.execute("BEGIN IMMEDIATE")
-    lock_con = sqlite3.connect(
-        tmp_path / "clear_test.db", timeout=0.1, isolation_level=None
-    )
-    lock_con.execute("PRAGMA busy_timeout=100")
     try:
-        db.clear(lock_con)
+        db.clear(c)
         assert False, "Expected database locked error"
     except sqlite3.OperationalError:
         pass
     locker.execute("ROLLBACK")
     locker.close()
-    lock_con.close()
     assert db.insert(c, entry(2)) is True
 
 
 def test_concurrent_connect_calls_do_not_race(tmp_path):
-    db_path = tmp_path / "concurrent_test.db"
-    results = []
+    for round_num in range(30):
+        db_path = tmp_path / f"concurrent_test_{round_num}.db"
+        results = []
 
-    def connect_thread():
-        try:
-            con, fresh = db.connect(db_path)
-            con.close()
-            results.append(True)
-        except Exception as e:
-            results.append(e)
+        def connect_thread():
+            try:
+                con, fresh = db.connect(db_path)
+                con.close()
+                results.append(True)
+            except Exception as e:
+                results.append(e)
 
-    threads = [threading.Thread(target=connect_thread) for _ in range(6)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-    assert all(r is True for r in results), f"Some threads failed: {results}"
-    con, _ = db.connect(db_path)
-    con.close()
+        threads = [threading.Thread(target=connect_thread) for _ in range(6)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert all(r is True for r in results), (
+            f"Round {round_num}: Some threads failed: {results}"
+        )
 
 
 def test_path_prefix_match_is_case_sensitive(con):
@@ -166,3 +163,19 @@ def test_only_fts5_syntax_errors_raise_bad_pattern(con):
         db.search(con, db.Query(pattern="AND"))
     db.search(con, db.Query(pattern="feat"))
     db.search(con, db.Query(pattern='feat OR "fix"'))
+
+
+def test_path_root_matches_all_entries(con):
+    db.insert(con, entry(1, touches=[("edit", "file.py")], ts=100))
+    db.insert(con, entry(2, touches=[("edit", "dir/file.js")], ts=200))
+    db.insert(con, entry(3, touches=[("edit", "a/b/c.txt")], ts=300))
+    hits, _ = db.search(con, db.Query(path="/r/"))
+    assert len(hits) == 3
+    hits, _ = db.search(con, db.Query(path="/r"))
+    assert len(hits) == 3
+
+
+def test_no_such_column_raises_bad_pattern(con):
+    db.insert(con, entry(1))
+    with pytest.raises(db.BadPattern):
+        db.search(con, db.Query(pattern="foo:"))

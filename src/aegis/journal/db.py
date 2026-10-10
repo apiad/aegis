@@ -11,6 +11,7 @@ backfills it.
 from __future__ import annotations
 
 import sqlite3
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -84,8 +85,19 @@ def connect(path: Path) -> tuple[sqlite3.Connection, bool]:
     con = sqlite3.connect(
         path, timeout=30, isolation_level=None, check_same_thread=False
     )
-    con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA busy_timeout=30000")
+    mode = con.execute("PRAGMA journal_mode").fetchone()[0]
+    if mode != "wal":
+        for attempt in range(100):
+            try:
+                con.execute("PRAGMA journal_mode=WAL")
+                break
+            except sqlite3.OperationalError as e:
+                if "locked" not in str(e).lower():
+                    raise
+                if attempt == 99:
+                    raise
+                time.sleep(0.05)
     con.execute("BEGIN IMMEDIATE")
     try:
         fresh = con.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION
@@ -182,11 +194,13 @@ def _where(q: Query) -> tuple[str, list]:
         args.append(q.repo)
     if q.path:
         base = q.path.rstrip("/") or "/"
+        lo = base if base.endswith("/") else base + "/"
+        hi = lo[:-1] + "0"
         where.append(
             "EXISTS (SELECT 1 FROM touches t WHERE t.entry_id = e.id"
             " AND (t.full = ? OR (t.full >= ? AND t.full < ?)))"
         )
-        args += [base, base + "/", base + "0"]
+        args += [base, lo, hi]
     if q.pattern:
         where.append(
             "e.id IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ?)"
@@ -201,7 +215,12 @@ def _run(con: sqlite3.Connection, q: Query, sql: str, args: list) -> list:
     except sqlite3.OperationalError as err:
         if q.pattern:
             msg = str(err).lower()
-            if "fts5" in msg or "syntax error" in msg or "unterminated string" in msg:
+            if (
+                "fts5" in msg
+                or "syntax error" in msg
+                or "unterminated string" in msg
+                or "no such column" in msg
+            ):
                 raise BadPattern(str(err)) from err
         raise
 
