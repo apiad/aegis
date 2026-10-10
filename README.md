@@ -130,7 +130,11 @@ transcript, so the workplace grows with what its agents build.
   resumes each one. Close archives a session for every browser, and the archive
   in the Fleet brings it back.
 - **On a phone.** Below 760 px the tabs get their own row, the panel becomes a
-  drawer, and touch targets are 44 px. Chrome installs aegis as an app.
+  drawer, and touch targets are 44 px. Chrome installs aegis as an app. On
+  Android it builds that app through Google Play, so where Play is out of
+  reach (Cuba, some corporate networks) the first install sits on
+  "Installing…" and gives up; do it once over a VPN, and the installed app
+  then runs without one.
 - **Dictation.** The mic in the message box (Alt+M) transcribes in your browser
   with a 17.8 MB model downloaded once. The text lands in the box and is never
   sent on its own.
