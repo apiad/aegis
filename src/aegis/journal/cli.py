@@ -3,15 +3,19 @@ from the transcripts. Both read <state> directly; neither needs the server."""
 
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import Path
 
-import click
 import typer
 
 app = typer.Typer(
     add_completion=False,
     help="Search what was done on this server, or rebuild the journal from the transcripts.",
 )
+# An Enum, not click.Choice: Typer 0.27 vendors its own click, and a
+# BadParameter raised by the click package escapes it as a traceback.
+Kind = Enum("Kind", {k: k for k in ("turn", "commit", "pr", "plan", "note", "session")})
+
 _ROOT = typer.Option(
     None, help="Config root; default: the nearest ancestor holding .aegis.yaml."
 )
@@ -29,10 +33,8 @@ def search(
         help="Only entries that wrote under this path; a relative one is read from here.",
     ),
     session: str = typer.Option(None, help="A handle, past or present, or a log id."),
-    kind: list[str] = typer.Option(
-        None,
-        click_type=click.Choice(["turn", "commit", "pr", "plan", "note", "session"]),
-        help="turn, commit, pr, plan, note or session.",
+    kind: list[Kind] = typer.Option(
+        None, help="turn, commit, pr, plan, note or session."
     ),
     limit: int = typer.Option(50, help="At most this many entries."),
     root: Path | None = _ROOT,
@@ -59,7 +61,7 @@ def search(
             pattern=pattern,
             path=path_here(path) if path else None,
             session=session,
-            kinds=kind,
+            kinds=[k.value for k in kind or ()],
             limit=limit,
         )
         hits, cut = find(con, q)

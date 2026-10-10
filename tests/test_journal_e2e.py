@@ -600,6 +600,25 @@ def test_the_cli_rebuilds_over_a_corrupt_file_and_refuses_an_unknown_kind(tmp_pa
     assert out.exit_code == 2 and "commits" in out.output, out.output
 
 
+def test_an_unknown_kind_is_a_usage_error_not_a_traceback(tmp_path):
+    """Typer 0.27 vendors its own click, so a click.Choice from the click
+    package raised a BadParameter Typer did not catch: a 90-line traceback and
+    exit 1 under uvx, where the lock does not apply."""
+    from typer.testing import CliRunner
+
+    from aegis.cli import app as cli
+
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    out = CliRunner().invoke(
+        cli, ["journal", "search", "--kind", "commits", "--root", str(tmp_path)]
+    )
+    assert out.exit_code == 2, out.output
+    assert "Traceback" not in out.output, out.output
+    assert isinstance(out.exception, SystemExit), out.exception
+    for k in ("turn", "commit", "pr", "plan", "note", "session"):
+        assert f"'{k}'" in out.output, out.output
+
+
 async def test_an_entry_from_before_a_rename_names_the_current_handle(world):
     """peer_read takes an open session's current handle, not the one an old
     entry carries."""
