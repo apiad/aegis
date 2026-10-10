@@ -159,9 +159,15 @@ def store_all(state_root: Path, srcs: list[Path]) -> list[dict]:
     return done
 
 
-def store(state_root: Path, src: Path) -> dict:
-    """Copy ``src`` under a fresh id; the store record's body, without caption."""
+def store(
+    state_root: Path, src: Path, name: str | None = None, link: bool = False
+) -> dict:
+    """Copy ``src`` under a fresh id, as ``name`` (its own name by default); the
+    store record's body, without caption. With ``link``, hard-link it instead
+    where the filesystem allows: for a file aegis owns and never rewrites, an
+    attachment in a session's inbox (attachments.py)."""
     size = check(src)
+    name = name or src.name
     mime, preview = classify(src)
     file_id = secrets.token_urlsafe(16)
     root = state_root / "files"
@@ -171,23 +177,34 @@ def store(state_root: Path, src: Path) -> dict:
     # included, can be served.
     part = root / f".{file_id}.part"
     try:
-        shutil.copyfile(src, part)
+        if not (link and _linked(src, part)):
+            shutil.copyfile(src, part)
     except OSError as e:
         part.unlink(missing_ok=True)
         raise FileError("unreadable", f"cannot read {src}: {e}", src) from e
     folder = root / file_id
     folder.mkdir()
-    dest = folder / src.name
+    dest = folder / name
     os.replace(part, dest)
     return {
         "kind": "file",
         "file_id": file_id,
-        "name": src.name,
+        "name": name,
         "mime": mime,
         "size": size,
         "preview": preview,
         "excerpt": excerpt(dest) if preview in ("markdown", "text") else None,
     }
+
+
+def _linked(src: Path, dest: Path) -> bool:
+    """Whether ``dest`` is now a hard link to ``src``; a copy follows when not
+    (another filesystem, or one without links)."""
+    try:
+        os.link(src, dest)
+    except OSError:
+        return False
+    return True
 
 
 def find(state_root: Path, file_id: str, name: str) -> Path | None:
