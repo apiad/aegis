@@ -71,8 +71,6 @@ body{background:#000}
 .a2 .dialog .panel{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:18px 20px;max-width:420px;width:100%}
 .a2 .dialog .q{margin:0 0 16px;color:var(--strong);font-size:14px;line-height:1.45}
 .a2 .dialog .acts{display:flex;gap:10px;justify-content:flex-end}
-.a2 .theme-pick{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--faint);padding:0 4px 6px}
-.a2 .theme-pick pick-chip{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:2px 6px;font-size:11.5px;color:var(--ink)}
 /* pick-chip: the chip is the host; the input inside sizes to its text and the
    list hangs under it (js/pick.js). */
 .a2 pick-chip{position:relative;display:inline-flex;align-items:center;cursor:pointer}
@@ -831,7 +829,6 @@ body{background:#000}
   .a2 .tabs .ver-top{display:none}
   .a2 .tablist .tab .srv{display:none}
   .a2 .tablist .tab .tname{max-width:16ch}
-  .a2 .theme-pick{font-size:0;gap:0}
   .a2 .keys-btn:not(.bell):not(.set-btn){display:none}
   /* the header's buttons: bare icons, the tap target kept by (pointer:coarse) */
   .a2 .tabs .keys-btn.bell,.a2 .tabs .set-btn,.a2 .tabs .jr-btn,.a2[data-view=session] .side-btn{display:grid;place-items:center;background:none;border-color:transparent;margin:0 0 4px;padding:0}
@@ -912,9 +909,13 @@ body{background:#000}
 .a2 .spawn .cwdline .srvpick:not([hidden]) + .srvsep + .cwd{text-align:left}
 .a2 .spawn .srvpick{background:none;border:none;font-family:var(--font-mono);font-size:12px;color:var(--accent);cursor:pointer}
 .a2 .spawn .srvsep{font-family:var(--font-mono);font-size:12px;color:var(--faint)}
+/* Settings: what this browser alone keeps. */
+.a2 .set-browser{margin:0 0 26px}
+.a2 .set-browser h3,.a2 .set-servers h3{margin:0 0 4px;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
+.a2 .set-browser-row{display:flex;align-items:center;gap:12px;margin:10px 0 8px}
+.a2 .set-browser-k{font-family:var(--font-chrome);font-size:12px;color:var(--muted);min-width:64px}
 /* Settings: the servers this one links. */
 .a2 .set-servers{margin:0 0 22px}
-.a2 .set-servers h3{margin:0 0 4px;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
 .a2 .set-pill{font-family:var(--font-mono);font-size:11px;border:1px solid var(--rule);border-radius:4px;padding:2px 6px}
 .a2 .set-pill.ok{color:var(--ok)}
 .a2 .set-pill.bad{color:var(--err)}

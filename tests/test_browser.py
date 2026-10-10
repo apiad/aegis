@@ -274,6 +274,18 @@ def picked(pg, sel: str) -> str:
     return pg.evaluate(f"document.querySelector('{sel}').value")
 
 
+def set_theme(pg, name: str) -> None:
+    """Pick a theme in Settings' "This browser" section, then go back to the
+    view the page was on."""
+    back = pg.evaluate("location.hash")
+    pg.click("#settings-btn")
+    pg.wait_for_selector("#a2[data-view=settings] #set-theme")
+    pick(pg, "#set-theme", name)
+    pg.wait_for_function("t => document.documentElement.dataset.theme === t", arg=name)
+    pg.evaluate("h => { location.hash = h; }", back)
+    pg.wait_for_function("h => location.hash === h", arg=back)
+
+
 def test_the_composer_overrides_a_chip_resets_it_and_spawns_with_the_first_message(
     server, page
 ):
@@ -534,7 +546,7 @@ def test_a_session_from_spawn_to_close(server, page):
 
     bg = "getComputedStyle(document.getElementById('a2')).getPropertyValue('--bg').trim()"
     before = page.evaluate(bg)
-    pick(page, "#theme", "logbook")
+    set_theme(page, "logbook")
     assert page.evaluate(bg) != before == "#11100e"
 
     close_session(page)
@@ -1559,7 +1571,7 @@ def test_agent_state_is_pushed_without_reloading_the_frame_and_the_theme_follows
         page.get_attribute(f"iframe[data-artifact={aid}]", "data-mark") == "same"
     )  # not remounted
     before = inner.locator("#ac").inner_text()
-    pick(page, "#theme", "logbook")
+    set_theme(page, "logbook")
     inner.locator("#ac").filter(has_not_text=before).wait_for()
     assert page.errors == []
 
@@ -3229,7 +3241,7 @@ def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     pg.evaluate("sessionStorage.removeItem('hidden'); window.__hidden = false")
     # The dot takes the theme's accent.
     assert favicon_dot(pg) == "#e0a872"
-    pick(pg, "#theme", "logbook")
+    set_theme(pg, "logbook")
     assert favicon_dot(pg) == "#2f5ba8"
     pg.click("#tab-fleet")
     assert pg.title().startswith("(1) Fleet")
@@ -5148,6 +5160,26 @@ def test_the_header_opens_the_journal_from_a_book_icon(server, browser, page):
     pg.wait_for_selector("#a2[data-view=journal]")
     assert errors == []
     pg.close()
+
+
+def test_settings_keeps_the_theme_for_this_browser(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert page.locator("#a2 .tabs #theme, #a2 .tabs .theme-pick").count() == 0
+    page.click("#settings-btn")
+    page.wait_for_selector("#a2[data-view=settings]")
+    first = page.locator("#settings section").first
+    assert first.get_attribute("id") == "set-browser"
+    assert first.locator("h3").inner_text() == "This browser"
+    assert "this browser only" in first.inner_text()
+    assert picked(page, "#set-theme") == "ink"
+    pick(page, "#set-theme", "syalia")
+    page.wait_for_function("document.documentElement.dataset.theme === 'syalia'")
+    page.reload()
+    page.wait_for_selector("#a2[data-view=settings] #set-theme")
+    assert page.evaluate("document.documentElement.dataset.theme") == "syalia"
+    assert picked(page, "#set-theme") == "syalia"
+    assert page.errors == []
 
 
 def test_the_journal_reloads_a_list_paged_past_500_rows(

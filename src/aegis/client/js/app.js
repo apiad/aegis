@@ -42,19 +42,19 @@ let quotaDrawnFor = null; // the view the quota rows were last drawn for
 const nowS = () => Date.now() / 1000;
 
 // -- theme ----------------------------------------------------------------
-const themePick = $("theme");
-themePick.options = [
+// This browser's choice, picked in Settings; index.html applies it before the
+// first paint.
+const THEMES = [
   { value: "ink", label: "Ink" },
   { value: "logbook", label: "Logbook" },
   { value: "syalia", label: "Syalia" },
 ];
-themePick.value = document.documentElement.dataset.theme;
-themePick.addEventListener("change", () => {
-  document.documentElement.dataset.theme = themePick.value;
-  localStorage.setItem("aegis.theme", themePick.value);
+function setTheme(name) {
+  document.documentElement.dataset.theme = name;
+  localStorage.setItem("aegis.theme", name);
   redrawFavicon();
   artifacts.theme();
-});
+}
 
 // -- state ----------------------------------------------------------------
 const sessions = new Map(); // key -> meta, from every server's `sessions` channel
@@ -251,7 +251,7 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
     }
   },
 });
-const settings = new Settings(conn, $("settings"));
+const settings = new Settings(conn, $("settings"), { themes: THEMES, setTheme });
 let landEntry = null; // {key, id}: reveal this entry once its transcript lands
 const journal = new Journal(conn, $("journal"), {
   onOpen: (r) => {

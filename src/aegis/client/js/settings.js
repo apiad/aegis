@@ -7,6 +7,9 @@
 // An agent is drawn as a card whose chips are the new-tab composer's, so a
 // preset looks like the session it starts.
 //
+// "This browser" comes first: the theme, which only this browser keeps
+// (localStorage), so it is not part of the form and Save does not write it.
+//
 // The Servers section lists the servers this one links (links.py), and a
 // picker points the form at a linked server's .aegis.yaml: the same `config.*`
 // operations and `config` channel, sent through the link.
@@ -36,9 +39,11 @@ function select(name, values, value, label = (v) => v) {
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export class Settings {
-  constructor(conn, box) {
+  constructor(conn, box, { themes, setTheme }) {
     this.conn = conn;
     this.box = box;
+    this.themes = themes;
+    this.setTheme = setTheme; // app.js's: the one path that changes the theme
     this.wire = null; // the config the server last sent
     this.doc = null; // what the form shows
     this.stamp = null; // the stamp of the file the form was loaded from
@@ -145,11 +150,12 @@ export class Settings {
   draw() {
     const w = this.wire;
     if (!w || !this.doc)
-      return this.box.replaceChildren(this.servers(), h("p", { className: "notice", textContent: "Loading…" }));
-    if (!w.exists && !this.dirty) return this.box.replaceChildren(this.servers(), this.empty());
+      return this.box.replaceChildren(this.browser(), this.servers(), h("p", { className: "notice", textContent: "Loading…" }));
+    if (!w.exists && !this.dirty) return this.box.replaceChildren(this.browser(), this.servers(), this.empty());
     const page = h(
       "div",
       { className: "set-page" },
+      this.browser(),
       this.servers(),
       this.head(),
       w.error && h("p", { className: "set-alert err", id: "set-error", textContent: `The file on disk does not parse, so aegis is still using the last version that did. ${w.error}` }),
@@ -169,6 +175,22 @@ export class Settings {
     );
     this.box.replaceChildren(page, this.bar());
     this.mark();
+  }
+
+  // What this browser alone keeps. Built on every draw, from the theme in use.
+  browser() {
+    const theme = h("pick-chip", { id: "set-theme", name: "theme", className: "pick" });
+    theme.setAttribute("aria-label", "Theme");
+    theme.options = this.themes;
+    theme.value = document.documentElement.dataset.theme;
+    theme.addEventListener("change", () => this.setTheme(theme.value));
+    return h(
+      "section",
+      { className: "set-browser", id: "set-browser" },
+      h("h3", { textContent: "This browser" }),
+      h("div", { className: "set-browser-row" }, h("span", { className: "set-browser-k", textContent: "Theme" }), theme),
+      h("p", { className: "set-none", textContent: "Kept in this browser only: other browsers and devices keep their own." }),
+    );
   }
 
   // The servers: this one, each link with its state, and a form to add one.
