@@ -177,7 +177,10 @@ def register_artifact_ops(app: App) -> None:
         `aegis.emit(name, obj)` wakes you and leaves the page live;
         `aegis.submit(obj, label)` wakes you with the answer and closes the
         page, the card collapsing to `label`; `aegis.onState(fn)` hears your
-        artifact_update. Answers reach you as a user turn headed
+        artifact_update; `aegis.onStatus(fn)` hears `{status, refused}`, where
+        `refused` is `{code, message}` when the server refused the last submit
+        (the card shows the person the message), also on
+        `<html data-refused>`. Answers reach you as a user turn headed
         `> from artifact:<id> · submit|<event>|error · …` with the JSON in a
         code block. Rules the checks cannot catch: an event name is one word,
         `[a-z][a-z0-9_-]{0,31}`, never `submit`, `error` or `close`; state,

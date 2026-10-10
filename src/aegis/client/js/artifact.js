@@ -11,6 +11,7 @@
   let init = null; // {state, theme} once the host answered
   const readyFns = [];
   const stateFns = [];
+  const statusFns = [];
   let pending; // the latest state() argument not yet posted
   let raf = 0;
 
@@ -36,6 +37,13 @@
     status = s;
     document.documentElement.dataset.status = s;
   }
+  // The host's refusal of the latest submit ({code, message}), null once one lands.
+  let refused = null;
+  function setRefused(r) {
+    refused = r || null;
+    if (refused) document.documentElement.dataset.refused = refused.message;
+    else delete document.documentElement.dataset.refused;
+  }
   function fire(state, theme) {
     if (init) return;
     init = { state, theme };
@@ -59,6 +67,8 @@
       applyTheme(m.params?.theme);
     } else if (m.method === "aegis/status") {
       setStatus(m.params?.status || "closed");
+      setRefused(m.params?.refused);
+      for (const fn of statusFns) fn({ status, refused });
     }
   });
 
@@ -78,6 +88,9 @@
     },
     onState(fn) {
       stateFns.push(fn);
+    },
+    onStatus(fn) {
+      statusFns.push(fn);
     },
     state(obj) {
       if (status !== "live") return warn("state");

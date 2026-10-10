@@ -409,6 +409,7 @@ body{background:#000}
 #a2 .fcard .stage audio{display:block;width:100%;padding:8px}
 #a2 .acard .stage iframe{height:240px;background:var(--bg)}
 #a2 .acard .done{padding:10px 12px;color:var(--muted);font-family:var(--font-chrome);font-size:12.5px;border-top:1px solid var(--rule)}
+#a2 .acard .refused{padding:8px 12px;color:var(--err);background:var(--err-bg);font-family:var(--font-chrome);font-size:12.5px;border-top:1px solid var(--rule);overflow-wrap:anywhere}
 #a2 .acard[data-status=submitted] .fbar .ic{color:var(--ok)}
 #probes{position:fixed;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
 

@@ -120,15 +120,53 @@ window.addEventListener("message", async (ev) => {
     // The frame's id last, so a page that sends its own artifact_id cannot name another.
     await inOrder(id, () => call(op, { ...(m.params || {}), artifact_id: id }, key));
     if (m.id !== undefined) send(frame, { jsonrpc: "2.0", id: m.id, result: "ok" });
-    if (m.method === "aegis/submit") notify(frame, "aegis/status", { status: "submitted" });
+    if (m.method === "aegis/submit") {
+      showRefused(frame, null);
+      notify(frame, "aegis/status", { status: "submitted", refused: null });
+    }
   } catch (err) {
     if (m.id !== undefined) send(frame, { jsonrpc: "2.0", id: m.id, error: { code: err.code || "error", message: err.message } });
+    let now = "live";
     if (err.code === "not_live") {
-      const now = entryOf(id)?.status; // the closing patch may not have landed yet
-      notify(frame, "aegis/status", { status: now && now !== "live" ? now : "closed" });
+      const was = entryOf(id)?.status; // the closing patch may not have landed yet
+      now = was && was !== "live" ? was : "closed";
     }
+    if (m.method === "aegis/submit") {
+      // A refused submit is the person's answer not arriving: the card says so
+      // and the page gets the same reason to render in its own look.
+      const refused = reasonOf(err);
+      showRefused(frame, refused);
+      notify(frame, "aegis/status", { status: now, refused });
+    } else if (now !== "live") notify(frame, "aegis/status", { status: now });
   }
 });
+
+// The server's refusal as {code, message}. OpError prefixes its message with
+// the code, which the card would otherwise show twice.
+function reasonOf(err) {
+  const code = err.code || "error";
+  const text = String(err.message || "");
+  return { code, message: text.startsWith(`${code}: `) ? text.slice(code.length + 2) : text };
+}
+
+// The note under a card's frame: set by a refused submit, cleared by the next
+// one that lands. A card redrawn for a new status starts without it.
+function showRefused(frame, refused) {
+  const card = frame.closest(".acard");
+  if (!card) return;
+  let note = card.querySelector(":scope > .refused");
+  if (!refused) {
+    note?.remove();
+    return;
+  }
+  if (!note) {
+    note = document.createElement("div");
+    note.className = "refused";
+    note.setAttribute("role", "alert");
+    card.append(note);
+  }
+  note.textContent = `Not sent: ${refused.message}`;
+}
 
 // entries.js asks, through a DOM event, for a state push on a frame it kept.
 document.addEventListener("aegis:state", (ev) => notify(ev.target, "aegis/state", { state: ev.detail }));

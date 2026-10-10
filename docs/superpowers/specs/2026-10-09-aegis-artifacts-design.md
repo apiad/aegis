@@ -188,6 +188,12 @@ The page talks to `window.aegis`:
   is what the collapsed card shows.
 - `aegis.onState(fn)` runs `fn(state)` each time the agent pushes state with
   `artifact_update`.
+- `aegis.onStatus(fn)` runs `fn({status, refused})` each time the host pushes a
+  status. `refused` is `{code, message}` when the server refused the page's
+  latest submit (data over 64 KB, an artifact no longer live) and `null` once a
+  submit lands. The same message is on `<html data-refused="...">` while it
+  stands, so a page can show it with CSS alone. A refused submit leaves the page
+  live: it can be corrected and sent again.
 
 What the script does besides: it reports the document's height through a
 `ResizeObserver` on `documentElement` so the frame grows with the page; it
@@ -229,7 +235,7 @@ Messages, JSON-RPC 2.0:
 | page | `aegis/error` (notification) | `{message, stack}` | |
 | host | `aegis/state` (notification) | `{state}` | |
 | host | `aegis/theme` (notification) | `{theme}` | |
-| host | `aegis/status` (notification) | `{status}` | |
+| host | `aegis/status` (notification) | `{status, refused?}` | |
 
 `ui/initialize` keeps MCP Apps' name because it is the one message both
 protocols have and the one a compatibility shim would start from; the others
@@ -257,7 +263,9 @@ each taking `log_id` and `artifact_id`:
   from one artifact refused with `rate_limited`.
 - `artifact.submit(data, label)`: records the submit, sets the status, wakes
   the agent. Refused with `not_live` after the first; the bridge then tells the
-  page the status so it disables itself.
+  page the status so it disables itself. Any refusal of a submit (that one, or
+  `too_large` over 64 KB) is also shown on the card and passed to the page as
+  `aegis/status`'s `refused` (see The card).
 - `artifact.error(message, stack)`: wakes the agent once per landed page
   (a resend re-arms it); later errors are counted, never delivered, and the
   count is in `artifact.read`'s `errors`.
@@ -357,6 +365,13 @@ A new entry kind, `artifact`, rendered in `entries.js` beside `file`:
 - Submitted or closed: one line, the glyph, the label and when, and Show,
   which re-mounts the frame with status `submitted` so the page can gray itself
   out, and whose `submit` the host refuses.
+- A submit the server refuses: under the frame, a line `Not sent: <the
+  server's reason>` in the error colours (`role="alert"`), because the answer
+  the person gave did not arrive and the page's console is not where they look.
+  The next submit that lands clears it, and a card redrawn for a new status
+  starts without it. The page is told the same reason (`aegis.onStatus`). Only
+  `submit` does this: a refused `emit` or `state` still only reaches the page as
+  the request's error.
 
 The frame is mounted only while its row is, like every row (`transcript.js`),
 so an artifact scrolled far up is unmounted and re-inits from the server's
