@@ -159,13 +159,9 @@ def store_all(state_root: Path, srcs: list[Path]) -> list[dict]:
     return done
 
 
-def store(
-    state_root: Path, src: Path, name: str | None = None, link: bool = False
-) -> dict:
+def store(state_root: Path, src: Path, name: str | None = None) -> dict:
     """Copy ``src`` under a fresh id, as ``name`` (its own name by default); the
-    store record's body, without caption. With ``link``, hard-link it instead
-    where the filesystem allows: for a file aegis owns and never rewrites, an
-    attachment in a session's inbox (attachments.py)."""
+    store record's body, without caption."""
     size = check(src)
     name = name or src.name
     mime, preview = classify(src)
@@ -177,8 +173,7 @@ def store(
     # included, can be served.
     part = root / f".{file_id}.part"
     try:
-        if not (link and _linked(src, part)):
-            shutil.copyfile(src, part)
+        shutil.copyfile(src, part)
     except OSError as e:
         part.unlink(missing_ok=True)
         raise FileError("unreadable", f"cannot read {src}: {e}", src) from e
@@ -195,16 +190,6 @@ def store(
         "preview": preview,
         "excerpt": excerpt(dest) if preview in ("markdown", "text") else None,
     }
-
-
-def _linked(src: Path, dest: Path) -> bool:
-    """Whether ``dest`` is now a hard link to ``src``; a copy follows when not
-    (another filesystem, or one without links)."""
-    try:
-        os.link(src, dest)
-    except OSError:
-        return False
-    return True
 
 
 def find(state_root: Path, file_id: str, name: str) -> Path | None:

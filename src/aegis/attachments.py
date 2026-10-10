@@ -10,9 +10,11 @@ so a refused send moves nothing. Boot removes every staging folder, because no
 browser's upload survives a restart.
 
 The inbox is keyed by the log id, never the handle (DESIGN.md), and is mode
-0700. Each sent file is also hard-linked into the sent-files store
-(files.py), so the person's row draws it with the card, the URLs and the
-sandbox a sent file has, and a linked server's card loads it through /via.
+0700. Each sent file is also copied into the sent-files store (files.py), so
+the person's row draws it with the card, the URLs and the sandbox a sent file
+has, and a linked server's card loads it through /via. A copy, not a link:
+the agent may edit its inbox file, and the person's row must keep showing
+what the person sent.
 """
 
 from __future__ import annotations
@@ -160,7 +162,7 @@ def commit(
         dest = _free(box, f"{stamp}-{path.name}")
         os.replace(path, dest)
         shutil.rmtree(path.parent)
-        rec = files.store(state_root, dest, name=path.name, link=True)
+        rec = files.store(state_root, dest, name=path.name)
         sent.append(
             {**{k: v for k, v in rec.items() if k != "kind"}, "path": str(dest)}
         )

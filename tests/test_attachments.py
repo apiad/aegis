@@ -30,11 +30,13 @@ def test_chunks_land_in_staging_and_a_commit_moves_them_into_the_inbox(tmp_path)
     assert rec["name"] == "data.bin" and rec["size"] == 10
 
 
-def test_the_sent_file_is_linked_into_the_files_store(tmp_path):
+def test_an_agent_editing_its_inbox_copy_leaves_the_sent_card_alone(tmp_path):
     (rec,) = att.commit(tmp_path, "log1", [up(tmp_path, b"png", "a.png")])
     served = find(tmp_path, rec["file_id"], "a.png")
     assert served.read_bytes() == b"png" and rec["preview"] == "image"
-    assert served.stat().st_ino == Path(rec["path"]).stat().st_ino
+    with open(rec["path"], "ab") as f:  # the agent appends, in place
+        f.write(b" edited")
+    assert served.read_bytes() == b"png"
 
 
 def test_a_resent_chunk_is_acknowledged_and_not_written_twice(tmp_path):

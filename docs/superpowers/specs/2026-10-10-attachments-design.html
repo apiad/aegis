@@ -181,7 +181,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>Where the files live</td><td><code>&lt;state&gt;/inbox/&lt;log_id&gt;/</code>, mode 0700</td><td class="why">The log id never changes and is never reused; a handle is both (DESIGN.md).</td></tr>
 <tr><td>Name inside the folder</td><td><code>&lt;YYYYMMDD-HHMMSS&gt;-&lt;name&gt;</code>, with <code>-2</code>, <code>-3</code> before the extension on a clash</td><td class="why">Two <code>image.png</code> pasted a minute apart both survive, and the folder sorts by time.</td></tr>
 <tr><td>Before the message is sent</td><td>Staged under <code>.staged/&lt;upload_id&gt;/</code></td><td class="why">The agent never sees a file the person removed or never sent.</td></tr>
-<tr><td>How the card serves them</td><td>Each sent file is hard-linked into the sent-files store, <code>&lt;state&gt;/files/&lt;id&gt;/&lt;name&gt;</code></td><td class="why">The card's URLs, the sandbox headers and the <code>/via</code> path for a linked server's file all exist for that store. A link costs no disk; a copy follows when the link fails.</td></tr>
+<tr><td>How the card serves them</td><td>Each sent file is copied into the sent-files store, <code>&lt;state&gt;/files/&lt;id&gt;/&lt;name&gt;</code></td><td class="why">The card's URLs, the sandbox headers and the <code>/via</code> path for a linked server's file all exist for that store. A copy, not a hard link: the agent may edit its inbox file in place, and a link would change what the person's own row shows (found in the final review).</td></tr>
 <tr><td>A resent chunk</td><td>Acknowledged, not written twice</td><td class="why">A reconnect rejects every call in flight, and the browser cannot know whether the last chunk landed. Refusing it would strand the upload; writing it twice would corrupt the file.</td></tr>
 <tr><td>Logging</td><td>A chunk is logged as its length</td><td class="why">Every call logs its params at INFO (<code>web.py</code>), so a 100 MB upload would write about 133 MB of base64 to <code>serve.log</code>.</td></tr>
 <tr><td>Commands</td><td>A <code>/</code> line with attachments is refused</td><td class="why">Neither aegis's commands nor a harness's take files.</td></tr>
@@ -217,7 +217,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
     <text x="264" y="66">begin · put · drop</text>
     <text x="524" y="66">check all, then move</text>
     <text x="524" y="154">&lt;ts&gt;-&lt;name&gt;, 0700</text>
-    <text x="524" y="234">hard link</text>
+    <text x="524" y="234">a copy</text>
     <text x="774" y="154">text + paths</text>
     <text x="774" y="234">text + one card</text>
     <text x="264" y="206">the same calls, relayed</text>
@@ -297,7 +297,7 @@ Attached files:
 <h2 id="testing"><span class="n">10</span>Testing</h2>
 <p>Every test drives the real app, per AGENTS.md.</p>
 <ul>
-<li>Unit: staging, chunked writes, a resent chunk, a gap, an overrun, the move, name clashes, name cleaning, malformed upload ids, the hard link, clearing at boot, the inbox's mode, the agent's text.</li>
+<li>Unit: staging, chunked writes, a resent chunk, a gap, an overrun, the move, name clashes, name cleaning, malformed upload ids, the copy an agent edit leaves alone, clearing at boot, the inbox's mode, the agent's text.</li>
 <li>Through the fake Claude: begin, put in chunks, send; the harness receives the typed text and the block, the bytes on disk match, the argv carries <code>--add-dir</code>, and a refold equals the live entries. The refusals: a command with files, an incomplete upload, an empty message, 21 files, a chunk that is not base64, any agent caller, a restart with uploads staged. The log never holds a chunk.</li>
 <li>The fold: typed text and one card on the row, files alone, two pending sends with the same text, every cut of the wire.</li>
 <li>OpenCode: under <code>write</code>, the child's config allows the inbox.</li>
