@@ -26,6 +26,7 @@ import { installBell, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
 import "./pick.js";
 import { Dictation } from "./dictation.js";
+import { Attachments } from "./attach.js";
 import { dur, planTimes } from "./plantime.js";
 
 const $ = (id) => document.getElementById(id);
@@ -766,6 +767,7 @@ function follow(id) {
   find.close(false); // it searched the old session
   if (dictation.target?.el === input) dictation.stop("tab"); // a recording belongs to its session
   shown = id;
+  atts.show(id);
   if (!id) return;
   const saved = kept.get(id);
   if (saved) {
@@ -921,7 +923,7 @@ function renderMeta(s) {
   if (!working) workingSince = null;
   // A linked server that is down: the transcript stays readable, nothing sends.
   const down = s.off ? linkOf(s.server) : null;
-  input.disabled = $("send").disabled = !!down;
+  input.disabled = $("send").disabled = $("attach").disabled = !!down;
   // Chrome counts a placeholder in scrollHeight: measure again when it changes.
   const placeholder = down
     ? `${s.server} is ${down.state} since ${new Date(down.since * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}; nothing can be sent until it is back.`
@@ -1497,6 +1499,56 @@ function cycle(d) {
 // -- composer ---------------------------------------------------------------
 const input = $("input");
 
+// -- attachments: chips above the box, uploading as they arrive (attach.js) --
+const atts = new Attachments($("atts"), {
+  call: callFor,
+  waitOnline: () =>
+    new Promise((resolve) => {
+      const t = setInterval(() => {
+        if (conn.open) {
+          clearInterval(t);
+          resolve();
+        }
+      }, 500);
+    }),
+});
+$("attach").addEventListener("click", () => $("attach-pick").click());
+$("attach-pick").addEventListener("change", (ev) => {
+  atts.add([...ev.target.files]);
+  ev.target.value = "";
+});
+// A pasted screenshot is called image.png by every browser: name it by time.
+input.addEventListener("paste", (ev) => {
+  const got = [...(ev.clipboardData?.files || [])];
+  if (!got.length) return;
+  ev.preventDefault();
+  const at = new Date().toTimeString().slice(0, 8).replaceAll(":", "");
+  atts.add(
+    got.map((f, i) => {
+      const ext = (f.type.split("/")[1] || "bin").replace(/[^a-z0-9]/g, "");
+      return new File([f], `pasted-${at}${i ? `-${i + 1}` : ""}.${ext}`, { type: f.type });
+    }),
+  );
+});
+// A file dropped anywhere on a session's page attaches to it; anywhere else
+// the browser would navigate away to the file.
+const carriesFiles = (ev) => ev.dataTransfer?.types.includes("Files");
+const onSession = () => $("a2").dataset.view === "session";
+document.addEventListener("dragover", (ev) => {
+  if (!carriesFiles(ev)) return;
+  ev.preventDefault();
+  $("composer").classList.toggle("dropping", onSession());
+});
+document.addEventListener("dragleave", (ev) => {
+  if (!ev.relatedTarget) $("composer").classList.remove("dropping");
+});
+document.addEventListener("drop", (ev) => {
+  if (!carriesFiles(ev)) return;
+  ev.preventDefault();
+  $("composer").classList.remove("dropping");
+  if (onSession()) atts.add([...ev.dataTransfer.files]);
+});
+
 // -- dictation: the mic in both message boxes (dictation.js) ----------------
 const mics = () => [
   [$("mic"), input],
@@ -1582,9 +1634,9 @@ async function closeSession(s) {
 
 // A line from the composer, or from the menu's own filter (Alt+/ over a
 // draft), which leaves the composer alone. The server resolves "/" lines.
-async function sendLine(text, fromComposer) {
+async function sendLine(text, fromComposer, attachments = []) {
   const s = focused();
-  if (!text || !s) return;
+  if ((!text && !attachments.length) || !s) return;
   if (text === "/help") {
     // The menu is the help: it lists every command with what it does.
     if (fromComposer) menu.setLine("/");
@@ -1600,11 +1652,12 @@ async function sendLine(text, fromComposer) {
   box.hidden = true; // any send answers the turn the pills belonged to
   delete box.dataset.key; // so the next drawReplies always redraws
   try {
-    await callFor(s.key, "session.send", { text });
+    await callFor(s.key, "session.send", attachments.length ? { text, attachments } : { text });
     if (/^\/model\s/.test(text)) catalogs.delete(s.key); // its efforts may differ
     if (fromComposer) {
       input.value = "";
       localStorage.removeItem(`aegis.draft.${s.key}`);
+      atts.clear(s.key);
       autosize();
       // Clearing the box fires no input event; an open menu would take the next Esc.
       menu.close();
@@ -1619,7 +1672,19 @@ async function sendLine(text, fromComposer) {
 
 const send = async () => {
   await dictation.finish(input); // what was said goes out with the rest
-  return sendLine(input.value.trim(), true);
+  const key = shown;
+  if (atts.list(key).length) {
+    // Enter during an upload sends when it finishes, never without the files.
+    $("send-error").textContent = "sending when the attachments finish…";
+    await atts.settled(key);
+    $("send-error").textContent = "";
+  }
+  const ready = atts.ready(key);
+  if (ready.error) {
+    $("send-error").textContent = ready.error;
+    return;
+  }
+  return sendLine(input.value.trim(), true, ready.ids);
 };
 
 // Catalogs per session, fetched when the menu first opens there. The promise
