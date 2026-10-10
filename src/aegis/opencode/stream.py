@@ -227,6 +227,7 @@ class Parser:
                     model=model,
                     version=_str(info.get("version")),
                     harness=LABEL,
+                    cwd=_str(info.get("directory")),
                 )
             )
         title = _str(info.get("title"))

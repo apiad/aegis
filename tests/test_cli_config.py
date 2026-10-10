@@ -45,6 +45,34 @@ def test_init_asks_with_the_proposal_filled_in(tmp_path, fake_claude, fake_openc
     assert data["queues"]["general"]["max_parallel"] == 5
 
 
+def test_init_asks_again_after_an_answer_it_cannot_take(
+    tmp_path, fake_claude, fake_opencode
+):
+    """Typer 0.27 vendors its own click, so a click.Choice passed to its prompt
+    raised a traceback on a typo instead of asking again (#289)."""
+    root = tmp_path / "ws"
+    root.mkdir()
+    # opus: add, model, effort (bogus, then high), permission (nope, then
+    # read); fake-flash: no; default (ghost, then opus); queue; workers (0,
+    # abc, then 5).
+    answers = "\n\nbogus\nhigh\nnope\nread\nn\nghost\nopus\ny\n0\nabc\n5\n"
+    r = invoke(
+        "init", "--root", str(root), *fakes(fake_claude, fake_opencode), input=answers
+    )
+    assert r.exit_code == 0, r.output
+    assert "Traceback" not in r.output
+    assert "'bogus' is not one of low, medium, high, xhigh, max" in r.output
+    assert "'nope' is not one of read, write, auto, full" in r.output
+    assert "'ghost' is not one of opus" in r.output
+    assert "'0' is not a whole number of at least 1" in r.output
+    assert "'abc' is not a whole number of at least 1" in r.output
+    data = YAML(typ="safe").load((root / ".aegis.yaml").read_text())
+    assert data["agents"]["opus"]["effort"] == "high"
+    assert data["agents"]["opus"]["permission"] == "read"
+    assert data["default_agent"] == "opus"
+    assert data["queues"]["general"]["max_parallel"] == 5
+
+
 def test_init_refuses_an_existing_file(tmp_path, fake_claude, fake_opencode):
     (tmp_path / ".aegis.yaml").write_text("agents: {}\n")
     r = invoke(

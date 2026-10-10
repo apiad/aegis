@@ -29,6 +29,13 @@ stdout. The text of a prompt picks a script:
     /compact       a compact_boundary, the replayed "Compacted" note, a result.
     /clear         a conversation_reset; the next turn has a new session id.
     /hello NAME    a prompt command: a <command-message> echo, then text.
+    /sh CMD        a Bash call that runs CMD with shell=True; output is
+                   stdout+stderr; a non-zero exit is an error result reading
+                   "Exit code N".
+    /write PATH => TEXT
+                   a Write call that writes TEXT to PATH.
+    /edit PATH OLD => NEW
+                   an Edit call that replaces the first OLD with NEW in PATH.
     anything else  text that quotes the prompt, then a result.
 
 An interrupt ``control_request`` ends a running script with an error result.
@@ -66,12 +73,14 @@ from __future__ import annotations
 import json
 import os
 import queue
+import subprocess
 import sys
 import tempfile
 import threading
 import time
 import urllib.request
 import uuid
+from pathlib import Path
 
 
 def _arg(flag: str) -> str | None:
@@ -104,6 +113,9 @@ SCRIPTS = (
     "md",
     "read",
     "stream",
+    "sh",
+    "write",
+    "edit",
 )
 COMMANDS = (
     [
@@ -412,6 +424,7 @@ def run(text: str) -> None:
             {
                 "type": "system",
                 "subtype": "init",
+                "cwd": os.getcwd(),
                 "session_id": SESSION_ID,
                 "model": state["model"] or "fake-model",
                 "claude_code_version": "0.0-fake",
@@ -511,6 +524,55 @@ def run(text: str) -> None:
             }
         )
         tool_output(tid, out)
+        result()
+    elif word == "/sh":
+        tid = tool_id()
+        assistant(
+            {"type": "tool_use", "id": tid, "name": "Bash", "input": {"command": arg}}
+        )
+        r = subprocess.run(arg, shell=True, capture_output=True, text=True)
+        out = (r.stdout + r.stderr).rstrip("\n")
+        if r.returncode:
+            tool_output(tid, f"Exit code {r.returncode}\n{out}", is_error=True)
+        else:
+            tool_output(tid, out)
+        assistant({"type": "text", "text": "Executed command."})
+        result()
+    elif word == "/write":
+        path, _, text = arg.partition(" => ")
+        tid = tool_id()
+        assistant(
+            {
+                "type": "tool_use",
+                "id": tid,
+                "name": "Write",
+                "input": {"file_path": path, "content": text},
+            }
+        )
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_text(text)
+        tool_output(tid, f"File created successfully at: {path}")
+        assistant({"type": "text", "text": "Wrote file."})
+        result()
+    elif word == "/edit":
+        path, _, rest = arg.partition(" ")
+        old, _, new = rest.partition(" => ")
+        tid = tool_id()
+        assistant(
+            {
+                "type": "tool_use",
+                "id": tid,
+                "name": "Edit",
+                "input": {"file_path": path, "old_string": old, "new_string": new},
+            }
+        )
+        body = Path(path).read_text()
+        if old not in body:
+            tool_output(tid, "String to replace not found in file.", is_error=True)
+        else:
+            Path(path).write_text(body.replace(old, new, 1))
+            tool_output(tid, f"The file {path} has been updated successfully.")
+        assistant({"type": "text", "text": "File edited."})
         result()
     elif word == "/md":
         assistant({"type": "text", "text": arg.replace("\\n", "\n")})

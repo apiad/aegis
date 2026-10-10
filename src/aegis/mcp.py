@@ -221,6 +221,11 @@ of saying yes). Leave them empty when you asked an open question with many \
 possible answers, or when you report finished work. An empty list is better than \
 a wrong guess.
 
+The journal records what was done on this server. Commits, pull requests, \
+finished plan items and turns that changed files are journaled for you. Call \
+journal_note for a decision, a blocker or a milestone, which aegis cannot see, \
+and journal_search to ask what was done on a day or under a path.
+
 If you are a queue worker, your task is the first prompt you got, and your final \
 message is its result: make it the answer the enqueuer needs.\
 """

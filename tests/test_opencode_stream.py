@@ -317,3 +317,11 @@ def test_a_late_text_part_of_an_aborted_message_changes_nothing():
     assert len(p.feed(ev("session.idle", sessionID="ses_1"))) == 1
     closed = {**opened, "text": "half"}
     assert p.feed(ev("message.part.updated", sessionID="ses_1", part=closed)) == []
+
+
+def test_the_session_names_its_working_directory():
+    p = Parser()
+    info = {"id": "ses_1", "directory": "/r/x", "version": "1",
+            "model": {"id": "flash", "providerID": "go"}}  # fmt: skip
+    (init,) = p.feed(ev("session.created", sessionID="ses_1", info=info))
+    assert isinstance(init, Init) and init.cwd == "/r/x"

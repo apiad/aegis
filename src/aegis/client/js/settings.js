@@ -7,6 +7,9 @@
 // An agent is drawn as a card whose chips are the new-tab composer's, so a
 // preset looks like the session it starts.
 //
+// "This browser" comes first: the theme, which only this browser keeps
+// (localStorage), so it is not part of the form and Save does not write it.
+//
 // The Servers section lists the servers this one links (links.py), and a
 // picker points the form at a linked server's .aegis.yaml: the same `config.*`
 // operations and `config` channel, sent through the link.
@@ -36,9 +39,11 @@ function select(name, values, value, label = (v) => v) {
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export class Settings {
-  constructor(conn, box) {
+  constructor(conn, box, { themes, setTheme }) {
     this.conn = conn;
     this.box = box;
+    this.themes = themes;
+    this.setTheme = setTheme; // app.js's: the one path that changes the theme
     this.wire = null; // the config the server last sent
     this.doc = null; // what the form shows
     this.stamp = null; // the stamp of the file the form was loaded from
@@ -143,15 +148,25 @@ export class Settings {
   }
 
   draw() {
+    // A redraw replaces the page, and with it the focus: while the theme chip
+    // has it (its list open, say), wait until it leaves.
+    if (this.browserNode?.contains(document.activeElement)) {
+      this.drawLater = true;
+      return;
+    }
+    this.drawLater = false;
     const w = this.wire;
-    if (!w || !this.doc)
-      return this.box.replaceChildren(this.servers(), h("p", { className: "notice", textContent: "Loading…" }));
-    if (!w.exists && !this.dirty) return this.box.replaceChildren(this.servers(), this.empty());
-    const page = h(
+    // The title first, then what this browser keeps, then the servers; the
+    // loading and no-config pages keep the same width and order.
+    const page = (...kids) => h("div", { className: "set-page" }, ...kids, this.browser(), this.servers());
+    if (!w || !this.doc) return this.box.replaceChildren(page(h("p", { className: "notice", textContent: "Loading…" })));
+    if (!w.exists && !this.dirty) return this.box.replaceChildren(page(this.empty()));
+    const full = h(
       "div",
       { className: "set-page" },
-      this.servers(),
       this.head(),
+      this.browser(),
+      this.servers(),
       w.error && h("p", { className: "set-alert err", id: "set-error", textContent: `The file on disk does not parse, so aegis is still using the last version that did. ${w.error}` }),
       this.stale &&
         h(
@@ -167,8 +182,34 @@ export class Settings {
       this.agents(),
       this.queues(),
     );
-    this.box.replaceChildren(page, this.bar());
+    this.box.replaceChildren(full, this.bar());
     this.mark();
+  }
+
+  // What this browser alone keeps. Built once and moved into each draw, with
+  // the chip set to the theme in use.
+  browser() {
+    if (!this.browserNode) {
+      this.themeChip = h("pick-chip", { id: "set-theme", name: "theme", className: "pick" });
+      this.themeChip.setAttribute("aria-label", "Theme");
+      this.themeChip.options = this.themes;
+      this.themeChip.addEventListener("change", () => this.setTheme(this.themeChip.value));
+      this.browserNode = h(
+        "section",
+        { className: "set-browser", id: "set-browser" },
+        h("h3", { textContent: "This browser" }),
+        h("div", { className: "set-browser-row" }, h("span", { className: "set-browser-k", textContent: "Theme" }), this.themeChip),
+        h("p", { className: "set-none", textContent: "Kept in this browser only: other browsers and devices keep their own." }),
+      );
+      // The draw that waited for the chip runs once the focus has left it.
+      this.browserNode.addEventListener("focusout", () =>
+        setTimeout(() => {
+          if (this.drawLater) this.draw();
+        }),
+      );
+    }
+    this.themeChip.value = document.documentElement.dataset.theme;
+    return this.browserNode;
   }
 
   // The servers: this one, each link with its state, and a form to add one.

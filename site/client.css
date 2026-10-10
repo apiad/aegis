@@ -71,8 +71,6 @@ body{background:#000}
 .a2 .dialog .panel{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:18px 20px;max-width:420px;width:100%}
 .a2 .dialog .q{margin:0 0 16px;color:var(--strong);font-size:14px;line-height:1.45}
 .a2 .dialog .acts{display:flex;gap:10px;justify-content:flex-end}
-.a2 .theme-pick{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--faint);padding:0 4px 6px}
-.a2 .theme-pick pick-chip{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:2px 6px;font-size:11.5px;color:var(--ink)}
 /* pick-chip: the chip is the host; the input inside sizes to its text and the
    list hangs under it (js/pick.js). */
 .a2 pick-chip{position:relative;display:inline-flex;align-items:center;cursor:pointer}
@@ -363,6 +361,22 @@ body{background:#000}
 .a2 .pcard .big .c{margin-left:auto;font-family:var(--font-mono);font-size:15px;color:var(--strong)}
 .a2 .pcard .gauge{grid-template-columns:44px minmax(40px,1fr) auto}
 .a2 .pcard .plan{font-family:var(--font-ui)}
+/* the Journal row: the newest two entries in the plan's type, then the count;
+   its card is the Journal view's timeline, smaller */
+.a2 .side .jpeek{display:grid;gap:5px;font-size:12.5px;margin-bottom:8px}
+.a2 .side .jpeek>div{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:6px;align-items:baseline;color:var(--muted)}
+.a2 .side .jpeek .g{text-align:center;font-size:11px;color:var(--faint)}
+.a2 .side .jpeek .x{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a2 .side .jpeek .t{font-family:var(--font-chrome);font-size:11.5px;color:var(--faint)}
+.a2 #p-journal .foot{margin-top:0}
+.a2 .pcard .jthread{--jt:46px}
+.a2 .pcard .jent{grid-template-columns:34px 16px minmax(0,1fr);column-gap:5px;padding:4px 8px 5px 0}
+.a2 .pcard .jent .t{font-size:10.5px;line-height:18px}
+.a2 .pcard .jent .g{font-size:11px;line-height:18px}
+.a2 .pcard .jent .g span{background:var(--surface)}
+.a2 .pcard .jent .g .ic{width:11px;height:11px}
+.a2 .pcard .jent .x{font-size:12.5px;line-height:18px}
+.a2 .pcard .jent .ps{margin-top:3px}
 .a2 .side #s-plan-h{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* tiles: the numbers a glance needs */
 .a2 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
@@ -767,8 +781,60 @@ body{background:#000}
 .a2 .set-empty{width:min(520px,100%);margin:12vh auto 0;padding:0 24px;display:grid;gap:14px;justify-items:start;font-size:14px;line-height:1.55;color:var(--ink)}
 .a2 .set-empty p{margin:0}
 .a2 .set-empty code{font-family:var(--font-mono);font-size:12.5px;color:var(--strong)}
-.a2 #settings-btn.on{color:var(--strong);border-color:var(--accent)}
+.a2 #settings-btn.on,.a2 #journal-btn.on{color:var(--strong);border-color:var(--accent)}
 @media (max-width:640px){.a2 .set-agent{grid-template-columns:1fr}.a2 .set-card-foot,.a2 .set-agent > .set-why{grid-column:1}.a2 .set-findings li{grid-template-columns:1fr;gap:2px}}
+
+/* the journal view (js/journal.js): one box shaped like the composer's, the
+   kind chips, and the entries as a timeline on the transcript's thread */
+.a2[data-view=journal] .v-journal{display:flex;flex-direction:column;overflow:auto}
+.a2 .journal{max-width:920px;width:100%;margin:0 auto;padding:22px 28px 32px}
+.a2 .jsearch{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:5px 6px 5px 13px;cursor:text}
+.a2 .jsearch:focus-within{border-color:var(--accent)}
+.a2 .jsearch .ic{width:15px;height:15px;flex:none;color:var(--faint)}
+.a2 .jsearch:focus-within .ic{color:var(--accent)}
+.a2 .jsearch .jq{flex:1;min-width:0;background:none;border:0;outline:none;padding:7px 0;color:var(--strong);font-family:var(--font-ui);font-size:14px;text-overflow:ellipsis}
+.a2 .jsearch .jq::placeholder{color:var(--faint);opacity:1}
+.a2 .jwhen{flex:none;font-family:var(--font-mono);font-size:11px;color:var(--muted);background:var(--bg);border:1px solid var(--rule);border-radius:999px;padding:3px 11px;cursor:pointer;white-space:nowrap}
+.a2 .jwhen:hover,.a2 .jwhen:focus-visible{color:var(--strong);border-color:var(--faint);outline:none}
+.a2 .jkinds{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 0}
+.a2 .jkind{font-family:var(--font-mono);font-size:11px;color:var(--muted);background:none;border:1px solid var(--rule);border-radius:999px;padding:3px 11px;cursor:pointer}
+.a2 .jkind:hover,.a2 .jkind:focus-visible{color:var(--strong);border-color:var(--faint);outline:none}
+.a2 .jkind[aria-pressed=true]{color:var(--strong);background:var(--accent-soft);border-color:transparent}
+.a2 .jcount{font-family:var(--font-mono);font-size:11px;color:var(--faint);margin:16px 2px 0}
+.a2 .jcount:empty{display:none}
+.a2 .journal .empty{padding:36px 2px;text-align:center}
+.a2 .journal .jmore{display:block;margin:16px auto 0}
+/* A day: its pill sticks under the top while its entries scroll. */
+.a2 .jday-h{position:sticky;top:0;z-index:2;background:var(--bg);padding:14px 0 8px;font-family:var(--font-mono);font-size:11px;color:var(--faint)}
+.a2 .jday-h span{display:inline-block;border:1px solid var(--rule);border-radius:999px;padding:2px 10px}
+/* An entry: time | glyph on the thread | body. --jt is the thread's x, the
+   middle of the glyph column, in whole pixels so the line stays crisp. */
+.a2 .jthread{position:relative;--jt:58px}
+.a2 .jthread::before{content:"";position:absolute;left:var(--jt);top:6px;bottom:6px;width:1px;background:var(--rule)}
+.a2 .jent{display:grid;grid-template-columns:40px 22px minmax(0,1fr);column-gap:8px;padding:6px 10px 7px 0;border-radius:var(--r);cursor:pointer;outline:none}
+.a2 .jent:hover,.a2 .jent:focus-visible{background:var(--raised)}
+.a2 .jent:focus-visible{box-shadow:inset 0 0 0 1px var(--accent)}
+.a2 .jent .t{font-family:var(--font-mono);font-size:11px;line-height:20px;color:var(--faint);text-align:right}
+.a2 .jent .g{position:relative;z-index:1;text-align:center;font-size:13px;line-height:20px;color:var(--muted)}
+.a2 .jent .g span{background:var(--bg);padding:2px 0}
+.a2 .jent .g .ic{width:13px;height:13px;vertical-align:-2px}
+.a2 .jent:hover .g span,.a2 .jent:focus-visible .g span{background:var(--raised)}
+.a2 .jent .b{min-width:0}
+.a2 .jent .who{display:flex;gap:8px;align-items:baseline;line-height:20px;min-width:0}
+.a2 .jent .h{font-family:var(--font-mono);font-size:11.5px;color:var(--comms);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a2 .jent .x{font-family:var(--font-ui);font-size:13.5px;line-height:1.45;color:var(--ink);overflow-wrap:anywhere}
+.a2 .jent:hover .x{color:var(--strong)}
+.a2 .jent mark{background:var(--accent-soft);color:var(--strong);border-radius:2px;box-shadow:inset 0 -1px 0 var(--accent)}
+.a2 .jent .hash{font-family:var(--font-mono);font-size:12px;color:var(--ok)}
+.a2 .jent .jtag{display:inline-block;font-family:var(--font-mono);font-size:9.5px;font-weight:600;line-height:16px;text-transform:uppercase;letter-spacing:.05em;color:var(--on-accent);background:var(--accent);border-radius:3px;padding:0 5px;margin-right:7px;vertical-align:1px}
+.a2 .jent .ps{display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px;margin-top:5px}
+.a2 .jent .pchip{max-width:100%;font-family:var(--font-mono);font-size:10.5px;line-height:16px;color:var(--muted);background:var(--raised);border-radius:4px;padding:1px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a2 .jent:hover .pchip,.a2 .jent:focus-visible .pchip{background:var(--surface)}
+.a2 .jent .pmore{color:var(--faint)}
+.a2 :is(.jent,.jpeek>div).k-commit .g,.a2 :is(.jent,.jpeek>div).k-plan .g{color:var(--ok)}
+.a2 :is(.jent,.jpeek>div).k-note .g{color:var(--accent)}
+.a2 :is(.jent,.jpeek>div).k-pr .g{color:var(--comms)}
+.a2 :is(.jent,.jpeek>div).k-session .g{color:var(--faint)}
 
 /* the recap: aegis's own two sentences, last in the transcript */
 .a2 .row.recap .g{color:var(--accent)}
@@ -785,10 +851,12 @@ body{background:#000}
 
 /* narrow and touch: last, so these win over the rules above */
 /* the panel's button: collapses it on a desktop, opens the drawer on a phone */
-.a2 .side-btn{display:none;place-items:center;width:30px;padding:0;margin:0 4px 6px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);color:var(--muted);cursor:pointer}
+/* the Journal's button: the same icon button, in every view */
+.a2 .side-btn,.a2 .jr-btn{display:grid;place-items:center;width:30px;padding:0;margin:0 4px 6px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);color:var(--muted);cursor:pointer}
+.a2 .side-btn{display:none}
 .a2[data-view=session] .side-btn{display:grid}
-.a2 .side-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.4}
-.a2 .side-btn:hover{color:var(--strong)}
+.a2 .side-btn svg,.a2 .jr-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.a2 .side-btn:hover,.a2 .jr-btn:hover{color:var(--strong)}
 .a2 .grip{display:none}
 @media (min-width:761px){
   .a2:not([data-side=closed]) .side-btn{color:var(--accent)}
@@ -809,14 +877,22 @@ body{background:#000}
   .a2 .tabs .ver-top{display:none}
   .a2 .tablist .tab .srv{display:none}
   .a2 .tablist .tab .tname{max-width:16ch}
-  .a2 .theme-pick{font-size:0;gap:0}
   .a2 .keys-btn:not(.bell):not(.set-btn){display:none}
   /* the header's buttons: bare icons, the tap target kept by (pointer:coarse) */
-  .a2 .tabs .keys-btn.bell,.a2 .tabs .set-btn,.a2[data-view=session] .side-btn{display:grid;place-items:center;background:none;border-color:transparent;margin:0 0 4px;padding:0}
-  .a2 .tabs .set-btn{min-width:40px}
-  .a2 .tabs .keys-btn.bell .ic,.a2 .tabs .set-btn .ic{width:18px;height:18px}
+  .a2 .tabs .keys-btn.bell,.a2 .tabs .set-btn,.a2 .tabs .jr-btn,.a2[data-view=session] .side-btn{display:grid;place-items:center;background:none;border-color:transparent;margin:0 0 4px;padding:0}
+  .a2 .tabs .set-btn,.a2 .tabs .jr-btn{min-width:40px}
+  .a2 .tabs .keys-btn.bell .ic,.a2 .tabs .set-btn .ic,.a2 .tabs .jr-btn svg{width:18px;height:18px}
   .a2 .set-btn .lbl{display:none}
   .a2 .set-btn .ic{display:inline-block}
+  .a2 .journal{padding:12px 12px 24px}
+  /* 16 px: iOS Safari does not zoom the page when the box takes focus. */
+  .a2 .jsearch .jq{font-size:16px;padding:6px 0}
+  /* the kind chips: one row that scrolls sideways, edge to edge */
+  .a2 .jkinds{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:12px -12px 0;padding:0 12px}
+  .a2 .jkinds::-webkit-scrollbar{display:none}
+  .a2 .jkind{flex:none}
+  .a2 .journal .jthread{--jt:54px}
+  .a2 .journal .jent{grid-template-columns:38px 20px minmax(0,1fr);column-gap:7px;padding-right:6px}
   /* the tab row scrolls sideways, so a tab keeps its title instead of shrinking */
   .a2 .tablist .tab{flex:none}
   .a2[data-view=session] .side-btn{min-width:44px}
@@ -901,9 +977,17 @@ body{background:#000}
 .a2 .spawn .cwdline .srvpick:not([hidden]) + .srvsep + .cwd{text-align:left}
 .a2 .spawn .srvpick{background:none;border:none;font-family:var(--font-mono);font-size:12px;color:var(--accent);cursor:pointer}
 .a2 .spawn .srvsep{font-family:var(--font-mono);font-size:12px;color:var(--faint)}
+/* Settings: what this browser alone keeps. */
+.a2 .set-browser{margin:24px 0 26px}
+/* Loading and no config: the same page, the message where the title goes. */
+.a2 .set-page>.notice{margin:0;text-align:left}
+.a2 .set-page>.set-empty{margin:4vh 0 0;padding:0}
+.a2 .set-page>.set-empty+.set-browser,.a2 .set-page>.notice+.set-browser{margin-top:36px}
+.a2 .set-browser h3,.a2 .set-servers h3{margin:0 0 4px;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
+.a2 .set-browser-row{display:flex;align-items:center;gap:12px;margin:10px 0 8px}
+.a2 .set-browser-k{font-family:var(--font-chrome);font-size:12px;color:var(--muted);min-width:64px}
 /* Settings: the servers this one links. */
 .a2 .set-servers{margin:0 0 22px}
-.a2 .set-servers h3{margin:0 0 4px;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
 .a2 .set-pill{font-family:var(--font-mono);font-size:11px;border:1px solid var(--rule);border-radius:4px;padding:2px 6px}
 .a2 .set-pill.ok{color:var(--ok)}
 .a2 .set-pill.bad{color:var(--err)}

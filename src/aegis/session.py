@@ -79,6 +79,9 @@ class Host:
 
     def turn_ended(self, session: "Session") -> None: ...
 
+    def recorded(self, session: "Session", record: dict, events: list | None) -> None:
+        """A record was stored and folded: the journal derives from it."""
+
     def status_changed(self, session: "Session") -> None:
         """The session's status, or what it waits on, changed: a parent waiting
         on it re-derives."""
@@ -399,7 +402,7 @@ class Session:
     # -- operations --------------------------------------------------------
     async def start(self) -> None:
         """A brand-new session: record the spawn, then start ``claude``."""
-        self._record({"kind": "spawn", **self.spec.record()})
+        self._record({"kind": "spawn", **self.spec.record(), "handle": self.handle})
         await self.ensure_running()
 
     async def ensure_running(self) -> None:
@@ -656,10 +659,11 @@ class Session:
             "peek",
             "artifact_state",
             "artifact_event",
+            "name",
         ):
             # aegis talking to the person, not the session doing anything; nor
             # a person acting on a page, so the needs-you order holds still
-            # while they drag a slider.
+            # while they drag a slider; nor a rename.
             self.last_activity = stored["ts"]
         ops = fold.apply(stored, events)
         new = [
@@ -681,6 +685,7 @@ class Session:
             for op in ops
         ):
             self._set(activity=fold.activity())
+        self._host.recorded(self, stored, events)
 
     def _set(self, **changes: object) -> None:
         changes = {k: v for k, v in changes.items() if getattr(self, k) != v}

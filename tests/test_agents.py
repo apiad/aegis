@@ -146,7 +146,10 @@ async def test_the_tools_are_named_after_their_operations_and_take_no_handle(wor
         "artifact_read",
         "artifact_update",
         "artifact_close",
+        "journal_search",
+        "journal_note",
     } <= set(tools)
+    assert "journal_rows" not in tools
     assert {"session_spawn", "agents_list", "session_close"} <= set(tools)
     for t in tools.values():
         assert "from_handle" not in t["inputSchema"].get("properties", {})

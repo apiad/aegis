@@ -274,6 +274,19 @@ def picked(pg, sel: str) -> str:
     return pg.evaluate(f"document.querySelector('{sel}').value")
 
 
+def set_theme(pg, name: str) -> None:
+    """Pick a theme in Settings' "This browser" section, then go back to the
+    view the page was on."""
+    back = pg.evaluate("location.hash")
+    pg.click("#settings-btn")
+    # Settings redraws, chip and all, once config.detect answers: pick after.
+    pg.wait_for_selector("#a2[data-view=settings] .set-harness")
+    pick(pg, "#set-theme", name)
+    pg.wait_for_function("t => document.documentElement.dataset.theme === t", arg=name)
+    pg.evaluate("h => { location.hash = h; }", back)
+    pg.wait_for_function("h => location.hash === h", arg=back)
+
+
 def test_the_composer_overrides_a_chip_resets_it_and_spawns_with_the_first_message(
     server, page
 ):
@@ -534,7 +547,7 @@ def test_a_session_from_spawn_to_close(server, page):
 
     bg = "getComputedStyle(document.getElementById('a2')).getPropertyValue('--bg').trim()"
     before = page.evaluate(bg)
-    pick(page, "#theme", "logbook")
+    set_theme(page, "logbook")
     assert page.evaluate(bg) != before == "#11100e"
 
     close_session(page)
@@ -1604,9 +1617,12 @@ def test_a_page_that_throws_fails_the_send_and_shows_no_card(server, page):
     ] == []
 
 
-def test_agent_state_is_pushed_without_reloading_the_frame_and_the_theme_follows(
+def test_agent_state_is_pushed_without_reloading_the_frame_and_a_remounted_frame_starts_in_the_new_theme(
     server, page
 ):
+    """The theme is picked in Settings, which unmounts the transcript, so the
+    frame comes back remounted in the new theme; artifacts.theme(), which
+    pushes a theme into a live frame, has no path from the page today."""
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
@@ -1625,8 +1641,9 @@ def test_agent_state_is_pushed_without_reloading_the_frame_and_the_theme_follows
         page.get_attribute(f"iframe[data-artifact={aid}]", "data-mark") == "same"
     )  # not remounted
     before = inner.locator("#ac").inner_text()
-    pick(page, "#theme", "logbook")
+    set_theme(page, "logbook")
     inner.locator("#ac").filter(has_not_text=before).wait_for()
+    assert page.get_attribute(f"iframe[data-artifact={aid}]", "data-mark") is None
     assert page.errors == []
 
 
@@ -3295,7 +3312,7 @@ def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     pg.evaluate("sessionStorage.removeItem('hidden'); window.__hidden = false")
     # The dot takes the theme's accent.
     assert favicon_dot(pg) == "#e0a872"
-    pick(pg, "#theme", "logbook")
+    set_theme(pg, "logbook")
     assert favicon_dot(pg) == "#2f5ba8"
     pg.click("#tab-fleet")
     assert pg.title().startswith("(1) Fleet")
@@ -4991,6 +5008,469 @@ def test_the_smoke_script_spawns_a_session_and_reads_its_question(server):
     ).stdout
     assert "### PERSON: /mcp turn_end" in text
     assert "[turn_end needs_you] Does it work?" in text
+
+
+def test_the_journal_lists_a_turn_and_opens_its_transcript_at_it(
+    server, page, tmp_path
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    f = tmp_path / "notes.md"
+    spawn(page, f"/write {f} => hi")
+    page.keyboard.press("Alt+KeyL")
+    page.wait_for_selector("#a2[data-view=journal]")
+    row = page.locator(".journal .jrow", has_text="notes.md").first
+    row.wait_for()
+    # Each entry's mark and the box's glass are the sprite's, not characters (#296).
+    marks = page.eval_on_selector_all(
+        ".journal .jent .g",
+        "gs => gs.map(g => g.querySelector('use')?.getAttribute('href'))",
+    )
+    assert None not in marks and {"#g-prompt", "#g-window"} <= set(marks), marks
+    assert page.evaluate(f"{marks}.every(h => document.querySelector(h))")
+    assert page.locator(".journal .jsearch svg.ic").count() == 1
+    text = page.inner_text(".journal")
+    assert [c for c in GLYPH_CHARS + "◆⇡○✓" if c in text] == []
+    row.click()
+    page.wait_for_selector("#a2[data-view=session]")
+    page.wait_for_selector(".row.sel")
+    assert page.errors == []
+
+
+def write_many(pg, root: Path, n: int) -> None:
+    """One session, n turns, each of which writes its own file."""
+    spawn(pg, f"/write {root}/w0.md => 0")
+    for i in range(1, n):
+        pg.fill("#input", f"/write {root}/w{i}.md => {i}")
+        pg.press("#input", "Enter")
+        # The transcript mounts a window of rows, so count nothing: wait for
+        # a finished turn after this turn's message.
+        pg.wait_for_function(
+            "f => { const r = [...document.querySelectorAll('.row')];"
+            " const at = r.findIndex(x => x.classList.contains('user') && x.textContent.includes(f));"
+            " return at >= 0 && r.slice(at).some(x => /done in/.test(x.textContent)); }",
+            arg=f"w{i}.md",
+        )
+
+
+JROWS = "[...document.querySelectorAll('.journal .jrow .x')].map(x => x.textContent)"
+
+
+def test_the_journal_pages_once_when_show_more_is_pressed_twice(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    write_many(page, tmp_path, 105)
+    page.keyboard.press("Alt+KeyL")
+    page.wait_for_selector(".journal .jrow")
+    page.wait_for_function("document.querySelectorAll('.journal .jrow').length === 50")
+    page.evaluate(
+        "() => { const b = document.querySelector('#journal .btn'); b.click(); b.click(); }"
+    )
+    page.wait_for_function("document.querySelectorAll('.journal .jrow').length >= 100")
+    page.wait_for_timeout(500)
+    rows = page.evaluate(JROWS)
+    assert len(rows) == 100, len(rows)
+    assert len(set(rows)) == len(rows), "a page was appended twice"
+    assert page.errors == []
+
+
+def test_the_journal_keeps_its_length_and_focus_when_an_entry_lands(
+    server, browser, page, tmp_path
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    write_many(page, tmp_path, 105)
+    page.keyboard.press("Alt+KeyL")
+    page.wait_for_function("document.querySelectorAll('.journal .jrow').length === 50")
+    page.click("#journal .btn")
+    page.wait_for_function("document.querySelectorAll('.journal .jrow').length === 100")
+    focused = page.evaluate(
+        "() => { const r = document.querySelectorAll('.journal .jrow')[20]; r.focus(); return r.dataset.id; }"
+    )
+    assert focused
+    other_errors: list = []
+    other = new_page(browser, other_errors)
+    other.goto(server.url)
+    other.wait_for_selector("#a2[data-view=fleet]")
+    spawn(other, f"/write {tmp_path}/later.md => x")
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.journal .jrow .x')].some(x => x.textContent.includes('later.md'))"
+    )
+    assert page.locator(".journal .jrow").count() >= 100
+    assert page.evaluate("document.activeElement.dataset.id") == focused
+    assert page.errors == [] and other_errors == []
+    other.close()
+
+
+def test_the_sidebar_journal_row_counts_today_and_its_card_lists_entries(
+    server, page, tmp_path
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    f = tmp_path / "side.md"
+    spawn(page, f"/write {f} => hi")
+    turns_done(page, 1)
+    # The spawn lands first; the turn's entry arrives as a journal patch and
+    # the row refetches without a reload.
+    page.wait_for_function(
+        "document.querySelector('#s-journal-all').textContent.includes('side.md')"
+    )
+    page.wait_for_function(
+        "/\\d+ entr/.test(document.querySelector('#s-journal').textContent)"
+    )
+    assert "side.md" in page.inner_text("#s-journal-peek")
+    page.hover("#p-journal")
+    page.wait_for_selector("#p-journal .pcard", state="visible")
+    assert "side.md" in page.inner_text("#s-journal-all")
+    # The card draws the view's timeline: time, glyph, text, path chips.
+    entry = page.locator("#s-journal-all .le", has_text="side.md").first
+    assert entry.locator(".t").inner_text() and entry.locator(".g svg.ic").count() == 1
+    assert entry.locator(".pchip", has_text="side.md").count() == 1
+    page.evaluate("document.querySelector('.row.sel')?.classList.remove('sel')")
+    page.click("#s-journal-all .le >> text=side.md")
+    page.wait_for_selector(".row.sel")
+    assert page.url.count("#s=") == 1
+    assert page.errors == []
+
+
+def test_a_card_entry_opens_by_keyboard_without_toggling_a_transcript_row(
+    server, page, tmp_path
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, f"/write {tmp_path / 'kb.md'} => hi")
+    page.wait_for_function(
+        "document.querySelector('#s-journal-all').textContent.includes('kb.md')"
+    )
+    rows = "[...document.querySelectorAll('#entries .row')].map(r => r.className.replace(/\\bsel\\b/, '').trim())"
+    # Another row is selected, so a toggle would land on it and not on the entry's.
+    page.click("#entries .row.user")
+    before = page.evaluate(rows)
+    page.hover("#p-journal")
+    page.wait_for_selector("#p-journal .pcard", state="visible")
+    entry = page.locator("#s-journal-all .le", has_text="kb.md")
+    assert entry.get_attribute("role") == "button"
+    entry.focus()
+    page.evaluate("document.querySelector('.row.sel')?.classList.remove('sel')")
+    page.keyboard.press("Enter")
+    page.wait_for_selector(".row.sel")
+    assert page.evaluate(rows) == before
+    assert page.errors == []
+
+
+def test_the_sidebar_journal_row_is_current_after_time_on_the_fleet(
+    server, browser, page, tmp_path
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    key = spawn(page, f"/write {tmp_path / 'one.md'} => hi")
+    page.wait_for_function(
+        "document.querySelector('#s-journal').textContent.includes('2 entries')"
+    )
+    page.click(".tab.home")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    errors: list = []
+    other = new_page(browser, errors)
+    other.goto(f"{server.url}#s={key}")
+    other.wait_for_selector("#a2[data-view=session]")
+    other.fill("#input", f"/write {tmp_path / 'two.md'} => again")
+    other.press("#input", "Enter")
+    other.wait_for_function(
+        "document.querySelector('#s-journal-all').textContent.includes('two.md')"
+    )
+    page.wait_for_timeout(500)  # the patch reaches the Fleet page
+    page.evaluate(f"location.hash = '#s={key}'")
+    page.wait_for_selector("#a2[data-view=session]")
+    page.wait_for_function(
+        "document.querySelector('#s-journal').textContent.includes('3 entries')"
+    )
+    assert page.errors == [] and errors == []
+    other.close()
+
+
+def _journal_entries(server, n: int, ts: float, text: str, first: int = 0) -> None:
+    """n notes straight into the server's journal.db, as if journaled at ts;
+    ``first`` numbers their ids past an earlier call's."""
+    from aegis.journal import db
+
+    con, _ = db.connect(server.root / ".aegis" / "state" / "journal.db")
+    for k in range(first, first + n):
+        e = db.Entry(f"20260101-000000-{k:06d}", 0, 0, ts, "old-hand", None,
+                     "note", "decision", f"{text} {k}", None, False, [])  # fmt: skip
+        db.insert(con, e)
+    con.close()
+
+
+def test_the_journal_searches_every_day_once_a_filter_is_set_and_today_is_the_servers(
+    server, browser, tmp_path
+):
+    """The browser's timezone puts it on another date than the server: the
+    view still opens on the server's today, and a pattern searches every day."""
+    from zoneinfo import ZoneInfo
+
+    today = time.strftime("%Y-%m-%d")
+    tz = next(
+        z
+        for z in ("Pacific/Kiritimati", "Etc/GMT+12")
+        if datetime.now(ZoneInfo(z)).strftime("%Y-%m-%d") != today
+    )
+    errors: list = []
+    pg = browser.new_page(viewport={"width": 1280, "height": 800}, timezone_id=tz)
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg, f"/write {tmp_path / 'today.md'} => hi")
+    turns_done(pg, 1)
+    _journal_entries(server, 1, time.time() - 3 * 86400, "chose the zebra layout")
+    pg.keyboard.press("Alt+KeyL")
+    pg.locator(".journal .jrow", has_text="today.md").first.wait_for()
+    assert pg.inner_text(".journal .jwhen") == "today"
+    assert pg.inner_text(".journal .jday-h").startswith(today)
+    assert "zebra" not in pg.inner_text(".journal .jlist")
+    pg.fill(".journal .jq", "zebra")
+    pg.locator(".journal .jrow", has_text="chose the zebra layout").wait_for()
+    assert pg.inner_text(".journal .jwhen") == "any day"
+    pg.fill(".journal .jq", "nothingmatchesthis")
+    pg.wait_for_selector(".journal .jlist .empty")
+    assert "any day" in pg.inner_text(".journal .jlist .empty")
+    # The box empty again: back to the server's today.
+    pg.fill(".journal .jq", "")
+    pg.locator(".journal .jrow", has_text="today.md").first.wait_for()
+    assert pg.inner_text(".journal .jwhen") == "today"
+    assert errors == []
+    pg.close()
+
+
+def test_the_journal_day_chip_toggles_today_and_any_day(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    _journal_entries(server, 1, time.time() - 3 * 86400, "chose the zebra layout")
+    _journal_entries(server, 1, time.time(), "a fresh call", first=1)
+    page.keyboard.press("Alt+KeyL")
+    page.locator(".journal .jrow", has_text="a fresh call").wait_for()
+    assert "zebra" not in page.inner_text(".journal .jlist")
+    page.click(".journal .jwhen")
+    page.locator(".journal .jrow", has_text="chose the zebra layout").wait_for()
+    assert page.inner_text(".journal .jwhen") == "any day"
+    # A day the person picks holds once they type.
+    page.click(".journal .jwhen")
+    page.wait_for_function(
+        "!document.querySelector('.journal .jlist').textContent.includes('zebra')"
+    )
+    page.fill(".journal .jq", "zebra")
+    page.wait_for_selector(".journal .jlist .empty")
+    assert page.inner_text(".journal .jwhen") == "today"
+    assert "today" in page.inner_text(".journal .jlist .empty")
+    assert page.errors == []
+
+
+def test_the_journal_box_finds_a_path_fuzzily_and_marks_what_matched(
+    server, page, tmp_path
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    (tmp_path / "scratch").mkdir()
+    spawn(page, f"/write {tmp_path / 'scratch' / 'notes.md'} => hi")
+    _journal_entries(server, 1, time.time(), "chose the zebra layout")
+    page.keyboard.press("Alt+KeyL")
+    page.locator(".journal .jrow", has_text="zebra").wait_for()
+    page.fill(".journal .jq", "scra")
+    page.wait_for_selector(".journal .jcount >> text=matching “scra”")
+    assert "zebra" not in page.inner_text(".journal .jlist")
+    assert page.locator(".journal .jrow .pchip", has_text="scratch").count() >= 1
+    page.fill(".journal .jq", "zebr")
+    row = page.locator(".journal .jrow", has_text="zebra")
+    row.wait_for()
+    assert page.locator(".journal .jrow").count() == 1
+    assert row.locator("mark").all_inner_texts() == ["zebr"]
+    assert "matching “zebr”" in page.inner_text(".journal .jcount")
+    assert page.errors == []
+
+
+def test_the_journal_box_finds_a_renamed_sessions_entries_by_an_old_handle(
+    server, page, tmp_path
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, f"/write {tmp_path / 'before.md'} => hi")
+    old = page.inner_text("#s-handle")
+    page.click("#s-handle")
+    page.fill("#s-handle input", "fresh-name")
+    page.press("#s-handle input", "Enter")
+    page.wait_for_function(
+        "document.querySelector('#s-handle').textContent === 'fresh-name'"
+    )
+    _journal_entries(server, 1, time.time(), "chose the zebra layout")
+    page.keyboard.press("Alt+KeyL")
+    page.locator(".journal .jrow", has_text="zebra").wait_for()
+    page.fill(".journal .jq", old.upper())
+    page.wait_for_selector(f".journal .jcount >> text=matching “{old.upper()}”")
+    assert "zebra" not in page.inner_text(".journal .jlist")
+    assert page.locator(".journal .jrow", has_text="before.md").count() >= 1
+    assert page.errors == []
+
+
+def test_a_journal_kind_chip_narrows_to_that_kind(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, f"/write {tmp_path / 'kinds.md'} => hi")
+    _journal_entries(server, 1, time.time(), "chose the zebra layout")
+    page.keyboard.press("Alt+KeyL")
+    page.locator(".journal .jrow", has_text="kinds.md").first.wait_for()
+    page.click(".journal .jkind[data-kind=note]")
+    page.wait_for_function(
+        "!document.querySelector('.journal .jlist').textContent.includes('kinds.md')"
+    )
+    kinds = "[...document.querySelectorAll('.journal .jrow')].map(r => r.className)"
+    assert all("k-note" in c for c in page.evaluate(kinds))
+    assert (
+        page.get_attribute(".journal .jkind[data-kind=note]", "aria-pressed") == "true"
+    )
+    page.click(".journal .jkind[data-kind='']")
+    page.locator(".journal .jrow", has_text="kinds.md").first.wait_for()
+    assert page.errors == []
+
+
+def test_the_header_opens_the_journal_from_a_book_icon(server, browser, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    btn = page.locator("#journal-btn")
+    assert btn.get_attribute("aria-label") == "Journal"
+    assert btn.get_attribute("title") == "Journal (Alt+L)"
+    # The book is the sprite's, drawn in the theme like every other mark (#296).
+    assert btn.locator("svg.ic use").get_attribute("href") == "#g-book"
+    assert btn.inner_text().strip() == ""
+    btn.click()
+    page.wait_for_selector("#a2[data-view=journal]")
+    assert "on" in btn.get_attribute("class").split()
+    assert page.errors == []
+    errors: list = []
+    pg = phone(browser, errors)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    box = pg.locator("#journal-btn").bounding_box()
+    assert box and box["x"] + box["width"] <= 390 and box["width"] >= 40
+    assert pg.evaluate(WIDER) == []
+    pg.tap("#journal-btn")
+    pg.wait_for_selector("#a2[data-view=journal]")
+    assert errors == []
+    pg.close()
+
+
+def test_settings_keeps_the_theme_for_this_browser(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert page.locator("#a2 .tabs #theme, #a2 .tabs .theme-pick").count() == 0
+    page.click("#settings-btn")
+    page.wait_for_selector("#a2[data-view=settings] .set-harness")
+    first = page.locator("#settings section").first
+    assert first.get_attribute("id") == "set-browser"
+    assert first.locator("h3").inner_text() == "This browser"
+    assert "this browser only" in first.inner_text()
+    assert picked(page, "#set-theme") == "ink"
+    pick(page, "#set-theme", "syalia")
+    page.wait_for_function("document.documentElement.dataset.theme === 'syalia'")
+    page.reload()
+    page.wait_for_selector("#a2[data-view=settings] #set-theme")
+    assert page.evaluate("document.documentElement.dataset.theme") == "syalia"
+    assert picked(page, "#set-theme") == "syalia"
+    assert page.errors == []
+
+
+SECTIONS = "[...document.querySelectorAll('#settings .set-page > *')].map(e => e.className || e.tagName)"
+
+
+def test_settings_opens_on_its_title_then_this_browser_then_servers(server, page):
+    page.goto(server.url + "#settings")
+    page.wait_for_selector("#a2[data-view=settings] .set-harness")
+    order = page.evaluate(SECTIONS)
+    assert order[:3] == ["set-head", "set-browser", "set-servers"], order
+
+
+def test_settings_without_a_config_keeps_the_page_width(empty_server, page):
+    page.goto(empty_server.url + "#settings")
+    page.wait_for_selector("#set-setup")
+    order = page.evaluate(SECTIONS)
+    assert order[:3] == ["set-empty", "set-browser", "set-servers"], order
+
+
+def test_a_settings_redraw_leaves_the_theme_list_open(server, page):
+    page.goto(server.url + "#settings")
+    page.wait_for_selector("#a2[data-view=settings] .set-harness")
+    page.click("#set-theme input")
+    page.wait_for_selector("#set-theme .menu:not([hidden])")
+    # The file changes on disk: the config channel sends it and Settings redraws.
+    (server.root / ".aegis.yaml").write_text(
+        CONFIG
+        + "  extra: {harness: claude-code, model: opus, effort: high, permission: full}\n"
+    )
+    page.wait_for_timeout(1500)
+    assert page.is_visible("#set-theme .menu")
+    assert page.evaluate("!!document.activeElement.closest('#set-theme')")
+    page.keyboard.press("Escape")
+    page.mouse.click(5, 300)
+    page.wait_for_selector('.set-agent[data-row="agents.extra"]')
+    assert page.errors == []
+
+
+def test_the_journal_count_line_is_the_servers_total_not_the_page(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    _journal_entries(server, 60, time.time(), "bulk entry")
+    page.keyboard.press("Alt+KeyL")
+    page.wait_for_function("document.querySelectorAll('.journal .jrow').length === 50")
+    page.wait_for_selector(".journal .jcount >> text=60 entries today")
+    page.fill(".journal .jq", "bulk")
+    page.wait_for_selector(".journal .jcount >> text=60 entries matching “bulk”")
+    page.click("#journal .jmore")
+    page.wait_for_function("document.querySelectorAll('.journal .jrow').length === 60")
+    assert page.inner_text(".journal .jcount") == "60 entries matching “bulk”"
+    assert page.errors == []
+
+
+def test_a_phone_gets_a_journal_placeholder_that_fits(server, browser):
+    errors: list = []
+    pg = phone(browser, errors)
+    pg.goto(server.url + "#journal")
+    pg.wait_for_selector(".journal .jq")
+    q = ".journal .jq"
+    assert pg.get_attribute(q, "placeholder") == "Search: words, paths, sessions"
+    fits = "e => e.scrollWidth <= e.clientWidth"
+    assert pg.eval_on_selector(q, "e => getComputedStyle(e).textOverflow") == "ellipsis"
+    pg.set_viewport_size({"width": 1000, "height": 800})
+    pg.wait_for_function(
+        "document.querySelector('.journal .jq').placeholder.startsWith('Search the journal')"
+    )
+    assert pg.eval_on_selector(q, fits)
+    assert errors == []
+    pg.close()
+
+
+def test_the_journal_reloads_a_list_paged_past_500_rows(
+    server, browser, page, tmp_path
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    _journal_entries(server, 560, time.time(), "bulk entry")
+    page.keyboard.press("Alt+KeyL")
+    page.wait_for_function("document.querySelectorAll('.journal .jrow').length === 50")
+    for n in range(100, 600, 50):
+        page.click("#journal .btn")
+        page.wait_for_function(
+            "n => document.querySelectorAll('.journal .jrow').length >= n",
+            arg=min(n, 561),
+        )
+    other_errors: list = []
+    other = new_page(browser, other_errors)
+    other.goto(server.url)
+    other.wait_for_selector("#a2[data-view=fleet]")
+    spawn(other, f"/write {tmp_path}/later.md => x")
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.journal .jrow .x')].some(x => x.textContent.includes('later.md'))"
+    )
+    assert page.locator(".journal .jrow").count() >= 500
+    assert page.errors == [] and other_errors == []
+    other.close()
 
 
 def inbox_of(server, lid):

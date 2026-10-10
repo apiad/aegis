@@ -265,7 +265,13 @@ class Parser:
         self.root, self.children, self.task_call = tid, {}, None
         self.model = f"{provider}/{model}" if provider and model else None
         return [
-            Init(session_id=tid, model=self.model, version=self.version, harness=LABEL)
+            Init(
+                session_id=tid,
+                model=self.model,
+                version=self.version,
+                harness=LABEL,
+                cwd=_str(th.get("cwd")),
+            )
         ]
 
     def _turn_settings(self, p: dict) -> list[Event]:
