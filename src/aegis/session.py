@@ -34,6 +34,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import attachments
 from .artifacts import Board
 from .claude.control import Catalog
 from .claude.process import ControlError
@@ -421,6 +422,7 @@ class Session:
 
         resume = self.resume_id
         mcp, system_prompt = self._host.spawn_args(self)
+        inbox = attachments.ensure_inbox(self.state_root, self.log_id)
         proc = self.harness.process(
             Launch(
                 cwd=self.spec.cwd,
@@ -434,6 +436,7 @@ class Session:
                 on_line=self._on_line,
                 on_exit=on_exit,
                 on_error=self._on_error,
+                read_dirs=(inbox,),
             )
         )
         # Before the start: a harness can speak while it starts (OpenCode's
@@ -547,13 +550,26 @@ class Session:
         finally:
             self._flushing = False
 
-    async def send(self, text: str) -> None:
+    @property
+    def inbox(self) -> Path:
+        """Where the files a person attaches land (attachments.py)."""
+        return attachments.inbox(self.state_root, self.log_id)
+
+    async def send(
+        self, text: str, typed: str | None = None, attached: list[dict] | None = None
+    ) -> None:
+        """Send ``text`` to the harness. With files ``attached``, ``text`` is
+        the typed text plus their paths, and ``typed`` what the person wrote,
+        which their row shows (transcript/entries.py)."""
         await self.ensure_running()
         assert self._proc is not None
         if not self.title and not text.startswith("/"):
             # A slash command names no task; the first prompt does.
-            self._set(title=default_title(text))
-        self._record({"kind": "send", "text": text})
+            self._set(title=default_title(typed or text))
+        record: dict = {"kind": "send", "text": text}
+        if attached:
+            record |= {"typed": typed or "", "files": attached}
+        self._record(record)
         # Working before the send returns: a harness can answer during it (an
         # OpenCode command refused before it starts a turn).
         self._set(status="working")

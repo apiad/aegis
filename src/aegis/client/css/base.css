@@ -94,7 +94,10 @@ body{background:#000}
 
 /* the new-tab composer */
 #a2 .spawn{width:min(640px,100%);display:grid;gap:10px;justify-items:center}
-#a2 .spawn .mark{font-family:var(--font-head);font-weight:600;font-size:24px;letter-spacing:.04em;color:var(--strong)}
+/* The brand, the same in every theme: the Gorgoneion in the accent, and ægis
+   in Source Serif 4 whatever the theme's heading font. */
+#a2 .spawn .mark{display:flex;align-items:center;gap:10px;font-family:'SS4',serif;font-weight:600;font-size:30px;line-height:1;color:var(--strong)}
+#a2 .spawn .mark .gorgon{width:30px;height:30px;color:var(--accent)}
 #a2 .spawn .cwd{width:100%;background:none;border:none;border-bottom:1px dashed transparent;outline:none;text-align:center;font-family:var(--font-mono);font-size:12px;color:var(--muted)}
 #a2 .spawn .cwd:hover,#a2 .spawn .cwd:focus{border-bottom-color:var(--faint);color:var(--ink)}
 #a2 .spawn .box{width:100%;display:grid;gap:10px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:12px 14px}
@@ -110,6 +113,7 @@ body{background:#000}
 #a2 .spawn .pick.diff{color:var(--accent)}
 #a2 .spawn .reset{background:none;border:none;padding:0;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer}
 #a2 .spawn .send{background:var(--accent);color:var(--on-accent);border:none;border-radius:6px;padding:4px 12px;font-weight:600;cursor:pointer}
+#a2 .spawn .send .ic,#a2 .composer .acts .send .ic{width:15px;height:15px;vertical-align:middle}
 #a2 .spawn .err-text{margin:0}
 #a2 .spawn .err-text:empty{display:none}
 #a2 .pa{display:flex;gap:10px;justify-content:flex-end;align-items:center}
@@ -124,6 +128,7 @@ body{background:#000}
 #a2 .row{display:grid;grid-template-columns:var(--row-cols);column-gap:10px;margin:0 0 9px;min-width:0}
 #a2 .row .t{display:var(--time);width:38px;font-family:var(--font-mono);font-size:11px;color:var(--faint);line-height:1.9}
 #a2 .row .g{text-align:center;line-height:1.6;color:var(--faint);font-size:13px;position:relative;z-index:1;background:var(--bg);align-self:start}
+#a2 .row .g .ic{width:14px;height:14px;vertical-align:-2px}
 #a2 .row .body{min-width:0}
 /* Off-screen rows skip layout and paint, and keep their last height once drawn (#157). */
 #a2 #entries>.row{content-visibility:auto;contain-intrinsic-size:auto 40px}
@@ -140,8 +145,8 @@ body{background:#000}
 #a2 .row.prose{grid-template-columns:var(--row-cols) 16px}
 #a2 .row.prose .rm{line-height:1.9;text-align:center}
 #a2 .row.prose .rm .ic{width:12px;height:12px}
-#a2 .row.prose .rm .ic.unread{color:var(--accent)}
-#a2 .row.prose .rm .ic.read{color:var(--faint)}
+#a2 .row.prose .rm .ic.i-unread{color:var(--accent)}
+#a2 .row.prose .rm .ic.i-read{color:var(--faint)}
 #a2 .card .ft .unr{color:var(--accent)}
 #a2 .md>:first-child{margin-top:0}#a2 .md>:last-child{margin-bottom:0}
 #a2 .md p,#a2 .md ul,#a2 .md ol{margin:0 0 .6em}
@@ -204,22 +209,30 @@ body{background:#000}
 #a2 .runline .rs{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #a2 .runline:hover .rs{color:var(--muted)}
 #a2 .runline.running .rs{color:var(--accent)}
-#a2 .nav .fold[data-level="1"]{color:var(--accent)}
-#a2 .nav .fold[data-level="2"]{color:var(--accent);background:var(--accent-soft)}
 #a2 .row.working,#a2 .row.working .g{color:var(--accent)}
 #a2 .meta{color:var(--faint);margin-left:10px}
 #a2 .steps{color:var(--faint);margin-left:8px}
 /* the divider and the navigator */
 #a2 .row.since::before{content:attr(data-since);grid-column:1/-1;display:flex;align-items:center;gap:10px;margin:6px 0 10px;font-family:var(--font-chrome);font-size:11px;color:var(--accent);background:linear-gradient(var(--accent),var(--accent)) left 50%/calc(50% - 15ch) 1px no-repeat,linear-gradient(var(--accent),var(--accent)) right 50%/calc(50% - 15ch) 1px no-repeat;justify-content:center}
-#a2 .nav{position:absolute;right:14px;bottom:calc(var(--composer-h,94px) + 10px);z-index:3;display:flex;align-items:center;border:1px solid var(--rule);background:var(--raised);border-radius:999px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.25);font-family:var(--font-chrome)}
+/* Small enough for a phone (#299): no visible overflow clip, so a touch
+   pointer's taller hit area (below) reaches past the pill's edge. */
+#a2 .nav{position:absolute;right:14px;bottom:calc(var(--composer-h,94px) + 10px);z-index:3;display:flex;align-items:center;border:1px solid var(--rule);background:var(--raised);border-radius:999px;box-shadow:0 4px 14px rgba(0,0,0,.25);font-family:var(--font-chrome)}
 #a2 .nav[hidden]{display:none}
-#a2 .nav button{border:none;background:none;color:var(--strong);height:30px;padding:0 10px;cursor:pointer;display:grid;place-items:center}
+#a2 .nav button{position:relative;border:none;background:none;color:var(--strong);height:30px;min-width:30px;padding:0 7px;cursor:pointer;display:grid;place-items:center}
 #a2 .nav button+button{border-left:1px solid var(--rule)}
-#a2 .nav .pos{font-size:12px;color:var(--muted)}
+#a2 .nav .pos{display:flex;align-items:center;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
 #a2 .nav .pos:empty{display:none}
+#a2 .nav .pos.unread{color:var(--accent)}
+#a2 .nav .pos.unread::after{content:"";display:inline-block;width:5px;height:5px;margin-left:4px;border-radius:50%;background:var(--accent);vertical-align:2px}
 #a2 .nav button:disabled{opacity:.4;cursor:default}
 #a2 .nav .latest.new{color:var(--accent)}
 #a2 .nav .ic{width:15px;height:15px}
+#a2 .nav .needs:disabled .ic.need{color:var(--muted)}
+#a2 .nav .needs .n{position:absolute;top:1px;right:1px;min-width:13px;height:13px;padding:0 3px;border-radius:7px;background:var(--accent);color:var(--on-accent);font-size:9.5px;line-height:13px;font-weight:600}
+#a2 .nav .needs .n:empty{display:none}
+#a2 .nav .spark{color:var(--accent)}
+#a2 .nav .fold[data-level="1"]{color:var(--accent)}
+#a2 .nav .fold[data-level="2"]{color:var(--accent);background:var(--accent-soft)}
 /* the find bar (js/find.js): the navigator's pill, at the top */
 #a2 .find{position:absolute;right:14px;top:10px;z-index:3;display:flex;align-items:center;border:1px solid var(--rule);background:var(--raised);border-radius:999px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.25);font-family:var(--font-chrome)}
 #a2 .find input{width:24ch;height:30px;padding:0 4px 0 14px;background:none;border:none;outline:none;color:var(--strong);font-size:12.5px}
@@ -240,6 +253,7 @@ body{background:#000}
 #a2 .composer .acts{display:flex;gap:6px;align-items:center;padding:8px 8px 8px 0}
 #a2 .composer .acts .send{font-size:15px;line-height:1;padding:6px 12px;font-weight:600}
 #a2 .composer .acts .int{background:none;border:1px solid var(--rule);border-radius:6px;color:var(--err);font-size:12px;line-height:1;padding:7px 9px;cursor:pointer}
+#a2 .composer .acts .int .ic{width:11px;height:11px;vertical-align:middle}
 #a2 .composer .acts .int[hidden]{display:none}
 /* The mic: idle, loading (capturing while the model loads), listening (its
    ring follows the input level, --level from app.js) and finishing. */
@@ -263,6 +277,34 @@ body{background:#000}
 #a2 .cmd-row .hn,#a2 .cmd-row .dc{color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 #a2 .cmd-row .src{color:var(--faint);font-size:11px}
 #a2 .composer.bad .box{border-color:var(--err)}
+/* attachments: a tray of chips above the message box (js/attach.js) */
+#a2 .composer .atts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+#a2 .composer .atts[hidden]{display:none}
+/* The new tab's tray holds its files until the session exists. */
+#a2 .spawn .atts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+#a2 .spawn .atts[hidden]{display:none}
+#a2 .spawn .clip + .mic{margin-left:6px}
+#a2 .spawn.dropping .box{border-color:var(--accent);border-style:dashed}
+#a2 .chip.att.held .ab{display:none}
+#a2 .chip.att{position:relative;display:inline-flex;align-items:center;gap:6px;overflow:hidden;color:var(--ink);max-width:260px}
+#a2 .chip.att .an{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+#a2 .chip.att .as{color:var(--faint)}
+#a2 .chip.att .ab{position:absolute;left:0;bottom:0;height:2px;width:calc(var(--p,0) * 100%);background:var(--accent)}
+#a2 .chip.att.done .ab{display:none}
+#a2 .chip.att.failed{border-color:var(--err);color:var(--err);cursor:pointer}
+#a2 .chip.att .ax{background:none;border:none;color:var(--muted);cursor:pointer;padding:0 2px;font-size:13px;line-height:1}
+#a2 .chip.att .ax .ic{width:11px;height:11px;vertical-align:-1px}
+#a2 .chip.att .ax:hover{color:var(--strong)}
+#a2 .composer.dropping .box{border-color:var(--accent);border-style:dashed}
+/* With the paperclip, three 44 px touch buttons and the textarea's own width
+   (from its cols) outgrew a 390 px phone: the textarea takes only what is left. */
+#a2 .composer textarea{width:0}
+#a2 .clip svg path{fill:none}
+#a2 .row.user .body .fcard.att{white-space:normal;font-size:13px}
+#a2 .row.user .body .fcard.after{margin-top:8px}
+/* The bubble makes this card narrower than a file_send's: the actions wrap
+   under the name instead of squeezing it to nothing on a phone. */
+#a2 .row.user .fcard.att .fbar{flex-wrap:wrap}
 #a2 .chip.click{cursor:pointer}#a2 .chip.click:hover{border-color:var(--accent);color:var(--strong)}
 #a2 .row.command .cmd{font-family:var(--font-chrome);color:var(--strong)}
 #a2 .chip{font-size:11.5px;padding:3px 9px;border:1px solid var(--rule);border-radius:5px;color:var(--muted);font-family:var(--font-chrome)}
@@ -338,6 +380,7 @@ body{background:#000}
 #a2 .tile.stale .v{color:var(--faint)}
 #a2 .side .foot{display:flex;justify-content:space-between;gap:8px;margin-top:9px;font-family:var(--font-mono);font-size:11px;color:var(--faint);white-space:nowrap}
 #a2 .side .foot>span{overflow:hidden;text-overflow:ellipsis}
+#a2 .side .foot .ic,#a2 .gauge .val .ic,#a2 .qrow .sv .ic,#a2 .tile .v small .ic{width:11px;height:11px;vertical-align:-1px}
 /* the actions: one row of equal cells, labels dropped on a narrow panel */
 #a2 .side-acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:auto}
 #a2 .side-acts.read-only{grid-template-columns:minmax(0,1fr)}
@@ -369,6 +412,7 @@ body{background:#000}
 #a2 .tag{font-size:10.5px;padding:0 6px;border-radius:4px;margin-left:6px;border:1px solid var(--comms);color:var(--comms)}
 #a2 .ver .ok{color:var(--ok);margin-left:6px}
 #a2 .upd{color:var(--warn);margin-left:6px}
+#a2 .ver .ok .ic,#a2 .upd .ic{width:12px;height:12px;vertical-align:-2px}
 #a2 .tabs .ver-top{font-family:var(--font-mono);color:var(--faint);margin-left:4px;cursor:default}
 
 /* fleet */
@@ -412,6 +456,7 @@ body{background:#000}
 #a2 .tbl td{padding:7px 8px;border-bottom:1px solid var(--rule);color:var(--ink)}
 #a2 .tbl td.m{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
 #a2 .tbl tr.sel td{background:var(--accent-soft)}
+#a2 #arch-list tr[data-id]{cursor:pointer}
 #a2 .tbl td.acts{text-align:right;white-space:nowrap}
 #a2 .tbl td.acts .btn{margin-left:6px;padding:3px 10px}
 
@@ -426,11 +471,13 @@ body{background:#000}
 #a2 .row.file .cap{font-family:var(--font-prose);font-size:var(--prose-size);color:var(--ink);margin-bottom:8px}
 #a2 .fcard{border:1px solid var(--rule);border-radius:var(--r-lg);background:var(--surface);overflow:hidden}
 #a2 .fbar{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 12px;background:var(--raised);font-family:var(--font-chrome)}
-#a2 .fbar .ic{color:var(--accent);font-size:15px}
+#a2 .fbar>.ic{color:var(--accent);font-size:15px}
 #a2 .fbar .fn{color:var(--strong);font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex-shrink:1}
 #a2 .fbar .fs{color:var(--faint);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex-shrink:3}
 #a2 .fbar .acts{margin-left:auto;display:flex;gap:6px;flex-shrink:0}
 #a2 .fbar .btn{padding:5px 11px;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;font-family:var(--font-ui)}
+#a2 .fbar .btn,#a2 .peekbar .btn{gap:5px}
+#a2 .fbar .btn .ic,#a2 .peekbar .btn .ic{width:13px;height:13px}
 #a2 .fbar .pager{margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0}
 #a2 .fbar .pager+.acts{margin-left:0}
 #a2 .fbar .pager .btn{padding:3px 9px;font-size:14px;line-height:1}
@@ -438,7 +485,7 @@ body{background:#000}
 #a2 .fbar .native{display:none}
 #a2[data-native] .fbar .native{display:inline-flex}
 #a2 .peekbar{display:flex;align-items:center;gap:10px;margin:6px 0}
-#a2 .peekbar .btn{padding:3px 10px;font-size:11.5px}
+#a2 .peekbar .btn{display:inline-flex;align-items:center;padding:3px 10px;font-size:11.5px}
 #a2 .peekerr{color:var(--err);font-size:11.5px}
 #a2 .peekcap{color:var(--faint);font-size:11px;margin:4px 0}
 #a2 .more .fcard{margin-bottom:8px}
@@ -453,7 +500,7 @@ body{background:#000}
 #a2 .acard .stage iframe{height:240px;background:var(--bg)}
 #a2 .acard .done{padding:10px 12px;color:var(--muted);font-family:var(--font-chrome);font-size:12.5px;border-top:1px solid var(--rule)}
 #a2 .acard .refused{padding:8px 12px;color:var(--err);background:var(--err-bg);font-family:var(--font-chrome);font-size:12.5px;border-top:1px solid var(--rule);overflow-wrap:anywhere}
-#a2 .acard[data-status=submitted] .fbar .ic{color:var(--ok)}
+#a2 .acard[data-status=submitted] .fbar>.ic{color:var(--ok)}
 #probes{position:fixed;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
 
 /* inbox rows, monitors, workers */
@@ -789,7 +836,6 @@ body{background:#000}
 #a2 .row.recap .btn.link{background:none;border:none;padding:0;color:var(--muted);text-decoration:underline;font-size:11px}
 #a2 .row.recap.folded .body{font-size:12.5px;color:var(--muted)}
 #a2 .row.recap.folded .lbl{color:var(--accent);font-family:var(--font-chrome)}
-#a2 .nav .spark{color:var(--accent)}
 
 /* narrow and touch: last, so these win over the rules above */
 /* the panel's button: collapses it on a desktop, opens the drawer on a phone */
@@ -861,6 +907,25 @@ body{background:#000}
   #a2 .band{grid-template-columns:minmax(0,1fr);gap:14px;padding:12px 14px}
   #a2 .gauge{grid-template-columns:62px minmax(0,1fr) max-content;gap:8px}
   #a2 .cards{padding:12px;gap:10px}
+  /* The archive (#295): a row is its title over handle · where · age · cost,
+     with Reopen on the right, and a tap on the row reads it. The server filter
+     keeps its width and wraps under the search box rather than shrinking. */
+  #a2 .archive{padding:4px 12px 24px}
+  #a2 .archive-head{flex-wrap:wrap;gap:8px 12px}
+  #a2 .archive-head input{flex:1 1 180px;min-width:0;max-width:none}
+  #a2 .arch-servers{flex:none;max-width:100%;overflow-x:auto}
+  #a2 #arch-list .tbl,#a2 #arch-list tbody{display:block}
+  #a2 #arch-list tr:not([data-id]){display:none}
+  /* The meta line's cells start at 0 wide (min-width:0) and fill up to their
+     text, short ones first, so the handle and the directory are the ones cut. */
+  #a2 #arch-list tr[data-id]{display:grid;grid-template-columns:repeat(4,auto);justify-content:start;align-content:center;row-gap:2px;position:relative;min-height:60px;padding:8px 92px 8px 4px;border-bottom:1px solid var(--rule)}
+  #a2 #arch-list tr.sel{background:var(--accent-soft)}
+  #a2 #arch-list td{display:block;padding:0;border:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:none}
+  #a2 #arch-list td:first-child{grid-column:1/-1;contain:inline-size;font-size:13.5px}
+  #a2 #arch-list td.m{font-size:11.5px}
+  #a2 #arch-list td.m+td.m:before{content:"·";margin:0 6px;color:var(--faint)}
+  #a2 #arch-list td.acts{position:absolute;top:0;right:0;bottom:0;display:flex;align-items:center;overflow:visible}
+  #a2 #arch-list td.acts .read{display:none}
   #a2[data-view=spawn] .v-spawn{padding:16px 10px;place-items:start stretch}
 }
 @media (prefers-reduced-motion:reduce){#a2 .side{transition:none}}
@@ -871,7 +936,8 @@ body{background:#000}
   #a2 pick-chip .opt{min-height:44px;display:flex;align-items:center}
   #a2 .tab{min-height:40px}
   #a2 .keys-btn.bell{min-width:44px;min-height:40px}
-  #a2 .nav button{height:44px;min-width:44px}
+  #a2 .nav button{height:34px;min-width:36px}
+  #a2 .nav button::before{content:"";position:absolute;inset:-5px 0}
   #a2 .tr{padding-bottom:66px}
   #a2 .row.tool details>summary{padding:9px 0}
   #a2 .btn{min-height:44px}

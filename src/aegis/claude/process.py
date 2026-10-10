@@ -50,6 +50,7 @@ def build_argv(
     resume: str | None = None,
     mcp_config: str = NO_MCP,
     system_prompt: str | None = None,
+    add_dirs: tuple[Path, ...] = (),
 ) -> list[str]:
     argv = [
         claude_bin,
@@ -68,6 +69,9 @@ def build_argv(
         "--mcp-config",
         mcp_config,
     ]
+    for folder in add_dirs:
+        # Read access outside the cwd under every permission mode: the inbox.
+        argv += ["--add-dir", str(folder)]
     if system_prompt:
         argv += ["--append-system-prompt", system_prompt]
     if model:

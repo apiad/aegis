@@ -6,6 +6,7 @@ websocket speaking the client protocol to alpha.
 """
 
 import asyncio
+import base64
 import json
 import logging
 import socket
@@ -18,7 +19,7 @@ import uvicorn
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve as ws_serve
 
-from aegis import links
+from aegis import attachments, links
 from aegis.app import App
 from aegis.ops import OpError
 from aegis.roots import make_roots
@@ -958,3 +959,51 @@ async def test_the_archive_names_a_linked_server_that_is_down(pair):
     r = await alpha.app.registry.call("archive.list", {})
     assert r["offline"] == ["beta"]
     await beta.start()
+
+
+async def test_a_person_on_alpha_attaches_a_file_to_a_session_on_beta(pair):
+    alpha, beta = pair
+    s = await beta.spawn()
+    body = bytes(range(256)) * 1200  # 300 KB: two chunks
+    step = attachments.CHUNK_BYTES
+    async with Browser(alpha) as b:
+        r = await b.call(
+            "attachment.begin",
+            server="beta",
+            log_id=s.log_id,
+            name="big.bin",
+            size=len(body),
+        )
+        uid = r["result"]["upload_id"]
+        for off in range(0, len(body), step):
+            data = base64.b64encode(body[off : off + step]).decode()
+            r = await b.call(
+                "attachment.put",
+                server="beta",
+                log_id=s.log_id,
+                upload_id=uid,
+                offset=off,
+                data=data,
+            )
+            assert "error" not in r, r
+        r = await b.call(
+            "session.send", server="beta", log_id=s.log_id, attachments=[uid]
+        )
+        assert "error" not in r, r
+    await until(
+        lambda: (
+            s.status == "idle"
+            and any(
+                e["kind"] == "user" and e["detail"].get("files") for e in s.entries()
+            )
+        ),
+        timeout=8,
+        what="the attached turn on beta",
+    )
+    (got,) = attachments.inbox(beta.app.roots.state_root, s.log_id).glob("*-big.bin")
+    assert got.read_bytes() == body
+    assert not attachments.inbox(alpha.app.roots.state_root, s.log_id).exists()
+    (user,) = [e for e in s.entries() if e["kind"] == "user"]
+    url = user["detail"]["files"][0]["url"]
+    async with httpx.AsyncClient() as c:
+        assert (await c.get(f"{alpha.base}/via/beta{url}")).content == body

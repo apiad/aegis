@@ -193,6 +193,16 @@ idle session gets it at once and a stopped one is resumed for it; a working one
 holds it and gets every held message as one turn when its turn ends. Writing to a
 working `claude` would inject the message at its next tool boundary instead.
 
+**aegis nudges an agent that drifts, once.** A live, idle session that is
+not a queue worker, whose card says done or review, gets an inbox message
+headed `> from aegis:nudge · plan|idle · …` when its plan has gone 15 minutes
+of work untouched with items not done, or when its last turn ended with no
+`turn_end` 10 minutes ago (`nudges.py`). What a nudge needs is folded into the
+standing from the store (`ended`, `plan_mark`, `nudged`), so a restart neither
+repeats one nor forgets it. A send that carries no nudge re-arms the idle
+nudge and only a plan record re-arms the plan nudge, so a nudge's own turn
+never earns another and nothing loops.
+
 **A turn ending is not completion.** Ending a turn is how an agent waits, so a
 queue worker is finished only when its turn has ended with no live monitor, no
 held message and no Claude task still open (`task_started` without its
@@ -251,8 +261,9 @@ channel that keeps revisions answers with what changed after it, and any other
 with a fresh snapshot. Adding a subsystem adds operations and channels, never a protocol field.
 
 **Python decides, the browser draws.** Every fact and decision about a transcript
-entry is computed once in Python: its glyph, title, summary, status, the diff
-window of an edit, and what collapses. The entry crosses the wire as data and the
+entry is computed once in Python: its glyph (the name of a symbol in the
+client's SVG sprite, `js/glyphs.js`), title, summary, status, the diff window of
+an edit, and what collapses. The entry crosses the wire as data and the
 browser only turns it into markup. One copy of each fact means no drift, and a
 data protocol version fails loudly across a link where mismatched markup would
 break silently.
@@ -335,8 +346,11 @@ its model names. The panel's width and whether it is collapsed
 **One page for every screen.** A phone gets the desktop's markup. Below 760 px
 one CSS block wraps the tab bar onto its own row, turns the side panel into a
 drawer (`data-side=open`, opened by the panel button), shows the monitor card as a
-sheet over that drawer and stacks the Fleet band; under `(pointer: coarse)` touch
-targets grow to 44 px and Enter in the composer adds a line. Hover opens and
+sheet over that drawer, stacks the Fleet band and draws each archive row as two
+lines with Reopen beside them, a tap on the row reading it; under `(pointer: coarse)` touch
+targets grow to 44 px and Enter in the composer adds a line. The navigator's
+buttons are the exception: they draw at 34 px and take a tap 44 px tall
+through a pseudo-element, so the whole pill fits on one line of a phone. Hover opens and
 closes a card for a mouse only, because a tap fires a leave right after its
 click. The transcript's navigator floats on `--composer-h`, the composer's
 height, so replies and extra lines push it up instead of sliding under it. A second set of screens would be a second client to keep in step. The
@@ -413,6 +427,18 @@ Open natively runs the desktop's opener on the server, so it is a person's
 operation only, and only for a socket on loopback to a server with a desktop: a
 proxy's public name is a browser elsewhere, and an SSH tunnel to a headless box
 looks local but has nowhere to open the file.
+
+**An attachment is a sent file going the other way, and only a person sends
+one.** A person's files upload over the websocket as base64 chunks
+(`attachment.begin`, `attachment.put`), so they need no route, no auth path
+and no relay of their own: a call that names a linked server already goes
+down the link. They wait staged in `<state>/inbox/<log_id>/.staged/` and the
+agent never sees them there; `session.send` checks every upload complete,
+moves each to `<state>/inbox/<log_id>/<YYYYMMDD-HHMMSS>-<name>`, copies it
+into the sent-files store (a copy, because the agent may edit its own), and sends the typed text with one line per file.
+The person's row shows the typed text and one card, never the paths. No
+operation for it is open to agents. Each harness is started with read access
+to its inbox, and a chunk's bytes never reach the log (`attachments.py`).
 
 **An artifact is a sent page with a way back, and the way back is the bridge.**
 An agent's interactive page (`artifacts.py`, `artifact_ops.py`) is served and

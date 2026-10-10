@@ -26,6 +26,7 @@
 // window above still holds; the walks below skip them.
 
 import { hhmm, render, update } from "./entries.js";
+import { icon } from "./glyphs.js";
 
 const WINDOW = 200;
 
@@ -490,6 +491,20 @@ export class Transcript {
     this.select(id);
   }
 
+  // The last agent message's first line at the top, where its reading starts;
+  // the latest button goes to its end. Stops following, as reveal() does.
+  lastMessage() {
+    const last = [...this.entries.values()].findLast((e) => e.kind === "prose");
+    if (!last) return;
+    while (!this.nodes.has(last.id) && this.mountEarlier());
+    const n = this.nodes.get(last.id);
+    if (!n) return;
+    this.following = false;
+    this.selected = last.id;
+    this.mark();
+    n.scrollIntoView({ block: "start" });
+  }
+
   // "2 unread · message 3 of 4": counts over every entry, not only the mounted.
   position() {
     const prose = [...this.entries.values()].filter((e) => e.kind === "prose");
@@ -611,9 +626,12 @@ function drawLine(head, run, next, open) {
   const [t, g, rs] = b.children;
   const text = runText(run, next);
   const time = hhmm(run[0].ts);
-  const caret = open ? "▾" : "▸";
+  const caret = open ? "caret-d" : "caret-r";
   if (t.textContent !== time) t.textContent = time;
-  if (g.textContent !== caret) g.textContent = caret;
+  if (g.dataset.caret !== caret) {
+    g.dataset.caret = caret;
+    g.replaceChildren(icon(caret));
+  }
   if (rs.textContent !== text) rs.textContent = text;
   b.classList.toggle("running", run.some((e) => e.status === "running"));
   b.title = open ? "Fold these steps" : "Show these steps";

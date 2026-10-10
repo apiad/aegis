@@ -233,7 +233,7 @@ def test_an_edit_carries_its_diff_window():
     r.output("t1", "The file /x/a.py has been updated.")
     f, _ = run(r)
     (e,) = f.entries()
-    assert e["glyph"] == "✎" and e["summary"] == "edit a.py"
+    assert e["glyph"] == "pencil" and e["summary"] == "edit a.py"
     assert e["detail"]["diff"] == {
         "path": "/x/a.py",
         "removed": ["b = 2"],
@@ -380,7 +380,7 @@ def test_an_inbox_message_is_its_own_kind():
     (e,) = run(r)[0].entries()
     assert (e["kind"], e["glyph"], e["title"]) == (
         "inbox",
-        "⇄",
+        "swap",
         "monitor:01M4 · ok · 2026-10-06T10:00:00Z",
     )
 
@@ -400,7 +400,7 @@ def test_a_call_to_aegis_is_named_by_its_verb():
     a, b = run(r)[0].entries()
     assert (a["title"], a["glyph"], a["summary"]) == (
         "monitor_start",
-        "⇄",
+        "swap",
         "Run the tests",
     )
     assert b["summary"] == "general: Review PR 12"
@@ -438,7 +438,7 @@ def test_a_sent_file_is_its_own_kind():
     assert (e["kind"], e["status"], e["glyph"], e["title"]) == (
         "file",
         "ok",
-        "▤",
+        "file",
         "informe año.png",
     )
     assert e["summary"] == "47 KB · image/png"
@@ -885,7 +885,7 @@ def test_an_artifact_folds_to_one_entry_that_its_later_records_update():
     (e,) = f.entries()
     assert e["id"] == "art-aaaa0001" and e["kind"] == "artifact"
     assert e["status"] == "submitted" and e["summary"] == "submitted"
-    assert e["title"] == "Pick" and e["md"] == "Pick one" and e["glyph"] == "▣"
+    assert e["title"] == "Pick" and e["md"] == "Pick one" and e["glyph"] == "artifact"
     d = e["detail"]
     assert d["url"] == "/files/F1/index.html" and d["started"] is True
     assert d["state"] == {"n": 1} and d["state_by"] == "page"
@@ -1151,3 +1151,51 @@ def test_the_work_between_messages_folds_and_what_was_said_does_not():
         ("prose", 0),
         ("system", 1),
     ]
+
+
+def _attached(name):
+    return _sent(name, path=f"/s/inbox/log/20261010-101502-{name}")
+
+
+FULL = (
+    "look\n\nAttached files:\n- /s/inbox/log/20261010-101502-a.png (image/png, 2.0 KB)"
+)
+
+
+def test_an_attached_send_shows_what_was_typed_and_one_card():
+    r = Rec()
+    r.own("send", text=FULL, typed="look", files=[_attached("a.png")])
+    r.echo(FULL)
+    f, ops = run(r)
+    pending = ops[0][-1]["upsert"]
+    assert (pending["md"], pending["status"]) == ("look", "pending")
+    assert [x["name"] for x in pending["detail"]["files"]] == ["a.png"]
+    assert ops[1][0] == {"remove": "pending:0"}
+    (user,) = f.entries()
+    assert (user["md"], user["status"]) == ("look", "ok")
+    assert [x["name"] for x in user["detail"]["files"]] == ["a.png"]
+    assert user["detail"]["files"][0]["url"] == "/files/id-a.png/a.png"
+
+
+def test_a_send_of_files_alone_has_no_text():
+    r = Rec()
+    full = "Attached files:\n- /s/inbox/log/20261010-101502-a.png (image/png, 2.0 KB)"
+    r.own("send", text=full, typed="", files=[_attached("a.png")])
+    r.echo(full)
+    (user,) = fold_records(r.records).entries()
+    assert user["md"] == "" and len(user["detail"]["files"]) == 1
+
+
+def test_an_attached_echo_takes_its_own_pending_send_not_the_oldest():
+    r = Rec()
+    r.own("send", text="look")
+    r.own("send", text=FULL, typed="look", files=[_attached("a.png")])
+    r.echo(FULL)
+    r.echo("look")
+    f, _ = run(r)
+    users = [e for e in f.entries() if e["kind"] == "user"]
+    assert [(u["md"], len(u["detail"].get("files", []))) for u in users] == [
+        ("look", 1),
+        ("look", 0),
+    ]
+    assert fold_records(r.records).entries() == f.entries()

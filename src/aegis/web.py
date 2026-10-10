@@ -108,10 +108,16 @@ def load_or_create_token(state_root: Path) -> str:
 
 
 def _loggable(params: object) -> object:
-    """Params as the log may see them: a token never reaches a log line."""
-    if isinstance(params, dict) and "token" in params:
-        return {**params, "token": "***"}
-    return params
+    """Params as the log may see them: a token never reaches a log line, and
+    an upload's chunk is logged as its length."""
+    if not isinstance(params, dict):
+        return params
+    out = dict(params)
+    if "token" in out:
+        out["token"] = "***"
+    if isinstance(out.get("data"), str):
+        out["data"] = f"<{len(out['data'])} chars>"
+    return out
 
 
 def public_origin(value: str) -> str:

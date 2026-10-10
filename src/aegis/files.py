@@ -86,9 +86,10 @@ def classify_name(name: str, sniff=lambda: False) -> tuple[str, str]:
         return mime, "html"
     if mime == "text/markdown":
         return mime, "markdown"
-    if major == "text" or (
-        major == "application" and any(t in minor for t in _TEXT_APPS)
-    ):
+    # Whole parts of the subtype only: "openxmlformats" (.docx, .xlsx, .pptx)
+    # holds "xml" and is a zip, whose excerpt would be bytes drawn as text.
+    parts = {minor, *re.split(r"[+.-]", minor)}
+    if major == "text" or (major == "application" and parts & set(_TEXT_APPS)):
         return mime, "text"
     if major in ("audio", "video"):
         return mime, major
@@ -159,9 +160,11 @@ def store_all(state_root: Path, srcs: list[Path]) -> list[dict]:
     return done
 
 
-def store(state_root: Path, src: Path) -> dict:
-    """Copy ``src`` under a fresh id; the store record's body, without caption."""
+def store(state_root: Path, src: Path, name: str | None = None) -> dict:
+    """Copy ``src`` under a fresh id, as ``name`` (its own name by default); the
+    store record's body, without caption."""
     size = check(src)
+    name = name or src.name
     mime, preview = classify(src)
     file_id = secrets.token_urlsafe(16)
     root = state_root / "files"
@@ -177,12 +180,12 @@ def store(state_root: Path, src: Path) -> dict:
         raise FileError("unreadable", f"cannot read {src}: {e}", src) from e
     folder = root / file_id
     folder.mkdir()
-    dest = folder / src.name
+    dest = folder / name
     os.replace(part, dest)
     return {
         "kind": "file",
         "file_id": file_id,
-        "name": src.name,
+        "name": name,
         "mime": mime,
         "size": size,
         "preview": preview,

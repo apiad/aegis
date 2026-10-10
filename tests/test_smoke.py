@@ -29,3 +29,22 @@ def test_a_tour_has_asked_only_once_aegis_records_a_turn_end(tmp_path):
     t.write_text("".join(json.dumps(r) + "\n" for r in lines))
     assert smoke.asked(t)
     assert "  [turn_end needs_you] Works?" in smoke.conversation(t)
+
+
+def test_a_record_whose_message_is_a_string_is_printed_not_a_crash(tmp_path):
+    """Claude's permission_denied line carries `message` as a string. The reader
+    took every `message` for a dict and crashed on the 2026-10-10 smoke test's
+    Haiku transcript (#307)."""
+    smoke = load()
+    denied = {
+        "type": "system",
+        "subtype": "permission_denied",
+        "tool_name": "mcp__aegis__turn_end",
+        "message": "Cannot call mcp__aegis__turn_end while in plan mode.",
+    }
+    t = tmp_path / "t.jsonl"
+    t.write_text(json.dumps({"src": "claude", "line": json.dumps(denied)}) + "\n")
+    assert smoke.conversation(t) == [
+        "  !! permission_denied mcp__aegis__turn_end: "
+        "Cannot call mcp__aegis__turn_end while in plan mode."
+    ]

@@ -1,7 +1,9 @@
+from pathlib import Path
+
 import pytest
 
-from aegis.claude.process import PERMISSION_MODE
 from aegis.agents import PERMISSION_ORDER
+from aegis.claude.process import PERMISSION_MODE
 from aegis.mcp import HEADER
 from aegis.opencode.config import catalog_from, child_config, rules, split_model
 
@@ -111,3 +113,19 @@ def test_a_free_model_costs_nothing_calls_tools_and_writes_text():
         "p/free": True,
         "p/unpriced": False,
     }
+
+
+@pytest.mark.parametrize("permission", ["read", "write", "auto"])
+def test_the_inbox_is_the_one_outside_path_a_denying_permission_reads(permission):
+    ext = rules(permission, (Path("/s/inbox/l"),))["external_directory"]
+    assert ext == {"*": "deny", "/s/inbox/l/*": "allow"}
+    assert list(ext) == ["*", "/s/inbox/l/*"]  # the specific rule last, so it wins
+
+
+def test_full_permission_needs_no_inbox_rule():
+    assert "external_directory" not in rules("full", (Path("/s/inbox/l"),))
+
+
+def test_the_child_config_carries_the_inbox_rule():
+    cfg = child_config(None, "write", (Path("/s/inbox/l"),))
+    assert cfg["permission"]["external_directory"]["/s/inbox/l/*"] == "allow"

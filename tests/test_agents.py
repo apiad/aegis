@@ -182,7 +182,7 @@ async def test_a_call_acts_as_its_own_session(world):
     said = await turn(a, mcp("session_rename", log_id=b.log_id, title="nope"))
     assert said.startswith("mcp error: not_yours")
     rows = [e for e in a.entries() if e["kind"] == "tool"]
-    assert rows[0]["title"] == "session_list" and rows[0]["glyph"] == "⇄"
+    assert rows[0]["title"] == "session_list" and rows[0]["glyph"] == "swap"
 
 
 async def test_quota_read_returns_the_snapshot(world):

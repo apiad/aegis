@@ -123,6 +123,10 @@ transcript, so the workplace grows with what its agents build.
   Markdown, text, audio, video), Open and Download. A Read, Write or Edit row
   also has *Show the file*, which opens the file that tool used, as it is now,
   inside the row.
+- **Files to agents.** Drop, paste or pick files in the message box (the
+  paperclip). They upload as chips while you type, go with your message into
+  the session's inbox, and the agent gets their paths. Your row shows them as
+  one card. It works on a linked server's sessions too.
 - **Monitors you can read.** Hovering a monitor opens its readings chart, its
   timing and each of its commands with the last exit code and stderr line, so a
   check that cannot run shows red instead of looking like one still waiting.
@@ -130,7 +134,11 @@ transcript, so the workplace grows with what its agents build.
   resumes each one. Close archives a session for every browser, and the archive
   in the Fleet brings it back.
 - **On a phone.** Below 760 px the tabs get their own row, the panel becomes a
-  drawer, and touch targets are 44 px. Chrome installs aegis as an app.
+  drawer, and touch targets are 44 px. Chrome installs aegis as an app. On
+  Android it builds that app through Google Play, so where Play is out of
+  reach (Cuba, some corporate networks) the first install sits on
+  "Installing…" and gives up; do it once over a VPN, and the installed app
+  then runs without one.
 - **Dictation.** The mic in the message box (Alt+M) transcribes in your browser
   with a 17.8 MB model downloaded once. The text lands in the box and is never
   sent on its own.

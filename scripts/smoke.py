@@ -62,7 +62,12 @@ def conversation(path: Path) -> list[str]:
             msg = json.loads(rec["line"])
         except (KeyError, ValueError):
             continue
-        content = msg.get("message", {}).get("content")
+        body = msg.get("message", {})
+        if isinstance(body, str):  # a system line such as permission_denied
+            tool = f" {msg['tool_name']}" if msg.get("tool_name") else ""
+            out.append(f"  !! {msg.get('subtype') or msg.get('type')}{tool}: {body}")
+            continue
+        content = body.get("content")
         if msg.get("type") == "assistant":
             for c in content or []:
                 if c.get("type") == "text":
