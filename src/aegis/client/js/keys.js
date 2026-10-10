@@ -1,6 +1,7 @@
-// The keyboard: one table of every key the client answers, and the one
-// keydown listener that dispatches from it. The ? overlay is drawn from the
-// same table, so it cannot list a key that does nothing.
+// The keyboard: one registry of every action the client offers by key, and the
+// one keydown listener that dispatches from it. The ? overlay and the command
+// palette (palette.js) are drawn from the same registry, so neither can list an
+// action that does nothing, and a new action shows in both without a second edit.
 //
 // Chrome on Linux keeps Ctrl+T/W/N/Tab, Alt+1…9, Alt+←/→ and Alt+D/E/F for
 // itself (chrome/browser/ui/accelerator_table.cc); the chords here are the Alt
@@ -8,94 +9,120 @@
 // Alt+↑/↓, Alt+U and Alt+J are not in Chrome's Linux accelerator table either.
 // Plain keys act only outside text fields, as in Gmail, and the view decides
 // what they do, so there is no mode to keep in your head.
+//
+// The palette is Ctrl+K, and ⌘K on a Mac. Chrome binds Ctrl+K to "search from
+// the address bar" (IDC_FOCUS_SEARCH), which is not in its reserved list
+// (BrowserCommandController::IsReservedCommandOrKey), so the page's
+// preventDefault wins, as it does on GitHub and Slack. On a Mac Ctrl+K deletes
+// to the end of the line in a text field, so there the chord is ⌘K alone.
 
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 const bare = (ev) => !ev.altKey && !ev.ctrlKey && !ev.metaKey;
 const alt = (code) => (ev) => ev.altKey && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey && ev.code === code;
+const mod = (k) => (ev) =>
+  (MAC ? ev.metaKey && !ev.ctrlKey : ev.ctrlKey && !ev.metaKey) && !ev.altKey && !ev.shiftKey && ev.key.toLowerCase() === k;
 const key =
   (...keys) =>
   (ev) =>
     bare(ev) && keys.includes(ev.key);
+const on = (scope, label, match, extra) => ({ scope, label, match, ...extra });
 
-// scope: "global" acts anywhere, even while typing; "browse" outside text
-// fields in any view; "session" (also the read view) and "fleet" in theirs.
-export const KEYS = [
-  { scope: "global", label: "Alt+.", desc: "Focus the message box", action: "composer", match: alt("Period") },
-  { scope: "global", label: "Alt+/", desc: "Commands for this session", action: "commands", match: alt("Slash") },
-  { scope: "global", label: "Alt+,", desc: "Focus the transcript, or the Fleet cards", action: "browse", match: alt("Comma") },
+// An action: its id (the name app.js runs it by), its title, the keys that run
+// it, and `when`, the views where the palette offers it. Without `when` that is
+// wherever its keys act. `palette: false` keeps out of the palette what needs
+// the key itself (which digit) or is only documented here.
+//
+// A key's scope: "global" acts anywhere, even while typing; "browse" outside
+// text fields in any view; "session" (also the read view) and "fleet" in theirs.
+export const ACTIONS = [
+  { id: "palette", title: "Search the commands", palette: false, keys: [on("global", MAC ? "⌘K" : "Ctrl+K", mod("k"))] },
   {
-    scope: "global",
-    label: "Alt+[  Alt+]",
-    desc: "Previous / next tab, Fleet first",
-    action: "cycle",
-    match: (ev) => alt("BracketLeft")(ev) || alt("BracketRight")(ev),
+    id: "composer",
+    title: "Focus the message box",
+    when: ["session", "spawn"],
+    keys: [on("global", "Alt+.", alt("Period")), on("session", "i  /", key("i", "/"))],
+  },
+  { id: "commands", title: "Commands for this session", when: ["session"], keys: [on("global", "Alt+/", alt("Slash"))] },
+  {
+    id: "browse",
+    title: "Focus the transcript, or the Fleet cards",
+    when: ["session", "read", "fleet"],
+    keys: [on("global", "Alt+,", alt("Comma"))],
+  },
+  // The Fleet is the first tab.
+  { id: "tabPrev", title: "Previous tab", keys: [on("global", "Alt+[", alt("BracketLeft"))] },
+  { id: "tabNext", title: "Next tab", keys: [on("global", "Alt+]", alt("BracketRight"))] },
+  { id: "needs", title: "Next session that needs you, longest waiting first", keys: [on("global", "Alt+J", alt("KeyJ"))] },
+  { id: "spawn", title: "New session", keys: [on("global", "Alt+N", alt("KeyN")), on("browse", "n", key("n"))] },
+  { id: "settings", title: "Settings: .aegis.yaml", keys: [on("global", "Alt+S", alt("KeyS"))] },
+  {
+    id: "dictate",
+    title: "Dictate into the message box; again to stop",
+    when: ["session", "spawn"],
+    keys: [on("global", "Alt+M", alt("KeyM"))],
+  },
+  { id: "side", title: "Show or hide the session panel", keys: [on("global", "Alt+B", alt("KeyB"))] },
+  {
+    id: "foldLevel",
+    title: "Fold: everything shown, then tool calls and thinking, then all but the messages",
+    when: ["session", "read"],
+    keys: [on("global", "Alt+Z", alt("KeyZ")), on("session", "z", key("z"))],
   },
   {
-    scope: "global",
-    label: "Alt+J",
-    desc: "Next session that needs you, longest waiting first",
-    action: "needs",
-    match: alt("KeyJ"),
+    id: "tab",
+    title: "Fleet, or the n-th tab (Chrome on Linux keeps Alt+1…9)",
+    palette: false,
+    keys: [
+      on("global", "Alt+0…9", (ev) => ev.altKey && /^Digit[0-9]$/.test(ev.code)),
+      on("browse", "0…9", (ev) => bare(ev) && /^[0-9]$/.test(ev.key)),
+    ],
   },
-  { scope: "global", label: "Alt+N", desc: "New session", action: "spawn", match: alt("KeyN") },
-  { scope: "global", label: "Alt+S", desc: "Settings: .aegis.yaml", action: "settings", match: alt("KeyS") },
-  { scope: "global", label: "Alt+M", desc: "Dictate into the message box; again to stop", action: "dictate", match: alt("KeyM") },
-  { scope: "global", label: "Alt+B", desc: "Show or hide the session panel", action: "side", match: alt("KeyB") },
+  { id: "escape", title: "Interrupt the agent; close a dialog or a list", keys: [on("global", "Esc", key("Escape"))] },
+  { id: "help", title: "Every key, in one list", keys: [on("browse", "?", key("?"))] },
+  { id: "next", title: "Next row", keys: [on("session", "j  ↓", key("j", "ArrowDown"))] },
+  { id: "prev", title: "Previous row", keys: [on("session", "k  ↑", key("k", "ArrowUp"))] },
+  { id: "turnNext", title: "Next message of yours", keys: [on("session", "J", key("J"))] },
+  { id: "turnPrev", title: "Previous message of yours", keys: [on("session", "K", key("K"))] },
+  { id: "messagePrev", title: "Previous agent message", keys: [on("session", "Alt+↑", alt("ArrowUp"))] },
+  { id: "messageNext", title: "Next agent message", keys: [on("session", "Alt+↓", alt("ArrowDown"))] },
+  { id: "firstUnread", title: "First unread agent message", keys: [on("session", "Alt+U", alt("KeyU"))] },
+  { id: "first", title: "First row", keys: [on("session", "g", key("g"))] },
+  { id: "last", title: "Last row, and follow the tail", keys: [on("session", "G", key("G"))] },
   {
-    scope: "global",
-    label: "Alt+Z",
-    desc: "Fold: everything shown, then tool calls and thinking, then all but the messages",
-    action: "foldLevel",
-    match: alt("KeyZ"),
+    id: "toggle",
+    title: "Open or close the row's details",
+    keys: [on("session", "Enter  Space", key("Enter", " "), { native: true })],
   },
-  {
-    scope: "global",
-    label: "Alt+0…9",
-    desc: "Fleet, or the n-th tab (Chrome on Linux keeps Alt+1…9)",
-    action: "tab",
-    match: (ev) => ev.altKey && /^Digit[0-9]$/.test(ev.code),
-  },
-  { scope: "global", label: "Esc", desc: "Interrupt the agent; close a dialog or this list", action: "escape", match: key("Escape") },
-  { scope: "browse", label: "0…9", desc: "Fleet, or the n-th tab", action: "tab", match: (ev) => bare(ev) && /^[0-9]$/.test(ev.key) },
-  { scope: "browse", label: "n", desc: "New session", action: "spawn", match: key("n") },
-  { scope: "browse", label: "?", desc: "This list", action: "help", match: key("?") },
-  { scope: "session", label: "j  ↓", desc: "Next row", action: "next", match: key("j", "ArrowDown") },
-  { scope: "session", label: "k  ↑", desc: "Previous row", action: "prev", match: key("k", "ArrowUp") },
-  { scope: "session", label: "J  K", desc: "Next / previous message of yours", action: "turn", match: key("J", "K") },
-  {
-    scope: "session",
-    label: "Alt+↑  Alt+↓",
-    desc: "Previous / next agent message",
-    action: "message",
-    match: (ev) => alt("ArrowUp")(ev) || alt("ArrowDown")(ev),
-  },
-  { scope: "session", label: "Alt+U", desc: "First unread agent message", action: "firstUnread", match: alt("KeyU") },
-  { scope: "session", label: "g  G", desc: "First row / last row, and follow the tail", action: "edge", match: key("g", "G") },
-  {
-    scope: "session",
-    label: "Enter  Space",
-    desc: "Open or close the row's details",
-    action: "toggle",
-    match: key("Enter", " "),
-    native: true,
-  },
-  { scope: "session", label: "o", desc: "Press the row's first button", action: "press", match: key("o") },
-  { scope: "session", label: "c", desc: "Copy the row's message or output", action: "copy", match: key("c") },
-  { scope: "session", label: "z", desc: "The next fold level", action: "foldLevel", match: key("z") },
+  { id: "press", title: "Press the row's first button", keys: [on("session", "o", key("o"))] },
+  { id: "copy", title: "Copy the row's message or output", keys: [on("session", "c", key("c"))] },
   // Documents the browser's own Tab; it never matches.
-  { scope: "session", label: "Tab", desc: "Walk the buttons from the selected row on", action: "none", match: () => false },
-  { scope: "session", label: "i  /", desc: "Back to the message box", action: "composer", match: key("i", "/") },
-  { scope: "fleet", label: "j  ↓", desc: "Next card, then the archive", action: "fleetNext", match: key("j", "ArrowDown") },
-  { scope: "fleet", label: "k  ↑", desc: "Previous card", action: "fleetPrev", match: key("k", "ArrowUp") },
   {
-    scope: "fleet",
-    label: "Enter",
-    desc: "Open the session; Read an archived one",
-    action: "fleetOpen",
-    match: key("Enter"),
-    native: true,
+    id: "walk",
+    title: "Walk the buttons from the selected row on",
+    palette: false,
+    keys: [on("session", "Tab", () => false)],
   },
-  { scope: "fleet", label: "/", desc: "Filter the archive", action: "filter", match: key("/") },
+  { id: "fleetNext", title: "Next card, then the archive", keys: [on("fleet", "j  ↓", key("j", "ArrowDown"))] },
+  { id: "fleetPrev", title: "Previous card", keys: [on("fleet", "k  ↑", key("k", "ArrowUp"))] },
+  {
+    id: "fleetOpen",
+    title: "Open the session; Read an archived one",
+    keys: [on("fleet", "Enter", key("Enter"), { native: true })],
+  },
+  { id: "filter", title: "Filter the archive", keys: [on("fleet", "/", key("/"))] },
 ];
+
+// Every key, in the order the ? list shows them, each with its action.
+export const KEYS = ACTIONS.flatMap((a) => a.keys.map((k) => ({ ...k, action: a })));
+
+const VIEWS = { global: null, browse: null, session: ["session", "read"], fleet: ["fleet"] };
+
+// Whether the palette offers an action in a view.
+export function applies(a, view) {
+  if (a.palette === false) return false;
+  if (a.when) return a.when.includes(view);
+  return a.keys.some((k) => !VIEWS[k.scope] || VIEWS[k.scope].includes(view));
+}
 
 function typing(t) {
   return t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
@@ -116,7 +143,7 @@ export function renderKeys(box) {
       const r = t.insertRow();
       r.className = "k";
       r.insertCell().textContent = k.label;
-      r.insertCell().textContent = k.desc;
+      r.insertCell().textContent = k.action.title;
     }
     panel.append(t);
   }
@@ -125,7 +152,14 @@ export function renderKeys(box) {
 
 const PRESSABLE = new Set(["A", "BUTTON", "SUMMARY"]);
 
-export function installKeys(actions, view) {
+// runs: what each action does, by id; each becomes its action's `run`. An
+// action without one, or one for no action, is a mistake caught at boot.
+export function installKeys(runs, view) {
+  const ids = new Set(ACTIONS.map((a) => a.id));
+  const missing = [...ids].filter((id) => !runs[id]);
+  const extra = Object.keys(runs).filter((id) => !ids.has(id));
+  if (missing.length || extra.length) throw new Error(`keys.js: no run for ${missing}; no action for ${extra}`);
+  for (const a of ACTIONS) a.run = runs[a.id];
   document.addEventListener("keydown", (ev) => {
     if (ev.defaultPrevented || ev.isComposing) return;
     const v = view();
@@ -135,6 +169,6 @@ export function installKeys(actions, view) {
     // Enter and Space on a focused link, button or summary are the element's own.
     if (b.native && PRESSABLE.has(ev.target.tagName)) return;
     ev.preventDefault();
-    actions[b.action](ev);
+    b.action.run(ev);
   });
 }

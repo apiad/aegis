@@ -44,6 +44,17 @@ body{background:#000}
 #a2 .keymap th{text-align:left;color:var(--faint);font-family:var(--font-chrome);font-size:11.5px;font-weight:500;padding:12px 0 4px}
 #a2 .keymap td{padding:3px 18px 3px 0;color:var(--ink)}
 #a2 .keymap td:first-child{font-family:var(--font-mono);color:var(--strong);white-space:pre}
+/* the command palette (js/palette.js): the ? list's backdrop, the command menu's rows */
+#a2 .palette{position:fixed;inset:0;z-index:50;display:flex;justify-content:center;align-items:flex-start;padding-top:12vh;background:rgba(0,0,0,.45)}
+#a2 .palette[hidden]{display:none}
+#a2 .palette .panel{width:min(560px,92vw);max-height:70vh;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:6px;font-family:var(--font-chrome);font-size:12.5px}
+#a2 .palette input{padding:7px 9px;margin-bottom:4px;background:var(--bg);border:1px solid var(--accent);border-radius:4px;color:var(--strong);font:inherit;outline:none}
+#a2 .palette .rows{overflow:auto}
+#a2 .palette .cmd-row{grid-template-columns:1fr auto}
+#a2 .palette .keys{display:flex;gap:14px}
+#a2 .palette kbd{font-family:var(--font-mono);font-size:11.5px;color:var(--faint);white-space:pre}
+#a2 .palette .cmd-row.on kbd{color:var(--muted)}
+#a2 .palette .empty{padding:6px 8px;color:var(--faint)}
 #a2 .dialog{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(0,0,0,.45);padding:16px}
 #a2 .dialog[hidden]{display:none}
 #a2 .dialog .panel{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:18px 20px;max-width:420px;width:100%}

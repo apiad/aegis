@@ -18,6 +18,24 @@ def test_the_client_never_opens_a_native_dialog():
     assert found == []
 
 
+def test_only_keys_js_listens_for_keys_on_the_page():
+    """A page-wide key binding lives in the registry in js/keys.js, so the ?
+    list and the command palette show it (#248). A widget may answer keys in
+    its own field, as the command menu and the palette do, but a listener on
+    the document or the window anywhere else is a key nobody can find."""
+    found = [
+        f"{p.name}:{n}"
+        for p in JS.glob("*.js")
+        if p.name != "keys.js"
+        for n, line in enumerate(p.read_text().splitlines(), 1)
+        if re.search(
+            r"""(document|window|self)\.addEventListener\(\s*["']key(down|up|press)""",
+            line,
+        )
+    ]
+    assert found == []
+
+
 def test_the_client_draws_no_native_select():
     """A native select pops up in the operating system's chrome, outside the
     theme, and answers typing by jumping to the next option starting with that

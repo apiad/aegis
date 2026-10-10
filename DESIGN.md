@@ -275,9 +275,15 @@ walks (j/k, the first row on screen) skip hidden rows. The line is counted from
 the run's data, not its rows, so a run that starts above the mounted rows still
 says all it holds.
 
-**A key is one row in one table.** `client/js/keys.js` holds every key the client
-answers and the one `keydown` listener that dispatches from it; the `?` list is drawn
-from the same table, so it cannot name a key that does nothing. Chrome keeps Ctrl+T,
+**An action is one row in one registry.** `client/js/keys.js` holds every action
+the client offers by key (its id, title, keys and the views where it applies) and
+the one `keydown` listener that dispatches from it; app.js gives each id its run,
+and a missing or extra one throws at boot. The `?` list and the command palette
+(`js/palette.js`, Ctrl+K or ⌘K) are drawn from the same registry, so neither can
+name an action that does nothing, and a new action shows in all three at once. No
+other module listens for keys on the document. Chrome binds Ctrl+K to its address
+bar search but does not reserve it, so the page's `preventDefault` wins; on a Mac
+it is ⌘K alone, because Ctrl+K there deletes to the end of a line. Chrome keeps Ctrl+T,
 W, N and Tab, and on Linux Alt+1…9 and Alt+←/→, for itself, so the chords are the
 Alt keys it leaves free. Plain keys act only outside a text field and the view
 decides what they do: there is no mode. A selection, in the transcript or the
