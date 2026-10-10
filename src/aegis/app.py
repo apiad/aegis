@@ -3,8 +3,7 @@
 Operations: ``agents.list``, ``session.spawn``, ``session.send`` (which
 resolves a ``/`` line first, ``commands.py``), ``session.read``,
 ``recap.request``, ``dictation.prepare``, ``session.configure``,
-``commands.list``, ``session.interrupt``, ``session.stop``, ``session.close``,
-``session.reopen``,
+``commands.list``, ``session.interrupt``, ``session.stop``, ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``, ``file.peek``,
 ``quota.read``, ``transcript.detail``, ``transcript.search``, ``transcript.output``, and ``config.read``, ``config.write``,
 ``config.detect``, ``config.doctor`` and ``config.propose`` (``config_ops.py``),
@@ -45,6 +44,7 @@ from .channels import Channels, Throttle
 from .claude.process import PERMISSION_MODE, ControlError
 from .config import Config, Snapshot
 from .config_ops import register_config_ops
+from .confirm import Confirmations
 from .host import HostSampler
 from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
@@ -217,6 +217,7 @@ class App:
         self.queues = Queues(
             self.sessions, self.monitors, roots.state_root / "tasks.jsonl", self.config
         )
+        self.confirmations = Confirmations()
         self.quota = Quota(self.publish)
         self.host = HostSampler(
             self.publish, self.channels.subscribers, roots.config_root
@@ -703,10 +704,6 @@ class App:
         @r.op("session.stop", LogParams)
         async def stop(p: LogParams, caller):
             await reg.open(p.log_id).stop()
-
-        @r.op("session.close", LogParams)
-        async def close(p: LogParams, caller):
-            await reg.close(p.log_id)
 
         @r.op("session.reopen", LogParams)
         async def reopen(p: LogParams, caller):
