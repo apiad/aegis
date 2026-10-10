@@ -174,6 +174,19 @@ spec the next `--resume` is built from has to change with the process; they reac
 a live `claude` as control requests whose answers `ClaudeProcess.request` routes
 and does not store.
 
+**The journal is an index over the stores.** What was done on a server (commits,
+pull requests, plan items turning done, turns that changed files, and the decisions
+and blockers agents note with `journal_note`) is derived from the transcript
+stores by one pure `Deriver` (`journal/derive.py`), live through `Host.recorded`
+and in a backfill. Rows are keyed by log id, record and ordinal, so the two paths
+write the same rows and `aegis journal rebuild` loses nothing. Paths are named by
+their repo's main checkout, so an edit in a worktree is found under the main
+checkout's path. Git and SQLite run on one writer thread; the event loop only
+enqueues, and boot reads no store: the journal starts before the sessions boot,
+and `journal.db` records in `PRAGMA application_id` that a backfill finished, so
+an interrupted one resumes at the next start. A corrupt `journal.db` is set aside
+and rebuilt (#289).
+
 **The inbox holds messages until a turn ends.** A monitor's wake, a queue's result
 and a handoff reach a session as a user turn headed `> from <kind>:<name> · …`. An
 idle session gets it at once and a stopped one is resumed for it; a working one
@@ -200,8 +213,8 @@ mid-wait in the legacy tree.
 it can see, and changes only its own monitors, its own session's names and the
 tasks it enqueued. A session an agent spawns runs with at most the agent's own
 permission, so spawning is never a way to gain power. A session whose
-permission is read calls only the operations marked `read`: its own card,
-reading, waiting on other sessions and `file_send`. The registry checks the
+permission is read calls only the operations marked `read`: its own card and
+journal notes, reading, waiting on other sessions and `file_send`. The registry checks the
 session's current permission on each call, so the rule holds for every harness
 and follows a live `/permission`, and Claude Code is told to let every aegis
 tool through, because its plan mode refuses MCP calls an allow rule names

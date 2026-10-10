@@ -331,3 +331,9 @@ def test_the_aegis_servers_tools_are_named_as_claude_names_them():
     }
     (call,) = p.feed(line("item/started", threadId="t1", turnId="u", item=item))
     assert call.name == "mcp__aegis__meta"
+
+
+def test_the_thread_names_its_working_directory():
+    p = Parser()
+    (ev,) = p.feed(line("aegis/thread", thread={"id": "t1", "cwd": "/r/x"}))
+    assert isinstance(ev, Init) and ev.cwd == "/r/x"

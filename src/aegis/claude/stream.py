@@ -42,6 +42,9 @@ class Init:
     version: str | None
     # Who printed it, for the transcript's first line.
     harness: str = "Claude Code"
+    # The session's working directory as the harness reports it: a worktree it
+    # entered, or where Claude's Bash was left by a cd. None when not reported.
+    cwd: str | None = None
 
 
 @dataclass(frozen=True)
@@ -292,6 +295,7 @@ def _parse(obj: dict) -> list[Event]:
                     session_id=_str(obj.get("session_id")),
                     model=_str(obj.get("model")),
                     version=_str(obj.get("claude_code_version")),
+                    cwd=_str(obj.get("cwd")),
                 )
             ]
         if sub == "compact_boundary":

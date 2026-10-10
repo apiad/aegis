@@ -22,6 +22,7 @@ import { glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
+import { entry, Journal, opens } from "./journal.js";
 import { installBell, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
 import "./pick.js";
@@ -42,19 +43,19 @@ let quotaDrawnFor = null; // the view the quota rows were last drawn for
 const nowS = () => Date.now() / 1000;
 
 // -- theme ----------------------------------------------------------------
-const themePick = $("theme");
-themePick.options = [
+// This browser's choice, picked in Settings; index.html applies it before the
+// first paint.
+const THEMES = [
   { value: "ink", label: "Ink" },
   { value: "logbook", label: "Logbook" },
   { value: "syalia", label: "Syalia" },
 ];
-themePick.value = document.documentElement.dataset.theme;
-themePick.addEventListener("change", () => {
-  document.documentElement.dataset.theme = themePick.value;
-  localStorage.setItem("aegis.theme", themePick.value);
+function setTheme(name) {
+  document.documentElement.dataset.theme = name;
+  localStorage.setItem("aegis.theme", name);
   redrawFavicon();
   artifacts.theme();
-});
+}
 
 // -- state ----------------------------------------------------------------
 const sessions = new Map(); // key -> meta, from every server's `sessions` channel
@@ -121,6 +122,7 @@ $("nav-down").append(icon("down"));
 $("jump").append(icon("latest"));
 $("bell").append(icon("bell"));
 $("settings-btn").prepend(icon("gear"));
+$("journal-btn").append(icon("book"));
 $("send").append(icon("send"));
 $("sp-go").append(icon("send"));
 $("interrupt").append(icon("stop"));
@@ -199,13 +201,14 @@ for (const b of document.querySelectorAll("#fleet-order button"))
     render();
   });
 
-// -- routing: #fleet, #new, #settings, #s=<key>, #read=<key> ------------------
+// -- routing: #fleet, #new, #settings, #journal, #s=<key>, #read=<key> ------------------
 function route() {
   const h = location.hash.slice(1);
   if (h.startsWith("s=")) return { view: "session", id: h.slice(2) };
   if (h.startsWith("read=")) return { view: "read", id: h.slice(5) };
   if (h === "new") return { view: "spawn" };
   if (h === "settings") return { view: "settings" };
+  if (h === "journal") return { view: "journal" };
   return { view: "fleet" };
 }
 
@@ -276,7 +279,27 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
     }
   },
 });
-const settings = new Settings(conn, $("settings"));
+const settings = new Settings(conn, $("settings"), { themes: THEMES, setTheme });
+let landEntry = null; // {key, id}: reveal this entry once its transcript lands
+const journal = new Journal(conn, $("journal"), {
+  onOpen: (r) => {
+    landEntry = r.source ? { key: r.log_id, id: r.source } : null;
+    go(r.open ? `#s=${r.log_id}` : `#read=${r.log_id}`);
+  },
+});
+let sideJournalTimer = null;
+const sideJournalChanged = () => {
+  journal.changed();
+  // Away from the session view nothing refetches; forget what was drawn so the
+  // next renderMeta of any session does.
+  if (root.dataset.view !== "session") {
+    sideJournalFor = null;
+    return;
+  }
+  clearTimeout(sideJournalTimer);
+  sideJournalTimer = setTimeout(() => drawSideJournal(sideJournalFor, true), 300);
+};
+conn.subscribe("journal", sideJournalChanged, sideJournalChanged);
 
 // Each server's `sessions` channel: a snapshot replaces that server's metas,
 // patches upsert and remove them.
@@ -473,6 +496,7 @@ function render() {
   $("tab-fleet").classList.toggle("on", r.view === "fleet");
   $("tab-add").classList.toggle("on", r.view === "spawn");
   $("settings-btn").classList.toggle("on", r.view === "settings");
+  $("journal-btn").classList.toggle("on", r.view === "journal");
   root.dataset.mode = r.view === "read" ? "read" : "live";
   // Quota rows redraw on a quota patch, the timer, or a change of view; never
   // on a sessions patch, which would take the hover tooltip with them.
@@ -502,6 +526,12 @@ function render() {
     show("settings");
     if (newView) settings.open();
     setTitle("Settings · aegis");
+  } else if (r.view === "journal") {
+    watchHost(null);
+    follow(null);
+    show("journal");
+    if (newView) journal.open();
+    setTitle("Journal · aegis");
   } else if (r.view === "session") {
     watchHost(forKey(r.id).server || "");
     // Shown first: follow() sizes the message box, which measures 0 while hidden.
@@ -817,6 +847,8 @@ function follow(id) {
         askRecap(false); // the server decides whether it is worth one
         if (landUnread === id) transcript.firstUnread();
         landUnread = null;
+        if (landEntry && landEntry.key === id) transcript.reveal(landEntry.id);
+        landEntry = null;
       }
       placed = true;
       // Read by scripts/bench.py: when the snapshot was drawn and painted.
@@ -905,6 +937,78 @@ function tickSidePlan(s) {
   }
 }
 
+// The sidebar's Journal row: the shown session's two newest entries today and
+// its count; the card lists its five newest as the Journal view draws them.
+// Fetched when the shown session changes or the journal changes.
+let sideJournalFor = null;
+let sideJournalDay = "";
+const noJournal = () => {
+  $("s-journal").textContent = "nothing yet today";
+  $("s-journal-at").textContent = "";
+  $("s-journal-peek").hidden = true;
+  $("s-journal-peek").replaceChildren();
+  $("s-journal-all").replaceChildren(span("cnote", "Nothing journaled today."));
+};
+async function drawSideJournal(key, force = false) {
+  const day = new Date().toDateString(); // "today" moves at midnight
+  if (!key || (!force && sideJournalFor === key && sideJournalDay === day)) return;
+  // Another session's rows go at once: this one never shows them while it loads.
+  if (sideJournalFor !== key) {
+    $("s-journal").textContent = "…";
+    $("s-journal-at").textContent = "";
+    $("s-journal-peek").hidden = true;
+    $("s-journal-peek").replaceChildren();
+    $("s-journal-all").replaceChildren();
+  }
+  sideJournalFor = key;
+  sideJournalDay = day;
+  const linked = key.includes("/");
+  $("s-journal-sec").hidden = linked;
+  if (linked) return;
+  let res;
+  try {
+    res = await conn.call("journal.rows", { session: key, since: "today", limit: 5, counts: true });
+  } catch {
+    if (sideJournalFor === key) {
+      sideJournalFor = null; // the next render retries
+      noJournal();
+    }
+    return;
+  }
+  if (sideJournalFor !== key) return;
+  if (!res.rows.length) {
+    noJournal();
+    return;
+  }
+  const c = res.counts || {};
+  const total = Object.values(c).reduce((a, b) => a + b, 0);
+  $("s-journal").textContent =
+    `${total} ${total === 1 ? "entry" : "entries"}` + (c.commit ? ` · ${c.commit} commit${c.commit === 1 ? "" : "s"}` : "");
+  $("s-journal-at").textContent = `last ${res.rows[0].time}`;
+  $("s-journal-peek").replaceChildren(...res.rows.slice(0, 2).map((r) => {
+    const line = document.createElement("div");
+    line.className = `k-${r.kind}`;
+    line.append(span("g", r.glyph), span("x", (r.tag ? `${r.tag}: ` : "") + (r.hash ? `${r.hash} ` : "") + r.text), span("t", r.time));
+    return line;
+  }));
+  $("s-journal-peek").hidden = false;
+  const thread = document.createElement("div");
+  thread.className = "jthread";
+  thread.append(...res.rows.map((r) => {
+    const row = entry(r, false);
+    row.classList.add("le");
+    // On a phone the drawer covers the transcript: close it so the reveal shows.
+    opens(row, () => {
+      if (!r.source) return;
+      transcript.reveal(r.source);
+      closeCard();
+      if (drawerMode.matches) closeSide();
+    });
+    return row;
+  }));
+  $("s-journal-all").replaceChildren(thread);
+}
+
 function renderMeta(s) {
   if (!s) return;
   if (!editing.has("title")) $("s-title").textContent = s.title || "untitled";
@@ -930,6 +1034,7 @@ function renderMeta(s) {
   $("s-ask").textContent = s.attention_line || "";
   $("s-ask").className = `askbox at-${s.attention}`;
   drawPlan(s);
+  drawSideJournal(s.key);
   drawReplies(s);
   $("s-cwd").textContent = s.cwd;
   $("chip-model").textContent = s.model;
@@ -1432,6 +1537,7 @@ renderKeys(keymap);
 const help = (open = keymap.hidden) => (keymap.hidden = !open);
 $("keys-btn").addEventListener("click", () => help());
 $("settings-btn").addEventListener("click", () => go("#settings"));
+$("journal-btn").addEventListener("click", () => go("#journal"));
 keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));
 const palette = new Palette($("palette"), () => route().view);
 
@@ -1498,6 +1604,7 @@ installKeys(
     filter: () => $("arch-q").focus(),
     spawn: () => go("#new"),
     settings: () => go("#settings"),
+    journal: () => go("#journal"),
     tab(ev) {
       const n = Number(ev.altKey ? ev.code.slice(5) : ev.key);
       if (n === 0) go("#fleet");
