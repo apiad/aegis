@@ -364,6 +364,7 @@ body{background:#000}
 #a2 .pcard .jent .t{font-size:10.5px;line-height:18px}
 #a2 .pcard .jent .g{font-size:11px;line-height:18px}
 #a2 .pcard .jent .g span{background:var(--surface)}
+#a2 .pcard .jent .g .ic{width:11px;height:11px}
 #a2 .pcard .jent .x{font-size:12.5px;line-height:18px}
 #a2 .pcard .jent .ps{margin-top:3px}
 #a2 .side #s-plan-h{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -779,8 +780,8 @@ body{background:#000}
 #a2 .journal{max-width:920px;width:100%;margin:0 auto;padding:22px 28px 32px}
 #a2 .jsearch{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:5px 6px 5px 13px;cursor:text}
 #a2 .jsearch:focus-within{border-color:var(--accent)}
-#a2 .jsearch svg{width:15px;height:15px;flex:none;fill:none;stroke:var(--faint);stroke-width:1.4;stroke-linecap:round}
-#a2 .jsearch:focus-within svg{stroke:var(--accent)}
+#a2 .jsearch .ic{width:15px;height:15px;flex:none;color:var(--faint)}
+#a2 .jsearch:focus-within .ic{color:var(--accent)}
 #a2 .jsearch .jq{flex:1;min-width:0;background:none;border:0;outline:none;padding:7px 0;color:var(--strong);font-family:var(--font-ui);font-size:14px;text-overflow:ellipsis}
 #a2 .jsearch .jq::placeholder{color:var(--faint);opacity:1}
 #a2 .jwhen{flex:none;font-family:var(--font-mono);font-size:11px;color:var(--muted);background:var(--bg);border:1px solid var(--rule);border-radius:999px;padding:3px 11px;cursor:pointer;white-space:nowrap}
@@ -806,6 +807,7 @@ body{background:#000}
 #a2 .jent .t{font-family:var(--font-mono);font-size:11px;line-height:20px;color:var(--faint);text-align:right}
 #a2 .jent .g{position:relative;z-index:1;text-align:center;font-size:13px;line-height:20px;color:var(--muted)}
 #a2 .jent .g span{background:var(--bg);padding:2px 0}
+#a2 .jent .g .ic{width:13px;height:13px;vertical-align:-2px}
 #a2 .jent:hover .g span,#a2 .jent:focus-visible .g span{background:var(--raised)}
 #a2 .jent .b{min-width:0}
 #a2 .jent .who{display:flex;gap:8px;align-items:baseline;line-height:20px;min-width:0}

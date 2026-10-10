@@ -66,7 +66,7 @@ def test_rows_say_whether_the_session_is_open():
     [row] = render.rows(hits, "/root", {"L"})
     assert (
         row["open"]
-        and row["glyph"] == "✎"
+        and row["glyph"] == "pencil"
         and row["source"] == "t9"
         and row["time"] == "12:00"
     )

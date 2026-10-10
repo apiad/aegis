@@ -5021,6 +5021,16 @@ def test_the_journal_lists_a_turn_and_opens_its_transcript_at_it(
     page.wait_for_selector("#a2[data-view=journal]")
     row = page.locator(".journal .jrow", has_text="notes.md").first
     row.wait_for()
+    # Each entry's mark and the box's glass are the sprite's, not characters (#296).
+    marks = page.eval_on_selector_all(
+        ".journal .jent .g",
+        "gs => gs.map(g => g.querySelector('use')?.getAttribute('href'))",
+    )
+    assert None not in marks and {"#g-prompt", "#g-window"} <= set(marks), marks
+    assert page.evaluate(f"{marks}.every(h => document.querySelector(h))")
+    assert page.locator(".journal .jsearch svg.ic").count() == 1
+    text = page.inner_text(".journal")
+    assert [c for c in GLYPH_CHARS + "◆⇡○✓" if c in text] == []
     row.click()
     page.wait_for_selector("#a2[data-view=session]")
     page.wait_for_selector(".row.sel")
@@ -5114,7 +5124,7 @@ def test_the_sidebar_journal_row_counts_today_and_its_card_lists_entries(
     assert "side.md" in page.inner_text("#s-journal-all")
     # The card draws the view's timeline: time, glyph, text, path chips.
     entry = page.locator("#s-journal-all .le", has_text="side.md").first
-    assert entry.locator(".t").inner_text() and entry.locator(".g").inner_text()
+    assert entry.locator(".t").inner_text() and entry.locator(".g svg.ic").count() == 1
     assert entry.locator(".pchip", has_text="side.md").count() == 1
     page.evaluate("document.querySelector('.row.sel')?.classList.remove('sel')")
     page.click("#s-journal-all .le >> text=side.md")
@@ -5327,7 +5337,9 @@ def test_the_header_opens_the_journal_from_a_book_icon(server, browser, page):
     btn = page.locator("#journal-btn")
     assert btn.get_attribute("aria-label") == "Journal"
     assert btn.get_attribute("title") == "Journal (Alt+L)"
-    assert btn.locator("svg path").count() == 2 and btn.inner_text().strip() == ""
+    # The book is the sprite's, drawn in the theme like every other mark (#296).
+    assert btn.locator("svg.ic use").get_attribute("href") == "#g-book"
+    assert btn.inner_text().strip() == ""
     btn.click()
     page.wait_for_selector("#a2[data-view=journal]")
     assert "on" in btn.get_attribute("class").split()

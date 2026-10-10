@@ -3,23 +3,16 @@
 // every field a row shows, the marks in its text among them
 // (src/aegis/journal/render.py); this module draws and asks, nothing more.
 
+import { entryIcon, icon } from "./glyphs.js";
+
 const KINDS = ["turn", "commit", "pr", "plan", "note", "session"];
 const PAGE = 50;
-const SVG = "http://www.w3.org/2000/svg";
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
   if (cls) n.className = cls;
   if (text !== undefined && text !== null) n.textContent = text;
   return n;
-}
-
-function glass() {
-  const s = document.createElementNS(SVG, "svg");
-  s.setAttribute("viewBox", "0 0 16 16");
-  s.setAttribute("aria-hidden", "true");
-  s.innerHTML = '<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/>';
-  return s;
 }
 
 // `chars` with the code points at `marks` in <mark>s, runs of marked letters
@@ -54,7 +47,9 @@ export function entry(r, who = true) {
   row.dataset.id = r.id;
   const g = el("span", "g");
   g.title = r.kind;
-  g.append(el("span", null, r.glyph));
+  const mark = el("span");
+  mark.append(entryIcon(r.glyph));
+  g.append(mark);
   const body = el("div", "b");
   if (who) {
     const line = el("div", "who");
@@ -137,7 +132,7 @@ export class Journal {
       this.load(false);
     });
     const search = el("label", "jsearch");
-    search.append(glass(), this.q, this.dayBtn);
+    search.append(icon("search"), this.q, this.dayBtn);
     this.kinds = el("div", "jkinds");
     this.kinds.setAttribute("role", "group");
     this.kinds.setAttribute("aria-label", "Kind");

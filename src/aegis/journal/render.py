@@ -9,13 +9,16 @@ import time
 from . import when
 from .db import Hit
 
+# A glyph is the name of a symbol in the client's sprite (js/glyphs.js), as
+# the transcript's gutter sends (transcript/describe.py): a character would
+# render in whatever font the system falls back to.
 GLYPH = {
-    "turn": "◆",
-    "commit": "●",
-    "pr": "⇡",
-    "plan": "✓",
-    "note": "✎",
-    "session": "○",
+    "turn": "prompt",
+    "commit": "dot",
+    "pr": "arrow-up",
+    "plan": "read",
+    "note": "pencil",
+    "session": "window",
 }
 SHOWN = 3
 
@@ -90,7 +93,7 @@ def rows(
                 "id": h.id,
                 "day": f"{day} · today" if day.startswith(today) else day,
                 "time": _time(h.ts),
-                "glyph": GLYPH.get(h.kind, "·"),
+                "glyph": GLYPH.get(h.kind, "pip"),
                 "kind": h.kind,
                 "tag": h.tag,
                 "handle": h.handle,

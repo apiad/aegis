@@ -122,6 +122,7 @@ $("nav-down").append(icon("down"));
 $("jump").append(icon("latest"));
 $("bell").append(icon("bell"));
 $("settings-btn").prepend(icon("gear"));
+$("journal-btn").append(icon("book"));
 $("send").append(icon("send"));
 $("sp-go").append(icon("send"));
 $("interrupt").append(icon("stop"));
