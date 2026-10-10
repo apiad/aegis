@@ -4913,9 +4913,14 @@ def test_the_sidebar_journal_row_counts_today_and_its_card_lists_entries(
     page.wait_for_function(
         "/\\d+ entr/.test(document.querySelector('#s-journal').textContent)"
     )
+    assert "side.md" in page.inner_text("#s-journal-peek")
     page.hover("#p-journal")
     page.wait_for_selector("#p-journal .pcard", state="visible")
     assert "side.md" in page.inner_text("#s-journal-all")
+    # The card draws the view's timeline: time, glyph, text, path chips.
+    entry = page.locator("#s-journal-all .le", has_text="side.md").first
+    assert entry.locator(".t").inner_text() and entry.locator(".g").inner_text()
+    assert entry.locator(".pchip", has_text="side.md").count() == 1
     page.evaluate("document.querySelector('.row.sel')?.classList.remove('sel')")
     page.click("#s-journal-all .le >> text=side.md")
     page.wait_for_selector(".row.sel")

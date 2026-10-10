@@ -321,10 +321,21 @@ body{background:#000}
 .a2 .pcard .big .c{margin-left:auto;font-family:var(--font-mono);font-size:15px;color:var(--strong)}
 .a2 .pcard .gauge{grid-template-columns:44px minmax(40px,1fr) auto}
 .a2 .pcard .plan{font-family:var(--font-ui)}
-.a2 .side .jline{font:12px var(--font-mono);color:var(--ink)}
-.a2 .pcard .le{display:grid;grid-template-columns:40px 1fr;gap:8px;padding:3px 0;font-size:11.5px;cursor:pointer;color:var(--ink)}
-.a2 .pcard .le .t{color:var(--faint)}
-.a2 .pcard .le:hover,.a2 .pcard .le:focus-visible{color:var(--strong);outline:none}
+/* the Journal row: the newest two entries in the plan's type, then the count;
+   its card is the Journal view's timeline, smaller */
+.a2 .side .jpeek{display:grid;gap:5px;font-size:12.5px;margin-bottom:8px}
+.a2 .side .jpeek>div{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:6px;align-items:baseline;color:var(--muted)}
+.a2 .side .jpeek .g{text-align:center;font-size:11px;color:var(--faint)}
+.a2 .side .jpeek .x{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a2 .side .jpeek .t{font-family:var(--font-chrome);font-size:11.5px;color:var(--faint)}
+.a2 #p-journal .foot{margin-top:0}
+.a2 .pcard .jthread{--jt:46px}
+.a2 .pcard .jent{grid-template-columns:34px 16px minmax(0,1fr);column-gap:5px;padding:4px 8px 5px 0}
+.a2 .pcard .jent .t{font-size:10.5px;line-height:18px}
+.a2 .pcard .jent .g{font-size:11px;line-height:18px}
+.a2 .pcard .jent .g span{background:var(--surface)}
+.a2 .pcard .jent .x{font-size:12.5px;line-height:18px}
+.a2 .pcard .jent .ps{margin-top:3px}
 .a2 .side #s-plan-h{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* tiles: the numbers a glance needs */
 .a2 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
@@ -773,10 +784,10 @@ body{background:#000}
 .a2 .jent .pchip{max-width:100%;font-family:var(--font-mono);font-size:10.5px;line-height:16px;color:var(--muted);background:var(--raised);border-radius:4px;padding:1px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .a2 .jent:hover .pchip,.a2 .jent:focus-visible .pchip{background:var(--surface)}
 .a2 .jent .pmore{color:var(--faint)}
-.a2 .jent.k-commit .g,.a2 .jent.k-plan .g{color:var(--ok)}
-.a2 .jent.k-note .g{color:var(--accent)}
-.a2 .jent.k-pr .g{color:var(--comms)}
-.a2 .jent.k-session .g{color:var(--faint)}
+.a2 :is(.jent,.jpeek>div).k-commit .g,.a2 :is(.jent,.jpeek>div).k-plan .g{color:var(--ok)}
+.a2 :is(.jent,.jpeek>div).k-note .g{color:var(--accent)}
+.a2 :is(.jent,.jpeek>div).k-pr .g{color:var(--comms)}
+.a2 :is(.jent,.jpeek>div).k-session .g{color:var(--faint)}
 
 /* the recap: aegis's own two sentences, last in the transcript */
 .a2 .row.recap .g{color:var(--accent)}

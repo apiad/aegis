@@ -22,7 +22,7 @@ import { glyph, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
-import { Journal } from "./journal.js";
+import { entry, Journal, opens } from "./journal.js";
 import { installBell, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
 import "./pick.js";
@@ -906,12 +906,16 @@ function tickSidePlan(s) {
   }
 }
 
-// The sidebar's Journal row: today's count for the shown session and its last
-// five entries. Fetched when the shown session changes or the journal changes.
+// The sidebar's Journal row: the shown session's two newest entries today and
+// its count; the card lists its five newest as the Journal view draws them.
+// Fetched when the shown session changes or the journal changes.
 let sideJournalFor = null;
 let sideJournalDay = "";
 const noJournal = () => {
   $("s-journal").textContent = "nothing yet today";
+  $("s-journal-at").textContent = "";
+  $("s-journal-peek").hidden = true;
+  $("s-journal-peek").replaceChildren();
   $("s-journal-all").replaceChildren(span("cnote", "Nothing journaled today."));
 };
 async function drawSideJournal(key, force = false) {
@@ -920,6 +924,9 @@ async function drawSideJournal(key, force = false) {
   // Another session's rows go at once: this one never shows them while it loads.
   if (sideJournalFor !== key) {
     $("s-journal").textContent = "…";
+    $("s-journal-at").textContent = "";
+    $("s-journal-peek").hidden = true;
+    $("s-journal-peek").replaceChildren();
     $("s-journal-all").replaceChildren();
   }
   sideJournalFor = key;
@@ -938,39 +945,37 @@ async function drawSideJournal(key, force = false) {
     return;
   }
   if (sideJournalFor !== key) return;
-  const c = res.counts || {};
-  const total = Object.values(c).reduce((a, b) => a + b, 0);
-  $("s-journal").textContent = total
-    ? `${total} ${total === 1 ? "entry" : "entries"}` + (c.commit ? ` · ${c.commit} commits` : "")
-    : "nothing yet today";
-  const box = $("s-journal-all");
   if (!res.rows.length) {
     noJournal();
     return;
   }
-  box.replaceChildren(...res.rows.map((r) => {
-    const row = document.createElement("div");
-    row.className = "le";
-    row.tabIndex = 0;
-    row.setAttribute("role", "button");
-    row.append(span("t", r.time), span("", `${r.kind} · ${r.tag ? r.tag + ": " : ""}${r.text}`));
+  const c = res.counts || {};
+  const total = Object.values(c).reduce((a, b) => a + b, 0);
+  $("s-journal").textContent =
+    `${total} ${total === 1 ? "entry" : "entries"}` + (c.commit ? ` · ${c.commit} commit${c.commit === 1 ? "" : "s"}` : "");
+  $("s-journal-at").textContent = `last ${res.rows[0].time}`;
+  $("s-journal-peek").replaceChildren(...res.rows.slice(0, 2).map((r) => {
+    const line = document.createElement("div");
+    line.className = `k-${r.kind}`;
+    line.append(span("g", r.glyph), span("x", (r.tag ? `${r.tag}: ` : "") + r.text), span("t", r.time));
+    return line;
+  }));
+  $("s-journal-peek").hidden = false;
+  const thread = document.createElement("div");
+  thread.className = "jthread";
+  thread.append(...res.rows.map((r) => {
+    const row = entry(r, false);
+    row.classList.add("le");
     // On a phone the drawer covers the transcript: close it so the reveal shows.
-    const open = () => {
+    opens(row, () => {
       if (!r.source) return;
       transcript.reveal(r.source);
       closeCard();
       if (drawerMode.matches) closeSide();
-    };
-    row.addEventListener("click", open);
-    // Enter and Space are this entry's own: preventDefault keeps keys.js from
-    // toggling the selected transcript row.
-    row.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter" && e.key !== " ") return;
-      e.preventDefault();
-      open();
     });
     return row;
   }));
+  $("s-journal-all").replaceChildren(thread);
 }
 
 function renderMeta(s) {
