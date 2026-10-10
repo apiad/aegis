@@ -12,6 +12,10 @@ import { age } from "./gauges.js";
 
 const CARD_W = 392;
 const OPEN_AFTER_MS = 220;
+const narrow = matchMedia("(max-width: 760px)");
+// Hover opens and closes the card for a mouse only. A tap fires a leave right
+// after its click, which would close the card it just opened.
+const byMouse = (fn) => (ev) => ev.pointerType === "mouse" && fn();
 const CLOSE_AFTER_MS = 160;
 const nowS = () => Date.now() / 1000;
 
@@ -77,12 +81,12 @@ function row(m) {
     rowRight(m, right);
     box.classList.toggle("late", late(m));
   };
-  box.addEventListener("mouseenter", () => {
+  box.addEventListener("pointerenter", byMouse(() => {
     clearTimeout(closeT);
     clearTimeout(openT);
     openT = setTimeout(() => open(box.dataset.id), OPEN_AFTER_MS);
-  });
-  box.addEventListener("mouseleave", soonClose);
+  }));
+  box.addEventListener("pointerleave", byMouse(soonClose));
   box.addEventListener("focus", () => box.matches(":focus-visible") && open(m.id));
   box.addEventListener("click", () => open(m.id));
   return box;
@@ -271,8 +275,8 @@ function cardBox() {
   if (cardEl) return cardEl;
   cardEl = h("div", "mcard");
   cardEl.id = "mcard";
-  cardEl.addEventListener("mouseenter", () => clearTimeout(closeT));
-  cardEl.addEventListener("mouseleave", soonClose);
+  cardEl.addEventListener("pointerenter", byMouse(() => clearTimeout(closeT)));
+  cardEl.addEventListener("pointerleave", byMouse(soonClose));
   document.getElementById("a2").append(cardEl);
   document.addEventListener("pointerdown", (ev) => {
     if (openId && !cardEl.contains(ev.target) && !ev.target.closest?.(".mon")) closeMonitorCard();
@@ -287,6 +291,12 @@ function place() {
   const r = rows.get(openId)?.el.getBoundingClientRect();
   const side = document.querySelector("#a2 .side")?.getBoundingClientRect();
   if (!r || !side || !r.height) return closeMonitorCard();
+  // A phone has no room beside the drawer: base.css draws the card as a sheet.
+  if (narrow.matches) {
+    cardEl.style.removeProperty("left");
+    cardEl.style.removeProperty("top");
+    return;
+  }
   const ch = cardEl.offsetHeight;
   cardEl.style.left = `${Math.max(8, side.left - CARD_W - 12)}px`;
   cardEl.style.top = `${Math.max(12, Math.min(r.top - 14, innerHeight - ch - 12))}px`;
