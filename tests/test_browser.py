@@ -4893,3 +4893,23 @@ def test_the_journal_keeps_its_length_and_focus_when_an_entry_lands(
     assert page.evaluate("document.activeElement.dataset.id") == focused
     assert page.errors == [] and other_errors == []
     other.close()
+
+
+def test_the_sidebar_journal_row_counts_today_and_its_card_lists_entries(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    f = tmp_path / "side.md"
+    spawn(page, f"/write {f} => hi")
+    turns_done(page, 1)
+    # The spawn lands first; the turn's entry arrives as a journal patch and
+    # the row refetches without a reload.
+    page.wait_for_function("document.querySelector('#s-journal-all').textContent.includes('side.md')")
+    page.wait_for_function("/\\d+ entr/.test(document.querySelector('#s-journal').textContent)")
+    page.hover("#p-journal")
+    page.wait_for_selector("#p-journal .pcard", state="visible")
+    assert "side.md" in page.inner_text("#s-journal-all")
+    page.evaluate("document.querySelector('.row.sel')?.classList.remove('sel')")
+    page.click("#s-journal-all .le >> text=side.md")
+    page.wait_for_selector(".row.sel")
+    assert page.url.count("#s=") == 1
+    assert page.errors == []

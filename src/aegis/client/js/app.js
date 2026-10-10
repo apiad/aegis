@@ -259,7 +259,14 @@ const journal = new Journal(conn, $("journal"), {
     go(r.open ? `#s=${r.log_id}` : `#read=${r.log_id}`);
   },
 });
-conn.subscribe("journal", () => journal.changed(), () => journal.changed());
+let sideJournalTimer = null;
+const sideJournalChanged = () => {
+  journal.changed();
+  if (root.dataset.view !== "session") return;
+  clearTimeout(sideJournalTimer);
+  sideJournalTimer = setTimeout(() => drawSideJournal(sideJournalFor, true), 300);
+};
+conn.subscribe("journal", sideJournalChanged, sideJournalChanged);
 
 // Each server's `sessions` channel: a snapshot replaces that server's metas,
 // patches upsert and remove them.
@@ -894,6 +901,44 @@ function tickSidePlan(s) {
   }
 }
 
+// The sidebar's Journal row: today's count for the shown session and its last
+// five entries. Fetched when the shown session changes or the journal changes.
+let sideJournalFor = null;
+async function drawSideJournal(key, force = false) {
+  if (!key || (!force && sideJournalFor === key)) return;
+  sideJournalFor = key;
+  const linked = key.includes("/");
+  $("s-journal-sec").hidden = linked;
+  if (linked) return;
+  let res;
+  try {
+    res = await conn.call("journal.rows", { session: key, since: "today", limit: 5, counts: true });
+  } catch {
+    return;
+  }
+  if (sideJournalFor !== key) return;
+  const c = res.counts || {};
+  const total = Object.values(c).reduce((a, b) => a + b, 0);
+  $("s-journal").textContent = total
+    ? `${total} ${total === 1 ? "entry" : "entries"}` + (c.commit ? ` · ${c.commit} commits` : "")
+    : "nothing yet today";
+  const box = $("s-journal-all");
+  if (!res.rows.length) {
+    box.replaceChildren(span("cnote", "Nothing journaled today."));
+    return;
+  }
+  box.replaceChildren(...res.rows.map((r) => {
+    const row = document.createElement("div");
+    row.className = "le";
+    row.tabIndex = 0;
+    row.append(span("t", r.time), span("", `${r.kind} · ${r.tag ? r.tag + ": " : ""}${r.text}`));
+    row.addEventListener("click", () => {
+      if (r.source) transcript.reveal(r.source);
+    });
+    return row;
+  }));
+}
+
 function renderMeta(s) {
   if (!s) return;
   if (!editing.has("title")) $("s-title").textContent = s.title || "untitled";
@@ -919,6 +964,7 @@ function renderMeta(s) {
   $("s-ask").textContent = s.attention_line || "";
   $("s-ask").className = `askbox at-${s.attention}`;
   drawPlan(s);
+  drawSideJournal(s.key);
   drawReplies(s);
   $("s-cwd").textContent = s.cwd;
   $("chip-model").textContent = s.model;
