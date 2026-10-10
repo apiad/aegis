@@ -3512,17 +3512,17 @@ def test_a_phone_reaches_tabs_the_drawer_and_the_chips(server, browser):
     assert page.input_value("#input") == "one\ntwo"
     page.tap("#send")
     turns_done(page, 2)
-    # Reply chips: one per row, 44 px or taller, and a long one wraps.
+    # Reply chips: 44 px or taller, short ones share a line, a long one wraps.
     page.evaluate(
-        """(() => { const r = document.getElementById('replies'); r.hidden = false;
-        r.innerHTML = '<span class=lbl>reply</span>' + ['Yes', 'No', 'x '.repeat(80)]
+        """(() => { document.getElementById('replies').hidden = false;
+        document.getElementById('replies-pills').innerHTML = ['Yes', 'No', 'x '.repeat(80)]
           .map(t => '<button class=rp>' + t + '</button>').join(''); })()"""
     )
     chips = page.eval_on_selector_all(
         ".rp", "bs => bs.map(b => b.getBoundingClientRect().toJSON())"
     )
     assert all(c["height"] >= 44 for c in chips)
-    assert len({round(c["x"]) for c in chips}) == 1 and chips[0]["width"] > 300
+    assert round(chips[0]["y"]) == round(chips[1]["y"]) and chips[2]["width"] > 300
     assert page.evaluate(WIDER) == []
     assert errors == []
 
@@ -3565,15 +3565,21 @@ def test_a_phone_sees_the_monitor_card_every_reply_and_a_one_line_composer(
         "document.querySelector('#entries > .row:last-of-type').getBoundingClientRect().bottom"
     )
     assert last <= rect("#nav")["y"], "the navigator covers the last row"
-    # Three replies stack in the composer; the navigator stays above all of them.
+    # Replies end the transcript, not the composer (#286): the composer keeps
+    # its height, and scrolled to the end the last one clears the navigator.
+    composer = rect("#composer")["height"]
     page.evaluate(
-        """(() => { const r = document.getElementById('replies'); r.hidden = false;
-        r.innerHTML = ['Yes', 'No', 'Later'].map(t => '<button class=rp>' + t + '</button>').join(''); })()"""
+        """(() => { document.getElementById('replies').hidden = false;
+        document.getElementById('replies-pills').innerHTML = ['Yes', 'No', 'Later']
+          .map(t => '<button class=rp>' + t + '</button>').join(''); })()"""
     )
+    assert page.locator("#tr #replies .rp").count() == 3
+    assert rect("#composer")["height"] == composer
     page.wait_for_selector("#nav:not([hidden])")
+    page.tap("#jump")
     page.wait_for_function(
-        """() => document.getElementById('nav').getBoundingClientRect().bottom
-             <= document.getElementById('replies').getBoundingClientRect().top"""
+        """() => document.querySelector('#replies .rp:last-child').getBoundingClientRect().bottom
+             <= document.getElementById('nav').getBoundingClientRect().top"""
     )
     # The monitor card opens over the drawer, on screen, and stays open.
     args = {

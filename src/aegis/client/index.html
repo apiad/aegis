@@ -93,7 +93,7 @@
 
   <main class="view v-session">
     <section class="col">
-      <div class="tr" id="tr" tabindex="-1"><div id="entries"></div><div class="row working" id="working" hidden><span class="t"></span><span class="g">✻</span><div class="body">Working <span class="meta" id="working-meta"></span></div></div></div>
+      <div class="tr" id="tr" tabindex="-1"><div id="entries"></div><div class="row replies" id="replies" hidden><span class="t"></span><span class="g">❯</span><div class="body" id="replies-pills"></div></div><div class="row working" id="working" hidden><span class="t"></span><span class="g">✻</span><div class="body">Working <span class="meta" id="working-meta"></span></div></div></div>
       <div class="nav" id="nav" hidden>
         <button class="spark" id="nav-recap" title="Recap where this session stands"></button>
         <button class="fold" id="nav-fold" data-level="0" title="Fold tool calls and thinking (Z)"></button>
@@ -111,7 +111,6 @@
       </div>
       <div class="composer" id="composer">
         <div class="cmd-menu" id="cmd-menu" hidden><input id="cmd-filter" hidden spellcheck="false" placeholder="/command"><div id="cmd-rows"></div></div>
-        <div class="replies" id="replies" hidden></div>
         <div class="box">
           <textarea id="input" rows="1" placeholder="Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts."></textarea>
           <div class="acts"><button class="mic" id="mic" type="button" data-state="idle" title="Dictate (Alt+M)" aria-label="Dictate"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" fill="none"/></svg></button><button class="int" id="interrupt" title="Interrupt (Esc)" aria-label="Interrupt" hidden>■</button><button class="send" id="send" title="Send (Enter)" aria-label="Send">↵</button></div>

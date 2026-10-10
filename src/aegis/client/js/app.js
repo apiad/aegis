@@ -1541,7 +1541,9 @@ function focused() {
 }
 
 // The agent's suggested next messages, from its turn_end. Redrawn only when they
-// change: renderMeta runs on every patch of the open session.
+// change: renderMeta runs on every patch of the open session. They sit after the
+// transcript's last row, not in the composer, so they scroll away with it and
+// never take reading space (#286).
 function drawReplies(s) {
   const box = $("replies");
   const replies = s.state === "working" ? [] : s.replies || [];
@@ -1549,8 +1551,7 @@ function drawReplies(s) {
   if (box.dataset.key === key) return;
   box.dataset.key = key;
   box.hidden = !replies.length;
-  box.replaceChildren(
-    span("lbl", "reply"),
+  $("replies-pills").replaceChildren(
     ...replies.map((text) => {
       const b = document.createElement("button");
       b.className = "rp";
@@ -1559,6 +1560,8 @@ function drawReplies(s) {
       return b;
     }),
   );
+  // Outside the rows the transcript watches for growth: follow the end here.
+  if (transcript.following) transcript.toBottom();
 }
 
 const askClose = (s) =>
@@ -1733,7 +1736,7 @@ function toggleSide() {
 // on a phone and grows with the safe area.
 const header = document.querySelector("#a2 > .tabs");
 new ResizeObserver(() => root.style.setProperty("--hdr", `${header.getBoundingClientRect().height}px`)).observe(header);
-// The navigator floats just above the composer, which grows with replies and lines.
+// The navigator floats just above the composer, which grows with its lines.
 new ResizeObserver(() => root.style.setProperty("--composer-h", `${$("composer").offsetHeight}px`)).observe($("composer"));
 $("side-btn").addEventListener("click", toggleSide);
 // The dimmed transcript is the session view's own ::after, so a tap on it
