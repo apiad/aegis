@@ -413,10 +413,28 @@ def import_legacy(
     )
 
 
+def _pick(text: str, default: str | None, choices) -> str:
+    """Ask until the answer is one of ``choices``. Typer 0.27 vendors its own
+    click, so a click.Choice from the click package escaped its prompt as a
+    traceback instead of asking again."""
+    while True:
+        answer = typer.prompt(f"{text} ({', '.join(choices)})", default=default)
+        if answer in choices:
+            return answer
+        typer.echo(f"{answer!r} is not one of {', '.join(choices)}")
+
+
+def _count(text: str, default: int, least: int = 1) -> int:
+    """Ask until the answer is a whole number of at least ``least``."""
+    while True:
+        answer = typer.prompt(text, default=str(default))
+        if answer.strip().isdigit() and int(answer) >= least:
+            return int(answer)
+        typer.echo(f"{answer!r} is not a whole number of at least {least}")
+
+
 def _ask(doc, found):
     """``doc`` as the person answers for it, each value offered as the default."""
-    import click
-
     from .agents import EFFORTS, PERMISSION_ORDER
     from .config import ConfigDoc, QueueDoc
 
@@ -431,14 +449,8 @@ def _ask(doc, found):
             a.model_copy(
                 update={
                     "model": typer.prompt("  model", default=a.model),
-                    "effort": typer.prompt(
-                        "  effort", default=a.effort, type=click.Choice(EFFORTS)
-                    ),
-                    "permission": typer.prompt(
-                        "  permission",
-                        default=a.permission,
-                        type=click.Choice(PERMISSION_ORDER),
-                    ),
+                    "effort": _pick("  effort", a.effort, EFFORTS),
+                    "permission": _pick("  permission", a.permission, PERMISSION_ORDER),
                 }
             )
         )
@@ -446,12 +458,12 @@ def _ask(doc, found):
         return ConfigDoc()
     names = [a.name for a in agents]
     first = doc.default_agent if doc.default_agent in names else names[0]
-    default = typer.prompt("Default agent", default=first, type=click.Choice(names))
+    default = _pick("Default agent", first, names)
     queues = []
     if typer.confirm(
         f"Add a queue 'general' of workers running {default}?", default=True
     ):
-        n = typer.prompt("  workers at a time", default=3, type=click.IntRange(1))
+        n = _count("  workers at a time", 3)
         queues.append(QueueDoc(name="general", agent=default, max_parallel=n))
     return ConfigDoc(agents=agents, default_agent=default, queues=queues)
 
