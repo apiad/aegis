@@ -1551,9 +1551,12 @@ def test_a_page_that_throws_fails_the_send_and_shows_no_card(server, page):
     ] == []
 
 
-def test_agent_state_is_pushed_without_reloading_the_frame_and_the_theme_follows(
+def test_agent_state_is_pushed_without_reloading_the_frame_and_a_remounted_frame_starts_in_the_new_theme(
     server, page
 ):
+    """The theme is picked in Settings, which unmounts the transcript, so the
+    frame comes back remounted in the new theme; artifacts.theme(), which
+    pushes a theme into a live frame, has no path from the page today."""
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
@@ -1574,6 +1577,7 @@ def test_agent_state_is_pushed_without_reloading_the_frame_and_the_theme_follows
     before = inner.locator("#ac").inner_text()
     set_theme(page, "logbook")
     inner.locator("#ac").filter(has_not_text=before).wait_for()
+    assert page.get_attribute(f"iframe[data-artifact={aid}]", "data-mark") is None
     assert page.errors == []
 
 
