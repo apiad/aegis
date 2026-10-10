@@ -3535,8 +3535,8 @@ WIDER = """[...document.querySelectorAll('#a2 *')].filter(e => {
 
 def test_the_navigator_fits_a_phone_and_keeps_its_touch_targets(server, browser):
     """#299: at 390 px with touch the pill was 376 x 46, the whole width. It is
-    now a third of it, its buttons still take a tap 44 px tall, and recap and
-    fold sit in the drawer."""
+    now 299 x 36 with recap and fold first, put back from the drawer (#306), and
+    its buttons still take a tap 44 px tall."""
     errors: list = []
     page = phone(browser, errors)
     page.goto(server.url)
@@ -3553,8 +3553,8 @@ def test_the_navigator_fits_a_phone_and_keeps_its_touch_targets(server, browser)
         "/^\\d+\\/\\d+$/.test(document.getElementById('nav-pos').textContent)"
     )
     box = page.locator("#nav").bounding_box()
-    assert box["width"] <= 240 and box["height"] <= 40, box
-    assert box["x"] >= 140 and box["x"] + box["width"] <= 390, box
+    assert box["width"] <= 310 and box["height"] <= 40, box
+    assert box["x"] >= 60 and box["x"] + box["width"] <= 390, box
     # A tap 4 px above the pill still lands on each button.
     hits = page.evaluate(
         """() => [...document.querySelectorAll('#nav button')].map(b => {
@@ -3564,11 +3564,10 @@ def test_the_navigator_fits_a_phone_and_keeps_its_touch_targets(server, browser)
         })"""
     )
     assert all(ok for _, ok in hits), hits
-    assert page.locator("#nav #nav-recap, #nav #nav-fold").count() == 0
-    assert (
-        page.locator(".side #nav-recap").count() == 1
-        and page.locator(".side #nav-fold").count() == 1
-    )
+    assert [b for b, _ in hits][:2] == ["nav-recap", "nav-fold"]
+    assert page.locator(".side #nav-recap, .side #nav-fold").count() == 0
+    page.tap("#nav-fold")
+    assert page.get_attribute("#nav-fold", "data-level") == "1"
     page.tap("#nav-last")
     last = page.evaluate(
         "[...document.querySelectorAll('.row.prose')].at(-1).dataset.id"
