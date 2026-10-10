@@ -4931,3 +4931,50 @@ def test_an_attached_card_fits_a_phone(server, browser, tmp_path):
     assert dl["x"] + dl["width"] <= box["x"] + box["width"] + 0.5
     assert card.locator(".fn").bounding_box()["width"] >= 40
     assert errors == []
+
+
+def test_a_waiting_send_goes_to_its_own_session_after_a_tab_switch(
+    server, page, tmp_path
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page)
+    b = spawn(page)
+    page.click(f"#tablist .tab[data-id='{a}']")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
+    big = tmp_path / "big.bin"
+    big.write_bytes(bytes(20 * 1024 * 1024))
+    page.set_input_files("#attach-pick", [str(big)])
+    page.fill("#input", "for a")
+    page.press("#input", "Enter")
+    page.click(f"#tablist .tab[data-id='{b}']")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=b)
+    deadline = time.monotonic() + 20
+    while (
+        not list(inbox_of(server, a).glob("*-big.bin")) and time.monotonic() < deadline
+    ):
+        time.sleep(0.1)
+    assert list(inbox_of(server, a).glob("*-big.bin"))
+    assert not inbox_of(server, b).exists() or not list(
+        inbox_of(server, b).glob("*-big.bin")
+    )
+    assert page.locator(".row.user").count() == 0  # B's transcript got nothing
+    assert page.text_content("#send-error") == ""
+    assert page.errors == []
+
+
+def test_enter_twice_during_an_upload_sends_once(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    big = tmp_path / "big.bin"
+    big.write_bytes(bytes(20 * 1024 * 1024))
+    page.set_input_files("#attach-pick", [str(big)])
+    page.fill("#input", "once")
+    page.press("#input", "Enter")
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    page.wait_for_timeout(500)
+    assert page.locator(".row.user").count() == 1
+    assert page.text_content("#send-error") == ""
+    assert page.errors == []

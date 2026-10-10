@@ -1634,8 +1634,10 @@ async function closeSession(s) {
 
 // A line from the composer, or from the menu's own filter (Alt+/ over a
 // draft), which leaves the composer alone. The server resolves "/" lines.
-async function sendLine(text, fromComposer, attachments = []) {
-  const s = focused();
+// `target` is the session the line was typed in: a send that waited on
+// uploads may finish after the person moved to another tab.
+async function sendLine(text, fromComposer, attachments = [], target = focused()) {
+  const s = target;
   if ((!text && !attachments.length) || !s) return;
   if (text === "/help") {
     // The menu is the help: it lists every command with what it does.
@@ -1655,36 +1657,49 @@ async function sendLine(text, fromComposer, attachments = []) {
     await callFor(s.key, "session.send", attachments.length ? { text, attachments } : { text });
     if (/^\/model\s/.test(text)) catalogs.delete(s.key); // its efforts may differ
     if (fromComposer) {
-      input.value = "";
       localStorage.removeItem(`aegis.draft.${s.key}`);
       atts.clear(s.key);
+    }
+    if (fromComposer && shown === s.key) {
+      input.value = "";
       autosize();
       // Clearing the box fires no input event; an open menu would take the next Esc.
       menu.close();
       $("composer").classList.remove("bad");
     }
-    transcript.toBottom();
+    if (shown === s.key) transcript.toBottom();
   } catch (e) {
     $("send-error").textContent = e.message;
     box.hidden = was;
   }
 }
 
+// Sessions whose send waits on its uploads: a second Enter there does nothing.
+const waiting = new Set();
 const send = async () => {
   await dictation.finish(input); // what was said goes out with the rest
-  const key = shown;
-  if (atts.list(key).length) {
+  const s = focused();
+  if (!s || waiting.has(s.key)) return;
+  // The text and the session as they were at Enter, so a send that waits on
+  // uploads still goes where and as it was typed.
+  const text = input.value.trim();
+  if (atts.list(s.key).length) {
     // Enter during an upload sends when it finishes, never without the files.
+    waiting.add(s.key);
     $("send-error").textContent = "sending when the attachments finish…";
-    await atts.settled(key);
-    $("send-error").textContent = "";
+    try {
+      await atts.settled(s.key);
+    } finally {
+      waiting.delete(s.key);
+    }
+    if (shown === s.key) $("send-error").textContent = "";
   }
-  const ready = atts.ready(key);
+  const ready = atts.ready(s.key);
   if (ready.error) {
     $("send-error").textContent = ready.error;
     return;
   }
-  return sendLine(input.value.trim(), true, ready.ids);
+  return sendLine(text, true, ready.ids, s);
 };
 
 // Catalogs per session, fetched when the menu first opens there. The promise
