@@ -745,14 +745,14 @@ def register_agent_ops(app: App) -> None:
         if s.worker:
             t = app.queues.tasks.get(s.worker["task_id"])
             by = t.enqueuer if t else None
-            who = "you" if me and by == me.log_id else name(by) or "a person"
+            who = "you" if by == me.log_id else name(by) or "a person"
             clause = f"it is queue {s.worker['queue']}'s worker for task#{s.worker['task_id']}, enqueued by {who}"
         else:
             by = s.spec.spawned_by
-            who = "you" if me and by == me.log_id else name(by)
+            who = "you" if by == me.log_id else name(by)
             clause = f"{who} started it" if who else "a person opened it"
-        open_ = by in reg.sessions and (me is None or by != me.log_id)
-        return clause, reg.sessions[by].handle if open_ else None
+        starter = reg.sessions.get(by) if by and by != me.log_id else None
+        return clause, starter.handle if starter else None
 
     def name(log_id: str | None) -> str | None:
         if not log_id:
