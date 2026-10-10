@@ -22,6 +22,7 @@ import { glyph, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
+import { Journal } from "./journal.js";
 import { installBell, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
 import "./pick.js";
@@ -172,13 +173,14 @@ for (const b of document.querySelectorAll("#fleet-order button"))
     render();
   });
 
-// -- routing: #fleet, #new, #settings, #s=<key>, #read=<key> ------------------
+// -- routing: #fleet, #new, #settings, #journal, #s=<key>, #read=<key> ------------------
 function route() {
   const h = location.hash.slice(1);
   if (h.startsWith("s=")) return { view: "session", id: h.slice(2) };
   if (h.startsWith("read=")) return { view: "read", id: h.slice(5) };
   if (h === "new") return { view: "spawn" };
   if (h === "settings") return { view: "settings" };
+  if (h === "journal") return { view: "journal" };
   return { view: "fleet" };
 }
 
@@ -250,6 +252,14 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
   },
 });
 const settings = new Settings(conn, $("settings"));
+let landEntry = null; // {key, id}: reveal this entry once its transcript lands
+const journal = new Journal(conn, $("journal"), {
+  onOpen: (r) => {
+    landEntry = r.source ? { key: r.log_id, id: r.source } : null;
+    go(r.open ? `#s=${r.log_id}` : `#read=${r.log_id}`);
+  },
+});
+conn.subscribe("journal", () => journal.changed(), () => journal.changed());
 
 // Each server's `sessions` channel: a snapshot replaces that server's metas,
 // patches upsert and remove them.
@@ -444,6 +454,7 @@ function render() {
   $("tab-fleet").classList.toggle("on", r.view === "fleet");
   $("tab-add").classList.toggle("on", r.view === "spawn");
   $("settings-btn").classList.toggle("on", r.view === "settings");
+  $("journal-btn").classList.toggle("on", r.view === "journal");
   root.dataset.mode = r.view === "read" ? "read" : "live";
   // Quota rows redraw on a quota patch, the timer, or a change of view; never
   // on a sessions patch, which would take the hover tooltip with them.
@@ -473,6 +484,12 @@ function render() {
     show("settings");
     if (newView) settings.open();
     setTitle("Settings · aegis");
+  } else if (r.view === "journal") {
+    watchHost(null);
+    follow(null);
+    show("journal");
+    if (newView) journal.open();
+    setTitle("Journal · aegis");
   } else if (r.view === "session") {
     watchHost(forKey(r.id).server || "");
     // Shown first: follow() sizes the message box, which measures 0 while hidden.
@@ -787,6 +804,8 @@ function follow(id) {
         askRecap(false); // the server decides whether it is worth one
         if (landUnread === id) transcript.firstUnread();
         landUnread = null;
+        if (landEntry && landEntry.key === id) transcript.reveal(landEntry.id);
+        landEntry = null;
       }
       placed = true;
       // Read by scripts/bench.py: when the snapshot was drawn and painted.
@@ -1396,6 +1415,7 @@ renderKeys(keymap);
 const help = (open = keymap.hidden) => (keymap.hidden = !open);
 $("keys-btn").addEventListener("click", () => help());
 $("settings-btn").addEventListener("click", () => go("#settings"));
+$("journal-btn").addEventListener("click", () => go("#journal"));
 keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));
 const palette = new Palette($("palette"), () => route().view);
 
@@ -1459,6 +1479,7 @@ installKeys(
     filter: () => $("arch-q").focus(),
     spawn: () => go("#new"),
     settings: () => go("#settings"),
+    journal: () => go("#journal"),
     tab(ev) {
       const n = Number(ev.altKey ? ev.code.slice(5) : ev.key);
       if (n === 0) go("#fleet");

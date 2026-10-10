@@ -55,6 +55,7 @@ export const ACTIONS = [
   { id: "needs", title: "Next session that needs you, longest waiting first", keys: [on("global", "Alt+J", alt("KeyJ"))] },
   { id: "spawn", title: "New session", keys: [on("global", "Alt+N", alt("KeyN")), on("browse", "n", key("n"))] },
   { id: "settings", title: "Settings: .aegis.yaml", keys: [on("global", "Alt+S", alt("KeyS"))] },
+  { id: "journal", title: "Journal: what was done", keys: [on("global", "Alt+L", alt("KeyL"))] },
   {
     id: "dictate",
     title: "Dictate into the message box; again to stop",

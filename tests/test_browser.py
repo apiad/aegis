@@ -4813,3 +4813,18 @@ def test_the_smoke_script_spawns_a_session_and_reads_its_question(server):
     ).stdout
     assert "### PERSON: /mcp turn_end" in text
     assert "[turn_end needs_you] Does it work?" in text
+
+
+def test_the_journal_lists_a_turn_and_opens_its_transcript_at_it(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    f = tmp_path / "notes.md"
+    spawn(page, f"/write {f} => hi")
+    page.keyboard.press("Alt+KeyL")
+    page.wait_for_selector("#a2[data-view=journal]")
+    row = page.locator(".journal .jrow", has_text="notes.md").first
+    row.wait_for()
+    row.click()
+    page.wait_for_selector("#a2[data-view=session]")
+    page.wait_for_selector(".row.sel")
+    assert page.errors == []

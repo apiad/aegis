@@ -720,8 +720,28 @@ body{background:#000}
 .a2 .set-empty{width:min(520px,100%);margin:12vh auto 0;padding:0 24px;display:grid;gap:14px;justify-items:start;font-size:14px;line-height:1.55;color:var(--ink)}
 .a2 .set-empty p{margin:0}
 .a2 .set-empty code{font-family:var(--font-mono);font-size:12.5px;color:var(--strong)}
-.a2 #settings-btn.on{color:var(--strong);border-color:var(--accent)}
+.a2 #settings-btn.on,.a2 #journal-btn.on{color:var(--strong);border-color:var(--accent)}
 @media (max-width:640px){.a2 .set-agent{grid-template-columns:1fr}.a2 .set-card-foot,.a2 .set-agent > .set-why{grid-column:1}.a2 .set-findings li{grid-template-columns:1fr;gap:2px}}
+
+/* the journal view (js/journal.js) */
+.a2[data-view=journal] .v-journal{display:flex;flex-direction:column;overflow:auto}
+.a2 .journal{max-width:1100px;width:100%;margin:0 auto;padding:18px 22px}
+.a2 .journal .jbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.a2 .journal .jbar input{background:var(--bg);border:1px solid var(--rule);border-radius:5px;color:var(--strong);font:12px var(--font-mono);padding:5px 8px;outline:none}
+.a2 .journal .jbar input:focus{border-color:var(--accent)}
+.a2 .journal .jbar pick-chip{background:var(--bg);border:1px solid var(--rule);border-radius:5px;padding:5px 8px;font:12px var(--font-mono);color:var(--strong)}
+.a2 .journal .jq{flex:1;min-width:160px}
+.a2 .journal .jday-h{padding:12px 6px 4px;font:11px var(--font-mono);color:var(--faint)}
+.a2 .journal .jrow{display:grid;grid-template-columns:44px 22px 160px 1fr;gap:8px;padding:6px;border-radius:var(--r);font-size:12.5px;cursor:pointer;align-items:baseline}
+.a2 .journal .jrow:hover,.a2 .journal .jrow:focus-visible{background:var(--raised);outline:none}
+.a2 .journal .jrow .t{font:11px var(--font-mono);color:var(--faint)}
+.a2 .journal .jrow .g{text-align:center;color:var(--muted)}
+.a2 .journal .jrow .h{font:11.5px var(--font-mono);color:var(--comms);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a2 .journal .jrow .x{min-width:0;color:var(--ink)}
+.a2 .journal .jrow .p{display:block;font:10.5px var(--font-mono);color:var(--faint);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a2 .journal .k-note .g{color:var(--accent)}
+.a2 .journal .k-commit .g{color:var(--ok)}
+.a2 .journal .jfoot{padding:8px 6px;font:11px var(--font-mono);color:var(--faint)}
 
 /* the recap: aegis's own two sentences, last in the transcript */
 .a2 .row.recap .g{color:var(--accent)}
@@ -764,13 +784,16 @@ body{background:#000}
   .a2 .tablist .tab .srv{display:none}
   .a2 .tablist .tab .tname{max-width:16ch}
   .a2 .theme-pick{font-size:0;gap:0}
-  .a2 .keys-btn:not(.bell):not(.set-btn){display:none}
+  .a2 .keys-btn:not(.bell):not(.set-btn):not(.jr-btn){display:none}
   /* the header's buttons: bare icons, the tap target kept by (pointer:coarse) */
   .a2 .tabs .keys-btn.bell,.a2 .tabs .set-btn,.a2[data-view=session] .side-btn{display:grid;place-items:center;background:none;border-color:transparent;margin:0 0 4px;padding:0}
   .a2 .tabs .set-btn{min-width:40px}
   .a2 .tabs .keys-btn.bell .ic,.a2 .tabs .set-btn .ic{width:18px;height:18px}
   .a2 .set-btn .lbl{display:none}
   .a2 .set-btn .ic{display:inline-block}
+  .a2 .journal{padding:12px 10px}
+  .a2 .journal .jrow{grid-template-columns:38px 18px 1fr}
+  .a2 .journal .jrow .h{display:none}
   /* the tab row scrolls sideways, so a tab keeps its title instead of shrinking */
   .a2 .tablist .tab{flex:none}
   .a2[data-view=session] .side-btn{min-width:44px}
