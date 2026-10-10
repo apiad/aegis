@@ -46,7 +46,11 @@ own token, so no tool asks who is calling.
   `session_list` shows what every open session is doing: its mark and the line
   that goes with it, what it waits on, its plan and the step it is on, its model
   and what it has spent.
-- `session_spawn` opens a new session from a configured agent.
+- `session_spawn` opens a new session from a configured agent, and
+  `session_close` closes one. A session the agent spawned, or a worker whose task
+  it enqueued, closes at once when it is done. Any other close is refused first,
+  with what that session is doing and who started it, and goes through only on a
+  second call with the one-time token the refusal carries.
 - `queue_enqueue` hands a task to a queue: a pool of worker sessions with one
   agent and a limit on how many run at once. The result comes back as a turn in
   the session that asked, headed `> from queue:<name> · task#<id>`.
