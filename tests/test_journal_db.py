@@ -1,3 +1,6 @@
+import sqlite3
+import threading
+
 import pytest
 
 from aegis.journal import db
@@ -93,3 +96,73 @@ def test_counts_by_kind_and_a_schema_change_resets(tmp_path):
     c.close()
     c2, fresh = db.connect(tmp_path / "j.db")
     assert fresh and db.search(c2, db.Query())[0] == []
+
+
+def test_clear_rolls_back_on_error(tmp_path):
+    c, _ = db.connect(tmp_path / "clear_test.db")
+    db.insert(c, entry(1))
+    locker = sqlite3.connect(tmp_path / "clear_test.db")
+    locker.execute("BEGIN IMMEDIATE")
+    lock_con = sqlite3.connect(
+        tmp_path / "clear_test.db", timeout=0.1, isolation_level=None
+    )
+    lock_con.execute("PRAGMA busy_timeout=100")
+    try:
+        db.clear(lock_con)
+        assert False, "Expected database locked error"
+    except sqlite3.OperationalError:
+        pass
+    locker.execute("ROLLBACK")
+    locker.close()
+    lock_con.close()
+    assert db.insert(c, entry(2)) is True
+
+
+def test_concurrent_connect_calls_do_not_race(tmp_path):
+    db_path = tmp_path / "concurrent_test.db"
+    results = []
+
+    def connect_thread():
+        try:
+            con, fresh = db.connect(db_path)
+            con.close()
+            results.append(True)
+        except Exception as e:
+            results.append(e)
+
+    threads = [threading.Thread(target=connect_thread) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert all(r is True for r in results), f"Some threads failed: {results}"
+    con, _ = db.connect(db_path)
+    con.close()
+
+
+def test_path_prefix_match_is_case_sensitive(con):
+    db.insert(con, entry(1, touches=[("edit", "SRC/client/a.js")], ts=100))
+    db.insert(con, entry(2, touches=[("edit", "src/client/b.js")], ts=200))
+    q = db.Query
+    assert len(db.search(con, q(path="/r/SRC/client"))[0]) == 1
+    assert len(db.search(con, q(path="/r/src/client"))[0]) == 1
+    assert db.search(con, q(path="/r/SRC"))[0][0].log_id == "L1"
+    assert len(db.search(con, q(path="/r/src"))[0]) == 1
+
+
+def test_paths_with_special_chars_still_match_prefixes(con):
+    db.insert(con, entry(1, touches=[("edit", "src/a%b.js")], ts=100))
+    db.insert(con, entry(2, touches=[("edit", "src/a_c.py")], ts=200))
+    q = db.Query
+    assert len(db.search(con, q(path="/r/src"))[0]) == 2
+    assert db.search(con, q(path="/r/src/a%b.js"))[0][0].log_id == "L1"
+
+
+def test_only_fts5_syntax_errors_raise_bad_pattern(con):
+    db.insert(con, entry(1))
+    with pytest.raises(db.BadPattern):
+        db.search(con, db.Query(pattern='"unclosed'))
+    with pytest.raises(db.BadPattern):
+        db.search(con, db.Query(pattern="AND"))
+    db.search(con, db.Query(pattern="feat"))
+    db.search(con, db.Query(pattern='feat OR "fix"'))

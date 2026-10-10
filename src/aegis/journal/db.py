@@ -82,20 +82,24 @@ class Hit:
 
 def connect(path: Path) -> tuple[sqlite3.Connection, bool]:
     con = sqlite3.connect(
-        path, timeout=10, isolation_level=None, check_same_thread=False
+        path, timeout=30, isolation_level=None, check_same_thread=False
     )
     con.execute("PRAGMA journal_mode=WAL")
-    con.execute("PRAGMA busy_timeout=10000")
-    fresh = con.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION
-    if fresh:
-        con.execute("BEGIN")
-        for t in TABLES:
-            con.execute(f"DROP TABLE IF EXISTS {t}")
-        for stmt in SCHEMA.split(";"):
-            if stmt.strip():
-                con.execute(stmt)
-        con.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+    con.execute("PRAGMA busy_timeout=30000")
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        fresh = con.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION
+        if fresh:
+            for t in TABLES:
+                con.execute(f"DROP TABLE IF EXISTS {t}")
+            for stmt in SCHEMA.split(";"):
+                if stmt.strip():
+                    con.execute(stmt)
+            con.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
         con.execute("COMMIT")
+    except BaseException:
+        con.execute("ROLLBACK")
+        raise
     return con, fresh
 
 
@@ -109,10 +113,14 @@ def open_read(path: Path) -> sqlite3.Connection:
 
 def clear(con: sqlite3.Connection) -> None:
     con.execute("BEGIN")
-    con.execute("INSERT INTO entries_fts(entries_fts) VALUES('delete-all')")
-    for t in ("touches", "handles", "entries"):
-        con.execute(f"DELETE FROM {t}")
-    con.execute("COMMIT")
+    try:
+        con.execute("INSERT INTO entries_fts(entries_fts) VALUES('delete-all')")
+        for t in ("touches", "handles", "entries"):
+            con.execute(f"DELETE FROM {t}")
+        con.execute("COMMIT")
+    except BaseException:
+        con.execute("ROLLBACK")
+        raise
 
 
 def insert(con: sqlite3.Connection, e: Entry) -> bool:
@@ -154,10 +162,6 @@ def insert(con: sqlite3.Connection, e: Entry) -> bool:
     return row is not None
 
 
-def _like(s: str) -> str:
-    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
 def _where(q: Query) -> tuple[str, list]:
     where: list[str] = []
     args: list = []
@@ -180,9 +184,9 @@ def _where(q: Query) -> tuple[str, list]:
         base = q.path.rstrip("/") or "/"
         where.append(
             "EXISTS (SELECT 1 FROM touches t WHERE t.entry_id = e.id"
-            " AND (t.full = ? OR t.full LIKE ? ESCAPE '\\'))"
+            " AND (t.full = ? OR (t.full >= ? AND t.full < ?)))"
         )
-        args += [base, _like(base.rstrip("/")) + "/%"]
+        args += [base, base + "/", base + "0"]
     if q.pattern:
         where.append(
             "e.id IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ?)"
@@ -196,7 +200,9 @@ def _run(con: sqlite3.Connection, q: Query, sql: str, args: list) -> list:
         return con.execute(sql, args).fetchall()
     except sqlite3.OperationalError as err:
         if q.pattern:
-            raise BadPattern(str(err)) from err
+            msg = str(err).lower()
+            if "fts5" in msg or "syntax error" in msg or "unterminated string" in msg:
+                raise BadPattern(str(err)) from err
         raise
 
 
