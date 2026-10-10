@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from ..ops import OpError
-from . import db, render
+from . import db, render, when
 from .query import build, search
 
 if TYPE_CHECKING:
@@ -122,9 +122,14 @@ def register_journal_ops(app: "App") -> None:
 
     @r.op("journal.rows", RowsParams)
     async def journal_rows(p: RowsParams, caller):
-        """The Journal view's rows: what journal.search finds, as fields to draw."""
+        """The Journal view's rows: what journal.search finds, as fields to draw,
+        and the server's day, which the view shows until the person picks one."""
         hits, cut, c = await asyncio.to_thread(run, p, p.offset, p.counts)
-        out = {"rows": render.rows(hits, root, set(app.sessions.sessions)), "more": cut}
+        out = {
+            "rows": render.rows(hits, root, set(app.sessions.sessions)),
+            "more": cut,
+            "today": when.today(),
+        }
         if c is not None:
             out["counts"] = c
         return out

@@ -12,6 +12,11 @@ def _start(day: dt.date) -> float:
     return time.mktime(day.timetuple())
 
 
+def today(now: float | None = None) -> str:
+    """The server's day, 2026-10-09: what "today" means in a search."""
+    return dt.date.fromtimestamp(time.time() if now is None else now).isoformat()
+
+
 def bound(text: str | None, *, end: bool, now: float | None = None) -> float | None:
     """``since`` (end=False) or ``until`` (end=True) as epoch seconds. A day is
     whole: since starts it, until ends it. Forms: 2026-10-09, today, yesterday,

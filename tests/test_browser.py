@@ -4815,7 +4815,9 @@ def test_the_smoke_script_spawns_a_session_and_reads_its_question(server):
     assert "[turn_end needs_you] Does it work?" in text
 
 
-def test_the_journal_lists_a_turn_and_opens_its_transcript_at_it(server, page, tmp_path):
+def test_the_journal_lists_a_turn_and_opens_its_transcript_at_it(
+    server, page, tmp_path
+):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     f = tmp_path / "notes.md"
@@ -4895,7 +4897,9 @@ def test_the_journal_keeps_its_length_and_focus_when_an_entry_lands(
     other.close()
 
 
-def test_the_sidebar_journal_row_counts_today_and_its_card_lists_entries(server, page, tmp_path):
+def test_the_sidebar_journal_row_counts_today_and_its_card_lists_entries(
+    server, page, tmp_path
+):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     f = tmp_path / "side.md"
@@ -4903,8 +4907,12 @@ def test_the_sidebar_journal_row_counts_today_and_its_card_lists_entries(server,
     turns_done(page, 1)
     # The spawn lands first; the turn's entry arrives as a journal patch and
     # the row refetches without a reload.
-    page.wait_for_function("document.querySelector('#s-journal-all').textContent.includes('side.md')")
-    page.wait_for_function("/\\d+ entr/.test(document.querySelector('#s-journal').textContent)")
+    page.wait_for_function(
+        "document.querySelector('#s-journal-all').textContent.includes('side.md')"
+    )
+    page.wait_for_function(
+        "/\\d+ entr/.test(document.querySelector('#s-journal').textContent)"
+    )
     page.hover("#p-journal")
     page.wait_for_selector("#p-journal .pcard", state="visible")
     assert "side.md" in page.inner_text("#s-journal-all")
@@ -4915,11 +4923,15 @@ def test_the_sidebar_journal_row_counts_today_and_its_card_lists_entries(server,
     assert page.errors == []
 
 
-def test_a_card_entry_opens_by_keyboard_without_toggling_a_transcript_row(server, page, tmp_path):
+def test_a_card_entry_opens_by_keyboard_without_toggling_a_transcript_row(
+    server, page, tmp_path
+):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page, f"/write {tmp_path / 'kb.md'} => hi")
-    page.wait_for_function("document.querySelector('#s-journal-all').textContent.includes('kb.md')")
+    page.wait_for_function(
+        "document.querySelector('#s-journal-all').textContent.includes('kb.md')"
+    )
     rows = "[...document.querySelectorAll('#entries .row')].map(r => r.className.replace(/\\bsel\\b/, '').trim())"
     # Another row is selected, so a toggle would land on it and not on the entry's.
     page.click("#entries .row.user")
@@ -4936,11 +4948,15 @@ def test_a_card_entry_opens_by_keyboard_without_toggling_a_transcript_row(server
     assert page.errors == []
 
 
-def test_the_sidebar_journal_row_is_current_after_time_on_the_fleet(server, browser, page, tmp_path):
+def test_the_sidebar_journal_row_is_current_after_time_on_the_fleet(
+    server, browser, page, tmp_path
+):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     key = spawn(page, f"/write {tmp_path / 'one.md'} => hi")
-    page.wait_for_function("document.querySelector('#s-journal').textContent.includes('2 entries')")
+    page.wait_for_function(
+        "document.querySelector('#s-journal').textContent.includes('2 entries')"
+    )
     page.click(".tab.home")
     page.wait_for_selector("#a2[data-view=fleet]")
     errors: list = []
@@ -4949,10 +4965,100 @@ def test_the_sidebar_journal_row_is_current_after_time_on_the_fleet(server, brow
     other.wait_for_selector("#a2[data-view=session]")
     other.fill("#input", f"/write {tmp_path / 'two.md'} => again")
     other.press("#input", "Enter")
-    other.wait_for_function("document.querySelector('#s-journal-all').textContent.includes('two.md')")
+    other.wait_for_function(
+        "document.querySelector('#s-journal-all').textContent.includes('two.md')"
+    )
     page.wait_for_timeout(500)  # the patch reaches the Fleet page
     page.evaluate(f"location.hash = '#s={key}'")
     page.wait_for_selector("#a2[data-view=session]")
-    page.wait_for_function("document.querySelector('#s-journal').textContent.includes('3 entries')")
+    page.wait_for_function(
+        "document.querySelector('#s-journal').textContent.includes('3 entries')"
+    )
     assert page.errors == [] and errors == []
+    other.close()
+
+
+def _journal_entries(server, n: int, ts: float, text: str) -> None:
+    """n notes straight into the server's journal.db, as if journaled at ts."""
+    from aegis.journal import db
+
+    con, _ = db.connect(server.root / ".aegis" / "state" / "journal.db")
+    for k in range(n):
+        e = db.Entry(f"20260101-000000-{k:06d}", 0, 0, ts, "old-hand", None,
+                     "note", "decision", f"{text} {k}", None, False, [])  # fmt: skip
+        db.insert(con, e)
+    con.close()
+
+
+def test_the_journal_searches_every_day_once_a_filter_is_set_and_today_is_the_servers(
+    server, browser, tmp_path
+):
+    """The browser's timezone puts it on another date than the server: the
+    view still opens on the server's today, and a pattern searches every day."""
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+
+    today = time.strftime("%Y-%m-%d")
+    tz = next(
+        z
+        for z in ("Pacific/Kiritimati", "Etc/GMT+12")
+        if datetime.now(ZoneInfo(z)).strftime("%Y-%m-%d") != today
+    )
+    errors: list = []
+    pg = browser.new_page(viewport={"width": 1280, "height": 800}, timezone_id=tz)
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg, f"/write {tmp_path / 'today.md'} => hi")
+    turns_done(pg, 1)
+    _journal_entries(server, 1, time.time() - 3 * 86400, "chose the zebra layout")
+    pg.keyboard.press("Alt+KeyL")
+    pg.locator(".journal .jrow", has_text="today.md").first.wait_for()
+    assert pg.input_value(".journal .jday") == today
+    assert "zebra" not in pg.inner_text(".journal .jlist")
+    pg.fill(".journal .jq", "zebra")
+    pg.locator(".journal .jrow", has_text="chose the zebra layout").wait_for()
+    assert pg.input_value(".journal .jday") == ""
+    pg.fill(".journal .jq", "nothingmatchesthis")
+    pg.wait_for_selector(".journal .jlist .empty")
+    assert "any day" in pg.inner_text(".journal .jlist .empty")
+    # Every filter empty again: back to the server's today.
+    pg.fill(".journal .jq", "")
+    pg.locator(".journal .jrow", has_text="today.md").first.wait_for()
+    assert pg.input_value(".journal .jday") == today
+    # A day the person picks holds, filters or not.
+    old = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+    pg.fill(".journal .jday", old)
+    pg.locator(".journal .jrow", has_text="chose the zebra layout").wait_for()
+    pg.fill(".journal .jq", "nothingmatchesthis")
+    pg.wait_for_selector(".journal .jlist .empty")
+    assert old in pg.inner_text(".journal .jlist .empty")
+    assert errors == []
+    pg.close()
+
+
+def test_the_journal_reloads_a_list_paged_past_500_rows(
+    server, browser, page, tmp_path
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    _journal_entries(server, 560, time.time(), "bulk entry")
+    page.keyboard.press("Alt+KeyL")
+    page.wait_for_function("document.querySelectorAll('.journal .jrow').length === 50")
+    for n in range(100, 600, 50):
+        page.click("#journal .btn")
+        page.wait_for_function(
+            "n => document.querySelectorAll('.journal .jrow').length >= n",
+            arg=min(n, 561),
+        )
+    other_errors: list = []
+    other = new_page(browser, other_errors)
+    other.goto(server.url)
+    other.wait_for_selector("#a2[data-view=fleet]")
+    spawn(other, f"/write {tmp_path}/later.md => x")
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.journal .jrow .x')].some(x => x.textContent.includes('later.md'))"
+    )
+    assert page.locator(".journal .jrow").count() >= 500
+    assert page.errors == [] and other_errors == []
     other.close()

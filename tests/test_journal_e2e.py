@@ -409,7 +409,9 @@ async def test_journal_rows_is_for_people_and_note_for_agents(world):
     with pytest.raises(OpError, match="agents_only"):
         await world.app.registry.call("journal.note", {"text": "x", "tag": "decision"})
     out = await world.app.registry.call("journal.rows", {"counts": True})
-    assert set(out) == {"rows", "more", "counts"}
+    assert set(out) == {"rows", "more", "counts", "today"}
+    # The server's day, which the view shows until the person picks one.
+    assert out["today"] == time.strftime("%Y-%m-%d")
 
 
 async def test_the_cli_searches_and_rebuilds(world):

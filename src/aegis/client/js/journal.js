@@ -14,12 +14,6 @@ function el(tag, cls, text) {
   return n;
 }
 
-export function today() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
 export class Journal {
   constructor(conn, box, { onOpen }) {
     this.conn = conn;
@@ -31,6 +25,10 @@ export class Journal {
     this.patchTimer = null;
     this.seq = 0; // the newest request; an older answer is dropped
     this.drawn = false;
+    // The day input counts once the person picks or clears it. Until then the
+    // view shows the server's today with every filter empty, and every day
+    // as soon as one is set: "what touched this" is rarely only today.
+    this.picked = false;
   }
 
   draw() {
@@ -58,6 +56,7 @@ export class Journal {
       n.addEventListener("input", (e) => {
         // The chip's own input fires on typing in its list; only a pick counts.
         if (n === this.kind && e.target !== n) return;
+        if (n === this.day) this.picked = true;
         clearTimeout(this.timer);
         this.timer = setTimeout(() => this.load(false), 200);
       });
@@ -66,7 +65,6 @@ export class Journal {
 
   open() {
     this.draw();
-    if (!this.day.value) this.day.value = today();
     this.load(false);
     this.q.focus();
   }
@@ -76,7 +74,9 @@ export class Journal {
   changed() {
     if (!this.drawn || this.box.offsetParent === null) return;
     clearTimeout(this.patchTimer);
-    this.patchTimer = setTimeout(() => this.load(false, Math.max(PAGE, this.rows.length)), 300);
+    // journal.rows takes at most 500 rows; a longer list reloads its first 500.
+    const limit = Math.min(500, Math.max(PAGE, this.rows.length));
+    this.patchTimer = setTimeout(() => this.load(false, limit), 300);
   }
 
   params(offset, limit = PAGE) {
@@ -88,9 +88,10 @@ export class Journal {
     set("path", this.path.value);
     set("session", this.session.value);
     if (this.kind.value) p.kind = [this.kind.value];
-    if (this.day.value) {
-      p.since = this.day.value;
-      p.until = this.day.value;
+    const day = this.picked ? this.day.value : Object.keys(p).length > 2 ? "" : "today";
+    if (day) {
+      p.since = day;
+      p.until = day;
     }
     return p;
   }
@@ -100,8 +101,9 @@ export class Journal {
     const n = ++this.seq;
     this.moreBtn.disabled = true;
     let res;
+    const p = this.params(more ? this.rows.length : 0, limit);
     try {
-      res = await this.conn.call("journal.rows", this.params(more ? this.rows.length : 0, limit));
+      res = await this.conn.call("journal.rows", p);
     } catch (e) {
       if (n !== this.seq) return;
       this.moreBtn.disabled = false;
@@ -112,12 +114,14 @@ export class Journal {
     }
     if (n !== this.seq) return;
     this.moreBtn.disabled = false;
+    const day = p.since === "today" ? res.today : p.since || "";
+    if (!this.picked) this.day.value = day;
     this.rows = more ? this.rows.concat(res.rows) : res.rows;
     this.more = res.more;
-    this.render();
+    this.render(null, day ? `on ${day}` : "on any day");
   }
 
-  render(failed) {
+  render(failed, when = "") {
     const held = this.list.contains(document.activeElement) ? document.activeElement.dataset.id : null;
     const out = [];
     let day = null;
@@ -143,7 +147,7 @@ export class Journal {
       });
       out.push(row);
     }
-    if (!out.length) out.push(el("div", "empty", failed || "Nothing in the journal matches."));
+    if (!out.length) out.push(el("div", "empty", failed || `Nothing in the journal matches ${when}.`));
     this.list.replaceChildren(...out);
     if (held) out.find((n) => n.dataset?.id === held)?.focus();
     this.foot.textContent = failed ? "" : `${this.rows.length} entries${this.more ? ", more below" : ""}`;
