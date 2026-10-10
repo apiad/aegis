@@ -149,3 +149,10 @@ def test_the_message_puts_the_files_after_the_text():
     )
     assert att.message("", sent).startswith("Attached files:\n- ")
     assert att.message("look", []) == "look"
+
+
+def test_an_unusual_space_in_a_name_becomes_a_plain_one():
+    # Android's recorder names a note "Oct 10, 12.26 PM.m4a"; an agent that
+    # copies the path back types a plain space and misses the file.
+    assert att.clean_name("Oct 10, 12.26 PM.m4a") == "Oct 10, 12.26 PM.m4a"
+    assert att.clean_name("a b.txt") == "a b.txt"

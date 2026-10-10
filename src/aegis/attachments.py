@@ -55,7 +55,14 @@ def clean_name(raw: str) -> str:
     control characters dropped, a leading dot replaced, and at most
     NAME_BYTES bytes, the extension kept."""
     name = re.split(r"[/\\]", raw)[-1]
-    name = "".join(c for c in name if unicodedata.category(c)[0] != "C").strip()
+    # Control and format characters go; any other space becomes a plain one,
+    # because an agent copying the path back types U+0020 (Android names a
+    # voice note "Oct 10, 12.26\u202fPM.m4a").
+    name = "".join(
+        " " if unicodedata.category(c) == "Zs" else c
+        for c in name
+        if unicodedata.category(c)[0] != "C"
+    ).strip()
     if not name:
         raise FileError("bad_name", f"{raw!r} names no file")
     if name.startswith("."):

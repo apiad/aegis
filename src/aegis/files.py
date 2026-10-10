@@ -86,9 +86,10 @@ def classify_name(name: str, sniff=lambda: False) -> tuple[str, str]:
         return mime, "html"
     if mime == "text/markdown":
         return mime, "markdown"
-    if major == "text" or (
-        major == "application" and any(t in minor for t in _TEXT_APPS)
-    ):
+    # Whole parts of the subtype only: "openxmlformats" (.docx, .xlsx, .pptx)
+    # holds "xml" and is a zip, whose excerpt would be bytes drawn as text.
+    parts = {minor, *re.split(r"[+.-]", minor)}
+    if major == "text" or (major == "application" and parts & set(_TEXT_APPS)):
         return mime, "text"
     if major in ("audio", "video"):
         return mime, major

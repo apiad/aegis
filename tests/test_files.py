@@ -1,7 +1,7 @@
 import pytest
 
 from aegis import files
-from aegis.files import FileError, classify, excerpt, find, store, url
+from aegis.files import FileError, classify, classify_name, excerpt, find, store, url
 
 
 @pytest.mark.parametrize(
@@ -157,3 +157,25 @@ def test_open_natively_runs_the_opener_on_the_stored_copy(tmp_path, monkeypatch)
     path = find(tmp_path / "state", rec["file_id"], "a b.txt")
     files.open_natively(path).wait(5)
     assert marker.read_text() == str(path)
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["report.docx", "sheet.xlsx", "deck.pptx", "letter.odt", "archive.zip"],
+)
+def test_an_office_file_or_an_archive_is_never_previewed_as_text(name):
+    assert classify_name(name)[1] == "other"
+
+
+@pytest.mark.parametrize(
+    "name, preview",
+    [
+        ("data.json", "text"),
+        ("feed.xml", "text"),
+        ("a.rss", "text"),
+        ("run.sh", "text"),
+        ("app.js", "text"),
+    ],
+)
+def test_text_formats_under_application_keep_their_text_preview(name, preview):
+    assert classify_name(name)[1] == preview
