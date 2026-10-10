@@ -233,7 +233,7 @@ def test_an_edit_carries_its_diff_window():
     r.output("t1", "The file /x/a.py has been updated.")
     f, _ = run(r)
     (e,) = f.entries()
-    assert e["glyph"] == "✎" and e["summary"] == "edit a.py"
+    assert e["glyph"] == "pencil" and e["summary"] == "edit a.py"
     assert e["detail"]["diff"] == {
         "path": "/x/a.py",
         "removed": ["b = 2"],
@@ -380,7 +380,7 @@ def test_an_inbox_message_is_its_own_kind():
     (e,) = run(r)[0].entries()
     assert (e["kind"], e["glyph"], e["title"]) == (
         "inbox",
-        "⇄",
+        "swap",
         "monitor:01M4 · ok · 2026-10-06T10:00:00Z",
     )
 
@@ -400,7 +400,7 @@ def test_a_call_to_aegis_is_named_by_its_verb():
     a, b = run(r)[0].entries()
     assert (a["title"], a["glyph"], a["summary"]) == (
         "monitor_start",
-        "⇄",
+        "swap",
         "Run the tests",
     )
     assert b["summary"] == "general: Review PR 12"
@@ -438,7 +438,7 @@ def test_a_sent_file_is_its_own_kind():
     assert (e["kind"], e["status"], e["glyph"], e["title"]) == (
         "file",
         "ok",
-        "▤",
+        "file",
         "informe año.png",
     )
     assert e["summary"] == "47 KB · image/png"
@@ -885,7 +885,7 @@ def test_an_artifact_folds_to_one_entry_that_its_later_records_update():
     (e,) = f.entries()
     assert e["id"] == "art-aaaa0001" and e["kind"] == "artifact"
     assert e["status"] == "submitted" and e["summary"] == "submitted"
-    assert e["title"] == "Pick" and e["md"] == "Pick one" and e["glyph"] == "▣"
+    assert e["title"] == "Pick" and e["md"] == "Pick one" and e["glyph"] == "artifact"
     d = e["detail"]
     assert d["url"] == "/files/F1/index.html" and d["started"] is True
     assert d["state"] == {"n": 1} and d["state_by"] == "page"

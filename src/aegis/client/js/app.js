@@ -18,7 +18,7 @@ import { age, countdown, elapsed, hostRow, hostSeverity, providerFor, quotaSideR
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
 import { installKeys, renderKeys } from "./keys.js";
 import { Palette } from "./palette.js";
-import { glyph, icon, installGlyphs, LABEL } from "./glyphs.js";
+import { glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
@@ -119,6 +119,12 @@ $("nav-down").append(icon("down"));
 $("jump").append(icon("latest"));
 $("bell").append(icon("bell"));
 $("settings-btn").prepend(icon("gear"));
+$("send").append(icon("send"));
+$("sp-go").append(icon("send"));
+$("interrupt").append(icon("stop"));
+$("replies-g").append(icon("prompt"));
+$("working-g").append(icon("think"));
+$("sp-mark").prepend(gorgoneion());
 installBell($("bell"));
 $("nav-up").addEventListener("click", () => transcript.message(-1));
 $("nav-down").addEventListener("click", () => transcript.message(1));
@@ -643,7 +649,7 @@ function drawSideUsage(s) {
   const shown = windows.slice(0, lead ? 2 : 3);
   const left = !windows.length ? "" : lead ? cost : `${tokens ? `${tokens} ctx · ` : ""}${cost}`;
   const next = shown.find((w) => w.resets_at != null);
-  const right = next ? `↻ ${countdown(next.resets_at - now)}` : "";
+  const right = next ? countdown(next.resets_at - now) : "";
   const sig = JSON.stringify([
     pct,
     tokens,
@@ -664,7 +670,7 @@ function drawSideUsage(s) {
   }
   $("s-tiles").replaceChildren(...tiles);
   $("s-foot-l").textContent = left;
-  $("s-foot-r").textContent = right;
+  $("s-foot-r").replaceChildren(...(right ? [icon("again"), ` ${right}`] : []));
   $("s-foot").hidden = !left && !right;
 }
 
@@ -936,7 +942,7 @@ function renderMeta(s) {
     input.placeholder = placeholder;
     autosize();
   }
-  setTitle(`${working ? "● " : ""}${s.title || s.handle} · aegis`);
+  setTitle(`${s.title || s.handle} · aegis`);
 }
 
 setInterval(() => {
@@ -959,10 +965,11 @@ setInterval(() => {
 // Asked again every hour, so a tab left open learns about a new release; the
 // server caches PyPI's answer for that long anyway.
 
-function span(cls, text) {
+function span(cls, text, name) {
   const el = document.createElement("span");
   el.className = cls;
   el.textContent = text;
+  if (name) el.prepend(icon(name));
   return el;
 }
 
@@ -987,17 +994,17 @@ async function loadVersion() {
   $("ver-ref").textContent = ref || "";
   $("ver-base-row").hidden = !dev || !run.version;
   $("ver-base").textContent = run.version || "";
-  const mark = v.status === "current" ? [span("ok", "✓ current")] : behind ? [span("upd", "↑ update")] : [];
+  const mark = v.status === "current" ? [span("ok", " current", "read")] : behind ? [span("upd", " update", "arrow-up")] : [];
   $("ver-latest").replaceChildren(span("v", v.latest || "unknown"), ...mark);
   $("ver-line").replaceChildren(
     span("", "aegis"),
     span("v", shown),
-    ...(dev ? [span("tag", "dev")] : behind ? [span("upd", "↑ update")] : v.status === "current" ? [span("ok", "✓")] : []),
+    ...(dev ? [span("tag", "dev")] : behind ? [span("upd", " update", "arrow-up")] : v.status === "current" ? [span("ok", "", "read")] : []),
   );
   $("ver-sec").hidden = false;
 
   const top = $("ver-top");
-  top.replaceChildren(span("", shown), ...(dev ? [span("tag", "dev")] : behind ? [span("upd", "↑")] : []));
+  top.replaceChildren(span("", shown), ...(dev ? [span("tag", "dev")] : behind ? [span("upd", "", "arrow-up")] : []));
   top.title = behind
     ? `aegis ${run.version}; ${v.latest} is out: uv tool upgrade aegis-harness`
     : dev

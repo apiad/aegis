@@ -27,26 +27,29 @@ KIND_BY_NAME = {
     "Agent": "think",
 }
 
+# A glyph is the name of a symbol in the client's sprite (js/glyphs.js), drawn
+# in the theme's colours; a character would render in whatever font the
+# system falls back to, and an emoji in its own colours.
 KIND_GLYPH = {
-    "read": "📖",
-    "edit": "✎",
-    "execute": "⌬",
-    "search": "🔎",
-    "think": "✻",
-    "fetch": "🌐",
-    "other": "⏺",
+    "read": "book",
+    "edit": "pencil",
+    "execute": "terminal",
+    "search": "search",
+    "think": "think",
+    "fetch": "globe",
+    "other": "dot",
 }
 
-USER_GLYPH = "❯"
-PROSE_GLYPH = "⏺"
-THINKING_GLYPH = "✻"
-SYSTEM_GLYPH = "·"
-ERROR_GLYPH = "✗"
-COMMS_GLYPH = "⇄"
-FILE_GLYPH = "▤"
-ARTIFACT_GLYPH = "▣"
-COMMAND_GLYPH = "/"
-RECAP_GLYPH = "✦"
+USER_GLYPH = "prompt"
+PROSE_GLYPH = "dot"
+THINKING_GLYPH = "think"
+SYSTEM_GLYPH = "pip"
+ERROR_GLYPH = "close"
+COMMS_GLYPH = "swap"
+FILE_GLYPH = "file"
+ARTIFACT_GLYPH = "artifact"
+COMMAND_GLYPH = "slash"
+RECAP_GLYPH = "sparkle"
 
 # How much of a result the one-line verdict may carry.
 DIGEST_MAX = 200

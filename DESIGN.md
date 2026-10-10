@@ -248,8 +248,9 @@ channel that keeps revisions answers with what changed after it, and any other
 with a fresh snapshot. Adding a subsystem adds operations and channels, never a protocol field.
 
 **Python decides, the browser draws.** Every fact and decision about a transcript
-entry is computed once in Python: its glyph, title, summary, status, the diff
-window of an edit, and what collapses. The entry crosses the wire as data and the
+entry is computed once in Python: its glyph (the name of a symbol in the
+client's SVG sprite, `js/glyphs.js`), title, summary, status, the diff window of
+an edit, and what collapses. The entry crosses the wire as data and the
 browser only turns it into markup. One copy of each fact means no drift, and a
 data protocol version fails loudly across a link where mismatched markup would
 break silently.

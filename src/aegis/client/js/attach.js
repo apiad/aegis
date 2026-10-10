@@ -6,6 +6,8 @@
 // (the new-tab composer, whose session does not exist yet) chips only hold
 // their files until take() hands them to the session that was started.
 
+import { icon } from "./glyphs.js";
+
 const CHUNK = 256 * 1024;
 const PARALLEL = 3;
 
@@ -173,7 +175,8 @@ export class Attachments {
     c.title = it.error || it.name;
     const bar = el("span", "ab");
     bar.style.setProperty("--p", it.size ? (it.sent / it.size).toFixed(3) : "1");
-    const x = el("button", "ax", "×");
+    const x = el("button", "ax");
+    x.append(icon("close"));
     x.type = "button";
     x.title = "Remove";
     x.setAttribute("aria-label", `Remove ${it.name}`);

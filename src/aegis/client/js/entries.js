@@ -7,7 +7,7 @@
 import markdownit from "../vendor/markdown-it.mjs";
 import { copyButton } from "./copy.js";
 import { money } from "./fleet.js";
-import { icon } from "./glyphs.js";
+import { entryIcon, icon } from "./glyphs.js";
 
 const md = markdownit({ html: false, linkify: true, breaks: false });
 const defaultLink = md.renderer.rules.link_open || ((t, i, o, e, s) => s.renderToken(t, i, o));
@@ -46,16 +46,16 @@ function fileCard(files, glyph) {
   const name = el("span", "fn");
   const size = el("span", "fs");
   const acts = el("span", "acts");
-  const open = el("a", "btn primary open", "↗ Open");
+  const open = withIcon(el("a", "btn primary open"), "open", "Open");
   open.target = "_blank";
   open.rel = "noopener noreferrer";
-  const native = el("button", "btn native", "⧉ Open natively");
+  const native = withIcon(el("button", "btn native"), "window", "Open natively");
   native.title = "Open in the desktop app for it";
-  const dl = el("a", "btn dl", "↓ Download");
+  const dl = withIcon(el("a", "btn dl"), "latest", "Download");
   acts.append(open, ...(remote ? [] : [native]), dl); // never natively from a linked server
-  bar.append(el("span", "ic", glyph), name, size);
-  const prev = el("button", "btn prev", "‹");
-  const next = el("button", "btn next", "›");
+  bar.append(entryIcon(glyph), name, size);
+  const prev = withIcon(el("button", "btn prev"), "left");
+  const next = withIcon(el("button", "btn next"), "right");
   const count = el("span", "count");
   if (sent.length > 1) {
     prev.title = "Previous file";
@@ -140,6 +140,13 @@ function el(tag, cls, text) {
   return n;
 }
 
+// A node holding a sprite symbol and, for a button, its label.
+function withIcon(n, name, text) {
+  n.append(entryIcon(name));
+  if (text) n.append(el("span", null, text));
+  return n;
+}
+
 export function hhmm(ts) {
   if (!ts) return "";
   const d = new Date(ts * 1000);
@@ -149,7 +156,7 @@ export function hhmm(ts) {
 function row(entry, cls, body) {
   const r = el("div", `row ${cls}`);
   r.dataset.id = entry.id;
-  r.append(el("span", "t", hhmm(entry.ts)), el("span", "g", entry.glyph), body);
+  r.append(el("span", "t", hhmm(entry.ts)), withIcon(el("span", "g"), entry.glyph), body);
   return r;
 }
 
@@ -231,7 +238,7 @@ const RENDERERS = {
       // A file tool's row: the person can see its file without the agent
       // sending it (file.peek). Not on a linked server's row: the op is local.
       const bar = el("div", "peekbar");
-      const b = el("button", "btn peek", det.peek ? "↻ Show the file again" : "▤ Show the file");
+      const b = det.peek ? withIcon(el("button", "btn peek"), "again", "Show the file again") : withIcon(el("button", "btn peek"), "file", "Show the file");
       b.dataset.entry = e.id;
       bar.append(b, el("span", "peekerr"));
       more.append(bar);
@@ -298,14 +305,14 @@ const RENDERERS = {
     card.dataset.status = e.status;
     const bar = el("div", "fbar");
     const acts = el("span", "acts");
-    const open = el("a", "btn open", "↗ Open");
+    const open = withIcon(el("a", "btn open"), "open", "Open");
     open.href = fileUrl(det.url);
     open.target = "_blank";
     open.rel = "noopener noreferrer";
     acts.append(open);
     if (e.status !== "live") acts.prepend(el("button", "btn show", "Show"));
     card.dataset.md = e.md || ""; // the caption's source, for update() to compare exactly
-    bar.append(el("span", "ic", e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);
+    bar.append(entryIcon(e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);
     card.append(bar);
     if (e.status === "live") card.append(artifactStage(e));
     else {

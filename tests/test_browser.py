@@ -1015,10 +1015,13 @@ def test_the_fleet_band_and_the_sidebar_show_quota_and_the_host(quota_server, pa
     # 71% with 38% of the window gone: on pace for about 187%, so red.
     assert "critical" in five.get_attribute("class")
     assert "71%" in five.inner_text()
-    assert re.search(r"→ 18\d%", five.inner_text())
+    assert re.search(r"18\d%", five.locator(".proj").inner_text())
+    assert five.locator(".proj svg.ic").count() == 1
     assert five.locator(".tick").count() == 1
     week = page.locator("#band .gauge[data-kind=weekly_all]")
-    assert "normal" in week.get_attribute("class") and "→" not in week.inner_text()
+    assert (
+        "normal" in week.get_attribute("class") and week.locator(".proj").count() == 0
+    )
     stale = page.locator("#band .gauge[data-kind=rolling]")
     assert "stale" in stale.get_attribute("class")
     assert stale.locator(".tick").count() == 0
@@ -1031,7 +1034,8 @@ def test_the_fleet_band_and_the_sidebar_show_quota_and_the_host(quota_server, pa
     five = page.locator("#s-tiles .tile[data-kind=session]")
     five.wait_for()
     assert "critical" in five.get_attribute("class")
-    assert re.search(r"71%→18\d", five.inner_text().replace("\n", ""))
+    assert re.search(r"71%18\d", five.inner_text().replace("\n", ""))
+    assert five.locator("small svg.ic").count() == 1
     page.wait_for_selector("#s-host-sec:not([hidden]) #s-host-tiles .tile")
     assert "CPU" in page.inner_text("#s-host-tiles")
     # The details are the row's card.
@@ -1396,6 +1400,68 @@ def test_a_read_rows_file_opens_inside_the_row_on_request(server, page):
     row.locator(".stage .md h1", has_text="Changed").wait_for()
     assert row.locator(".fcard").count() == 1
     assert page.locator(".row.file").count() == 0
+    assert page.errors == []
+
+
+# The marks the UI once drew as characters, which render in whatever font the
+# system falls back to, and the emoji, which ignore the theme (#296).
+GLYPH_CHARS = "↵■❯✻▾▸↗⧉‹›↻▤▣⇄✎⌬✗✦⏺●📖🔎🌐"
+
+
+def test_the_ui_draws_its_marks_as_sprite_svg_not_characters(server, page):
+    (server.root / "notes.md").write_text("# Notes\n")
+    (server.root / "log.txt").write_text("line one\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.click("#tab-add")
+    page.wait_for_selector("#a2[data-view=spawn]")
+    # The new tab's title: the themed Gorgoneion, then the ligature.
+    assert page.locator("#sp-mark svg.gorgon").count() == 1
+    assert page.inner_text("#sp-mark") == "ægis"
+    assert page.locator("#sp-go svg.ic").count() == 1
+    page.fill("#sp-text", "/bash Count the files => 3")
+    page.press("#sp-text", "Enter")
+    page.wait_for_selector("#a2[data-view=session]")
+    turns_done(page, 1)
+    page.fill("#input", f"/read {server.root / 'notes.md'}")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    args = {"paths": ["notes.md", "log.txt"], "caption": "Two"}
+    page.fill("#input", f"/mcp file_send {json.dumps(args)}")
+    page.press("#input", "Enter")
+    turns_done(page, 3)
+    page.fill("#input", "/fail")
+    page.press("#input", "Enter")
+    turns_done(page, 4)
+    read = page.locator(".row.tool").nth(1)
+    read.locator("summary").click()
+    read.locator(".peek").click()
+    read.locator(".fcard").wait_for()
+
+    for sel in ("#send", "#interrupt", "#working-g", "#replies-g"):
+        assert page.locator(f"{sel} svg.ic").count() == 1, sel
+    card = page.locator(".row.file .fbar")
+    for sel in ("a.open", "a.dl", ".prev", ".next"):
+        assert card.locator(f"{sel} svg.ic").count() == 1, sel
+    assert read.locator(".peek svg.ic").count() == 1
+    gutter = page.eval_on_selector_all(
+        ".row > .g", "gs => gs.map(g => g.querySelector('use')?.getAttribute('href'))"
+    )
+    assert gutter and None not in gutter
+    for href in ("#g-terminal", "#g-book", "#g-file", "#g-prompt"):
+        assert href in gutter, href
+    page.click("#nav-fold")
+    assert page.locator(".runline .g svg.ic").count() >= 2
+
+    # No mark is left as text anywhere in the page, and every icon names a symbol.
+    text = page.evaluate("document.getElementById('a2').innerText")
+    assert [c for c in GLYPH_CHARS if c in text] == []
+    assert not any(c in page.title() for c in GLYPH_CHARS)
+    missing = page.evaluate(
+        "[...document.querySelectorAll('#a2 use')].map(u => u.getAttribute('href'))"
+        ".filter(h => !document.querySelector(h))"
+    )
+    assert missing == []
     assert page.errors == []
 
 
@@ -2597,8 +2663,8 @@ def test_a_reply_read_on_screen_turns_its_mark_and_clears_the_done_badge(server,
     turns_done(page, 2)
     # On screen and focused for a second: both replies become read.
     page.wait_for_function(
-        "() => document.querySelectorAll('.row.prose .rm .ic.read').length >= 2"
-        " && !document.querySelector('.row.prose .rm .ic.unread')",
+        "() => document.querySelectorAll('.row.prose .rm .ic.i-read').length >= 2"
+        " && !document.querySelector('.row.prose .rm .ic.i-unread')",
         timeout=6000,
     )
     page.wait_for_selector(".tab.on .dot.ready")  # done, read: the plain idle dot
@@ -2616,7 +2682,7 @@ def test_a_reply_taller_than_the_view_becomes_read(server, page):
         " > 2 * document.querySelector('#tr').clientHeight"
     )
     page.wait_for_function(
-        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+        "() => !document.querySelector('.row.prose .rm .ic.i-unread')", timeout=6000
     )
     assert page.errors == []
 
@@ -2628,7 +2694,7 @@ def test_a_tall_reply_that_lands_off_screen_becomes_read_when_you_scroll_into_it
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page, "hello")
     page.wait_for_function(
-        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+        "() => !document.querySelector('.row.prose .rm .ic.i-unread')", timeout=6000
     )
     # A prompt sent mid-turn is answered when the tool call ends, with text that
     # quotes it: the tall reply lands two seconds from now, with the reader at
@@ -2663,7 +2729,7 @@ def test_a_tall_reply_that_lands_off_screen_becomes_read_when_you_scroll_into_it
     page.wait_for_timeout(1500)
     assert page.evaluate("() => document.querySelector('#tr').scrollTop") == 0
     assert "new" in page.get_attribute("#jump", "class").split()  # lit, not followed
-    assert page.evaluate(f"() => !!{tall}.querySelector('.rm .ic.unread')")
+    assert page.evaluate(f"() => !!{tall}.querySelector('.rm .ic.i-unread')")
     # The top edge comes in first, then the row covers the view in steps, as
     # a reader scrolling down meets it.
     page.evaluate(
@@ -2691,7 +2757,7 @@ def test_a_tall_reply_that_lands_off_screen_becomes_read_when_you_scroll_into_it
         f"() => {tall}.offsetHeight > 5 * document.querySelector('#tr').clientHeight"
     )
     page.wait_for_function(
-        f"() => !!{tall}.querySelector('.rm .ic.read')", timeout=6000
+        f"() => !!{tall}.querySelector('.rm .ic.i-read')", timeout=6000
     )
     assert page.errors == []
 
@@ -2705,16 +2771,16 @@ def test_a_reply_that_lands_while_you_are_away_stays_unread_until_you_look(
     sid = page.evaluate("location.hash.slice(3)")
     # The first reply is on screen: it becomes read before we leave.
     page.wait_for_function(
-        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+        "() => !document.querySelector('.row.prose .rm .ic.i-unread')", timeout=6000
     )
     page.fill("#input", "/sleep 1")
     page.press("#input", "Enter")
     page.click("#tab-fleet")  # away while the reply arrives
     page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=1 unread", timeout=8000)
     page.click(f".tab[data-id='{sid}']")
-    page.wait_for_selector(".row.prose .rm .ic.unread", state="attached")
+    page.wait_for_selector(".row.prose .rm .ic.i-unread", state="attached")
     page.wait_for_function(
-        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+        "() => !document.querySelector('.row.prose .rm .ic.i-unread')", timeout=6000
     )
     assert page.errors == []
 
@@ -2728,7 +2794,7 @@ def test_landing_after_two_replies_shows_a_recap_last_and_the_sparkle_makes_one(
     spawn(page, "first")
     sid = page.evaluate("location.hash.slice(3)")
     page.wait_for_function(
-        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+        "() => !document.querySelector('.row.prose .rm .ic.i-unread')", timeout=6000
     )
     page.fill("#input", "/sleep 1")
     page.press("#input", "Enter")
@@ -2792,7 +2858,7 @@ def test_coming_back_to_the_page_asks_for_a_recap_and_hiding_it_does_not(
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page, "first")
     page.wait_for_function(
-        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+        "() => !document.querySelector('.row.prose .rm .ic.i-unread')", timeout=6000
     )
     # The person leaves the page: nothing on it is read while it is hidden.
     page.evaluate(
@@ -2826,7 +2892,7 @@ def test_the_divider_and_navigator_walk_agent_messages(server, page):
     spawn(page, "one")
     sid = page.evaluate("location.hash.slice(3)")
     page.wait_for_function(
-        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+        "() => !document.querySelector('.row.prose .rm .ic.i-unread')", timeout=6000
     )
     # A reply lands while away: a one-second turn, and the Fleet before it ends.
     page.fill("#input", "/sleep 1")
@@ -2889,7 +2955,7 @@ def test_the_navigator_counts_the_unread_and_jumps_to_the_first(server, page):
     spawn(page, "one")
     sid = page.evaluate("location.hash.slice(3)")
     page.wait_for_function(
-        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+        "() => !document.querySelector('.row.prose .rm .ic.i-unread')", timeout=6000
     )
     # A reply lands while away, and the page is not focused when we return,
     # so it stays unread.
@@ -2899,13 +2965,13 @@ def test_the_navigator_counts_the_unread_and_jumps_to_the_first(server, page):
     page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=1 unread", timeout=8000)
     page.evaluate("document.hasFocus = () => false")
     page.click(f".tab[data-id='{sid}']")
-    page.wait_for_selector(".row.prose .rm .ic.unread", state="attached")
+    page.wait_for_selector(".row.prose .rm .ic.i-unread", state="attached")
     page.wait_for_function(
         "() => document.getElementById('nav-pos').textContent"
         ".startsWith('1 unread · message ')"
     )
     unread = page.eval_on_selector(
-        ".row.prose:has(.rm .ic.unread)", "n => n.dataset.id"
+        ".row.prose:has(.rm .ic.i-unread)", "n => n.dataset.id"
     )
     sel = "document.querySelector('.row.sel')?.dataset.id"
     page.keyboard.press("Alt+KeyU")
@@ -2942,7 +3008,7 @@ def test_alt_j_walks_the_sessions_that_need_you_longest_waiting_first(server, pa
     hash_ = "location.hash.slice(3)"
     page.keyboard.press("Alt+KeyJ")
     page.wait_for_function(f"{hash_} === '{b}'")
-    first = "document.querySelector('.row.prose:has(.rm .ic.unread)')?.dataset.id"
+    first = "document.querySelector('.row.prose:has(.rm .ic.i-unread)')?.dataset.id"
     page.wait_for_function(
         f"document.querySelector('.row.sel')?.dataset.id === {first}"
     )
@@ -2969,7 +3035,7 @@ def test_a_needs_you_tab_blinks_until_its_last_message_is_read(server, page):
     page.wait_for_selector("#a2[data-view=fleet]")
     a = spawn(page, "hello")
     page.wait_for_function(
-        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+        "() => !document.querySelector('.row.prose .rm .ic.i-unread')", timeout=6000
     )
     b = spawn(page, "hello")
     page.click(f".tab[data-id='{a}']")
@@ -3021,7 +3087,7 @@ def test_the_divider_stays_where_it_was_across_a_reconnect(server, page):
     spawn(page, "one")
     sid = page.evaluate("location.hash.slice(3)")
     page.wait_for_function(
-        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+        "() => !document.querySelector('.row.prose .rm .ic.i-unread')", timeout=6000
     )
     page.fill("#input", "/sleep 1")
     page.press("#input", "Enter")
@@ -3032,7 +3098,7 @@ def test_the_divider_stays_where_it_was_across_a_reconnect(server, page):
     at = page.eval_on_selector(".row.since", "n => n.dataset.id")
     # Read on screen: a fresh placement now would find nothing unread.
     page.wait_for_function(
-        "() => !document.querySelector('.row.prose .rm .ic.unread')", timeout=6000
+        "() => !document.querySelector('.row.prose .rm .ic.i-unread')", timeout=6000
     )
     # A reconnect resubscribes and takes a fresh snapshot of the same session.
     page.evaluate("delete window.__a2snapshot")
@@ -3096,13 +3162,13 @@ def test_more_than_500_messages_read_at_once_go_out_in_batches(
         )
         turns_done(pg, 1)  # no patch comes later to trim the mounted rows
         pg.click("#nav-pos")  # the first unread: mounts every row down from it
-        assert pg.locator(".row.prose .rm .ic.unread").count() == 600
+        assert pg.locator(".row.prose .rm .ic.i-unread").count() == 600
         # Every row on screen for over a second before the page is focused, so
         # the first tick takes all 600: a read's patch trims the mounted rows.
         pg.wait_for_timeout(2000)
         pg.evaluate("delete document.hasFocus")
         pg.wait_for_function(
-            "() => !document.querySelector('.row.prose .rm .ic.unread')",
+            "() => !document.querySelector('.row.prose .rm .ic.i-unread')",
             timeout=10_000,
         )
         reads = pg.evaluate("window.__reads")

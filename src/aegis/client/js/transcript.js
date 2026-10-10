@@ -26,6 +26,7 @@
 // window above still holds; the walks below skip them.
 
 import { hhmm, render, update } from "./entries.js";
+import { icon } from "./glyphs.js";
 
 const WINDOW = 200;
 
@@ -611,9 +612,12 @@ function drawLine(head, run, next, open) {
   const [t, g, rs] = b.children;
   const text = runText(run, next);
   const time = hhmm(run[0].ts);
-  const caret = open ? "▾" : "▸";
+  const caret = open ? "caret-d" : "caret-r";
   if (t.textContent !== time) t.textContent = time;
-  if (g.textContent !== caret) g.textContent = caret;
+  if (g.dataset.caret !== caret) {
+    g.dataset.caret = caret;
+    g.replaceChildren(icon(caret));
+  }
   if (rs.textContent !== text) rs.textContent = text;
   b.classList.toggle("running", run.some((e) => e.status === "running"));
   b.title = open ? "Fold these steps" : "Show these steps";
