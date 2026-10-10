@@ -3,6 +3,7 @@
 import asyncio
 import json
 import sqlite3
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -290,3 +291,76 @@ async def test_a_priming_that_raises_leaves_no_half_primed_deriver(
         )
     con.close()
     assert "x" not in j._derivers
+
+
+def _repo_with_worktree(root: Path) -> tuple[Path, Path]:
+    repo = root / "repo"
+    repo.mkdir()
+    g = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*g, "init", "-q", "-b", "main"], cwd=repo, check=True)
+    (repo / "a.py").write_text("x\n")
+    subprocess.run([*g, "add", "a.py"], cwd=repo, check=True)
+    subprocess.run([*g, "commit", "-q", "-m", "first"], cwd=repo, check=True)
+    wt = repo / ".claude" / "worktrees" / "t"
+    subprocess.run(
+        [*g, "worktree", "add", "-q", "-b", "topic", str(wt)], cwd=repo, check=True
+    )
+    return repo, wt
+
+
+async def test_a_commit_in_a_worktree_is_found_by_the_main_checkout_path(world):
+    repo, wt = _repo_with_worktree(world.root)
+    a = await world.spawn()
+    await turn(
+        a,
+        f"/sh cd {wt} && echo y > b.py && git add b.py && "
+        "git -c user.name=t -c user.email=t@t commit -m 'add b'",
+    )
+    world.app.journal.flush()
+    said = await turn(a, mcp("journal_search", path="repo/b.py"))
+    assert "add b" in said and "commit" in said
+    said = await turn(a, mcp("journal_search", path="repo/elsewhere"))
+    assert "0 entries" in said
+
+
+async def test_a_note_is_searchable_and_survives_a_rebuild(world, tmp_path):
+    a = await world.spawn()
+    said = await turn(
+        a, mcp("journal_note", text="chose sqlite over jsonl", tag="decision")
+    )
+    assert said == "mcp ok: noted"
+    world.app.journal.flush()
+    said = await turn(a, mcp("journal_search", pattern="sqlite", kind=["note"]))
+    assert "decision: chose sqlite over jsonl" in said
+    live = dump(world.app.journal.path)
+    again = Journal(world.app.roots.state_root, None, db_path=tmp_path / "again.db")
+    again.rebuild()
+    assert dump(tmp_path / "again.db") == live
+
+
+async def test_an_old_handle_still_finds_the_session(world):
+    a = await world.spawn()
+    old = a.handle
+    world.app.sessions.rename(a.log_id, "renamed-one", None)
+    world.app.journal.flush()
+    said = await turn(a, mcp("journal_search", session=old))
+    assert "renamed from" in said and "spawned in" in said
+
+
+async def test_a_bad_pattern_is_an_error_naming_it(world):
+    """Review focus 2."""
+    a = await world.spawn()
+    said = await turn(a, mcp("journal_search", pattern='"unclosed'))
+    assert said.startswith("mcp error: bad_pattern") and "unclosed" in said
+
+
+async def test_journal_rows_is_for_people_and_note_for_agents(world):
+    from aegis.ops import Caller, OpError
+
+    a = await world.spawn()
+    with pytest.raises(OpError, match="not_for_agents"):
+        await world.app.registry.call("journal.rows", {}, Caller("agent", a.log_id))
+    with pytest.raises(OpError, match="agents_only"):
+        await world.app.registry.call("journal.note", {"text": "x", "tag": "decision"})
+    out = await world.app.registry.call("journal.rows", {"counts": True})
+    assert set(out) == {"rows", "more", "counts"}

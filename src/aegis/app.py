@@ -10,7 +10,8 @@ resolves a ``/`` line first, ``commands.py``), ``session.read``,
 and ``artifact.create``, ``artifact.send``, ``artifact.read``,
 ``artifact.update``, ``artifact.close``, ``artifact.state``, ``artifact.emit``,
 ``artifact.submit``, ``artifact.error`` and ``artifact.probed``
-(``artifact_ops.py``).
+(``artifact_ops.py``),
+and ``journal.search``, ``journal.note`` and ``journal.rows`` (``journal/ops.py``).
 Channels: ``sessions`` (every open session's meta; patches ``upsert`` and
 ``remove``), ``transcript:<log_id>`` (any session, archived included; a
 subscribe ``since`` a revision gets what changed after it), ``quota`` (each
@@ -51,6 +52,7 @@ from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors
 from .queues import Queues
+from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .quota import Quota
 from .recaps import Recaps
@@ -250,6 +252,7 @@ class App:
         register_agent_ops(self)
         register_config_ops(self)
         register_artifact_ops(self)
+        register_journal_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
 
     def _bin(self, harness: str) -> str:

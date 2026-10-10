@@ -213,6 +213,11 @@ any work that is not obvious, also keep a plan with plan_update: send the whole 
 list each time, mark one item `doing` while you work on it and `done` when it \
 is finished.
 
+The journal records what was done on this server. Commits, pull requests, \
+finished plan items and turns that changed files are journaled for you. Call \
+journal_note for a decision, a blocker or a milestone, which aegis cannot see, \
+and journal_search to ask what was done on a day or under a path.
+
 turn_end also takes up to three `replies`: messages the person might send next, \
 written as they would type them, in the language they write to you in, \
 lowercase and without a final period. Offer them when you laid out options, or \
