@@ -47,7 +47,7 @@ with a long unread stretch.
 | Read mark style | A ● in the right margin when unread, a faint ✓ when read | Chosen from three mockups |
 | Navigator | A pill at the bottom right: up, "2 unread · message 3 of 4", down, to latest | Chosen over a vertical stack |
 | Fleet card order | A switch in the Fleet: "Needs you first" (default) or "Tab order", kept per browser | Alex wants both; the choice is a view preference like the tab order |
-| Reply suggestions | Up to three, written by the agent in its `turn_end` call, shown as pills on top of the message box; a click sends the reply | The agent that wrote the options knows them, so a suggestion costs nothing extra. The legacy Haiku suggester guessed answers to open questions in 9 of its 13 suggestions |
+| Reply suggestions | Up to three, written by the agent in its `turn_end` call, shown as pills after the transcript's last row; a click sends the reply | The agent that wrote the options knows them, so a suggestion costs nothing extra. The legacy Haiku suggester guessed answers to open questions in 9 of its 13 suggestions |
 | Glyphs | Inline SVG, filled badges, drawn in `currentColor` | Unicode marks render differently in each font; style B was chosen over an outline set |
 
 ## The status of a session
@@ -211,12 +211,14 @@ leaves these free; the plan checks them against
 ## Reply pills
 
 The card carries `replies` from the current `turn_end`. The session view shows
-them as pills on top of the message box, under a faint "reply" label, in the order
-the agent gave them. A click sends the pill's text through `session.send`,
+them as pills after the transcript's last row, on a row of their own marked with
+the user's `❯` glyph, in the order the agent gave them. They began on top of the
+message box, where three of them took 260 px of an 844 px phone for as long as
+the turn went unanswered (#286); in the transcript they scroll away with it. A click sends the pill's text through `session.send`,
 exactly as if it had been typed, so the transcript and the agent see an ordinary
 message. The pills disappear when anything is sent: the fold drops the replies at
 the next `send` record, and the client hides them at once without waiting for the
-patch. While pills are showing, the navigator sits above them.
+patch. Scrolled to the end, the last pill clears the navigator.
 
 Pills are click-only in this design. Chrome on Linux keeps Alt+1…9, so a key for
 them needs a chord of its own, and none was chosen.
