@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-from ..claude.stream import Echo, Result, ToolCall, ToolOutput
+from ..claude.stream import Echo, Init, Result, ToolCall, ToolOutput
 from ..transcript.entries import PARSERS
 from . import shell
 
@@ -40,6 +40,9 @@ class Row:
     source: str | None = None
     touches: list[tuple[str, str]] = field(default_factory=list)
     commit: tuple[str, str] | None = None
+    # Where else a commit's hash may be: the directories the turn wrote in
+    # before it, tried when the guessed directory does not hold the hash.
+    near: tuple[str, ...] = ()
 
 
 class Deriver:
@@ -54,6 +57,7 @@ class Deriver:
         self._said: str | None = None
         self._done: set[str] = set()  # done in the previous plan record
         self._ts = 0.0
+        self._src = ""
 
     def feed(self, record: dict, events: list | None = None) -> list[Row]:
         i = record["i"]
@@ -61,6 +65,7 @@ class Deriver:
         self._ts = ts
         src = record.get("src")
         if src in PARSERS:
+            self._src = src
             if events is None:
                 p = self._parsers.get(src)
                 if p is None:
@@ -86,9 +91,13 @@ class Deriver:
             return []
         if isinstance(ev, ToolOutput):
             call = self._calls.pop(ev.id, None)
-            if call is None or ev.is_error:
+            if call is None:
                 return []
-            return self._settled(i, ts, call, ev.text, call.parent or call.id)
+            return self._settled(i, ts, call, ev, call.parent or call.id)
+        if isinstance(ev, Init):
+            if ev.cwd:
+                self.cwd = ev.cwd
+            return []
         if isinstance(ev, Echo):
             if not self._prompt:
                 self._prompt = ev.text
@@ -98,17 +107,25 @@ class Deriver:
         return []
 
     def _settled(
-        self, i: int, ts: float, call: ToolCall, text: str, source: str
+        self, i: int, ts: float, call: ToolCall, out: ToolOutput, source: str
     ) -> list[Row]:
         if call.name in WRITE_TOOLS:
             p = call.input.get("file_path") or call.input.get("notebook_path")
-            if isinstance(p, str) and p:
+            if isinstance(p, str) and p and not out.is_error:
                 self._turn.append((WRITE_TOOLS[call.name], self._abs(p)))
             return []
         if call.name != "Bash":
             return []
-        cmd = str(call.input.get("command") or "")
+        # A Bash call that failed may still have committed or merged first
+        # (a rejected push after the commit, gh pr merge in a worktree).
+        cmd, text = str(call.input.get("command") or ""), out.text
         cwd = self.cwd or os.sep
+        found = shell.commits(cmd, text)
+        near = tuple(
+            dict.fromkeys(
+                os.path.dirname(p) for op, p in self._turn if op in ("write", "edit")
+            )
+        )
         rows = [
             self._row(
                 i,
@@ -116,13 +133,21 @@ class Deriver:
                 "commit",
                 f"{h[:7]} {subject} · {branch}",
                 source=source,
-                commit=(shell.workdir(cmd, cwd), h),
+                commit=(d, h),
+                near=near,
             )
-            for branch, h, subject in shell.commits(cmd, text)
+            for (branch, h, subject), d in zip(
+                found, shell.commit_dirs(cmd, cwd, len(found))
+            )
         ]
         if pr := shell.pull_request(cmd, text):
             rows.append(self._row(i, ts, "pr", pr, source=source))
-        self._turn += [("bash-write", p) for p in shell.writes(cmd, cwd)]
+        if not out.is_error:
+            self._turn += [("bash-write", p) for p in shell.writes(cmd, cwd)]
+        # Claude's Bash keeps its directory between the agent's own calls; a
+        # subagent's calls start afresh each time.
+        if self._src == "claude" and call.parent is None:
+            self.cwd = shell.leading_cd(cmd, cwd) or self.cwd
         return rows
 
     def _own(self, i: int, ts: float, rec: dict) -> list[Row]:

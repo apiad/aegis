@@ -1,4 +1,11 @@
-from aegis.journal.shell import commits, pull_request, workdir, writes
+from aegis.journal.shell import (
+    commit_dirs,
+    commits,
+    leading_cd,
+    pull_request,
+    workdir,
+    writes,
+)
 
 
 def test_a_commit_line_gives_branch_hash_and_subject():
@@ -120,3 +127,41 @@ def test_writes_with_env_vars_and_commands():
     """Commands with leading VAR= should work correctly."""
     # FOO=1 tee x should detect x as a tee argument
     assert writes("FOO=1 tee x", "/w") == ["/w/x"]
+
+
+HEREDOC_COMMIT = (
+    "cd /r/x && git add a.py && git commit -m \"$(cat <<'EOF'\n"
+    'feat: y (#1)\n\nCo-Authored-By: someone\nEOF\n)"'
+)
+
+
+def test_a_heredoc_commit_message_keeps_the_cd_before_it():
+    """Claude's standard commit form: the line holding the cd also opens a quote
+    that only the heredoc's closing line ends."""
+    assert workdir(HEREDOC_COMMIT, "/w") == "/r/x"
+    assert commit_dirs(HEREDOC_COMMIT, "/w", 1) == ["/r/x"]
+    assert writes('cd /r/x && echo "a\nb" > out.txt', "/w") == ["/r/x/out.txt"]
+
+
+def test_each_commit_gets_the_directory_of_its_own_git_command():
+    cmd = "git -C a commit -m x && git -C b commit -m y"
+    assert commit_dirs(cmd, "/w", 2) == ["/w/a", "/w/b"]
+    # Counts that do not pair: the last commit command's directory.
+    assert commit_dirs(cmd, "/w", 3) == ["/w/b"] * 3
+    # No commit command at all (a script committed): the first git's directory.
+    assert commit_dirs("git -C c status && ./release.sh", "/w", 1) == ["/w/c"]
+
+
+def test_leading_cd_is_where_the_shell_stays():
+    assert leading_cd("cd /r/x && make test", "/w") == "/r/x"
+    assert leading_cd("cd sub", "/w") == "/w/sub"
+    assert leading_cd("cd a; cd b && ls", "/w") == "/w/a/b"
+    assert leading_cd("make && cd x", "/w") is None
+    assert leading_cd("(cd x && make)", "/w") is None
+    assert leading_cd("cd $W && ls", "/w") is None
+    assert leading_cd(HEREDOC_COMMIT, "/w") == "/r/x"
+
+
+def test_writes_skip_targets_named_by_a_variable():
+    cmd = 'echo x > $f; echo y >> "$W/progress.md"; echo z > ok.txt; tee "${D}/a"'
+    assert writes(cmd, "/w") == ["/w/ok.txt"]

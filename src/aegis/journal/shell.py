@@ -20,6 +20,8 @@ PR_URL = re.compile(r"https://github\.com/[^/\s]+/[^/\s]+/pull/\d+")
 # Remove only heredoc body (lines after marker, through terminator), keep marker line.
 HEREDOC = re.compile(r"(<<-?\s*(['\"]?)(\w+)\2[^\n]*)\n.*?\n\s*\3[ \t]*(?=\n|$)", re.S)
 SEPARATORS = {"&&", "||", ";", "|", "&", ";;", "|&"}
+# git subcommands that print "[branch hash] subject" for a commit they make.
+COMMITTERS = {"commit", "cherry-pick", "revert"}
 
 
 def _body(command: str) -> str:
@@ -50,10 +52,10 @@ def _skip_preamble(argv: list[str]) -> int:
     return i
 
 
-def _git_dir(argv: list[str], base: str) -> str:
-    """The directory a `git ...` command runs in: each -C among git's options
-    (before the subcommand) moves it; the first word not starting with "-" is
-    the subcommand and ends the scan."""
+def _git_dir(argv: list[str], base: str) -> tuple[str, str]:
+    """The directory a `git ...` command runs in, and its subcommand: each -C
+    among git's options (before the subcommand) moves it; the first word not
+    starting with "-" is the subcommand and ends the scan."""
     k = 1
     while k < len(argv):
         w = argv[k]
@@ -71,8 +73,8 @@ def _git_dir(argv: list[str], base: str) -> str:
         elif w.startswith("-"):
             k += 1
         else:
-            break
-    return base
+            return base, w
+    return base, ""
 
 
 def _commands(body: str) -> list[list[str]]:
@@ -86,15 +88,29 @@ def _commands(body: str) -> list[list[str]]:
             argv.pop()
         return argv
 
-    out: list[list[str]] = []
-    # Replace heredoc with just the marker line (group 1) to preserve redirects
-    for line in HEREDOC.sub(r"\1", body).splitlines():
-        lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+    def _split(text: str) -> list[str] | None:
+        lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
         lexer.whitespace_split = True
         try:
-            tokens = list(lexer)
+            return list(lexer)
         except ValueError:
+            return None
+
+    out: list[list[str]] = []
+    # Replace heredoc with just the marker line (group 1) to preserve redirects
+    lines = HEREDOC.sub(r"\1", body).splitlines()
+    k = 0
+    while k < len(lines):
+        # A line that opens a quote a later line closes (a multi-line -m, or
+        # "$(cat <<'EOF' ... EOF\n)") is read joined with the lines it needs.
+        for j in range(k, len(lines)):
+            tokens = _split("\n".join(lines[k : j + 1]))
+            if tokens is not None:
+                break
+        else:
+            k += 1  # never parses: drop this line alone
             continue
+        k = j + 1
         cur: list[str] = []
         for t in tokens:
             if t in SEPARATORS:
@@ -120,12 +136,10 @@ def commits(command: str, output: str) -> list[tuple[str, str, str]]:
     ]
 
 
-def workdir(command: str, cwd: str) -> str:
-    base = cwd
+def _gits(command: str, cwd: str) -> list[tuple[str, str]]:
+    """(directory, subcommand) of each git command, following cd's on the way."""
+    base, out = cwd, []
     for argv in _commands(_body(command)):
-        if not argv:
-            continue
-        # Skip leading VAR=value assignments
         start = _skip_preamble(argv)
         if start >= len(argv):
             continue
@@ -133,9 +147,49 @@ def workdir(command: str, cwd: str) -> str:
         if cmd == "cd" and len(argv) > start + 1:
             base = _resolve(argv[start + 1], base)
         elif cmd == "git":
-            # Use argv starting at the git word (after VAR= skip)
-            return _git_dir(argv[start:], base)
+            d, sub = _git_dir(argv[start:], base)
+            out.append((d, sub))
+    return out
+
+
+def workdir(command: str, cwd: str) -> str:
+    """The directory of the command's first git command, or where its cd's
+    leave it when it runs none."""
+    gits = _gits(command, cwd)
+    if gits:
+        return gits[0][0]
+    base = cwd
+    for argv in _commands(_body(command)):
+        start = _skip_preamble(argv)
+        if start < len(argv) - 1 and argv[start] == "cd":
+            base = _resolve(argv[start + 1], base)
     return base
+
+
+def commit_dirs(command: str, cwd: str, n: int) -> list[str]:
+    """The directory of each of the n commits the output printed: the k-th
+    commit command's when the counts pair, else the last commit command's,
+    else the first git command's (a script that committed)."""
+    dirs = [d for d, sub in _gits(command, cwd) if sub in COMMITTERS]
+    if len(dirs) == n:
+        return dirs
+    return [dirs[-1] if dirs else workdir(command, cwd)] * n
+
+
+def leading_cd(command: str, cwd: str) -> str | None:
+    """Where a shell that keeps its directory between calls (Claude's Bash) is
+    left by the command's leading cd's, or None when it starts with none. A
+    subshell's cd, a cd after other work and a target with a variable are not
+    followed."""
+    body = _body(command)
+    if body.lstrip().startswith("("):
+        return None
+    base, moved = cwd, False
+    for argv in _commands(body):
+        if len(argv) != 2 or argv[0] != "cd" or "$" in argv[1] or argv[1] == "-":
+            break
+        base, moved = _resolve(argv[1], base), True
+    return base if moved else None
 
 
 def writes(command: str, cwd: str) -> list[str]:
@@ -152,19 +206,22 @@ def writes(command: str, cwd: str) -> list[str]:
             base = _resolve(argv[start + 1], base)
             continue
         # Check for redirects
+        found: list[str] = []
         for k, t in enumerate(argv[:-1]):
             if t in (">", ">>") and not argv[k + 1].startswith("/dev/"):
-                out.add(_resolve(argv[k + 1], base))
+                found.append(argv[k + 1])
         words = [w for w in argv[start:] if w not in (">", ">>")]
-        if not words:
-            continue
         args = [w for w in words[1:] if not w.startswith("-")]
-        if words[0] == "tee":
-            out.update(_resolve(a, base) for a in args)
+        if not words:
+            pass
+        elif words[0] == "tee":
+            found += args
         elif words[0] == "sed" and any(w.startswith("-i") for w in words[1:]) and args:
-            out.add(_resolve(args[-1], base))
+            found.append(args[-1])
         elif words[0] in ("mv", "cp") and len(args) >= 2:
-            out.add(_resolve(args[-1], base))
+            found.append(args[-1])
+        # A target named by a variable is not a path this can know.
+        out.update(_resolve(p, base) for p in found if "$" not in p)
     return sorted(out)
 
 

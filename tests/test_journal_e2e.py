@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from aegis.journal import db, service
+from aegis.journal.derive import Row
 from aegis.journal.service import COMPLETE, Journal
 from aegis.transcript.entries import fold_records
 from aegis.transcript.store import read_store
@@ -488,3 +489,57 @@ async def test_a_corrupt_journal_file_is_set_aside_and_backfilled(tmp_path):
     assert j.fresh and _complete(j.path)
     assert {r[0] for r in dump(j.path)[0]} == {"20260101-000000-aaaaaa"}
     assert len(list(state.glob("journal.db.corrupt-*"))) == 1
+
+
+def _git_repo(path: Path, text: str) -> str:
+    """A repo at path with one commit; returns its hash."""
+    path.mkdir()
+    g = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*g, "init", "-q", "-b", "main"], cwd=path, check=True)
+    (path / "c.py").write_text(text)
+    subprocess.run([*g, "add", "c.py"], cwd=path, check=True)
+    subprocess.run([*g, "commit", "-q", "-m", "c"], cwd=path, check=True)
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=path, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def test_a_commit_not_in_the_guessed_repo_is_found_where_the_turn_wrote(tmp_path):
+    h = _git_repo(tmp_path / "real", "real\n")
+    _git_repo(tmp_path / "guessed", "another\n")
+    j = Journal(tmp_path, None, db_path=tmp_path / "j.db")
+    guessed, real = str(tmp_path / "guessed"), str((tmp_path / "real").resolve())
+    near = Row(1, 1.0, "commit", "c", "h", commit=(guessed, h), near=(real,))
+    e = j._entry("log", 0, near)
+    assert (e.repo, e.files_unknown) == (real, False)
+    assert [(op, rel) for op, _, rel, _ in e.touches] == [("commit", "c.py")]
+    # Nowhere to be found: no repo, rather than the wrong one.
+    lost = Row(1, 1.0, "commit", "c", "h", commit=(guessed, h))
+    e = j._entry("log", 0, lost)
+    assert (e.repo, e.files_unknown, e.touches) == (None, True, [])
+
+
+async def test_a_heredoc_commit_from_outside_the_repo_names_its_files(world, tmp_path):
+    """Claude's standard commit form, from a session spawned above the repo;
+    and a commit whose call then fails. Both name their files, live and rebuilt."""
+    repo, _ = _repo_with_worktree(world.root)
+    a = await world.spawn()
+    git = "git -c user.name=t -c user.email=t@t"
+    await turn(
+        a,
+        f"/sh cd {repo} && echo y > c.py && git add c.py && {git} commit -m "
+        "\"$(cat <<'EOF'\nadd c\n\nCo-Authored-By: t\nEOF\n)\"",
+    )
+    await turn(
+        a,
+        f"/sh cd {repo} && echo z > d.py && git add d.py && {git} commit -m 'add d'"
+        " && git push nowhere main",
+    )
+    world.app.journal.flush()
+    for f, subject in (("c.py", "add c"), ("d.py", "add d")):
+        said = await turn(a, mcp("journal_search", path=f"repo/{f}", kind=["commit"]))
+        assert subject in said and "1 entries" in said, said
+    live = dump(world.app.journal.path)
+    again = Journal(world.app.roots.state_root, None, db_path=tmp_path / "again.db")
+    again.rebuild()
+    assert dump(tmp_path / "again.db") == live

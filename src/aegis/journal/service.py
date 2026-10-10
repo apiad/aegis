@@ -219,9 +219,16 @@ class Journal:
         repo = touches[0][1] if touches else None
         unknown = False
         if row.commit:
+            # The guessed directory first, then where the turn wrote. A hash
+            # found nowhere names no repo rather than a wrong one.
             directory, h = row.commit
-            repo = paths.name(directory)[0]
-            files = paths.commit_files(directory, h)
+            files = None
+            for d in dict.fromkeys((directory, *row.near)):
+                files = paths.commit_files(d, h)
+                if files is not None:
+                    directory = d
+                    break
+            repo = paths.name(directory)[0] if files is not None else None
             unknown = files is None
             touches += [("commit", repo, f, paths.full(repo, f)) for f in files or []]
         return db.Entry(

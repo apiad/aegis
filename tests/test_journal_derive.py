@@ -212,3 +212,103 @@ def test_a_plan_item_that_turns_done_again_is_a_row_again():
         "add B",
         "run tests",
     ]
+
+
+def init(r: Rec, cwd: str):
+    r.claude({"type": "system", "subtype": "init", "session_id": "s", "cwd": cwd})
+
+
+def commit_rows(rows):
+    return [x.commit for x in rows if x.kind == "commit"]
+
+
+def test_an_init_cwd_is_where_the_session_works():
+    """Claude reports the session's real directory (a worktree it entered) on
+    init; a commit with no cd is filed there, not under the spawn's."""
+    r = Rec()
+    spawned(r, cwd="/home")
+    init(r, "/r/wt")
+    r.own("send", text="commit")
+    r.call("t1", "Bash", {"command": "git commit -m x"})
+    r.output("t1", "[topic 1a2b3c4] x")
+    r.result()
+    assert commit_rows(derive(r)) == [("/r/wt", "1a2b3c4")]
+
+
+def test_a_cd_in_claudes_bash_stays_for_later_calls_but_not_a_subagents():
+    r = Rec()
+    spawned(r, cwd="/w")
+    r.own("send", text="go")
+    r.call("t1", "Bash", {"command": "cd /r/x"})
+    r.output("t1", "")
+    r.call("t2", "Bash", {"command": "cd /elsewhere && ls"}, parent="task")
+    r.output("t2", "a")
+    r.call("t3", "Bash", {"command": "git commit -m x"})
+    r.output("t3", "[main 1a2b3c4] x")
+    r.call("t4", "Write", {"file_path": "rel.md", "content": "z"})
+    r.output("t4", "ok")
+    r.result()
+    rows = derive(r)
+    assert commit_rows(rows) == [("/r/x", "1a2b3c4")]
+    assert ("write", "/r/x/rel.md") in rows[-1].touches
+
+
+def test_a_commit_whose_bash_call_failed_afterwards_is_a_row():
+    """git commit && git push with the push rejected; gh pr merge from a
+    worktree exits non-zero after merging."""
+    r = Rec()
+    spawned(r, cwd="/r/x")
+    r.own("send", text="ship")
+    r.call("t1", "Bash", {"command": "git commit -m x && git push"})
+    r.output("t1", "Exit code 1\n[main 1a2b3c4] x\n ! [rejected] main", is_error=True)
+    r.call("t2", "Bash", {"command": "gh pr merge 7 --squash"})
+    r.output("t2", "✓ Squashed and merged pull request #7\nfatal: x", is_error=True)
+    r.call("t3", "Edit", {"file_path": "a.py", "old_string": "x", "new_string": "y"})
+    r.output("t3", "not found", is_error=True)
+    r.result()
+    rows = derive(r)
+    assert commit_rows(rows) == [("/r/x", "1a2b3c4")]
+    assert [x.text for x in rows if x.kind == "pr"] == ["merged #7"]
+    assert [x.kind for x in rows if x.kind == "turn"] == []
+
+
+def test_a_commit_row_names_the_directories_the_turn_wrote_in():
+    r = Rec()
+    spawned(r, cwd="/w")
+    r.own("send", text="go")
+    r.call("t1", "Write", {"file_path": "/r/y/src/a.py", "content": "z"})
+    r.output("t1", "ok")
+    r.call("t2", "Bash", {"command": "git commit -m x"})
+    r.output("t2", "[main 1a2b3c4] x")
+    r.result()
+    (commit,) = [x for x in derive(r) if x.kind == "commit"]
+    assert commit.near == ("/r/y/src",)
+
+
+def test_two_commits_in_one_call_each_get_their_own_repo():
+    r = Rec()
+    spawned(r, cwd="/w")
+    r.call("t1", "Bash", {"command": "git -C a commit -m x && git -C b commit -m y"})
+    r.output("t1", "[main 1111111] x\n[main 2222222] y")
+    assert commit_rows(derive(r)) == [("/w/a", "1111111"), ("/w/b", "2222222")]
+
+
+def test_live_and_rebuild_agree_on_init_cwd_cd_heredoc_and_failed_commits():
+    r = Rec()
+    spawned(r, cwd="/home")
+    init(r, "/r/wt")
+    r.own("send", text="go")
+    r.call("t1", "Bash", {"command": "cd /r/x"})
+    r.output("t1", "")
+    r.call(
+        "t2",
+        "Bash",
+        {"command": "cd /r/y && git commit -m \"$(cat <<'EOF'\nfeat: y\nEOF\n)\""},
+    )
+    r.output("t2", "[main 1a2b3c4] feat: y")
+    r.call("t3", "Bash", {"command": "git commit -m z && git push"})
+    r.output("t3", "Exit code 1\n[main 5d6e7f8] z", is_error=True)
+    r.result()
+    rows = derive(r)
+    assert commit_rows(rows) == [("/r/y", "1a2b3c4"), ("/r/y", "5d6e7f8")]
+    assert rows == live(r)

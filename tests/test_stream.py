@@ -49,6 +49,13 @@ def test_init():
     )
 
 
+def test_init_names_the_sessions_working_directory():
+    """The journal reads the session's real directory (a worktree, a cd that
+    stuck) off it."""
+    (ev,) = parse(line({"type": "system", "subtype": "init", "cwd": "/r/wt"}))
+    assert ev.cwd == "/r/wt"
+
+
 def test_assistant_line_with_several_blocks_yields_all_of_them():
     evs = parse(
         line(

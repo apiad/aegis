@@ -424,6 +424,7 @@ def run(text: str) -> None:
             {
                 "type": "system",
                 "subtype": "init",
+                "cwd": os.getcwd(),
                 "session_id": SESSION_ID,
                 "model": state["model"] or "fake-model",
                 "claude_code_version": "0.0-fake",
