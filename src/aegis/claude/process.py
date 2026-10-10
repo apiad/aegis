@@ -40,6 +40,38 @@ PERMISSION_MODE = {
 
 
 NO_MCP = '{"mcpServers":{}}'
+# aegis decides which of its own tools a session may call (ops.Registry.call),
+# so Claude Code lets each one through in every mode. Measured on 2.1.291:
+# plan mode refuses an MCP call even when --allowedTools or a settings rule
+# allows it, acceptEdits and auto on Haiku ask, which -p answers no, and a
+# PreToolUse hook's allow passes all three, while plan mode still refuses
+# writes (#305).
+ALLOW_AEGIS = json.dumps(
+    {
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "mcp__aegis__.*",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "echo '"
+                            + json.dumps(
+                                {
+                                    "hookSpecificOutput": {
+                                        "hookEventName": "PreToolUse",
+                                        "permissionDecision": "allow",
+                                    }
+                                }
+                            )
+                            + "'",
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+)
 
 
 def build_argv(
@@ -68,6 +100,8 @@ def build_argv(
         "--strict-mcp-config",
         "--mcp-config",
         mcp_config,
+        "--settings",
+        ALLOW_AEGIS,
     ]
     for folder in add_dirs:
         # Read access outside the cwd under every permission mode: the inbox.

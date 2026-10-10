@@ -274,6 +274,9 @@ class App:
         self.user = user or getpass.getuser()
         self.links = Links(roots.state_root, server_name, self.user, self.publish)
         self.registry = Ops()
+        self.registry.permission_of = lambda log_id: (
+            s.spec.permission if (s := self.sessions.sessions.get(log_id)) else None
+        )
         self._register()
         register_agent_ops(self)
         register_config_ops(self)
@@ -558,7 +561,7 @@ class App:
         r = self.registry
         reg = self.sessions
 
-        @r.op("agents.list", agent=True)
+        @r.op("agents.list", agent=True, read=True)
         async def agents_list(_, caller):
             """The agents you can spawn, each a preset of harness, model, effort
             and permission. session_spawn starts one and can override those."""
@@ -804,7 +807,7 @@ class App:
         async def reopen(p: LogParams, caller):
             return reg.reopen(p.log_id).wire()
 
-        @r.op("session.rename", RenameParams, agent=True)
+        @r.op("session.rename", RenameParams, agent=True, read=True)
         async def rename(p: RenameParams, caller):
             """Rename your session: a handle (2 or 3 lowercase segments joined by
             hyphens) and/or a title."""
@@ -896,7 +899,7 @@ class App:
         async def server_version(_, caller):
             return await self.versions.wire()
 
-        @r.op("quota.read", agent=True)
+        @r.op("quota.read", agent=True, read=True)
         async def quota_read(_, caller):
             """How much of each subscription window is left: per provider, each
             window's percent used, severity, projected percent at reset and

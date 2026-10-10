@@ -152,6 +152,28 @@ async def test_the_tools_are_named_after_their_operations_and_take_no_handle(wor
         assert "from_handle" not in t["inputSchema"].get("properties", {})
 
 
+async def test_a_read_session_keeps_its_card_and_is_refused_what_acts(world):
+    """#305: a read session calls its own card's tools and reading, is refused
+    what acts on anything else, and follows a live permission change."""
+    r = await world.app.registry.call("session.spawn", {"agent": "reviewer"})
+    s = world.session(r["log_id"])
+    said = await turn(s, mcp("plan_update", items=[{"text": "look", "state": "doing"}]))
+    assert not said.startswith("mcp error"), said
+    assert await turn(s, mcp("session_list")) and s.standing.get("plan")
+    for tool, args in (
+        ("session_spawn", {"agent": "reviewer"}),
+        ("monitor_start", {"description": "w", "done": "true", "progress": None}),
+        ("peer_handoff", {"target": s.handle, "context": "x"}),
+    ):
+        said = await turn(s, mcp(tool, **args))
+        assert said.startswith("mcp error: read_only"), said
+        can = said.split("it can call ")[1].split(", ")
+        assert "turn_end" in can and tool not in can, said
+    await s.configure(permission="write")
+    said = await turn(s, mcp("session_spawn", agent="reviewer"))
+    assert not said.startswith("mcp error"), said
+
+
 async def test_a_call_without_a_valid_token_is_refused(world):
     async with httpx.AsyncClient() as c:
         for headers in ({}, {"X-Aegis2-Session": "forged"}):
@@ -899,12 +921,14 @@ async def test_a_logged_task_on_a_queue_that_broke_does_not_stop_dispatch(world)
 
 
 async def test_an_agent_spawns_with_at_most_its_own_permission(world):
-    r = await world.app.registry.call("session.spawn", {"agent": "reviewer"})
-    reader = world.session(r["log_id"])  # permission: read
-    said = await turn(reader, mcp("session_spawn", agent="opus"))
+    r = await world.app.registry.call(
+        "session.spawn", {"agent": "opus", "permission": "write"}
+    )
+    writer = world.session(r["log_id"])
+    said = await turn(writer, mcp("session_spawn", agent="opus"))
     assert said.startswith("mcp error: not_allowed")
-    assert "at most read" in said and "full" in said
-    said = await turn(reader, mcp("session_spawn", agent="opus", permission="read"))
+    assert "at most write" in said and "full" in said
+    said = await turn(writer, mcp("session_spawn", agent="opus", permission="read"))
     child = world.session(json.loads(said.removeprefix("mcp ok: "))["log_id"])
     assert child.spec.permission == "read"
     # A full-permission agent may hand out less, and a person is not limited.

@@ -4,7 +4,10 @@ An operation has a name, a pydantic params model and an async handler that
 receives the params and the caller. A websocket ``call`` is one projection of
 the registry; the operations marked ``agent`` are another, as MCP tools named
 after the operation with the dot as an underscore (``monitor.start`` is the tool
-``monitor_start``). Plugins will add operations to it. Nothing reaches the client as
+``monitor_start``). An agent whose session runs with ``read`` permission
+calls only the operations marked ``read``: its own card, reading, and waiting
+on other sessions. The rule is here, not in each harness, so it holds for every
+harness and follows a live ``/permission`` change (#305). Plugins will add operations to it. Nothing reaches the client as
 an action that is not an operation (DESIGN.md, "One registry, every caller").
 """
 
@@ -57,6 +60,8 @@ class Operation:
     handler: Handler
     agent: bool = False
     doc: str = ""
+    # Open to an agent whose session runs with read permission.
+    read: bool = False
 
     @property
     def tool_name(self) -> str:
@@ -70,6 +75,8 @@ class NoParams(BaseModel):
 class Registry:
     def __init__(self) -> None:
         self._ops: dict[str, Operation] = {}
+        # A session's current permission by log id; set by the app.
+        self.permission_of: Callable[[str], str | None] = lambda log_id: None
 
     def op(
         self,
@@ -78,12 +85,18 @@ class Registry:
         *,
         agent: bool = False,
         doc: str = "",
+        read: bool = False,
     ) -> Callable[[Handler], Handler]:
         def register(handler: Handler) -> Handler:
             if name in self._ops:
                 raise ValueError(f"operation {name!r} registered twice")
             self._ops[name] = Operation(
-                name, params, handler, agent, doc or (handler.__doc__ or "").strip()
+                name,
+                params,
+                handler,
+                agent,
+                doc or (handler.__doc__ or "").strip(),
+                read,
             )
             return handler
 
@@ -101,6 +114,17 @@ class Registry:
             raise OpError("unknown_op", f"no operation named {name!r}")
         if caller.is_agent and not op.agent:
             raise OpError("not_for_agents", f"{name} is not open to agents")
+        if (
+            caller.is_agent
+            and not op.read
+            and self.permission_of(caller.log_id or "") == "read"
+        ):
+            raise OpError(
+                "read_only",
+                f"{op.tool_name} is not open to a session with read permission; "
+                "it can call "
+                + ", ".join(o.tool_name for o in self.agent_ops() if o.read),
+            )
         try:
             params = op.params.model_validate(raw if raw is not None else {})
         except ValidationError as e:

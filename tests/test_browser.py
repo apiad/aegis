@@ -481,13 +481,12 @@ def tab_ids(pg) -> list[str]:
 
 def close_session(pg) -> None:
     """Close the shown session: through the aegis dialog, which a done session
-    skips (#268)."""
-    done = "at-done" in (pg.get_attribute("#s-status", "class") or "").split()
+    skips (#268). The client decides from its state at the click, which a slow
+    runner paints into #s-status later, so wait for whichever outcome comes."""
     pg.click("#close")
-    if done:
-        return
-    pg.wait_for_selector("#dialog .ok", state="visible")
-    pg.click("#dialog .ok")
+    pg.wait_for_selector("#dialog .ok:visible, #a2:not([data-view=session])")
+    if pg.is_visible("#dialog .ok"):
+        pg.click("#dialog .ok")
 
 
 def test_a_session_from_spawn_to_close(server, page):

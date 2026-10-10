@@ -698,6 +698,71 @@ async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
         await asyncio.wait_for(task, 30)
 
 
+async def test_real_claude_in_read_calls_its_card_and_still_cannot_write(
+    tmp_path: Path,
+):
+    """#305: Claude Code's plan mode, which read maps to, refused every aegis
+    tool. A real read session now calls turn_end and plan_update after a live
+    effort change (the hook rides in the flag settings that change writes to),
+    aegis refuses it session_spawn, and plan mode still refuses a write."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  ro: {{harness: claude-code, model: {SONNET}, effort: low, permission: read}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "ro"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send("Reply with the single word OK.")
+        await until(lambda: s.status == "idle" and s.cost_usd, timeout=120, what="OK")
+        await s.configure(effort="medium")
+        before = s.cost_usd
+        await s.send(
+            "This tests permissions, so attempt every call even if you expect a "
+            "refusal. 1) Call plan_update with one item 'probe' in state doing. "
+            f"2) Write the file {tmp_path / 'w.txt'} containing w. 3) Call "
+            "session_spawn with agent ro and prompt hi. 4) Tell me in one line "
+            "which calls were refused, then end the turn with turn_end."
+        )
+        await until(
+            lambda: s.status == "idle" and s.cost_usd != before,
+            timeout=180,
+            what="the probe turn",
+        )
+        assert s.standing["ended"]["how"] == "reported", s.standing
+        assert s.standing.get("plan"), s.standing
+        assert not (tmp_path / "w.txt").exists()
+        assert len(app.sessions.sessions) == 1
+        tools = " ".join(json.dumps(e) for e in s.entries() if e["kind"] == "tool")
+        assert "read_only" in tools, tools[-2000:]
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
 async def test_real_claude_answers_both_nudges(tmp_path: Path, monkeypatch):
     """A real Sonnet told to end a turn with no tool call is asked, once, what
     it is doing, and answers with turn_end; one that leaves its plan untouched
