@@ -259,6 +259,9 @@ class App:
 
     async def boot(self) -> None:
         self._config_task = asyncio.create_task(self.config.watch())
+        # Before sessions.boot(), which records server_stopped for every session
+        # that was working: the journal must see those records.
+        self.journal.start()
         self.sessions.boot()
         self.monitors.boot()
         self.monitors.arm_all()
@@ -266,7 +269,6 @@ class App:
         self.quota.start()
         self.host.start()
         self.links.boot()
-        self.journal.start()
 
     async def shutdown(self) -> None:
         if self._config_task is not None:
@@ -279,7 +281,7 @@ class App:
         await self.monitors.shutdown()
         await self.recaps.shutdown()
         await self.sessions.shutdown()
-        self.journal.stop()
+        await asyncio.to_thread(self.journal.stop)
 
     def _on_config(self, snap: Snapshot) -> None:
         """Every change to .aegis.yaml, however it was made: the page and the
