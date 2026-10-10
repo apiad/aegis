@@ -98,7 +98,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 -->
 <div class="chrome">
   <div class="bar"><span>aegis</span><span class="tab">plan · the journal</span>
-    <span class="st"><span class="pill acc">execution method: not chosen yet</span><span class="pill">#289</span><span class="pill">2026-10-10</span></span></div>
+    <span class="st"><span class="pill acc">execution method: subagent-driven</span><span class="pill">#289</span><span class="pill">2026-10-10</span></span></div>
   <div class="progress"><span id="pcount">0 of 0 done</span><div class="track" id="ptrack"></div></div>
 </div>
 <main>
@@ -134,6 +134,18 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>The sidebar row fetches through <code>journal.rows</code></b> instead of riding on the session card, so a journal write never republishes the <code>sessions</code> channel.</li>
 </ul>
 <p class="note">Task 13 updates the spec page to match.</p>
+
+<p>Added while executing:</p>
+<ul class="rules">
+  <li><b>A pattern FTS5 cannot parse is searched as literal words.</b> Each whitespace-separated word becomes a quoted phrase, so filenames like <code>notes.md</code> and <code>*.py</code> work. <code>bad_pattern</code> now only answers input that fails even then, such as a NUL. This supersedes review focus 2 below, and a deliberate FTS operator typo now becomes a literal search.</li>
+  <li><b>Plan rows use transition semantics.</b> A row each time an item turns done (done now, not done in the previous plan), not once per text for the whole session. An item toggled done, undone and done again gives two rows.</li>
+  <li><b>The <code>Deriver</code> mirrors the fold's <code>end_turn</code></b> on exit, stop, <code>server_stopped</code>, reset and close, so Codex and OpenCode turns derive the same live and rebuilt.</li>
+  <li><b>A finished backfill is recorded in <code>journal.db</code></b> (<code>PRAGMA application_id</code>), replacing the "fresh database only" trigger. An interrupted or halted backfill resumes at the next start, a rebuild racing a backfill uses a per-run token so a cleared file is never marked complete, a store that raises is logged and skipped without blocking the mark, and a corrupt <code>journal.db</code> is set aside and rebuilt at start. <code>stop()</code> runs off the event loop, behind a stop flag.</li>
+  <li><b>The journal starts before the sessions boot</b>, so records written at boot (<code>server_stopped</code>) are journaled.</li>
+  <li><b>A rename leaves <code>last_activity</code> alone</b> and is recorded only when the handle changes.</li>
+  <li><b>Uncommitted edits in a removed worktree</b> are named, after a rebuild, by their path inside the main checkout, so live and rebuilt differ for those touches. Commits still name their files through git. The spec records this as a known limit.</li>
+  <li><b>Execution:</b> one implementer at a time in the worktree from task 8 on, after parallel staging swept files once. Commit 56b489c8 carries both task 3's shell fix and task 7's when, query and render; its subject names only the first.</li>
+</ul>
 
 <h2>Review focus</h2>
 <p class="note">Failure modes the spec implies that no feature test reaches. Each one's pinning test is in the task named after it.</p>
@@ -187,7 +199,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <h2>Tasks</h2>
 
 <!-- ============================================================ TASK 0 -->
-<details class="task" id="task-0" data-state="pending">
+<details class="task" id="task-0" data-state="done">
 <summary><span class="num">0</span><span><span class="ttl">Spike: does hook_callback carry a notice into the model's context?</span><span class="files">.playground/hook-spike/spike.py (workspace, throwaway) · a comment on #285</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Claims (#290) deliver notices through Claude Code's hooks registered over stream-json. Nobody has run that end to end. This task answers four questions with the installed <code>claude</code> (2.1.291) and writes the answers on #285. Nothing from it lands in the repo.</p>
@@ -277,7 +289,7 @@ sed 's/"hooks": {/"hooks_off": {/' spike.py > spike-nohooks.py && python3 spike-
 </details>
 
 <!-- ============================================================ TASK 1 -->
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="num">1</span><span><span class="ttl">The fake claude runs real shell commands, writes and edits</span><span class="files">tests/fake_claude.py · tests/test_journal_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The journal's end-to-end tests need a session that really commits, writes and edits. Today <code>/bash</code> always runs <code>true</code> and no script makes an Edit or a Write call.</p>
@@ -353,7 +365,7 @@ async def test_the_fake_runs_a_command_writes_and_edits(world):
 </details>
 
 <!-- ============================================================ TASK 2 -->
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">The store records a session's handle, its renames and its close</span><span class="files">src/aegis/session.py · src/aegis/registry.py · tests/test_journal_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The journal is derived from the stores, but today a rename and a close write nothing there: <code>Registry.rename</code> changes the meta only, and <code>Registry.close</code> writes no record. The spawn record has no handle either. Three small writes fix that. The fold already draws a <code>close</code> record as a "closed" row (<code>transcript/entries.py:532</code>) and returns nothing for an unknown kind, so <code>name</code> makes no row.</p>
@@ -404,7 +416,7 @@ async def test_closing_records_a_close_that_the_fold_draws(world):
 </details>
 
 <!-- ============================================================ TASK 3 -->
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="num">3</span><span><span class="ttl">Read commits, pull requests and file writes off a Bash call</span><span class="files">src/aegis/journal/__init__.py · src/aegis/journal/shell.py · tests/test_journal_shell.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -593,7 +605,7 @@ def pull_request(command: str, output: str) -> str | None:
 </details>
 
 <!-- ============================================================ TASK 4 -->
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">Name a path by its repo's main checkout, and list a commit's files</span><span class="files">src/aegis/journal/paths.py · tests/test_journal_paths.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -746,7 +758,7 @@ def commit_files(directory: str, commit: str) -> list[str] | None:
 </details>
 
 <!-- ============================================================ TASK 5 -->
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">The Deriver: store records in, journal rows out</span><span class="files">src/aegis/journal/derive.py · tests/test_journal_derive.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The one place that decides what the journal says. Pure: it reads records in order and keeps only what the next record needs (the open turn's touches, the prompt, the last <code>turn_end</code>, plan items already done, the session's cwd and handle).</p>
@@ -1053,7 +1065,7 @@ class Deriver:
 </details>
 
 <!-- ============================================================ TASK 6 -->
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">The SQLite file: schema, insert, search, counts</span><span class="files">src/aegis/journal/db.py · tests/test_journal_db.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1343,7 +1355,7 @@ def log_ids(con: sqlite3.Connection, who: str) -> list[str]:
 </details>
 
 <!-- ============================================================ TASK 7 -->
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="done">
 <summary><span class="num">7</span><span><span class="ttl">Days, queries and rendering</span><span class="files">src/aegis/journal/when.py · query.py · render.py · tests/test_journal_query.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1541,7 +1553,7 @@ def rows(hits: list[Hit], root: str, open_ids: set[str]) -> list[dict]:
 </details>
 
 <!-- ============================================================ TASK 8 -->
-<details class="task" id="task-8" data-state="pending">
+<details class="task" id="task-8" data-state="done">
 <summary><span class="num">8</span><span><span class="ttl">The Journal service: writer thread, live feeding, backfill, the hook</span><span class="files">src/aegis/journal/service.py · session.py · registry.py · app.py · tests/test_journal_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Everything that touches git or SQLite runs on one writer thread. The event loop only enqueues: <code>Session._record</code> hands each stored record and its parsed events to <code>Host.recorded</code>, and the registry passes them to the journal's queue. The first record of a session in a server run primes its Deriver from the store, on the writer thread.</p>
@@ -1766,7 +1778,7 @@ At the end of <code>Session._record</code>, after <code>self._publish(self.chann
 </details>
 
 <!-- ============================================================ TASK 9 -->
-<details class="task" id="task-9" data-state="pending">
+<details class="task" id="task-9" data-state="done">
 <summary><span class="num">9</span><span><span class="ttl">The operations: journal.search, journal.note, journal.rows, and the primer line</span><span class="files">src/aegis/journal/ops.py · app.py · mcp.py · tests/test_agents.py · tests/test_journal_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1953,7 +1965,7 @@ and journal_search to ask what was done on a day or under a path.</script></li>
 </details>
 
 <!-- ============================================================ TASK 10 -->
-<details class="task" id="task-10" data-state="pending">
+<details class="task" id="task-10" data-state="done">
 <summary><span class="num">10</span><span><span class="ttl">aegis journal search and rebuild</span><span class="files">src/aegis/journal/cli.py · src/aegis/cli.py · tests/test_journal_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Both commands read <code>&lt;state&gt;</code> directly, as <code>aegis link</code> does. <code>rebuild</code> is safe while a server runs: it clears and backfills with the same keyed inserts the server makes, and SQLite's busy timeout serialises the two writers.</p>
@@ -2046,7 +2058,7 @@ def rebuild(root: Path | None = _ROOT) -> None:
 </details>
 
 <!-- ============================================================ TASK 11 -->
-<details class="task" id="task-11" data-state="pending">
+<details class="task" id="task-11" data-state="done">
 <summary><span class="num">11</span><span><span class="ttl">The Journal view, Alt+L, and opening a transcript at an entry</span><span class="files">client/js/journal.js · index.html · js/app.js · js/keys.js · css/base.css · site/client.css · tests/test_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>A new view at <code>#journal</code>, built like Settings (<code>js/settings.js</code>, <code>app.js:470-475</code>). Opening a row lands on its transcript and reveals the entry, using the find bar's <code>Transcript.reveal(id)</code> (<code>js/transcript.js:435</code>) and the Alt+J landing hook in <code>follow()</code> (<code>app.js:785-790</code>).</p>
@@ -2263,7 +2275,7 @@ Then <code>make site-css</code>.</li>
 </details>
 
 <!-- ============================================================ TASK 12 -->
-<details class="task" id="task-12" data-state="pending">
+<details class="task" id="task-12" data-state="done">
 <summary><span class="num">12</span><span><span class="ttl">The sidebar's Journal row</span><span class="files">index.html · js/app.js · css/base.css · site/client.css · tests/test_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>One <code>.prow</code> in the session panel: "12 entries · 3 commits" for today, and a <code>.pcard</code> listing the session's last five entries, which open in the transcript the same way the Journal view's rows do. Hidden for a linked server's session, since the journal is per server.</p>
@@ -2356,7 +2368,7 @@ Then <code>make site-css</code>.</li>
 </details>
 
 <!-- ============================================================ TASK 13 -->
-<details class="task" id="task-13" data-state="pending">
+<details class="task" id="task-13" data-state="doing">
 <summary><span class="num">13</span><span><span class="ttl">Docs, gates, the PR and the smoke test</span><span class="files">DESIGN.md · changelog.d/289-journal.added.md · the spec's status · PR</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>steps</h4>

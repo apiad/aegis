@@ -180,7 +180,7 @@ mark{background:var(--accent-soft);color:var(--strong);border-radius:2px}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · journal and claims</span>
-  <span class="st"><span class="pill acc">design approved in conversation</span><span class="pill">2026-10-10</span><span class="pill">#289 · #290</span></span>
+  <span class="st"><span class="pill acc">journal implemented on branch journal-claims-design; claims planned after the spike</span><span class="pill">2026-10-10</span><span class="pill">#289 · #290</span></span>
 </div>
 
 <div class="wrap">
@@ -201,11 +201,12 @@ mark{background:var(--accent-soft);color:var(--strong);border-radius:2px}
   <a href="#delivery">Delivery</a>
   <a href="#testing">Testing</a>
   <a href="#nongoals">Non-goals and open questions</a>
+  <a href="#built">What changed while building the journal</a>
 </nav>
 
 <main>
 <h1>A journal of what was done, and claims over the paths being worked on</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-10-journal-and-claims-design.html</span><span>·</span><span>not implemented; the plan comes next</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-10-journal-and-claims-design.html</span><span>·</span><span>journal built on branch journal-claims-design; claims not started</span></div>
 <p class="lede">Two features that read the same thing: the tool calls aegis already folds from every harness. The journal answers "what did we do on that day" and "what touched that path". Claims let an agent say "I am working in this subtree", so the next agent to arrive there is told to coordinate.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -402,7 +403,7 @@ mark{background:var(--accent-soft);color:var(--strong);border-radius:2px}
 <table class="tbl">
 <thead><tr><th>harness</th><th>hook</th><th>state</th></tr></thead>
 <tbody>
-<tr><td>Claude Code</td><td><code>PreToolUse</code> and <code>PostToolUse</code> registered through <code>hook_callback</code> in the stream-json <code>initialize</code>, answering with <code>additionalContext</code></td><td class="why">the spike checks it first</td></tr>
+<tr><td>Claude Code</td><td><code>PreToolUse</code> and <code>PostToolUse</code> registered through <code>hook_callback</code> in the stream-json <code>initialize</code>, answering with <code>additionalContext</code></td><td class="why">confirmed by the spike on #285: both events reach the model on the same tool call, a subagent's calls fire them, and a round trip adds no measurable time</td></tr>
 <tr><td>OpenCode</td><td>its plugin's <code>tool.execute.before</code>, injected through <code>child_config</code></td><td class="why">unchecked</td></tr>
 <tr><td>Codex</td><td>unknown</td><td class="why">unchecked</td></tr>
 <tr><td>any, until checked</td><td>the inbox, at turn end</td><td class="why">a named gap, not a silent one</td></tr>
@@ -495,11 +496,32 @@ mark{background:var(--accent-soft);color:var(--strong);border-radius:2px}
     </ul></div>
   <div class="card"><h4>Open</h4>
     <ul>
-      <li>Does <code>hook_callback</code> work end to end, and do subagents inherit it? The spike answers this before the claims PR starts.</li>
+      <li>Does <code>hook_callback</code> work end to end, and do subagents inherit it? Answered yes for Claude Code by the spike on #285. The callback request carries no <code>parent_tool_use_id</code>, so telling a subagent's call from its parent's means reading the callback input.</li>
       <li>Can OpenCode's and Codex's hooks carry a notice into the model's context?</li>
       <li>Is 30 minutes right for dormant? A constant, tuned after a week of use.</li>
     </ul></div>
 </div>
+
+<h2 id="built"><span class="n">09</span>What changed while building the journal</h2>
+<p>The plan listed four departures from this page: agent results name the session's handle where an entry pointer was drawn, because <code>peer_read</code> takes only a handle; closing a session writes a close record, and renaming an open one writes a name record, so a closed transcript gains a "closed" row; <code>journal_note</code> writes its own store record; and the sidebar row fetches through <code>journal.rows</code>. Building the journal added these.</p>
+<table class="tbl">
+<thead><tr><th>Part</th><th>What it does now</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Search patterns</td><td>A pattern FTS5 cannot parse is retried as quoted literal words. <code>bad_pattern</code> is left for input that fails even then, such as a NUL.</td><td class="why">People and agents type filenames like <code>notes.md</code> and <code>*.py</code>. A deliberate FTS operator typo now becomes a literal search.</td></tr>
+<tr><td>Plan items</td><td>A row each time an item turns done, meaning done now and not done in the previous plan.</td><td class="why">The first reading, once per text for the whole session, hid an item that was undone and done again.</td></tr>
+<tr><td>Turn ends</td><td>The <code>Deriver</code> mirrors the fold's <code>end_turn</code> on exit, stop, <code>server_stopped</code>, reset and close.</td><td class="why">Codex and OpenCode turns then derive the same live and rebuilt.</td></tr>
+<tr><td>Backfill</td><td><code>journal.db</code> records a finished backfill in <code>PRAGMA application_id</code>. An interrupted or halted backfill resumes at the next start, and a rebuild that races one uses a per-run token so a cleared file is never marked complete. A corrupt <code>journal.db</code> is set aside and rebuilt at start.</td><td class="why">The first trigger was "fresh database only", which left a half-filled index after a crash.</td></tr>
+<tr><td>Boot order</td><td>The journal starts before the sessions boot.</td><td class="why">Records written at boot, such as <code>server_stopped</code>, are journaled.</td></tr>
+<tr><td>Renames</td><td>A rename leaves <code>last_activity</code> alone and is recorded only when the handle changes.</td><td class="why">A rename is not work, and a repeated one is noise.</td></tr>
+</tbody>
+</table>
+<h3 id="limits">Known limits</h3>
+<ul>
+  <li>Renames of archived sessions are not journaled.</li>
+  <li>A <code>git commit -q</code> prints no line, so it makes no commit entry.</li>
+  <li>After a rebuild, uncommitted edits made in a since-removed worktree are named by their path inside the main checkout, so a path query misses them. Commits still name their files through git.</li>
+  <li>A store that raises during a backfill is logged and skipped, and the backfill still completes. Its rows return at the next <code>aegis journal rebuild</code>.</li>
+</ul>
 </main>
 </div>
 
