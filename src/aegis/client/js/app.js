@@ -262,7 +262,12 @@ const journal = new Journal(conn, $("journal"), {
 let sideJournalTimer = null;
 const sideJournalChanged = () => {
   journal.changed();
-  if (root.dataset.view !== "session") return;
+  // Away from the session view nothing refetches; forget what was drawn so the
+  // next renderMeta of any session does.
+  if (root.dataset.view !== "session") {
+    sideJournalFor = null;
+    return;
+  }
   clearTimeout(sideJournalTimer);
   sideJournalTimer = setTimeout(() => drawSideJournal(sideJournalFor, true), 300);
 };
@@ -904,9 +909,21 @@ function tickSidePlan(s) {
 // The sidebar's Journal row: today's count for the shown session and its last
 // five entries. Fetched when the shown session changes or the journal changes.
 let sideJournalFor = null;
+let sideJournalDay = "";
+const noJournal = () => {
+  $("s-journal").textContent = "nothing yet today";
+  $("s-journal-all").replaceChildren(span("cnote", "Nothing journaled today."));
+};
 async function drawSideJournal(key, force = false) {
-  if (!key || (!force && sideJournalFor === key)) return;
+  const day = new Date().toDateString(); // "today" moves at midnight
+  if (!key || (!force && sideJournalFor === key && sideJournalDay === day)) return;
+  // Another session's rows go at once: this one never shows them while it loads.
+  if (sideJournalFor !== key) {
+    $("s-journal").textContent = "…";
+    $("s-journal-all").replaceChildren();
+  }
   sideJournalFor = key;
+  sideJournalDay = day;
   const linked = key.includes("/");
   $("s-journal-sec").hidden = linked;
   if (linked) return;
@@ -914,6 +931,10 @@ async function drawSideJournal(key, force = false) {
   try {
     res = await conn.call("journal.rows", { session: key, since: "today", limit: 5, counts: true });
   } catch {
+    if (sideJournalFor === key) {
+      sideJournalFor = null; // the next render retries
+      noJournal();
+    }
     return;
   }
   if (sideJournalFor !== key) return;
@@ -924,16 +945,29 @@ async function drawSideJournal(key, force = false) {
     : "nothing yet today";
   const box = $("s-journal-all");
   if (!res.rows.length) {
-    box.replaceChildren(span("cnote", "Nothing journaled today."));
+    noJournal();
     return;
   }
   box.replaceChildren(...res.rows.map((r) => {
     const row = document.createElement("div");
     row.className = "le";
     row.tabIndex = 0;
+    row.setAttribute("role", "button");
     row.append(span("t", r.time), span("", `${r.kind} · ${r.tag ? r.tag + ": " : ""}${r.text}`));
-    row.addEventListener("click", () => {
-      if (r.source) transcript.reveal(r.source);
+    // On a phone the drawer covers the transcript: close it so the reveal shows.
+    const open = () => {
+      if (!r.source) return;
+      transcript.reveal(r.source);
+      closeCard();
+      if (drawerMode.matches) closeSide();
+    };
+    row.addEventListener("click", open);
+    // Enter and Space are this entry's own: preventDefault keeps keys.js from
+    // toggling the selected transcript row.
+    row.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      open();
     });
     return row;
   }));

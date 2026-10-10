@@ -4913,3 +4913,46 @@ def test_the_sidebar_journal_row_counts_today_and_its_card_lists_entries(server,
     page.wait_for_selector(".row.sel")
     assert page.url.count("#s=") == 1
     assert page.errors == []
+
+
+def test_a_card_entry_opens_by_keyboard_without_toggling_a_transcript_row(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, f"/write {tmp_path / 'kb.md'} => hi")
+    page.wait_for_function("document.querySelector('#s-journal-all').textContent.includes('kb.md')")
+    rows = "[...document.querySelectorAll('#entries .row')].map(r => r.className.replace(/\\bsel\\b/, '').trim())"
+    # Another row is selected, so a toggle would land on it and not on the entry's.
+    page.click("#entries .row.user")
+    before = page.evaluate(rows)
+    page.hover("#p-journal")
+    page.wait_for_selector("#p-journal .pcard", state="visible")
+    entry = page.locator("#s-journal-all .le", has_text="kb.md")
+    assert entry.get_attribute("role") == "button"
+    entry.focus()
+    page.evaluate("document.querySelector('.row.sel')?.classList.remove('sel')")
+    page.keyboard.press("Enter")
+    page.wait_for_selector(".row.sel")
+    assert page.evaluate(rows) == before
+    assert page.errors == []
+
+
+def test_the_sidebar_journal_row_is_current_after_time_on_the_fleet(server, browser, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    key = spawn(page, f"/write {tmp_path / 'one.md'} => hi")
+    page.wait_for_function("document.querySelector('#s-journal').textContent.includes('2 entries')")
+    page.click(".tab.home")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    errors: list = []
+    other = new_page(browser, errors)
+    other.goto(f"{server.url}#s={key}")
+    other.wait_for_selector("#a2[data-view=session]")
+    other.fill("#input", f"/write {tmp_path / 'two.md'} => again")
+    other.press("#input", "Enter")
+    other.wait_for_function("document.querySelector('#s-journal-all').textContent.includes('two.md')")
+    page.wait_for_timeout(500)  # the patch reaches the Fleet page
+    page.evaluate(f"location.hash = '#s={key}'")
+    page.wait_for_selector("#a2[data-view=session]")
+    page.wait_for_function("document.querySelector('#s-journal').textContent.includes('3 entries')")
+    assert page.errors == [] and errors == []
+    other.close()
