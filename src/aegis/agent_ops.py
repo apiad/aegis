@@ -3,18 +3,28 @@
 Agents can read and message anything they can see, and change only what they
 created: their own monitors, their own session's names, the tasks they
 enqueued (the vision's security model). People can do anything.
+
+Closing is the one change an agent may make to what it did not create, after a
+second thought (#278). A session it spawned, or the worker of a task it
+enqueued, closes on the first call once its attention is done. Any other close,
+its own session included, is refused with a one-time token (``confirm.py``)
+and a refusal that says what the session is doing and who started it, because
+a person may be reading that tab; the same call with the token closes it.
 """
 
 from __future__ import annotations
 
 import asyncio
 import re
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from . import files
+from .confirm import TTL_S
 from .monitors import iso_now
 from .names import SPAWN_HEAD, SPAWN_TASK, valid_handle
 from .ops import Caller, OpError
@@ -108,6 +118,17 @@ class Read(_Strict):
     target: str = Field(description="A session's handle.")
     last: int = Field(30, ge=1, le=200, description="How many entries back.")
     tools: bool = Field(False, description="Include tool calls.")
+
+
+class Close(_Strict):
+    handle: str | None = Field(None, description="The session's handle.")
+    token: str | None = Field(
+        None,
+        description="The one-time token a refused session_close gave you, to "
+        "close it after all.",
+    )
+    # A person's client names a tab by its log id; an agent names it by handle.
+    log_id: SkipJsonSchema[str | None] = None
 
 
 class FileSend(_Strict):
@@ -297,6 +318,116 @@ LISTED = (
     "plan_total",
     "plan_clock",
 )
+
+
+def ago(seconds: float) -> str:
+    n = int(max(0, seconds))
+    for unit, size in (("day", 86400), ("hour", 3600), ("minute", 60)):
+        if n >= size * (2 if unit == "day" else 1):
+            n //= size
+            return f"{n} {unit}{'' if n == 1 else 's'} ago"
+    return f"{n} second{'' if n == 1 else 's'} ago"
+
+
+# What a session that is not done is doing, by its attention (attention.py),
+# and what closing it costs.
+DOING = {
+    "working": ("is working right now{now}", "closing it stops that work mid-turn"),
+    "waiting": (
+        "is waiting on {waits}{now}",
+        "closing it stops that work and cancels its monitors",
+    ),
+    "needs_you": (
+        'is waiting for the person to answer it: "{line}"',
+        "closing it throws that question away unanswered",
+    ),
+    "review": (
+        'is waiting for the person to read what it showed them: "{line}"',
+        "closing it takes that away before they have read it",
+    ),
+    "error": (
+        'stopped on an error: "{line}"',
+        "closing it takes that error out of the person's sight",
+    ),
+}
+
+
+def close_refusal(
+    *,
+    handle: str,
+    title: str,
+    status: str,
+    card: dict,
+    origin: str,
+    starter: str | None,
+    mine: bool,
+    yourself: bool,
+    idle_s: float,
+    token: str,
+    why: str | None = None,
+) -> str:
+    """The prose an agent gets when session_close wants a second thought: why,
+    what the session is doing as of now, the better moves, and only then the
+    token. ``origin`` says who started it, as a clause; ``starter`` is that
+    session's handle when it is another open one, to suggest as a peer."""
+    a = card["attention"]
+    line, now = card["attention_line"], card["plan_now"]
+    paras = [f"The token you passed did not count: {why}."] if why else []
+    if yourself:
+        paras.append(
+            f"Not closed: {handle} is your own session. Closing it ends this "
+            "conversation where it stands, and takes away the tab a person may "
+            "be reading you in."
+        )
+    else:
+        if a == "done":
+            lead = f"Not closed: you did not start {handle}; {origin}."
+        else:
+            doing, cost = DOING.get(a, ("is {a}", "closing it stops that"))
+            what = doing.format(
+                now=f' on "{now}"' if now else "",
+                waits=card["waiting_on"] or "something",
+                line=line,
+                a=a,
+            )
+            lead = f"Not closed: {handle} {what}, and {cost}. " + (
+                "You started it, but it is not done."
+                if mine
+                else f"It is not done, and it is not yours either: {origin}."
+            )
+        paras.append(
+            lead + " A session closes on the first call only when you started it "
+            "(or enqueued its task) and it is done."
+        )
+    # The lead already named the plan step or the line of a session not done.
+    told = a != "done" and not yourself
+    named = f'{handle} ("{title}")' if title else handle
+    facts = [f"its state is {status} and its attention {a}"]
+    if line and not told:
+        facts[0] += f', with the line "{line}"'
+    if not (told and a in ("working", "waiting")):
+        facts.append(f'its plan step is "{now}"' if now else "it shows no plan step")
+    facts.append(f"its last activity was {ago(idle_s)}")
+    paras.append(f"What {named} looks like now: {'; '.join(facts)}.")
+    if yourself:
+        paras.append(
+            "If your work is finished, end your turn with turn_end(done) instead: "
+            "the person closes the tab once they have read it."
+        )
+    else:
+        peer = f" (or {starter}, which started it)" if starter else ""
+        paras.append(
+            "A person may be reading that tab right now, and closing it takes it "
+            f"away from them. Better moves come first: ask the person whether "
+            f"{handle} can go, or peer_handoff {handle}{peer} to ask whether it "
+            "is finished."
+        )
+    paras.append(
+        f"If you still have a reason to close it, call session_close again with "
+        f'handle "{handle}" and token "{token}". The token works once, only for '
+        f"you and only for {handle}, for the next {TTL_S / 60:.0f} minutes."
+    )
+    return "\n\n".join(paras)
 
 
 def split_address(target: str, own: str) -> tuple[str, str | None]:
@@ -607,6 +738,84 @@ def register_agent_ops(app: App) -> None:
                 if ok and state in FAR_STATES:
                     out.append({"handle": handle, "server": link.name, "state": state})
         return out
+
+    def origin(s, me) -> tuple[str, str | None]:
+        """Who started ``s``, as a clause, and that session's handle when it is
+        another open one."""
+        if s.worker:
+            t = app.queues.tasks.get(s.worker["task_id"])
+            by = t.enqueuer if t else None
+            who = "you" if me and by == me.log_id else name(by) or "a person"
+            clause = f"it is queue {s.worker['queue']}'s worker for task#{s.worker['task_id']}, enqueued by {who}"
+        else:
+            by = s.spec.spawned_by
+            who = "you" if me and by == me.log_id else name(by)
+            clause = f"{who} started it" if who else "a person opened it"
+        open_ = by in reg.sessions and (me is None or by != me.log_id)
+        return clause, reg.sessions[by].handle if open_ else None
+
+    def name(log_id: str | None) -> str | None:
+        if not log_id:
+            return None
+        if log_id in reg.sessions:
+            return reg.sessions[log_id].handle
+        gone = reg.archived.get(log_id, {}).get("handle")
+        return f"{gone}, now archived," if gone else "a session now gone"
+
+    def started_by(s, me) -> bool:
+        if s.spec.spawned_by == me.log_id:
+            return True
+        t = app.queues.tasks.get(s.worker["task_id"]) if s.worker else None
+        return t is not None and t.enqueuer == me.log_id
+
+    @r.op("session.close", Close, agent=True)
+    async def session_close(p: Close, caller):
+        """Close a session: its tab goes away and it stays in the archive. A
+        session you spawned, or whose queue task you enqueued, closes at once
+        when its attention is done; any other, your own included, is refused
+        with a one-time token and what to weigh first, and closes on a second
+        call that passes the token."""
+        if not caller.is_agent:
+            if p.log_id is None:
+                raise OpError("bad_params", "log_id is required")
+            await reg.close(p.log_id)
+            return None
+        me = own(caller)
+        if p.handle is None:
+            raise OpError("bad_params", "handle is required")
+        s = target(p.handle)
+        card = s.wire()
+        yourself = s.log_id == me.log_id
+        mine = not yourself and started_by(s, me)
+        why = None
+        if not (mine and card["attention"] == "done"):
+            if p.token is not None:
+                why = app.confirmations.redeem(
+                    p.token, "session.close", me.log_id, s.log_id
+                )
+            if p.token is None or why is not None:
+                clause, starter = origin(s, me)
+                raise OpError(
+                    "second_thought",
+                    close_refusal(
+                        handle=s.handle,
+                        title=s.title or "",
+                        status=s.status,
+                        card=card,
+                        origin=clause,
+                        starter=starter,
+                        mine=mine,
+                        yourself=yourself,
+                        idle_s=time.time() - s.last_activity,
+                        token=app.confirmations.issue(
+                            "session.close", me.log_id, s.log_id
+                        ),
+                        why=why,
+                    ),
+                )
+        handle = s.handle
+        await reg.close(s.log_id)
+        return f"closed {handle}: its tab is gone, and it stays in the archive"
 
     @r.op("file.send", FileSend, agent=True)
     async def file_send(p: FileSend, caller):
