@@ -279,7 +279,8 @@ def set_theme(pg, name: str) -> None:
     view the page was on."""
     back = pg.evaluate("location.hash")
     pg.click("#settings-btn")
-    pg.wait_for_selector("#a2[data-view=settings] #set-theme")
+    # Settings redraws, chip and all, once config.detect answers: pick after.
+    pg.wait_for_selector("#a2[data-view=settings] .set-harness")
     pick(pg, "#set-theme", name)
     pg.wait_for_function("t => document.documentElement.dataset.theme === t", arg=name)
     pg.evaluate("h => { location.hash = h; }", back)
@@ -5167,7 +5168,7 @@ def test_settings_keeps_the_theme_for_this_browser(server, page):
     page.wait_for_selector("#a2[data-view=fleet]")
     assert page.locator("#a2 .tabs #theme, #a2 .tabs .theme-pick").count() == 0
     page.click("#settings-btn")
-    page.wait_for_selector("#a2[data-view=settings]")
+    page.wait_for_selector("#a2[data-view=settings] .set-harness")
     first = page.locator("#settings section").first
     assert first.get_attribute("id") == "set-browser"
     assert first.locator("h3").inner_text() == "This browser"
