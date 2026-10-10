@@ -5219,6 +5219,21 @@ def test_a_settings_redraw_leaves_the_theme_list_open(server, page):
     assert page.errors == []
 
 
+def test_the_journal_count_line_is_the_servers_total_not_the_page(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    _journal_entries(server, 60, time.time(), "bulk entry")
+    page.keyboard.press("Alt+KeyL")
+    page.wait_for_function("document.querySelectorAll('.journal .jrow').length === 50")
+    page.wait_for_selector(".journal .jcount >> text=60 entries today")
+    page.fill(".journal .jq", "bulk")
+    page.wait_for_selector(".journal .jcount >> text=60 entries matching “bulk”")
+    page.click("#journal .jmore")
+    page.wait_for_function("document.querySelectorAll('.journal .jrow').length === 60")
+    assert page.inner_text(".journal .jcount") == "60 entries matching “bulk”"
+    assert page.errors == []
+
+
 def test_the_journal_reloads_a_list_paged_past_500_rows(
     server, browser, page, tmp_path
 ):

@@ -98,6 +98,7 @@ export class Journal {
     this.onOpen = onOpen;
     this.rows = [];
     this.more = false;
+    this.total = 0; // every entry the filters match, from the first page's counts
     this.today = "";
     this.timer = null;
     this.patchTimer = null;
@@ -189,7 +190,9 @@ export class Journal {
   }
 
   params(offset, limit = PAGE) {
-    const p = { limit, offset };
+    // The first page asks for the counts too: the count line is the server's
+    // total, not the rows drawn so far.
+    const p = { limit, offset, counts: offset === 0 };
     const q = this.q.value.trim();
     if (q) p.q = q;
     if (this.kind) p.kind = [this.kind];
@@ -223,6 +226,7 @@ export class Journal {
     this.today = res.today;
     this.rows = more ? this.rows.concat(res.rows) : res.rows;
     this.more = res.more;
+    if (res.counts) this.total = Object.values(res.counts).reduce((a, b) => a + b, 0);
     this.chips();
     this.render(p);
   }
@@ -256,8 +260,8 @@ export class Journal {
     }
     this.list.replaceChildren(...days);
     if (held) this.list.querySelector(`[data-id="${CSS.escape(held)}"]`)?.focus();
-    const n = this.rows.length;
-    const counted = `${n}${this.more ? "+" : ""} ${kind}${n === 1 && !this.more ? "entry" : "entries"}`;
+    const n = this.rows.length ? this.total : 0;
+    const counted = `${n} ${kind}${n === 1 ? "entry" : "entries"}`;
     this.count.textContent = failed || !n ? "" : q ? `${counted} matching ${q} ${p.since ? "today" : ""}`.trim() : `${counted} ${when}`;
     this.moreBtn.hidden = !this.more;
   }
