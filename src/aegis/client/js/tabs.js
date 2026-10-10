@@ -3,7 +3,7 @@
 // list of log ids. Gone ids drop out, new sessions go at the end.
 
 import { LABEL } from "./glyphs.js";
-import { markNode } from "./fleet.js";
+import { closeOnMiddle, markNode } from "./fleet.js";
 
 export class TabOrder {
   constructor(key = "aegis.tabs") {
@@ -49,7 +49,7 @@ export function patchTab(list, m, focusId, actions) {
   list.querySelector(`.tab[data-id="${CSS.escape(m.key)}"]`)?.replaceWith(tab(m, focusId, actions));
 }
 
-function tab(m, focusId, { onFocus, onMove }) {
+function tab(m, focusId, { onFocus, onMove, onClose }) {
   const t = document.createElement("div");
   t.className = `tab${m.key === focusId ? " on" : ""}${m.state === "stopped" ? " stopped" : ""}${m.off ? " off" : ""}`;
   t.classList.toggle("blink", !!m.blink);
@@ -67,6 +67,7 @@ function tab(m, focusId, { onFocus, onMove }) {
   // A session on a linked server carries that server's name (links.py).
   if (m.server) t.append(Object.assign(document.createElement("span"), { className: "where", textContent: m.server }));
   t.addEventListener("click", () => onFocus(m.key));
+  closeOnMiddle(t, () => onClose(m.key));
   t.addEventListener("dragstart", (ev) => {
     ev.dataTransfer.setData("text/aegis-tab", m.key);
     ev.dataTransfer.effectAllowed = "move";
