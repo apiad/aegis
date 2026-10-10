@@ -113,3 +113,88 @@ def test_empty_text_renders_zero_entries():
     """render.text with no hits returns zero entries."""
     out = render.text([], False, "/root")
     assert out == "0 entries"
+
+
+def _put(
+    con,
+    rec,
+    *,
+    log_id="L1",
+    handle="rustic-rivest",
+    kind="note",
+    text="x",
+    ts=None,
+    paths=(),
+):
+    db.insert(
+        con,
+        db.Entry(
+            log_id,
+            rec,
+            0,
+            NOON + rec if ts is None else ts,
+            handle,
+            None,
+            kind,
+            "",
+            text,
+            None,
+            False,
+            [("edit", None, p, p) for p in paths],
+        ),
+    )
+
+
+def test_the_fuzzy_box_reads_old_handles_paths_and_kinds(tmp_path):
+    con, _ = db.connect(tmp_path / "j.db")
+    root = "/root"
+    _put(con, 1, kind="session", text="spawned in /root")
+    _put(
+        con,
+        2,
+        handle="calm-hopper",
+        kind="session",
+        text="renamed from rustic-rivest to calm-hopper",
+    )
+    _put(
+        con,
+        3,
+        handle="calm-hopper",
+        kind="commit",
+        text="1a2b3c4 fix · main",
+        paths=["/root/scratch-repo/notes.md"],
+    )
+    _put(
+        con,
+        4,
+        log_id="L2",
+        handle="other-one",
+        kind="commit",
+        text="9f9f9f9 y · main",
+        paths=["/elsewhere/notes.md"],
+    )
+
+    def texts(q):
+        return [h.text for h, _ in query.matching(con, db.Query(), q, root)]
+
+    # The commit was made as calm-hopper; the session was rustic-rivest first.
+    assert "1a2b3c4 fix · main" in texts("rustic cmt")
+    assert texts("Rustic cmt") == texts("rustic cmt") == ["1a2b3c4 fix · main"]
+    assert texts("cmt notes") == ["9f9f9f9 y · main", "1a2b3c4 fix · main"]
+    assert texts("scra") == ["1a2b3c4 fix · main"]
+    assert texts("scra other") == []
+    # Paths are matched as shown: relative under the root, else absolute.
+    assert texts("root/scra") == []
+    assert texts("elsewhere") == ["9f9f9f9 y · main"]
+    [(_, marks)] = list(query.matching(con, db.Query(), "fix scra", root))
+    assert marks == [8, 9, 10]
+
+
+def test_the_fuzzy_walk_goes_on_past_a_batch_newest_first(tmp_path, monkeypatch):
+    monkeypatch.setattr(query, "BATCH", 2)
+    con, _ = db.connect(tmp_path / "j.db")
+    for i in range(7):
+        _put(con, i, text=f"entry {i}", ts=NOON)  # one ts: the id breaks ties
+    _put(con, 7, text="other")
+    got = [h.text for h, _ in query.matching(con, db.Query(kinds=["note"]), "ent", "/")]
+    assert got == [f"entry {i}" for i in reversed(range(7))]

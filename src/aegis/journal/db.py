@@ -64,6 +64,9 @@ class Query:
     kinds: list[str] | None = None
     limit: int = 50
     offset: int = 0
+    # (ts, id): only entries older than this one, to page newest first without
+    # an offset that a concurrent insert would shift.
+    before: tuple[float, int] | None = None
 
 
 @dataclass
@@ -186,6 +189,9 @@ def _where(q: Query) -> tuple[str, list]:
     if q.until is not None:
         where.append("e.ts < ?")
         args.append(q.until)
+    if q.before is not None:
+        where.append("(e.ts < ? OR (e.ts = ? AND e.id < ?))")
+        args += [q.before[0], q.before[0], q.before[1]]
     if q.kinds:
         where.append(f"e.kind IN ({','.join('?' * len(q.kinds))})")
         args += q.kinds
@@ -264,3 +270,14 @@ def log_ids(con: sqlite3.Connection, who: str) -> list[str]:
         r[0] for r in con.execute("SELECT log_id FROM handles WHERE handle = ?", (who,))
     }
     return sorted(found | {who})
+
+
+def handles(con: sqlite3.Connection, ids: set[str]) -> dict[str, list[str]]:
+    """Every handle each of these sessions has had."""
+    out: dict[str, list[str]] = {i: [] for i in ids}
+    marks = ",".join("?" * len(ids))
+    for handle, log_id in con.execute(
+        f"SELECT handle, log_id FROM handles WHERE log_id IN ({marks})", list(ids)
+    ):
+        out[log_id].append(handle)
+    return out

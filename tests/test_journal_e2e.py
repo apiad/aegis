@@ -600,6 +600,38 @@ def test_the_cli_rebuilds_over_a_corrupt_file_and_refuses_an_unknown_kind(tmp_pa
     assert out.exit_code == 2 and "commits" in out.output, out.output
 
 
+async def test_the_journal_view_searches_one_fuzzy_box(world):
+    """Alex typed `scra` and `Rustic-rivest` on a phone and got nothing: the
+    box matches every field, in any case, with letters in order."""
+    a = await world.spawn()
+    old = a.handle
+    (world.root / "scratch-repo").mkdir()
+    await turn(a, f"/write {world.root / 'scratch-repo' / 'notes.md'} => x")
+    for n in ("one", "two", "three"):
+        await turn(a, mcp("journal_note", text=f"alpha {n}", tag="decision"))
+    world.app.sessions.rename(a.log_id, "renamed-one", None)
+    world.app.journal.flush()
+
+    async def rows(**p):
+        return await world.app.registry.call("journal.rows", p)
+
+    out = await rows(q="scra")
+    assert [r["kind"] for r in out["rows"]] == ["turn"], out
+    assert out["rows"][0]["paths"] == ["scratch-repo/notes.md"]
+    out = await rows(q=old.capitalize(), counts=True)
+    assert out["counts"] == {"session": 2, "turn": 1, "note": 3}, out
+    out = await rows(q="alp  DECI", limit=2, counts=True)
+    assert [r["text"] for r in out["rows"]] == ["alpha three", "alpha two"]
+    assert out["more"] and out["counts"] == {"note": 3}
+    assert out["rows"][0]["marks"] == [0, 1, 2]
+    out = await rows(q="alp", limit=2, offset=2)
+    assert [r["text"] for r in out["rows"]] == ["alpha one"] and not out["more"]
+    assert (await rows(q="alp", kind=["turn"]))["rows"] == []
+    assert (await rows(q="zzzq"))["rows"] == []
+    out = await rows(q="   ", limit=1)
+    assert len(out["rows"]) == 1 and out["rows"][0]["marks"] == []
+
+
 def test_an_unknown_kind_is_a_usage_error_not_a_traceback(tmp_path):
     """Typer 0.27 vendors its own click, so a click.Choice from the click
     package raised a BadParameter Typer did not catch: a 90-line traceback and

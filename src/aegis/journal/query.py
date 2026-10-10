@@ -4,10 +4,15 @@ operations and the CLI so both answer the same."""
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import sqlite3
+from collections.abc import Iterator
 
-from . import db, paths, when
+from . import db, fuzzy, paths, when
+from .render import shown
+
+BATCH = 500
 
 
 def _abs(p: str, root: str) -> str:
@@ -69,3 +74,56 @@ def search(con: sqlite3.Connection, q: db.Query):
         if "locked" in str(err).lower() or "busy" in str(err).lower():
             raise
         raise db.BadPattern(str(err)) from err
+
+
+def matching(
+    con: sqlite3.Connection, q: db.Query, text: str, root: str
+) -> Iterator[tuple[db.Hit, list[int]]]:
+    """The entries q selects whose fields all of text's words fuzzy-match
+    (fuzzy.py), newest first, each with the indices in its text that matched.
+    SQL narrows by q; the words are matched here, BATCH entries at a time, so a
+    caller that stops early reads no further. A field is the text, every handle
+    the session has had, a touched path as shown, the kind or the tag."""
+    words = text.split()
+    names: dict[str, list[str]] = {}
+    q = dataclasses.replace(q, limit=BATCH, offset=0, before=None)
+    while True:
+        hits, cut = search(con, q)
+        if new := {h.log_id for h in hits} - names.keys():
+            names.update(db.handles(con, new))
+        for h in hits:
+            fields = [h.handle, *names[h.log_id], h.kind, h.tag]
+            fields += [shown(p, root) for p in h.paths]
+            marks = fuzzy.match(words, h.text, fields)
+            if marks is not None:
+                yield h, marks
+        if not cut:
+            return
+        q.before = (hits[-1].ts, hits[-1].id)
+
+
+def page(
+    found: Iterator[tuple[db.Hit, list[int]]], offset: int, limit: int, counts: bool
+) -> tuple[list[db.Hit], bool, dict[str, int] | None, list[list[int]]]:
+    """Matches offset..offset+limit of ``found``, whether more match, the
+    matches by kind when ``counts``, and each hit's marks. It reads one match
+    past the page to know there are more; counting reads every candidate the
+    SQL filters leave, which is O(n) in the journal and acceptable at its sizes
+    (0.16 to 0.22 s over 20,000 entries, measured for #289)."""
+    hits: list[db.Hit] = []
+    marks: list[list[int]] = []
+    by: dict[str, int] = {}
+    more = False
+    for n, (h, m) in enumerate(found):
+        if counts:
+            by[h.kind] = by.get(h.kind, 0) + 1
+        if n < offset:
+            continue
+        if n < offset + limit:
+            hits.append(h)
+            marks.append(m)
+            continue
+        more = True
+        if not counts:
+            break
+    return hits, more, by if counts else None, marks

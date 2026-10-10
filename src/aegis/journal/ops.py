@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from ..ops import OpError
 from . import db, render, when
-from .query import build, search
+from .query import build, matching, page, search
 
 if TYPE_CHECKING:
     from ..app import App
@@ -55,6 +55,11 @@ class SearchParams(_Strict):
 
 
 class RowsParams(SearchParams):
+    q: str | None = Field(
+        None,
+        max_length=500,
+        description="The view's one box: every word must fuzzy-match some field of an entry (fuzzy.py).",
+    )
     offset: int = Field(0, ge=0)
     counts: bool = False
 
@@ -77,7 +82,7 @@ def register_journal_ops(app: "App") -> None:
     r = app.registry
     root = str(app.roots.config_root)
 
-    def run(p: SearchParams, offset: int = 0, counts: bool = False):
+    def run(p: SearchParams, offset: int = 0, counts: bool = False, text: str = ""):
         con = db.open_read(app.journal.path)
         try:
             try:
@@ -97,13 +102,16 @@ def register_journal_ops(app: "App") -> None:
             except ValueError as e:
                 raise OpError("bad_params", str(e)) from None
             try:
+                if text.split():
+                    found = matching(con, q, text, root)
+                    return page(found, offset, p.limit, counts)
                 hits, cut = search(con, q)
                 c = db.counts(con, q) if counts else None
             except db.BadPattern as e:
                 raise OpError(
                     "bad_pattern", f"{p.pattern!r} is not a search pattern ({e})"
                 ) from None
-            return hits, cut, c
+            return hits, cut, c, None
         finally:
             con.close()
 
@@ -116,17 +124,20 @@ def register_journal_ops(app: "App") -> None:
         entry names the session's handle when it was made; peer_read reads a
         session while it is open, under its current handle, which an entry
         made before a rename names as "(now ...)"."""
-        hits, cut, _ = await asyncio.to_thread(run, p)
+        hits, cut, _, _ = await asyncio.to_thread(run, p)
         handles = {k: s.handle for k, s in app.sessions.sessions.items()}
         return render.text(hits, cut, root, handles)
 
     @r.op("journal.rows", RowsParams)
     async def journal_rows(p: RowsParams, caller):
-        """The Journal view's rows: what journal.search finds, as fields to draw,
-        and the server's day, which the view shows until the person picks one."""
-        hits, cut, c = await asyncio.to_thread(run, p, p.offset, p.counts)
+        """The Journal view's rows: what journal.search finds, narrowed by the
+        fuzzy box q, as fields to draw, and the server's day, which the view
+        shows until the person picks one."""
+        hits, cut, c, marks = await asyncio.to_thread(
+            run, p, p.offset, p.counts, p.q or ""
+        )
         out = {
-            "rows": render.rows(hits, root, set(app.sessions.sessions)),
+            "rows": render.rows(hits, root, set(app.sessions.sessions), marks),
             "more": cut,
             "today": when.today(),
         }

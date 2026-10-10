@@ -63,7 +63,10 @@ def text(
     return "\n".join(out)
 
 
-def rows(hits: list[Hit], root: str, open_ids: set[str]) -> list[dict]:
+def rows(
+    hits: list[Hit], root: str, open_ids: set[str], marks: list[list[int]] | None = None
+) -> list[dict]:
+    """``marks``: per hit, the indices in its text the view's box matched."""
     return [
         {
             "id": h.id,
@@ -79,6 +82,7 @@ def rows(hits: list[Hit], root: str, open_ids: set[str]) -> list[dict]:
             "paths": [shown(p, root) for p in h.paths[:SHOWN]],
             "more": max(0, len(h.paths) - SHOWN),
             "source": h.source,
+            "marks": marks[i] if marks else [],
         }
-        for h in hits
+        for i, h in enumerate(hits)
     ]
