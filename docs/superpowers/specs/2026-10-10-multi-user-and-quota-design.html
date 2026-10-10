@@ -123,6 +123,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 .seg{display:flex;gap:0;margin-bottom:10px}
 .seg button{font:11.5px var(--font-mono);background:var(--bg);color:var(--muted);border:1px solid var(--rule);padding:4px 12px;cursor:pointer}
 .seg button+button{border-left:0}
+.btn2{font:11px var(--font-mono);background:none;border:1px solid var(--rule);color:var(--muted);border-radius:5px;padding:2px 9px;cursor:pointer}
+.btn2:hover{color:var(--strong);border-color:var(--faint)}
 .seg button.on{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}
 
 /* gauge with policy ticks */
@@ -162,6 +164,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <a class="sub" href="#roles">Roles</a>
   <a class="sub" href="#owners">Owners</a>
   <a class="sub" href="#links">Links</a>
+  <a class="sub" href="#settings">Settings</a>
   <a href="#quota">The quota gate</a>
   <a class="sub" href="#pool">The pool</a>
   <a class="sub" href="#policy">The policy</a>
@@ -195,7 +198,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   </div>
   <div class="card">
     <h4>Restarts that continue</h4>
-    <p>When aegis shuts down cleanly, every turn it interrupted is continued at the next boot, and every held message is sent. A harness that failed on its own is never restarted, and a turn that two restarts in a row interrupted is left for a person.</p>
+    <p>When aegis shuts down cleanly, every turn it interrupted is continued at the next boot, and every held message is sent. After a crash of aegis itself, a running turn is continued once. A harness that failed on its own is never restarted.</p>
   </div>
 </div>
 <div class="stats">
@@ -215,12 +218,15 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>Slice 1 of the quota</td><td>Pool thresholds only. Per-token metering comes later</td><td class="why"><span class="who">Alex</span> The thresholds use the gauges aegis already reads. Metering needs new bookkeeping of tokens per turn.</td></tr>
 <tr><td>Providers</td><td>Claude and OpenCode, each with its own pool and its own lines</td><td class="why"><span class="who">Alex</span> "Igual con OpenCode." Both already have quota readers.</td></tr>
 <tr><td>Roles</td><td><code>admin</code> and <code>member</code>. No read-only role</td><td class="why"><span class="who">Alex</span> An admin talks to every agent, the others read every agent and change only their own. A read-only role waits until someone needs one.</td></tr>
-<tr><td>The middle band</td><td><code>pace</code>: open while the projected spend at reset is at most 100%</td><td class="why"><span class="who q">proposed</span> Agent's reading of "solo mientras la cuota restante sea mayor que el 50% del budget que queda": a token may start work while the week is not being spent faster than it passes. Alex did not correct it, but did not confirm it either.</td></tr>
+<tr><td>The middle band</td><td><code>pace</code>: open while the projected spend at reset is at most 100%</td><td class="why"><span class="who">Alex</span> The agent's reading of "solo mientras la cuota restante sea mayor que el 50% del budget que queda", accepted on review: a token may start work while the week is not being spent faster than it passes.</td></tr>
+<tr><td>Editing tokens</td><td>In Settings, for admins only, as well as from the command line</td><td class="why"><span class="who">Alex</span> Adding, revoking and setting a token's policy are routine admin work and belong beside the links they gate.</td></tr>
+<tr><td>What a member may change in Settings</td><td>Only what lives in the browser: the theme and the other <code>localStorage</code> preferences</td><td class="why"><span class="who">Alex</span> Nothing that writes <code>.aegis.yaml</code>, <code>links.json</code> or <code>tokens.json</code>.</td></tr>
+<tr><td>Revoking the admin token</td><td>Allowed. aegis generates a new one at once</td><td class="why"><span class="who">Alex</span> A leaked admin token must be replaceable from the browser, and regenerating it means a server can never be left without an admin.</td></tr>
 <tr><td>What a stop does</td><td>Interrupt the turn, keep the session, hold its messages, continue it on reopen</td><td class="why">Killing a session loses its context, and the work was not wrong, only early. The interrupt and the continue reuse the restart mechanism below.</td></tr>
 <tr><td>Held work across restarts</td><td>Survives, and is sent at boot if the owner's gate is open</td><td class="why"><span class="who">Alex</span> "No se pierda trabajo en held."</td></tr>
 <tr><td>What a restart continues</td><td>Turns interrupted by aegis's own clean shutdown. Never a harness that failed on its own</td><td class="why"><span class="who">Alex</span> Restarting a failed harness could loop.</td></tr>
-<tr><td>A crash of aegis itself</td><td>Not continued: no clean-shutdown record, no automatic continue</td><td class="why"><span class="who q">proposed</span> #269 shows a turn can take the server down. Continuing that turn at boot would take it down again.</td></tr>
-<tr><td>Isolation between people</td><td>Ownership only. Same Linux user, same checkout, same <code>~/.claude</code></td><td class="why"><span class="who q">proposed</span> The people are colleagues. What needs protecting is the subscription and each other's sessions from accidental steering, not a hostile user. The links spec's precondition asks for more; see <a href="#links">Links</a>.</td></tr>
+<tr><td>A crash of aegis itself</td><td>Continued once. A turn that a crash already interrupted is not continued after a second crash</td><td class="why"><span class="who">Alex</span> Wanted if the effort is reasonable, and it is: the meta already says which sessions were working. #269 shows a turn can take the server down, so the guard for a crash is one continue, not two.</td></tr>
+<tr><td>Isolation between people</td><td>Ownership only. Same Linux user, same checkout, same <code>~/.claude</code></td><td class="why"><span class="who">Alex</span> Accepted on review. The people are colleagues. What needs protecting is the subscription and each other's sessions from accidental steering, not a hostile user. The links spec's precondition asks for more; see <a href="#links">Links</a>.</td></tr>
 <tr><td>A harness without a gauge</td><td>Closed to a member unless its policy names that provider</td><td class="why">Codex has no quota reader. Failing open would let a member spend an account aegis cannot see.</td></tr>
 <tr><td>A stale gauge</td><td>Use the last reading for 15 minutes, then close the gate. Never stop on a stale reading</td><td class="why">The Claude usage endpoint answers 429 when polled often (#41). Interrupting work because a poll failed would punish the wrong thing.</td></tr>
 </tbody>
@@ -300,7 +306,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
                 <span class="k">"opencode-go"</span>: {}}}
   ]
 }</pre>
-<p>Three commands manage the file. <code>aegis token add NAME [--role member|admin]</code> prints the new token once and stores its hash. <code>aegis token list</code> prints names, roles and policies. <code>aegis token remove NAME</code> deletes the entry; the browsers and links that held it are refused at their next message, and the sessions it owns keep running under their recorded owner. Policies are edited in the file. A token page in the browser is not part of this spec.</p>
+<p>Tokens are managed from Settings (below) or from three commands. <code>aegis token add NAME [--role member|admin]</code> prints the new token once and stores its hash. <code>aegis token list</code> prints names, roles and policies. <code>aegis token revoke NAME</code> deletes the entry; the browsers and links that held it are refused at their next message, and the sessions it owns keep running under their recorded owner. Policies can also be edited in the file.</p>
+<p>Revoking the admin token, the one in <code>&lt;state&gt;/token</code>, does not delete it. aegis writes a new random token to the file and stops accepting the old one. Every browser and link that held the old token is refused at its next message, so a server can never be left without an admin and a leaked admin token is dead the moment it is revoked.</p>
 <p>A browser logs in exactly as today, with <code>?token=</code> or <code>POST /login</code>, and the cookie holds whichever token it presented. <code>web.py</code> resolves the token to its entry with a constant-time compare against each hash, and the <code>Caller</code> gains a <code>principal</code> field holding the name and role.</p>
 
 <h3 id="roles">Roles</h3>
@@ -314,6 +321,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>Cancel or resume a task</td><td>any task</td><td>only tasks it enqueued</td></tr>
 <tr><td><code>config.write</code>, <code>link.add</code>, link edits</td><td>yes</td><td>no</td></tr>
 <tr><td>Spawn across a link (<code>/spawn x@server</code>)</td><td>yes</td><td>no</td></tr>
+<tr><td>Settings: tokens, agents, queues, servers</td><td>yes</td><td>no; the sections are not drawn</td></tr>
+<tr><td>Settings: theme and other browser preferences, run doctor</td><td>yes</td><td>yes</td></tr>
 </tbody>
 </table>
 <p>A refused operation returns <code>not_owner</code> or <code>not_for_members</code>, the same way <code>not_for_agents</code> works today in <code>ops.py:102</code>. The check lives in one place: each op declares what it needs (<code>member=True</code>, <code>owned=True</code>), next to the existing <code>agent=True</code> flag.</p>
@@ -333,6 +342,14 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <h3 id="links">Links</h3>
 <p>A link presents a token like any browser. Today that is the far server's only token, so a link has full power there (<code>web.py:304-309</code>). After this change Alex mints a member token on the Syalia server for each server that links in, <code>vps</code> and later <code>zion</code>, and gives each its own policy. The far side resolves the link to that principal and ignores the <code>user</code> its hello claims.</p>
 <p>The links spec (<code>2026-10-08-aegis-links-design.md:109-115</code>) set a precondition: no second person gets a token on a server anyone links to until sessions are isolated per user and only a session's owner can prompt, configure, interrupt or close it. This spec meets the second half. It does not meet the first: every session still runs as the same Linux user in the same checkout, so Daniel's agent can write a file that Alex's session later reads, and a branch it pushes can reach zion through git. <span class="who q">proposed</span> Accept that gap for the Syalia server, because the people there are colleagues sharing one codebase, and they would pull each other's branches anyway. Per-user Linux accounts become the next spec if someone outside that circle gets a token.</p>
+
+<h3 id="settings">Settings</h3>
+<p>Settings (<code>client/js/settings.js</code>) already splits cleanly in two. The theme, fold level, tab order and drafts live in the browser's <code>localStorage</code>. Agents, queues and the default agent are written to <code>.aegis.yaml</code> by <code>config.write</code>, and servers to <code>links.json</code> by <code>link.add</code> and <code>link.remove</code>. A member sees the first group and "Run doctor", and a line saying server settings are edited by an admin. An admin sees everything, plus a Tokens section beside Servers.</p>
+<p>The Tokens section lists each token's name, role, policy and when it was last used. Add takes a name and a role and shows the new token once, with a copy button. Each row has Revoke and a policy editor with a launch line and a stop line per window. The admin token's row says Revoke and regenerate, and confirms first, because every browser and link holding it is signed out. The browser that revoked it gets the new token in the op's result, shows it once, and signs itself back in with <code>POST /login</code>, so the admin who rotated the token is the one person not locked out.</p>
+<p>Four admin-only ops back it: <code>token.list</code>, <code>token.add</code>, <code>token.revoke</code> and <code>token.policy</code>. Ops gain an <code>admin</code> flag next to the existing <code>agent</code> and <code>read</code> flags in <code>ops.py:56-64</code>, checked in <code>Registry.call</code>. <code>config.write</code>, <code>config.propose</code>, <code>link.add</code> and <code>link.remove</code> get the same flag. No agent can call a token op, whoever owns it.</p>
+<p><span class="try">try it</span>Switch the viewer and add or revoke a token. Sample data.</p>
+<div class="seg" id="setseg"><button class="on" data-r="admin">viewer: alex (admin)</button><button data-r="member">viewer: daniel (member)</button></div>
+<div class="card" id="setpage" style="font-family:var(--font-mono);font-size:12px"></div>
 
 <h2 id="quota"><span class="n">05</span>The quota gate</h2>
 
@@ -416,10 +433,10 @@ The pool has room again. Continue where you left off.</pre>
 
 <h3 id="record">The shutdown record</h3>
 <p>Today a restart marks every running turn as failed (<code>registry.py:263-266</code>) and waits for a person to press Restart. Only queue workers get a "continue" message (<code>queues.py:297-309</code>). Held messages are restored but sent only after the next new message's turn ends (<code>session.py:763-766</code>).</p>
-<p>aegis now writes <code>&lt;state&gt;/server.json</code> twice. At the start of <code>App.shutdown</code>, before anything is terminated, it writes <code>{"stopping_at": t}</code>. After the session metas are flushed it writes <code>{"stopping_at": t, "stopped_at": t2, "clean": true}</code>. At boot it reads the record and then overwrites it with <code>{"started_at": t3}</code>. A server that crashed, was killed with SIGKILL, or lost power leaves a record without <code>clean</code>.</p>
+<p>aegis now writes <code>&lt;state&gt;/server.json</code> twice. At the start of <code>App.shutdown</code>, before anything is terminated, it writes <code>{"stopping_at": t}</code>. After the session metas are flushed it writes <code>{"stopping_at": t, "stopped_at": t2, "clean": true}</code>. At boot it reads the record and then overwrites it with <code>{"started_at": t3}</code>. A server that crashed, was killed with SIGKILL, or lost power leaves a record without <code>clean</code>, which is how boot tells a crash from a restart.</p>
 
 <h3 id="which">Which sessions continue</h3>
-<p>At boot, after a clean shutdown, a session is continued when either holds:</p>
+<p>After a clean shutdown, a session is continued when either holds:</p>
 <ul>
 <li>its meta says <code>last_status: "working"</code>, written by <code>Session.shutdown</code>; or</li>
 <li>its last transcript record is an exit by SIGTERM or SIGKILL (codes 143, 137, -15, -9) stamped at or after <code>stopping_at</code> minus 5 seconds.</li>
@@ -428,16 +445,19 @@ The pool has room again. Continue where you left off.</pre>
 <p>A continued session receives the message queue workers receive today, sent through the gate, so a session whose owner is over quota stays held instead:</p>
 <pre>The server restarted while you were working. Continue where you left off.</pre>
 <p>Then every session with held messages sends them, also through the gate. Queue workers move onto this same path, so there is one implementation.</p>
-<p>A session whose harness exited with any other code, or reported a harness error, is not continued. Neither is any session after a shutdown without <code>clean</code>. Both show the failed turn as they do today.</p>
+<p>After a crash, a session is continued when its meta says <code>last_status: "working"</code>. The meta is written within about a second of every status change, so it holds the state at the crash, except for a turn that began less than a second before it, which reads idle and is not continued. A continued session gets a different message:</p>
+<pre>aegis stopped unexpectedly while you were working. Continue where you left off.</pre>
+<p>A crash can leave a harness running: aegis died, but the child only exits when its stdin closes, and outside systemd nothing clears it. The meta therefore records the harness's <code>pid</code>. Before continuing after a crash, aegis checks whether that pid is alive and is still the harness it started (same command line), and terminates it, so two processes never resume the same session.</p>
+<p>In both cases, a session whose harness exited with any other code, or reported a harness error, is not continued, and shows the failed turn as it does today.</p>
 
 <h3 id="guard">The loop guard</h3>
-<p>The meta gains <code>restart_continues</code>, a count. aegis adds one each time it continues a session after a restart and resets it to zero when a turn ends without error. When the count is already 2, aegis does not continue the session a third time; it marks the turn failed with the line "two restarts in a row interrupted this turn; continue it by hand". Continues after a quota stop do not count, because a quota stop says nothing about the turn itself.</p>
+<p>The meta gains <code>restart_continues</code>, a count. aegis adds one each time it continues a session after a restart and resets it to zero when a turn ends without error. After a clean restart aegis continues a session while the count is below 2. After a crash it continues only when the count is 0, because #269 shows a turn can take the server down, and continuing that turn twice would crash it twice. When aegis declines, it marks the turn failed with the line "restarts interrupted this turn more than once; continue it by hand". Continues after a quota stop do not count, because a quota stop says nothing about the turn itself.</p>
 
 <h2 id="delivery"><span class="n">07</span>Delivery</h2>
 <p>Three PRs from <code>origin/main</code>, in this order, each through issue, worktree, PR and Alex's smoke test. This spec rides on the first.</p>
 <div class="steps">
-  <div class="step"><div class="n"></div><div><h4>Restarts that continue (#312)</h4><p><code>server.json</code>, <code>interrupted_by</code>, the continue path shared with queue workers, held messages sent at boot, the loop guard. Useful on the VPS the day it lands, and the quota stop builds on it.</p></div></div>
-  <div class="step"><div class="n"></div><div><h4>Tokens and owners (#311, part 1)</h4><p><code>tokens.json</code> and the <code>aegis token</code> commands, the principal on <code>Caller</code>, <code>owner</code> on sessions and tasks, the member checks on ops, links resolved to their token, owner names and the read-only composer in the client.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>Restarts that continue (#312)</h4><p><code>server.json</code>, <code>interrupted_by</code>, the continue path shared with queue workers, continuing once after a crash with the leftover-harness check, held messages sent at boot, the loop guard. Useful on the VPS the day it lands, and the quota stop builds on it.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>Tokens and owners (#311, part 1)</h4><p><code>tokens.json</code>, the <code>aegis token</code> commands and the Tokens section in Settings, the principal on <code>Caller</code>, <code>owner</code> on sessions and tasks, the member checks on ops, links resolved to their token, owner names and the read-only composer in the client.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>The quota gate (#311, part 2)</h4><p>Policies, <code>may_start</code> at the three start points, stop and reopen in the quota loop, the <code>waiting</code> state, the refusal notice and the policy lines on a member's gauge.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>Deploy on the Syalia VPS, with Alex</h4><p>Install aegis there, set <code>KillMode=mixed</code>, mint tokens for daniel, vivian, vps and zion with their policies, and link vps and zion to it. This step needs the Syalia server's details and Alex at the keyboard.</p></div></div>
 </div>
@@ -448,12 +468,16 @@ The pool has room again. Continue where you left off.</pre>
 <li>A session mid-turn, server stopped with SIGTERM to aegis alone: after boot it receives the continue message and finishes its turn.<span class="b">slow</span></li>
 <li>The same with SIGTERM sent to aegis and the fake claude together, as <code>KillMode=control-group</code> does: still continued. Remove the 5-second rule and this test fails.<span class="b">slow</span></li>
 <li>The fake claude exits with code 1 on its own, then a clean restart: not continued.<span class="b">fast</span></li>
-<li>aegis killed with SIGKILL mid-turn: not continued at boot.<span class="b">slow</span></li>
+<li>aegis killed with SIGKILL mid-turn: continued at boot with the crash message, and the leftover fake claude is terminated first.<span class="b">slow</span></li>
+<li>The same session crashed twice in the same turn: continued after the first crash only.<span class="b">fast</span></li>
 <li>Three restarts in a row during the same turn: continued twice, then marked failed.<span class="b">fast</span></li>
 <li>A message held before the restart is sent at boot, without a new message to push it.<span class="b">fast</span></li>
 <li>A member token in a headless browser sees an admin's session, cannot send to it (<code>not_owner</code>), and owns the session it starts.<span class="b">slow</span></li>
 <li>A member's agent spawns a child: the child is owned by the member, not the admin.<span class="b">fast</span></li>
 <li>A link with a member token is refused <code>config.write</code> and <code>link.add</code>.<span class="b">fast</span></li>
+<li>A member's Settings draws the theme and doctor only, and a member calling <code>token.add</code> directly is refused.<span class="b">slow</span></li>
+<li>An admin adds a token in Settings, signs in with it in a second browser, revokes it, and the second browser is refused at its next message.<span class="b">slow</span></li>
+<li>Revoking the admin token: <code>&lt;state&gt;/token</code> changes, a second admin browser is refused, the browser that revoked stays signed in.<span class="b">slow</span></li>
 <li>With a stub quota reading above a member's launch line: spawn refused, enqueue left pending, delivery held. Below it: all three proceed.<span class="b">fast</span></li>
 <li>A reading above the stop line interrupts the member's running turn, leaves the admin's running; a reading below the launch line continues it with the held messages.<span class="b">fast</span></li>
 <li>A reading older than 15 minutes closes the gate and stops nothing.<span class="b">fast</span></li>
@@ -465,9 +489,7 @@ The pool has room again. Continue where you left off.</pre>
 <li><b>Per-token metering.</b> A cap such as "zion spends at most N tokens a week" needs aegis to sum the usage each turn reports, per owner and window. It is the next quota slice, after this one has run on the Syalia server.</li>
 <li><b>Several accounts per pool.</b> Needs #151. The policy format already allows it.</li>
 <li><b>Per-user Linux accounts.</b> Not in this spec; see <a href="#links">Links</a> for the gap that leaves.</li>
-<li><b>A token page in the browser.</b> Tokens and policies are edited from the command line and the file.</li>
 <li><b>Open: the middle band.</b> Is <code>pace</code> what Alex meant by "mayor que el 50% del budget que queda"? If he meant a share of what is left, the rule becomes "open while the remaining percentage is at least half of what remained when the week started", and the tester changes accordingly.</li>
-<li><b>Open: crash recovery.</b> This spec does not continue anything after a crash of aegis itself. If crashes turn out to be common and harmless, a later change can continue once after a crash, with the loop guard set to one.</li>
 </ul>
 
 </main>
@@ -517,6 +539,48 @@ function render() {
 }
 for (const id of ["g5", "gw", "ge"]) $(id).addEventListener("input", render);
 render();
+
+// The Settings mockup: what an admin and a member see, with add and revoke.
+let TOKS = [
+  {name: "alex", role: "admin", policy: "never gated", used: "now", owner: true},
+  {name: "daniel", role: "member", policy: "default: 5h 50/90, week pace/90", used: "12 min ago"},
+  {name: "zion", role: "member", policy: "5h 70/90, opencode-go open", used: "2 h ago"},
+];
+let viewer = "admin", shown = "";
+const randTok = () => Array.from(crypto.getRandomValues(new Uint8Array(18)), (b) => (b % 36).toString(36)).join("");
+function drawSettings() {
+  const sec = (t, body) => `<div style="margin:4px 0 14px"><div style="color:var(--faint);margin-bottom:6px">${t}</div>${body}</div>`;
+  let h = sec("This browser", `theme <span class="pill">ink</span>`) + sec("Doctor", `<button class="btn2">Run doctor</button>`);
+  if (viewer === "member") {
+    h += `<div style="color:var(--muted)">Server settings (agents, queues, servers, tokens) are edited by an admin.</div>`;
+  } else {
+    h += sec("Servers", `vps · https://vps.apiad.net <button class="btn2">Remove</button>`);
+    const rows = TOKS.map((t, i) => `<div style="display:grid;grid-template-columns:80px 70px 1fr 90px 170px;gap:8px;padding:5px 0;border-bottom:1px solid var(--rule);align-items:baseline"><span style="color:var(--strong)">${t.name}</span><span style="color:var(--faint)">${t.role}</span><span style="color:var(--muted)">${t.policy}</span><span style="color:var(--faint)">${t.used}</span><span><button class="btn2" data-rev="${i}">${t.owner ? "Revoke and regenerate" : "Revoke"}</button></span></div>`).join("");
+    const add = `<div style="display:flex;gap:8px;margin-top:10px"><input id="newname" placeholder="name" style="background:var(--bg);border:1px solid var(--rule);color:var(--strong);font:12px var(--font-mono);padding:4px 8px;border-radius:5px"><select id="newrole" style="background:var(--bg);border:1px solid var(--rule);color:var(--strong);font:12px var(--font-mono);border-radius:5px"><option>member</option><option>admin</option></select><button class="btn2" id="addtok">Add token</button></div>`;
+    const once = shown ? `<div class="notice" style="margin-top:10px"><span class="lbl">shown once</span>${shown} <button class="btn2">copy</button></div>` : "";
+    h += sec("Tokens", rows + add + once);
+  }
+  $("setpage").innerHTML = h;
+  document.querySelectorAll("[data-rev]").forEach((b) => b.addEventListener("click", () => {
+    const t = TOKS[+b.dataset.rev];
+    if (t.owner) { shown = `new admin token for alex: ${randTok()}. Other browsers and links holding the old one are signed out.`; t.used = "now"; }
+    else { TOKS.splice(+b.dataset.rev, 1); shown = ""; }
+    drawSettings();
+  }));
+  $("addtok")?.addEventListener("click", () => {
+    const name = $("newname").value.trim().toLowerCase();
+    if (!name || TOKS.some((t) => t.name === name)) return;
+    const role = $("newrole").value;
+    TOKS.push({name, role, policy: role === "admin" ? "never gated" : "default: 5h 50/90, week pace/90", used: "never"});
+    shown = `token for ${name}: ${randTok()}`;
+    drawSettings();
+  });
+}
+for (const b of document.querySelectorAll("#setseg button")) b.addEventListener("click", () => {
+  document.querySelectorAll("#setseg button").forEach((x) => x.classList.toggle("on", x === b));
+  viewer = b.dataset.r; shown = ""; drawSettings();
+});
+drawSettings();
 
 // The three UI views.
 for (const b of document.querySelectorAll("#seg button")) b.addEventListener("click", () => {
