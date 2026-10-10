@@ -505,7 +505,7 @@ def register_agent_ops(app: App) -> None:
         )
         return {"monitor_id": m.id, "other_live_monitors": roster(s.log_id, m.id)}
 
-    @r.op("monitor.sessions", MonitorSessions, agent=True)
+    @r.op("monitor.sessions", MonitorSessions, agent=True, read=True)
     async def monitor_sessions(p: MonitorSessions, caller):
         """Wait for other sessions on this server to finish, without polling.
         You are woken `ok` when every one has finished (its last turn ended done
@@ -534,7 +534,7 @@ def register_agent_ops(app: App) -> None:
         )
         return {"monitor_id": m.id, "other_live_monitors": roster(s.log_id, m.id)}
 
-    @r.op("monitor.cancel", MonitorId, agent=True)
+    @r.op("monitor.cancel", MonitorId, agent=True, read=True)
     async def monitor_cancel(p: MonitorId, caller):
         """Stop one of your monitors. No wake is sent."""
         m = app.monitors.items.get(p.monitor_id)
@@ -545,7 +545,7 @@ def register_agent_ops(app: App) -> None:
         app.monitors.cancel(m.id)
         return {"cancelled": m.id, "remaining": roster(m.owner)}
 
-    @r.op("monitor.list", NoArgs, agent=True)
+    @r.op("monitor.list", NoArgs, agent=True, read=True)
     async def monitor_list(_, caller):
         """Your live monitors."""
         items = (
@@ -580,7 +580,7 @@ def register_agent_ops(app: App) -> None:
         )
         return {"task_id": t.id, "status": t.status, "position": app.queues.position(t)}
 
-    @r.op("task.status", TaskId, agent=True)
+    @r.op("task.status", TaskId, agent=True, read=True)
     async def task_status(p: TaskId, caller):
         """A task's status, its worker, and its result once finished."""
         return app.queues.status(task(p.task_id))
@@ -687,14 +687,14 @@ def register_agent_ops(app: App) -> None:
             raise OpError("archived", f"{p.target} is archived") from e
         return {"held": held}
 
-    @r.op("peer.read", Read, agent=True)
+    @r.op("peer.read", Read, agent=True, read=True)
     async def peer_read(p: Read, caller):
         """The last entries of another session's transcript, one line each."""
         s = target(p.target)
         lines = [x for e in s.entries()[-p.last * 3 :] if (x := _render(e, p.tools))]
         return "\n".join(lines[-p.last :]) or "(nothing yet)"
 
-    @r.op("session.list", NoArgs, agent=True)
+    @r.op("session.list", NoArgs, agent=True, read=True)
     async def session_list(_, caller):
         """The open sessions on this server, each with its state, what it needs
         (attention and its line, what it waits on), its plan and what it is
@@ -817,7 +817,7 @@ def register_agent_ops(app: App) -> None:
         await reg.close(s.log_id)
         return f"closed {handle}: its tab is gone, and it stays in the archive"
 
-    @r.op("file.send", FileSend, agent=True)
+    @r.op("file.send", FileSend, agent=True, read=True)
     async def file_send(p: FileSend, caller):
         """Hand files to the person: one card in your transcript, paging
         through them, with a preview when the browser can draw one, and Open
@@ -851,7 +851,7 @@ def register_agent_ops(app: App) -> None:
             for r in recs
         ]
 
-    @r.op("plan.update", PlanUpdate, agent=True)
+    @r.op("plan.update", PlanUpdate, agent=True, read=True)
     async def plan_update(p: PlanUpdate, caller):
         """Keep your plan where the person can see it: on your tab's card and in
         its sidebar. Send the whole list each time."""
@@ -861,7 +861,7 @@ def register_agent_ops(app: App) -> None:
         done = sum(1 for i in items if i["state"] == "done")
         return f"plan saved: {done} of {len(items)} done"
 
-    @r.op("turn.end", TurnEnd, agent=True)
+    @r.op("turn.end", TurnEnd, agent=True, read=True)
     async def turn_end(p: TurnEnd, caller):
         """Call this before the final message of every turn you hand back to the
         person, and not when you end a turn to wait on a monitor or a queue task.
@@ -877,7 +877,7 @@ def register_agent_ops(app: App) -> None:
         )
         return "noted"
 
-    @r.op("meta", NoArgs, agent=True)
+    @r.op("meta", NoArgs, agent=True, read=True)
     async def meta(_, caller):
         """How aegis works for you, and its tools."""
         s = reg.sessions.get(caller.log_id or "")

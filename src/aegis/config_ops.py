@@ -69,7 +69,7 @@ def register_config_ops(app: App) -> None:
         """The harnesses installed on this machine: binary, version, models."""
         return [f.wire() for f in await detected()]
 
-    @r.op("config.doctor", agent=True)
+    @r.op("config.doctor", agent=True, read=True)
     async def config_doctor(_, caller):
         """Check .aegis.yaml, the harnesses it names and the state directory.
         Each finding has a level (ok, warn, error), where it is, and what is
