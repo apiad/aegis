@@ -123,9 +123,12 @@ def open_read(path: Path) -> sqlite3.Connection:
     return con
 
 
-def clear(con: sqlite3.Connection) -> None:
+def clear(con: sqlite3.Connection, mark: int | None = None) -> None:
+    """Empty the tables; with ``mark``, set application_id in the same transaction."""
     con.execute("BEGIN")
     try:
+        if mark is not None:
+            con.execute(f"PRAGMA application_id={mark}")
         con.execute("INSERT INTO entries_fts(entries_fts) VALUES('delete-all')")
         for t in ("touches", "handles", "entries"):
             con.execute(f"DELETE FROM {t}")

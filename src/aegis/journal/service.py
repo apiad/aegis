@@ -10,7 +10,12 @@ Rules:
   backfilled on the writer thread after boot; until then searches see less.
 - A backfill that did not finish (a stop, a crash) is not marked complete, so
   the next start runs it again. The mark is the file's ``application_id``;
-  db.py's tables stay as they are, and every insert is idempotent.
+  db.py's tables stay as they are, and every insert is idempotent. Each
+  backfill run writes its own token there when it begins (a rebuild, in the
+  transaction that clears), and marks the file complete only if the token is
+  still its own: a rebuild that cleared meanwhile leaves the file incomplete.
+- The journal is derived data: a file SQLite cannot read is set aside as
+  journal.db.corrupt-<time> and recreated, never a reason to fail boot.
 - A session's first record in a server run primes its Deriver from the store,
   on the writer thread, so a live row equals the row a rebuild makes.
 """
@@ -20,6 +25,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import queue
+import random
+import sqlite3
 import threading
 import time
 from pathlib import Path
@@ -37,6 +44,24 @@ COMPLETE = 0x4A524E4C
 
 def _mark(con, value: int) -> None:
     con.execute(f"PRAGMA application_id={value}")
+
+
+def _token() -> int:
+    """A nonzero application_id no other run shares, and never COMPLETE."""
+    while (t := random.randrange(1, 0x7FFFFFFF)) == COMPLETE:
+        pass
+    return t
+
+
+def _complete_if(con, token: int) -> None:
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        if con.execute("PRAGMA application_id").fetchone()[0] == token:
+            _mark(con, COMPLETE)
+        con.execute("COMMIT")
+    except BaseException:
+        con.execute("ROLLBACK")
+        raise
 
 
 class Journal:
@@ -57,7 +82,7 @@ class Journal:
         self._loop = asyncio.get_running_loop()
         self._halt.clear()
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        con, self.fresh = db.connect(self.path)
+        con, self.fresh = self._open()
         if self.fresh:
             _mark(con, 0)
         done = con.execute("PRAGMA application_id").fetchone()[0] == COMPLETE
@@ -66,6 +91,21 @@ class Journal:
         self._thread.start()
         if not done:
             self._q.put(("backfill",))
+
+    def _open(self):
+        try:
+            return db.connect(self.path)
+        except sqlite3.OperationalError:
+            raise  # busy or locked: the file may be fine
+        except sqlite3.DatabaseError:
+            aside = self.path.with_name(f"{self.path.name}.corrupt-{int(time.time())}")
+            log.exception(
+                "journal: %s is not a database; set aside as %s", self.path, aside
+            )
+            self.path.replace(aside)
+            for ext in ("-wal", "-shm"):
+                Path(f"{self.path}{ext}").unlink(missing_ok=True)
+            return db.connect(self.path)
 
     def stop(self) -> None:
         """End the writer thread. A running backfill stops between sessions."""
@@ -106,9 +146,9 @@ class Journal:
         """Empty the file and derive it again from every store. Synchronous."""
         con, _ = db.connect(self.path)
         try:
-            _mark(con, 0)
-            db.clear(con)
-            return self._backfill(con)
+            token = _token()
+            db.clear(con, mark=token)
+            return self._backfill(con, token)
         finally:
             con.close()
 
@@ -149,7 +189,10 @@ class Journal:
             self._derivers[log_id] = d
         return self._insert(con, log_id, d.feed(record, events))
 
-    def _backfill(self, con) -> int:
+    def _backfill(self, con, token: int | None = None) -> int:
+        if token is None:
+            token = _token()
+            _mark(con, token)
         n = 0
         for s in stored_sessions(self.state_root):
             if self._halt.is_set():
@@ -160,7 +203,7 @@ class Journal:
                     n += self._insert(con, s.log_id, d.feed(r))
             except Exception:
                 log.exception("journal: backfill of %s failed", s.log_id)
-        _mark(con, COMPLETE)
+        _complete_if(con, token)
         return n
 
     def _insert(self, con, log_id: str, rows: list[Row]) -> int:

@@ -383,3 +383,57 @@ async def test_the_cli_searches_and_rebuilds(world):
         cli, ["journal", "search", "--since", "tuesday", "--root", str(world.root)]
     )
     assert out.exit_code == 2 and "not a day" in out.output
+
+
+async def test_an_interrupted_rebuild_racing_a_backfill_leaves_the_file_incomplete(
+    tmp_path, monkeypatch
+):
+    """The server's backfill must not mark COMPLETE over a table a rebuild cleared."""
+    state = _legacy_state(
+        tmp_path,
+        "20260101-000000-aaaaaa",
+        "20260101-000000-bbbbbb",
+        "20260101-000000-cccccc",
+    )
+    real = service.stored_sessions
+    after_first, go = threading.Event(), threading.Event()
+
+    def gated(root):
+        if threading.current_thread().name == "journal":
+            for k, s in enumerate(real(root)):
+                if k == 1:
+                    after_first.set()
+                    go.wait(10)
+                yield s
+        else:  # the CLI, interrupted right after its clear
+            raise KeyboardInterrupt
+            yield
+
+    monkeypatch.setattr(service, "stored_sessions", gated)
+    server = Journal(state, lambda *a: None)
+    server.start()
+    assert after_first.wait(10)
+    with pytest.raises(KeyboardInterrupt):
+        Journal(state, None).rebuild()
+    go.set()
+    server.flush()
+    server.stop()
+    assert not _complete(server.path)
+    monkeypatch.setattr(service, "stored_sessions", real)
+    nxt = Journal(state, lambda *a: None)
+    nxt.start()
+    nxt.flush()
+    nxt.stop()
+    assert _complete(server.path) and len({r[0] for r in dump(server.path)[0]}) == 3
+
+
+async def test_a_corrupt_journal_file_is_set_aside_and_backfilled(tmp_path):
+    state = _legacy_state(tmp_path, "20260101-000000-aaaaaa")
+    (state / "journal.db").write_bytes(b"this is not a database" * 100)
+    j = Journal(state, lambda *a: None)
+    j.start()
+    j.flush()
+    j.stop()
+    assert j.fresh and _complete(j.path)
+    assert {r[0] for r in dump(j.path)[0]} == {"20260101-000000-aaaaaa"}
+    assert len(list(state.glob("journal.db.corrupt-*"))) == 1
