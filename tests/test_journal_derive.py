@@ -312,3 +312,42 @@ def test_live_and_rebuild_agree_on_init_cwd_cd_heredoc_and_failed_commits():
     rows = derive(r)
     assert commit_rows(rows) == [("/r/y", "1a2b3c4"), ("/r/y", "5d6e7f8")]
     assert rows == live(r)
+
+
+def _wrote(r: Rec, id: str = "t1") -> None:
+    r.call(id, "Write", {"file_path": "/w/n.md", "content": "z"})
+    r.output(id, "ok")
+
+
+def test_a_turn_without_a_prompt_is_named_by_its_first_prose_line():
+    """A wake (a task notification, a monitor) has no prompt: the turn's first
+    prose line names it, then a background task's notice, then "a turn"."""
+    r = Rec()
+    spawned(r)
+    r.text("thinking", parent="task")  # a subagent's prose is not the turn's
+    r.text("\nThe tests pass: 12 of 12.\nNext I merge.")
+    _wrote(r)
+    r.text("Done.")
+    r.result()
+    r.claude({"type": "system", "subtype": "thinking_tokens"})
+    r.claude({"type": "system", "subtype": "task_notification", "status": "completed"})
+    _wrote(r, "t2")
+    r.result()
+    _wrote(r, "t3")
+    r.result()
+    rows = [x for x in derive(r) if x.kind == "turn"]
+    assert [x.text for x in rows] == [
+        "The tests pass: 12 of 12.",
+        "a background task completed",
+        "a turn",
+    ]
+    assert rows == [x for x in live(r) if x.kind == "turn"]
+
+
+def test_a_slash_command_names_a_turn_that_has_no_other_prompt():
+    r = Rec()
+    spawned(r)
+    r.echo("<command-name>/review</command-name><command-args>#12</command-args>")
+    _wrote(r)
+    r.result()
+    assert [x.text for x in derive(r) if x.kind == "turn"] == ["/review #12"]

@@ -15,7 +15,16 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-from ..claude.stream import Echo, Init, Result, ToolCall, ToolOutput
+from ..claude.stream import (
+    CommandEcho,
+    Echo,
+    Init,
+    Notice,
+    Result,
+    Text,
+    ToolCall,
+    ToolOutput,
+)
 from ..transcript.entries import PARSERS
 from . import shell
 
@@ -54,6 +63,12 @@ class Deriver:
         self._last_call: str | None = None
         self._turn: list[tuple[str, str]] = []
         self._prompt = ""
+        # What names a turn that has no prompt (a wake): its first prose line,
+        # else a background task's notice. OpenCode updates a part in place, so
+        # the part's latest text stands.
+        self._prose = ""
+        self._prose_key: str | None = None
+        self._notice = ""
         self._said: str | None = None
         self._done: set[str] = set()  # done in the previous plan record
         self._ts = 0.0
@@ -101,6 +116,20 @@ class Deriver:
         if isinstance(ev, Echo):
             if not self._prompt:
                 self._prompt = ev.text
+            return []
+        if isinstance(ev, CommandEcho):
+            if not self._prompt:
+                self._prompt = f"/{ev.name} {ev.args}".strip()
+            return []
+        if isinstance(ev, Text):
+            line = next((x.strip() for x in ev.text.splitlines() if x.strip()), "")
+            first = not self._prose and ev.parent is None
+            if line and (first or (ev.key and ev.key == self._prose_key)):
+                self._prose, self._prose_key = line, ev.key
+            return []
+        if isinstance(ev, Notice):
+            if ev.subtype == "task_notification" and not self._notice:
+                self._notice = f"a background task {ev.status or 'ended'}"
             return []
         if isinstance(ev, Result):
             return self._close_turn(i, ts, id)
@@ -226,9 +255,11 @@ class Deriver:
     def _close_turn(self, i: int, ts: float, source: str) -> list[Row]:
         touches = list(dict.fromkeys(self._turn))
         said, prompt = self._said, self._prompt
+        named = prompt or self._prose or self._notice or "a turn"
         self._turn, self._said, self._prompt = [], None, ""
+        self._prose, self._prose_key, self._notice = "", None, ""
         self._last_call = None
         if not touches and not said:
             return []
-        text = said or prompt[:120] or "a turn"
+        text = said or named[:120]
         return [self._row(i, ts, "turn", text, source=source, touches=touches)]
