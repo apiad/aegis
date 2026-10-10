@@ -16,6 +16,7 @@ import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuo
 import { age, countdown, elapsed, hostRow, hostSeverity, providerFor, quotaSideRow, quotaTile, tile } from "./gauges.js";
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
 import { installKeys, renderKeys } from "./keys.js";
+import { Palette } from "./palette.js";
 import { glyph, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
@@ -1377,6 +1378,7 @@ const help = (open = keymap.hidden) => (keymap.hidden = !open);
 $("keys-btn").addEventListener("click", () => help());
 $("settings-btn").addEventListener("click", () => go("#settings"));
 keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));
+const palette = new Palette($("palette"), () => route().view);
 
 // What each key in keys.js does. `input` and `editing` are declared below;
 // a key is pressed only after this module has run.
@@ -1415,23 +1417,22 @@ installKeys(
       landUnread = id;
       go(`#s=${id}`);
     },
-    cycle(ev) {
-      const all = ["#fleet", ...ordered.map((m) => `#s=${m.key}`)];
-      const d = ev.code === "BracketRight" ? 1 : -1;
-      const i = all.indexOf(location.hash || "#fleet");
-      go(all[i < 0 ? (d > 0 ? 0 : all.length - 1) : (i + d + all.length) % all.length]);
-    },
+    tabPrev: () => cycle(-1),
+    tabNext: () => cycle(1),
     next: () => transcript.move(1),
     prev: () => transcript.move(-1),
-    turn: (ev) => transcript.moveTurn(ev.key === "J" ? 1 : -1),
-    edge: (ev) => transcript.edge(ev.key === "G"),
-    message: (ev) => transcript.message(ev.code === "ArrowUp" ? -1 : 1),
+    turnNext: () => transcript.moveTurn(1),
+    turnPrev: () => transcript.moveTurn(-1),
+    first: () => transcript.edge(false),
+    last: () => transcript.edge(true),
+    messagePrev: () => transcript.message(-1),
+    messageNext: () => transcript.message(1),
     firstUnread: () => transcript.firstUnread(),
     toggle: () => transcript.toggle(),
     press: () => transcript.press(),
     copy: () => transcript.selected && copyRow(transcript.selected, transcript.nodes.get(transcript.selected), copyDeps),
     foldLevel: () => foldLevel((transcript.foldLevel + 1) % 3),
-    none() {},
+    walk() {},
     fleetNext: () => fleetMove(1),
     fleetPrev: () => fleetMove(-1),
     fleetOpen,
@@ -1461,9 +1462,17 @@ installKeys(
     },
     help: () => help(),
     side: () => toggleSide(),
+    palette: () => palette.toggle(),
   },
   () => (booted ? route().view : "boot"),
 );
+
+// Alt+[ and Alt+]: the Fleet, then the tabs, round.
+function cycle(d) {
+  const all = ["#fleet", ...ordered.map((m) => `#s=${m.key}`)];
+  const i = all.indexOf(location.hash || "#fleet");
+  go(all[i < 0 ? (d > 0 ? 0 : all.length - 1) : (i + d + all.length) % all.length]);
+}
 
 // -- composer ---------------------------------------------------------------
 const input = $("input");

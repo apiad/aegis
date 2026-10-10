@@ -1966,6 +1966,109 @@ def test_question_mark_lists_every_key_and_escape_closes_it(server, page):
     assert page.errors == []
 
 
+def palette_rows(pg) -> list[str]:
+    return pg.eval_on_selector_all(
+        "#palette-rows [role=option]", "rs => rs.map(r => r.dataset.action)"
+    )
+
+
+def palette_on(pg) -> str | None:
+    return pg.get_attribute("#palette .cmd-row.on", "data-action")
+
+
+def test_ctrl_k_opens_the_palette_which_filters_runs_and_closes(server, page):
+    """#248: the palette lists the registry's actions for this view with their
+    keys, narrows them as you type, runs the chosen one with Enter and closes
+    with Esc, handing focus back to where it was."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.keyboard.press("Control+k")
+    page.wait_for_selector("#palette", state="visible")
+    assert focused_id(page) == "palette-q"
+    want = page.evaluate(
+        "import('/static/js/keys.js').then(m => m.ACTIONS.filter(a => m.applies(a, 'fleet')).map(a => a.id))"
+    )
+    assert palette_rows(page) == want
+    assert page.locator("#palette [data-action=spawn] kbd").all_inner_texts() == [
+        "Alt+N",
+        "n",
+    ]
+    # The Fleet has no transcript: its row keys are not offered there.
+    assert "next" not in want and "fleetNext" in want
+
+    page.keyboard.type("new sess")
+    assert palette_rows(page)[0] == "spawn"
+    assert page.locator("#palette .cmd-row.on .nm b").count() == len("new sess")
+    page.keyboard.press("Enter")
+    page.wait_for_selector("#palette", state="hidden")
+    hash_is(page, "#new")
+
+    # Typing in the new tab's message box: the chord still opens it, Esc closes
+    # it without the Esc action, and the box has its focus back.
+    page.wait_for_function("document.querySelector('#sp-agent').value !== ''")
+    page.focus("#sp-text")
+    page.keyboard.press("Control+k")
+    page.wait_for_selector("#palette", state="visible")
+    page.keyboard.type("zzqx")
+    page.wait_for_selector("#palette-rows .empty")
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#palette", state="hidden")
+    assert focused_id(page) == "sp-text"
+
+    # Arrows walk the list and wrap; the chord again closes it.
+    page.keyboard.press("Control+k")
+    rows = palette_rows(page)
+    assert palette_on(page) == rows[0]
+    page.keyboard.press("ArrowDown")
+    assert palette_on(page) == rows[1]
+    page.keyboard.press("ArrowUp")
+    page.keyboard.press("ArrowUp")
+    assert palette_on(page) == rows[-1]
+    page.keyboard.press("Control+k")
+    page.wait_for_selector("#palette", state="hidden")
+    page.keyboard.press("Control+k")
+    page.keyboard.type("previous tab")
+    assert palette_rows(page) == ["tabPrev"]
+    page.keyboard.press("Enter")
+    hash_is(
+        page, "#fleet"
+    )  # no sessions and #new is not in the cycle: either way, the Fleet
+    assert page.errors == []
+
+
+def test_every_key_and_every_action_reach_the_list_and_the_palette(server, page):
+    """#248: the ? list shows every key of the registry with its action's
+    title, and the palette offers every action not kept out of it in some view.
+    That every key the client answers is in the registry is
+    test_only_keys_js_listens_for_keys_on_the_page."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    keys = page.evaluate(
+        "import('/static/js/keys.js').then(m => m.KEYS.map(k => [k.label, k.action.title]))"
+    )
+    page.keyboard.press("?")
+    page.wait_for_selector("#keymap", state="visible")
+    shown = page.eval_on_selector_all(
+        "#keymap tr.k", "rs => rs.map(r => [...r.cells].map(c => c.textContent))"
+    )
+    assert sorted(shown) == sorted(keys)
+    page.keyboard.press("Escape")
+
+    offered = set()
+    for go in (lambda: None, lambda: spawn(page, "hello")):
+        go()
+        page.keyboard.press("Control+k")
+        page.wait_for_selector("#palette", state="visible")
+        offered |= set(palette_rows(page))
+        page.keyboard.press("Escape")
+        page.wait_for_selector("#palette", state="hidden")
+    want = page.evaluate(
+        "import('/static/js/keys.js').then(m => m.ACTIONS.filter(a => a.palette !== false).map(a => a.id))"
+    )
+    assert offered == set(want)
+    assert page.errors == []
+
+
 def test_g_in_a_long_transcript_mounts_and_selects_the_first_entry(replay_server, page):
     page.goto(replay_server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
