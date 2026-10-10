@@ -39,7 +39,19 @@ async def test_the_spawn_record_names_the_handle_and_a_rename_is_recorded(world)
     world.app.sessions.rename(a.log_id, "new-name", None)
     recs = _records(world, a.log_id)
     assert [r["handle"] for r in recs if r.get("kind") == "spawn"] == [first]
-    assert [r["handle"] for r in recs if r.get("kind") == "name"] == ["new-name"]
+    names = [r for r in recs if r.get("kind") == "name"]
+    assert [(r["handle"], r["title"]) for r in names] == [("new-name", a.title)]
+    world.app.sessions.rename(a.log_id, None, "just a title")
+    world.app.sessions.rename(a.log_id, "new-name", None)
+    recs = _records(world, a.log_id)
+    assert len([r for r in recs if r.get("kind") == "name"]) == 1
+
+
+async def test_a_rename_leaves_last_activity_alone(world):
+    a = await world.spawn()
+    before = a.last_activity
+    world.app.sessions.rename(a.log_id, "new-name", "a title")
+    assert a.last_activity == before
 
 
 async def test_closing_records_a_close_that_the_fold_draws(world):

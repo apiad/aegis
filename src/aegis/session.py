@@ -640,10 +640,11 @@ class Session:
             "peek",
             "artifact_state",
             "artifact_event",
+            "name",
         ):
             # aegis talking to the person, not the session doing anything; nor
             # a person acting on a page, so the needs-you order holds still
-            # while they drag a slider.
+            # while they drag a slider; nor a rename.
             self.last_activity = stored["ts"]
         ops = fold.apply(stored, events)
         new = [

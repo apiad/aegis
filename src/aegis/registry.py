@@ -398,8 +398,9 @@ class Registry(Host):
             }
             if title is not None:
                 s.title_set = True
+            renamed = handle is not None and handle != s.handle
             s._set(**changes)
-            if handle is not None:
+            if renamed:
                 s.report({"kind": "name", "handle": s.handle, "title": s.title})
             self.metas.write(s.meta())
             return s.wire()
