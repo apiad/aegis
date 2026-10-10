@@ -19,6 +19,10 @@ COMMIT = re.compile(
 PR_URL = re.compile(r"https://github\.com/[^/\s]+/[^/\s]+/pull/\d+")
 # Remove only heredoc body (lines after marker, through terminator), keep marker line.
 HEREDOC = re.compile(r"(<<-?\s*(['\"]?)(\w+)\2[^\n]*)\n.*?\n\s*\3[ \t]*(?=\n|$)", re.S)
+MERGED = re.compile(r"[Mm]erged pull request #?(\d+)")
+# How many lines a quote may span: past it a line with a stray quote is dropped
+# at once, instead of being re-read joined with every later line.
+JOIN_WINDOW = 100
 SEPARATORS = {"&&", "||", ";", "|", "&", ";;", "|&"}
 # git subcommands that print "[branch hash] subject" for a commit they make.
 COMMITTERS = {"commit", "cherry-pick", "revert"}
@@ -103,7 +107,7 @@ def _commands(body: str) -> list[list[str]]:
     while k < len(lines):
         # A line that opens a quote a later line closes (a multi-line -m, or
         # "$(cat <<'EOF' ... EOF\n)") is read joined with the lines it needs.
-        for j in range(k, len(lines)):
+        for j in range(k, min(k + JOIN_WINDOW, len(lines))):
             tokens = _split("\n".join(lines[k : j + 1]))
             if tokens is not None:
                 break
@@ -193,7 +197,9 @@ def leading_cd(command: str, cwd: str) -> str | None:
 
 
 def writes(command: str, cwd: str) -> list[str]:
-    base, out = cwd, set()
+    # base is None after a cd to a variable: relative targets are then unknown.
+    base: str | None = cwd
+    out = set()
     for argv in _commands(_body(command)):
         if not argv:
             continue
@@ -203,7 +209,11 @@ def writes(command: str, cwd: str) -> list[str]:
             continue
         cmd = argv[start]
         if cmd == "cd" and len(argv) > start + 1:
-            base = _resolve(argv[start + 1], base)
+            target = argv[start + 1]
+            if "$" in target:
+                base = None
+            elif base is not None or os.path.isabs(os.path.expanduser(target)):
+                base = _resolve(target, base or os.sep)
             continue
         # Check for redirects
         found: list[str] = []
@@ -221,7 +231,12 @@ def writes(command: str, cwd: str) -> list[str]:
         elif words[0] in ("mv", "cp") and len(args) >= 2:
             found.append(args[-1])
         # A target named by a variable is not a path this can know.
-        out.update(_resolve(p, base) for p in found if "$" not in p)
+        out.update(
+            _resolve(p, base or os.sep)
+            for p in found
+            if "$" not in p
+            and (base is not None or os.path.isabs(os.path.expanduser(p)))
+        )
     return sorted(out)
 
 
@@ -236,16 +251,25 @@ def _flag(rest: str, *names: str) -> str | None:
     return None
 
 
-def pull_request(command: str, output: str) -> str | None:
+def pull_request(command: str, output: str, is_error: bool = False) -> str | None:
+    """The PR row a `gh pr create` or `gh pr merge` call stands for. A call that
+    errored is a row only for a merge gh's own output says happened (it can exit
+    non-zero after merging); a rejected merge or a create that found its PR
+    already open did nothing."""
     m = re.search(r"\bgh\s+pr\s+(create|merge)\b(.*)", _body(command), re.S)
     if not m:
         return None
     verb, rest = m[1], m[2]
     if verb == "create":
+        if is_error:
+            return None
         url = PR_URL.search(output)
         if not url:
             return None
         title = _flag(rest, "--title", "-t")
         return f"opened {url[0]}" + (f" · {title}" if title else "")
+    if is_error:
+        done = MERGED.search(output)
+        return f"merged #{done[1]}" if done else None
     n = re.search(r"#(\d+)", output) or re.search(r"\bmerge\s+(\d+)", m[0])
     return f"merged #{n[1]}" if n else "merged a pull request"

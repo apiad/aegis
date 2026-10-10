@@ -97,10 +97,13 @@ class Journal:
             return db.connect(self.path)
         except sqlite3.OperationalError:
             raise  # busy or locked: the file may be fine
-        except sqlite3.DatabaseError:
+        except sqlite3.DatabaseError as err:
             aside = self.path.with_name(f"{self.path.name}.corrupt-{int(time.time())}")
-            log.exception(
-                "journal: %s is not a database; set aside as %s", self.path, aside
+            log.warning(
+                "journal: %s is not a database (%s); set aside as %s",
+                self.path,
+                err,
+                aside,
             )
             self.path.replace(aside)
             for ext in ("-wal", "-shm"):

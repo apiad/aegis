@@ -86,7 +86,14 @@ def full(repo: str | None, rel: str) -> str:
 
 def commit_files(directory: str, commit: str) -> list[str] | None:
     out = _git_binary(
-        ["show", "-z", "--name-only", "--format=", "--end-of-options", commit],
+        [
+            "show",
+            "-z",
+            "--name-only",
+            "--format=",
+            "--end-of-options",
+            f"{commit}^{{commit}}",
+        ],
         _existing(os.path.realpath(directory)),
     )
     if out is None:

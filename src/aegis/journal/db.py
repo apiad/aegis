@@ -238,7 +238,7 @@ def search(con: sqlite3.Connection, q: Query) -> tuple[list[Hit], bool]:
         [*args, q.limit + 1, q.offset],
     )
     cut = len(rows) > q.limit
-    hits = [Hit(*r[:9], bool(r[9])) for r in rows[: q.limit]]
+    hits = [Hit(*r[:9], files_unknown=bool(r[9])) for r in rows[: q.limit]]
     if hits:
         by = {h.id: h for h in hits}
         marks = ",".join("?" * len(hits))

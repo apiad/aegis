@@ -169,7 +169,7 @@ class Deriver:
                 found, shell.commit_dirs(cmd, cwd, len(found))
             )
         ]
-        if pr := shell.pull_request(cmd, text):
+        if pr := shell.pull_request(cmd, text, out.is_error):
             rows.append(self._row(i, ts, "pr", pr, source=source))
         if not out.is_error:
             self._turn += [("bash-write", p) for p in shell.writes(cmd, cwd)]

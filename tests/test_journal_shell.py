@@ -165,3 +165,21 @@ def test_leading_cd_is_where_the_shell_stays():
 def test_writes_skip_targets_named_by_a_variable():
     cmd = 'echo x > $f; echo y >> "$W/progress.md"; echo z > ok.txt; tee "${D}/a"'
     assert writes(cmd, "/w") == ["/w/ok.txt"]
+
+
+def test_a_long_command_with_a_stray_quote_parses_in_linear_time():
+    import time
+
+    cmd = "echo 'oops\n" + "\n".join(f"echo hi > f{i}.txt" for i in range(3000))
+    t = time.monotonic()
+    found = writes(cmd, "/w")
+    assert time.monotonic() - t < 1
+    assert "/w/f2999.txt" in found
+
+
+def test_writes_skips_relative_targets_after_a_cd_to_a_variable():
+    assert writes("cd $W && sed -i 's/a/b/' docs/x.html", "/w") == []
+    assert writes("cd $W && echo a > /abs/y.txt && echo b > z.txt", "/w") == [
+        "/abs/y.txt"
+    ]
+    assert writes("cd $W && cd /r && echo a > z.txt", "/w") == ["/r/z.txt"]

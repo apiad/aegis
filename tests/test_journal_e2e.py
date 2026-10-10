@@ -493,6 +493,18 @@ async def test_a_corrupt_journal_file_is_set_aside_and_backfilled(tmp_path):
     assert len(list(state.glob("journal.db.corrupt-*"))) == 1
 
 
+async def test_setting_aside_a_corrupt_file_logs_no_traceback(tmp_path, caplog):
+    state = _legacy_state(tmp_path, "20260101-000000-aaaaaa")
+    (state / "journal.db").write_bytes(b"this is not a database" * 100)
+    j = Journal(state, lambda *a: None)
+    with caplog.at_level("WARNING", logger="aegis.journal.service"):
+        j.start()
+        j.flush()
+        j.stop()
+    (rec,) = [r for r in caplog.records if "set aside" in r.getMessage()]
+    assert rec.exc_info is None and "Traceback" not in caplog.text
+
+
 def _git_repo(path: Path, text: str) -> str:
     """A repo at path with one commit; returns its hash."""
     path.mkdir()

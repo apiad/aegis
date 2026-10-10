@@ -73,3 +73,9 @@ def test_commit_files_handles_non_ascii_names(repo):
 def test_name_does_not_raise_on_nul_byte():
     result = name("a\0b")
     assert result == (None, "a\0b")
+
+
+def test_a_blob_hash_is_not_a_commit_with_files(repo):
+    blob = git("rev-parse", "HEAD:a.py", cwd=repo).strip()
+    assert commit_files(str(repo), blob) is None
+    assert commit_files(str(repo), blob[:7]) is None

@@ -351,3 +351,26 @@ def test_a_slash_command_names_a_turn_that_has_no_other_prompt():
     _wrote(r)
     r.result()
     assert [x.text for x in derive(r) if x.kind == "turn"] == ["/review #12"]
+
+
+def _pr_texts(call_cmd: str, output: str) -> list[str]:
+    r = Rec()
+    spawned(r, cwd="/r/x")
+    r.own("send", text="ship")
+    r.call("t1", "Bash", {"command": call_cmd})
+    r.output("t1", output, is_error=True)
+    r.result()
+    return [x.text for x in derive(r) if x.kind == "pr"]
+
+
+def test_an_errored_pr_merge_is_a_row_only_when_gh_says_it_merged():
+    assert _pr_texts("gh pr merge 7", "X Pull request #7 is not mergeable") == []
+    assert _pr_texts("gh pr merge 9 --squash", "Required status check failed #9") == []
+    assert _pr_texts("gh pr merge 7", "✓ Merged pull request #7\nfatal: x") == [
+        "merged #7"
+    ]
+
+
+def test_an_errored_pr_create_is_not_an_opened_row():
+    out = "a pull request for branch x already exists: https://github.com/a/b/pull/12"
+    assert _pr_texts("gh pr create --title t", out) == []
