@@ -97,12 +97,12 @@
     <section class="col">
       <div class="tr" id="tr" tabindex="-1"><div id="entries"></div><div class="row replies" id="replies" hidden><span class="t"></span><span class="g" id="replies-g"></span><div class="body" id="replies-pills"></div></div><div class="row working" id="working" hidden><span class="t"></span><span class="g" id="working-g"></span><div class="body">Working <span class="meta" id="working-meta"></span></div></div></div>
       <div class="nav" id="nav" hidden>
-        <button class="spark" id="nav-recap" title="Recap where this session stands"></button>
-        <button class="fold" id="nav-fold" data-level="0" title="Fold tool calls and thinking (Z)"></button>
-        <button class="up" id="nav-up" title="Previous agent message (Alt+↑)"></button>
+        <button class="needs" id="nav-needs" title="Next session that needs you (Alt+J)" aria-label="Next session that needs you"><span class="n" id="nav-needs-n"></span></button>
+        <button class="up" id="nav-up" title="Previous agent message (Alt+↑)" aria-label="Previous agent message"></button>
         <button class="pos" id="nav-pos" title="First unread (Alt+U)"></button>
-        <button class="down" id="nav-down" title="Next agent message (Alt+↓)"></button>
-        <button class="latest" id="jump" title="Latest (G)"></button>
+        <button class="down" id="nav-down" title="Next agent message (Alt+↓)" aria-label="Next agent message"></button>
+        <button class="last" id="nav-last" title="Start of the last agent message" aria-label="Start of the last agent message"></button>
+        <button class="latest" id="jump" title="Latest (G)" aria-label="Latest"></button>
       </div>
       <div class="find" id="find" hidden>
         <input id="find-q" spellcheck="false" autocomplete="off" placeholder="Find in transcript" aria-label="Find in this transcript">
@@ -177,6 +177,10 @@
             </div>
           </div>
         </div>
+      </div>
+      <div class="side-acts view">
+        <button class="act spark" id="nav-recap" title="Recap where this session stands"><span>Recap</span></button>
+        <button class="act fold" id="nav-fold" data-level="0" title="Fold tool calls and thinking (Z)"><span>Fold</span></button>
       </div>
       <div class="side-acts live-only">
         <button class="act stop" id="stop-session" title="Stop: end the process; the next message resumes it"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/></svg><span>Stop</span></button>

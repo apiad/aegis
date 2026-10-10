@@ -2907,7 +2907,7 @@ def test_the_divider_and_navigator_walk_agent_messages(server, page):
     assert "new since you left" in since
     # On screen, it is read within a second; the divider stays where it was.
     page.wait_for_function(
-        "() => document.querySelector('#nav-pos').textContent.startsWith('message ')",
+        "() => document.querySelector('#nav-pos').ariaLabel.startsWith('message ')",
         timeout=6000,
     )
     assert page.locator(".row.since").count() == 1
@@ -2967,7 +2967,7 @@ def test_the_navigator_counts_the_unread_and_jumps_to_the_first(server, page):
     page.click(f".tab[data-id='{sid}']")
     page.wait_for_selector(".row.prose .rm .ic.i-unread", state="attached")
     page.wait_for_function(
-        "() => document.getElementById('nav-pos').textContent"
+        "() => document.getElementById('nav-pos').ariaLabel"
         ".startsWith('1 unread · message ')"
     )
     unread = page.eval_on_selector(
@@ -2981,7 +2981,7 @@ def test_the_navigator_counts_the_unread_and_jumps_to_the_first(server, page):
     page.click("#nav-pos")
     assert page.evaluate(sel) == unread
     page.wait_for_timeout(1500)  # still unfocused: nothing was read
-    assert page.inner_text("#nav-pos").startswith("1 unread · ")
+    assert page.get_attribute("#nav-pos", "aria-label").startswith("1 unread · ")
     assert page.errors == []
 
 
@@ -3068,7 +3068,7 @@ def test_the_latest_button_shows_before_any_agent_message(server, page):
     page.press("#input", "Enter")
     turns_done(page, 2)
     page.wait_for_function(
-        "() => document.getElementById('nav-pos').textContent.includes('message ')"
+        "() => document.getElementById('nav-pos').ariaLabel.includes('message ')"
     )
     assert page.is_enabled("#nav-up") and page.is_enabled("#nav-down")
     assert page.errors == []
@@ -3156,7 +3156,7 @@ def test_more_than_500_messages_read_at_once_go_out_in_batches(
         pg.fill("#input", "replay")
         pg.press("#input", "Enter")
         pg.wait_for_function(
-            "() => document.getElementById('nav-pos').textContent"
+            "() => document.getElementById('nav-pos').ariaLabel"
             ".startsWith('600 unread')",
             timeout=30_000,
         )
@@ -3531,6 +3531,53 @@ WIDER = """[...document.querySelectorAll('#a2 *')].filter(e => {
   const r = e.getBoundingClientRect();
   return r.width > 0 && (r.left < -1 || r.right > innerWidth + 1) && !e.closest('.tablist, .side, pre, .diff');
 }).map(e => e.className || e.tagName).slice(0, 5)"""
+
+
+def test_the_navigator_fits_a_phone_and_keeps_its_touch_targets(server, browser):
+    """#299: at 390 px with touch the pill was 376 x 46, the whole width. It is
+    now a third of it, its buttons still take a tap 44 px tall, and recap and
+    fold sit in the drawer."""
+    errors: list = []
+    page = phone(browser, errors)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    other = spawn(page, "other")
+    turns_done(page, 1)
+    spawn(page, "first")
+    turns_done(page, 1)
+    page.fill("#input", "again")
+    page.tap("#send")
+    turns_done(page, 2)
+    page.wait_for_function("document.getElementById('nav-needs-n').textContent === '1'")
+    page.wait_for_function(
+        "/^\\d+\\/\\d+$/.test(document.getElementById('nav-pos').textContent)"
+    )
+    box = page.locator("#nav").bounding_box()
+    assert box["width"] <= 240 and box["height"] <= 40, box
+    assert box["x"] >= 140 and box["x"] + box["width"] <= 390, box
+    # A tap 4 px above the pill still lands on each button.
+    hits = page.evaluate(
+        """() => [...document.querySelectorAll('#nav button')].map(b => {
+          const r = b.getBoundingClientRect();
+          const at = document.elementFromPoint(r.x + r.width / 2, r.top - 4);
+          return [b.id, at?.closest('button') === b];
+        })"""
+    )
+    assert all(ok for _, ok in hits), hits
+    assert page.locator("#nav #nav-recap, #nav #nav-fold").count() == 0
+    assert (
+        page.locator(".side #nav-recap").count() == 1
+        and page.locator(".side #nav-fold").count() == 1
+    )
+    page.tap("#nav-last")
+    last = page.evaluate(
+        "[...document.querySelectorAll('.row.prose')].at(-1).dataset.id"
+    )
+    assert page.evaluate("document.querySelector('.row.sel')?.dataset.id") == last
+    # The needs button is Alt+J: the other session, which has waited for you.
+    page.tap("#nav-needs")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=other)
+    assert errors == []
 
 
 def test_a_phone_reaches_tabs_the_drawer_and_the_chips(server, browser):
