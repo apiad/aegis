@@ -115,7 +115,7 @@ def register_journal_ops(app: "App") -> None:
         finally:
             con.close()
 
-    @r.op("journal.search", SearchParams, agent=True)
+    @r.op("journal.search", SearchParams, agent=True, read=True)
     async def journal_search(p: SearchParams, caller):
         """Ask what was done on this server: commits, pull requests, finished plan
         items, turns that changed files, and the decisions, blockers and
@@ -145,7 +145,7 @@ def register_journal_ops(app: "App") -> None:
             out["counts"] = c
         return out
 
-    @r.op("journal.note", NoteParams, agent=True)
+    @r.op("journal.note", NoteParams, agent=True, read=True)
     async def journal_note(p: NoteParams, caller):
         """Record a decision, a blocker or a milestone in the journal. Commits,
         pull requests and finished work are journaled for you; note only what

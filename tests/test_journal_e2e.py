@@ -667,3 +667,18 @@ async def test_an_entry_from_before_a_rename_names_the_current_handle(world):
     world.app.journal.flush()
     said = await turn(a, mcp("journal_search", pattern="before the rename"))
     assert f"{old} (now renamed-one)  note" in said, said
+
+
+async def test_a_read_session_notes_and_searches_the_journal(world):
+    """#305 opens to a read session only the operations marked read. A note is
+    the session's own record, like its plan, and a search only reads, so a
+    reviewer can leave a blocker and ask what was done."""
+    r = await world.app.registry.call("session.spawn", {"agent": "reviewer"})
+    s = world.session(r["log_id"])
+    said = await turn(
+        s, mcp("journal_note", text="the diff lacks a test", tag="blocker")
+    )
+    assert said == "mcp ok: noted", said
+    world.app.journal.flush()
+    said = await turn(s, mcp("journal_search", pattern="lacks a test"))
+    assert "1 entries" in said and "the diff lacks a test" in said, said

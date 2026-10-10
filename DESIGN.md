@@ -213,8 +213,8 @@ mid-wait in the legacy tree.
 it can see, and changes only its own monitors, its own session's names and the
 tasks it enqueued. A session an agent spawns runs with at most the agent's own
 permission, so spawning is never a way to gain power. A session whose
-permission is read calls only the operations marked `read`: its own card,
-reading, waiting on other sessions and `file_send`. The registry checks the
+permission is read calls only the operations marked `read`: its own card and
+journal notes, reading, waiting on other sessions and `file_send`. The registry checks the
 session's current permission on each call, so the rule holds for every harness
 and follows a live `/permission`, and Claude Code is told to let every aegis
 tool through, because its plan mode refuses MCP calls an allow rule names
