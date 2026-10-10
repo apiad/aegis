@@ -144,6 +144,63 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 .checks li{font-family:var(--font-ui);font-size:13.5px;padding:5px 0 5px 26px;position:relative;border-bottom:1px solid var(--rule)}
 .checks li:before{content:"○";position:absolute;left:4px;color:var(--faint)}
 .checks li .b{font-family:var(--font-mono);font-size:10px;color:var(--comms);margin-left:6px}
+/* The Tokens editor mockup. Rules copied from client/css/base.css (#a2 .set-*, .bar,
+   .kv, .btn), rescoped to .a2mock; ink sets --font-chrome and --font-head to JBM. */
+.a2mock{--font-chrome:var(--font-mono);--font-head:var(--font-mono);background:var(--bg);border:1px solid var(--rule);border-radius:var(--r-lg);padding:4px 20px 0;font-family:var(--font-ui);font-size:13px;margin:16px 0}
+.a2mock .set-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:16px 0 10px}
+.a2mock .set-section-head h3{margin:0;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
+.a2mock .set-none{font-size:12.5px;color:var(--muted)}
+.a2mock .set-agents{display:grid;gap:8px}
+.a2mock .set-agent{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:10px 14px;display:grid;grid-template-columns:120px 1fr;gap:6px 12px;align-items:center}
+.a2mock .set-agent:focus-within{border-color:var(--faint)}
+.a2mock .set-agent.is-default{border-color:var(--accent)}
+.a2mock .set-name{font-family:var(--font-head);font-weight:500;font-size:14px;color:var(--strong);overflow:hidden;text-overflow:ellipsis}
+.a2mock .picks{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.a2mock .pick{background:var(--bg);border:1px solid var(--rule);border-radius:5px;padding:3px 8px;font-family:var(--font-chrome);font-size:11.5px;color:var(--ink);cursor:pointer}
+.a2mock .pick:hover{border-color:var(--faint)}
+.a2mock .pick:focus{outline:none;border-color:var(--accent)}
+.a2mock .link{background:none;border:none;padding:0;font-family:var(--font-ui);font-size:12.5px;color:var(--muted);cursor:pointer}
+.a2mock .link:hover{color:var(--accent)}
+.a2mock .link.danger:hover,.a2mock .link.danger.armed{color:var(--err)}
+.a2mock .set-pill{font-family:var(--font-mono);font-size:11px;border:1px solid var(--rule);border-radius:4px;padding:2px 6px;color:var(--muted)}
+.a2mock .set-pill.ok{color:var(--ok)} .a2mock .set-pill.bad{color:var(--err)} .a2mock .set-pill.warn{color:var(--warn)}
+.a2mock .btn{font-size:12px;padding:6px 14px;border-radius:var(--r);border:1px solid var(--rule);background:var(--surface);color:var(--ink);cursor:pointer}
+.a2mock .btn.primary{background:var(--accent);color:var(--on-accent);border-color:transparent;font-weight:500}
+.a2mock .set-linkrow{display:flex;gap:8px;margin-top:12px}
+.a2mock .set-in{flex:1;min-width:0;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 9px;font-family:var(--font-mono);font-size:12px;color:var(--ink)}
+.a2mock .set-bar{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:10px 0;margin-top:14px;border-top:1px solid var(--rule)}
+.a2mock .set-bar #tk-status{margin-right:auto;font-size:12.5px;color:var(--muted)}
+.a2mock .set-bar.dirty #tk-status{color:var(--accent)}
+.a2mock .kv{display:flex;justify-content:space-between;gap:8px;font-size:12px;margin:3px 0 0;color:var(--muted);font-family:var(--font-chrome)}
+.a2mock .kv.dim{color:var(--faint)}
+.a2mock .bar{position:relative;height:6px;margin:4px 0 6px;background:var(--raised);border-radius:3px}
+.a2mock .bar i{display:block;height:100%;background:var(--ok);border-radius:3px}
+.a2mock .bar .tick{position:absolute;top:-1px;bottom:-1px;width:2px;margin-left:-1px;background:var(--strong);opacity:.7;border-radius:1px}
+.a2mock .poolnow{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 24px;padding:10px 14px;background:var(--side);border:1px solid var(--rule);border-radius:var(--r-lg);margin-bottom:10px}
+.a2mock .poolnow h5{margin:0 0 2px;font:500 11.5px var(--font-chrome);color:var(--faint)}
+.a2mock .pol{grid-column:1/-1;display:grid;gap:10px;margin-top:4px;padding-top:10px;border-top:1px dashed var(--rule)}
+.a2mock .poolrow{display:grid;grid-template-columns:108px minmax(0,1fr);gap:8px 12px;align-items:start}
+.a2mock .poolrow .pl{font:500 12px var(--font-chrome);color:var(--strong);padding-top:4px}
+.a2mock .winrow{display:grid;grid-template-columns:84px minmax(0,1fr) 205px;gap:12px;align-items:center;margin:2px 0}
+.a2mock .winrow label{font:11.5px var(--font-chrome);color:var(--muted);display:flex;gap:5px;align-items:center;cursor:pointer}
+.a2mock .winrow input[type=checkbox]{accent-color:var(--accent);margin:0}
+.a2mock .track{position:relative;height:6px;background:var(--raised);border-radius:3px;margin:18px 7px 8px;touch-action:none}
+.a2mock .winrow.off .track{opacity:.35;margin-top:8px}
+.a2mock .track>i{position:absolute;left:0;top:0;bottom:0;background:var(--ok);opacity:.55;border-radius:3px}
+.a2mock .zone{position:absolute;top:0;bottom:0}
+.a2mock .zone.closed{background:rgba(224,168,114,.22)}
+.a2mock .zone.stop{background:rgba(217,128,111,.32);border-radius:0 3px 3px 0}
+.a2mock .h{position:absolute;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2px solid var(--surface);padding:0;cursor:grab;z-index:2}
+.a2mock .h:active{cursor:grabbing}
+.a2mock .h.l{background:var(--ok)} .a2mock .h.s{background:var(--err)}
+.a2mock .h:focus-visible{outline:2px solid var(--strong);outline-offset:1px}
+.a2mock .h span{position:absolute;bottom:13px;left:50%;transform:translateX(-50%);font:10.5px var(--font-chrome);white-space:nowrap;pointer-events:none}
+.a2mock .h.l span{color:var(--ok)} .a2mock .h.s span{color:var(--err)}
+.a2mock .pace{position:absolute;top:-5px;bottom:-5px;width:2px;margin-left:-1px;background:var(--ok);z-index:1}
+.a2mock .pace span{position:absolute;bottom:13px;left:50%;transform:translateX(-50%);font:10.5px var(--font-chrome);color:var(--ok);white-space:nowrap}
+.a2mock .wv{font:11px var(--font-chrome);color:var(--faint);display:flex;flex-direction:column;gap:3px}
+.a2mock .modeline{display:flex;gap:10px;align-items:center;margin-bottom:2px}
+.a2mock .notice{margin:10px 0 0}
 </style>
 </head>
 <body>
@@ -172,6 +229,9 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <a class="sub" href="#gate">Where the gate sits</a>
   <a class="sub" href="#stop">Stopping and reopening</a>
   <a class="sub" href="#ui">What people see</a>
+  <a href="#editor">Editing tokens and policies</a>
+  <a class="sub" href="#editor-try">Try the editor</a>
+  <a href="#across">Agents across links</a>
   <a href="#restart">Restarts</a>
   <a class="sub" href="#record">The shutdown record</a>
   <a class="sub" href="#which">Which sessions continue</a>
@@ -220,6 +280,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>Roles</td><td><code>admin</code> and <code>member</code>. No read-only role</td><td class="why"><span class="who">Alex</span> An admin talks to every agent, the others read every agent and change only their own. A read-only role waits until someone needs one.</td></tr>
 <tr><td>The middle band</td><td><code>pace</code>: open while the projected spend at reset is at most 100%</td><td class="why"><span class="who">Alex</span> The agent's reading of "solo mientras la cuota restante sea mayor que el 50% del budget que queda", accepted on review: a token may start work while the week is not being spent faster than it passes.</td></tr>
 <tr><td>Editing tokens</td><td>In Settings, for admins only, as well as from the command line</td><td class="why"><span class="who">Alex</span> Adding, revoking and setting a token's policy are routine admin work and belong beside the links they gate.</td></tr>
+<tr><td>Editing policies</td><td>In Settings, with a policy editor: a gauge-shaped track per window with a launch handle and a stop handle</td><td class="why"><span class="who">Alex</span> "Token quota and all of it should be editable in settings with a proper UI." Section 06 is that design.</td></tr>
+<tr><td>Agents spawning across links</td><td>Allowed, gated on the far server by the link token's policy. Reading, sending and enqueueing across stay closed</td><td class="why"><span class="who">Alex</span> The links spec refused it because such an agent "would spend the VPS's quota on its own judgment". The far server's policy now decides that. See section 07.</td></tr>
 <tr><td>What a member may change in Settings</td><td>Only what lives in the browser: the theme and the other <code>localStorage</code> preferences</td><td class="why"><span class="who">Alex</span> Nothing that writes <code>.aegis.yaml</code>, <code>links.json</code> or <code>tokens.json</code>.</td></tr>
 <tr><td>Revoking the admin token</td><td>Allowed. aegis generates a new one at once</td><td class="why"><span class="who">Alex</span> A leaked admin token must be replaceable from the browser, and regenerating it means a server can never be left without an admin.</td></tr>
 <tr><td>What a stop does</td><td>Interrupt the turn, keep the session, hold its messages, continue it on reopen</td><td class="why">Killing a session loses its context, and the work was not wrong, only early. The interrupt and the continue reuse the restart mechanism below.</td></tr>
@@ -347,9 +409,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <p>Settings (<code>client/js/settings.js</code>) already splits cleanly in two. The theme, fold level, tab order and drafts live in the browser's <code>localStorage</code>. Agents, queues and the default agent are written to <code>.aegis.yaml</code> by <code>config.write</code>, and servers to <code>links.json</code> by <code>link.add</code> and <code>link.remove</code>. A member sees the first group and "Run doctor", and a line saying server settings are edited by an admin. An admin sees everything, plus a Tokens section beside Servers.</p>
 <p>The Tokens section lists each token's name, role, policy and when it was last used. Add takes a name and a role and shows the new token once, with a copy button. Each row has Revoke and a policy editor with a launch line and a stop line per window. The admin token's row says Revoke and regenerate, and confirms first, because every browser and link holding it is signed out. The browser that revoked it gets the new token in the op's result, shows it once, and signs itself back in with <code>POST /login</code>, so the admin who rotated the token is the one person not locked out.</p>
 <p>Four admin-only ops back it: <code>token.list</code>, <code>token.add</code>, <code>token.revoke</code> and <code>token.policy</code>. Ops gain an <code>admin</code> flag next to the existing <code>agent</code> and <code>read</code> flags in <code>ops.py:56-64</code>, checked in <code>Registry.call</code>. <code>config.write</code>, <code>config.propose</code>, <code>link.add</code> and <code>link.remove</code> get the same flag. No agent can call a token op, whoever owns it.</p>
-<p><span class="try">try it</span>Switch the viewer and add or revoke a token. Sample data.</p>
-<div class="seg" id="setseg"><button class="on" data-r="admin">viewer: alex (admin)</button><button data-r="member">viewer: daniel (member)</button></div>
-<div class="card" id="setpage" style="font-family:var(--font-mono);font-size:12px"></div>
+<p>The Tokens section itself, and how an admin edits policies in it, is designed in <a href="#editor">Editing tokens and policies</a>.</p>
 
 <h2 id="quota"><span class="n">05</span>The quota gate</h2>
 
@@ -429,7 +489,40 @@ The pool has room again. Continue where you left off.</pre>
 </div>
 <p>A session waiting for quota gets a new attention state, <code>waiting</code>, drawn as a hollow amber mark, so the Fleet tells it apart from an idle session and from an error. Every card and tab shows its owner's name when the viewer is not the owner.</p>
 
-<h2 id="restart"><span class="n">06</span>Restarts</h2>
+<h2 id="editor"><span class="n">06</span>Editing tokens and policies</h2>
+<p>Everything in <code>tokens.json</code> is editable in Settings, in a Tokens section that only admins see. The section reuses the agent cards, picks, links and save bar of <code>settings.js</code>, so it reads as part of the page it sits on. When an admin picks a linked server in "Editing the config of", the section edits that server's tokens through the link, which works only if the link holds an admin token there.</p>
+<h3 id="editor-parts">What the section holds</h3>
+<ul>
+<li><b>The pool now.</b> A strip at the top with each pool's current gauges, so an admin sets lines against the real readings and not from memory.</li>
+<li><b>Default for members.</b> One card, with the accent border Settings gives the default agent. It holds <code>default_policy</code>.</li>
+<li><b>One card per token.</b> Name, role, a status chip computed from the current readings ("open", "closed", "stopped" per pool), when it was last used, and Revoke. A member card says "uses the default" with a Customize link that copies the default into the token, or shows its own policy with "Reset to default". The admin token's card says "never gated" and offers Revoke and regenerate.</li>
+<li><b>A policy editor per pool.</b> Each pool has a mode: closed, open without lines, or lines. Codex has no gauge, so it offers only closed and open. With lines, each window of the pool is a row with a checkbox to use it and a track drawn like the quota gauge: the current fill, a green launch handle and a red stop handle. The handles drag, and also move with the arrow keys, one point at a time or five with Shift. The launch handle can never pass the stop handle.</li>
+<li><b>Pace.</b> A window with a known span (a week, a month) has a pace box. With it ticked the launch line is not a handle: it is drawn where the time tick is, because "projected spend at reset at most 100%" is the same as "usage at most the share of the window that has passed". It moves on its own as the week goes by.</li>
+<li><b>Add a token.</b> The same row Servers uses to add a link: a name, a role and Add. The token appears once below it with a copy button.</li>
+<li><b>Saving.</b> Policy edits mark the page dirty and go out with the existing save bar, in the same Save as agents and queues, through <code>token.policy</code>. Add and revoke act at once, like linking and removing a server, because each one shows or kills a secret.</li>
+</ul>
+<h3 id="editor-try">Try the editor</h3>
+<p><span class="try">try it</span>Drag the handles, tick pace, change a pool's mode, customize daniel, add a token. The chips recompute against the sample readings in the strip. Sample data.</p>
+<div class="a2mock" id="tokmock">
+  <div class="set-section-head"><h3>Tokens</h3><span class="set-none">Who may use this server, and how much of the pool each may spend.</span></div>
+  <div class="poolnow" id="poolnow"></div>
+  <div class="set-agents" id="tokcards"></div>
+  <div class="set-linkrow"><input class="set-in" id="tk-name" placeholder="name, e.g. vivian"><select class="pick" id="tk-role"><option>member</option><option>admin</option></select><button class="btn primary" id="tk-add">Add token</button></div>
+  <div id="tk-once"></div>
+  <div class="set-bar" id="tk-bar"><span id="tk-status">No changes</span><button class="btn" id="tk-discard">Discard</button><button class="btn primary" id="tk-save">Save changes</button></div>
+</div>
+
+<h2 id="across"><span class="n">07</span>Agents across links</h2>
+<p>The links spec kept agents from spawning on a linked server, and gave the reason (<code>2026-10-08-aegis-links-design.md:255-261</code>): an agent that could spawn on the VPS "would spend the VPS's quota on its own judgment". A link now presents a token with a policy, and the far server gates every spawn by that policy, so the far server's owner decides how much a linked server's agents may spend. That removes the reason, and this spec lifts the rule for spawning.</p>
+<ul>
+<li><code>session.spawn</code> with <code>agent@server</code> is allowed to agents. The near side caps the far session's permission at the spawning agent's own, as it already does for a local child (<code>app.py:605-614</code>), and sends the spawn over the link with the agent's handle in the params as <code>spawned_by</code>.</li>
+<li>The far side treats the call like any spawn from the link's principal: the gate decides, the session is owned by the link's token, and <code>spawned_by</code> is recorded for the transcript and the journal. It is provenance and never authorization, because the far side cannot check it.</li>
+<li>The agent gets back the far session's <code>handle@server</code>. A refusal comes back through the allowlist of far errors (<code>agent_ops.py:293-298</code>), which gains <code>quota_closed</code> and <code>not_for_members</code>, so the agent reads why it was refused and when the window resets.</li>
+<li>Nothing else crosses for agents. Reading a far transcript, sending to a far session and enqueueing on a far server still fail with <code>not_across_links</code>. "Nothing comes back" holds: a far session's text never enters a near agent's context. The spawned session hands its result back as code through git, or by <code>peer_handoff</code> only if the far server itself holds a link to the near one.</li>
+<li>The refusal text in <code>ACROSS</code> (<code>agent_ops.py:282-286</code>) changes to say that spawning is allowed and reading, sending and enqueueing are not.</li>
+</ul>
+
+<h2 id="restart"><span class="n">08</span>Restarts</h2>
 
 <h3 id="record">The shutdown record</h3>
 <p>Today a restart marks every running turn as failed (<code>registry.py:263-266</code>) and waits for a person to press Restart. Only queue workers get a "continue" message (<code>queues.py:297-309</code>). Held messages are restored but sent only after the next new message's turn ends (<code>session.py:763-766</code>).</p>
@@ -453,16 +546,16 @@ The pool has room again. Continue where you left off.</pre>
 <h3 id="guard">The loop guard</h3>
 <p>The meta gains <code>restart_continues</code>, a count. aegis adds one each time it continues a session after a restart and resets it to zero when a turn ends without error. After a clean restart aegis continues a session while the count is below 2. After a crash it continues only when the count is 0, because #269 shows a turn can take the server down, and continuing that turn twice would crash it twice. When aegis declines, it marks the turn failed with the line "restarts interrupted this turn more than once; continue it by hand". Continues after a quota stop do not count, because a quota stop says nothing about the turn itself.</p>
 
-<h2 id="delivery"><span class="n">07</span>Delivery</h2>
+<h2 id="delivery"><span class="n">09</span>Delivery</h2>
 <p>Three PRs from <code>origin/main</code>, in this order, each through issue, worktree, PR and Alex's smoke test. This spec rides on the first.</p>
 <div class="steps">
   <div class="step"><div class="n"></div><div><h4>Restarts that continue (#312)</h4><p><code>server.json</code>, <code>interrupted_by</code>, the continue path shared with queue workers, continuing once after a crash with the leftover-harness check, held messages sent at boot, the loop guard. Useful on the VPS the day it lands, and the quota stop builds on it.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>Tokens and owners (#311, part 1)</h4><p><code>tokens.json</code>, the <code>aegis token</code> commands and the Tokens section in Settings, the principal on <code>Caller</code>, <code>owner</code> on sessions and tasks, the member checks on ops, links resolved to their token, owner names and the read-only composer in the client.</p></div></div>
-  <div class="step"><div class="n"></div><div><h4>The quota gate (#311, part 2)</h4><p>Policies, <code>may_start</code> at the three start points, stop and reopen in the quota loop, the <code>waiting</code> state, the refusal notice and the policy lines on a member's gauge.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>The quota gate (#311, part 2)</h4><p>Policies, <code>may_start</code> at the three start points, stop and reopen in the quota loop, the <code>waiting</code> state, the refusal notice and the policy lines on a member's gauge. The policy editor in Settings, and agents spawning across links, which only become safe once the far side gates them.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>Deploy on the Syalia VPS, with Alex</h4><p>Install aegis there, set <code>KillMode=mixed</code>, mint tokens for daniel, vivian, vps and zion with their policies, and link vps and zion to it. This step needs the Syalia server's details and Alex at the keyboard.</p></div></div>
 </div>
 
-<h2 id="testing"><span class="n">08</span>Testing</h2>
+<h2 id="testing"><span class="n">10</span>Testing</h2>
 <p>The tests run the real server with the fake claude, as the repo prefers. Each gate below gets broken on purpose once to confirm it fails.</p>
 <ul class="checks">
 <li>A session mid-turn, server stopped with SIGTERM to aegis alone: after boot it receives the continue message and finishes its turn.<span class="b">slow</span></li>
@@ -478,16 +571,22 @@ The pool has room again. Continue where you left off.</pre>
 <li>A member's Settings draws the theme and doctor only, and a member calling <code>token.add</code> directly is refused.<span class="b">slow</span></li>
 <li>An admin adds a token in Settings, signs in with it in a second browser, revokes it, and the second browser is refused at its next message.<span class="b">slow</span></li>
 <li>Revoking the admin token: <code>&lt;state&gt;/token</code> changes, a second admin browser is refused, the browser that revoked stays signed in.<span class="b">slow</span></li>
+<li>The policy editor in a real browser: drag a stop handle, press Shift+ArrowLeft on a launch handle, tick pace, save; <code>tokens.json</code> holds the new lines and the gate applies them at the next reading.<span class="b">slow</span></li>
+<li>A launch handle dragged past the stop handle stops one point short of it.<span class="b">slow</span></li>
+<li>An agent spawns <code>x@far</code> over a link holding a member token: the far session is owned by that token and records <code>spawned_by</code>; the agent gets <code>handle@far</code> back.<span class="b">slow</span></li>
+<li>The same spawn with the far pool above the link token's launch line: the agent's tool result is <code>quota_closed</code> with the window and its reset time.<span class="b">fast</span></li>
+<li>That agent then calls <code>peer_read</code> and <code>queue_enqueue</code> on the far session and server: both still fail with <code>not_across_links</code>.<span class="b">fast</span></li>
 <li>With a stub quota reading above a member's launch line: spawn refused, enqueue left pending, delivery held. Below it: all three proceed.<span class="b">fast</span></li>
 <li>A reading above the stop line interrupts the member's running turn, leaves the admin's running; a reading below the launch line continues it with the held messages.<span class="b">fast</span></li>
 <li>A reading older than 15 minutes closes the gate and stops nothing.<span class="b">fast</span></li>
 <li><code>make bench</code> before and after the gate, in the PR body.<span class="b">bench</span></li>
 </ul>
 
-<h2 id="nongoals"><span class="n">09</span>Non-goals and open questions</h2>
+<h2 id="nongoals"><span class="n">11</span>Non-goals and open questions</h2>
 <ul>
 <li><b>Per-token metering.</b> A cap such as "zion spends at most N tokens a week" needs aegis to sum the usage each turn reports, per owner and window. It is the next quota slice, after this one has run on the Syalia server.</li>
 <li><b>Several accounts per pool.</b> Needs #151. The policy format already allows it.</li>
+<li><b>Agents enqueueing across links.</b> A far queue is the natural home for AFK work, but a spawn already covers it. Enqueueing waits until a spawn across links has been used and shows what a queue would add.</li>
 <li><b>Per-user Linux accounts.</b> Not in this spec; see <a href="#links">Links</a> for the gap that leaves.</li>
 <li><b>Open: the middle band.</b> Is <code>pace</code> what Alex meant by "mayor que el 50% del budget que queda"? If he meant a share of what is left, the rule becomes "open while the remaining percentage is at least half of what remained when the week started", and the tester changes accordingly.</li>
 </ul>
@@ -540,47 +639,188 @@ function render() {
 for (const id of ["g5", "gw", "ge"]) $(id).addEventListener("input", render);
 render();
 
-// The Settings mockup: what an admin and a member see, with add and revoke.
-let TOKS = [
-  {name: "alex", role: "admin", policy: "never gated", used: "now", owner: true},
-  {name: "daniel", role: "member", policy: "default: 5h 50/90, week pace/90", used: "12 min ago"},
-  {name: "zion", role: "member", policy: "5h 70/90, opencode-go open", used: "2 h ago"},
+// The Tokens editor mockup. Sample readings and tokens; the rules are section 05's.
+(() => {
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const clone = (x) => JSON.parse(JSON.stringify(x));
+const POOLS = {
+  "claude": {label: "Claude", windows: [
+    {kind: "session", label: "5 hours", pct: 41, elapsed: 62},
+    {kind: "weekly_all", label: "week", pct: 30, elapsed: 36, pace: true}]},
+  "opencode-go": {label: "OpenCode Go", windows: [
+    {kind: "rolling", label: "rolling", pct: 12, elapsed: null},
+    {kind: "weekly", label: "week", pct: 22, elapsed: 36, pace: true},
+    {kind: "monthly", label: "month", pct: 40, elapsed: 30, pace: true}]},
+  "codex": {label: "Codex", windows: [], nogauge: true},
+};
+let DEF = {"claude": {mode: "lines", lines: {session: {launch: 50, stop: 90}, weekly_all: {launch: "pace", stop: 90}}},
+           "opencode-go": {mode: "open"}, "codex": {mode: "closed"}};
+let TOK = [
+  {name: "alex", role: "admin", owner: true, used: "now", policy: null},
+  {name: "daniel", role: "member", used: "12 min ago", policy: null},
+  {name: "vivian", role: "member", used: "never", policy: null},
+  {name: "zion", role: "member", used: "2 h ago", policy: {"claude": {mode: "lines", lines: {session: {launch: 70, stop: 90}}},
+                                                           "opencode-go": {mode: "open"}, "codex": {mode: "closed"}}},
 ];
-let viewer = "admin", shown = "";
-const randTok = () => Array.from(crypto.getRandomValues(new Uint8Array(18)), (b) => (b % 36).toString(36)).join("");
-function drawSettings() {
-  const sec = (t, body) => `<div style="margin:4px 0 14px"><div style="color:var(--faint);margin-bottom:6px">${t}</div>${body}</div>`;
-  let h = sec("This browser", `theme <span class="pill">ink</span>`) + sec("Doctor", `<button class="btn2">Run doctor</button>`);
-  if (viewer === "member") {
-    h += `<div style="color:var(--muted)">Server settings (agents, queues, servers, tokens) are edited by an admin.</div>`;
-  } else {
-    h += sec("Servers", `vps · https://vps.apiad.net <button class="btn2">Remove</button>`);
-    const rows = TOKS.map((t, i) => `<div style="display:grid;grid-template-columns:80px 70px 1fr 90px 170px;gap:8px;padding:5px 0;border-bottom:1px solid var(--rule);align-items:baseline"><span style="color:var(--strong)">${t.name}</span><span style="color:var(--faint)">${t.role}</span><span style="color:var(--muted)">${t.policy}</span><span style="color:var(--faint)">${t.used}</span><span><button class="btn2" data-rev="${i}">${t.owner ? "Revoke and regenerate" : "Revoke"}</button></span></div>`).join("");
-    const add = `<div style="display:flex;gap:8px;margin-top:10px"><input id="newname" placeholder="name" style="background:var(--bg);border:1px solid var(--rule);color:var(--strong);font:12px var(--font-mono);padding:4px 8px;border-radius:5px"><select id="newrole" style="background:var(--bg);border:1px solid var(--rule);color:var(--strong);font:12px var(--font-mono);border-radius:5px"><option>member</option><option>admin</option></select><button class="btn2" id="addtok">Add token</button></div>`;
-    const once = shown ? `<div class="notice" style="margin-top:10px"><span class="lbl">shown once</span>${shown} <button class="btn2">copy</button></div>` : "";
-    h += sec("Tokens", rows + add + once);
+let saved = clone({DEF, TOK}), dirty = false, justSaved = false, once = "";
+const polOf = (who) => who === "def" ? DEF : TOK[+who].policy;
+const winOf = (pool, kind) => POOLS[pool].windows.find((w) => w.kind === kind);
+
+function poolState(pp, pool) {
+  if (!pp || pp.mode === "closed") return "closed";
+  if (pp.mode === "open") return "open";
+  let st = "open";
+  for (const w of pool.windows) {
+    const l = pp.lines[w.kind];
+    if (!l) continue;
+    if (w.pct >= l.stop) return "stopped";
+    if (l.launch === "pace" ? w.pct > w.elapsed : w.pct >= l.launch) st = "closed";
   }
-  $("setpage").innerHTML = h;
-  document.querySelectorAll("[data-rev]").forEach((b) => b.addEventListener("click", () => {
-    const t = TOKS[+b.dataset.rev];
-    if (t.owner) { shown = `new admin token for alex: ${randTok()}. Other browsers and links holding the old one are signed out.`; t.used = "now"; }
-    else { TOKS.splice(+b.dataset.rev, 1); shown = ""; }
-    drawSettings();
-  }));
-  $("addtok")?.addEventListener("click", () => {
-    const name = $("newname").value.trim().toLowerCase();
-    if (!name || TOKS.some((t) => t.name === name)) return;
-    const role = $("newrole").value;
-    TOKS.push({name, role, policy: role === "admin" ? "never gated" : "default: 5h 50/90, week pace/90", used: "never"});
-    shown = `token for ${name}: ${randTok()}`;
-    drawSettings();
-  });
+  return st;
 }
-for (const b of document.querySelectorAll("#setseg button")) b.addEventListener("click", () => {
-  document.querySelectorAll("#setseg button").forEach((x) => x.classList.toggle("on", x === b));
-  viewer = b.dataset.r; shown = ""; drawSettings();
+const chips = (pol) => Object.entries(POOLS).map(([k, p]) => {
+  const s = poolState(pol[k], p);
+  return `<span class="set-pill ${s === "open" ? "ok" : s === "stopped" ? "bad" : "warn"}">${p.label} ${s}</span>`;
+}).join("");
+const readout = (l) => `launch ${l.launch === "pace" ? "while on pace" : "below " + l.launch + "%"} · stop at ${l.stop}%`;
+
+function winrow(pp, w, who, k) {
+  const l = pp.lines[w.kind], d = `data-who="${who}" data-pool="${k}" data-win="${w.kind}"`;
+  const paceBox = (on, checked) => w.pace ? `<label><input type="checkbox" data-act="pace" ${d} ${checked ? "checked" : ""} ${on ? "" : "disabled"}>pace</label>` : "";
+  if (!l) return `<div class="winrow off"><label><input type="checkbox" data-act="use" ${d}>${w.label}</label><div class="track"><i style="width:${w.pct}%"></i></div><span class="wv"><span class="rd">not used</span>${paceBox(false, false)}</span></div>`;
+  const pace = l.launch === "pace", lpos = pace ? w.elapsed : l.launch;
+  const launch = pace ? `<span class="pace" style="left:${w.elapsed}%"><span>pace</span></span>`
+    : `<button class="h l" ${d} data-h="launch" style="left:${l.launch}%" aria-label="${w.label} launch line"><span>${l.launch}</span></button>`;
+  return `<div class="winrow"><label><input type="checkbox" data-act="use" ${d} checked>${w.label}</label>`
+    + `<div class="track" ${d}><i style="width:${w.pct}%"></i><span class="zone closed" style="left:${lpos}%;width:${Math.max(0, l.stop - lpos)}%"></span>`
+    + `<span class="zone stop" style="left:${l.stop}%;right:0"></span>${launch}`
+    + `<button class="h s" ${d} data-h="stop" style="left:${l.stop}%" aria-label="${w.label} stop line"><span>${l.stop}</span></button></div>`
+    + `<span class="wv"><span class="rd">${readout(l)}</span>${paceBox(true, pace)}</span></div>`;
+}
+function editor(pol, who) {
+  return `<div class="pol">` + Object.entries(POOLS).map(([k, p]) => {
+    const pp = pol[k] || {mode: "closed"};
+    const modes = p.nogauge ? ["closed", "open"] : ["closed", "open", "lines"];
+    const sel = `<select class="pick" data-act="mode" data-who="${who}" data-pool="${k}">${modes.map((m) => `<option value="${m}" ${pp.mode === m ? "selected" : ""}>${m === "open" ? "open, no lines" : m}</option>`).join("")}</select>`;
+    const note = pp.mode === "lines" ? "" : `<span class="wv">${pp.mode === "open" ? "may start at any reading" : "may not start harnesses here"}${p.nogauge ? "; no gauge, so no lines" : ""}</span>`;
+    const rows = pp.mode === "lines" ? p.windows.map((w) => winrow(pp, w, who, k)).join("") : "";
+    return `<div class="poolrow"><span class="pl">${p.label}</span><div><div class="modeline">${sel}${note}</div>${rows}</div></div>`;
+  }).join("") + `</div>`;
+}
+function card(t, i) {
+  if (t === null) return `<div class="set-agent is-default"><span class="set-name">default</span><div class="picks"><span class="set-none">every member without a policy of its own</span>${chips(DEF)}</div>${editor(DEF, "def")}</div>`;
+  const who = String(i), member = t.role === "member";
+  const policyLink = member ? (t.policy ? `<button class="link" data-act="reset" data-who="${who}">Reset to default</button>` : `<button class="link" data-act="custom" data-who="${who}">Customize</button>`) : "";
+  const head = `<span class="set-name">${esc(t.name)}</span><div class="picks">`
+    + (t.owner ? `<span class="pick">admin</span>` : `<select class="pick" data-act="role" data-who="${who}"><option ${member ? "selected" : ""}>member</option><option ${member ? "" : "selected"}>admin</option></select>`)
+    + (member ? chips(t.policy || DEF) : `<span class="set-pill">never gated</span>`)
+    + `<span class="set-none" style="font-size:11.5px">used ${esc(t.used)}</span><span style="margin-left:auto"></span>${policyLink}`
+    + `<button class="link danger" data-act="revoke" data-who="${who}">${t.owner ? "Revoke and regenerate" : "Revoke"}</button></div>`;
+  const body = member ? (t.policy ? editor(t.policy, who) : `<div class="pol"><span class="set-none">uses the default</span></div>`) : "";
+  return `<div class="set-agent">${head}${body}</div>`;
+}
+function render() {
+  $("poolnow").innerHTML = Object.values(POOLS).map((p) => `<div><h5>${p.label}</h5>` + (p.nogauge ? `<div class="kv dim"><span>no gauge</span></div>`
+    : p.windows.map((w) => `<div class="kv"><span>${w.label}</span><span>${w.pct}%</span></div><div class="bar"><i style="width:${w.pct}%"></i>${w.elapsed != null ? `<span class="tick" style="left:${w.elapsed}%"></span>` : ""}</div>`).join("")) + `</div>`).join("");
+  $("tokcards").innerHTML = card(null) + TOK.map(card).join("");
+  $("tk-bar").classList.toggle("dirty", dirty);
+  $("tk-status").textContent = dirty ? "Unsaved changes" : justSaved ? "Saved" : "No changes";
+  $("tk-once").innerHTML = once;
+}
+function touch() { dirty = true; justSaved = false; render(); }
+
+function setLine(d, v) {
+  const l = polOf(d.who)[d.pool].lines[d.win], w = winOf(d.pool, d.win);
+  if (d.which === "launch") l.launch = Math.max(1, Math.min(v, l.stop - 1));
+  else l.stop = Math.min(100, Math.max(v, l.launch === "pace" ? 1 : l.launch + 1));
+  const tr = d.track, lpos = l.launch === "pace" ? w.elapsed : l.launch;
+  const hl = tr.querySelector(".h.l"), hs = tr.querySelector(".h.s");
+  if (hl) { hl.style.left = l.launch + "%"; hl.firstChild.textContent = l.launch; }
+  hs.style.left = l.stop + "%"; hs.firstChild.textContent = l.stop;
+  const zc = tr.querySelector(".zone.closed");
+  zc.style.left = lpos + "%"; zc.style.width = Math.max(0, l.stop - lpos) + "%";
+  tr.querySelector(".zone.stop").style.left = l.stop + "%";
+  tr.closest(".winrow").querySelector(".rd").textContent = readout(l);
+}
+const handleData = (h) => ({who: h.dataset.who, pool: h.dataset.pool, win: h.dataset.win, which: h.dataset.h, track: h.parentElement});
+const root = $("tokmock");
+let drag = null;
+root.addEventListener("pointerdown", (e) => {
+  const h = e.target.closest(".h");
+  if (!h) return;
+  drag = handleData(h);
+  h.setPointerCapture(e.pointerId);
+  e.preventDefault();
 });
-drawSettings();
+root.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const r = drag.track.getBoundingClientRect();
+  setLine(drag, Math.round((e.clientX - r.left) / r.width * 100));
+});
+root.addEventListener("pointerup", () => { if (drag) { drag = null; touch(); } });
+root.addEventListener("keydown", (e) => {
+  const h = e.target.closest(".h");
+  if (!h || !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+  e.preventDefault();
+  const d = handleData(h), l = polOf(d.who)[d.pool].lines[d.win];
+  setLine(d, (d.which === "launch" ? l.launch : l.stop) + (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 5 : 1));
+  touch();
+  root.querySelector(`.h[data-who="${d.who}"][data-pool="${d.pool}"][data-win="${d.win}"][data-h="${d.which}"]`)?.focus();
+});
+root.addEventListener("change", (e) => {
+  const t = e.target, a = t.dataset.act, who = t.dataset.who;
+  if (!a) return;
+  if (a === "role") TOK[+who].role = t.value;
+  if (a === "mode") {
+    const pol = polOf(who), pool = t.dataset.pool, cur = pol[pool] || {};
+    pol[pool] = t.value === "lines" ? {mode: "lines", lines: cur.lines || {}} : {mode: t.value};
+    if (t.value === "lines" && !Object.keys(pol[pool].lines).length) pol[pool].lines[POOLS[pool].windows[0].kind] = {launch: 50, stop: 90};
+  }
+  if (a === "use") {
+    const pp = polOf(who)[t.dataset.pool];
+    if (t.checked) pp.lines[t.dataset.win] = {launch: 50, stop: 90}; else delete pp.lines[t.dataset.win];
+  }
+  if (a === "pace") {
+    const l = polOf(who)[t.dataset.pool].lines[t.dataset.win];
+    l.launch = t.checked ? "pace" : Math.min(50, l.stop - 1);
+  }
+  touch();
+});
+root.addEventListener("click", (e) => {
+  const t = e.target.closest("button[data-act]");
+  if (!t) return;
+  const a = t.dataset.act, who = t.dataset.who;
+  if (a === "custom") { TOK[+who].policy = clone(DEF); touch(); }
+  if (a === "reset") { TOK[+who].policy = null; touch(); }
+  if (a === "revoke") {
+    if (!t.classList.contains("armed")) { t.classList.add("armed"); t.textContent = "Click again to confirm"; return; }
+    const tk = TOK[+who];
+    if (tk.owner) {
+      tk.used = "now";
+      once = `<div class="notice"><span class="lbl">shown once</span>New admin token: ${randTok()}. Every other browser and link that held the old one is signed out; this browser signed back in with the new one.</div>`;
+    } else {
+      TOK.splice(+who, 1);
+      saved.TOK = saved.TOK.filter((x) => x.name !== tk.name);
+      once = `<div class="notice"><span class="lbl">revoked</span>${esc(tk.name)}'s browsers and links are refused at their next message. Its sessions keep running.</div>`;
+    }
+    render();
+  }
+});
+const randTok = () => Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => "abcdefghijkmnopqrstuvwxyz23456789"[b % 33]).join("");
+$("tk-add").addEventListener("click", () => {
+  const name = $("tk-name").value.trim().toLowerCase();
+  if (!/^[a-z][a-z0-9-]*$/.test(name) || TOK.some((t) => t.name === name)) return;
+  const t = {name, role: $("tk-role").value, used: "never", policy: null};
+  TOK.push(t); saved.TOK.push(clone(t));
+  $("tk-name").value = "";
+  once = `<div class="notice"><span class="lbl">shown once</span>Token for ${esc(name)}: ${randTok()}. Copy it now; aegis keeps only its hash.</div>`;
+  render();
+});
+$("tk-save").addEventListener("click", () => { saved = clone({DEF, TOK}); dirty = false; justSaved = true; render(); });
+$("tk-discard").addEventListener("click", () => { DEF = clone(saved.DEF); TOK = clone(saved.TOK); dirty = false; justSaved = false; render(); });
+render();
+})();
+
 
 // The three UI views.
 for (const b of document.querySelectorAll("#seg button")) b.addEventListener("click", () => {
