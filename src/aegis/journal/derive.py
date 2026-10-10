@@ -26,7 +26,7 @@ WRITE_TOOLS = {
     "NotebookEdit": "edit",
     "Delete": "write",
 }
-TURN_ENDS = ("exit", "stop", "server_stopped")
+TURN_ENDS = ("exit", "stop", "server_stopped", "reset")
 
 
 @dataclass
@@ -52,7 +52,7 @@ class Deriver:
         self._turn: list[tuple[str, str]] = []
         self._prompt = ""
         self._said: str | None = None
-        self._done: set[str] = set()
+        self._done: set[str] = set()  # done in the previous plan record
         self._ts = 0.0
 
     def feed(self, record: dict, events: list | None = None) -> list[Row]:
@@ -150,12 +150,17 @@ class Deriver:
                 self._said = str(rec.get("line") or "") or None
             return []
         if kind == "plan":
-            rows = []
-            for item in rec.get("items") or []:
-                text = str(item.get("text") or "")
-                if item.get("state") == "done" and text and text not in self._done:
-                    self._done.add(text)
-                    rows.append(self._row(i, ts, "plan", text, source=self._last_call))
+            now = [
+                str(item.get("text") or "")
+                for item in rec.get("items") or []
+                if item.get("state") == "done"
+            ]
+            rows = [
+                self._row(i, ts, "plan", text, source=self._last_call)
+                for text in dict.fromkeys(now)
+                if text and text not in self._done
+            ]
+            self._done = set(now)
             return rows
         if kind == "journal_note":
             touches = [
@@ -175,17 +180,29 @@ class Deriver:
                 )
             ]
         if kind in TURN_ENDS:
+            self._end_turn()
             return self._close_turn(i, ts, f"e{i}")
         if kind == "close":
+            self._end_turn()
             return self._close_turn(i, ts, f"e{i}") + [
                 self._row(i, ts, "session", "closed", source=f"e{i}")
             ]
         return []
 
+    def _end_turn(self) -> None:
+        """A turn ended without a result: each parser forgets it, as the Fold's
+        do, so a rebuild sees the events the live Fold saw."""
+        for p in self._parsers.values():
+            end = getattr(p, "end_turn", None)
+            if end is not None:
+                end()
+        self._calls.clear()
+
     def _close_turn(self, i: int, ts: float, source: str) -> list[Row]:
         touches = list(dict.fromkeys(self._turn))
         said, prompt = self._said, self._prompt
         self._turn, self._said, self._prompt = [], None, ""
+        self._last_call = None
         if not touches and not said:
             return []
         text = said or prompt[:120] or "a turn"
