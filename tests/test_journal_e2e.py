@@ -584,3 +584,15 @@ def test_the_cli_rebuilds_over_a_corrupt_file_and_refuses_an_unknown_kind(tmp_pa
         cli, ["journal", "search", "--kind", "commits", "--root", str(tmp_path)]
     )
     assert out.exit_code == 2 and "commits" in out.output, out.output
+
+
+async def test_an_entry_from_before_a_rename_names_the_current_handle(world):
+    """peer_read takes an open session's current handle, not the one an old
+    entry carries."""
+    a = await world.spawn()
+    old = a.handle
+    await turn(a, mcp("journal_note", text="before the rename", tag="decision"))
+    world.app.sessions.rename(a.log_id, "renamed-one", None)
+    world.app.journal.flush()
+    said = await turn(a, mcp("journal_search", pattern="before the rename"))
+    assert f"{old} (now renamed-one)  note" in said, said

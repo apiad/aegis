@@ -69,7 +69,7 @@ class NoteParams(_Strict):
     paths: list[str] = Field(
         default_factory=list,
         max_length=20,
-        description="Files or directories it is about, if any.",
+        description="Files or directories it is about, if any. A relative path is read from the session's working directory.",
     )
 
 
@@ -113,9 +113,12 @@ def register_journal_ops(app: "App") -> None:
         items, turns that changed files, and the decisions, blockers and
         milestones agents noted. Filter by days, a pattern, a path the entries
         wrote under, a session, a repo or kinds. Newest first, grouped by day. Each
-        entry names the session's handle, which peer_read takes."""
+        entry names the session's handle when it was made; peer_read reads a
+        session while it is open, under its current handle, which an entry
+        made before a rename names as "(now ...)"."""
         hits, cut, _ = await asyncio.to_thread(run, p)
-        return render.text(hits, cut, root)
+        handles = {k: s.handle for k, s in app.sessions.sessions.items()}
+        return render.text(hits, cut, root, handles)
 
     @r.op("journal.rows", RowsParams)
     async def journal_rows(p: RowsParams, caller):

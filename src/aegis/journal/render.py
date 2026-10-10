@@ -32,7 +32,11 @@ def _time(ts: float) -> str:
     return time.strftime("%H:%M", time.localtime(ts))
 
 
-def text(hits: list[Hit], cut: bool, root: str) -> str:
+def text(
+    hits: list[Hit], cut: bool, root: str, handles: dict[str, str] | None = None
+) -> str:
+    """``handles``: each open session's current handle by log id, named beside
+    an entry made under an older one, since peer_read takes only the current."""
     out: list[str] = []
     day = None
     for h in hits:
@@ -40,7 +44,9 @@ def text(hits: list[Hit], cut: bool, root: str) -> str:
             day = _day(h.ts)
             out.append(day)
         tag = f"{h.tag}: " if h.tag else ""
-        out.append(f"  {_time(h.ts)}  {h.handle}  {h.kind}  {tag}{h.text}")
+        now = (handles or {}).get(h.log_id)
+        who = f"{h.handle} (now {now})" if now and now != h.handle else h.handle
+        out.append(f"  {_time(h.ts)}  {who}  {h.kind}  {tag}{h.text}")
         if h.paths:
             more = f"  +{len(h.paths) - SHOWN} more" if len(h.paths) > SHOWN else ""
             out.append(
