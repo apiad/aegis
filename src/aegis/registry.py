@@ -108,7 +108,16 @@ class Registry(Host):
             if self.monitors is not None
             else [],
             **self._attention(session),
+            **self._worker(session),
         }
+
+    def _worker(self, s: Session) -> dict:
+        """A worker's wire field with its task's status, so the Fleet can set a
+        finished worker (one reopened from the archive, say) apart from a live one."""
+        if not s.worker:
+            return {}
+        t = self.queues.tasks.get(s.worker["task_id"]) if self.queues else None
+        return {"worker": {**s.worker, "status": t.status if t else "gone"}}
 
     def _attention(self, s: Session) -> dict:
         last = s.standing.get("last_message")

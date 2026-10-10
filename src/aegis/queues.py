@@ -289,6 +289,7 @@ class Queues:
                 raise LookupError("its worker no longer exists")
         t.status, t.error, t.finished_at = "running", None, None
         self._log(t, "resumed")
+        self._registry.refresh_card(s.log_id)
         await s.deliver(
             f"> from queue:{t.queue} · task#{t.id} · resume · {iso_now()}", CONTINUE
         )

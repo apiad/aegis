@@ -38,7 +38,14 @@ export function money(usd) {
 // The cards a person must act on, shown first when the Fleet is ordered by need.
 // Grouped on the drawn mark, so a review already read joins the rest.
 const NEEDS = new Set(["needs_you", "error", "review"]);
-const group = (m) => (NEEDS.has(m.mark) ? "needs" : "rest");
+
+// A queue worker whose task is over and that is quiet: its result went to whoever
+// enqueued it, so nothing on its card is for you. A failed task, an errored
+// turn and a worker at work are all still yours to look at.
+export const finished = (m) =>
+  !!m.worker && ["completed", "cancelled"].includes(m.worker.status) && ["done", "review"].includes(m.attention);
+
+const group = (m) => (NEEDS.has(m.mark) && !finished(m) ? "needs" : "rest");
 
 // Which session needs you most: what blocks on you, then failures, then results
 // to read, and within each the one waiting longest. A read review or done shows
@@ -68,7 +75,8 @@ export function renderCards(box, metas, onOpen, order = "attention") {
   }
   const out = [];
   const needs = metas.filter((m) => group(m) === "needs").sort(byWait);
-  const rest = metas.filter((m) => group(m) === "rest");
+  // Finished workers sink below the live cards; the sort is stable.
+  const rest = metas.filter((m) => group(m) === "rest").sort((a, b) => finished(a) - finished(b));
   if (needs.length) out.push(el("div", "grp-h", "Needs you"), ...needs.map((m) => card(m, onOpen)));
   // With nobody needing you, the order bar's "Sessions" heading names the list.
   if (rest.length && needs.length) out.push(el("div", "grp-h", "Everything else"));
@@ -81,7 +89,7 @@ export function renderCards(box, metas, onOpen, order = "attention") {
 export function patchCard(box, m, onOpen, order = "attention") {
   const old = box.querySelector(`.card[data-id="${CSS.escape(m.key)}"]`);
   if (!old) return true;
-  if (order === "attention" && (old.dataset.group !== group(m) || old.dataset.rank !== rank(m))) return false;
+  if (order === "attention" && (old.dataset.group !== group(m) || old.dataset.rank !== rank(m) || old.classList.contains("finished") !== finished(m))) return false;
   old.replaceWith(card(m, onOpen));
   return true;
 }
@@ -93,7 +101,7 @@ export function markNode(m) {
 }
 
 function card(m, onOpen) {
-  const c = el("div", `card ${m.state} at-${m.attention}${m.off ? " off" : ""}`);
+  const c = el("div", `card ${m.state} at-${m.attention}${m.off ? " off" : ""}${finished(m) ? " finished" : ""}`);
   c.dataset.id = m.key;
   c.dataset.group = group(m);
   c.dataset.rank = rank(m);
