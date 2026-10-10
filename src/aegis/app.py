@@ -650,16 +650,19 @@ class App:
                         f"no command /{name} in this session; "
                         "start the line with // to send it as text",
                     )
-            sent: list[dict] = []
-            if p.attachments:
-                try:
-                    sent = await asyncio.to_thread(
-                        att.commit, self.roots.state_root, p.log_id, p.attachments
-                    )
-                except files.FileError as e:
-                    raise OpError(e.code, e.message) from e
             text = commands.escape(p.text)
             try:
+                # The harness first: a send that cannot reach the agent leaves
+                # its uploads staged, to send again.
+                await s.ensure_running()
+                sent: list[dict] = []
+                if p.attachments:
+                    try:
+                        sent = await asyncio.to_thread(
+                            att.commit, self.roots.state_root, p.log_id, p.attachments
+                        )
+                    except files.FileError as e:
+                        raise OpError(e.code, e.message) from e
                 await s.send(att.message(text, sent), typed=text, attached=sent)
             except FileNotFoundError as e:
                 raise OpError(

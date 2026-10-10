@@ -202,3 +202,31 @@ async def test_claude_starts_with_its_inbox_as_an_added_dir(app):
     argv = await argv_of(s)
     assert argv[argv.index("--add-dir") + 1] == str(s.inbox)
     assert s.inbox.is_dir() and s.inbox.stat().st_mode & 0o777 == 0o700
+
+
+async def test_a_send_that_cannot_start_the_harness_leaves_the_upload_staged(
+    app, tmp_path
+):
+    lid = await spawn(app)
+    s = app.sessions.sessions[lid]
+    uid = await upload(app, lid, "a.txt", b"x")
+    await s.stop()
+    claude = tmp_path / "bin" / "claude"
+    claude.rename(claude.with_name("claude.away"))
+    with pytest.raises(OpError) as e:
+        await app.registry.call(
+            "session.send", {"log_id": lid, "text": "hi", "attachments": [uid]}
+        )
+    assert e.value.code == "harness_not_found"
+    assert (
+        attachments.inbox(app.roots.state_root, lid) / ".staged" / uid / "a.txt"
+    ).exists()
+    claude.with_name("claude.away").rename(claude)
+    await app.registry.call(
+        "session.send", {"log_id": lid, "text": "hi", "attachments": [uid]}
+    )
+    await until(lambda: s.status == "idle", timeout=8, what="the resent turn")
+    assert [
+        f["name"]
+        for f in [e for e in s.entries() if e["kind"] == "user"][-1]["detail"]["files"]
+    ] == ["a.txt"]
