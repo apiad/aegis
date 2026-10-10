@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+import aegis.registry
 from aegis.journal import db, service
 from aegis.journal.derive import Row
 from aegis.journal.service import COMPLETE, Journal
@@ -600,10 +601,15 @@ def test_the_cli_rebuilds_over_a_corrupt_file_and_refuses_an_unknown_kind(tmp_pa
     assert out.exit_code == 2 and "commits" in out.output, out.output
 
 
-async def test_the_journal_view_searches_one_fuzzy_box(world):
+async def test_the_journal_view_searches_one_fuzzy_box(world, monkeypatch):
     """Alex typed `scra` and `Rustic-rivest` on a phone and got nothing: the
     box matches every field, in any case, with letters in order."""
+    # A minted handle can fuzzy-match the queries below (hale-hopper matches
+    # `alp`, rustic-rabin matches `scra`), and then the session's own rows join
+    # the hits and shift the page. keen-knuth matches none of them.
+    monkeypatch.setattr(aegis.registry, "mint_handle", lambda taken: "keen-knuth")
     a = await world.spawn()
+    assert a.handle == "keen-knuth"
     old = a.handle
     (world.root / "scratch-repo").mkdir()
     await turn(a, f"/write {world.root / 'scratch-repo' / 'notes.md'} => x")
