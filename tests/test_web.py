@@ -746,6 +746,48 @@ def test_transcript_detail_returns_what_the_wire_left_out(project, fake_claude):
         conn.call("session.close", log_id=log_id)
 
 
+def test_transcript_search_finds_what_the_wire_left_out(project, fake_claude):
+    """The find bar searches what the browser holds; the server, only the
+    detail the wire withheld (#250)."""
+    with (
+        client_for(project, fake_claude) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        conn = Conn(ws).hello()
+        log_id = conn.call("session.spawn", agent="opus")["result"]["log_id"]
+        ch = f"transcript:{log_id}"
+        ws.send_json({"t": "sub", "channel": ch})
+        conn.until(lambda m: m["t"] == "snapshot" and m["channel"] == ch)
+        conn.call("session.send", log_id=log_id, text="/bash list it => Hidden-Needle")
+        patch = conn.until(
+            lambda m: (
+                m["t"] == "patch"
+                and m["channel"] == ch
+                and any(
+                    op.get("upsert", {}).get("kind") == "tool"
+                    and op["upsert"]["status"] == "ok"
+                    for op in m["ops"]
+                )
+            )
+        )
+        (tool,) = [
+            op["upsert"]
+            for op in patch["ops"]
+            if op.get("upsert", {}).get("kind") == "tool"
+        ]
+
+        def search(q, log=log_id):
+            return conn.call("transcript.search", log_id=log, q=q)
+
+        assert search("hidden-NEEDLE")["result"] == {"ids": [tool["id"]]}
+        assert search("not in it")["result"] == {"ids": []}
+        assert search("x", "nope")["error"]["code"] == "no_session"
+        assert search("")["error"]["code"] == "bad_params"
+        conn.call("session.close", log_id=log_id)
+        # An archived transcript, as the read view shows it, from its store.
+        assert search("hidden-needle")["result"] == {"ids": [tool["id"]]}
+
+
 def stub_dictation(root: Path) -> Path:
     from aegis.dictation import PINS, pin_id
 

@@ -6,7 +6,7 @@ resolves a ``/`` line first, ``commands.py``), ``session.read``,
 ``commands.list``, ``session.interrupt``, ``session.stop``, ``session.close``,
 ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``, ``file.peek``,
-``quota.read``, ``transcript.detail``, ``transcript.output``, and ``config.read``, ``config.write``,
+``quota.read``, ``transcript.detail``, ``transcript.search``, ``transcript.output``, and ``config.read``, ``config.write``,
 ``config.detect``, ``config.doctor`` and ``config.propose`` (``config_ops.py``),
 and ``artifact.create``, ``artifact.send``, ``artifact.read``,
 ``artifact.update``, ``artifact.close``, ``artifact.state``, ``artifact.emit``,
@@ -122,6 +122,11 @@ class DetailParams(_Strict):
 class OutputParams(_Strict):
     log_id: str
     id: str
+
+
+class SearchParams(_Strict):
+    log_id: str
+    q: str = Field(min_length=1, max_length=200)
 
 
 class RenameParams(_Strict):
@@ -672,6 +677,12 @@ class App:
         async def detail(p: DetailParams, caller):
             """The whole entries for rows the wire sent without their detail."""
             return reg.detail(p.log_id, p.ids)
+
+        @r.op("transcript.search", SearchParams)
+        async def search(p: SearchParams, caller):
+            """The entries whose detail the wire left out hold ``q``: the find
+            bar searches the rest in the browser (js/find.js)."""
+            return {"ids": reg.search(p.log_id, p.q)}
 
         @r.op("transcript.output", OutputParams)
         async def output(p: OutputParams, caller):

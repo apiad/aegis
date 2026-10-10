@@ -246,7 +246,11 @@ changed since the revision it holds, and the client keeps the last 8 tabs it
 showed.
 A tool's entry holds only the tail of its output (`describe.output_tail`);
 its copy button asks for the whole with `transcript.output`, which parses the
-store again.
+store again. So the browser cannot search a transcript alone: the find bar
+(`js/find.js`) searches the entries' text it holds and asks
+`transcript.search` for the ids whose withheld detail matches
+(`wire.withheld_text`), which the module that withholds it defines. Fetching
+every row's detail to search it would ship back the 75% the wire saves.
 
 **A renderer is a function that returns a Node.** The client is plain ES modules
 with no framework and no build step. A plugin's renderer has the same shape, so
@@ -288,8 +292,11 @@ W, N and Tab, and on Linux Alt+1…9 and Alt+←/→, for itself, so the chords 
 Alt keys it leaves free. Plain keys act only outside a text field and the view
 decides what they do: there is no mode. A selection, in the transcript or the
 Fleet, is held by id and re-marked after every redraw, because both replace their
-nodes on each patch. Esc closes, in order, a dialog, the drawer, the ? list and a
-monitor card or a panel row's card, and only then interrupts.
+nodes on each patch. Esc closes, in order, a dialog, the drawer, the ? list, the
+find bar and a monitor card or a panel row's card, and only then interrupts.
+Ctrl+F outside a text field in a transcript is the find bar's, not the
+browser's, whose find misses every row not mounted and every closed detail; a
+second Ctrl+F, inside the bar, is the browser's again.
 
 **A theme is one CSS file over one markup.** The markup carries everything any
 theme might show, and the base stylesheet reads only CSS variables. A theme sets

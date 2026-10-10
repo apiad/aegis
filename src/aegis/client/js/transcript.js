@@ -432,6 +432,31 @@ export class Transcript {
     if (!this.selected) this.select(this.inView()?.dataset.id || null);
   }
 
+  // The find bar's step (js/find.js): the entry's row mounted, its run open,
+  // selected and centered. The row it returns may still be skipping layout.
+  reveal(id) {
+    while (!this.nodes.has(id) && this.mountEarlier());
+    const n = this.nodes.get(id);
+    if (!n) return null;
+    if (n.dataset.fold && !n.classList.contains("run-open")) {
+      this.openRuns.add(this.nodes.get(this.headOf.get(id) ?? id).dataset.run);
+      this.fold();
+    }
+    this.following = false;
+    this.selected = id;
+    this.mark();
+    n.scrollIntoView({ block: "center" });
+    return n;
+  }
+
+  // Opens a row's details as the reader would, so they stay open.
+  open(id) {
+    const d = this.nodes.get(id)?.querySelector("details");
+    if (!d || d.open) return;
+    this.touched.add(id);
+    d.open = true;
+  }
+
   // Walking up past the first mounted row mounts the page before it.
   move(delta, keep = () => true) {
     let n = this.selected ? this.nodes.get(this.selected) : null;
