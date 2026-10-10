@@ -5183,6 +5183,23 @@ def test_settings_keeps_the_theme_for_this_browser(server, page):
     assert page.errors == []
 
 
+SECTIONS = "[...document.querySelectorAll('#settings .set-page > *')].map(e => e.className || e.tagName)"
+
+
+def test_settings_opens_on_its_title_then_this_browser_then_servers(server, page):
+    page.goto(server.url + "#settings")
+    page.wait_for_selector("#a2[data-view=settings] .set-harness")
+    order = page.evaluate(SECTIONS)
+    assert order[:3] == ["set-head", "set-browser", "set-servers"], order
+
+
+def test_settings_without_a_config_keeps_the_page_width(empty_server, page):
+    page.goto(empty_server.url + "#settings")
+    page.wait_for_selector("#set-setup")
+    order = page.evaluate(SECTIONS)
+    assert order[:3] == ["set-empty", "set-browser", "set-servers"], order
+
+
 def test_the_journal_reloads_a_list_paged_past_500_rows(
     server, browser, page, tmp_path
 ):

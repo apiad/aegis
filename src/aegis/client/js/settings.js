@@ -149,15 +149,17 @@ export class Settings {
 
   draw() {
     const w = this.wire;
-    if (!w || !this.doc)
-      return this.box.replaceChildren(this.browser(), this.servers(), h("p", { className: "notice", textContent: "Loading…" }));
-    if (!w.exists && !this.dirty) return this.box.replaceChildren(this.browser(), this.servers(), this.empty());
-    const page = h(
+    // The title first, then what this browser keeps, then the servers; the
+    // loading and no-config pages keep the same width and order.
+    const page = (...kids) => h("div", { className: "set-page" }, ...kids, this.browser(), this.servers());
+    if (!w || !this.doc) return this.box.replaceChildren(page(h("p", { className: "notice", textContent: "Loading…" })));
+    if (!w.exists && !this.dirty) return this.box.replaceChildren(page(this.empty()));
+    const full = h(
       "div",
       { className: "set-page" },
+      this.head(),
       this.browser(),
       this.servers(),
-      this.head(),
       w.error && h("p", { className: "set-alert err", id: "set-error", textContent: `The file on disk does not parse, so aegis is still using the last version that did. ${w.error}` }),
       this.stale &&
         h(
@@ -173,7 +175,7 @@ export class Settings {
       this.agents(),
       this.queues(),
     );
-    this.box.replaceChildren(page, this.bar());
+    this.box.replaceChildren(full, this.bar());
     this.mark();
   }
 

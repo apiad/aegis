@@ -910,7 +910,11 @@ body{background:#000}
 .a2 .spawn .srvpick{background:none;border:none;font-family:var(--font-mono);font-size:12px;color:var(--accent);cursor:pointer}
 .a2 .spawn .srvsep{font-family:var(--font-mono);font-size:12px;color:var(--faint)}
 /* Settings: what this browser alone keeps. */
-.a2 .set-browser{margin:0 0 26px}
+.a2 .set-browser{margin:24px 0 26px}
+/* Loading and no config: the same page, the message where the title goes. */
+.a2 .set-page>.notice{margin:0;text-align:left}
+.a2 .set-page>.set-empty{margin:4vh 0 0;padding:0}
+.a2 .set-page>.set-empty+.set-browser,.a2 .set-page>.notice+.set-browser{margin-top:36px}
 .a2 .set-browser h3,.a2 .set-servers h3{margin:0 0 4px;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
 .a2 .set-browser-row{display:flex;align-items:center;gap:12px;margin:10px 0 8px}
 .a2 .set-browser-k{font-family:var(--font-chrome);font-size:12px;color:var(--muted);min-width:64px}
