@@ -135,8 +135,13 @@ transcript, so the workplace grows with what its agents build.
   with a 17.8 MB model downloaded once. The text lands in the box and is never
   sent on its own.
 - **Keyboard and commands.** Alt chords move between the message box, the
-  transcript, the Fleet and the tabs, and `?` lists every key. `/` opens a menu
-  of aegis's commands and the agent's own commands and skills.
+  transcript, the Fleet and the tabs, and `?` lists every key. Ctrl+K (⌘K)
+  opens a palette of every action for the view you are in. `/` opens a menu of
+  aegis's commands and the agent's own commands and skills.
+- **Find and copy.** Ctrl+F (⌘F) in a transcript searches every entry,
+  including tool output and thinking the page has not loaded, and opens the row
+  each match is in. Messages, code blocks and tool output carry a copy button
+  that copies the raw text, and `c` copies the selected row.
 - **Three themes.** Ink, Logbook and Syalia.
 
 ## Configure
