@@ -5200,6 +5200,25 @@ def test_settings_without_a_config_keeps_the_page_width(empty_server, page):
     assert order[:3] == ["set-empty", "set-browser", "set-servers"], order
 
 
+def test_a_settings_redraw_leaves_the_theme_list_open(server, page):
+    page.goto(server.url + "#settings")
+    page.wait_for_selector("#a2[data-view=settings] .set-harness")
+    page.click("#set-theme input")
+    page.wait_for_selector("#set-theme .menu:not([hidden])")
+    # The file changes on disk: the config channel sends it and Settings redraws.
+    (server.root / ".aegis.yaml").write_text(
+        CONFIG
+        + "  extra: {harness: claude-code, model: opus, effort: high, permission: full}\n"
+    )
+    page.wait_for_timeout(1500)
+    assert page.is_visible("#set-theme .menu")
+    assert page.evaluate("!!document.activeElement.closest('#set-theme')")
+    page.keyboard.press("Escape")
+    page.mouse.click(5, 300)
+    page.wait_for_selector('.set-agent[data-row="agents.extra"]')
+    assert page.errors == []
+
+
 def test_the_journal_reloads_a_list_paged_past_500_rows(
     server, browser, page, tmp_path
 ):

@@ -148,6 +148,13 @@ export class Settings {
   }
 
   draw() {
+    // A redraw replaces the page, and with it the focus: while the theme chip
+    // has it (its list open, say), wait until it leaves.
+    if (this.browserNode?.contains(document.activeElement)) {
+      this.drawLater = true;
+      return;
+    }
+    this.drawLater = false;
     const w = this.wire;
     // The title first, then what this browser keeps, then the servers; the
     // loading and no-config pages keep the same width and order.
@@ -179,20 +186,30 @@ export class Settings {
     this.mark();
   }
 
-  // What this browser alone keeps. Built on every draw, from the theme in use.
+  // What this browser alone keeps. Built once and moved into each draw, with
+  // the chip set to the theme in use.
   browser() {
-    const theme = h("pick-chip", { id: "set-theme", name: "theme", className: "pick" });
-    theme.setAttribute("aria-label", "Theme");
-    theme.options = this.themes;
-    theme.value = document.documentElement.dataset.theme;
-    theme.addEventListener("change", () => this.setTheme(theme.value));
-    return h(
-      "section",
-      { className: "set-browser", id: "set-browser" },
-      h("h3", { textContent: "This browser" }),
-      h("div", { className: "set-browser-row" }, h("span", { className: "set-browser-k", textContent: "Theme" }), theme),
-      h("p", { className: "set-none", textContent: "Kept in this browser only: other browsers and devices keep their own." }),
-    );
+    if (!this.browserNode) {
+      this.themeChip = h("pick-chip", { id: "set-theme", name: "theme", className: "pick" });
+      this.themeChip.setAttribute("aria-label", "Theme");
+      this.themeChip.options = this.themes;
+      this.themeChip.addEventListener("change", () => this.setTheme(this.themeChip.value));
+      this.browserNode = h(
+        "section",
+        { className: "set-browser", id: "set-browser" },
+        h("h3", { textContent: "This browser" }),
+        h("div", { className: "set-browser-row" }, h("span", { className: "set-browser-k", textContent: "Theme" }), this.themeChip),
+        h("p", { className: "set-none", textContent: "Kept in this browser only: other browsers and devices keep their own." }),
+      );
+      // The draw that waited for the chip runs once the focus has left it.
+      this.browserNode.addEventListener("focusout", () =>
+        setTimeout(() => {
+          if (this.drawLater) this.draw();
+        }),
+      );
+    }
+    this.themeChip.value = document.documentElement.dataset.theme;
+    return this.browserNode;
   }
 
   // The servers: this one, each link with its state, and a form to add one.
