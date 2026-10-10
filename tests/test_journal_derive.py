@@ -374,3 +374,30 @@ def test_an_errored_pr_merge_is_a_row_only_when_gh_says_it_merged():
 def test_an_errored_pr_create_is_not_an_opened_row():
     out = "a pull request for branch x already exists: https://github.com/a/b/pull/12"
     assert _pr_texts("gh pr create --title t", out) == []
+
+
+def test_a_needs_you_line_names_the_turn_before_its_prompt():
+    """A turn that ended asking the person is named by what it asked, not by
+    the reply that started it ("works", in Alex's tour). done and review still
+    come first, and a turn with no line keeps its prompt."""
+    r = Rec()
+    spawned(r)
+    r.own("send", text="works")
+    _wrote(r)
+    r.own("turn_end", attention="needs_you", line="Ship the release now?", replies=[])
+    r.result()
+    r.own("send", text="yes")
+    _wrote(r, "t2")
+    r.own("turn_end", attention="needs_you", line="Which tag?", replies=[])
+    r.own("turn_end", attention="done", line="released 2.4", replies=[])
+    r.result()
+    r.own("send", text="tidy up")
+    _wrote(r, "t3")
+    r.result()
+    rows = [x for x in derive(r) if x.kind == "turn"]
+    assert [x.text for x in rows] == [
+        "Ship the release now?",
+        "released 2.4",
+        "tidy up",
+    ]
+    assert rows == [x for x in live(r) if x.kind == "turn"]

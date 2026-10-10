@@ -69,7 +69,10 @@ class Deriver:
         self._prose = ""
         self._prose_key: str | None = None
         self._notice = ""
+        # A turn_end line names the turn before its prompt: done or review
+        # first, else needs_you, whose prompt is often a one-word reply.
         self._said: str | None = None
+        self._asked: str | None = None
         self._done: set[str] = set()  # done in the previous plan record
         self._ts = 0.0
         self._src = ""
@@ -202,6 +205,8 @@ class Deriver:
         if kind == "turn_end":
             if rec.get("attention") in ("done", "review"):
                 self._said = str(rec.get("line") or "") or None
+            elif rec.get("attention") == "needs_you":
+                self._asked = str(rec.get("line") or "") or None
             return []
         if kind == "plan":
             now = [
@@ -254,12 +259,12 @@ class Deriver:
 
     def _close_turn(self, i: int, ts: float, source: str) -> list[Row]:
         touches = list(dict.fromkeys(self._turn))
-        said, prompt = self._said, self._prompt
+        said, asked, prompt = self._said, self._asked, self._prompt
         named = prompt or self._prose or self._notice or "a turn"
-        self._turn, self._said, self._prompt = [], None, ""
+        self._turn, self._said, self._asked, self._prompt = [], None, None, ""
         self._prose, self._prose_key, self._notice = "", None, ""
         self._last_call = None
         if not touches and not said:
             return []
-        text = said or named[:120]
+        text = said or asked or named[:120]
         return [self._row(i, ts, "turn", text, source=source, touches=touches)]

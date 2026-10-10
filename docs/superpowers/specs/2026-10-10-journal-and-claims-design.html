@@ -316,7 +316,7 @@ mark{background:var(--accent-soft);color:var(--strong);border-radius:2px}
 <table class="tbl">
 <thead><tr><th>kind</th><th>derived from</th><th>text</th><th>touches</th></tr></thead>
 <tbody>
-<tr><td>turn</td><td>a turn that wrote files, or ended with <code>turn_end</code> done or review</td><td>the <code>turn_end</code> line, else the first 120 characters of the prompt, else the turn's first prose line</td><td>every file written in the turn</td></tr>
+<tr><td>turn</td><td>a turn that wrote files, or ended with <code>turn_end</code> done or review</td><td>the <code>turn_end</code> line of a done or review, else of a needs_you, else the first 120 characters of the prompt, else the turn's first prose line, else a background task's notice, else "a turn"</td><td>every file written in the turn</td></tr>
 <tr><td>commit</td><td><code>git commit</code> output in a Bash result</td><td>subject, short hash, branch</td><td>the commit's files</td></tr>
 <tr><td>pr</td><td><code>gh pr create</code> or <code>gh pr merge</code> output</td><td>title and URL</td><td>none</td></tr>
 <tr><td>plan</td><td>a plan item turning done</td><td>the item</td><td>none</td></tr>
