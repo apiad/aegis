@@ -136,7 +136,7 @@ ul.plain{padding-left:20px}
 </nav>
 <main>
 <h1>Attachments: implementation plan</h1>
-<div class="meta"><span>docs/superpowers/plans/2026-10-10-attachments.html</span><span>·</span><span>implements <a href="../specs/2026-10-10-attachments-design.html">the attachments spec</a></span><span>·</span><span>execution: not chosen yet</span></div>
+<div class="meta"><span>docs/superpowers/plans/2026-10-10-attachments.html</span><span>·</span><span>implements <a href="../specs/2026-10-10-attachments-design.html">the attachments spec</a></span><span>·</span><span>execution: native (inline), chosen by Alex 2026-10-10</span></div>
 <p class="lede">Seven tasks take a file from a person's composer into a session's inbox: the inbox itself, the fold, the operations, harness read access, the composer, the linked-server proof, and the docs and gates. Each task ends with a test that can fail and a commit.</p>
 <div class="progress"><span id="pcount">0 / 7</span><div class="track"><div class="fill" id="pfill"></div></div></div>
 
@@ -194,7 +194,7 @@ ul.plain{padding-left:20px}
 
 <h2 id="tasks"><span class="n">05</span>Tasks</h2>
 
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="tn">01</span><span class="tt">The inbox: stage, put, drop, commit</span><span class="tf">src/aegis/attachments.py, src/aegis/files.py, tests/test_attachments.py</span><span class="ts"></span></summary>
 <div class="tb">
 <h4>Files</h4><ul class="files"><li>Create: <code>src/aegis/attachments.py</code></li><li>Modify: <code>src/aegis/files.py</code> (<code>store</code> takes <code>name</code> and <code>link</code>)</li><li>Test: <code>tests/test_attachments.py</code></li></ul>
@@ -581,7 +581,7 @@ git commit -m &quot;feat(attachments): stage uploads and move them into a sessio
 <div class="verify"><span class="lbl">verify</span><code>uv run pytest -q tests/test_attachments.py tests/test_files.py</code> passes. Break it on purpose once: make <code>put</code> write a resent chunk again and confirm <code>test_a_resent_chunk_is_acknowledged_and_not_written_twice</code> fails, then revert.</div>
 </div>
 </details>
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="tn">02</span><span class="tt">The fold: a sent message carries its files to the echo</span><span class="tf">src/aegis/transcript/entries.py, tests/test_fold.py</span><span class="ts"></span></summary>
 <div class="tb">
 <h4>Files</h4><ul class="files"><li>Modify: <code>src/aegis/transcript/entries.py</code> (<code>Fold.__init__</code>, <code>_exact</code>, <code>_take</code>, <code>_lose_pending</code>, the <code>send</code> branch of <code>_own</code>, the <code>Echo</code> branch of <code>_event</code>)</li><li>Test: <code>tests/test_fold.py</code>, <code>tests/test_wire.py</code></li></ul>
@@ -702,7 +702,7 @@ def test_an_attached_echo_takes_its_own_pending_send_not_the_oldest():
 <div class="verify"><span class="lbl">verify</span>The three new fold tests and the every-cut wire test pass; the five suites in step 9 pass unchanged.</div>
 </div>
 </details>
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="tn">03</span><span class="tt">The operations, the send, the log and boot</span><span class="tf">src/aegis/app.py, src/aegis/session.py, src/aegis/web.py, tests/test_attachment_ops.py</span><span class="ts"></span></summary>
 <div class="tb">
 <h4>Files</h4><ul class="files"><li>Modify: <code>src/aegis/app.py</code> (imports, docstring, <code>SendParams</code>, three new ops, <code>session.send</code>, <code>boot</code>)</li><li>Modify: <code>src/aegis/session.py</code> (<code>send</code>, an <code>inbox</code> property)</li><li>Modify: <code>src/aegis/web.py</code> (<code>_loggable</code>)</li><li>Test: <code>tests/test_attachment_ops.py</code></li></ul>
@@ -1025,7 +1025,7 @@ git commit -m &quot;feat(attachments): person operations to upload files and sen
 <div class="verify"><span class="lbl">verify</span><code>tests/test_attachment_ops.py</code> passes, and so do the four neighbouring suites. Break it once: drop the <code>data</code> branch from <code>_loggable</code> and see <code>test_a_chunk_never_reaches_the_log</code> fail.</div>
 </div>
 </details>
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="tn">04</span><span class="tt">Every harness may read its inbox</span><span class="tf">src/aegis/harness.py, src/aegis/session.py, src/aegis/claude/process.py, src/aegis/opencode/config.py, tests/test_control.py</span><span class="ts"></span></summary>
 <div class="tb">
 <h4>Files</h4><ul class="files"><li>Modify: <code>src/aegis/harness.py</code> (<code>Launch.read_dirs</code>)</li><li>Modify: <code>src/aegis/session.py</code> (<code>_start_process</code>)</li><li>Modify: <code>src/aegis/claude/process.py</code> (<code>build_argv</code>), <code>src/aegis/claude/harness.py</code> (<code>ClaudeSession.__init__</code>)</li><li>Modify: <code>src/aegis/opencode/config.py</code> (<code>rules</code>, <code>child_config</code>), <code>src/aegis/opencode/process.py</code> (<code>_spawn</code>)</li><li>Test: <code>tests/test_control.py</code>, <code>tests/test_opencode_config.py</code>, <code>tests/test_attachment_ops.py</code>, <code>tests/test_session_opencode.py</code></li></ul>
@@ -1105,7 +1105,7 @@ def child_config(
 <div class="verify"><span class="lbl">verify</span>The new argv, rules and <code>/config</code> tests pass; a real OpenCode under <code>write</code> and a real Codex under <code>read</code> each read an attached file.</div>
 </div>
 </details>
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="tn">05</span><span class="tt">The composer: chips, paperclip, paste, drop, and one card on the row</span><span class="tf">src/aegis/client/js/attach.js, src/aegis/client/index.html, src/aegis/client/js/app.js, src/aegis/client/js/entries.js, src/aegis/client/css/base.css, tests/test_browser.py</span><span class="ts"></span></summary>
 <div class="tb">
 <h4>Files</h4><ul class="files"><li>Create: <code>src/aegis/client/js/attach.js</code></li><li>Modify: <code>src/aegis/client/index.html</code> (the tray, the paperclip, the file input)</li><li>Modify: <code>src/aegis/client/js/app.js</code> (wiring, <code>send</code>, <code>sendLine</code>, <code>follow</code>, <code>renderMeta</code>)</li><li>Modify: <code>src/aegis/client/js/entries.js</code> (the <code>user</code> renderer)</li><li>Modify: <code>src/aegis/client/css/base.css</code></li><li>Test: <code>tests/test_browser.py</code></li></ul>
@@ -1483,7 +1483,7 @@ git commit -m &quot;feat(client): attach files in the composer and see them as o
 <div class="verify"><span class="lbl">verify</span>The four browser tests and <code>test_client_rules.py</code> pass, and the two screenshots show the tray and the card without overlap.</div>
 </div>
 </details>
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="tn">06</span><span class="tt">A person attaches to a session on a linked server</span><span class="tf">tests/test_links.py</span><span class="ts"></span></summary>
 <div class="tb">
 <h4>Files</h4><ul class="files"><li>Test: <code>tests/test_links.py</code></li></ul>
@@ -1523,7 +1523,7 @@ git commit -m &quot;feat(client): attach files in the composer and see them as o
 <div class="verify"><span class="lbl">verify</span>The link test passes: the bytes land in beta's inbox, none in alpha's, and alpha's <code>/via</code> serves them.</div>
 </div>
 </details>
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="doing">
 <summary><span class="tn">07</span><span class="tt">Docs, the gates, the PR and Alex's smoke test</span><span class="tf">DESIGN.md, changelog.d/291-attachments.added.md, docs/superpowers/specs/2026-10-10-attachments-design.html</span><span class="ts"></span></summary>
 <div class="tb">
 <h4>Files</h4><ul class="files"><li>Modify: <code>DESIGN.md</code>, <code>README.md</code></li><li>Create: <code>changelog.d/291-attachments.added.md</code></li><li>Modify: <code>docs/superpowers/specs/2026-10-10-attachments-design.html</code> (status)</li></ul>
