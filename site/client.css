@@ -354,6 +354,9 @@ body{background:#000}
 .a2 .card.sel{outline:2px solid var(--accent);outline-offset:1px}
 .a2 .card.error{border-color:var(--err)}
 .a2 .card.stopped{opacity:.6}
+.a2 .card.finished{opacity:.5}
+.a2 .card.finished:hover,.a2 .card.finished:focus-within,.a2 .card.finished.sel{opacity:1}
+.a2 .card.stopped.at-error{opacity:1}
 .a2 .card .hd{display:flex;align-items:center;gap:8px}
 .a2 .card .hd .h{font-family:var(--font-chrome);color:var(--strong);font-weight:500}
 .a2 .card .hd .s{color:var(--faint);font-family:var(--font-chrome);margin-left:auto}

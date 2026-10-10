@@ -2186,6 +2186,87 @@ def test_a_question_marks_the_tab_card_and_band_and_the_fleet_groups_it(server, 
     assert page.errors == []
 
 
+@pytest.fixture
+def queue_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    (tmp_path / ".aegis.yaml").write_text(
+        CONFIG + "queues:\n  q: {agent: opus, max_parallel: 2}\n"
+    )
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
+    yield s
+    s.stop()
+
+
+def enqueue(pg, payload: str) -> None:
+    args = {"queue": "q", "payload": payload, "callback": False}
+    pg.fill("#input", f"/mcp queue_enqueue {json.dumps(args)}")
+    pg.press("#input", "Enter")
+
+
+def card_ids(pg) -> list[str]:
+    return pg.eval_on_selector_all("#cards .card", "cs => cs.map(c => c.dataset.id)")
+
+
+def card_opacity(pg, sid: str) -> str:
+    return pg.evaluate(
+        "id => getComputedStyle(document.querySelector(`#cards .card[data-id='${id}']`)).opacity",
+        sid,
+    )
+
+
+def test_a_finished_worker_fades_and_sinks_below_the_live_cards_and_an_errored_one_does_not(
+    queue_server, page
+):
+    """#249: a worker whose task is over kept a card identical to a live
+    session's, in the group of whatever it last reported."""
+    page.goto(queue_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    boss = spawn(page, "hello")
+    enqueue(page, "/exit 4")
+    turns_done(page, 2)
+    page.click("#tab-fleet")
+    page.wait_for_selector("#cards .card.at-error .badge >> text=worker · q")
+    failed = page.get_attribute("#cards .card.at-error", "data-id")
+    page.click("#tab-fleet")
+    page.click(f"#tablist .tab[data-id='{boss}']")
+    enqueue(page, "/sleep 4")
+    page.click("#tab-fleet")
+    page.wait_for_selector("#cards .card:not(.at-error) .badge >> text=worker · q")
+    worker = page.get_attribute("#cards .card:not(.at-error):has(.badge)", "data-id")
+    # Live: a card like any other session's.
+    assert page.locator(f"#cards .card[data-id='{worker}'].finished").count() == 0
+    assert card_opacity(page, worker) == "1"
+    # Done, the task archives the worker; reopened, its task is still over.
+    page.wait_for_selector(f"#arch-list tr[data-id='{worker}']", timeout=20000)
+    assert page.locator(f"#cards .card[data-id='{worker}']").count() == 0
+    page.locator(f"#arch-list tr[data-id='{worker}'] button", has_text="Reopen").click()
+    page.wait_for_selector("#a2[data-view=session][data-mode=live]")
+    live = spawn(page, "still going")
+    page.click("#tab-fleet")
+    page.wait_for_selector(f"#cards .card[data-id='{worker}'].finished")
+    # A live card above it, whatever the order the tabs are in.
+    assert card_ids(page) == [failed, boss, live, worker]
+    assert page.locator(f"#cards .card[data-id='{failed}'].finished").count() == 0
+    assert card_opacity(page, failed) == "1"
+    assert card_opacity(page, worker) == "0.5"
+    assert card_opacity(page, live) == "1"
+    # Still reachable, and in full view under the pointer.
+    page.hover(f"#cards .card[data-id='{worker}']")
+    assert card_opacity(page, worker) == "1"
+    page.mouse.move(0, 0)
+    assert card_opacity(page, worker) == "0.5"
+    page.click(f"#cards .card[data-id='{worker}']")
+    page.wait_for_selector("#a2[data-view=session]")
+    assert page.evaluate("location.hash.slice(3)") == worker
+    # An errored turn is not faded, though the task behind it is over.
+    page.fill("#input", "/exit 4")
+    page.press("#input", "Enter")
+    page.click("#tab-fleet")
+    page.wait_for_selector(f"#cards .card[data-id='{worker}'].at-error")
+    assert page.locator(f"#cards .card[data-id='{worker}'].finished").count() == 0
+    assert card_opacity(page, worker) == "1"
+    assert page.errors == []
+
+
 def test_a_patch_that_changes_a_cards_group_regroups_the_open_fleet(
     server, browser, page
 ):
