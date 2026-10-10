@@ -321,9 +321,12 @@ its model names. The panel's width and whether it is collapsed
 
 **One page for every screen.** A phone gets the desktop's markup. Below 760 px
 one CSS block wraps the tab bar onto its own row, turns the side panel into a
-drawer (`data-side=open`, opened by the panel button) and stacks the Fleet band; under
-`(pointer: coarse)` touch targets grow to 44 px and Enter in the composer adds a
-line. A second set of screens would be a second client to keep in step. The
+drawer (`data-side=open`, opened by the panel button), shows the monitor card as a
+sheet over that drawer and stacks the Fleet band; under `(pointer: coarse)` touch
+targets grow to 44 px and Enter in the composer adds a line. Hover opens and
+closes a card for a mouse only, because a tap fires a leave right after its
+click. The transcript's navigator floats on `--composer-h`, the composer's
+height, so replies and extra lines push it up instead of sliding under it. A second set of screens would be a second client to keep in step. The
 client asks through its own dialog (`js/dialog.js`), never the browser's, and
 picks through its own chip (`js/pick.js`, a filterable list under the chip),
 never a native select: `tests/test_client_rules.py` fails on `confirm(`,

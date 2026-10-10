@@ -117,6 +117,7 @@ $("nav-up").append(icon("up"));
 $("nav-down").append(icon("down"));
 $("jump").append(icon("latest"));
 $("bell").append(icon("bell"));
+$("settings-btn").prepend(icon("gear"));
 installBell($("bell"));
 $("nav-up").addEventListener("click", () => transcript.message(-1));
 $("nav-down").addEventListener("click", () => transcript.message(1));
@@ -921,13 +922,18 @@ function renderMeta(s) {
   // A linked server that is down: the transcript stays readable, nothing sends.
   const down = s.off ? linkOf(s.server) : null;
   input.disabled = $("send").disabled = !!down;
-  $("input").placeholder = down
+  // Chrome counts a placeholder in scrollHeight: measure again when it changes.
+  const placeholder = down
     ? `${s.server} is ${down.state} since ${new Date(down.since * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}; nothing can be sent until it is back.`
     : s.state === "stopped"
       ? "Stopped; your next message resumes it."
       : touch.matches
-        ? "Message the agent. ↵ sends, / for commands."
+        ? "Message the agent"
         : "Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts.";
+  if (input.placeholder !== placeholder) {
+    input.placeholder = placeholder;
+    autosize();
+  }
   setTitle(`${working ? "● " : ""}${s.title || s.handle} · aegis`);
 }
 
@@ -1727,6 +1733,8 @@ function toggleSide() {
 // on a phone and grows with the safe area.
 const header = document.querySelector("#a2 > .tabs");
 new ResizeObserver(() => root.style.setProperty("--hdr", `${header.getBoundingClientRect().height}px`)).observe(header);
+// The navigator floats just above the composer, which grows with replies and lines.
+new ResizeObserver(() => root.style.setProperty("--composer-h", `${$("composer").offsetHeight}px`)).observe($("composer"));
 $("side-btn").addEventListener("click", toggleSide);
 // The dimmed transcript is the session view's own ::after, so a tap on it
 // lands on the view itself and goes no further.

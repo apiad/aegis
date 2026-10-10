@@ -3527,6 +3527,79 @@ def test_a_phone_reaches_tabs_the_drawer_and_the_chips(server, browser):
     assert errors == []
 
 
+def test_a_phone_sees_the_monitor_card_every_reply_and_a_one_line_composer(
+    server, browser
+):
+    """#280: on a phone the navigator rode over the replies, the composer opened
+    two lines tall, the monitor card opened under the drawer, and Settings had
+    no button."""
+    errors: list = []
+    page = phone(browser, errors)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    rect = lambda sel: page.locator(sel).bounding_box()  # noqa: E731
+    # One line, centred on the buttons, at a size iOS does not zoom into.
+    box, send = rect(".composer .box"), rect("#send")
+    assert box["height"] <= 58, box
+    text = page.evaluate("""(() => { const t = document.getElementById('input');
+      const r = t.getBoundingClientRect(), s = getComputedStyle(t);
+      return { mid: r.top + parseFloat(s.paddingTop) + parseFloat(s.lineHeight) / 2,
+               size: parseFloat(s.fontSize) }; })()""")
+    assert abs(text["mid"] - (send["y"] + send["height"] / 2)) <= 2, text
+    assert text["size"] >= 16
+    # Three replies stack in the composer; the navigator stays above all of them.
+    page.evaluate(
+        """(() => { const r = document.getElementById('replies'); r.hidden = false;
+        r.innerHTML = ['Yes', 'No', 'Later'].map(t => '<button class=rp>' + t + '</button>').join(''); })()"""
+    )
+    page.wait_for_selector("#nav:not([hidden])")
+    page.wait_for_function(
+        """() => document.getElementById('nav').getBoundingClientRect().bottom
+             <= document.getElementById('replies').getBoundingClientRect().top"""
+    )
+    # The monitor card opens over the drawer, on screen, and stays open.
+    args = {
+        "description": "a phone monitor",
+        "done": "false",
+        "progress": "echo 30",
+        "interval_s": 1,
+    }
+    page.fill("#input", f"/mcp monitor_start {json.dumps(args)}")
+    page.tap("#send")
+    page.wait_for_selector("#s-monitors .mon >> text=a phone monitor")
+    page.tap("#side-btn")
+    page.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
+    page.tap("#s-monitors .mon")
+    page.wait_for_selector("#mcard.show")
+    page.wait_for_timeout(600)  # longer than the hover close's delay
+    card = rect("#mcard")
+    assert page.is_visible("#mcard.show")
+    assert card["x"] >= 0 and card["x"] + card["width"] <= 390, card
+    assert card["y"] + card["height"] >= 844 - 20, "a sheet on the bottom edge"
+    on_top = page.evaluate(
+        "([x, y]) => !!document.elementFromPoint(x, y)?.closest('#mcard')",
+        [card["x"] + card["width"] / 2, card["y"] + card["height"] / 2],
+    )
+    assert on_top, "the card is under the drawer"
+    page.mouse.click(5, 300)
+    page.wait_for_selector("#mcard:not(.show)", state="attached")
+    # The header's icons are icons: the bell's svg shares its button's class.
+    assert rect("#bell svg")["width"] <= 20 and rect("#settings-btn svg")["width"] <= 20
+    # Settings has a button on a phone.
+    page.tap("#settings-btn")
+    page.wait_for_selector("#a2[data-view=settings]")
+    page.tap("#tab-fleet")
+    page.wait_for_selector(".card .mons >> text=1 monitor")
+    assert page.evaluate(WIDER) == []
+    # A card's footer wraps whole items, never inside one.
+    heights = page.eval_on_selector_all(
+        ".card .ft > *", "es => es.map(e => e.getBoundingClientRect().height)"
+    )
+    assert max(heights) < 2 * min(heights), heights
+    assert errors == []
+
+
 def test_a_phone_in_landscape_gets_the_desktop_layout_with_touch_targets(
     server, browser
 ):
