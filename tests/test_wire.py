@@ -11,7 +11,7 @@ from aegis.transcript.entries import Fold, fold_records
 from aegis.transcript.store import read_store
 from aegis.transcript.wire import LAZY, wire, wire_ops
 
-from .test_fold import Rec, run
+from .test_fold import Rec, _sent, run
 from .test_opencode_stream import first_prompt, lines
 
 FIX = Path(__file__).parent / "fixtures"
@@ -224,3 +224,24 @@ def test_an_artifacts_records_rebuild_from_every_cut_and_events_are_lazy():
     assert "events" not in art["detail"] and art["detail"]["more"] is True
     assert art["detail"]["state"] == {"n": 2}  # state rides the wire
     assert art["detail"]["state_rev"] == 5  # and so does the record that set it
+
+
+def test_a_delta_from_any_cut_rebuilds_an_attached_send():
+    r = Rec()
+    full = "look\n\nAttached files:\n- /p/a.png (image/png, 2.0 KB)\n- /p/b.png (image/png, 2.0 KB)"
+    r.own("send", text="plain")
+    r.own(
+        "send",
+        text=full,
+        typed="look",
+        files=[_sent("a.png", path="/p/a.png"), _sent("b.png", path="/p/b.png")],
+    )
+    r.echo(full)
+    r.echo("plain")
+    r.text("seen")
+    r.result()
+    final = fold_records(r.records)
+    want = final.snapshot()["entries"]
+    for k in range(len(r.records) + 1):
+        held = fold_records(r.records[:k]).snapshot()
+        assert rebuild(held["entries"], final.snapshot(held["rev"])) == want, k

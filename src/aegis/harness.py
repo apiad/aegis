@@ -44,6 +44,8 @@ class Launch:
     # A request that failed outside the event stream: its text, whether it
     # means no turn is running, and the line the person typed, if any.
     on_error: Callable[[str, bool, str | None], None] = _no_error
+    # Folders outside the cwd the agent may read: its inbox (attachments.py).
+    read_dirs: tuple[Path, ...] = ()
 
 
 class Process(Protocol):

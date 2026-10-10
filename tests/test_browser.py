@@ -4813,3 +4813,212 @@ def test_the_smoke_script_spawns_a_session_and_reads_its_question(server):
     ).stdout
     assert "### PERSON: /mcp turn_end" in text
     assert "[turn_end needs_you] Does it work?" in text
+
+
+def inbox_of(server, lid):
+    return server.root / ".aegis" / "state" / "inbox" / lid
+
+
+def test_attached_files_upload_as_chips_and_land_as_one_card(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    lid = spawn(page)
+    shot = tmp_path / "shot.png"
+    shot.write_bytes(PNG)
+    notes = tmp_path / "notes.txt"
+    notes.write_text("line one\n" * 50000)  # 450 KB: two chunks
+    page.set_input_files("#attach-pick", [str(shot), str(notes)])
+    page.wait_for_function(
+        "document.querySelectorAll('#atts .chip.att.done').length === 2", timeout=8000
+    )
+    page.fill("#input", "look at these")
+    page.click("#send")
+    turns_done(page, 1)
+    row = page.locator(".row.user").last
+    assert row.locator(".fcard").count() == 1
+    assert row.locator(".fcard .count").inner_text() == "1 / 2"
+    assert "look at these" in row.inner_text()
+    assert "Attached files:" not in row.inner_text()
+    assert page.locator("#atts .chip").count() == 0
+    (got,) = inbox_of(server, lid).glob("*-notes.txt")
+    assert got.read_text() == "line one\n" * 50000
+    assert page.errors == []
+
+
+def test_enter_during_an_upload_waits_for_it(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    big = tmp_path / "big.bin"
+    big.write_bytes(bytes(20 * 1024 * 1024))  # 80 chunks
+    page.set_input_files("#attach-pick", [str(big)])
+    page.fill("#input", "and this")
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    assert page.locator(".row.user").last.locator(".fcard").count() == 1
+    assert page.errors == []
+
+
+def test_a_pasted_image_and_a_dropped_file_attach_and_a_message_of_files_alone_sends(
+    server, page
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    page.evaluate(
+        """() => {
+          const paste = new DataTransfer();
+          paste.items.add(new File([new Uint8Array([137, 80, 78, 71])], 'image.png', {type: 'image/png'}));
+          document.querySelector('#input').dispatchEvent(
+            new ClipboardEvent('paste', {clipboardData: paste, bubbles: true, cancelable: true}));
+          const drop = new DataTransfer();
+          drop.items.add(new File(['hello'], 'dropped.txt', {type: 'text/plain'}));
+          document.querySelector('#composer').dispatchEvent(
+            new DragEvent('drop', {dataTransfer: drop, bubbles: true, cancelable: true}));
+        }"""
+    )
+    page.wait_for_function(
+        "document.querySelectorAll('#atts .chip.att.done').length === 2", timeout=8000
+    )
+    names = page.locator("#atts .chip .an").all_inner_texts()
+    assert re.fullmatch(r"pasted-\d{6}\.png", names[0]) and names[1] == "dropped.txt"
+    page.click("#send")
+    turns_done(page, 1)
+    row = page.locator(".row.user").last
+    assert row.locator(".fcard .count").inner_text() == "1 / 2"
+    assert page.errors == []
+
+
+def test_removing_a_chip_forgets_its_upload(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    lid = spawn(page)
+    f = tmp_path / "a.txt"
+    f.write_text("x")
+    page.set_input_files("#attach-pick", [str(f)])
+    page.wait_for_selector("#atts .chip.att.done")
+    page.click("#atts .chip .ax")
+    assert page.locator("#atts .chip").count() == 0
+    staged = inbox_of(server, lid) / ".staged"
+    deadline = time.monotonic() + 3
+    while staged.exists() and any(staged.iterdir()) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not staged.exists() or not any(staged.iterdir())
+    assert page.errors == []
+
+
+def test_an_attached_card_fits_a_phone(server, browser, tmp_path):
+    errors: list = []
+    pg = browser.new_page(viewport={"width": 390, "height": 844})
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg)
+    names = []
+    for n in ("screenshot.png", "voice-note.m4a"):
+        f = tmp_path / n
+        f.write_bytes(PNG)
+        names.append(str(f))
+    pg.set_input_files("#attach-pick", names)
+    pg.wait_for_function(
+        "document.querySelectorAll('#atts .chip.att.done').length === 2", timeout=8000
+    )
+    pg.click("#send")
+    turns_done(pg, 1)
+    card = pg.locator(".row.user").last.locator(".fcard")
+    box = card.bounding_box()
+    dl = card.locator("a.dl").bounding_box()
+    assert dl["x"] + dl["width"] <= box["x"] + box["width"] + 0.5
+    assert card.locator(".fn").bounding_box()["width"] >= 40
+    assert errors == []
+
+
+def test_a_waiting_send_goes_to_its_own_session_after_a_tab_switch(
+    server, page, tmp_path
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page)
+    b = spawn(page)
+    page.click(f"#tablist .tab[data-id='{a}']")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
+    big = tmp_path / "big.bin"
+    big.write_bytes(bytes(20 * 1024 * 1024))
+    page.set_input_files("#attach-pick", [str(big)])
+    page.fill("#input", "for a")
+    page.press("#input", "Enter")
+    page.click(f"#tablist .tab[data-id='{b}']")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=b)
+    deadline = time.monotonic() + 20
+    while (
+        not list(inbox_of(server, a).glob("*-big.bin")) and time.monotonic() < deadline
+    ):
+        time.sleep(0.1)
+    assert list(inbox_of(server, a).glob("*-big.bin"))
+    assert not inbox_of(server, b).exists() or not list(
+        inbox_of(server, b).glob("*-big.bin")
+    )
+    assert page.locator(".row.user").count() == 0  # B's transcript got nothing
+    assert page.text_content("#send-error") == ""
+    assert page.errors == []
+
+
+def test_enter_twice_during_an_upload_sends_once(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    big = tmp_path / "big.bin"
+    big.write_bytes(bytes(20 * 1024 * 1024))
+    page.set_input_files("#attach-pick", [str(big)])
+    page.fill("#input", "once")
+    page.press("#input", "Enter")
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    page.wait_for_timeout(500)
+    assert page.locator(".row.user").count() == 1
+    assert page.text_content("#send-error") == ""
+    assert page.errors == []
+
+
+def open_new_tab(pg):
+    pg.click("#tab-add")
+    pg.wait_for_selector("#a2[data-view=spawn]")
+    pg.wait_for_function("document.querySelector('#sp-agent').value !== ''")
+
+
+def test_a_new_tab_sends_its_attachments_with_the_first_message(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    open_new_tab(page)
+    shot = tmp_path / "shot.png"
+    shot.write_bytes(PNG)
+    notes = tmp_path / "notes.txt"
+    notes.write_text("hello\n")
+    page.set_input_files("#sp-attach-pick", [str(shot), str(notes)])
+    assert page.locator("#sp-atts .chip.att").count() == 2
+    page.fill("#sp-text", "look at these")
+    page.press("#sp-text", "Enter")
+    page.wait_for_selector("#a2[data-view=session]")
+    turns_done(page, 1)
+    row = page.locator(".row.user").last
+    assert row.locator(".fcard .count").inner_text() == "1 / 2"
+    assert "look at these" in row.inner_text()
+    lid = page.evaluate("location.hash.slice(3)")
+    (got,) = inbox_of(server, lid).glob("*-notes.txt")
+    assert got.read_text() == "hello\n"
+    assert page.locator(".row.user").count() == 1  # the text went once, with the files
+    assert page.errors == []
+
+
+def test_a_new_tab_with_files_and_no_text_starts_and_sends_them(server, page, tmp_path):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    open_new_tab(page)
+    f = tmp_path / "a.txt"
+    f.write_text("x")
+    page.set_input_files("#sp-attach-pick", [str(f)])
+    page.click("#sp-go")
+    page.wait_for_selector("#a2[data-view=session]")
+    turns_done(page, 1)
+    assert page.locator(".row.user").last.locator(".fcard").count() == 1
+    assert page.errors == []

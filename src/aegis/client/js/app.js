@@ -26,6 +26,7 @@ import { installBell, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
 import "./pick.js";
 import { Dictation } from "./dictation.js";
+import { Attachments } from "./attach.js";
 import { dur, planTimes } from "./plantime.js";
 
 const $ = (id) => document.getElementById(id);
@@ -766,6 +767,7 @@ function follow(id) {
   find.close(false); // it searched the old session
   if (dictation.target?.el === input) dictation.stop("tab"); // a recording belongs to its session
   shown = id;
+  atts.show(id);
   if (!id) return;
   const saved = kept.get(id);
   if (saved) {
@@ -921,7 +923,7 @@ function renderMeta(s) {
   if (!working) workingSince = null;
   // A linked server that is down: the transcript stays readable, nothing sends.
   const down = s.off ? linkOf(s.server) : null;
-  input.disabled = $("send").disabled = !!down;
+  input.disabled = $("send").disabled = $("attach").disabled = !!down;
   // Chrome counts a placeholder in scrollHeight: measure again when it changes.
   const placeholder = down
     ? `${s.server} is ${down.state} since ${new Date(down.since * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}; nothing can be sent until it is back.`
@@ -1343,13 +1345,18 @@ async function spawnFromComposer() {
   await dictation.finish($("sp-text"));
   const text = $("sp-text").value.trim();
   const params = { agent: a.name, cwd: $("sp-cwd").value.trim() || null, ...overrides() };
-  if (text) params.prompt = text;
+  // With files, the session starts empty: they upload into its inbox and go
+  // out with the text as its first message (sendFirst).
+  const held = spAtts.list("spawn").length > 0;
+  if (text && !held) params.prompt = text;
   try {
     const r = await conn.call("session.spawn", params, spServer);
     localStorage.setItem(LAST_AGENT, a.name);
     $("sp-text").value = "";
     pickAgent(a.name);
-    go(`#s=${keyOf(spServer, r.log_id)}`);
+    const key = keyOf(spServer, r.log_id);
+    go(`#s=${key}`);
+    if (held) sendFirst(key, text, spAtts.take("spawn"));
   } catch (e) {
     $("sp-error").textContent = e.message;
   } finally {
@@ -1497,6 +1504,74 @@ function cycle(d) {
 // -- composer ---------------------------------------------------------------
 const input = $("input");
 
+// -- attachments: chips above the box, uploading as they arrive (attach.js) --
+const waitOnline = () =>
+  new Promise((resolve) => {
+    const t = setInterval(() => {
+      if (conn.open) {
+        clearInterval(t);
+        resolve();
+      }
+    }, 500);
+  });
+const atts = new Attachments($("atts"), { call: callFor, waitOnline });
+// The new tab's files wait as chips until its session exists (spawnFromComposer).
+const spAtts = new Attachments($("sp-atts"), { call: callFor, waitOnline, hold: true });
+spAtts.show("spawn");
+for (const [btn, pick, tray, key] of [
+  ["attach", "attach-pick", atts, null],
+  ["sp-attach", "sp-attach-pick", spAtts, "spawn"],
+]) {
+  $(btn).addEventListener("click", () => $(pick).click());
+  $(pick).addEventListener("change", (ev) => {
+    tray.add([...ev.target.files], key ?? undefined);
+    ev.target.value = "";
+  });
+}
+// A pasted screenshot is called image.png by every browser: name it by time.
+function pasted(ev) {
+  const got = [...(ev.clipboardData?.files || [])];
+  if (!got.length) return null;
+  ev.preventDefault();
+  const at = new Date().toTimeString().slice(0, 8).replaceAll(":", "");
+  return got.map((f, i) => {
+    const ext = (f.type.split("/")[1] || "bin").replace(/[^a-z0-9]/g, "");
+    return new File([f], `pasted-${at}${i ? `-${i + 1}` : ""}.${ext}`, { type: f.type });
+  });
+}
+input.addEventListener("paste", (ev) => {
+  const files = pasted(ev);
+  if (files) atts.add(files);
+});
+$("sp-text").addEventListener("paste", (ev) => {
+  const files = pasted(ev);
+  if (files) spAtts.add(files, "spawn");
+});
+// A file dropped anywhere on a session's page attaches to it; anywhere else
+// the browser would navigate away to the file.
+const carriesFiles = (ev) => ev.dataTransfer?.types.includes("Files");
+const onSession = () => $("a2").dataset.view === "session";
+const onSpawn = () => $("a2").dataset.view === "spawn";
+document.addEventListener("dragover", (ev) => {
+  if (!carriesFiles(ev)) return;
+  ev.preventDefault();
+  $("composer").classList.toggle("dropping", onSession());
+  $("spawn").classList.toggle("dropping", onSpawn());
+});
+document.addEventListener("dragleave", (ev) => {
+  if (ev.relatedTarget) return;
+  $("composer").classList.remove("dropping");
+  $("spawn").classList.remove("dropping");
+});
+document.addEventListener("drop", (ev) => {
+  if (!carriesFiles(ev)) return;
+  ev.preventDefault();
+  $("composer").classList.remove("dropping");
+  $("spawn").classList.remove("dropping");
+  if (onSession()) atts.add([...ev.dataTransfer.files]);
+  else if (onSpawn()) spAtts.add([...ev.dataTransfer.files], "spawn");
+});
+
 // -- dictation: the mic in both message boxes (dictation.js) ----------------
 const mics = () => [
   [$("mic"), input],
@@ -1582,9 +1657,11 @@ async function closeSession(s) {
 
 // A line from the composer, or from the menu's own filter (Alt+/ over a
 // draft), which leaves the composer alone. The server resolves "/" lines.
-async function sendLine(text, fromComposer) {
-  const s = focused();
-  if (!text || !s) return;
+// `target` is the session the line was typed in: a send that waited on
+// uploads may finish after the person moved to another tab.
+async function sendLine(text, fromComposer, attachments = [], target = focused()) {
+  const s = target;
+  if ((!text && !attachments.length) || !s) return;
   if (text === "/help") {
     // The menu is the help: it lists every command with what it does.
     if (fromComposer) menu.setLine("/");
@@ -1600,26 +1677,75 @@ async function sendLine(text, fromComposer) {
   box.hidden = true; // any send answers the turn the pills belonged to
   delete box.dataset.key; // so the next drawReplies always redraws
   try {
-    await callFor(s.key, "session.send", { text });
+    await callFor(s.key, "session.send", attachments.length ? { text, attachments } : { text });
     if (/^\/model\s/.test(text)) catalogs.delete(s.key); // its efforts may differ
     if (fromComposer) {
-      input.value = "";
       localStorage.removeItem(`aegis.draft.${s.key}`);
+      atts.clear(s.key);
+    }
+    if (fromComposer && shown === s.key) {
+      input.value = "";
       autosize();
       // Clearing the box fires no input event; an open menu would take the next Esc.
       menu.close();
       $("composer").classList.remove("bad");
     }
-    transcript.toBottom();
+    if (shown === s.key) transcript.toBottom();
   } catch (e) {
     $("send-error").textContent = e.message;
     box.hidden = was;
   }
 }
 
+// Sessions whose send waits on its uploads: a second Enter there does nothing.
+const waiting = new Set();
+
+// A new tab's first message when it carried files: they upload into the
+// session just started, then go out with the text, as a composer send would.
+async function sendFirst(key, text, files) {
+  atts.add(files, key);
+  waiting.add(key);
+  try {
+    await atts.settled(key);
+  } finally {
+    waiting.delete(key);
+  }
+  const ready = atts.ready(key);
+  if (ready.error) {
+    $("send-error").textContent = ready.error;
+    return;
+  }
+  try {
+    await callFor(key, "session.send", { text, attachments: ready.ids });
+    atts.clear(key);
+  } catch (e) {
+    $("send-error").textContent = e.message;
+  }
+}
 const send = async () => {
   await dictation.finish(input); // what was said goes out with the rest
-  return sendLine(input.value.trim(), true);
+  const s = focused();
+  if (!s || waiting.has(s.key)) return;
+  // The text and the session as they were at Enter, so a send that waits on
+  // uploads still goes where and as it was typed.
+  const text = input.value.trim();
+  if (atts.list(s.key).length) {
+    // Enter during an upload sends when it finishes, never without the files.
+    waiting.add(s.key);
+    $("send-error").textContent = "sending when the attachments finish…";
+    try {
+      await atts.settled(s.key);
+    } finally {
+      waiting.delete(s.key);
+    }
+    if (shown === s.key) $("send-error").textContent = "";
+  }
+  const ready = atts.ready(s.key);
+  if (ready.error) {
+    $("send-error").textContent = ready.error;
+    return;
+  }
+  return sendLine(text, true, ready.ids, s);
 };
 
 // Catalogs per session, fetched when the menu first opens there. The promise

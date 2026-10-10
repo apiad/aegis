@@ -5,6 +5,7 @@ resolves a ``/`` line first, ``commands.py``), ``session.read``,
 ``recap.request``, ``dictation.prepare``, ``session.configure``,
 ``commands.list``, ``session.interrupt``, ``session.stop``, ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``, ``file.peek``,
+``attachment.begin``, ``attachment.put``, ``attachment.drop``,
 ``quota.read``, ``transcript.detail``, ``transcript.search``, ``transcript.output``, and ``config.read``, ``config.write``,
 ``config.detect``, ``config.doctor`` and ``config.propose`` (``config_ops.py``),
 and ``artifact.create``, ``artifact.send``, ``artifact.read``,
@@ -22,14 +23,16 @@ patches ``set``).
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import contextlib
 import getpass
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from . import archive, commands, dictation, files
+from . import archive, attachments as att, commands, dictation, files
 from .agent_ops import register_agent_ops, spawn_opening
 from .artifact_ops import register_artifact_ops
 from .agents import (
@@ -90,7 +93,34 @@ class SpawnParams(_Strict):
 
 class SendParams(_Strict):
     log_id: str
-    text: str = Field(min_length=1)
+    text: str = ""
+    # Upload ids from attachment.begin, every one complete (attachments.py).
+    attachments: list[str] = Field(default_factory=list, max_length=att.MAX_FILES)
+
+    @model_validator(mode="after")
+    def _says_something(self) -> "SendParams":
+        if not self.text and not self.attachments:
+            raise ValueError("a message needs text or attachments")
+        return self
+
+
+class AttachBegin(_Strict):
+    log_id: str
+    name: str = Field(min_length=1, max_length=1000)
+    size: int = Field(ge=0, le=files.MAX_BYTES)
+
+
+class AttachPut(_Strict):
+    log_id: str
+    upload_id: str
+    offset: int = Field(ge=0)
+    # Base64 of at most CHUNK_BYTES.
+    data: str = Field(max_length=4 * ((att.CHUNK_BYTES + 2) // 3))
+
+
+class AttachDrop(_Strict):
+    log_id: str
+    upload_id: str
 
 
 class ReadParams(_Strict):
@@ -256,6 +286,8 @@ class App:
     async def boot(self) -> None:
         self._config_task = asyncio.create_task(self.config.watch())
         self.sessions.boot()
+        # No browser's upload survives a restart (attachments.py).
+        att.clear_staged(self.roots.state_root)
         self.monitors.boot()
         self.monitors.arm_all()
         await self.queues.resume_after_boot(self.queues.boot())
@@ -603,6 +635,11 @@ class App:
             s = reg.open(p.log_id)
             cmd = commands.split(p.text)
             if cmd is not None:
+                if p.attachments:
+                    raise OpError(
+                        "attachments_with_command",
+                        "a / line takes no files; send them with a message",
+                    )
                 name, arg = cmd
                 if name in commands.AEGIS:
                     return await self._command(s, name, arg, caller)
@@ -613,8 +650,20 @@ class App:
                         f"no command /{name} in this session; "
                         "start the line with // to send it as text",
                     )
+            text = commands.escape(p.text)
             try:
-                await s.send(commands.escape(p.text))
+                # The harness first: a send that cannot reach the agent leaves
+                # its uploads staged, to send again.
+                await s.ensure_running()
+                sent: list[dict] = []
+                if p.attachments:
+                    try:
+                        sent = await asyncio.to_thread(
+                            att.commit, self.roots.state_root, p.log_id, p.attachments
+                        )
+                    except files.FileError as e:
+                        raise OpError(e.code, e.message) from e
+                await s.send(att.message(text, sent), typed=text, attached=sent)
             except FileNotFoundError as e:
                 raise OpError(
                     "harness_not_found",
@@ -622,6 +671,48 @@ class App:
                 ) from e
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e
+
+        @r.op("attachment.begin", AttachBegin)
+        async def attachment_begin(p: AttachBegin, caller):
+            """Start uploading a file to a session: its upload id. The file
+            waits, staged, until a session.send names it (attachments.py)."""
+            reg.open(p.log_id)
+            try:
+                uid = att.begin(self.roots.state_root, p.log_id, p.name, p.size)
+            except files.FileError as e:
+                raise OpError(e.code, e.message) from e
+            return {"upload_id": uid}
+
+        @r.op("attachment.put", AttachPut)
+        async def attachment_put(p: AttachPut, caller):
+            """One base64 chunk of an upload at ``offset``: the bytes now
+            staged. No await between reading the staged size and appending,
+            so two chunks of one file cannot interleave."""
+            reg.open(p.log_id)
+            try:
+                data = base64.b64decode(p.data, validate=True)
+            except binascii.Error as e:
+                raise OpError("bad_chunk", f"the chunk is not base64: {e}") from e
+            if len(data) > att.CHUNK_BYTES:
+                raise OpError(
+                    "bad_chunk", f"a chunk carries at most {att.CHUNK_BYTES} bytes"
+                )
+            try:
+                size = att.put(
+                    self.roots.state_root, p.log_id, p.upload_id, p.offset, data
+                )
+            except files.FileError as e:
+                raise OpError(e.code, e.message) from e
+            return {"size": size}
+
+        @r.op("attachment.drop", AttachDrop)
+        async def attachment_drop(p: AttachDrop, caller):
+            """Forget an upload the person removed before sending."""
+            reg.open(p.log_id)
+            try:
+                att.drop(self.roots.state_root, p.log_id, p.upload_id)
+            except files.FileError as e:
+                raise OpError(e.code, e.message) from e
 
         @r.op("session.read", ReadParams)
         async def read(p: ReadParams, caller):

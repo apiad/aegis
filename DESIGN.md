@@ -401,6 +401,18 @@ operation only, and only for a socket on loopback to a server with a desktop: a
 proxy's public name is a browser elsewhere, and an SSH tunnel to a headless box
 looks local but has nowhere to open the file.
 
+**An attachment is a sent file going the other way, and only a person sends
+one.** A person's files upload over the websocket as base64 chunks
+(`attachment.begin`, `attachment.put`), so they need no route, no auth path
+and no relay of their own: a call that names a linked server already goes
+down the link. They wait staged in `<state>/inbox/<log_id>/.staged/` and the
+agent never sees them there; `session.send` checks every upload complete,
+moves each to `<state>/inbox/<log_id>/<YYYYMMDD-HHMMSS>-<name>`, copies it
+into the sent-files store (a copy, because the agent may edit its own), and sends the typed text with one line per file.
+The person's row shows the typed text and one card, never the paths. No
+operation for it is open to agents. Each harness is started with read access
+to its inbox, and a chunk's bytes never reach the log (`attachments.py`).
+
 **An artifact is a sent page with a way back, and the way back is the bridge.**
 An agent's interactive page (`artifacts.py`, `artifact_ops.py`) is served and
 framed exactly like a sent HTML file, so its script runs in an opaque origin

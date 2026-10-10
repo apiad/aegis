@@ -67,6 +67,7 @@
     <form class="spawn" id="spawn">
       <div class="mark">aegis</div>
       <div class="cwdline"><pick-chip class="srvpick" id="sp-server" name="server" aria-label="Server" title="The server the session starts on" hidden></pick-chip><span class="srvsep" id="sp-sep" hidden>:</span><input class="cwd" id="sp-cwd" spellcheck="false" aria-label="Working directory" title="Working directory: click to change"></div>
+      <div class="atts" id="sp-atts" hidden></div>
       <div class="box">
         <textarea id="sp-text" rows="3" aria-label="First message"
           placeholder="What should the agent do? Enter starts the session and sends this; Shift+Enter adds a line."></textarea>
@@ -80,6 +81,7 @@
             <button type="button" class="reset" id="sp-reset" hidden>reset</button>
           </div>
           <div class="acts">
+            <button class="mic clip" id="sp-attach" type="button" title="Attach files" aria-label="Attach files"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 4.5 5.8 9.2a1.5 1.5 0 0 0 2.1 2.1l5-5a3 3 0 0 0-4.2-4.2l-5 5a4.5 4.5 0 0 0 6.4 6.4l4.2-4.2"/></svg></button><input type="file" id="sp-attach-pick" multiple hidden>
             <button class="mic" id="sp-mic" type="button" data-state="idle" title="Dictate (Alt+M)" aria-label="Dictate"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" fill="none"/></svg></button>
             <button class="send" type="submit" id="sp-go" title="Start the session">↵</button>
           </div>
@@ -111,9 +113,10 @@
       </div>
       <div class="composer" id="composer">
         <div class="cmd-menu" id="cmd-menu" hidden><input id="cmd-filter" hidden spellcheck="false" placeholder="/command"><div id="cmd-rows"></div></div>
+        <div class="atts" id="atts" hidden></div>
         <div class="box">
           <textarea id="input" rows="1" placeholder="Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts."></textarea>
-          <div class="acts"><button class="mic" id="mic" type="button" data-state="idle" title="Dictate (Alt+M)" aria-label="Dictate"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" fill="none"/></svg></button><button class="int" id="interrupt" title="Interrupt (Esc)" aria-label="Interrupt" hidden>■</button><button class="send" id="send" title="Send (Enter)" aria-label="Send">↵</button></div>
+          <div class="acts"><button class="mic clip" id="attach" type="button" title="Attach files" aria-label="Attach files"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 4.5 5.8 9.2a1.5 1.5 0 0 0 2.1 2.1l5-5a3 3 0 0 0-4.2-4.2l-5 5a4.5 4.5 0 0 0 6.4 6.4l4.2-4.2"/></svg></button><input type="file" id="attach-pick" multiple hidden><button class="mic" id="mic" type="button" data-state="idle" title="Dictate (Alt+M)" aria-label="Dictate"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" fill="none"/></svg></button><button class="int" id="interrupt" title="Interrupt (Esc)" aria-label="Interrupt" hidden>■</button><button class="send" id="send" title="Send (Enter)" aria-label="Send">↵</button></div>
         </div>
         <div class="chips">
           <span class="chip" id="chip-model"></span><span class="chip" id="chip-effort"></span><span class="chip" id="chip-perm"></span>

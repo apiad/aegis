@@ -10,6 +10,8 @@ session an agent spawns still has at most the agent's power.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from typing import Any
 
 from ..claude.control import Catalog, Model, _doc
@@ -30,12 +32,22 @@ ALWAYS = {"aegis_*": "allow", "question": "deny", "doom_loop": "deny"}
 SOURCES = {"command": "opencode", "skill": "skill", "mcp": "mcp"}
 
 
-def rules(permission: str) -> dict[str, str]:
-    return {**PERMISSIONS[permission], **ALWAYS}
+def rules(permission: str, read_dirs: tuple[Path, ...] = ()) -> dict[str, Any]:
+    out: dict[str, Any] = {**PERMISSIONS[permission], **ALWAYS}
+    if read_dirs and out.get("external_directory") == "deny":
+        # The inbox lives outside the cwd; reading it must not trip the deny.
+        # OpenCode applies the last matching pattern, so "*" goes first.
+        out["external_directory"] = {
+            "*": "deny",
+            **{f"{folder}/*": "allow" for folder in read_dirs},
+        }
+    return out
 
 
-def child_config(mcp: tuple[str, str] | None, permission: str) -> dict[str, Any]:
-    cfg: dict[str, Any] = {"permission": rules(permission)}
+def child_config(
+    mcp: tuple[str, str] | None, permission: str, read_dirs: tuple[Path, ...] = ()
+) -> dict[str, Any]:
+    cfg: dict[str, Any] = {"permission": rules(permission, read_dirs)}
     if mcp is not None:
         from ..mcp import HEADER
 

@@ -146,3 +146,9 @@ async def test_a_probe_answers_and_leaves_no_process(tmp_path, fake_claude):
         fake_claude, "opus", "high", "full", tmp_path, tmp_path / "probe.log"
     )
     assert cat.has("compact")
+
+
+def test_each_read_dir_is_an_added_dir():
+    argv = build_argv("claude", "opus", "high", "read", add_dirs=(Path("/s/inbox/l"),))
+    assert argv[argv.index("--add-dir") + 1] == "/s/inbox/l"
+    assert "--add-dir" not in build_argv("claude", "opus", "high", "read")

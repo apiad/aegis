@@ -151,6 +151,9 @@ class Fold:
     def __init__(self) -> None:
         self._entries: dict[str, dict] = {}
         self._pending: deque[str] = deque()
+        # What an attached send went out as, by pending id: the echo repeats
+        # that text, while the pending entry shows what the person typed.
+        self._said: dict[str, str] = {}
         self._calls: dict[str, ToolCall] = {}
         self._seen_init = False
         self._interrupted = False
@@ -295,10 +298,14 @@ class Fold:
         self._live.clear()
         return ops
 
+    def _text(self, pid: str) -> str:
+        """The text the harness was sent for a pending send."""
+        return self._said.get(pid) or (self._entries.get(pid) or {}).get("md") or ""
+
     def _exact(self, want: str) -> str | None:
         """Remove and return the pending send whose text is ``want``."""
         for p in self._pending:
-            if ((self._entries.get(p) or {}).get("md") or "").strip() == want.strip():
+            if self._text(p).strip() == want.strip():
                 self._pending.remove(p)
                 return p
         return None
@@ -332,9 +339,7 @@ class Fold:
         """Remove and return the pending send an answer belongs to: the oldest
         whose text is ``want`` (compared stripped), else the oldest command line
         or prompt as ``command`` says, else, unless ``strict``, the oldest."""
-        texts = [
-            (p, (self._entries.get(p) or {}).get("md") or "") for p in self._pending
-        ]
+        texts = [(p, self._text(p)) for p in self._pending]
         pick = None
         if want is not None:
             pick = next((p for p, t in texts if t.strip() == want.strip()), None)
@@ -350,7 +355,9 @@ class Fold:
         """Prompts Claude never read before its process ended."""
         ops: list[dict] = []
         while self._pending:
-            e = self._entries.get(self._pending.popleft())
+            pid = self._pending.popleft()
+            self._said.pop(pid, None)
+            e = self._entries.get(pid)
             if e is not None:
                 ops += self._upsert({**e, "status": "lost"})
         return ops
@@ -409,6 +416,10 @@ class Fold:
             self._recaps = []
             pid = f"pending:{i}"
             self._pending.append(pid)
+            text = str(rec.get("text", ""))
+            attached = [_sent_file(f) for f in rec.get("files") or []]
+            if attached:
+                self._said[pid] = text
             return folded + self._upsert(
                 _entry(
                     pid,
@@ -416,7 +427,8 @@ class Fold:
                     "pending",
                     ts,
                     d.USER_GLYPH,
-                    md=str(rec.get("text", "")),
+                    md=str(rec.get("typed") or "") if attached else text,
+                    detail={"files": attached} if attached else None,
                 )
             )
         if kind == "spawn":
@@ -711,7 +723,9 @@ class Fold:
                     pid = self._take(None, command=False)
             else:
                 pid = self._take(ev.text, command=False)
+            carried = self._entries.get(pid) if pid is not None else None
             if pid is not None:
+                self._said.pop(pid, None)
                 ops += self._remove(pid)
             self._turn_open = True
             self._clock(ts, "work")
@@ -721,6 +735,21 @@ class Fold:
                 return ops + self._upsert(
                     _entry(
                         id, "inbox", "ok", ts, d.COMMS_GLYPH, title=header, md=ev.text
+                    )
+                )
+            attached = ((carried or {}).get("detail") or {}).get("files")
+            if carried is not None and attached:
+                # The person's row shows what they typed and one card; the
+                # path block the agent read stays in the store's text.
+                return ops + self._upsert(
+                    _entry(
+                        id,
+                        "user",
+                        "ok",
+                        ts,
+                        d.USER_GLYPH,
+                        md=carried["md"],
+                        detail={"files": attached},
                     )
                 )
             if typed is not None:

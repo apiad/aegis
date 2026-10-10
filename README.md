@@ -123,6 +123,10 @@ transcript, so the workplace grows with what its agents build.
   Markdown, text, audio, video), Open and Download. A Read, Write or Edit row
   also has *Show the file*, which opens the file that tool used, as it is now,
   inside the row.
+- **Files to agents.** Drop, paste or pick files in the message box (the
+  paperclip). They upload as chips while you type, go with your message into
+  the session's inbox, and the agent gets their paths. Your row shows them as
+  one card. It works on a linked server's sessions too.
 - **Monitors you can read.** Hovering a monitor opens its readings chart, its
   timing and each of its commands with the last exit code and stderr line, so a
   check that cannot run shows red instead of looking like one still waiting.

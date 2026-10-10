@@ -265,6 +265,33 @@ body{background:#000}
 #a2 .cmd-row .hn,#a2 .cmd-row .dc{color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 #a2 .cmd-row .src{color:var(--faint);font-size:11px}
 #a2 .composer.bad .box{border-color:var(--err)}
+/* attachments: a tray of chips above the message box (js/attach.js) */
+#a2 .composer .atts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+#a2 .composer .atts[hidden]{display:none}
+/* The new tab's tray holds its files until the session exists. */
+#a2 .spawn .atts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+#a2 .spawn .atts[hidden]{display:none}
+#a2 .spawn .clip + .mic{margin-left:6px}
+#a2 .spawn.dropping .box{border-color:var(--accent);border-style:dashed}
+#a2 .chip.att.held .ab{display:none}
+#a2 .chip.att{position:relative;display:inline-flex;align-items:center;gap:6px;overflow:hidden;color:var(--ink);max-width:260px}
+#a2 .chip.att .an{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+#a2 .chip.att .as{color:var(--faint)}
+#a2 .chip.att .ab{position:absolute;left:0;bottom:0;height:2px;width:calc(var(--p,0) * 100%);background:var(--accent)}
+#a2 .chip.att.done .ab{display:none}
+#a2 .chip.att.failed{border-color:var(--err);color:var(--err);cursor:pointer}
+#a2 .chip.att .ax{background:none;border:none;color:var(--muted);cursor:pointer;padding:0 2px;font-size:13px;line-height:1}
+#a2 .chip.att .ax:hover{color:var(--strong)}
+#a2 .composer.dropping .box{border-color:var(--accent);border-style:dashed}
+/* With the paperclip, three 44 px touch buttons and the textarea's own width
+   (from its cols) outgrew a 390 px phone: the textarea takes only what is left. */
+#a2 .composer textarea{width:0}
+#a2 .clip svg path{fill:none}
+#a2 .row.user .body .fcard.att{white-space:normal;font-size:13px}
+#a2 .row.user .body .fcard.after{margin-top:8px}
+/* The bubble makes this card narrower than a file_send's: the actions wrap
+   under the name instead of squeezing it to nothing on a phone. */
+#a2 .row.user .fcard.att .fbar{flex-wrap:wrap}
 #a2 .chip.click{cursor:pointer}#a2 .chip.click:hover{border-color:var(--accent);color:var(--strong)}
 #a2 .row.command .cmd{font-family:var(--font-chrome);color:var(--strong)}
 #a2 .chip{font-size:11.5px;padding:3px 9px;border:1px solid var(--rule);border-radius:5px;color:var(--muted);font-family:var(--font-chrome)}

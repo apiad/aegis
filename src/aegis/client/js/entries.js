@@ -165,6 +165,13 @@ function diffBlock(diff) {
 const RENDERERS = {
   user(e) {
     const body = el("div", "body", e.md);
+    if (e.detail?.files?.length) {
+      // What the person attached: one card that pages, as a file_send's.
+      const card = fileCard(e.detail.files, "▤");
+      card.classList.add("att");
+      if (e.md) card.classList.add("after");
+      body.append(card);
+    }
     if (e.detail?.tail || e.detail?.more) {
       // A command OpenCode expanded: the line as typed, its template under it.
       const d = el("details");

@@ -1151,3 +1151,51 @@ def test_the_work_between_messages_folds_and_what_was_said_does_not():
         ("prose", 0),
         ("system", 1),
     ]
+
+
+def _attached(name):
+    return _sent(name, path=f"/s/inbox/log/20261010-101502-{name}")
+
+
+FULL = (
+    "look\n\nAttached files:\n- /s/inbox/log/20261010-101502-a.png (image/png, 2.0 KB)"
+)
+
+
+def test_an_attached_send_shows_what_was_typed_and_one_card():
+    r = Rec()
+    r.own("send", text=FULL, typed="look", files=[_attached("a.png")])
+    r.echo(FULL)
+    f, ops = run(r)
+    pending = ops[0][-1]["upsert"]
+    assert (pending["md"], pending["status"]) == ("look", "pending")
+    assert [x["name"] for x in pending["detail"]["files"]] == ["a.png"]
+    assert ops[1][0] == {"remove": "pending:0"}
+    (user,) = f.entries()
+    assert (user["md"], user["status"]) == ("look", "ok")
+    assert [x["name"] for x in user["detail"]["files"]] == ["a.png"]
+    assert user["detail"]["files"][0]["url"] == "/files/id-a.png/a.png"
+
+
+def test_a_send_of_files_alone_has_no_text():
+    r = Rec()
+    full = "Attached files:\n- /s/inbox/log/20261010-101502-a.png (image/png, 2.0 KB)"
+    r.own("send", text=full, typed="", files=[_attached("a.png")])
+    r.echo(full)
+    (user,) = fold_records(r.records).entries()
+    assert user["md"] == "" and len(user["detail"]["files"]) == 1
+
+
+def test_an_attached_echo_takes_its_own_pending_send_not_the_oldest():
+    r = Rec()
+    r.own("send", text="look")
+    r.own("send", text=FULL, typed="look", files=[_attached("a.png")])
+    r.echo(FULL)
+    r.echo("look")
+    f, _ = run(r)
+    users = [e for e in f.entries() if e["kind"] == "user"]
+    assert [(u["md"], len(u["detail"].get("files", []))) for u in users] == [
+        ("look", 1),
+        ("look", 0),
+    ]
+    assert fold_records(r.records).entries() == f.entries()
