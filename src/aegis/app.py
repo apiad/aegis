@@ -52,6 +52,7 @@ from .host import HostSampler
 from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors
+from .nudges import Nudges
 from .queues import Queues
 from .quota import Quota
 from .recaps import Recaps
@@ -267,6 +268,7 @@ class App:
         reg.mcp_url = f"{base_url.rstrip('/')}{MCP_PATH}" if base_url else None
         self.versions = Versions()
         self.recaps = Recaps(self)
+        self.nudges = Nudges(self.sessions)
         # Who the people on this server are, as a link tells the far side. One
         # user per server for now: whoever started it (links.py).
         self.user = user or getpass.getuser()
@@ -293,6 +295,7 @@ class App:
         await self.queues.resume_after_boot(self.queues.boot())
         self.quota.start()
         self.host.start()
+        self.nudges.start()
         self.links.boot()
 
     async def shutdown(self) -> None:
@@ -301,6 +304,7 @@ class App:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._config_task
         await self.links.shutdown()
+        await self.nudges.stop()
         await self.quota.stop()
         await self.host.stop()
         await self.monitors.shutdown()

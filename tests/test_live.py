@@ -698,6 +698,86 @@ async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
         await asyncio.wait_for(task, 30)
 
 
+async def test_real_claude_answers_both_nudges(tmp_path: Path, monkeypatch):
+    """A real Sonnet told to end a turn with no tool call is asked, once, what
+    it is doing, and answers with turn_end; one that leaves its plan untouched
+    through a stretch of work is reminded once. The clocks are
+    shortened to seconds."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis import nudges
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    monkeypatch.setattr(nudges, "EVERY_S", 1.0)
+    monkeypatch.setattr(nudges, "IDLE_S", 5.0)
+    monkeypatch.setattr(nudges, "PLAN_STALE_S", 3600.0)
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+
+    def nudged(s, kind):
+        return [
+            e
+            for e in s.entries()
+            if e["kind"] == "inbox" and e["title"].startswith(f"aegis:nudge · {kind}")
+        ]
+
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "This is a test of aegis itself. Reply with the single word OK and end "
+            "your turn without calling any tool at all, not even turn_end."
+        )
+        await until(lambda: nudged(s, "idle"), timeout=150, what="the idle nudge")
+        await until(lambda: s.status == "idle", timeout=120, what="the answer")
+        assert s.standing.get("report"), "the nudge was not answered with turn_end"
+        await asyncio.sleep(8)
+        assert len(nudged(s, "idle")) == 1
+
+        monkeypatch.setattr(nudges, "IDLE_S", 3600.0)
+        monkeypatch.setattr(nudges, "PLAN_STALE_S", 8.0)
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        p = app.sessions.sessions[r["log_id"]]
+        await p.send(
+            "This is a test of aegis itself. Call plan_update with two items, "
+            "'wait' doing and 'report' pending. Then run exactly this bash command "
+            "in the foreground: sleep 12. Then reply with the single word SLEPT, "
+            "without updating the plan."
+        )
+        await until(lambda: nudged(p, "plan"), timeout=180, what="the plan nudge")
+        await until(lambda: p.status == "idle", timeout=120, what="the answer")
+        # Sonnet answers either way: it updates the plan, or says with
+        # turn_end why it did not (here, the prompt told it not to).
+        assert p.standing.get("report") or p.standing["plan_mark"] > 0
+        await asyncio.sleep(8)
+        assert len(nudged(p, "plan")) == 1
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
 async def test_a_real_haiku_recap_of_a_spanish_session_is_in_spanish(
     tmp_path: Path,
 ):
