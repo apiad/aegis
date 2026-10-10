@@ -180,6 +180,16 @@ idle session gets it at once and a stopped one is resumed for it; a working one
 holds it and gets every held message as one turn when its turn ends. Writing to a
 working `claude` would inject the message at its next tool boundary instead.
 
+**aegis nudges an agent that drifts, once.** A live, idle session that is
+not a queue worker, whose card says done or review, gets an inbox message
+headed `> from aegis:nudge · plan|idle · …` when its plan has gone 15 minutes
+of work untouched with items not done, or when its last turn ended with no
+`turn_end` 10 minutes ago (`nudges.py`). What a nudge needs is folded into the
+standing from the store (`ended`, `plan_mark`, `nudged`), so a restart neither
+repeats one nor forgets it. A send that carries no nudge re-arms the idle
+nudge and only a plan record re-arms the plan nudge, so a nudge's own turn
+never earns another and nothing loops.
+
 **A turn ending is not completion.** Ending a turn is how an agent waits, so a
 queue worker is finished only when its turn has ended with no live monitor, no
 held message and no Claude task still open (`task_started` without its
