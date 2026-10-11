@@ -331,6 +331,11 @@ def build_web(
         async def writer() -> None:
             while True:
                 msg = await out.get()
+                # A revoked token reads nothing more, even on a socket that
+                # sends nothing (the reader checks the ones that do).
+                if app.principals.resolve(given) != principal:
+                    await websocket.close(code=BAD_TOKEN)
+                    return
                 await websocket.send_text(json.dumps(msg, ensure_ascii=False))
 
         def far(server: object):

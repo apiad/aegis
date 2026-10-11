@@ -1039,3 +1039,23 @@ async def test_a_member_here_cannot_act_through_the_link(pair):
         r = await b.call("session.spawn", server="beta", agent="opus")
         assert r["error"]["code"] == "not_for_members"
     assert "mallory" not in [t["name"] for t in beta.app.principals.list()]
+
+
+async def test_a_revoked_token_on_an_idle_socket_stops_receiving(tmp_path, fake_claude):
+    node = await Node(tmp_path / "solo", "solo", fake_claude).start()
+    try:
+        member = node.app.principals.add("ben", "member")
+        async with Browser(node, member) as ben:
+            await ben.send(t="sub", channel="sessions")
+            await until(lambda: ben.of("sessions"), what="the snapshot")
+            node.app.principals.revoke("ben")
+            seen = len(ben.frames)
+            await node.spawn()  # a sessions frame meant for ben, who sends nothing
+            await until(
+                lambda: ben.ws.close_code is not None or len(ben.frames) > seen,
+                timeout=5,
+                what="ben dropped or fed",
+            )
+            assert ben.frames[seen:] == [] and ben.ws.close_code == 4401
+    finally:
+        await node.stop()
