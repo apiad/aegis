@@ -1233,6 +1233,8 @@ let archiveTotal = 0; // the first page's count of everything matching
 let archiveServer = null; // the server filter: null for every server
 let archiveCounts = {}; // the first page's count per server
 let archiveOffline = []; // linked servers that were down for the first page
+let archiveWorkers = false; // queue workers shown: the chip is on
+let archiveWorkerCount = 0; // the first page's count of matching queue workers
 let archiveLoaded = false;
 let archiveTimer = null;
 
@@ -1243,6 +1245,7 @@ async function loadArchive(more = false) {
   const q = $("arch-q").value.trim();
   const params = q ? { query: q } : {};
   if (archiveServer) params.server = archiveServer;
+  if (archiveWorkers) params.workers = true;
   if (more && archiveCursor) params.cursor = archiveCursor;
   try {
     const r = await conn.call("archive.list", params);
@@ -1254,6 +1257,7 @@ async function loadArchive(more = false) {
       archiveTotal = r.total;
       if (!archiveServer) archiveCounts = r.counts || {};
       archiveOffline = r.offline || [];
+      archiveWorkerCount = r.workers || 0;
     }
   } catch (e) {
     if (!more) [archived, archiveCursor, archiveTotal] = [[], null, 0];
@@ -1266,8 +1270,24 @@ async function loadArchive(more = false) {
   $("arch-count").textContent = `Showing ${archived.length} of ${Math.max(archiveTotal, archived.length)}`;
   $("arch-next").hidden = !archiveCursor;
   drawArchiveServers();
+  drawArchiveWorkers();
   fleetMark(false);
 }
+
+// Queue workers are left out of the archive unless this chip is on (#331): a
+// worker's result went to whoever enqueued it. The chip says how many match,
+// and goes away when none do.
+function drawArchiveWorkers() {
+  const b = $("arch-workers");
+  b.hidden = !archiveWorkerCount && !archiveWorkers;
+  b.classList.toggle("on", archiveWorkers);
+  b.setAttribute("aria-pressed", String(archiveWorkers));
+  b.querySelector("b").textContent = archiveWorkerCount;
+}
+$("arch-workers").addEventListener("click", () => {
+  archiveWorkers = !archiveWorkers;
+  loadArchive();
+});
 
 // The archive's server filter, once a server is linked: every server with its
 // count, and a down one named so its rows are not silently missing.

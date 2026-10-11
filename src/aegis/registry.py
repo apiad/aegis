@@ -20,7 +20,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from .archive import Position, page as archive_page
+from .archive import Position, count_workers, page as archive_page
 from . import attention, restarts
 from .harness import harness_for
 from .meta import MetaStore, rebuild
@@ -518,11 +518,21 @@ class Registry(Host):
         return _public(meta)
 
     def archive(
-        self, query: str | None, limit: int, after: Position | None
+        self,
+        query: str | None,
+        limit: int,
+        after: Position | None,
+        workers: bool = True,
     ) -> tuple[list[dict], int, Position | None]:
         """A page of the archive, newest first, after ``after`` (archive.py)."""
-        items, total, last = archive_page(self.archived.values(), query, limit, after)
+        items, total, last = archive_page(
+            self.archived.values(), query, limit, after, workers
+        )
         return [_public(m) for m in items], total, last
+
+    def archived_workers(self, query: str | None) -> int:
+        """How many archived queue workers match ``query``."""
+        return count_workers(self.archived.values(), query)
 
     async def shutdown(self) -> None:
         for s in list(self.sessions.values()):
