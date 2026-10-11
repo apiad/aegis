@@ -251,7 +251,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · tokens, quota gate and restarts</span>
-  <span class="st"><span class="pill acc">restarts: built on branch multi-user-quota; tokens and quota not started</span><span class="pill">2026-10-10</span><span class="pill">#311 · #312</span></span>
+  <span class="st"><span class="pill acc">restarts merged; tokens built on branch tokens-owners; quota not started</span><span class="pill">2026-10-10</span><span class="pill">#311 · #312</span></span>
 </div>
 
 <div class="wrap">
@@ -415,6 +415,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <p>Revoking the admin token, the one in <code>&lt;state&gt;/token</code>, does not delete it. aegis writes a new random token to the file and stops accepting the old one. Every browser and link that held the old token is refused at its next message, so a server can never be left without an admin and a leaked admin token is dead the moment it is revoked.</p>
 <p>A browser logs in exactly as today, with <code>?token=</code> or <code>POST /login</code>, and the cookie holds whichever token it presented. <code>web.py</code> resolves the token to its entry with a constant-time compare against each hash, and the <code>Caller</code> gains a <code>principal</code> field holding the name and role.</p>
 
+<p>As built: the Tokens section's "used" counts from the server's start and is kept in memory, because writing a timestamp on every authenticated message would rewrite <code>tokens.json</code> constantly. Marking a session read stays open to members, because the unread set only changes a badge. A member cancels or resumes only its own queue tasks. The Tokens section edits this server's tokens only; a linked server's are edited on that server.</p>
 <h3 id="roles">Roles</h3>
 <table class="tbl">
 <thead><tr><th>Operation</th><th>admin</th><th>member</th></tr></thead>

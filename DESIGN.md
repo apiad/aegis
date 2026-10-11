@@ -232,7 +232,20 @@ journal notes, reading, waiting on other sessions and `file_send`. The registry 
 session's current permission on each call, so the rule holds for every harness
 and follows a live `/permission`, and Claude Code is told to let every aegis
 tool through, because its plan mode refuses MCP calls an allow rule names
-(`ops.py`, `claude/process.py`). People can do anything.
+(`ops.py`, `claude/process.py`).
+
+**A token is a principal, and a member changes only what it owns.** A server
+holds one token per person, linked server or job, each a name and a role
+(`tokens.py`): the token in `.aegis/state/token` is the admin's, the others are
+digests in `tokens.json`. Every session and queue task records its owner: the
+principal that started it, or the owner of the agent that did, so a member's
+agent cannot hand work to anyone else. An admin changes anything. A member reads
+everything and changes only what it owns; server settings, links, tokens and
+spawning on a linked server are for admins. Each operation declares `admin` or
+the param that names the session it changes, and `ops.Registry.call` checks both
+in one place. An agent acts as its session's owner with the owner's current role,
+and a link acts as the token it presented. A token revoked while its socket is
+open is refused at its next message.
 Closing is the one exception, and it asks for a second thought: `session_close`
 closes at once only a session the agent spawned, or a worker whose task it
 enqueued, whose attention is done. Anything else, the caller's own session

@@ -210,8 +210,12 @@ up and it only opens another window. Plain `aegis serve` opens nothing and print
 the URL, for systemd and remote hosts.
 
 The defaults are `--port 8742 --host 127.0.0.1`. Anything but loopback has to be
-asked for with `--host`. The token lives in `.aegis/state/token` and survives
-restarts; delete the file to rotate it, which signs every browser out. Opening
+asked for with `--host`. The printed token is the admin's. It lives in
+`.aegis/state/token` and survives restarts; delete the file to rotate it, which
+signs every browser out. `aegis token add NAME` gives another person, a linked
+server or a job a token of its own, a member by default: it reads every session
+and changes only the ones it starts. `aegis token list` names them and `aegis
+token revoke NAME` ends one; revoking the admin's prints its replacement. Opening
 the printed URL once signs that browser in: the server moves the token into an
 HttpOnly cookie that lasts a year and drops it from the address bar, so no script
 on the page can read it.
