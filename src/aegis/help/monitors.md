@@ -43,7 +43,7 @@ card also shows an estimate of when the bar reaches 100.
 
 ## Wait on CI
 
-A pull request's checks, with the GitHub CLI:
+Wait for a pull request's CI checks with the GitHub CLI:
 
 ```json
 {
