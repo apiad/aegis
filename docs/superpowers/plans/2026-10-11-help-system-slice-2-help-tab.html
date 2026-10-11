@@ -171,6 +171,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>"Start this tutorial" ships hidden.</b> The button is in every tutorial page's markup from this slice on, hidden while the <code>Help</code> object has no <code>onStart</code>. Slice 3 enables it with one change in <code>js/app.js</code>: it passes <code>onStart: (page) =&gt; …</code> to <code>new Help(…)</code>, a function that calls <code>help.guide</code> with <code>kind: "tutorial"</code>, that page and the default agent, and then <code>go(`#s=${log_id}`)</code>. Nothing in <code>help.js</code> changes, and slice 3's browser test flips this slice's "hidden" assertion to "visible".</li>
   <li><b>A frontmatter block in <code>help.read</code>'s answer is dropped.</b> The contract says <code>help.read</code> returns "markdown str" without saying whether the <code>---</code> block comes with it. The tab draws the title and <code>when:</code> line from <code>help.pages</code> and strips a leading frontmatter block if one arrives.</li>
   <li><b>DESIGN.md gains three words.</b> The Markdown container query sits on <code>#tr</code> and <code>.vbody</code> (<code>DESIGN.md:474</code>); the tab's page scroller is a third. Nothing else in DESIGN.md changes: the tab is a view like Settings, which DESIGN.md does not describe either.</li>
+  <li><b>Implemented: <code>help.pages</code> sits in <code>register_help_ops(app)</code>.</b> Slice 1 named the function <code>register_help_ops</code> (<code>src/aegis/help_ops.py:48</code>), not <code>register(r, app)</code>; the op is added inside it beside <code>help.read</code> and closes over its local <code>index</code>. The module docstring gains one sentence naming the op (<code>help_ops.py:7-8</code>).</li>
   <li><b>Left out on purpose:</b> a key chord and a palette entry for the tab (the spec names none), and a <code>help:</code> line in this slice's changelog fragment (slice 4 adds the line and the collation that keeps it).</li>
 </ul>
 
@@ -220,7 +221,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <h2>Tasks</h2>
 
 <!-- ============================================================ TASK 1 -->
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="num">1</span><span><span class="ttl">help.pages: the list the tab draws</span><span class="files">src/aegis/help_ops.py · tests/test_help_pages.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The tab's list needs every page's id, title, kind and <code>when:</code> line. Slice 1's <code>Index.listing()</code> already returns exactly that; this task serves it to the browser and to no agent, since agents get the same list from <code>help_search</code> when nothing matches.</p>

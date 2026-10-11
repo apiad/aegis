@@ -20,7 +20,8 @@ from aegis import cli
 from aegis.app import App
 from aegis.commands import AEGIS
 from aegis.config import AgentDoc, ConfigDoc, QueueDoc
-from aegis.helppages import HELP_DIR, KINDS, load
+from aegis.helppages import HELP_DIR, KINDS, Index, load
+from aegis.ops import Caller, OpError
 from aegis.roots import make_roots
 
 FIRST_PAGES = {
@@ -170,3 +171,24 @@ def test_the_wheel_ships_every_help_page(tmp_path):
     (wheel,) = tmp_path.glob("*.whl")
     names = set(zipfile.ZipFile(wheel).namelist())
     assert {f"aegis/help/{p.id}.md" for p in load()} <= names
+
+
+async def test_the_help_tab_lists_every_page_and_agents_cannot_ask(
+    tmp_path, fake_claude, fake_opencode
+):
+    """help.pages is the Help tab's list: what the index lists, for a person
+    only. An agent asks help_search, which answers with the same list when
+    nothing matches."""
+    (tmp_path / ".aegis.yaml").write_text(
+        "default_agent: opus\nagents:\n"
+        "  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
+    )
+    app = App(
+        make_roots(tmp_path, tmp_path),
+        claude_bin=fake_claude,
+        opencode_bin=fake_opencode,
+    )
+    assert await app.registry.call("help.pages", {}) == Index(load()).listing()
+    with pytest.raises(OpError) as e:
+        await app.registry.call("help.pages", {}, Caller("agent", log_id="x"))
+    assert e.value.code == "not_for_agents"

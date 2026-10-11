@@ -4,7 +4,8 @@ The index is built once, when the app registers its operations, from the pages
 in the installed package (``helppages.py``), so a server answers with the help
 for exactly the code it runs. Both only read, so a session with read
 permission has them too. An empty search returns the page list rather than
-nothing, so an agent always has somewhere to go next.
+nothing, so an agent always has somewhere to go next. ``help.pages`` is that
+list for the browser's Help tab, and only for a person.
 """
 
 from __future__ import annotations
@@ -71,3 +72,10 @@ def register_help_ops(app: App) -> None:
             raise OpError(
                 "unknown_section" if known else "unknown_page", e.args[0]
             ) from None
+
+    @r.op("help.pages")
+    async def help_pages(_, caller):
+        """Every help page for the Help tab's list: id, title, kind and the
+        when: line, in the index's order. A person's operation; an agent
+        searches instead."""
+        return index.listing()
