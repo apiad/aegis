@@ -83,9 +83,9 @@ export class Help {
     keys.type = "button";
     keys.append(el("kbd", null, "?"));
     keys.addEventListener("click", () => this.onKeys());
-    const list = el("nav", "hlist");
-    list.setAttribute("aria-label", "Help pages");
-    list.append(search, this.rows, keys);
+    this.list = el("nav", "hlist");
+    this.list.setAttribute("aria-label", "Help pages");
+    this.list.append(search, this.rows, keys);
     this.back = el("button", "btn hback", "← Help");
     this.back.type = "button";
     this.back.addEventListener("click", () => this.go("#help"));
@@ -99,7 +99,7 @@ export class Help {
     this.page = el("article", "hpage");
     this.page.tabIndex = -1;
     this.page.append(this.back, this.title, this.when, this.body);
-    this.box.replaceChildren(list, this.page);
+    this.box.replaceChildren(this.list, this.page);
     // A link to another page opens it here; any other keeps its new tab.
     this.body.addEventListener("click", (ev) => {
       const a = ev.target.closest("a[href]");
@@ -202,6 +202,7 @@ export class Help {
     if (!q) {
       this.hits = null;
       this.drawList();
+      this.list.scrollTop = 0;
       return;
     }
     let res;
@@ -214,6 +215,8 @@ export class Help {
     if (n !== this.seq) return;
     this.hits = res.hits;
     this.drawList();
+    // The list keeps its scroll between visits; new rows start at the best.
+    this.list.scrollTop = 0;
   }
 
   // /help <words>: the box holds them and the list their hits.

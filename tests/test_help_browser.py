@@ -305,3 +305,25 @@ def test_a_page_arriving_late_leaves_the_focus_in_the_search_box(server, page): 
         }"""
     )
     assert got is True
+
+
+def test_a_new_search_shows_its_best_hit_at_the_top_of_the_list(server, page):  # noqa: F811
+    """The list keeps its scroll between visits, so a search drawn into a
+    list scrolled down to "Every key" hid its best hits and the box above them."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.click("#help-btn")
+    page.wait_for_selector(".helpv .hrow")
+    page.eval_on_selector(".helpv .hlist", "l => { l.scrollTop = l.scrollHeight; }")
+    assert page.eval_on_selector(".helpv .hlist", "l => l.scrollTop") > 0
+    page.go_back()
+    page.wait_for_selector("#a2[data-view=session]")
+    page.fill("#input", "/help queues")
+    page.press("#input", "Enter")
+    best = Index(load()).search("queues", limit=10)[0].ref
+    page.wait_for_function(
+        "r => document.querySelector('.helpv .hrow')?.dataset.ref === r", arg=best
+    )
+    assert page.eval_on_selector(".helpv .hlist", "l => l.scrollTop") == 0
+    assert page.errors == []
