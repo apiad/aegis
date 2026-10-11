@@ -6,7 +6,9 @@ import pytest
 from aegis.helppages import Index, load
 
 from .test_browser import (  # noqa: F401
+    CONFIG,
     WIDER,
+    Server,
     browser,
     page,
     phone,
@@ -216,3 +218,47 @@ def test_help_with_words_opens_the_tab_searched_and_sends_nothing(server, page):
     assert page.input_value("#input") == ""
     assert page.evaluate("document.querySelectorAll('.row.user').length") == 1
     assert page.errors == []
+
+
+@pytest.fixture
+def long_named(tmp_path, fake_claude, fake_opencode):
+    """A server whose name is wider than the 52 px the phone header has spare
+    in a session view, measured with a three-letter name."""
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    s = Server(tmp_path, fake_claude, fake_opencode)
+    s.args = ["--name", "a-long-server-name"]
+    s.start()
+    yield s
+    s.stop()
+
+
+def test_the_help_tab_is_two_screens_on_a_phone(long_named, browser):
+    errors: list = []
+    pg = phone(browser, errors)
+    pg.goto(long_named.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg)  # a session view adds the panel button: the fullest header
+    btn = pg.locator("#help-btn").bounding_box()
+    gear = pg.locator("#settings-btn").bounding_box()
+    assert btn and btn["x"] + btn["width"] <= 390 and btn["width"] >= 40, btn
+    assert abs(btn["y"] - gear["y"]) < 2, "the ? sits on the header's first row"
+    assert pg.evaluate(WIDER) == []
+    pg.tap("#help-btn")
+    pg.wait_for_selector(".helpv[data-screen=list] .hrow")
+    assert pg.is_visible(".helpv .hlist") and not pg.is_visible(".helpv .hpage")
+    pg.tap('.helpv .hrow[data-ref="getting-started"]')
+    pg.wait_for_selector(".helpv[data-screen=page]")
+    shown(pg, "getting-started")
+    assert not pg.is_visible(".helpv .hlist") and pg.is_visible(".helpv .hback")
+    assert pg.evaluate(WIDER) == []
+    pg.tap(".helpv .hback")
+    pg.wait_for_selector(".helpv[data-screen=list]")
+    # The phone's own Back returns from a page to the list, not out of the tab.
+    pg.tap('.helpv .hrow[data-ref="monitors"]')
+    pg.wait_for_selector(".helpv[data-screen=page]")
+    pg.go_back()
+    pg.wait_for_selector(".helpv[data-screen=list]")
+    assert pg.is_visible(".helpv .hlist")
+    assert errors == []
+    pg.close()
+

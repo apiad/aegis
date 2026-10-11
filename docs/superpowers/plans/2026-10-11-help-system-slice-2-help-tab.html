@@ -176,6 +176,9 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>Implemented: no shipped heading has an underscore.</b> Task 2's check (a <code>slug</code> that keeps underscores) cannot fail on today's pages, so it was run as a <code>slug</code> joining with <code>_</code>, which the section test catches on every page.</li>
   <li><b>Implemented: <code>app.py</code>'s list of operations names <code>help.pages</code>.</b> The module docstring lists every op by module (<code>src/aegis/app.py:16</code>); it now reads <code>help.search</code>, <code>help.read</code> and <code>help.pages</code>, so it stays true after task 1.</li>
   <li><b>Implemented: task 4's step 7 runs the menu test on its own.</b> Given with <code>-k help_with_words</code>, pytest deselects <code>tests/test_browser.py::test_help_opens_the_menu_and_sends_nothing</code>, so that command passes without running it; it was run separately and passes.</li>
+  <li><b>Implemented: on a phone the server's name takes the spacer's place.</b> A wrapping flex row breaks lines on each item's content width, so <code>min-width:0</code> on <code>.tabs .servers</code> never let the name shrink before the line broke: with <code>a-long-server-name</code> the bell, the panel button and the <code>?</code> all fell to a second row. Inside the 760 px block the spacer <code>.tabs .gap</code> is hidden and <code>.servers</code> takes <code>flex:1 1 0</code> with its content right-aligned (<code>src/aegis/client/css/base.css</code>, the 760 px block's first rules), so the name keeps where it was and gives way first.</li>
+  <li><b>Implemented: task 5's break check removes the zero basis, not <code>min-width:0</code>.</b> <code>overflow:hidden</code> already makes the automatic minimum width zero, so removing <code>min-width:0</code> alone changes nothing and the test still passes. Restoring the plan's rule (the spacer shown, no zero basis) fails the first-row assertion.</li>
+  <li><b>Implemented: the page takes the focus when it is asked for.</b> The plan's <code>read()</code> focused <code>.hpage</code> after awaiting the code blocks' paint. On a cold browser under load that paint landed after the search box had the focus back, so clearing the box sent Delete to the page and the groups never returned (reproduced with two busy loops on this host). The focus moves at the start of <code>read()</code> (<code>src/aegis/client/js/help.js</code>, <code>read</code>), pinned by <code>test_a_page_arriving_late_leaves_the_focus_in_the_search_box</code>.</li>
   <li><b>Left out on purpose:</b> a key chord and a palette entry for the tab (the spec names none), and a <code>help:</code> line in this slice's changelog fragment (slice 4 adds the line and the collation that keeps it).</li>
 </ul>
 
@@ -1015,7 +1018,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -- src/aegis/commands.p
 </details>
 
 <!-- ============================================================ TASK 5 -->
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">Two screens below 640 px, and the ? on the phone's header</span><span class="files">css/base.css · site/client.css · tests/test_help_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Below 640 px the list and the page are two screens. The <code>?</code> shows on a phone as a bare glyph like Settings and Journal, and the server's name gives way first so the button keeps the first row.</p>
