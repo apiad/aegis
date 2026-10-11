@@ -761,7 +761,7 @@ def test_reopen_from_the_archive_and_rename(server, page, frames):
     page.fill("#arch-q", "nothing like it")
     page.wait_for_selector("#arch-list .empty")
     page.fill("#arch-q", "old")
-    page.locator(f"#arch-list tr[data-id='{a}'] button", has_text="Read").click()
+    page.click(f"#arch-list tr[data-id='{a}'] .btn.read")
     page.wait_for_selector("#a2[data-mode=read]")
     assert not page.is_visible(".composer") and not page.is_visible("#close")
     # An archived meta carries no attention: the state alone, no glyph.
@@ -2438,7 +2438,7 @@ def test_a_finished_worker_fades_and_sinks_below_the_live_cards_and_an_errored_o
     # Done, the task archives the worker; reopened, its task is still over.
     page.wait_for_selector(f"#arch-list tr[data-id='{worker}']", timeout=20000)
     assert page.locator(f"#cards .card[data-id='{worker}']").count() == 0
-    page.locator(f"#arch-list tr[data-id='{worker}'] button", has_text="Reopen").click()
+    page.click(f"#arch-list tr[data-id='{worker}'] .btn.reopen")
     page.wait_for_selector("#a2[data-view=session][data-mode=live]")
     live = spawn(page, "still going")
     page.click("#tab-fleet")
@@ -3737,8 +3737,9 @@ def test_a_phone_fits_the_archive_and_a_tap_on_a_row_reads_it(
         row = page.locator(f"#arch-list tr[data-id='{ids[0]}']")
         assert row.bounding_box()["height"] <= 64, "a row is two lines and a button"
         assert page.is_hidden(f"#arch-list tr[data-id='{ids[0]}'] .btn.read")
-        reopen = row.locator(".btn.primary").bounding_box()
+        reopen = row.locator(".btn.reopen").bounding_box()
         assert reopen["x"] + reopen["width"] <= 390 and reopen["height"] >= 44
+        assert reopen["width"] >= 44
         row.locator("td").first.tap()
         page.wait_for_function("id => location.hash === '#read=' + id", arg=ids[0])
         assert errors == []
