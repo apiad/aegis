@@ -42,7 +42,9 @@ wakes itself when the task ends, and stopping it would kill the task.
 its store, written by write-then-rename. Boot reads only those, so an archive of
 hundreds costs hundreds of small reads; a missing or damaged meta is rebuilt from
 its store and the session lands in the archive. Boot writes to no store, except one
-`server_stopped` record for a session whose turn the last run's end cut.
+`server_stopped` record for a session whose turn the last run's end cut. Continuing
+those turns is not part of reading: `continue_after_boot` runs after it, before the
+monitors are armed, and writes through the ordinary send path.
 
 **A restart gives back what it cut.** aegis writes `<state>/server.json` at both ends
 of a clean shutdown, so boot tells a restart from a crash. A turn the server's own
@@ -53,7 +55,8 @@ A harness that failed on its own is never restarted. After a crash, a harness th
 dead server left running is ended first, recognised by its pid and its start time
 in `/proc`, so two processes never resume one session. Under systemd's default
 `KillMode=control-group` the harnesses die a moment before aegis does; an exit by
-SIGTERM within 30 s of a clean stop counts as that stop's (restarts.py).
+SIGTERM that cut a turn within 30 s of a clean stop counts as that stop's, and a
+worker's task waits out those 30 s before such an exit fails it (restarts.py).
 
 **Its own state, never mixed with the legacy tree's.** aegis keeps its state in
 `.aegis/state/` under the config root, where the legacy tree kept its own in
