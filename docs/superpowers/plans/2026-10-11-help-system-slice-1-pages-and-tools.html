@@ -174,6 +174,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>The end-to-end test lives in <code>tests/test_help_tools.py</code></b>, so <code>tests/test_help_pages.py</code> holds only the roster checks the later slices extend. A slow test there builds the wheel and checks the pages are in it, which the spec asks of the changelog in slice 4 and nobody asked of the pages.</li>
   <li><b>Docs the spec did not list change too:</b> AGENTS.md's table of where facts live gains <code>src/aegis/help/</code>; <code>know-how/landing-a-change.md</code> and the header of <code>.rift.yaml</code> repeat the "rift is private" claim and are corrected.</li>
   <li><b>The live test ignores <code>plan_update</code> and <code>turn_end</code></b> when it finds the first aegis call: the primer asks for both on any turn, and neither is a feature an agent looks up.</li>
+  <li><b>Executing: task 3's break was a different one.</b> Changing <code>monitors.md</code>'s <code>when:</code> line and its CI heading, even with every "CI" and "poll" taken out of the page, left 33 passed: the table asks only that one listed page be among the first three, and "wait" keeps <code>monitors#wait-on-other-sessions</code> third (<code>tests/test_help_index.py</code>, <code>test_a_question_finds_its_page_in_the_first_three</code>). Moving <code>monitors.md</code> out of the directory failed the three monitors questions, so that was the break run.</li>
 </ul>
 
 <h2>Found while planning, not in this slice</h2>
@@ -1217,7 +1218,7 @@ EOF
 </details>
 
 <!-- ============================================================ TASK 3 -->
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="num">3</span><span><span class="ttl">Three pages: commands, getting-started, writing-help-pages; the ranking table</span><span class="files">src/aegis/help/{commands,getting-started,writing-help-pages}.md · tests/test_help_index.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The commands page lists every aegis slash command (<code>src/aegis/commands.py:37</code>) and every CLI subcommand (<code>uv run aegis --help</code> and each sub-app's <code>--help</code>; all fifteen take <code>--root</code>). The tutorial follows the spec's format: numbered steps under <code>## </code> headings, each saying what to do and what the person should see, and the steps that start agents or spend quota say so in their first line. Then the ranking table: twenty questions an agent would ask, each with the pages any of which must be in its first three hits.</p>

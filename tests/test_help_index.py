@@ -1,9 +1,10 @@
 """The help index (helppages.py): parsing a page, BM25 over its sections, and
-reading a page or a section."""
+reading a page or a section. The last test is the ranking table: questions an
+agent would ask, and the page each must find in its first three results."""
 
 import pytest
 
-from aegis.helppages import Index, parse, slug
+from aegis.helppages import Index, load, parse, slug
 
 PAGE = """\
 ---
@@ -133,3 +134,36 @@ def test_the_listing_is_by_kind_then_title():
     ]
     assert [p["id"] for p in Index(pages).listing()] == ["c", "b", "a"]
     assert set(Index(pages).listing()[0]) == {"id", "title", "kind", "when"}
+
+
+# Questions an agent would ask, and the pages any of which must be in the first
+# three results. A ranking change, or a page edit, that drops one fails here.
+QUESTIONS = [
+    ("wait for CI without polling", {"monitors"}),
+    ("how do I wait until a GitHub Actions run finishes", {"monitors"}),
+    ("wait until other sessions finish", {"monitors", "handoffs"}),
+    ("send work to another server", {"handoffs", "links"}),
+    ("make the agent run on haiku", {"sessions", "config"}),
+    ("show the person a page they can click", {"artifacts"}),
+    ("send the person a screenshot", {"artifacts"}),
+    ("run a batch of tasks in parallel workers", {"queues"}),
+    ("cancel a task I enqueued", {"queues"}),
+    ("give another session an instruction", {"handoffs"}),
+    ("read what another agent is doing", {"handoffs"}),
+    ("link another aegis server", {"links"}),
+    ("add an agent to .aegis.yaml", {"config"}),
+    ("what does read permission allow", {"sessions"}),
+    ("rename my session", {"sessions"}),
+    ("reopen an archived session", {"sessions", "getting-started"}),
+    ("run aegis in the background", {"commands"}),
+    ("make a token for a colleague", {"commands"}),
+    ("first time using aegis", {"getting-started"}),
+    ("update a help page after changing a tool", {"writing-help-pages"}),
+]
+
+
+@pytest.mark.parametrize("question,pages", QUESTIONS)
+def test_a_question_finds_its_page_in_the_first_three(question, pages):
+    hits = Index(load()).search(question, limit=3)
+    found = [h.ref.split("#")[0] for h in hits]
+    assert pages & set(found), f"{question!r} found {found}"
