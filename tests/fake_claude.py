@@ -112,6 +112,7 @@ SCRIPTS = (
     "bash",
     "md",
     "read",
+    "readn",
     "stream",
     "sh",
     "write",
