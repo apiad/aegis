@@ -3423,6 +3423,39 @@ def test_close_on_a_done_session_asks_nothing_and_on_any_other_it_asks(server, p
 OPENED = "__hashes.filter(u => u && u.startsWith('#s='))"
 
 
+def test_a_done_session_on_a_phone_ends_with_an_archive_button(server, browser, page):
+    """#333: in the phone layout a done session's transcript ends with an
+    Archive button that closes it in one tap; a session still asking has none,
+    and the desktop layout never shows it."""
+    errors: list = []
+    pg = browser.new_page(viewport={"width": 390, "height": 844})
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(pg, "hello")
+    report(pg, attention="needs_you", line="Which?", replies=["this one"])
+    turns_done(pg, 2)
+    pg.wait_for_selector("#replies:not([hidden])")
+    assert pg.is_hidden("#closing-btn")
+    report(pg, attention="done", line="Done.", replies=[])
+    turns_done(pg, 3)
+    pg.wait_for_selector("#closing-btn", state="visible")
+    # After the transcript's last row, and a full tap target.
+    last = pg.locator("#entries > .row").last.bounding_box()
+    btn = pg.locator("#closing-btn").bounding_box()
+    assert btn["y"] >= last["y"] + last["height"] - 0.5
+    assert btn["height"] >= 44
+
+    page.goto(f"{server.url}#s={sid}")
+    page.wait_for_selector("#s-status.at-done")
+    assert page.is_hidden("#closing-btn")
+
+    pg.click("#closing-btn")
+    pg.wait_for_selector(f"#arch-list tr[data-id='{sid}']", timeout=5000)
+    assert pg.is_hidden("#dialog") and sid not in tab_ids(pg)
+    assert errors == [] and page.errors == []
+
+
 def test_the_archive_button_shows_on_done_cards_only_and_closes_without_opening(
     server, page
 ):
