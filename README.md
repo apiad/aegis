@@ -66,6 +66,8 @@ own token, so no tool asks who is calling.
 - `plan_update` and `turn_end` tell you what the agent is doing and how each turn
   ended: a question for you, something to read, or finished work, with up to
   three replies you send with one tap.
+- `toast` shows you one line mid-turn, in every open browser, as a card in the
+  corner that names the session; a click opens its tab.
 - `journal_search` asks what was done on this server, by day, words, a path or
   a session, and `journal_note` adds a decision or a blocker to it.
 
