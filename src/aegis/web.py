@@ -33,7 +33,6 @@ import hashlib
 import hmac
 import json
 import logging
-import os
 import time
 import secrets
 from collections.abc import Iterable
@@ -59,6 +58,7 @@ from .app import App
 from .channels import Sub
 from .links import PROTO
 from .ops import Caller, OpError
+from .tokens import load_or_create_token  # noqa: F401 — cli and tests import it from here
 
 log = logging.getLogger("aegis.web")
 
@@ -91,20 +91,6 @@ class ClientFiles(StaticFiles):
         response = super().file_response(*args, **kwargs)
         response.headers["Cache-Control"] = "no-cache"
         return response
-
-
-def load_or_create_token(state_root: Path) -> str:
-    """The server's token, kept in ``<state>/token`` with mode 0600 and reused
-    across restarts so an open tab survives one. Delete the file to rotate."""
-    path = state_root / "token"
-    if path.exists():
-        return path.read_text().strip()
-    state_root.mkdir(parents=True, exist_ok=True)
-    token = secrets.token_urlsafe(32)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w") as f:
-        f.write(token + "\n")
-    return token
 
 
 def _loggable(params: object) -> object:

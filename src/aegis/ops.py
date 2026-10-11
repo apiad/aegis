@@ -28,6 +28,19 @@ class OpError(Exception):
 
 
 @dataclass(frozen=True)
+class Principal:
+    """Who a token is (tokens.py): a person, a linked server or a job. The
+    role decides what it may change; a session's owner is a principal's name."""
+
+    name: str
+    role: str  # "admin" | "member"
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == "admin"
+
+
+@dataclass(frozen=True)
 class Caller:
     """Who is calling: a person through the client, or an agent through MCP.
     An agent is known by its session's log id, resolved from its spawn's
