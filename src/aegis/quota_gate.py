@@ -19,6 +19,7 @@ caller passes the snapshot ``Quota.snapshot()`` returns and the time.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 from .quota import PROVIDERS
@@ -112,6 +113,29 @@ def decide(policy: dict | None, pool: str | None, snapshot: dict, now: float) ->
             f"the last reading of {name} is older than {int(STALE_S // 60)} minutes",
         )
     return closed or Gate("open")
+
+
+def _clock(ts: float) -> str:
+    return time.strftime("%H:%M", time.localtime(ts))
+
+
+def refusal(owner: str, g: Gate) -> str:
+    """Why ``owner`` may start nothing now, and when that changes."""
+    text = f"{owner} cannot start a session now: {g.why}."
+    if g.resets_at is not None:
+        text += (
+            " It opens again when the window drops below the line, at the latest"
+            f" when it resets at {_clock(g.resets_at)}."
+        )
+    return text
+
+
+def continued(owner: str, why: str) -> str:
+    """The message a paused session gets when its gate opens again."""
+    return (
+        f"aegis paused your turn because {owner}'s quota line was reached ({why}).\n"
+        "The pool has room again. Continue where you left off."
+    )
 
 
 def _percent(v: object) -> bool:

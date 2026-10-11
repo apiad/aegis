@@ -29,6 +29,7 @@ import base64
 import binascii
 import contextlib
 import getpass
+import logging
 import time
 from pathlib import Path
 from typing import Literal
@@ -54,13 +55,13 @@ from .confirm import Confirmations
 from .host import HostSampler
 from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
-from .monitors import Monitors
+from .monitors import Monitors, iso_now
 from .nudges import Nudges
 from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .quota import Quota
-from .quota_gate import KINDS, Gate, decide, pool_for
+from .quota_gate import KINDS, Gate, continued, decide, pool_for, refusal
 from .recaps import Recaps
 from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
 from .tokens import TokenStore
@@ -68,6 +69,8 @@ from .registry import Registry
 from .roots import Roots
 from .session import PUBLISH_EVERY_S
 from .version import Versions
+
+log = logging.getLogger("aegis.app")
 
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 Permission = Literal["read", "write", "full", "auto"]
@@ -303,7 +306,11 @@ class App:
         # The last gate state seen per (member, pool), and the quota loop's
         # word after each reading (quota_gate.py).
         self._gates: dict[tuple[str, str], str] = {}
+        # Sessions a pause or a continue is under way for, so a reading that
+        # lands before it finishes does not start a second one.
+        self._quota_busy: set[str] = set()
         self.quota.listeners.append(self.on_quota)
+        reg.gate = self.gate
         self.registry = Ops()
         self.registry.who = self.who
         self.registry.owner_of = self.owner_of
@@ -327,25 +334,101 @@ class App:
             return Principal(name, self.principals.role_of(name) or "member")
         return Principal(self.user, "admin")  # the server's own calls
 
-    def gate(self, owner: str, harness: str, model: str | None) -> Gate:
-        """Whether ``owner`` may start a harness on that pool now."""
+    def gate(self, owner: str | None, harness: str, model: str | None) -> Gate:
+        """Whether ``owner`` may start a harness on that pool now. A session
+        from before owners is the admin's."""
         return decide(
-            self.principals.policy_of(owner),
+            self.principals.policy_of(owner or self.user),
             pool_for(harness, model),
             self.quota.snapshot(),
             time.time(),
         )
 
     def on_quota(self, snapshot: dict) -> None:
-        """After every reading: each member's gate on each pool with a gauge."""
+        """After every reading, and every minute because pace moves with the
+        clock: pause each member's working session whose gate says stopped,
+        and continue each paused or holding one whose gate is open. Only open
+        continues, so a gauge between the lines leaves a paused session
+        paused and a stopped token cannot flap. Level-triggered, so a reading
+        missed or a restart in between changes nothing."""
         now = time.time()
         for row in self.principals.rows():
             if row["role"] == "admin":
                 continue
             policy = self.principals.policy_of(row["name"])
             for pool in KINDS:
-                g = decide(policy, pool, snapshot, now)
-                self._gates[(row["name"], pool)] = g.state
+                self._gates[(row["name"], pool)] = decide(
+                    policy, pool, snapshot, now
+                ).state
+        for s in list(self.sessions.sessions.values()):
+            if s.log_id in self._quota_busy:
+                continue
+            policy = self.principals.policy_of(s.spec.owner or self.user)
+            if policy is None:
+                continue
+            g = decide(policy, pool_for(s.spec.harness, s.spec.model), snapshot, now)
+            holding = any(m.get("held_for") == "quota" for m in s.held)
+            if g.state == "stopped" and s.status == "working" and not s.quota_paused:
+                self._quota_task(s, self._pause(s, g))
+            elif g.state == "open" and (s.quota_paused or holding):
+                self._quota_task(s, self._continue(s))
+        if any(t.status == "pending" for t in self.queues.tasks.values()):
+            t = asyncio.create_task(self.queues.dispatch())
+            self._background.add(t)
+            t.add_done_callback(self._background.discard)
+
+    def _quota_task(self, s, coro) -> None:
+        self._quota_busy.add(s.log_id)
+        t = asyncio.create_task(coro)
+        self._background.add(t)
+
+        def done(t: asyncio.Task) -> None:
+            self._background.discard(t)
+            self._quota_busy.discard(s.log_id)
+            if not t.cancelled() and t.exception() is not None:
+                log.error(
+                    "aegis: the quota gate failed on %s",
+                    s.handle,
+                    exc_info=t.exception(),
+                )
+
+        t.add_done_callback(done)
+
+    async def _pause(self, s, g: Gate) -> None:
+        """Interrupt a turn the owner's stop line cut; held until it opens."""
+        s.report({"kind": "quota_paused", "why": g.why})
+        s.quota_paused = g.why
+        self.sessions.metas.write(s.meta())
+        await s.interrupt()
+        s._publish_now()
+
+    async def _continue(self, s) -> None:
+        """The gate is open again: one message saying so ahead of what the
+        session held, in one turn, as continue_after_boot does."""
+        msgs = [{k: v for k, v in m.items() if k != "held_for"} for m in s.held]
+        if s.quota_paused:
+            owner = s.spec.owner or self.user
+            msgs.insert(
+                0,
+                {
+                    "header": f"> from aegis:quota · {iso_now()}",
+                    "body": continued(owner, s.quota_paused),
+                    "ts": time.time(),
+                },
+            )
+        s.quota_paused = None
+        s.held = msgs
+        self.sessions.metas.write(s.meta())
+        if s.in_turn:
+            s._publish_now()  # they go out when its turn ends
+            return
+        try:
+            await s._flush_held()
+        except Exception:
+            # _flush_held empties held before it sends: put the batch back.
+            log.exception("aegis: could not continue %s after its quota stop", s.handle)
+            s.held = msgs
+            self.sessions.metas.write(s.meta())
 
     def owner_of(self, log_id: str) -> str | None:
         """A session's owner by log id, None for no such session. One from
@@ -710,6 +793,9 @@ class App:
                     f"you spawn can have at most {parent.spec.permission} "
                     f"(this one would have {spec.permission}); pass permission",
                 )
+            g = self.gate(spec.owner, spec.harness, spec.model)
+            if not g.may_start:
+                raise OpError("quota_closed", refusal(spec.owner or self.user, g))
             try:
                 s = await reg.spawn(spec)
             except FileNotFoundError as e:
@@ -752,6 +838,13 @@ class App:
                         "start the line with // to send it as text",
                     )
             text = commands.escape(p.text)
+            if (why := reg.quota_hold(s)) is not None:
+                owner = s.spec.owner or self.user
+                raise OpError(
+                    "quota_closed",
+                    f"{owner}'s quota gate holds this session: {why}. "
+                    "It continues when the gate opens.",
+                )
             try:
                 # The harness first: a send that cannot reach the agent leaves
                 # its uploads staged, to send again.

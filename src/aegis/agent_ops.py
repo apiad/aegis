@@ -657,11 +657,13 @@ def register_agent_ops(app: App) -> None:
         )
         if p.interrupt and to.status == "working":
             await to.interrupt()
-        held = to.busy
+        before = len(to.held)
         try:
             await to.deliver(f"> from {sender} · {iso_now()}", p.context)
         except Archived as e:
             raise OpError("archived", f"{p.target} is archived") from e
+        # Held mid-turn, or by its owner's quota gate.
+        held = len(to.held) > before
         return f"{'held for' if held else 'landed at'} {to.handle}"
 
     async def far_handoff(handle: str, server: str, p: Handoff, caller: Caller):
@@ -721,13 +723,13 @@ def register_agent_ops(app: App) -> None:
             )
         if p.interrupt and to.status == "working":
             await to.interrupt()
-        held = to.busy
+        before = len(to.held)
         who = f"agent:{p.sender.handle}@{p.sender.server} ({p.sender.user})"
         try:
             await to.deliver(f"> from {who} · {iso_now()}", p.context)
         except Archived as e:
             raise OpError("archived", f"{p.target} is archived") from e
-        return {"held": held}
+        return {"held": len(to.held) > before}
 
     @r.op("peer.read", Read, agent=True, read=True)
     async def peer_read(p: Read, caller):

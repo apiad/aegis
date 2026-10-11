@@ -178,6 +178,9 @@ class Queues:
     def status(self, t: Task) -> dict:
         d = t.public()
         d["position"] = self.position(t)
+        q = self.queues.get(t.queue)
+        if t.status == "pending" and q is not None and "error" not in q:
+            d["waiting_for_quota"] = self.quota_wait(t, q)
         if t.worker and t.worker in self._registry.sessions:
             d["worker_handle"] = self._registry.sessions[t.worker].handle
         return d
@@ -258,13 +261,31 @@ class Queues:
                     (
                         t
                         for t in self.tasks.values()
-                        if t.queue == name and t.status == "pending"
+                        if t.queue == name
+                        and t.status == "pending"
+                        and self.quota_wait(t, q) is None
                     ),
                     key=lambda t: t.created_at,
                 )
                 if not pending or running >= q["max_parallel"]:
                     break
                 await self._start(pending[0], q)
+
+    def quota_wait(self, t: Task, q: dict) -> str | None:
+        """Why ``t``'s owner's quota gate keeps it pending, or None. A task
+        that waits is skipped, never failed, so the next owner's starts; the
+        gate's next reading dispatches it (app.on_quota). An agent that cannot
+        resolve is left to _start, which fails the task with the reason."""
+        gate = self._registry.gate
+        if gate is None:
+            return None
+        try:
+            agents = list(self._config.current().agents)
+            spec = resolve(agents, None, q["agent"], {}, Path(t.cwd), owner=t.owner)
+        except OpError:
+            return None
+        g = gate(t.owner, spec.harness, spec.model)
+        return None if g.may_start else g.why
 
     async def _start(self, t: Task, q: dict) -> None:
         try:
@@ -337,7 +358,13 @@ class Queues:
 
     # -- completion ----------------------------------------------------------------
     def finished(self, s: Session) -> bool:
-        return not s.busy and not self._monitors.of(s.log_id) and not s.open_tasks
+        # A worker the quota gate paused has more to do once it opens.
+        return (
+            not s.busy
+            and not s.quota_paused
+            and not self._monitors.of(s.log_id)
+            and not s.open_tasks
+        )
 
     def turn_ended(self, s: Session) -> None:
         t = self.task_of_worker(s.log_id)

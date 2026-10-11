@@ -78,6 +78,8 @@ class Registry(Host):
         self.monitors = None
         self.queues = None
         self.quota = None
+        # The app's quota gate: (owner, harness, model) -> quota_gate.Gate.
+        self.gate = None
         self.journal = None
         self.catalogs = None
         # What boot decided about the turns the last run's end cut (restarts.py):
@@ -121,6 +123,20 @@ class Registry(Host):
         if self.queues is not None:
             self.queues.exited(session, code, stderr_tail)
 
+    def quota_hold(self, session: Session) -> str | None:
+        """A paused session waits for its gate to open; any other may start a
+        turn unless its owner is stopped, or closed and the harness would
+        have to start (quota_gate.py)."""
+        if session.quota_paused:
+            return session.quota_paused
+        if self.gate is None:
+            return None
+        s = session.spec
+        g = self.gate(s.owner, s.harness, s.model)
+        if g.state == "stopped" or (g.state == "closed" and not session.running):
+            return g.why or "the quota gate is closed"
+        return None
+
     def card(self, session: Session) -> dict:
         return {
             "monitors": self.monitors.card(session.log_id)
@@ -162,6 +178,9 @@ class Registry(Host):
             if self.queues is not None
             else 0
         )
+        quota = s.quota_paused or (
+            any(m.get("held_for") == "quota" for m in s.held) and self.quota_hold(s)
+        )
         n_kid = sum(
             1
             for o in self.sessions.values()
@@ -176,7 +195,8 @@ class Registry(Host):
             (n_task, "queue task"),
             (n_kid, "session"),
         )
-        return [f"{n} {noun}{'' if n == 1 else 's'}" for n, noun in counts if n]
+        waits = [f"{n} {noun}{'' if n == 1 else 's'}" for n, noun in counts if n]
+        return waits + ([f"quota ({quota})"] if quota else [])
 
     def status_changed(self, session: Session) -> None:
         parent = session.spec.spawned_by
@@ -246,6 +266,7 @@ class Registry(Host):
             recap_cost_usd=meta.get("recap_cost_usd") or 0.0,
             last_exit=meta.get("last_exit"),
             restart_continues=meta.get("restart_continues") or 0,
+            quota_paused=meta.get("quota_paused"),
         )
 
     def boot(self, prev: restarts.Previous = restarts.CLEAN) -> None:
@@ -327,6 +348,12 @@ class Registry(Host):
             if s.in_turn:
                 # A turn started first (a monitor's wake): the messages go out
                 # when it ends, like any held message, never into it.
+                self.metas.write(s.meta())
+                continue
+            if self.quota_hold(s) is not None:
+                # Through the gate: they wait for the owner's quota to open
+                # (app.on_quota), and a paused session stays paused.
+                s.held = [m | {"held_for": "quota"} for m in msgs]
                 self.metas.write(s.meta())
                 continue
             try:

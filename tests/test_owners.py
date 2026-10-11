@@ -17,6 +17,8 @@ async def world(tmp_path, fake_claude):
     (tmp_path / ".aegis.yaml").write_text(CONFIG)
     w = await World(tmp_path, fake_claude).start()
     w.app.principals.add("ben", "member")
+    # A member with no policy starts nothing (quota_gate.py): open the pool.
+    w.app.principals.set_default_policy({"claude": {"mode": "open"}})
     yield w
     await w.stop()
 
