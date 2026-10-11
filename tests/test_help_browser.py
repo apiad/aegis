@@ -157,6 +157,12 @@ def test_typing_asks_help_search_and_lists_what_an_agent_would_get(server, page)
     page.wait_for_function("() => !document.querySelector('.helpv .hgrp')")
     assert refs(page) == want
     assert page.locator(".helpv .hrow mark").count() > 0
+    # A word is marked where a word starts, never inside another ("ci" in "decide").
+    marks = page.eval_on_selector_all(
+        ".helpv .hrow mark",
+        "ms => ms.filter(m => /[a-z0-9]$/i.test(m.previousSibling?.textContent || '')).length",
+    )
+    assert marks == 0
     # Enter reads the best hit, at its section.
     page.press(".helpv .jq", "Enter")
     page.wait_for_function(

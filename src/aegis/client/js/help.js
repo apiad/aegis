@@ -22,10 +22,11 @@ const LIMIT = 10;
 
 const escRe = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// `text` with each of `words` in a <mark>, any case.
+// `text` with each of `words` in a <mark>, any case, where a word starts:
+// "ci" marks "CI", never the middle of "decide".
 function marked(text, words) {
   if (!words.length) return [text];
-  const parts = text.split(new RegExp(`(${words.map(escRe).join("|")})`, "gi"));
+  const parts = text.split(new RegExp(`\\b(${words.map(escRe).join("|")})`, "gi"));
   return parts.map((p, i) => (i % 2 ? el("mark", null, p) : p));
 }
 
