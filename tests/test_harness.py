@@ -52,6 +52,14 @@ def test_the_primer_names_tools_by_the_harness_prefix(tmp_path):
     assert "(aegis_*)" in primer(make("opencode"), "zion")
 
 
+def test_the_primer_asks_for_a_language_on_every_fence():
+    """highlight.js scores bash and python equal on short shell; a label
+    removes the guess (#323)."""
+    from aegis.mcp import PRIMER
+
+    assert "Label every code fence with its language" in PRIMER
+
+
 def test_opencode_is_a_harness():
     from aegis.opencode.harness import OpenCode
 
