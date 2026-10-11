@@ -1,7 +1,7 @@
 // The Fleet view: a card per open session, then the archive.
 // Every field comes from the session's meta; nothing here computes activity.
 
-import { glyph, LABEL } from "./glyphs.js";
+import { glyph, icon, LABEL } from "./glyphs.js";
 import { hostRow, noteRow, providerLine, quotaHeading, quotaRow } from "./gauges.js";
 import { shownOwner } from "./me.js";
 import { dur, planTimes } from "./plantime.js";
@@ -218,11 +218,10 @@ export function renderArchive(box, items, { onReopen, onRead }) {
       if (!ev.target.closest("button")) onRead(m.key);
     });
     const actions = el("td", "acts");
-    const read = el("button", "btn read", "Read");
-    read.addEventListener("click", () => onRead(m.key));
-    const re = el("button", "btn primary", "Reopen");
-    re.addEventListener("click", () => onReopen(m.key));
-    actions.append(read, re);
+    actions.append(
+      rowButton("read", "book", "Read", "Read it without reopening it", () => onRead(m.key)),
+      rowButton("reopen", "again", "Reopen", "Reopen it to continue the conversation", () => onReopen(m.key)),
+    );
     tr.append(
       el("td", null, m.title || "untitled"),
       handleCell(m),
@@ -234,6 +233,17 @@ export function renderArchive(box, items, { onReopen, onRead }) {
     t.append(tr);
   }
   box.replaceChildren(t);
+}
+
+// An archive row's action: an icon, named by aria-label and on hover.
+function rowButton(cls, glyphName, name, title, onClick) {
+  const b = el("button", `btn ${cls}`);
+  b.type = "button";
+  b.title = title;
+  b.setAttribute("aria-label", name);
+  b.append(icon(glyphName));
+  b.addEventListener("click", onClick);
+  return b;
 }
 
 // A handle, with its server's tag when the row is from a linked server.
