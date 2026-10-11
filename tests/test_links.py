@@ -622,6 +622,39 @@ async def test_the_archive_merges_across_servers_and_pages(tmp_path, fake_claude
             await beta.stop()
 
 
+async def test_the_archive_leaves_out_a_linked_servers_queue_workers_unless_asked(
+    tmp_path, fake_claude
+):
+    """#331 across a link: the far server leaves its workers out by default
+    and counts them, and lists them when the listing asks."""
+    beta = Node(tmp_path / "beta", "beta", fake_claude)
+    alpha = Node(tmp_path / "alpha", "alpha", fake_claude)
+    seed_archive(alpha, 2, "a")
+    seed_archive(beta, 3, "b")
+    store = beta.root / ".aegis" / "state" / "sessions"
+    meta = json.loads((store / "b001.json").read_text())
+    meta["worker"] = {"task_id": "t1", "queue": "q"}
+    (store / "b001.json").write_text(json.dumps(meta))
+    await beta.start()
+    await alpha.start()
+    try:
+        alpha.app.links.add("beta", beta.base, beta.token)
+        await until(
+            lambda: alpha.app.links.get("beta").state == "linked",
+            timeout=10,
+            what="linked",
+        )
+        r = await alpha.app.registry.call("archive.list", {})
+        assert "b001" not in [m["log_id"] for m in r["items"]]
+        assert (r["total"], r["workers"]) == (4, 1)
+        r = await alpha.app.registry.call("archive.list", {"workers": True})
+        assert "b001" in [m["log_id"] for m in r["items"]]
+        assert (r["total"], r["workers"]) == (5, 1)
+    finally:
+        await alpha.stop()
+        await beta.stop()
+
+
 # -- slice 3: agents across the link ----------------------------------------------
 def mcp(tool: str, **args) -> str:
     return f"/mcp {tool} {json.dumps(args)}"

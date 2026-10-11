@@ -1038,3 +1038,8 @@ body{background:#000}
 #a2 .arch-servers button.on{background:var(--accent-soft);color:var(--strong)}
 #a2 .arch-servers button b{margin-left:6px;color:var(--faint);font-weight:500}
 #a2 .arch-servers .off{padding:5px 10px;color:var(--err)}
+#a2 .arch-workers{flex:none;background:var(--surface);color:var(--muted);border:1px solid var(--rule);border-radius:999px;padding:3px 10px;cursor:pointer;font-family:var(--font-mono);font-size:11.5px}
+#a2 .arch-workers[hidden]{display:none}
+#a2 .arch-workers:hover{border-color:var(--faint)}
+#a2 .arch-workers.on{background:var(--accent-soft);color:var(--strong)}
+#a2 .arch-workers b{margin-left:6px;color:var(--faint);font-weight:500}

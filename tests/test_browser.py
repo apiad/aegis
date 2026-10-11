@@ -2435,9 +2435,13 @@ def test_a_finished_worker_fades_and_sinks_below_the_live_cards_and_an_errored_o
     # Live: a card like any other session's.
     assert page.locator(f"#cards .card[data-id='{worker}'].finished").count() == 0
     assert card_opacity(page, worker) == "1"
-    # Done, the task archives the worker; reopened, its task is still over.
-    page.wait_for_selector(f"#arch-list tr[data-id='{worker}']", timeout=20000)
+    # Done, the task archives the worker, out of sight until the chip shows
+    # workers (#331); reopened, its task is still over.
+    page.wait_for_selector("#arch-workers:not([hidden]) b >> text=1", timeout=20000)
     assert page.locator(f"#cards .card[data-id='{worker}']").count() == 0
+    assert page.locator(f"#arch-list tr[data-id='{worker}']").count() == 0
+    page.click("#arch-workers")
+    page.wait_for_selector("#arch-workers.on[aria-pressed=true]")
     page.click(f"#arch-list tr[data-id='{worker}'] .btn.reopen")
     page.wait_for_selector("#a2[data-view=session][data-mode=live]")
     live = spawn(page, "still going")
