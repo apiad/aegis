@@ -27,7 +27,7 @@ def refs(pg) -> list[str]:
     return pg.eval_on_selector_all(".helpv .hrow", "bs => bs.map(b => b.dataset.ref)")
 
 
-def open_help(pg, server) -> None:
+def open_help(pg, server) -> None:  # noqa: F811
     pg.goto(server.url)
     pg.wait_for_selector("#a2[data-view=fleet]")
     pg.click("#help-btn")
@@ -42,26 +42,35 @@ def shown(pg, page_id: str) -> None:
 
 
 def test_the_question_mark_opens_the_pages_grouped_beside_the_first_tutorial(
-    server, page
+    server,  # noqa: F811
+    page,  # noqa: F811
 ):
     open_help(page, server)
     assert page.evaluate("location.hash") == "#help"
     assert "on" in page.get_attribute("#help-btn", "class").split()
-    heads = page.eval_on_selector_all(".helpv .hgrp", "gs => gs.map(g => g.textContent)")
-    assert heads == [name for kind, name in GROUPS if any(r["kind"] == kind for r in LISTING)]
+    heads = page.eval_on_selector_all(
+        ".helpv .hgrp", "gs => gs.map(g => g.textContent)"
+    )
+    assert heads == [
+        name for kind, name in GROUPS if any(r["kind"] == kind for r in LISTING)
+    ]
     # Tutorials, how-to, concepts; the index's order inside each group.
-    assert refs(page) == [r["id"] for kind, _ in GROUPS for r in LISTING if r["kind"] == kind]
+    assert refs(page) == [
+        r["id"] for kind, _ in GROUPS for r in LISTING if r["kind"] == kind
+    ]
     first = next(r["id"] for r in LISTING if r["kind"] == "tutorial")
     shown(page, first)
     assert page.text_content(".helpv .hwhen") == f"{first} · {PAGES[first].when}"
-    assert "on" in page.get_attribute(f'.helpv .hrow[data-ref="{first}"]', "class").split()
+    assert (
+        "on" in page.get_attribute(f'.helpv .hrow[data-ref="{first}"]', "class").split()
+    )
     # Slice 3 wires /tutorial; until then a tutorial page carries the button hidden.
     assert page.locator(".helpv .hstart").count() == 1
     assert not page.is_visible(".helpv .hstart")
     assert page.errors == []
 
 
-def test_every_page_reads_with_each_section_where_search_points(server, page):
+def test_every_page_reads_with_each_section_where_search_points(server, page):  # noqa: F811
     open_help(page, server)
     for p in PAGES.values():
         page.evaluate("h => { location.hash = h; }", f"#help={p.id}")
@@ -93,7 +102,7 @@ def test_every_page_reads_with_each_section_where_search_points(server, page):
     assert page.errors == []
 
 
-def test_a_url_naming_no_page_says_which_pages_are_close(server, page):
+def test_a_url_naming_no_page_says_which_pages_are_close(server, page):  # noqa: F811
     page.goto(server.url + "#help=monitor")
     page.wait_for_selector(".helpv .hbody .hnone")
     assert "monitors" in page.text_content(".helpv .hbody .hnone")
@@ -105,7 +114,7 @@ def test_a_url_naming_no_page_says_which_pages_are_close(server, page):
     assert page.errors == []
 
 
-def test_a_link_to_another_page_opens_it_in_the_tab(server, page):
+def test_a_link_to_another_page_opens_it_in_the_tab(server, page):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     got = page.evaluate(
@@ -128,7 +137,7 @@ def test_a_link_to_another_page_opens_it_in_the_tab(server, page):
     ]
 
 
-def test_every_key_is_one_click_from_the_help_tab(server, page):
+def test_every_key_is_one_click_from_the_help_tab(server, page):  # noqa: F811
     open_help(page, server)
     page.click(".helpv .hkeys")
     page.wait_for_selector("#keymap", state="visible")
@@ -140,7 +149,7 @@ def test_every_key_is_one_click_from_the_help_tab(server, page):
 QUESTION = "wait for CI without polling"
 
 
-def test_typing_asks_help_search_and_lists_what_an_agent_would_get(server, page):
+def test_typing_asks_help_search_and_lists_what_an_agent_would_get(server, page):  # noqa: F811
     open_help(page, server)
     want = [h.ref for h in Index(load()).search(QUESTION, limit=10)]
     assert want, "the spec's search table expects monitors for this question"
@@ -160,7 +169,7 @@ def test_typing_asks_help_search_and_lists_what_an_agent_would_get(server, page)
     assert page.errors == []
 
 
-def test_a_search_with_no_hit_says_so_over_the_whole_list(server, page):
+def test_a_search_with_no_hit_says_so_over_the_whole_list(server, page):  # noqa: F811
     open_help(page, server)
     assert Index(load()).search("zzqx ?!", limit=10) == []
     page.fill(".helpv .jq", "zzqx ?!")
@@ -170,7 +179,7 @@ def test_a_search_with_no_hit_says_so_over_the_whole_list(server, page):
     assert page.errors == []
 
 
-def test_an_older_answer_never_replaces_a_newer_one(server, page):
+def test_an_older_answer_never_replaces_a_newer_one(server, page):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     got = page.evaluate(
@@ -197,7 +206,7 @@ def test_an_older_answer_never_replaces_a_newer_one(server, page):
     assert got == [["mon", "monitors"], ["b"]]
 
 
-def test_help_with_words_opens_the_tab_searched_and_sends_nothing(server, page):
+def test_help_with_words_opens_the_tab_searched_and_sends_nothing(server, page):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page, "hello")
@@ -232,7 +241,7 @@ def long_named(tmp_path, fake_claude, fake_opencode):
     s.stop()
 
 
-def test_the_help_tab_is_two_screens_on_a_phone(long_named, browser):
+def test_the_help_tab_is_two_screens_on_a_phone(long_named, browser):  # noqa: F811
     errors: list = []
     pg = phone(browser, errors)
     pg.goto(long_named.url)
@@ -263,7 +272,7 @@ def test_the_help_tab_is_two_screens_on_a_phone(long_named, browser):
     pg.close()
 
 
-def test_a_page_arriving_late_leaves_the_focus_in_the_search_box(server, page):
+def test_a_page_arriving_late_leaves_the_focus_in_the_search_box(server, page):  # noqa: F811
     """The page takes the focus when it is asked for, not when its code
     blocks have painted: a person who went back to the box meanwhile keeps
     typing there."""
