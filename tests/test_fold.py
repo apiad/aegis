@@ -61,22 +61,23 @@ class Rec:
             }
         )
 
-    def output(self, id, text, is_error=False):
-        return self.claude(
-            {
-                "type": "user",
-                "message": {
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": id,
-                            "content": text,
-                            "is_error": is_error,
-                        }
-                    ]
-                },
-            }
-        )
+    def output(self, id, text, is_error=False, patch=None):
+        line = {
+            "type": "user",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": id,
+                        "content": text,
+                        "is_error": is_error,
+                    }
+                ]
+            },
+        }
+        if patch is not None:
+            line["tool_use_result"] = {"structuredPatch": patch}
+        return self.claude(line)
 
     def result(self, cost=0.01, is_error=False, subtype="success"):
         return self.claude(
@@ -219,7 +220,7 @@ def test_a_failure_starts_closed_like_every_tool_row():
     assert "Parse error" in e["detail"]["tail"]
 
 
-def test_an_edit_carries_its_diff_window():
+def test_an_edit_carries_difflib_hunks_numbered_within_the_edit():
     r = Rec()
     r.call(
         "t1",
@@ -236,11 +237,59 @@ def test_an_edit_carries_its_diff_window():
     assert e["glyph"] == "pencil" and e["summary"] == "edit a.py"
     assert e["detail"]["diff"] == {
         "path": "/x/a.py",
-        "removed": ["b = 2"],
-        "added": ["b = 3"],
+        "hunks": [{"a": 1, "b": 1, "lines": [" a = 1", "-b = 2", "+b = 3"]}],
         "elided": 0,
+        "numbered": "edit",
     }
     assert e["detail"]["result"] == "+1 −1"
+
+
+def test_an_edit_takes_claudes_patch_with_its_file_line_numbers():
+    r = Rec()
+    r.call(
+        "t1",
+        "Edit",
+        {"file_path": "/x/a.py", "old_string": "b = 2", "new_string": "b = 3"},
+    )
+    patch = [
+        {
+            "oldStart": 134,
+            "oldLines": 2,
+            "newStart": 134,
+            "newLines": 2,
+            "lines": [" a = 1", "-b = 2", "+b = 3"],
+        }
+    ]
+    r.output("t1", "The file /x/a.py has been updated.", patch=patch)
+    f, _ = run(r)
+    (e,) = f.entries()
+    diff = e["detail"]["diff"]
+    assert diff["numbered"] == "file"
+    assert diff["hunks"] == [
+        {"a": 134, "b": 134, "lines": [" a = 1", "-b = 2", "+b = 3"]}
+    ]
+
+
+def test_a_failed_edit_carries_no_diff():
+    r = Rec()
+    r.call(
+        "t1", "Edit", {"file_path": "/x/a.py", "old_string": "zz", "new_string": "yy"}
+    )
+    r.output("t1", "String to replace not found in file.", is_error=True)
+    f, _ = run(r)
+    (e,) = f.entries()
+    assert "diff" not in e["detail"]
+
+
+def test_a_huge_edit_is_capped_and_counts_what_it_left_out():
+    from aegis.transcript import describe as d
+
+    old = "\n".join(f"old line {i} " + "x" * 80 for i in range(400))
+    new = "\n".join(f"new line {i} " + "y" * 80 for i in range(400))
+    kept, elided = d.cap_hunks(d.diff_hunks(old, new))
+    size = sum(len(ln.encode()) + 1 for h in kept for ln in h["lines"])
+    assert size <= 8192 and elided > 0
+    assert elided == 800 - sum(1 for h in kept for ln in h["lines"] if ln[0] in "+-")
 
 
 def test_subagent_events_count_as_steps_on_their_task():

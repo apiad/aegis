@@ -167,33 +167,58 @@ def diff_counts(old_text: str, new_text: str) -> tuple[int, int]:
     return added, removed
 
 
-def diff_window(
-    old_text: str, new_text: str, max_lines: int = 6
-) -> tuple[list[str], list[str], int]:
-    """The changed window of an edit, capped at ``max_lines`` rows: removed
-    rows first, then added. Returns ``(removed, added, elided)``."""
-    old_lines = old_text.splitlines() if old_text else []
-    new_lines = new_text.splitlines() if new_text else []
-    head = 0
-    while (
-        head < len(old_lines)
-        and head < len(new_lines)
-        and old_lines[head] == new_lines[head]
-    ):
-        head += 1
-    tail = 0
-    while (
-        tail < len(old_lines) - head
-        and tail < len(new_lines) - head
-        and old_lines[len(old_lines) - 1 - tail] == new_lines[len(new_lines) - 1 - tail]
-    ):
-        tail += 1
-    removed = old_lines[head : len(old_lines) - tail]
-    added = new_lines[head : len(new_lines) - tail]
-    shown_r = removed[:max_lines]
-    shown_a = added[: max(0, max_lines - len(shown_r))]
-    elided = len(removed) + len(added) - len(shown_r) - len(shown_a)
-    return shown_r, shown_a, elided
+def diff_hunks(old: str, new: str, context: int = 3) -> list[dict]:
+    """The edit's hunks, ``context`` unchanged lines around each change, lines
+    prefixed with a space, ``-`` or ``+``; numbered within the edit's text."""
+    a, b = old.splitlines(), new.splitlines()
+    out = []
+    matcher = difflib.SequenceMatcher(None, a, b, autojunk=False)
+    for group in matcher.get_grouped_opcodes(context):
+        lines: list[str] = []
+        for tag, i1, i2, j1, j2 in group:
+            if tag == "equal":
+                lines += [" " + x for x in a[i1:i2]]
+            if tag in ("replace", "delete"):
+                lines += ["-" + x for x in a[i1:i2]]
+            if tag in ("replace", "insert"):
+                lines += ["+" + x for x in b[j1:j2]]
+        out.append({"a": group[0][1] + 1, "b": group[0][3] + 1, "lines": lines})
+    return out
+
+
+def hunks_from_patch(patch: list) -> list[dict]:
+    """Claude Code's ``structuredPatch`` as hunks; its marker lines
+    (``\\ No newline at end of file``) dropped."""
+    return [
+        {
+            "a": int(h["oldStart"]),
+            "b": int(h["newStart"]),
+            "lines": [
+                str(x) for x in h.get("lines", []) if str(x)[:1] in (" ", "-", "+")
+            ],
+        }
+        for h in patch
+        if isinstance(h, dict) and "oldStart" in h and "newStart" in h
+    ]
+
+
+def cap_hunks(hunks: list[dict], max_bytes: int = 8192) -> tuple[list[dict], int]:
+    """Lines in order up to ``max_bytes``, the same cap as ``output_tail``;
+    the changed lines after the cap are counted, not kept."""
+    kept, size, elided, full = [], 0, 0, False
+    for h in hunks:
+        lines = []
+        for ln in h["lines"]:
+            cost = len(ln.encode()) + 1
+            if full or size + cost > max_bytes:
+                full = True
+                elided += ln.startswith(("+", "-"))
+                continue
+            size += cost
+            lines.append(ln)
+        if lines:
+            kept.append({**h, "lines": lines})
+    return kept, elided
 
 
 FILE_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit")

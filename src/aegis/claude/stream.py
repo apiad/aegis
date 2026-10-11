@@ -84,6 +84,7 @@ class ToolOutput:
     text: str
     is_error: bool
     parent: str | None
+    patch: list | None = None
 
 
 @dataclass(frozen=True)
@@ -394,6 +395,12 @@ def _parse(obj: dict) -> list[Event]:
                 for b in content
                 if isinstance(b, dict) and b.get("type") == "tool_result"
             ]
+            # Claude Code sends an edit's hunks with their line numbers in the
+            # file; the fold takes them over its own difflib (#323).
+            tur = obj.get("tool_use_result")
+            patch = tur.get("structuredPatch") if isinstance(tur, dict) else None
+            if len(outs) == 1 and isinstance(patch, list):
+                outs[0] = replace(outs[0], patch=patch)
             if outs:
                 return outs
         # isReplay marks the user's own prompt and nothing else: skill bodies

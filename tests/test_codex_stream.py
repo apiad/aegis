@@ -155,10 +155,11 @@ def test_a_patch_update_is_an_edit_with_its_diff():
             {"i": i, "ts": 1.0 + i, "src": "codex", "line": ln}, f.parse("codex", ln)
         )
     (t,) = tools(f)
+    lines = [ln for h in t["detail"]["diff"]["hunks"] for ln in h["lines"]]
     assert (
         t["title"] == "Edit"
-        and t["detail"]["diff"]["removed"]
-        and t["detail"]["diff"]["added"]
+        and any(ln.startswith("-") for ln in lines)
+        and any(ln.startswith("+") for ln in lines)
     )
 
 

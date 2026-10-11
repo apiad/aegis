@@ -951,12 +951,13 @@ class Fold:
             elif name == "Write" and pair is not None and not ev.is_error:
                 detail["file"] = d.file_window(1, pair[2].splitlines())
             if pair is not None and not ev.is_error and name != "Write":
-                removed, added, elided = d.diff_window(pair[1], pair[2])
+                theirs = d.hunks_from_patch(ev.patch) if ev.patch else []
+                hunks, elided = d.cap_hunks(theirs or d.diff_hunks(pair[1], pair[2]))
                 detail["diff"] = {
                     "path": pair[0],
-                    "removed": removed,
-                    "added": added,
+                    "hunks": hunks,
                     "elided": elided,
+                    "numbered": "file" if theirs else "edit",
                 }
             return self._upsert(
                 _entry(

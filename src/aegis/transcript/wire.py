@@ -55,5 +55,5 @@ def withheld_text(e: dict) -> str:
     if file := d.get("file"):
         parts.append(file["text"])
     if diff := d.get("diff"):
-        parts += [diff["path"], *diff["removed"], *diff["added"]]
+        parts += [diff["path"], *(ln[1:] for h in diff["hunks"] for ln in h["lines"])]
     return "\n".join(parts)
