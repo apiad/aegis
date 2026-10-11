@@ -382,17 +382,16 @@ body{background:#000}
 /* the actions: one row of equal cells, labels dropped on a narrow panel */
 #a2 .side-acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:auto}
 #a2 .side-acts.read-only{grid-template-columns:minmax(0,1fr)}
-#a2 .side-acts .sub{margin:0 0 2px}
 #a2 .act{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:0;padding:8px 4px 7px;border:1px solid var(--rule);border-radius:var(--r);background:var(--surface);color:var(--ink);font-size:11.5px;cursor:pointer}
 #a2 .act svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;color:var(--muted)}
 #a2 .act:hover:not(:disabled){border-color:var(--faint);color:var(--strong)}
 #a2 .act:hover:not(:disabled) svg{color:var(--strong)}
 #a2 .act.stop:hover:not(:disabled),#a2 .act.stop:hover:not(:disabled) svg{border-color:var(--err);color:var(--err)}
 #a2 .act:disabled{opacity:.4;cursor:default}
-#a2 .act.primary{flex-direction:row;gap:7px;padding:8px;background:var(--accent);color:var(--on-accent);border-color:transparent;font-weight:500}
-#a2 .act.primary svg{color:var(--on-accent)}
-#a2 .side.narrow .side-acts .act:not(.primary){padding:9px 4px}
-#a2 .side.narrow .side-acts .act:not(.primary) span{display:none}
+/* An archived session's one action: the same tile, its icon in the accent. */
+#a2 .act.reopen svg{color:var(--accent)}
+#a2 .side.narrow .side-acts .act{padding:9px 4px}
+#a2 .side.narrow .side-acts .act span{display:none}
 #a2 .kv{display:flex;justify-content:space-between;gap:8px;font-size:12px;margin:3px 0;color:var(--muted);font-family:var(--font-chrome)}
 #a2 .kv.dim{color:var(--faint)}
 #a2 .kv .path{overflow-wrap:anywhere;font-family:var(--font-mono);font-size:11px}
