@@ -499,8 +499,12 @@ lists the inline code spans of a reply shaped like a path (`detail.paths`);
 it never touches the filesystem, so an archive's links do not depend on the
 machine that reads it. A click sends the reply's id and the path's index to
 `file.peek`, which resolves it as written when absolute, else under the config
-root, then under the session's cwd, copies the file and returns its card
-record; the viewer opens it scrolled to the `:line` and marks it. A linked
+root and under the session's cwd, copies the file and returns its card record;
+the viewer opens it scrolled to the `:line` and marks it. A relative path that
+names two different files, one in each place, opens neither: it answers
+`ambiguous_path`, and the person picks with a button that sends only `root` or
+`cwd`. Agents quote from their own cwd, so taking the root's copy of a
+`README.md` would open the wrong file. A linked
 server's replies draw no links: the file would be on the other machine (#323).
 
 **A sent file's URL is its key, and its content runs nowhere near the token.**

@@ -611,6 +611,7 @@ body{background:#000}
 .a2 .md code.path:hover{border-style:solid}
 .a2 .md code.path::before{content:"↗ ";opacity:.6}
 .a2 .row .patherr{font:12px var(--font-ui);color:var(--err);margin-top:4px}
+.a2 .row .patherr .btn{margin:6px 6px 0 0}
 .a2 #viewer .code{position:relative}
 .a2 #viewer .code .mark{position:absolute;left:0;right:0;background:var(--accent-soft);border-left:2px solid var(--accent);pointer-events:none}
 @media (max-width:760px){.a2 .viewer .vbar .fs{display:none}}

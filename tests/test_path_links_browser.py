@@ -66,6 +66,35 @@ def test_a_missing_file_says_where_it_looked(server, page):  # noqa: F811
     assert page.errors == []
 
 
+def test_a_path_in_both_the_root_and_the_cwd_asks_which_to_open(server, page):  # noqa: F811
+    (server.root / "docs").mkdir()
+    (server.root / "docs" / "x.md").write_text("# Root\n")
+    (server.root / "sub" / "docs").mkdir(parents=True)
+    (server.root / "sub" / "docs" / "x.md").write_text("# Under the cwd\n")
+    page.goto(server.url)
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    page.fill("#sp-cwd", "sub")
+    page.fill("#sp-text", "/md See `docs/x.md`.")
+    page.click("#sp-go")
+    page.wait_for_selector("#a2[data-view=session]")
+    turns_done(page, 1)
+    page.locator(".row.prose code.path").first.click()
+    note = page.locator(".row.prose .patherr")
+    note.wait_for()
+    assert "docs/x.md names two files" in note.inner_text()
+    buttons = note.locator("button.btn")
+    assert buttons.all_inner_texts() == ["Open the root's", "Open the session folder's"]
+    assert page.locator("#viewer").is_hidden()
+    buttons.nth(1).click()
+    page.locator("#viewer").wait_for()
+    page.wait_for_function(
+        "document.querySelector('#viewer .vbody').textContent.includes('Under the cwd')"
+    )
+    assert "Root" not in page.locator("#viewer .vbody").inner_text()
+    assert page.errors == []
+
+
 def test_a_linked_servers_reply_draws_no_path_link(linked, page):  # noqa: F811
     (linked.beta.root / "src").mkdir()
     (linked.beta.root / "src" / "far.py").write_text("x = 1\n")

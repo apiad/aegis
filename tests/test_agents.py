@@ -849,21 +849,41 @@ async def test_a_path_in_a_reply_opens_by_its_index_root_first_then_cwd(
     )
 
 
-async def test_a_path_in_both_the_root_and_the_cwd_opens_the_root_one(world, tmp_path):
+async def test_a_path_in_both_the_root_and_the_cwd_asks_which_one(world, tmp_path):
     (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "r.md").write_text("# Root\n")
+    (tmp_path / "docs" / "x.md").write_text("# Root\n")
     (tmp_path / "sub" / "docs").mkdir(parents=True)
-    (tmp_path / "sub" / "docs" / "r.md").write_text("# Under the cwd\n")
+    (tmp_path / "sub" / "docs" / "x.md").write_text("# Under the cwd\n")
     r = await world.app.registry.call("session.spawn", {"agent": "opus", "cwd": "sub"})
     s = world.session(r["log_id"])
-    await turn(s, "/md See `docs/r.md`.")
+    await turn(s, "/md See `docs/x.md:2`.")
     reply = [e for e in s.entries() if e["kind"] == "prose"][-1]
-    ask = {"log_id": s.log_id, "entry_id": reply["id"]}
-    (f,) = await world.app.registry.call("file.peek", {**ask, "index": 0})
-    assert f["excerpt"] == "# Root"
+    call = world.app.registry.call
+    ask = {"log_id": s.log_id, "entry_id": reply["id"], "index": 0}
     with pytest.raises(OpError) as e:
-        await world.app.registry.call("file.peek", {**ask, "index": 99})
+        await call("file.peek", ask)
+    assert e.value.code == "ambiguous_path"
+    assert str(tmp_path / "docs" / "x.md") in e.value.message
+    assert str(tmp_path / "sub" / "docs" / "x.md") in e.value.message
+    (f,) = await call("file.peek", {**ask, "pick": "cwd"})
+    assert f["excerpt"] == "# Under the cwd"
+    (g,) = await call("file.peek", {**ask, "pick": "root"})
+    assert g["excerpt"] == "# Root"
+    with pytest.raises(OpError) as e:
+        await call("file.peek", {**ask, "index": 99})
     assert e.value.code == "no_path", "a forged index opens nothing"
+
+
+async def test_a_session_at_the_root_finds_one_file_not_two(world, tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "x.md").write_text("# Root\n")
+    a = await world.spawn()
+    assert a.spec.cwd.resolve() == tmp_path.resolve()
+    await turn(a, "/md See `docs/x.md`.")
+    reply = [e for e in a.entries() if e["kind"] == "prose"][-1]
+    ask = {"log_id": a.log_id, "entry_id": reply["id"], "index": 0}
+    (f,) = await world.app.registry.call("file.peek", ask)
+    assert f["excerpt"] == "# Root"
 
 
 async def test_a_relative_path_resolves_against_the_session_cwd(world, tmp_path):
