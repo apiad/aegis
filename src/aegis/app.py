@@ -79,6 +79,7 @@ from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
 from .tokens import TokenStore
 from .registry import Registry
 from .roots import Roots
+from .transcript.entries import _sent_file
 from .session import PUBLISH_EVERY_S
 from .version import Versions
 
@@ -206,6 +207,8 @@ class FileRef(_Strict):
 class PeekParams(_Strict):
     log_id: str
     entry_id: str
+    # a path link: the index into a reply's detail.paths
+    index: int | None = None
 
 
 class LinkAdd(_Strict):
@@ -1158,6 +1161,34 @@ class App:
             except (files.FileError, OSError) as e:
                 raise OpError("open_failed", str(e)) from e
 
+        async def peek_path(s, row, index: int):
+            """A path a reply named, resolved now: as written when absolute,
+            else under the config root, then under the session's cwd (#323).
+            The browser sends only the index, so it can open nothing the agent
+            did not write. Nothing is recorded on the reply."""
+            paths = (
+                row["detail"].get("paths", []) if row and row["kind"] == "prose" else []
+            )
+            if not 0 <= index < len(paths):
+                raise OpError("no_path", "that reply names no such path")
+            raw = re.sub(r":\d+$", "", paths[index])
+            given = Path(raw).expanduser()
+            if given.is_absolute():
+                tried, where = [given], ""
+            else:
+                tried = [self.roots.config_root / given, s.spec.cwd / given]
+                where = f" under {self.roots.config_root} or {s.spec.cwd}"
+            path = next((t for t in tried if t.is_file()), None)
+            if path is None:
+                raise OpError("no_file", f"no file {raw}{where}")
+            try:
+                (rec,) = await asyncio.to_thread(
+                    files.store_all, self.roots.state_root, [path]
+                )
+            except files.FileError as e:
+                raise OpError(e.code, e.message) from e
+            return [_sent_file(rec)]
+
         @r.op("file.peek", PeekParams)
         async def file_peek(p: PeekParams, caller):
             """Copy the file a Read, Write or Edit row used, as it is now, and
@@ -1165,6 +1196,8 @@ class App:
             did not send; the agent never sees it."""
             s = reg.open(p.log_id)
             row = s.fold().entry(p.entry_id)
+            if p.index is not None:
+                return await peek_path(s, row, p.index)
             raw = row["detail"].get("path") if row and row["kind"] == "tool" else None
             if not raw:
                 raise OpError("no_path", "that row used no file")

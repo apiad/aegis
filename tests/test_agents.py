@@ -819,6 +819,53 @@ async def test_a_person_peeks_at_the_file_a_tool_row_read(world, tmp_path):
     assert set((world.app.roots.state_root / "files").iterdir()) == stored
 
 
+async def test_a_path_in_a_reply_opens_by_its_index_root_first_then_cwd(
+    world, tmp_path
+):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "r.md").write_text("# Root\n")
+    (tmp_path / "sub" / "pkg").mkdir(parents=True)
+    (tmp_path / "sub" / "pkg" / "here.py").write_text("x = 1\n")
+    r = await world.app.registry.call("session.spawn", {"agent": "opus", "cwd": "sub"})
+    s = world.session(r["log_id"])
+    await turn(s, "/md See `docs/r.md:3`, `pkg/here.py` and `gone/none.py`.")
+    reply = [e for e in s.entries() if e["kind"] == "prose"][-1]
+    assert reply["detail"]["paths"] == ["docs/r.md:3", "pkg/here.py", "gone/none.py"]
+    call = world.app.registry.call
+    ask = {"log_id": s.log_id, "entry_id": reply["id"]}
+    (f,) = await call("file.peek", {**ask, "index": 0})
+    assert f["name"] == "r.md" and f["preview"] == "markdown"
+    assert f["url"].startswith("/files/") and f["download"] == f["url"] + "?download=1"
+    (g,) = await call("file.peek", {**ask, "index": 1})
+    assert g["name"] == "here.py", "found under the session's cwd"
+    with pytest.raises(OpError) as e:
+        await call("file.peek", {**ask, "index": 2})
+    assert e.value.code == "no_file" and str(tmp_path) in str(e.value.args)
+    with pytest.raises(OpError) as e:
+        await call("file.peek", {**ask, "index": 3})
+    assert e.value.code == "no_path"
+    assert "peek" not in s.fold().entry(reply["id"])["detail"], (
+        "a path link records nothing"
+    )
+
+
+async def test_a_path_in_both_the_root_and_the_cwd_opens_the_root_one(world, tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "r.md").write_text("# Root\n")
+    (tmp_path / "sub" / "docs").mkdir(parents=True)
+    (tmp_path / "sub" / "docs" / "r.md").write_text("# Under the cwd\n")
+    r = await world.app.registry.call("session.spawn", {"agent": "opus", "cwd": "sub"})
+    s = world.session(r["log_id"])
+    await turn(s, "/md See `docs/r.md`.")
+    reply = [e for e in s.entries() if e["kind"] == "prose"][-1]
+    ask = {"log_id": s.log_id, "entry_id": reply["id"]}
+    (f,) = await world.app.registry.call("file.peek", {**ask, "index": 0})
+    assert f["excerpt"] == "# Root"
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call("file.peek", {**ask, "index": 99})
+    assert e.value.code == "no_path", "a forged index opens nothing"
+
+
 async def test_a_relative_path_resolves_against_the_session_cwd(world, tmp_path):
     (tmp_path / "sub").mkdir()
     (tmp_path / "sub" / "notes.md").write_text("# Notes\n")
