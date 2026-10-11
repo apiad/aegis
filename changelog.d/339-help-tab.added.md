@@ -4,4 +4,5 @@
   `help_search`, and each page drawn in the current theme. `/help` followed by
   words opens it with those words searched; `/help` alone still opens the
   command menu. On a phone the list and the page are two screens. The keyboard
-  list moved from that button to the `?` key and to the tab's "Every key". (#339)
+  list that button used to open is still on the `?` key, and the tab's "Every
+  key" opens it too. (#339)
