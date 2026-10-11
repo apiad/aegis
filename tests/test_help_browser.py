@@ -135,6 +135,32 @@ def test_a_link_to_another_page_opens_it_in_the_tab(server, page):  # noqa: F811
         None,
         None,
     ]
+    # A click on a link in a page drawn: one to a page or a section stays in
+    # the tab; one that leaves the help keeps its default, a new browser tab.
+    got = page.evaluate(
+        """async () => {
+          const { Help } = await import('/static/js/help.js');
+          const went = [];
+          const md = '## Workers\\n\\n[Q](queues) [W](#workers) [Out](https://example.com/x)\\n';
+          const conn = { call: async () => md };
+          const box = document.createElement('section');
+          document.body.append(box);
+          const h = new Help(conn, box, { go: (x) => went.push(x), onKeys() {} });
+          h.pages = [{ id: 'monitors', title: 'M', kind: 'howto', when: 'm' },
+                     { id: 'queues', title: 'Q', kind: 'howto', when: 'q' }];
+          h.draw();
+          await h.read('monitors', '');
+          const kept = [];
+          const stop = (ev) => { kept.push(!ev.defaultPrevented); ev.preventDefault(); };
+          document.addEventListener('click', stop);
+          for (const a of box.querySelectorAll('.hbody a'))
+            a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          document.removeEventListener('click', stop);
+          box.remove();
+          return [went, kept];
+        }"""
+    )
+    assert got == [["#help=queues", "#help=monitors%23workers"], [False, False, True]]
 
 
 def test_every_key_is_one_click_from_the_help_tab(server, page):  # noqa: F811
