@@ -23,7 +23,7 @@ const ALIAS = {
 const EMBEDS = { dockerfile: ["bash"], javascript: ["css", "graphql", "xml"], markdown: ["xml"], "php-template": ["php", "xml"], "python-repl": ["python"], typescript: ["css", "graphql", "xml"], xml: ["css", "javascript"], yaml: ["ruby"] };
 // Labels that mean "do not colour, do not guess".
 const PLAIN = new Set(["text", "plain", "plaintext", "txt", "output", "log"]);
-// What an unlabelled block may be guessed as, besides what is already loaded.
+// What an unlabelled block may be guessed as, besides what a labelled block asked for.
 const GUESS = ["bash", "python", "json", "yaml", "diff"];
 const MIN_RELEVANCE = 3; // below it a guess is a coin flip: the block stays plain
 const MAX_COLOUR = 512 * 1024; // above this, text stays plain: colouring would stall the page
@@ -31,6 +31,9 @@ const CACHE_MAX = 500;
 
 let core = null; // Promise of the hljs instance
 const loaded = new Map(); // name -> Promise, once per language
+// The guess candidates: GUESS and every label asked for, never a grammar loaded
+// only because another embeds it (yaml's ruby would win Python classes).
+const asked = new Set(GUESS);
 const cache = new Map(); // `${lang}\n${text}` -> result, oldest first
 
 export function langName(label) {
@@ -96,12 +99,13 @@ export async function colour(text, lang) {
   let out = null;
   if (text.length <= MAX_COLOUR) {
     if (lang) {
+      asked.add(lang);
       const lib = await load(lang);
       out = { html: lib.highlight(text, { language: lang, ignoreIllegals: true }).value, lang, guessed: false };
     } else {
       const lib = await hljs();
       await Promise.all(GUESS.map(load));
-      const r = lib.highlightAuto(text, lib.listLanguages());
+      const r = lib.highlightAuto(text, [...asked]);
       if (r.relevance >= MIN_RELEVANCE) out = { html: r.value, lang: r.language, guessed: true };
     }
   }
