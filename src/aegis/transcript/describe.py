@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import re
 
 KIND_BY_NAME = {
     "Read": "read",
@@ -321,6 +322,33 @@ def output_tail(text: str, max_lines: int = 40, max_bytes: int = 8192) -> str:
     if len(tail.encode()) > max_bytes:
         tail = "…" + tail.encode()[-max_bytes:].decode("utf-8", "ignore")
     return tail
+
+
+_NUMBERED = re.compile(r"^\s*(\d+)\t(.*)$")
+
+
+def numbered_lines(text: str) -> tuple[int, list[str]] | None:
+    """Claude Code's Read output (``     7\\tline``): the first line's number and
+    the lines without their numbers, up to the first line that is not numbered
+    (the harness appends notes after the file). None when it is not that shape."""
+    first, out = None, []
+    for ln in text.splitlines():
+        m = _NUMBERED.match(ln)
+        if not m:
+            if out:
+                break
+            continue
+        if first is None:
+            first = int(m.group(1))
+        out.append(m.group(2))
+    return (first, out) if first is not None else None
+
+
+def file_window(first: int, lines: list[str]) -> dict:
+    """The end of a file view, as much as ``output_tail`` keeps, and the
+    number of the first line kept."""
+    text = output_tail("\n".join(lines))
+    return {"first": first + len(lines) - len(text.splitlines()), "text": text}
 
 
 def money(usd: float) -> str:

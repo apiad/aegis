@@ -945,7 +945,12 @@ class Fold:
                 result=d.result_digest(name, ev.text, ev.is_error, pair),
                 tail=d.output_tail(ev.text),
             )
-            if pair is not None and not ev.is_error:
+            if name == "Read" and not ev.is_error and (nl := d.numbered_lines(ev.text)):
+                detail["file"] = d.file_window(*nl)
+                detail.pop("tail", None)  # the file view shows the same lines
+            elif name == "Write" and pair is not None and not ev.is_error:
+                detail["file"] = d.file_window(1, pair[2].splitlines())
+            if pair is not None and not ev.is_error and name != "Write":
                 removed, added, elided = d.diff_window(pair[1], pair[2])
                 detail["diff"] = {
                     "path": pair[0],

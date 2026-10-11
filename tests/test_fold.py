@@ -1246,3 +1246,45 @@ def test_a_tool_row_carries_the_language_its_views_draw_in():
         "t4": "yaml",
         "t5": None,
     }
+
+
+def test_a_read_with_numbered_lines_carries_a_file_view():
+    r = Rec()
+    r.call("t1", "Read", {"file_path": "/x/a.py"})
+    r.output(
+        "t1",
+        "     7\tclass A:\n     8\t    pass\n\n<system-reminder>\nnote\n</system-reminder>",
+    )
+    f, _ = run(r)
+    (e,) = f.entries()
+    assert e["detail"]["file"] == {"first": 7, "text": "class A:\n    pass"}
+    assert "tail" not in e["detail"]
+
+
+def test_a_long_read_keeps_its_last_lines_numbered_from_where_they_start():
+    r = Rec()
+    r.call("t1", "Read", {"file_path": "/x/a.py"})
+    r.output("t1", "\n".join(f"{n:6}\tline {n}" for n in range(1, 101)))
+    f, _ = run(r)
+    (e,) = f.entries()
+    assert e["detail"]["file"]["first"] == 61
+    assert e["detail"]["file"]["text"].splitlines()[0] == "line 61"
+
+
+def test_a_read_without_numbers_keeps_its_tail():
+    r = Rec()
+    r.call("t1", "Read", {"file_path": "/x/a.txt"})
+    r.output("t1", "plain\ntext")
+    f, _ = run(r)
+    (e,) = f.entries()
+    assert e["detail"]["tail"] == "plain\ntext" and "file" not in e["detail"]
+
+
+def test_a_write_carries_the_new_file_not_a_diff():
+    r = Rec()
+    r.call("t1", "Write", {"file_path": "/x/a.py", "content": "a = 1\nb = 2\n"})
+    r.output("t1", "File created successfully at: /x/a.py")
+    f, _ = run(r)
+    (e,) = f.entries()
+    assert e["detail"]["file"] == {"first": 1, "text": "a = 1\nb = 2"}
+    assert "diff" not in e["detail"]
