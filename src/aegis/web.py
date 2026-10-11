@@ -399,7 +399,12 @@ def build_web(
                 "proto": PROTO,
                 "server": app.server_name,
                 "native": desktop,
-                "me": {"name": principal.name, "role": principal.role},
+                "me": {
+                    "name": principal.name,
+                    "role": principal.role,
+                    # Its quota lines, drawn on its gauges (quota_gate.py).
+                    "policy": app.principals.policy_of(principal.name),
+                },
                 # Whose a session with no owner is: the admin's (tokens.py).
                 "owner": app.principals.owner,
             }

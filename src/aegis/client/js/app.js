@@ -14,7 +14,7 @@ import { copyRow, installCopy } from "./copy.js";
 import { Find } from "./find.js";
 import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
-import { mine, ownerOf, setWho } from "./me.js";
+import { linesOf, mine, ownerOf, setWho } from "./me.js";
 import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan } from "./fleet.js";
 import { age, countdown, elapsed, hostRow, hostSeverity, providerFor, quotaSideRow, quotaTile, tile } from "./gauges.js";
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
@@ -416,10 +416,12 @@ conn.subscribe(
   (snap) => {
     quota = snap || { providers: [] };
     drawQuota();
+    settings.onQuota(quota);
   },
   (ops) => {
     for (const op of ops) if (op.set) quota = op.set;
     drawQuota();
+    settings.onQuota(quota);
   },
 );
 conn.subscribe(
@@ -749,7 +751,9 @@ function drawSideQuota(s) {
     return;
   }
   head.textContent = p.read_at != null ? `read ${ago(p.read_at)}` : ""; // "read just now", "read 2m ago"
-  const rows = p.state === "failed" ? [] : p.windows.map((w) => quotaSideRow(p, w, now));
+  // A member's own lines, on its own server's gauges only.
+  const lines = (w) => (s.server ? null : linesOf(p.name, w.kind));
+  const rows = p.state === "failed" ? [] : p.windows.map((w) => quotaSideRow(p, w, now, lines(w)));
   if (p.state !== "ok") {
     const n = document.createElement("p");
     n.className = "cnote gnote";

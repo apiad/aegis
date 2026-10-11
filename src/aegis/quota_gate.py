@@ -31,6 +31,22 @@ KINDS = {p.name: tuple(k for k, _ in p.bar_windows) for p in PROVIDERS}
 MODES = ("closed", "open", "lines")
 
 
+def pools_wire() -> list[dict]:
+    """The pools a policy names and their windows, for the policy editor. A
+    window with a known span can take a pace line."""
+    return [
+        {
+            "name": p.name,
+            "label": p.label,
+            "windows": [
+                {"kind": k, "label": label, "pace": k in p.window_spans}
+                for k, label in p.bar_windows
+            ],
+        }
+        for p in PROVIDERS
+    ] + [{"name": "codex", "label": "Codex", "windows": []}]
+
+
 @dataclass(frozen=True)
 class Gate:
     state: str  # "open" | "closed" | "stopped"

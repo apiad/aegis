@@ -1,12 +1,19 @@
 // Who this browser is on its server (tokens.py): the welcome names it. A member
 // reads every session and changes only its own; an admin changes anything.
 
-export const who = { name: null, role: null, owner: "" };
+export const who = { name: null, role: null, owner: "", policy: null };
 
 export function setWho(me, owner) {
   who.name = me?.name ?? null;
   who.role = me?.role ?? null;
+  who.policy = me?.policy ?? null; // its quota lines; none for an admin
   who.owner = owner || "";
+}
+
+// The lines `who`'s policy draws on a window of a pool, or null.
+export function linesOf(pool, kind) {
+  const pp = who.policy?.[pool];
+  return pp?.mode === "lines" ? pp.lines?.[kind] || null : null;
 }
 
 // The owner of session `m`: a session from before owners is the admin's. Null

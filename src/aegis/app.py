@@ -61,7 +61,16 @@ from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .quota import Quota
-from .quota_gate import KINDS, Gate, continued, decide, pool_for, refusal
+from .quota_gate import (
+    KINDS,
+    POOLS,
+    Gate,
+    continued,
+    decide,
+    pool_for,
+    pools_wire,
+    refusal,
+)
 from .recaps import Recaps
 from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
 from .tokens import TokenStore
@@ -1084,11 +1093,25 @@ class App:
 
         @r.op("token.list", admin=True)
         async def token_list(_, caller):
-            """The tokens that may use this server, the admin's first, and the
-            policy of every member without its own."""
+            """The tokens that may use this server, the admin's first, the
+            policy of every member without its own, the pools a policy names,
+            and each member's gate on each pool now."""
+            snap, now = self.quota.snapshot(), time.time()
+
+            def gates(policy: dict | None) -> dict | None:
+                if policy is None:
+                    return None
+                return {pool: decide(policy, pool, snap, now).state for pool in POOLS}
+
+            rows = self.principals.rows()
+            for row in rows:
+                row["gates"] = gates(self.principals.policy_of(row["name"]))
+            default = self.principals.default_policy()
             return {
-                "tokens": self.principals.rows(),
-                "default_policy": self.principals.default_policy(),
+                "tokens": rows,
+                "default_policy": default,
+                "default_gates": gates(default or {}),
+                "pools": pools_wire(),
             }
 
         @r.op("token.add", TokenAdd, admin=True)

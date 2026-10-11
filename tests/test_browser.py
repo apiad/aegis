@@ -5727,8 +5727,9 @@ def test_a_new_tab_with_files_and_no_text_starts_and_sends_them(server, page, tm
 
 
 # -- tokens and owners (#311) -------------------------------------------------------
-def member_page(browser, server, name="ben"):
-    """A second browser, signed in with a member token minted by the CLI."""
+def member_page(browser, server, name="ben", policy=None):
+    """A second browser, signed in with a member token minted by the CLI, and
+    ``policy`` as its quota policy (quota_gate.py)."""
     token = subprocess.run(
         [
             sys.executable,
@@ -5744,6 +5745,8 @@ def member_page(browser, server, name="ben"):
         text=True,
         check=True,
     ).stdout.strip()
+    if policy is not None:
+        set_policy(server, name, policy)
     pg = new_page(browser, [])
     base = server.url.split("?")[0]
     pg.goto(f"{base}?token={token}")
@@ -5783,7 +5786,133 @@ def test_an_admin_adds_and_revokes_a_token_in_settings(server, page):
     page.fill("#set-token-name", "cara")
     page.click("#set-token-add")
     page.wait_for_selector("#set-token-once")
-    page.wait_for_selector("#set-tokens tr.tok-cara")
-    page.click("#set-tokens tr.tok-cara .danger")
-    page.click("#set-tokens tr.tok-cara .danger")  # the second click confirms
-    page.wait_for_function("!document.querySelector('#set-tokens tr.tok-cara')")
+    page.wait_for_selector("#set-tokens .tok-cara")
+    page.click("#set-tokens .tok-cara .danger")
+    page.click("#set-tokens .tok-cara .danger")  # the second click confirms
+    page.wait_for_function("!document.querySelector('#set-tokens .tok-cara')")
+
+
+def tokens_file(server) -> Path:
+    return server.root / ".aegis" / "state" / "tokens.json"
+
+
+def set_policy(server, name, policy) -> None:
+    """Give ``name`` a policy by hand, as an admin may in tokens.json."""
+    path = tokens_file(server)
+    doc = json.loads(path.read_text())
+    for e in doc["tokens"]:
+        if e["name"] == name:
+            e["policy"] = policy
+    path.write_text(json.dumps(doc))
+
+
+def lines(launch, stop):
+    return {
+        "claude": {
+            "mode": "lines",
+            "lines": {"session": {"launch": launch, "stop": stop}},
+        }
+    }
+
+
+def test_a_member_over_its_launch_line_is_told_why_nothing_started(
+    quota_server, browser
+):
+    # The seeded reading has Claude's 5 hours at 71%.
+    pg, _ = member_page(browser, quota_server, policy=lines(50, 90))
+    pg.click("#tab-add")
+    pg.wait_for_function("document.querySelector('#sp-agent').value !== ''")
+    pg.fill("#sp-text", "do the thing")
+    pg.click("#sp-go")
+    pg.wait_for_function(
+        "document.getElementById('sp-error').textContent.includes('cannot start')"
+    )
+    err = pg.text_content("#sp-error")
+    assert "ben cannot start a session now" in err and "71%" in err and "50%" in err
+    assert pg.input_value("#sp-text") == "do the thing"
+
+
+def test_a_members_gauge_carries_its_own_lines(quota_server, browser):
+    pg, base = member_page(browser, quota_server, policy=lines(80, 95))
+    spawn(pg, "hello")
+    pg.wait_for_selector(
+        "#s-quota .qrow[data-kind=session] .tick.lim.l", state="attached"
+    )
+    left = lambda w: pg.eval_on_selector(  # noqa: E731
+        f"#s-quota .qrow[data-kind=session] .tick.lim.{w}", "n => n.style.left"
+    )
+    assert (left("l"), left("s")) == ("80%", "95%")
+    assert pg.locator("#s-quota .qrow[data-kind=weekly_all] .tick.lim").count() == 0
+
+
+def open_tokens(page, server):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.click("#settings-btn")
+    page.wait_for_selector("#set-tok-default")
+
+
+def test_an_admin_edits_a_members_policy_and_the_default(quota_server, page, browser):
+    member_page(browser, quota_server)  # mints ben
+    open_tokens(page, quota_server)
+    page.wait_for_selector("#set-tokens .tok-ben >> text=uses the default")
+    page.click("#set-tokens .tok-ben >> text=Customize")
+    pick(page, "#set-tokens .tok-ben .poolrow.pool-claude pick-chip", "lines")
+    row = "#set-tokens .tok-ben .pool-claude .win-session"
+    page.wait_for_selector(f"{row} .h.s")
+    assert "start below 50% · stop at 90%" in page.text_content(f"{row} .rd")
+    # Drag the stop handle to about 80% of the track.
+    box = page.locator(f"{row} .track").bounding_box()
+    handle = page.locator(f"{row} .h.s").bounding_box()
+    page.mouse.move(
+        handle["x"] + handle["width"] / 2, handle["y"] + handle["height"] / 2
+    )
+    page.mouse.down()
+    page.mouse.move(box["x"] + box["width"] * 0.8, box["y"] + 3, steps=5)
+    page.mouse.up()
+    page.focus(f"{row} .h.l")
+    page.keyboard.press("Shift+ArrowLeft")
+    assert "start below 45% · stop at 80%" in page.text_content(f"{row} .rd")
+    # The launch handle stops a point short of the stop handle.
+    for _ in range(12):
+        page.keyboard.press("Shift+ArrowRight")
+    assert "start below 79% · stop at 80%" in page.text_content(f"{row} .rd")
+    # The default: open OpenCode Go without lines.
+    pick(page, "#set-tok-default .poolrow.pool-opencode-go pick-chip", "open, no lines")
+    page.wait_for_function(
+        "document.getElementById('set-status').textContent === 'Unsaved changes'"
+    )
+    page.click("#set-save")
+    page.wait_for_function(
+        "document.getElementById('set-status').textContent === 'Saved'"
+    )
+    doc = json.loads(tokens_file(quota_server).read_text())
+    (ben,) = [e for e in doc["tokens"] if e["name"] == "ben"]
+    assert ben["policy"]["claude"] == {
+        "mode": "lines",
+        "lines": {"session": {"launch": 79, "stop": 80}},
+    }
+    assert doc["default_policy"] == {"opencode-go": {"mode": "open"}}
+    # The reloaded card shows the saved lines and the gate they make now.
+    page.reload()
+    page.click("#settings-btn")
+    page.wait_for_selector(f"{row} .rd")
+    assert "start below 79% · stop at 80%" in page.text_content(f"{row} .rd")
+    # 71% now: open below the 79% launch line; OpenCode Go is not named.
+    chips = page.locator("#set-tokens .tok-ben .picks .set-pill").all_text_contents()
+    assert "Claude open" in chips and "OpenCode Go closed" in chips
+
+
+def test_the_policy_editor_fits_a_phone(quota_server, browser):
+    ctx = browser.new_context(
+        viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True
+    )
+    pg = ctx.new_page()
+    pg.goto(quota_server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.click("#settings-btn")
+    pg.wait_for_selector("#set-tok-default")
+    pick(pg, "#set-tok-default .poolrow.pool-claude pick-chip", "lines")
+    pg.wait_for_selector("#set-tok-default .win-session .h.s")
+    assert pg.evaluate("document.documentElement.scrollWidth") <= 390
+    ctx.close()

@@ -191,3 +191,19 @@ async def test_a_member_cannot_set_a_policy_and_a_bad_one_is_refused(world):
             "token.policy", {"name": "ben", "policy": {"nope": {}}}, Caller("user")
         )
     assert e.value.code == "bad_policy"
+
+
+async def test_the_token_list_carries_the_pools_and_each_members_gates(world):
+    reg = world.app.registry
+    await reg.call("token.policy", {"name": "ben", "policy": POLICY}, Caller("user"))
+    listed = await reg.call("token.list", {}, Caller("user"))
+    pools = {p["name"]: p for p in listed["pools"]}
+    assert set(pools) == {"claude", "opencode-go", "codex"}
+    assert [w["kind"] for w in pools["claude"]["windows"]] == ["session", "weekly_all"]
+    assert pools["codex"]["windows"] == [] and pools["claude"]["windows"][1]["pace"]
+    rows = {r["name"]: r for r in listed["tokens"]}
+    # No reading in a test: ben's lines close claude; the default opens it.
+    assert rows["ben"]["gates"]["claude"] == "closed"
+    assert rows["ben"]["gates"]["codex"] == "closed"
+    assert listed["default_gates"]["claude"] == "open"
+    assert rows[world.app.user]["gates"] is None
