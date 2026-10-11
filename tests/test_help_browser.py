@@ -417,12 +417,12 @@ def test_the_back_arrow_stays_in_view_on_a_phone_page_opened_at_a_section(
     s = p.sections[len(p.sections) // 2]  # one that scrolls to the top
     pg.goto(f"{server.url}#help={p.id}%23{s.slug}")
     pg.wait_for_selector(".helpv[data-screen=page] .hbody .doc")
-    pg.wait_for_function(
-        "() => document.querySelector('.helpv .hpage').scrollTop > 0"
-    )
+    pg.wait_for_function("() => document.querySelector('.helpv .hpage').scrollTop > 0")
     back = pg.locator(".helpv .hback").bounding_box()
     box = pg.locator(".helpv .hpage").bounding_box()
-    assert back and back["y"] >= box["y"] - 1 and back["y"] + back["height"] <= 844, back
+    assert back and back["y"] >= box["y"] - 1 and back["y"] + back["height"] <= 844, (
+        back
+    )
     # The section a hit names lands below the arrow, not under it.
     head = pg.locator(f"#h-{s.slug}").bounding_box()
     assert head["y"] >= back["y"] + back["height"], (head, back)
