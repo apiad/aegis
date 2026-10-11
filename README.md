@@ -220,7 +220,9 @@ on the page can read it.
 outlives the terminal or the SSH connection. It returns once the port listens and
 prints the URLs, the pid and how to stop it. The log goes to
 `.aegis/state/serve.log`. For a host that must survive reboots, run plain
-`aegis serve` under systemd.
+`aegis serve` under systemd, with `KillMode=mixed` in the unit so that systemd
+stops aegis and aegis ends its agents. A restart continues the turns it cut
+either way.
 
 Behind a reverse proxy, name the public origin with `aegis serve --origin
 https://dev.example`, keep `--host` on loopback, and let the proxy terminate TLS.

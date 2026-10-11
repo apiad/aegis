@@ -251,7 +251,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · tokens, quota gate and restarts</span>
-  <span class="st"><span class="pill acc">draft, awaiting review</span><span class="pill">2026-10-10</span><span class="pill">#311 · #312</span></span>
+  <span class="st"><span class="pill acc">restarts: built on branch multi-user-quota; tokens and quota not started</span><span class="pill">2026-10-10</span><span class="pill">#311 · #312</span></span>
 </div>
 
 <div class="wrap">
@@ -576,7 +576,7 @@ The pool has room again. Continue where you left off.</pre>
 <p>After a clean shutdown, a session is continued when either holds:</p>
 <ul>
 <li>its meta says <code>last_status: "working"</code>, written by <code>Session.shutdown</code>; or</li>
-<li>its last transcript record is an exit by SIGTERM or SIGKILL (codes 143, 137, -15, -9) stamped at or after <code>stopping_at</code> minus 5 seconds.</li>
+<li>its meta's <code>last_exit</code> is an exit by SIGTERM (codes 143, -15) stamped at or after <code>stopping_at</code> minus 30 seconds. The window is that wide because uvicorn closes its connections before it runs the lifespan shutdown. SIGKILL is not counted: systemd sends it only after <code>TimeoutStopSec</code>, when aegis has already stopped, and the kernel's OOM killer uses it too.</li>
 </ul>
 <p>The second rule exists because a systemd unit runs with <code>KillMode=control-group</code> unless it says otherwise: systemd sends SIGTERM to every harness at the same moment as to aegis, and a harness can exit before <code>Session.shutdown</code> runs. Its exit is then recorded as code 143 and its <code>last_status</code> as stopped (#269). The deploy guide will set <code>KillMode=mixed</code>, but aegis must not depend on the unit file being right.</p>
 <p>A continued session receives the message queue workers receive today, sent through the gate, so a session whose owner is over quota stays held instead:</p>
@@ -586,6 +586,7 @@ The pool has room again. Continue where you left off.</pre>
 <pre>aegis stopped unexpectedly while you were working. Continue where you left off.</pre>
 <p>A crash can leave a harness running: aegis died, but the child only exits when its stdin closes, and outside systemd nothing clears it. The meta therefore records the harness's <code>pid</code>. Before continuing after a crash, aegis checks whether that pid is alive and is still the harness it started (same command line), and terminates it, so two processes never resume the same session.</p>
 <p>In both cases, a session whose harness exited with any other code, or reported a harness error, is not continued, and shows the failed turn as it does today.</p>
+<p>No record at all counts as a crash, which is also the first boot after an upgrade from a version that wrote none. A queue worker that exits by SIGTERM keeps its task running for the next boot to continue, because failing the task at that exit would fail every running task a moment before the restart that continues it. A session whose turn was declined keeps its held messages for a person: sending them would start the turn the guard refused.</p>
 
 <h3 id="guard">The loop guard</h3>
 <p>The meta gains <code>restart_continues</code>, a count. aegis adds one each time it continues a session after a restart and resets it to zero when a turn ends without error. After a clean restart aegis continues a session while the count is below 2. After a crash it continues only when the count is 0, because #269 shows a turn can take the server down, and continuing that turn twice would crash it twice. When aegis declines, it marks the turn failed with the line "restarts interrupted this turn more than once; continue it by hand". Continues after a quota stop do not count, because a quota stop says nothing about the turn itself.</p>
@@ -603,7 +604,7 @@ The pool has room again. Continue where you left off.</pre>
 <p>The tests run the real server with the fake claude, as the repo prefers. Each gate below gets broken on purpose once to confirm it fails.</p>
 <ul class="checks">
 <li>A session mid-turn, server stopped with SIGTERM to aegis alone: after boot it receives the continue message and finishes its turn.<span class="b">slow</span></li>
-<li>The same with SIGTERM sent to aegis and the fake claude together, as <code>KillMode=control-group</code> does: still continued. Remove the 5-second rule and this test fails.<span class="b">slow</span></li>
+<li>The same with SIGTERM sent to aegis and the fake claude together, as <code>KillMode=control-group</code> does: still continued. Shrink the 30-second window to zero and this test fails.<span class="b">slow</span></li>
 <li>The fake claude exits with code 1 on its own, then a clean restart: not continued.<span class="b">fast</span></li>
 <li>aegis killed with SIGKILL mid-turn: continued at boot with the crash message, and the leftover fake claude is terminated first.<span class="b">slow</span></li>
 <li>The same session crashed twice in the same turn: continued after the first crash only.<span class="b">fast</span></li>
