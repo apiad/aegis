@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from typing import TypeGuard, cast
 
 from .quota import PROVIDERS
 
@@ -154,7 +155,7 @@ def continued(owner: str, why: str) -> str:
     )
 
 
-def _percent(v: object) -> bool:
+def _percent(v: object) -> TypeGuard[int]:
     return isinstance(v, int) and not isinstance(v, bool)
 
 
@@ -164,11 +165,15 @@ def validate(policy: object) -> list[str]:
         return ["a policy is an object of pools"]
     errs: list[str] = []
     for pool, pp in policy.items():
-        if pool not in POOLS:
+        if not isinstance(pool, str) or pool not in POOLS:
             errs.append(f"unknown pool {pool!r}")
             continue
         modes = MODES if pool in KINDS else ("closed", "open")
-        if not isinstance(pp, dict) or pp.get("mode") not in modes:
+        if not isinstance(pp, dict):
+            errs.append(f"{pool}: mode is one of {', '.join(modes)}")
+            continue
+        pp = cast(dict, pp)
+        if pp.get("mode") not in modes:
             errs.append(f"{pool}: mode is one of {', '.join(modes)}")
             continue
         lines = pp.get("lines") or {}
@@ -176,7 +181,7 @@ def validate(policy: object) -> list[str]:
             errs.append(f"{pool}: lines is an object of windows")
             continue
         for kind, line in lines.items():
-            if kind not in KINDS[pool]:
+            if not isinstance(kind, str) or kind not in KINDS[pool]:
                 errs.append(f"{pool}: unknown window {kind!r}")
                 continue
             line = line if isinstance(line, dict) else {}
