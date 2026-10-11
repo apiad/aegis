@@ -471,8 +471,9 @@ view.** Two markdown-it renderers, configured alike, draw every Markdown body:
 one for agents' text, and one for the person's messages that keeps a typed line
 break. A table never breaks a word: it scrolls inside its row with its first
 column pinned, and under 600 px of width it draws as one card per table row.
-The container query that decides this sits on the transcript's scroller `#tr`
-and on the viewer's `.vbody`, never on a row: a size container inside the
+The container query that decides this sits on the transcript's scroller `#tr`,
+the viewer's `.vbody` and the Help tab's page `.hpage`, never on a row: a size
+container inside the
 scroller stops Chromium's scroll anchoring, and the text being read jumps as
 rows above it draw. highlight.js is vendored as its core and one file per
 language behind `js/highlight.js`, which imports the core and a language the

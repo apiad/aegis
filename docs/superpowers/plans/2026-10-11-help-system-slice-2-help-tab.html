@@ -172,6 +172,8 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>A frontmatter block in <code>help.read</code>'s answer is dropped.</b> The contract says <code>help.read</code> returns "markdown str" without saying whether the <code>---</code> block comes with it. The tab draws the title and <code>when:</code> line from <code>help.pages</code> and strips a leading frontmatter block if one arrives.</li>
   <li><b>DESIGN.md gains three words.</b> The Markdown container query sits on <code>#tr</code> and <code>.vbody</code> (<code>DESIGN.md:474</code>); the tab's page scroller is a third. Nothing else in DESIGN.md changes: the tab is a view like Settings, which DESIGN.md does not describe either.</li>
   <li><b>Implemented: <code>help.pages</code> sits in <code>register_help_ops(app)</code>.</b> Slice 1 named the function <code>register_help_ops</code> (<code>src/aegis/help_ops.py:48</code>), not <code>register(r, app)</code>; the op is added inside it beside <code>help.read</code> and closes over its local <code>index</code>. The module docstring gains one sentence naming the op (<code>help_ops.py:7-8</code>).</li>
+  <li><b>Implemented: the tab drops the <code># title</code> line <code>help.read</code> puts over a whole page.</b> Slice 1's <code>Index.read</code> returns <code># {title}</code> before the body (<code>src/aegis/helppages.py:216</code>), so the page drew its title twice, once as <code>.htitle</code> and once as the body's <code>h1</code>. <code>help.js</code> strips a leading <code># </code> line after the frontmatter (<code>src/aegis/client/js/help.js:</code>), and <code>test_every_page_reads_with_each_section_where_search_points</code> asserts no body has an <code>h1</code> (<code>tests/test_help_browser.py:72</code>).</li>
+  <li><b>Implemented: no shipped heading has an underscore.</b> Task 2's check (a <code>slug</code> that keeps underscores) cannot fail on today's pages, so it was run as a <code>slug</code> joining with <code>_</code>, which the section test catches on every page.</li>
   <li><b>Left out on purpose:</b> a key chord and a palette entry for the tab (the spec names none), and a <code>help:</code> line in this slice's changelog fragment (slice 4 adds the line and the collation that keeps it).</li>
 </ul>
 
@@ -282,7 +284,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -- src/aegis/help_ops.p
 </details>
 
 <!-- ============================================================ TASK 2 -->
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">The Help tab on a desktop: the ? button, the list, the page</span><span class="files">js/help.js · index.html · js/app.js · css/base.css · site/client.css · DESIGN.md · tests/test_help_browser.py · tests/test_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The view, the route and the button, with the list grouped by kind and a page drawn in the theme. The search box is drawn here and wired in task 3.</p>

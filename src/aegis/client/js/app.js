@@ -26,6 +26,7 @@ import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
+import { Help } from "./help.js";
 import { installBell, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
 import "./pick.js";
@@ -210,7 +211,15 @@ for (const b of document.querySelectorAll("#fleet-order button"))
     render();
   });
 
-// -- routing: #fleet, #new, #settings, #journal, #s=<key>, #read=<key> ------------------
+// -- routing: #fleet, #new, #settings, #journal, #help[=<page>], #s=<key>, #read=<key> --
+// A help ref is URI-encoded; a hand-typed malformed one is a page name nobody has.
+const unhash = (s) => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+};
 function route() {
   const h = location.hash.slice(1);
   if (h.startsWith("s=")) return { view: "session", id: h.slice(2) };
@@ -218,6 +227,7 @@ function route() {
   if (h === "new") return { view: "spawn" };
   if (h === "settings") return { view: "settings" };
   if (h === "journal") return { view: "journal" };
+  if (h === "help" || h.startsWith("help=")) return { view: "help", id: unhash(h.slice(5)) };
   return { view: "fleet" };
 }
 
@@ -297,6 +307,10 @@ const journal = new Journal(conn, $("journal"), {
     go(r.open ? `#s=${r.log_id}` : `#read=${r.log_id}`);
   },
 });
+// The Help tab (help.js), one per window like Settings. Its code blocks copy
+// as the transcript's do.
+const helpTab = new Help(conn, $("help"), { go, onKeys: () => help(true) });
+installCopy($("help"), copyDeps);
 let sideJournalTimer = null;
 const sideJournalChanged = () => {
   journal.changed();
@@ -509,6 +523,7 @@ function render() {
   $("tab-add").classList.toggle("on", r.view === "spawn");
   $("settings-btn").classList.toggle("on", r.view === "settings");
   $("journal-btn").classList.toggle("on", r.view === "journal");
+  $("help-btn").classList.toggle("on", r.view === "help");
   root.dataset.mode = r.view === "read" ? "read" : "live";
   // Quota rows redraw on a quota patch, the timer, or a change of view; never
   // on a sessions patch, which would take the hover tooltip with them.
@@ -544,6 +559,12 @@ function render() {
     show("journal");
     if (newView) journal.open();
     setTitle("Journal · aegis");
+  } else if (r.view === "help") {
+    watchHost(null);
+    follow(null);
+    show("help");
+    if (newView) helpTab.show(r.id);
+    setTitle("Help · aegis");
   } else if (r.view === "session") {
     watchHost(forKey(r.id).server || "");
     // Shown first: follow() sizes the message box, which measures 0 while hidden.
@@ -1616,7 +1637,7 @@ $("tab-add").addEventListener("click", () => go("#new"));
 const keymap = $("keymap");
 renderKeys(keymap);
 const help = (open = keymap.hidden) => (keymap.hidden = !open);
-$("keys-btn").addEventListener("click", () => help());
+$("help-btn").addEventListener("click", () => go("#help"));
 $("settings-btn").addEventListener("click", () => go("#settings"));
 $("journal-btn").addEventListener("click", () => go("#journal"));
 keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));

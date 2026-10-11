@@ -2066,7 +2066,9 @@ def test_question_mark_lists_every_key_and_escape_closes_it(server, page):
     assert page.locator("#keymap tr.k").count() == n
     page.keyboard.press("Escape")
     page.wait_for_selector("#keymap", state="hidden")
-    page.click("#keys-btn")
+    # The ? button opens the Help tab now; the list is its "Every key".
+    page.click("#help-btn")
+    page.click(".helpv .hkeys")
     page.wait_for_selector("#keymap", state="visible")
     page.keyboard.press("?")
     page.wait_for_selector("#keymap", state="hidden")
