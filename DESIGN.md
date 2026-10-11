@@ -354,7 +354,7 @@ one CSS block wraps the tab bar onto its own row, turns the side panel into a
 drawer (`data-side=open`, opened by the panel button), shows the monitor card as a
 sheet over that drawer, stacks the Fleet band and draws each archive row as two
 lines with Reopen beside them, a tap on the row reading it; under `(pointer: coarse)` touch
-targets grow to 44 px and Enter in the composer adds a line. The navigator's
+targets grow to 44 px and Enter in either composer, a session's or the new tab's, adds a line. The navigator's
 buttons are the exception: they draw at 34 px and take a tap 44 px tall
 through a pseudo-element, so the whole pill fits on one line of a phone. Hover opens and
 closes a card for a mouse only, because a tap fires a leave right after its

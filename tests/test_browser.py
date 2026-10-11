@@ -254,9 +254,8 @@ def spawn(pg, prompt: str | None = None) -> str:
     pg.wait_for_function("document.querySelector('#sp-agent').value !== ''")
     if prompt:
         pg.fill("#sp-text", prompt)
-        pg.press("#sp-text", "Enter")
-    else:
-        pg.click("#sp-go")
+    # The button, not Enter: on a touch screen Enter adds a line.
+    pg.click("#sp-go")
     pg.wait_for_selector("#a2[data-view=session]")
     if prompt:
         turns_done(pg, 1)
@@ -296,10 +295,19 @@ def test_the_composer_overrides_a_chip_resets_it_and_spawns_with_the_first_messa
     assert picked(page, "#sp-model") == "opus"
     assert page.is_hidden("#sp-reset")
     assert page.is_hidden("#sp-server")  # no linked server, no server chip
+    # As in a session (#315): the chips on one line under the box, the
+    # buttons inside it.
     tops = page.eval_on_selector_all(
-        "#spawn .pick, #sp-go", "els => els.map(e => e.getBoundingClientRect().top)"
+        "#spawn .pick", "els => els.map(e => e.getBoundingClientRect().top)"
     )
     assert max(tops) - min(tops) < 4, tops
+    assert page.locator("#spawn .box .pick").count() == 0
+    assert page.locator("#spawn .box #sp-go").count() == 1
+    assert (
+        min(tops)
+        >= page.locator("#spawn .box").bounding_box()["y"]
+        + page.locator("#spawn .box").bounding_box()["height"]
+    )
 
     pick(page, "#sp-model", "sonnet")
     assert page.input_value("#sp-agent input") == "opus*"
@@ -348,7 +356,8 @@ def test_the_chips_filter_as_you_type_and_a_long_model_keeps_the_send_button_in_
     pick(page, "#sp-agent", "fab")
     assert picked(page, "#sp-agent") == "fable"
     assert picked(page, "#sp-model") == "claude-fable-5-1"
-    # The chips wrap onto two rows; the send button keeps the corner (#207).
+    # The send button keeps the box's bottom-right corner (#207), and the
+    # chips stay under the box, inside its width, however long the model.
     send = page.evaluate(
         "document.querySelector('#sp-go').getBoundingClientRect().toJSON()"
     )
@@ -358,12 +367,10 @@ def test_the_chips_filter_as_you_type_and_a_long_model_keeps_the_send_button_in_
     chips = page.evaluate(
         "[...document.querySelectorAll('#spawn .pick')].map(e => e.getBoundingClientRect().toJSON())"
     )
-    assert len({round(c["top"]) for c in chips}) >= 2, chips
-    assert all(c["right"] <= send["left"] for c in chips), (send, chips)
-    # On the last chip row: the buttons are centred on it, and the mic is a
-    # few pixels taller than the send in some fonts.
-    assert abs(max(c["bottom"] for c in chips) - send["bottom"]) < 6, (send, chips)
+    assert all(c["top"] >= box["bottom"] for c in chips), (box, chips)
+    assert all(c["right"] <= box["right"] + 1 for c in chips), (box, chips)
     assert box["right"] - send["right"] < 20, (box, send)
+    assert box["bottom"] - send["bottom"] < 20, (box, send)
 
     # Esc keeps the value; the arrows walk the list; a click takes a row.
     page.click("#sp-effort input")
@@ -3653,6 +3660,33 @@ def test_a_phone_reaches_tabs_the_drawer_and_the_chips(server, browser):
     assert round(chips[0]["y"]) == round(chips[1]["y"]) and chips[2]["width"] > 300
     assert page.evaluate(WIDER) == []
     assert errors == []
+
+
+def test_the_new_tab_on_a_phone_adds_a_line_on_enter_like_a_session(server, browser):
+    """#315: Enter spawned here, while in a session's composer it adds a line."""
+    errs: list = []
+    page = phone(browser, errs)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.tap("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value !== ''")
+    page.tap("#sp-text")
+    page.keyboard.type("one")
+    page.keyboard.press("Enter")
+    page.keyboard.type("two")
+    assert page.input_value("#sp-text") == "one\ntwo"
+    assert page.evaluate("document.querySelector('#a2').dataset.view") == "spawn"
+    assert page.get_attribute("#sp-text", "placeholder") == "What should the agent do?"
+    box = page.locator("#spawn .box").bounding_box()
+    chip = page.locator("#sp-agent").bounding_box()
+    assert chip["y"] >= box["y"] + box["height"], (box, chip)
+    assert page.locator("#sp-go").bounding_box()["height"] >= 44
+    assert page.evaluate(WIDER) == []
+    page.tap("#sp-go")
+    page.wait_for_selector("#a2[data-view=session]")
+    turns_done(page, 1)
+    assert "two" in page.inner_text("#entries")
+    assert errs == []
 
 
 def archived(root: Path, n: int) -> list[str]:
