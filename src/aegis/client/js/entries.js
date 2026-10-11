@@ -214,7 +214,7 @@ export function preview(f, remote, zoom) {
   return stage;
 }
 
-export function markdown(text, { breaks = false } = {}) {
+export function markdown(text, { breaks = false, paths = null } = {}) {
   const div = document.createElement("div");
   div.className = "md";
   const src = text || "";
@@ -232,6 +232,17 @@ export function markdown(text, { breaks = false } = {}) {
     }
     const tw = blk.querySelector(".tw");
     tw.addEventListener("scroll", () => fade(tw), { passive: true });
+  }
+  // The spans a reply listed as paths (detail.paths) open the file in the
+  // viewer; a linked server's do not, as the file is on the other machine.
+  if (paths?.length && fileBase === "") {
+    for (const code of div.querySelectorAll(":not(pre) > code")) {
+      const i = paths.indexOf(code.textContent.trim());
+      if (i < 0) continue;
+      code.classList.add("path");
+      code.dataset.index = String(i);
+      code.title = "Open in the viewer";
+    }
   }
   return div;
 }
@@ -324,7 +335,7 @@ const RENDERERS = {
   },
 
   prose(e) {
-    const body = markdown(e.md);
+    const body = markdown(e.md, { paths: e.detail?.paths });
     body.classList.add("body");
     const r = row(e, "prose", body);
     // Only the live view carries the flag; an archived transcript draws no mark.

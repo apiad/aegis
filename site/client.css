@@ -607,6 +607,12 @@ body{background:#000}
 .a2 .viewer .code .ln{position:sticky;left:0;padding:14px 12px 40px 16px;text-align:right;color:var(--faint);background:var(--bg);border-right:1px solid var(--rule);user-select:none}
 .a2 .viewer .code .src{padding-left:14px;padding-right:24px;color:var(--ink)}
 .a2 .viewer .code code{font-size:inherit;background:none;padding:0;border-radius:0}
+.a2 .md code.path{color:var(--accent);cursor:pointer;border-style:dashed}
+.a2 .md code.path:hover{border-style:solid}
+.a2 .md code.path::before{content:"↗ ";opacity:.6}
+.a2 .row .patherr{font:12px var(--font-ui);color:var(--err);margin-top:4px}
+.a2 #viewer .code{position:relative}
+.a2 #viewer .code .mark{position:absolute;left:0;right:0;background:var(--accent-soft);border-left:2px solid var(--accent);pointer-events:none}
 @media (max-width:760px){.a2 .viewer .vbar .fs{display:none}}
 /* highlight.js's classes, coloured from the theme so every theme reads its own way. */
 .a2 .hljs-comment,.a2 .hljs-quote{color:var(--h-com);font-style:italic}

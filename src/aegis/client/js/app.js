@@ -1232,6 +1232,25 @@ $("entries").addEventListener("click", async (ev) => {
   }
 });
 
+// -- Open a path a reply named, in the viewer at its line -----------------------
+$("entries").addEventListener("click", async (ev) => {
+  const code = ev.target.closest(".md code.path");
+  if (!code) return;
+  const row = code.closest(".row");
+  const body = row.querySelector(":scope > .body");
+  body.querySelector(":scope > .patherr")?.remove();
+  const line = Number(/:(\d+)$/.exec(code.textContent.trim())?.[1]) || null;
+  try {
+    const files = await conn.call("file.peek", { log_id: forKey(shown).log_id, entry_id: row.dataset.id, index: Number(code.dataset.index) });
+    viewer.open({ files, at: 0, remote: false, glyph: "file", line });
+  } catch (e) {
+    const note = document.createElement("div");
+    note.className = "patherr";
+    note.textContent = e.message;
+    body.append(note);
+  }
+});
+
 // -- archive -------------------------------------------------------------------
 let archived = [];
 let archiveCursor = null; // the next page's cursor; null: nothing more
