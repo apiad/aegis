@@ -132,6 +132,7 @@ $("sp-go").append(icon("send"));
 $("interrupt").append(icon("stop"));
 $("replies-g").append(icon("prompt"));
 $("working-g").append(icon("think"));
+$("closing-g").append(glyph("done"));
 $("sp-mark").prepend(gorgoneion());
 installBell($("bell"));
 $("nav-up").addEventListener("click", () => transcript.message(-1));
@@ -1044,6 +1045,7 @@ function renderMeta(s) {
   drawPlan(s);
   drawSideJournal(s.key);
   drawReplies(s);
+  drawClosing(s);
   $("s-cwd").textContent = s.cwd;
   $("chip-model").textContent = s.model;
   $("chip-model").title = s.model_id || "";
@@ -1816,11 +1818,26 @@ function drawReplies(s) {
   if (transcript.following) transcript.toBottom();
 }
 
+// On a phone Close sits in the drawer, so a session whose agent said done gets
+// an Archive button after its last row, one tap from where the reading ended.
+// The stylesheet shows it only in the phone layout (#333).
+function drawClosing(s) {
+  const box = $("closing");
+  const hide = s.attention !== "done";
+  if (box.hidden === hide) return;
+  box.hidden = hide;
+  if (transcript.following) transcript.toBottom();
+}
+$("closing-btn").addEventListener("click", () => {
+  const s = focused();
+  if (s) closeSession(s);
+});
+
 const askClose = (s) =>
   ask(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`, { ok: "Close" });
 // The one rule for when closing asks: a done session has nothing left to lose,
-// anything else may be mid-work. The Close button, /close and the Fleet's
-// Archive button all pass through it.
+// anything else may be mid-work. The Close button, /close, the Fleet's Archive
+// button and the phone's Archive row all pass through it.
 const confirmClose = async (s) => s.attention === "done" || (await askClose(s));
 
 async function closeSession(s) {
