@@ -106,6 +106,24 @@ async def test_default_and_queue_problems_are_errors(
     assert at(found, "queues.q.agent")[0].level == "error"
 
 
+async def test_a_valid_recap_is_ok_and_not_an_unknown_key(
+    tmp_path, fake_claude, fake_opencode
+):
+    found = await run(tmp_path, GOOD + "recap: {agent: opus}\n", fake_claude, fake_opencode)
+    assert [f for f in found if f.level != "ok"] == []
+    (r,) = at(found, "recap")
+    assert r.message == "opus, opus"
+
+
+async def test_a_recap_naming_no_agent_or_another_harness_is_an_error(
+    tmp_path, fake_claude, fake_opencode
+):
+    for agent, why in (("nope", "does not define"), ("pro", "needs a claude-code agent")):
+        text = GOOD + f"recap: {{agent: {agent}}}\n"
+        (r,) = at(await run(tmp_path, text, fake_claude, fake_opencode), "recap")
+        assert r.level == "error" and why in r.message
+
+
 async def test_legacy_state_is_an_error_and_the_doctor_writes_nothing(
     tmp_path, fake_claude, fake_opencode
 ):

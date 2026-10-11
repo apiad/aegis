@@ -41,7 +41,7 @@ from .roots import CONFIG_FILE
 log = logging.getLogger("aegis.config")
 
 WATCH_EVERY_S = 1.0
-TOP_KEYS = ("agents", "queues", "default_agent")
+TOP_KEYS = ("agents", "queues", "default_agent", "recap")
 AGENT_KEYS = ("harness", "provider", "model", "effort", "permission", "priming")
 QUEUE_KEYS = ("agent", "max_parallel")
 
