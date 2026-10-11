@@ -295,6 +295,7 @@ FAR_ERRORS = {
     "archived": "{handle}@{server} is archived",
     "server_offline": "{server} is not linked right now",
     "timeout": "{server} did not answer in time",
+    "not_owner": "{handle}@{server} is not this server's link's to prompt there",
 }
 USER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
@@ -710,6 +711,14 @@ def register_agent_ops(app: App) -> None:
                 "bad_sender", "a sender is a handle and a user name, one line each"
             )
         to = target(p.target)
+        # The link is the token it presented: a member link prompts only the
+        # sessions it owns here, like any member (tokens.py).
+        principal, owner = app.who(caller), app.owner_of(to.log_id)
+        if not principal.is_admin and owner != principal.name:
+            raise OpError(
+                "not_owner",
+                f"{to.handle} belongs to {owner}; a handoff cannot reach it",
+            )
         if p.interrupt and to.status == "working":
             await to.interrupt()
         held = to.busy

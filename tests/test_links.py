@@ -1059,3 +1059,30 @@ async def test_a_revoked_token_on_an_idle_socket_stops_receiving(tmp_path, fake_
             assert ben.frames[seen:] == [] and ben.ws.close_code == 4401
     finally:
         await node.stop()
+
+
+async def test_a_member_link_delivers_only_into_its_own_sessions(pair):
+    alpha, beta = pair
+    theirs = await beta.spawn()  # beta's admin's
+    member = beta.app.principals.add("alpha", "member")
+    alpha.app.links.remove("beta")
+    alpha.app.links.add("beta", beta.base, member)
+    await until(
+        lambda: (
+            (link := alpha.app.links.get("beta")) is not None and link.state == "linked"
+        ),
+        timeout=10,
+        what="the member link",
+    )
+    link = alpha.app.links.get("beta")
+    sender = {"handle": "user", "server": "alpha", "user": "ben"}
+    r = await link.call_raw(
+        "peer.deliver",
+        {
+            "target": theirs.handle,
+            "context": "hi",
+            "interrupt": False,
+            "sender": sender,
+        },
+    )
+    assert r["error"]["code"] == "not_owner"
