@@ -100,19 +100,18 @@ body{background:#000}
 #a2 .spawn .mark .gorgon{width:30px;height:30px;color:var(--accent)}
 #a2 .spawn .cwd{width:100%;background:none;border:none;border-bottom:1px dashed transparent;outline:none;text-align:center;font-family:var(--font-mono);font-size:12px;color:var(--muted)}
 #a2 .spawn .cwd:hover,#a2 .spawn .cwd:focus{border-bottom-color:var(--faint);color:var(--ink)}
-#a2 .spawn .box{width:100%;display:grid;gap:10px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:12px 14px}
+#a2 .spawn .box{width:100%;display:flex;align-items:flex-end;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg)}
 #a2 .spawn .box:focus-within{border-color:var(--accent)}
-#a2 .spawn textarea{width:100%;resize:none;background:none;border:none;outline:none;color:var(--strong);font-family:var(--font-ui);font-size:14px;line-height:1.45;max-height:40vh}
-/* The chips wrap on the left; the actions keep the bottom-right corner however
-   long a model id gets (#207). */
-#a2 .spawn .picks{display:flex;gap:6px;align-items:flex-end}
-#a2 .spawn .chips{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-#a2 .spawn .acts{flex:none;display:flex;gap:6px;align-items:center}
+#a2 .spawn textarea{flex:1;min-width:0;width:0;resize:none;padding:12px 14px;background:none;border:none;outline:none;color:var(--strong);font-family:var(--font-ui);font-size:14px;line-height:1.45;max-height:40vh}
+/* As in a session: attach, mic and send inside the box, bottom right, and the
+   chips on a line below it, wrapping however long a model id gets (#207, #315). */
+#a2 .spawn .acts{flex:none;display:flex;gap:6px;align-items:center;padding:8px 8px 8px 0}
+#a2 .spawn .chips{width:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 #a2 .spawn .pick{max-width:30ch;background:var(--bg);border:1px solid var(--rule);border-radius:5px;padding:3px 8px;font-family:var(--font-chrome);font-size:11.5px;color:var(--ink);cursor:pointer}
 #a2 .spawn .pick.agent{border-color:var(--accent);color:var(--accent)}
 #a2 .spawn .pick.diff{color:var(--accent)}
 #a2 .spawn .reset{background:none;border:none;padding:0;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer}
-#a2 .spawn .send{background:var(--accent);color:var(--on-accent);border:none;border-radius:6px;padding:4px 12px;font-weight:600;cursor:pointer}
+#a2 .spawn .send{background:var(--accent);color:var(--on-accent);border:none;border-radius:6px;font-size:15px;line-height:1;padding:6px 12px;font-weight:600;cursor:pointer}
 #a2 .spawn .send .ic,#a2 .composer .acts .send .ic{width:15px;height:15px;vertical-align:middle}
 #a2 .spawn .err-text{margin:0}
 #a2 .spawn .err-text:empty{display:none}
@@ -263,8 +262,6 @@ body{background:#000}
 #a2 .mic[data-state=listening]{color:var(--on-accent);background:var(--err);border-color:transparent;box-shadow:0 0 0 calc(var(--level,0) * 6px) color-mix(in srgb,var(--err) 35%,transparent)}
 #a2 .mic[data-state=finishing]{color:var(--err);border-color:var(--err)}
 #a2 .mic:disabled{opacity:.35;cursor:default}
-#a2 .spawn .mic{margin-left:auto}
-#a2 .spawn .mic + .send{margin-left:6px}
 @keyframes mic-pulse{50%{opacity:.25}}
 #a2 .composer .chips{display:flex;gap:8px;margin-top:8px;align-items:center}
 /* the command menu, drawn above the composer */
@@ -283,7 +280,6 @@ body{background:#000}
 /* The new tab's tray holds its files until the session exists. */
 #a2 .spawn .atts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 #a2 .spawn .atts[hidden]{display:none}
-#a2 .spawn .clip + .mic{margin-left:6px}
 #a2 .spawn.dropping .box{border-color:var(--accent);border-style:dashed}
 #a2 .chip.att.held .ab{display:none}
 #a2 .chip.att{position:relative;display:inline-flex;align-items:center;gap:6px;overflow:hidden;color:var(--ink);max-width:260px}
@@ -902,8 +898,8 @@ body{background:#000}
   #a2 .composer{padding:6px 8px max(8px,env(safe-area-inset-bottom))}
   /* One line of text centred on the 44 px buttons: 16+24+16 = 6+44+6. At 16 px
      iOS Safari does not zoom the page when the field takes focus. */
-  #a2 .composer textarea{font-size:16px;line-height:24px;padding:16px 12px}
-  #a2 .composer .acts{padding:6px 6px 6px 0}
+  #a2 :is(.composer,.spawn) textarea{font-size:16px;line-height:24px;padding:16px 12px}
+  #a2 :is(.composer,.spawn) .acts{padding:6px 6px 6px 0}
   /* The monitor card: a sheet over the drawer, not beside it. */
   #a2 .mcard{left:8px;right:8px;top:auto;bottom:max(8px,env(safe-area-inset-bottom));width:auto;max-height:70vh;z-index:35}
   #a2 .band{grid-template-columns:minmax(0,1fr);gap:14px;padding:12px 14px}
@@ -934,7 +930,7 @@ body{background:#000}
 /* Touch, at any width: 44 px targets. */
 @media (pointer:coarse){
   #a2 .rp{min-height:44px;padding:10px 14px;font-size:14.5px}
-  #a2 .composer .acts .send,#a2 .composer .acts .int,#a2 .mic{min-width:44px;min-height:44px}
+  #a2 :is(.composer,.spawn) .acts .send,#a2 .composer .acts .int,#a2 .mic{min-width:44px;min-height:44px}
   #a2 pick-chip .opt{min-height:44px;display:flex;align-items:center}
   #a2 .tab{min-height:40px}
   #a2 .keys-btn.bell{min-width:44px;min-height:40px}

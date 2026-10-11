@@ -1521,8 +1521,9 @@ for (const id of ["sp-model", "sp-cwd"]) {
     }
   });
 }
+// Enter spawns and sends; on a touch screen it adds a line, as in a session.
 $("sp-text").addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
+  if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing && !touch.matches) {
     ev.preventDefault();
     spawnFromComposer();
   }
@@ -1743,6 +1744,7 @@ $("sp-mic").addEventListener("click", () => dictation.toggle(spawnTarget(), "but
 // On a touch screen Enter adds a line and the button sends: the key sits where
 // a mistap lands, and half a message costs a turn.
 const touch = matchMedia("(pointer: coarse)");
+if (touch.matches) $("sp-text").placeholder = "What should the agent do?";
 
 function autosize() {
   input.style.height = "auto";
