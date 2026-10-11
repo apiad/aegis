@@ -144,3 +144,109 @@ async def test_a_person_cannot_restart_a_gated_session_by_typing(world):
             "session.send", {"log_id": s.log_id, "text": "go on"}, as_(BEN)
         )
     assert e.value.code == "quota_closed" and not s.running
+
+
+def kinds(s, kind):
+    return [e for e in s.entries() if e["kind"] == "system" and kind in e["summary"]]
+
+
+def quota_inbox(s):
+    return [
+        e
+        for e in s.entries()
+        if e["kind"] == "inbox" and "from aegis:quota" in json.dumps(e)
+    ]
+
+
+async def working(s, text="/sleep 30"):
+    await s.send(text)
+    await until(lambda: s.status == "working", what="the turn")
+
+
+async def test_a_stop_line_pauses_a_members_turn_and_the_launch_line_continues_it(
+    world,
+):
+    ben = await spawn_as(world, BEN)
+    admin = await world.spawn()
+    await working(ben)
+    await working(admin)
+    seed(world, session=91)
+    await until(lambda: ben.status == "idle", what="ben's turn interrupted")
+    assert ben.meta()["quota_paused"] == "Claude 5 hours is at 91%, stop line 90%"
+    assert kinds(ben, "paused: quota line reached")
+    assert admin.status == "working"
+    assert "quota" in ben.wire()["waiting_on"]
+    await ben.deliver("> from agent:ana · now", "one more thing")
+    assert ben.held and not quota_inbox(ben)
+    seed(world, session=60)  # between the lines: still paused, still holding
+    await ben.deliver("> from agent:ana · later", "and another")
+    await asyncio.sleep(0.3)
+    assert ben.quota_paused and len(ben.held) == 2 and ben.status == "idle"
+    seed(world, session=40)
+    await until(lambda: quota_inbox(ben), what="the continue message")
+    await until(
+        lambda: ben.status == "idle" and not ben.held, what="the continued turn"
+    )
+    assert ben.meta()["quota_paused"] is None
+    (e,) = quota_inbox(ben)
+    text = json.dumps(e)
+    assert text.index("from aegis:quota") < text.index("one more thing")
+    assert "ben's quota line was reached" in text
+
+
+async def test_a_token_flapping_round_the_stop_line_is_paused_once(world):
+    ben = await spawn_as(world, BEN)
+    await working(ben)
+    seed(world, session=91)
+    await until(lambda: ben.status == "idle", what="the pause")
+    seed(world, session=89)
+    seed(world, session=91)
+    seed(world, session=89)
+    await asyncio.sleep(0.3)
+    assert len(kinds(ben, "paused: quota")) == 1
+    assert ben.quota_paused and not quota_inbox(ben)
+
+
+async def test_a_restart_keeps_a_paused_session_paused_until_the_gate_opens(world):
+    ben = await spawn_as(world, BEN)
+    await working(ben)
+    seed(world, session=91)
+    await until(lambda: ben.status == "idle", what="the pause")
+    await ben.deliver("> from agent:ana · now", "while you were paused")
+    log_id = ben.log_id
+    await world.restart()
+    ben = world.session(log_id)
+    assert ben.quota_paused and ben.held and not ben.running
+    seed(world, session=91)
+    await asyncio.sleep(0.3)
+    assert ben.quota_paused and not ben.running
+    seed(world, session=40)
+    await until(lambda: quota_inbox(ben), what="the continue after the restart")
+    await until(lambda: ben.status == "idle" and not ben.held, what="its turn")
+    assert ben.restart_continues == 0
+
+
+async def test_a_paused_worker_keeps_its_task_running_and_finishes_after(world):
+    seed(world, session=40)
+    q = world.app.queues
+    t = await q.enqueue("solo", "/sleep 30", False, None, str(world.root), owner="ben")
+    await until(lambda: t.worker, what="the worker")
+    w = world.session(t.worker)
+    await until(lambda: w.status == "working", what="the worker's turn")
+    seed(world, session=91)
+    await until(lambda: w.status == "idle", what="the pause")
+    await asyncio.sleep(0.3)
+    assert t.status == "running"
+    seed(world, session=40)
+    await until(lambda: t.status == "completed", timeout=15, what="the task")
+
+
+async def test_a_stale_reading_closes_the_gate_and_stops_nothing(world):
+    ben = await spawn_as(world, BEN)
+    await working(ben)
+    seed(world, session=99, read_at=time.time() - 1000)
+    await asyncio.sleep(0.3)
+    assert ben.status == "working" and not ben.quota_paused
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call("session.spawn", {"agent": "opus"}, as_(BEN))
+    assert "older than 15 minutes" in e.value.message
