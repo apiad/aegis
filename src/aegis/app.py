@@ -60,7 +60,7 @@ from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .quota import Quota
 from .recaps import Recaps
-from .ops import Caller, NoParams, OpError, Registry as Ops
+from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
 from .tokens import TokenStore
 from .registry import Registry
 from .roots import Roots
@@ -283,6 +283,8 @@ class App:
         self.principals = TokenStore(roots.state_root, self.user)
         self.links = Links(roots.state_root, server_name, self.user, self.publish)
         self.registry = Ops()
+        self.registry.who = self.who
+        self.registry.owner_of = self.owner_of
         self.registry.permission_of = lambda log_id: (
             s.spec.permission if (s := self.sessions.sessions.get(log_id)) else None
         )
@@ -292,6 +294,25 @@ class App:
         register_artifact_ops(self)
         register_journal_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
+
+    def who(self, caller: Caller) -> Principal:
+        """The principal a caller acts as. An agent acts as its session's
+        owner, with the owner's role now: a revoked owner's agent is a member."""
+        if caller.principal is not None:
+            return caller.principal
+        if caller.is_agent:
+            name = self.owner_of(caller.log_id or "") or self.user
+            return Principal(name, self.principals.role_of(name) or "member")
+        return Principal(self.user, "admin")  # the server's own calls
+
+    def owner_of(self, log_id: str) -> str | None:
+        """A session's owner by log id, None for no such session. One from
+        before owners existed is the admin's."""
+        s = self.sessions.sessions.get(log_id)
+        meta = s.meta() if s is not None else self.sessions.archived.get(log_id)
+        if meta is None:
+            return None
+        return meta.get("owner") or self.user
 
     def _bin(self, harness: str) -> str:
         return {"opencode": self.opencode_bin, "codex": self.codex_bin}.get(
