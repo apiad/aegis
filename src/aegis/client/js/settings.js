@@ -324,7 +324,14 @@ export class Settings {
     } catch (e) {
       this.tokenError = e.message;
     }
-    this.draw();
+    this.drawTokens();
+  }
+
+  // Only the Tokens section: a whole-page draw would drop what is being typed
+  // in the agents and queues (draw() waits for that; this need not).
+  drawTokens() {
+    const old = this.box.querySelector("#set-tokens");
+    if (old) old.replaceWith(this.tokens());
   }
 
   async addToken(name, role) {
@@ -344,7 +351,7 @@ export class Settings {
   async revoke(name) {
     if (this.armed !== name) {
       this.armed = name;
-      return this.draw();
+      return this.drawTokens();
     }
     this.armed = null;
     this.tokenError = "";
