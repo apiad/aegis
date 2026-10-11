@@ -144,7 +144,9 @@ pre.src .c{color:var(--faint)} pre.src .k{color:var(--accent)} pre.src .s{color:
 .pv .code pre{margin:0;padding:2px 12px 10px;overflow-x:auto;font:12.5px/1.55 var(--font-mono);tab-size:4}
 .pv .tool .code{margin:0}
 .pv pre code,.pv .c code{background:none;border:0;padding:0;color:inherit;font-size:inherit;border-radius:0}
-.pv .tw{margin:.8em 0;overflow-x:auto;max-width:100%}
+.pv .tblk{position:relative;margin:.8em 0;width:max-content;max-width:100%}
+.pv .tblk>.cp{position:absolute;top:-2px;right:0;z-index:2;padding:0 6px;font-size:13px;background:var(--bg);border:0;color:var(--faint);cursor:pointer}
+.pv .tw{overflow-x:auto;max-width:100%;padding-right:22px}
 .pv table{border-collapse:collapse;font:13px/1.45 var(--font-ui);width:max-content;max-width:none}
 .pv th,.pv td{padding:5px 10px;text-align:left;vertical-align:top;max-width:30ch;overflow-wrap:normal;word-break:normal}
 .pv td[style*=right],.pv th[style*=right]{font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -225,6 +227,7 @@ pre.src .c{color:var(--faint)} pre.src .k{color:var(--accent)} pre.src .s{color:
   <a href="#fits">How it fits</a>
   <a href="#renderer">The Markdown renderer</a>
   <a class="sub" href="#tables">Tables</a>
+  <a class="sub" href="#copying">Copying</a>
   <a class="sub" href="#try-prose">Try it</a>
   <a href="#highlight">Highlighting</a>
   <a class="sub" href="#loader">The loader</a>
@@ -278,6 +281,9 @@ pre.src .c{color:var(--faint)} pre.src .k{color:var(--accent)} pre.src .s{color:
 <tr><td>Highlighter</td><td>highlight.js 11.12, vendored as its ES core plus one file per language</td><td class="why"><span class="who">maintainer</span> The only common highlighter that guesses a language, which unlabeled fences need. It emits CSS classes, so a theme is eight variables. Shiki colours better but costs several hundred KB, async rendering and its own theme format.</td></tr>
 <tr><td>Table style</td><td>Ledger: horizontal rules only, first column pinned, scroll with a fade. One card per row when the row is under 560 px wide</td><td class="why"><span class="who">maintainer</span> Chosen from the mockup, against a framed grid and today's look.</td></tr>
 <tr><td>Code palette</td><td>Quiet, tuned per theme</td><td class="why"><span class="who">maintainer</span> Chosen from the mockup, against a vivid one.</td></tr>
+<tr><td>Copy buttons</td><td>No button that copies a whole agent reply. Each code block and each table in it has its own</td><td class="why"><span class="who">maintainer</span> A reply is rarely copied whole; the code or the table inside it is. Selecting text still copies any part of a reply.</td></tr>
+<tr><td>Copy elsewhere</td><td>Inbox rows lose the whole-message button too; the person's own message keeps it; the <code>c</code> key still copies a selected reply whole</td><td class="why"><span class="who q">proposed</span> An inbox row is Markdown from another agent, like a reply. The person's message is the one text worth sending again whole. The key costs no space on screen.</td></tr>
+<tr><td>What a table copies</td><td>Two formats at once: the table's Markdown as plain text, the rendered table as HTML</td><td class="why"><span class="who q">proposed</span> Pasted into a chat or an editor it stays a Markdown table; pasted into a spreadsheet or a document it lands as cells.</td></tr>
 <tr><td>Diff layout</td><td>Side by side when the row is wide, one compact column when it is narrow</td><td class="why"><span class="who">maintainer</span> As OpenCode draws them. The row's width decides, not the device, so rotating a phone switches the layout without a fetch.</td></tr>
 <tr><td>Mobile data</td><td>Nothing new on the wire until a row opens or a language first appears</td><td class="why"><span class="who">maintainer</span> Tool details are already lazy (<code>transcript/wire.py</code>); the diff's hunks join them. Word marks are computed in the browser.</td></tr>
 <tr><td>How agents quote a file</td><td>Relative to the config root (where <code>.aegis.yaml</code> is), or absolute</td><td class="why"><span class="who">maintainer</span> A path relative to whichever repo the agent is in cannot be resolved by anyone else.</td></tr>
@@ -338,6 +344,7 @@ pre.src .c{color:var(--faint)} pre.src .k{color:var(--accent)} pre.src .s{color:
 <thead><tr><th>File</th><th>Change</th></tr></thead>
 <tbody>
 <tr><td>client/js/entries.js</td><td><code>markdown()</code> gains the table wrapper, task lists, path spans and the fence renderer; <code>user</code> renders Markdown; <code>tool</code> draws code, file and diff views.</td></tr>
+<tr><td>client/js/copy.js</td><td>A <code>table</code> kind; <code>message</code> kept for the person's rows; <code>copyRow</code> confirms on the row itself when it has no button.</td></tr>
 <tr><td>client/js/highlight.js</td><td>New. The loader: which language files exist, load on first use, highlight a block, split highlighted HTML into lines.</td></tr>
 <tr><td>client/js/diff.js</td><td>New. Hunks to the split and unified layouts, word marks on paired lines.</td></tr>
 <tr><td>client/vendor/hljs/</td><td>New. <code>core.min.js</code>, about 25 language files and the licence.</td></tr>
@@ -353,7 +360,7 @@ pre.src .c{color:var(--faint)} pre.src .k{color:var(--accent)} pre.src .s{color:
 <h2 id="renderer"><span class="n">04</span>The Markdown renderer</h2>
 <p>markdown-it stays, with the options it has today (<code>html: false</code>, <code>linkify: true</code>), plus <code>breaks: true</code> for the person's messages. Four renderer rules change what it emits:</p>
 <ul>
-<li><b>table_open / table_close</b> wrap the table in <code>div.tw</code>, which scrolls. A small pass after render copies each header's text into its cells' <code>data-label</code>, for the card layout.</li>
+<li><b>table_open / table_close</b> wrap the table in <code>div.tblk</code>, which holds its copy button, and <code>div.tw</code> inside it, which scrolls; the button stays put while the table scrolls under it. The token's line range (<code>map</code>) goes on <code>div.tblk</code> as <code>data-lines</code>, for the copy. A small pass after render copies each header's text into its cells' <code>data-label</code>, for the card layout.</li>
 <li><b>A list item</b> whose text starts with <code>[ ]</code> or <code>[x]</code> becomes <code>li.task</code> with a disabled checkbox. About ten lines as a core rule; no plugin.</li>
 <li><b>code_inline</b> marks a span shaped like a path as <code>code.path</code> when the entry carries it in <code>detail.paths</code> (section 08).</li>
 <li><b>fence</b> emits <code>div.code</code>: a header with the language and the copy button, then the <code>pre</code>. Highlighting fills it in afterwards (section 05).</li>
@@ -363,6 +370,19 @@ pre.src .c{color:var(--faint)} pre.src .k{color:var(--accent)} pre.src .s{color:
 <h3 id="tables">Tables</h3>
 <p>A cell never breaks inside a word (<code>word-break: normal</code>) and wraps at spaces up to 30 characters wide; a right-aligned column uses tabular digits and does not wrap. The table takes its natural width and scrolls inside <code>div.tw</code> when that is wider than the row, with its first column pinned and a fade on the edge that still has columns behind it. A <code>ResizeObserver</code> and the scroll event toggle the fade.</p>
 <p>When the transcript column is under 560 px, a container query turns each row into a card: the first cell as its title, every other cell as label and value. The same markup serves both; nothing is re-rendered on rotation.</p>
+
+<h3 id="copying">Copying</h3>
+<p>An agent reply no longer ends with a button that copies all of it. The copy buttons sit on the chunks a person actually takes away: every code block, as today, and every table. They follow the rule the code button already has: hidden until the pointer is over the block or the row is selected, which is a tap on a phone.</p>
+<table class="tbl">
+<thead><tr><th>Chunk</th><th>Plain text on the clipboard</th><th>HTML on the clipboard</th></tr></thead>
+<tbody>
+<tr><td>code block</td><td>the code, as today</td><td>none</td></tr>
+<tr><td>table</td><td>its Markdown: the entry's source lines from <code>data-lines</code>, exactly as the agent wrote them</td><td>the rendered <code>&lt;table&gt;</code>, without the card labels</td></tr>
+<tr><td>the person's message</td><td>its Markdown, as today</td><td>none</td></tr>
+<tr><td>tool row</td><td>its whole output, as today</td><td>none</td></tr>
+</tbody>
+</table>
+<p>A table copy writes one <code>ClipboardItem</code> with both types. A browser without <code>ClipboardItem</code> gets the Markdown through <code>writeText</code>. The <code>c</code> key still copies the selected reply's whole Markdown; with no button on the row to confirm on, the row's glyph shows the confirmation for 1.4 seconds, the time the buttons use.</p>
 
 <h3 id="try-prose"><span class="try">try it</span>A reply and a message, as the renderer will draw them</h3>
 <div class="seg" data-target="pv-prose"><button data-w="phone">phone 390</button><button data-w="wide" class="on">wide</button></div>
@@ -376,7 +396,7 @@ can you check <code class="path" title="show the file">quota/reader.py</code>? I
 </div></div>
   <div class="row prose"><span class="g">●</span><div class="body md"><p>The stale reading came from <code class="path" title="show the file">src/aegis/quota/reader.py:142</code>: the cache key ignored the account, so two accounts shared one reading.</p>
 <h2>What I measured</h2>
-<div class="tw"><table><thead>
+<div class="tblk"><button class="cp" title="Copy the table">⧉</button><div class="tw"><table><thead>
 <tr>
 <th>Run</th>
 <th style="text-align:right">Before (ms)</th>
@@ -408,7 +428,7 @@ can you check <code class="path" title="show the file">quota/reader.py</code>? I
 <td>unchanged, out of scope</td>
 </tr>
 </tbody>
-</table></div><ol>
+</table></div></div><ol>
 <li><strong>Fix the key.</strong> It now includes <code>account_id</code>.</li>
 <li>Add a regression test in <code class="path" title="show the file">tests/test_quota.py</code>.
 <ul>
@@ -428,7 +448,7 @@ make test-slow &amp;&amp; <span class="hljs-built_in">echo</span> <span class="h
 </blockquote>
 <p>See <a href="https://github.com/apiad/aegis/issues/298">issue #298</a> and <code class="path" title="show the file">DESIGN.md</code>.</p>
 <h3>Sessions right now</h3>
-<div class="tw"><table><thead>
+<div class="tblk"><button class="cp" title="Copy the table">⧉</button><div class="tw"><table><thead>
 <tr>
 <th>handle</th>
 <th>state</th>
@@ -480,7 +500,7 @@ make test-slow &amp;&amp; <span class="hljs-built_in">echo</span> <span class="h
 <td>gh</td>
 </tr>
 </tbody>
-</table></div></div></div>
+</table></div></div></div></div>
 </div></div>
 <p class="meta">Sample data. Rendered by markdown-it 15.0.2 and highlight.js 11.12.0 with the proposed rules, in ink with the quiet palette.</p>
 
@@ -585,7 +605,7 @@ and add :line when you point at a line.</pre>
 <h2 id="delivery"><span class="n">10</span>Delivery</h2>
 <p>Three PRs from <code>origin/main</code>, in this order, each through the maintainer's smoke test. This spec rides on the first.</p>
 <div class="steps">
-  <div class="step"><div class="n"></div><div><h4>Markdown and highlighting</h4><p>The renderer rules, ledger tables with phone cards, task lists, the person's messages as Markdown, the vendored highlighter and its loader, the three palettes, fence highlighting with the streaming rule, and the fence sentence in the primer.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>Markdown and highlighting</h4><p>The renderer rules, ledger tables with phone cards, task lists, the person's messages as Markdown, copy buttons on code blocks and tables instead of on whole replies, the vendored highlighter and its loader, the three palettes, fence highlighting with the streaming rule, and the fence sentence in the primer.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>Tool rows and diffs</h4><p><code>tool_lang</code>, the file view with its gutter, <code>diff_hunks</code> replacing <code>diff_window</code>'s payload, the split and unified layouts, word marks, Write as a file view.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>Path links</h4><p><code>inline_paths</code>, <code>file.peek</code> by index with the three-step resolution, the excerpt around a line, the path sentence in the primer.</p></div></div>
 </div>
@@ -599,6 +619,8 @@ and add :line when you point at a line.</pre>
 <li>A transcript with no code: no request to <code>vendor/hljs</code> at all.<span class="b">slow</span></li>
 <li>A reply streamed in 20 deltas with a fence in the middle: the fence is highlighted once, after its closing line.<span class="b">slow</span></li>
 <li>The person's message with a single newline and a bullet list renders both.<span class="b">slow</span></li>
+<li>An agent reply has no whole-message copy button; its table's button puts the exact Markdown lines on the clipboard as plain text and a <code>&lt;table&gt;</code> as HTML (read back with <code>navigator.clipboard.read()</code> in Chromium with clipboard permissions).<span class="b">slow</span></li>
+<li>The <code>c</code> key on a selected reply copies its whole Markdown and marks the row's glyph.<span class="b">slow</span></li>
 <li><code>diff_hunks</code> on known pairs: context of three, line numbers, the 8 KB cap with <code>elided</code>.<span class="b">fast</span></li>
 <li>An Edit row opened at 1000 px draws <code>.split</code>; at 390 px <code>.unified</code>; resizing the page switches it with no request.<span class="b">slow</span></li>
 <li>Word marks on <code>key = window</code> → <code>key = cache_key(account_id, window)</code> cover exactly the added tokens.<span class="b">fast</span></li>
