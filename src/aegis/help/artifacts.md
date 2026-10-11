@@ -37,7 +37,7 @@ reach you.
 The page talks to aegis through `window.aegis`:
 
 - `aegis.ready((state, theme) => ...)` runs once the host has handed over the
-  state and the theme's colours;
+  state and the theme (its colours and fonts);
 - `aegis.state(obj)` keeps state silently, for you to read later;
 - `aegis.emit(name, obj)` wakes you and leaves the page live;
 - `aegis.submit(obj, label)` wakes you with the answer and closes the page; the
