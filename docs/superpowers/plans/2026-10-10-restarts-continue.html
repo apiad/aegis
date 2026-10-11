@@ -120,7 +120,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 -->
 <div class="chrome">
   <div class="bar"><span>aegis</span><span class="tab">plan · restarts that continue</span>
-    <span class="st"><span class="pill acc">execution method: not chosen yet</span><span class="pill">#312</span><span class="pill">2026-10-10</span></span></div>
+    <span class="st"><span class="pill acc">execution method: native (executing-plans)</span><span class="pill">#312</span><span class="pill">2026-10-10</span></span></div>
   <div class="progress"><span id="pcount">0 of 0 done</span><div class="track" id="ptrack"></div></div>
 </div>
 <main>
@@ -184,7 +184,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 </table>
 
 <!-- ============================================================ TASK 1 -->
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="num">1</span><span><span class="ttl">restarts.py: the server record, the verdict, the leftover harness</span><span class="files">src/aegis/restarts.py · tests/test_restarts.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -478,7 +478,7 @@ git commit -m "feat(restarts): a server record, a continue verdict and the lefto
 </details>
 
 <!-- ============================================================ TASK 2 -->
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">The meta names the running harness, its last exit and the restart count</span><span class="files">src/aegis/session.py · src/aegis/registry.py · tests/test_registry.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -565,7 +565,7 @@ async def test_a_finished_turn_clears_the_restart_count(world):
 </details>
 
 <!-- ============================================================ TASK 3 -->
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="num">3</span><span><span class="ttl">A server_stopped row says crash, or why the turn was not continued</span><span class="files">src/aegis/transcript/entries.py · tests/test_fold.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -623,7 +623,7 @@ async def test_a_finished_turn_clears_the_restart_count(world):
 </details>
 
 <!-- ============================================================ TASK 4 -->
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">The registry decides at boot and continues after it</span><span class="files">src/aegis/registry.py · tests/test_registry.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -880,7 +880,7 @@ names one conversation for as long as the server keeps it.
 </details>
 
 <!-- ============================================================ TASK 5 -->
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">The app writes the record, boots in order, and workers share the path</span><span class="files">src/aegis/app.py · src/aegis/queues.py · tests/test_restarts_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1047,7 +1047,7 @@ git commit -m "feat(app): a restart continues the turns it cut and the queues fo
 </details>
 
 <!-- ============================================================ TASK 6 -->
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">The docs describe the code as it now is</span><span class="files">DESIGN.md · README.md · changelog.d/ · the spec</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1091,7 +1091,7 @@ git commit -m "docs: restarts continue the turns they cut (#312)" -- DESIGN.md R
 </details>
 
 <!-- ============================================================ TASK 7 -->
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="done">
 <summary><span class="num">7</span><span><span class="ttl">Merge main, run every gate, open the PR, offer the smoke test</span><span class="files">the branch · the PR for #312</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>steps</h4>
