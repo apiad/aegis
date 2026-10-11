@@ -59,6 +59,8 @@ def test_the_loader_lists_exactly_the_vendored_languages():
     listed = re.search(r"export const LANGS = \[([^\]]*)\]", src)
     assert listed, "LANGS is a one-line array literal"
     names = set(re.findall(r'"([a-z0-9+-]+)"', listed.group(1)))
-    files = {p.name.removesuffix(".min.js") for p in (VENDOR / "languages").glob("*.min.js")}
+    files = {
+        p.name.removesuffix(".min.js") for p in (VENDOR / "languages").glob("*.min.js")
+    }
     assert names == files
     assert (VENDOR / "core.min.js").is_file()
