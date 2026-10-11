@@ -25,6 +25,7 @@ Tab or Enter picks one. Alt+/ opens the same menu over a draft.
 | `/spawn <agent>[@server] [prompt]` | start a session, here or on a linked server; flags `--model`, `--effort`, `--permission` and `--cwd` go before the prompt |
 | `/close` | close the session; it stays in the archive. The browser asks first unless the session is done |
 | `/help` | open the menu listing every command |
+| `/help <query>` | open the Help tab with those words searched, such as `/help queues` |
 
 A line that starts with // is sent as text, its first slash turned into a
 space so the harness does not read a command, for when you mean the text. When

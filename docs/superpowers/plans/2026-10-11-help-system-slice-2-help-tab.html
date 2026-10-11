@@ -179,6 +179,8 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>Implemented: on a phone the server's name takes the spacer's place.</b> A wrapping flex row breaks lines on each item's content width, so <code>min-width:0</code> on <code>.tabs .servers</code> never let the name shrink before the line broke: with <code>a-long-server-name</code> the bell, the panel button and the <code>?</code> all fell to a second row. Inside the 760 px block the spacer <code>.tabs .gap</code> is hidden and <code>.servers</code> takes <code>flex:1 1 0</code> with its content right-aligned (<code>src/aegis/client/css/base.css</code>, the 760 px block's first rules), so the name keeps where it was and gives way first.</li>
   <li><b>Implemented: task 5's break check removes the zero basis, not <code>min-width:0</code>.</b> <code>overflow:hidden</code> already makes the automatic minimum width zero, so removing <code>min-width:0</code> alone changes nothing and the test still passes. Restoring the plan's rule (the spacer shown, no zero basis) fails the first-row assertion.</li>
   <li><b>Implemented: the page takes the focus when it is asked for.</b> The plan's <code>read()</code> focused <code>.hpage</code> after awaiting the code blocks' paint. On a cold browser under load that paint landed after the search box had the focus back, so clearing the box sent Delete to the page and the groups never returned (reproduced with two busy loops on this host). The focus moves at the start of <code>read()</code> (<code>src/aegis/client/js/help.js</code>, <code>read</code>), pinned by <code>test_a_page_arriving_late_leaves_the_focus_in_the_search_box</code>.</li>
+  <li><b>Implemented: <code>commands.md</code> keeps <code>/help</code>'s row and gains <code>/help &lt;query&gt;</code>.</b> The page lists commands as a table whose first column is the command with its argument (<code>src/aegis/help/commands.md:27-28</code>), so the plan's sentence became a second row in that form rather than a paragraph.</li>
+  <li><b>Implemented: the tour's opening paragraph names the new step.</b> <code>getting-started.md</code> opens by listing what the tour walks through (<code>src/aegis/help/getting-started.md:7-11</code>); it now ends with "the help pages", so the list matches step 8.</li>
   <li><b>Left out on purpose:</b> a key chord and a palette entry for the tab (the spec names none), and a <code>help:</code> line in this slice's changelog fragment (slice 4 adds the line and the collation that keeps it).</li>
 </ul>
 
@@ -1112,7 +1114,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -- src/aegis/client/css
 </details>
 
 <!-- ============================================================ TASK 6 -->
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">The pages and the release note say so</span><span class="files">src/aegis/help/getting-started.md · src/aegis/help/commands.md · changelog.d/339-help-tab.added.md</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The contract has each slice update the pages for what it ships: the Help tab goes into <code>getting-started</code>, and <code>/help</code>'s new argument into <code>commands</code>.</p>

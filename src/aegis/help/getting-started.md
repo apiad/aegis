@@ -6,9 +6,9 @@ when: the first hour with aegis, from a first session to a handoff and the archi
 
 This tour walks through aegis in one sitting: a session and its transcript,
 the Fleet, the plan and the marks that say what needs you, a monitor, a second
-session and a handoff, and the archive. Each step says what to do and what you
-should see. Steps 1 and 6 start agents, and steps 1, 4, 5 and 6 spend
-quota.
+session and a handoff, the archive, and the help pages. Each step says what to
+do and what you should see. Steps 1 and 6 start agents, and steps 1, 4, 5 and
+6 spend quota.
 
 ## 1. Start a session
 
@@ -93,6 +93,22 @@ session's handle.
 You should see the session in the archive. Read opens its transcript without
 starting anything; Reopen gives it a tab again, stopped until your next
 message.
+
+## 8. Find the help pages
+
+Click `?` at the right end of the tab bar. The Help tab lists every page,
+tutorials first, then how-to pages, then concepts, each with a line saying
+when it helps. Type in its search box: the results are the pages an agent gets
+from `help_search` for the same words, best first. Enter opens the first one.
+
+In a session, `/help` followed by a few words, such as `/help wait for CI`,
+opens the tab with those words searched. `/help` alone still opens the command
+menu.
+
+On a phone the list and the page are two screens. Tap a page to read it; the
+back arrow, or the phone's own Back, returns to the list.
+
+You should see the Help tab, with this page under Tutorials.
 
 ## Next
 
