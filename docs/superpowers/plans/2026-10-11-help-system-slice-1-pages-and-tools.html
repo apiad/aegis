@@ -2068,7 +2068,7 @@ EOF
 </details>
 
 <!-- ============================================================ TASK 8 -->
-<details class="task" id="task-8" data-state="pending">
+<details class="task" id="task-8" data-state="done">
 <summary><span class="num">8</span><span><span class="ttl">A real Claude Code session searches the help first (make test-live)</span><span class="files">tests/test_live.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The slice promises that an agent asked how to do something in aegis searches first. The live lane already starts a real app under uvicorn with a real <code>claude</code> and inspects the transcript's tool rows (<code>tests/test_live.py:75</code>, <code>:639</code>); this test has that shape. It runs on Sonnet at low effort, as the turn_end test does, because Haiku followed primer paragraphs in about one run in three (<code>tests/test_live.py:20</code>). The primer's own monitor paragraph (<code>src/aegis/mcp.py:142</code>) already answers the CI question, which is why the primer line in task 4 also fires on questions. It spends a few cents of Sonnet per run.</p>
