@@ -4,6 +4,7 @@
 
 import { LABEL } from "./glyphs.js";
 import { closeOnMiddle, markNode } from "./fleet.js";
+import { shownOwner } from "./me.js";
 
 export class TabOrder {
   constructor(key = "aegis.tabs") {
@@ -64,6 +65,9 @@ function tab(m, focusId, { onFocus, onMove, onClose }) {
   handle.className = "srv";
   handle.textContent = m.title ? m.handle : "";
   t.append(mark, name, handle);
+  // Whose it is, when it is not this browser's (tokens.py).
+  const owner = shownOwner(m);
+  if (owner) t.append(Object.assign(document.createElement("span"), { className: "who", textContent: owner }));
   // A session on a linked server carries that server's name (links.py).
   if (m.server) t.append(Object.assign(document.createElement("span"), { className: "where", textContent: m.server }));
   t.addEventListener("click", () => onFocus(m.key));

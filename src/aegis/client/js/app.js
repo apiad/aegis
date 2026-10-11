@@ -14,6 +14,7 @@ import { copyRow, installCopy } from "./copy.js";
 import { Find } from "./find.js";
 import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
+import { mine, ownerOf, setWho } from "./me.js";
 import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan } from "./fleet.js";
 import { age, countdown, elapsed, hostRow, hostSeverity, providerFor, quotaSideRow, quotaTile, tile } from "./gauges.js";
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
@@ -274,6 +275,7 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
     if (state === "unauthorized") showLogin();
     if (state === "version") show("boot", "This page and the server speak different protocol versions. Reload the page.");
     if (state === "open") {
+      setWho(conn.me, conn.owner);
       // Whether this browser runs on the server's desktop (Open natively).
       if (conn.native) root.dataset.native = "";
       else delete root.dataset.native;
@@ -1055,16 +1057,22 @@ function renderMeta(s) {
   renderMonitors($("s-monitors"), mons);
   const working = s.state === "working";
   $("interrupt").hidden = !working;
-  $("restart").disabled = working;
+  // A member reads another's session and changes nothing in it (tokens.py).
+  const theirs = !mine(s);
+  $("restart").disabled = working || theirs;
   $("working").hidden = !working;
-  $("stop-session").disabled = s.state === "stopped";
+  $("stop-session").disabled = s.state === "stopped" || theirs;
+  $("interrupt").disabled = theirs;
+  $("close").disabled = theirs;
   if (working && workingSince == null) workingSince = Date.now();
   if (!working) workingSince = null;
   // A linked server that is down: the transcript stays readable, nothing sends.
   const down = s.off ? linkOf(s.server) : null;
-  input.disabled = $("send").disabled = $("attach").disabled = !!down;
+  input.disabled = $("send").disabled = $("attach").disabled = !!down || theirs;
   // Chrome counts a placeholder in scrollHeight: measure again when it changes.
-  const placeholder = down
+  const placeholder = theirs
+    ? `${ownerOf(s)}'s session. You can read it; only ${ownerOf(s)} can write to it.`
+    : down
     ? `${s.server} is ${down.state} since ${new Date(down.since * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}; nothing can be sent until it is back.`
     : s.state === "stopped"
       ? "Stopped; your next message resumes it."
