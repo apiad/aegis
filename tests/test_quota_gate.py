@@ -171,3 +171,13 @@ def test_a_policy_in_one_line():
     assert describe(LINES | {"codex": {"mode": "open"}}) == (
         "claude: session 50/90, weekly_all pace/90; codex: open"
     )
+
+
+def test_a_refusal_names_the_line_that_reopens_the_gate():
+    from aegis.quota_gate import refusal
+
+    stopped = decide(LINES, "claude", snap(w("session", 95, label="5 hours")), NOW)
+    text = refusal("ben", stopped)
+    assert "stop line 90%" in text and "drops below 50%" in text and "resets at" in text
+    paced = decide(LINES, "claude", snap(w("weekly_all", 30, projected=130)), NOW)
+    assert "back on pace" in refusal("ben", paced)

@@ -53,6 +53,9 @@ class Gate:
     state: str  # "open" | "closed" | "stopped"
     why: str = ""
     resets_at: float | None = None
+    # When it opens again, for a gate a window's line closed: "drops below
+    # 50%" or "is back on pace".
+    reopens: str = ""
 
     @property
     def may_start(self) -> bool:
@@ -101,29 +104,21 @@ def decide(policy: dict | None, pool: str | None, snapshot: dict, now: float) ->
             continue
         label = x.get("label") or kind
         pct = float(x.get("percent") or 0)
+        launch = line["launch"]
+        reopens = "is back on pace" if launch == "pace" else f"drops below {launch}%"
         if not stale and pct >= float(line["stop"]):
-            return Gate(
-                "stopped",
-                f"{name} {label} is at {pct:.0f}%, stop line {line['stop']}%",
-                x.get("resets_at"),
-            )
+            why = f"{name} {label} is at {pct:.0f}%, stop line {line['stop']}%"
+            return Gate("stopped", why, x.get("resets_at"), reopens)
         if closed is not None:
             continue
-        launch = line["launch"]
         if launch == "pace":
             proj = x.get("projected")
             if proj is not None and proj > 100:
-                closed = Gate(
-                    "closed",
-                    f"{name} {label} is on pace for {proj}% at reset",
-                    x.get("resets_at"),
-                )
+                why = f"{name} {label} is on pace for {proj}% at reset"
+                closed = Gate("closed", why, x.get("resets_at"), reopens)
         elif pct >= float(launch):
-            closed = Gate(
-                "closed",
-                f"{name} {label} is at {pct:.0f}%, launch line {launch}%",
-                x.get("resets_at"),
-            )
+            why = f"{name} {label} is at {pct:.0f}%, launch line {launch}%"
+            closed = Gate("closed", why, x.get("resets_at"), reopens)
     if stale:
         return Gate(
             "closed",
@@ -139,10 +134,10 @@ def _clock(ts: float) -> str:
 def refusal(owner: str, g: Gate) -> str:
     """Why ``owner`` may start nothing now, and when that changes."""
     text = f"{owner} cannot start a session now: {g.why}."
-    if g.resets_at is not None:
+    if g.reopens and g.resets_at is not None:
         text += (
-            " It opens again when the window drops below the line, at the latest"
-            f" when it resets at {_clock(g.resets_at)}."
+            f" It opens again when the window {g.reopens}, at the latest when it"
+            f" resets at {_clock(g.resets_at)}."
         )
     return text
 
