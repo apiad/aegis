@@ -96,7 +96,7 @@ class Registry(Host):
             return None, priming
         from .mcp import primer
 
-        prompt = primer(session, self.server_name)
+        prompt = primer(session, self.server_name, self.roots.config_root)
         if priming:
             prompt += "\n\n" + priming
         return (self.mcp_url, self.tokens.mint(session.log_id)), prompt

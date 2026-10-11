@@ -79,6 +79,7 @@ from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
 from .tokens import TokenStore
 from .registry import Registry
 from .roots import Roots
+from .transcript.entries import _sent_file
 from .session import PUBLISH_EVERY_S
 from .version import Versions
 
@@ -206,6 +207,10 @@ class FileRef(_Strict):
 class PeekParams(_Strict):
     log_id: str
     entry_id: str
+    # a path link: the index into a reply's detail.paths
+    index: int | None = None
+    # the person's choice when a path names two files
+    pick: Literal["root", "cwd"] | None = None
 
 
 class LinkAdd(_Strict):
@@ -1158,6 +1163,48 @@ class App:
             except (files.FileError, OSError) as e:
                 raise OpError("open_failed", str(e)) from e
 
+        async def peek_path(s, row, index: int, pick: str | None):
+            """A path a reply named, resolved now: as written when absolute,
+            else under the config root and under the session's cwd (#323).
+            When both hold a file and they differ, it opens neither and asks:
+            `pick` ("root" or "cwd") is the person's answer. The browser sends
+            only the index and the pick, so it can open nothing the agent did
+            not write. Nothing is recorded on the reply."""
+            paths = (
+                row["detail"].get("paths", []) if row and row["kind"] == "prose" else []
+            )
+            if not 0 <= index < len(paths):
+                raise OpError("no_path", "that reply names no such path")
+            raw = re.sub(r":\d+$", "", paths[index])
+            given = Path(raw).expanduser()
+            if given.is_absolute():
+                tried, where = {"absolute": given}, ""
+            else:
+                tried = {
+                    "root": self.roots.config_root / given,
+                    "cwd": s.spec.cwd / given,
+                }
+                where = f" under {self.roots.config_root} or {s.spec.cwd}"
+            found = {k: t for k, t in tried.items() if t.is_file()}
+            if not found:
+                raise OpError("no_file", f"no file {raw}{where}")
+            if len(found) == 2 and found["root"].resolve() != found["cwd"].resolve():
+                if pick is None:
+                    raise OpError(
+                        "ambiguous_path",
+                        f"{raw} names two files: {found['root']} and {found['cwd']}",
+                    )
+                path = found[pick]
+            else:
+                path = next(iter(found.values()))
+            try:
+                (rec,) = await asyncio.to_thread(
+                    files.store_all, self.roots.state_root, [path]
+                )
+            except files.FileError as e:
+                raise OpError(e.code, e.message) from e
+            return [_sent_file(rec)]
+
         @r.op("file.peek", PeekParams)
         async def file_peek(p: PeekParams, caller):
             """Copy the file a Read, Write or Edit row used, as it is now, and
@@ -1165,6 +1212,8 @@ class App:
             did not send; the agent never sees it."""
             s = reg.open(p.log_id)
             row = s.fold().entry(p.entry_id)
+            if p.index is not None:
+                return await peek_path(s, row, p.index, p.pick)
             raw = row["detail"].get("path") if row and row["kind"] == "tool" else None
             if not raw:
                 raise OpError("no_path", "that row used no file")

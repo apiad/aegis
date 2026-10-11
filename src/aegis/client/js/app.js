@@ -1232,6 +1232,40 @@ $("entries").addEventListener("click", async (ev) => {
   }
 });
 
+// -- Open a path a reply named, in the viewer at its line -----------------------
+$("entries").addEventListener("click", async (ev) => {
+  const code = ev.target.closest(".md code.path");
+  if (!code) return;
+  const row = code.closest(".row");
+  const body = row.querySelector(":scope > .body");
+  const line = Number(/:(\d+)$/.exec(code.textContent.trim())?.[1]) || null;
+  const open = async (pick) => {
+    body.querySelector(":scope > .patherr")?.remove();
+    try {
+      const files = await conn.call("file.peek", { log_id: forKey(shown).log_id, entry_id: row.dataset.id, index: Number(code.dataset.index), pick });
+      viewer.open({ files, at: 0, remote: false, glyph: "file", line });
+    } catch (e) {
+      const note = document.createElement("div");
+      note.className = "patherr";
+      note.textContent = e.message;
+      // A path under both the config root and the session's folder: the person picks.
+      if (e.code === "ambiguous_path") {
+        const picks = document.createElement("div");
+        for (const [pick, text] of [["root", "Open the root's"], ["cwd", "Open the session folder's"]]) {
+          const b = document.createElement("button");
+          b.className = "btn";
+          b.textContent = text;
+          b.addEventListener("click", () => open(pick));
+          picks.append(b);
+        }
+        note.append(picks);
+      }
+      body.append(note);
+    }
+  };
+  await open();
+});
+
 // -- archive -------------------------------------------------------------------
 let archived = [];
 let archiveCursor = null; // the next page's cursor; null: nothing more

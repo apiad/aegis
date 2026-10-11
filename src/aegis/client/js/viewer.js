@@ -57,7 +57,7 @@ export class Viewer {
   constructor(root, { entry }) {
     this.root = root; // #viewer, inside .col
     this.entry = entry; // (id) -> the shown transcript's entry, or undefined
-    this.items = new Map(); // session key -> {files, at, remote, glyph} or {artifact}
+    this.items = new Map(); // session key -> {files, at, remote, glyph, line?} or {artifact}
     this.key = null; // the session shown
     this.drawn = 0; // bumped by every draw, so a fetch for an older one is dropped
   }
@@ -146,7 +146,7 @@ export class Viewer {
     body.dataset.preview = f.preview || "other";
     if (f.preview === "markdown" || f.preview === "text") {
       body.append(el("div", "vnote", "loading…"));
-      this.drawText(f, body, draw);
+      this.drawText(f, body, draw, item.line);
       return;
     }
     const stage = preview(f, item.remote);
@@ -163,7 +163,7 @@ export class Viewer {
     }
   }
 
-  async drawText(f, body, draw) {
+  async drawText(f, body, draw, line) {
     // Fetch only the text; the loader brings what colouring needs.
     let got;
     try {
@@ -199,6 +199,20 @@ export class Viewer {
     }
     if (cut) out.push(el("div", "vnote", `Only the first ${MAX_TEXT / 1024 / 1024} MB is shown here; open it in a new tab for the rest.`));
     body.replaceChildren(...out);
+    // A path link's line: scrolled to a third of the way down, and marked.
+    const view = body.querySelector(".code");
+    if (line && view) {
+      const count = view.querySelector(".ln").textContent.split("\n").length;
+      const at = Math.min(line, count);
+      const src = view.querySelector(".src");
+      const lh = parseFloat(getComputedStyle(src).lineHeight);
+      const mark = el("div", "mark");
+      mark.dataset.line = String(at);
+      mark.style.top = `${(at - 1) * lh + src.offsetTop + parseFloat(getComputedStyle(src).paddingTop)}px`;
+      mark.style.height = `${lh}px`;
+      view.append(mark);
+      body.scrollTop += mark.getBoundingClientRect().top - body.getBoundingClientRect().top - body.clientHeight / 3;
+    }
   }
 
   drawArtifact(item, e, bar, body) {

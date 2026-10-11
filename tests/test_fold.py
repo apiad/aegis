@@ -1337,3 +1337,30 @@ def test_a_write_carries_the_new_file_not_a_diff():
     (e,) = f.entries()
     assert e["detail"]["file"] == {"first": 1, "text": "a = 1\nb = 2"}
     assert "diff" not in e["detail"]
+
+
+def test_inline_paths_finds_paths_and_skips_the_rest():
+    from aegis.transcript import describe as d
+
+    md = (
+        "See `src/aegis/quota/reader.py:142`, `DESIGN.md`, `~/notes/a.md` and `/etc/hosts.conf`.\n"
+        "Not `a.b`, `e.g.`, `foo/bar`, `1.5/2.0`, `https://x.io/a.py`, `make check`.\n"
+        "```\n`src/in/fence.py`\n```\n"
+        "Again `DESIGN.md`."
+    )
+    assert d.inline_paths(md) == [
+        "src/aegis/quota/reader.py:142",
+        "DESIGN.md",
+        "~/notes/a.md",
+        "/etc/hosts.conf",
+    ]
+
+
+def test_a_reply_carries_the_paths_it_names():
+    r = Rec()
+    r.text("Fixed `src/a.py:3`.")
+    r.text("Nothing to open here.")
+    f, _ = run(r)
+    first, second = [e for e in f.entries() if e["kind"] == "prose"]
+    assert first["detail"]["paths"] == ["src/a.py:3"]
+    assert "paths" not in second["detail"]
