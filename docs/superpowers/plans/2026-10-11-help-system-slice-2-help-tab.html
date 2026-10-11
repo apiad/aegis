@@ -174,6 +174,8 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>Implemented: <code>help.pages</code> sits in <code>register_help_ops(app)</code>.</b> Slice 1 named the function <code>register_help_ops</code> (<code>src/aegis/help_ops.py:48</code>), not <code>register(r, app)</code>; the op is added inside it beside <code>help.read</code> and closes over its local <code>index</code>. The module docstring gains one sentence naming the op (<code>help_ops.py:7-8</code>).</li>
   <li><b>Implemented: the tab drops the <code># title</code> line <code>help.read</code> puts over a whole page.</b> Slice 1's <code>Index.read</code> returns <code># {title}</code> before the body (<code>src/aegis/helppages.py:216</code>), so the page drew its title twice, once as <code>.htitle</code> and once as the body's <code>h1</code>. <code>help.js</code> strips a leading <code># </code> line after the frontmatter (<code>src/aegis/client/js/help.js:</code>), and <code>test_every_page_reads_with_each_section_where_search_points</code> asserts no body has an <code>h1</code> (<code>tests/test_help_browser.py:72</code>).</li>
   <li><b>Implemented: no shipped heading has an underscore.</b> Task 2's check (a <code>slug</code> that keeps underscores) cannot fail on today's pages, so it was run as a <code>slug</code> joining with <code>_</code>, which the section test catches on every page.</li>
+  <li><b>Implemented: <code>app.py</code>'s list of operations names <code>help.pages</code>.</b> The module docstring lists every op by module (<code>src/aegis/app.py:16</code>); it now reads <code>help.search</code>, <code>help.read</code> and <code>help.pages</code>, so it stays true after task 1.</li>
+  <li><b>Implemented: task 4's step 7 runs the menu test on its own.</b> Given with <code>-k help_with_words</code>, pytest deselects <code>tests/test_browser.py::test_help_opens_the_menu_and_sends_nothing</code>, so that command passes without running it; it was run separately and passes.</li>
   <li><b>Left out on purpose:</b> a key chord and a palette entry for the tab (the spec names none), and a <code>help:</code> line in this slice's changelog fragment (slice 4 adds the line and the collation that keeps it).</li>
 </ul>
 
@@ -925,7 +927,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -- src/aegis/client/js/
 </details>
 
 <!-- ============================================================ TASK 4 -->
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">/help &lt;query&gt; opens the tab searched; /help alone is still the menu</span><span class="files">src/aegis/commands.py · src/aegis/app.py · js/app.js · tests/test_commands.py · tests/test_help_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The browser answers <code>/help</code> today (<code>js/app.js:1901</code>) and the server sends nothing for it (<code>app.py:656</code>). With words after it, the browser opens the Help tab with those words searched; the server still sends nothing, and the command menu shows the argument in its hint.</p>

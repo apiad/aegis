@@ -1927,6 +1927,19 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
     else menu.openOverlay();
     return;
   }
+  // /help with words opens the Help tab searched for them (help.js).
+  const asked = /^\/help\s+(.+)$/s.exec(text);
+  if (asked) {
+    if (fromComposer) {
+      input.value = "";
+      autosize();
+      localStorage.removeItem(`aegis.draft.${s.key}`);
+    }
+    menu.close();
+    helpTab.ask(asked[1].trim());
+    go("#help");
+    return;
+  }
   if (text === "/close" && !(await confirmClose(s))) return;
   $("send-error").textContent = "";
   const box = $("replies");

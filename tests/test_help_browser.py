@@ -193,3 +193,26 @@ def test_an_older_answer_never_replaces_a_newer_one(server, page):
         }"""
     )
     assert got == [["mon", "monitors"], ["b"]]
+
+
+def test_help_with_words_opens_the_tab_searched_and_sends_nothing(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.fill("#input", "/help " + QUESTION)
+    page.press("#input", "Enter")
+    page.wait_for_selector("#a2[data-view=help]")
+    assert page.input_value(".helpv .jq") == QUESTION
+    want = [h.ref for h in Index(load()).search(QUESTION, limit=10)]
+    page.wait_for_function(
+        "n => !document.querySelector('.helpv .hgrp')"
+        " && document.querySelectorAll('.helpv .hrow').length === n",
+        arg=len(want),
+    )
+    assert refs(page) == want
+    # Back in the session: the line is gone from the box and never became a turn.
+    page.go_back()
+    page.wait_for_selector("#a2[data-view=session] .row.user")
+    assert page.input_value("#input") == ""
+    assert page.evaluate("document.querySelectorAll('.row.user').length") == 1
+    assert page.errors == []

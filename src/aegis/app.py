@@ -13,7 +13,7 @@ and ``artifact.create``, ``artifact.send``, ``artifact.read``,
 ``artifact.submit``, ``artifact.error`` and ``artifact.probed``
 (``artifact_ops.py``),
 and ``journal.search``, ``journal.note`` and ``journal.rows`` (``journal/ops.py``),
-and ``help.search`` and ``help.read`` (``help_ops.py``).
+and ``help.search``, ``help.read`` and ``help.pages`` (``help_ops.py``).
 Channels: ``sessions`` (every open session's meta; patches ``upsert`` and
 ``remove``), ``transcript:<log_id>`` (any session, archived included; a
 subscribe ``since`` a revision gets what changed after it), ``quota`` (each
@@ -657,7 +657,7 @@ class App:
         if name == "title":
             return reg.rename(s.log_id, None, arg)
         if name == "help":
-            return None  # the client opens its menu; nothing goes to claude
+            return None  # the client opens its menu or the Help tab; nothing goes to claude
         if name == "stop":
             await s.stop()
             return s.wire()

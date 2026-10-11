@@ -245,6 +245,17 @@ async def test_help_reaching_the_server_sends_nothing(app):
     assert not [r for r in records if r.get("kind") == "send"]
 
 
+async def test_help_with_words_sends_nothing_and_the_menu_says_it_takes_them(app):
+    lid = await spawn(app)
+    assert await send(app, lid, "/help wait for CI") is None
+    records, _ = read_store(app.sessions.store_path(lid))
+    assert not [r for r in records if r.get("kind") == "send"]
+    r = await app.registry.call("commands.list", {"log_id": lid})
+    help_row = next(c for c in r["commands"] if c["name"] == "help")
+    assert help_row["hint"] == "[query]"
+    assert "help pages" in help_row["doc"]
+
+
 def test_every_script_the_fake_runs_is_in_the_catalog_it_advertises():
     """aegis refuses a slash command missing from the session's catalog, so a
     script the fake handles but does not list cannot be reached. #169 added
