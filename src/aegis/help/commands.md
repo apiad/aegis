@@ -17,18 +17,19 @@ Tab or Enter picks one. Alt+/ opens the same menu over a draft.
 | command | what it does |
 |---|---|
 | `/model <name>` | switch this session's model |
-| `/effort <level>` | switch its reasoning effort: low, medium, high, xhigh or max |
-| `/permission <mode>` | switch what the agent may do without asking: read, write, auto or full |
+| `/effort <level>` | switch its reasoning effort: low, medium, high, xhigh or max, as far as the model takes them |
+| `/permission <mode>` | switch what the agent may do: read, write, auto or full |
 | `/rename <handle>` | rename this session's handle |
 | `/title <text>` | set this session's title |
 | `/stop` | stop the process and keep the session |
 | `/spawn <agent>[@server] [prompt]` | start a session, here or on a linked server; flags `--model`, `--effort`, `--permission` and `--cwd` go before the prompt |
-| `/close` | close the session; it stays in the archive |
+| `/close` | close the session; it stays in the archive. The browser asks first unless the session is done |
 | `/help` | open the menu listing every command |
 
-A line that starts with // is sent as a prompt that starts with /, for when
-you mean the text and not a command. A slash line that names no command
-aegis or the harness knows is refused before it costs a turn.
+A line that starts with // is sent as text, its first slash turned into a
+space so the harness does not read a command, for when you mean the text. When
+the harness has told aegis its commands, a slash line that names none of them
+and no aegis command is refused before it costs a turn.
 
 ## The aegis program
 
@@ -43,16 +44,17 @@ aegis or the harness knows is refused before it costs a turn.
 | `aegis link remove <name>` | end a link |
 | `aegis token add <name>` | make a token for a person, a linked server or a job; `--role member` (the default) or `--role admin`. The token is printed once |
 | `aegis token list` | the tokens, their roles and quota policies |
-| `aegis token revoke <name>` | end a token; revoking the admin's prints its replacement |
+| `aegis token revoke <name>` | end a token; revoking the server's own admin token, the one in `.aegis/state/token`, prints its replacement |
 | `aegis journal search [pattern]` | search what was done: `--since`, `--until`, `--path`, `--session`, `--kind`, `--limit` |
 | `aegis journal rebuild` | rebuild the journal from every transcript |
-| `aegis usage` | what the agents' work cost: `--by month`, `--sessions`, `--tools`, `--since` |
+| `aegis usage` | what the agents' work cost: `--by` month, dow or hour, `--sessions`, `--tools`, `--since` |
 | `aegis usage repo <path>` | the cost of one git repository's work |
 | `aegis usage repos <dir>` | the cost of every repository directly under a directory |
 | `aegis import-legacy <dir>` | copy the sessions of aegis before 2.0 into the archive, to read |
 
 Every subcommand takes `--root` to name the root instead of finding it from
-the current directory, and `--help` for its full list of options.
+the current directory (for `aegis init`, the directory to write into), and
+`--help` for its full list of options.
 `aegis --version` prints the version.
 
 ## Serving
@@ -60,6 +62,6 @@ the current directory, and `--help` for its full list of options.
 `aegis serve` prints the address to open, with a token in it. Opening that
 address once signs the browser in with a cookie that lasts a year, and the
 token leaves the address bar. The admin's token is in `.aegis/state/token`
-under the root. With `--detach` the server keeps running after the shell
-closes; its log is `.aegis/state/serve.log`, and it prints the process id to
-stop it with.
+under the root. With `--detach` aegis serves in the background and keeps
+running after the shell closes; its log is `.aegis/state/serve.log`, and it
+prints the process id to stop it with.
