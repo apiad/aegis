@@ -118,7 +118,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 -->
 <div class="chrome">
   <div class="bar"><span>aegis</span><span class="tab">plan · tokens and owners</span>
-    <span class="st"><span class="pill acc">execution method: not chosen yet</span><span class="pill">#311</span><span class="pill">2026-10-11</span></span></div>
+    <span class="st"><span class="pill acc">execution method: native (executing-plans)</span><span class="pill">#311</span><span class="pill">2026-10-11</span></span></div>
   <div class="progress"><span id="pcount">0 of 0 done</span><div class="track" id="ptrack"></div></div>
 </div>
 <main>
@@ -178,7 +178,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 </table>
 
 <!-- ============================================================ TASK 1 -->
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="num">1</span><span><span class="ttl">tokens.py: the store, principals, revoke and rotate</span><span class="files">src/aegis/tokens.py · src/aegis/ops.py (Principal) · tests/test_tokens.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -499,7 +499,7 @@ git commit -m "feat(tokens): a token store of principals, with revoke and admin 
 </details>
 
 <!-- ============================================================ TASK 2 -->
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">The web layer authenticates principals and drops a revoked one at once</span><span class="files">src/aegis/web.py · src/aegis/app.py · src/aegis/cli.py · tests/test_web.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -590,7 +590,7 @@ def test_login_takes_any_valid_token(project, fake_claude):
 </details>
 
 <!-- ============================================================ TASK 3 -->
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="num">3</span><span><span class="ttl">The registry checks admin and owned operations in one place</span><span class="files">src/aegis/ops.py · src/aegis/app.py · tests/test_ops.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -716,7 +716,7 @@ class Registry:
 </details>
 
 <!-- ============================================================ TASK 4 -->
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">Every session and task has an owner</span><span class="files">src/aegis/session.py · agents.py · app.py · queues.py · agent_ops.py · meta.py · tests/test_owners.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -802,7 +802,7 @@ git commit -m "feat(owners): every session and task names its owner, inherited b
 </details>
 
 <!-- ============================================================ TASK 5 -->
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">The operations carry their flags, and a member link is a member</span><span class="files">app.py · agent_ops.py · config_ops.py · artifact_ops.py · tests/test_owners.py · tests/test_links.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -874,7 +874,7 @@ async def test_a_member_cannot_spawn_across_a_link(world):
 </details>
 
 <!-- ============================================================ TASK 6 -->
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">Token operations and <code>aegis token</code></span><span class="files">src/aegis/app.py · src/aegis/cli.py · tests/test_owners.py · tests/test_cli.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -926,7 +926,7 @@ git commit -m "feat(tokens): token operations for admins and aegis token add, li
 </details>
 
 <!-- ============================================================ TASK 7 -->
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="done">
 <summary><span class="num">7</span><span><span class="ttl">The client: who I am, read-only sessions, owners shown, the Tokens section</span><span class="files">client/js/protocol.js · app.js · tabs.js · fleet.js · settings.js · css/base.css · tests/test_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1001,7 +1001,7 @@ function mine(s) {
 </details>
 
 <!-- ============================================================ TASK 8 -->
-<details class="task" id="task-8" data-state="pending">
+<details class="task" id="task-8" data-state="done">
 <summary><span class="num">8</span><span><span class="ttl">Docs describe the code as it now is</span><span class="files">DESIGN.md · README.md · changelog.d/ · the spec</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>steps</h4>
@@ -1021,7 +1021,7 @@ git commit -m "docs: tokens, roles and owners (#311)" -- DESIGN.md README.md cha
 </details>
 
 <!-- ============================================================ TASK 9 -->
-<details class="task" id="task-9" data-state="pending">
+<details class="task" id="task-9" data-state="done">
 <summary><span class="num">9</span><span><span class="ttl">Merge main, run every gate, a two-person check by hand, the PR</span><span class="files">the branch · the PR for #311 (part 1)</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>steps</h4>
