@@ -1523,7 +1523,7 @@ EOF
 </details>
 
 <!-- ============================================================ TASK 4 -->
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">help_search and help_read, the primer line and meta&#x27;s pointer</span><span class="files">src/aegis/help_ops.py · app.py · mcp.py · agent_ops.py · tests/test_help_tools.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Two ops declared with <code>agent=True</code> become MCP tools with no other wiring (<code>src/aegis/mcp.py:105</code> projects <code>registry.agent_ops()</code>). Both are <code>read=True</code>, so a session with read permission has them. The index is built once, in <code>register</code>, when <code>App.__init__</code> registers its ops (<code>src/aegis/app.py:347-351</code>). The test drives them through the real <code>/mcp</code> with the fake claude's <code>/mcp T JSON</code> prompt (<code>tests/fake_claude.py:621</code>), whose reply reads <code>mcp ok: &lt;text&gt;</code> or <code>mcp error: &lt;code&gt;: &lt;message&gt;</code>.</p>

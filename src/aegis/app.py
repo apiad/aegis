@@ -12,7 +12,8 @@ and ``artifact.create``, ``artifact.send``, ``artifact.read``,
 ``artifact.update``, ``artifact.close``, ``artifact.state``, ``artifact.emit``,
 ``artifact.submit``, ``artifact.error`` and ``artifact.probed``
 (``artifact_ops.py``),
-and ``journal.search``, ``journal.note`` and ``journal.rows`` (``journal/ops.py``).
+and ``journal.search``, ``journal.note`` and ``journal.rows`` (``journal/ops.py``),
+and ``help.search`` and ``help.read`` (``help_ops.py``).
 Channels: ``sessions`` (every open session's meta; patches ``upsert`` and
 ``remove``), ``transcript:<log_id>`` (any session, archived included; a
 subscribe ``since`` a revision gets what changed after it), ``quota`` (each
@@ -54,6 +55,7 @@ from .channels import Channels, Throttle
 from .claude.process import PERMISSION_MODE, ControlError
 from .config import Config, Snapshot
 from .config_ops import register_config_ops
+from .help_ops import register as register_help_ops
 from .confirm import Confirmations
 from .host import HostSampler
 from .links import LinkError, Links, probe
@@ -349,6 +351,7 @@ class App:
         register_config_ops(self)
         register_artifact_ops(self)
         register_journal_ops(self)
+        register_help_ops(self.registry, self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
 
     def who(self, caller: Caller) -> Principal:
