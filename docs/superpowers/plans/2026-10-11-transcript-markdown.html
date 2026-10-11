@@ -1074,7 +1074,7 @@ gh pr create --repo apiad/aegis --title "Transcript Markdown: tables that fit a 
 <p class="note">Start once PR 1 has merged: <code>git worktree add -b tool-views .claude/worktrees/tool-views origin/main</code>, from the repo root, and work there.</p>
 
 <!-- ============================================================ TASK 6 -->
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">A tool row carries its language</span><span class="files">transcript/describe.py · transcript/entries.py · tests/test_fold.py · tests/test_client_rules.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -1144,7 +1144,7 @@ def tool_lang(name: str, inp: dict) -> str | None:
 </details>
 
 <!-- ============================================================ TASK 7 -->
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="done">
 <summary><span class="num">7</span><span><span class="ttl">A Read and a Write carry a numbered file view</span><span class="files">transcript/describe.py · transcript/entries.py · transcript/wire.py · tests/test_fold.py · tests/test_wire.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -1247,7 +1247,7 @@ def file_window(first: int, lines: list[str]) -> dict:
 </details>
 
 <!-- ============================================================ TASK 8 -->
-<details class="task" id="task-8" data-state="pending">
+<details class="task" id="task-8" data-state="done">
 <summary><span class="num">8</span><span><span class="ttl">An Edit carries hunks: Claude's own, or difflib's</span><span class="files">claude/stream.py · transcript/describe.py · transcript/entries.py · transcript/wire.py · tests/test_fold.py · tests/test_codex_stream.py · tests/test_opencode_stream.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -1388,7 +1388,7 @@ def cap_hunks(hunks: list[dict], max_bytes: int = 8192) -> tuple[list[dict], int
 </details>
 
 <!-- ============================================================ TASK 9 -->
-<details class="task" id="task-9" data-state="pending">
+<details class="task" id="task-9" data-state="done">
 <summary><span class="num">9</span><span><span class="ttl">The browser draws file views, coloured arguments and diffs for its width</span><span class="files">client/js/diff.js · client/js/entries.js · client/css/base.css · tests/fake_claude.py · tests/test_tool_views_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -1703,7 +1703,7 @@ function argsView(text, lang) {
 </details>
 
 <!-- ============================================================ TASK 10 -->
-<details class="task" id="task-10" data-state="pending">
+<details class="task" id="task-10" data-state="doing">
 <summary><span class="num">10</span><span><span class="ttl">Docs, gates and PR 2</span><span class="files">DESIGN.md · changelog.d/ · the spec's status</span></span><span class="state"></span></summary>
 <div class="body">
 <ol class="steps">

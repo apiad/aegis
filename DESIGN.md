@@ -321,16 +321,16 @@ with a fresh snapshot. Adding a subsystem adds operations and channels, never a 
 
 **Python decides, the browser draws.** Every fact and decision about a transcript
 entry is computed once in Python: its glyph (the name of a symbol in the
-client's SVG sprite, `js/glyphs.js`), title, summary, status, the diff window of
-an edit, and what collapses. The entry crosses the wire as data and the
+client's SVG sprite, `js/glyphs.js`), title, summary, status, the hunks of an
+edit, and what collapses. The entry crosses the wire as data and the
 browser only turns it into markup. One copy of each fact means no drift, and a
 data protocol version fails loudly across a link where mismatched markup would
 break silently.
 
-**The wire carries no collapsed detail.** A tool's arguments, output and diff, a
-system note's tail and thinking text stay on the server until a row opens and
-asks for them with `transcript.detail` (`transcript/wire.py`). They were 75% of a
-snapshot's bytes over 80 real transcripts. Every entry carries `rev`, the store
+**The wire carries no collapsed detail.** A tool's arguments, output, file view
+and diff, a system note's tail and thinking text stay on the server until a row
+opens and asks for them with `transcript.detail` (`transcript/wire.py`). They
+were 75% of a snapshot's bytes over 80 real transcripts. Every entry carries `rev`, the store
 index of the record that last changed it, so a returning client asks for what
 changed since the revision it holds, and the client keeps the last 8 tabs it
 showed.
@@ -483,6 +483,15 @@ load; the next block asks for that file again. The viewer colours through the
 same loader. Copy buttons sit on code
 blocks and tables, never on a whole reply; a table copies as its Markdown lines
 and as an HTML table at once (#323).
+
+**A tool row says what its views are; the browser lays them out.** The fold
+names a tool row's language (`describe.tool_lang`), turns a Read's numbered
+output and a Write's content into a file view (`detail.file`), and gives an
+Edit hunks with three lines of context, capped at 8 KB: Claude Code's own
+`structuredPatch`, numbered in the file, or `difflib`'s, numbered within the
+edit. All of it is lazy. The browser colours the views and lays an edit out
+side by side when the row is 680 px or wider and in one column below, from the
+same hunks, marking changed words by an LCS over tokens (#323).
 
 **A sent file's URL is its key, and its content runs nowhere near the token.**
 `file_send` copies the file into the state root under 128 random bits, and
