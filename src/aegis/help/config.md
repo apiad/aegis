@@ -51,7 +51,7 @@ the model for one session.
 
 `default_agent:` names the agent `session_spawn` starts from when it is given
 none, and the one the new-tab page picks first in a browser that has not
-picked one yet.
+started a session yet.
 
 ## Queues
 
@@ -80,15 +80,17 @@ comments and key order, and refuses to save over a change made on disk since
 you opened it. Only an admin can save.
 
 `aegis init` writes a first file from the harnesses installed on this machine,
-asking for each agent it proposes (`aegis init --yes` takes every proposal).
+proposing agents for Claude Code and OpenCode and asking about each (`aegis
+init --yes` takes every proposal).
 It refuses to overwrite an existing `.aegis.yaml`.
 
 ## Check it
 
 `aegis doctor` checks the file against the harnesses actually installed: that
-it parses, that each harness is on the PATH with its version and models, that
-each agent's model and effort are ones its harness offers, that
-`default_agent:` names a usable agent, that each queue is complete, and that
-the state directory is writable. It prints one line per finding and exits 1
+it parses, that it has no key aegis does not read, that each harness an agent
+names is on the PATH with its version and models, that each agent's model and
+effort are ones its harness offers, that `default_agent:` names a usable
+agent, that each queue is complete, and that the state directory is
+writable. It prints one line per finding and exits 1
 when any is an error. An agent can run the same checks with `config_doctor`,
 and the Settings page has a Run doctor button.
