@@ -945,5 +945,5 @@ def register_agent_ops(app: App) -> None:
         from .mcp import primer
 
         tools = ", ".join(op.tool_name for op in r.agent_ops())
-        head = primer(s, reg.server_name) if s else "aegis"
+        head = primer(s, reg.server_name, reg.roots.config_root) if s else "aegis"
         return f"{head}\n\nTools: {tools}."

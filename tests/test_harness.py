@@ -48,8 +48,8 @@ def test_the_primer_names_tools_by_the_harness_prefix(tmp_path):
             metas=MetaStore(tmp_path / "sessions"),
         )
 
-    assert "(mcp__aegis__*)" in primer(make("claude-code"), "zion")
-    assert "(aegis_*)" in primer(make("opencode"), "zion")
+    assert "(mcp__aegis__*)" in primer(make("claude-code"), "zion", tmp_path)
+    assert "(aegis_*)" in primer(make("opencode"), "zion", tmp_path)
 
 
 def test_the_primer_asks_for_a_language_on_every_fence():
@@ -71,4 +71,18 @@ def test_opencode_is_a_harness():
         "OpenCode",
         "aegis_",
         "/bin/opencode",
+    )
+
+
+def test_the_primer_names_the_root_paths_are_quoted_from(tmp_path):
+    from types import SimpleNamespace
+
+    from aegis.mcp import primer
+
+    s = SimpleNamespace(
+        handle="ana-b", harness=SimpleNamespace(tool_prefix="mcp__aegis__")
+    )
+    text = primer(s, "lab", tmp_path)
+    assert (
+        f"Quote a file as a path relative to {tmp_path}, or as an absolute path" in text
     )
