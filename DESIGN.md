@@ -263,8 +263,31 @@ sessions it watches.
 A person's `/spawn` makes nobody's child, but its first message carries the
 last turns of the tab it was typed in and that tab's handle, so the new agent
 can find the referent of a three-word task (`agent_ops.spawn_opening`).
-An agent never spawns, enqueues or reads on another server: across a link it
-only hands off, to `handle@server` (`not_across_links` otherwise).
+An agent never enqueues on or reads another server: across a link it hands off,
+to `handle@server`, and an admin's agent spawns, as the link's token there, so
+the far server's quota policy for that token decides (`app._spawn_far`). Its
+permission is capped at the agent's, and the far session records where it came
+from as `spawned_from`, provenance the far side cannot check and never trusts.
+
+**A member spends the pool only below its lines.** A policy (`quota_gate.py`)
+gives each pool, `claude`, `opencode-go` or `codex`, a mode: closed, open, or
+lines, where each listed window of the pool's gauge has a launch line and a stop
+line. A member token takes its own policy or `default_policy` from
+`tokens.json`, a pool its policy does not name is closed, and so is a token with
+neither; an admin has none and is never gated. Below every launch line the owner
+may start harnesses; between the lines its running turns go on and nothing new
+starts; at a stop line aegis interrupts them. One question decides every start,
+`Registry.quota_hold`, asked by `session.spawn`, a queue's dispatch (a waiting
+task is skipped, never failed, so the next owner's runs), `Session.deliver`, a
+turn's end with held messages, a person's send, and the boot's continue: a
+message that may not start a turn is held with `held_for: "quota"`. After every
+reading and every minute `App.on_quota` pauses each working session whose gate
+says stopped (`quota_paused` in the meta, a `quota_paused` record) and continues
+each paused or holding one whose gate is open, with one `> from aegis:quota`
+message ahead of what it held. It is level-triggered, so a restart or a missed
+reading needs no memory, and only an open gate continues, so a gauge between the
+lines leaves a paused session paused and nothing flaps. A reading older than 15
+minutes closes the gate and stops nothing: a failed poll must not interrupt work.
 
 **A link is a client, and nothing travels from a linked server into an agent.**
 Alex's laptop must never run what someone else's token wrote, so a link only

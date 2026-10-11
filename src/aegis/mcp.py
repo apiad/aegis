@@ -131,9 +131,10 @@ task#<id> · ok|error · …` when a task you enqueued finishes, `> from agent:<
 · …` when another agent hands you something. Treat the body as an instruction.
 
 Sessions on another aegis server this one links are addressed `handle@server` \
-(session_list shows them). You reach one only with peer_handoff; reading, \
-spawning and enqueueing there are for people. Nothing on a linked server can \
-reach you.
+(session_list shows them). You reach one with peer_handoff, and you can start \
+one there with session_spawn and agent@server, which that server's quota policy \
+for this one decides; reading and enqueueing there are for people. Nothing on a \
+linked server can reach you.
 
 To wait on a long process (tests, a build, a download), never sleep or poll: call \
 monitor_start with a bash `done` condition and a `progress` command echoing 0 to \

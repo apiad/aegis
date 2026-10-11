@@ -17,6 +17,8 @@ async def world(tmp_path, fake_claude):
     (tmp_path / ".aegis.yaml").write_text(CONFIG)
     w = await World(tmp_path, fake_claude).start()
     w.app.principals.add("ben", "member")
+    # A member with no policy starts nothing (quota_gate.py): open the pool.
+    w.app.principals.set_default_policy({"claude": {"mode": "open"}})
     yield w
     await w.stop()
 
@@ -158,3 +160,50 @@ async def test_a_member_cannot_cancel_a_monitor_on_anothers_session(world):
         )
     assert e.value.code == "not_owner"
     assert monitor_id in world.app.monitors.items
+
+
+POLICY = {"claude": {"mode": "lines", "lines": {"session": {"launch": 50, "stop": 90}}}}
+
+
+async def test_an_admin_sets_a_policy_and_the_default(world):
+    reg = world.app.registry
+    await reg.call("token.policy", {"name": "ben", "policy": POLICY}, Caller("user"))
+    await reg.call(
+        "token.policy",
+        {"name": "*", "policy": {"claude": {"mode": "open"}}},
+        Caller("user"),
+    )
+    listed = await reg.call("token.list", {}, Caller("user"))
+    assert listed["default_policy"] == {"claude": {"mode": "open"}}
+    assert {r["name"]: r["policy"] for r in listed["tokens"]}["ben"] == POLICY
+    assert world.app.principals.policy_of("ben") == POLICY
+    await reg.call("token.policy", {"name": "ben", "policy": None}, Caller("user"))
+    assert world.app.principals.policy_of("ben") == {"claude": {"mode": "open"}}
+
+
+async def test_a_member_cannot_set_a_policy_and_a_bad_one_is_refused(world):
+    reg = world.app.registry
+    with pytest.raises(OpError) as e:
+        await reg.call("token.policy", {"name": "ben", "policy": None}, as_(BEN))
+    assert e.value.code == "not_for_members"
+    with pytest.raises(OpError) as e:
+        await reg.call(
+            "token.policy", {"name": "ben", "policy": {"nope": {}}}, Caller("user")
+        )
+    assert e.value.code == "bad_policy"
+
+
+async def test_the_token_list_carries_the_pools_and_each_members_gates(world):
+    reg = world.app.registry
+    await reg.call("token.policy", {"name": "ben", "policy": POLICY}, Caller("user"))
+    listed = await reg.call("token.list", {}, Caller("user"))
+    pools = {p["name"]: p for p in listed["pools"]}
+    assert set(pools) == {"claude", "opencode-go", "codex"}
+    assert [w["kind"] for w in pools["claude"]["windows"]] == ["session", "weekly_all"]
+    assert pools["codex"]["windows"] == [] and pools["claude"]["windows"][1]["pace"]
+    rows = {r["name"]: r for r in listed["tokens"]}
+    # No reading in a test: ben's lines close claude; the default opens it.
+    assert rows["ben"]["gates"]["claude"] == "closed"
+    assert rows["ben"]["gates"]["codex"] == "closed"
+    assert listed["default_gates"]["claude"] == "open"
+    assert rows[world.app.user]["gates"] is None

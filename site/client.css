@@ -687,6 +687,10 @@ body{background:#000}
 .a2 .side .qrow{margin-bottom:9px}
 .a2 .side .qrow .bar{position:relative;overflow:visible;margin:4px 0 0}
 .a2 .side .qrow .bar .tick{top:-1px;bottom:-1px}
+/* A member's own quota lines on its gauge (gauges.js). */
+.a2 .bar .tick.lim{opacity:1}
+.a2 .bar .tick.lim.l{background:var(--ok)}
+.a2 .bar .tick.lim.s{background:var(--err)}
 .a2 .side .gnote{color:var(--warn)}
 .a2 .pcard .qrow{margin-bottom:10px}
 
@@ -1037,7 +1041,65 @@ body{background:#000}
 .a2 .tab .who,.a2 .card .who{font-family:var(--font-mono);font-size:10.5px;color:var(--comms);border:1px solid var(--rule);border-radius:999px;padding:0 7px;margin-left:6px;white-space:nowrap}
 .a2 .set-once{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
 .a2 .set-once code{font-family:var(--font-mono);font-size:12px;overflow-wrap:anywhere}
-@media (max-width:640px){.a2 .set-tokens .set-linkrow{flex-wrap:wrap}.a2 .set-tokens .set-linkrow .set-in{flex-basis:100%}.a2 .set-tokens .tbl td.m{white-space:normal}}
+/* Settings: the tokens and their quota policies (quota_gate.py), from the
+   multi-user spec's editor mockup. A card is a .set-agent; a window's track
+   is drawn like a quota gauge, with a green launch handle and a red stop one. */
+.a2 .set-tokens{margin:0 0 22px}
+.a2 .set-tokens h3{margin:0 0 4px;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
+.a2 .set-tokens>.set-none{margin:0 0 10px}
+.a2 .set-pill.warn{color:var(--warn)}
+.a2 .set-tok .set-pill{flex:none}
+.a2 .set-tok .set-used{font-size:11.5px}
+.a2 .set-tok .set-gap{margin-left:auto}
+.a2 .set-tok .link.danger{opacity:1}
+.a2 .set-tokens .poolnow{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 24px;padding:10px 14px;background:var(--side);border:1px solid var(--rule);border-radius:var(--r-lg);margin-bottom:10px}
+.a2 .set-tokens .poolnow h5{margin:0 0 2px;font:500 11.5px var(--font-chrome);color:var(--faint)}
+.a2 .set-tokens .poolnow .bar{position:relative;overflow:visible;margin:4px 0 6px}
+.a2 .set-tokens .pol{grid-column:1/-1;display:grid;gap:10px;margin-top:4px;padding-top:10px;border-top:1px dashed var(--rule)}
+.a2 .set-tokens .poolrow{display:grid;grid-template-columns:108px minmax(0,1fr);gap:8px 12px;align-items:start}
+.a2 .set-tokens .poolrow .pl{font:500 12px var(--font-chrome);color:var(--strong);padding-top:4px}
+.a2 .set-tokens .modeline{display:flex;gap:10px;align-items:center;margin-bottom:2px}
+.a2 .set-tokens .winrow{display:grid;grid-template-columns:96px minmax(0,1fr) 230px;grid-template-areas:"name track read";gap:4px 12px;align-items:center;margin:2px 0}
+.a2 .set-tokens .winrow .wl{grid-area:name;display:flex;flex-direction:column;gap:3px}
+.a2 .set-tokens .winrow .track{grid-area:track}
+.a2 .set-tokens .winrow .wv{grid-area:read}
+.a2 .set-tokens .winrow label{font:11.5px var(--font-chrome);color:var(--muted);display:flex;gap:5px;align-items:center;cursor:pointer}
+.a2 .set-tokens .winrow input[type=checkbox]{accent-color:var(--accent);margin:0}
+.a2 .set-tokens .track{position:relative;height:6px;background:var(--raised);border-radius:3px;margin:18px 7px 8px;touch-action:none}
+.a2 .set-tokens .winrow.off .track{opacity:.35;margin-top:8px}
+.a2 .set-tokens .track>i{position:absolute;left:0;top:0;bottom:0;background:var(--ok);opacity:.55;border-radius:3px}
+.a2 .set-tokens .zone{position:absolute;top:0;bottom:0}
+.a2 .set-tokens .zone.closed{background:color-mix(in srgb,var(--warn) 22%,transparent)}
+.a2 .set-tokens .zone.stop{background:color-mix(in srgb,var(--err) 32%,transparent);border-radius:0 3px 3px 0}
+.a2 .set-tokens .h{position:absolute;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2px solid var(--surface);padding:0;cursor:grab;z-index:2}
+.a2 .set-tokens .h:active{cursor:grabbing}
+.a2 .set-tokens .h.l{background:var(--ok)}
+.a2 .set-tokens .h.s{background:var(--err)}
+.a2 .set-tokens .h:focus-visible{outline:2px solid var(--strong);outline-offset:1px}
+.a2 .set-tokens .h span,.a2 .set-tokens .pace span{position:absolute;bottom:13px;left:50%;transform:translateX(-50%);font:10.5px var(--font-chrome);white-space:nowrap;pointer-events:none}
+.a2 .set-tokens .h.l span,.a2 .set-tokens .pace span{color:var(--ok)}
+.a2 .set-tokens .h.s span{color:var(--err)}
+.a2 .set-tokens .pace{position:absolute;top:-5px;bottom:-5px;width:2px;margin-left:-1px;background:var(--ok);z-index:1}
+.a2 .set-tokens .wv{font:11px var(--font-chrome);color:var(--faint);display:flex;flex-direction:column;gap:3px}
+@media (max-width:640px){
+  .a2 .set-tokens .set-linkrow{flex-wrap:wrap}
+  .a2 .set-tokens .set-linkrow .set-in{flex-basis:100%}
+  .a2 .set-tokens .set-linkrow .btn{flex:1}
+  .a2 .set-tokens .poolnow{grid-template-columns:1fr 1fr;padding:8px 10px;gap:6px 16px}
+  .a2 .set-tokens .poolrow{grid-template-columns:1fr;gap:4px}
+  .a2 .set-tokens .poolrow .pl{padding-top:0}
+  .a2 .set-tokens .modeline{flex-wrap:wrap}
+  .a2 .set-tokens .winrow{grid-template-columns:minmax(0,1fr);grid-template-areas:"name" "track" "read";margin:6px 0 2px}
+  .a2 .set-tokens .winrow .wl{flex-direction:row;gap:14px}
+  .a2 .set-tokens .track{margin:20px 11px 10px}
+  .a2 .set-tokens .winrow.off .track{display:none}
+}
+/* Fingers: a bigger dot, and a hit area wider than the dot. */
+@media (pointer:coarse){
+  .a2 .set-tokens .h{width:20px;height:20px;margin:-10px 0 0 -10px}
+  .a2 .set-tokens .h::before{content:"";position:absolute;inset:-12px}
+  .a2 .set-tokens .h span{bottom:18px}
+}
 .a2 .set-linkrow .set-in{flex:1;min-width:0;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 9px;font-family:var(--font-mono);font-size:12px;color:var(--ink)}
 .a2 .set-srvpick{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:12.5px;color:var(--muted)}
 .a2 .band .prov.same{color:var(--faint)}

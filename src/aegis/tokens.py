@@ -10,8 +10,10 @@ never left without an admin.
 
 The file is read again whenever its mtime changes, so a hand edit or
 ``aegis token`` applies at the next call. An edit that does not parse is
-logged and the last good state kept. Keys this module does not know (the
-quota policies) survive every write.
+logged and the last good state kept. Keys this module does not know survive
+every write. A policy (quota_gate.py) is set through ``set_policy`` or
+``set_default_policy``, which refuse one ``quota_gate.validate`` rejects; a
+hand-edited one that does not validate closes the pools it names wrongly.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ import secrets
 import time
 from pathlib import Path
 
+from . import quota_gate
 from .ops import OpError, Principal
 
 log = logging.getLogger("aegis.tokens")
@@ -150,6 +153,60 @@ class TokenStore:
             return None
         return e.get("role") if e.get("role") in ROLES else "member"
 
+    def _entry(self, name: str) -> dict | None:
+        return next((e for e in self._entries() if e["name"] == name), None)
+
+    def default_policy(self) -> dict | None:
+        self._fresh()
+        p = self._doc.get("default_policy")
+        return p if isinstance(p, dict) else None
+
+    def policy_of(self, name: str) -> dict | None:
+        """The policy that gates ``name`` (quota_gate.py): its own, else the
+        default. None for an admin, who is never gated. A member with
+        neither, and a principal whose token was revoked, get ``{}``: every
+        pool closed."""
+        if self.role_of(name) == "admin":
+            return None
+        e = self._entry(name)
+        if e is None:
+            return {}
+        own = e.get("policy")
+        if isinstance(own, dict):
+            return own
+        return self.default_policy() or {}
+
+    def _check_policy(self, policy: object) -> None:
+        if errs := quota_gate.validate(policy):
+            raise OpError("bad_policy", "; ".join(errs))
+
+    def set_policy(self, name: str, policy: dict | None) -> None:
+        """Give ``name`` its own policy; None makes it use the default."""
+        self._fresh()
+        if self.role_of(name) == "admin":
+            raise OpError(
+                "never_gated", f"{name} is an admin, and admins are never gated"
+            )
+        e = self._entry(name)
+        if e is None:
+            raise OpError("unknown_token", f"no token named {name}")
+        if policy is None:
+            e.pop("policy", None)
+        else:
+            self._check_policy(policy)
+            e["policy"] = policy
+        self._save()
+
+    def set_default_policy(self, policy: dict | None) -> None:
+        """The policy of every member without its own; None removes it."""
+        self._fresh()
+        if policy is None:
+            self._doc.pop("default_policy", None)
+        else:
+            self._check_policy(policy)
+            self._doc["default_policy"] = policy
+        self._save()
+
     def admin_token(self) -> str:
         self._fresh()
         return self._admin
@@ -165,7 +222,13 @@ class TokenStore:
     def rows(self) -> list[dict]:
         self._fresh()
         rows = [
-            {"name": self.owner, "role": "admin", "owner": True, "created_at": None}
+            {
+                "name": self.owner,
+                "role": "admin",
+                "owner": True,
+                "created_at": None,
+                "policy": None,
+            }
         ]
         rows += [
             {
@@ -173,6 +236,7 @@ class TokenStore:
                 "role": e.get("role", "member"),
                 "owner": False,
                 "created_at": e.get("created_at"),
+                "policy": e["policy"] if isinstance(e.get("policy"), dict) else None,
             }
             for e in self._entries()
         ]

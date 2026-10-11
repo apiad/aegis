@@ -683,11 +683,16 @@ def token_add(
 
 @token_app.command("list")
 def token_list(root: Path | None = _ROOT_OPTION) -> None:
-    """Names and roles, never tokens."""
-    rows = _token_store(root).rows()
+    """Names, roles and quota policies, never tokens."""
+    from .quota_gate import describe
+
+    store = _token_store(root)
+    rows = store.rows()
     for r in rows:
+        own = "" if r["policy"] is not None or r["role"] == "admin" else " (default)"
         typer.echo(
-            f"{r['name']:<16} {r['role']}{'  (this server)' if r['owner'] else ''}"
+            f"{r['name']:<16} {r['role']:<7} {describe(store.policy_of(r['name']))}{own}"
+            f"{'  (this server)' if r['owner'] else ''}"
         )
     typer.echo(f"{len(rows)} tokens")
 

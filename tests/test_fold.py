@@ -356,6 +356,17 @@ def test_resume_and_server_stopped_lines():
     ]
 
 
+def test_a_quota_pause_is_a_system_line():
+    r = Rec()
+    r.own("quota_paused", why="Claude 5 hours is at 91%, stop line 90%")
+    f, _ = run(r)
+    (e,) = f.entries()
+    assert (e["kind"], e["summary"]) == (
+        "system",
+        "paused: quota line reached (Claude 5 hours is at 91%, stop line 90%)",
+    )
+
+
 def test_activity_prefers_a_running_call_then_the_latest_prose():
     r = Rec()
     r.echo("do it")
