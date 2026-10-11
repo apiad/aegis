@@ -995,8 +995,32 @@ body{background:#000}
   .a2 .btn{min-height:44px}
   .a2 .tbl td.acts .btn{width:44px;height:44px}
 }
-.a2 .note{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:40;padding:7px 14px;border:1px solid var(--rule);border-radius:999px;background:var(--raised);color:var(--muted);font-family:var(--font-chrome);font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.25)}
-.a2 .note[hidden]{display:none}
+/* Toasts (toast.js): cards in the bottom-right; in a session toast.js lifts
+   them above the message box. Full width on a phone. */
+.a2 .toasts{position:fixed;right:16px;bottom:16px;z-index:40;display:flex;flex-direction:column;gap:6px;width:min(320px,calc(100vw - 32px));pointer-events:none}
+.a2 .toast{pointer-events:auto;position:relative;overflow:hidden;padding:8px 30px 10px 12px;border:1px solid var(--rule);border-radius:var(--r-lg);background:var(--surface);box-shadow:0 8px 22px rgba(0,0,0,.4);animation:toast-in .24s cubic-bezier(.2,.8,.2,1)}
+.a2 .toast .hd{display:flex;gap:6px;align-items:center;font-family:var(--font-chrome);font-size:11px;color:var(--muted)}
+.a2 .toast .hd .ic{width:12px;height:12px;flex:none}
+.a2 .toast .hd .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a2 .toast .hd .go{color:var(--faint);flex:none}
+.a2 .toast .msg{font-family:var(--font-ui);font-size:12.5px;line-height:1.4;color:var(--strong);margin-top:3px;overflow-wrap:anywhere}
+.a2 .toast.error .hd{color:var(--err)}
+.a2 .toast.from{cursor:pointer}
+.a2 .toast.from .hd{color:var(--accent)}
+.a2 .toast .x{position:absolute;top:4px;right:4px;width:22px;height:22px;display:grid;place-items:center;border:0;background:none;color:var(--faint);cursor:pointer;border-radius:4px;padding:0}
+.a2 .toast .x .ic{width:12px;height:12px}
+.a2 .toast .x:hover{color:var(--strong);background:var(--raised)}
+.a2 .toast .life{position:absolute;left:0;bottom:0;height:2px;width:100%;background:var(--muted);opacity:.5;transform-origin:left;animation:toast-life linear forwards}
+.a2 .toast.error .life{background:var(--err)}
+.a2 .toast.from .life{background:var(--accent)}
+.a2 .toast:hover .life{animation-play-state:paused}
+.a2 .toast.out{animation:toast-out .18s ease-in forwards}
+@keyframes toast-in{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+@keyframes toast-out{to{opacity:0;transform:translateX(12px)}}
+@keyframes toast-life{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+@media (prefers-reduced-motion:reduce){.a2 .toast,.a2 .toast.out{animation:none}.a2 .toast .life{display:none}}
+@media (max-width:640px){.a2 .toasts{left:8px;right:8px;width:auto}}
+@media (pointer:coarse){.a2 .toast{padding-right:42px}.a2 .toast .x{width:40px;height:40px;top:0;right:0}}
 
 /* Linked servers (links.py): a server's tag, its band and cards under this
    server's, and what goes grey while its link is down. */
