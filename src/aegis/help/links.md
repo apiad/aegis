@@ -69,5 +69,6 @@ A link is linked, connecting, offline, unauthorized (the far server refused
 the token; it does not retry, and a new token needs a new link) or mismatch
 (a different name or an incompatible version). An offline link reconnects on
 its own, backing off up to 30 seconds, a mismatched one tries again every 30
-seconds, and a dropped link fails every call in flight. The Settings page
-shows a server that is down as offline since the time it went down.
+seconds, and a dropped link fails every call in flight. The Fleet and the
+Settings page show a server that is down as offline since the time it went
+down.
