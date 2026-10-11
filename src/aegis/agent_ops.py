@@ -548,6 +548,12 @@ def register_agent_ops(app: App) -> None:
             raise OpError("no_monitor", f"no live monitor {p.monitor_id!r}")
         if caller.is_agent and m.owner != caller.log_id:
             raise OpError("not_yours", "agents can cancel only their own monitors")
+        # A monitor wakes its session: a member stops only its own sessions' ones.
+        who, owner = app.who(caller), app.owner_of(m.owner)
+        if not who.is_admin and owner not in (None, who.name):
+            raise OpError(
+                "not_owner", f"{m.id} watches {owner}'s session; you can read it"
+            )
         app.monitors.cancel(m.id)
         return {"cancelled": m.id, "remaining": roster(m.owner)}
 

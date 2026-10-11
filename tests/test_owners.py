@@ -144,3 +144,17 @@ async def test_a_member_cannot_prompt_or_interrupt_anothers_session(world):
         as_(BEN),
     )
     assert world.session(mine).handle in landed
+
+
+async def test_a_member_cannot_cancel_a_monitor_on_anothers_session(world):
+    s = await world.spawn()  # the admin's
+    out = await turn(
+        s, mcp("monitor_start", description="wait", done="sleep 60", progress=None)
+    )
+    monitor_id = json.loads(out.removeprefix("mcp ok: "))["monitor_id"]
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call(
+            "monitor.cancel", {"monitor_id": monitor_id}, as_(BEN)
+        )
+    assert e.value.code == "not_owner"
+    assert monitor_id in world.app.monitors.items
