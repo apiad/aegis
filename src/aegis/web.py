@@ -357,6 +357,15 @@ def build_web(
             try:
                 link = far(server)
                 if link is not None:
+                    # A link acts on the far server as its own token, which is
+                    # not this caller's: only an admin here may act through it.
+                    # Subscriptions, which only read, stay open to members.
+                    if not app.who(caller).is_admin:
+                        raise OpError(
+                            "not_for_members",
+                            f"acting on {server} through this server's link is "
+                            "for an admin here",
+                        )
                     reply.update(await link.call_raw(op, msg.get("params")))
                 else:
                     reply["result"] = await app.registry.call(

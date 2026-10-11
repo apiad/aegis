@@ -15,10 +15,13 @@ export function ownerOf(m) {
   return m.server ? null : m.owner || who.owner || null;
 }
 
-// Whether this browser may change session `m`.
+// Whether this browser may change session `m`. Only an admin here acts through
+// a link: the link works on the far server as its own token (web.py).
 export function mine(m) {
+  if (!who.name || who.role === "admin") return true;
+  if (m.server) return false;
   const o = ownerOf(m);
-  return !who.name || who.role === "admin" || !o || o === who.name;
+  return !o || o === who.name;
 }
 
 // The owner to show beside `m`: someone other than this browser.

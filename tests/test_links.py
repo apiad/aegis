@@ -84,8 +84,9 @@ class Node:
 class Browser:
     """A raw client socket on a node: hello, calls, and every frame it got."""
 
-    def __init__(self, node: Node):
+    def __init__(self, node: Node, token: str | None = None):
         self.node = node
+        self.token = token or node.token
         self.frames: list[dict] = []
         self.n = 0
 
@@ -94,7 +95,7 @@ class Browser:
             f"ws://127.0.0.1:{self.node.port}/ws", origin=self.node.base
         )
         await self.ws.send(
-            json.dumps({"t": "hello", "token": self.node.token, "proto": PROTO})
+            json.dumps({"t": "hello", "token": self.token, "proto": PROTO})
         )
         self.welcome = json.loads(await self.ws.recv())
         self._reader = asyncio.create_task(self._read())
@@ -1027,3 +1028,14 @@ async def test_a_link_with_a_member_token_is_a_member_on_the_far_side(pair):
         "config.write", {"doc": snap["doc"], "stamp": snap["stamp"]}
     )
     assert r["error"]["code"] == "not_for_members"
+
+
+async def test_a_member_here_cannot_act_through_the_link(pair):
+    alpha, beta = pair
+    member = alpha.app.principals.add("ben", "member")
+    async with Browser(alpha, member) as b:
+        r = await b.call("token.add", server="beta", name="mallory", role="admin")
+        assert r["error"]["code"] == "not_for_members"
+        r = await b.call("session.spawn", server="beta", agent="opus")
+        assert r["error"]["code"] == "not_for_members"
+    assert "mallory" not in [t["name"] for t in beta.app.principals.list()]
