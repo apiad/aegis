@@ -316,6 +316,7 @@ class App:
 
     async def shutdown(self) -> None:
         stopping_at = restarts.stopping(self.roots.state_root)
+        self.queues.shutdown()
         if self._config_task is not None:
             self._config_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

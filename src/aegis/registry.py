@@ -333,6 +333,9 @@ class Registry(Host):
                 )
                 s.held = msgs
                 self.metas.write(s.meta())
+                # Not continued after all: a worker's queue tries, and fails
+                # its task when it cannot either.
+                self.continuing.pop(log_id, None)
 
     # -- operations ----------------------------------------------------------------
     def open_sessions(self) -> list[Session]:

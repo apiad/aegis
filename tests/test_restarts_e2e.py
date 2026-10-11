@@ -1,6 +1,7 @@
 """Restarts end to end: the real app under uvicorn, the fake claude, restarted
 the way a person or systemd restarts it."""
 
+import asyncio
 import json
 import os
 import signal
@@ -76,6 +77,65 @@ async def test_a_worker_killed_by_sigterm_keeps_its_task_and_finishes_it(world):
     await until(lambda: w.status == "stopped", what="the SIGTERM exit")
     assert t.status == "running"
     await world.restart()
+    await until(
+        lambda: world.app.queues.tasks[task_id].status == "completed",
+        timeout=12,
+        what="the task",
+    )
+
+
+async def worker_mid_turn(world):
+    a = await world.spawn()
+    out = await turn(a, mcp("queue_enqueue", queue="general", payload="/sleep 30"))
+    task_id = json.loads(out.removeprefix("mcp ok: "))["task_id"]
+    t = world.app.queues.tasks[task_id]
+    await until(
+        lambda: (
+            t.worker
+            and any(e["kind"] == "tool" for e in world.session(t.worker).entries())
+        ),
+        what="the worker's call",
+    )
+    return task_id, world.session(t.worker)
+
+
+async def test_a_worker_whose_continue_cannot_start_fails_its_task(world, tmp_path):
+    task_id, _ = await worker_mid_turn(world)
+    await world.stop()
+    world.fake = str(tmp_path / "no-such-claude")
+    await world.start()
+    await until(
+        lambda: world.app.queues.tasks[task_id].status == "failed",
+        timeout=8,
+        what="the task to fail",
+    )
+
+
+async def test_a_stray_sigterm_to_a_worker_fails_its_task_when_no_restart_follows(
+    world, monkeypatch
+):
+    monkeypatch.setattr(restarts, "GRACE_S", 0.5)
+    task_id, w = await worker_mid_turn(world)
+    os.kill(w.pid, signal.SIGTERM)
+    await until(
+        lambda: world.app.queues.tasks[task_id].status == "failed",
+        timeout=5,
+        what="the task to fail",
+    )
+    assert "SIGTERM" in world.app.queues.tasks[task_id].error
+
+
+async def test_a_grace_timer_from_before_a_restart_changes_nothing_after_it(
+    world, monkeypatch
+):
+    monkeypatch.setattr(restarts, "GRACE_S", 1.0)
+    task_id, w = await worker_mid_turn(world)
+    os.kill(w.pid, signal.SIGTERM)
+    await until(lambda: w.status == "stopped", what="the SIGTERM exit")
+    await world.restart()
+    await asyncio.sleep(1.5)  # past the old server's grace timer
+    log = (world.app.roots.state_root / "tasks.jsonl").read_text()
+    assert '"event": "failed"' not in log
     await until(
         lambda: world.app.queues.tasks[task_id].status == "completed",
         timeout=12,

@@ -116,6 +116,14 @@ class Queues:
         self.tasks: dict[str, Task] = {}
         self._dispatching = False
         self._again = False
+        # The grace checks after a worker's SIGTERM, cancelled by a stop.
+        self._sigterm_timers: set[asyncio.TimerHandle] = set()
+
+    def shutdown(self) -> None:
+        """The server is stopping: a SIGTERM grace check must not outlive it."""
+        for h in self._sigterm_timers:
+            h.cancel()
+        self._sigterm_timers.clear()
 
     @property
     def queues(self) -> dict[str, dict]:
@@ -358,6 +366,11 @@ class Queues:
                 "aegis: worker %s got SIGTERM; its task waits for the next boot",
                 s.handle,
             )
+            self._sigterm_timers.add(
+                asyncio.get_running_loop().call_later(
+                    restarts.GRACE_S, self._after_sigterm, t.id, s.log_id
+                )
+            )
             return
         tail = "\n".join(stderr_tail[-10:])
         self._fail(
@@ -365,6 +378,19 @@ class Queues:
             f"its worker {s.handle} exited with code {code}"
             + (f":\n{tail}" if tail else ""),
         )
+
+    def _after_sigterm(self, task_id: str, log_id: str) -> None:
+        """The grace after a worker's SIGTERM is over and this server is still
+        up, so no restart caused it: the task fails as for any other exit. A
+        stop in progress cancels this with the loop."""
+        t = self.tasks.get(task_id)
+        if t is None or t.status != "running" or t.worker != log_id:
+            return
+        s = self._registry.sessions.get(log_id)
+        if s is not None and s.running:
+            return
+        name = s.handle if s is not None else log_id
+        self._fail(t, f"its worker {name} got SIGTERM and no restart followed")
 
     def _fail(self, t: Task, why: str) -> None:
         t.status, t.error, t.finished_at = "failed", why, time.time()
