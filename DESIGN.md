@@ -582,6 +582,17 @@ the model toward names it knows (`dictation.py`). Nothing carries samples, so
 dictation works through any proxy that serves the page, and the server pays
 nothing per word.
 
+**The help pages are the shipped contract for how aegis is used, checked
+against the code both ways.** They are Markdown in `src/aegis/help/`, inside the
+package, so a release carries the help for exactly the code it runs; the server
+indexes them at boot (`helppages.py`) and agents reach them with `help_search`
+and `help_read`. Agents write them by hand, in the change that changes the
+feature, because a page has to say when and why to use a tool, which no
+docstring dump does. `tests/test_help_pages.py` and `.rift.yaml` hold them to the
+code's names: every agent tool, slash command, CLI subcommand and config key is
+on a page, and every one a page names exists. Neither reads the prose, so a
+wrong sentence about a real tool is for a person to catch on the smoke tour.
+
 **Performance is measured on every PR and never gates.** `scripts/bench.py`
 replays a recorded transcript through the fake harness in
 `tests/fake_claude.py`, and CI compares the PR's base and head on the same

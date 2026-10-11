@@ -27,9 +27,10 @@ A change is done when:
 3. `make bench` has run and its table is in the PR body. CI reports a regression
    as a warning and never fails on one, so a reader has to look at it;
 4. DESIGN.md describes the code as it now is;
-5. a user-visible change has a `changelog.d/` fragment, and a change to how the
-   pieces fit has its spec under `docs/superpowers/specs/`, with a status that
-   matches the code;
+5. a user-visible change has a `changelog.d/` fragment and updates or adds its
+   help page under `src/aegis/help/`, and a change to how the pieces fit has
+   its spec under `docs/superpowers/specs/`, with a status that matches the
+   code;
 6. Alex has smoke-tested that version himself. When a PR is ready, and before
    every release, offer him the guided smoke test: the build under test runs
    through `bin/aegis-dev` beside his own aegis, and an agent inside it walks
@@ -53,6 +54,7 @@ would make it false.
 | `DESIGN.md` | the process model and the rules that span modules | the architecture changes |
 | module docstrings | the rules of one module, with their reasons | that module changes |
 | `docs/superpowers/` | the vision and one spec and plan per slice: why each part is shaped the way it is | a feature is designed |
+| `src/aegis/help/` | how to use aegis, for agents and people, shipped in the package | a tool, command, CLI subcommand or config key changes |
 | `changelog.d/*.md` | one release note per change, awaiting the next release | any user-visible change |
 | `CHANGELOG.md` | what shipped | a release collates the fragments |
 | GitHub issues | what is still to do: defects, features, ideas (`idea` marks a direction not yet decided) | work is found, decided or lands |
@@ -101,8 +103,9 @@ iterate on; `make test-slow` runs the tests both skip, browser tests included.
 `make know-how` prints the procedure docs, one `when:` line each; read the ones
 that match the task. Use `uv`, never pip. Python 3.13 or newer.
 
-`lint-docs` is the one gate CI cannot run: `rift` is private and not on PyPI.
-Run it locally before opening the PR.
+`make lint-docs` runs rift on `.rift.yaml`, the help pages against the code
+among its rules. CI runs the same rift, pinned to a tag, so a doc rule fails a
+PR like a test does.
 
 Release notes are **fragments**, not edits to `CHANGELOG.md`: drop a file in
 `changelog.d/` named `<slug>.<category>.md` and a release collates them

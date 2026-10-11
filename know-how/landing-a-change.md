@@ -80,7 +80,7 @@ Do not edit `CHANGELOG.md` directly. The releaser collates.
 make test          # the fast lane
 make check         # every gate, on the fast lane
 make test-slow     # what the fast lane skips: every browser test, restarts
-rift check         # CI cannot run this one — rift is private, not on PyPI
+make lint-docs     # rift, the help pages among its rules; CI runs it too
 ```
 
 `make test` green is not the same as CI green. Reproduce the runner:
