@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 JS = Path(__file__).parents[1] / "src" / "aegis" / "client" / "js"
+VENDOR = JS.parent / "vendor" / "hljs"
 
 
 def test_the_client_never_opens_a_native_dialog():
@@ -48,3 +49,16 @@ def test_the_client_draws_no_native_select():
         if re.search(r'<select\b|<datalist\b|\("select"|\("datalist"', line)
     ]
     assert found == []
+
+
+def test_the_loader_lists_exactly_the_vendored_languages():
+    """js/highlight.js imports a language by name from vendor/hljs/languages;
+    a name without a file fails at runtime, a file without a name is dead
+    weight in the wheel (#323)."""
+    src = (JS / "highlight.js").read_text()
+    listed = re.search(r"export const LANGS = \[([^\]]*)\]", src)
+    assert listed, "LANGS is a one-line array literal"
+    names = set(re.findall(r'"([a-z0-9+-]+)"', listed.group(1)))
+    files = {p.name.removesuffix(".min.js") for p in (VENDOR / "languages").glob("*.min.js")}
+    assert names == files
+    assert (VENDOR / "core.min.js").is_file()
