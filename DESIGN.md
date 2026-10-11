@@ -245,7 +245,10 @@ spawning on a linked server are for admins. Each operation declares `admin` or
 the param that names the session it changes, and `ops.Registry.call` checks both
 in one place. An agent acts as its session's owner with the owner's current role,
 and a link acts as the token it presented. A token revoked while its socket is
-open is refused at its next message.
+open is refused at its next message, and reads nothing more. Every harness runs as
+the server's Linux user, so a member's agent with shell access can read the admin
+token: roles stop accidents between colleagues, not a hostile member, until
+sessions run as separate users.
 Closing is the one exception, and it asks for a second thought: `session_close`
 closes at once only a session the agent spawned, or a worker whose task it
 enqueued, whose attention is done. Anything else, the caller's own session
