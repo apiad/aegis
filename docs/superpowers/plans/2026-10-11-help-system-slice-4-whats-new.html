@@ -392,7 +392,7 @@ def test_the_wheel_carries_the_changelog(tmp_path):
         shipped = z.read("aegis/CHANGELOG.md").decode()
     assert shipped == (REPO / "CHANGELOG.md").read_text(encoding="utf-8")</script></li>
 <li>Run them and watch them fail on the missing module.
-<script type="text/plain" data-lang="bash">cd /home/apiad/Workspace/repos/aegis/.claude/worktrees/help-system
+<script type="text/plain" data-lang="bash">cd "$(git rev-parse --show-toplevel)"
 uv run pytest -q tests/test_changelog_read.py
 echo "rc=$?"</script>
 Expected: collection error, <code>ModuleNotFoundError: No module named 'aegis.changelog_read'</code>, rc 2.</li>
@@ -512,7 +512,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"</script></li>
 <h4>steps</h4>
 <ol class="steps">
 <li>Bring in what <code>main</code> has merged since the branch started, so its fragments are covered too. Merge rather than rebase: the branch may already be pushed, and force-pushing is not allowed.
-<script type="text/plain" data-lang="bash">cd /home/apiad/Workspace/repos/aegis/.claude/worktrees/help-system
+<script type="text/plain" data-lang="bash">cd "$(git rev-parse --show-toplevel)"
 git fetch origin
 git merge --no-edit origin/main
 echo "rc=$?"
@@ -618,7 +618,7 @@ If <code>327-latest-recap-unfolded.changed.md</code> is present, add to <code>tr
 
 The fold button in the navigator above the message box, z in the transcript or Alt+Z anywhere steps through three levels. The first shows everything. The second folds each stretch of tool calls, thinking and system notes between two messages into one line that says what it holds. The third leaves only your messages and the agent's replies, and the latest recap stays shown there; older recaps fold with the rest of the work.</script></li>
 <li>Append the help lines, one per fragment, from the table. Edit the list below to the fragments step 1 printed, with the 339 slugs slices 1 to 3 used; a fragment that does not end in a newline gets one first.
-<script type="text/plain" data-lang="bash">cd /home/apiad/Workspace/repos/aegis/.claude/worktrees/help-system
+<script type="text/plain" data-lang="bash">cd "$(git rev-parse --show-toplevel)"
 while read -r file ref; do
   f="changelog.d/$file"
   [ -f "$f" ] || { echo "missing: $f"; continue; }
@@ -753,7 +753,7 @@ def test_a_help_line_alone_is_refused(tmp_path):
     with pytest.raises(FragmentError, match="7-a.added.md"):
         read_fragments(tmp_path)</script></li>
 <li>Run them and watch them fail.
-<script type="text/plain" data-lang="bash">cd /home/apiad/Workspace/repos/aegis/.claude/worktrees/help-system
+<script type="text/plain" data-lang="bash">cd "$(git rev-parse --show-toplevel)"
 uv run pytest -q tests/test_changelog.py
 echo "rc=$?"</script>
 Expected: the new tests fail (<code>Fragment</code> has no <code>help</code>; <code>check</code> returns 0), the old ones pass, rc 1.</li>
@@ -971,7 +971,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"</script></li>
 <h4>steps</h4>
 <ol class="steps">
 <li>Read what slice 3 landed, and confirm the names this task uses.
-<script type="text/plain" data-lang="bash">cd /home/apiad/Workspace/repos/aegis/.claude/worktrees/help-system
+<script type="text/plain" data-lang="bash">cd "$(git rev-parse --show-toplevel)"
 grep -n 'def record\|state = HelpState\|class GuideParams\|not_yet\|whats_new\|installed()\|def tutorial_prompt' \
   src/aegis/help_ops.py src/aegis/helpstate.py</script>
 Expected: <code>record</code>, <code>state</code>, <code>GuideParams</code>, <code>installed</code> and a <code>not_yet</code> raise for <code>whats_new</code> in <code>help.guide</code>.</li>
@@ -1211,7 +1211,7 @@ async def test_typed_again_after_a_tour_it_repeats_the_installed_release(start):
     assert toured_in(md) == [RELEASES[0]]</script>
 <code>tests/test_commands.py</code> needs no change: <code>whats-new</code> goes after <code>tutorial</code>, which slice 3 put after <code>help</code>, so the first nine rows that <code>test_commands_list_puts_aegis_first_and_hides_what_it_shadows</code> pins stay as they are.</li>
 <li>Run them and watch them fail.
-<script type="text/plain" data-lang="bash">cd /home/apiad/Workspace/repos/aegis/.claude/worktrees/help-system
+<script type="text/plain" data-lang="bash">cd "$(git rev-parse --show-toplevel)"
 uv run pytest -q tests/test_whats_new.py -k typed
 echo "rc=$?"</script>
 Expected: both fail with <code>unknown_command</code> for <code>/whats-new</code>; rc 1.</li>
@@ -1290,7 +1290,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"</script></li>
 <h4>steps</h4>
 <ol class="steps">
 <li>Read the hint code slice 3 landed, and confirm the names above.
-<script type="text/plain" data-lang="bash">cd /home/apiad/Workspace/repos/aegis/.claude/worktrees/help-system
+<script type="text/plain" data-lang="bash">cd "$(git rev-parse --show-toplevel)"
 grep -n 'sp-hints\|hint-tutorial\|helpState\|function loadHints\|function drawHints\|function startGuide\|function guideFromComposer\|startGuide(' \
   src/aegis/client/index.html src/aegis/client/js/app.js src/aegis/client/js/help.js</script></li>
 <li>Write the browser tests: <code>tests/test_whats_new_browser.py</code>. The seed leaves the tutorial unrun and the last tour two releases back.
@@ -1516,7 +1516,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"</script></li>
 <h4>steps</h4>
 <ol class="steps">
 <li>Take in anything <code>main</code> merged since Task 2. A new feature fragment without a help line now fails <code>changelog-check</code>; give it one as Task 2 did.
-<script type="text/plain" data-lang="bash">cd /home/apiad/Workspace/repos/aegis/.claude/worktrees/help-system
+<script type="text/plain" data-lang="bash">cd "$(git rev-parse --show-toplevel)"
 git fetch origin
 git merge --no-edit origin/main
 echo "rc=$?"
