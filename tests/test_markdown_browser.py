@@ -16,6 +16,7 @@ from .test_browser import (  # noqa: F401
     spawn,
     turns_done,
 )
+from .test_viewer_browser import send
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
@@ -288,3 +289,39 @@ def test_scrolling_up_through_tables_and_fences_keeps_the_readers_place(
         assert page.errors == []
     finally:
         s.stop()
+
+
+def test_a_language_file_that_fails_to_load_leaves_code_plain_and_is_retried(
+    server,  # noqa: F811
+    make_page,
+):
+    python = "**/vendor/hljs/languages/python.min.js"
+    (server.root / "code.py").write_text("def f():\n    return 1\n")
+    page = make_page(1280)
+    page.route(python, lambda r: r.fulfill(status=404))
+    page.goto(server.url)
+    spawn(page, md("```python\ndef f():\n    return 1\n```"))
+    fence = page.locator(".row.prose .fence").last
+    page.wait_for_function(
+        "() => document.querySelector('.row.prose .fence')?.dataset.painted"
+    )
+    page.wait_for_timeout(300)
+    assert fence.locator("[class^=hljs-]").count() == 0
+    assert "return 1" in fence.inner_text()
+
+    # The viewer draws the file plain instead of waiting on its colours.
+    send(page, 2, ["code.py"])
+    page.click(".row.file .fbar .view")
+    page.locator("#viewer .code .src").wait_for()
+    assert "return 1" in page.locator("#viewer .code .src").inner_text()
+    assert page.locator("#viewer .vnote").count() == 0, "no 'loading…' left"
+    page.keyboard.press("Escape")
+
+    # Once the file can load, the next block asks again and is coloured.
+    page.unroute(python)
+    page.fill("#input", md("```python\ndef g():\n    return 2\n```"))
+    page.press("#input", "Enter")
+    turns_done(page, 3)
+    page.locator(".row.prose .fence").last.locator(".hljs-keyword").first.wait_for()
+    # Only the browser's own note of the 404s, nothing thrown.
+    assert [e for e in page.errors if "404" not in e] == []

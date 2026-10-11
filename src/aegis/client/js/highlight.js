@@ -55,8 +55,27 @@ export function isPlain(label) {
   return PLAIN.has((label || "").toLowerCase());
 }
 
+// A failed import is forgotten, so the next block that needs it asks again
+// (the server restarting under an open page, a phone losing the network). The
+// browser keeps a module URL that failed failed for the page's life, so a
+// retry asks under a new one.
+const failures = new Map(); // file -> times it failed to load
+function vendored(file) {
+  const n = failures.get(file) || 0;
+  return import(`../vendor/hljs/${file}${n ? `?retry=${n}` : ""}`).catch((err) => {
+    failures.set(file, n + 1);
+    throw err;
+  });
+}
+
 function hljs() {
-  core ??= import("../vendor/hljs/core.min.js").then((m) => m.default);
+  core ??= vendored("core.min.js").then(
+    (m) => m.default,
+    (err) => {
+      core = null;
+      throw err;
+    },
+  );
   return core;
 }
 
@@ -76,7 +95,14 @@ async function load(name) {
   }
   for (const n of need) {
     if (!loaded.has(n)) {
-      loaded.set(n, import(`../vendor/hljs/languages/${n}.min.js`).then((m) => lib.registerLanguage(n, m.default)));
+      const p = vendored(`languages/${n}.min.js`).then(
+        (m) => lib.registerLanguage(n, m.default),
+        (err) => {
+          if (loaded.get(n) === p) loaded.delete(n);
+          throw err;
+        },
+      );
+      loaded.set(n, p);
     }
   }
   await Promise.all([...need].map((n) => loaded.get(n)));
@@ -92,7 +118,8 @@ export function cachedColour(text, lang) {
 }
 
 // {html, lang, guessed} for text in lang (a vendored name), or a guess when
-// lang is null; null when it stays plain.
+// lang is null; null when it stays plain. Rejects, caching nothing, when a
+// file it needs failed to load.
 export async function colour(text, lang) {
   const k = key(text, lang);
   if (cache.has(k)) return cache.get(k);
@@ -156,7 +183,7 @@ function apply(block, got) {
 
 // Colour one fenced block (div.fence, from entries.fenceHtml) in place. A block
 // still open (its closing line has not arrived) stays plain; the render after
-// it closes is a new block.
+// it closes is a new block. A block whose files fail to load stays plain.
 export async function paint(block) {
   if (block.dataset.painted || block.dataset.open !== undefined) return;
   block.dataset.painted = "1";
@@ -164,7 +191,7 @@ export async function paint(block) {
   if (isPlain(label)) return;
   const name = langName(label);
   if (label && !name) return; // labelled but not vendored: plain, the label as written
-  apply(block, await colour(block.querySelector("pre > code").textContent, name));
+  apply(block, await colour(block.querySelector("pre > code").textContent, name).catch(() => null));
 }
 
 let root = null;

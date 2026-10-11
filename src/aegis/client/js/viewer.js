@@ -189,7 +189,7 @@ export class Viewer {
       const src = el("pre", "src");
       const code = el("code", "hljs");
       const lang = langOfPath(f.name);
-      const hl = lang ? await colour(text, lang) : null;
+      const hl = lang ? await colour(text, lang).catch(() => null) : null; // plain if it fails
       if (draw !== this.drawn) return;
       if (hl) code.innerHTML = hl.html;
       else code.textContent = text;
