@@ -64,3 +64,39 @@ def test_the_loader_lists_exactly_the_vendored_languages():
     }
     assert names == files
     assert (VENDOR / "core.min.js").is_file()
+
+
+def test_the_loader_registers_what_a_grammar_embeds():
+    """highlight.js colours a grammar's subLanguage only when it is registered,
+    and plain text otherwise, with no error; EMBEDS in js/highlight.js names
+    every vendored one a vendored grammar uses, and GUESS only vendored names
+    (#323)."""
+    src = (JS / "highlight.js").read_text()
+    langs = set(
+        re.findall(
+            r'"([a-z0-9+-]+)"',
+            re.search(r"export const LANGS = \[([^\]]*)\]", src).group(1),
+        )
+    )
+    listed = re.search(r"const EMBEDS = \{(.*)\};", src)
+    assert listed, "EMBEDS is a one-line object literal"
+    embeds = {
+        k.strip('"'): set(re.findall(r'"([a-z0-9+-]+)"', v))
+        for k, v in re.findall(
+            r'("[a-z0-9+-]+"|[a-z0-9]+): \[([^\]]*)\]', listed.group(1)
+        )
+    }
+    missing = []
+    for p in sorted((VENDOR / "languages").glob("*.min.js")):
+        name = p.name.removesuffix(".min.js")
+        used = set()
+        for one, many in re.findall(
+            r'subLanguage:(?:"([^"]+)"|\[([^\]]*)\])', p.read_text()
+        ):
+            used |= {one} if one else set(re.findall(r'"([^"]+)"', many))
+        missing += [
+            f"{name}: {u}" for u in sorted((used & langs) - embeds.get(name, set()))
+        ]
+    assert missing == []
+    guess = re.search(r"const GUESS = \[([^\]]*)\]", src)
+    assert set(re.findall(r'"([a-z0-9+-]+)"', guess.group(1))) <= langs

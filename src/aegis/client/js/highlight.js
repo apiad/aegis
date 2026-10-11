@@ -17,8 +17,10 @@ const ALIAS = {
   h: "c", hpp: "cpp", cc: "cpp", "c++": "cpp", kt: "kotlin", rb: "ruby", docker: "dockerfile",
   make: "makefile", mk: "makefile", patch: "diff", jsonc: "json", jsonl: "json",
   cs: "csharp", "c#": "csharp", gql: "graphql", objc: "objectivec", pl: "perl", pm: "perl",
-  vb: "vbnet", wat: "wasm", pycon: "python-repl",
+  vb: "vbnet", wat: "wasm", pycon: "python-repl", mm: "objectivec", "obj-c": "objectivec",
 };
+// Vendored grammars a grammar colours inside itself (subLanguage), by grammar.
+const EMBEDS = { dockerfile: ["bash"], javascript: ["css", "graphql", "xml"], markdown: ["xml"], "php-template": ["php", "xml"], "python-repl": ["python"], typescript: ["css", "graphql", "xml"], xml: ["css", "javascript"], yaml: ["ruby"] };
 // Labels that mean "do not colour, do not guess".
 const PLAIN = new Set(["text", "plain", "plaintext", "txt", "output", "log"]);
 // What an unlabelled block may be guessed as, besides what is already loaded.
@@ -55,12 +57,26 @@ function hljs() {
   return core;
 }
 
+// Registers name and every grammar it embeds, each once; xml and javascript
+// embed each other, so the set is closed with a loop, not by recursion.
 async function load(name) {
   const lib = await hljs();
-  if (!loaded.has(name)) {
-    loaded.set(name, import(`../vendor/hljs/languages/${name}.min.js`).then((m) => lib.registerLanguage(name, m.default)));
+  const need = new Set([name]);
+  const stack = [name];
+  while (stack.length) {
+    for (const e of EMBEDS[stack.pop()] || []) {
+      if (!need.has(e)) {
+        need.add(e);
+        stack.push(e);
+      }
+    }
   }
-  await loaded.get(name);
+  for (const n of need) {
+    if (!loaded.has(n)) {
+      loaded.set(n, import(`../vendor/hljs/languages/${n}.min.js`).then((m) => lib.registerLanguage(n, m.default)));
+    }
+  }
+  await Promise.all([...need].map((n) => loaded.get(n)));
   return lib;
 }
 
