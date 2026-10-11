@@ -8,7 +8,7 @@
 // that is the only HTML from here that reaches innerHTML.
 
 // Every vendored language, by the name of its file (tests/test_client_rules.py).
-export const LANGS = ["bash", "c", "cpp", "css", "diff", "dockerfile", "go", "ini", "java", "javascript", "json", "kotlin", "lua", "makefile", "markdown", "nginx", "php", "python", "ruby", "rust", "sql", "swift", "typescript", "xml", "yaml"];
+export const LANGS = ["bash", "c", "cpp", "csharp", "css", "diff", "dockerfile", "go", "graphql", "ini", "java", "javascript", "json", "kotlin", "less", "lua", "makefile", "markdown", "nginx", "objectivec", "perl", "php", "php-template", "python", "python-repl", "r", "ruby", "rust", "scss", "sql", "swift", "typescript", "vbnet", "wasm", "xml", "yaml"];
 // Labels and extensions agents write, by the vendored name they mean.
 const ALIAS = {
   sh: "bash", shell: "bash", zsh: "bash", console: "bash", py: "python", pyi: "python",
@@ -16,6 +16,8 @@ const ALIAS = {
   yml: "yaml", toml: "ini", cfg: "ini", html: "xml", svg: "xml", md: "markdown", rs: "rust", golang: "go",
   h: "c", hpp: "cpp", cc: "cpp", "c++": "cpp", kt: "kotlin", rb: "ruby", docker: "dockerfile",
   make: "makefile", mk: "makefile", patch: "diff", jsonc: "json", jsonl: "json",
+  cs: "csharp", "c#": "csharp", gql: "graphql", objc: "objectivec", pl: "perl", pm: "perl",
+  vb: "vbnet", wat: "wasm", pycon: "python-repl",
 };
 // Labels that mean "do not colour, do not guess".
 const PLAIN = new Set(["text", "plain", "plaintext", "txt", "output", "log"]);
