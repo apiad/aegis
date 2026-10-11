@@ -29,25 +29,31 @@ An agent starts a session with `session_spawn`, and a person can type
 
 ## Permission
 
-Permission says what the agent may do without asking, from least to most:
+Permission says what the agent may do, from least to most. aegis has no
+approval prompt, so what a level does not allow is refused, not asked:
 
 | permission | Claude Code runs in | in short |
 |---|---|---|
 | read | plan mode | reads and plans; changes nothing |
-| write | accept-edits mode | edits files; asks before running commands |
+| write | accept-edits mode | edits files; a command that needs approval is refused |
 | auto | auto mode | edits, and runs the commands Claude Code's checks allow |
 | full | bypass-permissions mode | runs anything without asking |
 
 OpenCode and Codex map the same four levels onto their own rules. A session
-with read permission can still call aegis's reading tools (its plan, its
-card, `session_list`, `peer_read`, `help_search`) and nothing that acts. An
-agent can start sessions only at its own permission or below. `/permission`
-changes a live session's permission, and the change applies at once.
+with read permission can still call aegis's tools that read or report (its
+plan, its card, `session_list`, `peer_read`, `help_search`, `journal_note`,
+`file_send`, `monitor_sessions` and the like), but none that starts, messages
+or closes a session, enqueues, cancels or resumes a task, arms a monitor, or
+works with artifacts. An agent can start sessions only at its own permission
+or below. `/permission` changes a live session's permission from its next
+turn, and a stopped session's when it resumes.
 
 ## Steer a running session
 
-Type in the session's box and press Enter. A message sent while the agent
-works is held and delivered when its turn ends. Esc interrupts the turn.
+Type in the session's box and press Enter. A message you send while the
+agent works reaches it during the turn: Claude Code reads it at its next tool
+call. Messages from other sessions and from aegis are held until the turn
+ends. Esc interrupts the turn.
 `/model`, `/effort` and `/permission` switch those for this session; clicking
 the chips under the box does the same.
 
@@ -63,16 +69,18 @@ the session panel (Alt+B) to edit it, or type `/rename <handle>` or
 Two calls keep the person informed without reading the transcript:
 
 - `plan_update` sends the whole plan each time, each item pending, doing or
-  done. It shows in the session panel and on the session's card in the
-  Fleet, with the time each item took.
+  done. It shows in the session panel, with the time each item took, and on
+  the session's card in the Fleet.
 - `turn_end` labels the turn the agent hands back: needs_you when the
   message asks something, review when it gives something to read, done when
   it reports finished work, with a one-line summary and up to three replies
   the person can click to answer.
 
-The mark on the tab and the card comes from these. A session that drifts gets
-one nudge from aegis: when its plan has gone stale after a stretch of work, or
-when a turn ended without `turn_end` and nothing explains the silence.
+The mark on the tab and the card comes from `turn_end`, except working,
+waiting and error, which aegis sees for itself; a turn with no `turn_end`
+reads as done. A session that drifts gets one nudge from aegis: when its plan
+has gone stale after a stretch of work, or when a turn ended without
+`turn_end` and nothing explains the silence.
 
 ## Stop, close and reopen
 
@@ -82,7 +90,7 @@ when a turn ended without `turn_end` and nothing explains the silence.
   archives the session, and its tab goes away in every browser. A session
   that is not done asks first.
 - The archive is the list at the bottom of the Fleet. Filter it by title,
-  handle or directory; Read opens a transcript without starting anything, and
+  handle, directory or agent; Read opens a transcript without starting anything, and
   Reopen gives the session a tab again, stopped, ready for the next message.
 
 ## The journal, quota and the rest
