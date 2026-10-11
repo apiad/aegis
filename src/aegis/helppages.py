@@ -200,9 +200,11 @@ class Index:
     def read(self, page: str, section: str | None = None) -> str:
         """A page's Markdown under its title, or one section under its heading.
         ``page`` may be a hit's ref (``monitors#wait-on-a-process``), and
-        ``section`` a slug or the heading itself."""
-        if section is None and "#" in page:
-            page, section = page.split("#", 1)
+        ``section`` a slug or the heading itself; given both, ``section``
+        wins."""
+        if "#" in page:
+            page, ref = page.split("#", 1)
+            section = section or ref
         p = self.pages.get(page)
         if p is None:
             near = difflib.get_close_matches(page, list(self.pages), n=3, cutoff=0)

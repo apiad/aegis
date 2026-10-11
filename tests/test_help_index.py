@@ -110,6 +110,7 @@ def test_read_returns_a_page_a_section_or_a_ref():
     assert "monitor_sessions" not in one
     assert index.read("monitors#wait-on-a-process") == one
     assert index.read("monitors", "Wait on a process") == one
+    assert index.read("monitors#wait-on-other-sessions", "wait-on-a-process") == one
 
 
 def test_an_unknown_page_names_the_three_closest():
