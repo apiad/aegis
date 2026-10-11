@@ -247,7 +247,7 @@ pre.src .c{color:var(--faint)} pre.src .k{color:var(--accent)} pre.src .s{color:
 <main>
 <h1>Transcript Markdown: tables that fit a phone, highlighted code, diffs side by side</h1>
 <div class="meta"><span>docs/superpowers/specs/2026-10-11-transcript-markdown-design.html</span><span>·</span><span>proposed</span><span>·</span><a href="https://github.com/apiad/aegis/issues/323">#323</a></div>
-<p class="lede">The transcript draws Markdown well enough on a desktop and badly on a phone, and it highlights no code at all. This spec redraws every Markdown body (the person's messages included), highlights code in replies and in tool rows, shows an edit side by side when the row is wide and as one compact column when it is not, and turns a file path in a reply into a link that opens the file. A phone pays for none of it until it opens a row or meets a language it has not loaded.</p>
+<p class="lede">The transcript draws Markdown well enough on a desktop and badly on a phone, and it highlights no code at all. This spec redraws every Markdown body (the person's messages included), highlights code in replies and in tool rows, shows an edit side by side when the row is wide and as one compact column when it is not, and turns a file path in a reply into a link that opens the file in the viewer at the line it names. A phone pays for none of it until it opens a row or meets a language it has not loaded.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
 <div class="trio">
@@ -261,13 +261,13 @@ pre.src .c{color:var(--faint)} pre.src .k{color:var(--accent)} pre.src .s{color:
   </div>
   <div class="card">
     <h4>Diffs and file links</h4>
-    <p>An Edit carries hunks with context and line numbers, drawn side by side or unified from the same bytes, with the changed words marked. A path in a reply opens that file under the message, scrolled to the line it names.</p>
+    <p>An Edit carries hunks with context and line numbers, drawn side by side or unified from the same bytes, with the changed words marked. A path in a reply opens that file in the viewer, scrolled to the line it names.</p>
   </div>
 </div>
 <div class="stats">
   <div class="stat"><div class="v">40%</div><div class="k">of 1,696 agent text blocks hold inline code; 1% hold a table</div></div>
   <div class="stat"><div class="v">4 = 4</div><div class="k">highlight.js's score for bash and for python on a typical unlabeled shell fence</div></div>
-  <div class="stat"><div class="v">~30 KB</div><div class="k">highlighter core plus bash, python, json, yaml and diff, against 129 KB for the full bundle</div></div>
+  <div class="stat"><div class="v">~30 KB</div><div class="k">highlighter core plus bash, python, json, yaml and diff, against the 129 KB bundle the viewer loads today</div></div>
   <div class="stat"><div class="v">638 B</div><div class="k">the sample edit's hunks on the wire; both texts would be 1,283 B</div></div>
 </div>
 
@@ -278,9 +278,10 @@ pre.src .c{color:var(--faint)} pre.src .k{color:var(--accent)} pre.src .s{color:
 <tbody>
 <tr><td>What gets highlighted</td><td>Everything: fences in replies, the person's messages, tool arguments, file views and diffs</td><td class="why"><span class="who">maintainer</span> Code in a tool row is most of the code a person reads in a transcript.</td></tr>
 <tr><td>The person's messages</td><td>Markdown, with typed line breaks kept (<code>breaks: true</code>) and raw HTML still off</td><td class="why"><span class="who">maintainer</span> A message is typed in a textarea, where a single newline means a new line.</td></tr>
-<tr><td>Highlighter</td><td>highlight.js 11.12, vendored as its ES core plus one file per language</td><td class="why"><span class="who">maintainer</span> The only common highlighter that guesses a language, which unlabeled fences need. It emits CSS classes, so a theme is eight variables. Shiki colours better but costs several hundred KB, async rendering and its own theme format.</td></tr>
+<tr><td>Highlighter</td><td>highlight.js 11.12, which the viewer (#313) already vendors as its full 129 KB bundle</td><td class="why"><span class="who">maintainer</span> The only common highlighter that guesses a language, which unlabeled fences need. It emits CSS classes, so a theme is eight variables. Shiki colours better but costs several hundred KB, async rendering and its own theme format.</td></tr>
+<tr><td>How it is vendored</td><td>The ES core plus one file per language, replacing <code>vendor/highlight.mjs</code>. The viewer moves onto the same loader</td><td class="why"><span class="who">maintainer</span> A phone's first load drops from 129 KB to about 30 KB in the common case. The loader is needed anyway for highlighting only what scrolls near.</td></tr>
 <tr><td>Table style</td><td>Ledger: horizontal rules only, first column pinned, scroll with a fade. One card per row when the row is under 560 px wide</td><td class="why"><span class="who">maintainer</span> Chosen from the mockup, against a framed grid and today's look.</td></tr>
-<tr><td>Code palette</td><td>Quiet, tuned per theme</td><td class="why"><span class="who">maintainer</span> Chosen from the mockup, against a vivid one.</td></tr>
+<tr><td>Code palette</td><td>Quiet, tuned per theme. It replaces the token rules #313 added (<code>base.css:532-540</code>), so the viewer uses it too</td><td class="why"><span class="who">maintainer</span> Chosen from the mockup, against a vivid one. One palette for the transcript and the viewer.</td></tr>
 <tr><td>Copy buttons</td><td>No button that copies a whole agent reply. Each code block and each table in it has its own</td><td class="why"><span class="who">maintainer</span> A reply is rarely copied whole; the code or the table inside it is. Selecting text still copies any part of a reply.</td></tr>
 <tr><td>Copy elsewhere</td><td>Inbox rows lose the whole-message button too; the person's own message keeps it; the <code>c</code> key still copies a selected reply whole</td><td class="why"><span class="who q">proposed</span> An inbox row is Markdown from another agent, like a reply. The person's message is the one text worth sending again whole. The key costs no space on screen.</td></tr>
 <tr><td>What a table copies</td><td>Two formats at once: the table's Markdown as plain text, the rendered table as HTML</td><td class="why"><span class="who q">proposed</span> Pasted into a chat or an editor it stays a Markdown table; pasted into a spreadsheet or a document it lands as cells.</td></tr>
@@ -289,6 +290,7 @@ pre.src .c{color:var(--faint)} pre.src .k{color:var(--accent)} pre.src .s{color:
 <tr><td>How agents quote a file</td><td>Relative to the config root (where <code>.aegis.yaml</code> is), or absolute</td><td class="why"><span class="who">maintainer</span> A path relative to whichever repo the agent is in cannot be resolved by anyone else.</td></tr>
 <tr><td>Fence languages</td><td>The primer asks agents to label every fence</td><td class="why"><span class="who">maintainer</span> Guessing is a coin flip on short shell; a label costs the agent one word.</td></tr>
 <tr><td>When a path's file is checked</td><td>At click, not when the reply is folded. A path-shaped span is a link; a click that resolves to no file answers inline</td><td class="why"><span class="who q">proposed</span> The design reviewed in chat checked existence while folding. The fold is pure: it rebuilds archives and <code>meta.py</code> from records without a filesystem, and a stat there would make an archive's links depend on the machine that reads it. This replaces that point.</td></tr>
+<tr><td>Where a path link opens</td><td>In the viewer, scrolled to the line and the line marked</td><td class="why"><span class="who">maintainer</span> The viewer already draws a whole file with numbered, highlighted lines. The file is fetched only on that click.</td></tr>
 <tr><td>Ligatures in code</td><td>Off (<code>font-variant-ligatures: none</code>)</td><td class="why"><span class="who q">proposed</span> JetBrains Mono draws <code>-&gt;</code> as an arrow and <code>!=</code> as ≠. Code should show what the agent typed.</td></tr>
 <tr><td>Diff size</td><td>Three lines of context, hunks capped at 8 KB like the output tail, the rest counted as elided</td><td class="why"><span class="who q">proposed</span> The same cap <code>output_tail</code> already uses. A large rewrite is better read through "Show the file".</td></tr>
 <tr><td>A Write</td><td>Drawn as the new file's code, not as a diff of added lines</td><td class="why"><span class="who q">proposed</span> A diff in which every line is green carries nothing a file view does not.</td></tr>
@@ -329,7 +331,7 @@ pre.src .c{color:var(--faint)} pre.src .k{color:var(--accent)} pre.src .s{color:
     <rect x="200" y="160" width="400" height="80" rx="8" fill="#191814" stroke="#2a2721"/>
     <text x="212" y="182" fill="#f1ede2">file.peek (app.py), on a click</text>
     <text x="212" y="200" fill="#8a867b">entry + index → resolve: absolute, config root, session cwd</text>
-    <text x="212" y="218" fill="#8a867b">→ copy the file, a 40-line window around :line</text>
+    <text x="212" y="218" fill="#8a867b">→ copy the file, open it in the viewer at :line</text>
     <line x1="160" y1="55" x2="198" y2="55" stroke="#8a867b" marker-end="url(#ar)"/>
     <line x1="430" y1="65" x2="468" y2="65" stroke="#8a867b" marker-end="url(#ar)"/>
     <line x1="600" y1="65" x2="628" y2="65" stroke="#8a867b" marker-end="url(#ar)"/>
@@ -346,13 +348,15 @@ pre.src .c{color:var(--faint)} pre.src .k{color:var(--accent)} pre.src .s{color:
 <tr><td>client/js/entries.js</td><td><code>markdown()</code> gains the table wrapper, task lists, path spans and the fence renderer; <code>user</code> renders Markdown; <code>tool</code> draws code, file and diff views.</td></tr>
 <tr><td>client/js/copy.js</td><td>A <code>table</code> kind; <code>message</code> kept for the person's rows; <code>copyRow</code> confirms on the row itself when it has no button.</td></tr>
 <tr><td>client/js/highlight.js</td><td>New. The loader: which language files exist, load on first use, highlight a block, split highlighted HTML into lines.</td></tr>
+<tr><td>client/js/viewer.js</td><td>Its <code>highlighter()</code> and <code>languageOf()</code> give way to the loader; an item may carry a <code>line</code> to scroll to and mark.</td></tr>
 <tr><td>client/js/diff.js</td><td>New. Hunks to the split and unified layouts, word marks on paired lines.</td></tr>
-<tr><td>client/vendor/hljs/</td><td>New. <code>core.min.js</code>, about 25 language files and the licence.</td></tr>
-<tr><td>client/css/base.css</td><td>The <code>.md</code> rules rewritten, plus <code>.code</code>, <code>.lines</code>, <code>.diff</code>, the token classes.</td></tr>
+<tr><td>client/vendor/</td><td><code>highlight.mjs</code> removed; <code>hljs/core.min.js</code> and about 25 files in <code>hljs/languages/</code> added, from the same 11.12.0 release; the licence file stays.</td></tr>
+<tr><td>client/css/base.css</td><td>The <code>.md</code> rules rewritten, plus <code>.code</code>, <code>.lines</code>, <code>.diff</code>; the token rules read the <code>--h-*</code> variables.</td></tr>
 <tr><td>client/themes/*.css</td><td>Eight <code>--h-*</code> variables per theme.</td></tr>
 <tr><td>transcript/describe.py</td><td><code>tool_lang()</code>, <code>diff_hunks()</code> beside <code>diff_window()</code>, <code>inline_paths()</code>.</td></tr>
 <tr><td>transcript/entries.py, wire.py</td><td>The new detail fields; <code>hunks</code> joins the lazy list.</td></tr>
-<tr><td>app.py, files.py</td><td><code>file.peek</code> takes an optional path index; <code>excerpt()</code> takes a line to centre on.</td></tr>
+<tr><td>claude/stream.py</td><td><code>ToolOutput</code> keeps <code>tool_use_result.structuredPatch</code> as <code>patch</code>.</td></tr>
+<tr><td>app.py</td><td><code>file.peek</code> takes an optional path index into a reply's <code>detail.paths</code>.</td></tr>
 <tr><td>mcp.py</td><td>Two sentences in <code>PRIMER</code>; <code>primer()</code> gets the config root.</td></tr>
 </tbody>
 </table>
@@ -372,7 +376,7 @@ pre.src .c{color:var(--faint)} pre.src .k{color:var(--accent)} pre.src .s{color:
 <p>When the transcript column is under 560 px, a container query turns each row into a card: the first cell as its title, every other cell as label and value. The same markup serves both; nothing is re-rendered on rotation.</p>
 
 <h3 id="copying">Copying</h3>
-<p>An agent reply no longer ends with a button that copies all of it. The copy buttons sit on the chunks a person actually takes away: every code block, as today, and every table. They follow the rule the code button already has: hidden until the pointer is over the block or the row is selected, which is a tap on a phone.</p>
+<p>An agent reply no longer ends with a button that copies all of it. The copy buttons sit on the chunks a person actually takes away: every code block, as today, and every table. They follow the rule the code button already has: hidden until the pointer is over the block or the row is selected, and always shown at 60% opacity on a screen without hover (<code>base.css:175</code>).</p>
 <table class="tbl">
 <thead><tr><th>Chunk</th><th>Plain text on the clipboard</th><th>HTML on the clipboard</th></tr></thead>
 <tbody>
@@ -506,7 +510,7 @@ make test-slow &amp;&amp; <span class="hljs-built_in">echo</span> <span class="h
 
 <h2 id="highlight"><span class="n">05</span>Highlighting</h2>
 <h3 id="loader">The loader</h3>
-<p><code>client/js/highlight.js</code> owns highlight.js. It imports the 20 KB core on first use, never at boot. It knows the list of vendored language files and their aliases (<code>sh</code> and <code>shell</code> map to <code>bash</code>, <code>py</code> to <code>python</code>, <code>ts</code> to <code>typescript</code>), and loads a language file the first time a block in that language is about to be drawn. An <code>IntersectionObserver</code> with a 600 px margin decides "about to be drawn", so a 5,000-row transcript highlights only what scrolls near.</p>
+<p><code>client/js/highlight.js</code> owns highlight.js, for the transcript and the viewer alike. It imports the 20 KB core on first use, never at boot. It knows the list of vendored language files and their aliases (<code>sh</code> and <code>shell</code> map to <code>bash</code>, <code>py</code> to <code>python</code>, <code>ts</code> to <code>typescript</code>), and loads a language file the first time a block in that language is about to be drawn. An <code>IntersectionObserver</code> with a 600 px margin decides "about to be drawn", so a 5,000-row transcript highlights only what scrolls near.</p>
 <table class="tbl">
 <thead><tr><th>Case</th><th>What the loader does</th></tr></thead>
 <tbody>
@@ -549,11 +553,11 @@ make test-slow &amp;&amp; <span class="hljs-built_in">echo</span> <span class="h
 <tr><td>Everything else</td><td>yaml (the <code>key: value</code> lines <code>format_tool_args</code> already writes)</td><td>plain</td></tr>
 </tbody>
 </table>
-<p>OpenCode's and Codex's tools map through their drivers' names for the same operations, the way <code>file_path()</code> and <code>edit_pair()</code> already do. A path with no known extension gets no language.</p>
+<p>The OpenCode and Codex parsers already name their tools as Claude does (Bash, Read, Write, Edit), so one table serves all three harnesses. A path with no known extension gets no language.</p>
 
 <h2 id="diffs"><span class="n">07</span>Diffs</h2>
 <h3 id="hunks">The hunks on the wire</h3>
-<p><code>describe.diff_hunks(old, new, first)</code> runs <code>difflib.SequenceMatcher</code> over the edit's two texts and keeps three lines of context around each change. Each hunk carries the old and new starting line numbers and its lines, each prefixed with a space, <code>-</code> or <code>+</code>. Claude Code records where an edit landed: 204 of the edits in 60 recent transcripts carry a <code>structuredPatch</code> with <code>oldStart</code> and <code>newStart</code> in the tool result's record. When the record has it, <code>first</code> comes from there; otherwise numbering starts at 1 and the hunk header says so. The hunks replace <code>detail.diff</code> and are lazy like it.</p>
+<p><code>describe.diff_hunks(old, new, first)</code> runs <code>difflib.SequenceMatcher</code> over the edit's two texts and keeps three lines of context around each change. Each hunk carries the old and new starting line numbers and its lines, each prefixed with a space, <code>-</code> or <code>+</code>. Claude Code sends the hunks itself: its stream's tool result carries <code>tool_use_result.structuredPatch</code>, a list of hunks with <code>oldStart</code>, <code>newStart</code> and lines prefixed the same way. aegis's own stores hold it on every recent Edit. The Claude parser keeps it on <code>ToolOutput</code>, and the fold uses it as is, capped. OpenCode and Codex get the <code>difflib</code> hunks, numbered from 1, with the hunk header saying so. The hunks replace <code>detail.diff</code> and are lazy like it.</p>
 <pre class="src">{"path": "src/aegis/quota/reader.py", "lang": "python", "elided": 0,
  "hunks": [{"a": 134, "b": 134, "lines": [
    "         self._cache: dict[str, tuple[float, Reading]] = {}",
@@ -592,7 +596,7 @@ E   assert 0.42 != 0.42
 <li>relative to the config root, the directory holding <code>.aegis.yaml</code>;</li>
 <li>relative to the session's cwd, which catches transcripts written before the rule and agents that ignore it.</li>
 </ol>
-<p>Nothing found answers <code>no_file</code> with the two directories it tried, shown inline under the message. A file found is copied as peek copies one and opens under the message in the file view of section 06. With a <code>:line</code>, <code>files.excerpt()</code> cuts its 40-line, 4 KB window around that line instead of from the top, and the view scrolls to it and marks it. Open and Download reach the whole file as they do on any file card.</p>
+<p>Nothing found answers <code>no_file</code> with the two directories it tried, shown inline under the message. A file found is copied as peek copies one, and the op returns its file record, the one a file card holds. The browser opens it in the viewer (#313) with the line from <code>:line</code>; the viewer scrolls to that line and marks it in the gutter and the text. The viewer fetches the whole file, up to its 2 MB cap, on that click only.</p>
 <p>A transcript from a linked server draws paths as plain code: the file would be on the other machine, and peek is not offered there today either.</p>
 
 <h2 id="prompt"><span class="n">09</span>What agents are told</h2>
@@ -605,9 +609,9 @@ and add :line when you point at a line.</pre>
 <h2 id="delivery"><span class="n">10</span>Delivery</h2>
 <p>Three PRs from <code>origin/main</code>, in this order, each through the maintainer's smoke test. This spec rides on the first.</p>
 <div class="steps">
-  <div class="step"><div class="n"></div><div><h4>Markdown and highlighting</h4><p>The renderer rules, ledger tables with phone cards, task lists, the person's messages as Markdown, copy buttons on code blocks and tables instead of on whole replies, the vendored highlighter and its loader, the three palettes, fence highlighting with the streaming rule, and the fence sentence in the primer.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>Markdown and highlighting</h4><p>The renderer rules, ledger tables with phone cards, task lists, the person's messages as Markdown, copy buttons on code blocks and tables instead of on whole replies, the per-language highlighter replacing the bundle, its loader with the viewer moved onto it, the three palettes, fence highlighting with the streaming rule, and the fence sentence in the primer.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>Tool rows and diffs</h4><p><code>tool_lang</code>, the file view with its gutter, <code>diff_hunks</code> replacing <code>diff_window</code>'s payload, the split and unified layouts, word marks, Write as a file view.</p></div></div>
-  <div class="step"><div class="n"></div><div><h4>Path links</h4><p><code>inline_paths</code>, <code>file.peek</code> by index with the three-step resolution, the excerpt around a line, the path sentence in the primer.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>Path links</h4><p><code>inline_paths</code>, <code>file.peek</code> by index with the three-step resolution, the viewer opened at a line, the path sentence in the primer.</p></div></div>
 </div>
 
 <h2 id="testing"><span class="n">11</span>Testing</h2>
@@ -626,7 +630,8 @@ and add :line when you point at a line.</pre>
 <li>Word marks on <code>key = window</code> → <code>key = cache_key(account_id, window)</code> cover exactly the added tokens.<span class="b">fast</span></li>
 <li><code>inline_paths</code> on a corpus of real replies: paths found, URLs and identifiers like <code>a.b</code> not.<span class="b">fast</span></li>
 <li>A path link click with the file under the config root opens it; under the cwd only, opens it; neither, answers <code>no_file</code>. A <code>file.peek</code> with an index past the list is refused.<span class="b">fast</span></li>
-<li><code>reader.py:142</code> opens a window holding line 142, scrolled to it.<span class="b">slow</span></li>
+<li>A link to <code>reader.py:142</code> opens the viewer with line 142 in view and marked.<span class="b">slow</span></li>
+<li>The viewer still colours a sent <code>.py</code> file, now through the loader, and fetches <code>core.min.js</code> and <code>python.min.js</code>, not <code>highlight.mjs</code>.<span class="b">slow</span></li>
 <li>The primer for a session names the server's config root.<span class="b">fast</span></li>
 <li><code>make bench</code> before and after, in each PR body: a 5,000-row transcript's first paint must not regress, since highlighting is off the boot path.<span class="b">bench</span></li>
 </ul>
