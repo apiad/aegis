@@ -1883,7 +1883,7 @@ EOF
 </details>
 
 <!-- ============================================================ TASK 6 -->
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">rift rules, rift in CI pinned to v0.9.0, and the Makefile fallback</span><span class="files">.rift.yaml · Makefile · .github/workflows/ci.yml</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Seven rules, as the spec's section "The checks" gives them, adjusted where the code forced it (see the departures): tools both ways over <code>src/aegis/**/*.py</code>, commands both ways with <code>\s*</code> after <code>Command(</code>, the CLI subcommands <code>cli.py</code> declares on the commands page, the first word of every <code>`aegis …`</code> a page names, and repository paths in help pages. Every rule was run with rift 0.9.0 through uvx on a scratch copy, passing, then broken once each and failing with the name it broke. CI already installs uv with pip (<code>.github/workflows/ci.yml:16</code>), which ships <code>uvx</code>.</p>
