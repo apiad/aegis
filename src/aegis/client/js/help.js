@@ -229,6 +229,9 @@ export class Help {
 
   async read(page, section) {
     const n = ++this.readSeq;
+    // The page takes the focus now, not once it has drawn: a person who went
+    // back to the search box meanwhile keeps typing there.
+    if (this.box.dataset.screen === "page") this.page.focus({ preventScroll: true });
     if (page !== this.shown) {
       let text;
       try {
@@ -264,6 +267,5 @@ export class Help {
     const head = section ? this.body.querySelector(`#h-${CSS.escape(section)}`) : null;
     if (head) head.scrollIntoView({ block: "start" });
     else this.page.scrollTop = 0;
-    if (this.box.dataset.screen === "page") this.page.focus({ preventScroll: true });
   }
 }

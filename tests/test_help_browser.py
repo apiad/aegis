@@ -262,3 +262,31 @@ def test_the_help_tab_is_two_screens_on_a_phone(long_named, browser):
     assert errors == []
     pg.close()
 
+
+def test_a_page_arriving_late_leaves_the_focus_in_the_search_box(server, page):
+    """The page takes the focus when it is asked for, not when its code
+    blocks have painted: a person who went back to the box meanwhile keeps
+    typing there."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    got = page.evaluate(
+        """async () => {
+          const { Help } = await import('/static/js/help.js');
+          let answer;
+          const conn = { call: () => new Promise((resolve) => { answer = resolve; }) };
+          const box = document.createElement('section');
+          document.body.append(box);
+          const h = new Help(conn, box, { go() {}, onKeys() {} });
+          h.pages = [{ id: 'a', title: 'A', kind: 'howto', when: 'a' }];
+          h.draw();
+          box.dataset.screen = 'page';
+          const read = h.read('a', '');
+          h.q.focus();
+          answer('## One\\n\\n```python\\nx = 1\\n```\\n');
+          await read;
+          const kept = document.activeElement === h.q;
+          box.remove();
+          return kept;
+        }"""
+    )
+    assert got is True
