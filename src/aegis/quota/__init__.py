@@ -153,6 +153,9 @@ class Quota:
         self._last: dict | None = None
         self._task: asyncio.Task | None = None
         self._nudges: set[asyncio.Task] = set()
+        # Called with the snapshot after every check, changed or not: the
+        # quota gate moves with the clock as pace does (quota_gate.py).
+        self.listeners: list[Callable[[dict], None]] = []
 
     def snapshot(self) -> dict:
         wall = self._wall()
@@ -169,6 +172,11 @@ class Quota:
         if snap != self._last:
             self._last = snap
             self._publish("quota", [{"set": snap}])
+        for listener in list(self.listeners):
+            try:
+                listener(snap)
+            except Exception:  # a listener must never stop the loop
+                log.exception("quota listener failed")
 
     async def tick(self) -> None:
         for p in self._providers:

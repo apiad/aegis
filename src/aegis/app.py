@@ -29,6 +29,7 @@ import base64
 import binascii
 import contextlib
 import getpass
+import time
 from pathlib import Path
 from typing import Literal
 
@@ -59,6 +60,7 @@ from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .quota import Quota
+from .quota_gate import KINDS, Gate, decide, pool_for
 from .recaps import Recaps
 from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
 from .tokens import TokenStore
@@ -298,6 +300,10 @@ class App:
         # The tokens that may use this server, the admin's first (tokens.py).
         self.principals = TokenStore(roots.state_root, self.user)
         self.links = Links(roots.state_root, server_name, self.user, self.publish)
+        # The last gate state seen per (member, pool), and the quota loop's
+        # word after each reading (quota_gate.py).
+        self._gates: dict[tuple[str, str], str] = {}
+        self.quota.listeners.append(self.on_quota)
         self.registry = Ops()
         self.registry.who = self.who
         self.registry.owner_of = self.owner_of
@@ -320,6 +326,26 @@ class App:
             name = self.owner_of(caller.log_id or "") or self.user
             return Principal(name, self.principals.role_of(name) or "member")
         return Principal(self.user, "admin")  # the server's own calls
+
+    def gate(self, owner: str, harness: str, model: str | None) -> Gate:
+        """Whether ``owner`` may start a harness on that pool now."""
+        return decide(
+            self.principals.policy_of(owner),
+            pool_for(harness, model),
+            self.quota.snapshot(),
+            time.time(),
+        )
+
+    def on_quota(self, snapshot: dict) -> None:
+        """After every reading: each member's gate on each pool with a gauge."""
+        now = time.time()
+        for row in self.principals.rows():
+            if row["role"] == "admin":
+                continue
+            policy = self.principals.policy_of(row["name"])
+            for pool in KINDS:
+                g = decide(policy, pool, snapshot, now)
+                self._gates[(row["name"], pool)] = g.state
 
     def owner_of(self, log_id: str) -> str | None:
         """A session's owner by log id, None for no such session. One from
