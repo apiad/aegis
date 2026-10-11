@@ -377,3 +377,32 @@ def test_a_hit_opened_is_the_row_marked_not_every_hit_on_its_page(server, page):
     assert on == current == [r for r in want if r in (want[0], want[0].split("#")[0])]
     assert sum(r.startswith(want[0].split("#")[0]) for r in want) > len(on)
     assert page.errors == []
+
+
+def test_the_back_arrow_stays_in_view_on_a_phone_page_opened_at_a_section(
+    server,  # noqa: F811
+    browser,  # noqa: F811
+):
+    """A hit opens its page scrolled to the section, which scrolled "← Help"
+    off the top of a phone's only column."""
+    errors: list = []
+    pg = phone(browser, errors)
+    p = max(PAGES.values(), key=lambda p: len(p.sections))
+    s = p.sections[-1]
+    pg.goto(f"{server.url}#help={p.id}%23{s.slug}")
+    pg.wait_for_selector(".helpv[data-screen=page] .hbody .doc")
+    pg.wait_for_function(
+        "() => document.querySelector('.helpv .hpage').scrollTop > 0"
+    )
+    back = pg.locator(".helpv .hback").bounding_box()
+    box = pg.locator(".helpv .hpage").bounding_box()
+    assert back and back["y"] >= box["y"] - 1 and back["y"] + back["height"] <= 844, back
+    assert pg.evaluate(
+        "() => { const b = document.querySelector('.helpv .hback').getBoundingClientRect();"
+        " return document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)"
+        "?.closest('.hback') !== null; }"
+    )
+    pg.tap(".helpv .hback")
+    pg.wait_for_selector(".helpv[data-screen=list]")
+    assert errors == []
+    pg.close()
