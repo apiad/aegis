@@ -418,6 +418,7 @@ export class Settings {
   }
 
   winrow(key, pool, w, pp) {
+    pp.lines ||= {}; // a hand-edited "lines" with none: every window unused
     const l = pp.lines[w.kind];
     const rw = this.reading(pool.name)?.windows.find((x) => x.kind === w.kind);
     const pct = rw ? rw.percent : 0;
@@ -529,9 +530,19 @@ export class Settings {
     return Object.keys(this.pol || {}).filter((k) => JSON.stringify(this.pol[k]) !== this.polSaved[k]);
   }
 
+  // Each change on its own, so one refused (a token another admin revoked)
+  // keeps no other from saving; then the list as the server holds it.
   async savePolicies() {
-    for (const name of this.policyChanges()) await this.conn.call("token.policy", { name, policy: this.pol[name] });
+    const failed = [];
+    for (const name of this.policyChanges()) {
+      try {
+        await this.conn.call("token.policy", { name, policy: this.pol[name] });
+      } catch (e) {
+        failed.push(`${name === "*" ? "default" : name}: ${e.message}`);
+      }
+    }
     await this.loadTokens();
+    if (failed.length) throw new Error(`Not saved: ${failed.join("; ")}`);
   }
 
   // The live quota, for the pools strip: redrawn alone, never under a drag.

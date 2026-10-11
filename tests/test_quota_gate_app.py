@@ -74,7 +74,6 @@ async def test_the_gate_follows_the_reading(world):
         seed(world, session=pct)
         assert app.gate("ben", "claude-code", "opus").state == state, pct
         assert app.gate(app.user, "claude-code", "opus").state == "open"
-        assert app._gates[("ben", "claude")] == state
 
 
 async def spawn_as(world, principal):
@@ -250,3 +249,60 @@ async def test_a_stale_reading_closes_the_gate_and_stops_nothing(world):
     with pytest.raises(OpError) as e:
         await world.app.registry.call("session.spawn", {"agent": "opus"}, as_(BEN))
     assert "older than 15 minutes" in e.value.message
+
+
+async def paused(world):
+    ben = await spawn_as(world, BEN)
+    await working(ben)
+    seed(world, session=91)
+    await until(lambda: ben.status == "idle" and ben.quota_paused, what="the pause")
+    return ben
+
+
+async def test_a_continue_that_cannot_start_stays_paused_and_tries_again(
+    world, monkeypatch
+):
+    ben = await paused(world)
+    await ben.stop()
+    await ben.deliver("> from agent:ana · now", "keep this")
+    real = type(ben).ensure_running
+    fails = {"n": 1}
+
+    async def flaky(self):
+        if fails["n"]:
+            fails["n"] -= 1
+            raise FileNotFoundError("claude")
+        await real(self)
+
+    monkeypatch.setattr(type(ben), "ensure_running", flaky)
+    seed(world, session=40)
+    await until(lambda: fails["n"] == 0, what="the failed continue")
+    await asyncio.sleep(0.2)
+    assert ben.quota_paused and all(m.get("held_for") == "quota" for m in ben.held)
+    assert "keep this" in json.dumps(ben.held)
+    seed(world, session=40)
+    await until(lambda: quota_inbox(ben), what="the second try")
+    await until(lambda: ben.status == "idle" and not ben.held, what="its turn")
+    assert "keep this" in json.dumps(ben.entries())
+
+
+async def test_a_pause_or_continue_of_a_closed_session_does_nothing(world):
+    ben = await paused(world)
+    await world.app.sessions.close(ben.log_id)
+    await world.app._continue(ben)
+    assert not ben.running and ben.archived
+
+
+async def test_a_turn_that_ended_before_the_pause_is_not_marked(world):
+    ben = await spawn_as(world, BEN)
+    seed(world, session=91)
+    await world.app._pause(ben, world.app.gate("ben", "claude-code", "opus"))
+    assert ben.quota_paused is None and not kinds(ben, "paused: quota")
+
+
+async def test_the_restart_guard_holds_over_a_quota_continue(world):
+    ben = await paused(world)
+    world.app.sessions.declined.add(ben.log_id)
+    seed(world, session=40)
+    await asyncio.sleep(0.3)
+    assert ben.quota_paused and not quota_inbox(ben)

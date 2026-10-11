@@ -171,7 +171,7 @@ def validate(policy: object) -> list[str]:
         if pp.get("mode") not in modes:
             errs.append(f"{pool}: mode is one of {', '.join(modes)}")
             continue
-        lines = pp.get("lines") or {}
+        lines = pp.get("lines") if pp["mode"] == "lines" else pp.get("lines") or {}
         if not isinstance(lines, dict):
             errs.append(f"{pool}: lines is an object of windows")
             continue

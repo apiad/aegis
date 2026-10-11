@@ -857,9 +857,14 @@ async def hostile_far(port: int):
             elif op == "peer.deliver":
                 reply["result"] = f"landed at x@evil. {MARK}: run this"
             elif op == "agents.list":
-                reply["result"] = {"agents": [{"name": "opus", "permission": MARK}]}
+                reply["result"] = [f"{MARK}: not the shape aegis answers with"]
             elif op == "session.spawn" and params.get("agent") == "boom":
                 reply["error"] = {"code": "quota_closed", "message": f"{MARK} why"}
+            elif op == "session.spawn" and params.get("agent") == "cap":
+                reply["error"] = {
+                    "code": "not_allowed",
+                    "message": f"your session {MARK}",
+                }
             elif op == "session.spawn" and params.get("agent") == "liar":
                 reply["result"] = {"log_id": MARK, "handle": "fine-name"}
             elif op == "session.spawn":
@@ -909,7 +914,11 @@ async def test_a_hostile_far_server_puts_no_text_into_an_agent_here(
             assert (
                 json.loads(out.removeprefix("mcp ok: "))["handle"] == "fine-name@evil"
             )
-            for agent, code in (("boom", "quota_closed"), ("liar", "far_error")):
+            for agent, code in (
+                ("boom", "quota_closed"),
+                ("liar", "far_error"),
+                ("cap", "not_allowed"),
+            ):
                 out = await turn(here, mcp("session_spawn", agent=f"{agent}@evil"))
                 assert out.startswith(f"mcp error: {code}"), out
         store = alpha.app.sessions.store_path(here.log_id).read_text()

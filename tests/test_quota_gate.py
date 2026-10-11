@@ -112,6 +112,7 @@ def test_the_why_names_the_window_and_the_line():
         ({"claude": {"mode": "open"}}, True),
         ({"codex": {"mode": "open"}}, True),
         ({"codex": {"mode": "lines", "lines": {}}}, False),
+        ({"claude": {"mode": "lines"}}, False),
         (
             {
                 "claude": {

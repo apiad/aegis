@@ -5916,3 +5916,33 @@ def test_the_policy_editor_fits_a_phone(quota_server, browser):
     pg.wait_for_selector("#set-tok-default .win-session .h.s")
     assert pg.evaluate("document.documentElement.scrollWidth") <= 390
     ctx.close()
+
+
+def test_a_hand_edited_lines_policy_without_lines_still_draws(quota_server, page):
+    path = tokens_file(quota_server)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = json.loads(path.read_text()) if path.exists() else {"tokens": []}
+    doc["default_policy"] = {"claude": {"mode": "lines"}}
+    path.write_text(json.dumps(doc))
+    open_tokens(page, quota_server)
+    page.wait_for_selector("#set-tok-default .pool-claude .win-session.off")
+
+
+def test_a_policy_save_for_a_token_revoked_meanwhile_saves_the_rest(
+    quota_server, page, browser
+):
+    member_page(browser, quota_server)  # mints ben
+    open_tokens(page, quota_server)
+    page.click("#set-tokens .tok-ben >> text=Customize")
+    pick(page, "#set-tok-default .poolrow.pool-codex pick-chip", "open, no lines")
+    path = tokens_file(quota_server)  # another admin revokes ben
+    doc = json.loads(path.read_text())
+    doc["tokens"] = [e for e in doc["tokens"] if e["name"] != "ben"]
+    path.write_text(json.dumps(doc))
+    page.click("#set-save")
+    page.wait_for_function(
+        "document.getElementById('set-status').textContent.includes('ben')"
+    )
+    assert "no token named ben" in page.text_content("#set-status")
+    assert json.loads(path.read_text())["default_policy"] == {"codex": {"mode": "open"}}
+    page.wait_for_function("!document.querySelector('#set-tokens .tok-ben')")

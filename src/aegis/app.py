@@ -66,7 +66,6 @@ from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .quota import Quota
 from .quota_gate import (
-    KINDS,
     POOLS,
     Gate,
     continued,
@@ -326,9 +325,6 @@ class App:
         # The tokens that may use this server, the admin's first (tokens.py).
         self.principals = TokenStore(roots.state_root, self.user)
         self.links = Links(roots.state_root, server_name, self.user, self.publish)
-        # The last gate state seen per (member, pool), and the quota loop's
-        # word after each reading (quota_gate.py).
-        self._gates: dict[tuple[str, str], str] = {}
         # Sessions a pause or a continue is under way for, so a reading that
         # lands before it finishes does not start a second one.
         self._quota_busy: set[str] = set()
@@ -375,16 +371,9 @@ class App:
         paused and a stopped token cannot flap. Level-triggered, so a reading
         missed or a restart in between changes nothing."""
         now = time.time()
-        for row in self.principals.rows():
-            if row["role"] == "admin":
-                continue
-            policy = self.principals.policy_of(row["name"])
-            for pool in KINDS:
-                self._gates[(row["name"], pool)] = decide(
-                    policy, pool, snapshot, now
-                ).state
         for s in list(self.sessions.sessions.values()):
-            if s.log_id in self._quota_busy:
+            # A turn the restart guard declined waits for a person (restarts.py).
+            if s.log_id in self._quota_busy or s.log_id in self.sessions.declined:
                 continue
             policy = self.principals.policy_of(s.spec.owner or self.user)
             if policy is None:
@@ -419,6 +408,8 @@ class App:
 
     async def _pause(self, s, g: Gate) -> None:
         """Interrupt a turn the owner's stop line cut; held until it opens."""
+        if not self._live(s) or s.status != "working":
+            return  # closed, or the turn ended since the reading
         s.report({"kind": "quota_paused", "why": g.why})
         s.quota_paused = g.why
         self.sessions.metas.write(s.meta())
@@ -427,7 +418,11 @@ class App:
 
     async def _continue(self, s) -> None:
         """The gate is open again: one message saying so ahead of what the
-        session held, in one turn, as continue_after_boot does."""
+        session held, in one turn, as continue_after_boot does. One that
+        cannot start stays as it was, so the next reading tries again."""
+        if not self._live(s):
+            return
+        paused = s.quota_paused
         msgs = [{k: v for k, v in m.items() if k != "held_for"} for m in s.held]
         if s.quota_paused:
             owner = s.spec.owner or self.user
@@ -448,10 +443,18 @@ class App:
         try:
             await s._flush_held()
         except Exception:
-            # _flush_held empties held before it sends: put the batch back.
+            # _flush_held empties held before it sends: put the batch back,
+            # ahead of anything that arrived meanwhile, still waiting.
             log.exception("aegis: could not continue %s after its quota stop", s.handle)
-            s.held = msgs
+            s.quota_paused = paused
+            if paused:
+                msgs = msgs[1:]  # the next continue writes its own
+            s.held = [m | {"held_for": "quota"} for m in msgs + s.held]
             self.sessions.metas.write(s.meta())
+            s._publish_now()
+
+    def _live(self, s) -> bool:
+        return not s.archived and self.sessions.sessions.get(s.log_id) is s
 
     def owner_of(self, log_id: str) -> str | None:
         """A session's owner by log id, None for no such session. One from
@@ -711,38 +714,43 @@ class App:
         cap = parent.spec.permission
         try:
             listed = await link.call("agents.list", {})
-            agent = name or listed.get("default")
-            preset = next(
-                (
-                    a.get("permission")
-                    for a in listed.get("agents", [])
-                    if a.get("name") == agent
-                ),
-                None,
-            )
-            permission = p.permission or preset
-            if permission not in PERMISSION_ORDER or PERMISSION_ORDER.index(
-                permission
-            ) > PERMISSION_ORDER.index(cap):
-                if p.permission:
-                    raise OpError(
-                        "not_allowed",
-                        f"your session runs with {cap}, so a session you spawn can "
-                        f"have at most {cap} (this one would have {p.permission})",
-                    )
-                permission = cap
-            params = p.model_dump(exclude_none=True) | {
-                "agent": name or None,
-                "permission": permission,
-                "spawned_from": {"handle": parent.handle, "server": self.server_name},
-            }
+        except OpError as e:
+            raise far_error(e, far) from None
+        # What the far server says of its agents only lowers the permission.
+        presets = listed.get("agents") if isinstance(listed, dict) else None
+        agent = name or (listed.get("default") if isinstance(listed, dict) else None)
+        preset = next(
+            (
+                a.get("permission")
+                for a in presets or []
+                if isinstance(a, dict) and a.get("name") == agent
+            ),
+            None,
+        )
+        permission = p.permission or preset
+        if permission not in PERMISSION_ORDER or PERMISSION_ORDER.index(
+            permission
+        ) > PERMISSION_ORDER.index(cap):
+            if p.permission:
+                raise OpError(
+                    "not_allowed",
+                    f"your session runs with {cap}, so a session you spawn can "
+                    f"have at most {cap} (this one would have {p.permission})",
+                )
+            permission = cap
+        params = p.model_dump(exclude_none=True) | {
+            "agent": name or None,
+            "permission": permission,
+            "spawned_from": {"handle": parent.handle, "server": self.server_name},
+        }
+        try:
             r = await link.call(
                 "session.spawn", {k: v for k, v in params.items() if v is not None}
             )
         except OpError as e:
-            if e.code == "not_allowed" and e.message.startswith("your session"):
-                raise
             raise far_error(e, far) from None
+        if not isinstance(r, dict):
+            raise OpError("far_error", f"{far} answered the spawn with something else")
         handle, log_id = r.get("handle"), r.get("log_id")
         if not (isinstance(handle, str) and valid_handle(handle)) or not (
             isinstance(log_id, str) and LOG_ID.match(log_id)
