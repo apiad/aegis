@@ -5118,6 +5118,12 @@ def test_the_sidebar_journal_row_counts_today_and_its_card_lists_entries(
         "/\\d+ entr/.test(document.querySelector('#s-journal').textContent)"
     )
     assert "side.md" in page.inner_text("#s-journal-peek")
+    # Each peek row draws its glyph as an icon, never the glyph's name as text.
+    peek = page.locator("#s-journal-peek > div")
+    assert peek.count() > 0
+    for i in range(peek.count()):
+        g = peek.nth(i).locator(".g")
+        assert g.locator("svg.ic").count() == 1 and g.inner_text().strip() == ""
     page.hover("#p-journal")
     page.wait_for_selector("#p-journal .pcard", state="visible")
     assert "side.md" in page.inner_text("#s-journal-all")

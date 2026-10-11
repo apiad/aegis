@@ -19,7 +19,7 @@ import { age, countdown, elapsed, hostRow, hostSeverity, providerFor, quotaSideR
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
 import { installKeys, renderKeys } from "./keys.js";
 import { Palette } from "./palette.js";
-import { glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyphs.js";
+import { entryIcon, glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
@@ -992,7 +992,9 @@ async function drawSideJournal(key, force = false) {
   $("s-journal-peek").replaceChildren(...res.rows.slice(0, 2).map((r) => {
     const line = document.createElement("div");
     line.className = `k-${r.kind}`;
-    line.append(span("g", r.glyph), span("x", (r.tag ? `${r.tag}: ` : "") + (r.hash ? `${r.hash} ` : "") + r.text), span("t", r.time));
+    const g = span("g", "");
+    g.append(entryIcon(r.glyph));
+    line.append(g, span("x", (r.tag ? `${r.tag}: ` : "") + (r.hash ? `${r.hash} ` : "") + r.text), span("t", r.time));
     return line;
   }));
   $("s-journal-peek").hidden = false;
