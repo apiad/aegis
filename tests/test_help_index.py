@@ -1,6 +1,7 @@
 """The help index (helppages.py): parsing a page, BM25 over its sections, and
-reading a page or a section. The last test is the ranking table: questions an
-agent would ask, and the page each must find in its first three results."""
+reading a page or a section. The last two tests are the ranking table:
+questions an agent would ask, and the page or section each must find first, or,
+where two pages both answer it, in its first three results."""
 
 import pytest
 
@@ -136,34 +137,46 @@ def test_the_listing_is_by_kind_then_title():
     assert set(Index(pages).listing()[0]) == {"id", "title", "kind", "when"}
 
 
-# Questions an agent would ask, and the pages any of which must be in the first
-# three results. A ranking change, or a page edit, that drops one fails here.
-QUESTIONS = [
-    ("wait for CI without polling", {"monitors"}),
-    ("how do I wait until a GitHub Actions run finishes", {"monitors"}),
-    ("wait until other sessions finish", {"monitors", "handoffs"}),
+# Questions with one answer, and the page, or the page#section, that must be the
+# first hit. A ranking change, or a page edit, that pushes it down fails here:
+# an agent reads the first hit, so second is already a wrong answer.
+FIRST = [
+    ("wait for CI without polling", "monitors#wait-on-ci"),
+    ("how do I wait until a GitHub Actions run finishes", "monitors#wait-on-ci"),
+    ("wait until other sessions finish", "monitors#wait-on-other-sessions"),
+    ("show the person a page they can click", "artifacts"),
+    ("send the person a screenshot", "artifacts#send-a-file-instead"),
+    ("run a batch of tasks in parallel workers", "queues"),
+    ("cancel a task I enqueued", "queues#check-cancel-and-resume"),
+    ("give another session an instruction", "handoffs#hand-work-over"),
+    ("read what another agent is doing", "handoffs"),
+    ("link another aegis server", "links"),
+    ("add an agent to .aegis.yaml", "config#add-an-agent"),
+    ("what does read permission allow", "sessions#permission"),
+    ("rename my session", "sessions#rename-it"),
+    ("run aegis in the background", "commands"),
+    ("make a token for a colleague", "commands"),
+    ("first time using aegis", "getting-started"),
+    ("update a help page after changing a tool", "writing-help-pages"),
+]
+
+# Questions two pages answer: one of them must be in the first three.
+EITHER = [
     ("send work to another server", {"handoffs", "links"}),
     ("make the agent run on haiku", {"sessions", "config"}),
-    ("show the person a page they can click", {"artifacts"}),
-    ("send the person a screenshot", {"artifacts"}),
-    ("run a batch of tasks in parallel workers", {"queues"}),
-    ("cancel a task I enqueued", {"queues"}),
-    ("give another session an instruction", {"handoffs"}),
-    ("read what another agent is doing", {"handoffs"}),
-    ("link another aegis server", {"links"}),
-    ("add an agent to .aegis.yaml", {"config"}),
-    ("what does read permission allow", {"sessions"}),
-    ("rename my session", {"sessions"}),
     ("reopen an archived session", {"sessions", "getting-started"}),
-    ("run aegis in the background", {"commands"}),
-    ("make a token for a colleague", {"commands"}),
-    ("first time using aegis", {"getting-started"}),
-    ("update a help page after changing a tool", {"writing-help-pages"}),
 ]
 
 
-@pytest.mark.parametrize("question,pages", QUESTIONS)
-def test_a_question_finds_its_page_in_the_first_three(question, pages):
+@pytest.mark.parametrize("question,want", FIRST)
+def test_a_question_with_one_answer_finds_it_first(question, want):
+    hits = Index(load()).search(question, limit=3)
+    found = [h.ref if "#" in want else h.ref.split("#")[0] for h in hits]
+    assert found[:1] == [want], f"{question!r} found {[h.ref for h in hits]}"
+
+
+@pytest.mark.parametrize("question,pages", EITHER)
+def test_a_question_two_pages_answer_finds_one_in_the_first_three(question, pages):
     hits = Index(load()).search(question, limit=3)
     found = [h.ref.split("#")[0] for h in hits]
-    assert pages & set(found), f"{question!r} found {found}"
+    assert pages & set(found), f"{question!r} found {[h.ref for h in hits]}"
