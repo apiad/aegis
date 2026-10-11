@@ -1007,3 +1007,23 @@ async def test_a_person_on_alpha_attaches_a_file_to_a_session_on_beta(pair):
     url = user["detail"]["files"][0]["url"]
     async with httpx.AsyncClient() as c:
         assert (await c.get(f"{alpha.base}/via/beta{url}")).content == body
+
+
+async def test_a_link_with_a_member_token_is_a_member_on_the_far_side(pair):
+    alpha, beta = pair
+    member = beta.app.principals.add("alpha", "member")
+    alpha.app.links.remove("beta")
+    alpha.app.links.add("beta", beta.base, member)
+    await until(
+        lambda: (
+            (link := alpha.app.links.get("beta")) is not None and link.state == "linked"
+        ),
+        timeout=10,
+        what="the member link",
+    )
+    link = alpha.app.links.get("beta")
+    snap = (await link.call_raw("config.read", {}))["result"]
+    r = await link.call_raw(
+        "config.write", {"doc": snap["doc"], "stamp": snap["stamp"]}
+    )
+    assert r["error"]["code"] == "not_for_members"

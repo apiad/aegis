@@ -473,6 +473,12 @@ def register_agent_ops(app: App) -> None:
     def mine(t, caller: Caller):
         if caller.is_agent and t.enqueuer != caller.log_id:
             raise OpError("not_yours", "agents can change only the tasks they enqueued")
+        # A member changes only its own tasks; one from before owners is the admin's.
+        who = app.who(caller)
+        if not who.is_admin and (t.owner or app.user) != who.name:
+            raise OpError(
+                "not_owner", f"{t.id} belongs to {t.owner or app.user}; you can read it"
+            )
 
     def roster(owner: str, but: str | None = None) -> list[dict]:
         return [
@@ -773,7 +779,7 @@ def register_agent_ops(app: App) -> None:
         t = app.queues.tasks.get(s.worker["task_id"]) if s.worker else None
         return t is not None and t.enqueuer == me.log_id
 
-    @r.op("session.close", Close, agent=True)
+    @r.op("session.close", Close, agent=True, owned="log_id")
     async def session_close(p: Close, caller):
         """Close a session: its tab goes away and it stays in the archive. A
         session you spawned, or whose queue task you enqueued, closes at once

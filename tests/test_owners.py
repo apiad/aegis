@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from aegis.ops import Caller, Principal
+from aegis.ops import Caller, OpError, Principal
 
 from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
@@ -57,3 +57,55 @@ async def test_a_session_from_before_owners_is_the_admins(world):
     meta.write_text(json.dumps(m))
     await world.start()
     assert world.app.owner_of(s.log_id) == world.app.user
+
+
+async def test_a_member_reads_an_admins_session_and_cannot_change_it(world):
+    s = await world.spawn()
+    ben = as_(BEN)
+    reg = world.app.registry
+    assert (
+        await reg.call("transcript.search", {"log_id": s.log_id, "q": "x"}, ben) == {"ids": []}
+    )
+    for op, params in [
+        ("session.send", {"log_id": s.log_id, "text": "hi"}),
+        ("session.stop", {"log_id": s.log_id}),
+        ("session.interrupt", {"log_id": s.log_id}),
+        ("session.configure", {"log_id": s.log_id, "model": "sonnet"}),
+        ("session.close", {"log_id": s.log_id}),
+        ("recap.request", {"log_id": s.log_id}),
+    ]:
+        with pytest.raises(OpError) as e:
+            await reg.call(op, params, ben)
+        assert e.value.code == "not_owner", op
+
+
+async def test_a_member_drives_its_own_session(world):
+    r = await world.app.registry.call("session.spawn", {"agent": "opus"}, as_(BEN))
+    await world.app.registry.call(
+        "session.send", {"log_id": r["log_id"], "text": "hello"}, as_(BEN)
+    )
+    await until(lambda: world.session(r["log_id"]).status == "idle", what="the turn")
+
+
+async def test_server_settings_are_for_admins(world):
+    reg = world.app.registry
+    snap = await reg.call("config.read", {}, as_(BEN))
+    for op, params in [
+        ("config.write", {"doc": snap["doc"], "stamp": snap["stamp"]}),
+        ("link.add", {"url": "http://127.0.0.1:9", "token": "x"}),
+        ("link.remove", {"name": "far"}),
+    ]:
+        with pytest.raises(OpError) as e:
+            await reg.call(op, params, as_(BEN))
+        assert e.value.code == "not_for_members", op
+
+
+async def test_a_member_cannot_spawn_across_a_link(world):
+    r = await world.app.registry.call("session.spawn", {"agent": "opus"}, as_(BEN))
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call(
+            "session.send",
+            {"log_id": r["log_id"], "text": "/spawn opus@far hi"},
+            as_(BEN),
+        )
+    assert e.value.code == "not_for_members"

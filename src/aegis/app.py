@@ -527,6 +527,11 @@ class App:
             return {**r, "server": self.server_name}
         if caller.link is not None:
             raise OpError("not_relayed", "a link is not relayed to another server")
+        if not self.who(caller).is_admin:
+            raise OpError(
+                "not_for_members",
+                "spawning on a linked server is for an admin of this one",
+            )
         link = self.links.get(far)
         if link is None:
             raise OpError("unknown_server", f"this server links no server named {far}")
@@ -684,7 +689,7 @@ class App:
                     ) from e
             return {"log_id": s.log_id, "handle": s.handle}
 
-        @r.op("session.send", SendParams)
+        @r.op("session.send", SendParams, owned="log_id")
         async def send(p: SendParams, caller):
             s = reg.open(p.log_id)
             cmd = commands.split(p.text)
@@ -726,7 +731,7 @@ class App:
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e
 
-        @r.op("attachment.begin", AttachBegin)
+        @r.op("attachment.begin", AttachBegin, owned="log_id")
         async def attachment_begin(p: AttachBegin, caller):
             """Start uploading a file to a session: its upload id. The file
             waits, staged, until a session.send names it (attachments.py)."""
@@ -737,7 +742,7 @@ class App:
                 raise OpError(e.code, e.message) from e
             return {"upload_id": uid}
 
-        @r.op("attachment.put", AttachPut)
+        @r.op("attachment.put", AttachPut, owned="log_id")
         async def attachment_put(p: AttachPut, caller):
             """One base64 chunk of an upload at ``offset``: the bytes now
             staged. No await between reading the staged size and appending,
@@ -759,7 +764,7 @@ class App:
                 raise OpError(e.code, e.message) from e
             return {"size": size}
 
-        @r.op("attachment.drop", AttachDrop)
+        @r.op("attachment.drop", AttachDrop, owned="log_id")
         async def attachment_drop(p: AttachDrop, caller):
             """Forget an upload the person removed before sending."""
             reg.open(p.log_id)
@@ -775,7 +780,7 @@ class App:
             n = s.read(p.ids)
             return {"read": n, "unread": len(s.unread)}
 
-        @r.op("recap.request", RecapParams)
+        @r.op("recap.request", RecapParams, owned="log_id")
         async def recap_request(p: RecapParams, caller):
             """A recap of where the session stands, for a person landing on its tab."""
             return await self.recaps.request(reg.open(p.log_id), p.force)
@@ -799,7 +804,7 @@ class App:
                 ),
             }
 
-        @r.op("session.configure", ConfigureParams)
+        @r.op("session.configure", ConfigureParams, owned="log_id")
         async def configure(p: ConfigureParams, caller):
             return await self._configure(
                 reg.open(p.log_id), p.model, p.effort, p.permission
@@ -839,22 +844,22 @@ class App:
                 raise OpError("no_output", f"no output for {p.id!r}")
             return {"text": text}
 
-        @r.op("session.interrupt", LogParams)
+        @r.op("session.interrupt", LogParams, owned="log_id")
         async def interrupt(p: LogParams, caller):
             try:
                 await reg.open(p.log_id).interrupt()
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e
 
-        @r.op("session.stop", LogParams)
+        @r.op("session.stop", LogParams, owned="log_id")
         async def stop(p: LogParams, caller):
             await reg.open(p.log_id).stop()
 
-        @r.op("session.reopen", LogParams)
+        @r.op("session.reopen", LogParams, owned="log_id")
         async def reopen(p: LogParams, caller):
             return reg.reopen(p.log_id).wire()
 
-        @r.op("session.rename", RenameParams, agent=True, read=True)
+        @r.op("session.rename", RenameParams, agent=True, read=True, owned="log_id")
         async def rename(p: RenameParams, caller):
             """Rename your session: a handle (2 or 3 lowercase segments joined by
             hyphens) and/or a title."""
@@ -922,7 +927,7 @@ class App:
             """The servers this one links, with their state; never their tokens."""
             return self.links.wire()
 
-        @r.op("link.add", LinkAdd)
+        @r.op("link.add", LinkAdd, admin=True)
         async def link_add(p: LinkAdd, caller):
             """Link another aegis server: connect once with its token, take the
             name it gives itself, and keep the link in links.json."""
@@ -938,7 +943,7 @@ class App:
             self.links.add(name, p.url, p.token)
             return {"name": name}
 
-        @r.op("link.remove", LinkName)
+        @r.op("link.remove", LinkName, admin=True)
         async def link_remove(p: LinkName, caller):
             self.links.remove(p.name)
 
