@@ -294,8 +294,9 @@ export class Settings {
     );
     // What was typed survives a redraw: the list can arrive after the typing.
     const name = h("input", { className: "set-in", id: "set-token-name", placeholder: "name, e.g. ben or laptop", spellcheck: false, value: this.tokenName || "", oninput: (e) => (this.tokenName = e.target.value) });
-    const role = h("select", { className: "pick", id: "set-token-role", onchange: (e) => (this.tokenRole = e.target.value) }, h("option", { value: "member", textContent: "member" }), h("option", { value: "admin", textContent: "admin" }));
-    role.value = this.tokenRole || "member";
+    const role = select("role", ["member", "admin"], this.tokenRole || "member");
+    role.id = "set-token-role";
+    role.addEventListener("change", () => (this.tokenRole = role.value));
     const add = button("Add token", "set-token-add", () => this.addToken(name.value.trim(), role.value), "btn primary");
     const once = this.tokenOnce;
     return h(
