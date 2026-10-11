@@ -356,3 +356,24 @@ def test_enter_waits_for_the_search_already_asked(server, page):  # noqa: F811
         }"""
     )
     assert went == [1, ["#help=queues"]]
+
+
+def test_a_hit_opened_is_the_row_marked_not_every_hit_on_its_page(server, page):  # noqa: F811
+    """Most hits for a question are sections of one page; marking each row of
+    the page shown left a person unable to tell which one they were reading."""
+    open_help(page, server)
+    want = [h.ref for h in Index(load()).search(QUESTION, limit=10)]
+    page.fill(".helpv .jq", QUESTION)
+    page.wait_for_function("() => !document.querySelector('.helpv .hgrp')")
+    page.click(f'.helpv .hrow[data-ref="{want[0]}"]')
+    shown(page, want[0].split("#")[0])
+    on = page.eval_on_selector_all(
+        ".helpv .hrow.on", "bs => bs.map(b => b.dataset.ref)"
+    )
+    current = page.eval_on_selector_all(
+        ".helpv .hrow[aria-current]", "bs => bs.map(b => b.dataset.ref)"
+    )
+    # The hit, and the row for its whole page if the search listed one.
+    assert on == current == [r for r in want if r in (want[0], want[0].split("#")[0])]
+    assert sum(r.startswith(want[0].split("#")[0]) for r in want) > len(on)
+    assert page.errors == []

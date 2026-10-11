@@ -62,6 +62,7 @@ export class Help {
     Object.assign(this, { conn, box, go, onKeys, onStart });
     this.pages = null; // help.pages's answer, once it arrives
     this.shown = null; // the page whose Markdown is drawn
+    this.ref = null; // what was asked of it: the page, or "page#section"
     this.readSeq = 0; // the newest help.read; an older answer is dropped
     this.hits = null; // help.search's hits for the box, or null while it is empty
     this.seq = 0; // the newest help.search; an older answer is dropped
@@ -228,13 +229,20 @@ export class Help {
     return (this.searching = this.search());
   }
 
-  // The rows of the page shown, marked.
+  // The row of what is shown, marked: the section a hit opened, and the row
+  // for its whole page. Every hit on the page would leave none told apart.
   mark() {
-    for (const b of this.rows.querySelectorAll(".hrow")) b.classList.toggle("on", b.dataset.ref.split("#")[0] === this.shown);
+    for (const b of this.rows.querySelectorAll(".hrow")) {
+      const on = !!this.shown && (b.dataset.ref === this.shown || b.dataset.ref === this.ref);
+      b.classList.toggle("on", on);
+      if (on) b.setAttribute("aria-current", "true");
+      else b.removeAttribute("aria-current");
+    }
   }
 
   async read(page, section) {
     const n = ++this.readSeq;
+    this.ref = section ? `${page}#${section}` : page;
     // The page takes the focus now, not once it has drawn: a person who went
     // back to the search box meanwhile keeps typing there.
     if (this.box.dataset.screen === "page") this.page.focus({ preventScroll: true });
@@ -269,7 +277,7 @@ export class Help {
       this.mark();
       await Promise.all([...doc.querySelectorAll(".fence")].map(paint));
       if (n !== this.readSeq) return;
-    }
+    } else this.mark();
     const head = section ? this.body.querySelector(`#h-${CSS.escape(section)}`) : null;
     if (head) head.scrollIntoView({ block: "start" });
     else this.page.scrollTop = 0;
