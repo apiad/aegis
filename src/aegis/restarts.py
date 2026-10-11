@@ -107,6 +107,8 @@ def _interrupted(meta: dict, prev: Previous) -> bool:
         prev.clean
         and prev.stopping_at is not None
         and ex.get("code") in SIGTERM_CODES
+        # The unit's SIGTERM reaches idle harnesses too: only a cut turn counts.
+        and ex.get("status") == "working"
         and (ex.get("at") or 0) >= prev.stopping_at - GRACE_S
     )
 

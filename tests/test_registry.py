@@ -563,3 +563,17 @@ async def test_a_continue_that_cannot_start_keeps_its_messages(world):
         assert s.status == "stopped"
         assert [m["body"] for m in s.held] == [restarts.RESTARTED]
     await r2.shutdown()
+
+
+async def test_an_idle_harness_killed_by_sigterm_before_a_clean_stop_is_not_continued(
+    world,
+):
+    r = world.registry()
+    s = await r.spawn(world.spec())
+    await turn(s, "hello")
+    os.kill(s.pid, signal.SIGTERM)
+    await until(lambda: s.status == "stopped", what="the SIGTERM exit")
+    await r.shutdown()
+    r2 = world.registry(restarts.Previous(True, time.time()))
+    assert r2.continuing == {} and r2.declined == set()
+    await r2.shutdown()

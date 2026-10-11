@@ -794,7 +794,8 @@ class Session:
             return
         self._proc = None
         self.open_tasks.clear()
-        self.last_exit = {"code": code, "at": time.time()}
+        # The status it cut, so a restart continues only a turn (restarts.py).
+        self.last_exit = {"code": code, "at": time.time(), "status": self.status}
         self._record(
             {
                 "kind": "exit",

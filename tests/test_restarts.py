@@ -40,12 +40,18 @@ CRASH = Previous(False)
         ({"last_status": "working"}, CRASH, (True, True)),
         ({"last_status": "working", "restart_continues": 1}, CRASH, (False, True)),
         (
-            {"last_status": "stopped", "last_exit": {"code": 143, "at": NOW - 1}},
+            {
+                "last_status": "stopped",
+                "last_exit": {"code": 143, "at": NOW - 1, "status": "working"},
+            },
             CLEAN,
             (True, False),
         ),
         (
-            {"last_status": "stopped", "last_exit": {"code": -15, "at": NOW + 2}},
+            {
+                "last_status": "stopped",
+                "last_exit": {"code": -15, "at": NOW + 2, "status": "working"},
+            },
             CLEAN,
             (True, False),
         ),
@@ -62,6 +68,21 @@ CRASH = Previous(False)
             None,
         ),
         ({"last_status": "idle"}, CLEAN, None),
+        # An idle harness killed by the unit's SIGTERM had no turn to cut.
+        (
+            {
+                "last_status": "stopped",
+                "last_exit": {"code": 143, "at": NOW, "status": "idle"},
+            },
+            CLEAN,
+            None,
+        ),
+        # A meta from before the exit's status was kept: not a cut turn.
+        (
+            {"last_status": "stopped", "last_exit": {"code": 143, "at": NOW}},
+            CLEAN,
+            None,
+        ),
         ({}, CRASH, None),
     ],
 )
