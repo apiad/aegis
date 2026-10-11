@@ -181,6 +181,9 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>Implemented: the page takes the focus when it is asked for.</b> The plan's <code>read()</code> focused <code>.hpage</code> after awaiting the code blocks' paint. On a cold browser under load that paint landed after the search box had the focus back, so clearing the box sent Delete to the page and the groups never returned (reproduced with two busy loops on this host). The focus moves at the start of <code>read()</code> (<code>src/aegis/client/js/help.js</code>, <code>read</code>), pinned by <code>test_a_page_arriving_late_leaves_the_focus_in_the_search_box</code>.</li>
   <li><b>Implemented: <code>commands.md</code> keeps <code>/help</code>'s row and gains <code>/help &lt;query&gt;</code>.</b> The page lists commands as a table whose first column is the command with its argument (<code>src/aegis/help/commands.md:27-28</code>), so the plan's sentence became a second row in that form rather than a paragraph.</li>
   <li><b>Implemented: the tour's opening paragraph names the new step.</b> <code>getting-started.md</code> opens by listing what the tour walks through (<code>src/aegis/help/getting-started.md:7-11</code>); it now ends with "the help pages", so the list matches step 8.</li>
+  <li><b>Implemented: the Help tab's tests carry <code># noqa: F811</code>.</b> The plan's test file imports <code>server</code>, <code>page</code> and <code>browser</code> from <code>test_browser</code> and takes them as arguments, which ruff reads as redefinitions; <code>make check</code> failed at lint. Each such argument carries the noqa, as in <code>tests/test_copy_browser.py</code> and <code>tests/test_path_links_browser.py</code>.</li>
+  <li><b>Implemented: search marks a word only where a word starts.</b> Looking at the build showed "ci" marked inside "decide" for "wait for CI". <code>marked()</code> in <code>src/aegis/client/js/help.js</code> splits on <code>\b(words)</code>; "wait" still marks the start of "waits", as the index's stemming finds it. <code>test_typing_asks_help_search_and_lists_what_an_agent_would_get</code> asserts no mark follows a letter or digit.</li>
+  <li><b>Not done in this run: task 7's reviewer step.</b> The slice was implemented by one agent working alone, as asked; the reviewer runs separately on the pushed branch.</li>
   <li><b>Left out on purpose:</b> a key chord and a palette entry for the tab (the spec names none), and a <code>help:</code> line in this slice's changelog fragment (slice 4 adds the line and the collation that keeps it).</li>
 </ul>
 
@@ -1169,7 +1172,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -- src/aegis/help/getti
 </details>
 
 <!-- ============================================================ TASK 7 -->
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="done">
 <summary><span class="num">7</span><span><span class="ttl">Every gate, a fresh aegis serve in a browser, CI, a reviewer</span><span class="files">no source changes · /tmp/help-tab-look.py (scratch, outside the repo)</span></span><span class="state"></span></summary>
 <div class="body">
 <p>AGENTS.md's done rule: the gates pass, and the change has been exercised in a browser against an <code>aegis serve</code> started after it. This task does both, then lets CI and a reviewer judge the slice. The PR for all four slices opens after slice 4, with its bench table.</p>
