@@ -193,6 +193,15 @@ class LinkName(_Strict):
     name: str
 
 
+class TokenAdd(_Strict):
+    name: str = Field(description="Who the token is: lowercase, e.g. ben or laptop")
+    role: Literal["admin", "member"] = "member"
+
+
+class TokenName(_Strict):
+    name: str
+
+
 class ArchiveParams(_Strict):
     query: str | None = None
     server: str | None = Field(None, description="One server only; omitted: all.")
@@ -946,6 +955,23 @@ class App:
         @r.op("link.remove", LinkName, admin=True)
         async def link_remove(p: LinkName, caller):
             self.links.remove(p.name)
+
+        @r.op("token.list", admin=True)
+        async def token_list(_, caller):
+            """The tokens that may use this server, the admin's first."""
+            return {"tokens": self.principals.list()}
+
+        @r.op("token.add", TokenAdd, admin=True)
+        async def token_add(p: TokenAdd, caller):
+            """Mint a token; the only time it is shown."""
+            token = self.principals.add(p.name, p.role)
+            return {"name": p.name, "role": p.role, "token": token}
+
+        @r.op("token.revoke", TokenName, admin=True)
+        async def token_revoke(p: TokenName, caller):
+            """End a token. The admin's is replaced, and the new one returned
+            to whoever revoked it, so that browser can sign in again."""
+            return {"token": self.principals.revoke(p.name)}
 
         @r.op("server.version")
         async def server_version(_, caller):

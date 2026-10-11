@@ -63,9 +63,9 @@ async def test_a_member_reads_an_admins_session_and_cannot_change_it(world):
     s = await world.spawn()
     ben = as_(BEN)
     reg = world.app.registry
-    assert (
-        await reg.call("transcript.search", {"log_id": s.log_id, "q": "x"}, ben) == {"ids": []}
-    )
+    assert await reg.call("transcript.search", {"log_id": s.log_id, "q": "x"}, ben) == {
+        "ids": []
+    }
     for op, params in [
         ("session.send", {"log_id": s.log_id, "text": "hi"}),
         ("session.stop", {"log_id": s.log_id}),
@@ -108,4 +108,16 @@ async def test_a_member_cannot_spawn_across_a_link(world):
             {"log_id": r["log_id"], "text": "/spawn opus@far hi"},
             as_(BEN),
         )
+    assert e.value.code == "not_for_members"
+
+
+async def test_an_admin_manages_tokens_and_a_member_cannot(world):
+    reg = world.app.registry
+    r = await reg.call("token.add", {"name": "cara", "role": "member"})
+    assert world.app.principals.resolve(r["token"]) == Principal("cara", "member")
+    names = [t["name"] for t in (await reg.call("token.list", {}))["tokens"]]
+    assert names[0] == world.app.user and "cara" in names
+    assert (await reg.call("token.revoke", {"name": "cara"}))["token"] is None
+    with pytest.raises(OpError) as e:
+        await reg.call("token.list", {}, as_(BEN))
     assert e.value.code == "not_for_members"
