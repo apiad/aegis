@@ -250,10 +250,28 @@ body{background:#000}
 .a2 .more{margin:6px 0 2px;display:grid;gap:6px}
 .a2 .more pre,.a2 pre.out{margin:0;padding:7px 10px;font-size:11.5px;white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--font-mono);background:var(--surface);border-left:2px solid var(--rule);color:var(--muted);max-height:420px;overflow:auto}
 .a2 .row.tool.err pre.out,.a2 .row.error pre.out{background:var(--err-bg);color:var(--err);border-left-color:var(--err)}
-.a2 .diff{margin:0;padding:6px 0;font-size:11.5px;font-family:var(--font-mono);background:var(--surface);border-radius:4px;overflow-x:auto}
-.a2 .diff div{padding:0 10px;white-space:pre}
-.a2 .diff .del{background:var(--del-bg);color:var(--err)}.a2 .diff .add{background:var(--add-bg);color:var(--ok)}
-.a2 .diff .path,.a2 .diff .elided{color:var(--faint)}
+.a2 .lines,.a2 .diff{border:1px solid var(--rule);border-radius:var(--r);background:var(--surface);font:12px/1.55 var(--font-mono);margin:6px 0 0}
+.a2 .lines{display:grid;grid-template-columns:auto minmax(0,1fr);overflow:auto;max-height:60vh}
+.a2 .lines .n,.a2 .diff .n{color:var(--faint);text-align:right;padding:0 8px 0 10px;user-select:none;font-size:11px}
+.a2 .lines .c,.a2 .diff .c{white-space:pre;padding-right:12px;min-height:1.55em}
+.a2 .diff{overflow:hidden}
+.a2 .diff .hunk{background:var(--raised);color:var(--faint);font-size:11px;padding:1px 10px}
+.a2 .diff .split{display:none;grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr)}
+.a2 .diff .split .c{white-space:pre-wrap;overflow-wrap:anywhere}
+.a2 .diff .unified{display:grid;grid-template-columns:auto auto minmax(max-content,1fr);overflow-x:auto}
+/* An edit side by side from 680 px of #tr's content box, a row's whole width:
+   the spec's 640 px of body plus the row's gutter (#323). */
+@container md (min-width:680px){.a2 .diff .split{display:grid}.a2 .diff .unified{display:none}}
+.a2 .diff .s{user-select:none;padding:0 6px 0 2px;color:var(--faint)}
+.a2 .diff .del{background:var(--del-bg)}.a2 .diff .add{background:var(--add-bg)}
+.a2 .diff .s.del{color:var(--err)}.a2 .diff .s.add{color:var(--ok)}
+.a2 .diff .n.del,.a2 .diff .n.add{color:var(--muted)}
+.a2 .diff .del mark{background:color-mix(in srgb,var(--err) 32%,transparent);color:inherit;border-radius:2px}
+.a2 .diff .add mark{background:color-mix(in srgb,var(--ok) 32%,transparent);color:inherit;border-radius:2px}
+.a2 .diff .nil{background:repeating-linear-gradient(135deg,transparent 0 5px,var(--rule) 5px 6px);opacity:.5}
+.a2 .diff .elided{color:var(--faint);font-size:11px;padding:2px 10px}
+.a2 .row.tool .md.args{margin-top:6px}
+.a2 .row.tool .md.args .fence{margin:0}
 .a2 .row.think{color:var(--faint);font-style:italic}
 .a2 .row.think summary{cursor:pointer}
 .a2 .row.think .md{font-family:var(--font-prose);font-size:14px;color:var(--muted);margin-top:4px}

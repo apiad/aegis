@@ -593,6 +593,15 @@ def run(text: str) -> None:
             tool_output(tid, str(e), is_error=True)
         assistant({"type": "text", "text": "Read it."})
         result()
+    elif word == "/readn":
+        tid = tool_id()
+        assistant(
+            {"type": "tool_use", "id": tid, "name": "Read", "input": {"file_path": arg}}
+        )
+        body = open(arg).read().splitlines()
+        tool_output(tid, "\n".join(f"{n:6}\t{ln}" for n, ln in enumerate(body, 1)))
+        assistant({"type": "text", "text": "Read it."})
+        result()
     elif word == "/notice":
         for sub in ("hook_started", "thinking_tokens", "task_notification"):
             emit({"type": "system", "subtype": sub})

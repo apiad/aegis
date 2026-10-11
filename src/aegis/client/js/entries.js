@@ -8,7 +8,8 @@ import markdownit from "../vendor/markdown-it.mjs";
 import { copyButton } from "./copy.js";
 import { money } from "./fleet.js";
 import { entryIcon, icon } from "./glyphs.js";
-import { cachedColour, isPlain, langName } from "./highlight.js";
+import { diffView } from "./diff.js";
+import { cachedColour, colour, isPlain, langName, paint, splitLines } from "./highlight.js";
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -271,13 +272,27 @@ function row(entry, cls, body) {
   return r;
 }
 
-function diffBlock(diff) {
-  const d = el("div", "diff");
-  d.append(el("div", "path", diff.path));
-  for (const line of diff.removed) d.append(el("div", "del", `- ${line}`));
-  for (const line of diff.added) d.append(el("div", "add", `+ ${line}`));
-  if (diff.elided) d.append(el("div", "elided", `… ${diff.elided} more changed lines`));
-  return d;
+// A file's lines, numbered from where the view starts, coloured once the
+// language has loaded (the row is open, so it is in view).
+function fileView(file, lang) {
+  const view = el("div", "lines");
+  const draw = (html) => {
+    view.innerHTML = html.map((h, i) => `<span class="n">${file.first + i}</span><span class="c">${h}</span>`).join("");
+  };
+  draw(file.text.split("\n").map(esc));
+  if (lang) colour(file.text, lang).then((got) => got && draw(splitLines(got.html)), () => {});
+  return view;
+}
+
+// A tool's arguments: a coloured block for a command or other arguments, the
+// plain lines for a file tool's (its path and range).
+function argsView(text, lang) {
+  if (!lang) return el("pre", "args", text);
+  const wrap = el("div", "md args");
+  wrap.innerHTML = fenceHtml(text, lang);
+  wrap.querySelector(".fh").append(copyButton("code"));
+  paint(wrap.firstChild);
+  return wrap;
 }
 
 const RENDERERS = {
@@ -357,9 +372,10 @@ const RENDERERS = {
     if (det.peek) {
       more.append(el("div", "peekcap", `as of ${hhmm(det.peek.ts)}`), fileCard(det.peek.files, det.peek.glyph));
     }
-    if (det.diff) more.append(diffBlock(det.diff));
+    if (det.file) more.append(fileView(det.file, det.lang));
+    if (det.diff) more.append(diffView(det.diff, det.lang));
     if (det.tail) more.append(el("pre", "out", det.tail));
-    if (det.args) more.append(el("pre", "args", det.args));
+    if (det.args && !det.file && !det.diff) more.append(argsView(det.args, det.path ? null : det.lang));
     if (det.more) more.append(el("div", "loading", "loading…"));
     if (more.childNodes.length) d.append(more);
     const body = el("div", "body");
