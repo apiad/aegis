@@ -34,7 +34,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import attachments
+from . import attachments, restarts
 from .artifacts import Board
 from .claude.control import Catalog
 from .claude.process import ControlError
@@ -193,6 +193,8 @@ class Session:
         unread: list[str] | None = None,
         last_read_at: float | None = None,
         recap_cost_usd: float = 0.0,
+        last_exit: dict | None = None,
+        restart_continues: int = 0,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
@@ -251,6 +253,14 @@ class Session:
         self.last_read_at = last_read_at
         # What this session's recaps cost (recaps.py), apart from its own turns.
         self.recap_cost_usd = recap_cost_usd
+        # How the last process ended ({"code", "at"}), and how many times in a
+        # row a restart has continued this turn (restarts.py). Both in the meta,
+        # because boot decides from metas alone.
+        self.last_exit = last_exit
+        self.restart_continues = restart_continues
+        # The process's start time from /proc, so a crashed server's successor
+        # can tell this harness from a later process that reused its pid.
+        self._pid_started: int | None = None
         # The current process's catalog; None as a result when it did not answer.
         self.catalog_task: asyncio.Task[Catalog | None] | None = None
         self.artifacts = Board(self)
@@ -281,6 +291,10 @@ class Session:
             "unread": sorted(self.unread),
             "last_read_at": self.last_read_at,
             "recap_cost_usd": self.recap_cost_usd,
+            "pid": self.pid,
+            "pid_started": self._pid_started if self._proc else None,
+            "last_exit": self.last_exit,
+            "restart_continues": self.restart_continues,
         }
 
     def wire(self) -> dict:
@@ -444,6 +458,8 @@ class Session:
         self._stopping = False
         await proc.start()
         self._proc = proc
+        self._pid_started = restarts.started_at(proc.pid) if proc.pid else None
+        self.last_exit = None
         self.catalog_task = asyncio.create_task(self._fetch_catalog(proc))
         self.open_tasks.clear()
         if resume:
@@ -756,6 +772,8 @@ class Session:
                 if self._interrupt_timer:
                     self._interrupt_timer.cancel()
                 changes["status"] = "idle"
+                if not ev.is_error:
+                    changes["restart_continues"] = 0
                 if ev.cost_usd is not None:
                     changes["cost_usd"] = ev.cost_usd
                 if ev.context_window:
@@ -776,6 +794,7 @@ class Session:
             return
         self._proc = None
         self.open_tasks.clear()
+        self.last_exit = {"code": code, "at": time.time()}
         self._record(
             {
                 "kind": "exit",

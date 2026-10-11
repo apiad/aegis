@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 import aegis.meta
+from aegis import restarts
 import aegis.registry
 from aegis.registry import Registry
 from aegis.roots import make_roots
@@ -391,3 +392,25 @@ async def test_the_archive_list_ships_no_standing_or_priming(world):
     (m,) = r.archive(None, 10, None)[0]
     assert m["log_id"] == "l000"
     assert "standing" not in m and "priming" not in m
+
+
+async def test_the_meta_names_the_running_harness_and_its_last_exit(world):
+    r = world.registry()
+    s = await r.spawn(world.spec())
+    m = json.loads(r.metas.path(s.log_id).read_text())
+    assert m["pid"] == s.pid and m["pid_started"] == restarts.started_at(s.pid)
+    await s.send("/exit 3")
+    await until(lambda: s.status == "stopped", what="the exit")
+    m = json.loads(r.metas.path(s.log_id).read_text())
+    assert m["pid"] is None and m["last_exit"]["code"] == 3 and m["last_exit"]["at"] > 0
+    await r.shutdown()
+
+
+async def test_a_finished_turn_clears_the_restart_count(world):
+    r = world.registry()
+    s = await r.spawn(world.spec())
+    s.restart_continues = 2
+    await turn(s, "hello")
+    assert s.restart_continues == 0
+    assert json.loads(r.metas.path(s.log_id).read_text())["restart_continues"] == 0
+    await r.shutdown()

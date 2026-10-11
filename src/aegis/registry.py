@@ -237,6 +237,8 @@ class Registry(Host):
             unread=meta.get("unread"),
             last_read_at=meta.get("last_read_at"),
             recap_cost_usd=meta.get("recap_cost_usd") or 0.0,
+            last_exit=meta.get("last_exit"),
+            restart_continues=meta.get("restart_continues") or 0,
         )
 
     def boot(self) -> None:
