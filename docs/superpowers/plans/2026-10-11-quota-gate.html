@@ -118,7 +118,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 -->
 <div class="chrome">
   <div class="bar"><span>aegis</span><span class="tab">plan · the quota gate</span>
-    <span class="st"><span class="pill acc">execution method: not chosen yet</span><span class="pill">#311</span><span class="pill">2026-10-11</span></span></div>
+    <span class="st"><span class="pill acc">executed inline, task by task</span><span class="pill">#311</span><span class="pill">2026-10-11</span></span></div>
   <div class="progress"><span id="pcount">0 of 0 done</span><div class="track" id="ptrack"></div></div>
 </div>
 <main>
@@ -168,6 +168,33 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <tr><td>A new attention state <code>waiting</code></td><td>The existing <code>waiting</code> state with a quota phrase</td><td>It already exists and renders as the spec's mark.</td></tr>
 </tbody>
 </table>
+
+<h2>Where the build departs from this plan</h2>
+<p>Every ruling the code forced while executing the tasks below, by task. The tests are the judge of each.</p>
+<ol class="focus">
+  <li><b>T1</b> Codex is its own gauge-less pool "codex": pool_for("codex", m) == "codex", so a policy naming codex as open opens it (spec decision "a harness without a gauge: closed unless its policy names that provider"). The plan's test closed codex even when named.</li>
+  <li><b>T1</b> the why names the provider and window labels ("Claude 5 hours is at 63%, launch line 50%") as the spec's refusal does, not the window kinds.</li>
+  <li><b>T1</b> validate also refuses unknown window kinds per pool, booleans as percents, and lines mode for codex.</li>
+  <li><b>T2</b> policy_of gives None to every admin-role principal (not only the owner), and {} (every pool closed) to a member with neither own nor default policy and to a revoked principal, whose agents act as a member (app.who). The plan returned None for an unknown name, which would have left a revoked member's running agents ungated.</li>
+  <li><b>T2</b> set_policy on an admin is refused (never_gated). decide() validates the pool's entry and reads one that does not validate (a hand edit) as closed, instead of raising.</li>
+  <li><b>T2</b> <code>aegis token list</code> prints each token's effective policy in one line (quota_gate.describe), as the spec's CLI paragraph says.</li>
+  <li><b>T4</b> a member with no policy and no default_policy starts nothing (fail closed, spec "a pool the policy does not name is closed"). This changes #324's behaviour for existing member tokens: an admin must set a default. test_owners' fixture opens claude by default_policy. Flag in the PR.</li>
+  <li><b>T4</b> the gate is one question per session, Registry.quota_hold(s): a paused session holds; otherwise a turn may not start when the owner's gate is stopped, or closed and the harness would have to start. deliver, the turn-end flush, continue_after_boot and a person's session.send all ask it. The plan gated only deliver; a person's prompt to a stopped session of a gated owner would have relaunched the harness, so session.send refuses with quota_closed (a person sees why) rather than holding typed text.</li>
+  <li><b>T4</b> held messages are tagged held_for quota also at a turn's end when the gate then says no (a message held mid-turn would otherwise start a new turn right after a quota stop's interrupt).</li>
+  <li><b>T4</b> queue tasks that wait report waiting_for_quota in task_status (the spec's "the queue shows it as waiting for quota"); on_quota dispatches whenever a task is pending, level-triggered.</li>
+  <li><b>T4</b> peer_handoff reports "held for" from whether the message was actually held (to.held grew), so a quota hold reads as held.</li>
+  <li><b>T4/T5</b> on_quota is level-triggered over sessions, not edge-triggered over (owner, pool) transitions: each reading pauses working sessions whose gate is stopped and continues paused or holding ones whose gate is open. Hysteresis falls out (only open continues), and a restart or a missed reading needs no memory.</li>
+  <li><b>T5</b> the meta field is quota_paused (the why, or None), not paused_by: "quota"; the continue message quotes the why, as the spec's text does ("aegis paused your turn because ben's quota line was reached (Claude 5 hours is at 91%, stop line 90%)").</li>
+  <li><b>T5</b> the pause/continue code landed in task 4's commit (on_quota needed it to be level-triggered); task 5's tests were run against it afterwards and each one was broken on purpose (no hysteresis, no paused check in quota_hold, paused worker counted finished) to confirm it fails.</li>
+  <li><b>T6</b> the editor's chips are the server's verdict on the saved policies (token.list carries each member's gates, the default's, and the pools with their windows), not recomputed in the browser as the mockup did: Python decides, the browser draws. They change after Save, not while dragging.</li>
+  <li><b>T6</b> a member's lines come from the welcome (me.policy, its effective policy), so a policy an admin changes reaches that member's gauge at its next connection.</li>
+  <li><b>T6</b> the mockup's role select is not built: no operation changes a token's role, so the card shows the role as a pill.</li>
+  <li><b>T6</b> the Tokens section's table became cards; #324's add-and-revoke browser test now finds .tok-cara instead of tr.tok-cara.</li>
+  <li><b>T7</b> a refused far spawn reaches the agent as this server's own words for the code ("the quota gate on beta for this server's link is closed"), not the far server's why and reset time as the spec says. DESIGN.md's hostile-far rule forbids any far text in an agent's context; a person still sees the full why through /spawn. far_error() is the shared wording.</li>
+  <li><b>T7</b> the far session records provenance as spawned_from "handle@server" (SpawnSpec field, meta and spawn record), not spawned_by, which already holds a local parent's log id and drives child tracking. Only a link socket, for its own server, may pass it (not_a_link otherwise); it is hidden from the MCP tool schema.</li>
+  <li><b>T7</b> the permission cap reads the far agent's preset first (agents.list over the link): an explicit permission above the agent's is refused (not_allowed), an absent one is capped at the agent's.</li>
+  <li><b>T7</b> the far handle and log id are checked (valid_handle, the log id shape) before the agent sees them.</li>
+</ol>
 
 <!-- ============================================================ TASK 1 -->
 <details class="task" id="task-1" data-state="done">

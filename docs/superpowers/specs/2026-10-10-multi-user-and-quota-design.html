@@ -251,7 +251,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · tokens, quota gate and restarts</span>
-  <span class="st"><span class="pill acc">restarts merged; tokens built on branch tokens-owners; quota not started</span><span class="pill">2026-10-10</span><span class="pill">#311 · #312</span></span>
+  <span class="st"><span class="pill acc">built: restarts and tokens merged; the quota gate on branch quota-gate</span><span class="pill">2026-10-10</span><span class="pill">#311 · #312</span></span>
 </div>
 
 <div class="wrap">
@@ -533,6 +533,8 @@ The pool has room again. Continue where you left off.</pre>
 </div>
 <p>A session waiting for quota gets a new attention state, <code>waiting</code>, drawn as a hollow amber mark, so the Fleet tells it apart from an idle session and from an error. Every card and tab shows its owner's name when the viewer is not the owner.</p>
 
+<p>As built: a policy gives each pool a mode, the editor's model, instead of <code>launch_below</code> and <code>stop_above</code> maps: <code>{"claude": {"mode": "lines", "lines": {"session": {"launch": 50, "stop": 90}, "weekly_all": {"launch": "pace", "stop": 90}}}, "codex": {"mode": "open"}}</code>, one format for the file and the editor. Codex is its own pool with no gauge, open only when a policy names it. A member with neither a policy nor a <code>default_policy</code> starts nothing, and nor does a token that was revoked while its sessions run. The waiting state is the existing <code>waiting</code> attention, whose phrase names the quota (<code>quota (Claude 5 hours is at 91%, stop line 90%)</code>); no new state was needed. The meta field is <code>quota_paused</code>, holding the reason. The gate is evaluated after every reading and every minute, level-triggered over sessions, so a restart or a missed reading needs no memory. A person's prompt to a session that would have to start, or that is paused, is refused with <code>quota_closed</code> rather than held, so the person reads why. A pending task's <code>task_status</code> says what it waits for.</p>
+
 <h2 id="editor"><span class="n">06</span>Editing tokens and policies</h2>
 <p>Everything in <code>tokens.json</code> is editable in Settings, in a Tokens section that only admins see. The section reuses the agent cards, picks, links and save bar of <code>settings.js</code>, so it reads as part of the page it sits on. When an admin picks a linked server in "Editing the config of", the section edits that server's tokens through the link, which works only if the link holds an admin token there.</p>
 <h3 id="editor-parts">What the section holds</h3>
@@ -557,6 +559,8 @@ The pool has room again. Continue where you left off.</pre>
   <div class="set-bar" id="tk-bar"><span id="tk-status">No changes</span><button class="btn" id="tk-discard">Discard</button><button class="btn primary" id="tk-save">Save changes</button></div>
 </div>
 
+<p>As built: the status chips are the server's verdict on the saved policies, sent with <code>token.list</code>, so they change at Save and not while a handle moves. No operation changes a token's role, so a card shows the role and offers no pick for it. A member's own lines on its gauge come from the welcome, so a policy an admin changes reaches that member's gauges at its next connection.</p>
+
 <h2 id="across"><span class="n">07</span>Agents across links</h2>
 <p>The links spec kept agents from spawning on a linked server, and gave the reason (<code>2026-10-08-aegis-links-design.md:255-261</code>): an agent that could spawn on a linked server would spend that server's quota on its own judgment. A link now presents a token with a policy, and the far server gates every spawn by that policy, so the far server's owner decides how much a linked server's agents may spend. That removes the reason, and this spec lifts the rule for spawning.</p>
 <ul>
@@ -566,6 +570,8 @@ The pool has room again. Continue where you left off.</pre>
 <li>Nothing else crosses for agents. Reading a far transcript, sending to a far session and enqueueing on a far server still fail with <code>not_across_links</code>. "Nothing comes back" holds: a far session's text never enters a near agent's context. The spawned session hands its result back as code through git, or by <code>peer_handoff</code> only if the far server itself holds a link to the near one.</li>
 <li>The refusal text in <code>ACROSS</code> (<code>agent_ops.py:282-286</code>) changes to say that spawning is allowed and reading, sending and enqueueing are not.</li>
 </ul>
+
+<p>As built: a far refusal reaches the agent in this server's words for its code ("the quota gate on beta for this server's link is closed"), not with the far server's reason and reset time: the links rule that no far text enters an agent's context wins, and a person sees the full reason through <code>/spawn</code>. The provenance field is <code>spawned_from</code> (<code>handle@server</code>), because <code>spawned_by</code> already holds a local parent's log id; only a link socket may set it. The permission cap reads the far agent's preset over the link first. Only an admin's agents spawn across links, as only admins do in person.</p>
 
 <h2 id="restart"><span class="n">08</span>Restarts</h2>
 
