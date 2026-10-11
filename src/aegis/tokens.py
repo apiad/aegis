@@ -154,6 +154,14 @@ class TokenStore:
         self._fresh()
         return self._admin
 
+    def use_admin(self, token: str) -> None:
+        """Make ``token`` the admin's: what the web layer was built with. A
+        no-op when it already is, which is every real start."""
+        self._fresh()
+        if token and token != self._admin:
+            _write_private(self.root / "token", token + "\n")
+            self._admin, self._admin_mtime = token, self._mtime(self.root / "token")
+
     def list(self) -> list[dict]:
         self._fresh()
         rows = [

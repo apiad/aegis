@@ -985,3 +985,35 @@ def test_the_artifact_script_and_stylesheet_are_served(project, fake_claude):
     css = c.get("/static/css/artifact.css")
     assert css.status_code == 200 and "text/css" in css.headers["content-type"]
     assert "var(--accent)" in css.text
+
+
+def test_a_member_token_signs_in_and_is_told_who_it_is(project, fake_claude):
+    c = client_for(project, fake_claude)
+    member = c.app.state.aegis.principals.add("ben", "member")
+    with c.websocket_connect("/ws", headers={"origin": "http://testserver"}) as ws:
+        ws.send_json({"t": "hello", "token": member, "proto": PROTO})
+        welcome = ws.receive_json()
+        assert welcome["t"] == "welcome"
+        assert welcome["me"] == {"name": "ben", "role": "member"}
+
+
+def test_a_revoked_token_is_refused_at_its_next_message(project, fake_claude):
+    c = client_for(project, fake_claude)
+    store = c.app.state.aegis.principals
+    member = store.add("ben", "member")
+    with c.websocket_connect("/ws", headers={"origin": "http://testserver"}) as ws:
+        ws.send_json({"t": "hello", "token": member, "proto": PROTO})
+        assert ws.receive_json()["t"] == "welcome"
+        store.revoke("ben")
+        ws.send_json({"t": "call", "id": 1, "op": "server.version", "params": {}})
+        # One read: the call's reply when the socket stayed open, or the close.
+        with pytest.raises(WebSocketDisconnect) as e:
+            ws.receive_json()
+        assert e.value.code == 4401
+
+
+def test_login_takes_any_valid_token(project, fake_claude):
+    c = client_for(project, fake_claude)
+    member = c.app.state.aegis.principals.add("ben", "member")
+    assert c.post("/login", json={"token": member}).status_code == 204
+    assert c.post("/login", json={"token": "nope"}).status_code == 401

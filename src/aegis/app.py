@@ -61,6 +61,7 @@ from .journal.service import Journal
 from .quota import Quota
 from .recaps import Recaps
 from .ops import Caller, NoParams, OpError, Registry as Ops
+from .tokens import TokenStore
 from .registry import Registry
 from .roots import Roots
 from .session import PUBLISH_EVERY_S
@@ -278,6 +279,8 @@ class App:
         # Who the people on this server are, as a link tells the far side. One
         # user per server for now: whoever started it (links.py).
         self.user = user or getpass.getuser()
+        # The tokens that may use this server, the admin's first (tokens.py).
+        self.principals = TokenStore(roots.state_root, self.user)
         self.links = Links(roots.state_root, server_name, self.user, self.publish)
         self.registry = Ops()
         self.registry.permission_of = lambda log_id: (

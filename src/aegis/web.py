@@ -30,7 +30,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
-import hmac
 import json
 import logging
 import time
@@ -125,16 +124,20 @@ def build_web(
     public = {urlsplit(o).netloc: o for o in map(public_origin, origins)}
     cookie = cookie_name(app.roots.state_root)
 
-    def valid(given: object) -> bool:
-        return isinstance(given, str) and hmac.compare_digest(given, token)
+    # ``token`` is the admin's (tokens.py); any token the store knows signs in.
+    app.principals.use_admin(token)
 
-    def signed_in(response: Response, request) -> Response:
-        """``response`` carrying the cookie: HttpOnly, so no script on the page
-        can read the token; Secure behind an https origin."""
+    def valid(given: object) -> bool:
+        return app.principals.resolve(given) is not None
+
+    def signed_in(response: Response, request, given: str) -> Response:
+        """``response`` carrying the cookie with the token that was presented:
+        HttpOnly, so no script on the page can read it; Secure behind an https
+        origin."""
         origin = public.get(request.headers.get("host", ""), "")
         response.set_cookie(
             cookie,
-            token,
+            given,
             max_age=COOKIE_MAX_AGE_S,
             path="/",
             httponly=True,
@@ -149,7 +152,7 @@ def build_web(
         given = request.query_params.get("token")
         if given is not None:
             if valid(given):
-                return signed_in(RedirectResponse("/", status_code=303), request)
+                return signed_in(RedirectResponse("/", status_code=303), request, given)
             return RedirectResponse("/?refused=1", status_code=303)
         return FileResponse(
             CLIENT_DIR / "index.html", headers={"Cache-Control": "no-cache"}
@@ -164,7 +167,7 @@ def build_web(
         given = body.get("token") if isinstance(body, dict) else None
         if not valid(given):
             return JSONResponse({"error": "bad_token"}, status_code=401)
-        return signed_in(Response(status_code=204), request)
+        return signed_in(Response(status_code=204), request, given)
 
     manifest = {
         "name": f"aegis · {app.server_name}",
@@ -296,7 +299,8 @@ def build_web(
         given = hello.get("token")
         if not isinstance(given, str) and not program:
             given = websocket.cookies.get(cookie)
-        if hello.get("t") != "hello" or not valid(given):
+        principal = app.principals.resolve(given)
+        if hello.get("t") != "hello" or principal is None:
             await websocket.close(code=BAD_TOKEN)
             return
         if hello.get("proto") != PROTO:
@@ -315,7 +319,10 @@ def build_web(
             local and host.rpartition(":")[0] in LOOPBACK and files.opener() is not None
         )
         caller = Caller(
-            "user", desktop=desktop, link=via if isinstance(via, str) else None
+            "user",
+            desktop=desktop,
+            link=via if isinstance(via, str) else None,
+            principal=principal,
         )
         out: asyncio.Queue[dict] = asyncio.Queue()
         # This socket's subscriptions forwarded down links: <bid>:<channel>.
@@ -378,6 +385,9 @@ def build_web(
                 "proto": PROTO,
                 "server": app.server_name,
                 "native": desktop,
+                "me": {"name": principal.name, "role": principal.role},
+                # Whose a session with no owner is: the admin's (tokens.py).
+                "owner": app.principals.owner,
             }
         )
         write_task = asyncio.create_task(writer())
@@ -395,6 +405,11 @@ def build_web(
         try:
             while True:
                 msg = await websocket.receive_json()
+                # A token revoked while this socket was open stops here, at its
+                # next message, not at its next connection.
+                if app.principals.resolve(given) != principal:
+                    await websocket.close(code=BAD_TOKEN)
+                    break
                 t = msg.get("t") if isinstance(msg, dict) else None
                 if t == "call":
                     task = asyncio.create_task(handle_call(msg))
@@ -469,7 +484,7 @@ def build_web(
             yield
             await app.shutdown()
 
-    return Starlette(
+    web = Starlette(
         routes=[
             Route("/", index),
             Route("/login", login, methods=["POST"]),
@@ -483,3 +498,5 @@ def build_web(
         ],
         lifespan=lifespan,
     )
+    web.state.aegis = app
+    return web

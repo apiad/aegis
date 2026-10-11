@@ -55,6 +55,9 @@ class Caller:
     # A person acting through a link from another aegis server: that server's
     # name. Set by the transport from the link's hello (links.py).
     link: str | None = None
+    # Who the caller's token is (tokens.py). None for an agent, whose
+    # principal is its session's owner, and for the server's own calls.
+    principal: Principal | None = None
 
     @property
     def is_agent(self) -> bool:
