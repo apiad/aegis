@@ -601,7 +601,7 @@ EOF
 </details>
 
 <!-- ============================================================ TASK 2 -->
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">Seven pages: sessions, monitors, queues, handoffs, artifacts, links, config</span><span class="files">src/aegis/help/{sessions,monitors,queues,handoffs,artifacts,links,config}.md</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The pages people and agents read about each feature. They were written against: the tool docstrings and params (<code>src/aegis/agent_ops.py</code>, <code>src/aegis/artifact_ops.py</code>, <code>src/aegis/journal/ops.py</code>, <code>src/aegis/app.py:862</code> for <code>session.spawn</code>), <code>src/aegis/monitors.py</code> (30 s per condition, <code>done</code> checked before <code>fail</code>, a 120 s grace for a silent session), <code>src/aegis/queues.py</code>, <code>src/aegis/links.py</code>, <code>src/aegis/tokens.py</code>, <code>src/aegis/config.py</code>, <code>src/aegis/agents.py</code>, <code>src/aegis/recap.py:185</code>, and the client (<code>src/aegis/client/index.html</code>, <code>js/app.js</code>, <code>js/fleet.js</code>, <code>js/keys.js</code>). The CI example's jq was run against sample <code>gh pr checks --json bucket</code> output. <code>src/aegis/help/</code> is data: give it no <code>__init__.py</code>; the wheel already ships every file under <code>src/aegis</code>.</p>
