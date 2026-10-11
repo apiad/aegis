@@ -28,16 +28,19 @@ import asyncio
 import base64
 import binascii
 import contextlib
+import dataclasses
 import getpass
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from . import archive, attachments as att, commands, dictation, files, restarts
-from .agent_ops import register_agent_ops, spawn_opening
+from .agent_ops import far_error, register_agent_ops, spawn_opening
 from .artifact_ops import register_artifact_ops
 from .agents import (
     EFFORTS,
@@ -56,6 +59,7 @@ from .host import HostSampler
 from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors, iso_now
+from .names import valid_handle
 from .nudges import Nudges
 from .queues import Queues
 from .journal.ops import register_journal_ops
@@ -80,6 +84,8 @@ from .session import PUBLISH_EVERY_S
 from .version import Versions
 
 log = logging.getLogger("aegis.app")
+# A log id as registry.new_log_id mints it, checked on what a link answers.
+LOG_ID = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{6}$")
 
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 Permission = Literal["read", "write", "full", "auto"]
@@ -87,6 +93,11 @@ Permission = Literal["read", "write", "full", "auto"]
 
 class _Strict(BaseModel):
     model_config = {"extra": "forbid"}
+
+
+class SpawnedFrom(_Strict):
+    handle: str
+    server: str
 
 
 class SpawnParams(_Strict):
@@ -109,6 +120,9 @@ class SpawnParams(_Strict):
     prompt: str | None = Field(
         None, min_length=1, description="The new session's first message."
     )
+    # Set by a server that links this one, for an agent of its own that
+    # spawns here (app.spawn); refused from anything but a link.
+    spawned_from: SkipJsonSchema[SpawnedFrom | None] = Field(None, exclude=True)
 
 
 class SendParams(_Strict):
@@ -674,6 +688,68 @@ class App:
         r = await link.call("session.spawn", params)
         return {**r, "server": far}
 
+    async def _spawn_far(
+        self, p: SpawnParams, name: str, far: str, parent, caller: Caller
+    ) -> dict:
+        """An agent here spawns on a linked server, through the link, as the
+        token the link presents there; that server's policy for it decides.
+        The far session's permission is at most the agent's, the far agent's
+        preset read first. Nothing the far server wrote reaches the agent: its
+        handle and log id are checked, its errors worded here (agent_ops)."""
+        if not self.who(caller).is_admin:
+            raise OpError(
+                "not_for_members",
+                "spawning on a linked server is for an admin's agents",
+            )
+        link = self.links.get(far)
+        if link is None:
+            raise OpError("unknown_server", f"this server links no server named {far}")
+        if link.state != "linked":
+            raise OpError(
+                "server_offline", f"{far} is not linked right now; nothing was started"
+            )
+        cap = parent.spec.permission
+        try:
+            listed = await link.call("agents.list", {})
+            agent = name or listed.get("default")
+            preset = next(
+                (
+                    a.get("permission")
+                    for a in listed.get("agents", [])
+                    if a.get("name") == agent
+                ),
+                None,
+            )
+            permission = p.permission or preset
+            if permission not in PERMISSION_ORDER or PERMISSION_ORDER.index(
+                permission
+            ) > PERMISSION_ORDER.index(cap):
+                if p.permission:
+                    raise OpError(
+                        "not_allowed",
+                        f"your session runs with {cap}, so a session you spawn can "
+                        f"have at most {cap} (this one would have {p.permission})",
+                    )
+                permission = cap
+            params = p.model_dump(exclude_none=True) | {
+                "agent": name or None,
+                "permission": permission,
+                "spawned_from": {"handle": parent.handle, "server": self.server_name},
+            }
+            r = await link.call(
+                "session.spawn", {k: v for k, v in params.items() if v is not None}
+            )
+        except OpError as e:
+            if e.code == "not_allowed" and e.message.startswith("your session"):
+                raise
+            raise far_error(e, far) from None
+        handle, log_id = r.get("handle"), r.get("log_id")
+        if not (isinstance(handle, str) and valid_handle(handle)) or not (
+            isinstance(log_id, str) and LOG_ID.match(log_id)
+        ):
+            raise OpError("far_error", f"{far} answered the spawn with something else")
+        return {"log_id": log_id, "handle": f"{handle}@{far}", "server": far}
+
     async def _archive(self, p: ArchiveParams, caller: Caller) -> dict:
         positions = archive.decode(p.cursor)
         # A link asking reads this server's archive only: links are not relayed.
@@ -767,15 +843,29 @@ class App:
             effort or permission if you need to, and send it `prompt` as its
             first message. Its permission can be at most yours. Returns its log
             id and handle. It does not report back: read it with peer_read,
-            message it with peer_handoff."""
+            message it with peer_handoff. With agent@server it starts on that
+            linked server, as this server's link there, and that server's quota
+            policy for the link decides; you can hand off to it, not read it."""
+            parent = reg.sessions.get(caller.log_id) if caller.is_agent else None
             if p.agent and "@" in p.agent:
+                name, _, server = p.agent.rpartition("@")
+                if server != self.server_name:
+                    if parent is None:
+                        raise OpError(
+                            "not_across_links",
+                            f"{p.agent}: a person spawns on a linked server with "
+                            "/spawn agent@server",
+                        )
+                    return await self._spawn_far(p, name, server, parent, caller)
+                p = p.model_copy(update={"agent": name})
+            if p.spawned_from is not None and (
+                caller.link is None or p.spawned_from.server != caller.link
+            ):
                 raise OpError(
-                    "not_across_links",
-                    f"{p.agent}: an agent spawns only on its own server; a person "
-                    "spawns on a linked one with /spawn agent@server",
+                    "not_a_link",
+                    "only a link, for its own server, says where a spawn came from",
                 )
             agents, default = self._agents()
-            parent = reg.sessions.get(caller.log_id) if caller.is_agent else None
             spec = resolve(
                 agents,
                 default,
@@ -792,6 +882,13 @@ class App:
                 # hand work to anyone else; a person's session is theirs.
                 owner=parent.spec.owner if parent else self.who(caller).name,
             )
+            if p.spawned_from is not None:
+                if not valid_handle(p.spawned_from.handle):
+                    raise OpError("bad_sender", "spawned_from names a handle")
+                spec = dataclasses.replace(
+                    spec,
+                    spawned_from=f"{p.spawned_from.handle}@{p.spawned_from.server}",
+                )
             # An agent cannot hand a session more power than it has itself.
             if parent is not None and PERMISSION_ORDER.index(
                 spec.permission

@@ -280,9 +280,11 @@ def spawn_opening(source, prompt: str, home: str | None) -> str:
 
 
 ACROSS = (
-    "an agent on this server reaches a linked server only by handing off to a "
-    "session there (peer_handoff to handle@server); reading, spawning and "
-    "enqueueing on another server are for people"
+    "an agent on this server reaches a linked server by spawning there "
+    "(session_spawn with agent@server, gated by that server's quota policy for "
+    "the link) and by handing off to a session there (peer_handoff to "
+    "handle@server); reading, sending to and enqueueing on another server are "
+    "for people"
 )
 
 
@@ -296,7 +298,22 @@ FAR_ERRORS = {
     "server_offline": "{server} is not linked right now",
     "timeout": "{server} did not answer in time",
     "not_owner": "{handle}@{server} is not this server's link's to prompt there",
+    "quota_closed": "the quota gate on {server} for this server's link is closed: "
+    "nothing was started; a person here can see why with /spawn",
+    "not_for_members": "{server} lets this server's link do that only as an admin",
+    "not_allowed": "{server} refused the permission asked for",
+    "unknown_agent": "{server} has no such agent",
 }
+
+
+def far_error(e: OpError, server: str, handle: str = "") -> OpError:
+    """A linked server's refusal as this server words it: the code if it is
+    on the allowlist, never the far server's text."""
+    if e.code in FAR_ERRORS:
+        return OpError(e.code, FAR_ERRORS[e.code].format(handle=handle, server=server))
+    return OpError("far_error", f"{server} refused the call")
+
+
 USER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 # What session_list adds from a session's card, so one agent can follow

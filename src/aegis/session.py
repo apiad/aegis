@@ -131,6 +131,10 @@ class SpawnSpec:
     # The principal whose session this is (tokens.py); None from before owners,
     # which reads as the admin's.
     owner: str | None = None
+    # ``handle@server`` of the agent on a linked server that asked a link for
+    # this session. Provenance for the transcript and the journal, never
+    # authorization: this server cannot check it.
+    spawned_from: str | None = None
 
     def record(self) -> dict:
         """The fields a spawn record and a meta carry."""
@@ -150,6 +154,8 @@ class SpawnSpec:
             d["spawned_by"] = self.spawned_by
         if self.owner:
             d["owner"] = self.owner
+        if self.spawned_from:
+            d["spawned_from"] = self.spawned_from
         return d
 
     @classmethod
@@ -167,6 +173,7 @@ class SpawnSpec:
             overridden=tuple(d.get("overridden") or ()),
             spawned_by=d.get("spawned_by"),
             owner=d.get("owner"),
+            spawned_from=d.get("spawned_from"),
         )
 
 
