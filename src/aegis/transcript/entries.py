@@ -917,6 +917,8 @@ class Fold:
             detail = {"args": d.format_tool_args(ev.name, ev.input), "steps": 0}
             if path := d.file_path(ev.name, ev.input):
                 detail["path"] = path  # what the row's "show file" copies (file.peek)
+            if lang := d.tool_lang(ev.name, ev.input):
+                detail["lang"] = lang  # the views' language (client/js/highlight.js)
             return self._upsert(
                 _entry(
                     ev.id,

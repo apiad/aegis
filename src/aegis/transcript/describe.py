@@ -204,6 +204,42 @@ def file_path(name: str, inp: dict) -> str | None:
     return path if name in FILE_TOOLS and isinstance(path, str) else None
 
 
+# The highlight.js language (client/js/highlight.js LANGS) a file's name implies.
+LANG_BY_EXT = {
+    "sh": "bash", "bash": "bash", "zsh": "bash", "py": "python", "pyi": "python",
+    "js": "javascript", "mjs": "javascript", "cjs": "javascript", "jsx": "javascript",
+    "ts": "typescript", "tsx": "typescript", "json": "json", "jsonl": "json",
+    "yaml": "yaml", "yml": "yaml", "toml": "ini", "ini": "ini", "cfg": "ini",
+    "diff": "diff", "patch": "diff", "md": "markdown", "css": "css", "html": "xml",
+    "xml": "xml", "svg": "xml", "sql": "sql", "rs": "rust", "go": "go", "c": "c",
+    "h": "c", "cc": "cpp", "cpp": "cpp", "hpp": "cpp", "java": "java", "lua": "lua",
+    "rb": "ruby", "php": "php", "kt": "kotlin", "swift": "swift", "mk": "makefile",
+}  # fmt: skip
+LANG_BY_NAME = {
+    "makefile": "makefile",
+    "dockerfile": "dockerfile",
+    "nginx.conf": "nginx",
+}
+
+
+def lang_of_path(path: str) -> str | None:
+    name = _tail(path).lower()
+    if name in LANG_BY_NAME:
+        return LANG_BY_NAME[name]
+    ext = name.rsplit(".", 1)[-1] if "." in name else ""
+    return LANG_BY_EXT.get(ext)
+
+
+def tool_lang(name: str, inp: dict) -> str | None:
+    """The language a tool row's views draw in: Bash's command, a file tool's
+    file, every other tool's ``key: value`` arguments (#323)."""
+    if name in ("Bash", "BashOutput"):
+        return "bash"
+    if path := file_path(name, inp):
+        return lang_of_path(path)
+    return "yaml"
+
+
 def edit_pair(name: str, inp: dict) -> tuple[str, str, str] | None:
     """``(path, old, new)`` for a call that changes a file, else None."""
     path = inp.get("file_path")

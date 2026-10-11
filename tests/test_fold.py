@@ -1226,3 +1226,23 @@ def test_a_server_stopped_row_says_crash_or_why_it_was_not_continued():
     assert stopped() == (plain, plain)
     assert stopped(crash=True) == (crash, crash)
     assert stopped(crash=True, declined=why) == (why, why)
+
+
+def test_a_tool_row_carries_the_language_its_views_draw_in():
+    r = Rec()
+    r.call("t1", "Bash", {"command": "ls"})
+    r.call("t2", "Read", {"file_path": "/x/reader.py"})
+    r.call(
+        "t3", "Edit", {"file_path": "/x/Makefile", "old_string": "a", "new_string": "b"}
+    )
+    r.call("t4", "Grep", {"pattern": "x"})
+    r.call("t5", "Read", {"file_path": "/x/notes.unknownext"})
+    f, _ = run(r)
+    langs = {e["id"]: e["detail"].get("lang") for e in f.entries()}
+    assert langs == {
+        "t1": "bash",
+        "t2": "python",
+        "t3": "makefile",
+        "t4": "yaml",
+        "t5": None,
+    }

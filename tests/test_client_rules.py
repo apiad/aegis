@@ -100,3 +100,19 @@ def test_the_loader_registers_what_a_grammar_embeds():
     assert missing == []
     guess = re.search(r"const GUESS = \[([^\]]*)\]", src)
     assert set(re.findall(r'"([a-z0-9+-]+)"', guess.group(1))) <= langs
+
+
+def test_every_language_python_names_is_vendored():
+    """describe.tool_lang names a language the browser must be able to load."""
+    from aegis.transcript import describe
+
+    src = (JS / "highlight.js").read_text()
+    listed = re.search(r"export const LANGS = \[([^\]]*)\]", src).group(1)
+    names = set(re.findall(r'"([a-z0-9+-]+)"', listed))
+    used = {
+        *describe.LANG_BY_EXT.values(),
+        *describe.LANG_BY_NAME.values(),
+        "bash",
+        "yaml",
+    }
+    assert used <= names
