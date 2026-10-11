@@ -7,19 +7,21 @@ when: the first hour with aegis, from a first session to a handoff and the archi
 This tour walks through aegis in one sitting: a session and its transcript,
 the Fleet, the plan and the marks that say what needs you, a monitor, a second
 session and a handoff, and the archive. Each step says what to do and what you
-should see. Steps 1, 5 and 6 start agents and spend quota.
+should see. Steps 1 and 6 start agents, and steps 1, 4, 5 and 6 spend
+quota.
 
 ## 1. Start a session
 
 This step starts an agent and spends quota.
 
-Open a new tab with the + at the end of the tab bar, or press Alt+N. Check the
+Open the new-session page with the + at the end of the tab bar, or press
+Alt+N. Check the
 chips under the box: they name the agent and its harness, model, effort and
 permission. Type "List the files in this directory and tell me what this
 project is" and press Enter.
 
-You should see a new tab named after the session's handle, and the agent's
-work arriving in it.
+You should see a new tab named after your message, with the session's
+handle beside it, and the agent's work arriving in it.
 
 ## 2. Read the transcript
 
@@ -44,6 +46,8 @@ that needs you rises to the top.
 
 ## 4. Watch the plan and the marks
 
+This step spends quota.
+
 Ask the agent in its tab: "Make a three-step plan to add a short README
 section, keep it with plan_update, and ask me before you write anything."
 
@@ -62,8 +66,8 @@ when you are woken." When its turn has ended, create the file from a shell
 with `touch ready.txt` in that directory.
 
 You should see a monitor row with a bar in the session panel while it waits,
-and a few seconds after you create the file, a wake row headed
-"from monitor" followed by the agent's answer.
+and within ten seconds of creating the file, a wake row headed
+"monitor:" with its id and ok, followed by the agent's answer.
 
 ## 6. Start a second session and hand off
 
@@ -75,12 +79,14 @@ monitor_sessions. Then tell me what it found." Watch the Fleet.
 
 You should see a second card appear, work and finish, and the first session
 wake and report the count. Open the second session's tab: its first message is
-the prompt the first agent wrote. To pass work between two sessions yourself,
-an agent's `peer_handoff` delivers a message headed with the sender's handle.
+the prompt the first agent wrote. To pass work from one session to another,
+ask its agent to call `peer_handoff`: the message arrives headed with the
+sender's handle.
 
 ## 7. Close and reopen
 
-Close the second session: type `/close` in its box. Its tab goes away. Open
+Close the second session: type `/close` in its box, and confirm if it asks.
+Its tab goes away. Open
 the Fleet and scroll to the archive under the cards; filter it by the
 session's handle.
 
@@ -90,6 +96,6 @@ message.
 
 ## Next
 
-The concept pages say more about each part: sessions, monitors, queues,
+The other pages say more about each part: sessions, monitors, queues,
 handoffs, artifacts, links, configuration and commands. An agent finds the
 right one with `help_search` and reads it with `help_read`.
