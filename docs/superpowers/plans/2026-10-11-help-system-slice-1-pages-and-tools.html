@@ -1681,7 +1681,7 @@ EOF
 </details>
 
 <!-- ============================================================ TASK 5 -->
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">The pages against the code: tests/test_help_pages.py</span><span class="files">tests/test_help_pages.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The gate CI runs. It reads the rosters from the code as built: <code>registry.agent_ops()</code> and <code>registry.names()</code> from a real <code>App</code>, <code>commands.AEGIS</code>, the click tree under <code>typer.main.get_command(cli.app)</code> (which includes <code>journal</code> and <code>usage</code>, declared in their own modules), and the fields of <code>ConfigDoc</code>, <code>AgentDoc</code> and <code>QueueDoc</code>. A slow test builds the wheel and checks the pages are in it, since the index reads them from the installed package.</p>
