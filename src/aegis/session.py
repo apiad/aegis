@@ -123,6 +123,9 @@ class SpawnSpec:
     overridden: tuple[str, ...] = ()
     # The log id of the agent session that spawned this one.
     spawned_by: str | None = None
+    # The principal whose session this is (tokens.py); None from before owners,
+    # which reads as the admin's.
+    owner: str | None = None
 
     def record(self) -> dict:
         """The fields a spawn record and a meta carry."""
@@ -140,6 +143,8 @@ class SpawnSpec:
             d["overridden"] = list(self.overridden)
         if self.spawned_by:
             d["spawned_by"] = self.spawned_by
+        if self.owner:
+            d["owner"] = self.owner
         return d
 
     @classmethod
@@ -156,6 +161,7 @@ class SpawnSpec:
             priming=d.get("priming") or None,
             overridden=tuple(d.get("overridden") or ()),
             spawned_by=d.get("spawned_by"),
+            owner=d.get("owner"),
         )
 
 

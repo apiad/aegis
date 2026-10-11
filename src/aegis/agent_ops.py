@@ -576,7 +576,12 @@ def register_agent_ops(app: App) -> None:
         enqueuer = own(caller) if caller.is_agent else None
         cwd = str(enqueuer.spec.cwd if enqueuer else app.roots.harness_cwd)
         t = await app.queues.enqueue(
-            p.queue, p.payload, p.callback, enqueuer.log_id if enqueuer else None, cwd
+            p.queue,
+            p.payload,
+            p.callback,
+            enqueuer.log_id if enqueuer else None,
+            cwd,
+            owner=app.who(caller).name,
         )
         return {"task_id": t.id, "status": t.status, "position": app.queues.position(t)}
 

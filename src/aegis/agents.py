@@ -161,6 +161,7 @@ def resolve(
     overrides: dict[str, str | None],
     cwd: Path,
     spawned_by: str | None = None,
+    owner: str | None = None,
 ) -> SpawnSpec:
     """The spec a spawn runs: the agent's fields, each replaced by its override
     when one is given. The priming is always the agent's."""
@@ -195,4 +196,5 @@ def resolve(
         priming=agent.priming,
         overridden=overridden,
         spawned_by=spawned_by,
+        owner=owner,
     )

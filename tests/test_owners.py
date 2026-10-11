@@ -1,0 +1,59 @@
+"""Owners end to end: the real app, the fake claude, calls made as a principal."""
+
+import json
+
+import pytest
+
+from aegis.ops import Caller, Principal
+
+from .conftest import until
+from .test_agents import CONFIG, World, mcp, turn
+
+BEN = Principal("ben", "member")
+
+
+@pytest.fixture
+async def world(tmp_path, fake_claude):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    w = await World(tmp_path, fake_claude).start()
+    w.app.principals.add("ben", "member")
+    yield w
+    await w.stop()
+
+
+def as_(principal):
+    return Caller("user", principal=principal)
+
+
+async def test_a_person_owns_what_they_spawn(world):
+    r = await world.app.registry.call("session.spawn", {"agent": "opus"}, as_(BEN))
+    assert world.session(r["log_id"]).meta()["owner"] == "ben"
+
+
+async def test_a_members_agent_cannot_launder_ownership(world):
+    r = await world.app.registry.call("session.spawn", {"agent": "opus"}, as_(BEN))
+    a = world.session(r["log_id"])
+    out = await turn(a, mcp("session_spawn", agent="opus"))
+    child = json.loads(out.removeprefix("mcp ok: "))["log_id"]
+    assert world.session(child).meta()["owner"] == "ben"
+
+
+async def test_a_queue_worker_is_owned_by_whoever_enqueued(world):
+    r = await world.app.registry.call("session.spawn", {"agent": "opus"}, as_(BEN))
+    a = world.session(r["log_id"])
+    out = await turn(a, mcp("queue_enqueue", queue="general", payload="hello"))
+    task_id = json.loads(out.removeprefix("mcp ok: "))["task_id"]
+    t = world.app.queues.tasks[task_id]
+    await until(lambda: t.worker, what="the worker")
+    assert t.owner == "ben" and world.session(t.worker).meta()["owner"] == "ben"
+
+
+async def test_a_session_from_before_owners_is_the_admins(world):
+    s = await world.spawn()  # the server's own call: the admin
+    await world.stop()  # a shutdown rewrites the meta, so edit it after
+    meta = world.root / ".aegis" / "state" / "sessions" / f"{s.log_id}.json"
+    m = json.loads(meta.read_text())
+    m.pop("owner", None)
+    meta.write_text(json.dumps(m))
+    await world.start()
+    assert world.app.owner_of(s.log_id) == world.app.user

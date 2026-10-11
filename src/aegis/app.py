@@ -649,6 +649,9 @@ class App:
                 },
                 self._resolve_cwd(p.cwd, parent.spec.cwd if parent else None),
                 spawned_by=parent.log_id if parent else None,
+                # A child is its parent's owner's, so a member's agent cannot
+                # hand work to anyone else; a person's session is theirs.
+                owner=parent.spec.owner if parent else self.who(caller).name,
             )
             # An agent cannot hand a session more power than it has itself.
             if parent is not None and PERMISSION_ORDER.index(
