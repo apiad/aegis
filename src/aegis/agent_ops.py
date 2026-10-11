@@ -35,6 +35,11 @@ if TYPE_CHECKING:
     from .app import App
 
 
+# An agent's toasts: at most this many in a sliding window (spec #329).
+TOASTS_PER_WINDOW = 6
+TOAST_WINDOW_S = 60.0
+
+
 class _Strict(BaseModel):
     model_config = {"extra": "forbid"}
 
@@ -163,6 +168,18 @@ class PlanUpdate(_Strict):
 
 
 Reply = Annotated[str, Field(min_length=1, max_length=80, pattern=r"^[^\n]+$")]
+
+
+class Toast(_Strict):
+    text: str = Field(
+        min_length=1,
+        max_length=200,
+        pattern=r"^[^\n]+$",
+        description="One line the person should see now.",
+    )
+    kind: Literal["info", "error"] = Field(
+        "info", description="error draws it in the error colour; info otherwise."
+    )
 
 
 class TurnEnd(_Strict):
@@ -918,6 +935,26 @@ def register_agent_ops(app: App) -> None:
             }
         )
         return "noted"
+
+    toasted: dict[str, list[float]] = {}
+
+    @r.op("toast", Toast, agent=True, read=True)
+    async def toast(p: Toast, caller):
+        """Show a short message in every open browser, now, without ending your
+        turn: a heads-up the person should see while you keep working. Not for
+        reports; turn_end does that. Clicking it opens your tab. Returns how many
+        browsers showed it; with 0, nobody saw it. At most 6 a minute."""
+        s = own(caller)
+        now = time.monotonic()
+        recent = [t for t in toasted.get(s.log_id, ()) if now - t < TOAST_WINDOW_S]
+        if len(recent) >= TOASTS_PER_WINDOW:
+            wait = int(TOAST_WINDOW_S - (now - recent[0])) + 1
+            raise OpError(
+                "rate_limited",
+                f"{TOASTS_PER_WINDOW} toasts a minute at most; the next in {wait}s",
+            )
+        toasted[s.log_id] = [*recent, now]
+        return {"shown": app.toast(p.text, p.kind, s)}
 
     @r.op("meta", NoArgs, agent=True, read=True)
     async def meta(_, caller):

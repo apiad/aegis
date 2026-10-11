@@ -29,6 +29,7 @@ import base64
 import binascii
 import contextlib
 import getpass
+import time
 from pathlib import Path
 from typing import Literal
 
@@ -383,6 +384,17 @@ class App:
         else:
             self.channels.publish(channel, ops)
 
+    def toast(self, text: str, kind: str = "info", source=None) -> int:
+        """Show a toast in every open browser (client/js/toast.js) and return how
+        many there are. ``source`` is the session an agent's toast comes from; a
+        click on it opens that session's tab. It skips the throttle: a toast
+        must neither wait nor merge with another."""
+        t: dict = {"text": text, "kind": kind, "ts": time.time()}
+        if source is not None:
+            t["from"] = {"handle": source.handle, "id": source.log_id}
+        self.channels.publish("toasts", [{"toast": t}])
+        return self.channels.subscribers("toasts")
+
     def _sessions_key(self, op: dict) -> tuple[str, bool]:
         """A session added or removed, or a change to its state, name, model,
         attention, mark or blink, goes out at once: the page acts on them (Esc
@@ -422,6 +434,9 @@ class App:
             return lambda: self.config.current().wire()
         if name == "links":
             return self.links.wire
+        if name == "toasts":
+            # Always empty: a browser that subscribes later never replays a toast.
+            return lambda: []
         return None
 
     def _agents(self):
