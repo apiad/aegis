@@ -455,7 +455,12 @@ body{background:#000}
 #a2 .tbl tr.sel td{background:var(--accent-soft)}
 #a2 #arch-list tr[data-id]{cursor:pointer}
 #a2 .tbl td.acts{text-align:right;white-space:nowrap}
-#a2 .tbl td.acts .btn{margin-left:6px;padding:3px 10px}
+/* Read and Reopen as icons; Reopen's arrow in the accent, as on the side panel's tile. */
+#a2 .tbl td.acts .btn{display:inline-grid;place-items:center;width:30px;height:26px;margin-left:6px;padding:0;vertical-align:middle}
+#a2 .tbl td.acts .ic{vertical-align:0;color:var(--muted)}
+#a2 .tbl td.acts .reopen .ic{color:var(--accent)}
+#a2 .tbl td.acts .btn:hover{border-color:var(--faint)}
+#a2 .tbl td.acts .btn:hover .ic{color:var(--strong)}
 
 /* rename in place */
 #a2 .editable{cursor:text;border-radius:4px}
@@ -955,7 +960,7 @@ body{background:#000}
   #a2 #arch-list tr:not([data-id]){display:none}
   /* The meta line's cells start at 0 wide (min-width:0) and fill up to their
      text, short ones first, so the handle and the directory are the ones cut. */
-  #a2 #arch-list tr[data-id]{display:grid;grid-template-columns:repeat(4,auto);justify-content:start;align-content:center;row-gap:2px;position:relative;min-height:60px;padding:8px 92px 8px 4px;border-bottom:1px solid var(--rule)}
+  #a2 #arch-list tr[data-id]{display:grid;grid-template-columns:repeat(4,auto);justify-content:start;align-content:center;row-gap:2px;position:relative;min-height:60px;padding:8px 60px 8px 4px;border-bottom:1px solid var(--rule)}
   #a2 #arch-list tr.sel{background:var(--accent-soft)}
   #a2 #arch-list td{display:block;padding:0;border:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:none}
   #a2 #arch-list td:first-child{grid-column:1/-1;contain:inline-size;font-size:13.5px}
@@ -978,6 +983,7 @@ body{background:#000}
   #a2 .tr{padding-bottom:66px}
   #a2 .row.tool details>summary{padding:9px 0}
   #a2 .btn{min-height:44px}
+  #a2 .tbl td.acts .btn{width:44px;height:44px}
 }
 #a2 .note{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:40;padding:7px 14px;border:1px solid var(--rule);border-radius:999px;background:var(--raised);color:var(--muted);font-family:var(--font-chrome);font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.25)}
 #a2 .note[hidden]{display:none}

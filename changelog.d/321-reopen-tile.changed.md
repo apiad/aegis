@@ -1,1 +1,1 @@
-Reopen in an archived session's side panel is now a tile like Stop, Restart and Close, instead of a filled bar under a sentence.
+Reopen is drawn like the actions around it: an archived session's side panel shows it as a tile like Stop, Restart and Close, and the archive's rows show Read and Reopen as icon buttons instead of filled text buttons.
