@@ -64,6 +64,9 @@ class Task:
     error: str | None = None
     created_at: float = field(default_factory=time.time)
     finished_at: float | None = None
+    # The principal the task and its worker belong to (tokens.py); None in a
+    # log from before owners, which reads as the admin's.
+    owner: str | None = None
 
     def public(self) -> dict:
         d = asdict(self)
@@ -191,7 +194,13 @@ class Queues:
 
     # -- operations ------------------------------------------------------------------
     async def enqueue(
-        self, queue: str, payload: str, callback: bool, enqueuer: str | None, cwd: str
+        self,
+        queue: str,
+        payload: str,
+        callback: bool,
+        enqueuer: str | None,
+        cwd: str,
+        owner: str | None = None,
     ) -> Task:
         t = Task(
             id=f"task-{secrets.token_hex(4)}",
@@ -200,6 +209,7 @@ class Queues:
             callback=callback,
             enqueuer=enqueuer,
             cwd=cwd,
+            owner=owner,
         )
         self.tasks[t.id] = t
         self._log(t, "enqueued")
@@ -259,7 +269,7 @@ class Queues:
     async def _start(self, t: Task, q: dict) -> None:
         try:
             agents = list(self._config.current().agents)
-            spec = resolve(agents, None, q["agent"], {}, Path(t.cwd))
+            spec = resolve(agents, None, q["agent"], {}, Path(t.cwd), owner=t.owner)
         except OpError as e:
             self._fail(t, f"the queue's agent {q['agent']!r} cannot start: {e.message}")
             return

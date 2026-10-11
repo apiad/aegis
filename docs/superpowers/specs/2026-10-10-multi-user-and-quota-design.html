@@ -251,7 +251,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · tokens, quota gate and restarts</span>
-  <span class="st"><span class="pill acc">restarts: built on branch multi-user-quota; tokens and quota not started</span><span class="pill">2026-10-10</span><span class="pill">#311 · #312</span></span>
+  <span class="st"><span class="pill acc">restarts merged; tokens built on branch tokens-owners; quota not started</span><span class="pill">2026-10-10</span><span class="pill">#311 · #312</span></span>
 </div>
 
 <div class="wrap">
@@ -415,6 +415,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <p>Revoking the admin token, the one in <code>&lt;state&gt;/token</code>, does not delete it. aegis writes a new random token to the file and stops accepting the old one. Every browser and link that held the old token is refused at its next message, so a server can never be left without an admin and a leaked admin token is dead the moment it is revoked.</p>
 <p>A browser logs in exactly as today, with <code>?token=</code> or <code>POST /login</code>, and the cookie holds whichever token it presented. <code>web.py</code> resolves the token to its entry with a constant-time compare against each hash, and the <code>Caller</code> gains a <code>principal</code> field holding the name and role.</p>
 
+<p>As built: the Tokens section's "used" counts from the server's start and is kept in memory, because writing a timestamp on every authenticated message would rewrite <code>tokens.json</code> constantly. Marking a session read stays open to members, because the unread set only changes a badge. A member cancels or resumes only its own queue tasks. The Tokens section edits this server's tokens only; a linked server's are edited on that server.</p>
 <h3 id="roles">Roles</h3>
 <table class="tbl">
 <thead><tr><th>Operation</th><th>admin</th><th>member</th></tr></thead>
@@ -446,7 +447,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <h3 id="links">Links</h3>
 <p>A link presents a token like any browser. Today that is the far server's only token, so a link has full power there (<code>web.py:304-309</code>). After this change the far server's admin mints a member token for each server that links in, and gives each its own policy. The far side resolves the link to that principal and ignores the <code>user</code> its hello claims.</p>
-<p>The links spec (<code>2026-10-08-aegis-links-design.md:109-115</code>) set a precondition: no second person gets a token on a server anyone links to until sessions are isolated per user and only a session's owner can prompt, configure, interrupt or close it. This spec meets the second half. It does not meet the first: every session still runs as the same Linux user in the same checkout, so one member's agent can write a file that another member's session later reads, and a branch it pushes can reach a linked laptop through git. <span class="who">maintainer</span> Accept that gap for a team server whose users share one codebase and would pull each other's branches anyway. Per-user Linux accounts become the next spec when a server needs to hold users who do not trust each other.</p>
+<p>The links spec (<code>2026-10-08-aegis-links-design.md:109-115</code>) set a precondition: no second person gets a token on a server anyone links to until sessions are isolated per user and only a session's owner can prompt, configure, interrupt or close it. This spec meets the second half. It does not meet the first: every session still runs as the same Linux user in the same checkout, so one member's agent can write a file that another member's session later reads, and a branch it pushes can reach a linked laptop through git. <span class="who">maintainer</span> Accept that gap for a team server whose users share one codebase and would pull each other's branches anyway. The gap is wider than files: a member's agent with shell access can read <code>&lt;state&gt;/token</code>, which sits under the server's root, and act as the admin. Roles stop accidents between colleagues, not a hostile member. Per-user Linux accounts become the next spec when a server needs to hold users who do not trust each other.</p>
 
 <h3 id="settings">Settings</h3>
 <p>Settings (<code>client/js/settings.js</code>) already splits cleanly in two. The theme, fold level, tab order and drafts live in the browser's <code>localStorage</code>. Agents, queues and the default agent are written to <code>.aegis.yaml</code> by <code>config.write</code>, and servers to <code>links.json</code> by <code>link.add</code> and <code>link.remove</code>. A member sees the first group and "Run doctor", and a line saying server settings are edited by an admin. An admin sees everything, plus a Tokens section beside Servers.</p>

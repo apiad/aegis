@@ -60,7 +60,8 @@ from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .quota import Quota
 from .recaps import Recaps
-from .ops import Caller, NoParams, OpError, Registry as Ops
+from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
+from .tokens import TokenStore
 from .registry import Registry
 from .roots import Roots
 from .session import PUBLISH_EVERY_S
@@ -192,6 +193,15 @@ class LinkName(_Strict):
     name: str
 
 
+class TokenAdd(_Strict):
+    name: str = Field(description="Who the token is: lowercase, e.g. ben or laptop")
+    role: Literal["admin", "member"] = "member"
+
+
+class TokenName(_Strict):
+    name: str
+
+
 class ArchiveParams(_Strict):
     query: str | None = None
     server: str | None = Field(None, description="One server only; omitted: all.")
@@ -278,8 +288,12 @@ class App:
         # Who the people on this server are, as a link tells the far side. One
         # user per server for now: whoever started it (links.py).
         self.user = user or getpass.getuser()
+        # The tokens that may use this server, the admin's first (tokens.py).
+        self.principals = TokenStore(roots.state_root, self.user)
         self.links = Links(roots.state_root, server_name, self.user, self.publish)
         self.registry = Ops()
+        self.registry.who = self.who
+        self.registry.owner_of = self.owner_of
         self.registry.permission_of = lambda log_id: (
             s.spec.permission if (s := self.sessions.sessions.get(log_id)) else None
         )
@@ -289,6 +303,25 @@ class App:
         register_artifact_ops(self)
         register_journal_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
+
+    def who(self, caller: Caller) -> Principal:
+        """The principal a caller acts as. An agent acts as its session's
+        owner, with the owner's role now: a revoked owner's agent is a member."""
+        if caller.principal is not None:
+            return caller.principal
+        if caller.is_agent:
+            name = self.owner_of(caller.log_id or "") or self.user
+            return Principal(name, self.principals.role_of(name) or "member")
+        return Principal(self.user, "admin")  # the server's own calls
+
+    def owner_of(self, log_id: str) -> str | None:
+        """A session's owner by log id, None for no such session. One from
+        before owners existed is the admin's."""
+        s = self.sessions.sessions.get(log_id)
+        meta = s.meta() if s is not None else self.sessions.archived.get(log_id)
+        if meta is None:
+            return None
+        return meta.get("owner") or self.user
 
     def _bin(self, harness: str) -> str:
         return {"opencode": self.opencode_bin, "codex": self.codex_bin}.get(
@@ -503,6 +536,11 @@ class App:
             return {**r, "server": self.server_name}
         if caller.link is not None:
             raise OpError("not_relayed", "a link is not relayed to another server")
+        if not self.who(caller).is_admin:
+            raise OpError(
+                "not_for_members",
+                "spawning on a linked server is for an admin of this one",
+            )
         link = self.links.get(far)
         if link is None:
             raise OpError("unknown_server", f"this server links no server named {far}")
@@ -625,6 +663,9 @@ class App:
                 },
                 self._resolve_cwd(p.cwd, parent.spec.cwd if parent else None),
                 spawned_by=parent.log_id if parent else None,
+                # A child is its parent's owner's, so a member's agent cannot
+                # hand work to anyone else; a person's session is theirs.
+                owner=parent.spec.owner if parent else self.who(caller).name,
             )
             # An agent cannot hand a session more power than it has itself.
             if parent is not None and PERMISSION_ORDER.index(
@@ -657,7 +698,7 @@ class App:
                     ) from e
             return {"log_id": s.log_id, "handle": s.handle}
 
-        @r.op("session.send", SendParams)
+        @r.op("session.send", SendParams, owned="log_id")
         async def send(p: SendParams, caller):
             s = reg.open(p.log_id)
             cmd = commands.split(p.text)
@@ -699,7 +740,7 @@ class App:
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e
 
-        @r.op("attachment.begin", AttachBegin)
+        @r.op("attachment.begin", AttachBegin, owned="log_id")
         async def attachment_begin(p: AttachBegin, caller):
             """Start uploading a file to a session: its upload id. The file
             waits, staged, until a session.send names it (attachments.py)."""
@@ -710,7 +751,7 @@ class App:
                 raise OpError(e.code, e.message) from e
             return {"upload_id": uid}
 
-        @r.op("attachment.put", AttachPut)
+        @r.op("attachment.put", AttachPut, owned="log_id")
         async def attachment_put(p: AttachPut, caller):
             """One base64 chunk of an upload at ``offset``: the bytes now
             staged. No await between reading the staged size and appending,
@@ -732,7 +773,7 @@ class App:
                 raise OpError(e.code, e.message) from e
             return {"size": size}
 
-        @r.op("attachment.drop", AttachDrop)
+        @r.op("attachment.drop", AttachDrop, owned="log_id")
         async def attachment_drop(p: AttachDrop, caller):
             """Forget an upload the person removed before sending."""
             reg.open(p.log_id)
@@ -748,7 +789,7 @@ class App:
             n = s.read(p.ids)
             return {"read": n, "unread": len(s.unread)}
 
-        @r.op("recap.request", RecapParams)
+        @r.op("recap.request", RecapParams, owned="log_id")
         async def recap_request(p: RecapParams, caller):
             """A recap of where the session stands, for a person landing on its tab."""
             return await self.recaps.request(reg.open(p.log_id), p.force)
@@ -772,7 +813,7 @@ class App:
                 ),
             }
 
-        @r.op("session.configure", ConfigureParams)
+        @r.op("session.configure", ConfigureParams, owned="log_id")
         async def configure(p: ConfigureParams, caller):
             return await self._configure(
                 reg.open(p.log_id), p.model, p.effort, p.permission
@@ -812,22 +853,22 @@ class App:
                 raise OpError("no_output", f"no output for {p.id!r}")
             return {"text": text}
 
-        @r.op("session.interrupt", LogParams)
+        @r.op("session.interrupt", LogParams, owned="log_id")
         async def interrupt(p: LogParams, caller):
             try:
                 await reg.open(p.log_id).interrupt()
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e
 
-        @r.op("session.stop", LogParams)
+        @r.op("session.stop", LogParams, owned="log_id")
         async def stop(p: LogParams, caller):
             await reg.open(p.log_id).stop()
 
-        @r.op("session.reopen", LogParams)
+        @r.op("session.reopen", LogParams, owned="log_id")
         async def reopen(p: LogParams, caller):
             return reg.reopen(p.log_id).wire()
 
-        @r.op("session.rename", RenameParams, agent=True, read=True)
+        @r.op("session.rename", RenameParams, agent=True, read=True, owned="log_id")
         async def rename(p: RenameParams, caller):
             """Rename your session: a handle (2 or 3 lowercase segments joined by
             hyphens) and/or a title."""
@@ -895,7 +936,7 @@ class App:
             """The servers this one links, with their state; never their tokens."""
             return self.links.wire()
 
-        @r.op("link.add", LinkAdd)
+        @r.op("link.add", LinkAdd, admin=True)
         async def link_add(p: LinkAdd, caller):
             """Link another aegis server: connect once with its token, take the
             name it gives itself, and keep the link in links.json."""
@@ -911,9 +952,26 @@ class App:
             self.links.add(name, p.url, p.token)
             return {"name": name}
 
-        @r.op("link.remove", LinkName)
+        @r.op("link.remove", LinkName, admin=True)
         async def link_remove(p: LinkName, caller):
             self.links.remove(p.name)
+
+        @r.op("token.list", admin=True)
+        async def token_list(_, caller):
+            """The tokens that may use this server, the admin's first."""
+            return {"tokens": self.principals.rows()}
+
+        @r.op("token.add", TokenAdd, admin=True)
+        async def token_add(p: TokenAdd, caller):
+            """Mint a token; the only time it is shown."""
+            token = self.principals.add(p.name, p.role)
+            return {"name": p.name, "role": p.role, "token": token}
+
+        @r.op("token.revoke", TokenName, admin=True)
+        async def token_revoke(p: TokenName, caller):
+            """End a token. The admin's is replaced, and the new one returned
+            to whoever revoked it, so that browser can sign in again."""
+            return {"token": self.principals.revoke(p.name)}
 
         @r.op("server.version")
         async def server_version(_, caller):

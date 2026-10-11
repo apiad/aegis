@@ -15,6 +15,7 @@
 // operations and `config` channel, sent through the link.
 
 import "./pick.js";
+import { who } from "./me.js";
 
 const h = (tag, props = {}, ...kids) => {
   const el = Object.assign(document.createElement(tag), props);
@@ -155,10 +156,25 @@ export class Settings {
       return;
     }
     this.drawLater = false;
+    // A member changes nothing on the server: this browser, the doctor, a word.
+    if (who.role === "member")
+      return this.box.replaceChildren(
+        h(
+          "div",
+          { className: "set-page" },
+          h("p", { className: "notice", id: "set-member", textContent: "Server settings (agents, queues, servers, tokens) are edited by an admin." }),
+          this.browser(),
+          this.checks(),
+        ),
+      );
+    if (this.tokenRows === undefined) {
+      this.tokenRows = null;
+      this.loadTokens();
+    }
     const w = this.wire;
     // The title first, then what this browser keeps, then the servers; the
     // loading and no-config pages keep the same width and order.
-    const page = (...kids) => h("div", { className: "set-page" }, ...kids, this.browser(), this.servers());
+    const page = (...kids) => h("div", { className: "set-page" }, ...kids, this.browser(), this.servers(), this.tokens());
     if (!w || !this.doc) return this.box.replaceChildren(page(h("p", { className: "notice", textContent: "Loading…" })));
     if (!w.exists && !this.dirty) return this.box.replaceChildren(page(this.empty()));
     const full = h(
@@ -167,6 +183,7 @@ export class Settings {
       this.head(),
       this.browser(),
       this.servers(),
+      this.tokens(),
       w.error && h("p", { className: "set-alert err", id: "set-error", textContent: `The file on disk does not parse, so aegis is still using the last version that did. ${w.error}` }),
       this.stale &&
         h(
@@ -259,6 +276,95 @@ export class Settings {
       this.linkError && h("p", { className: "err-text", id: "set-link-error", textContent: this.linkError }),
       picker,
     );
+  }
+
+  // Who may use this server (tokens.py): a row per token, the admin's first,
+  // and a form to mint one, shown once.
+  tokens() {
+    const used = (t) => (t.used_at ? `used ${new Date(t.used_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "not since start");
+    const rows = (this.tokenRows || []).map((t) =>
+      h(
+        "tr",
+        { className: `tok-${t.name}` },
+        h("td", {}, h("b", { textContent: t.name })),
+        h("td", { className: "m", textContent: t.role }),
+        h("td", { className: "m", textContent: used(t) }),
+        h("td", {}, button(this.armed === t.name ? "Click again to confirm" : t.owner ? "Revoke and regenerate" : "Revoke", null, () => this.revoke(t.name), "link danger")),
+      ),
+    );
+    // What was typed survives a redraw: the list can arrive after the typing.
+    const name = h("input", { className: "set-in", id: "set-token-name", placeholder: "name, e.g. ben or laptop", spellcheck: false, value: this.tokenName || "", oninput: (e) => (this.tokenName = e.target.value) });
+    const role = select("role", ["member", "admin"], this.tokenRole || "member");
+    role.id = "set-token-role";
+    role.addEventListener("change", () => (this.tokenRole = role.value));
+    const add = button("Add token", "set-token-add", () => this.addToken(name.value.trim(), role.value), "btn primary");
+    const once = this.tokenOnce;
+    return h(
+      "section",
+      { className: "set-tokens", id: "set-tokens" },
+      h("h3", { textContent: "Tokens" }),
+      h("p", { className: "set-none", textContent: "Who may use this server. A member reads every session and changes only its own; an admin changes anything." }),
+      h("table", { className: "tbl" }, ...rows),
+      h("div", { className: "set-linkrow" }, name, role, add),
+      this.tokenError && h("p", { className: "err-text", id: "set-token-error", textContent: this.tokenError }),
+      once &&
+        h(
+          "div",
+          { className: "notice set-once", id: "set-token-once" },
+          h("span", { textContent: once.text }),
+          h("code", { textContent: once.token }),
+          button("Copy", null, () => navigator.clipboard?.writeText(once.token)),
+        ),
+    );
+  }
+
+  async loadTokens() {
+    try {
+      this.tokenRows = (await this.conn.call("token.list")).tokens;
+    } catch (e) {
+      this.tokenError = e.message;
+    }
+    this.drawTokens();
+  }
+
+  // Only the Tokens section: a whole-page draw would drop what is being typed
+  // in the agents and queues (draw() waits for that; this need not).
+  drawTokens() {
+    const old = this.box.querySelector("#set-tokens");
+    if (old) old.replaceWith(this.tokens());
+  }
+
+  async addToken(name, role) {
+    this.tokenError = "";
+    try {
+      const r = await this.conn.call("token.add", { name, role });
+      this.tokenOnce = { text: `The token for ${r.name}, shown once: `, token: r.token };
+      this.tokenName = "";
+    } catch (e) {
+      this.tokenError = e.message;
+    }
+    await this.loadTokens();
+  }
+
+  // The first click arms, the second revokes. Revoking the admin's own token
+  // signs this browser in with the new one before the socket is dropped.
+  async revoke(name) {
+    if (this.armed !== name) {
+      this.armed = name;
+      return this.drawTokens();
+    }
+    this.armed = null;
+    this.tokenError = "";
+    try {
+      const r = await this.conn.call("token.revoke", { name });
+      if (r.token) {
+        await fetch("/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: r.token }) });
+        this.tokenOnce = { text: "The new admin token, shown once: ", token: r.token };
+      }
+    } catch (e) {
+      this.tokenError = e.message;
+    }
+    await this.loadTokens();
   }
 
   async link(url, token) {

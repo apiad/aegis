@@ -3,6 +3,7 @@
 
 import { glyph, icon, LABEL } from "./glyphs.js";
 import { hostRow, noteRow, providerLine, quotaHeading, quotaRow } from "./gauges.js";
+import { shownOwner } from "./me.js";
 import { dur, planTimes } from "./plantime.js";
 
 function el(tag, cls, text) {
@@ -107,6 +108,8 @@ function card(m, onOpen, onClose) {
   c.dataset.rank = rank(m);
   const hd = el("div", "hd");
   hd.append(markNode(m), el("span", "h", m.handle));
+  const owner = shownOwner(m);
+  if (owner) hd.append(el("span", "who", owner));
   if (m.worker) hd.append(el("span", "badge", `worker · ${m.worker.queue}`));
   const label = m.attention === "waiting" && m.waiting_on ? `waiting · ${m.waiting_on}` : LABEL[m.attention] || m.state;
   hd.append(el("span", `s at-${m.attention}`, label));

@@ -28,6 +28,19 @@ class OpError(Exception):
 
 
 @dataclass(frozen=True)
+class Principal:
+    """Who a token is (tokens.py): a person, a linked server or a job. The
+    role decides what it may change; a session's owner is a principal's name."""
+
+    name: str
+    role: str  # "admin" | "member"
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == "admin"
+
+
+@dataclass(frozen=True)
 class Caller:
     """Who is calling: a person through the client, or an agent through MCP.
     An agent is known by its session's log id, resolved from its spawn's
@@ -42,6 +55,9 @@ class Caller:
     # A person acting through a link from another aegis server: that server's
     # name. Set by the transport from the link's hello (links.py).
     link: str | None = None
+    # Who the caller's token is (tokens.py). None for an agent, whose
+    # principal is its session's owner, and for the server's own calls.
+    principal: Principal | None = None
 
     @property
     def is_agent(self) -> bool:
@@ -62,6 +78,10 @@ class Operation:
     doc: str = ""
     # Open to an agent whose session runs with read permission.
     read: bool = False
+    # Only an admin may call it (tokens.py).
+    admin: bool = False
+    # The param naming the session it changes: a member must own that session.
+    owned: str | None = None
 
     @property
     def tool_name(self) -> str:
@@ -77,6 +97,12 @@ class Registry:
         self._ops: dict[str, Operation] = {}
         # A session's current permission by log id; set by the app.
         self.permission_of: Callable[[str], str | None] = lambda log_id: None
+        # The principal a caller acts as, and a session's owner by log id; both
+        # set by the app. Without an app every caller is an admin.
+        self.who: Callable[[Caller], Principal] = lambda c: (
+            c.principal or Principal("", "admin")
+        )
+        self.owner_of: Callable[[str], str | None] = lambda log_id: None
 
     def op(
         self,
@@ -86,6 +112,8 @@ class Registry:
         agent: bool = False,
         doc: str = "",
         read: bool = False,
+        admin: bool = False,
+        owned: str | None = None,
     ) -> Callable[[Handler], Handler]:
         def register(handler: Handler) -> Handler:
             if name in self._ops:
@@ -97,6 +125,8 @@ class Registry:
                 agent,
                 doc or (handler.__doc__ or "").strip(),
                 read,
+                admin,
+                owned,
             )
             return handler
 
@@ -129,4 +159,15 @@ class Registry:
             params = op.params.model_validate(raw if raw is not None else {})
         except ValidationError as e:
             raise OpError("bad_params", str(e)) from e
+        who = self.who(caller)
+        if op.admin and not who.is_admin:
+            raise OpError("not_for_members", f"{name} is for an admin of this server")
+        if op.owned and not who.is_admin:
+            target = getattr(params, op.owned, None)
+            owner = self.owner_of(target) if isinstance(target, str) else None
+            if owner is not None and owner != who.name:
+                raise OpError(
+                    "not_owner",
+                    f"{target} belongs to {owner}; you can read it, not change it",
+                )
         return await op.handler(params, caller)

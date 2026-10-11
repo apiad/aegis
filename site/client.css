@@ -1033,6 +1033,11 @@ body{background:#000}
 .a2 .set-pill.ok{color:var(--ok)}
 .a2 .set-pill.bad{color:var(--err)}
 .a2 .set-linkrow{display:flex;gap:8px;margin-top:10px}
+/* Whose a session is, when it is not this browser's (tokens.py). */
+.a2 .tab .who,.a2 .card .who{font-family:var(--font-mono);font-size:10.5px;color:var(--comms);border:1px solid var(--rule);border-radius:999px;padding:0 7px;margin-left:6px;white-space:nowrap}
+.a2 .set-once{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.a2 .set-once code{font-family:var(--font-mono);font-size:12px;overflow-wrap:anywhere}
+@media (max-width:640px){.a2 .set-tokens .set-linkrow{flex-wrap:wrap}.a2 .set-tokens .set-linkrow .set-in{flex-basis:100%}.a2 .set-tokens .tbl td.m{white-space:normal}}
 .a2 .set-linkrow .set-in{flex:1;min-width:0;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 9px;font-family:var(--font-mono);font-size:12px;color:var(--ink)}
 .a2 .set-srvpick{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:12.5px;color:var(--muted)}
 .a2 .band .prov.same{color:var(--faint)}

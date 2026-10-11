@@ -5724,3 +5724,66 @@ def test_a_new_tab_with_files_and_no_text_starts_and_sends_them(server, page, tm
     turns_done(page, 1)
     assert page.locator(".row.user").last.locator(".fcard").count() == 1
     assert page.errors == []
+
+
+# -- tokens and owners (#311) -------------------------------------------------------
+def member_page(browser, server, name="ben"):
+    """A second browser, signed in with a member token minted by the CLI."""
+    token = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "aegis",
+            "token",
+            "add",
+            name,
+            "--root",
+            str(server.root),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    pg = new_page(browser, [])
+    base = server.url.split("?")[0]
+    pg.goto(f"{base}?token={token}")
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    return pg, base
+
+
+def test_a_member_reads_the_admins_session_but_cannot_write_to_it(
+    server, page, browser
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "hello")
+    pg, base = member_page(browser, server)
+    pg.goto(f"{base}#s={a}")
+    pg.wait_for_selector(".row.user")
+    pg.wait_for_function("document.getElementById('input').disabled")
+    assert pg.is_disabled("#send") and pg.is_disabled("#stop-session")
+    assert "only" in pg.get_attribute("#input", "placeholder")
+    pg.wait_for_selector(f"#tablist .tab[data-id='{a}'] .who")
+
+
+def test_a_members_settings_hold_only_this_browser(server, browser):
+    pg, _ = member_page(browser, server)
+    pg.click("#settings-btn")
+    pg.wait_for_selector("#set-browser")
+    pg.wait_for_selector("text=edited by an admin")
+    assert pg.locator("#set-servers").count() == 0
+    assert pg.locator("#set-tokens").count() == 0
+
+
+def test_an_admin_adds_and_revokes_a_token_in_settings(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.click("#settings-btn")
+    page.wait_for_selector("#set-tokens")
+    page.fill("#set-token-name", "cara")
+    page.click("#set-token-add")
+    page.wait_for_selector("#set-token-once")
+    page.wait_for_selector("#set-tokens tr.tok-cara")
+    page.click("#set-tokens tr.tok-cara .danger")
+    page.click("#set-tokens tr.tok-cara .danger")  # the second click confirms
+    page.wait_for_function("!document.querySelector('#set-tokens tr.tok-cara')")
