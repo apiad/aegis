@@ -994,7 +994,8 @@ def test_a_member_token_signs_in_and_is_told_who_it_is(project, fake_claude):
         ws.send_json({"t": "hello", "token": member, "proto": PROTO})
         welcome = ws.receive_json()
         assert welcome["t"] == "welcome"
-        assert welcome["me"] == {"name": "ben", "role": "member"}
+        # Its quota policy: none set and no default, so every pool closed.
+        assert welcome["me"] == {"name": "ben", "role": "member", "policy": {}}
 
 
 def test_a_revoked_token_is_refused_at_its_next_message(project, fake_claude):
