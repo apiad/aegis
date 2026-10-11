@@ -112,6 +112,15 @@ def test_a_wide_table_scrolls_with_its_first_column_pinned(server, make_page):  
     tw.evaluate("t => { t.scrollLeft = 300; }")
     page.wait_for_timeout(50)
     assert abs(first.bounding_box()["x"] - before) < 1, "the first column stays"
+    # The cells scrolled under the pinned one do not show through it on hover.
+    first.hover()
+    alpha = first.evaluate("""td => {
+      const c = document.createElement('canvas').getContext('2d');
+      c.fillStyle = getComputedStyle(td).backgroundColor;
+      c.fillRect(0, 0, 1, 1);
+      return c.getImageData(0, 0, 1, 1).data[3];
+    }""")
+    assert alpha == 255, alpha
     assert page.evaluate(SPLIT_WORDS) == []
     assert page.errors == []
 

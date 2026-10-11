@@ -428,15 +428,20 @@ The browser holds the token only as an HttpOnly cookie, named per state root,
 that no script on the page can read.
 
 **Markdown is drawn for the width it has, and code is coloured only near the
-view.** One markdown-it renderer draws every Markdown body, the person's
-messages included (with typed line breaks kept). A table never breaks a word:
-it scrolls inside its row with its first column pinned, and a row under 600 px
-draws it as one card per table row (a container query on `.row`). highlight.js
-is vendored as its core and one file per language behind `js/highlight.js`,
-which imports the core and a language the first time a block within 600 px of
-the view needs them, and caches each result so a reply re-rendered by every
-delta does not flash plain. A fence whose closing line has not arrived stays
-plain. The viewer colours through the same loader. Copy buttons sit on code
+view.** Two markdown-it renderers, configured alike, draw every Markdown body:
+one for agents' text, and one for the person's messages that keeps a typed line
+break. A table never breaks a word: it scrolls inside its row with its first
+column pinned, and under 600 px of width it draws as one card per table row.
+The container query that decides this sits on the transcript's scroller `#tr`
+and on the viewer's `.vbody`, never on a row: a size container inside the
+scroller stops Chromium's scroll anchoring, and the text being read jumps as
+rows above it draw. highlight.js is vendored as its core and one file per
+language behind `js/highlight.js`, which imports the core and a language the
+first time a block within 600 px of the view needs them, and caches each result
+so a reply re-rendered by every delta does not flash plain. A fence whose
+closing line has not arrived stays plain, and so does one whose file fails to
+load; the next block asks for that file again. The viewer colours through the
+same loader. Copy buttons sit on code
 blocks and tables, never on a whole reply; a table copies as its Markdown lines
 and as an HTML table at once (#323).
 

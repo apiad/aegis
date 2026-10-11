@@ -195,6 +195,7 @@ body{background:#000}
 .a2 .md td[style*=right],.a2 .md th[style*=right]{font-variant-numeric:tabular-nums;white-space:nowrap}
 .a2 .md tr:hover td{background:var(--accent-soft)}
 .a2 .md td:first-child,.a2 .md th:first-child{position:sticky;left:0;background:var(--bg);z-index:1}
+.a2 .md tr:hover td:first-child{background:color-mix(in srgb,var(--accent) 16%,var(--bg))} /* opaque: it covers the cells scrolled under it */
 /* 600 px of #tr's content box, which is a row's whole width (its padding
    does not count): 542 px of Markdown in an agent's row, 498 px in logbook's. */
 @container md (max-width:600px){
