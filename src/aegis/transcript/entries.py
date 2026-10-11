@@ -917,6 +917,8 @@ class Fold:
             detail = {"args": d.format_tool_args(ev.name, ev.input), "steps": 0}
             if path := d.file_path(ev.name, ev.input):
                 detail["path"] = path  # what the row's "show file" copies (file.peek)
+            if lang := d.tool_lang(ev.name, ev.input):
+                detail["lang"] = lang  # the views' language (client/js/highlight.js)
             return self._upsert(
                 _entry(
                     ev.id,
@@ -943,13 +945,19 @@ class Fold:
                 result=d.result_digest(name, ev.text, ev.is_error, pair),
                 tail=d.output_tail(ev.text),
             )
-            if pair is not None and not ev.is_error:
-                removed, added, elided = d.diff_window(pair[1], pair[2])
+            if name == "Read" and not ev.is_error and (nl := d.numbered_lines(ev.text)):
+                detail["file"] = d.file_window(*nl)
+                detail.pop("tail", None)  # the file view shows the same lines
+            elif name == "Write" and pair is not None and not ev.is_error:
+                detail["file"] = d.file_window(1, pair[2].splitlines())
+            if pair is not None and not ev.is_error and name != "Write":
+                theirs = d.hunks_from_patch(ev.patch) if ev.patch else []
+                hunks, elided = d.cap_hunks(theirs or d.diff_hunks(pair[1], pair[2]))
                 detail["diff"] = {
                     "path": pair[0],
-                    "removed": removed,
-                    "added": added,
+                    "hunks": hunks,
                     "elided": elided,
+                    "numbered": "file" if theirs else "edit",
                 }
             return self._upsert(
                 _entry(
