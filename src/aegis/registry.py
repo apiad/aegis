@@ -324,6 +324,11 @@ class Registry(Host):
                 )
                 s.restart_continues += 1
             s.held = msgs
+            if s.in_turn:
+                # A turn started first (a monitor's wake): the messages go out
+                # when it ends, like any held message, never into it.
+                self.metas.write(s.meta())
+                continue
             try:
                 await s._flush_held()
             except Exception:

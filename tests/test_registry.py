@@ -577,3 +577,23 @@ async def test_an_idle_harness_killed_by_sigterm_before_a_clean_stop_is_not_cont
     r2 = world.registry(restarts.Previous(True, time.time()))
     assert r2.continuing == {} and r2.declined == set()
     await r2.shutdown()
+
+
+async def test_a_continue_waits_for_a_turn_that_started_first(world):
+    # A monitor whose wake arrives before the continue starts a turn first; the
+    # continue must not be injected into it at a tool boundary.
+    r = world.registry()
+    s = await mid_turn(world, r)
+    await r.shutdown()
+    r2 = world.registry()
+    s2 = r2.sessions[s.log_id]
+    await s2.send("/sleep 1")
+    await until(lambda: s2.status == "working", what="the first turn")
+    await r2.continue_after_boot()
+    assert [m["body"] for m in s2.held] == [restarts.RESTARTED]
+    await until(
+        lambda: s2.status == "idle" and said(s2, restarts.RESTARTED),
+        timeout=10,
+        what="the continue after that turn",
+    )
+    await r2.shutdown()

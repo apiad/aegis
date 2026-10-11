@@ -304,10 +304,11 @@ class App:
         # No browser's upload survives a restart (attachments.py).
         att.clear_staged(self.roots.state_root)
         self.monitors.boot()
-        self.monitors.arm_all()
-        # Before the queues: a worker the registry continued needs no second
-        # message from its queue.
+        # Before the monitors are armed, so a wake cannot start a turn ahead of
+        # the continue; before the queues, so a worker the registry continued
+        # needs no second message from its queue.
         await self.sessions.continue_after_boot()
+        self.monitors.arm_all()
         await self.queues.resume_after_boot(self.queues.boot())
         self.quota.start()
         self.host.start()
