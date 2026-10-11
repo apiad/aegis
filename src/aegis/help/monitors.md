@@ -73,9 +73,11 @@ hours). You are woken:
   can say what holds the work up;
 - `timeout` when the time runs out.
 
-A session that went idle after a turn that ended without `turn_end` counts as
-still running for two minutes, which covers an agent waiting on its own queue
-task. Past that, the wait ends `blocked`. A watched session is followed
+A session waiting on its own monitor or queue task counts as still running,
+for as long as it waits. One that went idle after a turn that ended without
+`turn_end`, waiting on nothing, counts as running for two minutes, the moment
+a finished task takes to reach it; past that, the wait ends `blocked`. You
+cannot wait on your own session. A watched session is followed
 through a rename and a close. Sessions on a linked server cannot be watched.
 
 ## The wake

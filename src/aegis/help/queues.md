@@ -18,7 +18,9 @@ Call `queue_enqueue` with:
   what to do, where, and what its final message must contain;
 - `callback` (default true): deliver the worker's result to your inbox.
 
-It returns at once with the task id, its status and its position in the queue.
+It returns without waiting for the work, with the task id, its status and,
+while it waits for a slot, its position in the queue. With a slot free, the
+worker has already started, and the status says running.
 An unknown queue is refused with the names of the queues there are, and a
 queue whose entry in `.aegis.yaml` is broken is refused with what is wrong.
 
@@ -45,13 +47,14 @@ result, the worker is archived, and, with a callback, you are woken with:
 ```
 
 A worker whose process exits on its own fails its task and keeps its tab, and
-the wake says `error` with the exit code and the last lines it printed.
+the wake says `error` with the exit code and the last ten lines of its stderr.
 
 ## Check, cancel and resume
 
 - `task_status` with `task_id=<id>`: the task's status (pending, running,
-  completed, failed or cancelled), its worker's handle and, once finished, its
-  result.
+  completed, failed or cancelled), its worker's log id, the worker's handle
+  while its session is open, the error of a failed task and, once finished,
+  its result.
 - `task_cancel` with `task_id=<id>`: drops a pending task, or stops and
   archives a running task's worker. No callback is sent for a cancelled task.
 - `task_resume` with `task_id=<id>`: puts a failed or cancelled task's worker
@@ -64,4 +67,5 @@ You can cancel and resume only tasks you enqueued.
 
 Tasks are kept in the server's state directory. When the server starts, pending
 tasks are dispatched again, and each running task's worker is resumed with a
-message saying the server restarted.
+message saying the server restarted. A running task whose worker is gone
+fails.
