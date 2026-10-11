@@ -15,15 +15,9 @@
 
 import { artifactStage, fileActions, fileUrl, hold, markdown, preview } from "./entries.js";
 import { entryIcon, icon } from "./glyphs.js";
+import { colour, langOfPath, paint } from "./highlight.js";
 
 const MAX_TEXT = 2 * 1024 * 1024; // bytes drawn of a text file; a new tab has the rest
-const MAX_COLOUR = 512 * 1024; // above this, text is drawn uncoloured: colouring would stall the page
-
-let hljs = null;
-async function highlighter() {
-  hljs ??= (await import("../vendor/highlight.mjs")).default;
-  return hljs;
-}
 
 // A file's text, at most MAX_TEXT bytes of it, cut at a line when cut.
 async function fetchText(url) {
@@ -50,14 +44,6 @@ async function fetchText(url) {
   let text = new TextDecoder().decode(bytes);
   if (cut) text = text.slice(0, text.lastIndexOf("\n") + 1);
   return { text, cut };
-}
-
-// The highlight.js language a file's name implies, or null.
-function languageOf(lib, name) {
-  const lower = name.toLowerCase();
-  if (lower === "makefile" || lower.endsWith(".mk")) return "makefile";
-  const ext = lower.includes(".") ? lower.split(".").pop() : "";
-  return ext && lib.getLanguage(ext) ? ext : null;
 }
 
 function el(tag, cls, text) {
@@ -178,10 +164,10 @@ export class Viewer {
   }
 
   async drawText(f, body, draw) {
+    // Fetch only the text; the loader brings what colouring needs.
     let got;
-    let lib = null;
     try {
-      [got, lib] = await Promise.all([fetchText(f.url), highlighter()]);
+      got = await fetchText(f.url);
     } catch (err) {
       if (draw === this.drawn) body.replaceChildren(el("div", "vnote", `Could not load the file: ${err.message}`));
       return;
@@ -192,13 +178,8 @@ export class Viewer {
     if (f.preview === "markdown") {
       const doc = markdown(text);
       doc.classList.add("doc");
-      for (const code of doc.querySelectorAll("pre > code[class^=language-]")) {
-        const lang = code.className.slice("language-".length);
-        if (lib.getLanguage(lang) && code.textContent.length <= MAX_COLOUR) {
-          code.innerHTML = lib.highlight(code.textContent, { language: lang, ignoreIllegals: true }).value;
-          code.classList.add("hljs");
-        }
-      }
+      await Promise.all([...doc.querySelectorAll(".fence")].map(paint));
+      if (draw !== this.drawn) return;
       out.push(doc);
     } else {
       const lines = text.endsWith("\n") ? text.slice(0, -1).split("\n") : text.split("\n");
@@ -207,9 +188,10 @@ export class Viewer {
       gutter.setAttribute("aria-hidden", "true");
       const src = el("pre", "src");
       const code = el("code", "hljs");
-      const lang = languageOf(lib, f.name);
-      // highlight.js escapes what it returns, so its HTML holds only its own spans.
-      if (lang && text.length <= MAX_COLOUR) code.innerHTML = lib.highlight(text, { language: lang, ignoreIllegals: true }).value;
+      const lang = langOfPath(f.name);
+      const hl = lang ? await colour(text, lang).catch(() => null) : null; // plain if it fails
+      if (draw !== this.drawn) return;
+      if (hl) code.innerHTML = hl.html;
       else code.textContent = text;
       src.append(code);
       view.append(gutter, src);

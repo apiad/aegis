@@ -8,7 +8,8 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, fileUrl, setFileBase, setOpener } from "./entries.js";
+import { artifactStage, fadeTables, fileUrl, setFileBase, setOpener } from "./entries.js";
+import { setScroller } from "./highlight.js";
 import { Viewer } from "./viewer.js";
 import { copyRow, installCopy } from "./copy.js";
 import { Find } from "./find.js";
@@ -106,12 +107,15 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
 artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
 const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(id) });
 setOpener((item) => viewer.open(item));
+setScroller($("tr"));
+new ResizeObserver(() => fadeTables($("entries"))).observe($("tr"));
 const copyDeps = {
   entry: (id) => transcript.entries.get(id),
   output: (id) => callFor(shown, "transcript.output", { id }).then((r) => r.text),
   detail: (id) => callFor(shown, "transcript.detail", { ids: [id] }).then((got) => got[0]),
 };
 installCopy($("entries"), copyDeps);
+installCopy($("viewer"), copyDeps);
 const find = new Find($("find"), transcript, (q) => callFor(shown, "transcript.search", { q }).then((r) => r.ids));
 $("find-prev").append(icon("up"));
 $("find-next").append(icon("down"));
