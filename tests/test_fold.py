@@ -1199,3 +1199,19 @@ def test_an_attached_echo_takes_its_own_pending_send_not_the_oldest():
         ("look", 0),
     ]
     assert fold_records(r.records).entries() == f.entries()
+
+
+def test_a_server_stopped_row_says_crash_or_why_it_was_not_continued():
+    def stopped(**extra):
+        rec = Rec()
+        rec.own("send", text="go")
+        rec.own("server_stopped", **extra)
+        f, _ = run(rec)
+        return f.entries()[-1]["summary"], f.standing["turn_error"]
+
+    plain = "the server stopped during a turn"
+    crash = "aegis stopped unexpectedly during a turn"
+    why = "restarts interrupted this turn more than once; continue it by hand"
+    assert stopped() == (plain, plain)
+    assert stopped(crash=True) == (crash, crash)
+    assert stopped(crash=True, declined=why) == (why, why)
