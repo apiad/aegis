@@ -133,3 +133,63 @@ def test_every_key_is_one_click_from_the_help_tab(server, page):
     page.keyboard.press("Escape")
     page.wait_for_selector("#keymap", state="hidden")
     assert page.errors == []
+
+
+QUESTION = "wait for CI without polling"
+
+
+def test_typing_asks_help_search_and_lists_what_an_agent_would_get(server, page):
+    open_help(page, server)
+    want = [h.ref for h in Index(load()).search(QUESTION, limit=10)]
+    assert want, "the spec's search table expects monitors for this question"
+    page.fill(".helpv .jq", QUESTION)
+    page.wait_for_function("() => !document.querySelector('.helpv .hgrp')")
+    assert refs(page) == want
+    assert page.locator(".helpv .hrow mark").count() > 0
+    # Enter reads the best hit, at its section.
+    page.press(".helpv .jq", "Enter")
+    page.wait_for_function(
+        "r => decodeURIComponent(location.hash) === '#help=' + r", arg=want[0]
+    )
+    shown(page, want[0].split("#")[0])
+    page.fill(".helpv .jq", "")
+    page.wait_for_selector(".helpv .hgrp")
+    assert len(refs(page)) == len(PAGES)
+    assert page.errors == []
+
+
+def test_a_search_with_no_hit_says_so_over_the_whole_list(server, page):
+    open_help(page, server)
+    assert Index(load()).search("zzqx ?!", limit=10) == []
+    page.fill(".helpv .jq", "zzqx ?!")
+    page.wait_for_selector(".helpv .hrows .hnone")
+    assert "No page matches “zzqx ?!”" in page.text_content(".helpv .hrows")
+    assert len(refs(page)) == len(PAGES)
+    assert page.errors == []
+
+
+def test_an_older_answer_never_replaces_a_newer_one(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    got = page.evaluate(
+        """async () => {
+          const { Help } = await import('/static/js/help.js');
+          const calls = [];
+          const conn = { call: (op, p) => new Promise((resolve) => calls.push({ p, resolve })) };
+          const box = document.createElement('section');
+          const h = new Help(conn, box, { go() {}, onKeys() {} });
+          h.pages = [{ id: 'a', title: 'A', kind: 'howto', when: 'a' },
+                     { id: 'b', title: 'B', kind: 'howto', when: 'b' }];
+          h.draw();
+          h.q.value = 'mon';
+          const older = h.search();
+          h.q.value = 'monitors';
+          const newer = h.search();
+          calls[1].resolve({ hits: [{ ref: 'b', heading: '', when: 'b', snippet: 'newer' }] });
+          await newer;
+          calls[0].resolve({ hits: [{ ref: 'a', heading: '', when: 'a', snippet: 'older' }] });
+          await older;
+          return [calls.map((c) => c.p.query), [...box.querySelectorAll('.hrow')].map((r) => r.dataset.ref)];
+        }"""
+    )
+    assert got == [["mon", "monitors"], ["b"]]

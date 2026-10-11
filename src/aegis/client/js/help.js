@@ -16,6 +16,19 @@ const GROUPS = [
   ["concept", "Concepts"],
 ];
 
+// The rows a search asks for. An agent's default is 5, so the first five are
+// the pages an agent gets for the same words.
+const LIMIT = 10;
+
+const escRe = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// `text` with each of `words` in a <mark>, any case.
+function marked(text, words) {
+  if (!words.length) return [text];
+  const parts = text.split(new RegExp(`(${words.map(escRe).join("|")})`, "gi"));
+  return parts.map((p, i) => (i % 2 ? el("mark", null, p) : p));
+}
+
 function el(tag, cls, text) {
   const n = document.createElement(tag);
   if (cls) n.className = cls;
@@ -49,6 +62,9 @@ export class Help {
     this.pages = null; // help.pages's answer, once it arrives
     this.shown = null; // the page whose Markdown is drawn
     this.readSeq = 0; // the newest help.read; an older answer is dropped
+    this.hits = null; // help.search's hits for the box, or null while it is empty
+    this.seq = 0; // the newest help.search; an older answer is dropped
+    this.timer = null;
     this.drawn = false;
   }
 
@@ -91,6 +107,17 @@ export class Help {
       ev.preventDefault();
       this.go(this.hash(ref));
     });
+    this.q.addEventListener("input", () => {
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.search(), 150);
+    });
+    // Enter reads the first row: the best hit, or the first tutorial.
+    this.q.addEventListener("keydown", async (ev) => {
+      if (ev.key !== "Enter" || ev.isComposing) return;
+      ev.preventDefault();
+      if (this.timer) await this.search();
+      this.rows.querySelector(".hrow")?.click();
+    });
   }
 
   hash(ref) {
@@ -122,24 +149,77 @@ export class Help {
   }
 
   drawList() {
+    if (!this.pages) return; // a search answered first; show() draws once the pages arrive
+    const q = this.q.value.trim();
+    const words = q
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 1);
     const out = [];
-    for (const [kind, name] of GROUPS) {
-      const ps = this.pages.filter((p) => p.kind === kind);
-      if (!ps.length) continue;
-      out.push(el("div", "hgrp", name));
-      for (const p of ps) out.push(this.row(p.id, p.title, p.when));
+    if (this.hits?.length) {
+      for (const h of this.hits) out.push(this.row(h.ref, this.titleOf(h), h.snippet || h.when, words));
+    } else {
+      // No hit: say so over the whole list, as help_search answers an agent.
+      if (this.hits) out.push(el("div", "hnone", `No page matches “${q}”.`));
+      for (const [kind, name] of GROUPS) {
+        const ps = this.pages.filter((p) => p.kind === kind);
+        if (!ps.length) continue;
+        out.push(el("div", "hgrp", name));
+        for (const p of ps) out.push(this.row(p.id, p.title, p.when));
+      }
     }
     this.rows.replaceChildren(...out);
     this.mark();
   }
 
-  row(ref, title, sub) {
+  // A hit's first line: its page's title, then the section's heading.
+  titleOf(h) {
+    const [page, section] = h.ref.split("#");
+    const title = this.pages.find((p) => p.id === page)?.title || page;
+    return section && h.heading ? `${title} › ${h.heading}` : title;
+  }
+
+  row(ref, title, sub, words = []) {
     const b = el("button", "hrow");
     b.type = "button";
     b.dataset.ref = ref;
-    b.append(el("b", null, title), el("span", null, sub));
+    const t = el("b");
+    t.append(...marked(title, words));
+    const s = el("span");
+    s.append(...marked(sub, words));
+    b.append(t, s);
     b.addEventListener("click", () => this.go(this.hash(ref)));
     return b;
+  }
+
+  // The box's words through help.search, the op agents call as help_search.
+  async search() {
+    clearTimeout(this.timer);
+    this.timer = null;
+    const n = ++this.seq;
+    const q = this.q.value.trim();
+    if (!q) {
+      this.hits = null;
+      this.drawList();
+      return;
+    }
+    let res;
+    try {
+      res = await this.conn.call("help.search", { query: q, limit: LIMIT });
+    } catch (e) {
+      if (n === this.seq) this.rows.replaceChildren(el("div", "hnone", e.message));
+      return;
+    }
+    if (n !== this.seq) return;
+    this.hits = res.hits;
+    this.drawList();
+  }
+
+  // /help <words>: the box holds them and the list their hits.
+  ask(q) {
+    this.draw();
+    this.q.value = q;
+    return this.search();
   }
 
   // The rows of the page shown, marked.
