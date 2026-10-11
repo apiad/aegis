@@ -28,8 +28,9 @@ when: waiting on a build, a test run, CI or other sessions without polling
 - `kind:` concept (what something is and how its parts fit), howto (how to
   do one job) or tutorial (steps to follow, which a guide can walk a person
   through).
-- `when:` one line saying when to read the page. Search weighs it twice as
-  much as the body, and the title three times, so phrase it the way someone
+- `when:` one line saying when to read the page. Search counts its words
+  twice and the title's three times, apart from the section's own text, so
+  these two lines decide which page answers: phrase them the way someone
   would ask.
 
 Open with a paragraph that says what the page covers, then one `## ` heading
@@ -40,7 +41,8 @@ sections, and an agent reads the one it was pointed to.
 
 A tutorial's sections are numbered steps. Each says what to do and what the
 person should see. A step that starts an agent, spends quota or reaches
-another server says so in its first line, so the guide asks first.
+another server says so in its first line, so the guide asks first. No check
+reads this; read your steps for it.
 
 ## How a page names things
 
@@ -64,17 +66,22 @@ The checks read names, so each kind of name is written one way:
 ## The checks
 
 Two checks compare the pages with the code, in both directions. Every agent
-tool, slash command, `aegis` subcommand and configuration key must appear on
-a page, and every tool, command, subcommand and path a page names must exist.
+tool and slash command must appear on a page, every `aegis` subcommand on the
+commands page and every configuration key on the config page; every tool,
+command, subcommand and repository path a page names must exist. A third
+check holds search to the questions it must answer.
 
 - `make lint-docs` runs rift on the rules in `.rift.yaml`; it is quick, so
-  run it while you write.
-- `tests/test_help_pages.py` asks the same questions of the live registry, the
-  commands, the command-line program and the configuration models, and runs in
+  run it while you write. It is the only check of repository paths.
+- `tests/test_help_pages.py` asks the rest of the same questions of the live
+  registry, the commands, the command-line program and the configuration
+  models, adds the configuration keys and the frontmatter rules, and runs in
   `make test` and in CI.
-- `tests/test_help_index.py` holds a table of questions an agent would ask and
-  the page each must find in its first three results. A page that stops
-  answering one of them fails it; fix the page's `when:` line or its wording.
+- `tests/test_help_index.py` holds a table of questions an agent would ask.
+  A question with one answer must find that page, or that section, first; a
+  question two pages answer must find one of them in its first three
+  results. A page that stops answering one of them fails it; fix the page's
+  `when:` line or its wording, and add a question when you add a page.
 
 Neither check reads the prose. A page can name only real tools and still
 describe one wrongly, so read the code you describe, and check every number
