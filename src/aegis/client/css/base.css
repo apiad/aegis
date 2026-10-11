@@ -206,9 +206,11 @@ body{background:#000}
 #a2 button.copy:focus-visible{opacity:1;outline:1px solid var(--accent);outline-offset:1px}
 #a2 button.copy[data-state=done]{opacity:1;color:var(--ok)}
 #a2 button.copy[data-state=err]{opacity:1;color:var(--err)}
-#a2 .row>.body:has(>button.copy),#a2 .md pre{position:relative}
-#a2 .row>.body>button.copy,#a2 .md pre>button.copy{position:absolute;top:4px;right:4px;z-index:1}
-#a2 .row:hover>.body>button.copy,#a2 .row.sel>.body>button.copy,#a2 .md pre:hover>button.copy,#a2 .row.tool:hover .line>button.copy,#a2 .row.tool.sel .line>button.copy{opacity:1}
+#a2 .row>.body:has(>button.copy),#a2 .md pre:not(.fence pre){position:relative}
+#a2 .row>.body>button.copy,#a2 .md pre:not(.fence pre)>button.copy{position:absolute;top:4px;right:4px;z-index:1}
+#a2 .md .tblk>button.copy{position:absolute;top:-2px;right:0;z-index:2}
+#a2 .row:hover>.body>button.copy,#a2 .row.sel>.body>button.copy,#a2 .md pre:hover>button.copy,#a2 .md .fence:hover .fh>button.copy,#a2 .row.sel .md .fh>button.copy,#a2 .md .tblk:hover>button.copy,#a2 .row.sel .md .tblk>button.copy,#a2 .row.tool:hover .line>button.copy,#a2 .row.tool.sel .line>button.copy{opacity:1}
+#a2 .row>.g[data-copied=done]{color:var(--ok)}#a2 .row>.g[data-copied=err]{color:var(--err)}
 #a2 .row.tool .line>button.copy{flex:none;align-self:center}
 @media (hover:none){#a2 button.copy{opacity:.6}}
 

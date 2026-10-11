@@ -1,4 +1,4 @@
-// Copy buttons: on every message, every tool row and every code block.
+// Copy buttons: on the person's messages, every tool row, every code block and every table (#247, #323).
 //
 // Each copies the raw text, never the rendered HTML: a message's Markdown as
 // the entry holds it, a block's code, a tool's whole output. A tool entry holds
@@ -17,7 +17,7 @@ import { icon } from "./glyphs.js";
 const MESSAGES = new Set(["user", "prose", "inbox"]);
 const SHOWN_MS = 1400;
 
-// `what` names the text it copies: "message", "code" or "output".
+// `what` names the text it copies: "message", "code", "table" or "output".
 export function copyButton(what) {
   const b = document.createElement("button");
   b.type = "button";
@@ -37,21 +37,44 @@ export function installCopy(list, deps) {
     const b = ev.target.closest("button.copy");
     if (!b) return;
     ev.preventDefault(); // in a tool's summary line the click must not open the row
-    run(b, b.dataset.copy === "code" ? codeOf(b) : rowText(b.closest(".row")?.dataset.id, deps));
+    const what = b.dataset.copy;
+    run(b, what === "code" ? codeOf(b) : what === "table" ? tableOf(b) : rowText(b.closest(".row")?.dataset.id, deps));
   });
 }
 
-// The `c` key: the selected row's message or output, confirmed on its button.
+// The `c` key: the selected row's message or output. A reply has no button
+// to confirm on, so its glyph shows the confirmation.
 export function copyRow(id, node, deps) {
   const b = node?.querySelector(":scope > .body > .copy, :scope .line > .copy");
-  if (!b) return false;
-  run(b, rowText(id, deps));
+  if (b) {
+    run(b, rowText(id, deps));
+    return true;
+  }
+  const g = node?.querySelector(":scope > .g");
+  if (!g || !MESSAGES.has(deps.entry(id)?.kind)) return false;
+  clearTimeout(g._copyTimer);
+  put(rowText(id, deps)).then(
+    () => (g.dataset.copied = "done"),
+    () => (g.dataset.copied = "err"),
+  );
+  g._copyTimer = setTimeout(() => delete g.dataset.copied, SHOWN_MS);
   return true;
 }
 
 function codeOf(b) {
   const code = b.closest(".fence")?.querySelector("pre > code") ?? b.closest("pre")?.querySelector("code");
   return code?.textContent ?? "";
+}
+
+// A table as the agent wrote it, for a chat or an editor, and as cells, for a
+// spreadsheet or a document.
+function tableOf(b) {
+  const blk = b.closest(".tblk");
+  const [a, z] = blk.dataset.lines.split("-").map(Number);
+  const src = b.closest(".md")?._src ?? "";
+  const t = blk.querySelector("table").cloneNode(true);
+  for (const td of t.querySelectorAll("[data-label]")) td.removeAttribute("data-label");
+  return { text: src.split("\n").slice(a, z).join("\n").replace(/\n+$/, ""), html: t.outerHTML };
 }
 
 async function rowText(id, deps) {
@@ -66,10 +89,26 @@ async function rowText(id, deps) {
   }
 }
 
-async function run(b, text) {
+// Text, or {text, html} written as one item with both types; a browser
+// without ClipboardItem gets the text.
+async function put(v) {
+  v = await v;
+  if (typeof v === "string") return navigator.clipboard.writeText(v);
+  if (window.ClipboardItem && navigator.clipboard.write) {
+    return navigator.clipboard.write([
+      new ClipboardItem({
+        "text/plain": new Blob([v.text], { type: "text/plain" }),
+        "text/html": new Blob([v.html], { type: "text/html" }),
+      }),
+    ]);
+  }
+  return navigator.clipboard.writeText(v.text);
+}
+
+async function run(b, value) {
   clearTimeout(b._copyTimer);
   try {
-    await navigator.clipboard.writeText(await text);
+    await put(value);
     show(b, "done", "copied", "Copied");
   } catch (err) {
     show(b, "err", "failed", `Copy failed: ${err.message || err}`);

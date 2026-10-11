@@ -311,7 +311,6 @@ const RENDERERS = {
   prose(e) {
     const body = markdown(e.md);
     body.classList.add("body");
-    body.append(copyButton("message"));
     const r = row(e, "prose", body);
     // Only the live view carries the flag; an archived transcript draws no mark.
     if (e.unread !== undefined) {
@@ -383,7 +382,7 @@ const RENDERERS = {
     const body = el("div", "body");
     body.append(el("div", "from", e.title));
     const text = (e.md || "").split("\n").filter((l) => !l.startsWith("> from ")).join("\n");
-    body.append(markdown(text), copyButton("message"));
+    body.append(markdown(text));
     return row(e, "inbox", body);
   },
 
