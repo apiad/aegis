@@ -376,5 +376,38 @@ def file_window(first: int, lines: list[str]) -> dict:
     return {"first": first + len(lines) - len(text.splitlines()), "text": text}
 
 
+_FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+_SPAN = re.compile(r"(`+)([^`\n]+?)\1")
+_PATH = re.compile(
+    r"(?:~?/)?(?:[\w.@+-]+/)*[\w@+-][\w.@+-]*\.[A-Za-z][A-Za-z0-9]*(?::\d+)?"
+)
+_BARE = re.compile(r"[A-Z][A-Z0-9_-]*\.[a-z]+(?::\d+)?")
+
+
+def inline_paths(md: str) -> list[str]:
+    """The inline code spans of a reply shaped like a file path, with an
+    optional ``:line``, in order and without repeats; fenced blocks skipped.
+    A path has a slash and an extension, or is a capitalised name such as
+    DESIGN.md. Whether the file exists is asked at click time (#323)."""
+    out: list[str] = []
+    fence = None
+    for line in md.splitlines():
+        if m := _FENCE.match(line):
+            mark = m.group(1)
+            if fence is None:
+                fence = mark
+            elif mark[0] == fence[0] and len(mark) >= len(fence):
+                fence = None
+            continue
+        if fence is not None:
+            continue
+        for span in _SPAN.finditer(line):
+            text = span.group(2).strip()
+            shaped = ("/" in text and _PATH.fullmatch(text)) or _BARE.fullmatch(text)
+            if shaped and "://" not in text and text not in out:
+                out.append(text)
+    return out
+
+
 def money(usd: float) -> str:
     return f"${usd:.2f}" if usd >= 0.005 else f"${usd:.4f}"

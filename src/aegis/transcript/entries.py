@@ -886,8 +886,17 @@ class Fold:
                 self._live.discard(ev.key)
             if not ev.text.strip():
                 return gone
+            paths = d.inline_paths(ev.text)
             ops = gone + self._upsert(
-                _entry(eid, "prose", "ok", ts, d.PROSE_GLYPH, md=ev.text)
+                _entry(
+                    eid,
+                    "prose",
+                    "ok",
+                    ts,
+                    d.PROSE_GLYPH,
+                    md=ev.text,
+                    detail={"paths": paths} if paths else None,
+                )
             )
             self._stand(last_message=eid)
             return ops
