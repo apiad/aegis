@@ -167,3 +167,35 @@ def test_closing_the_viewer_gives_a_live_page_back_to_its_card(
     card.locator("#st").filter(has_text="{}").wait_for()
     assert page.locator(".row.artifact .acard .held").count() == 0
     assert page.errors == []
+
+
+def test_the_viewer_colours_through_the_loader_and_fetches_one_language(
+    server,  # noqa: F811
+    page,  # noqa: F811
+):
+    """The viewer loads the highlighter's core and Python, not the old bundle
+    (#323)."""
+    (server.root / "code.py").write_text("def f():\n    return 1\n")
+    fetched: list[str] = []
+    page.on(
+        "request",
+        lambda r: (
+            "/vendor/" in r.url
+            and fetched.append(
+                r.url.rsplit("/", 2)[-2] + "/" + r.url.rsplit("/", 1)[-1]
+            )
+        ),
+    )
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    send(page, 1, ["code.py"])
+    page.click(".row.file .fbar .view")
+    page.locator("#viewer .code .hljs-keyword").first.wait_for()
+    assert "hljs/core.min.js" in fetched and "languages/python.min.js" in fetched
+    assert not any(u.endswith("highlight.mjs") for u in fetched)
+    colour = page.evaluate(
+        "getComputedStyle(document.querySelector('#viewer .hljs-keyword')).color"
+    )
+    assert colour == "rgb(201, 162, 122)", "ink's quiet --h-kw, #c9a27a"
+    assert page.errors == []

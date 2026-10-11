@@ -529,15 +529,17 @@ body{background:#000}
 #a2 .viewer .code code{font-size:inherit;background:none;padding:0;border-radius:0}
 @media (max-width:760px){#a2 .viewer .vbar .fs{display:none}}
 /* highlight.js's classes, coloured from the theme so every theme reads its own way. */
-#a2 .hljs-keyword,#a2 .hljs-selector-tag,#a2 .hljs-name,#a2 .hljs-meta .hljs-keyword{color:var(--accent)}
-#a2 .hljs-string,#a2 .hljs-regexp,#a2 .hljs-addition,#a2 .hljs-meta .hljs-string{color:var(--ok)}
-#a2 .hljs-number,#a2 .hljs-literal,#a2 .hljs-symbol,#a2 .hljs-bullet,#a2 .hljs-deletion{color:var(--err)}
-#a2 .hljs-built_in,#a2 .hljs-type,#a2 .hljs-title.class_,#a2 .hljs-selector-class,#a2 .hljs-selector-id{color:var(--warn)}
-#a2 .hljs-attr,#a2 .hljs-attribute,#a2 .hljs-property,#a2 .hljs-variable,#a2 .hljs-template-variable,#a2 .hljs-params{color:var(--comms)}
-#a2 .hljs-title,#a2 .hljs-section{color:var(--strong);font-weight:600}
-#a2 .hljs-comment,#a2 .hljs-quote{color:var(--faint);font-style:italic}
-#a2 .hljs-meta,#a2 .hljs-punctuation,#a2 .hljs-tag{color:var(--muted)}
+#a2 .hljs-comment,#a2 .hljs-quote{color:var(--h-com);font-style:italic}
+#a2 .hljs-keyword,#a2 .hljs-selector-tag,#a2 .hljs-literal,#a2 .hljs-name,#a2 .hljs-meta .hljs-keyword{color:var(--h-kw)}
+#a2 .hljs-string,#a2 .hljs-regexp,#a2 .hljs-doctag,#a2 .hljs-meta .hljs-string{color:var(--h-str)}
+#a2 .hljs-number,#a2 .hljs-symbol,#a2 .hljs-bullet{color:var(--h-num)}
+#a2 .hljs-title,#a2 .hljs-section,#a2 .hljs-title.function_{color:var(--h-fn)}
+#a2 .hljs-type,#a2 .hljs-title.class_,#a2 .hljs-built_in,#a2 .hljs-selector-class,#a2 .hljs-selector-id{color:var(--h-type)}
+#a2 .hljs-attr,#a2 .hljs-attribute,#a2 .hljs-property,#a2 .hljs-variable,#a2 .hljs-template-variable,#a2 .hljs-params{color:var(--h-var)}
+#a2 .hljs-meta,#a2 .hljs-subst,#a2 .hljs-punctuation,#a2 .hljs-tag{color:var(--h-meta)}
+#a2 .hljs-addition{color:var(--ok)}#a2 .hljs-deletion{color:var(--err)}
 #a2 .hljs-emphasis{font-style:italic}#a2 .hljs-strong{font-weight:600}
+#a2 code,#a2 pre,#a2 .diff,#a2 .lines{font-variant-ligatures:none}
 #probes{position:fixed;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
 
 /* inbox rows, monitors, workers */
