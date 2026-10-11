@@ -493,6 +493,16 @@ edit. All of it is lazy. The browser colours the views and lays an edit out
 side by side when the row is 680 px or wider and in one column below, from the
 same hunks, marking changed words by an LCS over tokens (#323).
 
+**A path in a reply is a link, checked when it is clicked.** The primer asks
+agents to quote a file relative to the config root or absolutely. The fold
+lists the inline code spans of a reply shaped like a path (`detail.paths`);
+it never touches the filesystem, so an archive's links do not depend on the
+machine that reads it. A click sends the reply's id and the path's index to
+`file.peek`, which resolves it as written when absolute, else under the config
+root, then under the session's cwd, copies the file and returns its card
+record; the viewer opens it scrolled to the `:line` and marks it. A linked
+server's replies draw no links: the file would be on the other machine (#323).
+
 **A sent file's URL is its key, and its content runs nowhere near the token.**
 `file_send` copies the file into the state root under 128 random bits, and
 `/files/<id>/<name>` serves it to anyone with the link, because `<img>`, a new tab
