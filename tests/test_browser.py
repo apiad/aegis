@@ -2871,7 +2871,8 @@ def test_the_latest_recap_shows_at_every_fold_level_and_the_older_ones_fold(
     for n in (1, 2):
         page.click("#nav-recap")
         page.wait_for_function(
-            f"() => document.querySelectorAll('.row.recap').length === {n}", timeout=8000
+            f"() => document.querySelectorAll('.row.recap').length === {n}",
+            timeout=8000,
         )
     old, new = row_ids(page, ".recap")
     page.click("#nav-fold")
