@@ -43,7 +43,7 @@ def closed(world, s) -> bool:
 
 
 async def in_archive(world, s) -> bool:
-    page = await world.app.registry.call("archive.list", {})
+    page = await world.app.registry.call("archive.list", {"workers": True})
     return any(m["log_id"] == s.log_id for m in page["items"])
 
 

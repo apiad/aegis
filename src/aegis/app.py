@@ -205,6 +205,9 @@ class TokenName(_Strict):
 class ArchiveParams(_Strict):
     query: str | None = None
     server: str | None = Field(None, description="One server only; omitted: all.")
+    workers: bool = Field(
+        False, description="Include queue workers; omitted: leave them out."
+    )
     limit: int = Field(default=50, ge=1, le=200)
     cursor: str | None = Field(
         None, description="The cursor the last page returned; omitted: the first."
@@ -555,15 +558,17 @@ class App:
         only = self.server_name if caller.link is not None else p.server
         pages: dict[str, tuple[list[dict], archive.Position | None]] = {}
         counts: dict[str, int] = {}
+        workers = 0
         for name, fetch in self._archive_sources(only):
             if name in positions and positions[name] is None:
                 continue  # exhausted on an earlier page
-            got = await fetch(p.query, p.limit, positions.get(name))
+            got = await fetch(p.query, p.limit, positions.get(name), p.workers)
             if got is None:
                 continue  # a linked server that is down keeps its place
-            items, total, last = got
+            items, total, n_workers, last = got
             pages[name] = ([{**m, "server": name} for m in items], last)
             counts[name] = total
+            workers += n_workers
         items, positions = archive.merge(pages, p.limit, positions)
         more = any(v is not None for v in positions.values()) or any(
             name not in positions for name in pages
@@ -580,6 +585,7 @@ class App:
             "items": items,
             "total": sum(counts.values()),
             "counts": counts,
+            "workers": workers,
             "offline": offline,
             "cursor": archive.encode(positions) if more else None,
         }
@@ -587,8 +593,9 @@ class App:
     def _archive_sources(self, only: str | None):
         """Each server an archive listing reads, with how to fetch a page."""
 
-        async def local(query, limit, after):
-            return self.sessions.archive(query, limit, after)
+        async def local(query, limit, after, workers):
+            items, total, last = self.sessions.archive(query, limit, after, workers)
+            return items, total, self.sessions.archived_workers(query), last
 
         if only in (None, self.server_name):
             yield self.server_name, local
@@ -596,22 +603,24 @@ class App:
             if only not in (None, link.name):
                 continue
 
-            async def far(query, limit, after, link=link):
+            async def far(query, limit, after, workers, link=link):
                 cursor = archive.encode({link.name: after}) if after else None
+                params = {
+                    "query": query,
+                    "limit": limit,
+                    "server": link.name,
+                    "cursor": cursor,
+                }
+                # Sent only when set: a server older than #331 refuses the
+                # field, and leaving it out is the default on a newer one.
+                if workers:
+                    params["workers"] = True
                 try:
-                    r = await link.call(
-                        "archive.list",
-                        {
-                            "query": query,
-                            "limit": limit,
-                            "server": link.name,
-                            "cursor": cursor,
-                        },
-                    )
+                    r = await link.call("archive.list", params)
                 except OpError:
                     return None  # down since the listing started: keep its place
                 last = archive.decode(r.get("cursor")).get(link.name)
-                return r.get("items", []), r.get("total", 0), last
+                return r.get("items", []), r.get("total", 0), r.get("workers", 0), last
 
             yield link.name, far
 
@@ -887,7 +896,9 @@ class App:
         async def archive_list(p: ArchiveParams, caller):
             """A page of closed sessions, newest first, across this server and
             the servers it links (archive.py). ``total`` and ``counts`` are of
-            the servers this page read; the first page reads every one."""
+            the servers this page read; the first page reads every one.
+            Queue workers are left out unless ``workers`` is set; ``workers``
+            in the reply is how many match either way."""
             return await self._archive(p, caller)
 
         @r.op("file.open", FileRef)
