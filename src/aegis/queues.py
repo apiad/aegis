@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .agents import ConfigError, read_config, resolve
+from . import restarts
 from .monitors import iso_now
 from .names import default_title
 from .ops import OpError
@@ -300,6 +301,13 @@ class Queues:
             if s is None:
                 self._fail(t, "its worker was gone after a restart")
                 continue
+            if s.log_id in self._registry.declined:
+                self._fail(
+                    t, f"its worker's turn was not continued: {restarts.DECLINED}"
+                )
+                continue
+            if s.log_id in self._registry.continuing:
+                continue  # the registry already told it the server restarted
             try:
                 await s.deliver(
                     f"> from queue:{t.queue} · task#{t.id} · restart · {iso_now()}",
@@ -341,6 +349,15 @@ class Queues:
     def exited(self, s: Session, code: int, stderr_tail: list[str]) -> None:
         t = self.task_of_worker(s.log_id)
         if t is None:
+            return
+        if code in restarts.SIGTERM_CODES:
+            # Most likely the server's own stop under systemd's control-group
+            # kill, a moment before aegis itself: the next boot continues the
+            # worker (restarts.py), so the task stays running.
+            log.info(
+                "aegis: worker %s got SIGTERM; its task waits for the next boot",
+                s.handle,
+            )
             return
         tail = "\n".join(stderr_tail[-10:])
         self._fail(

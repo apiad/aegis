@@ -34,7 +34,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from . import archive, attachments as att, commands, dictation, files
+from . import archive, attachments as att, commands, dictation, files, restarts
 from .agent_ops import register_agent_ops, spawn_opening
 from .artifact_ops import register_artifact_ops
 from .agents import (
@@ -298,13 +298,16 @@ class App:
     async def boot(self) -> None:
         self._config_task = asyncio.create_task(self.config.watch())
         # Before sessions.boot(), which records server_stopped for every session
-        # that was working: the journal must see those records.
+        # whose turn the last run's end cut: the journal must see those records.
         self.journal.start()
-        self.sessions.boot()
+        self.sessions.boot(restarts.started(self.roots.state_root))
         # No browser's upload survives a restart (attachments.py).
         att.clear_staged(self.roots.state_root)
         self.monitors.boot()
         self.monitors.arm_all()
+        # Before the queues: a worker the registry continued needs no second
+        # message from its queue.
+        await self.sessions.continue_after_boot()
         await self.queues.resume_after_boot(self.queues.boot())
         self.quota.start()
         self.host.start()
@@ -312,6 +315,7 @@ class App:
         self.links.boot()
 
     async def shutdown(self) -> None:
+        stopping_at = restarts.stopping(self.roots.state_root)
         if self._config_task is not None:
             self._config_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -324,6 +328,7 @@ class App:
         await self.recaps.shutdown()
         await self.sessions.shutdown()
         await asyncio.to_thread(self.journal.stop)
+        restarts.stopped(self.roots.state_root, stopping_at)
 
     def _on_config(self, snap: Snapshot) -> None:
         """Every change to .aegis.yaml, however it was made: the page and the
