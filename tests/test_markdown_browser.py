@@ -2,9 +2,20 @@
 loader that fetches only what they need, task lists, the person's own
 messages (#323)."""
 
+import json
+
 import pytest
 
-from .test_browser import EXPECTED_CONSOLE, browser, server, spawn, turns_done  # noqa: F401
+from .test_browser import (  # noqa: F401
+    CONFIG,
+    EXPECTED_CONSOLE,
+    FIXTURE,
+    Server,
+    browser,
+    server,
+    spawn,
+    turns_done,
+)
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
@@ -203,3 +214,77 @@ def test_inline_code_draws_no_ligatures(server, make_page):  # noqa: F811
     code = page.locator(".row.prose .md code").first
     assert code.evaluate("c => getComputedStyle(c).fontVariantLigatures") == "none"
     assert page.errors == []
+
+
+# Reading back: each step scrolls the view up 150 px and measures how far the
+# row in its middle moved. Rows above the view that were never drawn take their
+# real heights as they near it (#157); the browser's scroll anchoring keeps the
+# reader's place only while no row inside the scroller is a size container.
+SCROLL_UP = """async () => {
+  const tr = document.getElementById('tr');
+  const frame = () => new Promise((r) => requestAnimationFrame(r));
+  const settle = async () => { await frame(); await frame(); await new Promise((r) => setTimeout(r, 60)); };
+  let steps = 0, off = 0;
+  for (let i = 0; i < 120 && tr.scrollTop > 0; i++) {
+    const box = tr.getBoundingClientRect();
+    const ref = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)?.closest('#entries > .row');
+    const rows = tr.querySelectorAll('#entries > .row').length;
+    const before = ref?.getBoundingClientRect().top;
+    tr.scrollBy(0, -150);
+    await settle();
+    if (!ref?.isConnected || tr.scrollTop < 400 || tr.querySelectorAll('#entries > .row').length !== rows) continue;
+    steps++;
+    if (Math.abs(ref.getBoundingClientRect().top - before - 150) > 20) off++;
+  }
+  return [steps, off];
+}"""
+
+
+def test_scrolling_up_through_tables_and_fences_keeps_the_readers_place(
+    tmp_path,
+    fake_claude,
+    make_page,
+):
+    reply = {
+        "type": "assistant",
+        "message": {
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"Measured:\n\n{TABLE}\n\n```python\ndef f():\n"
+                    "    return 1\n```\n\nThe rest reads as before.",
+                }
+            ]
+        },
+    }
+    lines = [r for r in map(json.loads, FIXTURE.open()) if r.get("src") == "claude"]
+    lines.insert(-1, {"src": "claude", "line": json.dumps(reply)})
+    store = tmp_path / "tables.jsonl"
+    store.write_text("".join(json.dumps(r) + "\n" for r in lines))
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    s = Server(tmp_path, fake_claude)
+    s.env = {"FAKE_CLAUDE_REPLAY": str(store), "FAKE_CLAUDE_REPEAT": "16"}
+    s.start()
+    try:
+        page = make_page(1280)
+        page.goto(s.url)
+        spawn(page)
+        page.fill("#input", "replay")
+        page.press("#input", "Enter")
+        page.wait_for_function(
+            "document.getElementById('s-status').textContent.trim() === 'done'",
+            timeout=60_000,
+        )
+        page.reload()
+        page.wait_for_function("window.__a2snapshot && window.__a2snapshot.painted")
+        page.wait_for_timeout(800)
+        steps, off = page.evaluate(SCROLL_UP)
+        # Before #323 about 5% of steps moved by more than 20 px (rows that
+        # first draw in the same frame as the step); with every row a size
+        # container about half did. A tenth leaves room for the first and fails
+        # the second by five times.
+        assert steps >= 60, steps
+        assert off <= steps // 10, (off, steps)
+        assert page.errors == []
+    finally:
+        s.stop()

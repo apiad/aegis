@@ -288,9 +288,11 @@ export class Transcript {
     this.fold();
     const now = ref && this.nodes.get(this.headOf.get(ref.dataset.id) ?? ref.dataset.id);
     if (now) this.scroller.scrollTop += now.getBoundingClientRect().top - top;
-    // The rows just mounted take their real heights a frame later, and the
-    // browser's scroll anchoring does not hold across container-query rows, so
-    // the row stays held until the reader scrolls.
+    // The rows just mounted take their real heights a frame later. The
+    // browser's scroll anchoring would keep the place, but in that frame
+    // mount()'s fadeTables reads each table's widths, and Chromium does not
+    // anchor across the layout that read forces; so the row stays held until
+    // the reader scrolls.
     if (now) this.held = { node: now, top: now.getBoundingClientRect().top, at: this.scroller.scrollTop };
     return true;
   }
