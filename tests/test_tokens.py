@@ -94,7 +94,7 @@ def test_unknown_keys_survive_a_write(store, tmp_path):
 def test_the_list_names_the_admin_first_and_counts_use_since_start(store):
     t = store.add("ben", "member")
     store.resolve(t)
-    rows = store.list()
+    rows = store.rows()
     assert [(r["name"], r["role"], r["owner"]) for r in rows] == [
         ("ana", "admin", True),
         ("ben", "member", False),

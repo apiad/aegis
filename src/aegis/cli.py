@@ -684,7 +684,7 @@ def token_add(
 @token_app.command("list")
 def token_list(root: Path | None = _ROOT_OPTION) -> None:
     """Names and roles, never tokens."""
-    rows = _token_store(root).list()
+    rows = _token_store(root).rows()
     for r in rows:
         typer.echo(
             f"{r['name']:<16} {r['role']}{'  (this server)' if r['owner'] else ''}"

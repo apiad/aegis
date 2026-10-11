@@ -959,7 +959,7 @@ class App:
         @r.op("token.list", admin=True)
         async def token_list(_, caller):
             """The tokens that may use this server, the admin's first."""
-            return {"tokens": self.principals.list()}
+            return {"tokens": self.principals.rows()}
 
         @r.op("token.add", TokenAdd, admin=True)
         async def token_add(p: TokenAdd, caller):

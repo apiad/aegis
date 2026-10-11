@@ -1038,7 +1038,7 @@ async def test_a_member_here_cannot_act_through_the_link(pair):
         assert r["error"]["code"] == "not_for_members"
         r = await b.call("session.spawn", server="beta", agent="opus")
         assert r["error"]["code"] == "not_for_members"
-    assert "mallory" not in [t["name"] for t in beta.app.principals.list()]
+    assert "mallory" not in [t["name"] for t in beta.app.principals.rows()]
 
 
 async def test_a_revoked_token_on_an_idle_socket_stops_receiving(tmp_path, fake_claude):

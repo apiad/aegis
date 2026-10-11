@@ -135,7 +135,7 @@ class TokenStore:
             )
             if e is None:
                 return None
-            role = e.get("role") if e.get("role") in ROLES else "member"
+            role = str(e.get("role")) if e.get("role") in ROLES else "member"
             who = Principal(str(e["name"]), role)
         self._used[who.name] = time.time()
         return who
@@ -162,7 +162,7 @@ class TokenStore:
             _write_private(self.root / "token", token + "\n")
             self._admin, self._admin_mtime = token, self._mtime(self.root / "token")
 
-    def list(self) -> list[dict]:
+    def rows(self) -> list[dict]:
         self._fresh()
         rows = [
             {"name": self.owner, "role": "admin", "owner": True, "created_at": None}
@@ -177,7 +177,7 @@ class TokenStore:
             for e in self._entries()
         ]
         for r in rows:
-            r["used_at"] = self._used.get(r["name"])
+            r["used_at"] = self._used.get(str(r["name"]))
         return rows
 
     # -- changing -------------------------------------------------------------

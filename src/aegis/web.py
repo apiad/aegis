@@ -165,7 +165,7 @@ def build_web(
         except ValueError:
             body = None
         given = body.get("token") if isinstance(body, dict) else None
-        if not valid(given):
+        if not isinstance(given, str) or not valid(given):
             return JSONResponse({"error": "bad_token"}, status_code=401)
         return signed_in(Response(status_code=204), request, given)
 
