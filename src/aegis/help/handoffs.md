@@ -13,14 +13,14 @@ one, and close the ones it started. A person can do the same from the browser.
 `session_list` returns the open sessions on this server: each one's handle,
 state, what it needs from the person (its attention and line), what it waits
 on, its plan, what it is doing now, its model and its spend. Then it lists the
-sessions of every linked server as `handle@server` with their state alone.
+sessions of every linked server that is up as `handle@server`, with their
+state alone.
 `agents_list` shows the agents you can start sessions from.
 
 ## Read a peer
 
-`peer_read` with `target` (a handle) returns the last entries of that
-session's transcript, one line each: 30 by default, up to 200 with
-`last=200`. Tool calls are left out unless you pass `tools=true`. Reading
+`peer_read` with `target` (a handle) returns up to the last 30 lines of that
+session's transcript, or up to 200 with `last=200`. Tool calls are left out unless you pass `tools=true`. Reading
 changes nothing and wakes nobody. A session on a linked server cannot be read
 by an agent; a person reads it in the browser.
 
@@ -61,16 +61,17 @@ can reach it in two ways: `peer_handoff` to `handle@server`, and
 `session_spawn` with `agent@server`, which that server's quota policy for the
 link decides. Reading, sending to and enqueueing on another server are for
 people, in the browser. Nothing on a linked server can reach a session here:
-a link only goes one way. A handoff from a linked server arrives headed
-`> from agent:<handle>@<server> (<user>)`.
+a link only goes one way. A handoff from a server that links this one arrives
+headed `> from agent:<handle>@<server> (<user>)`.
 
 ## Close a session
 
 `session_close` with `handle` closes a session: its tab goes away and it stays
 in the archive. A session you spawned, or the worker of a task you enqueued,
-closes at once when its last turn ended done. Any other close, your own
-session's included, is refused the first time with what the session is doing
-and who started it, because a person may be reading that tab, and with a
-one-time token. Call `session_close` again with the same `handle` and that
+closes at once when it is done: not working, waiting on nothing, and its
+last turn ended done. Any other close, your own session's included, is
+refused the first time with what the session is doing (and, for another
+session, who started it), because a person may be reading that tab, and with
+a one-time token. Call `session_close` again with the same `handle` and that
 `token` to close it after all; the token works once, for you and that session,
 for five minutes.
