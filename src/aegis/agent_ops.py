@@ -624,9 +624,25 @@ def register_agent_ops(app: App) -> None:
         interrupt cuts that turn first. `handle@server` reaches a session on a
         server this one links; nothing there can reach you back."""
         handle, server = split_address(p.target, app.server_name)
+        who = app.who(caller)
         if server is not None:
+            # The link delivers as its own token on the far server (web.py).
+            if not who.is_admin:
+                raise OpError(
+                    "not_for_members",
+                    f"handing off to {server} through this server's link is for "
+                    "an admin here",
+                )
             return await far_handoff(handle, server, p, caller)
         to = target(p.target)
+        # A prompt or an interrupt changes the session: a member's reaches only
+        # its own (tokens.py).
+        owner = app.owner_of(to.log_id)
+        if not who.is_admin and owner != who.name:
+            raise OpError(
+                "not_owner",
+                f"{to.handle} belongs to {owner}; you can read it, not prompt it",
+            )
         sender = (
             f"agent:{reg.sessions[caller.log_id].handle}"
             if caller.is_agent and caller.log_id in reg.sessions

@@ -121,3 +121,26 @@ async def test_an_admin_manages_tokens_and_a_member_cannot(world):
     with pytest.raises(OpError) as e:
         await reg.call("token.list", {}, as_(BEN))
     assert e.value.code == "not_for_members"
+
+
+async def test_a_member_cannot_prompt_or_interrupt_anothers_session(world):
+    s = await world.spawn()  # the admin's
+    reg = world.app.registry
+    with pytest.raises(OpError) as e:
+        await reg.call(
+            "peer.handoff",
+            {"target": s.handle, "context": "do this", "interrupt": True},
+            as_(BEN),
+        )
+    assert e.value.code == "not_owner"
+    r = await reg.call("session.spawn", {"agent": "opus"}, as_(BEN))
+    a = world.session(r["log_id"])
+    out = await turn(a, mcp("peer_handoff", target=s.handle, context="do this"))
+    assert "not_owner" in out
+    mine = (await reg.call("session.spawn", {"agent": "opus"}, as_(BEN)))["log_id"]
+    landed = await reg.call(
+        "peer.handoff",
+        {"target": world.session(mine).handle, "context": "hi"},
+        as_(BEN),
+    )
+    assert world.session(mine).handle in landed
