@@ -50,8 +50,8 @@ export function copyRow(id, node, deps) {
 }
 
 function codeOf(b) {
-  const pre = b.closest("pre");
-  return pre.querySelector("code")?.textContent ?? "";
+  const code = b.closest(".fence")?.querySelector("pre > code") ?? b.closest("pre")?.querySelector("code");
+  return code?.textContent ?? "";
 }
 
 async function rowText(id, deps) {

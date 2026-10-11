@@ -173,3 +173,33 @@ def test_the_persons_message_is_markdown_with_its_line_breaks(server, make_page)
     assert body.locator("li").count() == 2
     assert body.locator("li code").inner_text() == "b"
     assert page.errors == []
+
+
+QUOTED = "Quoted:\n\n> ```python\n> def f():\n>     return 1\n> ```"
+NESTED = (
+    "Steps:\n\n- one\n  - two\n\n    ```python\n    def f():\n        return 1\n    ```"
+)
+
+
+@pytest.mark.parametrize("text", [QUOTED, NESTED], ids=["blockquote", "nested-list"])
+def test_a_fence_in_a_quote_or_a_nested_list_is_closed_and_coloured(
+    server,  # noqa: F811
+    make_page,
+    text,
+):
+    page = make_page(1280)
+    page.goto(server.url)
+    spawn(page, md(text))
+    fence = page.locator(".row.prose .fence").first
+    fence.locator(".hljs-keyword").first.wait_for()
+    assert fence.get_attribute("data-open") is None
+    assert page.errors == []
+
+
+def test_inline_code_draws_no_ligatures(server, make_page):  # noqa: F811
+    page = make_page(1280)
+    page.goto(server.url)
+    spawn(page, md("Use `a -> b != c` here."))
+    code = page.locator(".row.prose .md code").first
+    assert code.evaluate("c => getComputedStyle(c).fontVariantLigatures") == "none"
+    assert page.errors == []

@@ -57,7 +57,7 @@ def test_a_message_and_its_code_block_copy_their_markdown_and_their_code(
     spawn(page, PROMPT)
     prose = page.locator(".row.prose").last
     message = prose.locator(":scope > .body > .copy")
-    code = prose.locator("pre > .copy")
+    code = prose.locator(".fence .copy")
     # Unobtrusive: nothing shows until the row is hovered.
     page.mouse.move(0, 0)
     assert message.evaluate("b => getComputedStyle(b).opacity") == "0"

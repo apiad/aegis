@@ -171,7 +171,7 @@ body{background:#000}
 .a2 .md h3{font-size:1.02em;margin:1em 0 .4em}
 .a2 .md h4{font-size:1em;margin:.9em 0 .35em;color:var(--ink)}
 .a2 .md a{color:var(--accent);text-underline-offset:2px}
-.a2 .md :not(pre)>code{font:.84em var(--font-mono);background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:.05em .35em}
+.a2 .md :not(pre)>code{font:.84em var(--font-mono);font-variant-ligatures:none;background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:.05em .35em}
 .a2 .md blockquote{margin:.6em 0;padding:.35em 12px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 var(--r) var(--r) 0;color:var(--ink)}
 .a2 .md blockquote>:last-child{margin-bottom:0}
 .a2 .md hr{border:0;border-top:1px solid var(--rule);margin:1em 0}
@@ -181,7 +181,7 @@ body{background:#000}
 .a2 .md .fh{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 4px 0 12px;min-height:20px}
 .a2 .md .fh .lang{font:10.5px/1 var(--font-ui);letter-spacing:.04em;color:var(--faint);text-transform:uppercase}
 .a2 .md .fh .lang.guessed::after{content:" ?"}
-.a2 .md .fence pre{margin:0;padding:2px 12px 10px;background:none;border:0;border-radius:0;font:12.5px/1.55 var(--font-mono);tab-size:4}
+.a2 .md .fence pre{margin:0;padding:2px 12px 10px;background:none;border:0;border-radius:0;font:12.5px/1.55 var(--font-mono);font-variant-ligatures:none;tab-size:4}
 .a2 .md .tblk{position:relative;margin:.8em 0;width:max-content;max-width:100%}
 .a2 .md .tw{overflow-x:auto;max-width:100%;padding-right:22px}
 .a2 .md .tw.more-r{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent)}

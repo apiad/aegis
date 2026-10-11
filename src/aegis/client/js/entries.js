@@ -35,12 +35,13 @@ function makeMd(breaks) {
 }
 
 // A fence is closed when its last line is a closing marker; an open one runs
-// to the end of the text (a reply still streaming, or one cut off).
+// to the end of the text (a reply still streaming, or one cut off). Inside a
+// quote or a list that line keeps the container's ">" and indent.
 function closed(tok, env) {
   const [a, z] = tok.map;
   const last = env.lines?.[z - 1];
   if (z - 1 <= a || last === undefined) return false;
-  const m = /^\s{0,3}(`{3,}|~{3,})\s*$/.exec(last);
+  const m = /^[\s>]*(`{3,}|~{3,})\s*$/.exec(last);
   return !!m && m[1][0] === tok.markup[0] && m[1].length >= tok.markup.length;
 }
 
