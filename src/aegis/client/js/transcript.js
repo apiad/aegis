@@ -25,8 +25,9 @@
 // one line on its first mounted row, and the rest of the run is hidden (fold()). Hidden rows stay mounted, so the
 // window above still holds; the walks below skip them.
 
-import { hhmm, render, update } from "./entries.js";
+import { fadeTables, hhmm, render, update } from "./entries.js";
 import { icon } from "./glyphs.js";
+import { unwatch, watch } from "./highlight.js";
 
 const WINDOW = 200;
 
@@ -74,6 +75,8 @@ export class Transcript {
       this.mark();
     });
     scroller.addEventListener("scroll", () => {
+      // A scroll that is not the hold's own lets go of the held row (mountEarlier).
+      if (this.held && this.scroller.scrollTop !== this.held.at) this.held = null;
       this.following = this.atBottom();
       if (this.following) this.jump.classList.remove("new");
       this.fillTop();
@@ -98,6 +101,7 @@ export class Transcript {
     );
     new ResizeObserver(() => {
       if (this.following) this.toBottom();
+      else if (this.held?.node.isConnected) this.hold();
     }).observe(list);
     // Reading: an unread agent message counts as read once its row has been
     // seen for a second while the page is visible and focused. Seen means half
@@ -167,6 +171,8 @@ export class Transcript {
 
   mount(e) {
     const n = render(this.whole(e));
+    for (const f of n.querySelectorAll(".fence")) watch(f);
+    if (n.querySelector(".md .tw")) requestAnimationFrame(() => fadeTables(n));
     if (this.opened.has(e.id)) {
       const d = n.querySelector("details");
       if (d) d.open = this.opened.get(e.id);
@@ -195,7 +201,10 @@ export class Transcript {
           this.full.set(f.id, f);
           const cur = this.entries.get(f.id);
           const old = this.nodes.get(f.id);
-          if (cur && old && cur.rev === f.rev) swap(old, this.mount(cur));
+          if (cur && old && cur.rev === f.rev) {
+            unwatch(old);
+            swap(old, this.mount(cur));
+          }
         }
         this.fold();
         this.mark();
@@ -279,7 +288,18 @@ export class Transcript {
     this.fold();
     const now = ref && this.nodes.get(this.headOf.get(ref.dataset.id) ?? ref.dataset.id);
     if (now) this.scroller.scrollTop += now.getBoundingClientRect().top - top;
+    // The rows just mounted take their real heights a frame later, and the
+    // browser's scroll anchoring does not hold across container-query rows, so
+    // the row stays held until the reader scrolls.
+    if (now) this.held = { node: now, top: now.getBoundingClientRect().top, at: this.scroller.scrollTop };
     return true;
+  }
+
+  // Puts the held row back where mountEarlier left it.
+  hold() {
+    const h = this.held;
+    this.scroller.scrollTop += h.node.getBoundingClientRect().top - h.top;
+    h.at = this.scroller.scrollTop;
   }
 
   // Mounts earlier pages while the reader is near the top. One page is enough
@@ -305,6 +325,7 @@ export class Transcript {
           if (update(e, old)) this.nodes.set(e.id, old);
           else {
             this.watch.unobserve(old);
+            unwatch(old);
             swap(old, this.mount(e));
           }
         }
@@ -318,6 +339,7 @@ export class Transcript {
         const old = this.nodes.get(op.remove);
         if (old) {
           this.watch.unobserve(old);
+          unwatch(old);
           old.remove();
         }
         this.since.delete(op.remove);
@@ -330,6 +352,7 @@ export class Transcript {
         const first = this.list.firstElementChild;
         this.nodes.delete(first.dataset.id);
         this.watch.unobserve(first);
+        unwatch(first);
         this.since.delete(first.dataset.id);
         first.remove();
       }
@@ -355,6 +378,7 @@ export class Transcript {
     this.headOf.clear();
     this.marked = false;
     this.watch.disconnect();
+    unwatch(this.list);
     this.since.clear();
     this.sent.clear();
     this.list.replaceChildren();

@@ -15,7 +15,7 @@
 
 import { artifactStage, fileActions, fileUrl, hold, markdown, preview } from "./entries.js";
 import { entryIcon, icon } from "./glyphs.js";
-import { colour, langName, langOfPath, paint } from "./highlight.js";
+import { colour, langOfPath, paint } from "./highlight.js";
 
 const MAX_TEXT = 2 * 1024 * 1024; // bytes drawn of a text file; a new tab has the rest
 
@@ -179,15 +179,6 @@ export class Viewer {
       const doc = markdown(text);
       doc.classList.add("doc");
       await Promise.all([...doc.querySelectorAll(".fence")].map(paint));
-      for (const code of doc.querySelectorAll("pre > code[class^=language-]")) {
-        const name = langName(code.className.slice("language-".length));
-        if (!name) continue;
-        const got = await colour(code.textContent, name);
-        if (got) {
-          code.innerHTML = got.html;
-          code.classList.add("hljs");
-        }
-      }
       if (draw !== this.drawn) return;
       out.push(doc);
     } else {

@@ -8,14 +8,79 @@ import markdownit from "../vendor/markdown-it.mjs";
 import { copyButton } from "./copy.js";
 import { money } from "./fleet.js";
 import { entryIcon, icon } from "./glyphs.js";
+import { cachedColour, isPlain, langName } from "./highlight.js";
 
-const md = markdownit({ html: false, linkify: true, breaks: false });
-const defaultLink = md.renderer.rules.link_open || ((t, i, o, e, s) => s.renderToken(t, i, o));
-md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
-  tokens[idx].attrSet("target", "_blank");
-  tokens[idx].attrSet("rel", "noopener noreferrer");
-  return defaultLink(tokens, idx, options, env, self);
-};
+const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// Two renderers: the person's messages keep a typed newline (breaks), an
+// agent's text follows Markdown's own rule.
+const mdAgent = makeMd(false);
+const mdTyped = makeMd(true);
+
+function makeMd(breaks) {
+  const m = markdownit({ html: false, linkify: true, breaks });
+  const defaultLink = m.renderer.rules.link_open || ((t, i, o, e, s) => s.renderToken(t, i, o));
+  m.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+    tokens[idx].attrSet("target", "_blank");
+    tokens[idx].attrSet("rel", "noopener noreferrer");
+    return defaultLink(tokens, idx, options, env, self);
+  };
+  // A table sits in a block that holds its copy button, over a scroller; its
+  // source lines go along for the copy (copy.js).
+  m.renderer.rules.table_open = (t, i) => `<div class="tblk" data-lines="${t[i].map[0]}-${t[i].map[1]}"><div class="tw"><table>`;
+  m.renderer.rules.table_close = () => "</table></div></div>";
+  m.renderer.rules.fence = (t, i, o, env) => fenceHtml(t[i].content, t[i].info.trim().split(/\s+/)[0] || "", !closed(t[i], env));
+  m.core.ruler.after("inline", "tasks", tasks);
+  return m;
+}
+
+// A fence is closed when its last line is a closing marker; an open one runs
+// to the end of the text (a reply still streaming, or one cut off).
+function closed(tok, env) {
+  const [a, z] = tok.map;
+  const last = env.lines?.[z - 1];
+  if (z - 1 <= a || last === undefined) return false;
+  const m = /^\s{0,3}(`{3,}|~{3,})\s*$/.exec(last);
+  return !!m && m[1][0] === tok.markup[0] && m[1].length >= tok.markup.length;
+}
+
+// A fenced block: a header with its language, then the code. A block whose
+// colour is already cached is drawn coloured at once, so a reply re-rendered
+// by every delta does not flash plain; the rest is coloured by
+// highlight.paint when it nears the view (transcript.js).
+export function fenceHtml(text, label, open = false) {
+  const name = langName(label);
+  const may = !open && !isPlain(label) && (name || !label);
+  const hit = may ? cachedColour(text, name) : undefined;
+  const tag = hit?.guessed ? `<span class="lang guessed">${esc(hit.lang)}</span>` : `<span class="lang">${esc(label)}</span>`;
+  const attrs = `data-lang="${esc(label)}"${open ? " data-open" : ""}${hit !== undefined ? ' data-painted="1"' : ""}`;
+  return `<div class="fence" ${attrs}><div class="fh">${tag}</div><pre><code${hit ? ' class="hljs"' : ""}>${hit ? hit.html : esc(text)}</code></pre></div>`;
+}
+
+// "- [ ] x" and "- [x] x" become a disabled checkbox; ten lines, no plugin.
+function tasks(state) {
+  const ts = state.tokens;
+  for (let i = 2; i < ts.length; i++) {
+    const inl = ts[i];
+    if (inl.type !== "inline" || ts[i - 1].type !== "paragraph_open" || ts[i - 2].type !== "list_item_open") continue;
+    const m = /^\[([ xX])\] /.exec(inl.content);
+    const first = inl.children?.[0];
+    if (!m || first?.type !== "text" || !first.content.startsWith(m[0])) continue;
+    first.content = first.content.slice(m[0].length);
+    const box = new state.Token("html_inline", "", 0);
+    box.content = `<input type="checkbox" disabled${m[1] === " " ? "" : " checked"}> `;
+    inl.children.unshift(box);
+    ts[i - 2].attrJoin("class", "task");
+  }
+}
+
+// A table wider than its row fades at the edge it can still scroll to.
+function fade(tw) {
+  tw.classList.toggle("more-r", tw.scrollLeft + tw.clientWidth < tw.scrollWidth - 2);
+}
+export function fadeTables(root) {
+  for (const tw of root.querySelectorAll(".md .tw")) fade(tw);
+}
 
 // Where a sent file's URL is fetched from: "" on this server, `/via/<server>`
 // for a transcript from a linked one (web.py streams it from there).
@@ -147,11 +212,25 @@ export function preview(f, remote, zoom) {
   return stage;
 }
 
-export function markdown(text) {
+export function markdown(text, { breaks = false } = {}) {
   const div = document.createElement("div");
   div.className = "md";
-  div.innerHTML = md.render(text || "");
-  for (const pre of div.querySelectorAll("pre")) pre.append(copyButton("code"));
+  const src = text || "";
+  div._src = src; // what a table's copy slices its lines from (copy.js)
+  div.innerHTML = (breaks ? mdTyped : mdAgent).render(src, { lines: src.split("\n") });
+  for (const fh of div.querySelectorAll(".fence > .fh")) fh.append(copyButton("code"));
+  for (const pre of div.querySelectorAll("pre")) if (!pre.closest(".fence")) pre.append(copyButton("code"));
+  for (const blk of div.querySelectorAll(".tblk")) {
+    blk.prepend(copyButton("table"));
+    const heads = [...blk.querySelectorAll("thead th")].map((th) => th.textContent);
+    for (const tr of blk.querySelectorAll("tbody tr")) {
+      [...tr.children].forEach((td, i) => {
+        td.dataset.label = heads[i] ?? "";
+      });
+    }
+    const tw = blk.querySelector(".tw");
+    tw.addEventListener("scroll", () => fade(tw), { passive: true });
+  }
   return div;
 }
 
@@ -202,7 +281,8 @@ function diffBlock(diff) {
 
 const RENDERERS = {
   user(e) {
-    const body = el("div", "body", e.md);
+    const body = el("div", "body");
+    if (e.md) body.append(markdown(e.md, { breaks: true }));
     if (e.detail?.files?.length) {
       // What the person attached: one card that pages, as a file_send's.
       const card = fileCard(e.detail.files, "▤");

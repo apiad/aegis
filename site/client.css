@@ -142,6 +142,7 @@ body{background:#000}
 /* Off-screen rows skip layout and paint, and keep their last height once drawn (#157). */
 .a2 #entries>.row{content-visibility:auto;contain-intrinsic-size:auto 40px}
 .a2 .row.user .body{color:var(--strong);background:var(--raised);padding:9px 12px;border-radius:var(--r);font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.a2 .row.user .body .md{white-space:normal}
 .a2 .row.user .g{color:var(--accent)}
 .a2 .row.sel{background:var(--accent-soft);position:relative}
 .a2 .row.sel:before{content:"";position:absolute;left:-8px;top:0;bottom:0;width:2px;background:var(--accent)}
@@ -157,15 +158,52 @@ body{background:#000}
 .a2 .row.prose .rm .ic.i-unread{color:var(--accent)}
 .a2 .row.prose .rm .ic.i-read{color:var(--faint)}
 .a2 .card .ft .unr{color:var(--accent)}
+.a2 .row,.a2 .vbody{container:row/inline-size}
 .a2 .md>:first-child{margin-top:0}.a2 .md>:last-child{margin-bottom:0}
-.a2 .md p,.a2 .md ul,.a2 .md ol{margin:0 0 .6em}
-.a2 .md h1,.a2 .md h2,.a2 .md h3,.a2 .md h4{font-family:var(--font-head);color:var(--strong);font-weight:600;margin:.9em 0 .4em;font-size:1.05em}
-.a2 .md a{color:var(--accent)}
+.a2 .md p,.a2 .md ul,.a2 .md ol{margin:0 0 .65em}
+.a2 .md ul,.a2 .md ol{padding-left:1.4em}
+.a2 .md li{margin:.15em 0}
+.a2 .md li.task{list-style:none;margin-left:-1.3em}
+.a2 .md li.task input{accent-color:var(--accent);margin:0 .4em 0 0;vertical-align:-.1em}
+.a2 .md h1,.a2 .md h2,.a2 .md h3,.a2 .md h4{font-family:var(--font-head);color:var(--strong);font-weight:600;line-height:1.3}
+.a2 .md h1{font-size:1.25em;margin:1.1em 0 .5em}
+.a2 .md h2{font-size:1.15em;margin:1.1em 0 .45em}
+.a2 .md h3{font-size:1.02em;margin:1em 0 .4em}
+.a2 .md h4{font-size:1em;margin:.9em 0 .35em;color:var(--ink)}
+.a2 .md a{color:var(--accent);text-underline-offset:2px}
+.a2 .md :not(pre)>code{font:.84em var(--font-mono);background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:.05em .35em}
+.a2 .md blockquote{margin:.6em 0;padding:.35em 12px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 var(--r) var(--r) 0;color:var(--ink)}
+.a2 .md blockquote>:last-child{margin-bottom:0}
+.a2 .md hr{border:0;border-top:1px solid var(--rule);margin:1em 0}
 .a2 .md pre{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;overflow-x:auto;font-size:12.5px;line-height:1.45}
-.a2 .md pre code{background:none;padding:0}
-.a2 .md table{border-collapse:collapse;font-size:.88em;font-family:var(--font-ui)}
-.a2 .md th,.a2 .md td{border:1px solid var(--rule);padding:4px 8px;text-align:left}
-.a2 .md blockquote{margin:0 0 .6em;padding-left:12px;border-left:2px solid var(--rule);color:var(--muted)}
+.a2 .md pre code{background:none;border:0;padding:0;font-size:inherit}
+.a2 .md .fence{margin:.7em 0;border:1px solid var(--rule);border-radius:var(--r);background:var(--surface)}
+.a2 .md .fh{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 4px 0 12px;min-height:20px}
+.a2 .md .fh .lang{font:10.5px/1 var(--font-ui);letter-spacing:.04em;color:var(--faint);text-transform:uppercase}
+.a2 .md .fh .lang.guessed::after{content:" ?"}
+.a2 .md .fence pre{margin:0;padding:2px 12px 10px;background:none;border:0;border-radius:0;font:12.5px/1.55 var(--font-mono);tab-size:4}
+.a2 .md .tblk{position:relative;margin:.8em 0;width:max-content;max-width:100%}
+.a2 .md .tw{overflow-x:auto;max-width:100%;padding-right:22px}
+.a2 .md .tw.more-r{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent)}
+.a2 .md table{border-collapse:collapse;font:13px/1.45 var(--font-ui);width:max-content}
+.a2 .md th,.a2 .md td{padding:5px 10px;text-align:left;vertical-align:top;max-width:30ch;overflow-wrap:normal;word-break:normal}
+.a2 .md th{white-space:nowrap;font-weight:600;font-size:11.5px;letter-spacing:.03em;color:var(--muted);border-bottom:1.5px solid var(--muted)}
+.a2 .md td{border-bottom:1px solid var(--rule)}
+.a2 .md td[style*=right],.a2 .md th[style*=right]{font-variant-numeric:tabular-nums;white-space:nowrap}
+.a2 .md tr:hover td{background:var(--accent-soft)}
+.a2 .md td:first-child,.a2 .md th:first-child{position:sticky;left:0;background:var(--bg);z-index:1}
+@container row (max-width:600px){
+  .a2 .md .tblk{width:auto}
+  .a2 .md .tw{overflow:visible;padding-right:0}
+  .a2 .md .tw.more-r{-webkit-mask-image:none;mask-image:none}
+  .a2 .md table,.a2 .md tbody,.a2 .md tr,.a2 .md td{display:block;width:auto;max-width:none}
+  .a2 .md thead{display:none}
+  .a2 .md tr{border:1px solid var(--rule);border-radius:var(--r);padding:6px 10px;margin:0 0 8px;background:var(--surface)}
+  .a2 .md td{border:0;padding:2px 0 2px 42%;position:relative;text-align:left!important;white-space:normal;background:none!important}
+  .a2 .md td::before{content:attr(data-label);position:absolute;left:0;width:40%;color:var(--muted);font-size:11.5px;line-height:1.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .a2 .md td:first-child{font-weight:600;color:var(--strong);padding-left:0;position:relative}
+  .a2 .md td:first-child::before{display:none}
+}
 .a2 code{font-family:var(--font-mono);font-size:.82em;background:var(--raised);padding:1px 5px;border-radius:4px}
 /* Copy (js/copy.js): a message's and a code block's sit in their top-right
    corner, a tool's at the end of its line. Each shows while its row or block

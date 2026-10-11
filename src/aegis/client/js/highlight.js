@@ -174,3 +174,9 @@ export function watch(block) {
   );
   io.observe(block);
 }
+
+// A row swapped out or dropped: its blocks stop being watched, so a reply
+// re-rendered by every delta leaves no stale block observed.
+export function unwatch(node) {
+  for (const f of node.querySelectorAll(".fence")) io?.unobserve(f);
+}

@@ -7,6 +7,7 @@ import re
 import socket
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -75,6 +76,14 @@ class Server:
             if m := re.search(r"open (http://\S+)", line):
                 self.url = m.group(1)
         assert self.url, "aegis serve printed no URL"
+        # Read the rest of the log from here on: a pipe nobody reads fills at
+        # 64 KB, and the server's next log line (a long prompt is logged
+        # whole) then blocks its event loop.
+        self.lines: list[str] = []
+        self.drain = threading.Thread(
+            target=self.lines.extend, args=(self.proc.stdout,), daemon=True
+        )
+        self.drain.start()
         for _ in range(100):
             try:
                 socket.create_connection(("127.0.0.1", self.port), timeout=0.1).close()
@@ -88,8 +97,9 @@ class Server:
     def stop(self) -> None:
         if self.proc and self.proc.poll() is None:
             self.proc.terminate()
-            out, _ = self.proc.communicate(timeout=10)
-            self.output += out or ""
+            self.proc.wait(timeout=10)
+            self.drain.join(timeout=10)
+            self.output += "".join(self.lines)
 
 
 CONFIG = (
@@ -575,7 +585,7 @@ def test_a_prompt_sent_mid_turn_shows_pending_until_read(server, page):
     page.wait_for_selector(".row.user.pending")
     turns_done(page, 1)
     users = page.evaluate(
-        "[...document.querySelectorAll('.row.user')].map(r => [r.className, r.textContent])"
+        "[...document.querySelectorAll('.row.user')].map(r => [r.className, r.querySelector('.md').textContent.trim()])"
     )
     assert [u[0] for u in users] == ["row user ok", "row user ok"]
     assert users[1][1].endswith("steer")
