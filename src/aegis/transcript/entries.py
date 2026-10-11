@@ -559,10 +559,17 @@ class Fold:
                 )
             )
         if kind in ("stop", "server_stopped"):
-            line = "stopped" if kind == "stop" else "the server stopped during a turn"
+            if kind == "stop":
+                line = "stopped"
+            else:
+                line = rec.get("declined") or (
+                    "aegis stopped unexpectedly during a turn"
+                    if rec.get("crash")
+                    else "the server stopped during a turn"
+                )
             self._end_turn(ts)
             if kind == "server_stopped":
-                self._stand(turn_error="the server stopped during a turn")
+                self._stand(turn_error=line)
             return (
                 self._drop_live()
                 + self._end_calls("no result")

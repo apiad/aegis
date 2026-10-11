@@ -1,9 +1,13 @@
 import json
+import os
+import signal
+import time
 from pathlib import Path
 
 import pytest
 
 import aegis.meta
+from aegis import restarts
 import aegis.registry
 from aegis.registry import Registry
 from aegis.roots import make_roots
@@ -21,12 +25,16 @@ class World:
         self.fake = fake
         self.published: list[tuple[str, list]] = []
 
-    def registry(self) -> Registry:
+    def registry(
+        self, prev: restarts.Previous = restarts.CLEAN, bin: str | None = None
+    ) -> Registry:
         self.published.clear()
         r = Registry(
-            self.roots, lambda ch, ops: self.published.append((ch, ops)), self.fake
+            self.roots,
+            lambda ch, ops: self.published.append((ch, ops)),
+            bin or self.fake,
         )
-        r.boot()
+        r.boot(prev)
         return r
 
     def spec(self) -> SpawnSpec:
@@ -391,3 +399,201 @@ async def test_the_archive_list_ships_no_standing_or_priming(world):
     (m,) = r.archive(None, 10, None)[0]
     assert m["log_id"] == "l000"
     assert "standing" not in m and "priming" not in m
+
+
+async def test_the_meta_names_the_running_harness_and_its_last_exit(world):
+    r = world.registry()
+    s = await r.spawn(world.spec())
+    m = json.loads(r.metas.path(s.log_id).read_text())
+    assert m["pid"] == s.pid and m["pid_started"] == restarts.started_at(s.pid)
+    await s.send("/exit 3")
+    await until(lambda: s.status == "stopped", what="the exit")
+    m = json.loads(r.metas.path(s.log_id).read_text())
+    assert m["pid"] is None and m["last_exit"]["code"] == 3 and m["last_exit"]["at"] > 0
+    await r.shutdown()
+
+
+async def test_a_finished_turn_clears_the_restart_count(world):
+    r = world.registry()
+    s = await r.spawn(world.spec())
+    s.restart_continues = 2
+    await turn(s, "hello")
+    assert s.restart_continues == 0
+    assert json.loads(r.metas.path(s.log_id).read_text())["restart_continues"] == 0
+    await r.shutdown()
+
+
+def crash(r):
+    for s in r.sessions.values():
+        s._stopping = True
+    r.metas.flush()
+
+
+async def mid_turn(world, r):
+    s = await r.spawn(world.spec())
+    await s.send("/sleep 30")
+    await until(lambda: any(e["kind"] == "tool" for e in s.entries()), what="the call")
+    return s
+
+
+def said(s, text):
+    return any(text in (e.get("md") or "") for e in s.entries() if e["kind"] == "inbox")
+
+
+async def test_a_turn_a_clean_restart_cut_continues_and_finishes(world):
+    r = world.registry()
+    s = await mid_turn(world, r)
+    await r.shutdown()
+    r2 = world.registry()
+    assert r2.continuing == {s.log_id: False}
+    await r2.continue_after_boot()
+    s2 = r2.sessions[s.log_id]
+    await until(
+        lambda: s2.status == "idle" and said(s2, restarts.RESTARTED),
+        timeout=8,
+        what="the continued turn",
+    )
+    assert s2.restart_continues == 0
+    await r2.shutdown()
+
+
+async def test_a_harness_that_failed_on_its_own_is_not_continued(world):
+    r = world.registry()
+    s = await r.spawn(world.spec())
+    await s.send("/exit 1")
+    await until(lambda: s.status == "stopped", what="the exit")
+    await r.shutdown()
+    r2 = world.registry(restarts.Previous(True, time.time()))
+    assert r2.continuing == {} and r2.declined == set()
+    await r2.shutdown()
+
+
+async def test_an_exit_by_sigterm_just_before_a_clean_stop_counts_as_the_stop(world):
+    r = world.registry()
+    s = await mid_turn(world, r)
+    os.kill(s.pid, signal.SIGTERM)
+    await until(lambda: s.status == "stopped", what="the SIGTERM exit")
+    await r.shutdown()
+    # Long before the stop: not the stop's doing.
+    far = world.registry(restarts.Previous(True, time.time() + 60))
+    assert far.continuing == {}
+    await far.shutdown()
+    r2 = world.registry(restarts.Previous(True, time.time()))
+    assert r2.continuing == {s.log_id: False}
+    await r2.shutdown()
+
+
+async def test_after_a_crash_the_leftover_is_ended_and_the_turn_continues(world):
+    r = world.registry()
+    s = await mid_turn(world, r)
+    pid = s.pid
+    crash(r)
+    r2 = world.registry(restarts.Previous(False))
+    await until(lambda: restarts.started_at(pid) is None, what="the leftover's end")
+    assert r2.continuing == {s.log_id: True}
+    s2 = r2.sessions[s.log_id]
+    assert s2.entries()[-1]["summary"] == "aegis stopped unexpectedly during a turn"
+    await r2.continue_after_boot()
+    await until(
+        lambda: s2.status == "idle" and said(s2, restarts.CRASHED),
+        timeout=8,
+        what="the continued turn",
+    )
+    await r2.shutdown()
+
+
+@pytest.mark.parametrize(
+    "prev,count",
+    [(restarts.Previous(False), 1), (restarts.CLEAN, 2)],
+    ids=["second crash", "third restart"],
+)
+async def test_a_turn_cut_too_often_waits_for_a_person_with_its_messages(
+    world, prev, count
+):
+    r = world.registry()
+    s = await mid_turn(world, r)
+    pid = s.pid
+    await s.deliver("> from agent:peer · 2026-10-10T12:00:00Z", "the held body")
+    if prev.clean:
+        await r.shutdown()
+    else:
+        crash(r)
+    meta = json.loads(r.metas.path(s.log_id).read_text())
+    meta["restart_continues"] = count
+    r.metas.write(meta)
+    r2 = world.registry(prev)
+    await until(lambda: restarts.started_at(pid) is None, what="no harness left")
+    assert r2.continuing == {} and r2.declined == {s.log_id}
+    s2 = r2.sessions[s.log_id]
+    assert s2.wire()["attention_line"] == restarts.DECLINED
+    await r2.continue_after_boot()
+    assert s2.status == "stopped" and [m["body"] for m in s2.held] == ["the held body"]
+    await r2.shutdown()
+
+
+async def test_held_messages_go_out_with_the_continue(world):
+    r = world.registry()
+    s = await mid_turn(world, r)
+    await s.deliver("> from agent:peer · 2026-10-10T12:00:00Z", "the held body")
+    await r.shutdown()
+    r2 = world.registry()
+    await r2.continue_after_boot()
+    s2 = r2.sessions[s.log_id]
+    await until(
+        lambda: (
+            s2.status == "idle"
+            and said(s2, "the held body")
+            and said(s2, restarts.RESTARTED)
+        ),
+        timeout=8,
+        what="one turn with both",
+    )
+    assert s2.held == []
+    await r2.shutdown()
+
+
+async def test_a_continue_that_cannot_start_keeps_its_messages(world):
+    r = world.registry()
+    a = await mid_turn(world, r)
+    b = await mid_turn(world, r)
+    await r.shutdown()
+    r2 = world.registry(bin=str(world.roots.state_root / "no-such-claude"))
+    await r2.continue_after_boot()  # raises nothing, and tries both
+    for s in (r2.sessions[a.log_id], r2.sessions[b.log_id]):
+        assert s.status == "stopped"
+        assert [m["body"] for m in s.held] == [restarts.RESTARTED]
+    await r2.shutdown()
+
+
+async def test_an_idle_harness_killed_by_sigterm_before_a_clean_stop_is_not_continued(
+    world,
+):
+    r = world.registry()
+    s = await r.spawn(world.spec())
+    await turn(s, "hello")
+    os.kill(s.pid, signal.SIGTERM)
+    await until(lambda: s.status == "stopped", what="the SIGTERM exit")
+    await r.shutdown()
+    r2 = world.registry(restarts.Previous(True, time.time()))
+    assert r2.continuing == {} and r2.declined == set()
+    await r2.shutdown()
+
+
+async def test_a_continue_waits_for_a_turn_that_started_first(world):
+    # A monitor whose wake arrives before the continue starts a turn first; the
+    # continue must not be injected into it at a tool boundary.
+    r = world.registry()
+    s = await mid_turn(world, r)
+    await r.shutdown()
+    r2 = world.registry()
+    s2 = r2.sessions[s.log_id]
+    await s2.send("/sleep 1")
+    await until(lambda: s2.status == "working", what="the first turn")
+    await r2.continue_after_boot()
+    assert [m["body"] for m in s2.held] == [restarts.RESTARTED]
+    await until(
+        lambda: s2.status == "idle" and said(s2, restarts.RESTARTED),
+        timeout=10,
+        what="the continue after that turn",
+    )
+    await r2.shutdown()

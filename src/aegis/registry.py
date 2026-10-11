@@ -4,8 +4,9 @@ their meta.
 Boot reads only meta files. A missing or damaged one is rebuilt from its store
 and the session lands in the archive; a store nothing can be rebuilt from is
 skipped with a log line. Boot writes nothing to any store, with one exception:
-a session whose meta says it was ``working`` gets one ``server_stopped`` record,
-and its meta is rewritten so the next boot does not add another.
+a session whose turn the last run's end cut gets one ``server_stopped`` record,
+and its meta is rewritten so the next boot does not add another. Which of those
+turns continue is restarts.py's to say; continue_after_boot sends.
 
 Handles are unique across every session, archived ones included, so a handle
 names one conversation for as long as the server keeps it.
@@ -20,7 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .archive import Position, page as archive_page
-from . import attention
+from . import attention, restarts
 from .harness import harness_for
 from .meta import MetaStore, rebuild
 from .names import TITLE_MAX, mint_handle, valid_handle
@@ -79,6 +80,12 @@ class Registry(Host):
         self.quota = None
         self.journal = None
         self.catalogs = None
+        # What boot decided about the turns the last run's end cut (restarts.py):
+        # each continued session, and whether that end was a crash; the ones a
+        # person must continue.
+        self.continuing: dict[str, bool] = {}
+        self.declined: set[str] = set()
+        self._prev = restarts.CLEAN
 
     # -- the Host a session asks ----------------------------------------------
     def spawn_args(self, session: Session) -> tuple[tuple[str, str] | None, str | None]:
@@ -237,9 +244,12 @@ class Registry(Host):
             unread=meta.get("unread"),
             last_read_at=meta.get("last_read_at"),
             recap_cost_usd=meta.get("recap_cost_usd") or 0.0,
+            last_exit=meta.get("last_exit"),
+            restart_continues=meta.get("restart_continues") or 0,
         )
 
-    def boot(self) -> None:
+    def boot(self, prev: restarts.Previous = restarts.CLEAN) -> None:
+        self._prev = prev
         metas, broken = self.metas.read_all()
         known = {m["log_id"] for m in metas}
         to_rebuild = [self.store_path(p.stem) for p in broken]
@@ -269,12 +279,68 @@ class Registry(Host):
         if meta.get("archived"):
             self.archived[meta["log_id"]] = meta
             return
+        if not self._prev.clean and restarts.end_leftover(
+            meta.get("pid"), meta.get("pid_started")
+        ):
+            log.warning(
+                "aegis: ended the harness a crash left behind for %s", meta["handle"]
+            )
         s = self._session(meta)
         self.sessions[s.log_id] = s
-        if meta.get("last_status") == "working":
-            s._record({"kind": "server_stopped"})
-            s.last_status = "stopped"
-            self.metas.write(s.meta())
+        v = restarts.verdict(meta, self._prev)
+        if v is None:
+            return
+        if meta.get("last_status") == "working" or not v.go:
+            rec: dict = {"kind": "server_stopped"}
+            if v.crash:
+                rec["crash"] = True
+            if not v.go:
+                rec["declined"] = restarts.DECLINED
+            s._record(rec)
+        s.last_status = "stopped"
+        if v.go:
+            self.continuing[s.log_id] = v.crash
+        else:
+            self.declined.add(s.log_id)
+        self.metas.write(s.meta())
+
+    async def continue_after_boot(self) -> None:
+        """Give back what the last run's end cut. A continued session gets one
+        message saying so, ahead of what it was holding, in one turn; a session
+        that was only holding messages sends them. A declined one keeps its
+        messages for a person: sending them would start the turn the guard
+        refused. A session that cannot start keeps its messages too, and the
+        others still go."""
+        for log_id, s in list(self.sessions.items()):
+            crash = self.continuing.get(log_id)
+            if crash is None and (not s.held or log_id in self.declined):
+                continue
+            msgs = list(s.held)
+            if crash is not None:
+                body = restarts.CRASHED if crash else restarts.RESTARTED
+                msgs.insert(
+                    0,
+                    {"header": restarts.header(crash), "body": body, "ts": time.time()},
+                )
+                s.restart_continues += 1
+            s.held = msgs
+            if s.in_turn:
+                # A turn started first (a monitor's wake): the messages go out
+                # when it ends, like any held message, never into it.
+                self.metas.write(s.meta())
+                continue
+            try:
+                await s._flush_held()
+            except Exception:
+                # _flush_held empties held before it sends: put the batch back.
+                log.exception(
+                    "aegis: could not continue %s after the restart", s.handle
+                )
+                s.held = msgs
+                self.metas.write(s.meta())
+                # Not continued after all: a worker's queue tries, and fails
+                # its task when it cannot either.
+                self.continuing.pop(log_id, None)
 
     # -- operations ----------------------------------------------------------------
     def open_sessions(self) -> list[Session]:

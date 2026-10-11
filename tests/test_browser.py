@@ -638,12 +638,16 @@ def test_a_restart_brings_tabs_back_stopped_and_a_prompt_resumes(server, page):
     page.wait_for_function(
         "document.getElementById('conn-dot').className.includes('ready')", timeout=15000
     )
+    # The idle tab comes back stopped; the one the restart cut continues on its
+    # own, after the row that says the server stopped (#312).
     page.wait_for_function(
-        "() => [...document.querySelectorAll('#tablist .tab')].every(t => t.classList.contains('stopped'))",
+        "id => document.querySelector(`#tablist .tab[data-id='${id}']`)?.classList.contains('stopped')",
+        arg=a,
         timeout=5000,
     )
     assert set(tab_ids(page)) == {a, b}
     page.wait_for_selector(".row.sys .body >> text=the server stopped during a turn")
+    page.wait_for_selector(".row.inbox .from >> text=aegis:restart", timeout=10000)
 
     page.click(f"#tablist .tab[data-id='{a}']")
     page.wait_for_function("id => location.hash === '#s=' + id", arg=a)

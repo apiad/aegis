@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .agents import ConfigError, read_config, resolve
+from . import restarts
 from .monitors import iso_now
 from .names import default_title
 from .ops import OpError
@@ -115,6 +116,14 @@ class Queues:
         self.tasks: dict[str, Task] = {}
         self._dispatching = False
         self._again = False
+        # The grace checks after a worker's SIGTERM, cancelled by a stop.
+        self._sigterm_timers: set[asyncio.TimerHandle] = set()
+
+    def shutdown(self) -> None:
+        """The server is stopping: a SIGTERM grace check must not outlive it."""
+        for h in self._sigterm_timers:
+            h.cancel()
+        self._sigterm_timers.clear()
 
     @property
     def queues(self) -> dict[str, dict]:
@@ -300,6 +309,13 @@ class Queues:
             if s is None:
                 self._fail(t, "its worker was gone after a restart")
                 continue
+            if s.log_id in self._registry.declined:
+                self._fail(
+                    t, f"its worker's turn was not continued: {restarts.DECLINED}"
+                )
+                continue
+            if s.log_id in self._registry.continuing:
+                continue  # the registry already told it the server restarted
             try:
                 await s.deliver(
                     f"> from queue:{t.queue} · task#{t.id} · restart · {iso_now()}",
@@ -342,12 +358,39 @@ class Queues:
         t = self.task_of_worker(s.log_id)
         if t is None:
             return
+        if code in restarts.SIGTERM_CODES:
+            # Most likely the server's own stop under systemd's control-group
+            # kill, a moment before aegis itself: the next boot continues the
+            # worker (restarts.py), so the task stays running.
+            log.info(
+                "aegis: worker %s got SIGTERM; its task waits for the next boot",
+                s.handle,
+            )
+            self._sigterm_timers.add(
+                asyncio.get_running_loop().call_later(
+                    restarts.GRACE_S, self._after_sigterm, t.id, s.log_id
+                )
+            )
+            return
         tail = "\n".join(stderr_tail[-10:])
         self._fail(
             t,
             f"its worker {s.handle} exited with code {code}"
             + (f":\n{tail}" if tail else ""),
         )
+
+    def _after_sigterm(self, task_id: str, log_id: str) -> None:
+        """The grace after a worker's SIGTERM is over and this server is still
+        up, so no restart caused it: the task fails as for any other exit. A
+        stop in progress cancels this with the loop."""
+        t = self.tasks.get(task_id)
+        if t is None or t.status != "running" or t.worker != log_id:
+            return
+        s = self._registry.sessions.get(log_id)
+        if s is not None and s.running:
+            return
+        name = s.handle if s is not None else log_id
+        self._fail(t, f"its worker {name} got SIGTERM and no restart followed")
 
     def _fail(self, t: Task, why: str) -> None:
         t.status, t.error, t.finished_at = "failed", why, time.time()
