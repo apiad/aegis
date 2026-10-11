@@ -1071,7 +1071,9 @@ function renderMeta(s) {
   input.disabled = $("send").disabled = $("attach").disabled = !!down || theirs;
   // Chrome counts a placeholder in scrollHeight: measure again when it changes.
   const placeholder = theirs
-    ? `${ownerOf(s)}'s session. You can read it; only ${ownerOf(s)} can write to it.`
+    ? s.server
+      ? `A session on ${s.server}. You can read it; acting through the link is for an admin here.`
+      : `${ownerOf(s)}'s session. You can read it; only ${ownerOf(s)} can write to it.`
     : down
     ? `${s.server} is ${down.state} since ${new Date(down.since * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}; nothing can be sent until it is back.`
     : s.state === "stopped"
