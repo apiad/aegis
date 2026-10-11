@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from .helppages import Index, load
-from .ops import OpError, Registry
+from .ops import OpError
 
 if TYPE_CHECKING:
     from .app import App
@@ -44,7 +44,8 @@ class Read(_Strict):
     )
 
 
-def register(r: Registry, app: App) -> None:
+def register_help_ops(app: App) -> None:
+    r = app.registry
     index = Index(load())
 
     @r.op("help.search", Search, agent=True, read=True)

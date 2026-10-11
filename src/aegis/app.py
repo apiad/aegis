@@ -55,8 +55,8 @@ from .channels import Channels, Throttle
 from .claude.process import PERMISSION_MODE, ControlError
 from .config import Config, Snapshot
 from .config_ops import register_config_ops
-from .help_ops import register as register_help_ops
 from .confirm import Confirmations
+from .help_ops import register_help_ops
 from .host import HostSampler
 from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
@@ -351,7 +351,7 @@ class App:
         register_config_ops(self)
         register_artifact_ops(self)
         register_journal_ops(self)
-        register_help_ops(self.registry, self)
+        register_help_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
 
     def who(self, caller: Caller) -> Principal:
