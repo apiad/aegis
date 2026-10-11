@@ -1,11 +1,16 @@
-// Copy buttons: on the person's messages, every tool row, every code block and every table (#247, #323).
+// Copy buttons: on the person's messages, every tool row, every code block and
+// every table (#247, #323). An agent's reply has no button of its own: its code
+// blocks and tables carry theirs, and `c` copies the whole reply.
 //
-// Each copies the raw text, never the rendered HTML: a message's Markdown as
-// the entry holds it, a block's code, a tool's whole output. A tool entry holds
-// only the tail of its output (describe.output_tail), so its button asks the
-// server for all of it (transcript.output); a linked server too old to answer
-// gets the tail. The renderers in entries.js draw the buttons; one listener on
-// the list serves them all, so a row a patch replaces needs no wiring.
+// A message copies its Markdown as the entry holds it, a block its code, a tool
+// its whole output, all as plain text. A table copies two things at once: its
+// Markdown lines, for a chat or an editor, and its cells as an HTML table, for a
+// spreadsheet or a document. A tool entry holds only the tail of its output
+// (describe.output_tail), so its button asks the server for all of it
+// (transcript.output); a linked server too old to answer gets the tail. The
+// renderers in entries.js draw the buttons; one listener on the list serves them
+// all, so a row a patch replaces needs no wiring, and one on the viewer serves the
+// buttons in the Markdown it draws.
 //
 // The buttons are not Tab stops: Tab walks the rows' summaries and their own
 // buttons, and one per message would put a stop before every row. The

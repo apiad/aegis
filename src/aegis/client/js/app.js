@@ -114,6 +114,7 @@ const copyDeps = {
   detail: (id) => callFor(shown, "transcript.detail", { ids: [id] }).then((got) => got[0]),
 };
 installCopy($("entries"), copyDeps);
+installCopy($("viewer"), copyDeps);
 const find = new Find($("find"), transcript, (q) => callFor(shown, "transcript.search", { q }).then((r) => r.ids));
 $("find-prev").append(icon("up"));
 $("find-next").append(icon("down"));
