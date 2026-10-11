@@ -5846,3 +5846,46 @@ def test_an_agent_toast_reaches_every_browser_and_its_click_opens_the_tab(
     other.wait_for_selector("#a2[data-view=session]")
     assert other.evaluate("location.hash.slice(3)") == sid
     assert errors == [] and page.errors == []
+
+
+def test_an_agent_toast_goes_to_the_desktop_only_while_the_page_is_hidden(
+    server, page, browser
+):
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    errors: list = []
+    other = ctx.new_page()
+    other.on("pageerror", lambda e: errors.append(str(e)))
+    other.add_init_script("""
+      window.__notes = [];
+      window.__hidden = false;
+      window.Notification = class {
+        constructor(t, o) { window.__notes.push([t, o]); this.onclick = null; }
+        static get permission() { return 'granted'; }
+        static requestPermission() { return Promise.resolve('granted'); } };
+      Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
+    """)
+    other.goto(server.url)
+    other.wait_for_selector("#a2[data-view=fleet]")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    handle = page.get_attribute(".tab.on", "title").split(":")[0]
+    page.fill("#input", '/mcp toast {"text": "Seen while visible"}')
+    page.press("#input", "Enter")
+    other.wait_for_selector(".toast.from .msg >> text=Seen while visible")
+    assert other.evaluate("window.__notes.length") == 0
+    other.evaluate("window.__hidden = true")
+    page.fill("#input", '/mcp toast {"text": "Build failed", "kind": "error"}')
+    page.press("#input", "Enter")
+    other.wait_for_function("() => window.__notes.length === 1", timeout=8000)
+    assert other.evaluate("window.__notes[0]") == [
+        f"{handle}: error",
+        {"body": "Build failed", "tag": other.evaluate("window.__notes[0][1].tag")},
+    ]
+    # aegis's own toasts answer something done on the page: never on the desktop.
+    other.evaluate(
+        "async () => (await import('/static/js/toast.js')).toast('Nobody needs you')"
+    )
+    assert other.evaluate("window.__notes.length") == 1
+    assert errors == [] and page.errors == []
+    ctx.close()

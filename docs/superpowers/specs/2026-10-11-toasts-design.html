@@ -331,7 +331,7 @@ async def toast(p: Toast, caller):
 <ul>
   <li><strong>Per-person delivery.</strong> When sessions have owners and the channel can deliver to one person, an agent's toast narrows to its owner. Until then every browser shows it.</li>
   <li><strong>Linked servers.</strong> A toast from a session on a linked server does not cross the link. The browser subscribes to <code>toasts</code> on its own server only.</li>
-  <li><strong>A desktop notification.</strong> <code>ping.js</code> already raises one for attention changes while the page is hidden. An agent's toast does not raise one in this change. Open question: should it, when the page is hidden?</li>
+  <li><strong>A desktop notification</strong> (decided after review). While the page is hidden and notifications are allowed, an agent's toast also raises one through <code>ping.js</code>, the way an attention change does: the handle as its title (with <code>: error</code> for an error), the text as its body, and a click opens the tab. aegis's own toasts never do, because they answer something done on the page.</li>
   <li><strong>Actions in a toast</strong> (an Undo button, a link besides the session) are out of scope.</li>
 </ul>
 </main>

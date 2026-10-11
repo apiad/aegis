@@ -343,7 +343,10 @@ Every browser draws it with `js/toast.js`, the one function the client also
 calls for its own refusals and failures. Something that stays true while the
 person looks (a config that does not parse, a send waiting on uploads) is not a
 toast: it would leave before it was fixed, so it stays next to what it is about.
-An agent's toasts are capped at six a minute per session (#329).
+An agent's toast also goes to the desktop while the page is hidden (`js/ping.js`),
+because the card would leave before anyone saw it; aegis's own never do, since
+they answer something done on the page. An agent's toasts are capped at six a
+minute per session (#329).
 
 **Folding hides rows, it never unmounts them.** From which fold level a kind
 folds is a fact on the entry (`fold`: 0 never, 1 the work, 2 also what arrived

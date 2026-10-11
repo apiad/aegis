@@ -25,7 +25,7 @@ import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
-import { installBell, redrawFavicon, setTitle, updatePing } from "./ping.js";
+import { installBell, pingToast, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
 import "./pick.js";
 import { Dictation } from "./dictation.js";
@@ -459,13 +459,18 @@ function onSessions() {
 // -- rendering -----------------------------------------------------------------
 const openSession = (id) => go(`#s=${id}`);
 setToastOpener(openSession);
-// Toasts from the server (App.toast): every browser shows each one once. The
-// snapshot is always empty, so a reconnect replays nothing.
+// Toasts from the server (App.toast): every browser shows each one once, and
+// an agent's goes to the desktop too while the page is hidden. The snapshot is
+// always empty, so a reconnect replays nothing.
 conn.subscribe(
   "toasts",
   () => {},
   (ops) => {
-    for (const { toast: t } of ops) if (t) toast(t.text, { kind: t.kind, from: t.from });
+    for (const { toast: t } of ops) {
+      if (!t) continue;
+      toast(t.text, { kind: t.kind, from: t.from });
+      pingToast(t, openSession);
+    }
   },
 );
 // Close for the Fleet's Archive button and a middle click on a card or a tab:

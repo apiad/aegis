@@ -941,7 +941,8 @@ def register_agent_ops(app: App) -> None:
     @r.op("toast", Toast, agent=True, read=True)
     async def toast(p: Toast, caller):
         """Show a short message in every open browser, now, without ending your
-        turn: a heads-up the person should see while you keep working. Not for
+        turn: a heads-up the person should see while you keep working. A browser
+        whose page is hidden also shows it as a desktop notification. Not for
         reports; turn_end does that. Clicking it opens your tab. Returns how many
         browsers showed it; with 0, nobody saw it. At most 6 a minute."""
         s = own(caller)

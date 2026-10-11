@@ -181,7 +181,8 @@ a draft render). Do not send other files, such as source code you edited: they \
 see those as diffs.
 
 To get the person's attention while you keep working, call toast with one line: \
-it shows in every open browser, names your session, and a click opens your tab. \
+it shows in every open browser (as a desktop notification where the page is \
+hidden), names your session, and a click opens your tab. \
 Use it for something they should see now, such as a long run that failed. It \
 never replaces turn_end, and it returns how many browsers showed it.
 
