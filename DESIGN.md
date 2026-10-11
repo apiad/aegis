@@ -478,6 +478,18 @@ that throws is a tool error, not a card; with no browser open it lands with
 `started` unset, and the first browser to mount it reports an error to the
 inbox.
 
+**A card's Open shows its file or its page over the transcript, and a page
+runs in one place.** The viewer (`client/js/viewer.js`) covers the session's
+column, transcript and composer, and leaves the tabs and the panel in reach;
+each session keeps its own across a tab switch. Markdown and text are fetched
+whole, since the card carries only an excerpt, and drawn in the theme: text is
+coloured by highlight.js, loaded on first use, whose classes map onto the
+theme's variables. Anything else is the card's own preview at full size, so a
+frame keeps the sandbox the card decided. A live artifact opened there leaves
+its card a line instead of a frame (`entries.hold`), because two frames of one
+page would each take the person's answer and only one would get the agent's
+state.
+
 **Audio never leaves the browser.** Dictation transcribes in the page, with
 Cactus Whistle's WebAssembly build in two workers (`js/dictation.js`). The client
 cuts speech into provisional pieces of 4 to 8 s whose text lands at once, and

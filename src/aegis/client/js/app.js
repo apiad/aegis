@@ -8,7 +8,8 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, fileUrl, setFileBase } from "./entries.js";
+import { artifactStage, fileUrl, setFileBase, setOpener } from "./entries.js";
+import { Viewer } from "./viewer.js";
 import { copyRow, installCopy } from "./copy.js";
 import { Find } from "./find.js";
 import * as artifacts from "./artifacts.js";
@@ -18,7 +19,7 @@ import { age, countdown, elapsed, hostRow, hostSeverity, providerFor, quotaSideR
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
 import { installKeys, renderKeys } from "./keys.js";
 import { Palette } from "./palette.js";
-import { glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyphs.js";
+import { entryIcon, glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
@@ -102,6 +103,8 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
   },
 });
 artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
+const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(id) });
+setOpener((item) => viewer.open(item));
 const copyDeps = {
   entry: (id) => transcript.entries.get(id),
   output: (id) => callFor(shown, "transcript.output", { id }).then((r) => r.text),
@@ -826,7 +829,7 @@ function follow(id) {
   if (dictation.target?.el === input) dictation.stop("tab"); // a recording belongs to its session
   shown = id;
   atts.show(id);
-  if (!id) return;
+  if (!id) return viewer.show(null);
   const saved = kept.get(id);
   if (saved) {
     kept.delete(id);
@@ -837,6 +840,7 @@ function follow(id) {
   let placed = false;
   const where = forKey(id);
   setFileBase(where.server ? `/via/${where.server}` : "");
+  viewer.show(id); // after the base: a far artifact's frame is built from it
   unsubTranscript = conn.subscribe(
     `transcript:${where.log_id}`,
     (data) => {
@@ -988,7 +992,9 @@ async function drawSideJournal(key, force = false) {
   $("s-journal-peek").replaceChildren(...res.rows.slice(0, 2).map((r) => {
     const line = document.createElement("div");
     line.className = `k-${r.kind}`;
-    line.append(span("g", r.glyph), span("x", (r.tag ? `${r.tag}: ` : "") + (r.hash ? `${r.hash} ` : "") + r.text), span("t", r.time));
+    const g = span("g", "");
+    g.append(entryIcon(r.glyph));
+    line.append(g, span("x", (r.tag ? `${r.tag}: ` : "") + (r.hash ? `${r.hash} ` : "") + r.text), span("t", r.time));
     return line;
   }));
   $("s-journal-peek").hidden = false;
@@ -1166,8 +1172,8 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && shown) askRecap(false);
 });
 
-// -- Open natively on a sent file's card ------------------------------------
-$("entries").addEventListener("click", async (ev) => {
+// -- Open natively on a sent file's card, or in the viewer's bar --------------
+document.querySelector(".v-session .col").addEventListener("click", async (ev) => {
   const b = ev.target.closest(".fbar .native");
   if (!b) return;
   b.disabled = true;
@@ -1623,7 +1629,7 @@ installKeys(
       if (cancelAsk()) return;
       if (root.dataset.side === "open") return closeSide();
       if (!keymap.hidden) help(false);
-      else if (find.close() || closeMonitorCard() || closeCard()) return;
+      else if (viewer.close() || find.close() || closeMonitorCard() || closeCard()) return;
       else if (route().view === "session" && !editing.size) interrupt();
     },
     help: () => help(),
