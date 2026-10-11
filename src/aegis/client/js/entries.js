@@ -27,7 +27,7 @@ export function setFileBase(base) {
 // A set of sent files as one card: a bar with the name and the actions, the
 // preview below. A set pages in place (‹ ›), and a preview is built only when
 // its file is shown. The preview kind was decided at send (files.py); Open
-// natively shows only where the server said so (#a2[data-native]).
+// hands the set to the viewer, at the file shown.
 function fileCard(files, glyph) {
   const sent = files.map((f) => ({ ...f }));
   const remote = fileBase !== "";
@@ -45,14 +45,10 @@ function fileCard(files, glyph) {
   const bar = el("div", "fbar");
   const name = el("span", "fn");
   const size = el("span", "fs");
-  const acts = el("span", "acts");
-  const open = withIcon(el("a", "btn primary open"), "open", "Open");
-  open.target = "_blank";
-  open.rel = "noopener noreferrer";
-  const native = withIcon(el("button", "btn native"), "window", "Open natively");
-  native.title = "Open in the desktop app for it";
-  const dl = withIcon(el("a", "btn dl"), "latest", "Download");
-  acts.append(open, ...(remote ? [] : [native]), dl); // never natively from a linked server
+  const { acts, set } = fileActions(remote);
+  const view = iconButton(el("button", "btn primary view"), "expand", "Open");
+  view.addEventListener("click", () => opener({ files: sent, at, remote, glyph }));
+  acts.prepend(view);
   bar.append(entryIcon(glyph), name, size);
   const prev = withIcon(el("button", "btn prev"), "left");
   const next = withIcon(el("button", "btn next"), "right");
@@ -73,15 +69,12 @@ function fileCard(files, glyph) {
     const f = sent[i];
     name.textContent = f.name;
     size.textContent = f.summary;
-    open.href = f.url;
-    dl.href = f.download;
-    native.dataset.fileId = f.file_id;
-    native.dataset.name = f.name;
+    set(f);
     count.textContent = `${i + 1} / ${sent.length}`;
     prev.disabled = i === 0;
     next.disabled = i === sent.length - 1;
     stage?.remove();
-    stage = preview(f, remote);
+    stage = preview(f, remote, () => view.click());
     if (stage) card.append(stage);
   };
   prev.addEventListener("click", () => show(at - 1));
@@ -90,8 +83,37 @@ function fileCard(files, glyph) {
   return card;
 }
 
-// One sent file's preview, or null when the browser cannot draw one.
-function preview(f, remote) {
+// The buttons a file offers on its card and in the viewer's bar: a new tab,
+// the desktop app and a download, each an icon that names itself in its
+// title. Open natively shows only where the server said so (#a2[data-native])
+// and never for a linked server's file.
+export function fileActions(remote) {
+  const acts = el("span", "acts");
+  const open = iconButton(el("a", "btn open"), "open", "Open in a new tab");
+  open.target = "_blank";
+  open.rel = "noopener noreferrer";
+  const native = iconButton(el("button", "btn native"), "window", "Open in the desktop app for it");
+  const dl = iconButton(el("a", "btn dl"), "latest", "Download");
+  acts.append(open, ...(remote ? [] : [native]), dl);
+  const set = (f) => {
+    open.href = f.url;
+    dl.href = f.download;
+    native.dataset.fileId = f.file_id;
+    native.dataset.name = f.name;
+  };
+  return { acts, set };
+}
+
+// What a card's Open does: app.js hands it the viewer (js/viewer.js), which
+// takes {files, at, remote, glyph} for a set of files or {artifact} for a page.
+let opener = () => {};
+export function setOpener(fn) {
+  opener = fn;
+}
+
+// One sent file's preview, or null when the browser cannot draw one. A click
+// on an image calls zoom, when there is one.
+export function preview(f, remote, zoom) {
   const pv = f.preview;
   let view = null;
   if (pv === "image") {
@@ -99,7 +121,7 @@ function preview(f, remote) {
     view.src = f.url;
     view.alt = f.name;
     view.loading = "lazy";
-    view.addEventListener("click", () => window.open(f.url, "_blank", "noopener"));
+    if (zoom) view.addEventListener("click", zoom);
   } else if (pv === "pdf" || pv === "html") {
     view = el("iframe");
     // A linked server's frame is sandboxed unless it is a PDF, which /via
@@ -144,6 +166,15 @@ function el(tag, cls, text) {
 function withIcon(n, name, text) {
   n.append(entryIcon(name));
   if (text) n.append(el("span", null, text));
+  return n;
+}
+
+// A button that is only its icon: the label is its tooltip and its name.
+function iconButton(n, name, label) {
+  n.classList.add("icon");
+  n.append(entryIcon(name));
+  n.title = label;
+  n.setAttribute("aria-label", label);
   return n;
 }
 
@@ -305,16 +336,21 @@ const RENDERERS = {
     card.dataset.status = e.status;
     const bar = el("div", "fbar");
     const acts = el("span", "acts");
-    const open = withIcon(el("a", "btn open"), "open", "Open");
+    const view = iconButton(el("button", "btn primary view"), "expand", "Open");
+    view.addEventListener("click", () => opener({ artifact: e.id }));
+    const open = iconButton(el("a", "btn open"), "open", "Open in a new tab");
     open.href = fileUrl(det.url);
     open.target = "_blank";
     open.rel = "noopener noreferrer";
-    acts.append(open);
+    acts.append(view, open);
     if (e.status !== "live") acts.prepend(el("button", "btn show", "Show"));
     card.dataset.md = e.md || ""; // the caption's source, for update() to compare exactly
     bar.append(entryIcon(e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);
     card.append(bar);
-    if (e.status === "live") card.append(artifactStage(e));
+    const viewer = held.get(e.id);
+    viewer?.(e);
+    if (e.status === "live" && viewer) card.append(el("div", "held", "open in the viewer"));
+    else if (e.status === "live") card.append(artifactStage(e));
     else {
       const what = det.label || (e.status === "closed" ? "closed by the agent" : "answered");
       card.append(el("div", "done", `${what} · ${hhmm(det.ended_ts)}`));
@@ -368,6 +404,24 @@ export function fileUrl(url) {
   return ok ? fileBase + url : "about:blank";
 }
 
+// The artifacts the viewer holds, each with what to call when its entry is
+// drawn again (a new status, a resend). While one is live its card draws no
+// frame, so the page never runs twice; releasing it gives the card its frame
+// back, if the card is on screen.
+const held = new Map(); // artifact id -> (entry) => void
+export function hold(id, onEntry, entry) {
+  const card = document.querySelector(`#entries .row[data-id="${CSS.escape(id)}"] .acard`);
+  if (onEntry) {
+    held.set(id, onEntry);
+    const stage = card?.dataset.status === "live" && card.querySelector(":scope > .stage");
+    if (stage) stage.replaceWith(el("div", "held", "open in the viewer"));
+    return;
+  }
+  held.delete(id);
+  const line = card?.querySelector(":scope > .held");
+  if (line && entry?.status === "live") line.replaceWith(artifactStage(entry));
+}
+
 // The frame of an artifact's card, live or shown again read-only.
 export function artifactStage(e) {
   const stage = el("div", "stage html");
@@ -388,16 +442,22 @@ export function artifactStage(e) {
 const UPDATERS = {
   artifact(e, node) {
     const card = node.querySelector(".acard");
-    const frame = node.querySelector("iframe[data-artifact]");
-    if (!card || card.dataset.status !== e.status || !frame) return false;
+    // A page the viewer holds runs only there: the card keeps a line, and the
+    // agent's state goes to the viewer's frame, when that session is shown.
+    const viewer = held.get(e.id);
+    const frame = viewer
+      ? document.querySelector(`#viewer iframe[data-artifact="${CSS.escape(e.id)}"]`)
+      : node.querySelector("iframe[data-artifact]");
+    if (!card || card.dataset.status !== e.status) return false;
+    if (viewer ? !card.querySelector(".held") : !frame) return false;
     // A new caption, a new title or a new page (a resend) remounts the card.
     if (card.dataset.md !== (e.md || "")) return false;
     if (node.querySelector(".fbar .fn")?.textContent !== e.title) return false;
-    if (frame.getAttribute("src") !== fileUrl(e.detail?.url)) return false;
+    if (frame && frame.getAttribute("src") !== fileUrl(e.detail?.url)) return false;
     // Only a state the agent set since the frame last had one: every page
     // record patches this entry, and an emit must not echo the state back.
     const rev = String(e.detail?.state_rev);
-    if (e.detail?.state_by === "agent" && rev !== frame.dataset.stateRev) {
+    if (frame && e.detail?.state_by === "agent" && rev !== frame.dataset.stateRev) {
       frame.dataset.stateRev = rev;
       frame.dispatchEvent(new CustomEvent("aegis:state", { detail: e.detail.state, bubbles: true }));
     }

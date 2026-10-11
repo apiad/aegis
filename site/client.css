@@ -512,6 +512,45 @@ body{background:#000}
 .a2 .acard .done{padding:10px 12px;color:var(--muted);font-family:var(--font-chrome);font-size:12.5px;border-top:1px solid var(--rule)}
 .a2 .acard .refused{padding:8px 12px;color:var(--err);background:var(--err-bg);font-family:var(--font-chrome);font-size:12.5px;border-top:1px solid var(--rule);overflow-wrap:anywhere}
 .a2 .acard[data-status=submitted] .fbar>.ic{color:var(--ok)}
+.a2 .fbar .btn.icon{padding:5px 7px}
+.a2 .acard>.held{padding:10px 12px;color:var(--faint);font-family:var(--font-chrome);font-size:12.5px;border-top:1px solid var(--rule)}
+/* The viewer (js/viewer.js): a file or a page over the session's column. What it covers is hidden, so neither the eye nor Tab reaches it. */
+.a2 .viewer{position:absolute;inset:0;z-index:7;display:flex;flex-direction:column;background:var(--bg);min-width:0}
+.a2 .viewer[hidden]{display:none}
+.a2 .col.viewing>:not(.viewer){visibility:hidden}
+.a2 .viewer .vbar{border-bottom:1px solid var(--rule);flex:none}
+.a2 .viewer .vbar .acts{margin-left:auto}
+.a2 .viewer .vbar .pager+.acts{margin-left:0}
+.a2 .viewer .vbar .vclose{margin-left:6px}
+.a2 .viewer .vbody{flex:1;min-height:0;overflow:auto;outline:none}
+.a2 .viewer .vnote{padding:18px 22px;color:var(--muted);font-family:var(--font-chrome);font-size:12.5px}
+.a2 .viewer .vnote a{color:var(--accent)}
+.a2 .viewer .stage{height:100%;box-sizing:border-box}
+.a2 .viewer .stage iframe{display:block;width:100%;height:100%;border:0;background:#fff}
+.a2 .viewer .stage iframe[data-artifact]{background:var(--bg)}
+.a2 .viewer .stage.image,.a2 .viewer .stage.video{display:flex;align-items:center;justify-content:center;padding:16px}
+.a2 .viewer .stage img,.a2 .viewer .stage video{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px}
+.a2 .viewer .stage.audio{height:auto;padding:40px 22px}
+.a2 .viewer .stage audio{display:block;width:min(640px,100%);margin:0 auto}
+.a2 .viewer .doc{max-width:780px;margin:0 auto;padding:24px 28px 56px;font-family:var(--font-prose);font-size:var(--prose-size);line-height:1.6;color:var(--ink);overflow-wrap:anywhere}
+.a2 .viewer .doc h1{font-size:1.6em}.a2 .viewer .doc h2{font-size:1.3em}.a2 .viewer .doc h3{font-size:1.12em}
+.a2 .viewer .doc img{max-width:100%}
+.a2 .viewer .code{display:flex;min-width:max-content;min-height:100%;box-sizing:border-box;font-family:var(--font-mono);font-size:12.5px;line-height:1.55}
+.a2 .viewer .code pre{margin:0;padding:14px 0 40px;white-space:pre}
+.a2 .viewer .code .ln{position:sticky;left:0;padding:14px 12px 40px 16px;text-align:right;color:var(--faint);background:var(--bg);border-right:1px solid var(--rule);user-select:none}
+.a2 .viewer .code .src{padding-left:14px;padding-right:24px;color:var(--ink)}
+.a2 .viewer .code code{font-size:inherit;background:none;padding:0;border-radius:0}
+@media (max-width:760px){.a2 .viewer .vbar .fs{display:none}}
+/* highlight.js's classes, coloured from the theme so every theme reads its own way. */
+.a2 .hljs-keyword,.a2 .hljs-selector-tag,.a2 .hljs-name,.a2 .hljs-meta .hljs-keyword{color:var(--accent)}
+.a2 .hljs-string,.a2 .hljs-regexp,.a2 .hljs-addition,.a2 .hljs-meta .hljs-string{color:var(--ok)}
+.a2 .hljs-number,.a2 .hljs-literal,.a2 .hljs-symbol,.a2 .hljs-bullet,.a2 .hljs-deletion{color:var(--err)}
+.a2 .hljs-built_in,.a2 .hljs-type,.a2 .hljs-title.class_,.a2 .hljs-selector-class,.a2 .hljs-selector-id{color:var(--warn)}
+.a2 .hljs-attr,.a2 .hljs-attribute,.a2 .hljs-property,.a2 .hljs-variable,.a2 .hljs-template-variable,.a2 .hljs-params{color:var(--comms)}
+.a2 .hljs-title,.a2 .hljs-section{color:var(--strong);font-weight:600}
+.a2 .hljs-comment,.a2 .hljs-quote{color:var(--faint);font-style:italic}
+.a2 .hljs-meta,.a2 .hljs-punctuation,.a2 .hljs-tag{color:var(--muted)}
+.a2 .hljs-emphasis{font-style:italic}.a2 .hljs-strong{font-weight:600}
 #probes{position:fixed;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
 
 /* inbox rows, monitors, workers */

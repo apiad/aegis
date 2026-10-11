@@ -1,0 +1,256 @@
+// The viewer: a sent file or an agent's page, shown whole over the session's
+// column (the transcript, the navigator and the composer) while the tabs and
+// the session panel stay in reach. Each session keeps its own: a tab switch
+// hides it and a return draws it again.
+//
+// Markdown and text are fetched whole (the card only carries an excerpt) and
+// drawn in the theme: Markdown through the transcript's renderer, text as
+// numbered lines coloured by highlight.js, which loads the first time it is
+// needed. Everything else is the card's own preview at full size, so a frame
+// keeps the sandbox the card decided.
+//
+// An artifact's page runs in one place only. While the viewer shows a live
+// one, its card holds a line instead of a frame (entries.hold), and the
+// agent's state reaches the viewer's frame instead.
+
+import { artifactStage, fileActions, fileUrl, hold, markdown, preview } from "./entries.js";
+import { entryIcon, icon } from "./glyphs.js";
+
+const MAX_TEXT = 2 * 1024 * 1024; // bytes drawn of a text file; a new tab has the rest
+const MAX_COLOUR = 512 * 1024; // above this, text is drawn uncoloured: colouring would stall the page
+
+let hljs = null;
+async function highlighter() {
+  hljs ??= (await import("../vendor/highlight.mjs")).default;
+  return hljs;
+}
+
+// A file's text, at most MAX_TEXT bytes of it, cut at a line when cut.
+async function fetchText(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  const reader = r.body.getReader();
+  const parts = [];
+  let size = 0;
+  while (size <= MAX_TEXT) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value);
+    size += value.length;
+  }
+  const cut = size > MAX_TEXT;
+  if (cut) reader.cancel();
+  const bytes = new Uint8Array(Math.min(size, MAX_TEXT));
+  let at = 0;
+  for (const p of parts) {
+    const take = Math.min(p.length, bytes.length - at);
+    bytes.set(p.subarray(0, take), at);
+    at += take;
+  }
+  let text = new TextDecoder().decode(bytes);
+  if (cut) text = text.slice(0, text.lastIndexOf("\n") + 1);
+  return { text, cut };
+}
+
+// The highlight.js language a file's name implies, or null.
+function languageOf(lib, name) {
+  const lower = name.toLowerCase();
+  if (lower === "makefile" || lower.endsWith(".mk")) return "makefile";
+  const ext = lower.includes(".") ? lower.split(".").pop() : "";
+  return ext && lib.getLanguage(ext) ? ext : null;
+}
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined && text !== null) n.textContent = text;
+  return n;
+}
+
+export class Viewer {
+  constructor(root, { entry }) {
+    this.root = root; // #viewer, inside .col
+    this.entry = entry; // (id) -> the shown transcript's entry, or undefined
+    this.items = new Map(); // session key -> {files, at, remote, glyph} or {artifact}
+    this.key = null; // the session shown
+    this.drawn = 0; // bumped by every draw, so a fetch for an older one is dropped
+  }
+
+  get isOpen() {
+    return this.key !== null && this.items.has(this.key);
+  }
+
+  // A tab switch: the new session's viewer, or none.
+  show(key) {
+    this.key = key;
+    this.render();
+  }
+
+  open(item) {
+    if (this.key === null) return;
+    this.release(this.items.get(this.key));
+    this.items.set(this.key, { ...item });
+    this.render();
+    this.root.querySelector(".vbody")?.focus({ preventScroll: true });
+  }
+
+  // True when there was one to close (Esc asks).
+  close() {
+    if (!this.isOpen) return false;
+    this.release(this.items.get(this.key));
+    this.items.delete(this.key);
+    this.render();
+    return true;
+  }
+
+  release(item) {
+    if (item?.artifact) hold(item.artifact, null, this.entry(item.artifact));
+  }
+
+  render(e) {
+    const item = this.isOpen ? this.items.get(this.key) : null;
+    const draw = ++this.drawn;
+    this.root.hidden = !item;
+    this.root.parentElement.classList.toggle("viewing", !!item);
+    if (!item) {
+      this.root.replaceChildren();
+      return;
+    }
+    const bar = el("div", "fbar vbar");
+    const body = el("div", "vbody");
+    body.tabIndex = -1;
+    this.root.replaceChildren(bar, body);
+    if (item.artifact) this.drawArtifact(item, e || this.entry(item.artifact), bar, body);
+    else this.drawFile(item, bar, body, draw);
+  }
+
+  closeButton() {
+    const b = el("button", "btn icon vclose");
+    b.append(icon("close"));
+    b.title = "Close (Esc)";
+    b.setAttribute("aria-label", "Close the viewer");
+    b.addEventListener("click", () => this.close());
+    return b;
+  }
+
+  drawFile(item, bar, body, draw) {
+    const f = item.files[item.at];
+    const { acts, set } = fileActions(item.remote);
+    set(f);
+    bar.append(entryIcon(item.glyph), el("span", "fn", f.name), el("span", "fs", f.summary));
+    if (item.files.length > 1) {
+      const pager = el("span", "pager");
+      const step = (d, name, title) => {
+        const b = el("button", "btn icon");
+        b.append(icon(name));
+        b.title = title;
+        b.setAttribute("aria-label", title);
+        b.disabled = item.at + d < 0 || item.at + d >= item.files.length;
+        b.addEventListener("click", () => {
+          item.at += d;
+          this.render();
+        });
+        return b;
+      };
+      pager.append(step(-1, "left", "Previous file"), el("span", "count", `${item.at + 1} / ${item.files.length}`), step(1, "right", "Next file"));
+      bar.append(pager);
+    }
+    acts.append(this.closeButton());
+    bar.append(acts);
+    body.dataset.preview = f.preview || "other";
+    if (f.preview === "markdown" || f.preview === "text") {
+      body.append(el("div", "vnote", "loading…"));
+      this.drawText(f, body, draw);
+      return;
+    }
+    const stage = preview(f, item.remote);
+    if (stage) {
+      const frame = stage.querySelector("iframe");
+      if (frame) frame.loading = "eager";
+      body.append(stage);
+    } else {
+      const none = el("div", "vnote", "There is no preview for this file. ");
+      const dl = el("a", null, "Download it");
+      dl.href = f.download;
+      none.append(dl);
+      body.append(none);
+    }
+  }
+
+  async drawText(f, body, draw) {
+    let got;
+    let lib = null;
+    try {
+      [got, lib] = await Promise.all([fetchText(f.url), highlighter()]);
+    } catch (err) {
+      if (draw === this.drawn) body.replaceChildren(el("div", "vnote", `Could not load the file: ${err.message}`));
+      return;
+    }
+    if (draw !== this.drawn) return;
+    const { text, cut } = got;
+    const out = [];
+    if (f.preview === "markdown") {
+      const doc = markdown(text);
+      doc.classList.add("doc");
+      for (const code of doc.querySelectorAll("pre > code[class^=language-]")) {
+        const lang = code.className.slice("language-".length);
+        if (lib.getLanguage(lang) && code.textContent.length <= MAX_COLOUR) {
+          code.innerHTML = lib.highlight(code.textContent, { language: lang, ignoreIllegals: true }).value;
+          code.classList.add("hljs");
+        }
+      }
+      out.push(doc);
+    } else {
+      const lines = text.endsWith("\n") ? text.slice(0, -1).split("\n") : text.split("\n");
+      const view = el("div", "code");
+      const gutter = el("pre", "ln", lines.map((_, i) => i + 1).join("\n"));
+      gutter.setAttribute("aria-hidden", "true");
+      const src = el("pre", "src");
+      const code = el("code", "hljs");
+      const lang = languageOf(lib, f.name);
+      // highlight.js escapes what it returns, so its HTML holds only its own spans.
+      if (lang && text.length <= MAX_COLOUR) code.innerHTML = lib.highlight(text, { language: lang, ignoreIllegals: true }).value;
+      else code.textContent = text;
+      src.append(code);
+      view.append(gutter, src);
+      out.push(view);
+    }
+    if (cut) out.push(el("div", "vnote", `Only the first ${MAX_TEXT / 1024 / 1024} MB is shown here; open it in a new tab for the rest.`));
+    body.replaceChildren(...out);
+  }
+
+  drawArtifact(item, e, bar, body) {
+    if (!e) {
+      // The transcript is still arriving; drawing its card calls onArtifact.
+      bar.append(el("span", "fn", "Loading the page…"), el("span", "acts"));
+      bar.lastChild.append(this.closeButton());
+      return;
+    }
+    const acts = el("span", "acts");
+    const open = el("a", "btn icon open");
+    open.append(icon("open"));
+    open.title = "Open in a new tab";
+    open.setAttribute("aria-label", open.title);
+    open.href = fileUrl(e.detail?.url);
+    open.target = "_blank";
+    open.rel = "noopener noreferrer";
+    acts.append(open, this.closeButton());
+    bar.append(entryIcon(e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);
+    body.dataset.preview = "html";
+    const stage = artifactStage(e);
+    stage.querySelector("iframe").loading = "eager";
+    body.append(stage);
+    if (e.status === "live") hold(e.id, (next) => this.onArtifact(next));
+    else hold(e.id, null, e);
+  }
+
+  // The held artifact's entry was drawn again: a new page or a new status
+  // redraws the viewer's frame, and an ended page needs holding no more.
+  onArtifact(e) {
+    const item = this.isOpen ? this.items.get(this.key) : null;
+    if (item?.artifact !== e.id) return;
+    const frame = this.root.querySelector("iframe[data-artifact]");
+    if (frame && frame.dataset.status === e.status && frame.getAttribute("src") === fileUrl(e.detail?.url)) return;
+    this.render(e);
+  }
+}
