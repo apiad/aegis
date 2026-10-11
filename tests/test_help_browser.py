@@ -327,3 +327,32 @@ def test_a_new_search_shows_its_best_hit_at_the_top_of_the_list(server, page):  
     )
     assert page.eval_on_selector(".helpv .hlist", "l => l.scrollTop") == 0
     assert page.errors == []
+
+
+def test_enter_waits_for_the_search_already_asked(server, page):  # noqa: F811
+    """Enter after the box has asked help.search, before the answer, reads
+    the best hit of that answer, not the first row of the list before it."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    went = page.evaluate(
+        """async () => {
+          const { Help } = await import('/static/js/help.js');
+          const calls = [];
+          const went = [];
+          const conn = { call: (op, p) => new Promise((resolve) => calls.push(resolve)) };
+          const box = document.createElement('section');
+          const h = new Help(conn, box, { go: (x) => went.push(x), onKeys() {} });
+          h.pages = [{ id: 'getting-started', title: 'G', kind: 'tutorial', when: 'g' },
+                     { id: 'queues', title: 'Q', kind: 'howto', when: 'q' }];
+          h.draw();
+          h.drawList();
+          h.q.value = 'queues';
+          h.q.dispatchEvent(new Event('input'));
+          await new Promise((r) => setTimeout(r, 300));
+          h.q.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+          calls.at(-1)({ hits: [{ ref: 'queues', heading: '', when: 'q', snippet: 'q' }] });
+          await new Promise((r) => setTimeout(r, 50));
+          return [calls.length, went];
+        }"""
+    )
+    assert went == [1, ["#help=queues"]]

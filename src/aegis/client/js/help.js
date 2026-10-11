@@ -66,6 +66,7 @@ export class Help {
     this.hits = null; // help.search's hits for the box, or null while it is empty
     this.seq = 0; // the newest help.search; an older answer is dropped
     this.timer = null;
+    this.searching = null; // the newest search(), until its answer is drawn
     this.drawn = false;
   }
 
@@ -110,13 +111,14 @@ export class Help {
     });
     this.q.addEventListener("input", () => {
       clearTimeout(this.timer);
-      this.timer = setTimeout(() => this.search(), 150);
+      this.timer = setTimeout(() => (this.searching = this.search()), 150);
     });
-    // Enter reads the first row: the best hit, or the first tutorial.
+    // Enter reads the first row: the best hit, or the first tutorial. A
+    // search not yet asked, or asked and not yet answered, draws first.
     this.q.addEventListener("keydown", async (ev) => {
       if (ev.key !== "Enter" || ev.isComposing) return;
       ev.preventDefault();
-      if (this.timer) await this.search();
+      await (this.timer ? this.search() : this.searching);
       this.rows.querySelector(".hrow")?.click();
     });
   }
@@ -223,7 +225,7 @@ export class Help {
   ask(q) {
     this.draw();
     this.q.value = q;
-    return this.search();
+    return (this.searching = this.search());
   }
 
   // The rows of the page shown, marked.
