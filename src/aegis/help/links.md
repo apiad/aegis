@@ -13,17 +13,19 @@ here.
 ## Add a link
 
 From a shell on this machine, pipe the far server's token into
-`aegis link add <name> <url>`. The token is in the far server's state
-directory, in `.aegis/state/token` under its root:
+`aegis link add <name> <url>`. The far server's admin token is in its state
+directory, in `.aegis/state/token` under its root; to give the link less, mint
+a member token there with `aegis token add <name>` and pipe that instead:
 
 ```bash
 ssh far-host cat work/.aegis/state/token | aegis link add far http://far-host:8742
 ```
 
 aegis connects once and checks that the far server calls itself by that
-name, which is its `aegis serve --name` (the host name by default). `--as`
-sets the name this server gives itself there. A running server picks the link
-up within a second, with no restart.
+name, which is its `aegis serve --name` (the host name by default). Pass
+`--as` with this server's own `--name` when it runs with one, since the check
+introduces this server by the host name otherwise. A running server picks the
+link up within a second, with no restart.
 
 An admin can also link from the Settings page, under Servers, with the far
 server's URL and token. `aegis link list` shows the links by name and URL,
@@ -40,7 +42,7 @@ server's name beside the handle, and its archive merges into this one's.
 The new-tab page gains a server picker. Through the link a person here can
 read, prompt, interrupt, stop and close those sessions, and spawn new ones, as
 far as the far server's token allows. Only an admin here can act through a
-link; a member can read.
+link; a member sees the far sessions but every call to them is refused.
 
 On the far server the link is one principal, the token it was given. That
 token's role and quota policy decide what the link may start there, and a
@@ -64,7 +66,8 @@ Only an admin's agents act through a link.
 ## When a link is down
 
 A link is linked, connecting, offline, unauthorized (the far server refused
-the token; a new token needs a new link) or mismatched (a different name or an
-incompatible version). It reconnects on its own, backing off up to 30
-seconds, and a dropped link fails every call in flight. The Fleet shows a
-server that is down as offline, with the time since.
+the token; it does not retry, and a new token needs a new link) or mismatch
+(a different name or an incompatible version). An offline link reconnects on
+its own, backing off up to 30 seconds, a mismatched one tries again every 30
+seconds, and a dropped link fails every call in flight. The Settings page
+shows a server that is down as offline since the time it went down.
