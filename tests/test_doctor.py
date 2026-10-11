@@ -63,9 +63,10 @@ async def test_a_file_that_does_not_parse_is_an_error(
 async def test_unknown_keys_warn_and_a_misspelt_field_is_named(
     tmp_path, fake_claude, fake_opencode
 ):
-    text = "scheduler: {tick_seconds: 5}\ndefault_agent: a\nagents:\n  a: {harness: claude-code, model: opus, efort: high, permission: full}\n"
+    text = "scheduler: {tick_seconds: 5}\nrecap: {agent: a}\ndefault_agent: a\nagents:\n  a: {harness: claude-code, model: opus, efort: high, permission: full}\n"
     found = await run(tmp_path, text, fake_claude, fake_opencode)
     assert at(found, "scheduler")[0].level == "warn"
+    assert at(found, "recap") == []  # recap.py reads it
     assert at(found, "agents.a.efort")[0].level == "warn"
     assert at(found, "agents.a")[0].message == "effort is missing"
     assert at(found, "agents.a")[0].row == "agents.a"
