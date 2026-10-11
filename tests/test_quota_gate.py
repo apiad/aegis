@@ -155,3 +155,19 @@ def test_the_why_names_the_window_and_the_line():
 )
 def test_validate(policy, ok):
     assert (validate(policy) == []) is ok
+
+
+def test_a_hand_edited_pool_that_does_not_validate_is_closed():
+    broken = {"claude": {"mode": "lines", "lines": {"session": {"launch": 50}}}}
+    g = decide(broken, "claude", snap(w("session", 10)), NOW)
+    assert g.state == "closed" and "stop is 1 to 100" in g.why
+
+
+def test_a_policy_in_one_line():
+    from aegis.quota_gate import describe
+
+    assert describe(None) == "never gated"
+    assert describe({}) == "every pool closed"
+    assert describe(LINES | {"codex": {"mode": "open"}}) == (
+        "claude: session 50/90, weekly_all pace/90; codex: open"
+    )

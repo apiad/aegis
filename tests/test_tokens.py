@@ -100,3 +100,68 @@ def test_the_list_names_the_admin_first_and_counts_use_since_start(store):
         ("ben", "member", False),
     ]
     assert rows[1]["used_at"] is not None and rows[0]["used_at"] is None
+
+
+LINES = {"claude": {"mode": "lines", "lines": {"session": {"launch": 50, "stop": 90}}}}
+
+
+def test_a_member_gets_its_own_policy_else_the_default(store):
+    store.add("ben", "member")
+    store.add("cara", "member")
+    assert store.policy_of("ben") == {}  # no default: every pool closed
+    store.set_default_policy({"claude": {"mode": "open"}})
+    store.set_policy("cara", LINES)
+    assert store.policy_of("ben") == {"claude": {"mode": "open"}}
+    assert store.policy_of("cara") == LINES
+    store.set_policy("cara", None)
+    assert store.policy_of("cara") == {"claude": {"mode": "open"}}
+
+
+def test_an_admin_is_never_gated_whatever_the_default(store):
+    store.add("dan", "admin")
+    store.set_default_policy(LINES)
+    assert store.policy_of("ana") is None
+    assert store.policy_of("dan") is None
+    for name in ("ana", "dan"):
+        with pytest.raises(OpError) as e:
+            store.set_policy(name, LINES)
+        assert e.value.code == "never_gated"
+
+
+def test_a_revoked_principal_starts_nothing(store):
+    store.add("ben", "member")
+    store.set_default_policy({"claude": {"mode": "open"}})
+    store.revoke("ben")
+    assert store.policy_of("ben") == {}
+
+
+def test_an_invalid_policy_is_refused_with_the_reasons(store):
+    store.add("ben", "member")
+    bad = {
+        "claude": {"mode": "lines", "lines": {"session": {"launch": 95, "stop": 90}}}
+    }
+    for set_ in (
+        lambda: store.set_policy("ben", bad),
+        lambda: store.set_default_policy(bad),
+    ):
+        with pytest.raises(OpError) as e:
+            set_()
+        assert (
+            e.value.code == "bad_policy" and "launch is below stop" in e.value.message
+        )
+    with pytest.raises(OpError) as e:
+        store.set_policy("nobody", LINES)
+    assert e.value.code == "unknown_token"
+
+
+def test_a_policy_survives_a_revoke_of_another_token_and_a_reload(store, tmp_path):
+    store.add("ben", "member")
+    store.add("cara", "member")
+    store.set_policy("ben", LINES)
+    store.set_default_policy({"claude": {"mode": "open"}})
+    store.revoke("cara")
+    again = TokenStore(tmp_path, owner="ana")
+    assert again.policy_of("ben") == LINES
+    assert again.default_policy() == {"claude": {"mode": "open"}}
+    rows = {r["name"]: r for r in again.rows()}
+    assert rows["ben"]["policy"] == LINES and rows["ana"]["policy"] is None

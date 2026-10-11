@@ -64,8 +64,10 @@ def decide(policy: dict | None, pool: str | None, snapshot: dict, now: float) ->
     if pool is None:
         return Gate("closed", "aegis reads no quota for this model's account")
     pp = policy.get(pool)
-    if not isinstance(pp, dict) or pp.get("mode") not in ("open", "lines"):
+    if not isinstance(pp, dict) or pp.get("mode") == "closed":
         return Gate("closed", f"the policy does not open {pool}")
+    if errs := validate({pool: pp}):
+        return Gate("closed", f"the policy for {pool} is invalid: {'; '.join(errs)}")
     if pp.get("mode") == "open":
         return Gate("open")
     reading = _reading(snapshot, pool)
@@ -144,3 +146,23 @@ def validate(policy: object) -> list[str]:
             elif launch != "pace" and (not _percent(launch) or not 0 <= launch < stop):
                 errs.append(f"{pool} {kind}: launch is below stop, or pace")
     return errs
+
+
+def describe(policy: dict | None) -> str:
+    """A policy in one line, for ``aegis token list``."""
+    if policy is None:
+        return "never gated"
+    parts = []
+    for pool, pp in policy.items():
+        pp = pp if isinstance(pp, dict) else {}
+        if pp.get("mode") != "lines":
+            parts.append(f"{pool}: {pp.get('mode', '?')}")
+            continue
+        lines = pp.get("lines") or {}
+        shown = ", ".join(
+            f"{k} {v.get('launch')}/{v.get('stop')}"
+            for k, v in lines.items()
+            if isinstance(v, dict)
+        )
+        parts.append(f"{pool}: {shown or 'open'}")
+    return "; ".join(parts) or "every pool closed"

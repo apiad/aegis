@@ -158,3 +158,34 @@ async def test_a_member_cannot_cancel_a_monitor_on_anothers_session(world):
         )
     assert e.value.code == "not_owner"
     assert monitor_id in world.app.monitors.items
+
+
+POLICY = {"claude": {"mode": "lines", "lines": {"session": {"launch": 50, "stop": 90}}}}
+
+
+async def test_an_admin_sets_a_policy_and_the_default(world):
+    reg = world.app.registry
+    await reg.call("token.policy", {"name": "ben", "policy": POLICY}, Caller("user"))
+    await reg.call(
+        "token.policy",
+        {"name": "*", "policy": {"claude": {"mode": "open"}}},
+        Caller("user"),
+    )
+    listed = await reg.call("token.list", {}, Caller("user"))
+    assert listed["default_policy"] == {"claude": {"mode": "open"}}
+    assert {r["name"]: r["policy"] for r in listed["tokens"]}["ben"] == POLICY
+    assert world.app.principals.policy_of("ben") == POLICY
+    await reg.call("token.policy", {"name": "ben", "policy": None}, Caller("user"))
+    assert world.app.principals.policy_of("ben") == {"claude": {"mode": "open"}}
+
+
+async def test_a_member_cannot_set_a_policy_and_a_bad_one_is_refused(world):
+    reg = world.app.registry
+    with pytest.raises(OpError) as e:
+        await reg.call("token.policy", {"name": "ben", "policy": None}, as_(BEN))
+    assert e.value.code == "not_for_members"
+    with pytest.raises(OpError) as e:
+        await reg.call(
+            "token.policy", {"name": "ben", "policy": {"nope": {}}}, Caller("user")
+        )
+    assert e.value.code == "bad_policy"

@@ -202,6 +202,13 @@ class TokenName(_Strict):
     name: str
 
 
+class TokenPolicy(_Strict):
+    name: str = Field(description="Whose policy; * sets the default for members.")
+    policy: dict | None = Field(
+        description="Pool -> {mode, lines} (quota_gate.py); null: use the default."
+    )
+
+
 class ArchiveParams(_Strict):
     query: str | None = None
     server: str | None = Field(None, description="One server only; omitted: all.")
@@ -958,8 +965,12 @@ class App:
 
         @r.op("token.list", admin=True)
         async def token_list(_, caller):
-            """The tokens that may use this server, the admin's first."""
-            return {"tokens": self.principals.rows()}
+            """The tokens that may use this server, the admin's first, and the
+            policy of every member without its own."""
+            return {
+                "tokens": self.principals.rows(),
+                "default_policy": self.principals.default_policy(),
+            }
 
         @r.op("token.add", TokenAdd, admin=True)
         async def token_add(p: TokenAdd, caller):
@@ -972,6 +983,15 @@ class App:
             """End a token. The admin's is replaced, and the new one returned
             to whoever revoked it, so that browser can sign in again."""
             return {"token": self.principals.revoke(p.name)}
+
+        @r.op("token.policy", TokenPolicy, admin=True)
+        async def token_policy(p: TokenPolicy, caller):
+            """Set a member's quota policy, or with name * the default one.
+            The gate applies it at the next reading."""
+            if p.name == "*":
+                self.principals.set_default_policy(p.policy)
+            else:
+                self.principals.set_policy(p.name, p.policy)
 
         @r.op("server.version")
         async def server_version(_, caller):
