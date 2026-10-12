@@ -4,3 +4,4 @@
   changed words marked and, for Claude Code, the real line numbers. A file an
   agent wrote shows as the file. Nothing more is downloaded until you open
   the row.
+help: transcript#tool-rows

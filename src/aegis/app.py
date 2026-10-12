@@ -12,7 +12,8 @@ and ``artifact.create``, ``artifact.send``, ``artifact.read``,
 ``artifact.update``, ``artifact.close``, ``artifact.state``, ``artifact.emit``,
 ``artifact.submit``, ``artifact.error`` and ``artifact.probed``
 (``artifact_ops.py``),
-and ``journal.search``, ``journal.note`` and ``journal.rows`` (``journal/ops.py``).
+and ``journal.search``, ``journal.note`` and ``journal.rows`` (``journal/ops.py``),
+and ``help.search``, ``help.read`` and ``help.pages`` (``help_ops.py``).
 Channels: ``sessions`` (every open session's meta; patches ``upsert`` and
 ``remove``), ``transcript:<log_id>`` (any session, archived included; a
 subscribe ``since`` a revision gets what changed after it), ``quota`` (each
@@ -55,6 +56,7 @@ from .claude.process import PERMISSION_MODE, ControlError
 from .config import Config, Snapshot
 from .config_ops import register_config_ops
 from .confirm import Confirmations
+from .help_ops import register_help_ops
 from .host import HostSampler
 from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
@@ -353,6 +355,7 @@ class App:
         register_artifact_ops(self)
         self.push = register_push_ops(self)
         register_journal_ops(self)
+        register_help_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
 
     def who(self, caller: Caller) -> Principal:
@@ -677,7 +680,20 @@ class App:
         if name == "title":
             return reg.rename(s.log_id, None, arg)
         if name == "help":
-            return None  # the client opens its menu; nothing goes to claude
+            return None  # the client opens its menu or the Help tab; nothing goes to claude
+        if name == "tutorial":
+            # A guide in a new tab, on default_agent in this session's
+            # directory (help_ops.help_guide); the client opens its tab.
+            params = {"kind": "tutorial", "page": arg or None, "cwd": str(s.spec.cwd)}
+            r = await self.registry.call("help.guide", params, caller)
+            return {**r, "server": self.server_name}
+        if name == "whats-new":
+            # A tour of the release notes in a new tab, on default_agent in
+            # this session's directory (help_ops.help_guide); the client opens
+            # its tab.
+            params = {"kind": "whats_new", "cwd": str(s.spec.cwd)}
+            r = await self.registry.call("help.guide", params, caller)
+            return {**r, "server": self.server_name}
         if name == "stop":
             await s.stop()
             return s.wire()

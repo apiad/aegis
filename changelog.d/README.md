@@ -41,6 +41,24 @@ cost:
 Multiple bullets in one file are fine when they are one change. Separate
 concerns get separate files.
 
+A fragment in `added` or `changed` ends with a line naming the help page that
+shows the feature: `help: page`, or `help: page#section` for one `##` section
+of it, slugged as the help index slugs headings (lowercase, every other run of
+characters a hyphen). The page is a file in `src/aegis/help/`; write or extend
+it in the same PR. `/whats-new` hands the line to its guide, which opens the
+page to show the person how to use what changed, and collation keeps it as the
+entry's last line.
+
+```markdown
+- **Monitors wake you when a check passes.** What was missing, and what it
+  cost.
+help: monitors
+```
+
+`make changelog-check` refuses an `added` or `changed` fragment without the
+line; rift and `tests/test_help_pages.py` check that the page and section
+exist.
+
 ## Commands
 
 ```bash

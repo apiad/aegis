@@ -549,8 +549,9 @@ view.** Two markdown-it renderers, configured alike, draw every Markdown body:
 one for agents' text, and one for the person's messages that keeps a typed line
 break. A table never breaks a word: it scrolls inside its row with its first
 column pinned, and under 600 px of width it draws as one card per table row.
-The container query that decides this sits on the transcript's scroller `#tr`
-and on the viewer's `.vbody`, never on a row: a size container inside the
+The container query that decides this sits on the transcript's scroller `#tr`,
+the viewer's `.vbody` and the Help tab's page `.hpage`, never on a row: a size
+container inside the
 scroller stops Chromium's scroll anchoring, and the text being read jumps as
 rows above it draw. highlight.js is vendored as its core and one file per
 language behind `js/highlight.js`, which imports the core and a language the
@@ -659,6 +660,25 @@ header, and answers `dictation.prepare` with that base and the keywords that bia
 the model toward names it knows (`dictation.py`). Nothing carries samples, so
 dictation works through any proxy that serves the page, and the server pays
 nothing per word.
+
+**The help pages are the shipped contract for how aegis is used, checked
+against the code both ways.** They are Markdown in `src/aegis/help/`, inside the
+package, so a release carries the help for exactly the code it runs; the server
+indexes them at boot (`helppages.py`) and agents reach them with `help_search`
+and `help_read`. Agents write them by hand, in the change that changes the
+feature, because a page has to say when and why to use a tool, which no
+docstring dump does. `tests/test_help_pages.py` and `.rift.yaml` hold them to the
+code's names: every agent tool, slash command, CLI subcommand and config key is
+on a page, and every one a page names exists. Neither reads the prose, so a
+wrong sentence about a real tool is for a person to catch on the smoke tour.
+What each person has been offered, whether they started a tutorial and the
+last release they toured, is kept per principal on the server
+(`helpstate.py`), so the new tab's hints are the same on every device; a
+principal is decided new or returning once, at its first read, before the
+guide it may be starting spawns a session of its own. The release notes ship in
+the wheel beside the pages (`changelog_read.py`), and every added or changed
+entry ends with the help page that shows it, so `/whats-new` tours the notes
+of the code it runs and its guide opens the right page for each.
 
 **Performance is measured on every PR and never gates.** `scripts/bench.py`
 replays a recorded transcript through the fake harness in

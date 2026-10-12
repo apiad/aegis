@@ -6,8 +6,8 @@
 # it to legacy/ in 2.0; add a rule here the first time a roster in this tree can
 # drift from its doc.
 #
-# Scope: rift is a private repo and not on PyPI, so CI cannot install it. These
-# rules run from the Makefile on a dev machine only.
+# CI runs these with rift pinned to a tag (.github/workflows/ci.yml), and
+# `make lint-docs` uses the same pin when rift is not installed.
 
 rules:
 
@@ -50,3 +50,87 @@ rules:
       in: ["AGENTS.md", "DESIGN.md"]
       as: regex
       case_insensitive: true
+
+  # The help pages against the code, both ways (#339). tests/test_help_pages.py
+  # asks the same questions of the code as built, and adds the config keys, the
+  # CLI below the top level and the op-name shape the reverse tool rule relies
+  # on; these are the fast signal while a page is being written. A backticked
+  # word with an underscore and nothing else is a tool: a page writes a
+  # parameter with its value (`timeout_s=600`) and a config key with its colon.
+  - name: "every agent tool is named on a help page"
+    extract:
+      file: "src/aegis/**/*.py"
+      regex: '@r\.op\("([\w.]+)"[^\n]*agent=True'
+      sub: ['\.', '_']
+    require:
+      in: "src/aegis/help/*.md"
+      wrap: '`${entity}`'
+
+  - name: "every tool a help page names exists"
+    extract:
+      file: "src/aegis/help/*.md"
+      regex: '`([a-z]+(?:_[a-z]+)+)`'
+      sub: ['_', '.']
+    require:
+      in: "src/aegis/**/*.py"
+      wrap: '@r\.op\("${entity}"[^\n]*agent=True'
+
+  - name: "every aegis command is named on a help page"
+    extract:
+      file: "src/aegis/commands.py"
+      regex: 'Command\(\s*"([a-z][a-z-]*)"'
+    require:
+      in: "src/aegis/help/*.md"
+      wrap: '`/${entity}[` ]'
+
+  - name: "every command a help page names exists"
+    extract:
+      file: "src/aegis/help/*.md"
+      regex: '`/([a-z][a-z-]*)[` ]'
+    require:
+      in: "src/aegis/commands.py"
+      wrap: 'Command\(\s*"${entity}"'
+
+  # The subcommands cli.py declares, as `aegis serve` and `aegis link add`: a
+  # function under @app.command(), a named @app.command, an add_typer name, and
+  # a command of a sub-app such as link_app. The journal and usage sub-apps
+  # live in their own modules; the pytest walks the whole tree.
+  - name: "every subcommand cli.py declares is on the commands page"
+    extract:
+      file: "src/aegis/cli.py"
+      regex: '(?<=@app\.command\(\)\ndef )\w+|(?<=@app\.command\(")[\w-]+(?="\))|(?<=_app, name=")[\w-]+|(?<=@)[a-z]+_app\.command\("[\w-]+'
+      sub: [['_app\.command\("', ' '], ['^', 'aegis ']]
+    require:
+      in: "src/aegis/help/commands.md"
+      wrap: '`${entity}[` ]'
+
+  - name: "every aegis subcommand a help page names exists"
+    extract:
+      file: "src/aegis/help/*.md"
+      regex: '`aegis ([a-z][\w-]*)'
+    require:
+      in: "src/aegis/cli.py"
+      wrap: '@app\.command\(\)\ndef ${entity}\(|@app\.command\("${entity}"\)|_app, name="${entity}"'
+
+  - name: "every file path a help page names exists"
+    extract:
+      file: "src/aegis/help/*.md"
+      regex: '`((?:src|docs|tests|know-how|scripts|changelog\.d)/[A-Za-z0-9_./-]+)`'
+    require:
+      exists: true
+
+  # /whats-new hands each changelog entry's help page to its guide, so a
+  # feature fragment names one. The "last line" half is changelog-check's and
+  # tests/test_help_pages.py's; this asks that the line is there at all.
+  - name: "a fragment that adds or changes a feature names its help page"
+    contain:
+      in: ["changelog.d/*.added.md", "changelog.d/*.changed.md"]
+      zone: { after: '\A' }          # the whole file
+      matches: '^help: [a-z0-9-]+(#[a-z0-9-]+)?$'
+
+  - name: "the help page a fragment names exists"
+    extract:
+      file: "changelog.d/*.md"
+      regex: '^help: ([a-z0-9-]+)'
+      sub: ['^(.*)$', 'src/aegis/help/\1.md']
+    require: { exists: true }

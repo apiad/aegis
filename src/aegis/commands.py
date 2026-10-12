@@ -31,7 +31,9 @@ class Command:
     name: str
     hint: str
     doc: str
-    args: str = ""  # what the menu completes: "models", "efforts" or "permissions"
+    args: str = (
+        ""  # what the menu completes: "models", "efforts", "permissions" or "tutorials"
+    )
 
 
 AEGIS: dict[str, Command] = {
@@ -57,8 +59,13 @@ AEGIS: dict[str, Command] = {
             "--effort, --permission, --cwd",
         ),
         Command("close", "", "Close the session; it stays in the archive"),
-        # The browser answers it by opening the menu; it never reaches claude.
-        Command("help", "", "List every command"),
+        # The browser answers it: alone by opening the menu, with words by
+        # opening the Help tab searched for them. It never reaches claude.
+        Command("help", "[query]", "List every command, or search the help pages"),
+        Command(
+            "tutorial", "[page]", "Start a guided tour of a help page", "tutorials"
+        ),
+        Command("whats-new", "", "Tour what changed since your last tour"),
     )
 }
 

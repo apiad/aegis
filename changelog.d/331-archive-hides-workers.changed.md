@@ -1,1 +1,2 @@
 - **The archive leaves out queue workers unless you ask for them.** A worker's result already went to whoever enqueued its task, so its row was one nobody read, and on a server that runs queues they were about a quarter of the archive. A "Queue workers" chip in the archive header says how many match and shows them on a click. `archive.list` takes `workers: true` to include them and reports how many match in `workers`.
+help: sessions#stop-close-and-reopen

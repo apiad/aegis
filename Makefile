@@ -5,13 +5,16 @@
 # hide a failing suite; both block.
 check: format lint lint-docs changelog-check test typecheck
 
-# Doc drift (.rift.yaml). Not in CI: rift is private and not on PyPI, so a
-# runner cannot install it. `make lint-detail` names each entity.
+# Doc drift (.rift.yaml), the help pages against the code among it. CI runs
+# rift pinned to a tag; with no rift installed, so does this. `make
+# lint-detail` names each entity.
+RIFT := $(shell command -v rift 2>/dev/null || echo "uvx --from git+https://github.com/apiad/rift@v0.9.0 rift")
+
 lint-docs:
-	rift check
+	$(RIFT) check .
 
 lint-detail:
-	rift list
+	$(RIFT) list .
 
 lint:
 	uv run ruff check --fix src/ tests/ scripts/

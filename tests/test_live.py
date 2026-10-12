@@ -636,6 +636,63 @@ async def test_real_claude_names_a_bash_call_and_ends_it_on_a_counted_verdict(
         await asyncio.wait_for(task, 30)
 
 
+async def test_real_claude_searches_the_help_before_answering_how(tmp_path: Path):
+    """The primer's help paragraph, followed by a real model (#339): asked how to
+    do something in aegis, its first aegis call is help_search, not an answer
+    from the primer or from memory. plan_update and turn_end are bookkeeping
+    the primer asks for on any turn, so they do not count as a first call."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "How do I wait on a CI run in aegis? Answer in three lines. "
+            "Do not start a wait yourself."
+        )
+        await until(
+            lambda: s.status == "idle" and s.cost_usd,
+            timeout=180,
+            what="the answer",
+        )
+        aegis = {op.tool_name for op in app.registry.agent_ops()}
+        calls = [
+            e["title"]
+            for e in s.entries()
+            if e["kind"] == "tool" and e["title"] in aegis - {"plan_update", "turn_end"}
+        ]
+        assert calls and calls[0] == "help_search", calls
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
 async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
     """A real Sonnet primed by aegis calls turn_end: needs_you with replies after
     laying out two options, done without needs_you after finished work. Sonnet,
