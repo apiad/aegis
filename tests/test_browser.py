@@ -43,8 +43,17 @@ class Server:
         # Off the network: the latest release is whatever this file says. Off
         # the desktop: a click on Open natively must not launch real apps.
         hidden = ("DISPLAY", "WAYLAND_DISPLAY", "AEGIS_OPENER")
+        # The push tests' fake endpoint is https://127.0.0.1:9, a closed port,
+        # let through as a self-hosted push service would be (push.py).
         env = {k: v for k, v in os.environ.items() if k not in hidden}
-        return env | {"AEGIS_RELEASES_URL": self.releases.as_uri()} | self.env
+        return (
+            env
+            | {
+                "AEGIS_RELEASES_URL": self.releases.as_uri(),
+                "AEGIS_PUSH_HOSTS": "127.0.0.1",
+            }
+            | self.env
+        )
 
     def start(self) -> "Server":
         self.proc = subprocess.Popen(

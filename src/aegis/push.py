@@ -64,6 +64,24 @@ LABELS = {
     "done": "done",
 }
 URGENT = {"needs_you", "error"}
+MAX_DEVICES = 10  # rows per owner
+# The push services browsers subscribe at. An endpoint anywhere else is
+# refused, so a token cannot make the server post to a host of its choosing
+# (localhost, the private network, a cloud's metadata address) and read the
+# status back from push.test. AEGIS_PUSH_HOSTS adds exact hosts, comma-separated:
+# a self-hosted push service, or a test's fake one.
+PUSH_HOSTS = ("fcm.googleapis.com", "updates.push.services.mozilla.com")
+PUSH_SUFFIXES = (".push.apple.com", ".notify.windows.com")
+
+
+def known_service(endpoint: str) -> bool:
+    host = urlsplit(endpoint).hostname or ""
+    extra = os.environ.get("AEGIS_PUSH_HOSTS", "").lower().split(",")
+    return (
+        host in PUSH_HOSTS
+        or host.endswith(PUSH_SUFFIXES)
+        or host in {h.strip() for h in extra if h.strip()}
+    )
 
 
 def _write_private(path: Path, text: str) -> None:
@@ -107,8 +125,15 @@ class Subscriptions:
     ) -> str:
         """Store a subscription and return its id. With the ``id`` of an
         existing row, that row takes the new endpoint and keys: the browser
-        rotated its subscription and the page subscribed again."""
+        rotated its subscription and the page subscribed again. Otherwise a
+        row with the same endpoint is taken over, whoever owned it: one
+        browser is one row, whichever token signed in on it last."""
         row: dict | None = self.get(id) if id else None
+        same = [r for r in self._rows if r["endpoint"] == sub["endpoint"]]
+        if row is None and same:
+            row = same[0]
+            row["owner"] = owner
+        self._rows = [r for r in self._rows if r is row or r not in same]
         if row is None:
             row = {
                 "id": "p_" + secrets.token_hex(4),
@@ -474,12 +499,31 @@ def register_push_ops(app: App) -> Push:
     @r.op("push.subscribe", Subscribe)
     async def push_subscribe(p: Subscribe, caller):
         """Store this device's subscription and the sources it wants; an ``id``
-        given replaces that subscription (a browser that rotated its own)."""
+        given replaces that subscription (a browser that rotated its own), as
+        does one with the same endpoint. Only a known push service's endpoint
+        is taken (``known_service``), and at most MAX_DEVICES per owner."""
+        endpoint = p.subscription.endpoint
+        if not known_service(endpoint):
+            raise OpError(
+                "bad_endpoint",
+                f"{urlsplit(endpoint).hostname} is not a known push service",
+            )
         if p.id is not None and push.subscriptions.get(p.id) is not None:
             mine(p.id, caller)
+        name = app.who(caller).name
+        others = [
+            r
+            for r in push.subscriptions.list()
+            if r["owner"] == name and r["id"] != p.id and r["endpoint"] != endpoint
+        ]
+        if len(others) >= MAX_DEVICES:
+            raise OpError(
+                "too_many_devices",
+                f"{name} has {len(others)} devices with push; remove one first",
+            )
         sid = push.subscriptions.add(
             p.subscription.model_dump(exclude={"expirationTime"}),
-            app.who(caller).name,
+            name,
             p.device,
             list(dict.fromkeys(p.sources)),
             p.id,
