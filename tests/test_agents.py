@@ -141,6 +141,7 @@ async def test_the_tools_are_named_after_their_operations_and_take_no_handle(wor
         "file_send",
         "plan_update",
         "turn_end",
+        "toast",
         "artifact_create",
         "artifact_send",
         "artifact_read",

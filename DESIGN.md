@@ -359,6 +359,18 @@ that changed. Mounting a long transcript whole and rebuilding every tab per patc
 made typing cost grow with the transcript's length and the number of sessions
 (#157, #158).
 
+**A toast is an event, never a state.** `App.toast` publishes on the `toasts`
+channel, whose snapshot is always empty, so a browser that connects later never
+replays one; it skips the throttle, because a toast must neither wait nor merge.
+Every browser draws it with `js/toast.js`, the one function the client also
+calls for its own refusals and failures. Something that stays true while the
+person looks (a config that does not parse, a send waiting on uploads) is not a
+toast: it would leave before it was fixed, so it stays next to what it is about.
+An agent's toast also goes to the desktop while the page is hidden (`js/ping.js`),
+because the card would leave before anyone saw it; aegis's own never do, since
+they answer something done on the page. An agent's toasts are capped at six a
+minute per session (#329).
+
 **Folding hides rows, it never unmounts them.** From which fold level a kind
 folds is a fact on the entry (`fold`: 0 never, 1 the work, 2 also what arrived
 and what was shown; `transcript/entries.py`). The client draws each run of
