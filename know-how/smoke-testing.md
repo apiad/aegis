@@ -68,6 +68,15 @@ The prompt's rules, which the first tour showed work:
 Make the features exercise each other: the tour's own plan tests the plan,
 an artifact can be the form where Alex reviews the steps so far.
 
+**A help page is read with its guide.** The checks on the pages compare names,
+not claims, so a sentence can name a real tool and still describe it wrongly.
+For every page the PR added or changed
+(`git diff --name-only origin/main...HEAD -- src/aegis/help/`), the tour has
+one step: run `/tutorial <page>` in the build under test, follow the guide in
+its own tab, and come back to say whether each step did what the page says. A
+wrong sentence is fixed in the PR like a failing step. Before a release, do
+the same for the pages changed since the last tag.
+
 **Links need the new version on both ends.** A release older than links
 refuses the link's socket with a bare 403 (#244). To test links, start a
 second `aegis-dev` of the same ref on another port and root, and link the two;

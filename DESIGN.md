@@ -593,6 +593,11 @@ docstring dump does. `tests/test_help_pages.py` and `.rift.yaml` hold them to th
 code's names: every agent tool, slash command, CLI subcommand and config key is
 on a page, and every one a page names exists. Neither reads the prose, so a
 wrong sentence about a real tool is for a person to catch on the smoke tour.
+What each person has been offered, whether they started a tutorial and the
+last release they toured, is kept per principal on the server
+(`helpstate.py`), so the new tab's hints are the same on every device; a
+principal is decided new or returning once, at its first read, before the
+guide it may be starting spawns a session of its own.
 
 **Performance is measured on every PR and never gates.** `scripts/bench.py`
 replays a recorded transcript through the fake harness in

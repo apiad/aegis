@@ -10,6 +10,11 @@ session and a handoff, the archive, and the help pages. Each step says what to
 do and what you should see. Steps 1 and 6 start agents, and steps 1, 4, 5 and
 6 spend quota.
 
+You can take this tour with a guide: run `/tutorial` in any session, click the
+hint under the new tab's chips, or press Start this tutorial at the top of this
+page in the Help tab. The guide opens in its own tab and asks before any step
+that spawns agents or spends quota.
+
 ## 1. Start a session
 
 This step starts an agent and spends quota.

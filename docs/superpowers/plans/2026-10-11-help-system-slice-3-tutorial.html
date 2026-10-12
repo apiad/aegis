@@ -178,6 +178,8 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>Task 6 passes slice 2's <code>onStart</code>, not a new <code>onTutorial</code></b> (<code>src/aegis/client/js/app.js:315</code>). Slice 2's Help tab already shows the button only when <code>onStart</code> is set (<code>src/aegis/client/js/help.js:96</code>) and only on a tutorial page (<code>help.js:273</code>), and calls <code>onStart(this.shown)</code>, so <code>help.js</code> gains no code; only its constructor comment, which said slice 3 would wire it, changes. <code>note(e.message)</code> shows a failure as planned.</li>
   <li><b>Task 6's test uses slice 2's selectors and waits for each page</b> (<code>tests/test_tutorial_browser.py:120</code>): rows are <code>.helpv .hrow[data-ref=…]</code>, not <code>[data-id=…]</code>, and the test waits for the page's title before asserting on the button, because the Help tab opens on the first tutorial and draws a clicked page asynchronously, so an immediate <code>is_hidden()</code> could read the previous page.</li>
   <li><b>Slice 2's test now asserts the button is visible</b> (<code>tests/test_help_browser.py:67</code>). It asserted the button hidden "until slice 3 wires /tutorial"; with <code>onStart</code> passed, that assertion is the behaviour this slice changes.</li>
+  <li><b>Task 7's <code>/tutorial</code> text is a row of the slash-command table and names <code>`default_agent:`</code></b> (<code>src/aegis/help/commands.md:29</code>). The page lists aegis commands in a table, so the plan's paragraph is one cell. Written as <code>`default_agent`</code>, <code>test_every_tool_a_page_names_exists</code> read it as an agent tool and failed; config keys are written with their colon on every page (<code>config.md</code>), so the cell says the guide runs on the agent <code>`default_agent:`</code> names.</li>
+  <li><b>Task 7's deliberate break removed <code>`/tutorial`</code> from both pages.</b> Removing it from <code>commands.md</code> alone left the check green, because the new paragraph in <code>getting-started.md</code> names it too; with both gone the check failed naming <code>/tutorial</code>, and both were restored.</li>
 </ul>
 
 <h2>Assumed from slices 1 and 2</h2>
@@ -1135,7 +1137,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -- src/aegis/client/js/
 </details>
 
 <!-- ============================================================ TASK 7 -->
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="doing">
 <summary><span class="num">7</span><span><span class="ttl">Pages, know-how, DESIGN.md, the release note and the gates</span><span class="files">src/aegis/help/commands.md · getting-started.md · know-how/smoke-testing.md · DESIGN.md · changelog.d/339-tutorial.added.md</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The pages say what <code>/tutorial</code> does, which turns <code>tests/test_help_pages.py</code> green again. The smoke-testing know-how makes the tour read every touched page with its guide. Then every gate runs, and the branch goes up.</p>
