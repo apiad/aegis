@@ -72,8 +72,11 @@ self.addEventListener("push", (event) => {
 
 const views = new Map(); // client id -> {key, visible}
 
+// A window that closed says nothing; its view goes the next time one is asked.
 async function inFront(key) {
   const wins = await self.clients.matchAll({ type: "window" });
+  const open = new Set(wins.map((w) => w.id));
+  for (const id of views.keys()) if (!open.has(id)) views.delete(id);
   return wins.some((w) => views.get(w.id)?.key === key && views.get(w.id)?.visible && w.visibilityState === "visible");
 }
 

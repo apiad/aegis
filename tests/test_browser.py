@@ -3629,6 +3629,30 @@ def test_a_push_for_the_session_in_front_stays_quiet(server, full_browser):
     ctx.close()
 
 
+def test_the_worker_forgets_the_views_of_closed_windows(server, full_browser):
+    ctx = full_browser.new_context()
+    ctx.grant_permissions(["notifications"])
+    pg = ctx.new_page()
+    deliver = push_ready(ctx, pg, server.url)
+    other = ctx.new_page()
+    other.goto(server.url)
+    other.wait_for_selector("#a2[data-view=fleet]")
+    other.evaluate("window.dispatchEvent(new Event('focus'))")  # it tells the worker
+    [worker] = ctx.service_workers
+    deadline = time.monotonic() + 5
+    while worker.evaluate("views.size") < 2 and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert worker.evaluate("views.size") == 2
+    other.close()
+    deliver({"title": "x", "body": "", "key": "k", "kind": "needs_you", "tag": "t"})
+    deadline = time.monotonic() + 5
+    while not pg.evaluate(SHOWN) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert pg.evaluate(SHOWN) == [["x", "t"]]
+    assert worker.evaluate("views.size") == 1
+    ctx.close()
+
+
 # A browser that subscribes to push, without a push service: the headless
 # shell has none, and denies notifications, so both are stood in for. The
 # endpoint is a closed port here, so the server's sender (a real one) reaches
