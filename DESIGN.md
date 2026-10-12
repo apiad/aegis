@@ -387,7 +387,8 @@ mounted row and hides the rest, so the mounted rows stay a suffix of the
 transcript and the window, the trim and the reader's place work unchanged; the
 walks (j/k, the first row on screen) skip hidden rows. The line is counted from
 the run's data, not its rows, so a run that starts above the mounted rows still
-says all it holds.
+says all it holds. The latest recap never folds: it is what a reader coming back
+reads first, so it shows at every level while the older recaps fold with the rest.
 
 **An action is one row in one registry.** `client/js/keys.js` holds every action
 the client offers by key (its id, title, keys and the views where it applies) and
@@ -410,7 +411,11 @@ second Ctrl+F, inside the bar, is the browser's again.
 
 **A theme is one CSS file over one markup.** The markup carries everything any
 theme might show, and the base stylesheet reads only CSS variables. A theme sets
-the variables and a few overrides that decide what shows.
+the variables and a few overrides that decide what shows. Every font a theme
+names is vendored in `fonts.css`, or the theme looks different on every
+machine. Anything a theme draws over the whole window, such as Phosphor's
+scanlines, is positioned against `#a2` and never the viewport, because the
+landing page applies the same rules to a window that sits inside a page.
 
 **The session panel is rows that open cards.** Each section of the panel is a
 compact row (`.prow`) that holds its own card (`.pcard`) in the markup, so the

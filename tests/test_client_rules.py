@@ -116,3 +116,38 @@ def test_every_language_python_names_is_vendored():
         "yaml",
     }
     assert used <= names
+
+
+THEMES = JS.parent / "themes"
+FONTS = JS.parent / "fonts"
+
+
+def theme_names() -> list[str]:
+    block = re.search(r"const THEMES = \[(.*?)\];", (JS / "app.js").read_text(), re.S)
+    return re.findall(r'value: "([a-z]+)"', block.group(1))
+
+
+def test_every_theme_in_settings_has_a_stylesheet_the_page_links():
+    """A theme Settings offers without its file, or with a file index.html never
+    links, paints the page in base.css's undefined variables."""
+    names = theme_names()
+    html = (JS.parent / "index.html").read_text()
+    assert sorted(names) == sorted(p.stem for p in THEMES.glob("*.css"))
+    assert [n for n in names if f'href="/static/themes/{n}.css"' not in html] == []
+    for n in names:
+        assert f"[data-theme={n}] #a2{{" in (THEMES / f"{n}.css").read_text()
+
+
+def test_every_font_a_theme_names_is_vendored():
+    """A family with no @font-face falls back to whatever the machine has, so
+    the theme looks different on every laptop."""
+    fonts_css = (JS.parent / "css" / "fonts.css").read_text()
+    faces = set(re.findall(r"font-family:'([^']+)'", fonts_css))
+    for src in re.findall(r"url\('/static/fonts/([^']+)'\)", fonts_css):
+        assert (FONTS / src).is_file(), src
+    named = {
+        f
+        for p in THEMES.glob("*.css")
+        for f in re.findall(r"--font-[a-z]+:'([^']+)'", p.read_text())
+    }
+    assert named - faces == set()

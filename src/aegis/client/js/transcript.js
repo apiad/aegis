@@ -22,7 +22,8 @@
 // The fold levels hide the work between what was said: at level 1 the tool
 // calls, thinking and notes, at level 2 everything but the messages. Each run
 // of entries whose `fold` (set by the server) is within the level is drawn as
-// one line on its first mounted row, and the rest of the run is hidden (fold()). Hidden rows stay mounted, so the
+// one line on its first mounted row, and the rest of the run is hidden (fold()).
+// The latest recap is the exception: it stays shown at every level. Hidden rows stay mounted, so the
 // window above still holds; the walks below skip them.
 
 import { fadeTables, hhmm, render, update } from "./entries.js";
@@ -616,8 +617,10 @@ export class Transcript {
         }
         run = [];
       };
+      // The latest recap is what a reader coming back reads first: it never folds.
+      const recap = [...this.entries.values()].findLast((e) => e.kind === "recap")?.id;
       for (const e of this.entries.values()) {
-        if (e.fold && e.fold <= this.foldLevel) run.push(e);
+        if (e.fold && e.fold <= this.foldLevel && e.id !== recap) run.push(e);
         else if (run.length) close(e);
       }
       if (run.length) close(null);

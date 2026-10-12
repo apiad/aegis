@@ -8,6 +8,28 @@
 @font-face{font-family:'SS4';font-weight:400;font-style:italic;src:url('fonts/serif-400i.woff2') format('woff2')}
 @font-face{font-family:'SS4';font-weight:600;src:url('fonts/serif-600.woff2') format('woff2')}
 @font-face{font-family:'SpaceG';font-weight:300 700;src:url('fonts/spacegrotesk.woff2') format('woff2')}
+/* The theme fonts: Latin subsets only, fetched by a browser when its theme asks for them. */
+@font-face{font-family:'VT323';font-weight:400;font-display:swap;src:url('fonts/vt323-400.woff2') format('woff2')}
+@font-face{font-family:'IBM Plex Mono';font-weight:400;font-display:swap;src:url('fonts/plexmono-400.woff2') format('woff2')}
+@font-face{font-family:'IBM Plex Mono';font-weight:500;font-display:swap;src:url('fonts/plexmono-500.woff2') format('woff2')}
+@font-face{font-family:'IBM Plex Sans';font-weight:400 600;font-display:swap;src:url('fonts/plexsans.woff2') format('woff2')}
+@font-face{font-family:'IBM Plex Sans Condensed';font-weight:500;font-display:swap;src:url('fonts/plexcond-500.woff2') format('woff2')}
+@font-face{font-family:'IBM Plex Sans Condensed';font-weight:600;font-display:swap;src:url('fonts/plexcond-600.woff2') format('woff2')}
+@font-face{font-family:'Barlow';font-weight:400;font-display:swap;src:url('fonts/barlow-400.woff2') format('woff2')}
+@font-face{font-family:'Barlow';font-weight:500;font-display:swap;src:url('fonts/barlow-500.woff2') format('woff2')}
+@font-face{font-family:'Barlow';font-weight:600;font-display:swap;src:url('fonts/barlow-600.woff2') format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-weight:500;font-display:swap;src:url('fonts/barlowcond-500.woff2') format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-weight:600;font-display:swap;src:url('fonts/barlowcond-600.woff2') format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-weight:700;font-display:swap;src:url('fonts/barlowcond-700.woff2') format('woff2')}
+@font-face{font-family:'Marcellus';font-weight:400;font-display:swap;src:url('fonts/marcellus-400.woff2') format('woff2')}
+@font-face{font-family:'Bricolage Grotesque';font-weight:400 800;font-display:swap;src:url('fonts/bricolage.woff2') format('woff2')}
+@font-face{font-family:'Space Mono';font-weight:400;font-display:swap;src:url('fonts/spacemono-400.woff2') format('woff2')}
+@font-face{font-family:'Space Mono';font-weight:700;font-display:swap;src:url('fonts/spacemono-700.woff2') format('woff2')}
+@font-face{font-family:'Shippori Mincho';font-weight:400;font-display:swap;src:url('fonts/shippori-400.woff2') format('woff2')}
+@font-face{font-family:'Shippori Mincho';font-weight:600;font-display:swap;src:url('fonts/shippori-600.woff2') format('woff2')}
+@font-face{font-family:'Zen Kaku Gothic New';font-weight:400;font-display:swap;src:url('fonts/zenkaku-400.woff2') format('woff2')}
+@font-face{font-family:'Zen Kaku Gothic New';font-weight:500;font-display:swap;src:url('fonts/zenkaku-500.woff2') format('woff2')}
+@font-face{font-family:'Archivo';font-weight:100 900;font-stretch:62% 125%;font-display:swap;src:url('fonts/archivo.woff2') format('woff2')}
 /* Base styles. They read only the variables a theme sets (themes/*.css), so a
    new theme is a copy of one variable block plus a few overrides. */
 *{box-sizing:border-box}
@@ -324,6 +346,8 @@ body{background:#000}
 .a2 .composer .box{display:flex;align-items:flex-end;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg)}
 .a2 .composer .box:focus-within{border-color:var(--accent)}
 .a2 .composer textarea{flex:1;min-width:0;resize:none;padding:12px 14px;font-size:13.5px;line-height:1.45;background:none;border:none;color:var(--strong);font-family:var(--font-ui);max-height:40vh;outline:none}
+/* A placeholder left to the browser is its own grey on every theme. */
+.a2 .composer textarea::placeholder,.a2 .spawn textarea::placeholder{color:var(--faint);opacity:1}
 /* Buttons inside the box, bottom right: send, and the mic when it comes. */
 .a2 .composer .acts{display:flex;gap:6px;align-items:center;padding:8px 8px 8px 0}
 .a2 .composer .acts .send{font-size:15px;line-height:1;padding:6px 12px;font-weight:600}
@@ -1218,6 +1242,110 @@ body{background:#000}
 .a2 .arch-workers:hover{border-color:var(--faint)}
 .a2 .arch-workers.on{background:var(--accent-soft);color:var(--strong)}
 .a2 .arch-workers b{margin-left:6px;color:var(--faint);font-weight:500}
+/* Aizome: indigo-dyed cloth; cotton-white sashiko stitches for the thread and rules, seigaiha waves in the panel. */
+[data-theme=aizome] .a2{
+  --bg:#15213f;--chrome:#0f1832;--side:#121d39;--surface:#1b2a4f;--raised:#22335d;--rule:#33477a;
+  --ink:#e8e1cf;--strong:#f7f1e3;--muted:#aab2c9;--faint:#7883a6;
+  --accent:#f1e7cf;--accent-soft:rgba(241,231,207,.12);--on-accent:#15213f;
+  --ok:#a9d4a0;--err:#f39a86;--err-bg:#2c2440;--warn:#e9a75a;--comms:#c0b4f0;
+  --add-bg:#1d3b47;--del-bg:#3a2a46;
+  --h-kw:#e9a75a;--h-str:#a9d4a0;--h-num:#f39a86;--h-com:#7883a6;--h-fn:#f7f1e3;--h-type:#c0b4f0;--h-var:#d8d2c2;--h-meta:#aab2c9;
+  --font-ui:'Zen Kaku Gothic New',sans-serif;--font-prose:'Shippori Mincho',serif;--font-mono:'JBM',monospace;
+  --font-chrome:'Zen Kaku Gothic New',sans-serif;--font-head:'Shippori Mincho',serif;
+  --prose-size:16.5px;--r:4px;--r-lg:6px;--time:none;--thread:block;--row-cols:22px 1fr;--fill:var(--accent);
+  --stitch:rgba(241,231,207,.42);
+}
+[data-theme=aizome] .a2 .tr:before{width:2px;left:31.5px;background:repeating-linear-gradient(180deg,var(--stitch) 0 9px,transparent 9px 15px)}
+[data-theme=aizome] .a2 .tabs{border-bottom:none;background:linear-gradient(90deg,var(--stitch) 0 9px,transparent 9px 15px) left bottom/15px 2px repeat-x,var(--chrome)}
+[data-theme=aizome] .a2 .tab.on{box-shadow:none}
+[data-theme=aizome] .a2 .side{border-left:none;background:linear-gradient(180deg,var(--stitch) 0 9px,transparent 9px 15px) left top/2px 15px repeat-y,
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='20' viewBox='0 0 40 20'%3E%3Cg fill='none' stroke='%23f1e7cf' stroke-opacity='.06' stroke-width='1'%3E%3Cpath d='M0 20a20 20 0 0 1 40 0M-20 20a20 20 0 0 1 40 0M20 20a20 20 0 0 1 40 0'/%3E%3Cpath d='M6 20a14 14 0 0 1 28 0M14 20a6 6 0 0 1 12 0'/%3E%3Cpath d='M-20 10a20 20 0 0 1 40 0M20 10a20 20 0 0 1 40 0'/%3E%3C/g%3E%3C/svg%3E") 0 0/40px 20px,var(--side)}
+[data-theme=aizome] .a2 .row.user .body{outline:1.5px dashed rgba(241,231,207,.32);outline-offset:-5px;padding:11px 14px}
+[data-theme=aizome] .a2 .composer .box{border:1.5px dashed rgba(241,231,207,.35)}
+[data-theme=aizome] .a2 .md h1,[data-theme=aizome] .a2 .md h2,[data-theme=aizome] .a2 .md h3{font-size:1.25em}
+[data-theme=aizome] .a2 .side .title{font-family:var(--font-head);font-weight:600;font-size:17px}
+[data-theme=aizome] .a2 .md pre,[data-theme=aizome] .a2 .diff{border:1px dashed var(--rule)}
+/* Amphora: black-figure pottery; fired clay, black glaze, a meander under the tab bar, your turns as glazed plaques. */
+[data-theme=amphora] .a2{
+  --bg:#e6a571;--chrome:#16100c;--side:#dc9a64;--surface:#edb688;--raised:#d38c57;--rule:#b8703e;
+  --ink:#22140b;--strong:#100905;--muted:#5e3519;--faint:#84502b;
+  --accent:#16100c;--accent-soft:rgba(22,16,12,.12);--on-accent:#efbb88;
+  --ok:#36480f;--err:#8a1c10;--err-bg:#f0bf95;--warn:#7d2a12;--comms:#4f2a52;
+  --add-bg:#d2b679;--del-bg:#e48b6a;
+  --h-kw:#6e1f1a;--h-str:#36480f;--h-num:#8a4a00;--h-com:#84502b;--h-fn:#100905;--h-type:#4f2a52;--h-var:#4a2a14;--h-meta:#5e3519;
+  --font-ui:'Inter',sans-serif;--font-prose:'SS4',serif;--font-mono:'JBM',monospace;
+  --font-chrome:'Marcellus',serif;--font-head:'Marcellus',serif;
+  --prose-size:16.5px;--r:3px;--r-lg:6px;--time:none;--thread:block;--row-cols:22px 1fr;--fill:#16100c;
+  --meander:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='12' viewBox='0 0 24 12'%3E%3Cpath d='M0 10.5h3.5v-9h9v6h-4.5v-3h-1.5v4.5h7.5v-9h-3' fill='none' stroke='%23e6a571' stroke-width='1.3'/%3E%3Cpath d='M15 1.5h9' stroke='%23e6a571' stroke-width='1.3'/%3E%3Cpath d='M0 11.4h24' stroke='%23e6a571' stroke-width='.6' opacity='.6'/%3E%3C/svg%3E");
+}
+[data-theme=amphora] .a2 .tabs{--muted:#c4946a;--faint:#94704f;--strong:#f3c896;--ink:#e9bc8e;--surface:#241a13;--rule:#3a2b20;--bg:#16100c;
+  position:relative;margin-bottom:14px;border-bottom:none;font-size:13px}
+[data-theme=amphora] .a2 .tabs:before{content:"";position:absolute;left:0;right:0;top:100%;height:14px;background:var(--meander) 0 1px/24px 12px repeat-x,#16100c}
+[data-theme=amphora] .a2 .tab.on{background:none;box-shadow:inset 0 -2px 0 #efbb88;color:#f3c896}
+[data-theme=amphora] .a2 .row.user .body{background:#16100c;color:#efbb88;border-radius:3px}
+[data-theme=amphora] .a2 .row.user .g{color:#16100c}
+[data-theme=amphora] .a2 .tr:before{background:#16100c;opacity:.35}
+[data-theme=amphora] .a2 .md h1,[data-theme=amphora] .a2 .md h2,[data-theme=amphora] .a2 .md h3{font-size:1.3em;font-weight:400}
+[data-theme=amphora] .a2 .side{border-left-color:#b8703e}
+[data-theme=amphora] .a2 .side .title{font-family:var(--font-head);font-size:18px}
+[data-theme=amphora] .a2 .side h4{font-family:var(--font-head);font-size:12.5px;color:var(--muted)}
+[data-theme=amphora] .a2 .tn{font-weight:600}
+/* Blueprint: a drafting sheet; white linework on a grid, square corners, the panel as a title block. */
+[data-theme=blueprint] .a2{
+  --bg:#0e3d78;--chrome:#0a3060;--side:#0c376c;--surface:#114583;--raised:#164e92;--rule:#5b88c4;
+  --ink:#e4eeff;--strong:#ffffff;--muted:#a8c2e8;--faint:#7c9dce;
+  --accent:#ffffff;--accent-soft:rgba(255,255,255,.13);--on-accent:#0e3d78;
+  --ok:#9ef0c4;--err:#ff9c8f;--err-bg:#40305e;--warn:#ffe08a;--comms:#c9b8ff;
+  --add-bg:#165c6e;--del-bg:#4a3264;
+  --h-kw:#ffe08a;--h-str:#9ef0c4;--h-num:#ffb8a8;--h-com:#7c9dce;--h-fn:#ffffff;--h-type:#c9b8ff;--h-var:#d6e6ff;--h-meta:#a8c2e8;
+  --font-ui:'IBM Plex Sans',sans-serif;--font-prose:'IBM Plex Sans',sans-serif;--font-mono:'IBM Plex Mono',monospace;
+  --font-chrome:'IBM Plex Sans Condensed',sans-serif;--font-head:'IBM Plex Sans Condensed',sans-serif;
+  --prose-size:15px;--r:0;--r-lg:0;--time:block;--thread:none;--row-cols:38px 18px 1fr;--fill:#fff;
+  --grid:linear-gradient(rgba(255,255,255,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.08) 1px,transparent 1px),
+    linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);
+}
+[data-theme=blueprint] .a2 .tr{background-image:var(--grid);background-size:120px 120px,120px 120px,24px 24px,24px 24px;background-attachment:local}
+[data-theme=blueprint] .a2 .row .g{background:none}
+[data-theme=blueprint] .a2 .row.user .body{background:rgba(14,61,120,.75);border:1px solid #fff}
+[data-theme=blueprint] .a2 .row.tool .line{border-bottom:1px dashed rgba(255,255,255,.2)}
+[data-theme=blueprint] .a2 .tab.on{box-shadow:inset 0 -2px 0 #fff;background:var(--bg)}
+[data-theme=blueprint] .a2 .tabs{border-bottom-color:#fff}
+[data-theme=blueprint] .a2 .side{gap:0;border-left:1px solid #fff}
+[data-theme=blueprint] .a2 .side>.sec{border:1px solid var(--rule);padding:9px 11px 11px;margin-top:-1px}
+[data-theme=blueprint] .a2 .side h4{font-size:11px;letter-spacing:.04em}
+[data-theme=blueprint] .a2 .side .title{font-size:17px;font-weight:600}
+[data-theme=blueprint] .a2 .md h1,[data-theme=blueprint] .a2 .md h2,[data-theme=blueprint] .a2 .md h3{font-size:1.2em;border-bottom:1px solid var(--rule);padding-bottom:3px}
+[data-theme=blueprint] .a2 .composer .box{border-color:#fff;background:rgba(14,61,120,.6)}
+[data-theme=blueprint] .a2 .md pre,[data-theme=blueprint] .a2 .diff{border:1px solid var(--rule);background:rgba(10,48,96,.6)}
+/* Electric: ultraviolet night; the thread is a lit trace and the glyphs are its nodes. */
+[data-theme=electric] .a2{
+  --bg:#07071c;--chrome:#050514;--side:#06061a;--surface:#0d0d2b;--raised:#14143a;--rule:#23235a;
+  --ink:#d6dcff;--strong:#f5f7ff;--muted:#8d93cf;--faint:#5c62a0;
+  --accent:#38e8ff;--accent-soft:rgba(56,232,255,.13);--on-accent:#04041a;
+  --ok:#5cffc8;--err:#ff5c9a;--err-bg:#1f0a22;--warn:#ffd25c;--comms:#b18cff;
+  --add-bg:#0a2430;--del-bg:#2a0b26;
+  --h-kw:#b18cff;--h-str:#5cffc8;--h-num:#ffd25c;--h-com:#5c62a0;--h-fn:#38e8ff;--h-type:#ff7ad9;--h-var:#c9d0ff;--h-meta:#8d93cf;
+  --font-ui:'Inter',sans-serif;--font-prose:'Inter',sans-serif;--font-mono:'JBM',monospace;
+  --font-chrome:'SpaceG',sans-serif;--font-head:'SpaceG',sans-serif;
+  --prose-size:15px;--r:8px;--r-lg:12px;--time:none;--thread:block;--row-cols:22px 1fr;
+  --fill:linear-gradient(90deg,#38e8ff,#7b6bff,#ff4fd8);
+  --volt:linear-gradient(120deg,#38e8ff,#7b6bff 55%,#ff4fd8);
+}
+[data-theme=electric] .a2 .tr:before{width:2px;background:linear-gradient(180deg,#38e8ff,#7b6bff 45%,#ff4fd8 85%,transparent);box-shadow:0 0 8px rgba(56,232,255,.6),0 0 22px rgba(123,107,255,.35)}
+[data-theme=electric] .a2 .row.tool .g,[data-theme=electric] .a2 .row.prose .g{color:var(--accent)}
+[data-theme=electric] .a2 .tabs{border-bottom-color:#1a1a48}
+[data-theme=electric] .a2 .tab.on{box-shadow:none;border-radius:8px 8px 0 0}
+[data-theme=electric] .a2 .tab.on:after{content:"";position:absolute;left:10px;right:10px;bottom:0;height:2px;border-radius:2px;background:var(--volt);box-shadow:0 0 10px rgba(56,232,255,.8)}
+[data-theme=electric] .a2 .row.user .body{border:1px solid transparent;border-radius:12px;background:linear-gradient(var(--raised),var(--raised)) padding-box,var(--volt) border-box}
+[data-theme=electric] .a2 .tn{font-family:var(--font-chrome);font-weight:600;color:var(--accent)}
+[data-theme=electric] .a2 .send,[data-theme=electric] .a2 .btn.primary,[data-theme=electric] .a2 .act.primary{background:var(--volt);color:#fff;border-radius:999px;box-shadow:0 0 16px rgba(123,107,255,.45)}
+[data-theme=electric] .a2 .chip{border-radius:999px}
+[data-theme=electric] .a2 .composer .box:focus-within,[data-theme=electric] .a2 .composer .box{box-shadow:0 0 0 1px rgba(56,232,255,.18),0 0 28px rgba(56,232,255,.08)}
+[data-theme=electric] .a2 .row.working .body{background:linear-gradient(90deg,#38e8ff,#ff4fd8,#38e8ff) 0 0/200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:el-arc 2.4s linear infinite}
+[data-theme=electric] .a2 .side .title{font-family:var(--font-head);font-weight:600;font-size:16px}
+[data-theme=electric] .a2 .bar i{box-shadow:0 0 8px rgba(56,232,255,.6)}
+@keyframes el-arc{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){[data-theme=electric] .a2 .row.working .body{animation:none}}
 /* Ink: the TUI's warm dark palette and amber accent; glyphs on a thread. */
 [data-theme=ink] .a2{
   --bg:#11100e;--chrome:#0b0a09;--side:#0d0c0b;--surface:#191814;--raised:#1d1b17;--rule:#2a2721;
@@ -1246,24 +1374,106 @@ body{background:#000}
 [data-theme=logbook] .a2 .row.user{border-top:1px solid var(--rule);padding-top:12px;margin-top:6px}
 [data-theme=logbook] .a2 .row.user .body{background:none;border-left:3px solid var(--accent);border-radius:0;padding:0 0 0 12px;font-weight:500}
 [data-theme=logbook] .a2 .row.tool .line{border-bottom:1px dotted var(--rule)}
-/* Syalia: the house design system; tool calls as chips, the gradient on the active tab. */
-[data-theme=syalia] .a2{
-  --bg:#060a17;--chrome:#0b1222;--side:#0b1222;--surface:#0f172a;--raised:#1e293b;--rule:#22304a;
-  --ink:#e2e8f0;--strong:#f1f5f9;--muted:#94a3b8;--faint:#64748b;
-  --accent:#2563eb;--accent-soft:rgba(129,140,248,.14);--on-accent:#fff;
-  --ok:#34d399;--err:#f87171;--err-bg:#1a0f17;--warn:#fbbf24;--comms:#a78bfa;
-  --add-bg:#0b2a22;--del-bg:#2a0f17;
-  --h-kw:#a5b4fc;--h-str:#86d7b0;--h-num:#e9c27a;--h-com:#64748b;--h-fn:#bfdbfe;--h-type:#c4b5fd;--h-var:#cbd5e1;--h-meta:#94a3b8;
-  --font-ui:'Inter',sans-serif;--font-prose:'Inter',sans-serif;--font-mono:'JBM',monospace;
-  --font-chrome:'Inter',sans-serif;--font-head:'SpaceG',sans-serif;
-  --prose-size:15px;--r:10px;--r-lg:12px;--time:none;--thread:none;--row-cols:22px 1fr;
-  --fill:linear-gradient(90deg,#38bdf8,#818cf8);
+/* Phosphor: a green CRT; scanlines and bloom, errors in inverse video, a block cursor while working. */
+[data-theme=phosphor] .a2{
+  --bg:#020c06;--chrome:#010703;--side:#020a05;--surface:#03140a;--raised:#062012;--rule:#0f3d20;
+  --ink:#5dff8f;--strong:#c9ffd9;--muted:#36bd69;--faint:#227f46;
+  --accent:#b3ffcb;--accent-soft:rgba(93,255,143,.14);--on-accent:#021008;
+  --ok:#5dff8f;--err:#ffb000;--err-bg:#1a1203;--warn:#ffb000;--comms:#8cffd0;
+  --add-bg:#063015;--del-bg:#2a1a04;
+  --h-kw:#c9ffd9;--h-str:#8cffb0;--h-num:#ffb000;--h-com:#227f46;--h-fn:#e6fff0;--h-type:#b3ffcb;--h-var:#5dff8f;--h-meta:#36bd69;
+  --font-ui:'IBM Plex Mono',monospace;--font-prose:'IBM Plex Mono',monospace;--font-mono:'IBM Plex Mono',monospace;
+  --font-chrome:'IBM Plex Mono',monospace;--font-head:'VT323',monospace;
+  --prose-size:14.5px;--r:0;--r-lg:0;--time:block;--thread:none;--row-cols:38px 18px 1fr;--fill:var(--ink);
+  text-shadow:0 0 5px rgba(93,255,143,.45);
 }
-[data-theme=syalia] .a2 .row.tool .body{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:6px 10px}
-[data-theme=syalia] .a2 .row.tool.err .body{border-color:#5b2330}
-[data-theme=syalia] .a2 .tn{font-family:var(--font-ui);font-weight:600}
-[data-theme=syalia] .a2 .tab.on:after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:2px;background:linear-gradient(90deg,#38bdf8,#818cf8,#c084fc)}
-[data-theme=syalia] .a2 .tab.on{box-shadow:none;border-radius:8px}
-[data-theme=syalia] .a2 .row.user .body{border-radius:12px;border:1px solid #2b3a55}
-[data-theme=syalia] .a2 .send,[data-theme=syalia] .a2 .btn.primary,[data-theme=syalia] .a2 .chip{border-radius:999px}
-[data-theme=syalia] .a2 .row.working,[data-theme=syalia] .a2 .row.working .g,[data-theme=syalia] .a2 .st{color:#a5b4fc}
+[data-theme=phosphor] .a2{position:relative}
+[data-theme=phosphor] .a2:after{content:"";position:absolute;inset:0;pointer-events:none;z-index:100;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,.26) 0 1px,transparent 1px 3px),radial-gradient(ellipse at center,transparent 58%,rgba(0,0,0,.5))}
+[data-theme=phosphor] .a2 .tab.on{background:var(--ink);color:var(--bg);box-shadow:none;text-shadow:none}
+[data-theme=phosphor] .a2 .tab.on .srv{opacity:.7}
+[data-theme=phosphor] .a2 .row.user .body{background:none;border:1px solid var(--rule);color:var(--strong)}
+[data-theme=phosphor] .a2 .row.tool.err .tn,[data-theme=phosphor] .a2 .row.error .body{background:var(--err);color:var(--bg);padding:0 5px;text-shadow:none}
+[data-theme=phosphor] .a2 .row.working .body:after{content:"█";margin-left:6px;animation:ph-blink 1s steps(1) infinite}
+[data-theme=phosphor] .a2 .md h1,[data-theme=phosphor] .a2 .md h2,[data-theme=phosphor] .a2 .md h3{font-size:1.75em;font-weight:400;line-height:1}
+[data-theme=phosphor] .a2 .side .title{font-family:var(--font-head);font-size:24px;line-height:1}
+[data-theme=phosphor] .a2 .side h4{font-family:var(--font-chrome)}
+[data-theme=phosphor] .a2 .send,[data-theme=phosphor] .a2 .act.primary{background:var(--ink);color:var(--bg);text-shadow:none}
+[data-theme=phosphor] .a2 code{background:none;color:var(--strong)}
+@keyframes ph-blink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){[data-theme=phosphor] .a2 .row.working .body:after{animation:none}}
+/* Poster: brutalist print; black 2 px borders, hard offset shadows, wide heavy headings, your turns on yellow. */
+[data-theme=poster] .a2{
+  --bg:#f2f2f0;--chrome:#ffffff;--side:#ffffff;--surface:#ffffff;--raised:#ffe94d;--rule:#1a1a1a;
+  --ink:#141414;--strong:#000;--muted:#444;--faint:#777;
+  --accent:#2d3dff;--accent-soft:rgba(45,61,255,.12);--on-accent:#fff;
+  --ok:#00873c;--err:#e3001b;--err-bg:#ffe3e3;--warn:#b86200;--comms:#7a2dff;
+  --add-bg:#d7f5df;--del-bg:#ffdcdc;
+  --h-kw:#2d3dff;--h-str:#00873c;--h-num:#b86200;--h-com:#777777;--h-fn:#000000;--h-type:#7a2dff;--h-var:#141414;--h-meta:#444444;
+  --font-ui:'Archivo',sans-serif;--font-prose:'Archivo',sans-serif;--font-mono:'JBM',monospace;
+  --font-chrome:'Archivo',sans-serif;--font-head:'Archivo',sans-serif;
+  --prose-size:15.5px;--r:0;--r-lg:0;--time:none;--thread:none;--row-cols:22px 1fr;--fill:var(--accent);
+}
+[data-theme=poster] .a2 .tabs{border-bottom:3px solid #000}
+[data-theme=poster] .a2 .tab{font-weight:500}
+[data-theme=poster] .a2 .tab.on{background:#000;color:#fff;box-shadow:none}
+[data-theme=poster] .a2 .row.user .body{border:2px solid #000;box-shadow:4px 4px 0 #000;font-weight:500;color:#000}
+[data-theme=poster] .a2 .composer .box{border:2px solid #000;box-shadow:5px 5px 0 #000}
+[data-theme=poster] .a2 .composer .box:focus-within{box-shadow:5px 5px 0 var(--accent);border-color:#000}
+[data-theme=poster] .a2 .send,[data-theme=poster] .a2 .act.primary{border:2px solid #000;box-shadow:2px 2px 0 #000}
+[data-theme=poster] .a2 .md h1,[data-theme=poster] .a2 .md h2,[data-theme=poster] .a2 .md h3{font-stretch:125%;font-weight:800;font-size:1.3em;letter-spacing:-.01em}
+[data-theme=poster] .a2 .side{border-left:3px solid #000;gap:0}
+[data-theme=poster] .a2 .side>.sec{border-bottom:2px solid #000;padding:10px 0 14px}
+[data-theme=poster] .a2 .side h4{color:#000;font-weight:700;font-stretch:115%}
+[data-theme=poster] .a2 .side .title{font-stretch:125%;font-weight:800;font-size:19px;line-height:1.1}
+[data-theme=poster] .a2 .tn{font-weight:700}
+[data-theme=poster] .a2 .md pre,[data-theme=poster] .a2 .diff{border:2px solid #000}
+[data-theme=poster] .a2 .chip,[data-theme=poster] .a2 .act{border:2px solid #000;color:#000}
+[data-theme=poster] .a2 .row.user{padding:0 5px 5px 0}
+/* Riso: a two-ink risograph print; blue ink on paper, fluoro pink printed a little off register, grain over it all. */
+[data-theme=riso] .a2{
+  --bg:#efeee8;--chrome:#e5e3dc;--side:#e9e7e0;--surface:#f7f6f1;--raised:#e3e4ee;--rule:#c3c8e0;
+  --ink:#2440a8;--strong:#16298a;--muted:#5468b8;--faint:#8b96c8;
+  --accent:#ff3d9a;--accent-soft:rgba(255,61,154,.16);--on-accent:#16298a;
+  --ok:#00866b;--err:#e8312f;--err-bg:#fde1e6;--warn:#c56a00;--comms:#8a3fd1;
+  --add-bg:#d8f0e6;--del-bg:#ffd9e6;
+  --h-kw:#e0267f;--h-str:#00866b;--h-num:#c56a00;--h-com:#8b96c8;--h-fn:#16298a;--h-type:#8a3fd1;--h-var:#2440a8;--h-meta:#5468b8;
+  --font-ui:'Bricolage Grotesque',sans-serif;--font-prose:'Bricolage Grotesque',sans-serif;--font-mono:'Space Mono',monospace;
+  --font-chrome:'Space Mono',monospace;--font-head:'Bricolage Grotesque',sans-serif;
+  --prose-size:15.5px;--r:2px;--r-lg:4px;--time:none;--thread:none;--row-cols:22px 1fr;--fill:var(--accent);
+}
+[data-theme=riso] .a2{position:relative}
+[data-theme=riso] .a2:after{content:"";position:absolute;inset:0;pointer-events:none;z-index:100;opacity:.32;mix-blend-mode:multiply;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .14 0 0 0 0 .25 0 0 0 0 .66 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+[data-theme=riso] .a2 .row.user .body{background:var(--surface);border:1.5px solid var(--strong);box-shadow:4px 3px 0 var(--accent);border-radius:2px}
+[data-theme=riso] .a2 .md h1,[data-theme=riso] .a2 .md h2,[data-theme=riso] .a2 .md h3,[data-theme=riso] .a2 .side .title{font-weight:800;text-shadow:2px 1px 0 rgba(255,61,154,.75)}
+[data-theme=riso] .a2 .md h1,[data-theme=riso] .a2 .md h2,[data-theme=riso] .a2 .md h3{font-size:1.35em;letter-spacing:-.01em}
+[data-theme=riso] .a2 .side .title{font-size:19px}
+[data-theme=riso] .a2 .tab.on{background:var(--accent);color:var(--strong);box-shadow:none}
+[data-theme=riso] .a2 .tn{font-weight:700}
+[data-theme=riso] .a2 .composer .box{border:1.5px solid var(--strong)}
+[data-theme=riso] .a2 .send,[data-theme=riso] .a2 .act.primary{border:1.5px solid var(--strong)}
+[data-theme=riso] .a2 .md pre,[data-theme=riso] .a2 .diff{background:#e8e9f2}
+[data-theme=riso] .a2 .row.user{padding:0 5px 5px 0}
+/* Solari: a departure board; times in signal yellow, each tool name on a split-flap tile. */
+[data-theme=solari] .a2{
+  --bg:#0f1012;--chrome:#060607;--side:#0b0c0d;--surface:#1a1b1e;--raised:#222327;--rule:#2b2d31;
+  --ink:#e8e5da;--strong:#ffffff;--muted:#9b988e;--faint:#6a6860;
+  --accent:#ffc905;--accent-soft:rgba(255,201,5,.13);--on-accent:#111;
+  --ok:#7fd88a;--err:#ff5b47;--err-bg:#2a1210;--warn:#ffc905;--comms:#8fc4ff;
+  --add-bg:#12261a;--del-bg:#2c1412;
+  --h-kw:#ffc905;--h-str:#7fd88a;--h-num:#ff9e7a;--h-com:#6a6860;--h-fn:#ffffff;--h-type:#8fc4ff;--h-var:#e8e5da;--h-meta:#9b988e;
+  --font-ui:'Barlow',sans-serif;--font-prose:'Barlow',sans-serif;--font-mono:'JBM',monospace;
+  --font-chrome:'Barlow Condensed',sans-serif;--font-head:'Barlow Condensed',sans-serif;
+  --prose-size:16px;--r:3px;--r-lg:4px;--time:block;--thread:none;--row-cols:44px 18px 1fr;--fill:var(--accent);
+}
+[data-theme=solari] .a2 .row .t{width:44px;color:var(--accent);font-family:var(--font-chrome);font-size:13.5px;font-weight:600}
+[data-theme=solari] .a2 .tn{font-family:var(--font-chrome);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:#fff;
+  background:linear-gradient(#26272b 0 48%,#050505 48% 53%,#1b1c1f 53%);padding:1px 7px;border-radius:2px;min-width:68px;text-align:center;box-shadow:0 1px 0 #000}
+[data-theme=solari] .a2 .row.tool .line{align-items:center}
+[data-theme=solari] .a2 .row.user .body{background:var(--surface);border-left:3px solid var(--accent);border-radius:0;font-size:14.5px}
+[data-theme=solari] .a2 .tabs{font-size:14px}
+[data-theme=solari] .a2 .tab.on{box-shadow:inset 0 -3px 0 var(--accent);border-radius:0;background:none}
+[data-theme=solari] .a2 .side .title{font-family:var(--font-head);font-size:21px;font-weight:600;line-height:1.1}
+[data-theme=solari] .a2 .side h4{font-family:var(--font-chrome);font-size:12.5px;color:var(--accent)}
+[data-theme=solari] .a2 .md h1,[data-theme=solari] .a2 .md h2,[data-theme=solari] .a2 .md h3{font-size:1.3em}

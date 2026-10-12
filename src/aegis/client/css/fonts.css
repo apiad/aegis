@@ -8,3 +8,25 @@
 @font-face{font-family:'SS4';font-weight:400;font-style:italic;src:url('/static/fonts/serif-400i.woff2') format('woff2')}
 @font-face{font-family:'SS4';font-weight:600;src:url('/static/fonts/serif-600.woff2') format('woff2')}
 @font-face{font-family:'SpaceG';font-weight:300 700;src:url('/static/fonts/spacegrotesk.woff2') format('woff2')}
+/* The theme fonts: Latin subsets only, fetched by a browser when its theme asks for them. */
+@font-face{font-family:'VT323';font-weight:400;font-display:swap;src:url('/static/fonts/vt323-400.woff2') format('woff2')}
+@font-face{font-family:'IBM Plex Mono';font-weight:400;font-display:swap;src:url('/static/fonts/plexmono-400.woff2') format('woff2')}
+@font-face{font-family:'IBM Plex Mono';font-weight:500;font-display:swap;src:url('/static/fonts/plexmono-500.woff2') format('woff2')}
+@font-face{font-family:'IBM Plex Sans';font-weight:400 600;font-display:swap;src:url('/static/fonts/plexsans.woff2') format('woff2')}
+@font-face{font-family:'IBM Plex Sans Condensed';font-weight:500;font-display:swap;src:url('/static/fonts/plexcond-500.woff2') format('woff2')}
+@font-face{font-family:'IBM Plex Sans Condensed';font-weight:600;font-display:swap;src:url('/static/fonts/plexcond-600.woff2') format('woff2')}
+@font-face{font-family:'Barlow';font-weight:400;font-display:swap;src:url('/static/fonts/barlow-400.woff2') format('woff2')}
+@font-face{font-family:'Barlow';font-weight:500;font-display:swap;src:url('/static/fonts/barlow-500.woff2') format('woff2')}
+@font-face{font-family:'Barlow';font-weight:600;font-display:swap;src:url('/static/fonts/barlow-600.woff2') format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-weight:500;font-display:swap;src:url('/static/fonts/barlowcond-500.woff2') format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-weight:600;font-display:swap;src:url('/static/fonts/barlowcond-600.woff2') format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-weight:700;font-display:swap;src:url('/static/fonts/barlowcond-700.woff2') format('woff2')}
+@font-face{font-family:'Marcellus';font-weight:400;font-display:swap;src:url('/static/fonts/marcellus-400.woff2') format('woff2')}
+@font-face{font-family:'Bricolage Grotesque';font-weight:400 800;font-display:swap;src:url('/static/fonts/bricolage.woff2') format('woff2')}
+@font-face{font-family:'Space Mono';font-weight:400;font-display:swap;src:url('/static/fonts/spacemono-400.woff2') format('woff2')}
+@font-face{font-family:'Space Mono';font-weight:700;font-display:swap;src:url('/static/fonts/spacemono-700.woff2') format('woff2')}
+@font-face{font-family:'Shippori Mincho';font-weight:400;font-display:swap;src:url('/static/fonts/shippori-400.woff2') format('woff2')}
+@font-face{font-family:'Shippori Mincho';font-weight:600;font-display:swap;src:url('/static/fonts/shippori-600.woff2') format('woff2')}
+@font-face{font-family:'Zen Kaku Gothic New';font-weight:400;font-display:swap;src:url('/static/fonts/zenkaku-400.woff2') format('woff2')}
+@font-face{font-family:'Zen Kaku Gothic New';font-weight:500;font-display:swap;src:url('/static/fonts/zenkaku-500.woff2') format('woff2')}
+@font-face{font-family:'Archivo';font-weight:100 900;font-stretch:62% 125%;font-display:swap;src:url('/static/fonts/archivo.woff2') format('woff2')}

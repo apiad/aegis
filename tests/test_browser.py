@@ -2872,6 +2872,29 @@ def test_landing_after_two_replies_shows_a_recap_last_and_the_sparkle_makes_one(
     assert page.errors == []
 
 
+def test_the_latest_recap_shows_at_every_fold_level_and_the_older_ones_fold(
+    recap_server, page
+):
+    page.goto(recap_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "first")
+    turns_done(page, 1)
+    for n in (1, 2):
+        page.click("#nav-recap")
+        page.wait_for_function(
+            f"() => document.querySelectorAll('.row.recap').length === {n}",
+            timeout=8000,
+        )
+    old, new = row_ids(page, ".recap")
+    page.click("#nav-fold")
+    page.click("#nav-fold")
+    assert page.get_attribute("#nav-fold", "data-level") == "2"
+    assert page.is_visible(f'.row[data-id="{new}"] .ctx')
+    assert not page.is_visible(f'.row[data-id="{new}"] .runline')
+    assert not page.is_visible(f'.row[data-id="{old}"]')
+    assert page.errors == []
+
+
 def test_the_landing_recap_request_shows_no_hint_and_the_sparkle_does(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -5638,12 +5661,27 @@ def test_settings_keeps_the_theme_for_this_browser(server, page):
     assert first.locator("h3").inner_text() == "This browser"
     assert "this browser only" in first.inner_text()
     assert picked(page, "#set-theme") == "ink"
-    pick(page, "#set-theme", "syalia")
-    page.wait_for_function("document.documentElement.dataset.theme === 'syalia'")
+    # A pick from a fixed list raises no phone keyboard (#340).
+    assert page.get_attribute("#set-theme input", "inputmode") == "none"
+    pick(page, "#set-theme", "electric")
+    page.wait_for_function("document.documentElement.dataset.theme === 'electric'")
     page.reload()
     page.wait_for_selector("#a2[data-view=settings] #set-theme")
-    assert page.evaluate("document.documentElement.dataset.theme") == "syalia"
-    assert picked(page, "#set-theme") == "syalia"
+    assert page.evaluate("document.documentElement.dataset.theme") == "electric"
+    assert picked(page, "#set-theme") == "electric"
+    assert page.errors == []
+
+
+def test_a_browser_that_saved_syalia_opens_in_electric(server, page):
+    """The navy theme was renamed (#340); a browser that kept its old name
+    would otherwise open in no theme at all."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.evaluate("localStorage.setItem('aegis.theme', 'syalia')")
+    page.reload()
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert page.evaluate("document.documentElement.dataset.theme") == "electric"
+    assert page.evaluate("localStorage.getItem('aegis.theme')") == "electric"
     assert page.errors == []
 
 
@@ -6050,10 +6088,8 @@ def test_a_member_over_its_launch_line_is_told_why_nothing_started(
     pg.wait_for_function("document.querySelector('#sp-agent').value !== ''")
     pg.fill("#sp-text", "do the thing")
     pg.click("#sp-go")
-    pg.wait_for_function(
-        "document.getElementById('sp-error').textContent.includes('cannot start')"
-    )
-    err = pg.text_content("#sp-error")
+    pg.wait_for_selector(".toast.error .msg >> text=cannot start")
+    err = pg.text_content(".toast.error .msg")
     assert "ben cannot start a session now" in err and "71%" in err and "50%" in err
     assert pg.input_value("#sp-text") == "do the thing"
 

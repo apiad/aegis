@@ -10,7 +10,9 @@
 // Typing filters the options with the command menu's scorer; ArrowUp/Down,
 // Enter and Esc are the command menu's. `free` (the model chip) lets a typed
 // value through that no option names, as the first row of the list, and takes
-// every keystroke as the value at once, as the text field it replaces did. A
+// every keystroke as the value at once, as the text field it replaces did. Any
+// other chip takes `inputmode=none`: a phone opens its list without raising
+// the keyboard, and a real keyboard still filters (#340). A
 // pick fires `input` and `change`, as a select does; keystrokes inside the
 // chip stay inside it.
 
@@ -35,6 +37,7 @@ export class PickChip extends HTMLElement {
     this.input.setAttribute("aria-expanded", "false");
     this.input.spellcheck = false;
     this.input.autocomplete = "off";
+    if (!this.free) this.input.inputMode = "none";
     const label = this.getAttribute("aria-label");
     if (label) this.input.setAttribute("aria-label", label);
     this.list = document.createElement("div");

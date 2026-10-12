@@ -1,0 +1,25 @@
+/* Amphora: black-figure pottery; fired clay, black glaze, a meander under the tab bar, your turns as glazed plaques. */
+[data-theme=amphora] #a2{
+  --bg:#e6a571;--chrome:#16100c;--side:#dc9a64;--surface:#edb688;--raised:#d38c57;--rule:#b8703e;
+  --ink:#22140b;--strong:#100905;--muted:#5e3519;--faint:#84502b;
+  --accent:#16100c;--accent-soft:rgba(22,16,12,.12);--on-accent:#efbb88;
+  --ok:#36480f;--err:#8a1c10;--err-bg:#f0bf95;--warn:#7d2a12;--comms:#4f2a52;
+  --add-bg:#d2b679;--del-bg:#e48b6a;
+  --h-kw:#6e1f1a;--h-str:#36480f;--h-num:#8a4a00;--h-com:#84502b;--h-fn:#100905;--h-type:#4f2a52;--h-var:#4a2a14;--h-meta:#5e3519;
+  --font-ui:'Inter',sans-serif;--font-prose:'SS4',serif;--font-mono:'JBM',monospace;
+  --font-chrome:'Marcellus',serif;--font-head:'Marcellus',serif;
+  --prose-size:16.5px;--r:3px;--r-lg:6px;--time:none;--thread:block;--row-cols:22px 1fr;--fill:#16100c;
+  --meander:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='12' viewBox='0 0 24 12'%3E%3Cpath d='M0 10.5h3.5v-9h9v6h-4.5v-3h-1.5v4.5h7.5v-9h-3' fill='none' stroke='%23e6a571' stroke-width='1.3'/%3E%3Cpath d='M15 1.5h9' stroke='%23e6a571' stroke-width='1.3'/%3E%3Cpath d='M0 11.4h24' stroke='%23e6a571' stroke-width='.6' opacity='.6'/%3E%3C/svg%3E");
+}
+[data-theme=amphora] #a2 .tabs{--muted:#c4946a;--faint:#94704f;--strong:#f3c896;--ink:#e9bc8e;--surface:#241a13;--rule:#3a2b20;--bg:#16100c;
+  position:relative;margin-bottom:14px;border-bottom:none;font-size:13px}
+[data-theme=amphora] #a2 .tabs:before{content:"";position:absolute;left:0;right:0;top:100%;height:14px;background:var(--meander) 0 1px/24px 12px repeat-x,#16100c}
+[data-theme=amphora] #a2 .tab.on{background:none;box-shadow:inset 0 -2px 0 #efbb88;color:#f3c896}
+[data-theme=amphora] #a2 .row.user .body{background:#16100c;color:#efbb88;border-radius:3px}
+[data-theme=amphora] #a2 .row.user .g{color:#16100c}
+[data-theme=amphora] #a2 .tr:before{background:#16100c;opacity:.35}
+[data-theme=amphora] #a2 .md h1,[data-theme=amphora] #a2 .md h2,[data-theme=amphora] #a2 .md h3{font-size:1.3em;font-weight:400}
+[data-theme=amphora] #a2 .side{border-left-color:#b8703e}
+[data-theme=amphora] #a2 .side .title{font-family:var(--font-head);font-size:18px}
+[data-theme=amphora] #a2 .side h4{font-family:var(--font-head);font-size:12.5px;color:var(--muted)}
+[data-theme=amphora] #a2 .tn{font-weight:600}
