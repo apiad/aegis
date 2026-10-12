@@ -780,6 +780,26 @@ def test_esc_closes_a_pane_menu_without_interrupting_and_a_card_leaves_it_open(s
     assert page.errors == []
 
 
+def test_a_windows_only_pane_moved_to_a_new_window_gets_a_tab_of_its_own(server, page, browser):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    mcp(page, 3, "layout_set", _two_windows(aid))
+    two = _window_page(browser, f"{server.url}#w=2:{sid}")
+    pane = two.locator(f'#canvas .pane[data-pane="{aid}"]')
+    pane.wait_for()
+    pane.locator(".pbar .move").click()
+    with two.context.expect_page() as opened:
+        two.locator("#canvas .pmenu button", has_text="New window").click()
+    three = _watch(opened.value)
+    three.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").wait_for()
+    assert three.url.endswith(f"#w=3:{sid}"), three.url
+    two.locator("text=This window is empty").wait_for()
+    page.locator("#canvas .wchip").filter(has_text="window 3 · 1 pane").wait_for()
+    assert two.errors == [] and three.errors == [] and page.errors == []
+
+
 def test_a_hidden_transcript_reads_nothing_dots_its_tab_and_find_opens_it(server, page):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -892,6 +912,23 @@ def test_a_window_tab_never_quiets_a_push_for_its_session(server, full_browser):
     ctx.close()
 
 
+def test_the_viewer_offers_pop_out_for_a_live_page(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    page.click(".row.artifact .fbar .view")
+    page.locator("#viewer iframe[data-artifact]").wait_for()
+    assert page.locator("#viewer .open").count() == 0, "no raw page with no bridge behind it"
+    with page.context.expect_page() as opened:
+        page.click("#viewer .popout")
+    two = _watch(opened.value)
+    two.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").wait_for()
+    assert two.url.endswith(f"#w=2:{sid}")
+    assert page.locator("#viewer").is_hidden()
+    assert page.errors == [] and two.errors == []
+
+
 def test_a_window_tab_runs_no_cards_page_and_its_keys_stay_in_the_window(server, page, browser):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -910,3 +947,52 @@ def test_a_window_tab_runs_no_cards_page_and_its_keys_stay_in_the_window(server,
     assert two.url.endswith(f"#w=2:{sid}"), two.url
     assert two.locator("#palette").is_hidden()
     assert two.errors == [] and page.errors == []
+
+
+def test_two_quick_pop_outs_open_two_windows(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page)
+    a, _ = _artifact(page, server, PICK, 0)
+    b, _ = _artifact(page, server, PICK, 2, title="Other")
+    before = len(page.context.pages)
+    # Both clicks before the first card lands.
+    page.evaluate("document.querySelectorAll('.row.artifact .fbar .popout').forEach(b => b.click())")
+    page.locator("#canvas .wchip").filter(has_text="window 3").wait_for()
+    deadline = time.monotonic() + 5
+    while len(page.context.pages) < before + 2 and time.monotonic() < deadline:
+        page.wait_for_timeout(100)
+    tabs = page.context.pages[before:]
+    drawn = {}
+    for t in tabs:
+        t.locator("#canvas iframe[data-artifact]").wait_for()
+        drawn[t.url.split("#")[1]] = t.locator("#canvas iframe[data-artifact]").get_attribute("data-artifact")
+    assert drawn == {f"w=2:{sid}": a, f"w=3:{sid}": b}, drawn
+    assert page.errors == []
+
+
+def test_bring_back_into_a_full_row_of_columns_stacks_the_rest(server, page):  # noqa: F811
+    for name in ("r1.md", "r2.md", "r3.md"):
+        (server.root / name).write_text(f"# {name}\n")
+    page.set_viewport_size({"width": 1700, "height": 900})
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    for n, name in enumerate(("r1.md", "r2.md", "r3.md"), start=3):
+        mcp(page, n, "file_send", {"paths": [name]})
+    f1, f2, f3 = (page.locator(".row.file .fbar .dock").nth(i).get_attribute("data-dock") for i in range(3))
+    lay = _two_windows(aid, f1, f2)
+    lay["windows"][1]["columns"].append({"panes": [{"id": f3}]})
+    mcp(page, 6, "layout_set", lay)
+    chip = page.locator("#canvas .wchip")
+    chip.filter(has_text="window 2 · 2 panes").wait_for()
+    chip.locator(".bring").click()
+    page.locator(f'#canvas .pane[data-pane="{f3}"]').wait_for()
+    page.locator(f'#canvas .pane[data-pane="{aid}"]').wait_for()
+    assert page.locator("#canvas .wchip").count() == 0
+    # Window 1 had room for one more column: the page takes it, the file goes under it.
+    top = page.locator(f'#canvas .pane[data-pane="{aid}"]').bounding_box()
+    low = page.locator(f'#canvas .pane[data-pane="{f3}"]').bounding_box()
+    assert abs(top["x"] - low["x"]) < 2 and low["y"] > top["y"], (top, low)
+    assert page.errors == []

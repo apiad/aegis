@@ -13,7 +13,7 @@
 // one, its card holds a line instead of a frame (entries.hold), and the
 // agent's state reaches the viewer's frame instead.
 
-import { artifactStage, dockButton, fileActions, fileUrl, hold, markdown, preview } from "./entries.js";
+import { artifactStage, dockButton, fileActions, fileUrl, hold, markdown, popButton, preview } from "./entries.js";
 import { entryIcon, icon } from "./glyphs.js";
 import { colour, langOfPath, paint } from "./highlight.js";
 
@@ -137,7 +137,7 @@ async function drawText(f, body, line, isCurrent) {
 
 // An artifact's page at full size, drawn into a bar and a body: its glyph,
 // title and status in the bar, Open in a new tab in acts (or the `popout`
-// button a pane passes instead), the frame in the body. Who holds the page
+// button a live page's pane or the viewer passes instead), the frame in the body. Who holds the page
 // (entries.hold) is the caller's business.
 export function drawArtifact(e, { bar, body, acts, popout = null }) {
   if (popout) acts.append(popout);
@@ -267,7 +267,9 @@ export class Viewer {
     }
     const acts = el("span", "acts");
     if (e.status === "live") acts.append(dockButton(e.id));
-    drawArtifact(e, { bar, body, acts });
+    // A live page pops out into a window of its own, with the bridge behind
+    // it; only an ended one opens raw in a new tab, as its card does.
+    drawArtifact(e, { bar, body, acts, popout: e.status === "live" ? popButton(e.id) : null });
     acts.append(this.closeButton());
     bar.append(acts);
     if (e.status === "live") hold(e.id, (next) => this.onArtifact(next));
