@@ -12,12 +12,18 @@ const PARALLEL = 4;
 // A new worker downloads its build next to the old one and then waits: taking
 // over a page the old build loaded would mix two builds' files. The page asks
 // it to take over (a "skip" message) when the person reloads.
-self.addEventListener("install", (event) => event.waitUntil(keep()));
+//
+// A failed download never fails the install. A worker without a complete
+// build serves everything from the network and still raises notifications;
+// it downloads again whenever a page asks ("keep"), which every page does
+// once the worker is active and on every reconnect.
+self.addEventListener("install", (event) => event.waitUntil(ensure()));
 self.addEventListener("activate", (event) => event.waitUntil(activate()));
 
 self.addEventListener("message", (event) => {
   const msg = event.data || {};
   if (msg.t === "skip") self.skipWaiting();
+  if (msg.t === "keep") event.waitUntil(ensure());
   if (msg.t === "status" && event.ports[0]) event.waitUntil(status().then((s) => event.ports[0].postMessage(s)));
 });
 
@@ -40,16 +46,38 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(openSession(event.notification.data?.key || ""));
 });
 
+let complete = null; // whether CACHE holds the whole build; null until looked at
+let keeping = null; // the download under way, if any
+
+// Looked at again whenever the cache may have gone (another build's
+// activation, the browser evicting it): has() is cheap, match() only then.
+async function isComplete() {
+  if (complete && (await caches.has(CACHE))) return true;
+  complete = Boolean(await caches.match(DONE, { cacheName: CACHE }));
+  return complete;
+}
+
+// Only a complete build is served: half of one would mix with the network's.
 async function fromBuild(req, key) {
-  const hit = await caches.match(key, { cacheName: CACHE });
+  const hit = (await isComplete()) && (await caches.match(key, { cacheName: CACHE }));
   return hit || fetch(req);
 }
 
+// Download the build unless it is here or already coming. Never rejects.
+async function ensure() {
+  if (await isComplete()) return;
+  if (!keeping)
+    keeping = keep()
+      .catch((e) => console.warn("aegis: keeping the client failed", e))
+      .finally(() => (keeping = null));
+  await keeping;
+}
+
 // Download every listed file, PARALLEL at a time, telling every window how far
-// it got. Any failure fails the install as a whole and drops what was kept:
-// the browser tries again at its next update check, and a device never holds
-// half a client.
+// it got. Any failure drops what was kept, so a device never serves half a
+// client; ensure() tries again when a page next asks.
 async function keep() {
+  let failed = false;
   try {
     const list = await (await fetch("/client-files.json", { cache: "no-store" })).json();
     if (list.build !== BUILD) throw new Error(`the file list is build ${list.build}, this worker is ${BUILD}`);
@@ -59,7 +87,7 @@ async function keep() {
     let done = 0;
     let bytes = 0;
     const lane = async () => {
-      for (let f = todo.shift(); f; f = todo.shift()) {
+      for (let f = todo.shift(); f && !failed; f = todo.shift()) {
         const res = await fetch(f.url, { cache: "no-cache" });
         if (!res.ok) throw new Error(`${f.url}: ${res.status}`);
         await cache.put(f.url, res);
@@ -68,10 +96,15 @@ async function keep() {
         tell({ t: "progress", build: BUILD, done, total, bytes, of: list.bytes });
       }
     };
-    await Promise.all(Array.from({ length: PARALLEL }, lane));
+    await Promise.all(Array.from({ length: PARALLEL }, () => lane().catch((e) => ((failed = true), Promise.reject(e)))));
     const marker = { build: BUILD, version: list.version, bytes: list.bytes, files: total };
     await cache.put(DONE, new Response(JSON.stringify(marker), { headers: { "Content-Type": "application/json" } }));
+    // Another build's activation deletes every cache but its own, this one
+    // included if it was still filling: then this build is not here at all.
+    if (!(await caches.has(CACHE))) throw new Error("the cache was deleted while it filled");
+    complete = true;
   } catch (e) {
+    failed = true;
     await caches.delete(CACHE);
     throw e;
   }
@@ -83,8 +116,8 @@ async function activate() {
 }
 
 async function status() {
-  const hit = await caches.match(DONE, { cacheName: CACHE });
-  return hit ? { complete: true, ...(await hit.json()) } : { build: BUILD, complete: false };
+  const hit = (await isComplete()) && (await caches.match(DONE, { cacheName: CACHE }));
+  return hit ? { complete: true, ...(await hit.json()) } : { build: BUILD, complete: false, downloading: Boolean(keeping) };
 }
 
 async function tell(msg) {

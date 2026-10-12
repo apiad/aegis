@@ -375,8 +375,12 @@ minute per session (#329).
 the build id written in, downloads the files `/client-files.json` lists into a
 cache named after the build and serves `/`, `/static/**` and the manifest from
 it, so aegis opens with no connection. The page and its scripts always come from
-the same build: a new build downloads beside the old one and waits, and the page
-offers a reload (or takes it at once when the socket closes with 4400). A sign-in
+the same build: a new build downloads beside the old one and waits, the page
+offers a reload (or takes it at once when the socket closes with 4400), and every
+tab the old build loaded reloads when the new worker takes over. Only a complete
+build is served; a failed download never fails the worker's install, so
+notifications keep working, and the worker downloads again when a page asks,
+which every page does when it loads and reconnects. A sign-in
 (`/?token=`) and everything outside the client go to the network. Notifications
 come from the worker's registration too: Chrome on Android refuses
 `new Notification()`, and the worker's `notificationclick` opens the session even

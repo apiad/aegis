@@ -150,8 +150,9 @@ export function openInstallDialog() {
       const e = deferred;
       e.prompt();
       const { outcome } = await e.userChoice;
-      if (outcome !== "accepted") return drawApp();
+      // An event prompts once; Chrome fires a new one when it will offer again.
       deferred = null;
+      if (outcome !== "accepted") return changed();
       go.remove();
       bar(app, true).hidden = false;
       appSub.textContent = "your browser is adding aegis to the home screen";

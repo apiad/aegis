@@ -3629,12 +3629,24 @@ def test_the_token_url_still_reaches_the_server_with_the_worker_on(server, brows
     assert errors == []
 
 
-def test_a_new_build_downloads_beside_the_old_and_offers_a_reload(server, page):
+def test_a_new_build_downloads_beside_the_old_and_offers_a_reload(server, browser):
     from aegis.web import CLIENT_DIR
 
+    errors: list = []
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    page = ctx.new_page()
+    page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     first = wait_for_device_copy(page)["build"]
+    # A second tab of the same browser: when the first takes the new build,
+    # the new worker serves this one too, so it must reload as well.
+    other = ctx.new_page()
+    other.on("pageerror", lambda e: errors.append(str(e)))
+    other.goto(server.url)
+    other.wait_for_selector("#a2[data-view=fleet]")
+    for pg in (page, other):
+        pg.evaluate("window.__oldPage = true")
     # A new build, as a deploy or an edit to the client makes one: only the
     # mtime of a theme file moves, and moves back afterwards.
     css = CLIENT_DIR / "themes" / "ink.css"
@@ -3645,7 +3657,9 @@ def test_a_new_build_downloads_beside_the_old_and_offers_a_reload(server, page):
         page.wait_for_selector(".toast .act", timeout=20000)
         assert "ready" in page.text_content(".toast .msg")
         page.click(".toast .act")
-        page.wait_for_selector("#a2[data-view=fleet]", timeout=20000)
+        for pg in (page, other):
+            pg.wait_for_function("!window.__oldPage", timeout=20000)
+            pg.wait_for_selector("#a2[data-view=fleet]", timeout=20000)
         now = page.evaluate(
             "import('/static/js/appworker.js').then(m => m.deviceCopy())"
         )
@@ -3654,6 +3668,21 @@ def test_a_new_build_downloads_beside_the_old_and_offers_a_reload(server, page):
         assert [n for n in names if n.startswith("aegis-")] == [f"aegis-{now['build']}"]
     finally:
         os.utime(css, ns=(st.st_atime_ns, st.st_mtime_ns))
+    assert errors == []
+    ctx.close()
+
+
+def test_a_lost_copy_is_downloaded_again(server, page):
+    # Another build's activation, storage pressure or a failed download can
+    # leave the active worker without its copy: it serves from the network and
+    # downloads again when a page asks.
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    build = wait_for_device_copy(page)["build"]
+    page.evaluate("b => caches.delete('aegis-' + b)", build)
+    page.reload()  # from the network now: the worker no longer has the page
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert wait_for_device_copy(page)["build"] == build
     assert page.errors == []
 
 
@@ -3724,6 +3753,26 @@ def test_the_install_dialog_downloads_installs_and_offers_notifications(
     pg.wait_for_selector("#install-dialog .irow[data-step=app].done")
     pg.click("#install-dialog [data-act=done]")
     assert pg.is_hidden("#install-dialog") and pg.is_hidden("#install-offer")
+    assert errors == []
+
+
+def test_a_dismissed_prompt_leaves_no_dead_button(server, browser):
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.add_init_script(INSTALLABLE)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("window.__installable('dismissed')")
+    pg.click("#install-offer [data-act=install]")
+    pg.click("#install-dialog .irow[data-step=app] button")
+    # An event prompts once: the button goes, and so does the Fleet's offer.
+    pg.wait_for_selector(
+        "#install-dialog .irow[data-step=app] button", state="detached"
+    )
+    assert "menu" in pg.text_content("#install-dialog .irow[data-step=app] .sub")
+    pg.click("#install-dialog [data-act=done]")
+    assert pg.is_hidden("#install-offer")
+    assert pg.evaluate("window.__prompted") == 1
     assert errors == []
 
 

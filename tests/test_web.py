@@ -1013,6 +1013,21 @@ def test_the_file_list_names_every_client_file_once(project, fake_claude):
         assert len(doc["build"]) == 12
 
 
+def test_a_change_to_the_worker_alone_is_a_new_build(project, fake_claude):
+    from aegis.web import SERVICE_WORKER
+
+    with client_for(project, fake_claude) as c:
+        build = c.get("/client-files.json").json()["build"]
+        st = SERVICE_WORKER.stat()
+        try:
+            os.utime(
+                SERVICE_WORKER, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000)
+            )
+            assert c.get("/client-files.json").json()["build"] != build
+        finally:
+            os.utime(SERVICE_WORKER, ns=(st.st_atime_ns, st.st_mtime_ns))
+
+
 def test_the_worker_carries_the_build_and_a_client_edit_changes_it(
     project, fake_claude
 ):

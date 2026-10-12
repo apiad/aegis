@@ -72,10 +72,11 @@ SERVICE_WORKER = Path(__file__).parent / "sw.js"
 def client_files(version: str) -> dict:
     """The client as the service worker keeps it: every file under CLIENT_DIR by
     the URL the page asks for it, plus the manifest, and a build id hashed from
-    each file's path, size and mtime with the version. Computed per request:
-    about a hundred ``stat`` calls, and an edit to the client while the server
-    runs is a new build at once, which is what the browser's byte comparison of
-    ``/sw.js`` needs to see."""
+    each file's path, size and mtime, the worker's own and the version, so a
+    change to sw.js alone is a new build with a cache of its own. Computed per
+    request: about a hundred ``stat`` calls, and an edit to the client while
+    the server runs is a new build at once, which is what the browser's byte
+    comparison of ``/sw.js`` needs to see."""
     h = hashlib.sha256(version.encode())
     files = []
     for path in sorted(CLIENT_DIR.rglob("*")):
@@ -94,6 +95,8 @@ def client_files(version: str) -> dict:
                 "bytes": st.st_size,
             }
         )
+    st = SERVICE_WORKER.stat()
+    h.update(f"sw.js\0{st.st_size}\0{st.st_mtime_ns}\n".encode())
     return {"build": h.hexdigest()[:12], "version": version, "files": files}
 
 

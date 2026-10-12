@@ -16,27 +16,38 @@ const progress = new Set();
 export function startWorker({ onUpdate }) {
   if (!sw) return;
   announce = () => (autoApply ? applyUpdate() : onUpdate());
+  // A page that had a worker when it loaded reloads whenever another takes
+  // over, whichever tab asked: the new worker serves its own build's files,
+  // and this page's scripts are the old build's.
+  const hadController = Boolean(sw.controller);
   sw.addEventListener("message", (ev) => {
     if (ev.data?.t === "progress") for (const fn of progress) fn(ev.data);
   });
   sw.addEventListener("controllerchange", () => {
-    if (reloading) location.reload();
+    if (reloading || hadController) location.reload();
   });
+  // Installed with a controller in place: a new build is waiting. With none,
+  // this is the first install, which takes over by itself.
+  const watch = (w) =>
+    w?.addEventListener("statechange", () => {
+      if (w.state === "installed" && sw.controller) announce();
+    });
   sw.register("/sw.js")
     .then((r) => {
       reg = r;
       if (r.waiting && sw.controller) announce();
+      watch(r.installing); // a download that began before this page loaded
+      r.addEventListener("updatefound", () => watch(r.installing));
+      keep();
       keepUnderPressure();
-      r.addEventListener("updatefound", () => {
-        const w = r.installing;
-        w?.addEventListener("statechange", () => {
-          // Installed with a controller in place: a new build is waiting. With
-          // none, this is the first install, which takes over by itself.
-          if (w.state === "installed" && sw.controller) announce();
-        });
-      });
     })
     .catch((e) => console.warn("aegis: service worker", e));
+}
+
+// Ask the active worker to download its build if it lacks it: a download that
+// failed (a flaky network, a deploy mid-way) is tried again from here.
+async function keep() {
+  (await sw?.ready)?.active?.postMessage({ t: "keep" });
 }
 
 // Once this device holds a complete build, ask the browser not to evict it
@@ -69,13 +80,15 @@ export async function deviceCopy() {
 }
 
 export function checkForUpdate() {
+  keep();
   return reg?.update().catch(() => {});
 }
 
 export const hasUpdate = () => Boolean(reg?.waiting);
 
 export function applyUpdate() {
-  if (!reg?.waiting) return;
+  // Another tab took the update already: this page only has to catch up.
+  if (!reg?.waiting) return location.reload();
   reloading = true;
   reg.waiting.postMessage({ t: "skip" });
 }
@@ -83,7 +96,11 @@ export function applyUpdate() {
 // The server speaks a protocol this build cannot (the socket closed with
 // 4400): take the new build as soon as it is ready, without asking.
 export function setAutoApply() {
+  if (autoApply) return;
   autoApply = true;
-  if (hasUpdate()) applyUpdate();
-  else checkForUpdate();
+  if (hasUpdate()) return applyUpdate();
+  // The new build may fail to install (a file fetch on a flaky network): ask
+  // again until one is waiting, which announce() then applies.
+  checkForUpdate();
+  setInterval(checkForUpdate, 10000);
 }

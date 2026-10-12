@@ -308,7 +308,14 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
     bannerState(state);
     if (state === "unauthorized") showLogin();
     if (state === "version") {
-      show("boot", "This page and the server speak different protocol versions. Reload the page.");
+      show(
+        "boot",
+        // With a worker, a reload would serve this same build again: the new
+        // one is fetched and taken as soon as it is ready (appworker.js).
+        navigator.serviceWorker
+          ? "This page and the server speak different protocol versions. Updating aegis…"
+          : "This page and the server speak different protocol versions. Reload the page.",
+      );
       setAutoApply();
     }
     if (state === "closed") wasClosed = true;
