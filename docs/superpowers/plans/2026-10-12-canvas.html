@@ -161,7 +161,22 @@ code,pre{font-variant-ligatures:none}
   <li><b>Open on a docked artifact flashes its pane</b> instead of opening the viewer, so the viewer and a pane never hold one page at once.</li>
   <li><b>A layout record does not count as activity</b> (<code>Session._record</code>), like a page's state write: dragging a pane must not reorder the Fleet.</li>
 </ul>
-<p class="note">Task 17 updates the spec page to match.</p>
+<h3>Found while building</h3>
+<ul class="rules">
+  <li><b>Stale ids are trimmed in <code>Session.layout</code>,</b> once, instead of in each operation: an id that can no longer dock (a page closed just before a crash) never blocks a move, <code>dock=</code> or <code>layout_read</code>.</li>
+  <li><b><code>layout.dock</code> checks <code>dockable</code> itself,</b> because <code>place()</code> exempts the pane it places (on purpose: <code>dock=</code> places a page or file before it has landed).</li>
+  <li><b>Shares that are not finite and positive are equal shares,</b> and a malformed layout is refused with <code>bad_params</code>; a <code>1e400</code> width once wrote NaN that every browser's <code>JSON.parse</code> rejected.</li>
+  <li><b>Class names changed after collisions with existing rules:</b> <code>.pbar.tr-handle</code> for the transcript's handle, <code>.cgrip.x</code> and <code>.cgrip.y</code> for the grips. A row grip sits wholly above its boundary so the pane bar under it wins.</li>
+  <li><b>Docking does not remount rows.</b> <code>syncDock()</code> updates every Dock button and held line in place; remounting would load a page twice. The held line is <code>docked · show</code>, and its button is <code>.locate</code>, because <code>app.js</code> already handles <code>.acard .show</code>.</li>
+  <li><b>A docked page gets the agent's state and its re-sends even when its card is not mounted:</b> <code>Canvas.onEntry</code> pushes state to the pane's frame, and <code>refresh()</code> runs it for every docked id after a snapshot or a resume.</li>
+  <li><b>Drags end on <code>document</code>,</b> and a grip drag previews over the latest card layout, so a card that arrives mid-drag is never overwritten.</li>
+  <li><b>Tab mode switches on</b> on a phone, when the column minimums summed exceed the canvas width, or when the transcript's column would be under 360 px. A new column gets an equal share in <code>layout.place</code>, so tabbing whenever any column is under 280 px would tab every three-pane canvas on a laptop.</li>
+  <li><b>Redraws after the canvas's <code>ResizeObserver</code> wait for the next animation frame:</b> drawing inside the callback raised "ResizeObserver loop" errors, which woke the agent.</li>
+  <li><b>Pop out opens its tab synchronously,</b> at the window number <code>place()</code> will give, and renames or closes it after the call: a browser may block a popup opened after an await. Pop out is hidden on a phone and for someone who may not change the session; the viewer keeps Open in a new tab.</li>
+  <li><b>Bring back keeps the window's columns</b> instead of docking each pane at the right edge, which could break the 3-panes limit.</li>
+  <li><b><code>file_send</code> refuses a path listed twice,</b> and returns <code>{"files", "docked": false, "reason"}</code> when its placement fails after the files are stored, as <code>artifact_send</code> does.</li>
+</ul>
+<p class="note">The spec's section 15 carries these too.</p>
 
 <h2>Review focus</h2>
 <p>Inputs the spec implies and no feature test reaches by accident. Each line has its test in the task named.</p>
@@ -1638,7 +1653,7 @@ The phone page is built the way <code>tests/test_browser.py</code> builds its 39
 </details>
 
 <!-- ============================================================ TASK 17 -->
-<details class="task" id="task-17" data-state="pending">
+<details class="task" id="task-17" data-state="doing">
 <summary><span class="num">17</span><span><span class="ttl">DESIGN.md, the changelog, the spec's status, the gates and the PR</span><span class="files">DESIGN.md · changelog.d/347-canvas.added.md · the spec · the old shared-canvas spec</span></span><span class="state"></span></summary>
 <div class="body">
 <ol class="steps">
