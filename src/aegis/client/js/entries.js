@@ -454,9 +454,9 @@ const RENDERERS = {
     card.dataset.md = e.md || ""; // the caption's source, for update() to compare exactly
     bar.append(entryIcon(e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);
     card.append(bar);
-    const viewer = held.get(e.id);
-    viewer?.(e);
-    if (e.status === "live" && viewer) card.append(el("div", "held", "open in the viewer"));
+    const holder = held.get(e.id);
+    holder?.onEntry(e);
+    if (e.status === "live" && holder) card.append(el("div", "held", holder.label));
     else if (e.status === "live") card.append(artifactStage(e));
     else {
       const what = det.label || (e.status === "closed" ? "closed by the agent" : "answered");
@@ -511,17 +511,20 @@ export function fileUrl(url) {
   return ok ? fileBase + url : "about:blank";
 }
 
-// The artifacts the viewer holds, each with what to call when its entry is
-// drawn again (a new status, a resend). While one is live its card draws no
-// frame, so the page never runs twice; releasing it gives the card its frame
-// back, if the card is on screen.
-const held = new Map(); // artifact id -> (entry) => void
-export function hold(id, onEntry, entry) {
+// The artifacts held elsewhere (the viewer, a pane), each with what to call
+// when its entry is drawn again (a new status, a resend) and the line its card
+// shows instead. While one is live its card draws no frame, so the page never
+// runs twice; releasing it gives the card its frame back, if the card is on
+// screen.
+const held = new Map(); // artifact id -> {onEntry: (entry) => void, label}
+export function hold(id, onEntry, entry, label = "open in the viewer") {
   const card = document.querySelector(`#entries .row[data-id="${CSS.escape(id)}"] .acard`);
   if (onEntry) {
-    held.set(id, onEntry);
+    held.set(id, { onEntry, label });
     const stage = card?.dataset.status === "live" && card.querySelector(":scope > .stage");
-    if (stage) stage.replaceWith(el("div", "held", "open in the viewer"));
+    if (stage) stage.replaceWith(el("div", "held", label));
+    const line = card?.querySelector(":scope > .held");
+    if (line) line.textContent = label;
     return;
   }
   held.delete(id);

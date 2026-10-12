@@ -53,6 +53,107 @@ function el(tag, cls, text) {
   return n;
 }
 
+// One sent file at full size, drawn into a bar and a body: the viewer's and a
+// docked pane's (js/canvas.js). The bar gets the file's glyph, name and size,
+// and acts its buttons; the caller appends acts, after anything of its own.
+// isCurrent() is false once the caller has drawn something else, so a fetch
+// that returns late draws nothing.
+export function drawFile(f, { remote, glyph, bar, body, acts, line, isCurrent = () => true }) {
+  const { acts: own, set } = fileActions(remote);
+  set(f);
+  acts.append(...own.children);
+  bar.append(entryIcon(glyph), el("span", "fn", f.name), el("span", "fs", f.summary));
+  body.dataset.preview = f.preview || "other";
+  if (f.preview === "markdown" || f.preview === "text") {
+    body.append(el("div", "vnote", "loading…"));
+    drawText(f, body, line, isCurrent);
+    return;
+  }
+  const stage = preview(f, remote);
+  if (stage) {
+    const frame = stage.querySelector("iframe");
+    if (frame) frame.loading = "eager";
+    body.append(stage);
+  } else {
+    const none = el("div", "vnote", "There is no preview for this file. ");
+    const dl = el("a", null, "Download it");
+    dl.href = f.download;
+    none.append(dl);
+    body.append(none);
+  }
+}
+
+async function drawText(f, body, line, isCurrent) {
+  // Fetch only the text; the loader brings what colouring needs.
+  let got;
+  try {
+    got = await fetchText(f.url);
+  } catch (err) {
+    if (isCurrent()) body.replaceChildren(el("div", "vnote", `Could not load the file: ${err.message}`));
+    return;
+  }
+  if (!isCurrent()) return;
+  const { text, cut } = got;
+  const out = [];
+  if (f.preview === "markdown") {
+    const doc = markdown(text);
+    doc.classList.add("doc");
+    await Promise.all([...doc.querySelectorAll(".fence")].map(paint));
+    if (!isCurrent()) return;
+    out.push(doc);
+  } else {
+    const lines = text.endsWith("\n") ? text.slice(0, -1).split("\n") : text.split("\n");
+    const view = el("div", "code");
+    const gutter = el("pre", "ln", lines.map((_, i) => i + 1).join("\n"));
+    gutter.setAttribute("aria-hidden", "true");
+    const src = el("pre", "src");
+    const code = el("code", "hljs");
+    const lang = langOfPath(f.name);
+    const hl = lang ? await colour(text, lang).catch(() => null) : null; // plain if it fails
+    if (!isCurrent()) return;
+    if (hl) code.innerHTML = hl.html;
+    else code.textContent = text;
+    src.append(code);
+    view.append(gutter, src);
+    out.push(view);
+  }
+  if (cut) out.push(el("div", "vnote", `Only the first ${MAX_TEXT / 1024 / 1024} MB is shown here; open it in a new tab for the rest.`));
+  body.replaceChildren(...out);
+  // A path link's line: scrolled to a third of the way down, and marked.
+  const view = body.querySelector(".code");
+  if (line && view) {
+    const count = view.querySelector(".ln").textContent.split("\n").length;
+    const at = Math.min(line, count);
+    const src = view.querySelector(".src");
+    const lh = parseFloat(getComputedStyle(src).lineHeight);
+    const mark = el("div", "mark");
+    mark.dataset.line = String(at);
+    mark.style.top = `${(at - 1) * lh + src.offsetTop + parseFloat(getComputedStyle(src).paddingTop)}px`;
+    mark.style.height = `${lh}px`;
+    view.append(mark);
+    body.scrollTop += mark.getBoundingClientRect().top - body.getBoundingClientRect().top - body.clientHeight / 3;
+  }
+}
+
+// An artifact's page at full size, drawn into a bar and a body: its glyph,
+// title and status in the bar, Open in a new tab in acts, the frame in the
+// body. Who holds the page (entries.hold) is the caller's business.
+export function drawArtifact(e, { bar, body, acts }) {
+  const open = el("a", "btn icon open");
+  open.append(icon("open"));
+  open.title = "Open in a new tab";
+  open.setAttribute("aria-label", open.title);
+  open.href = fileUrl(e.detail?.url);
+  open.target = "_blank";
+  open.rel = "noopener noreferrer";
+  acts.append(open);
+  bar.append(entryIcon(e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary));
+  body.dataset.preview = "html";
+  const stage = artifactStage(e);
+  stage.querySelector("iframe").loading = "eager";
+  body.append(stage);
+}
+
 export class Viewer {
   constructor(root, { entry }) {
     this.root = root; // #viewer, inside .col
@@ -120,10 +221,16 @@ export class Viewer {
   }
 
   drawFile(item, bar, body, draw) {
-    const f = item.files[item.at];
-    const { acts, set } = fileActions(item.remote);
-    set(f);
-    bar.append(entryIcon(item.glyph), el("span", "fn", f.name), el("span", "fs", f.summary));
+    const acts = el("span", "acts");
+    drawFile(item.files[item.at], {
+      remote: item.remote,
+      glyph: item.glyph,
+      bar,
+      body,
+      acts,
+      line: item.line,
+      isCurrent: () => draw === this.drawn,
+    });
     if (item.files.length > 1) {
       const pager = el("span", "pager");
       const step = (d, name, title) => {
@@ -143,76 +250,6 @@ export class Viewer {
     }
     acts.append(this.closeButton());
     bar.append(acts);
-    body.dataset.preview = f.preview || "other";
-    if (f.preview === "markdown" || f.preview === "text") {
-      body.append(el("div", "vnote", "loading…"));
-      this.drawText(f, body, draw, item.line);
-      return;
-    }
-    const stage = preview(f, item.remote);
-    if (stage) {
-      const frame = stage.querySelector("iframe");
-      if (frame) frame.loading = "eager";
-      body.append(stage);
-    } else {
-      const none = el("div", "vnote", "There is no preview for this file. ");
-      const dl = el("a", null, "Download it");
-      dl.href = f.download;
-      none.append(dl);
-      body.append(none);
-    }
-  }
-
-  async drawText(f, body, draw, line) {
-    // Fetch only the text; the loader brings what colouring needs.
-    let got;
-    try {
-      got = await fetchText(f.url);
-    } catch (err) {
-      if (draw === this.drawn) body.replaceChildren(el("div", "vnote", `Could not load the file: ${err.message}`));
-      return;
-    }
-    if (draw !== this.drawn) return;
-    const { text, cut } = got;
-    const out = [];
-    if (f.preview === "markdown") {
-      const doc = markdown(text);
-      doc.classList.add("doc");
-      await Promise.all([...doc.querySelectorAll(".fence")].map(paint));
-      if (draw !== this.drawn) return;
-      out.push(doc);
-    } else {
-      const lines = text.endsWith("\n") ? text.slice(0, -1).split("\n") : text.split("\n");
-      const view = el("div", "code");
-      const gutter = el("pre", "ln", lines.map((_, i) => i + 1).join("\n"));
-      gutter.setAttribute("aria-hidden", "true");
-      const src = el("pre", "src");
-      const code = el("code", "hljs");
-      const lang = langOfPath(f.name);
-      const hl = lang ? await colour(text, lang).catch(() => null) : null; // plain if it fails
-      if (draw !== this.drawn) return;
-      if (hl) code.innerHTML = hl.html;
-      else code.textContent = text;
-      src.append(code);
-      view.append(gutter, src);
-      out.push(view);
-    }
-    if (cut) out.push(el("div", "vnote", `Only the first ${MAX_TEXT / 1024 / 1024} MB is shown here; open it in a new tab for the rest.`));
-    body.replaceChildren(...out);
-    // A path link's line: scrolled to a third of the way down, and marked.
-    const view = body.querySelector(".code");
-    if (line && view) {
-      const count = view.querySelector(".ln").textContent.split("\n").length;
-      const at = Math.min(line, count);
-      const src = view.querySelector(".src");
-      const lh = parseFloat(getComputedStyle(src).lineHeight);
-      const mark = el("div", "mark");
-      mark.dataset.line = String(at);
-      mark.style.top = `${(at - 1) * lh + src.offsetTop + parseFloat(getComputedStyle(src).paddingTop)}px`;
-      mark.style.height = `${lh}px`;
-      view.append(mark);
-      body.scrollTop += mark.getBoundingClientRect().top - body.getBoundingClientRect().top - body.clientHeight / 3;
-    }
   }
 
   drawArtifact(item, e, bar, body) {
@@ -223,19 +260,9 @@ export class Viewer {
       return;
     }
     const acts = el("span", "acts");
-    const open = el("a", "btn icon open");
-    open.append(icon("open"));
-    open.title = "Open in a new tab";
-    open.setAttribute("aria-label", open.title);
-    open.href = fileUrl(e.detail?.url);
-    open.target = "_blank";
-    open.rel = "noopener noreferrer";
-    acts.append(open, this.closeButton());
-    bar.append(entryIcon(e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);
-    body.dataset.preview = "html";
-    const stage = artifactStage(e);
-    stage.querySelector("iframe").loading = "eager";
-    body.append(stage);
+    drawArtifact(e, { bar, body, acts });
+    acts.append(this.closeButton());
+    bar.append(acts);
     if (e.status === "live") hold(e.id, (next) => this.onArtifact(next));
     else hold(e.id, null, e);
   }
