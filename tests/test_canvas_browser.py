@@ -377,3 +377,125 @@ def test_a_card_that_lands_while_a_grip_moves_is_kept(server, page, browser):  #
     assert page.locator(f'#canvas .pane[data-pane="{two}"]').count() == 1
     assert page.locator(".toast.error").count() == 0
     assert page.errors == []
+
+
+def tap_mcp(pg, n, tool, args):
+    """mcp() on a touch screen, where Enter adds a line: the send button."""
+    pg.fill("#input", f"/mcp {tool} {json.dumps(args)}")
+    pg.click("#send")
+    turns_done(pg, n)
+
+
+def test_a_phone_shows_the_canvas_as_tabs_with_the_composer_on_each(server, page, browser):  # noqa: F811
+    # The page is made on a desktop (the helper sends with Enter) and docked
+    # on the phone.
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    key = spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    page.close()
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True)
+    phone = ctx.new_page()
+    phone.errors = []
+    phone.on("pageerror", lambda e: phone.errors.append(str(e)))
+    phone.goto(f"{server.url}#s={key}")
+    phone.wait_for_selector("#a2[data-view=session]")
+    phone.click(".row.artifact .fbar .dock")
+    strip = phone.locator("#canvas .ptabs")
+    strip.wait_for()
+    names = strip.locator("button").all_inner_texts()
+    assert names[0] == "transcript" and len(names) == 2
+    assert phone.locator("#canvas").get_attribute("data-mode") == "tabs"
+    # The person's own dock leaves the transcript open, with a dot on the new tab.
+    assert phone.locator("#tr").is_visible()
+    tab = strip.locator(f'button[data-pane="{aid}"]')
+    assert "dot" in tab.get_attribute("class")
+    tab.click()
+    assert "dot" not in tab.get_attribute("class")
+    assert phone.locator("#tr-pane").is_hidden()
+    assert phone.locator("#input").is_visible()  # the composer stays at the foot
+    pane = phone.locator(f'#canvas .pane[data-pane="{aid}"]').bounding_box()
+    composer = phone.locator("#composer").bounding_box()
+    assert pane["width"] == 390 and pane["y"] + pane["height"] <= composer["y"] + 1, (pane, composer)
+    phone.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").filter(has_text="{}").wait_for()
+    # Show on the docked card opens the pane's tab.
+    strip.locator('button[data-pane="transcript"]').click()
+    assert phone.locator("#tr").is_visible()
+    phone.locator(".row.artifact .held .locate").click()
+    assert phone.locator(f'#canvas .pane[data-pane="{aid}"]').is_visible()
+    strip.locator('button[data-pane="transcript"]').click()
+    # The agent's state on the page dots its tab and leaves the transcript open.
+    tap_mcp(phone, 3, "artifact_update", {"id": aid, "state": {"n": 7}})
+    strip.locator(f'button[data-pane="{aid}"].dot').wait_for()
+    assert phone.locator("#tr").is_visible()
+    # The frame kept running while hidden: the state is there when the tab opens.
+    tab.click()
+    phone.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").filter(has_text='{"n":7}').wait_for()
+    # A long press offers Undock.
+    box = tab.bounding_box()
+    phone.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    phone.mouse.down()
+    phone.wait_for_timeout(700)
+    phone.mouse.up()
+    phone.locator("#canvas .pmenu button").click()
+    phone.locator(f'#canvas .pane[data-pane="{aid}"]').wait_for(state="detached")
+    strip.wait_for(state="detached")
+    assert phone.locator("#tr").is_visible()
+    assert phone.evaluate("document.documentElement.scrollWidth") <= 390
+    assert phone.errors == []
+    ctx.close()
+
+
+COLS = "JSON.stringify([...document.querySelectorAll('#canvas > .pane')].map(p => [p.dataset.pane, Math.round(p.getBoundingClientRect().width)]))"
+
+
+def test_a_narrow_desktop_window_draws_tabs_and_widening_restores_the_columns(server, page):  # noqa: F811
+    (server.root / "r.md").write_text("# One\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    mcp(page, 3, "file_send", {"paths": ["r.md"]})
+    fkey = page.locator(".row.file .fbar .dock").get_attribute("data-dock")
+    layout = {
+        "windows": [
+            {
+                "n": 1,
+                "columns": [
+                    {"w": 0.4, "panes": [{"id": "transcript"}]},
+                    {"w": 0.3, "panes": [{"id": aid}]},
+                    {"w": 0.3, "panes": [{"id": fkey}]},
+                ],
+            }
+        ]
+    }
+    mcp(page, 4, "layout_set", layout)
+    page.locator(f'#canvas .pane[data-pane="{fkey}"]').wait_for()
+    assert page.locator("#canvas").get_attribute("data-mode") is None
+    wide = page.evaluate(COLS)
+    # 1280 less the side panel leaves about 1020 px for the canvas, over the
+    # minimums' 360 + 280 + 280. At 1100 it is about 840, under them: tabs.
+    page.set_viewport_size({"width": 1100, "height": 800})
+    page.locator("#canvas[data-mode=tabs] .ptabs").wait_for()
+    names = page.locator("#canvas .ptabs button").all_inner_texts()
+    assert names == ["transcript", "Pick", "r.md"], names
+    assert page.locator("#tr").is_visible()
+    assert page.locator(f'#canvas .pane[data-pane="{aid}"]').is_hidden()
+    assert page.locator("#canvas .cgrip").count() == 0
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.wait_for_function("!document.querySelector('#canvas').dataset.mode")
+    assert page.locator("#canvas .ptabs").count() == 0
+    assert page.evaluate(COLS) == wide
+    assert page.locator("#canvas .cgrip").count() == 2
+    # A transcript's column under 360 px is drawn as tabs too, at any width
+    # that leaves it so: 0.3 of about 1020 is 306.
+    layout["windows"][0]["columns"][0]["w"] = 0.3
+    layout["windows"][0]["columns"][1]["w"] = 0.35
+    layout["windows"][0]["columns"][2]["w"] = 0.35
+    mcp(page, 5, "layout_set", layout)
+    page.locator("#canvas[data-mode=tabs] .ptabs").wait_for()
+    page.set_viewport_size({"width": 1600, "height": 800})
+    page.wait_for_function("!document.querySelector('#canvas').dataset.mode")
+    # The resizes woke the agent with no error from the page.
+    assert page.locator(".row.inbox").count() == 0, page.locator(".row.inbox").all_inner_texts()
+    assert page.errors == []

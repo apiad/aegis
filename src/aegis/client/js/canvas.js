@@ -19,6 +19,13 @@
 // server applies each to the layout as it stands then: a drop does not undo
 // what the agent docked while the pointer was moving. The card that follows
 // redraws every browser on the session, this one included.
+//
+// On a phone (the client's 760 px drawer breakpoint), and whenever a column
+// would be drawn under its minimum width, the canvas draws as tabs: a strip
+// over one pane at a time, the others kept running behind it (visibility, so a
+// page's frame is never reloaded). The layout is not changed, so a wider
+// window draws the same columns again. The composer stays at the foot of the
+// transcript's pane, which fills the canvas under every tab.
 
 import { drawArtifact, drawFile } from "./viewer.js";
 import { DOCKED, fileUrl, hold } from "./entries.js";
@@ -33,6 +40,8 @@ const MAX_PANES = 3;
 const MIN_W = 280;
 const MIN_W_TRANSCRIPT = 360;
 const MIN_H = 120;
+// A tab held this long offers Undock.
+const LONG_PRESS = 500;
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -70,19 +79,51 @@ export class Canvas {
       if (ev.target.closest(".cgrip")) this.resizeFrom(ev);
       else if (ev.target.closest(".pbar")) this.grab(ev);
     });
+    // Tab mode: the strip, the tab open, and the tabs whose pane changed
+    // while another was open.
+    this.tabbed = false;
+    this.open = TRANSCRIPT;
+    this.dots = new Set();
+    this.tabs = new Map(); // pane id -> its tab
+    this.strip = el("div", "ptabs");
+    this.strip.setAttribute("role", "tablist");
+    this.menu = null; // a long press's menu: {id, node}
+    this.pressed = false; // a long press just opened the menu: its click opens no tab
+    this.strip.addEventListener("click", (ev) => {
+      const b = ev.target.closest("button[data-pane]");
+      if (!b) return;
+      if (this.pressed) this.pressed = false;
+      else this.openTab(b.dataset.pane);
+    });
+    this.strip.addEventListener("pointerdown", (ev) => this.press(ev));
+    this.strip.addEventListener("contextmenu", (ev) => ev.preventDefault());
+    this.phone = matchMedia("(max-width: 760px)");
+    this.phone.addEventListener("change", () => this.key !== null && this.place());
+    // The redraw waits for the next frame: resizing a page's frame while
+    // observers are being told of sizes raises the page's own "ResizeObserver
+    // loop" error, which would reach the agent as the page's error.
+    new ResizeObserver(() =>
+      requestAnimationFrame(() => {
+        if (this.key !== null && this.wantTabs() !== this.tabbed) this.place();
+      }),
+    ).observe(root);
   }
 
   // Draw window n of a session: on every tab switch, and on every card of the
   // shown session, so a change from the agent or another browser lands here.
   show(key, layout, { n = 1, writable = false } = {}) {
     const before = this.ids();
-    if (key !== this.key || n !== this.n) this.clear();
+    const same = key === this.key && n === this.n;
+    if (!same) this.clear();
     this.key = key;
     this.n = n;
     this.writable = writable;
     this.layout = layout || null;
     this.place();
     const after = this.ids();
+    // A newly docked pane, by the agent or another browser or this one, gets
+    // a dot; the open tab stays open.
+    if (same) for (const id of after) if (!before.includes(id)) this.mark(id);
     if (before.length !== after.length || before.some((id, i) => id !== after[i])) this.onChange(before, after);
   }
 
@@ -118,16 +159,23 @@ export class Canvas {
       if (keep.has(id)) continue;
       this.drop(id, node);
     }
+    for (const id of this.dots) if (!keep.has(id)) this.dots.delete(id);
+    if (!keep.has(this.open)) this.open = TRANSCRIPT;
+    if (this.menu && !keep.has(this.menu.id)) this.closeMenu();
+    this.tabbed = this.wantTabs();
     let x = 0;
     for (const col of this.window().columns) {
       let y = 0;
       for (const p of col.panes) {
         const node = p.id === TRANSCRIPT ? this.tr : this.pane(p.id);
-        this.box(node, x, y, col.w, p.h);
+        if (this.tabbed) this.tabBox(node, p.id);
+        else {
+          this.box(node, x, y, col.w, p.h);
+          if (p.id === TRANSCRIPT) this.box(this.trBar, x, y, col.w, null);
+        }
         // A rule on the edges a neighbour shares, drawn by the pane right or below.
-        node.classList.toggle("lx", x > 0.0005);
-        node.classList.toggle("ty", y > 0.0005);
-        if (p.id === TRANSCRIPT) this.box(this.trBar, x, y, col.w, null);
+        node.classList.toggle("lx", !this.tabbed && x > 0.0005);
+        node.classList.toggle("ty", !this.tabbed && y > 0.0005);
         y += p.h;
       }
       x += col.w;
@@ -135,11 +183,16 @@ export class Canvas {
     this.root.dataset.docked = String(keep.size);
     if (this.writable) this.root.dataset.writable = "";
     else delete this.root.dataset.writable;
-    // Handles only where there is something to arrange, for someone who may.
-    if (keep.size && this.writable) {
+    if (this.tabbed) this.root.dataset.mode = "tabs";
+    else delete this.root.dataset.mode;
+    this.syncStrip();
+    // Handles only where there is something to arrange, for someone who may,
+    // and not on tabs: dragging is a desktop act.
+    const handles = keep.size && this.writable && !this.tabbed;
+    if (handles) {
       if (!this.trBar.isConnected) this.root.append(this.trBar);
     } else this.trBar.remove();
-    this.placeGrips(keep.size && this.writable);
+    this.placeGrips(handles);
     // A handle this redraw took away (its pane undocked elsewhere, its grip
     // gone with a column) never sees its pointer released.
     if (this.dragged && !this.dragged.alive()) this.dragged.end();
@@ -154,6 +207,138 @@ export class Canvas {
       right: "auto",
       bottom: "auto",
     });
+  }
+
+  // -- tabs ----------------------------------------------------------------
+
+  // Tabs on a phone; when the canvas is narrower than its columns' minimums
+  // added up (the transcript's 360 px, 280 for each other); and when the
+  // transcript's own column would draw under its 360, which a dock is not
+  // refused for. A canvas not laid out yet (its view hidden) keeps its mode.
+  wantTabs() {
+    if (!this.ids().length) return false;
+    if (this.phone.matches) return true;
+    const width = this.root.clientWidth;
+    if (!width) return this.tabbed;
+    const cols = this.window().columns;
+    if (cols.reduce((s, c) => s + minWidth(c), 0) > width) return true;
+    const tr = cols.find((c) => c.panes.some((p) => p.id === TRANSCRIPT));
+    return !!tr && tr.w * width + 0.5 < MIN_W_TRANSCRIPT;
+  }
+
+  // Every pane fills the canvas under the strip; a docked one stops above
+  // the composer, which stays at the foot of the transcript's pane.
+  tabBox(node, id) {
+    Object.assign(node.style, {
+      left: "0",
+      top: "var(--ptabs-h)",
+      width: "100%",
+      height: "auto",
+      right: "auto",
+      bottom: id === TRANSCRIPT ? "0" : "var(--composer-h, 94px)",
+    });
+    node.classList.toggle("on", id === this.open);
+  }
+
+  // The strip: the transcript first, then the panes in reading order, column
+  // by column, top to bottom. Tabs are kept by id, so one being pressed keeps
+  // its pointer across a redraw.
+  syncStrip() {
+    if (!this.tabbed) {
+      this.strip.remove();
+      this.closeMenu();
+      return;
+    }
+    const order = [TRANSCRIPT, ...this.ids()];
+    for (const [id, b] of this.tabs) if (!order.includes(id)) this.tabs.delete(id);
+    const tabs = order.map((id) => {
+      let b = this.tabs.get(id);
+      if (!b) {
+        b = el("button");
+        b.type = "button";
+        b.setAttribute("role", "tab");
+        b.dataset.pane = id;
+        this.tabs.set(id, b);
+      }
+      b.textContent = this.label(id);
+      b.title = b.textContent;
+      b.classList.toggle("on", id === this.open);
+      b.setAttribute("aria-selected", String(id === this.open));
+      b.classList.toggle("dot", this.dots.has(id));
+      return b;
+    });
+    this.strip.replaceChildren(...tabs);
+    if (!this.strip.isConnected) this.root.append(this.strip);
+  }
+
+  label(id) {
+    if (id === TRANSCRIPT) return "transcript";
+    if (id.startsWith("art-")) return this.entryOf(id)?.title || "page";
+    return this.latestFile(id)?.name || "file";
+  }
+
+  openTab(id) {
+    if (!this.panes.has(id) && id !== TRANSCRIPT) return;
+    this.closeMenu();
+    this.open = id;
+    this.dots.delete(id);
+    this.place();
+  }
+
+  // A pane changed: a dot on its tab, unless it is the one open.
+  mark(id) {
+    if (!this.tabbed || id === this.open || !this.panes.has(id)) return;
+    this.dots.add(id);
+    this.syncStrip();
+  }
+
+  // Hold a tab other than the transcript's: Undock, in a one-item menu under it.
+  press(ev) {
+    const b = ev.target.closest("button[data-pane]");
+    this.pressed = false;
+    if (!b || b.dataset.pane === TRANSCRIPT || !this.writable || ev.button !== 0) return;
+    const id = b.dataset.pane;
+    const timer = setTimeout(() => {
+      this.pressed = true;
+      this.openMenu(id, b);
+    }, LONG_PRESS);
+    const cancel = () => {
+      clearTimeout(timer);
+      for (const t of ["pointerup", "pointercancel", "pointerleave"]) b.removeEventListener(t, cancel);
+    };
+    for (const t of ["pointerup", "pointercancel", "pointerleave"]) b.addEventListener(t, cancel);
+  }
+
+  openMenu(id, tab) {
+    this.closeMenu();
+    const node = el("div", "pmenu");
+    node.setAttribute("role", "menu");
+    const undock = el("button", "btn", "Undock");
+    undock.type = "button";
+    undock.setAttribute("role", "menuitem");
+    undock.addEventListener("click", () => {
+      this.closeMenu();
+      this.undock(id);
+    });
+    node.append(undock);
+    const r = tab.getBoundingClientRect();
+    const box = this.root.getBoundingClientRect();
+    node.style.left = `${Math.max(0, Math.min(r.left - box.left, box.width - 160))}px`;
+    // A press anywhere else closes it.
+    const away = (e) => {
+      if (!node.contains(e.target)) this.closeMenu();
+    };
+    document.addEventListener("pointerdown", away, true);
+    this.menu = { id, node, away };
+    this.root.append(node);
+    undock.focus({ preventScroll: true });
+  }
+
+  closeMenu() {
+    if (!this.menu) return;
+    document.removeEventListener("pointerdown", this.menu.away, true);
+    this.menu.node.remove();
+    this.menu = null;
   }
 
   // One grip on each boundary between columns, and one between each two
@@ -230,6 +415,7 @@ export class Canvas {
       const entry = e || this.entryOf(id);
       if (!entry) return this.loading(node, bar, acts, "Loading the page…");
       drawArtifact(entry, { bar, body, acts });
+      node.dataset.agentRev = String(entry.detail?.state_rev);
       // An ended page leaves the layout with its submit; until that card
       // lands it shows read-only, and its card keeps its own line.
       if (entry.status === "live") hold(id, (next) => this.onEntry(next), entry, DOCKED);
@@ -279,9 +465,13 @@ export class Canvas {
       } else if ("loading" in node.dataset) this.draw(id);
       else {
         const f = this.latestFile(id);
-        if (f && String(f.version) !== node.dataset.version) this.draw(id, f);
+        if (f && String(f.version) !== node.dataset.version) {
+          this.draw(id, f);
+          this.mark(id);
+        }
       }
     }
+    this.syncStrip();
   }
 
   // An entry was drawn again. A pane redraws only when what it shows changed:
@@ -292,32 +482,48 @@ export class Canvas {
     if (e.kind === "file") {
       for (const f of e.detail?.files || []) {
         const node = f.key && !f.replaced && this.panes.get(f.key);
-        if (node && ("loading" in node.dataset || node.dataset.version !== String(f.version))) this.draw(f.key, f);
+        if (!node) continue;
+        if ("loading" in node.dataset) this.draw(f.key, f);
+        else if (node.dataset.version !== String(f.version)) {
+          this.draw(f.key, f);
+          this.mark(f.key);
+        }
       }
       return;
     }
     const node = this.panes.get(e.id);
     if (!node || e.kind !== "artifact") return;
-    if ("loading" in node.dataset) return this.draw(e.id, e);
+    if ("loading" in node.dataset) {
+      this.draw(e.id, e);
+      return this.syncStrip(); // its tab gets its title
+    }
     const frame = node.querySelector("iframe[data-artifact]");
     if (frame && frame.dataset.status === e.status && frame.getAttribute("src") === fileUrl(e.detail?.url)) {
       // A state the agent set reaches the frame here too: the card's row
       // (entries.js, UPDATERS.artifact) may be unmounted, and then nothing
       // else would hand it on. The revision keeps it from arriving twice.
+      // The pane keeps its own revision for the dot, since the row's updater
+      // may have handed the state on before this.
       const rev = String(e.detail?.state_rev);
-      if (e.detail?.state_by === "agent" && rev !== frame.dataset.stateRev) {
+      if (e.detail?.state_by !== "agent" || rev === node.dataset.agentRev) return;
+      node.dataset.agentRev = rev;
+      this.mark(e.id);
+      if (rev !== frame.dataset.stateRev) {
         frame.dataset.stateRev = rev;
         frame.dispatchEvent(new CustomEvent("aegis:state", { detail: e.detail.state, bubbles: true }));
       }
       return;
     }
     this.draw(e.id, e);
+    this.mark(e.id);
   }
 
-  // Outline a docked pane for a moment; false when it is not in this window.
+  // Outline a docked pane for a moment, opening its tab when the canvas is
+  // tabs; false when it is not in this window.
   flash(id) {
     const node = this.panes.get(id);
     if (!node) return false;
+    if (this.tabbed) this.openTab(id);
     node.classList.remove("flash");
     void node.offsetWidth; // restart the outline when it is still on
     node.classList.add("flash");
@@ -357,7 +563,7 @@ export class Canvas {
   // its top or bottom third stacks above or below it, its middle swaps the
   // two. Frames take no pointer meanwhile (.dragging), or they would swallow it.
   grab(ev) {
-    if (!this.writable || ev.button !== 0 || ev.target.closest("button, a, input")) return;
+    if (!this.writable || this.tabbed || ev.button !== 0 || ev.target.closest("button, a, input")) return;
     const bar = ev.target.closest(".pbar");
     const id = bar === this.trBar ? TRANSCRIPT : bar.closest(".pane.docked")?.dataset.pane;
     if (!id) return;
@@ -438,7 +644,7 @@ export class Canvas {
   // card's layout (window()); once the resize is answered, or refused, the
   // canvas draws from the card alone again.
   resizeFrom(ev) {
-    if (!this.writable || ev.button !== 0) return;
+    if (!this.writable || this.tabbed || ev.button !== 0) return;
     const grip = ev.target.closest(".cgrip");
     ev.preventDefault();
     grip.classList.add("on");
@@ -512,5 +718,13 @@ export class Canvas {
     this.target.remove();
     this.placeGrips(false);
     this.root.dataset.docked = "0";
+    this.tr.classList.remove("on");
+    this.tabbed = false;
+    this.open = TRANSCRIPT;
+    this.dots.clear();
+    this.tabs.clear();
+    this.strip.remove();
+    this.closeMenu();
+    delete this.root.dataset.mode;
   }
 }
