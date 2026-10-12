@@ -115,6 +115,18 @@ body{background:#000}
 #a2 .spawn .send .ic,#a2 .composer .acts .send .ic{width:15px;height:15px;vertical-align:middle}
 #a2 .spawn .err-text{margin:0}
 #a2 .spawn .err-text:empty{display:none}
+/* The new tab's hints (help.state): a line each under the chips, run by a
+   click, dismissed by the cross. No hint, no row and no gap. */
+#a2 .spawn .hints{width:100%;display:flex;flex-direction:column;gap:2px}
+#a2 .spawn .hints:not(:has(.hint:not([hidden]))){display:none}
+#a2 .spawn .hint{display:flex;align-items:center;gap:8px;font-family:var(--font-ui);font-size:12px;color:var(--muted)}
+#a2 .spawn .hint[hidden]{display:none}
+#a2 .spawn .hint .go{flex:1;min-width:0;text-align:left;background:none;border:0;padding:4px 0;color:inherit;font:inherit;cursor:pointer}
+#a2 .spawn .hint .go:hover{color:var(--strong)}
+#a2 .spawn .hint .go:hover code{color:var(--accent)}
+#a2 .spawn .hint .x{flex:none;display:flex;align-items:center;justify-content:center;background:none;border:0;color:var(--faint);padding:4px 6px;cursor:pointer}
+#a2 .spawn .hint .x:hover{color:var(--err)}
+#a2 .spawn .hint .x .ic{width:12px;height:12px}
 #a2 .pa{display:flex;gap:10px;justify-content:flex-end;align-items:center}
 #a2 .err-text{color:var(--err);font-size:12px;font-family:var(--font-chrome);margin-right:auto}
 
@@ -1103,6 +1115,8 @@ body{background:#000}
 @media (prefers-reduced-motion:reduce){#a2 .side{transition:none}}
 /* Touch, at any width: 44 px targets. */
 @media (pointer:coarse){
+  #a2 .spawn .hint .go,#a2 .spawn .hint .x{min-height:44px}
+  #a2 .spawn .hint .x{min-width:44px}
   #a2 .rp{min-height:44px;padding:10px 14px;font-size:14.5px}
   #a2 :is(.composer,.spawn) .acts .send,#a2 .composer .acts .int,#a2 .mic{min-width:44px;min-height:44px}
   #a2 pick-chip .opt{min-height:44px;display:flex;align-items:center}

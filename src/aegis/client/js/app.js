@@ -134,6 +134,7 @@ $("settings-btn").prepend(icon("gear"));
 $("journal-btn").append(icon("book"));
 $("send").append(icon("send"));
 $("sp-go").append(icon("send"));
+$("hint-tutorial-x").append(icon("close"));
 $("interrupt").append(icon("stop"));
 $("replies-g").append(icon("prompt"));
 $("working-g").append(icon("think"));
@@ -545,6 +546,7 @@ function render() {
     watchHost(null);
     follow(null);
     show("spawn");
+    if (newView) loadHints();
     $("sp-text").focus();
     setTitle("New session · aegis");
   } else if (r.view === "settings") {
@@ -1441,6 +1443,9 @@ let spModels = { server: undefined, by: {} };
 // The server a new session starts on: null for this one. Its directory line
 // names it once a server is linked, since a path exists on one machine only.
 let spServer = null;
+// What help.state said for this person when the new tab last opened; null
+// until it answers, and then no hint shows.
+let helpState = null;
 
 function drawServerPick() {
   const pick = $("sp-server");
@@ -1469,6 +1474,7 @@ function setSpServer(server) {
   $("sp-cwd").value = ""; // the other machine's directories
   delete $("sp-agent").dataset.picked;
   loadAgents();
+  drawHints();
 }
 $("sp-server").addEventListener("change", () => setSpServer($("sp-server").value || null));
 const LAST_AGENT = "aegis.lastAgent";
@@ -1627,6 +1633,65 @@ $("sp-text").addEventListener("keydown", (ev) => {
   if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing && !touch.matches) {
     ev.preventDefault();
     spawnFromComposer();
+  }
+});
+
+// -- the new tab's hint ---------------------------------------------------------
+// One line under the chips while this person has started no tutorial. The
+// record is the server's, per principal (helpstate.py), read each time the
+// new tab opens, so every device shows the same hint. It acts on this server
+// only: a linked server keeps its own record and may not know help.guide.
+async function loadHints() {
+  delete $("sp-hints").dataset.ready;
+  try {
+    helpState = await conn.call("help.state", {});
+  } catch {
+    helpState = null; // no hint rather than a wrong one
+  }
+  drawHints();
+  $("sp-hints").dataset.ready = "";
+}
+
+function drawHints() {
+  $("hint-tutorial").hidden = !helpState || helpState.tutorial || spServer !== null;
+}
+
+// A guide session (help.guide), and its tab, as a spawn from the new tab
+// opens one. `params` are spawn fields; none at all means default_agent.
+async function startGuide(params) {
+  const r = await conn.call("help.guide", { kind: "tutorial", ...params });
+  if (helpState) helpState = { ...helpState, tutorial: true };
+  drawHints();
+  go(`#s=${r.log_id}`);
+  return r;
+}
+
+// The hint runs what Enter would, with the chips as they stand.
+async function guideFromComposer() {
+  const a = current();
+  const btn = $("hint-tutorial-go");
+  if (!a || btn.disabled) return;
+  btn.disabled = true;
+  $("sp-error").textContent = "";
+  try {
+    await startGuide({ agent: a.name, cwd: $("sp-cwd").value.trim() || null, ...overrides() });
+    localStorage.setItem(LAST_AGENT, a.name);
+    pickAgent(a.name);
+  } catch (e) {
+    $("sp-error").textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+$("hint-tutorial-go").addEventListener("click", guideFromComposer);
+$("hint-tutorial-x").addEventListener("click", async () => {
+  $("hint-tutorial").hidden = true;
+  try {
+    await conn.call("help.dismiss", { what: "tutorial" });
+    if (helpState) helpState = { ...helpState, tutorial: true };
+  } catch (e) {
+    $("sp-error").textContent = e.message;
+    drawHints();
   }
 });
 

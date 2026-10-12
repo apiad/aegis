@@ -174,6 +174,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <ul class="rules" id="added">
   <li><b>Task 2 uses slice 1's names</b>: the ops are added inside <code>register_help_ops(app)</code> (<code>src/aegis/help_ops.py:90</code>), not <code>register(r, app)</code>; <code>r</code> is <code>app.registry</code> there and <code>index</code> is its local, so the plan's block went in unchanged from line 125. The imports were merged into slice 1's (<code>Literal</code> joins <code>TYPE_CHECKING</code>; <code>BaseModel</code> and <code>OpError</code> were already imported).</li>
   <li><b>Task 4 imports the <code>browser</code> fixture with <code>page</code></b> (<code>tests/test_tutorial_browser.py:11</code>). <code>page</code> depends on <code>browser</code> (<code>tests/test_browser.py:245</code>), so the plan's <code>page, server, spawn</code> import failed with "fixture 'browser' not found" before any assertion ran.</li>
+  <li><b>Task 5's tests wait for <code>#sp-hints[data-ready]</code> with <code>state="attached"</code></b> (<code>tests/test_tutorial_browser.py:62</code> and the four waits after it). Playwright waits for a visible element by default, and the plan's own rule <code>#a2 .spawn .hints:not(:has(.hint:not([hidden]))){display:none}</code> hides the row once no hint shows, so the waits after the tutorial was taken or dismissed timed out on a hidden, ready row.</li>
 </ul>
 
 <h2>Assumed from slices 1 and 2</h2>
@@ -879,7 +880,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -- src/aegis/client/js/
 </details>
 
 <!-- ============================================================ TASK 5 -->
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">The tutorial hint under the new-tab composer</span><span class="files">client/index.html · client/css/base.css · site/client.css · client/js/app.js · tests/test_tutorial_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>One line under the chips while the person has started no tutorial. A click calls <code>help.guide</code> with the chips' values, the fields Enter would send, and opens the guide's tab; the cross calls <code>help.dismiss</code>. The state is read with <code>help.state</code> each time the new tab opens.</p>
