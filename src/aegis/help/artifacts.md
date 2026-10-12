@@ -82,7 +82,72 @@ you need the state.
 When the person only needs to look at something, such as a screenshot, a
 rendered PDF or a draft, `file_send` is enough. Pass `paths` (1 to 20
 absolute paths, shown as one card that pages through them) and an optional
-`caption`. The files are copied, so later edits are not seen, and each is at
-most 100 MB. If one cannot be sent, none is. Send a file when it is an output
+`caption`. The files are copied, so later edits are not seen until you send
+the file again, and each is at most 100 MB. If one cannot be sent, none is. Send a file when it is an output
 the person asked for or something they must see to discuss it; they see the
 source code you edited as diffs already.
+
+## Pages that stay in view
+
+A card scrolls away as the transcript grows. To keep a page or a file on
+screen beside the transcript, dock it: pass `dock` to `artifact_send` or
+`file_send`. The person can dock any card too, and move, resize and undock
+what you docked. `dock` takes one of:
+
+- left or right: a new column at that edge of window 1;
+- left:, right:, above: or below: and a pane's id: next to a pane already
+  docked;
+- window: and a number, or window:new: another browser window of the canvas.
+
+A page's pane id is its `id`. A sent file's is its key, which `layout_read`
+lists with each pane's kind and title; the transcript's is transcript.
+Several files in one `file_send` stack in one column, the first at `dock`. A
+pane already docked moves. A `dock` that does not fit is refused as
+bad_params before anything is sent, and the message says why and which panes
+there are. If the person changed the canvas while the send was under way
+and it no longer fits, the page or the files are still sent and the reply
+says `"docked": false` with the reason.
+
+`layout_read` returns the whole canvas: its windows, each a list of columns
+with a width share, each column a stack of panes with a height share. It
+wakes nobody. `layout_set` with `windows` replaces the canvas, in the same
+shape; widths and heights are optional, and missing ones are split equally.
+
+The limits are 4 windows, 4 columns in a window and 3 panes in a column, and
+the transcript stays in window 1. You cannot open another window for the
+person, so keep to window 1 unless they asked for a second screen.
+
+A page leaves the canvas when it is submitted or closed. A file sent again
+from the same path is its next version: the earlier card says it was
+replaced, and a pane showing the file shows the new version where it is, so
+a second `file_send` needs no `dock`.
+
+## Emit when the person lets go
+
+Each emit wakes you for a turn, and a page may emit at most 20 times a
+minute. A slider that emits on input emits at every step of a drag and
+reaches that limit in seconds, each step a turn of yours. Emit on change,
+which fires once when the person lets go of the control, and keep the value
+in between with `aegis.state` if you need it.
+
+## Example: controls beside the document they shape
+
+The person tunes a report's margin and watches the PDF change:
+
+1. `artifact_create` a page whose control emits on change:
+
+   ```html
+   <label>Margin <input id="m" type="range" min="10" max="40"></label>
+   <script>
+     aegis.ready((state) => {
+       m.value = state.margin ?? 20;
+       m.addEventListener("change", () => aegis.emit("margin", { margin: Number(m.value) }));
+     });
+   </script>
+   ```
+
+2. `artifact_send` it with `dock="right"`.
+3. Render the PDF and `file_send` it with `dock="below:<the page's id>"`.
+4. When a turn headed `> from artifact:<id> · margin` arrives, render the PDF
+   again with the new margin and `file_send` the same path. The pane under
+   the controls shows the new version.

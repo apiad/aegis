@@ -58,6 +58,35 @@ the file in a new browser tab. A file card's Open, new tab and Download are
 icon buttons, with Open natively beside them in a browser on the server's own
 desktop.
 
+## The canvas
+
+A page or a file can stay on screen beside the transcript instead of
+scrolling away with its card. Dock, on its card or on the viewer's bar, opens
+it in a pane to the right of the transcript. The card keeps one line,
+docked · show, and Show outlines the pane; Open on a docked card outlines it
+too. The panes and the transcript make up the session's canvas, columns of
+stacked panes:
+
+- Drag a pane by its bar, or the transcript by the thin strip along its top
+  edge. Over another pane, its left or right fifth makes a new column on that
+  side, its top or bottom third stacks above or below it, and its middle
+  swaps the two.
+- Drag the grip on the line between two columns, or two stacked panes, to
+  resize them. A column stays at least 280 px wide, the transcript's at least
+  360 px, and a pane at least 120 px high.
+- × on a pane's bar undocks it, and the card shows it again.
+
+A canvas holds 4 columns and 3 panes in a column. Once there are four
+columns, Dock stacks under the last pane, and on a full canvas it says so and
+does nothing. A docked file shows its newest version: when the agent sends
+the same file again, the pane updates where it is and the older card says
+replaced by v2. A page leaves the canvas when it is answered or closed.
+
+The canvas is kept with the session. It survives a reload and a restart of
+aegis, and every browser on the session shows the same one. Only someone who
+may change the session can rearrange it. The agent can dock pages and files
+and arrange the canvas too.
+
 ## Paths in replies
 
 A file path an agent quotes in backticks in a reply, such as
