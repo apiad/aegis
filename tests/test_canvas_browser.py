@@ -2,11 +2,23 @@
 
 import json
 import re
+import time
 from pathlib import Path
 
 import pytest
 
-from .test_browser import PICK, _artifact, browser, page, server, spawn, turns_done  # noqa: F401
+from .test_browser import (  # noqa: F401
+    PICK,
+    SHOWN,
+    _artifact,
+    browser,
+    full_browser,
+    page,
+    push_ready,
+    server,
+    spawn,
+    turns_done,
+)
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
@@ -861,3 +873,40 @@ def test_columns_under_their_minimum_are_drawn_at_it_from_the_wider_ones(server,
     )
     assert all(abs(a - b) <= 2 for a, b in zip(sorted(lefts), sorted(edges))), (lefts, edges)
     assert page.errors == []
+
+
+def test_a_window_tab_never_quiets_a_push_for_its_session(server, full_browser):  # noqa: F811
+    ctx = full_browser.new_context()
+    ctx.grant_permissions(["notifications"])
+    pg = ctx.new_page()
+    deliver = push_ready(ctx, pg, server.url)
+    sid = spawn(pg, "hello")
+    pg.goto(f"{server.url}#w=2:{sid}")  # the session's window 2, focused and visible
+    pg.wait_for_selector("#a2[data-view=window]")
+    pg.wait_for_timeout(300)  # the page tells the worker what it shows
+    deliver({"title": "x: needs you", "body": "", "key": sid, "kind": "needs_you", "tag": f"{sid}:needs_you"})
+    deadline = time.monotonic() + 5
+    while not pg.evaluate(SHOWN) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert pg.evaluate(SHOWN) == [["x: needs you", f"{sid}:needs_you"]]
+    ctx.close()
+
+
+def test_a_window_tab_runs_no_cards_page_and_its_keys_stay_in_the_window(server, page, browser):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    other, _ = _artifact(page, server, PICK, 2, title="Other")
+    mcp(page, 5, "layout_set", _two_windows(aid))
+    two = _window_page(browser, f"{server.url}#w=2:{sid}")
+    two.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").wait_for()
+    two.locator(f'.row.artifact[data-id="{other}"]').wait_for(state="attached")
+    assert two.locator("#entries iframe[data-artifact]").count() == 0
+    # The keys that go to another tab, the Fleet or a new session do nothing here.
+    for k in ("Alt+BracketRight", "Alt+BracketLeft", "Alt+KeyN", "Alt+KeyJ", "Alt+Digit0", "Control+k"):
+        two.keyboard.press(k)
+    two.wait_for_timeout(300)
+    assert two.url.endswith(f"#w=2:{sid}"), two.url
+    assert two.locator("#palette").is_hidden()
+    assert two.errors == [] and page.errors == []

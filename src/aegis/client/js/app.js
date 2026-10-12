@@ -179,6 +179,7 @@ setDocker({
     canvas.popOut(id);
   },
   canPop: () => canvas.writable && !canvas.merged(),
+  frames: () => route().view !== "window",
 });
 // Window n of a session's canvas, in the browser tab named for it: focused if
 // this browser has that tab open, opened if not. Given `tab`, a tab opened
@@ -762,7 +763,9 @@ function ping() {
 }
 
 // -- rendering -----------------------------------------------------------------
-const openSession = (id) => go(`#s=${id}`);
+// A window tab draws one window of a session's canvas and never becomes
+// another view: window 1's pages would run in it a second time.
+const openSession = (id) => route().view === "window" || go(`#s=${id}`);
 // The service worker (sw.js): it keeps this build for offline use and raises
 // notifications. A new build downloads beside this one; reloading takes it.
 startWorker({
@@ -808,6 +811,7 @@ const on = (server) => ordered.filter((m) => m.server === server);
 
 function render() {
   if (!booted) return;
+  tellView(); // the view may have changed with the same session shown
   const r = route();
   if (r.view === "session" && !sessions.has(r.id)) {
     const far = forKey(r.id).server;
@@ -1164,8 +1168,16 @@ let follows = 0; // which follow() a device read answers
 
 // The worker shows a push unless a window shows its session in front of the
 // person (sw.js), so it hears what this one shows whenever that may change.
+// A window tab shows a session's panes, not its transcript: it quiets no push,
+// and a notification's click never opens a session in it.
 function tellView() {
-  navigator.serviceWorker?.controller?.postMessage({ t: "view", key: shown || "", visible: !document.hidden && document.hasFocus() });
+  const win = route().view === "window";
+  navigator.serviceWorker?.controller?.postMessage({
+    t: "view",
+    key: win ? "" : shown || "",
+    visible: !document.hidden && document.hasFocus(),
+    window: win,
+  });
 }
 for (const ev of ["focus", "blur"]) window.addEventListener(ev, tellView);
 document.addEventListener("visibilitychange", tellView);

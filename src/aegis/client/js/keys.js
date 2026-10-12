@@ -30,12 +30,14 @@ const on = (scope, label, match, extra) => ({ scope, label, match, ...extra });
 // An action: its id (the name app.js runs it by), its title, the keys that run
 // it, and `when`, the views where the palette offers it. Without `when` that is
 // wherever its keys act. `palette: false` keeps out of the palette what needs
-// the key itself (which digit) or is only documented here.
+// the key itself (which digit) or is only documented here. `nav: true` marks
+// what leaves the view; it does nothing in a window tab (js/canvas.js), which
+// draws one window of a canvas and would run window 1's pages a second time.
 //
 // A key's scope: "global" acts anywhere, even while typing; "browse" outside
 // text fields in any view; "session" (also the read view) and "fleet" in theirs.
 export const ACTIONS = [
-  { id: "palette", title: "Search the commands", palette: false, keys: [on("global", MAC ? "⌘K" : "Ctrl+K", mod("k"))] },
+  { id: "palette", title: "Search the commands", palette: false, nav: true, keys: [on("global", MAC ? "⌘K" : "Ctrl+K", mod("k"))] },
   {
     id: "composer",
     title: "Focus the message box",
@@ -50,12 +52,12 @@ export const ACTIONS = [
     keys: [on("global", "Alt+,", alt("Comma"))],
   },
   // The Fleet is the first tab.
-  { id: "tabPrev", title: "Previous tab", keys: [on("global", "Alt+[", alt("BracketLeft"))] },
-  { id: "tabNext", title: "Next tab", keys: [on("global", "Alt+]", alt("BracketRight"))] },
-  { id: "needs", title: "Next session that needs you, longest waiting first", keys: [on("global", "Alt+J", alt("KeyJ"))] },
-  { id: "spawn", title: "New session", keys: [on("global", "Alt+N", alt("KeyN")), on("browse", "n", key("n"))] },
-  { id: "settings", title: "Settings: .aegis.yaml", keys: [on("global", "Alt+S", alt("KeyS"))] },
-  { id: "journal", title: "Journal: what was done", keys: [on("global", "Alt+L", alt("KeyL"))] },
+  { id: "tabPrev", title: "Previous tab", nav: true, keys: [on("global", "Alt+[", alt("BracketLeft"))] },
+  { id: "tabNext", title: "Next tab", nav: true, keys: [on("global", "Alt+]", alt("BracketRight"))] },
+  { id: "needs", title: "Next session that needs you, longest waiting first", nav: true, keys: [on("global", "Alt+J", alt("KeyJ"))] },
+  { id: "spawn", title: "New session", nav: true, keys: [on("global", "Alt+N", alt("KeyN")), on("browse", "n", key("n"))] },
+  { id: "settings", title: "Settings: .aegis.yaml", nav: true, keys: [on("global", "Alt+S", alt("KeyS"))] },
+  { id: "journal", title: "Journal: what was done", nav: true, keys: [on("global", "Alt+L", alt("KeyL"))] },
   {
     id: "dictate",
     title: "Dictate into the message box; again to stop",
@@ -73,6 +75,7 @@ export const ACTIONS = [
     id: "tab",
     title: "Fleet, or the n-th tab (Chrome on Linux keeps Alt+1…9)",
     palette: false,
+    nav: true,
     keys: [
       on("global", "Alt+0…9", (ev) => ev.altKey && /^Digit[0-9]$/.test(ev.code)),
       on("browse", "0…9", (ev) => bare(ev) && /^[0-9]$/.test(ev.key)),
@@ -173,7 +176,7 @@ export function installKeys(runs, view) {
     const v = view();
     const scopes = typing(ev.target) ? ["global"] : ["global", "browse", v === "read" ? "session" : v];
     const b = KEYS.find((k) => scopes.includes(k.scope) && k.match(ev));
-    if (!b) return;
+    if (!b || (b.action.nav && v === "window")) return;
     // Enter and Space on a focused link, button or summary are the element's own.
     if (b.native && PRESSABLE.has(ev.target.tagName)) return;
     ev.preventDefault();

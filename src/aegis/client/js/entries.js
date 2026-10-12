@@ -207,7 +207,9 @@ export function setOpener(fn) {
 // pane in another window does, and false otherwise. show(id) outlines that
 // pane (a docked card's Show), open(n) focuses or opens window n's tab, and
 // pop(id) moves a page to a window of its own; canPop(id) says whether Pop
-// out shows (not on a phone, which has one window).
+// out shows (not on a phone, which has one window). frames() is false in a
+// window tab: its transcript is never shown, and a page whose card mounted a
+// frame there would run in window 1 and in that tab at once.
 let docker = {
   dock: () => {},
   can: () => false,
@@ -216,6 +218,7 @@ let docker = {
   open: () => {},
   pop: () => {},
   canPop: () => false,
+  frames: () => true,
 };
 export function setDocker(d) {
   docker = { ...d, can: (id) => !!id && d.can(id) };
@@ -547,6 +550,7 @@ const RENDERERS = {
     const holder = held.get(e.id);
     holder?.onEntry(e);
     if (e.status === "live" && holder) card.append(heldLine(e.id, holder.label));
+    else if (e.status === "live" && !docker.frames()) card.append(heldLine(e.id, "in window 1"));
     else if (e.status === "live") card.append(artifactStage(e));
     else {
       const what = det.label || (e.status === "closed" ? "closed by the agent" : "answered");
@@ -617,7 +621,7 @@ export function hold(id, onEntry, entry, label = "open in the viewer") {
   }
   held.delete(id);
   const line = card?.querySelector(":scope > .held");
-  if (line && entry?.status === "live") line.replaceWith(artifactStage(entry));
+  if (line && entry?.status === "live" && docker.frames()) line.replaceWith(artifactStage(entry));
 }
 
 // The frame of an artifact's card, live or shown again read-only.
@@ -643,12 +647,15 @@ const UPDATERS = {
     // A page the viewer or a pane holds runs only there: the card keeps a
     // line, and the agent's state goes to that frame, when the session is shown.
     const holder = held.get(e.id);
+    const lined = holder || !docker.frames(); // the card shows a line, not the page
     const sel = `iframe[data-artifact="${CSS.escape(e.id)}"]`;
     const frame = holder
       ? document.querySelector(`#viewer ${sel}, #canvas .pane.docked ${sel}`)
-      : node.querySelector("iframe[data-artifact]");
+      : lined
+        ? null
+        : node.querySelector("iframe[data-artifact]");
     if (!card || card.dataset.status !== e.status) return false;
-    if (holder ? !card.querySelector(".held") : !frame) return false;
+    if (lined ? !card.querySelector(".held") : !frame) return false;
     // A new caption, a new title or a new page (a resend) remounts the card.
     if (card.dataset.md !== (e.md || "")) return false;
     if (node.querySelector(".fbar .fn")?.textContent !== e.title) return false;

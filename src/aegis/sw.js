@@ -26,7 +26,7 @@ self.addEventListener("message", (event) => {
   if (msg.t === "skip") self.skipWaiting();
   if (msg.t === "keep") event.waitUntil(ensure());
   if (msg.t === "status" && event.ports[0]) event.waitUntil(status().then((s) => event.ports[0].postMessage(s)));
-  if (msg.t === "view" && event.source) views.set(event.source.id, { key: msg.key || "", visible: Boolean(msg.visible) });
+  if (msg.t === "view" && event.source) views.set(event.source.id, { key: msg.key || "", visible: Boolean(msg.visible), window: Boolean(msg.window) });
 });
 
 // Only what belongs to the build: the page at / with no query (a query is a
@@ -70,7 +70,7 @@ self.addEventListener("push", (event) => {
   );
 });
 
-const views = new Map(); // client id -> {key, visible}
+const views = new Map(); // client id -> {key, visible, window}
 
 // A window that closed says nothing; its view goes the next time one is asked.
 async function inFront(key) {
@@ -165,10 +165,11 @@ async function tell(msg) {
 
 // Bring an aegis page forward and tell it which session to open, or open one
 // on it. Only the page at / is aegis: a sent file or a dictation model open in
-// a tab is in this scope too, and has nobody listening.
+// a tab is in this scope too, and has nobody listening. A window tab (one
+// window of a session's canvas) never turns into another view.
 async function openSession(key) {
   const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-  const pages = wins.filter((w) => new URL(w.url).pathname === "/");
+  const pages = wins.filter((w) => new URL(w.url).pathname === "/" && !views.get(w.id)?.window);
   const win = pages.find((w) => w.focused) || pages[0];
   if (win) {
     // The browser may refuse to raise a window (a discarded tab on Android);
