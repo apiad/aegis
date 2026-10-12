@@ -56,6 +56,8 @@ export class Canvas {
     this.key = null; // the session shown
     this.n = 1; // the window this tab draws
     this.layout = null; // the card's layout; null is the default
+    this.preview = null; // while a grip moves: (window) => void, its shares put on a copy
+    this.dragged = null; // while something is dragged: {alive, end}
     this.writable = false;
     this.panes = new Map(); // pane id -> its element, for the shown session
     this.grips = new Map(); // "x<i>" or "y<i>.<j>" -> its element
@@ -84,9 +86,16 @@ export class Canvas {
     if (before.length !== after.length || before.some((id, i) => id !== after[i])) this.onChange(before, after);
   }
 
+  // The shown window as drawn: the card's, with a grip's drag on a copy. The
+  // card's layout itself is never changed here, so a card that lands while a
+  // grip moves is drawn with the drag on top, not overwritten by it.
   window() {
     const ws = (this.layout || DEFAULT).windows;
-    return ws.find((w) => w.n === this.n) || { n: this.n, columns: [] };
+    const w = ws.find((w) => w.n === this.n) || { n: this.n, columns: [] };
+    if (!this.preview) return w;
+    const copy = structuredClone(w);
+    this.preview(copy);
+    return copy;
   }
 
   // What is docked in the shown window, the transcript left out.
@@ -131,6 +140,9 @@ export class Canvas {
       if (!this.trBar.isConnected) this.root.append(this.trBar);
     } else this.trBar.remove();
     this.placeGrips(keep.size && this.writable);
+    // A handle this redraw took away (its pane undocked elsewhere, its grip
+    // gone with a column) never sees its pointer released.
+    if (this.dragged && !this.dragged.alive()) this.dragged.end();
   }
 
   box(node, x, y, w, h) {
@@ -346,25 +358,44 @@ export class Canvas {
     const id = bar === this.trBar ? TRANSCRIPT : bar.closest(".pane.docked")?.dataset.pane;
     if (!id) return;
     ev.preventDefault();
-    bar.setPointerCapture(ev.pointerId);
-    this.root.classList.add("dragging");
+    const there = () => (id === TRANSCRIPT ? this.trBar.isConnected : this.panes.has(id));
     let where = null;
-    const move = (e) => {
-      where = this.aim(id, e.clientX, e.clientY);
-    };
-    const end = (e) => {
-      for (const [t, f] of on) bar.removeEventListener(t, f);
+    this.follow(ev, bar, {
+      alive: there,
+      move: (e) => (where = this.aim(id, e.clientX, e.clientY)),
+      end: (e) => {
+        this.target.remove();
+        if (e?.type === "pointerup" && where && there()) this.move(id, where);
+      },
+    });
+  }
+
+  // One drag's pointer, from pointerdown on `handle` to its release. The end is
+  // heard on the document: a redraw can take the handle out of the DOM, and
+  // its own listeners would then never hear the pointer go up, leaving every
+  // frame without clicks (.dragging). place() ends a drag whose handle is gone.
+  follow(ev, handle, { alive, move, end }) {
+    this.dragged?.end();
+    handle.setPointerCapture(ev.pointerId);
+    this.root.classList.add("dragging");
+    const stop = (e) => {
+      if (e && e.pointerId !== ev.pointerId) return;
+      for (const [t, f] of on) document.removeEventListener(t, f);
+      this.dragged = null;
       this.root.classList.remove("dragging");
-      this.target.remove();
-      if (e.type === "pointerup" && where) this.move(id, where);
+      end(e);
+    };
+    const step = (e) => {
+      if (e.pointerId === ev.pointerId) move(e);
     };
     const on = [
-      ["pointermove", move],
-      ["pointerup", end],
-      ["pointercancel", end],
-      ["lostpointercapture", end],
+      ["pointermove", step],
+      ["pointerup", stop],
+      ["pointercancel", stop],
+      ["lostpointercapture", stop],
     ];
-    for (const [t, f] of on) bar.addEventListener(t, f);
+    for (const [t, f] of on) document.addEventListener(t, f);
+    this.dragged = { alive, end: () => stop(null) };
   }
 
   // The drop at a point while dragging `id`, drawn as .droptarget, or null.
@@ -399,61 +430,68 @@ export class Canvas {
 
   // Drag a grip: the boundary moves here at once, stopped at the minimums
   // (a column 280 px wide, the transcript's 360, a pane 120 px high), and the
-  // shares are sent once, on release.
+  // shares are sent once, on release. Meanwhile the drag is a preview over the
+  // card's layout (window()); once the resize is answered, or refused, the
+  // canvas draws from the card alone again.
   resizeFrom(ev) {
     if (!this.writable || ev.button !== 0) return;
     const grip = ev.target.closest(".cgrip");
     ev.preventDefault();
-    grip.setPointerCapture(ev.pointerId);
     grip.classList.add("on");
-    this.root.classList.add("dragging");
-    const lay = structuredClone(this.layout || DEFAULT);
-    const win = lay.windows.find((w) => w.n === this.n);
     const i = Number(grip.dataset.i);
     const j = grip.dataset.j === "" ? null : Number(grip.dataset.j);
     const box = this.root.getBoundingClientRect();
-    let moved = false;
-    const move = (e) => {
+    let at = null; // the pointer, once it has moved
+    // The dragged pair's shares at the pointer, on a copy of the shown window.
+    // A card that changed the window's shape under the pointer leaves it be.
+    const drag = (win) => {
+      if (at === null) return;
       if (j === null) {
         const [a, b] = [win.columns[i - 1], win.columns[i]];
+        if (!a || !b) return;
         const start = win.columns.slice(0, i - 1).reduce((s, c) => s + c.w, 0);
         const pair = a.w + b.w;
         const lo = minWidth(a) / box.width;
         const hi = pair - minWidth(b) / box.width;
         if (lo > hi) return; // too narrow for both minimums: leave it
-        a.w = clamp((e.clientX - box.left) / box.width - start, lo, hi);
+        a.w = clamp((at.x - box.left) / box.width - start, lo, hi);
         b.w = pair - a.w;
       } else {
-        const panes = win.columns[i].panes;
-        const [a, b] = [panes[j - 1], panes[j]];
+        const panes = win.columns[i]?.panes;
+        const [a, b] = [panes?.[j - 1], panes?.[j]];
+        if (!a || !b) return;
         const start = panes.slice(0, j - 1).reduce((s, p) => s + p.h, 0);
         const pair = a.h + b.h;
         const lo = MIN_H / box.height;
         const hi = pair - MIN_H / box.height;
         if (lo > hi) return;
-        a.h = clamp((e.clientY - box.top) / box.height - start, lo, hi);
+        a.h = clamp((at.y - box.top) / box.height - start, lo, hi);
         b.h = pair - a.h;
       }
-      moved = true;
-      this.layout = lay;
+    };
+    this.preview = drag;
+    const settle = () => {
+      if (this.preview !== drag) return; // another drag has started
+      this.preview = null;
       this.place();
     };
-    const end = (e) => {
-      for (const [t, f] of on) grip.removeEventListener(t, f);
-      grip.classList.remove("on");
-      this.root.classList.remove("dragging");
-      if (e.type !== "pointerup" || !moved) return;
-      const widths = win.columns.map((c) => c.w);
-      const heights = win.columns.map((c) => c.panes.map((p) => p.h));
-      this.call("layout.resize", { n: this.n, widths, heights }).catch((err) => this.refuse(err.message || String(err)));
-    };
-    const on = [
-      ["pointermove", move],
-      ["pointerup", end],
-      ["pointercancel", end],
-      ["lostpointercapture", end],
-    ];
-    for (const [t, f] of on) grip.addEventListener(t, f);
+    this.follow(ev, grip, {
+      alive: () => grip.isConnected,
+      move: (e) => {
+        at = { x: e.clientX, y: e.clientY };
+        this.place();
+      },
+      end: (e) => {
+        grip.classList.remove("on");
+        if (e?.type !== "pointerup" || at === null) return settle();
+        const win = this.window();
+        const widths = win.columns.map((c) => c.w);
+        const heights = win.columns.map((c) => c.panes.map((p) => p.h));
+        this.call("layout.resize", { n: this.n, widths, heights })
+          .catch((err) => this.refuse(err.message || String(err)))
+          .finally(settle);
+      },
+    });
   }
 
   // No session, or another one: every pane goes and the transcript fills the
@@ -464,6 +502,8 @@ export class Canvas {
     this.layout = null;
     for (const k of ["left", "top", "width", "height", "right", "bottom"]) this.tr.style[k] = "";
     this.tr.classList.remove("lx", "ty");
+    this.preview = null;
+    this.dragged?.end();
     this.trBar.remove();
     this.target.remove();
     this.placeGrips(false);
