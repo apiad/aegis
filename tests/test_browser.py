@@ -7105,6 +7105,77 @@ def test_a_waiting_send_goes_to_its_own_session_after_a_tab_switch(
     assert page.errors == []
 
 
+def held_sends(pg):
+    """Route the page's socket through a gate that, while shut, holds every
+    session.send the page writes, as a stalled connection does (#350)."""
+    gate = {"shut": False, "held": []}
+
+    def route(ws):
+        far = ws.connect_to_server()
+
+        def from_page(msg):
+            if gate["shut"] and '"session.send"' in msg:
+                gate["held"].append(msg)
+            else:
+                far.send(msg)
+
+        ws.on_message(from_page)
+        gate["far"] = far
+
+    pg.route_web_socket(re.compile(r"/ws"), route)
+
+    def release():
+        gate["shut"] = False
+        for msg in gate["held"]:
+            gate["far"].send(msg)
+
+    gate["release"] = release
+    return gate
+
+
+def test_a_stalled_send_locks_the_box_answers_in_seconds_and_lands_once(server, page):
+    gate = held_sends(page)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    lid = spawn(page)
+    gate["shut"] = True
+    page.fill("#input", "only once")
+    page.click("#send")
+    # Sending: the box and the button are locked, and the button spins.
+    page.wait_for_selector("#composer.sending")
+    assert page.evaluate("document.getElementById('input').readOnly")
+    assert page.is_disabled("#send")
+    page.press("#input", "Enter")  # a second press while it is out does nothing
+    page.wait_for_timeout(300)
+    assert len(gate["held"]) == 1
+    # No answer within seconds: unlocked, the text still there, and why.
+    page.wait_for_selector("#composer:not(.sending)", timeout=5000)
+    assert page.input_value("#input") == "only once"
+    assert "No answer in 3 s" in page.text_content("#send-error")
+    # Sent again: the same message under the same nonce.
+    page.click("#send")
+    page.wait_for_timeout(300)
+    assert len(gate["held"]) == 2
+    nonces = {json.loads(m)["params"].get("nonce") for m in gate["held"]}
+    assert len(nonces) == 1 and None not in nonces
+    # The connection recovers and both copies arrive: one message, box cleared.
+    gate["release"]()
+    turns_done(page, 1)
+    page.wait_for_function("document.getElementById('input').value === ''")
+    page.wait_for_selector("#composer:not(.sending)")
+    assert page.text_content("#send-error") == ""
+    page.wait_for_timeout(500)
+    assert page.locator(".row.user").count() == 1
+    store = server.root / ".aegis" / "state" / "transcripts" / f"{lid}.jsonl"
+    sends = [
+        r
+        for r in map(json.loads, store.read_text().splitlines())
+        if r.get("kind") == "send" and r.get("text") == "only once"
+    ]
+    assert len(sends) == 1
+    assert page.errors == []
+
+
 def test_enter_twice_during_an_upload_sends_once(server, page, tmp_path):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
