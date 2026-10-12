@@ -86,11 +86,11 @@ service refuses it, or that fails five times in a row, is removed.
 
 ## The canvas on a phone
 
-A session's canvas, the transcript with the pages and files docked beside it,
-draws as tabs on a screen under 760 px wide. A strip under the header holds
-one tab for the transcript, first, then one for each docked pane, in reading
-order: column by column, each from top to bottom. One pane fills the screen at
-a time. The others keep running behind it, so a page you leave keeps its
+A session's canvas, its transcript and the panes of pages and files around
+it, draws as tabs on a screen under 760 px wide. A strip under the header starts
+with a tab for the transcript, then has one for each docked pane, in reading
+order: column by column, each from top to bottom. The open tab's pane fills
+the screen. The others keep running behind it, so a page you leave keeps its
 state and the agent's updates still reach it.
 
 The message box stays at the foot on every tab, so you can write to the agent
