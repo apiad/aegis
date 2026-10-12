@@ -3288,17 +3288,23 @@ def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     pg.add_init_script("""
       window.__notes = [];
       window.__hidden = sessionStorage.getItem('hidden') === '1';
-      window.Notification = class { constructor(t, o) { window.__notes.push([t, o]); }
+      // As on Chrome for Android: the constructor is refused, and a notification
+      // can only come from a service worker's registration.
+      window.Notification = class {
+        constructor() { throw new TypeError("Illegal constructor"); }
         static get permission() { return 'granted'; }
         static requestPermission() { return Promise.resolve('granted'); } };
+      ServiceWorkerRegistration.prototype.showNotification = function (t, o) {
+        window.__notes.push([t, o]); return Promise.resolve(); };
       Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
       const raf = window.requestAnimationFrame.bind(window);
       window.requestAnimationFrame = (cb) => (window.__hidden ? 0 : raf(cb));
     """)
     pg.goto(server.url)
     pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("navigator.serviceWorker.ready.then(() => true)")
     first = spawn(pg, "hello")
-    spawn(pg, "hello")
+    sid = spawn(pg, "hello")
     assert not pg.title().startswith("(")
     assert favicon_dot(pg) is None
     # While the page is visible, a session that needs you counts but sends no
@@ -3320,6 +3326,8 @@ def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     title, opts = pg.evaluate("window.__notes[0]")
     assert title.endswith(": needs you")
     assert opts["body"] == "Merge or rebase?"
+    assert opts["tag"] == f"{sid}:needs_you"
+    assert opts["data"] == {"key": sid}
     # Another session's turn, still hidden: the one that needs you has not
     # changed, so it does not notify again.
     pg.evaluate("id => (location.hash = '#s=' + id)", first)
@@ -3336,6 +3344,7 @@ def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     # does not notify: nothing changed while the page was there.
     pg.evaluate("sessionStorage.setItem('hidden', '1')")
     pg.reload()
+    pg.evaluate("navigator.serviceWorker.ready.then(() => true)")
     pg.wait_for_function(
         "() => document.title.startsWith('(1) ')", polling=100, timeout=8000
     )
@@ -3349,6 +3358,92 @@ def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     assert pg.title().startswith("(1) Fleet")
     assert errors == []
     ctx.close()
+
+
+ANDROID_NOTIFICATIONS = """
+  window.__notes = [];
+  window.__calls = 0;
+  window.__hidden = false;
+  window.Notification = class {
+    constructor() { throw new TypeError("Illegal constructor"); }
+    static get permission() { return 'granted'; }
+    static requestPermission() { return Promise.resolve('granted'); } };
+  // The first notification is refused, as a browser may; the rest are shown.
+  ServiceWorkerRegistration.prototype.showNotification = function (t, o) {
+    window.__calls++;
+    if (window.__calls === 1) return Promise.reject(new TypeError("refused"));
+    window.__notes.push([t, o]); return Promise.resolve(); };
+  Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
+"""
+
+
+def test_a_refused_notification_does_not_block_the_next_one(server, browser):
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.add_init_script(ANDROID_NOTIFICATIONS)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("navigator.serviceWorker.ready.then(() => true)")
+    first = spawn(pg, "hello")
+    second = spawn(pg, "hello")
+    pg.evaluate("window.__hidden = true")
+    report(pg, attention="needs_you", line="Refused", replies=[])
+    pg.wait_for_function("() => window.__calls === 1", timeout=8000)
+    pg.evaluate("id => (location.hash = '#s=' + id)", first)
+    pg.wait_for_selector(f"#tablist .tab.on[data-id='{first}']")
+    # A turn that fails puts the session in error (turn_end cannot say error).
+    pg.fill("#input", "/exit 4")
+    pg.press("#input", "Enter")
+    pg.wait_for_function("() => window.__notes.length === 1", timeout=8000)
+    title, opts = pg.evaluate("window.__notes[0]")
+    assert title.endswith(": error") and opts["tag"] == f"{first}:error"
+    # Another update does not try the refused notification again: its
+    # transition was seen.
+    pg.fill("#input", "hello")
+    pg.press("#input", "Enter")
+    turns_done(pg, 2)
+    assert pg.evaluate("window.__calls") == 2
+    assert second != first
+    assert errors == []
+
+
+def test_without_a_service_worker_a_desktop_still_notifies(server, browser):
+    # Plain http on a host other than localhost: no navigator.serviceWorker.
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.add_init_script("""
+      window.__notes = [];
+      window.__hidden = false;
+      Object.defineProperty(Navigator.prototype, 'serviceWorker', { get: () => undefined });
+      window.Notification = class { constructor(t, o) { window.__notes.push([t, o]); }
+        static get permission() { return 'granted'; }
+        static requestPermission() { return Promise.resolve('granted'); } };
+      Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
+    """)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg, "hello")
+    pg.evaluate("window.__hidden = true")
+    report(pg, attention="needs_you", line="No worker here", replies=[])
+    pg.wait_for_function("() => window.__notes.length === 1", timeout=8000)
+    assert pg.evaluate("window.__notes[0][1].body") == "No worker here"
+    assert errors == []
+
+
+def test_the_workers_open_message_opens_the_session(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    page.click("#tab-fleet")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.evaluate(
+        "key => navigator.serviceWorker.dispatchEvent("
+        "new MessageEvent('message', {data: {t: 'open', key}}))",
+        sid,
+    )
+    page.wait_for_selector("#a2[data-view=session]")
+    assert page.evaluate("location.hash.slice(3)") == sid
+    assert page.errors == []
 
 
 @pytest.mark.parametrize("width", [1000, 1100, 1366])
@@ -6074,17 +6169,22 @@ def test_an_agent_toast_goes_to_the_desktop_only_while_the_page_is_hidden(
     other.add_init_script("""
       window.__notes = [];
       window.__hidden = false;
+      // As on Chrome for Android: the constructor is refused, and a notification
+      // can only come from a service worker's registration.
       window.Notification = class {
-        constructor(t, o) { window.__notes.push([t, o]); this.onclick = null; }
+        constructor() { throw new TypeError("Illegal constructor"); }
         static get permission() { return 'granted'; }
         static requestPermission() { return Promise.resolve('granted'); } };
+      ServiceWorkerRegistration.prototype.showNotification = function (t, o) {
+        window.__notes.push([t, o]); return Promise.resolve(); };
       Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
     """)
     other.goto(server.url)
     other.wait_for_selector("#a2[data-view=fleet]")
+    other.evaluate("navigator.serviceWorker.ready.then(() => true)")
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
-    spawn(page, "hello")
+    sid = spawn(page, "hello")
     handle = page.get_attribute(".tab.on", "title").split(":")[0]
     page.fill("#input", '/mcp toast {"text": "Seen while visible"}')
     page.press("#input", "Enter")
@@ -6094,10 +6194,10 @@ def test_an_agent_toast_goes_to_the_desktop_only_while_the_page_is_hidden(
     page.fill("#input", '/mcp toast {"text": "Build failed", "kind": "error"}')
     page.press("#input", "Enter")
     other.wait_for_function("() => window.__notes.length === 1", timeout=8000)
-    assert other.evaluate("window.__notes[0]") == [
-        f"{handle}: error",
-        {"body": "Build failed", "tag": other.evaluate("window.__notes[0][1].tag")},
-    ]
+    title, opts = other.evaluate("window.__notes[0]")
+    assert title == f"{handle}: error"
+    assert opts["body"] == "Build failed"
+    assert opts["data"]["key"] == sid
     # aegis's own toasts answer something done on the page: never on the desktop.
     other.evaluate(
         "async () => (await import('/static/js/toast.js')).toast('Nobody needs you')"

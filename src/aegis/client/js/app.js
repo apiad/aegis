@@ -26,7 +26,7 @@ import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
-import { installBell, pingToast, redrawFavicon, setTitle, updatePing } from "./ping.js";
+import { installBell, listenForOpen, pingToast, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
 import "./pick.js";
 import { Dictation } from "./dictation.js";
@@ -469,6 +469,7 @@ const openSession = (id) => go(`#s=${id}`);
 // exists only in a secure context (https or localhost); elsewhere the page
 // works as before.
 navigator.serviceWorker?.register("/sw.js").catch((e) => console.warn("aegis: service worker", e));
+listenForOpen(openSession);
 setToastOpener(openSession);
 // Toasts from the server (App.toast): every browser shows each one once, and
 // an agent's goes to the desktop too while the page is hidden. The snapshot is
