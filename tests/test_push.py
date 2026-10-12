@@ -6,6 +6,7 @@ import json
 import os
 import re
 import stat
+import threading
 import time
 
 import httpx
@@ -427,5 +428,40 @@ async def test_a_long_line_is_cut_to_fit_three_kilobytes(world, service):
         "tag": "x",
     }
     fitted = push.fit(payload)
-    assert len(json.dumps(fitted).encode()) <= push.MAX_PAYLOAD
+    assert len(push.encode(fitted)) <= push.MAX_PAYLOAD
     assert fitted["body"].endswith("…") and fitted["title"] == "t"
+
+
+def fit_ends(payload: dict) -> dict:
+    """``push.fit(payload)`` in a daemon thread, failing rather than hanging
+    the run if it never returns (it runs on the event loop in the server)."""
+    out: list = []
+    t = threading.Thread(target=lambda: out.append(push.fit(payload)), daemon=True)
+    t.start()
+    t.join(5)
+    assert out, "fit() did not return"
+    return out[0]
+
+
+async def test_a_long_title_or_toast_is_cut_and_still_pushes(world, service):
+    fitted = fit_ends(
+        {"title": "ñ" * 4000, "body": "b", "key": "k", "kind": "done", "tag": "x"}
+    )
+    assert len(push.encode(fitted)) <= push.MAX_PAYLOAD
+    assert fitted["title"].endswith("…") and fitted["title"].startswith("ñ")
+    text = "😀" * 4000
+    tag = f"toast:abc:{text}"
+    fitted = fit_ends(
+        {"title": "a", "body": text, "key": "abc", "kind": "toast", "tag": tag}
+    )
+    assert len(push.encode(fitted)) <= push.MAX_PAYLOAD
+    assert fitted["tag"].startswith("toast:abc:😀") and fitted["tag"].endswith("…")
+    assert fitted["body"].startswith("😀")
+    # Through the sender, the event loop stays free and the push goes out.
+    # (The toast tool takes 200 characters; App.toast takes any.)
+    await subscribe(world, service, ["toast"])
+    a = await world.spawn()
+    world.app.toast("x" * 4000, source=a)
+    await until(lambda: service.got, what="the push")
+    [payload] = service.payloads()
+    assert payload["body"].startswith("x") and payload["tag"].endswith("…")

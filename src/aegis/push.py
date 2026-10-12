@@ -54,6 +54,8 @@ TTL_S = 86400  # how long a push service keeps a push for a device that is off
 TIMEOUT_S = 10.0  # per request, connection to answer
 BACKOFF_S = (1.0, 4.0)  # before the second and the third try
 MAX_PAYLOAD = 3072  # bytes of JSON; push services take about 4 KB encrypted
+SHORT_MAX = 256  # bytes of UTF-8 in a title or a tag
+ELLIPSIS = "…".encode()
 JWT_FOR_S = 3600  # a VAPID token is reused this long (it is valid 12 hours)
 LABELS = {
     "needs_you": "needs you",
@@ -178,13 +180,34 @@ class Push:
         return self._key
 
 
+def encode(payload: dict) -> bytes:
+    """The JSON a device decrypts: UTF-8 as it is, so its size is the sum of
+    the strings' UTF-8 sizes and the few bytes around them."""
+    return json.dumps(payload, ensure_ascii=False).encode()
+
+
+def cut(s: str, n: int) -> str:
+    """``s`` in at most ``n`` bytes of UTF-8, cut on a character and ended
+    with "…" when cut; empty when "…" alone does not fit."""
+    b = s.encode()
+    if len(b) <= n:
+        return s
+    if n < len(ELLIPSIS):
+        return ""
+    return b[: n - len(ELLIPSIS)].decode(errors="ignore") + "…"
+
+
 def fit(payload: dict) -> dict:
-    """``payload`` with its body cut until its JSON is at most MAX_PAYLOAD bytes."""
+    """``payload`` with its title and tag cut to SHORT_MAX bytes, then its
+    body, title and tag, in that order, cut until its JSON is at most
+    MAX_PAYLOAD bytes. Each pass of the loops makes one string strictly
+    shorter (``cut`` to fewer bytes than it has), so they end."""
     out = dict(payload)
-    while len(json.dumps(out).encode()) > MAX_PAYLOAD and out["body"]:
-        excess = len(json.dumps(out).encode()) - MAX_PAYLOAD
-        body = out["body"].removesuffix("…")
-        out["body"] = body[: max(0, len(body) - max(excess // 2, 1))] + "…"
+    for k in ("title", "tag"):
+        out[k] = cut(out[k], SHORT_MAX)
+    for k in ("body", "title", "tag"):
+        while (excess := len(encode(out)) - MAX_PAYLOAD) > 0 and out[k]:
+            out[k] = cut(out[k], len(out[k].encode()) - excess)
     return out
 
 
@@ -318,7 +341,7 @@ class Sender:
         payload = fit(payload)
         keys = row["keys"]
         body = webpush.encrypt(
-            json.dumps(payload).encode(),
+            encode(payload),
             webpush.b64d(keys["p256dh"]),
             webpush.b64d(keys["auth"]),
         )
