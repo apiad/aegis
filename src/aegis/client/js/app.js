@@ -37,7 +37,7 @@ import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appwor
 import { closeInstallDialog, startInstall } from "./install.js";
 import { clearDevice, loadFleet, loadTranscript, saveFleet, saveTranscript } from "./devicestore.js";
 import { markNeedsNet, offline } from "./net.js";
-import { discard, draftFor, loadDrafts, onDrafts, queue } from "./outbox.js";
+import { discard, draftFor, flushNow, loadDrafts, onDrafts, queue, sendAnyway, setSender } from "./outbox.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -425,6 +425,8 @@ function sessionHandlers(server) {
       if (server) remote.get(server).loaded = true;
       else booted = homeLive = true;
       onSessions();
+      // The server is reachable again: what was written meanwhile goes out.
+      flushNow((key) => forKey(key).server === server);
     },
     (ops) => {
       for (const op of ops) {
@@ -2110,12 +2112,19 @@ function drawQueued() {
 }
 onDrafts(drawQueued);
 loadDrafts();
+setSender((key, params) => callFor(key, "session.send", params));
 $("queued").addEventListener("click", (ev) => {
   const act = ev.target.closest("[data-act]")?.dataset.act;
   const key = shown;
   const d = key && draftFor(key);
   if (!act || !d) return;
   if (act === "discard") discard(key);
+  if (act === "send") sendAnyway(key).catch((e) => toast(e.message, { kind: "error" }));
+  if (act === "copy")
+    navigator.clipboard.writeText(d.text).then(
+      () => toast("Copied"),
+      () => toast("Could not copy", { kind: "error" }),
+    );
   if (act === "edit") {
     input.value = input.value ? `${d.text}\n\n${input.value}` : d.text;
     localStorage.setItem(`aegis.draft.${key}`, input.value);

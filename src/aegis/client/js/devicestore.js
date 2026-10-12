@@ -88,6 +88,14 @@ export async function clearDevice() {
 // The outbox store, for outbox.js (slice 4): one draft per session key.
 export const outboxPut = (key, draft) => run("outbox", "readwrite", (os) => os.put(draft, key));
 export const outboxDelete = (key) => run("outbox", "readwrite", (os) => os.delete(key));
+// The draft for `key`, deleted in the same transaction: of two tabs flushing
+// at once, one gets it and the other gets null.
+export const outboxTake = (key) =>
+  run("outbox", "readwrite", (os) => {
+    const req = os.get(key);
+    req.addEventListener("success", () => req.result !== undefined && os.delete(key));
+    return req;
+  });
 export async function outboxAll() {
   const vals = await run("outbox", "readonly", (os) => os.getAll());
   const keys = await run("outbox", "readonly", (os) => os.getAllKeys());

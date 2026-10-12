@@ -3954,6 +3954,64 @@ def test_a_message_written_offline_is_queued_and_goes_out_on_reconnect(server, p
     assert page.errors == []
 
 
+def test_a_draft_the_session_moved_past_asks_before_it_is_sent(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    turns_done(page, 1)
+    # A draft written before anything a person reads, as from a page that held
+    # no transcript (rev -1): the session has content now, so it moved on.
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => o.queue(k, 'ship it', -1))", sid
+    )
+    page.evaluate("import('/static/js/outbox.js').then(o => o.flushNow())")
+    page.wait_for_selector("#queued.stale", timeout=10000)
+    assert "moved on" in page.text_content("#queued")
+    page.wait_for_selector(".toast .msg >> text=need")
+    page.click("#queued [data-act=send]")
+    page.wait_for_selector("#queued", state="hidden")
+    turns_done(page, 2)
+    assert "ship it" in page.text_content("#entries")
+    assert page.errors == []
+
+
+def test_two_tabs_flushing_at_once_send_a_draft_once(server, browser):
+    # Two tabs of one browser share the device store, and both flush when the
+    # connection is back: the draft must reach the agent once.
+    errors: list = []
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    page, other = ctx.new_page(), ctx.new_page()
+    for pg in (page, other):
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    turns_done(page, 1)
+    other.goto(server.url)
+    other.wait_for_selector("#a2[data-view=fleet]")
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => o.queue(k, 'ship it', 1e9))",
+        sid,
+    )
+    # Both at the same wall-clock instant, as two reconnects would.
+    at = page.evaluate("Date.now() + 500")
+    for pg in (page, other):
+        pg.evaluate(
+            "at => import('/static/js/outbox.js').then(o =>"
+            " setTimeout(() => o.flushNow(), at - Date.now()))",
+            at,
+        )
+    turns_done(page, 2)
+    page.wait_for_timeout(2000)
+    said = page.evaluate(
+        "[...document.querySelectorAll('#entries .row.user')]"
+        ".filter(r => r.textContent.includes('ship it')).length"
+    )
+    assert said == 1
+    assert errors == []
+    ctx.close()
+
+
 def test_a_refused_token_empties_the_device(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")

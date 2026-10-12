@@ -13,10 +13,13 @@
 // A draft is {text, rev, written_at, state}; state is "queued" (goes out on
 // reconnect), "stale" (the session moved on) or "gone" (the session is closed).
 
-import { outboxAll, outboxDelete, outboxPut } from "./devicestore.js";
+import { outboxAll, outboxDelete, outboxPut, outboxTake } from "./devicestore.js";
+import { toast } from "./toast.js";
 
 const drafts = new Map(); // key -> draft, this page's copy of the store
 const listeners = [];
+let sender = null; // (key, params) -> the session.send call, set by app.js
+let round = Promise.resolve();
 
 const changed = () => listeners.forEach((fn) => fn());
 
@@ -48,4 +51,66 @@ export async function discard(key) {
   drafts.delete(key);
   changed();
   await outboxDelete(key);
+}
+
+export const setSender = (fn) => (sender = fn);
+
+// Send every queued draft whose key `only` accepts. Each is taken out of the
+// store before it is sent, so a second tab flushing at the same moment finds
+// nothing, and goes back on any failure. Only the send's reply deletes it: a
+// send whose reply never came stays, and the next flush sends it with the same
+// revision, which the first send's own entry has moved past, so it asks
+// instead of arriving twice.
+export async function flush(only = () => true) {
+  const out = { sent: 0, stale: 0, gone: 0 };
+  if (!sender) return out;
+  for (const [key, d] of await outboxAll()) {
+    if (d.state !== "queued" || !only(key)) continue;
+    const mine = await outboxTake(key);
+    if (!mine) continue; // another tab took it
+    if (mine.state !== "queued") {
+      await outboxPut(key, mine);
+      continue;
+    }
+    try {
+      await sender(key, { text: mine.text, expect_rev: mine.rev });
+      drafts.delete(key);
+      changed();
+      out.sent++;
+    } catch (e) {
+      const state = e.code === "stale" ? "stale" : e.code === "archived" || e.code === "no_session" ? "gone" : null;
+      // This page's copy is the newest: written to while the send was out.
+      const back = { ...(drafts.get(key) || mine), ...(state && { state }) };
+      await outboxPut(key, back);
+      drafts.set(key, back);
+      changed();
+      if (!state) break; // the connection went again
+      out[state]++;
+    }
+  }
+  await loadDrafts();
+  return out;
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+// One flush and one toast for it. Rounds run one after another.
+export function flushNow(only) {
+  const next = round.then(() => flush(only));
+  round = next.catch(() => {});
+  return next.then(({ sent, stale, gone }) => {
+    const ask = stale + gone;
+    const look = `need${ask === 1 ? "s" : ""} a look`;
+    if (sent) toast(`${plural(sent, "queued message")} sent${ask ? ` · ${ask} ${look}` : ""}`);
+    else if (ask) toast(`${plural(ask, "queued message")} ${look}`);
+    return { sent, stale, gone };
+  });
+}
+
+// A stale draft sent as written, asked for: no revision to compare.
+export async function sendAnyway(key) {
+  const d = drafts.get(key);
+  if (!d || !sender) return;
+  await sender(key, { text: d.text });
+  await discard(key);
 }
