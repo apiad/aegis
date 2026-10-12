@@ -111,6 +111,7 @@ export class Canvas {
     this.target = el("div", "droptarget");
     this.chips = el("div", "wchips"); // window 1's chips, one per other window
     this.chipSig = "";
+    this.guesses = new Set(); // windows a Pop out opened a tab for, not yet in a card
     root.addEventListener("pointerdown", (ev) => {
       if (ev.target.closest(".cgrip")) this.resizeFrom(ev);
       else if (ev.target.closest(".pbar")) this.grab(ev);
@@ -123,7 +124,7 @@ export class Canvas {
     this.tabs = new Map(); // pane id -> its tab
     this.strip = el("div", "ptabs");
     this.strip.setAttribute("role", "tablist");
-    this.menu = null; // a long press's menu: {id, node}
+    this.menu = null; // an open menu: {id, node, anchor, away}
     this.pressed = false; // a long press just opened the menu: its click opens no tab
     this.strip.addEventListener("click", (ev) => {
       const b = ev.target.closest("button[data-pane]");
@@ -330,8 +331,9 @@ export class Canvas {
   // its pointer across a redraw.
   syncStrip() {
     if (!this.tabbed) {
+      // A tab's long-press menu goes with the strip; a pane's Move menu stays.
+      if (this.menu && this.strip.contains(this.menu.anchor)) this.closeMenu();
       this.strip.remove();
-      this.closeMenu();
       return;
     }
     const order = this.n === 1 ? [TRANSCRIPT, ...this.ids()] : this.ids();
@@ -372,7 +374,8 @@ export class Canvas {
 
   // A pane changed: a dot on its tab, unless it is the one open.
   mark(id) {
-    if (!this.tabbed || id === this.open || !this.panes.has(id)) return;
+    if (!this.tabbed || id === this.open) return;
+    if (id === TRANSCRIPT ? this.n !== 1 : !this.panes.has(id)) return;
     this.dots.add(id);
     this.syncStrip();
   }
@@ -419,16 +422,18 @@ export class Canvas {
       if (!node.contains(e.target) && !anchor.contains(e.target)) this.closeMenu();
     };
     document.addEventListener("pointerdown", away, true);
-    this.menu = { id, node, away };
+    this.menu = { id, node, anchor, away };
     this.root.append(node);
     node.firstChild.focus({ preventScroll: true });
   }
 
+  // True when there was one to close (Esc asks before it interrupts).
   closeMenu() {
-    if (!this.menu) return;
+    if (!this.menu) return false;
     document.removeEventListener("pointerdown", this.menu.away, true);
     this.menu.node.remove();
     this.menu = null;
+    return true;
   }
 
   // One grip on each boundary between columns, and one between each two
@@ -508,7 +513,7 @@ export class Canvas {
     if (id.startsWith("art-")) {
       const entry = e || this.entryOf(id);
       if (!entry) return this.loading(node, bar, acts, "Loading the page…");
-      drawArtifact(entry, { bar, body, acts, popout: popButton(id) });
+      drawArtifact(entry, { bar, body, acts, popout: entry.status === "live" ? popButton(id) : null });
       node.dataset.agentRev = String(entry.detail?.state_rev);
       // An ended page leaves the layout with its submit; until that card
       // lands it shows read-only, and its card keeps its own line.
@@ -671,11 +676,14 @@ export class Canvas {
   // Move a pane to window n, or to a new one, and focus or open that
   // window's tab (window 1 is the session's own tab, which has no name to
   // find it by). A new window takes one more than the highest in use
-  // (layout.place); if the agent took that number meanwhile, the tab opened
-  // for it is pointed at the window the pane landed in.
+  // (layout.place), counting the windows a Pop out still in flight guessed,
+  // so two quick ones open two tabs. If the agent took that number
+  // meanwhile, a tab this call opened is pointed at the window the pane
+  // landed in. A tab the person already had (window.open by name finds it)
+  // is never renamed or closed.
   toWindow(id, n) {
     const ws = this.windows();
-    if (n === "new" && ws.length >= MAX_WINDOWS) {
+    if (n === "new" && ws.length + this.guesses.size >= MAX_WINDOWS) {
       this.refuse(`A canvas has at most ${MAX_WINDOWS} windows. Bring one back first.`);
       return Promise.resolve();
     }
@@ -702,19 +710,36 @@ export class Canvas {
   }
 
   // Bring back: window n's panes into window 1, each of its columns a new
-  // column at window 1's right edge, stacked as they were. One call per
-  // pane, in order; a refusal (window 1 is full) stops there and says why.
+  // column at window 1's right edge, stacked as they were. Once window 1 has
+  // its four columns, the rest stack under the last pane, as Dock does. The
+  // moves are planned before the first is sent, so a window that cannot fit
+  // is refused whole, never left split; one call per pane, in order.
   async bringBack(n) {
-    const w = this.windows().find((x) => x.n === n);
-    if (!w) return;
-    try {
-      for (const c of w.columns) {
-        let above = null;
-        for (const p of c.panes) {
-          await this.call("layout.dock", { pane: p.id, where: above ? `below:${above}` : "right" });
-          above = p.id;
+    const ws = this.windows();
+    const w = ws.find((x) => x.n === n);
+    const w1 = ws.find((x) => x.n === 1);
+    if (!w || !w1) return;
+    const moves = [];
+    let cols = w1.columns.length;
+    let last = w1.columns[cols - 1].panes.map((p) => p.id); // the right-most column
+    for (const c of w.columns) {
+      for (const [j, p] of c.panes.entries()) {
+        if (j === 0 && cols < MAX_COLUMNS) {
+          cols += 1;
+          last = [p.id];
+          moves.push([p.id, "right"]);
+          continue;
         }
+        if (last.length >= MAX_PANES) {
+          this.refuse(`Window 1 has no room for window ${n}'s panes. Undock one first.`);
+          return;
+        }
+        moves.push([p.id, `below:${last[last.length - 1]}`]);
+        last.push(p.id);
       }
+    }
+    try {
+      for (const [pane, where] of moves) await this.call("layout.dock", { pane, where });
     } catch (err) {
       this.refuse(err.message || String(err));
     }
