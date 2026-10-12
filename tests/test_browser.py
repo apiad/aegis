@@ -5482,6 +5482,8 @@ def test_settings_keeps_the_theme_for_this_browser(server, page):
     assert first.locator("h3").inner_text() == "This browser"
     assert "this browser only" in first.inner_text()
     assert picked(page, "#set-theme") == "ink"
+    # A pick from a fixed list raises no phone keyboard (#340).
+    assert page.get_attribute("#set-theme input", "inputmode") == "none"
     pick(page, "#set-theme", "electric")
     page.wait_for_function("document.documentElement.dataset.theme === 'electric'")
     page.reload()
