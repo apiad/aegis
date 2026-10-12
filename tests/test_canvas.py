@@ -185,7 +185,10 @@ async def test_a_closed_page_left_in_a_standing_layout_never_blocks_a_dock(
             "windows": [
                 {
                     "n": 1,
-                    "columns": [{"panes": [{"id": "transcript"}]}, {"panes": [{"id": gone}]}],
+                    "columns": [
+                        {"panes": [{"id": "transcript"}]},
+                        {"panes": [{"id": gone}]},
+                    ],
                 }
             ]
         },
@@ -219,7 +222,10 @@ async def test_the_agent_docks_as_it_sends(world, tmp_path):
         )
     )
     keys = [
-        f["key"] for e in a.entries() if e["kind"] == "file" for f in e["detail"]["files"]
+        f["key"]
+        for e in a.entries()
+        if e["kind"] == "file"
+        for f in e["detail"]["files"]
     ]
     cols = a.layout["windows"][0]["columns"]
     assert [[p["id"] for p in c["panes"]] for c in cols] == [
