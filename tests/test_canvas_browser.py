@@ -309,3 +309,67 @@ def test_a_docked_page_fills_its_pane_and_a_refused_submit_says_why(server, page
     box, pane = note.bounding_box(), page.locator(f'#canvas .pane[data-pane="{aid}"]').bounding_box()
     assert box["y"] + box["height"] <= pane["y"] + pane["height"] + 1, (box, pane)
     assert page.errors == []
+
+
+def test_a_drag_whose_pane_is_undocked_elsewhere_still_ends(server, page, browser):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    page.click(".row.artifact .fbar .dock")
+    pane = page.locator(f'#canvas .pane[data-pane="{aid}"]')
+    pane.wait_for()
+    other = browser.new_page()
+    other.goto(f"{server.url}#s={sid}")
+    other.locator(f'#canvas .pane[data-pane="{aid}"]').wait_for()
+    bar = pane.locator(".pbar").bounding_box()
+    page.mouse.move(bar["x"] + 30, bar["y"] + 8)
+    page.mouse.down()
+    page.mouse.move(bar["x"] + 60, bar["y"] + 200, steps=5)
+    assert page.locator("#canvas.dragging").count() == 1
+    other.click(f'#canvas .pane[data-pane="{aid}"] .undock')
+    pane.wait_for(state="detached")
+    page.mouse.move(bar["x"] - 300, bar["y"] + 200, steps=5)
+    page.mouse.up()
+    assert page.locator("#canvas.dragging").count() == 0
+    # Frames take clicks again: the page, back on its card, answers.
+    page.frame_locator(f'.row.artifact iframe[data-artifact="{aid}"]').locator("#b").click()
+    page.wait_for_selector(".row.artifact .acard[data-status=submitted]")
+    assert page.errors == []
+
+
+def test_a_card_that_lands_while_a_grip_moves_is_kept(server, page, browser):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page)
+    one, _ = _artifact(page, server, PICK, 0)
+    two, _ = _artifact(page, server, PICK, 2)
+    page.click(f'.row[data-id="{one}"] .fbar .dock')
+    page.locator(f'#canvas .pane[data-pane="{one}"]').wait_for()
+    other = browser.new_page()
+    other.goto(f"{server.url}#s={sid}")
+    other.locator(f'#canvas .pane[data-pane="{one}"]').wait_for()
+    grip = page.locator("#canvas .cgrip.x").bounding_box()
+    x, y = grip["x"] + grip["width"] / 2, grip["y"] + 300
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x - 40, y, steps=4)
+    # Another browser docks a second page while the pointer is down here.
+    other.click(f'.row[data-id="{two}"] .fbar .dock')
+    page.locator(f'#canvas .pane[data-pane="{two}"]').wait_for()
+    page.mouse.move(x - 80, y, steps=4)
+    assert page.locator(f'#canvas .pane[data-pane="{two}"]').count() == 1, (
+        "the drag must not draw over the card that landed"
+    )
+    page.mouse.up()
+    page.wait_for_function(
+        "x => document.querySelector('#tr-pane').getBoundingClientRect().right < x - 60",
+        arg=x,
+    )
+    other.wait_for_function(
+        "x => document.querySelector('#tr-pane').getBoundingClientRect().right < x - 60",
+        arg=x,
+    )
+    assert page.locator(f'#canvas .pane[data-pane="{two}"]').count() == 1
+    assert page.locator(".toast.error").count() == 0
+    assert page.errors == []
