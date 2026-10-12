@@ -3729,6 +3729,29 @@ def test_a_device_with_push_leaves_its_sources_to_it(server, browser):
     other_ctx.close()
 
 
+def test_a_linked_servers_session_still_notifies_on_a_device_with_push(linked, browser):
+    # Push carries this server's sessions only; a far session's question
+    # reaches this device through the page's own notification.
+    errors: list = []
+    ctx, pg = push_page(browser, linked.alpha, errors)
+    pg.evaluate("import('/static/js/pushpanel.js').then(p => p.subscribePush())")
+    assert poll(pg, MINE, lambda v: len(v) == 1)
+    far = new_page(browser, errors)
+    far.goto(linked.beta.url)
+    far.wait_for_selector("#a2[data-view=fleet]")
+    lid = spawn(far, "hello")
+    pg.wait_for_selector(
+        f"#remotes .remote[data-server=beta] .card[data-id='beta/{lid}']"
+    )
+    pg.evaluate("window.__hidden = true")
+    report(far, attention="needs_you", line="Merge or rebase?", replies=[])
+    pg.wait_for_function("() => window.__notes.length === 1", timeout=8000)
+    assert pg.evaluate("window.__notes[0][1].body") == "Merge or rebase?"
+    assert errors == []
+    far.close()
+    ctx.close()
+
+
 def test_a_rotated_subscription_is_sent_again_under_the_same_id(server, browser):
     errors: list = []
     ctx, pg = push_page(browser, server, errors)

@@ -47,7 +47,9 @@ export function updatePing(metas, { onOpen }) {
   for (const m of metas) {
     if (!URGENT.has(m.attention) || before.get(m.key) === m.attention) continue;
     const title = `${m.title || m.handle}: ${m.attention === "error" ? "error" : "needs you"}`;
-    notify(title, m.attention_line || "", `${m.key}:${m.attention}`, m.key, onOpen, m.attention).catch(refused);
+    // Push carries this server's sessions only: a linked server's always notify here.
+    const source = m.server ? null : m.attention;
+    notify(title, m.attention_line || "", `${m.key}:${m.attention}`, m.key, onOpen, source).catch(refused);
   }
 }
 
@@ -97,7 +99,8 @@ function withdraw(tag) {
 // Without an active worker (plain http on another host, or the first load
 // before the worker activates) the constructor still works on a desktop.
 // A source this device gets pushes for (pushpanel.js) is left to the push,
-// so one event never notifies twice.
+// so one event never notifies twice; ``source`` is null for an event push
+// does not carry.
 async function notify(title, body, tag, key, onOpen, source) {
   if (!document.hidden || !("Notification" in window) || Notification.permission !== "granted") return;
   if (pushCovers(source)) return;
