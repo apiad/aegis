@@ -310,7 +310,13 @@ const journal = new Journal(conn, $("journal"), {
 });
 // The Help tab (help.js), one per window like Settings. Its code blocks copy
 // as the transcript's do.
-const helpTab = new Help(conn, $("help"), { go, onKeys: () => help(true) });
+// Start this tutorial: what /tutorial <page> does, on default_agent. A failure
+// shows in the foot line, since the Help tab belongs to no session.
+const helpTab = new Help(conn, $("help"), {
+  go,
+  onKeys: () => help(true),
+  onStart: (id) => startGuide({ page: id }).catch((e) => note(e.message)),
+});
 installCopy($("help"), copyDeps);
 let sideJournalTimer = null;
 const sideJournalChanged = () => {

@@ -56,8 +56,8 @@ export function pageRef(href, ids, here) {
 
 export class Help {
   // go(hash): navigate as app.js does. onKeys(): open the ? list.
-  // onStart(page): start that tutorial. Slice 3 passes it (help.guide); until
-  // then a tutorial page carries the button hidden.
+  // onStart(page): start that tutorial; app.js passes help.guide. Without it
+  // a tutorial page carries the button hidden.
   constructor(conn, box, { go, onKeys, onStart = null }) {
     Object.assign(this, { conn, box, go, onKeys, onStart });
     this.pages = null; // help.pages's answer, once it arrives

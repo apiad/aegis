@@ -64,9 +64,9 @@ def test_the_question_mark_opens_the_pages_grouped_beside_the_first_tutorial(
     assert (
         "on" in page.get_attribute(f'.helpv .hrow[data-ref="{first}"]', "class").split()
     )
-    # Slice 3 wires /tutorial; until then a tutorial page carries the button hidden.
+    # A tutorial page offers its guide (help.guide).
     assert page.locator(".helpv .hstart").count() == 1
-    assert not page.is_visible(".helpv .hstart")
+    assert page.is_visible(".helpv .hstart")
     assert page.errors == []
 
 

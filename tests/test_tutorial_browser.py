@@ -115,3 +115,23 @@ def test_the_hint_hides_while_the_composer_points_at_a_linked_server(
     pick(page, "#sp-server", "alpha")
     page.wait_for_function("!document.querySelector('#hint-tutorial').hidden")
     assert page.errors == []
+
+
+def test_start_this_tutorial_in_the_help_tab_starts_the_guide(
+    server,  # noqa: F811
+    page,  # noqa: F811
+):
+    titled = "t => document.querySelector('.helpv .htitle')?.textContent === t"
+    page.goto(server.url)
+    page.click("#help-btn")
+    page.click('.helpv .hrow[data-ref="monitors"]')
+    page.wait_for_function(titled, arg=TITLE["monitors"])
+    assert page.locator("button", has_text="Start this tutorial").is_hidden()
+    page.click('.helpv .hrow[data-ref="getting-started"]')
+    page.wait_for_function(titled, arg=TITLE["getting-started"])
+    page.click("button:has-text('Start this tutorial')")
+    page.wait_for_selector("#a2[data-view=session]")
+    log_id = page.evaluate("location.hash.slice(3)")
+    page.wait_for_function(ENTRIES_NAME, arg="getting-started", timeout=8000)
+    assert meta(server, log_id)["agent"] == "opus"  # default_agent
+    assert page.errors == []
