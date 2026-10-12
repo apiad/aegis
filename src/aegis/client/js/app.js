@@ -51,7 +51,14 @@ const nowS = () => Date.now() / 1000;
 const THEMES = [
   { value: "ink", label: "Ink" },
   { value: "logbook", label: "Logbook" },
-  { value: "syalia", label: "Syalia" },
+  { value: "electric", label: "Electric" },
+  { value: "phosphor", label: "Phosphor" },
+  { value: "blueprint", label: "Blueprint" },
+  { value: "amphora", label: "Amphora" },
+  { value: "riso", label: "Riso" },
+  { value: "solari", label: "Solari" },
+  { value: "aizome", label: "Aizome" },
+  { value: "poster", label: "Poster" },
 ];
 function setTheme(name) {
   document.documentElement.dataset.theme = name;

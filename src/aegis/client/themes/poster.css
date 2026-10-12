@@ -1,0 +1,28 @@
+/* Poster: brutalist print; black 2 px borders, hard offset shadows, wide heavy headings, your turns on yellow. */
+[data-theme=poster] #a2{
+  --bg:#f2f2f0;--chrome:#ffffff;--side:#ffffff;--surface:#ffffff;--raised:#ffe94d;--rule:#1a1a1a;
+  --ink:#141414;--strong:#000;--muted:#444;--faint:#777;
+  --accent:#2d3dff;--accent-soft:rgba(45,61,255,.12);--on-accent:#fff;
+  --ok:#00873c;--err:#e3001b;--err-bg:#ffe3e3;--warn:#b86200;--comms:#7a2dff;
+  --add-bg:#d7f5df;--del-bg:#ffdcdc;
+  --h-kw:#2d3dff;--h-str:#00873c;--h-num:#b86200;--h-com:#777777;--h-fn:#000000;--h-type:#7a2dff;--h-var:#141414;--h-meta:#444444;
+  --font-ui:'Archivo',sans-serif;--font-prose:'Archivo',sans-serif;--font-mono:'JBM',monospace;
+  --font-chrome:'Archivo',sans-serif;--font-head:'Archivo',sans-serif;
+  --prose-size:15.5px;--r:0;--r-lg:0;--time:none;--thread:none;--row-cols:22px 1fr;--fill:var(--accent);
+}
+[data-theme=poster] #a2 .tabs{border-bottom:3px solid #000}
+[data-theme=poster] #a2 .tab{font-weight:500}
+[data-theme=poster] #a2 .tab.on{background:#000;color:#fff;box-shadow:none}
+[data-theme=poster] #a2 .row.user .body{border:2px solid #000;box-shadow:4px 4px 0 #000;font-weight:500;color:#000}
+[data-theme=poster] #a2 .composer .box{border:2px solid #000;box-shadow:5px 5px 0 #000}
+[data-theme=poster] #a2 .composer .box:focus-within{box-shadow:5px 5px 0 var(--accent);border-color:#000}
+[data-theme=poster] #a2 .send,[data-theme=poster] #a2 .act.primary{border:2px solid #000;box-shadow:2px 2px 0 #000}
+[data-theme=poster] #a2 .md h1,[data-theme=poster] #a2 .md h2,[data-theme=poster] #a2 .md h3{font-stretch:125%;font-weight:800;font-size:1.3em;letter-spacing:-.01em}
+[data-theme=poster] #a2 .side{border-left:3px solid #000;gap:0}
+[data-theme=poster] #a2 .side>.sec{border-bottom:2px solid #000;padding:10px 0 14px}
+[data-theme=poster] #a2 .side h4{color:#000;font-weight:700;font-stretch:115%}
+[data-theme=poster] #a2 .side .title{font-stretch:125%;font-weight:800;font-size:19px;line-height:1.1}
+[data-theme=poster] #a2 .tn{font-weight:700}
+[data-theme=poster] #a2 .md pre,[data-theme=poster] #a2 .diff{border:2px solid #000}
+[data-theme=poster] #a2 .chip,[data-theme=poster] #a2 .act{border:2px solid #000;color:#000}
+[data-theme=poster] #a2 .row.user{padding:0 5px 5px 0}

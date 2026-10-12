@@ -10,7 +10,7 @@
 
 const FLEET = new Set(["fleet", "quota", "links"]);
 const OPEN_CARD = { subs: "usage-go", panel: "plan" }; // the card a step opens by itself
-const THEMES = ["ink", "logbook", "syalia"];
+const THEMES = ["ink", "logbook", "electric", "phosphor", "blueprint", "amphora", "riso", "solari", "aizome", "poster"];
 const LAYOUTS = {
   sidebar: ["Sidebar sections", "Sidebar sections it is."],
   tabs: ["Tabs", "Tabs it is, one per section."],

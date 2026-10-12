@@ -161,7 +161,7 @@ transcript, so the workplace grows with what its agents build.
   including tool output and thinking the page has not loaded, and opens the row
   each match is in. Messages, code blocks and tool output carry a copy button
   that copies the raw text, and `c` copies the selected row.
-- **Three themes.** Ink, Logbook and Syalia.
+- **Ten themes.** Ink, Logbook, Electric, Phosphor, Blueprint, Amphora, Riso, Solari, Aizome and Poster.
 
 ## Configure
 
