@@ -98,18 +98,16 @@ def whats_new_guide(
     is left, the installed release alone: a person who types /whats-new after
     touring this version wants it again, not a guide with nothing to say. An
     install with no notes for its version, a missing file or a build ahead of
-    its changelog, is refused before anything spawns."""
-    notes = ""
-    if text and installed:
-        notes = sections_between(text, toured, installed) or sections_between(
-            text, None, installed
-        )
-    if not notes:
+    its changelog, is refused before anything spawns, even when older
+    releases have notes the person has not toured."""
+    own = sections_between(text, None, installed) if text and installed else ""
+    if not own:
         raise OpError(
             "no_release_notes",
             f"this install has no release notes for {installed or 'its version'}, "
             "so there is nothing to tour",
         )
+    notes = sections_between(text or "", toured, installed or "") or own
     return f"What's new in {installed}", whats_new_prompt(notes)
 
 
@@ -183,12 +181,14 @@ def register_help_ops(app: App) -> None:
     async def help_state(_, caller):
         """What the new tab offers this person: the tutorial hint while they
         have started no tutorial, and the release to tour while it is newer
-        than their last tour."""
+        than their last tour and has notes: a hint whose guide is refused
+        would fail on every click."""
         _, rec = record(caller)
         v = installed()
+        notes = sections_between(changelog_text() or "", None, v)
         return {
             "tutorial": rec["tutorial"],
-            "whats_new": v if newer(v, rec["toured"]) else None,
+            "whats_new": v if notes and newer(v, rec["toured"]) else None,
         }
 
     @r.op("help.dismiss", DismissParams)

@@ -133,3 +133,23 @@ async def test_typed_again_after_a_tour_it_repeats_the_installed_release(start):
     lid = await spawn(app)
     md = await first_user_md(app, (await send(app, lid, "/whats-new"))["log_id"])
     assert toured_in(md) == [RELEASES[0]]
+
+
+async def test_notes_that_lack_the_installed_release_offer_and_tour_nothing(
+    start, tmp_path, monkeypatch
+):
+    """Older releases the person has not toured are no tour of this one: the
+    guide would be titled for a release it says nothing about."""
+    app = await start({"tutorial": True, "toured": RELEASES[2]})
+    older = changelog_read.sections_between(
+        changelog_read.changelog_text() or "", RELEASES[2], RELEASES[1]
+    )
+    assert older.startswith(f"## [{RELEASES[1]}]")
+    notes = tmp_path / "CHANGELOG.md"
+    notes.write_text(f"# Changelog\n\n{older}\n")
+    monkeypatch.setattr(changelog_read, "PACKAGED", notes)
+    assert (await state(app))["whats_new"] is None, "a hint that cannot start"
+    with pytest.raises(OpError) as e:
+        await guide(app)
+    assert e.value.code == "no_release_notes"
+    assert not app.sessions.sessions
