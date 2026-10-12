@@ -977,6 +977,17 @@ def test_the_manifest_names_the_server_and_its_icons_load(project, fake_claude):
         assert '<link rel="manifest" href="/manifest.webmanifest">' in page
 
 
+def test_the_service_worker_is_served_from_the_root(project, fake_claude):
+    # From the root, so its scope is the whole client; revalidated on every
+    # update check, so a new client is never hidden behind an old worker.
+    with client_for(project, fake_claude) as c:
+        r = c.get("/sw.js")
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("text/javascript")
+        assert r.headers["cache-control"] == "no-cache"
+        assert "notificationclick" in r.text
+
+
 def test_the_artifact_script_and_stylesheet_are_served(project, fake_claude):
     c = client_for(project, fake_claude)
     js = c.get("/static/js/artifact.js")

@@ -3265,6 +3265,16 @@ def favicon_dot(pg) -> str | None:
     return m.group(1) if m else None
 
 
+def test_the_page_registers_the_service_worker(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    url = page.evaluate("navigator.serviceWorker.ready.then(r => r.active.scriptURL)")
+    # server.url carries the sign-in token: the worker sits at its origin.
+    origin = re.match(r"https?://[^/]+", server.url).group(0)
+    assert url == origin + "/sw.js"
+    assert page.errors == []
+
+
 def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     server, browser
 ):

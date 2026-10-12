@@ -199,10 +199,19 @@ def build_web(
 
     async def webmanifest(request):
         """What Chrome installs: the server's name, so zion and the VPS differ
-        on a home screen. No service worker: Chrome installs from its menu
-        without one since 108 on Android, and a caching one could serve a stale
-        client after an upgrade."""
+        on a home screen. The service worker is ``sw.js``, and it caches
+        nothing yet, so a deploy cannot leave a stale client behind it."""
         return JSONResponse(manifest, media_type="application/manifest+json")
+
+    async def service_worker(request):
+        """The service worker, from the root so its scope is the whole client.
+        ``no-cache`` makes the browser revalidate it on every update check, so
+        a changed worker is found on the next load."""
+        return FileResponse(
+            CLIENT_DIR / "sw.js",
+            media_type="text/javascript",
+            headers={"Cache-Control": "no-cache"},
+        )
 
     async def sent_file(request):
         """A file an agent sent. The id is the secret (files.py); a Host the
@@ -508,6 +517,7 @@ def build_web(
             Route("/", index),
             Route("/login", login, methods=["POST"]),
             Route("/manifest.webmanifest", webmanifest),
+            Route("/sw.js", service_worker),
             Mount("/static", ClientFiles(directory=CLIENT_DIR)),
             Route("/files/{file_id}/{name}", sent_file),
             Route("/via/{server}/files/{file_id}/{name}", via_file),

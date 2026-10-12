@@ -465,6 +465,10 @@ function onSessions() {
 
 // -- rendering -----------------------------------------------------------------
 const openSession = (id) => go(`#s=${id}`);
+// The service worker (sw.js): notifications come from its registration. It
+// exists only in a secure context (https or localhost); elsewhere the page
+// works as before.
+navigator.serviceWorker?.register("/sw.js").catch((e) => console.warn("aegis: service worker", e));
 setToastOpener(openSession);
 // Toasts from the server (App.toast): every browser shows each one once, and
 // an agent's goes to the desktop too while the page is hidden. The snapshot is
