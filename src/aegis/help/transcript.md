@@ -77,7 +77,7 @@ stacked panes:
 - × on a pane's bar undocks it, and the card shows it again.
 
 When the window is too narrow for its columns, the canvas draws as tabs, as on
-a phone: one pane at a time under a strip of tabs. That happens when the
+a phone: a strip of tabs over the open tab's pane. That happens when the
 columns' minimums do not fit side by side, or when the transcript's column
 would be under its 360 px. The columns are kept, and widening the window
 brings them back as they were.
