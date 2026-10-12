@@ -338,6 +338,112 @@ async def test_real_claude_lands_an_artifact_and_hears_the_pick(tmp_path: Path):
         await asyncio.wait_for(task, 30)
 
 
+async def test_real_claude_builds_a_controls_and_preview_canvas(tmp_path: Path):
+    """The real binary docks a page of controls and the report they shape,
+    one under the other, from dock= alone; a slider's release reaches it as
+    the browser would send it, and it sends the report's next version."""
+    import asyncio
+    import re
+
+    import httpx
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
+    )
+    (tmp_path / "report.md").write_text(
+        "# Quarterly report\n\nSales grew in every region this quarter.\n"
+    )
+    port = _free_port()
+    base = f"http://127.0.0.1:{port}"
+    app = App(make_roots(tmp_path, None), claude_bin=claude, base_url=base)
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+
+    def report_versions() -> list[int]:
+        return [
+            f["version"]
+            for e in s.entries()
+            if e["kind"] == "file"
+            for f in e["detail"]["files"]
+            if f["name"] == "report.md"
+        ]
+
+    def column_of(pane: str) -> list[str] | None:
+        for w in s.layout["windows"]:
+            for c in w["columns"]:
+                ids = [p["id"] for p in c["panes"]]
+                if pane in ids:
+                    return ids
+        return None
+
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "haiku"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "Send me report.md and a page with a font-size slider, dock the page "
+            "to the right and the report below it, and when the slider is "
+            "released, rewrite report.md with that size noted in its first line "
+            "and send it again. Then end your turn and wait for the slider."
+        )
+        await until(
+            lambda: (
+                s.status == "idle"
+                and any(e["kind"] == "artifact" for e in s.entries())
+                and report_versions()
+            ),
+            timeout=240,
+            what="the page and the report",
+        )
+        (art,) = [e for e in s.entries() if e["kind"] == "artifact"]
+        assert art["status"] == "live"
+        (key,) = {
+            f["key"]
+            for e in s.entries()
+            if e["kind"] == "file"
+            for f in e["detail"]["files"]
+            if f["name"] == "report.md"
+        }
+        assert column_of(art["id"]) == [art["id"], key], s.layout
+        # The slider's release, as the page's own code emits it.
+        async with httpx.AsyncClient() as c:
+            page = (await c.get(base + art["detail"]["url"])).text
+        named = re.search(r"aegis\.emit\(\s*[\"'`]([a-z][a-z0-9_-]*)", page)
+        assert named, "the page emits nothing"
+        await app.registry.call(
+            "artifact.emit",
+            {
+                "log_id": s.log_id,
+                "artifact_id": art["id"],
+                "name": named.group(1),
+                "data": {"size": 22},
+            },
+        )
+        await until(
+            lambda: s.status == "idle" and 2 in report_versions(),
+            timeout=240,
+            what="the report's second version",
+        )
+        assert "22" in (tmp_path / "report.md").read_text().splitlines()[0]
+        assert column_of(key) == [art["id"], key], "the pane kept its place"
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
 async def test_real_claude_runs_the_doctor_and_names_what_is_wrong(tmp_path: Path):
     """The real binary finds config_doctor from its description, and its
     findings are enough to name the key aegis does not read."""
