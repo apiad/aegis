@@ -3712,6 +3712,43 @@ def test_a_connection_down_for_three_seconds_shows_the_banner(server, page):
     assert page.errors == []
 
 
+def test_the_device_store_keeps_the_twenty_latest_transcripts(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    got = page.evaluate("""async () => {
+      const s = await import('/static/js/devicestore.js');
+      for (let i = 0; i < 21; i++) await s.saveTranscript('k' + i, { entries: [{ id: 'e' + i }], rev: i });
+      const first = await s.loadTranscript('k0');
+      const last = await s.loadTranscript('k20');
+      await s.saveFleet([{ key: 'a' }]);
+      const fleet = await s.loadFleet();
+      await s.clearDevice();
+      return { first, last, fleet, after: await s.loadFleet(), gone: await s.loadTranscript('k20') };
+    }""")
+    assert got["first"] is None
+    assert got["last"]["rev"] == 20 and got["last"]["entries"] == [{"id": "e20"}]
+    assert got["fleet"]["metas"] == [{"key": "a"}] and got["fleet"]["saved_at"] > 0
+    assert got["after"] is None and got["gone"] is None
+    assert page.errors == []
+
+
+def test_without_indexeddb_the_store_answers_nothing(server, browser):
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.add_init_script(
+        "Object.defineProperty(window, 'indexedDB', { get: () => undefined });"
+    )
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    got = pg.evaluate("""async () => {
+      const s = await import('/static/js/devicestore.js');
+      await s.saveFleet([{ key: 'a' }]);
+      return [await s.loadFleet(), await s.loadTranscript('x')];
+    }""")
+    assert got == [None, None]
+    assert errors == []
+
+
 INSTALLABLE = """
   window.__prompted = 0;
   window.__installable = (outcome) => {
