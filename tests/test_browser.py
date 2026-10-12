@@ -3926,6 +3926,34 @@ def test_offline_what_needs_the_server_is_disabled(server, page):
     assert page.errors == []
 
 
+def test_a_message_written_offline_is_queued_and_goes_out_on_reconnect(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    spawn(page, "hello")
+    turns_done(page, 1)
+    server.stop()
+    page.wait_for_selector("#a2[data-offline]", state="attached", timeout=10000)
+    page.fill("#input", "ship it")
+    page.press("#input", "Enter")
+    page.wait_for_selector("#queued", state="visible")
+    assert "ship it" in page.text_content("#queued")
+    assert page.input_value("#input") == ""
+    page.fill("#input", "and tag it")
+    page.press("#input", "Enter")
+    assert "ship it\n\nand tag it" in page.evaluate(
+        "document.querySelector('#queued .text').textContent"
+    )
+    page.reload()  # the draft lives on the device, not in the page
+    page.wait_for_selector("#queued", state="visible", timeout=10000)
+    server.start()
+    page.wait_for_selector("#queued", state="hidden", timeout=20000)
+    page.wait_for_selector(".toast .msg >> text=queued message sent")
+    turns_done(page, 2)
+    assert "and tag it" in page.text_content("#entries")
+    assert page.errors == []
+
+
 def test_a_refused_token_empties_the_device(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")

@@ -37,6 +37,7 @@ import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appwor
 import { closeInstallDialog, startInstall } from "./install.js";
 import { clearDevice, loadFleet, loadTranscript, saveFleet, saveTranscript } from "./devicestore.js";
 import { markNeedsNet, offline } from "./net.js";
+import { discard, draftFor, loadDrafts, onDrafts, queue } from "./outbox.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -147,6 +148,7 @@ $("send").append(icon("send"));
 $("sp-go").append(icon("send"));
 $("interrupt").append(icon("stop"));
 $("replies-g").append(icon("prompt"));
+$("queued-g").append(icon("prompt"));
 $("working-g").append(icon("think"));
 $("closing-g").append(glyph("done"));
 $("sp-mark").prepend(gorgoneion());
@@ -1040,6 +1042,7 @@ function follow(id) {
   shown = id;
   const turn = ++follows;
   atts.show(id);
+  drawQueued();
   if (!id) return viewer.show(null);
   const saved = kept.get(id);
   if (saved) {
@@ -2088,6 +2091,40 @@ function drawReplies(s) {
   if (transcript.following) transcript.toBottom();
 }
 
+// The shown session's message written offline (outbox.js), after the last row.
+const QUEUED_LABEL = {
+  queued: "queued · goes out when the connection is back",
+  stale: "The session moved on since you wrote this",
+  gone: "The session is closed",
+};
+function drawQueued() {
+  const box = $("queued");
+  const d = shown && draftFor(shown);
+  box.hidden = !d;
+  if (!d) return;
+  box.classList.toggle("stale", d.state === "stale");
+  box.classList.toggle("gone", d.state === "gone");
+  $("queued-lbl").textContent = QUEUED_LABEL[d.state] || QUEUED_LABEL.queued;
+  box.querySelector(".text").textContent = d.text;
+  if (transcript.following) transcript.toBottom();
+}
+onDrafts(drawQueued);
+loadDrafts();
+$("queued").addEventListener("click", (ev) => {
+  const act = ev.target.closest("[data-act]")?.dataset.act;
+  const key = shown;
+  const d = key && draftFor(key);
+  if (!act || !d) return;
+  if (act === "discard") discard(key);
+  if (act === "edit") {
+    input.value = input.value ? `${d.text}\n\n${input.value}` : d.text;
+    localStorage.setItem(`aegis.draft.${key}`, input.value);
+    autosize();
+    input.focus();
+    discard(key);
+  }
+});
+
 // On a phone Close sits in the drawer, so a session whose agent said done gets
 // an Archive button after its last row, one tap from where the reading ended.
 // The stylesheet shows it only in the phone layout (#333).
@@ -2135,6 +2172,20 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
     return;
   }
   if (text === "/close" && !(await confirmClose(s))) return;
+  // With no way to the session's server, plain text waits as its draft on this
+  // device (outbox.js); a command or files still need the connection.
+  if ((!conn.open || s.off) && !text.startsWith("/") && !attachments.length) {
+    await queue(s.key, text, shown === s.key ? transcript.rev : -1);
+    if (fromComposer) localStorage.removeItem(`aegis.draft.${s.key}`);
+    if (fromComposer && shown === s.key) {
+      input.value = "";
+      autosize();
+      menu.close();
+      $("composer").classList.remove("bad");
+    }
+    if (shown === s.key) transcript.toBottom();
+    return;
+  }
   const box = $("replies");
   const was = box.hidden;
   box.hidden = true; // any send answers the turn the pills belonged to
