@@ -661,6 +661,22 @@ its card a line instead of a frame (`entries.hold`), because two frames of one
 page would each take the person's answer and only one would get the agent's
 state.
 
+**The canvas is a record, and a docked page still runs in one place.** A
+session's docked pages and files (`layout.py`) are a `layout` record that the
+fold keeps as standing state and the session's card carries to every browser.
+The person's moves and the agent's tools go through one placement rule, and a
+person's operation names the move (`layout.dock`, `undock`, `resize`), not the
+result, so a drop never overwrites what the agent docked while the pointer was
+moving. The fold takes an ended page off the canvas without writing a record,
+and `Session.layout` trims any id that can no longer dock, so a stale id never
+blocks a move. Each browser tab draws one window of the canvas: the session's
+tab draws window 1, a tab at `#w=<n>:<key>` draws window n, and a page runs only
+in the tab that draws its window while every other place holds a line, as the
+viewer's hold does. Panes are placed by numbers inside one container and never
+moved in the DOM, because moving an iframe reloads its page. A file sent again
+from the same path is a new version of one file (`layout.file_key`), and its
+pane follows the newest.
+
 **Audio never leaves the browser.** Dictation transcribes in the page, with
 Cactus Whistle's WebAssembly build in two workers (`js/dictation.js`). The client
 cuts speech into provisional pieces of 4 to 8 s whose text lands at once, and
