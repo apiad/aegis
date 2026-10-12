@@ -310,7 +310,7 @@ const journal = new Journal(conn, $("journal"), {
 // The Help tab (help.js), one per window like Settings. Its code blocks copy
 // as the transcript's do.
 // Start this tutorial: what /tutorial <page> does, on default_agent. A failure
-// shows in the foot line, since the Help tab belongs to no session.
+// shows as an error toast, since the Help tab belongs to no session.
 const helpTab = new Help(conn, $("help"), {
   go,
   onKeys: () => help(true),
