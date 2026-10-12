@@ -61,6 +61,7 @@ from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors, iso_now
 from .names import valid_handle
 from .nudges import Nudges
+from .push import register_push_ops
 from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
@@ -350,6 +351,7 @@ class App:
         register_agent_ops(self)
         register_config_ops(self)
         register_artifact_ops(self)
+        self.push = register_push_ops(self)
         register_journal_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
 
@@ -1313,8 +1315,11 @@ class App:
         @r.op("token.revoke", TokenName, admin=True)
         async def token_revoke(p: TokenName, caller):
             """End a token. The admin's is replaced, and the new one returned
-            to whoever revoked it, so that browser can sign in again."""
-            return {"token": self.principals.revoke(p.name)}
+            to whoever revoked it, so that browser can sign in again. Its
+            devices stop hearing pushes (push.py)."""
+            token = self.principals.revoke(p.name)
+            self.push.subscriptions.remove_owner(p.name)
+            return {"token": token}
 
         @r.op("token.policy", TokenPolicy, admin=True)
         async def token_policy(p: TokenPolicy, caller):
