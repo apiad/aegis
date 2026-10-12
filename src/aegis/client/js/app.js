@@ -1027,6 +1027,17 @@ const kept = new Map(); // key -> transcript.stash()
 
 let follows = 0; // which follow() a device read answers
 
+// The worker shows a push unless a window shows its session in front of the
+// person (sw.js), so it hears what this one shows whenever that may change.
+function tellView() {
+  navigator.serviceWorker?.controller?.postMessage({ t: "view", key: shown || "", visible: !document.hidden && document.hasFocus() });
+}
+for (const ev of ["focus", "blur"]) window.addEventListener(ev, tellView);
+document.addEventListener("visibilitychange", tellView);
+// A worker that took this page over, on a first visit or after an update, has
+// heard nothing from it yet.
+navigator.serviceWorker?.addEventListener("controllerchange", tellView);
+
 function follow(id) {
   if (shown === id) return;
   if (trSave) flushTranscript(); // before its rows go
@@ -1042,6 +1053,7 @@ function follow(id) {
   find.close(false); // it searched the old session
   if (dictation.target?.el === input) dictation.stop("tab"); // a recording belongs to its session
   shown = id;
+  tellView();
   const turn = ++follows;
   atts.show(id);
   drawQueued();

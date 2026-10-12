@@ -2,7 +2,8 @@
 // /client-files.json lists, in a cache named after the build, and serves the
 // page and its files from there, so aegis opens with no connection. It also
 // raises the notifications ping.js asks for (Chrome on Android shows none any
-// other way) and opens a session when one is clicked.
+// other way), shows the pushes aegis's sender sends (push.py), and opens a
+// session when one is clicked.
 
 const BUILD = "__AEGIS_BUILD__"; // web.py writes the build id here
 const CACHE = `aegis-${BUILD}`;
@@ -25,6 +26,7 @@ self.addEventListener("message", (event) => {
   if (msg.t === "skip") self.skipWaiting();
   if (msg.t === "keep") event.waitUntil(ensure());
   if (msg.t === "status" && event.ports[0]) event.waitUntil(status().then((s) => event.ports[0].postMessage(s)));
+  if (msg.t === "view" && event.source) views.set(event.source.id, { key: msg.key || "", visible: Boolean(msg.visible) });
 });
 
 // Only what belongs to the build: the page at / with no query (a query is a
@@ -40,6 +42,40 @@ self.addEventListener("fetch", (event) => {
   const file = req.mode !== "navigate" && (url.pathname.startsWith("/static/") || url.pathname === "/manifest.webmanifest");
   if (page || file) event.respondWith(fromBuild(req, page ? "/" : url.pathname));
 });
+
+// A push from aegis's sender (push.py): shown unless a window of this device
+// shows that session in front of the person. Chrome allows a silent push while
+// a page of the origin is in front. A worker restarted since the page last said
+// what it shows has an empty map, and shows the notification: telling the
+// person twice is better than not at all.
+self.addEventListener("push", (event) => {
+  let p = {};
+  try {
+    p = event.data?.json() ?? {};
+  } catch {
+    p = { title: "aegis", body: event.data?.text() ?? "" };
+  }
+  event.waitUntil(
+    (async () => {
+      if (p.key && (await inFront(p.key))) return;
+      await self.registration.showNotification(p.title || "aegis", {
+        body: p.body || "",
+        tag: p.tag || p.key || "aegis",
+        renotify: p.kind === "needs_you",
+        icon: "/static/icons/aegis-192.png",
+        badge: "/static/icons/aegis-badge-96.png",
+        data: { key: p.key || "" },
+      });
+    })(),
+  );
+});
+
+const views = new Map(); // client id -> {key, visible}
+
+async function inFront(key) {
+  const wins = await self.clients.matchAll({ type: "window" });
+  return wins.some((w) => views.get(w.id)?.key === key && views.get(w.id)?.visible && w.visibilityState === "visible");
+}
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();

@@ -3540,6 +3540,86 @@ def test_a_real_notification_shows_and_its_click_opens_the_session(
     ctx.close()
 
 
+def push_ready(ctx, pg, url: str) -> callable:
+    """Open ``url`` with a CDP session watching the worker; return a function
+    that delivers a push with ``data`` (a dict) to it."""
+    cdp = ctx.new_cdp_session(pg)
+    regs: list = []
+    cdp.on(
+        "ServiceWorker.workerRegistrationUpdated",
+        lambda e: regs.extend(e["registrations"]),
+    )
+    cdp.send("ServiceWorker.enable")
+    pg.goto(url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("navigator.serviceWorker.ready.then(() => true)")
+    deadline = time.monotonic() + 5
+    while not regs and time.monotonic() < deadline:
+        pg.wait_for_timeout(100)
+    rid = regs[-1]["registrationId"]
+    origin = re.match(r"https?://[^/]+", url).group(0)
+    return lambda data: cdp.send(
+        "ServiceWorker.deliverPushMessage",
+        {"origin": origin, "registrationId": rid, "data": json.dumps(data)},
+    )
+
+
+SHOWN = "navigator.serviceWorker.ready.then(r => r.getNotifications()).then(ns => ns.map(n => [n.title, n.tag]))"
+
+
+def test_a_push_shows_a_notification(server, full_browser):
+    ctx = full_browser.new_context()
+    ctx.grant_permissions(["notifications"])
+    pg = ctx.new_page()
+    deliver = push_ready(ctx, pg, server.url)
+    deliver(
+        {
+            "title": "build: needs you",
+            "body": "Ship it?",
+            "key": "abc",
+            "kind": "needs_you",
+            "tag": "abc:needs_you",
+        }
+    )
+    deadline = time.monotonic() + 5
+    while not pg.evaluate(SHOWN) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert pg.evaluate(SHOWN) == [["build: needs you", "abc:needs_you"]]
+    ctx.close()
+
+
+def test_a_push_for_the_session_in_front_stays_quiet(server, full_browser):
+    ctx = full_browser.new_context()
+    ctx.grant_permissions(["notifications"])
+    pg = ctx.new_page()
+    deliver = push_ready(ctx, pg, server.url)
+    sid = spawn(pg, "hello")  # the page now shows it, focused and visible
+    pg.wait_for_timeout(300)  # the page tells the worker what it shows
+    deliver(
+        {
+            "title": "x: needs you",
+            "body": "",
+            "key": sid,
+            "kind": "needs_you",
+            "tag": f"{sid}:needs_you",
+        }
+    )
+    deliver(
+        {
+            "title": "y: needs you",
+            "body": "",
+            "key": "other",
+            "kind": "needs_you",
+            "tag": "other:needs_you",
+        }
+    )
+    deadline = time.monotonic() + 5
+    while not pg.evaluate(SHOWN) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert pg.evaluate(SHOWN) == [["y: needs you", "other:needs_you"]]
+    ctx.close()
+
+
 def test_the_url_the_worker_opens_boots_straight_into_the_session(server, browser):
     # With no aegis window open, a click on a notification opens /#s=<key>:
     # no token in it, only the cookie an earlier sign-in left.
