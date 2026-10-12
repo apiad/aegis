@@ -3708,6 +3708,13 @@ def test_the_install_dialog_downloads_installs_and_offers_notifications(
     pg.click("#install-offer [data-act=install]")
     pg.wait_for_selector("#install-dialog .irow[data-step=files].done", timeout=20000)
     assert "build" in pg.text_content("#install-dialog .irow[data-step=files] .sub")
+    # The bar spans its row and is full: the Fleet's plan segments are a .pbar
+    # too, 48 px wide, and must not shape this one.
+    bar, fill = pg.evaluate(
+        """() => { const b = document.querySelector('#install-dialog .irow[data-step=files] .pbar');
+          return [b.getBoundingClientRect().width, b.querySelector('i').getBoundingClientRect().width]; }"""
+    )
+    assert bar > 150 and fill == bar
     pg.click("#install-dialog .irow[data-step=app] button")
     assert pg.evaluate("window.__prompted") == 1
     pg.wait_for_selector(
