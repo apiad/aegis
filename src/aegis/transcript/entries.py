@@ -181,6 +181,8 @@ class Fold:
         self._interrupted = False
         self._last_cost = 0.0
         self._parsers: dict[str, Any] = {}
+        # file key -> the latest version's sent file (task 9 fills it)
+        self.file_keys: dict[str, dict] = {}
         # Entries only deltas made, whose part has not closed yet.
         self._live: set[str] = set()
         # The store index of the record being folded; stamped on every entry

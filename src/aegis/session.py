@@ -35,7 +35,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import attachments, restarts
-from .artifacts import Board
+from . import layout as canvas
+from .artifacts import ArtifactError, Board
 from .claude.control import Catalog
 from .claude.process import ControlError
 from .claude.stream import TURN_BEARING, Delta, Init, Notice, Result, Title
@@ -688,6 +689,27 @@ class Session:
         """A record from the session's artifacts board (artifacts.py)."""
         self._record(record)
 
+    # -- the canvas (layout.py) ---------------------------------------------
+    def dockable(self, pane: str) -> bool:
+        """Whether ``pane`` can sit in this session's canvas: a live page of
+        this session, or a file it sent (by key)."""
+        if pane.startswith("art-"):
+            try:
+                return self.artifacts.get(pane).status == "live"
+            except ArtifactError:
+                return False
+        return pane in self.fold().file_keys
+
+    @property
+    def layout(self) -> dict:
+        return self.standing.get("layout") or canvas.DEFAULT
+
+    def set_layout(self, new: dict, by: str) -> dict:
+        """Record ``new``, already normalised; every browser on the session
+        redraws from the card."""
+        self._record({"kind": "layout", "by": by, "windows": new["windows"]})
+        return new
+
     def notify(self, ops: list[dict]) -> None:
         """An op on the transcript channel that is no entry: a probe request. It
         is not in any snapshot, so a browser that subscribes later never sees it."""
@@ -709,10 +731,11 @@ class Session:
             "artifact_state",
             "artifact_event",
             "name",
+            "layout",
         ):
             # aegis talking to the person, not the session doing anything; nor
             # a person acting on a page, so the needs-you order holds still
-            # while they drag a slider; nor a rename.
+            # while they drag a slider; nor a rename; nor arranging the canvas.
             self.last_activity = stored["ts"]
         ops = fold.apply(stored, events)
         new = [
