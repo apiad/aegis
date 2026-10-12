@@ -345,7 +345,9 @@ function bannerState(state) {
     $("netbanner").hidden = true;
   }
 }
-let pushChecked = false; // checkRotation ran on this load
+// This device's push against the server's row (pushpanel.js): on every
+// connect, and whenever the page comes back in front.
+const checkPush = () => checkRotation().catch((e) => console.warn("aegis: checking push failed", e));
 const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`, {
   onState(state, server) {
     $("conn-dot").className = `dot ${state === "open" ? "ready" : state === "connecting" ? "ghost" : "err"}`;
@@ -378,11 +380,7 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
       if (wasClosed) checkForUpdate();
       wasClosed = false;
       setWho(conn.me, conn.owner);
-      // Once a load, after setWho: the rows are this token's (pushpanel.js).
-      if (!pushChecked) {
-        pushChecked = true;
-        checkRotation().catch((e) => console.warn("aegis: checking push failed", e));
-      }
+      checkPush(); // after setWho: the rows are this token's
       // Whether this browser runs on the server's desktop (Open natively).
       if (conn.native) root.dataset.native = "";
       else delete root.dataset.native;
@@ -395,7 +393,9 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
 $("netbanner-retry").addEventListener("click", () => conn.retryNow());
 window.addEventListener("online", () => conn.retryNow());
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) conn.retryNow();
+  if (document.hidden) return;
+  conn.retryNow();
+  if (conn.open) checkPush(); // otherwise the connect does
 });
 const settings = new Settings(conn, $("settings"), { themes: THEMES, setTheme });
 let landEntry = null; // {key, id}: reveal this entry once its transcript lands

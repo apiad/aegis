@@ -133,14 +133,16 @@ export async function setSources(sources) {
   changed();
 }
 
+// Off here first, so it stays off whatever follows: offline, the server's
+// row stays behind, and goes when its next push comes back 404 or 410 (push.py).
 export async function unsubscribePush() {
   const { id } = pushState();
-  const reg = await navigator.serviceWorker?.getRegistration();
-  const sub = await reg?.pushManager.getSubscription();
-  await sub?.unsubscribe();
-  if (id) await call("push.remove", { id }).catch((e) => e.code === "unknown_subscription" || Promise.reject(e));
   remember(null);
   changed();
+  const reg = await navigator.serviceWorker?.getRegistration();
+  const sub = await reg?.pushManager?.getSubscription();
+  await sub?.unsubscribe().catch((e) => console.warn("aegis: unsubscribing failed", e));
+  if (id) await call("push.remove", { id }).catch(() => {});
 }
 
 // Settings removed a row: if it was this device's, this browser forgets it too.
@@ -148,22 +150,26 @@ export async function forget(id) {
   if (id === localStorage.getItem(ID)) await unsubscribePush();
 }
 
-// On load: the server's row for this device still matches the browser's
-// subscription, or the browser rotated it (a new endpoint, or none) and it
-// is sent again under the same id. A row removed from Settings, or by a
-// revoked token, turns push off here rather than coming back.
+// On every connect and whenever the page comes back in front (app.js): the
+// server's row for this device still matches the browser's subscription, or
+// the browser rotated it (a new endpoint, or none) and it is sent again under
+// the same id. A row removed from Settings on any device, or by a revoked
+// token, turns push off here and is not made again. Subscribing again only
+// with permission already granted: a prompt needs a click.
 export async function checkRotation() {
   const { id } = pushState();
   if (!id || !pushSupported()) return;
   const row = (await listMine()).find((r) => r.id === id);
+  if (localStorage.getItem(ID) !== id) return; // turned off or on meanwhile
   if (!row) {
     remember(null);
     return changed();
   }
   remember(id, row.sources);
+  if (Notification.permission !== "granted") return changed();
   const reg = await navigator.serviceWorker.ready;
-  const sub = await reg.pushManager.getSubscription();
-  if (sub?.endpoint === row.endpoint) return changed();
+  const sub = await reg.pushManager?.getSubscription();
+  if (!reg.pushManager || sub?.endpoint === row.endpoint) return changed();
   await subscribePush(row.sources, id);
 }
 

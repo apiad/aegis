@@ -3634,6 +3634,7 @@ def test_a_push_for_the_session_in_front_stays_quiet(server, full_browser):
 # endpoint is a closed port here, so the server's sender (a real one) reaches
 # nothing outside this machine. The subscription survives a reload, as a
 # browser's does, and ``fake.endpoint`` stands in for one the browser rotated.
+# ``fake.perm`` sets the permission, and ``fake.asked`` counts the prompts.
 FAKE_PUSH = """
   const fake = { endpoint: localStorage.getItem('fake.endpoint') || 'https://127.0.0.1:9/abc', options: {},
     toJSON() { return { endpoint: this.endpoint, expirationTime: null, keys: { p256dh: 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4', auth: 'BTBZMqHH6r4Tts7J_aSIgg' } }; },
@@ -3644,8 +3645,10 @@ FAKE_PUSH = """
   window.__hidden = false;
   window.Notification = class {
     constructor() { throw new TypeError("Illegal constructor"); }
-    static get permission() { return 'granted'; }
-    static requestPermission() { return Promise.resolve('granted'); } };
+    static get permission() { return localStorage.getItem('fake.perm') || 'granted'; }
+    static requestPermission() {
+      localStorage.setItem('fake.asked', String(Number(localStorage.getItem('fake.asked')) + 1));
+      return Promise.resolve(this.permission); } };
   ServiceWorkerRegistration.prototype.showNotification = function (t, o) {
     window.__notes.push([t, o]); return Promise.resolve(); };
   Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
@@ -3765,6 +3768,90 @@ def test_a_rotated_subscription_is_sent_again_under_the_same_id(server, browser)
         (row["id"], "https://127.0.0.1:9/rotated")
     ]
     assert pg.evaluate("localStorage.getItem('aegis.push.id')") == row["id"]
+    assert errors == []
+    ctx.close()
+
+
+SOCKETS = """
+  window.__sockets = [];
+  const WS = window.WebSocket;
+  window.WebSocket = class extends WS {
+    constructor(...a) { super(...a); window.__sockets.push(this); }
+  };
+"""
+
+
+@pytest.mark.parametrize("trigger", ["reconnect", "visible"])
+def test_a_row_removed_elsewhere_turns_push_off_here_without_a_reload(
+    server, browser, trigger
+):
+    errors: list = []
+    ctx, pg = push_page(browser, server, errors, FAKE_PUSH + SOCKETS)
+    pg.evaluate("import('/static/js/pushpanel.js').then(p => p.subscribePush())")
+    [row] = poll(pg, MINE, lambda v: len(v) == 1)
+    # Another device removes it from Settings.
+    other_ctx, other = push_page(browser, server, errors)
+    other.click("#settings-btn")
+    other.click(f"#set-push .set-push-row[data-id={row['id']}] button")
+    assert poll(other, MINE, lambda v: v == []) == []
+    if trigger == "reconnect":
+        pg.evaluate("window.__sockets.at(-1).close()")
+    else:
+        pg.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
+    got = poll(pg, "localStorage.getItem('aegis.push.id')", lambda v: v is None)
+    assert got is None
+    assert pg.get_attribute("#bell", "data-push") == "off"
+    # Forgotten, not subscribed again: a row removed elsewhere stays removed.
+    pg.wait_for_timeout(500)
+    assert pg.evaluate(MINE) == []
+    assert errors == []
+    ctx.close()
+    other_ctx.close()
+
+
+def test_a_rotation_never_asks_for_permission_without_a_click(server, browser):
+    errors: list = []
+    ctx, pg = push_page(browser, server, errors)
+    pg.evaluate("import('/static/js/pushpanel.js').then(p => p.subscribePush())")
+    [row] = poll(pg, MINE, lambda v: len(v) == 1)
+    pg.evaluate(
+        "localStorage.setItem('fake.endpoint', 'https://127.0.0.1:9/rotated');"
+        "localStorage.setItem('fake.perm', 'default')"
+    )
+    pg.reload()
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.wait_for_timeout(1500)  # the check on open has run
+    assert pg.evaluate("localStorage.getItem('fake.asked')") is None
+    assert [r["endpoint"] for r in pg.evaluate(MINE)] == [row["endpoint"]]
+    assert errors == []
+    ctx.close()
+
+
+def test_turning_push_off_offline_stays_off(server, browser):
+    errors: list = []
+    ctx, pg = push_page(browser, server, errors)
+    pg.evaluate("import('/static/js/pushpanel.js').then(p => p.subscribePush())")
+    [row] = poll(pg, MINE, lambda v: len(v) == 1)
+    server.stop()
+    pg.wait_for_function(
+        "document.getElementById('conn-text').textContent === 'disconnected, retrying'"
+    )
+    off = (
+        "import('/static/js/pushpanel.js')"
+        ".then(p => p.unsubscribePush()).then(() => 'off', (e) => e.message)"
+    )
+    assert pg.evaluate(off) == "off"
+    assert pg.evaluate("localStorage.getItem('aegis.push.id')") is None
+    assert pg.evaluate("localStorage.getItem('fake.sub')") is None
+    server.start()
+    pg.wait_for_function(
+        "!document.getElementById('a2').hasAttribute('data-offline')", timeout=20000
+    )
+    pg.wait_for_timeout(1000)  # the check on open has run
+    assert pg.evaluate("localStorage.getItem('aegis.push.id')") is None
+    assert pg.evaluate("localStorage.getItem('fake.sub')") is None
+    # The server's row stays until its next push comes back 404 or 410.
+    assert [r["id"] for r in pg.evaluate(MINE)] == [row["id"]]
     assert errors == []
     ctx.close()
 
