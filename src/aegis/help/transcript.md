@@ -76,11 +76,14 @@ stacked panes:
   360 px, and a pane at least 120 px high.
 - × on a pane's bar undocks it, and the card shows it again.
 
-When the window is too narrow for its columns, the canvas draws as tabs, as on
-a phone: a strip of tabs over the open tab's pane. That happens when the
-columns' minimums do not fit side by side, or when the transcript's column
-would be under its 360 px. The columns are kept, and widening the window
-brings them back as they were.
+A column whose share of the window is under its minimum is drawn at the
+minimum, and the wider columns give up the difference; the shares kept with
+the session do not change. When the minimums do not fit side by side, the
+canvas draws as tabs, as on a phone: a strip of tabs over the open tab's pane.
+The columns are kept, and widening the window brings them back as they were.
+While another tab is open the transcript stays as it was: a reply that lands
+behind it stays unread and dots the transcript's tab, and the transcript's
+keys wait, except Ctrl+F, which opens its tab with the find bar.
 
 A canvas holds 4 columns and 3 panes in a column. Once there are four
 columns, Dock stacks under the last pane, and on a full canvas it says so and
@@ -103,10 +106,10 @@ report-layout · window 2, so the browser's tab list tells the windows apart.
 A page in it is as live as a docked one: what you do in it reaches the
 agent, and the agent's updates reach it.
 
-- Pop out, on a live page's card or on its pane's bar, moves the page to a
-  new window and opens that window's tab. It takes the place of the card's
-  Open in a new tab, which showed the page with nothing behind it. A file's
-  card keeps Open in a new tab.
+- Pop out, on a live page's card, its pane's bar or the viewer's bar, moves
+  the page to a new window and opens that window's tab. It takes the place of
+  Open in a new tab, which showed the page with nothing behind it; an answered
+  or closed page, and a file, keep Open in a new tab.
 - Move to window, the button with two arrows on a pane's bar, lists the
   other windows in use and New window. Choosing one moves the pane there and
   brings that window's tab to the front, or opens it.
@@ -116,13 +119,17 @@ agent, and the agent's updates reach it.
 - Window 1 shows a chip at the top of its canvas for each other window,
   such as window 2 · 1 pane, with Open and Bring back. Bring back moves the
   window's panes into window 1, each of its columns as a new column on the
-  right, and the window goes.
+  right, and the window goes. Once window 1 has four columns the rest stack
+  under its last pane; a window that does not fit is not moved at all, and
+  a message says why.
 
 Closing a window's tab changes nothing: its panes stay where they were, and
 the chip in window 1 is how you get them back. The chip shows even when
 another browser has that window open, since this one cannot tell. A window
 tab whose panes have all gone, brought back, undocked or answered, says This
-window is empty. A canvas has at most 4 windows.
+window is empty. A canvas has at most 4 windows. A window tab stays on its
+window: the keys that open another tab, the Fleet or a new session do nothing
+in it, and a push for its session still notifies you.
 
 ## Paths in replies
 

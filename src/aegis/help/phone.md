@@ -94,7 +94,7 @@ service refuses it, or that fails five times in a row, is removed.
 ## The canvas on a phone
 
 A session's canvas, its transcript and the panes of pages and files around
-it, draws as tabs on a screen under 760 px wide. A strip under the header starts
+it, draws as tabs on a touch screen under 760 px wide. A strip under the header starts
 with a tab for the transcript, then has one for each docked pane, in reading
 order: column by column, each from top to bottom. The open tab's pane fills
 the screen. The others keep running behind it, so a page you leave keeps its
@@ -105,8 +105,10 @@ while you look at a page or a file.
 
 A tab whose pane changed while another tab was open gets a dot: a new version
 of a docked file, a page the agent sent again or gave a new state, or
-something newly docked. Opening the tab clears it. The agent docking
-something never switches the tab you are on; Show on a docked card does.
+something newly docked. The transcript's tab gets one when the agent writes
+while another tab is open, and that reply stays unread until you open the
+transcript. Opening a tab clears its dot. The agent docking something never
+switches the tab you are on; Show on a docked card does.
 
 Dragging panes and resizing them is for a desktop. On a phone, press and hold
 a tab other than the transcript's for half a second to get Undock, which puts
