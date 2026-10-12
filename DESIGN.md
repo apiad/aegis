@@ -412,6 +412,18 @@ send one twice, a page closed mid-send leaves it to be sent again (with its
 revision, so a send that did arrive asks instead of repeating), and text
 written meanwhile becomes the next draft (#342).
 
+**A send from the box gets a verdict in 3 seconds and arrives once.** A socket
+can stall without closing, so `conn.open` stays true and a call waits forever
+while the browser buffers every press; when it recovers they all arrive. From
+Send to the answer the box is read-only and the button spins; with no answer in
+3 s the box is the person's again, with its text and a line saying it was not
+confirmed. Each composer message carries a `nonce`, kept while it is
+unconfirmed, so sending it again reuses it; `session.send` answers a nonce it
+has seen with the first delivery instead of delivering again, and forgets one
+that failed. A late answer still clears the box if it holds the same text. A
+session on a linked server gets the lock and the verdict but no nonce, which an
+older server would refuse as an unknown field (#350).
+
 **Push goes from the server, encrypted for the device.** A device subscribes
 from the bell with its sources (`needs_you`, `error`, `review`, `done`, `toast`);
 `push.py` keeps the subscriptions and this server's VAPID key under

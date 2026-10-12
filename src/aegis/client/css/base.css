@@ -389,6 +389,9 @@ body{background:#000}
 /* Buttons inside the box, bottom right: send, and the mic when it comes. */
 #a2 .composer .acts{display:flex;gap:6px;align-items:center;padding:8px 8px 8px 0}
 #a2 .composer .acts .send{font-size:15px;line-height:1;padding:6px 12px;font-weight:600}
+#a2 .composer.sending .acts .send{position:relative;opacity:1;cursor:progress}#a2 .composer.sending .acts .send .ic{visibility:hidden}
+#a2 .composer.sending .acts .send::after{content:"";position:absolute;inset:0;margin:auto;width:13px;height:13px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:a2spin .8s linear infinite}
+#a2 .composer.sending textarea{opacity:.6}
 #a2 .composer .acts .int{background:none;border:1px solid var(--rule);border-radius:6px;color:var(--err);font-size:12px;line-height:1;padding:7px 9px;cursor:pointer}
 #a2 .composer .acts .int .ic{width:11px;height:11px;vertical-align:middle}
 #a2 .composer .acts .int[hidden]{display:none}

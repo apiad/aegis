@@ -1162,6 +1162,7 @@ function follow(id) {
   menu.close();
   $("input").value = localStorage.getItem(`aegis.draft.${id}`) || "";
   autosize();
+  drawSending();
 }
 
 // The divider's label: how long since this session was last read.
@@ -1357,7 +1358,8 @@ function renderMeta(s) {
   if (!working) workingSince = null;
   // A linked server that is down: the transcript stays readable, nothing sends.
   const down = s.off ? linkOf(s.server) : null;
-  input.disabled = $("send").disabled = $("attach").disabled = !!down || theirs;
+  input.disabled = $("attach").disabled = !!down || theirs;
+  drawSending(!!down || theirs);
   // Chrome counts a placeholder in scrollHeight: measure again when it changes.
   const placeholder = theirs
     ? s.server
@@ -2092,6 +2094,35 @@ function cycle(d) {
 // -- composer ---------------------------------------------------------------
 const input = $("input");
 
+// A composer send gets an answer within SEND_VERDICT_MS or the box is the
+// person's again (#350). Until then the box and the button are locked.
+const SEND_VERDICT_MS = 3000;
+const LATE = new Error("no answer yet");
+const NOT_CONFIRMED = "No answer in 3 s. Send again: it will not arrive twice.";
+const answered = (call) =>
+  Promise.race([call, new Promise((_, reject) => setTimeout(() => reject(LATE), SEND_VERDICT_MS))]);
+const sending = new Set(); // sessions whose composer send waits on its answer
+// The nonce of the last send per session that got no answer yet: sending the
+// same message again reuses it, and the server delivers it once.
+const unconfirmed = new Map(); // key -> {what, nonce}
+function nonceFor(key, what) {
+  const u = unconfirmed.get(key);
+  if (u?.what === what) return u.nonce;
+  const nonce = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  unconfirmed.set(key, { what, nonce });
+  return nonce;
+}
+// The lock on the shown session's box. `blocked` is renderMeta's own reason to
+// disable the button (a linked server down, someone else's session).
+let blocked = false;
+function drawSending(why = blocked) {
+  blocked = why;
+  const on = !!shown && sending.has(shown);
+  $("composer").classList.toggle("sending", on);
+  input.readOnly = on;
+  $("send").disabled = on || blocked;
+}
+
 // -- attachments: chips above the box, uploading as they arrive (attach.js) --
 const waitOnline = () =>
   new Promise((resolve) => {
@@ -2348,8 +2379,12 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
   const was = box.hidden;
   box.hidden = true; // any send answers the turn the pills belonged to
   delete box.dataset.key; // so the next drawReplies always redraws
-  try {
-    const r = await callFor(s.key, "session.send", attachments.length ? { text, attachments } : { text });
+  const params = attachments.length ? { text, attachments } : { text };
+  // A linked server older than nonces would refuse the field.
+  if (fromComposer && !forKey(s.key).server) params.nonce = nonceFor(s.key, JSON.stringify([text, attachments]));
+  const call = callFor(s.key, "session.send", params);
+  const sent = (r) => {
+    unconfirmed.delete(s.key);
     if (/^\/model\s/.test(text)) catalogs.delete(s.key); // its efforts may differ
     if (fromComposer) {
       localStorage.removeItem(`aegis.draft.${s.key}`);
@@ -2361,14 +2396,39 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
       // Clearing the box fires no input event; an open menu would take the next Esc.
       menu.close();
       $("composer").classList.remove("bad");
+      $("send-error").textContent = "";
     }
     if (shown === s.key) transcript.toBottom();
     // /tutorial and /whats-new start a guide in a new session (help.guide):
     // open its tab, on the server that runs it, as a spawn from the new tab does.
     if (/^\/(tutorial|whats-new)(\s|$)/.test(text) && r?.log_id) go(`#s=${keyOf(forKey(s.key).server, r.log_id)}`);
+  };
+  if (fromComposer) {
+    sending.add(s.key);
+    drawSending();
+    if (shown === s.key) $("send-error").textContent = "";
+  }
+  try {
+    sent(await (fromComposer ? answered(call) : call));
   } catch (e) {
-    toast(e.message, { kind: "error" });
     box.hidden = was;
+    if (e !== LATE) {
+      toast(e.message, { kind: "error" });
+      return;
+    }
+    // No answer yet: the box is the person's again, with the text, and says so.
+    // An answer that comes later still settles it, unless they rewrote it.
+    if (shown === s.key) $("send-error").textContent = NOT_CONFIRMED;
+    const still = () => (shown === s.key ? input.value.trim() : localStorage.getItem(`aegis.draft.${s.key}`)?.trim()) === text;
+    call.then(
+      (r) => still() && sent(r),
+      (e) => still() && shown === s.key && ($("send-error").textContent = `Not sent: ${e.message}`),
+    );
+  } finally {
+    if (fromComposer) {
+      sending.delete(s.key);
+      drawSending();
+    }
   }
 }
 
@@ -2400,7 +2460,7 @@ async function sendFirst(key, text, files) {
 const send = async () => {
   await dictation.finish(input); // what was said goes out with the rest
   const s = focused();
-  if (!s || waiting.has(s.key)) return;
+  if (!s || waiting.has(s.key) || sending.has(s.key)) return;
   // The text and the session as they were at Enter, so a send that waits on
   // uploads still goes where and as it was typed.
   const text = input.value.trim();
