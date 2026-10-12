@@ -929,7 +929,7 @@ def register_agent_ops(app: App) -> None:
         keys = [canvas.file_key(str(x)) for x in sources]
 
         def docked(lay: dict) -> dict:
-            wheres = [p.dock] + [f"below:{k}" for k in keys[:-1]]
+            wheres = [str(p.dock)] + [f"below:{k}" for k in keys[:-1]]
             for k, where in zip(keys, wheres):
                 lay = canvas.place(lay, k, where, lambda i: i in keys or s.dockable(i))
             return lay

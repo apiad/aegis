@@ -620,7 +620,7 @@ class Fold:
                 version = latest["version"] + 1 if latest else 1
                 prev = self._file_at.get(key)
                 old = self._entries.get(prev[0]) if prev else None
-                if old is not None:
+                if prev is not None and old is not None:
                     was = list(old["detail"]["files"])
                     was[prev[1]] = {**was[prev[1]], "replaced": version}
                     ops += self._upsert(

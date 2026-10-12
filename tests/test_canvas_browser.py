@@ -408,8 +408,10 @@ def tap_mcp(pg, n, tool, args):
 
 
 def test_a_phone_shows_the_canvas_as_tabs_with_the_composer_on_each(
-    server, page, browser
-):  # noqa: F811
+    server,  # noqa: F811
+    page,  # noqa: F811
+    browser,  # noqa: F811
+):
     # The page is made on a desktop (the helper sends with Enter) and docked
     # on the phone.
     page.goto(server.url)
@@ -480,8 +482,9 @@ COLS = "JSON.stringify([...document.querySelectorAll('#canvas > .pane')].map(p =
 
 
 def test_a_narrow_desktop_window_draws_tabs_and_widening_restores_the_columns(
-    server, page
-):  # noqa: F811
+    server,  # noqa: F811
+    page,  # noqa: F811
+):
     (server.root / "r.md").write_text("# One\n")
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -807,8 +810,9 @@ def _two_windows(aid, *more):
 
 
 def test_esc_closes_a_pane_menu_without_interrupting_and_a_card_leaves_it_open(
-    server, page
-):  # noqa: F811
+    server,  # noqa: F811
+    page,  # noqa: F811
+):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
@@ -835,8 +839,10 @@ def test_esc_closes_a_pane_menu_without_interrupting_and_a_card_leaves_it_open(
 
 
 def test_a_windows_only_pane_moved_to_a_new_window_gets_a_tab_of_its_own(
-    server, page, browser
-):  # noqa: F811
+    server,  # noqa: F811
+    page,  # noqa: F811
+    browser,  # noqa: F811
+):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     sid = spawn(page)
@@ -908,8 +914,10 @@ def test_a_hidden_transcript_reads_nothing_dots_its_tab_and_find_opens_it(server
 
 
 def test_a_narrow_desktop_window_draws_only_its_own_windows_panes(
-    server, page, browser
-):  # noqa: F811
+    server,  # noqa: F811
+    page,  # noqa: F811
+    browser,  # noqa: F811
+):
     (server.root / "r.md").write_text("# One\n")
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -1047,8 +1055,10 @@ def test_the_viewer_offers_pop_out_for_a_live_page(server, page):  # noqa: F811
 
 
 def test_a_window_tab_runs_no_cards_page_and_its_keys_stay_in_the_window(
-    server, page, browser
-):  # noqa: F811
+    server,  # noqa: F811
+    page,  # noqa: F811
+    browser,  # noqa: F811
+):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     sid = spawn(page)
