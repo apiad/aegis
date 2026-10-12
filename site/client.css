@@ -159,6 +159,13 @@ body{background:#000}
 .a2[data-view=boot] .v-boot{display:grid;place-items:center}
 .a2[data-view=spawn] .v-spawn{display:grid;place-items:center;overflow:auto;padding:48px 20px}
 .a2[data-view=session] .v-session{display:grid;grid-template-columns:minmax(0,1fr) var(--side-w,260px);position:relative}
+/* a window tab (#w=<n>:<key>): window n's panes alone, with no tabs, panel or transcript */
+.a2[data-view=window]{grid-template-rows:minmax(0,1fr)}
+.a2[data-view=window]:has(> .netbanner:not([hidden])){grid-template-rows:auto minmax(0,1fr)}
+.a2[data-view=window] .v-session{display:grid;grid-template-columns:minmax(0,1fr);position:relative}
+.a2[data-view=window] .tabs,.a2[data-view=window] .v-session>.side,.a2[data-view=window] .v-session>.grip,.a2[data-view=window] #tr-pane{display:none}
+.a2 .canvas>.wempty{display:none}
+.a2[data-view=window] .canvas[data-docked="0"]>.wempty{display:block;margin:48px auto}
 .a2[data-view=fleet] .v-fleet{display:block;overflow:auto}
 .a2[data-mode=read] .composer,.a2[data-mode=read] .side .live-only{display:none}
 .a2:not([data-mode=read]) .read-only{display:none}

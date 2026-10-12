@@ -125,10 +125,13 @@ const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(i
 // Open on a docked item shows its pane, so a page never runs in the viewer
 // and a pane at once. An older version of a docked file opens in the viewer:
 // the pane shows the newest.
+// One in another browser window focuses or opens that window's tab.
 setOpener((item) => {
   const f = item.files?.[item.at];
   const id = item.artifact || (f && !f.replaced ? f.key : null);
-  if (!(id && canvas.flash(id))) viewer.open(item);
+  const away = id && canvas.elsewhere(id);
+  if (away) openWindow(shown, away);
+  else if (!(id && canvas.flash(id))) viewer.open(item);
 });
 // The newest sent file with a key, for its pane: the last file entry that
 // holds it unreplaced. Walked on a pane's draw only.
@@ -160,18 +163,29 @@ setDocker(
     if (item && (item.artifact || item.files[item.at].key) === id) viewer.close();
     canvas.dock(id);
   },
-  (id) => canvas.writable && !canvas.has(id),
-  (id) => canvas.has(id),
+  (id) => canvas.writable && !canvas.has(id) && !canvas.elsewhere(id),
+  (id) => canvas.has(id) || canvas.elsewhere(id) || false,
   (id) => canvas.flash(id),
+  (n) => openWindow(shown, n),
 );
-// The shown session's canvas, from its card. A page the viewer shows that is
-// now docked leaves the viewer first, so it never runs in both.
+// Window n of a session's canvas, in the browser tab named for it: focused if
+// this browser has that tab open, opened if not.
+function windowUrl(key, n) {
+  return `${location.pathname}${location.search}#w=${n}:${key}`;
+}
+function openWindow(key, n) {
+  return window.open(windowUrl(key, n), `aegis-${key}-w${n}`);
+}
+// The shown session's canvas, from its card: window 1 in the session view,
+// window n in a window tab. A page the viewer shows that is now docked
+// leaves the viewer first, so it never runs in both.
 function showCanvas(s) {
   const lay = s.layout || null;
   const docked = new Set((lay?.windows || []).flatMap((w) => w.columns.flatMap((c) => c.panes.map((p) => p.id))));
   const item = viewer.isOpen ? viewer.items.get(viewer.key) : null;
   if (item?.artifact && docked.has(item.artifact)) viewer.close();
-  canvas.show(s.key, lay, { writable: !s.off && s.state !== "archived" && mine(s) });
+  const r = route();
+  canvas.show(s.key, lay, { n: r.view === "window" ? r.n : 1, writable: !s.off && s.state !== "archived" && mine(s) });
   syncDock();
 }
 setScroller($("tr"));
@@ -282,7 +296,7 @@ for (const b of document.querySelectorAll("#fleet-order button"))
     render();
   });
 
-// -- routing: #fleet, #new, #settings, #journal, #help[=<page>], #s=<key>, #read=<key> --
+// -- routing: #fleet, #new, #settings, #journal, #help[=<page>], #s=<key>, #read=<key>, #w=<n>:<key> --
 // A help ref is URI-encoded; a hand-typed malformed one is a page name nobody has.
 const unhash = (s) => {
   try {
@@ -295,6 +309,9 @@ function route() {
   const h = location.hash.slice(1);
   if (h.startsWith("s=")) return { view: "session", id: h.slice(2) };
   if (h.startsWith("read=")) return { view: "read", id: h.slice(5) };
+  // Window n of a session's canvas, a browser tab of its own (js/canvas.js).
+  const w = /^w=(\d+):(.+)$/.exec(h);
+  if (w) return { view: "window", id: w[2], n: Number(w[1]) };
   if (h === "new") return { view: "spawn" };
   if (h === "settings") return { view: "settings" };
   if (h === "journal") return { view: "journal" };
@@ -706,6 +723,7 @@ function flushSessions() {
     drawBand();
     markNeedsNet(); // the cards' Archive buttons
   } else if (r.view === "session" && ids.has(r.id)) renderMeta(sessions.get(r.id));
+  else if (r.view === "window" && ids.has(r.id)) drawWindow(r);
   drawNav(); // the needs count
 }
 
@@ -844,6 +862,13 @@ function render() {
       drawQuota();
       drawSideHost();
     }
+  } else if (r.view === "window") {
+    // The session's card and transcript, as the session view has them (the
+    // panes need the entries), with only window n drawn.
+    watchHost(null);
+    show("window");
+    follow(sessions.has(r.id) ? r.id : null);
+    drawWindow(r);
   } else {
     watchHost(forKey(r.id).server || "");
     show("session");
@@ -1364,6 +1389,16 @@ async function drawSideJournal(key, force = false) {
     return row;
   }));
   $("s-journal-all").replaceChildren(thread);
+}
+
+// A window tab: its panes, and the session's name in its title so the
+// browser's tab list tells the windows apart. A session gone from the list
+// leaves the window empty.
+function drawWindow(r) {
+  const s = sessions.get(r.id);
+  if (s) showCanvas(s);
+  else canvas.clear();
+  setTitle(`${s ? s.title || s.handle : "aegis"} · window ${r.n}`);
 }
 
 function renderMeta(s) {

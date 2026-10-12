@@ -26,9 +26,16 @@
 // page's frame is never reloaded). The layout is not changed, so a wider
 // window draws the same columns again. The composer stays at the foot of the
 // transcript's pane, which fills the canvas under every tab.
+//
+// A canvas can span browser windows. Window 1 is the session's tab; window n
+// is a tab at #w=<n>:<key> that draws window n alone, with no transcript.
+// Each tab draws only its own window, so a page still runs in one place: the
+// card of an item in another window holds "in window n · open" instead of its
+// frame. A phone has one window, so on a phone window 1 draws every window's
+// panes as its tabs, window 1's first.
 
 import { drawArtifact, drawFile } from "./viewer.js";
-import { DOCKED, fileUrl, hold } from "./entries.js";
+import { DOCKED, fileUrl, hold, inWindow } from "./entries.js";
 import { icon } from "./glyphs.js";
 
 const TRANSCRIPT = "transcript";
@@ -69,6 +76,7 @@ export class Canvas {
     this.dragged = null; // while something is dragged: {alive, end}
     this.writable = false;
     this.panes = new Map(); // pane id -> its element, for the shown session
+    this.away = new Map(); // a page in another window -> that window's number, held on its card
     this.grips = new Map(); // "x<i>" or "y<i>.<j>" -> its element
     // The transcript's handle: a thin bar over its top edge, since its own
     // column has no bar to drag by. It has no ×: the transcript always stays.
@@ -98,7 +106,9 @@ export class Canvas {
     this.strip.addEventListener("pointerdown", (ev) => this.press(ev));
     this.strip.addEventListener("contextmenu", (ev) => ev.preventDefault());
     this.phone = matchMedia("(max-width: 760px)");
-    this.phone.addEventListener("change", () => this.key !== null && this.place());
+    // A phone draws every window's panes in window 1: crossing the
+    // breakpoint changes what is docked here.
+    this.phone.addEventListener("change", () => this.key !== null && this.redraw());
     // The redraw waits for the next frame: resizing a page's frame while
     // observers are being told of sizes raises the page's own "ResizeObserver
     // loop" error, which would reach the agent as the page's error.
@@ -119,12 +129,24 @@ export class Canvas {
     this.n = n;
     this.writable = writable;
     this.layout = layout || null;
+    this.redraw(before, same);
+  }
+
+  // place(), and tell the cards when what is docked here changed. A newly
+  // docked pane, by the agent or another browser or this one, gets a dot; the
+  // open tab stays open.
+  redraw(before = this.ids(), marks = true) {
+    const was = new Map(this.away);
     this.place();
     const after = this.ids();
-    // A newly docked pane, by the agent or another browser or this one, gets
-    // a dot; the open tab stays open.
-    if (same) for (const id of after) if (!before.includes(id)) this.mark(id);
-    if (before.length !== after.length || before.some((id, i) => id !== after[i])) this.onChange(before, after);
+    if (marks) for (const id of after) if (!before.includes(id)) this.mark(id);
+    const moved = was.size !== this.away.size || [...this.away].some(([id, n]) => was.get(id) !== n);
+    if (moved || before.length !== after.length || before.some((id, i) => id !== after[i])) this.onChange(before, after);
+  }
+
+  // Window 1 on a phone: every window's panes, window 1's first.
+  merged() {
+    return this.n === 1 && this.phone.matches;
   }
 
   // The shown window as drawn: the card's, with a grip's drag on a copy. The
@@ -132,11 +154,27 @@ export class Canvas {
   // grip moves is drawn with the drag on top, not overwritten by it.
   window() {
     const ws = (this.layout || DEFAULT).windows;
-    const w = ws.find((w) => w.n === this.n) || { n: this.n, columns: [] };
+    let w = ws.find((w) => w.n === this.n) || { n: this.n, columns: [] };
+    if (this.merged()) w = { n: 1, columns: [...w.columns, ...ws.filter((x) => x.n !== 1).flatMap((x) => x.columns)] };
     if (!this.preview) return w;
     const copy = structuredClone(w);
     this.preview(copy);
     return copy;
+  }
+
+  // The windows in the layout, by number.
+  windows() {
+    return (this.layout || DEFAULT).windows;
+  }
+
+  // The other window that shows `id`, or null: here, or docked nowhere.
+  elsewhere(id) {
+    if (this.key === null || this.merged()) return null;
+    for (const w of this.windows()) {
+      if (w.n === this.n) continue;
+      if (w.columns.some((c) => c.panes.some((p) => p.id === id))) return w.n;
+    }
+    return null;
   }
 
   // What is docked in the shown window, the transcript left out.
@@ -152,15 +190,24 @@ export class Canvas {
   }
 
   // Each pane's box from the shares. Panes no longer in the window go, and
-  // their pages go back to their cards.
+  // their pages go back to their cards, or to a line naming the window that
+  // now shows them.
   place() {
     const keep = new Set(this.ids());
+    const away = new Map();
+    if (this.key !== null && !this.merged())
+      for (const w of this.windows())
+        if (w.n !== this.n) for (const c of w.columns) for (const p of c.panes) away.set(p.id, w.n);
+    const was = this.away;
+    this.away = away;
+    for (const id of was.keys()) if (!away.has(id) && !keep.has(id) && id.startsWith("art-")) hold(id, null, this.entryOf(id));
     for (const [id, node] of this.panes) {
       if (keep.has(id)) continue;
       this.drop(id, node);
     }
+    for (const [id, n] of away) if (was.get(id) !== n && id.startsWith("art-")) hold(id, () => {}, this.entryOf(id), inWindow(n));
     for (const id of this.dots) if (!keep.has(id)) this.dots.delete(id);
-    if (!keep.has(this.open)) this.open = TRANSCRIPT;
+    if (!keep.has(this.open)) this.open = this.n === 1 ? TRANSCRIPT : [...keep][0] || TRANSCRIPT;
     if (this.menu && !keep.has(this.menu.id)) this.closeMenu();
     this.tabbed = this.wantTabs();
     let x = 0;
@@ -187,9 +234,10 @@ export class Canvas {
     else delete this.root.dataset.mode;
     this.syncStrip();
     // Handles only where there is something to arrange, for someone who may,
-    // and not on tabs: dragging is a desktop act.
+    // and not on tabs: dragging is a desktop act. The transcript's, only in
+    // the window that holds it.
     const handles = keep.size && this.writable && !this.tabbed;
-    if (handles) {
+    if (handles && this.n === 1) {
       if (!this.trBar.isConnected) this.root.append(this.trBar);
     } else this.trBar.remove();
     this.placeGrips(handles);
@@ -227,7 +275,8 @@ export class Canvas {
   }
 
   // Every pane fills the canvas under the strip; a docked one stops above
-  // the composer, which stays at the foot of the transcript's pane.
+  // the composer, which stays at the foot of the transcript's pane. A window
+  // other than 1 has no composer.
   tabBox(node, id) {
     Object.assign(node.style, {
       left: "0",
@@ -235,7 +284,7 @@ export class Canvas {
       width: "100%",
       height: "auto",
       right: "auto",
-      bottom: id === TRANSCRIPT ? "0" : "var(--composer-h, 94px)",
+      bottom: id === TRANSCRIPT || this.n !== 1 ? "0" : "var(--composer-h, 94px)",
     });
     node.classList.toggle("on", id === this.open);
   }
@@ -249,7 +298,7 @@ export class Canvas {
       this.closeMenu();
       return;
     }
-    const order = [TRANSCRIPT, ...this.ids()];
+    const order = this.n === 1 ? [TRANSCRIPT, ...this.ids()] : this.ids();
     for (const [id, b] of this.tabs) if (!order.includes(id)) this.tabs.delete(id);
     const tabs = order.map((id) => {
       let b = this.tabs.get(id);
@@ -390,10 +439,12 @@ export class Canvas {
     return node;
   }
 
+  // A page that moved to another window keeps its card's line: releasing it
+  // would mount the card's frame for a moment and start the page twice.
   drop(id, node) {
     node.remove();
     this.panes.delete(id);
-    if (id.startsWith("art-")) hold(id, null, this.entryOf(id));
+    if (id.startsWith("art-") && !this.away.has(id)) hold(id, null, this.entryOf(id));
   }
 
   // (Re)draw one pane's contents: on creation, when its entry first arrives,
@@ -707,6 +758,8 @@ export class Canvas {
   // No session, or another one: every pane goes and the transcript fills the
   // canvas again.
   clear() {
+    for (const id of this.away.keys()) if (id.startsWith("art-")) hold(id, null, this.entryOf(id));
+    this.away.clear();
     for (const [id, node] of this.panes) this.drop(id, node);
     this.key = null;
     this.layout = null;

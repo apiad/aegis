@@ -536,3 +536,178 @@ def test_a_narrow_panes_bar_keeps_the_name_and_undock(server, page):  # noqa: F8
     wide = page.locator(f'#canvas .pane[data-pane="{aid}"]')
     assert wide.locator(".pbar .open").is_visible()
     assert page.errors == []
+
+
+def _window_page(browser, url, **ctx):  # noqa: F811
+    """A second browser tab at ``url``, keeping its page errors."""
+    pg = browser.new_page(viewport={"width": 1280, "height": 800}, **ctx)
+    pg.errors = []
+    pg.on("pageerror", lambda e: pg.errors.append(str(e)))
+    pg.goto(url)
+    return pg
+
+
+def _runs(pg, src) -> int:
+    """How many frames in ``pg`` have loaded the page at ``src``."""
+    return sum(1 for f in pg.frames if f.url.endswith(src))
+
+
+def test_a_second_window_runs_its_page_live(server, page, browser):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    mcp(
+        page,
+        3,
+        "layout_set",
+        {
+            "windows": [
+                {"n": 1, "columns": [{"panes": [{"id": "transcript"}]}]},
+                {"n": 2, "columns": [{"panes": [{"id": aid}]}]},
+            ]
+        },
+    )
+    held = page.locator(".row.artifact .acard .held")
+    held.filter(has_text="in window 2").wait_for()
+    assert held.inner_text() == "in window 2 · open"
+    assert page.locator("iframe[data-artifact]").count() == 0
+    assert page.locator(f'#canvas .pane[data-pane="{aid}"]').count() == 0
+    two = _window_page(browser, f"{server.url}#w=2:{sid}")
+    inner = two.frame_locator(f'#canvas iframe[data-artifact="{aid}"]')
+    inner.locator("#st").filter(has_text="{}").wait_for()
+    assert two.locator("#a2").get_attribute("data-view") == "window"
+    assert two.locator("#tr-pane").is_hidden() and two.locator("#side").is_hidden()
+    assert two.locator("header.tabs").is_hidden()
+    assert two.title().endswith(" · window 2"), two.title()
+    # The page runs once in the window's tab, and not at all in window 1's.
+    src = two.locator(f'#canvas iframe[data-artifact="{aid}"]').get_attribute("src")
+    assert _runs(two, src) == 1 and _runs(page, src) == 0
+    # The agent's state reaches it there.
+    mcp(page, 4, "artifact_update", {"id": aid, "state": {"n": 7}})
+    inner.locator("#st").filter(has_text='{"n":7}').wait_for()
+    inner.locator("#b").click()  # submits: the agent hears it, the page leaves the canvas
+    page.wait_for_selector(
+        f".row.inbox .from >> text=artifact:{aid} · submit", state="attached", timeout=10000
+    )
+    two.locator("text=This window is empty").wait_for()
+    assert two.errors == [] and page.errors == []
+
+
+def test_pop_out_opens_a_live_window_and_bring_back_returns_it(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    # Pop out takes the place of the raw page in a new tab.
+    assert page.locator(".row.artifact .fbar .open").count() == 0
+    with page.context.expect_page() as opened:
+        page.click(".row.artifact .fbar .popout")
+    two = opened.value
+    two.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").wait_for()
+    assert two.url.endswith(f"#w=2:{sid}")
+    assert page.locator(".row.artifact .acard .held").inner_text() == "in window 2 · open"
+    # Open on the card focuses that tab by its name rather than opening another.
+    pages = len(page.context.pages)
+    page.click(".row.artifact .acard .held .locate")
+    page.wait_for_timeout(300)
+    assert len(page.context.pages) == pages
+    two.close()
+    chip = page.locator("#canvas .wchip")
+    chip.filter(has_text="window 2 · 1 pane").wait_for()
+    chip.locator(".bring").click()
+    page.locator(f'#canvas .pane[data-pane="{aid}"]').wait_for()
+    assert page.locator("#canvas .wchip").count() == 0
+    page.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").wait_for()
+    assert page.errors == []
+
+
+def test_move_to_window_lists_the_windows_and_opens_the_one_chosen(server, page):  # noqa: F811
+    (server.root / "r.md").write_text("# One\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    mcp(page, 3, "file_send", {"paths": ["r.md"]})
+    fkey = page.locator(".row.file .fbar .dock").get_attribute("data-dock")
+    mcp(
+        page,
+        4,
+        "layout_set",
+        {
+            "windows": [
+                {"n": 1, "columns": [{"panes": [{"id": "transcript"}]}, {"panes": [{"id": fkey}]}]},
+                {"n": 2, "columns": [{"panes": [{"id": aid}]}]},
+            ]
+        },
+    )
+    pane = page.locator(f'#canvas .pane[data-pane="{fkey}"]')
+    pane.locator("text=One").wait_for()
+    # The file's card says where it is too, and its chip counts one pane.
+    page.locator("#canvas .wchip").filter(has_text="window 2 · 1 pane").wait_for()
+    pane.locator(".pbar .move").click()
+    items = page.locator("#canvas .pmenu button").all_inner_texts()
+    assert items == ["Window 2", "New window"], items
+    with page.context.expect_page() as opened:
+        page.locator("#canvas .pmenu button", has_text="Window 2").click()
+    two = opened.value
+    assert two.url.endswith(f"#w=2:{sid}")
+    two.locator(f'#canvas .pane[data-pane="{fkey}"]').locator("text=One").wait_for()
+    two.locator(f'#canvas .pane[data-pane="{aid}"]').wait_for()
+    page.locator("#canvas .wchip").filter(has_text="window 2 · 2 panes").wait_for()
+    assert page.locator(".row.file .fcard .held").inner_text() == "in window 2 · open"
+    # From window 2, the menu offers window 1 and a new one.
+    two.locator(f'#canvas .pane[data-pane="{aid}"] .pbar .move').click()
+    assert two.locator("#canvas .pmenu button").all_inner_texts() == ["Window 1", "New window"]
+    two.locator("#canvas .pmenu button", has_text="Window 1").click()
+    page.locator(f'#canvas .pane[data-pane="{aid}"]').wait_for()
+    page.locator("#canvas .wchip").filter(has_text="window 2 · 1 pane").wait_for()
+    assert two.locator(f'#canvas .pane[data-pane="{aid}"]').count() == 0
+    assert page.errors == [] and two.errors == []
+
+
+def test_a_phone_strip_holds_every_windows_panes(server, page, browser):  # noqa: F811
+    (server.root / "r.md").write_text("# One\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    key = spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    mcp(page, 3, "file_send", {"paths": ["r.md"]})
+    fkey = page.locator(".row.file .fbar .dock").get_attribute("data-dock")
+    mcp(
+        page,
+        4,
+        "layout_set",
+        {
+            "windows": [
+                {"n": 1, "columns": [{"panes": [{"id": "transcript"}]}, {"panes": [{"id": fkey}]}]},
+                {"n": 2, "columns": [{"panes": [{"id": aid}]}]},
+            ]
+        },
+    )
+    page.close()
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True)
+    phone = ctx.new_page()
+    phone.errors = []
+    phone.on("pageerror", lambda e: phone.errors.append(str(e)))
+    phone.goto(f"{server.url}#s={key}")
+    strip = phone.locator("#canvas .ptabs")
+    strip.wait_for()
+    assert strip.locator("button").all_inner_texts() == ["transcript", "r.md", "Pick"]
+    assert phone.locator("#canvas .wchip").count() == 0
+    strip.locator(f'button[data-pane="{aid}"]').click()
+    phone.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").wait_for()
+    assert phone.locator(f'#canvas .pane[data-pane="{aid}"] .move').is_hidden()
+    assert phone.locator(f'#canvas .pane[data-pane="{aid}"] .popout').is_hidden()
+    # Its card holds the docked line, not another window's.
+    strip.locator('button[data-pane="transcript"]').click()
+    assert phone.locator(".row.artifact .acard .held").inner_text() == "docked · show"
+    # A window tab on a phone draws its panes as tabs too, with no transcript tab.
+    win = ctx.new_page()
+    win.goto(f"{server.url}#w=2:{key}")
+    win.locator(f'#canvas iframe[data-artifact="{aid}"]').wait_for()
+    assert win.locator("#canvas").get_attribute("data-mode") == "tabs"
+    assert win.locator("#canvas .ptabs button").all_inner_texts() == ["Pick"]
+    assert win.locator(f'#canvas .pane[data-pane="{aid}"]').is_visible()
+    assert phone.errors == []
+    ctx.close()
