@@ -157,6 +157,7 @@ FIRST = [
     ("add an agent to .aegis.yaml", "config#add-an-agent"),
     ("install aegis on my phone home screen", "phone"),
     ("turn on push notifications for this device", "phone#push-notifications"),
+    ("see docked panes as tabs on a phone", "phone#the-canvas-on-a-phone"),
     ("what does read permission allow", "sessions#permission"),
     ("rename my session", "sessions#rename-it"),
     ("run aegis in the background", "commands"),

@@ -76,6 +76,12 @@ stacked panes:
   360 px, and a pane at least 120 px high.
 - × on a pane's bar undocks it, and the card shows it again.
 
+When the window is too narrow for its columns, the canvas draws as tabs, as on
+a phone: one pane at a time under a strip of tabs. That happens when the
+columns' minimums do not fit side by side, or when the transcript's column
+would be under its 360 px. The columns are kept, and widening the window
+brings them back as they were.
+
 A canvas holds 4 columns and 3 panes in a column. Once there are four
 columns, Dock stacks under the last pane, and on a full canvas it says so and
 does nothing. A docked file shows its newest version: when the agent sends
