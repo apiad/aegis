@@ -286,6 +286,17 @@ def _recap(roots: Roots) -> list[Finding]:
     return [Finding("ok", "recap", f"{cfg['agent']}, {cfg['model']}")]
 
 
+def _context(context: dict) -> Finding:
+    if "error" in context:
+        return Finding("error", "context", context["error"])
+    return Finding(
+        "ok",
+        "context",
+        f"handoff line from {context['handoff_at']:,} tokens, cold-cache notice "
+        f"after {context['cold_after']} s idle over {context['cold_min']:,} tokens",
+    )
+
+
 def _state(roots: Roots) -> Finding:
     sr = roots.state_root
     if found := legacy_state(sr):
@@ -340,5 +351,6 @@ async def doctor(
     out.append(_default(snap.default_agent, by_name))
     out += [_queue(name, q, by_name) for name, q in snap.queues.items()]
     out += _recap(roots)
+    out.append(_context(snap.context))
     out.append(_state(roots))
     return out

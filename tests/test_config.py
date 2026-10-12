@@ -106,3 +106,40 @@ async def test_the_watch_loop_fires_once_per_change(tmp_path):
         assert len(seen) == 1
     finally:
         task.cancel()
+
+
+def test_context_defaults_when_absent():
+    from aegis.config import CONTEXT_DEFAULTS, context_from
+
+    assert (
+        context_from(None)
+        == CONTEXT_DEFAULTS
+        == {
+            "handoff_at": 300000,
+            "cold_after": 3600,
+            "cold_min": 100000,
+        }
+    )
+
+
+def test_context_overrides_one_key_and_rides_the_snapshot(tmp_path):
+    from aegis.config import context_from
+
+    assert context_from({"handoff_at": 0})["handoff_at"] == 0
+    snap = Snapshot.parse(tmp_path, None, {"context": {"cold_min": 5}})
+    assert snap.context["cold_min"] == 5 and snap.unknown_keys == ()
+
+
+def test_a_bad_context_keeps_the_defaults_and_says_why():
+    from aegis.config import CONTEXT_DEFAULTS, context_from
+
+    for raw, word in (
+        ({"handof_at": 1}, "handof_at"),
+        ({"cold_min": -1}, "cold_min"),
+        ({"cold_after": 0}, "cold_after"),
+        ({"cold_min": True}, "cold_min"),
+        ("big", "mapping"),
+    ):
+        c = context_from(raw)
+        assert word in c["error"]
+        assert {k: c[k] for k in CONTEXT_DEFAULTS} == CONTEXT_DEFAULTS
