@@ -153,6 +153,8 @@ FIRST = [
     ("read what another agent is doing", "handoffs"),
     ("link another aegis server", "links"),
     ("add an agent to .aegis.yaml", "config#add-an-agent"),
+    ("install aegis on my phone home screen", "phone"),
+    ("turn on push notifications for this device", "phone#push-notifications"),
     ("what does read permission allow", "sessions#permission"),
     ("rename my session", "sessions#rename-it"),
     ("run aegis in the background", "commands"),
