@@ -73,6 +73,13 @@ async def test_a_person_who_owned_sessions_before_is_offered_both(app):
     }
 
 
+async def test_a_person_whose_sessions_are_all_archived_was_here_before(app):
+    r = await call(app, "session.spawn", {"agent": "opus"})
+    await app.sessions.close(r["log_id"])
+    assert app.sessions.sessions == {} and r["log_id"] in app.sessions.archived
+    assert (await call(app, "help.state"))["whats_new"] == installed()
+
+
 async def test_the_guide_spawns_from_the_chips_and_the_agent_reads_the_page(app):
     r = await call(
         app, "help.guide", {"kind": "tutorial", "agent": "quick", "effort": "max"}

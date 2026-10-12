@@ -3,6 +3,7 @@ marks, write-then-rename, and a damaged file."""
 
 import json
 from importlib.metadata import version
+from pathlib import Path
 
 import pytest
 
@@ -46,6 +47,25 @@ def test_a_write_leaves_no_temporary_file(tmp_path):
     st.get("ana", owns_sessions=False, installed="2.6.0")
     st.mark_tutorial("ana")
     assert sorted(p.name for p in (tmp_path / "help").iterdir()) == ["ana.json"]
+
+
+def test_a_write_cut_short_keeps_the_last_record(tmp_path, monkeypatch):
+    st = HelpState(tmp_path)
+    st.get("ana", owns_sessions=False, installed="2.6.0")
+    st.mark_tutorial("ana")
+
+    def crash(self, text):  # the process dies three bytes in
+        open(self, "w").write(text[:3])
+        raise OSError("killed")
+
+    monkeypatch.setattr(Path, "write_text", crash)
+    with pytest.raises(OSError):
+        st.mark_toured("ana", "2.7.0")
+    monkeypatch.undo()
+    assert st.get("ana", owns_sessions=True, installed="2.7.0") == {
+        "tutorial": True,
+        "toured": "2.6.0",
+    }
 
 
 @pytest.mark.parametrize(
