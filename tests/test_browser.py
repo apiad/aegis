@@ -6439,16 +6439,16 @@ def test_the_fold_levels_fold_the_work_then_all_but_the_messages(server, page):
     page.keyboard.press("j")
     assert selected(page) == note
 
-    # z goes on to level 2, where only the messages stay: a sent file folds
-    # into the run of the call that sent it.
+    # z goes on to level 2, where only the messages stay, and what the agent
+    # showed: a sent file never folds, so its call's run ends before it.
     page.keyboard.press("z")
     assert page.get_attribute("#nav-fold", "data-level") == "2"
     page.fill("#input", '/mcp file_send {"paths": ["notes.md"]}')
     page.press("#input", "Enter")
     turns_done(page, 3)
     page.wait_for_selector(".row.file", state="attached")
-    assert not page.is_visible(".row.file")
-    assert run_lines(page)[-1] == "1 tool call · file_send · 1 file"
+    assert page.is_visible(".row.file")
+    assert run_lines(page)[-1] == "1 tool call · file_send"
     assert page.is_visible(".row.prose")
     assert page.locator(".row.user:visible").count() == 3
 
