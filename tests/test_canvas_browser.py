@@ -1,6 +1,8 @@
 """The canvas in a browser: docked pages and files beside the transcript (#347)."""
 
 import json
+import re
+from pathlib import Path
 
 import pytest
 
@@ -210,4 +212,66 @@ def test_a_stacked_panes_bar_is_grabbed_not_the_grip_above_it(server, page):  # 
         [box["x"] + box["width"] / 2, box["y"] + 1],
     )
     assert hit, "the top edge of a stacked pane's bar drags the pane"
+    assert page.errors == []
+
+
+def test_agent_state_reaches_a_docked_page_whose_card_row_is_unmounted(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    page.click(".row.artifact .fbar .dock")
+    inner = page.frame_locator(f'#canvas iframe[data-artifact="{aid}"]')
+    inner.locator("#st").filter(has_text="{}").wait_for()
+    # Rows above the mounted window go while the reader follows the bottom
+    # (transcript.js), the docked page's card with them.
+    # turns_done counts "done in" rows, and the early ones go too.
+    page.fill("#input", "/many 320")
+    page.press("#input", "Enter")
+    page.locator(f'.row[data-id="{aid}"]').wait_for(state="detached", timeout=30_000)
+    page.get_by_text("out 319").wait_for(timeout=30_000)
+    page.fill("#input", f"/mcp artifact_update {json.dumps({'id': aid, 'state': {'n': 7}})}")
+    page.press("#input", "Enter")
+    inner.locator("#st").filter(has_text='{"n":7}').wait_for(timeout=10_000)
+    assert page.errors == []
+
+
+def test_a_docked_page_resent_while_its_tab_was_away_shows_the_new_page(
+    server,  # noqa: F811
+    page,  # noqa: F811
+    browser,  # noqa: F811
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    made = page.locator(".row.prose .md", has_text='"path"').last.inner_text()
+    path = Path(re.search(r'"path": "([^"]+)"', made).group(1))
+    page.click(".row.artifact .fbar .dock")
+    frame = f'#canvas iframe[data-artifact="{aid}"]'
+    page.frame_locator(frame).locator("#b").wait_for()
+    # The card's row leaves the mounted window, so only the canvas hears of the resend.
+    page.fill("#input", "/many 320")
+    page.press("#input", "Enter")
+    page.locator(f'.row[data-id="{aid}"]').wait_for(state="detached", timeout=30_000)
+    page.get_by_text("out 319").wait_for(timeout=30_000)
+    before = page.get_attribute(frame, "src")
+    spawn(page)  # the person moves to another tab
+    other = browser.new_page()
+    other.goto(f"{server.url}#s={sid}")
+    other.locator(frame).wait_for()
+    path.write_text(path.read_text().replace("B</button>", "C</button>"))
+    other.fill("#input", f"/mcp artifact_update {json.dumps({'id': aid, 'resend': True})}")
+    other.press("#input", "Enter")
+    other.wait_for_function(
+        "([sel, old]) => document.querySelector(sel)?.getAttribute('src') !== old",
+        arg=[frame, before],
+    )
+    page.click(f"#tablist .tab[data-id='{sid}']")
+    page.wait_for_function(
+        "([sel, old]) => { const f = document.querySelector(sel); return f && f.getAttribute('src') !== old; }",
+        arg=[frame, before],
+        timeout=5000,
+    )
+    assert page.frame_locator(frame).locator("#b").inner_text() == "C"
     assert page.errors == []

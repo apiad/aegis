@@ -252,12 +252,16 @@ export class Canvas {
   }
 
   // The transcript's entries arrived or changed in bulk (a snapshot, a
-  // restore): fill the panes that were waiting for theirs, and show a file's
-  // newest version if one came with them.
+  // resume): fill the panes that were waiting for theirs, give a page what
+  // changed while the tab was away (a resend, a status, the agent's state),
+  // and show a file's newest version if one came with them.
   refresh() {
     for (const [id, node] of this.panes) {
-      if ("loading" in node.dataset) this.draw(id);
-      else if (!id.startsWith("art-")) {
+      if (id.startsWith("art-")) {
+        const e = this.entryOf(id);
+        if (e) this.onEntry(e);
+      } else if ("loading" in node.dataset) this.draw(id);
+      else {
         const f = this.latestFile(id);
         if (f && String(f.version) !== node.dataset.version) this.draw(id, f);
       }
@@ -280,7 +284,17 @@ export class Canvas {
     if (!node || e.kind !== "artifact") return;
     if ("loading" in node.dataset) return this.draw(e.id, e);
     const frame = node.querySelector("iframe[data-artifact]");
-    if (frame && frame.dataset.status === e.status && frame.getAttribute("src") === fileUrl(e.detail?.url)) return;
+    if (frame && frame.dataset.status === e.status && frame.getAttribute("src") === fileUrl(e.detail?.url)) {
+      // A state the agent set reaches the frame here too: the card's row
+      // (entries.js, UPDATERS.artifact) may be unmounted, and then nothing
+      // else would hand it on. The revision keeps it from arriving twice.
+      const rev = String(e.detail?.state_rev);
+      if (e.detail?.state_by === "agent" && rev !== frame.dataset.stateRev) {
+        frame.dataset.stateRev = rev;
+        frame.dispatchEvent(new CustomEvent("aegis:state", { detail: e.detail.state, bubbles: true }));
+      }
+      return;
+    }
     this.draw(e.id, e);
   }
 
