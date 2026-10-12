@@ -23,6 +23,16 @@ way an editor does:
   least 680 px wide, and as one compact column when it is narrower, with the
   changed words marked. For Claude Code the line numbers are the file's own.
 
+## Folding
+
+The fold button in the bar above the message box, z in a session, or Alt+Z
+steps through three levels. The first shows everything. The second folds each
+stretch of tool calls, thinking and notes between two messages into one line
+that says what it holds; click the line to open it. The third leaves only your
+messages and the agent's replies. The latest recap stays shown at every level,
+and older recaps fold with the rest of the work. The browser remembers the
+level.
+
 ## Replies
 
 Replies and your own messages are Markdown. A code block shows its language

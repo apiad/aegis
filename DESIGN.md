@@ -598,7 +598,10 @@ What each person has been offered, whether they started a tutorial and the
 last release they toured, is kept per principal on the server
 (`helpstate.py`), so the new tab's hints are the same on every device; a
 principal is decided new or returning once, at its first read, before the
-guide it may be starting spawns a session of its own.
+guide it may be starting spawns a session of its own. The release notes ship in
+the wheel beside the pages (`changelog_read.py`), and every added or changed
+entry ends with the help page that shows it, so `/whats-new` tours the notes
+of the code it runs and its guide opens the right page for each.
 
 **Performance is measured on every PR and never gates.** `scripts/bench.py`
 replays a recorded transcript through the fake harness in
