@@ -4012,6 +4012,83 @@ def test_two_tabs_flushing_at_once_send_a_draft_once(server, browser):
     ctx.close()
 
 
+OUTBOX = "import('/static/js/outbox.js')"
+STORED = "import('/static/js/devicestore.js').then(s => s.outboxAll())"
+
+
+def outbox_empties(pg) -> None:
+    # Polled through evaluate, which awaits: wait_for_function takes a returned
+    # Promise as truthy and would pass at once.
+    deadline = time.monotonic() + 5
+    while pg.evaluate(STORED):
+        assert time.monotonic() < deadline, "the draft stayed on the device"
+        time.sleep(0.1)
+
+
+def test_discard_drops_a_stale_draft_from_the_screen_and_the_device(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    page.evaluate(f"k => {OUTBOX}.then(o => o.queue(k, 'ship it', -1))", sid)
+    page.evaluate(f"{OUTBOX}.then(o => o.flushNow())")
+    page.wait_for_selector("#queued.stale", timeout=10000)
+    assert page.is_hidden("#queued [data-act=edit]")
+    page.click("#queued [data-act=discard]")
+    page.wait_for_selector("#queued", state="hidden")
+    outbox_empties(page)
+    assert page.errors == []
+
+
+def test_edit_puts_a_queued_draft_back_in_the_message_box(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    page.evaluate(f"k => {OUTBOX}.then(o => o.queue(k, 'ship it', 1e9))", sid)
+    page.wait_for_selector("#queued", state="visible")
+    assert page.is_hidden("#queued [data-act=send]")
+    page.click("#queued [data-act=edit]")
+    page.wait_for_selector("#queued", state="hidden")
+    assert page.input_value("#input") == "ship it"
+    outbox_empties(page)
+    assert page.errors == []
+
+
+def test_a_draft_for_a_closed_session_offers_copy_and_discard(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    page.evaluate(f"k => {OUTBOX}.then(o => o.queue(k, 'ship it', 1e9))", sid)
+    close_session(page)
+    page.wait_for_selector("#a2:not([data-view=session])")
+    page.evaluate(f"{OUTBOX}.then(o => o.flushNow())")
+    page.wait_for_selector(".toast .msg >> text=needs a look")
+    page.evaluate("id => (location.hash = '#read=' + id)", sid)
+    page.wait_for_selector("#queued.gone", timeout=10000)
+    assert "closed" in page.text_content("#queued")
+    assert page.is_visible("#queued [data-act=copy]")
+    assert page.is_hidden("#queued [data-act=send]")
+    page.click("#queued [data-act=discard]")
+    page.wait_for_selector("#queued", state="hidden")
+    assert page.errors == []
+
+
+def test_a_command_typed_offline_is_not_queued(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    server.stop()
+    page.wait_for_selector("#a2[data-offline]", state="attached", timeout=10000)
+    page.fill("#input", "/model x")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".toast.error .msg >> text=offline")
+    assert page.is_hidden("#queued")
+    assert page.evaluate(STORED) == []
+    server.start()
+    page.wait_for_function(
+        "!document.getElementById('a2').hasAttribute('data-offline')", timeout=20000
+    )
+
+
 def test_a_refused_token_empties_the_device(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
