@@ -152,11 +152,16 @@ function fileCard(files, glyph) {
     stage =
       hd === "replaced" ? el("div", "held", `replaced by v${f.replaced}`)
       : hd === "docked" ? heldLine(f.key, DOCKED)
+      : hd ? heldLine(f.key, hd)
       : preview(f, remote, () => view.click());
     if (stage) card.append(stage);
   };
-  // What the shown page holds now: "replaced", "docked" or "".
-  const holds = (f) => (f.replaced ? "replaced" : f.key && !remote && docker.docked(f.key) ? "docked" : "");
+  // What the shown page holds now: "replaced", "docked", "in window <n>" or "".
+  const holds = (f) => {
+    if (f.replaced) return "replaced";
+    const at = f.key && !remote && docker.docked(f.key);
+    return at === true ? "docked" : at ? inWindow(at) : "";
+  };
   card._sync = () => {
     if (holds(sent[at]) !== card.dataset.held) show(at);
   };
@@ -198,11 +203,12 @@ export function setOpener(fn) {
 // canvas (js/canvas.js), so this module does not import it. can(id) says
 // whether the button shows: not while the item is docked, not for a file
 // sent before files had keys, and not on a session the person may not change.
-// docked(id) says whether a pane shows it here, and show(id) outlines that
-// pane (a docked card's Show).
-let docker = { dock: () => {}, can: () => false, docked: () => false, show: () => {} };
-export function setDocker(dock, can, docked, show) {
-  docker = { dock, can: (id) => !!id && can(id), docked, show };
+// docked(id) is true when a pane shows it here, the window's number when a
+// pane in another window does, and false otherwise. show(id) outlines that
+// pane (a docked card's Show), and open(n) focuses or opens window n's tab.
+let docker = { dock: () => {}, can: () => false, docked: () => false, show: () => {}, open: () => {} };
+export function setDocker(dock, can, docked, show, open) {
+  docker = { dock, can: (id) => !!id && can(id), docked, show, open };
 }
 export function dockButton(id) {
   const b = iconButton(el("button", "btn dock"), "dock", "Dock beside the transcript");
@@ -221,16 +227,19 @@ export function syncDock() {
 }
 
 // The line a held card shows instead of its stage. A docked one carries Show,
-// which outlines its pane.
+// which outlines its pane; one in another browser window carries Open, which
+// focuses that window's tab or opens it.
 export const DOCKED = "docked";
+export const inWindow = (n) => `in window ${n}`;
 function heldLine(id, label) {
   const line = el("div", "held", label);
-  if (label === DOCKED) {
-    const show = el("button", "btn link locate", "show");
-    show.type = "button";
-    show.title = "Outline its pane";
-    show.addEventListener("click", () => docker.show(id));
-    line.append(" · ", show);
+  const away = /^in window (\d+)$/.exec(label);
+  if (label === DOCKED || away) {
+    const b = el("button", "btn link locate", label === DOCKED ? "show" : "open");
+    b.type = "button";
+    b.title = label === DOCKED ? "Outline its pane" : `Open window ${away[1]}`;
+    b.addEventListener("click", () => (away ? docker.open(Number(away[1])) : docker.show(id)));
+    line.append(" · ", b);
   }
   return line;
 }
