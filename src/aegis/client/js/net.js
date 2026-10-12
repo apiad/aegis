@@ -14,7 +14,8 @@ export function markNeedsNet(within = document) {
       b.title = "Needs the connection";
       b.setAttribute("aria-disabled", "true");
     } else if (!off && marked) {
-      b.title = b.dataset.title || "";
+      // A title set while offline (the mic's "needs https") is newer: kept.
+      if (b.title === "Needs the connection") b.title = b.dataset.title || "";
       delete b.dataset.title;
       b.removeAttribute("aria-disabled");
     }
