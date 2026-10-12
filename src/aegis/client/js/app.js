@@ -11,6 +11,7 @@ import { Transcript } from "./transcript.js";
 import { artifactStage, fadeTables, fileUrl, setFileBase, setOpener } from "./entries.js";
 import { setScroller } from "./highlight.js";
 import { Viewer } from "./viewer.js";
+import { Canvas } from "./canvas.js";
 import { copyRow, installCopy } from "./copy.js";
 import { Find } from "./find.js";
 import * as artifacts from "./artifacts.js";
@@ -122,6 +123,24 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
 artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
 const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(id) });
 setOpener((item) => viewer.open(item));
+// The canvas: docked pages and files beside the transcript (js/canvas.js).
+const canvas = new Canvas($("canvas"), {
+  transcriptPane: $("tr-pane"),
+  entryOf: (id) => transcript.entries.get(id),
+  latestFile: () => undefined, // files dock in a later slice
+  call: (op, params) => callFor(shown, op, params),
+  // A docked page's card already swaps its frame for a line (entries.hold).
+  onChange: () => {},
+});
+// The shown session's canvas, from its card. A page the viewer shows that is
+// now docked leaves the viewer first, so it never runs in both.
+function showCanvas(s) {
+  const lay = s.layout || null;
+  const docked = new Set((lay?.windows || []).flatMap((w) => w.columns.flatMap((c) => c.panes.map((p) => p.id))));
+  const item = viewer.isOpen ? viewer.items.get(viewer.key) : null;
+  if (item?.artifact && docked.has(item.artifact)) viewer.close();
+  canvas.show(s.key, lay, { writable: !s.off && s.state !== "archived" && mine(s) });
+}
 setScroller($("tr"));
 new ResizeObserver(() => fadeTables($("entries"))).observe($("tr"));
 const copyDeps = {
@@ -1095,7 +1114,10 @@ function follow(id) {
   const turn = ++follows;
   atts.show(id);
   drawQueued();
-  if (!id) return viewer.show(null);
+  if (!id) {
+    canvas.clear();
+    return viewer.show(null);
+  }
   const saved = kept.get(id);
   if (saved) {
     kept.delete(id);
@@ -1107,6 +1129,8 @@ function follow(id) {
   const where = forKey(id);
   setFileBase(where.server ? `/via/${where.server}` : "");
   viewer.show(id); // after the base: a far artifact's frame is built from it
+  if (sessions.get(id)) showCanvas(sessions.get(id));
+  else canvas.clear();
   const subscribe = () => {
     unsubTranscript = conn.subscribe(
       `transcript:${where.log_id}`,
@@ -1116,6 +1140,7 @@ function follow(id) {
         // replaces whatever was drawn.
         if (data.since !== undefined) transcript.resume(data);
         else transcript.snapshot(data);
+        canvas.refresh();
         keepTranscript();
         drawOfflineNotice();
         if (!placed) {
@@ -1134,6 +1159,7 @@ function follow(id) {
       (ops) => {
         for (const op of ops) if (op.probe) artifacts.probe(op.probe, id, fileUrl(op.probe.url));
         transcript.apply(ops);
+        for (const op of ops) if (op.upsert?.kind === "artifact" || op.upsert?.kind === "file") canvas.onEntry(op.upsert);
         keepTranscript();
       },
       undefined,
@@ -1153,6 +1179,7 @@ function follow(id) {
     loadTranscript(id).then((copy) => {
       if (turn !== follows) return; // moved on
       if (copy) transcript.snapshot({ entries: copy.entries, rev: copy.rev });
+      canvas.refresh();
       drawOfflineNotice();
       subscribe();
     });
@@ -1327,6 +1354,7 @@ function renderMeta(s) {
   $("s-ask").textContent = s.attention_line || "";
   $("s-ask").className = `askbox at-${s.attention}`;
   drawPlan(s);
+  if (s.key === shown) showCanvas(s);
   drawSideJournal(s.key);
   drawReplies(s);
   drawClosing(s);

@@ -552,14 +552,15 @@ export function artifactStage(e) {
 const UPDATERS = {
   artifact(e, node) {
     const card = node.querySelector(".acard");
-    // A page the viewer holds runs only there: the card keeps a line, and the
-    // agent's state goes to the viewer's frame, when that session is shown.
-    const viewer = held.get(e.id);
-    const frame = viewer
-      ? document.querySelector(`#viewer iframe[data-artifact="${CSS.escape(e.id)}"]`)
+    // A page the viewer or a pane holds runs only there: the card keeps a
+    // line, and the agent's state goes to that frame, when the session is shown.
+    const holder = held.get(e.id);
+    const sel = `iframe[data-artifact="${CSS.escape(e.id)}"]`;
+    const frame = holder
+      ? document.querySelector(`#viewer ${sel}, #canvas .pane.docked ${sel}`)
       : node.querySelector("iframe[data-artifact]");
     if (!card || card.dataset.status !== e.status) return false;
-    if (viewer ? !card.querySelector(".held") : !frame) return false;
+    if (holder ? !card.querySelector(".held") : !frame) return false;
     // A new caption, a new title or a new page (a resend) remounts the card.
     if (card.dataset.md !== (e.md || "")) return false;
     if (node.querySelector(".fbar .fn")?.textContent !== e.title) return false;

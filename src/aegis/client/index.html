@@ -111,7 +111,8 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
   <main class="view v-help"><section class="helpv" id="help"></section></main>
 
   <main class="view v-session">
-    <section class="col">
+    <div class="canvas" id="canvas" data-docked="0">
+    <section class="col pane" id="tr-pane" data-pane="transcript">
       <div class="tr" id="tr" tabindex="-1"><p class="notice tr-offline" id="tr-offline" hidden>Not saved on this device. It opens when the connection is back.</p><div id="entries"></div><div class="row queued" id="queued" hidden><span class="t"></span><span class="g" id="queued-g"></span><div class="body"><span class="lbl" id="queued-lbl"></span><div class="text"></div><div class="ctl"><button class="btn primary" type="button" data-act="send">Send anyway</button><button class="btn" type="button" data-act="copy">Copy</button><button class="btn" type="button" data-act="edit">Edit</button><button class="btn" type="button" data-act="discard">Discard</button></div></div></div><div class="row replies" id="replies" hidden><span class="t"></span><span class="g" id="replies-g"></span><div class="body" id="replies-pills"></div></div><div class="row closing" id="closing" hidden><span class="t"></span><span class="g" id="closing-g"></span><div class="body"><button class="btn archive needs-net" id="closing-btn" type="button" title="Close this session; it stays in the archive">Archive</button></div></div><div class="row working" id="working" hidden><span class="t"></span><span class="g" id="working-g"></span><div class="body">Working <span class="meta" id="working-meta"></span></div></div></div>
       <div class="nav" id="nav" hidden>
         <button class="spark" id="nav-recap" title="Recap where this session stands" aria-label="Recap where this session stands"></button>
@@ -144,6 +145,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
       </div>
       <div class="viewer" id="viewer" hidden></div>
     </section>
+    </div>
     <div class="grip" id="side-grip" title="Drag to resize; double-click for the default width"></div>
     <aside class="side" id="side">
       <div class="sec"><h4>Session</h4>
