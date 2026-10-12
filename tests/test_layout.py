@@ -161,3 +161,43 @@ def test_a_file_key_is_stable_and_short():
     assert k == layout.file_key("/home/u/out/report.pdf")
     assert k.startswith("f-") and len(k) == 14
     assert k != layout.file_key("/home/u/out/other.pdf")
+
+
+@pytest.mark.parametrize(
+    "widths",
+    [
+        [float("inf"), 1],
+        [float("nan"), 1],
+        [float("inf"), float("inf")],
+        [1e308, 1e308],
+        [-1, 1],
+    ],
+)
+def test_a_share_that_is_not_a_finite_positive_number_is_an_equal_one(widths):
+    import json
+    import math
+
+    cols = [
+        {"w": w, "panes": [{"id": i, "h": w}]}
+        for w, i in zip(widths, ["transcript", "a"])
+    ]
+    out = normalise({"windows": [{"n": 1, "columns": cols}]}, ANY)
+    shares = [c["w"] for c in out["windows"][0]["columns"]]
+    shares += [p["h"] for c in out["windows"][0]["columns"] for p in c["panes"]]
+    assert all(math.isfinite(v) and v > 0 for v in shares), shares
+    assert abs(sum(c["w"] for c in out["windows"][0]["columns"]) - 1) < 0.001
+    json.loads(json.dumps(out, allow_nan=False))  # every browser can parse it
+
+
+@pytest.mark.parametrize(
+    "windows",
+    [
+        [{"n": 1, "columns": ["transcript"]}],
+        [{"n": 1, "columns": [{"panes": ["transcript"]}]}],
+        [{"n": 1, "columns": {"panes": []}}],
+        [{"n": 1, "columns": [{"panes": {"id": "transcript"}}]}],
+    ],
+)
+def test_a_malformed_layout_is_refused_with_a_reason(windows):
+    with pytest.raises(LayoutError):
+        normalise({"windows": windows}, ANY)

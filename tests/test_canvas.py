@@ -150,3 +150,13 @@ async def test_one_file_by_a_relative_and_an_absolute_path_is_one_key(world, tmp
     )
     assert said.startswith("mcp error: bad_params") and "r.md" in said, said
     assert len([e for e in a.entries() if e["kind"] == "file"]) == 2
+
+
+async def test_a_malformed_layout_set_is_bad_params_not_an_internal_error(world):
+    a = await world.spawn()
+    for windows in (
+        [{"n": 1, "columns": ["transcript"]}],
+        [{"n": 1, "columns": [{"panes": ["transcript"]}]}],
+    ):
+        said = await turn(a, mcp("layout_set", windows=windows))
+        assert said.startswith("mcp error: bad_params"), said

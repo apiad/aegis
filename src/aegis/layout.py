@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import math
 import re
 from collections.abc import Callable
 
@@ -61,19 +62,31 @@ def window_of(layout: dict | None, pane: str) -> int | None:
 
 
 def _shares(xs: list[dict], key: str) -> None:
-    """Make ``xs[i][key]`` shares of 1; a missing or non-positive one is an
-    equal share."""
+    """Make ``xs[i][key]`` shares of 1; a missing one, or one that is not a
+    finite positive number, is an equal share. A NaN or an infinity would
+    reach every browser as a bare ``NaN``, which JSON.parse refuses."""
     n = len(xs)
     raw = []
     for x in xs:
         try:
             v = float(x.get(key) or 0)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             v = 0.0
-        raw.append(v if v > 0 else 1 / n)
+        raw.append(v if math.isfinite(v) and v > 0 else 1 / n)
+    # Scaled to the largest first, so two widths of 1e308 do not add up to inf.
+    top = max(raw)
+    raw = [v / top for v in raw]
     total = sum(raw)
     for x, v in zip(xs, raw):
         x[key] = round(v / total, 4)
+
+
+def _list(xs, what: str) -> list:
+    if xs is None:
+        return []
+    if not isinstance(xs, list):
+        raise LayoutError(f"{what} are a list")
+    return xs
 
 
 def normalise(layout: dict, dockable: Callable[[str], bool]) -> dict:
@@ -93,9 +106,13 @@ def normalise(layout: dict, dockable: Callable[[str], bool]) -> dict:
             raise LayoutError(f"window {n} twice")
         numbers.add(n)
         cols = []
-        for c in w.get("columns") or []:
+        for c in _list(w.get("columns"), "a window's columns"):
+            if not isinstance(c, dict):
+                raise LayoutError('each column is {"w": share, "panes": [...]}')
             panes = []
-            for p in c.get("panes") or []:
+            for p in _list(c.get("panes"), "a column's panes"):
+                if not isinstance(p, dict):
+                    raise LayoutError('each pane is {"id": pane id, "h": share}')
                 pid = str(p.get("id") or "")
                 if pid in seen:
                     raise LayoutError(f"{pid} appears twice")
