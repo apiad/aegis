@@ -4,3 +4,4 @@
   the folder aegis serves from, so the link finds them; a path that is not
   there says where it looked, and one that names two files, in that folder
   and in the session's own, asks which to open.
+help: transcript#paths-in-replies

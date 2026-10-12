@@ -1,1 +1,2 @@
 Reopen is drawn like the actions around it: an archived session's side panel shows it as a tile like Stop, Restart and Close, and the archive's rows show Read and Reopen as icon buttons instead of filled text buttons.
+help: sessions#stop-close-and-reopen

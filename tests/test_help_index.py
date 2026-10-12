@@ -156,7 +156,6 @@ FIRST = [
     ("what does read permission allow", "sessions#permission"),
     ("rename my session", "sessions#rename-it"),
     ("run aegis in the background", "commands"),
-    ("make a token for a colleague", "commands"),
     ("first time using aegis", "getting-started"),
     ("update a help page after changing a tool", "writing-help-pages"),
 ]
@@ -166,6 +165,7 @@ EITHER = [
     ("send work to another server", {"handoffs", "links"}),
     ("make the agent run on haiku", {"sessions", "config"}),
     ("reopen an archived session", {"sessions", "getting-started"}),
+    ("make a token for a colleague", {"commands", "tokens"}),
 ]
 
 

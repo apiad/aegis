@@ -14,13 +14,17 @@ running.
 
 Open a new tab with the + at the end of the tab bar, or Alt+N. Type what the
 agent should do and press Enter; Shift+Enter adds a line. The session starts
-and its tab opens. The line above the box is the working directory, inside the
-server's root; click it to change it.
+and its tab opens. On a touch screen Enter adds a line and the send button
+starts the session, so a mistap does not start one with half a message. The
+line above the box is the working directory, inside the server's root; click
+it to change it. The box works like a session's: attach, mic and send sit
+inside it.
 
-The chips under the box say what runs the session: the agent, then its
-harness, model, effort and permission. Picking an agent fills the other four
-from its preset. Change any chip to override it for this session only; a
-reset chip appears and puts the preset back. An agent is a named preset from
+The chips on the line under the box say what runs the session: the agent,
+then its harness, model, effort and permission. Picking an agent fills the
+other four from its preset. Change any chip to override it for this session
+only; the agent chip gets a star, and a reset button appears that puts the
+preset back. An agent is a named preset from
 `.aegis.yaml` (see the configuration page). Files dropped, pasted or attached
 with the paperclip go out with the first message.
 
@@ -92,6 +96,23 @@ has gone stale after a stretch of work, or when a turn ended without
 - The archive is the list at the bottom of the Fleet. Filter it by title,
   handle, directory or agent; Read opens a transcript without starting anything, and
   Reopen gives the session a tab again, stopped, ready for the next message.
+  Read and Reopen are icon buttons on each row, and in an archived session's
+  panel Reopen is a tile like Stop, Restart and Close.
+- The archive leaves out queue workers, because a worker's result already
+  went to whoever enqueued its task. When some match, the Queue workers chip
+  in the archive's header says how many, and a click adds them to the list.
+- On a phone, a session marked done ends its transcript with an Archive
+  button that closes it in one tap. It stays in the archive.
+
+## When the server restarts
+
+A restart of `aegis serve` continues the turns it cut, each with a note that
+the server restarted, and then sends the messages sessions were holding,
+instead of leaving each session for you to start again. A turn continues up
+to twice in a row after clean restarts and once after a crash; the next cut
+leaves it waiting for you, with a note saying so. After a crash, a harness
+the dead server left running is ended first. A harness that failed on its own
+is not restarted.
 
 ## The journal, quota and the rest
 

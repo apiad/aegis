@@ -7,3 +7,4 @@
   the agent from there. Esc or the close button returns to the transcript, and
   a new tab is one click away in the viewer's bar. The card's Open, new tab,
   Open natively and Download are now compact icon buttons.
+help: transcript#files-and-the-viewer

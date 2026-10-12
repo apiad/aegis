@@ -6,3 +6,4 @@ tasks wait and its messages are held; at its stop line aegis interrupts its turn
 continues them when the gauge drops back under the launch line, restarts included.
 A member sees its own lines on its quota gauge. An admin's agents can now spawn on a
 linked server, where that server's policy for the link's token decides. (#311)
+help: tokens#quota-lines

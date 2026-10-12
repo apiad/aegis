@@ -6,3 +6,4 @@
   spawns agents or spends quota. `/tutorial <page>` completes the tutorial
   pages. The server remembers who has started a tutorial, so the hint is the
   same on every device.
+help: commands#slash-commands

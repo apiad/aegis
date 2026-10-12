@@ -7,3 +7,4 @@
   against the code in both directions, in CI too: a tool, command, CLI
   subcommand or config key no page names fails, and so does a page naming one
   that does not exist.
+help: writing-help-pages
