@@ -1,0 +1,1 @@
+- **Push notifications reach a phone with aegis closed.** The bell subscribes this device and chooses what it hears about: a session that needs you, an error, something to read, finished work, or an agent's toast. Tapping one opens the session; a session already open in front stays quiet.

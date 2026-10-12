@@ -412,6 +412,20 @@ send one twice, a page closed mid-send leaves it to be sent again (with its
 revision, so a send that did arrive asks instead of repeating), and text
 written meanwhile becomes the next draft (#342).
 
+**Push goes from the server, encrypted for the device.** A device subscribes
+from the bell with its sources (`needs_you`, `error`, `review`, `done`, `toast`);
+`push.py` keeps the subscriptions and this server's VAPID key under
+`<state>/push/` (0600, since an endpoint and its keys are enough to push to that
+device). It listens to the `sessions` channel like a browser, and `App.toast`
+hands it each toast, so a push is the same transition a page would notify; the
+first snapshot only records where sessions stand, so a restart pushes nothing,
+and `review` or `done` count only when a turn just ended. It encrypts each
+payload for the device (`webpush.py`, RFC 8291) and posts it to the push
+service from its own queue, so a slow service never delays the channel. The
+worker shows it unless a window of that device shows the session in front. A
+device with push leaves those sources to it, so one event never notifies twice
+(#342).
+
 **Folding hides rows, it never unmounts them.** From which fold level a kind
 folds is a fact on the entry (`fold`: 0 never, 1 the work, 2 also what arrived
 and what was shown; `transcript/entries.py`). The client draws each run of

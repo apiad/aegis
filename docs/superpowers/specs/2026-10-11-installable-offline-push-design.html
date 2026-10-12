@@ -194,7 +194,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · installs, opens offline, pushes</span>
-  <span class="st"><span class="pill acc">slices 1–4 built</span><span class="pill">2026-10-11</span><span class="pill">#342 · builds on #330</span></span>
+  <span class="st"><span class="pill acc">built</span><span class="pill">2026-10-11</span><span class="pill">#342 · builds on #330</span></span>
 </div>
 
 <div class="wrap">
@@ -226,7 +226,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <main>
 <h1>aegis as an app: it installs, opens without a connection, and pushes</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-11-installable-offline-push-design.html</span><span>·</span><span>slices 1–4 built</span><span>·</span><span>supersedes the service-worker decision and section 4 of 2026-10-08-mobile-and-pwa-design</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-11-installable-offline-push-design.html</span><span>·</span><span>built</span><span>·</span><span>supersedes the service-worker decision and section 4 of 2026-10-08-mobile-and-pwa-design</span></div>
 <p class="lede">aegis on a phone today is a web page with a manifest. It opens only with a connection, and its notifications never show on Android. This spec adds a service worker: the client keeps its own files and opens without a network, shows what the device last saw, queues messages until the server is back, installs through aegis's own dialog with a progress bar, and receives Web Push while the app is closed.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -520,6 +520,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <li>POST it with <code>httpx</code>: <code>TTL: 86400</code>, <code>Urgency: high</code> for <code>needs_you</code> and <code>error</code> and <code>normal</code> otherwise, and <code>Topic</code> set to a hash of the session key, so a newer push for one session replaces an older one still undelivered.</li>
 </ol>
 <p>A 201 records <code>last_ok_at</code>. A 404 or 410 means the browser dropped the subscription, and the sender deletes it. A 429 or 5xx is retried three times with backoff. Any other answer is logged and counted in <code>failures</code>, which Settings shows. Revoking a token in <code>tokens.py</code> deletes its subscriptions. Pushes go out from a task of their own, so a slow push service never delays the <code>sessions</code> channel.</p>
+<p>As built: <code>review</code> and <code>done</code> push only when the session was working just before, because a fresh session idles as <code>done</code> and a reply to a question passes through <code>done</code> on its way to working. A toast carries no <code>Topic</code>, so it never replaces a question still waiting at the push service. <code>App.toast</code> hands each toast to the sender rather than the sender subscribing to the <code>toasts</code> channel, whose subscriber count is the number of browsers the toast tool reports.</p>
 
 <h3 id="wake">On the device</h3>
 <p>The worker's <code>push</code> handler reads the payload and asks whether a window is showing that session in front of the person. The page tells the worker which session it shows, by posting <code>{t: "view", key}</code> on every route change and focus change, and the worker keeps that per window. If a focused, visible window shows the session, the worker shows nothing. Chrome allows that because a page of the origin is in front. Otherwise it calls <code>showNotification</code> with the tag <code>&lt;key&gt;:&lt;kind&gt;</code> and <code>renotify</code> for <code>needs_you</code>, so a session asking again buzzes again. If the browser killed the worker in between and it lost the map, it shows the notification: the error goes towards telling the person too much, not too little.</p>
