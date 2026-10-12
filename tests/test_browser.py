@@ -2877,6 +2877,29 @@ def test_landing_after_two_replies_shows_a_recap_last_and_the_sparkle_makes_one(
     assert page.errors == []
 
 
+def test_the_latest_recap_shows_at_every_fold_level_and_the_older_ones_fold(
+    recap_server, page
+):
+    page.goto(recap_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "first")
+    turns_done(page, 1)
+    for n in (1, 2):
+        page.click("#nav-recap")
+        page.wait_for_function(
+            f"() => document.querySelectorAll('.row.recap').length === {n}",
+            timeout=8000,
+        )
+    old, new = row_ids(page, ".recap")
+    page.click("#nav-fold")
+    page.click("#nav-fold")
+    assert page.get_attribute("#nav-fold", "data-level") == "2"
+    assert page.is_visible(f'.row[data-id="{new}"] .ctx')
+    assert not page.is_visible(f'.row[data-id="{new}"] .runline')
+    assert not page.is_visible(f'.row[data-id="{old}"]')
+    assert page.errors == []
+
+
 def test_the_landing_recap_request_shows_no_hint_and_the_sparkle_does(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")

@@ -367,7 +367,8 @@ mounted row and hides the rest, so the mounted rows stay a suffix of the
 transcript and the window, the trim and the reader's place work unchanged; the
 walks (j/k, the first row on screen) skip hidden rows. The line is counted from
 the run's data, not its rows, so a run that starts above the mounted rows still
-says all it holds.
+says all it holds. The latest recap never folds: it is what a reader coming back
+reads first, so it shows at every level while the older recaps fold with the rest.
 
 **An action is one row in one registry.** `client/js/keys.js` holds every action
 the client offers by key (its id, title, keys and the views where it applies) and

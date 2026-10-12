@@ -37,6 +37,7 @@ from .config import (
     load,
 )
 from .harness import harness_for
+from .recap import load_recap
 from .roots import CONFIG_FILE, Roots, legacy_state
 from .session import SpawnSpec
 
@@ -276,6 +277,15 @@ def _queue(name: str, q: dict, by_name: dict[str, Agent]) -> Finding:
     return Finding("ok", row, f"{a.name}, {q['max_parallel']} at a time", row)
 
 
+def _recap(roots: Roots) -> list[Finding]:
+    cfg = load_recap(roots.config_root)
+    if cfg is None:
+        return []
+    if "error" in cfg:
+        return [Finding("error", "recap", cfg["error"])]
+    return [Finding("ok", "recap", f"{cfg['agent']}, {cfg['model']}")]
+
+
 def _state(roots: Roots) -> Finding:
     sr = roots.state_root
     if found := legacy_state(sr):
@@ -329,5 +339,6 @@ async def doctor(
         out += _agent(a, found.get(a.harness))
     out.append(_default(snap.default_agent, by_name))
     out += [_queue(name, q, by_name) for name, q in snap.queues.items()]
+    out += _recap(roots)
     out.append(_state(roots))
     return out
