@@ -34,12 +34,21 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import attachments, restarts
+from . import attachments, cache, restarts
 from . import layout as canvas
 from .artifacts import ArtifactError, Board
 from .claude.control import Catalog
 from .claude.process import ControlError
-from .claude.stream import TURN_BEARING, Delta, Init, Notice, Result, Title
+from .claude.stream import (
+    TURN_BEARING,
+    Compact,
+    Delta,
+    Init,
+    Notice,
+    Result,
+    Title,
+    ToolCall,
+)
 from .harness import Launch, Process, harness_for
 from .meta import MetaStore
 from .names import default_title
@@ -62,6 +71,9 @@ _SOON = (
     "context_window",
     "unread",
     "recap_cost_usd",
+    "tool_calls",
+    "cache_recent",
+    "compactions",
 )
 PUBLISH_EVERY_S = 0.25
 
@@ -215,6 +227,9 @@ class Session:
         last_exit: dict | None = None,
         restart_continues: int = 0,
         quota_paused: str | None = None,
+        tool_calls: int = 0,
+        cache_recent: list[list] | None = None,
+        compactions: int = 0,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
@@ -282,6 +297,14 @@ class Session:
         # until the gate opens and continues it. In the meta, so a restart
         # keeps it paused.
         self.quota_paused = quota_paused
+        # What the cache did (cache.py): tool calls and compactions of the main
+        # thread, and the last calls' [cache_read, total_input, at]. In the meta,
+        # so the counters survive a restart.
+        self.tool_calls = tool_calls
+        self.cache_recent: list[list] = list(cache_recent or [])
+        self.compactions = compactions
+        # The last usage counted: one call written as several lines repeats it.
+        self._last_usage = None
         # The process's start time from /proc, so a crashed server's successor
         # can tell this harness from a later process that reused its pid.
         self._pid_started: int | None = None
@@ -320,6 +343,9 @@ class Session:
             "last_exit": self.last_exit,
             "restart_continues": self.restart_continues,
             "quota_paused": self.quota_paused,
+            "tool_calls": self.tool_calls,
+            "cache_recent": self.cache_recent,
+            "compactions": self.compactions,
         }
 
     def wire(self) -> dict:
@@ -337,6 +363,8 @@ class Session:
         # differently depending on whether a turn had run (#243).
         m["model"] = self.spec.model or "default"
         m["harness_label"] = self.harness.label
+        m["cache_hit"] = cache.hit_rate(self.cache_recent)
+        m["cache_alarm"] = cache.alarm(self.cache_recent, self.spec.harness)
         m.update(self._host.card(self))
         return m
 
@@ -819,6 +847,19 @@ class Session:
             usage = getattr(ev, "usage", None)
             if usage is not None and getattr(ev, "parent", None) is None:
                 changes["context_tokens"] = usage.context
+                if usage != self._last_usage:
+                    self._last_usage = usage
+                    changes["cache_recent"] = cache.push(
+                        changes.get("cache_recent", self.cache_recent),
+                        usage,
+                        time.time(),
+                    )
+            if isinstance(ev, ToolCall) and ev.parent is None:
+                changes["tool_calls"] = changes.get("tool_calls", self.tool_calls) + 1
+            if isinstance(ev, Compact):
+                changes["compactions"] = (
+                    changes.get("compactions", self.compactions) + 1
+                )
             if isinstance(ev, Title) and not self.title_set:
                 changes["title"] = ev.text
             if isinstance(ev, Init):
