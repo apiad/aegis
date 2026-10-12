@@ -8,7 +8,7 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, fadeTables, fileUrl, setFileBase, setOpener } from "./entries.js";
+import { artifactStage, fadeTables, fileUrl, setDocker, setFileBase, setOpener, syncDock } from "./entries.js";
 import { setScroller } from "./highlight.js";
 import { Viewer } from "./viewer.js";
 import { Canvas } from "./canvas.js";
@@ -122,16 +122,32 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
 });
 artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
 const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(id) });
-setOpener((item) => viewer.open(item));
+// Open on a docked item shows its pane, so a page never runs in the viewer
+// and a pane at once.
+setOpener((item) => {
+  const id = item.artifact || item.files?.[item.at]?.key;
+  if (!(id && canvas.flash(id))) viewer.open(item);
+});
 // The canvas: docked pages and files beside the transcript (js/canvas.js).
 const canvas = new Canvas($("canvas"), {
   transcriptPane: $("tr-pane"),
   entryOf: (id) => transcript.entries.get(id),
   latestFile: () => undefined, // files dock in a later slice
   call: (op, params) => callFor(shown, op, params),
-  // A docked page's card already swaps its frame for a line (entries.hold).
-  onChange: () => {},
+  // A card's Dock button hides while its item is docked; a docked page's
+  // card swaps its frame for a line by itself (entries.hold).
+  onChange: () => syncDock(),
+  refuse: (message) => toast(message, { kind: "error" }),
 });
+// Dock on a card or the viewer's bar. The viewer lets go of what it docks.
+setDocker(
+  (id) => {
+    const item = viewer.isOpen ? viewer.items.get(viewer.key) : null;
+    if (item && (item.artifact || item.files[item.at].key) === id) viewer.close();
+    canvas.dock(id);
+  },
+  (id) => canvas.writable && !canvas.has(id),
+);
 // The shown session's canvas, from its card. A page the viewer shows that is
 // now docked leaves the viewer first, so it never runs in both.
 function showCanvas(s) {
@@ -140,6 +156,7 @@ function showCanvas(s) {
   const item = viewer.isOpen ? viewer.items.get(viewer.key) : null;
   if (item?.artifact && docked.has(item.artifact)) viewer.close();
   canvas.show(s.key, lay, { writable: !s.off && s.state !== "archived" && mine(s) });
+  syncDock();
 }
 setScroller($("tr"));
 new ResizeObserver(() => fadeTables($("entries"))).observe($("tr"));
@@ -2257,6 +2274,14 @@ function autosize() {
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight, window.innerHeight * 0.4)}px`;
 }
+// A pane docked beside the transcript narrows the message box: its lines
+// wrap again, so it measures again. Width only, so its own height is no loop.
+let composerWidth = 0;
+new ResizeObserver(([e]) => {
+  if (Math.round(e.contentRect.width) === composerWidth) return;
+  composerWidth = Math.round(e.contentRect.width);
+  autosize();
+}).observe($("tr-pane"));
 
 function focused() {
   const r = route();
