@@ -72,6 +72,23 @@ def test_a_damaged_record_is_decided_again_and_rewritten(tmp_path, text):
     }
 
 
+@pytest.mark.parametrize("name", ["../escaped", "a/b", "..", "/abs"])
+def test_a_principals_name_never_leaves_the_directory(tmp_path, name):
+    d = tmp_path / "state" / "help"
+    st = HelpState(d)
+    st.get(name, owns_sessions=False, installed="2.6.0")
+    st.mark_tutorial(name)
+    files = [p for p in tmp_path.rglob("*") if p.is_file()]
+    assert [p.parent for p in files] == [d]
+    assert st.get(name, owns_sessions=True, installed="2.7.0")["tutorial"] is True
+
+
+def test_an_ordinary_name_is_its_own_file_name(tmp_path):
+    st = HelpState(tmp_path)
+    st.get("ana.lopez", owns_sessions=False, installed="2.6.0")
+    assert (tmp_path / "ana.lopez.json").exists()
+
+
 def test_newer_compares_releases_as_numbers():
     assert newer("2.6.0", None)
     assert not newer("2.6.0", "2.6.0")

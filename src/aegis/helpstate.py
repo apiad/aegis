@@ -1,6 +1,8 @@
 """What each person has been offered by the help system, kept on the server.
 
-One small JSON per principal (tokens.py) at ``<state>/help/<principal>.json``::
+One small JSON per principal (tokens.py) at ``<state>/help/<principal>.json``,
+the name percent-quoted so that one read from a hand-edited tokens.json, such as
+``../x``, stays a file in that directory::
 
     {"tutorial": true, "toured": "2.6.0"}
 
@@ -30,6 +32,7 @@ import os
 import re
 from importlib.metadata import PackageNotFoundError, version as dist_version
 from pathlib import Path
+from urllib.parse import quote
 
 from .version import DIST
 
@@ -59,7 +62,7 @@ class HelpState:
         self.dir = dir
 
     def path(self, principal: str) -> Path:
-        return self.dir / f"{principal}.json"
+        return self.dir / f"{quote(principal, safe='')}.json"
 
     def get(self, principal: str, *, owns_sessions: bool, installed: str) -> dict:
         """The principal's record, decided and written on its first read."""
