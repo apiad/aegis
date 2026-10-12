@@ -3,10 +3,12 @@
 // and offers it in a card at the top of the Fleet and in Settings. The dialog
 // shows the three steps with their real state: the worker's download of this
 // build (appworker.js), the browser's install (which reports no progress, so
-// its bar only says it is under way), and notifications.
+// its bar only says it is under way), and notifications, which subscribe this
+// device to push where the browser can take it.
 
 import { deviceCopy, onProgress } from "./appworker.js";
 import { refreshBell } from "./ping.js";
+import { DEFAULT_SOURCES, SOURCES, onPushState, pushState, subscribePush } from "./pushpanel.js";
 
 const LATER = "aegis.install.later";
 const MONTH_MS = 30 * 24 * 3600 * 1000;
@@ -164,31 +166,51 @@ export function openInstallDialog() {
   const unwatch = onInstallState(drawApp);
   drawApp();
 
-  // 3. Notifications (push, from slice 5, subscribes here too).
+  // 3. Notifications: where the browser takes push, turning them on
+  // subscribes this device with the default sources (pushpanel.js); elsewhere
+  // it asks for the page's own notifications.
   const notifySub = notify.querySelector(".sub");
+  const sources = (list) => list.map((s) => SOURCES.find(([k]) => k === s)?.[1].toLowerCase() || s).join(", ");
   const drawNotify = () => {
     notify.querySelector(".ctl")?.remove();
     const p = "Notification" in window ? Notification.permission : "denied";
-    notify.classList.toggle("done", p === "granted");
-    notifySub.textContent =
-      p === "granted" ? "on · needs you, errors and agents' toasts" : p === "denied" ? "blocked in this browser's settings" : "needs you, errors and agents' toasts";
-    if (p !== "default") return;
-    const on = h("button", "btn", "Turn on");
-    on.type = "button";
-    on.addEventListener("click", async () => {
-      await Notification.requestPermission();
+    const push = pushState();
+    const on = push.supported ? push.subscribed : p === "granted";
+    notify.classList.toggle("done", on);
+    notifySub.textContent = on
+      ? push.supported
+        ? `push on · ${sources(push.sources)}`
+        : "on · needs you, errors and agents' toasts"
+      : p === "denied"
+        ? "blocked in this browser's settings"
+        : `${push.supported ? "push to this device · " : ""}needs you, errors and agents' toasts`;
+    if (on || p === "denied") return;
+    const go = h("button", "btn", "Turn on");
+    go.type = "button";
+    go.addEventListener("click", async () => {
+      go.disabled = true;
+      try {
+        if (push.supported) await subscribePush(DEFAULT_SOURCES);
+        else await Notification.requestPermission();
+      } catch (e) {
+        notifySub.textContent = e.message || String(e);
+        go.disabled = false;
+        return;
+      }
       refreshBell();
       drawNotify();
     });
     const ctl = h("div", "ctl");
-    ctl.append(on);
+    ctl.append(go);
     notify.append(ctl);
   };
+  const unwatchPush = onPushState(drawNotify);
   drawNotify();
 
   const close = () => {
     stop();
     unwatch();
+    unwatchPush();
     d.remove();
     closeDialog = null;
   };

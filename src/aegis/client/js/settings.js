@@ -21,6 +21,7 @@ import "./pick.js";
 import { who } from "./me.js";
 import { deviceCopy } from "./appworker.js";
 import { installState, onInstallState, openInstallDialog } from "./install.js";
+import { onPushState, pushState, unsubscribePush } from "./pushpanel.js";
 import { markNeedsNet, offline } from "./net.js";
 
 const h = (tag, props = {}, ...kids) => {
@@ -230,13 +231,20 @@ export class Settings {
       this.themeChip.options = this.themes;
       this.themeChip.addEventListener("change", () => this.setTheme(this.themeChip.value));
       this.appNode = h("div", { id: "set-app" });
+      this.pushNode = h("div", { id: "set-push" });
       onInstallState(() => this.drawApp());
+      onPushState(() => {
+        this.drawApp();
+        this.loadPush();
+      });
+      this.loadPush();
       this.browserNode = h(
         "section",
         { className: "set-browser", id: "set-browser" },
         h("h3", { textContent: "This browser" }),
         h("div", { className: "set-browser-row" }, h("span", { className: "set-browser-k", textContent: "Theme" }), this.themeChip),
         this.appNode,
+        this.pushNode,
         h("p", { className: "set-none", textContent: "Kept in this browser only: other browsers and devices keep their own." }),
       );
       // The draw that waited for the chip runs once the focus has left it.
@@ -262,10 +270,53 @@ export class Settings {
       app.dataset.act = "install";
     } else app = h("span", { className: "set-app-v", textContent: "your browser's menu installs it" });
     const copy = h("span", { className: "set-app-v", textContent: navigator.serviceWorker ? "downloading" : "not kept: needs https" });
-    this.appNode.replaceChildren(row("App", app), row("Offline copy", copy));
+    const push = pushState();
+    const note = !push.supported
+      ? "not here: push needs https"
+      : push.subscribed
+        ? `push on · ${push.sources.length} sources · the bell chooses them`
+        : "push off · the bell turns it on";
+    this.appNode.replaceChildren(row("App", app), row("Offline copy", copy), row("Notifications", h("span", { className: "set-app-v", textContent: note })));
     deviceCopy().then((c) => {
       if (c?.complete) copy.textContent = `build ${c.build} · ${Math.round(c.bytes / 1024).toLocaleString()} KB · ready`;
     });
+  }
+
+  // Every device this token gets push on (push.py), so a lost phone can be
+  // cut off from another device. Always this server's: push is per server,
+  // whichever server the form below edits.
+  loadPush() {
+    this.conn
+      .call("push.list")
+      .then(({ subscriptions }) => {
+        this.pushRows = subscriptions.filter((r) => r.owner === who.name);
+        this.drawPush();
+      })
+      .catch(() => {}); // offline: the list waits for the next change
+  }
+
+  drawPush() {
+    const here = pushState().id;
+    const when = (t) => (t ? new Date(t * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" }) : "never");
+    const rows = (this.pushRows || []).map((r) => {
+      const remove = button("Remove", null, async () => {
+        remove.disabled = true;
+        if (r.id === here) await unsubscribePush().catch(() => {});
+        else await this.conn.call("push.remove", { id: r.id }).catch(() => {});
+        this.loadPush();
+      });
+      const facts = [r.sources.join(", ") || "no sources", `last delivered ${when(r.last_ok_at)}`, r.failures ? `${r.failures} failed` : null].filter(Boolean);
+      const el = h(
+        "div",
+        { className: "set-push-row" },
+        h("span", { className: "set-push-dev" }, h("b", { textContent: r.device }), r.id === here && h("span", { className: "set-push-here", textContent: " · this device" })),
+        h("span", { className: "set-push-facts", textContent: facts.join(" · ") }),
+        remove,
+      );
+      el.dataset.id = r.id;
+      return el;
+    });
+    this.pushNode.replaceChildren(...(rows.length ? [h("div", { className: "set-browser-k", textContent: "Push to" }), ...rows] : []));
   }
 
   // The servers: this one, each link with its state, and a form to add one.

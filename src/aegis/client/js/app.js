@@ -35,6 +35,7 @@ import { dur, planTimes } from "./plantime.js";
 import { setToastOpener, toast } from "./toast.js";
 import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
 import { closeInstallDialog, startInstall } from "./install.js";
+import { checkRotation, closePushPanel, openPushPanel, pushSupported, setupPush } from "./pushpanel.js";
 import { clearDevice, loadFleet, loadTranscript, saveFleet, saveTranscript } from "./devicestore.js";
 import { markNeedsNet, offline } from "./net.js";
 import { discard, draftFor, flushNow, loadDrafts, onDrafts, queue, sendAnyway, setSender } from "./outbox.js";
@@ -152,7 +153,7 @@ $("queued-g").append(icon("prompt"));
 $("working-g").append(icon("think"));
 $("closing-g").append(glyph("done"));
 $("sp-mark").prepend(gorgoneion());
-installBell($("bell"));
+installBell($("bell"), pushSupported() ? openPushPanel : null);
 $("nav-up").addEventListener("click", () => transcript.message(-1));
 $("nav-down").addEventListener("click", () => transcript.message(1));
 $("nav-pos").addEventListener("click", () => transcript.firstUnread());
@@ -344,6 +345,7 @@ function bannerState(state) {
     $("netbanner").hidden = true;
   }
 }
+let pushChecked = false; // checkRotation ran on this load
 const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`, {
   onState(state, server) {
     $("conn-dot").className = `dot ${state === "open" ? "ready" : state === "connecting" ? "ghost" : "err"}`;
@@ -376,6 +378,11 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
       if (wasClosed) checkForUpdate();
       wasClosed = false;
       setWho(conn.me, conn.owner);
+      // Once a load, after setWho: the rows are this token's (pushpanel.js).
+      if (!pushChecked) {
+        pushChecked = true;
+        checkRotation().catch((e) => console.warn("aegis: checking push failed", e));
+      }
       // Whether this browser runs on the server's desktop (Open natively).
       if (conn.native) root.dataset.native = "";
       else delete root.dataset.native;
@@ -652,6 +659,7 @@ startWorker({
     toast("A new version of aegis is ready.", { ms: Infinity, action: { label: "Reload", run: applyUpdate } }),
 });
 startInstall($("install-offer"));
+setupPush((op, params) => conn.call(op, params));
 listenForOpen(openSession);
 setToastOpener(openSession);
 // Toasts from the server (App.toast): every browser shows each one once, and
@@ -1946,7 +1954,7 @@ installKeys(
       } else menu.openOverlay();
     },
     escape() {
-      if (cancelAsk() || closeInstallDialog()) return;
+      if (cancelAsk() || closeInstallDialog() || closePushPanel()) return;
       if (root.dataset.side === "open") return closeSide();
       if (!keymap.hidden) help(false);
       else if (viewer.close() || find.close() || closeMonitorCard() || closeCard()) return;

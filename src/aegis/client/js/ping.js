@@ -47,7 +47,7 @@ export function updatePing(metas, { onOpen }) {
   for (const m of metas) {
     if (!URGENT.has(m.attention) || before.get(m.key) === m.attention) continue;
     const title = `${m.title || m.handle}: ${m.attention === "error" ? "error" : "needs you"}`;
-    notify(title, m.attention_line || "", `${m.key}:${m.attention}`, m.key, onOpen).catch(refused);
+    notify(title, m.attention_line || "", `${m.key}:${m.attention}`, m.key, onOpen, m.attention).catch(refused);
   }
 }
 
@@ -58,7 +58,7 @@ export function pingToast(t, onOpen) {
   if (!t.from) return;
   const { handle, id } = t.from;
   const title = t.kind === "error" ? `${handle}: error` : handle;
-  notify(title, t.text, `toast:${id}:${t.text}`, id, onOpen).catch(refused);
+  notify(title, t.text, `toast:${id}:${t.text}`, id, onOpen, "toast").catch(refused);
 }
 
 // A click on a notification the worker showed: sw.js focuses this page and
@@ -70,6 +70,15 @@ export function listenForOpen(onOpen) {
 }
 
 const refused = (e) => console.warn("aegis: notification refused", e);
+
+function pushCovers(source) {
+  if (!localStorage.getItem("aegis.push.id")) return false;
+  try {
+    return JSON.parse(localStorage.getItem("aegis.push.sources") || "[]").includes(source);
+  } catch {
+    return false;
+  }
+}
 
 // A session answered, here or anywhere, or closed: its notification would only
 // open a question nobody asks any more.
@@ -87,8 +96,11 @@ function withdraw(tag) {
 // registration's notification still opens its session after the page is gone.
 // Without an active worker (plain http on another host, or the first load
 // before the worker activates) the constructor still works on a desktop.
-async function notify(title, body, tag, key, onOpen) {
+// A source this device gets pushes for (pushpanel.js) is left to the push,
+// so one event never notifies twice.
+async function notify(title, body, tag, key, onOpen, source) {
   if (!document.hidden || !("Notification" in window) || Notification.permission !== "granted") return;
+  if (pushCovers(source)) return;
   const reg = await navigator.serviceWorker?.getRegistration();
   if (reg?.active) {
     await reg.showNotification(title, { body, tag, renotify: true, icon: ICON, badge: BADGE, data: { key } });
@@ -106,15 +118,20 @@ let drawBell = () => {};
 // Redraw the bell after the permission changed somewhere else (install.js).
 export const refreshBell = () => drawBell();
 
-export function installBell(button) {
+// ``open``, where this browser can take push, opens the bell's panel
+// (pushpanel.js) instead of asking for permission at once.
+export function installBell(button, open = null) {
   const draw = () => {
     const p = "Notification" in window ? Notification.permission : "denied";
+    const push = Boolean(localStorage.getItem("aegis.push.id"));
     button.dataset.state = p;
-    button.title = p === "granted" ? "Desktop notifications are on" : p === "denied" ? "Notifications are blocked in this browser" : "Turn on desktop notifications";
+    button.dataset.push = push ? "on" : "off";
+    button.title = push ? "Push is on for this device" : p === "granted" ? "Desktop notifications are on" : p === "denied" ? "Notifications are blocked in this browser" : "Turn on desktop notifications";
   };
   drawBell = draw;
   draw();
   button.addEventListener("click", async () => {
+    if (open) return open(button);
     if ("Notification" in window && Notification.permission === "default") await Notification.requestPermission();
     draw();
   });

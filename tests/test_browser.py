@@ -3620,6 +3620,151 @@ def test_a_push_for_the_session_in_front_stays_quiet(server, full_browser):
     ctx.close()
 
 
+# A browser that subscribes to push, without a push service: the headless
+# shell has none, and denies notifications, so both are stood in for. The
+# endpoint is a closed port here, so the server's sender (a real one) reaches
+# nothing outside this machine. The subscription survives a reload, as a
+# browser's does, and ``fake.endpoint`` stands in for one the browser rotated.
+FAKE_PUSH = """
+  const fake = { endpoint: localStorage.getItem('fake.endpoint') || 'https://127.0.0.1:9/abc', options: {},
+    toJSON() { return { endpoint: this.endpoint, expirationTime: null, keys: { p256dh: 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4', auth: 'BTBZMqHH6r4Tts7J_aSIgg' } }; },
+    unsubscribe() { localStorage.removeItem('fake.sub'); return Promise.resolve(true); } };
+  PushManager.prototype.subscribe = function () { localStorage.setItem('fake.sub', '1'); return Promise.resolve(fake); };
+  PushManager.prototype.getSubscription = function () { return Promise.resolve(localStorage.getItem('fake.sub') ? fake : null); };
+  window.__notes = [];
+  window.__hidden = false;
+  window.Notification = class {
+    constructor() { throw new TypeError("Illegal constructor"); }
+    static get permission() { return 'granted'; }
+    static requestPermission() { return Promise.resolve('granted'); } };
+  ServiceWorkerRegistration.prototype.showNotification = function (t, o) {
+    window.__notes.push([t, o]); return Promise.resolve(); };
+  Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
+"""
+MINE = "import('/static/js/pushpanel.js').then(p => p.listMine())"
+
+
+def push_page(browser, server, errors: list, init: str = FAKE_PUSH):
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    pg = ctx.new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.add_init_script(init)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("navigator.serviceWorker.ready.then(() => true)")
+    return ctx, pg
+
+
+def poll(pg, expr: str, pred, timeout: float = 5):
+    """``expr``'s value once ``pred`` holds for it, or the last one. A promise
+    is awaited each time, which wait_for_function would not do."""
+    deadline = time.monotonic() + timeout
+    while not pred(value := pg.evaluate(expr)) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    return value
+
+
+def test_the_bell_subscribes_this_device_with_the_default_sources(server, browser):
+    errors: list = []
+    ctx, pg = push_page(browser, server, errors)
+    pg.click("#bell")
+    pg.wait_for_selector("#push-panel", state="visible")
+    assert pg.is_disabled("#push-panel input[data-src=needs_you]")
+    pg.click("#push-panel [data-act=on]")
+    pg.wait_for_selector("#push-panel input[data-src=needs_you]:checked")
+    listed = pg.evaluate(MINE)
+    assert len(listed) == 1 and sorted(listed[0]["sources"]) == [
+        "error",
+        "needs_you",
+        "toast",
+    ]
+    assert listed[0]["endpoint"] == "https://127.0.0.1:9/abc" and listed[0]["device"]
+    assert pg.evaluate("localStorage.getItem('aegis.push.id')") == listed[0]["id"]
+    pg.click("#push-panel input[data-src=done]")
+    mine = poll(pg, MINE, lambda v: "done" in v[0]["sources"])
+    assert "done" in mine[0]["sources"]
+    # The test button reaches the server, which tries the endpoint: closed.
+    pg.click("#push-panel [data-act=test]")
+    pg.wait_for_function(
+        "() => /push service|no answer/.test(document.querySelector('#push-panel .st').textContent)",
+        timeout=15000,
+    )
+    # Off: the row goes from the server and this browser forgets it.
+    pg.click("#push-panel [data-act=off]")
+    assert poll(pg, MINE, lambda v: v == []) == []
+    assert pg.evaluate("localStorage.getItem('aegis.push.id')") is None
+    pg.keyboard.press("Escape")
+    pg.wait_for_selector("#push-panel", state="hidden")
+    assert errors == []
+    ctx.close()
+
+
+def test_a_device_with_push_leaves_its_sources_to_it(server, browser):
+    errors: list = []
+    ctx, pg = push_page(browser, server, errors)
+    other_ctx, other = push_page(browser, server, errors)
+    pg.evaluate("import('/static/js/pushpanel.js').then(p => p.subscribePush())")
+    assert poll(pg, MINE, lambda v: len(v) == 1)
+    spawn(pg, "hello")
+    for p in (pg, other):
+        p.evaluate("window.__hidden = true")
+    report(pg, attention="needs_you", line="Merge or rebase?", replies=[])
+    # The browser without push notifies; by then the other saw the same patch.
+    other.wait_for_function("() => window.__notes.length === 1", timeout=8000)
+    pg.wait_for_function("() => document.title.startsWith('(1) ')", timeout=8000)
+    pg.wait_for_timeout(300)
+    assert pg.evaluate("window.__notes") == []
+    assert other.evaluate("window.__notes[0][1].body") == "Merge or rebase?"
+    assert errors == []
+    ctx.close()
+    other_ctx.close()
+
+
+def test_a_rotated_subscription_is_sent_again_under_the_same_id(server, browser):
+    errors: list = []
+    ctx, pg = push_page(browser, server, errors)
+    pg.evaluate("import('/static/js/pushpanel.js').then(p => p.subscribePush())")
+    [row] = poll(pg, MINE, lambda v: len(v) == 1)
+    pg.evaluate("localStorage.setItem('fake.endpoint', 'https://127.0.0.1:9/rotated')")
+    pg.reload()
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    rows = poll(pg, MINE, lambda v: v and v[0]["endpoint"].endswith("/rotated"))
+    assert [(r["id"], r["endpoint"]) for r in rows] == [
+        (row["id"], "https://127.0.0.1:9/rotated")
+    ]
+    assert pg.evaluate("localStorage.getItem('aegis.push.id')") == row["id"]
+    assert errors == []
+    ctx.close()
+
+
+def test_the_install_row_turns_push_on_and_settings_lists_and_removes_it(
+    server, browser
+):
+    errors: list = []
+    ctx, pg = push_page(browser, server, errors, FAKE_PUSH + INSTALLABLE)
+    pg.evaluate("window.__installable('accepted')")
+    pg.click("#install-offer [data-act=install]")
+    pg.click("#install-dialog .irow[data-step=notify] button")
+    pg.wait_for_selector("#install-dialog .irow[data-step=notify].done")
+    assert "push on" in pg.text_content("#install-dialog .irow[data-step=notify] .sub")
+    [row] = poll(pg, MINE, lambda v: len(v) == 1)
+    assert sorted(row["sources"]) == ["error", "needs_you", "toast"]
+    pg.click("#install-dialog [data-act=done]")
+    pg.click("#settings-btn")
+    pg.wait_for_selector(f"#set-push .set-push-row[data-id={row['id']}]")
+    text = pg.text_content(f"#set-push .set-push-row[data-id={row['id']}]")
+    assert "this device" in text and "needs_you" in text
+    assert "push on" in pg.text_content("#set-app")
+    pg.click(f"#set-push .set-push-row[data-id={row['id']}] button")
+    pg.wait_for_selector(
+        f"#set-push .set-push-row[data-id={row['id']}]", state="detached"
+    )
+    assert poll(pg, MINE, lambda v: v == []) == []
+    assert pg.evaluate("localStorage.getItem('aegis.push.id')") is None
+    assert errors == []
+    ctx.close()
+
+
 def test_the_url_the_worker_opens_boots_straight_into_the_session(server, browser):
     # With no aegis window open, a click on a notification opens /#s=<key>:
     # no token in it, only the cookie an earlier sign-in left.
