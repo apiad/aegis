@@ -155,3 +155,44 @@ def test_a_double_click_on_start_this_tutorial_starts_one_guide(
         len(list((server.root / ".aegis" / "state" / "sessions").glob("*.json"))) == 1
     )
     assert page.errors == []
+
+
+def test_enter_on_a_bare_command_with_an_argument_does_what_it_did(
+    server,  # noqa: F811
+    page,  # noqa: F811
+):
+    """The Enter rule now opens choices only for a required argument (`<…>`),
+    so /tutorial sends alone. Every other aegis command that takes an argument
+    does what it did before that change, checked against its parent."""
+    page.goto(server.url)
+    spawn(page)
+    sent = "document.querySelectorAll('.row.user').length"
+    before = page.evaluate(sent)
+    expect = {
+        "model": ("/model ", ""),  # Enter opens its choices
+        "effort": ("/effort ", ""),
+        "permission": ("/permission ", ""),
+        "rename": ("/rename", "missing_argument: usage: /rename <handle>"),
+        "title": ("/title", "missing_argument: usage: /title <text>"),
+        "spawn": ("/spawn", "missing_argument: usage: /spawn <agent>"),
+        "help": ("/", ""),  # the menu, with every command
+    }
+    for name, (line, error) in expect.items():
+        page.fill("#input", "")
+        page.evaluate("document.getElementById('send-error').textContent = ''")
+        page.fill("#input", f"/{name}")
+        page.wait_for_selector("#cmd-menu:not([hidden])")
+        page.press("#input", "Enter")
+        if error:
+            page.wait_for_function(
+                "e => document.getElementById('send-error').textContent.startsWith(e)",
+                arg=error,
+            )
+        else:
+            page.wait_for_function(
+                "l => document.getElementById('input').value === l", arg=line
+            )
+        assert (page.input_value("#input"), name) == (line, name)
+        assert page.is_visible("#cmd-menu"), name
+    assert page.evaluate(sent) == before, "none of them reached the agent"
+    assert page.errors == []
