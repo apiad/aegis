@@ -700,7 +700,7 @@ export class Canvas {
       this.refuse(`A canvas has at most ${MAX_WINDOWS} windows. Bring one back first.`);
       return Promise.resolve();
     }
-    const want = n === "new" ? Math.max(...ws.map((w) => w.n)) + 1 : n;
+    const want = n === "new" ? Math.max(...ws.map((w) => w.n), ...this.guesses) + 1 : n;
     const tab = want === 1 ? null : this.openWindow(want);
     let made = false; // a new tab is still at about:blank; a found one is at its window
     try {
