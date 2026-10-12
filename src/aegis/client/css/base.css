@@ -1090,6 +1090,8 @@ body{background:#000}
 #a2 .toast.from .life{background:var(--accent)}
 #a2 .toast:hover .life{animation-play-state:paused}
 #a2 .toast.out{animation:toast-out .18s ease-in forwards}
+#a2 .toast .act{margin-top:6px;padding:3px 10px;font-size:11.5px}
+#a2 .toast.sticky .life{display:none}
 @keyframes toast-in{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
 @keyframes toast-out{to{opacity:0;transform:translateX(12px)}}
 @keyframes toast-life{from{transform:scaleX(1)}to{transform:scaleX(0)}}

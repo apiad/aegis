@@ -33,6 +33,7 @@ import { Dictation } from "./dictation.js";
 import { Attachments } from "./attach.js";
 import { dur, planTimes } from "./plantime.js";
 import { setToastOpener, toast } from "./toast.js";
+import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -270,14 +271,21 @@ $("login").addEventListener("submit", async (ev) => {
 });
 
 // -- the connection -----------------------------------------------------------
+let wasClosed = false; // a reconnect checks for a new build
 const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`, {
   onState(state, server) {
     $("conn-dot").className = `dot ${state === "open" ? "ready" : state === "connecting" ? "ghost" : "err"}`;
     $("conn-text").textContent =
       state === "open" ? server : state === "connecting" ? "connecting" : state === "closed" ? "disconnected, retrying" : state;
     if (state === "unauthorized") showLogin();
-    if (state === "version") show("boot", "This page and the server speak different protocol versions. Reload the page.");
+    if (state === "version") {
+      show("boot", "This page and the server speak different protocol versions. Reload the page.");
+      setAutoApply();
+    }
+    if (state === "closed") wasClosed = true;
     if (state === "open") {
+      if (wasClosed) checkForUpdate();
+      wasClosed = false;
       setWho(conn.me, conn.owner);
       // Whether this browser runs on the server's desktop (Open natively).
       if (conn.native) root.dataset.native = "";
@@ -472,10 +480,12 @@ function onSessions() {
 
 // -- rendering -----------------------------------------------------------------
 const openSession = (id) => go(`#s=${id}`);
-// The service worker (sw.js): notifications come from its registration. It
-// exists only in a secure context (https or localhost); elsewhere the page
-// works as before.
-navigator.serviceWorker?.register("/sw.js").catch((e) => console.warn("aegis: service worker", e));
+// The service worker (sw.js): it keeps this build for offline use and raises
+// notifications. A new build downloads beside this one; reloading takes it.
+startWorker({
+  onUpdate: () =>
+    toast("A new version of aegis is ready.", { ms: Infinity, action: { label: "Reload", run: applyUpdate } }),
+});
 listenForOpen(openSession);
 setToastOpener(openSession);
 // Toasts from the server (App.toast): every browser shows each one once, and

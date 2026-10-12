@@ -4,6 +4,8 @@
 // An event is a toast; a state that stays true while you look stays next to
 // what it is about. At most three show, the newest at the bottom; hover holds
 // one, × dismisses it, and the same text again restarts the one on screen.
+// toast(text, {kind, from, ms, action: {label, run}}): an action toast shows a
+// button and, with ms: Infinity, stays until it is used or dismissed.
 
 import { icon } from "./glyphs.js";
 
@@ -40,7 +42,7 @@ function place() {
 }
 
 // kind: "info" | "error"; from: {handle, id} for an agent's toast.
-export function toast(text, { kind = "info", from = null, ms } = {}) {
+export function toast(text, { kind = "info", from = null, ms, action = null } = {}) {
   if (!stack) {
     stack = el("div", "toasts");
     stack.setAttribute("role", "status");
@@ -81,7 +83,7 @@ export function toast(text, { kind = "info", from = null, ms } = {}) {
   };
   const run = () => {
     started = Date.now();
-    timer = setTimeout(leave, left);
+    if (Number.isFinite(left)) timer = setTimeout(leave, left);
   };
   const drain = () => {
     life.style.animation = "none";
@@ -109,6 +111,19 @@ export function toast(text, { kind = "info", from = null, ms } = {}) {
       leave();
       opener(from.id);
     });
+  if (action) {
+    const act = el("button", "btn act", action.label);
+    act.type = "button";
+    act.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      leave();
+      action.run();
+    });
+    n.append(act);
+  }
+  // An action toast waits for its action: setTimeout(fn, Infinity) would fire
+  // at once, so a toast whose time is not finite starts no timer at all.
+  if (!Number.isFinite(full)) n.classList.add("sticky");
   drain();
   stack.append(n);
   run();

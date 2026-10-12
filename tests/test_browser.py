@@ -3629,6 +3629,47 @@ def test_the_token_url_still_reaches_the_server_with_the_worker_on(server, brows
     assert errors == []
 
 
+def test_a_new_build_downloads_beside_the_old_and_offers_a_reload(server, page):
+    from aegis.web import CLIENT_DIR
+
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    first = wait_for_device_copy(page)["build"]
+    # A new build, as a deploy or an edit to the client makes one: only the
+    # mtime of a theme file moves, and moves back afterwards.
+    css = CLIENT_DIR / "themes" / "ink.css"
+    st = css.stat()
+    try:
+        os.utime(css, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+        page.evaluate("import('/static/js/appworker.js').then(m => m.checkForUpdate())")
+        page.wait_for_selector(".toast .act", timeout=20000)
+        assert "ready" in page.text_content(".toast .msg")
+        page.click(".toast .act")
+        page.wait_for_selector("#a2[data-view=fleet]", timeout=20000)
+        now = page.evaluate(
+            "import('/static/js/appworker.js').then(m => m.deviceCopy())"
+        )
+        assert now["complete"] and now["build"] != first
+        names = page.evaluate("caches.keys()")
+        assert [n for n in names if n.startswith("aegis-")] == [f"aegis-{now['build']}"]
+    finally:
+        os.utime(css, ns=(st.st_atime_ns, st.st_mtime_ns))
+    assert page.errors == []
+
+
+def test_an_action_toast_stays_until_it_is_used(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.evaluate("""() => import('/static/js/toast.js').then(m => m.toast('Sticky', {
+      ms: Infinity, action: { label: 'Do it', run: () => { window.__ran = 1; } } }))""")
+    page.wait_for_selector(".toast .act >> text=Do it")
+    time.sleep(5)  # longer than an info toast lives
+    assert page.locator(".toast:not(.out) .msg >> text=Sticky").count() == 1
+    page.click(".toast .act")
+    assert page.evaluate("window.__ran") == 1
+    page.wait_for_selector(".toast .msg >> text=Sticky", state="detached")
+
+
 @pytest.mark.parametrize("width", [1000, 1100, 1366])
 def test_each_quota_bar_shares_a_row_with_its_label_and_value(
     quota_server, browser, width
