@@ -253,7 +253,7 @@ body{background:#000}
 /* Tables query the transcript's scroller, not their row: a size container
    inside the scroller stops Chromium's scroll anchoring, so rows drawn above
    the view would push the text being read (#323). */
-.a2 #tr,.a2 .vbody{container:md/inline-size}
+.a2 #tr,.a2 .vbody,.a2 .pbody{container:md/inline-size}
 .a2 .md>:first-child{margin-top:0}.a2 .md>:last-child{margin-bottom:0}
 .a2 .md p,.a2 .md ul,.a2 .md ol{margin:0 0 .65em}
 .a2 .md ul,.a2 .md ol{padding-left:1.4em}
@@ -687,23 +687,35 @@ body{background:#000}
 .a2 .viewer .vbar .pager+.acts{margin-left:0}
 .a2 .viewer .vbar .vclose{margin-left:6px}
 .a2 .viewer .vbody{flex:1;min-height:0;overflow:auto;outline:none}
-.a2 .viewer .vnote{padding:18px 22px;color:var(--muted);font-family:var(--font-chrome);font-size:12.5px}
-.a2 .viewer .vnote a{color:var(--accent)}
-.a2 .viewer .stage{height:100%;box-sizing:border-box}
-.a2 .viewer .stage iframe{display:block;width:100%;height:100%;border:0;background:#fff}
-.a2 .viewer .stage iframe[data-artifact]{background:var(--bg)}
-.a2 .viewer .stage.image,.a2 .viewer .stage.video{display:flex;align-items:center;justify-content:center;padding:16px}
-.a2 .viewer .stage img,.a2 .viewer .stage video{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px}
-.a2 .viewer .stage.audio{height:auto;padding:40px 22px}
-.a2 .viewer .stage audio{display:block;width:min(640px,100%);margin:0 auto}
-.a2 .viewer .doc{max-width:780px;margin:0 auto;padding:24px 28px 56px;font-family:var(--font-prose);font-size:var(--prose-size);line-height:1.6;color:var(--ink);overflow-wrap:anywhere}
-.a2 .viewer .doc h1{font-size:1.6em}.a2 .viewer .doc h2{font-size:1.3em}.a2 .viewer .doc h3{font-size:1.12em}
-.a2 .viewer .doc img{max-width:100%}
-.a2 .viewer .code{display:flex;min-width:max-content;min-height:100%;box-sizing:border-box;font-family:var(--font-mono);font-size:12.5px;line-height:1.55}
-.a2 .viewer .code pre{margin:0;padding:14px 0 40px;white-space:pre}
-.a2 .viewer .code .ln{position:sticky;left:0;padding:14px 12px 40px 16px;text-align:right;color:var(--faint);background:var(--bg);border-right:1px solid var(--rule);user-select:none}
-.a2 .viewer .code .src{padding-left:14px;padding-right:24px;color:var(--ink)}
-.a2 .viewer .code code{font-size:inherit;background:none;padding:0;border-radius:0}
+.a2 :is(.viewer,.docked) .vnote{padding:18px 22px;color:var(--muted);font-family:var(--font-chrome);font-size:12.5px}
+.a2 :is(.viewer,.docked) .vnote a{color:var(--accent)}
+.a2 :is(.viewer,.docked) .stage{height:100%;box-sizing:border-box}
+.a2 :is(.viewer,.docked) .stage iframe{display:block;width:100%;height:100%;border:0;background:#fff}
+.a2 :is(.viewer,.docked) .stage iframe[data-artifact]{background:var(--bg)}
+.a2 :is(.viewer,.docked) .stage.image,.a2 :is(.viewer,.docked) .stage.video{display:flex;align-items:center;justify-content:center;padding:16px}
+.a2 :is(.viewer,.docked) .stage img,.a2 :is(.viewer,.docked) .stage video{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px}
+.a2 :is(.viewer,.docked) .stage.audio{height:auto;padding:40px 22px}
+.a2 :is(.viewer,.docked) .stage audio{display:block;width:min(640px,100%);margin:0 auto}
+.a2 :is(.viewer,.docked) .doc{max-width:780px;margin:0 auto;padding:24px 28px 56px;font-family:var(--font-prose);font-size:var(--prose-size);line-height:1.6;color:var(--ink);overflow-wrap:anywhere}
+.a2 :is(.viewer,.docked) .doc h1{font-size:1.6em}.a2 :is(.viewer,.docked) .doc h2{font-size:1.3em}.a2 :is(.viewer,.docked) .doc h3{font-size:1.12em}
+.a2 :is(.viewer,.docked) .doc img{max-width:100%}
+.a2 :is(.viewer,.docked) .code{display:flex;min-width:max-content;min-height:100%;box-sizing:border-box;font-family:var(--font-mono);font-size:12.5px;line-height:1.55}
+.a2 :is(.viewer,.docked) .code pre{margin:0;padding:14px 0 40px;white-space:pre}
+.a2 :is(.viewer,.docked) .code .ln{position:sticky;left:0;padding:14px 12px 40px 16px;text-align:right;color:var(--faint);background:var(--bg);border-right:1px solid var(--rule);user-select:none}
+.a2 :is(.viewer,.docked) .code .src{padding-left:14px;padding-right:24px;color:var(--ink)}
+.a2 :is(.viewer,.docked) .code code{font-size:inherit;background:none;padding:0;border-radius:0}
+/* The canvas (js/canvas.js): the session's column and its docked panes, each
+   placed in percent of the canvas. With nothing docked the column fills it,
+   and the session view is what it always was. */
+.a2 .canvas{position:relative;min-width:0;min-height:0}
+.a2 .canvas>.pane{position:absolute;inset:0;box-sizing:border-box;min-width:0;min-height:0}
+.a2 .canvas>.pane.lx{border-left:1px solid var(--rule)}
+.a2 .canvas>.pane.ty{border-top:1px solid var(--rule)}
+.a2 .canvas>.pane.docked{display:flex;flex-direction:column;background:var(--bg);overflow:hidden}
+.a2 .canvas>.pane>.pbar{display:flex;width:auto;height:auto;gap:10px;flex:none;border-bottom:1px solid var(--rule)}
+.a2 .canvas>.pane>.pbar .acts{margin-left:auto}
+.a2 .canvas>.pane>.pbody{flex:1;min-height:0;overflow:auto;outline:none}
+.a2 .canvas>.pane.flash{outline:2px solid var(--accent);outline-offset:-2px}
 .a2 .md code.path{color:var(--accent);cursor:pointer;border-style:dashed}
 .a2 .md code.path:hover{border-style:solid}
 .a2 .md code.path::before{content:"↗ ";opacity:.6}
