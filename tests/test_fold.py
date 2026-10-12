@@ -516,6 +516,8 @@ def test_a_sent_file_is_its_own_kind():
                 "mime": "image/png",
                 "size": 48213,
                 "excerpt": None,
+                "key": "f-AbCdEfGhIjKlMnOpQrStUv",
+                "version": 1,
             }
         ]
     }
@@ -1031,6 +1033,39 @@ def test_a_file_set_folds_into_one_entry():
     assert e["title"] == "a.png +1" and e["summary"] == "2 files"
     assert [f["name"] for f in e["detail"]["files"]] == ["a.png", "b.png"]
     assert e["detail"]["files"][1]["summary"] == "10 B · image/png"
+
+
+def test_a_file_sent_again_from_its_path_is_a_new_version_of_one_file():
+    r = Rec()
+    r.own("file", caption=None, files=[_sent("r.pdf", source="/w/out/r.pdf")])
+    r.own(
+        "file",
+        caption=None,
+        files=[
+            _sent("r.pdf", file_id="id-2", source="/w/out/r.pdf"),
+            _sent("p.png", source="/w/out/p.png"),
+        ],
+    )
+    live, ops = run(r)
+    first, second = live.entries()
+    a, b = second["detail"]["files"]
+    assert a["key"] == first["detail"]["files"][0]["key"] and a["version"] == 2
+    assert b["version"] == 1 and b["key"] != a["key"]
+    assert first["detail"]["files"][0]["replaced"] == 2
+    assert "replaced" not in a
+    assert {op["upsert"]["id"] for op in ops[-1]} == {first["id"], second["id"]}
+    assert live.file_keys[a["key"]]["file_id"] == "id-2"
+    assert all("source" not in f for e in live.entries() for f in e["detail"]["files"])
+    assert fold_records(r.records).entries() == live.entries()
+
+
+def test_a_file_sent_before_keys_existed_keys_by_its_id():
+    r = Rec()
+    r.own("file", caption=None, files=[_sent("old.png")])
+    f = fold_records(r.records)
+    (e,) = f.entries()
+    assert e["detail"]["files"][0]["key"] == "f-id-old.png"
+    assert e["detail"]["files"][0]["version"] == 1 and "f-id-old.png" in f.file_keys
 
 
 def test_a_file_tools_row_carries_the_path_it_used():

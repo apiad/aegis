@@ -125,3 +125,28 @@ async def test_layout_ops_check_ownership(world):
         assert world.app.registry._ops[name].owned == "log_id"
     assert world.app.registry._ops["layout.read"].agent
     assert world.app.registry._ops["layout.set"].agent
+
+
+async def test_one_file_by_a_relative_and_an_absolute_path_is_one_key(world, tmp_path):
+    a = await world.spawn()
+    (a.spec.cwd / "r.md").write_text("one")
+    ok(await turn(a, mcp("file_send", paths=["r.md"])))
+    (a.spec.cwd / "r.md").write_text("two")
+    ok(await turn(a, mcp("file_send", paths=[str(a.spec.cwd / "r.md")])))
+    files = [
+        f for e in a.entries() if e["kind"] == "file" for f in e["detail"]["files"]
+    ]
+    assert files[0]["key"] == files[1]["key"] and [f["version"] for f in files] == [
+        1,
+        2,
+    ]
+    assert files[0]["replaced"] == 2
+    assert a.dockable(files[0]["key"])
+    # One path twice in one send, however it is spelled, is refused before
+    # anything is sent.
+    (a.spec.cwd / "sub").mkdir()
+    said = await turn(
+        a, mcp("file_send", paths=["sub/../r.md", str(a.spec.cwd / "r.md")])
+    )
+    assert said.startswith("mcp error: bad_params") and "r.md" in said, said
+    assert len([e for e in a.entries() if e["kind"] == "file"]) == 2

@@ -905,6 +905,15 @@ def register_agent_ops(app: App) -> None:
         paths = [Path(x).expanduser() for x in p.paths]
         relative = {s.spec.cwd / x for x in paths if not x.is_absolute()}
         paths = [s.spec.cwd / x if not x.is_absolute() else x for x in paths]
+        # A file's key is its resolved path (layout.file_key): one path twice
+        # in one send would be two versions on one card, so it is refused.
+        sources = [x.resolve() for x in paths]
+        twice = sorted({str(x) for x in sources if sources.count(x) > 1})
+        if twice:
+            raise OpError(
+                "bad_params",
+                f"{', '.join(twice)} is listed more than once; send it once",
+            )
         try:
             recs = await asyncio.to_thread(files.store_all, app.roots.state_root, paths)
         except files.FileError as e:
@@ -917,7 +926,12 @@ def register_agent_ops(app: App) -> None:
                 else ""
             )
             raise OpError(e.code, e.message + hint) from e
-        sent = [{k: v for k, v in r.items() if k != "kind"} for r in recs]
+        # The source stays in the store: the fold keys by it and never copies
+        # it into an entry.
+        sent = [
+            {**{k: v for k, v in r.items() if k != "kind"}, "source": str(src)}
+            for r, src in zip(recs, sources)
+        ]
         s.record_file({"kind": "file", "files": sent, "caption": p.caption})
         return [
             {
