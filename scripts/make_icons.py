@@ -10,8 +10,10 @@ a point. Every stroke is at least 1.25 px at 16 px, the size of a browser tab.
 Pillow is not a dependency of aegis; the PNGs are committed, and so is
 `src/aegis/client/js/mark.js`, the same geometry as SVG for the favicon that
 `ping.js` redraws. The maskable icon keeps the mark inside the central 80%,
-the safe zone a launcher may crop to. The PNGs are drawn at four times their
-size and scaled down, because Pillow does not antialias polygons.
+the safe zone a launcher may crop to. The notification badge is the mark in
+white on transparent, because Android draws a badge from its alpha alone. The
+PNGs are drawn at four times their size and scaled down, because Pillow does
+not antialias polygons.
 """
 
 import math
@@ -116,6 +118,27 @@ def draw(size: int, scale: float) -> Image.Image:
     return im.resize((size, size), Image.LANCZOS)
 
 
+def badge(size: int, scale: float = 0.9) -> Image.Image:
+    """The notification badge Android draws in the status bar: only its alpha
+    counts, so the mark is white on transparent and the eye is a hole."""
+    ss = size * 4
+    im = Image.new("RGBA", (ss, ss), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    k = ss * scale / (2 * TIP_R)
+    white, clear = (255, 255, 255, 255), (0, 0, 0, 0)
+
+    def at(p: tuple[float, float]) -> tuple[float, float]:
+        return ss / 2 + (p[0] - C) * k, ss / 2 + (p[1] - C) * k
+
+    c = at((C, C))
+    d.ellipse([c[0] - HEAD * k, c[1] - HEAD * k, c[0] + HEAD * k, c[1] + HEAD * k], fill=white)
+    for s in serpents(48):
+        d.polygon([at(p) for p in s], fill=white)
+    d.polygon([at(p) for p in eye(32)], fill=clear)
+    d.ellipse([c[0] - PUPIL * k, c[1] - PUPIL * k, c[0] + PUPIL * k, c[1] + PUPIL * k], fill=white)
+    return im.resize((size, size), Image.LANCZOS)
+
+
 def svg_path(polys: list[list[tuple[float, float]]]) -> str:
     return " ".join(
         "M" + " ".join(f"{x:.1f} {y:.1f}" for x, y in p) + "Z" for p in polys
@@ -141,6 +164,7 @@ def main() -> None:
     draw(192, 0.72).save(OUT / "aegis-192.png")
     draw(512, 0.72).save(OUT / "aegis-512.png")
     draw(512, 0.56).save(OUT / "aegis-maskable-512.png")
+    badge(96).save(OUT / "aegis-badge-96.png")
     for name in ("aegis-192.png", "aegis-512.png"):
         shutil.copyfile(OUT / name, SITE / name)
     MARK_JS.write_text(mark_js())

@@ -988,6 +988,15 @@ def test_the_service_worker_is_served_from_the_root(project, fake_claude):
         assert "notificationclick" in r.text
 
 
+def test_the_notification_badge_is_a_white_silhouette(project, fake_claude):
+    with client_for(project, fake_claude) as c:
+        r = c.get("/static/icons/aegis-badge-96.png")
+        assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+        assert png_size(r.content) == (96, 96)
+        # IHDR colour type 6: RGBA, so Android has an alpha channel to draw.
+        assert r.content[25] == 6
+
+
 def test_the_artifact_script_and_stylesheet_are_served(project, fake_claude):
     c = client_for(project, fake_claude)
     js = c.get("/static/js/artifact.js")
