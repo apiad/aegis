@@ -1,7 +1,7 @@
 ---
 title: Configuration
 kind: concept
-when: adding or changing agents, the default agent, queues and recaps in .aegis.yaml
+when: adding or changing agents, the default agent, queues and recaps in .aegis.yaml, or picking a theme
 ---
 
 aegis reads one file, `.aegis.yaml`, at the root it serves: `--root` when
@@ -83,6 +83,14 @@ you opened it. Only an admin can save.
 proposing agents for Claude Code and OpenCode and asking about each (`aegis
 init --yes` takes every proposal).
 It refuses to overwrite an existing `.aegis.yaml`.
+
+## The theme
+
+The theme is not in the file: each browser keeps its own. The Settings page
+starts with a row for this browser, where the Theme chip picks one of ten:
+Ink, Logbook, Electric, Phosphor, Blueprint, Amphora, Riso, Solari, Aizome and
+Poster. The whole page changes at once, the colours of code in the transcript
+and the pages agents send included.
 
 ## Check it
 

@@ -86,6 +86,20 @@ reads as done. A session that drifts gets one nudge from aegis: when its plan
 has gone stale after a stretch of work, or when a turn ended without
 `turn_end` and nothing explains the silence.
 
+## Toasts
+
+Refusals and failures, and the "Nobody needs you" note, show as cards in the
+corner, above the message box in a session and across the screen on a phone.
+They leave on their own after a few seconds, stack up to three and hold while
+you hover them; × dismisses one.
+
+An agent shows one line in every open browser with `toast`, without ending
+its turn: a heads-up you should see while it keeps working. The card names
+its session, and a click opens the session's tab. While the page is hidden
+it also arrives as a desktop notification, if the browser allows them. A
+session can send six a minute at most, and one with read permission can send
+them too.
+
 ## Stop, close and reopen
 
 - Stop (in the session panel, or `/stop`) ends the process and keeps the
