@@ -702,7 +702,14 @@ class Session:
 
     @property
     def layout(self) -> dict:
-        return self.standing.get("layout") or canvas.DEFAULT
+        """The standing layout, less any pane that can no longer dock. A crash
+        between the store append and the meta write can boot with a layout
+        naming a page closed since, and every move would then fail on it."""
+        lay = self.standing.get("layout") or canvas.DEFAULT
+        for pid in canvas.ids(lay):
+            if pid != canvas.TRANSCRIPT and not self.dockable(pid):
+                lay = canvas.trim(lay, pid)
+        return lay
 
     def set_layout(self, new: dict, by: str) -> dict:
         """Record ``new``, already normalised; every browser on the session

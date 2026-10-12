@@ -169,3 +169,35 @@ async def test_a_malformed_layout_set_is_bad_params_not_an_internal_error(world)
     ):
         said = await turn(a, mcp("layout_set", windows=windows))
         assert said.startswith("mcp error: bad_params"), said
+
+
+async def test_a_closed_page_left_in_a_standing_layout_never_blocks_a_dock(
+    world, tmp_path
+):
+    # A crash between the store append and the meta write can boot with a
+    # standing layout that still names a page closed since.
+    a = await world.spawn()
+    gone = await live_page(world, a, tmp_path)
+    two = await live_page(world, a, tmp_path)
+    assert await turn(a, mcp("artifact_close", id=gone)) == "mcp ok: closed"
+    stale = layout.normalise(
+        {
+            "windows": [
+                {
+                    "n": 1,
+                    "columns": [{"panes": [{"id": "transcript"}]}, {"panes": [{"id": gone}]}],
+                }
+            ]
+        },
+        lambda _: True,
+    )
+    a.standing = {**a.standing, "layout": stale}
+    lay = await person(world, "layout.dock", log_id=a.log_id, pane=two, where="right")
+    assert layout.ids(lay) == ["transcript", two]
+    a.standing = {**a.standing, "layout": stale}
+    lay = await person(
+        world, "layout.resize", log_id=a.log_id, n=1, widths=[1], heights=None
+    )
+    assert layout.ids(lay) == ["transcript"]
+    a.standing = {**a.standing, "layout": stale}
+    assert layout.ids(ok(await turn(a, mcp("layout_read")))) == ["transcript"]
