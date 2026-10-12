@@ -102,7 +102,7 @@ what you docked. `dock` takes one of:
 
 A page's pane id is its `id`. A sent file's is its key, which `layout_read`
 lists with each pane's kind and title; the transcript's is transcript.
-Several files in one `file_send` stack in one column, the first at `dock`. A
+Several files in one `file_send` stack in one column, in the order given, from `dock` down. A
 pane already docked moves. A `dock` that does not fit is refused as
 bad_params before anything is sent, and the message says why and which panes
 there are. If the person changed the canvas while the send was under way
@@ -132,7 +132,7 @@ a second `file_send` needs no `dock`.
 
 ## Emit when the person lets go
 
-Each emit wakes you for a turn, and a page may emit at most 20 times a
+Each emit wakes you for a turn, and a page may emit at most 20 events a
 minute. A slider that emits on input emits at every step of a drag and
 reaches that limit in seconds, each step a turn of yours. Emit on change,
 which fires once when the person lets go of the control, and keep the value
