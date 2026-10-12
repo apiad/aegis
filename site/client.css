@@ -346,6 +346,8 @@ body{background:#000}
 .a2 .composer .box{display:flex;align-items:flex-end;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg)}
 .a2 .composer .box:focus-within{border-color:var(--accent)}
 .a2 .composer textarea{flex:1;min-width:0;resize:none;padding:12px 14px;font-size:13.5px;line-height:1.45;background:none;border:none;color:var(--strong);font-family:var(--font-ui);max-height:40vh;outline:none}
+/* A placeholder left to the browser is its own grey on every theme. */
+.a2 .composer textarea::placeholder,.a2 .spawn textarea::placeholder{color:var(--faint);opacity:1}
 /* Buttons inside the box, bottom right: send, and the mic when it comes. */
 .a2 .composer .acts{display:flex;gap:6px;align-items:center;padding:8px 8px 8px 0}
 .a2 .composer .acts .send{font-size:15px;line-height:1;padding:6px 12px;font-weight:600}
@@ -1306,7 +1308,6 @@ body{background:#000}
   --volt:linear-gradient(120deg,#38e8ff,#7b6bff 55%,#ff4fd8);
 }
 [data-theme=electric] .a2 .tr:before{width:2px;background:linear-gradient(180deg,#38e8ff,#7b6bff 45%,#ff4fd8 85%,transparent);box-shadow:0 0 8px rgba(56,232,255,.6),0 0 22px rgba(123,107,255,.35)}
-[data-theme=electric] .a2 .row .g{filter:drop-shadow(0 0 4px currentColor)}
 [data-theme=electric] .a2 .row.tool .g,[data-theme=electric] .a2 .row.prose .g{color:var(--accent)}
 [data-theme=electric] .a2 .tabs{border-bottom-color:#1a1a48}
 [data-theme=electric] .a2 .tab.on{box-shadow:none;border-radius:8px 8px 0 0}

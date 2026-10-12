@@ -13,7 +13,6 @@
   --volt:linear-gradient(120deg,#38e8ff,#7b6bff 55%,#ff4fd8);
 }
 [data-theme=electric] #a2 .tr:before{width:2px;background:linear-gradient(180deg,#38e8ff,#7b6bff 45%,#ff4fd8 85%,transparent);box-shadow:0 0 8px rgba(56,232,255,.6),0 0 22px rgba(123,107,255,.35)}
-[data-theme=electric] #a2 .row .g{filter:drop-shadow(0 0 4px currentColor)}
 [data-theme=electric] #a2 .row.tool .g,[data-theme=electric] #a2 .row.prose .g{color:var(--accent)}
 [data-theme=electric] #a2 .tabs{border-bottom-color:#1a1a48}
 [data-theme=electric] #a2 .tab.on{box-shadow:none;border-radius:8px 8px 0 0}
