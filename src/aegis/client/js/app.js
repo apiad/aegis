@@ -35,7 +35,7 @@ import { dur, planTimes } from "./plantime.js";
 import { setToastOpener, toast } from "./toast.js";
 import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
 import { closeInstallDialog, startInstall } from "./install.js";
-import { loadFleet, saveFleet } from "./devicestore.js";
+import { loadFleet, loadTranscript, saveFleet, saveTranscript } from "./devicestore.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -329,7 +329,13 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
     $("conn-dot").className = `dot ${state === "open" ? "ready" : state === "connecting" ? "ghost" : "err"}`;
     $("conn-text").textContent =
       state === "open" ? server : state === "connecting" ? "connecting" : state === "closed" ? "disconnected, retrying" : state;
+    // What arrived before a close is still the server's latest: kept at once.
+    if (state === "closed" && live) {
+      if (fleetSave) flushFleet(true);
+      if (trSave) flushTranscript(true);
+    }
     markOffline(state);
+    drawOfflineNotice();
     bannerState(state);
     if (state === "unauthorized") showLogin();
     if (state === "version") {
@@ -535,14 +541,34 @@ let fleetSave = null;
 function keepFleet() {
   if (!fleetSave && conn.open) fleetSave = setTimeout(flushFleet, SAVE_MS);
 }
-function flushFleet() {
+// `closing`: the socket has just closed, and what the page holds is still
+// what it last carried.
+function flushFleet(closing = false) {
   clearTimeout(fleetSave);
   fleetSave = null;
-  if (conn.open && homeLive) saveFleet([...sessions.values()].filter((m) => !m.stale));
+  if ((conn.open || closing) && homeLive) saveFleet([...sessions.values()].filter((m) => !m.stale));
+}
+// The shown transcript, likewise, after each snapshot, delta and patch.
+let trSave = null;
+function keepTranscript() {
+  if (!trSave && conn.open && shown) trSave = setTimeout(flushTranscript, SAVE_MS);
+}
+function flushTranscript(closing = false) {
+  clearTimeout(trSave);
+  trSave = null;
+  if ((conn.open || closing) && shown && transcript.rev >= 0)
+    saveTranscript(shown, { entries: [...transcript.entries.values()], rev: transcript.rev });
 }
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden && fleetSave) flushFleet();
+  if (!document.hidden) return;
+  if (fleetSave) flushFleet();
+  if (trSave) flushTranscript();
 });
+
+// Offline, a session with nothing kept on this device says so.
+function drawOfflineNotice() {
+  $("tr-offline").hidden = live || !shown || transcript.entries.size > 0;
+}
 
 // Patches that only update sessions the page already shows redraw once a
 // frame, however many arrive, and only those sessions' tab and card (#158).
@@ -964,8 +990,11 @@ setInterval(drawQuota, 30 * 1000);
 const TAB_CACHE = 8;
 const kept = new Map(); // key -> transcript.stash()
 
+let follows = 0; // which follow() a device read answers
+
 function follow(id) {
   if (shown === id) return;
+  if (trSave) flushTranscript(); // before its rows go
   closeSide();
   if (unsubTranscript) unsubTranscript();
   unsubTranscript = null;
@@ -978,6 +1007,7 @@ function follow(id) {
   find.close(false); // it searched the old session
   if (dictation.target?.el === input) dictation.stop("tab"); // a recording belongs to its session
   shown = id;
+  const turn = ++follows;
   atts.show(id);
   if (!id) return viewer.show(null);
   const saved = kept.get(id);
@@ -991,34 +1021,55 @@ function follow(id) {
   const where = forKey(id);
   setFileBase(where.server ? `/via/${where.server}` : "");
   viewer.show(id); // after the base: a far artifact's frame is built from it
-  unsubTranscript = conn.subscribe(
-    `transcript:${where.log_id}`,
-    (data) => {
-      if (data.since !== undefined) transcript.resume(data);
-      else transcript.snapshot(data);
-      if (!placed) {
-        transcript.setSince(sinceText(sessions.get(id)));
-        askRecap(false); // the server decides whether it is worth one
-        if (landUnread === id) transcript.firstUnread();
-        landUnread = null;
-        if (landEntry && landEntry.key === id) transcript.reveal(landEntry.id);
-        landEntry = null;
-      }
-      placed = true;
-      // Read by scripts/bench.py: when the snapshot was drawn and painted.
-      const mark = (window.__a2snapshot = { at: performance.now(), count: transcript.entries.size });
-      requestAnimationFrame(() => (mark.painted = performance.now()));
-    },
-    (ops) => {
-      for (const op of ops) if (op.probe) artifacts.probe(op.probe, id, fileUrl(op.probe.url));
-      transcript.apply(ops);
-    },
-    undefined,
-    // Holding nothing, a full snapshot mounts only the last rows; a delta
-    // from -1 would mount every row through apply().
-    () => (transcript.rev >= 0 ? transcript.rev : null),
-    where.server,
-  );
+  const subscribe = () => {
+    unsubTranscript = conn.subscribe(
+      `transcript:${where.log_id}`,
+      (data) => {
+        // A server that cannot resume from the revision asked (the session was
+        // reset, its store rewritten) answers in full, and the full answer
+        // replaces whatever was drawn.
+        if (data.since !== undefined) transcript.resume(data);
+        else transcript.snapshot(data);
+        keepTranscript();
+        drawOfflineNotice();
+        if (!placed) {
+          transcript.setSince(sinceText(sessions.get(id)));
+          askRecap(false); // the server decides whether it is worth one
+          if (landUnread === id) transcript.firstUnread();
+          landUnread = null;
+          if (landEntry && landEntry.key === id) transcript.reveal(landEntry.id);
+          landEntry = null;
+        }
+        placed = true;
+        // Read by scripts/bench.py: when the snapshot was drawn and painted.
+        const mark = (window.__a2snapshot = { at: performance.now(), count: transcript.entries.size });
+        requestAnimationFrame(() => (mark.painted = performance.now()));
+      },
+      (ops) => {
+        for (const op of ops) if (op.probe) artifacts.probe(op.probe, id, fileUrl(op.probe.url));
+        transcript.apply(ops);
+        keepTranscript();
+      },
+      undefined,
+      // Holding nothing, a full snapshot mounts only the last rows; a delta
+      // from -1 would mount every row through apply().
+      () => (transcript.rev >= 0 ? transcript.rev : null),
+      where.server,
+    );
+  };
+  if (saved) {
+    subscribe();
+    drawOfflineNotice();
+  } else
+    // What this device kept of the session, drawn at once. The subscription
+    // waits for it (a local read, a few ms) so that it asks only for what
+    // changed since its revision.
+    loadTranscript(id).then((copy) => {
+      if (turn !== follows) return; // moved on
+      if (copy) transcript.snapshot({ entries: copy.entries, rev: copy.rev });
+      drawOfflineNotice();
+      subscribe();
+    });
   menu.close();
   $("input").value = localStorage.getItem(`aegis.draft.${id}`) || "";
   autosize();

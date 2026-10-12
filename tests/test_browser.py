@@ -3784,6 +3784,117 @@ def test_offline_the_fleet_draws_from_the_device(server, page):
     assert page.errors == []
 
 
+def test_offline_an_opened_transcript_reads_as_it_was(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    sid = spawn(page, "hello")
+    turns_done(page, 1)
+    live = page.text_content("#entries")
+    time.sleep(2.5)  # the debounced save
+    server.stop()
+    page.reload()
+    page.wait_for_selector("#a2[data-view=session]", timeout=10000)
+    assert page.evaluate("location.hash.slice(3)") == sid
+    page.wait_for_function(
+        "document.querySelectorAll('#entries .row').length > 0", timeout=10000
+    )
+    assert page.text_content("#entries") == live
+    assert page.is_hidden("#tr-offline")
+    server.start()
+    page.wait_for_function(
+        "!document.getElementById('a2').hasAttribute('data-offline')", timeout=20000
+    )
+    assert page.errors == []
+
+
+def test_offline_a_session_never_opened_here_says_so(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    first = spawn(page, "hello")
+    turns_done(page, 1)
+    page.click("#tab-fleet")
+    time.sleep(2.5)  # the Fleet's and the transcript's saves
+    # Its transcript is gone from the device, its card is not: a session
+    # another browser opened, that this one only saw on the Fleet.
+    page.evaluate(
+        """key => new Promise(r => { const q = indexedDB.open('aegis');
+          q.onsuccess = () => { const tx = q.result.transaction('transcripts', 'readwrite');
+            tx.objectStore('transcripts').delete(key); tx.oncomplete = () => r(); }; })""",
+        first,
+    )
+    assert (
+        page.evaluate(
+            "k => import('/static/js/devicestore.js').then(s => s.loadTranscript(k))",
+            first,
+        )
+        is None
+    )
+    server.stop()
+    page.reload()
+    page.wait_for_selector(f".card[data-id='{first}']", timeout=10000)
+    page.evaluate("id => (location.hash = '#s=' + id)", first)
+    page.wait_for_selector("#tr-offline", state="visible", timeout=10000)
+    assert "not saved on this device" in page.text_content("#tr-offline").lower()
+    server.start()
+    page.wait_for_selector("#tr-offline", state="hidden", timeout=20000)
+    page.wait_for_function(
+        "document.querySelectorAll('#entries .row').length > 0", timeout=10000
+    )
+    assert page.errors == []
+
+
+def test_offline_a_rows_detail_needs_the_connection(server, page, tmp_path):
+    (tmp_path / "notes.txt").write_text("one\ntwo\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    spawn(page, f"/read {tmp_path / 'notes.txt'}")
+    turns_done(page, 1)
+    time.sleep(2.5)  # the debounced save
+    server.stop()
+    page.reload()
+    tool = page.locator(".row.tool").first
+    tool.locator("summary").first.click(timeout=10000)
+    page.wait_for_function(
+        "document.querySelector('.row.tool .loading')?.textContent === 'Needs the connection.'",
+        timeout=10000,
+    )
+    server.start()
+    page.wait_for_function(
+        "!document.getElementById('a2').hasAttribute('data-offline')", timeout=20000
+    )
+    # Not cached: closed and opened again online, the row fetches.
+    tool = page.locator(".row.tool").first
+    tool.locator("summary").first.click()
+    tool.locator("summary").first.click()
+    page.wait_for_selector(".row.tool .loading", state="detached", timeout=10000)
+    assert page.errors == []
+
+
+def test_a_cold_start_asks_only_for_what_changed(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    turns_done(page, 1)
+    time.sleep(2.5)  # the debounced save
+    subs: list = []
+    page.on(
+        "websocket",
+        lambda ws: ws.on(
+            "framesent", lambda f: subs.append(f) if '"t":"sub"' in f else None
+        ),
+    )
+    page.reload()
+    page.wait_for_selector("#a2[data-view=session]")
+    page.wait_for_function("document.querySelectorAll('#entries .row').length > 0")
+    page.wait_for_function("window.__a2snapshot !== undefined")
+    mine = [json.loads(f) for f in subs if f"transcript:{sid}" in f]
+    assert mine and isinstance(mine[0].get("since"), int) and mine[0]["since"] >= 0
+    assert page.errors == []
+
+
 INSTALLABLE = """
   window.__prompted = 0;
   window.__installable = (outcome) => {
