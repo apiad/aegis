@@ -25,6 +25,10 @@ async def test_an_agent_searches_and_reads_the_help_through_mcp(tmp_path, fake_c
         assert hits and set(hits[0]) == {"ref", "heading", "when", "snippet"}
         assert hits[0]["ref"].split("#")[0] == "monitors", hits
 
+        said = await turn(s, mcp("help_search", query="keep a page in view"))
+        hits = json.loads(said.removeprefix("mcp ok: "))["hits"]
+        assert hits[0]["ref"] == "artifacts#pages-that-stay-in-view", hits
+
         said = await turn(s, mcp("help_read", page="monitors#wait-on-ci"))
         assert said.startswith("mcp ok: ## Wait on CI\n"), said
 
