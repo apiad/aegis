@@ -347,6 +347,8 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
     $("conn-dot").className = `dot ${state === "open" ? "ready" : state === "connecting" ? "ghost" : "err"}`;
     $("conn-text").textContent =
       state === "open" ? server : state === "connecting" ? "connecting" : state === "closed" ? "disconnected, retrying" : state;
+    // For the band offline, where the welcome that names the server is out of reach.
+    if (state === "open" && server) localStorage.setItem("aegis.server", server);
     // What arrived before a close is still the server's latest: kept at once.
     if (state === "closed" && live) {
       if (fleetSave) flushFleet(true);
@@ -574,12 +576,18 @@ function keepTranscript() {
 function flushTranscript(closing = false) {
   clearTimeout(trSave);
   trSave = null;
+  // Not mid-turn: streamed entries exist only in the server's memory until the
+  // turn ends, so a copy taken now could bring back half-written rows after a
+  // restart. The turn's last patch arms the save again.
+  if (sessions.get(shown)?.state === "working") return;
   if ((conn.open || closing) && shown && transcript.rev >= 0)
     saveTranscript(shown, { entries: [...transcript.entries.values()], rev: transcript.rev });
 }
+// Going hidden writes the Fleet even unchanged: its saved_at is when this
+// device last saw the server, which is what "seen N min ago" says offline.
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) return;
-  if (fleetSave) flushFleet();
+  flushFleet();
   if (trSave) flushTranscript();
 });
 
@@ -682,6 +690,9 @@ function render() {
     const far = forKey(r.id).server;
     // A far session whose server's list has not arrived yet: wait for it.
     if (far && (!linksLoaded || (linkOf(far) && !remote.get(far)?.loaded))) return;
+    // Likewise a home session while only the device's saved list is drawn: a
+    // notification's tap or a link opens a session the saved list may predate.
+    if (!far && !homeLive) return;
     go("#fleet"); // closed here or elsewhere
     return;
   }
@@ -802,7 +813,7 @@ function drawBand() {
   if (root.dataset.view !== "fleet") return;
   // Saved cards say how old they are.
   const stale = local().some((m) => m.stale);
-  renderBand($("band"), { metas: local(), host, server: conn.server, link: stale ? seenText() : links.length ? "this server" : "", off: stale });
+  renderBand($("band"), { metas: local(), host, server: conn.server || localStorage.getItem("aegis.server") || "", link: stale ? seenText() : links.length ? "this server" : "", off: stale });
   for (const l of links) {
     const box = $("remotes").querySelector(`[data-server="${CSS.escape(l.name)}"]`);
     if (!box) continue;
@@ -1900,7 +1911,7 @@ installKeys(
     fleetPrev: () => fleetMove(-1),
     fleetOpen,
     filter: () => $("arch-q").focus(),
-    spawn: () => go("#new"),
+    spawn: () => offline() || go("#new"), // a new session needs the server
     settings: () => go("#settings"),
     journal: () => go("#journal"),
     tab(ev) {

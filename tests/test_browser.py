@@ -3771,6 +3771,8 @@ def test_offline_the_fleet_draws_from_the_device(server, page):
     page.wait_for_selector(f".card[data-id='{sid}']", timeout=10000)
     assert page.get_attribute("#a2", "data-offline") is not None
     page.wait_for_selector("#netbanner", state="visible", timeout=10000)
+    # The band names the server even with no welcome to say it.
+    assert page.text_content("#band-server") not in ("", "server")
     assert "seen" in page.text_content("#netbanner-t")
     assert "seen" in page.text_content("#band .band-link")
     # The banner says it: the connection's words would wrap the phone's tab bar.
@@ -3873,6 +3875,33 @@ def test_offline_a_rows_detail_needs_the_connection(server, page, tmp_path):
     assert page.errors == []
 
 
+def test_a_link_to_a_session_the_saved_fleet_predates_opens_it(server, browser):
+    # A notification's tap opens /#s=<key> with no window open; the device's
+    # saved Fleet may be older than the session. The page must wait for the
+    # live list instead of sending the person to the Fleet.
+    errors: list = []
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    pg = ctx.new_page()
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(pg, "hello")
+    turns_done(pg, 1)
+    pg.close()  # going hidden saves the Fleet; the older one is written after
+    origin = re.match(r"https?://[^/]+", server.url).group(0)
+    side = ctx.new_page()  # same origin, not the app: it saves nothing itself
+    side.goto(f"{origin}/static/icons/aegis-192.png")
+    side.evaluate("import('/static/js/devicestore.js').then(s => s.saveFleet([]))")
+    side.close()
+    pg = ctx.new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(f"{origin}/#s={sid}")
+    pg.wait_for_selector("#a2[data-view=session]", timeout=10000)
+    pg.wait_for_timeout(500)
+    assert pg.evaluate("location.hash.slice(3)") == sid
+    assert errors == []
+    ctx.close()
+
+
 def test_offline_what_needs_the_server_is_disabled(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -3885,6 +3914,8 @@ def test_offline_what_needs_the_server_is_disabled(server, page):
         assert page.get_attribute(sel, "aria-disabled") == "true", sel
         assert "connection" in (page.get_attribute(sel, "title") or "").lower(), sel
     page.click("#tab-add", force=True)
+    page.keyboard.press("Alt+KeyN")  # the key takes the same way round
+    page.wait_for_timeout(300)
     assert page.get_attribute("#a2", "data-view") == "session"  # no spawn panel opened
     server.start()
     page.wait_for_function(
@@ -3892,6 +3923,7 @@ def test_offline_what_needs_the_server_is_disabled(server, page):
     )
     assert page.get_attribute("#tab-add", "aria-disabled") in (None, "false")
     assert page.get_attribute("#tab-add", "title") == "New session (Alt+N)"
+    assert page.errors == []
 
 
 def test_a_refused_token_empties_the_device(server, page):
