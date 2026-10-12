@@ -44,8 +44,9 @@ DOCK_DOC = (
     "Keep it in view beside the transcript: left or right (a new column at that "
     "edge of window 1), left:<pane>, right:<pane>, above:<pane> or below:<pane> "
     "(next to a pane already docked; layout_read lists them), window:<n> or "
-    "window:new (another browser window, which the person opens from the card). "
-    "A pane already docked moves."
+    "window:new (another browser tab, which you cannot open: the person opens it "
+    "from the item's card or window 1's chip, so use one only when they asked for "
+    "a second screen). A pane already docked moves."
 )
 
 

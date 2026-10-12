@@ -97,7 +97,8 @@ what you docked. `dock` takes one of:
 - left or right: a new column at that edge of window 1;
 - left:, right:, above: or below: and a pane's id: next to a pane already
   docked;
-- window: and a number, or window:new: another browser window of the canvas.
+- window: and a number, or window:new: another browser window of the canvas
+  (see below).
 
 A page's pane id is its `id`. A sent file's is its key, which `layout_read`
 lists with each pane's kind and title; the transcript's is transcript.
@@ -114,8 +115,15 @@ wakes nobody. `layout_set` with `windows` replaces the canvas, in the same
 shape; widths and heights are optional, and missing ones are split equally.
 
 The limits are 4 windows, 4 columns in a window and 3 panes in a column, and
-the transcript stays in window 1. You cannot open another window for the
-person, so keep to window 1 unless they asked for a second screen.
+the transcript stays in window 1.
+
+Window 1 is the session's own browser tab. Any other window is a separate
+browser tab, which you cannot open, since browsers open tabs only from a
+click. It is opened from the item's card, which says in window 2 · open, or
+from window 1's chip for that window, which also brings its panes back.
+Until it is open, what you put there is off the desktop's screen. So place
+panes in window 1, and use another window only when the person asked for a
+second screen.
 
 A page leaves the canvas when it is submitted or closed. A file sent again
 from the same path is its next version: the earlier card says it was
