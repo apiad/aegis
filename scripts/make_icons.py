@@ -131,11 +131,16 @@ def badge(size: int, scale: float = 0.9) -> Image.Image:
         return ss / 2 + (p[0] - C) * k, ss / 2 + (p[1] - C) * k
 
     c = at((C, C))
-    d.ellipse([c[0] - HEAD * k, c[1] - HEAD * k, c[0] + HEAD * k, c[1] + HEAD * k], fill=white)
+    d.ellipse(
+        [c[0] - HEAD * k, c[1] - HEAD * k, c[0] + HEAD * k, c[1] + HEAD * k], fill=white
+    )
     for s in serpents(48):
         d.polygon([at(p) for p in s], fill=white)
     d.polygon([at(p) for p in eye(32)], fill=clear)
-    d.ellipse([c[0] - PUPIL * k, c[1] - PUPIL * k, c[0] + PUPIL * k, c[1] + PUPIL * k], fill=white)
+    d.ellipse(
+        [c[0] - PUPIL * k, c[1] - PUPIL * k, c[0] + PUPIL * k, c[1] + PUPIL * k],
+        fill=white,
+    )
     return im.resize((size, size), Image.LANCZOS)
 
 

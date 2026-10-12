@@ -3457,7 +3457,9 @@ def full_browser():
         b.close()
 
 
-def test_a_real_notification_shows_and_its_click_opens_the_session(server, full_browser):
+def test_a_real_notification_shows_and_its_click_opens_the_session(
+    server, full_browser
+):
     errors: list = []
     ctx = full_browser.new_context(viewport={"width": 1280, "height": 800})
     ctx.grant_permissions(["notifications"])
@@ -3480,7 +3482,11 @@ def test_a_real_notification_shows_and_its_click_opens_the_session(server, full_
     while not pg.evaluate(shown) and time.monotonic() < deadline:
         time.sleep(0.1)
     [[title, body, tag]] = pg.evaluate(shown)
-    assert title.endswith(": needs you") and body == "Ship it?" and tag == f"{sid}:needs_you"
+    assert (
+        title.endswith(": needs you")
+        and body == "Ship it?"
+        and tag == f"{sid}:needs_you"
+    )
     # A click, as the browser delivers it: a notificationclick in the worker.
     # Only a click the browser delivers may focus a window, so a scripted one
     # stubs focus(); the rest of the worker's path runs as it is.
