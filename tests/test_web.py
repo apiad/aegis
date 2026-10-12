@@ -352,6 +352,53 @@ def _says(s, text):
     )
 
 
+def _sends(s, text):
+    return sum(
+        1 for e in s.fold().entries() if e["kind"] == "user" and text in json.dumps(e)
+    )
+
+
+def test_a_send_retried_with_its_nonce_is_delivered_once(project, fake_claude):
+    # A page that saw no answer in time sends the same message again with the
+    # same nonce (#350): the server answers it without delivering it twice.
+    app = App(make_roots(project, None), claude_bin=fake_claude, interrupt_timeout=0.5)
+    with (
+        TestClient(build_web(app, TOKEN, {"testserver"})) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        conn = Conn(ws).hello()
+        log_id = conn.call("session.spawn", agent="opus")["result"]["log_id"]
+        s = app.sessions.open(log_id)
+        nonce = "n-0123456789abcdef"
+        first = conn.call("session.send", log_id=log_id, text="only once", nonce=nonce)
+        again = conn.call("session.send", log_id=log_id, text="only once", nonce=nonce)
+        assert first.get("error") is None and again.get("error") is None
+        assert _sends(s, "only once") == 1
+        other = conn.call(
+            "session.send", log_id=log_id, text="only once", nonce="n-fedcba9876543210"
+        )
+        assert other.get("error") is None
+        assert _sends(s, "only once") == 2  # a new nonce is a new message
+
+
+def test_frames_that_arrive_together_with_one_nonce_deliver_once(project, fake_claude):
+    # A stalled socket flushes every press at once: the copies race each other.
+    app = App(make_roots(project, None), claude_bin=fake_claude, interrupt_timeout=0.5)
+    with (
+        TestClient(build_web(app, TOKEN, {"testserver"})) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        conn = Conn(ws).hello()
+        log_id = conn.call("session.spawn", agent="opus")["result"]["log_id"]
+        params = {"log_id": log_id, "text": "flushed", "nonce": "n-flushed-000001"}
+        for i in (101, 102, 103):
+            ws.send_json({"t": "call", "id": i, "op": "session.send", "params": params})
+        replies = [conn.until(lambda m: m["t"] == "reply") for _ in range(3)]
+        assert sorted(r["id"] for r in replies) == [101, 102, 103]
+        assert all(r.get("error") is None for r in replies)
+        assert _sends(app.sessions.open(log_id), "flushed") == 1
+
+
 def test_a_send_expecting_the_current_content_is_delivered(project, fake_claude):
     app = App(make_roots(project, None), claude_bin=fake_claude, interrupt_timeout=0.5)
     with (
