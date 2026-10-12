@@ -194,7 +194,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · installs, opens offline, pushes</span>
-  <span class="st"><span class="pill acc">slices 1–3 built</span><span class="pill">2026-10-11</span><span class="pill">#342 · builds on #330</span></span>
+  <span class="st"><span class="pill acc">slices 1–4 built</span><span class="pill">2026-10-11</span><span class="pill">#342 · builds on #330</span></span>
 </div>
 
 <div class="wrap">
@@ -226,7 +226,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <main>
 <h1>aegis as an app: it installs, opens without a connection, and pushes</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-11-installable-offline-push-design.html</span><span>·</span><span>slices 1–3 built</span><span>·</span><span>supersedes the service-worker decision and section 4 of 2026-10-08-mobile-and-pwa-design</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-11-installable-offline-push-design.html</span><span>·</span><span>slices 1–4 built</span><span>·</span><span>supersedes the service-worker decision and section 4 of 2026-10-08-mobile-and-pwa-design</span></div>
 <p class="lede">aegis on a phone today is a web page with a manifest. It opens only with a connection, and its notifications never show on Android. This spec adds a service worker: the client keeps its own files and opens without a network, shows what the device last saw, queues messages until the server is back, installs through aegis's own dialog with a progress bar, and receives Web Push while the app is closed.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -462,7 +462,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <span class="c">→ the rev moved past 412:       error stale {rev, attention, attention_line}</span>
   <span class="c">→ the session was closed:        error gone</span></pre>
 <p><code>expect_rev</code> is the only new parameter, and it is optional; without it <code>session.send</code> behaves as today. A <code>stale</code> draft stays in place, now marked "the session moved on since you wrote this", with Send anyway and Discard, and the entries above it show what happened. Send anyway calls without <code>expect_rev</code>. A <code>gone</code> draft offers Copy and Discard. After the round, one toast sums up: "2 queued messages sent · 1 needs a look".</p>
-<p>The revision moves for any change to the transcript, including ones a person would not call moving on. A false alarm costs one tap. Slice 4 counts them on real sessions and, if they are common, narrows the comparison to the entries the transcript shows.</p>
+<p>The revision moves for any change to the transcript, including ones a person would not call moving on, so slice 4 counted them. Of 94 real transcripts, 92 end on records past the last one a person reads (one to five of them, three at the median): a turn's closing result line, a stop, a close, a recap, a harness exit. 87 of the 94 end with a stop, an exit or a recap, which a page that went away after the last reply never saw. Compared on the raw revision nearly every draft would have asked. The server therefore compares <code>expect_rev</code> with the fold's <code>content_index</code>, the last record that wrote a user, prose, tool or inbox entry, and a session it no longer has answers <code>archived</code> or <code>no_session</code>, the codes <code>session.send</code> already used, which the page treats as gone.</p>
 
 <h2 id="push"><span class="n">10</span>Push</h2>
 <p>The full path for one event, from a session entering <code>needs_you</code> to the phone in a pocket:</p>

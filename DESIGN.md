@@ -399,6 +399,16 @@ changed while the page was closed. Offline, what needs the server is disabled
 (`.needs-net`, `js/net.js`), and a socket refused with 4401 empties the device
 (#342).
 
+**A message written offline waits as a draft.** One per session, in the device
+store's outbox (`js/outbox.js`); writing again appends to it. On reconnect each
+draft is sent with `expect_rev`, the transcript revision its writer saw, and
+`session.send` refuses it as `stale` when the session's `content_index` (the
+last record a person reads: user, prose, tool, inbox) is past it, so a deploy
+or a stop while the device was away does not count as moving on. A stale or
+closed session's draft stays and asks. A flush takes each draft out of the
+store in one transaction before sending it, so two tabs never send one twice
+(#342).
+
 **Folding hides rows, it never unmounts them.** From which fold level a kind
 folds is a fact on the entry (`fold`: 0 never, 1 the work, 2 also what arrived
 and what was shown; `transcript/entries.py`). The client draws each run of
