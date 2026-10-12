@@ -47,6 +47,11 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/aegis"]
 
+# The release notes ship with the code they describe: /whats-new reads them
+# from the installed package (src/aegis/changelog_read.py).
+[tool.hatch.build.targets.wheel.force-include]
+"CHANGELOG.md" = "aegis/CHANGELOG.md"
+
 [tool.hatch.build.targets.sdist]
 include = [
     "src/aegis",

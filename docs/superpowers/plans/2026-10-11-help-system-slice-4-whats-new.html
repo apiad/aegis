@@ -243,7 +243,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <h2>Tasks</h2>
 
 <!-- ============================================================ TASK 1 -->
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="num">1</span><span><span class="ttl">The changelog in the wheel, and the reader that picks its sections</span><span class="files">pyproject.toml · src/aegis/changelog_read.py · tests/test_changelog_read.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The 2.6.0 wheel has 190 files and none is the changelog, so an installed aegis has nothing to tour. A hatch <code>force-include</code> adds it as <code>aegis/CHANGELOG.md</code>; a scratch build of this tree with that table gave 191 files, the new one among them, in 0.85 s. The reader tries the package copy, then the checkout's root, which is what an editable install and <code>bin/aegis-dev</code> builds from a git ref need.</p>
