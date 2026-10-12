@@ -65,6 +65,11 @@ make changelog-check    # the filename parses
 make changelog          # preview the collated result; writes nothing
 ```
 
+An `added` or `changed` fragment ends with `help: page` or
+`help: page#section`, naming the help page that shows the feature;
+`make changelog-check` refuses one without it. Write or update that page in
+the same PR (`changelog.d/README.md`).
+
 `CHANGELOG.md` was the only file in this repo that conflicted on a merge, and it
 conflicted on every one — three PRs in one afternoon, three conflicts, nothing
 else in the tree colliding once. A fragment is its own file, so two PRs never
@@ -80,7 +85,7 @@ Do not edit `CHANGELOG.md` directly. The releaser collates.
 make test          # the fast lane
 make check         # every gate, on the fast lane
 make test-slow     # what the fast lane skips: every browser test, restarts
-rift check         # CI cannot run this one — rift is private, not on PyPI
+make lint-docs     # rift, the help pages among its rules; CI runs it too
 ```
 
 `make test` green is not the same as CI green. Reproduce the runner:

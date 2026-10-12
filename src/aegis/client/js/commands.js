@@ -60,6 +60,7 @@ export function complete(line, catalog, meta) {
   if (cmd.args === "models")
     choices = catalog.models.map((m) => ({ v: m.value, doc: `${m.label}. ${m.doc}`, source: m.efforts.length ? "effort" : "" }));
   if (cmd.args === "permissions") choices = catalog.permissions.map((p) => ({ v: p, doc: "", source: "" }));
+  if (cmd.args === "tutorials") choices = (catalog.tutorials || []).map((t) => ({ v: t.id, doc: t.title, source: "" }));
   if (cmd.args === "efforts") {
     const m = catalog.models.find((x) => meta && (x.value === meta.model || x.resolved === meta.model)) || null;
     choices = (m ? m.efforts : ["low", "medium", "high", "xhigh", "max"]).map((e) => ({ v: e, doc: "", source: "" }));
@@ -202,7 +203,8 @@ export class CommandMenu {
 
   // Tab accepts; Enter accepts while that would change the line, and is left
   // to the caller (send) once the line is a whole command. An aegis command
-  // whose argument is missing never sends: Enter opens its arguments.
+  // whose required argument is missing never sends: Enter opens its
+  // arguments. One whose argument is optional (`[page]`) sends as it is.
   onKey(ev) {
     if (!this.isOpen) return false;
     const line = this.line();
@@ -231,7 +233,7 @@ export class CommandMenu {
     if (ev.key === "Enter" && !ev.shiftKey) {
       const name = line.slice(1).split(/\s/)[0];
       const cmd = this.catalog?.commands.find((c) => c.name === name);
-      if (cmd?.args && !line.trim().includes(" ")) {
+      if (cmd?.args && cmd.hint.startsWith("<") && !line.trim().includes(" ")) {
         ev.preventDefault();
         this.setText(`/${name} `);
         this.refresh();

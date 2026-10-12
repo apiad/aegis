@@ -7,3 +7,4 @@
   Markdown too. A reply no longer has a copy button of its own: each code
   block and each table has one, and a table pastes as Markdown into a chat
   and as cells into a spreadsheet. `c` still copies the selected reply.
+help: transcript#replies

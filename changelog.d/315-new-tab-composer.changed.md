@@ -1,1 +1,2 @@
 - **The new tab's composer looks and behaves like a session's.** Attach, mic and send sit inside the message box; the agent, harness, model, effort and permission chips sit on a line below it. On a touch screen Enter adds a line there and the button starts the session, as it already did in a session, so a mistap no longer spawns one with half a message.
+help: sessions#start-a-session

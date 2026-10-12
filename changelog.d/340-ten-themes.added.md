@@ -6,3 +6,4 @@
   Electric replaces the navy theme, and a browser that saved the old name opens
   in Electric. The fonts are Latin-only OFL subsets, about 590 KB, which a
   browser fetches only for the theme in use.
+help: config#the-theme

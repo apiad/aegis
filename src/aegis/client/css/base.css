@@ -115,6 +115,18 @@ body{background:#000}
 #a2 .spawn .send .ic,#a2 .composer .acts .send .ic{width:15px;height:15px;vertical-align:middle}
 #a2 .spawn .err-text{margin:0}
 #a2 .spawn .err-text:empty{display:none}
+/* The new tab's hints (help.state): a line each under the chips, run by a
+   click, dismissed by the cross. No hint, no row and no gap. */
+#a2 .spawn .hints{width:100%;display:flex;flex-direction:column;gap:2px}
+#a2 .spawn .hints:not(:has(.hint:not([hidden]))){display:none}
+#a2 .spawn .hint{display:flex;align-items:center;gap:8px;font-family:var(--font-ui);font-size:12px;color:var(--muted)}
+#a2 .spawn .hint[hidden]{display:none}
+#a2 .spawn .hint .go{flex:1;min-width:0;text-align:left;background:none;border:0;padding:4px 0;color:inherit;font:inherit;cursor:pointer}
+#a2 .spawn .hint .go:hover{color:var(--strong)}
+#a2 .spawn .hint .go:hover code{color:var(--accent)}
+#a2 .spawn .hint .x{flex:none;display:flex;align-items:center;justify-content:center;background:none;border:0;color:var(--faint);padding:4px 6px;cursor:pointer}
+#a2 .spawn .hint .x:hover{color:var(--err)}
+#a2 .spawn .hint .x .ic{width:12px;height:12px}
 #a2 .pa{display:flex;gap:10px;justify-content:flex-end;align-items:center}
 #a2 .err-text{color:var(--err);font-size:12px;font-family:var(--font-chrome);margin-right:auto}
 
@@ -893,7 +905,7 @@ body{background:#000}
 #a2 .set-empty{width:min(520px,100%);margin:12vh auto 0;padding:0 24px;display:grid;gap:14px;justify-items:start;font-size:14px;line-height:1.55;color:var(--ink)}
 #a2 .set-empty p{margin:0}
 #a2 .set-empty code{font-family:var(--font-mono);font-size:12.5px;color:var(--strong)}
-#a2 #settings-btn.on,#a2 #journal-btn.on{color:var(--strong);border-color:var(--accent)}
+#a2 #settings-btn.on,#a2 #journal-btn.on,#a2 #help-btn.on{color:var(--strong);border-color:var(--accent)}
 @media (max-width:640px){#a2 .set-agent{grid-template-columns:1fr}#a2 .set-card-foot,#a2 .set-agent > .set-why{grid-column:1}#a2 .set-findings li{grid-template-columns:1fr;gap:2px}}
 
 /* the journal view (js/journal.js): one box shaped like the composer's, the
@@ -948,6 +960,47 @@ body{background:#000}
 #a2 :is(.jent,.jpeek>div).k-pr .g{color:var(--comms)}
 #a2 :is(.jent,.jpeek>div).k-session .g{color:var(--faint)}
 
+/* the Help tab (js/help.js): the pages and the search box on the left, the
+   page on the right, each scrolling on its own. The page is the Markdown's
+   size container, as #tr and .vbody are (DESIGN.md). */
+#a2[data-view=help] .v-help{display:flex;flex-direction:column;min-height:0}
+#a2 .helpv{flex:1;min-height:0;display:grid;grid-template-columns:280px minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+#a2 .hlist{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:2px;padding:12px 10px 16px;background:var(--side);border-right:1px solid var(--rule)}
+#a2 .hlist .jsearch{margin-bottom:8px}
+#a2 .hgrp{font:500 10.5px var(--font-mono);color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin:10px 8px 4px}
+#a2 .hrow{display:block;width:100%;text-align:left;background:none;border:0;border-radius:var(--r);padding:6px 8px;cursor:pointer;color:var(--ink)}
+#a2 .hrow:hover,#a2 .hrow:focus-visible{background:var(--raised);outline:none}
+#a2 .hrow.on{background:var(--raised);box-shadow:inset 2px 0 0 var(--accent)}
+#a2 .hrow b{display:block;font:500 12.5px var(--font-ui);color:var(--strong)}
+#a2 .hrow span{display:block;font:11px/1.4 var(--font-mono);color:var(--muted);margin-top:1px}
+#a2 .hrow mark{background:var(--accent-soft);color:var(--accent)}
+#a2 .hnone{font:12px var(--font-mono);color:var(--faint);padding:6px 8px}
+#a2 .hkeys{margin-top:auto;align-self:flex-start;background:none;border:0;padding:12px 8px 0;font:11.5px var(--font-mono);color:var(--faint);cursor:pointer}
+#a2 .hkeys:hover{color:var(--strong)}
+#a2 .hkeys kbd{margin-left:8px;border:1px solid var(--rule);border-radius:4px;padding:0 5px;font:inherit}
+#a2 .hpage{min-height:0;overflow:auto;outline:none;padding:22px 32px 56px;container:md/inline-size}
+#a2 .hpage .hback{display:none}
+#a2 .hpage .hstart{margin:0 0 12px}
+#a2 .htitle{margin:0;font:500 20px var(--font-head);color:var(--strong)}
+#a2 .hwhen{font:11.5px var(--font-mono);color:var(--faint);margin:4px 0 18px}
+#a2 .hbody .doc{max-width:760px;font-family:var(--font-prose);font-size:var(--prose-size);line-height:1.6;color:var(--ink);overflow-wrap:anywhere}
+#a2 .hbody .doc h2{font-size:1.3em;scroll-margin-top:12px}
+/* The Help tab below 640 px, Settings' breakpoint: the list, then the page
+   with a back arrow (data-screen, set from the URL by help.js). */
+@media (max-width:640px){
+  #a2 .helpv{grid-template-columns:minmax(0,1fr)}
+  #a2 .hlist{border-right:0;padding:10px 12px 20px}
+  #a2 .helpv[data-screen=page] .hlist,#a2 .helpv[data-screen=list] .hpage{display:none}
+  #a2 .hpage{padding:12px 14px 40px}
+  /* the back arrow stays at the top of the column while the page scrolls */
+  #a2 .hpage .hback{display:inline-block;margin:0 8px 12px 0;position:sticky;top:0;z-index:2}
+  #a2 .hbody .doc h2{scroll-margin-top:56px}
+}
+@media (pointer:coarse){
+  #a2 .hrow{padding:10px 8px}
+  #a2 .hkeys{min-height:44px}
+}
+
 /* the recap: aegis's own two sentences, last in the transcript */
 #a2 .row.recap .g{color:var(--accent)}
 #a2 .row.recap .g .ic{width:14px;height:14px}
@@ -985,14 +1038,20 @@ body{background:#000}
 @media (max-width:760px){
   #a2 .tabs{flex-wrap:wrap;padding:4px 6px 0;padding-top:max(4px,env(safe-area-inset-top))}
   #a2 .tablist{order:9;flex:1 0 100%;margin:2px -6px 0;padding:0 6px;border-top:1px solid var(--rule)}
-  #a2 .tabs .servers{padding:0 6px}
+  /* The row wraps on each item's content width, so the name takes the
+     spacer's place with a zero basis, right-aligned, and shrinks first. */
+  #a2 .tabs .gap{display:none}
+  #a2 .tabs .servers{flex:1 1 0;justify-content:flex-end;padding:0 6px;min-width:0;overflow:hidden}
+  /* the server's name gives way first, so the header's buttons keep their row */
+  #a2 #conn-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #a2 .tabs .ver-top{display:none}
   #a2 .tablist .tab .srv{display:none}
   #a2 .tablist .tab .tname{max-width:16ch}
-  #a2 .keys-btn:not(.bell):not(.set-btn){display:none}
+  #a2 .keys-btn:not(.bell):not(.set-btn):not(.help-btn){display:none}
   /* the header's buttons: bare icons, the tap target kept by (pointer:coarse) */
-  #a2 .tabs .keys-btn.bell,#a2 .tabs .set-btn,#a2 .tabs .jr-btn,#a2[data-view=session] .side-btn{display:grid;place-items:center;background:none;border-color:transparent;margin:0 0 4px;padding:0}
-  #a2 .tabs .set-btn,#a2 .tabs .jr-btn{min-width:40px}
+  #a2 .tabs .keys-btn.bell,#a2 .tabs .set-btn,#a2 .tabs .jr-btn,#a2 .tabs .help-btn,#a2[data-view=session] .side-btn{display:grid;place-items:center;background:none;border-color:transparent;margin:0 0 4px;padding:0}
+  #a2 .tabs .set-btn,#a2 .tabs .jr-btn,#a2 .tabs .help-btn{min-width:40px}
+  #a2 .tabs .help-btn{font-size:16px}
   #a2 .tabs .keys-btn.bell .ic,#a2 .tabs .set-btn .ic,#a2 .tabs .jr-btn svg{width:18px;height:18px}
   #a2 .set-btn .lbl{display:none}
   #a2 .set-btn .ic{display:inline-block}
@@ -1058,6 +1117,8 @@ body{background:#000}
 @media (prefers-reduced-motion:reduce){#a2 .side{transition:none}}
 /* Touch, at any width: 44 px targets. */
 @media (pointer:coarse){
+  #a2 .spawn .hint .go,#a2 .spawn .hint .x{min-height:44px}
+  #a2 .spawn .hint .x{min-width:44px}
   #a2 .rp{min-height:44px;padding:10px 14px;font-size:14.5px}
   #a2 :is(.composer,.spawn) .acts .send,#a2 .composer .acts .int,#a2 .mic{min-width:44px;min-height:44px}
   #a2 pick-chip .opt{min-height:44px;display:flex;align-items:center}

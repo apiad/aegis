@@ -1,1 +1,2 @@
 Toasts. Refusals and failures that were red text under the message box, and the "Nobody needs you" note, are now cards in the corner that leave on their own, stack up to three and hold while hovered. Agents get a `toast` tool that shows one line in every open browser, naming the session; while the page is hidden it also arrives as a desktop notification; a click opens its tab (#329).
+help: sessions#toasts

@@ -20,8 +20,7 @@ jobs:
       # job list, without anyone opening the log.
       #
       # `make check` is deliberately not used here: it runs `format`, which
-      # rewrites files (a runner has to fail instead), and `lint-docs`, which
-      # needs `rift` — private and not on PyPI, so it stays a local gate.
+      # rewrites files, and a runner has to fail instead.
       - name: format
         run: make format-check
       - name: lint
@@ -31,6 +30,11 @@ jobs:
       # that silently goes missing.
       - name: changelog fragments
         run: make changelog-check
+      # The doc rules (.rift.yaml), the help pages against the code among them.
+      # rift is pinned to a tag, so a new rift release cannot turn main red.
+      # uvx comes with the uv installed above.
+      - name: doc drift (rift)
+        run: uvx --from git+https://github.com/apiad/rift@v0.9.0 rift check .
       # aegis's browser tests drive headless Chromium.
       - name: chromium for browser tests
         run: uv run playwright install --with-deps chromium

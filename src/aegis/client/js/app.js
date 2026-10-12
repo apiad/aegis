@@ -26,6 +26,7 @@ import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
+import { Help } from "./help.js";
 import { installBell, pingToast, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
 import "./pick.js";
@@ -141,6 +142,8 @@ $("settings-btn").prepend(icon("gear"));
 $("journal-btn").append(icon("book"));
 $("send").append(icon("send"));
 $("sp-go").append(icon("send"));
+$("hint-tutorial-x").append(icon("close"));
+$("hint-whats-new-x").append(icon("close"));
 $("interrupt").append(icon("stop"));
 $("replies-g").append(icon("prompt"));
 $("working-g").append(icon("think"));
@@ -218,7 +221,15 @@ for (const b of document.querySelectorAll("#fleet-order button"))
     render();
   });
 
-// -- routing: #fleet, #new, #settings, #journal, #s=<key>, #read=<key> ------------------
+// -- routing: #fleet, #new, #settings, #journal, #help[=<page>], #s=<key>, #read=<key> --
+// A help ref is URI-encoded; a hand-typed malformed one is a page name nobody has.
+const unhash = (s) => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+};
 function route() {
   const h = location.hash.slice(1);
   if (h.startsWith("s=")) return { view: "session", id: h.slice(2) };
@@ -226,6 +237,7 @@ function route() {
   if (h === "new") return { view: "spawn" };
   if (h === "settings") return { view: "settings" };
   if (h === "journal") return { view: "journal" };
+  if (h === "help" || h.startsWith("help=")) return { view: "help", id: unhash(h.slice(5)) };
   return { view: "fleet" };
 }
 
@@ -295,6 +307,16 @@ const journal = new Journal(conn, $("journal"), {
     go(r.open ? `#s=${r.log_id}` : `#read=${r.log_id}`);
   },
 });
+// The Help tab (help.js), one per window like Settings. Its code blocks copy
+// as the transcript's do.
+// Start this tutorial: what /tutorial <page> does, on default_agent. A failure
+// shows as an error toast, since the Help tab belongs to no session.
+const helpTab = new Help(conn, $("help"), {
+  go,
+  onKeys: () => help(true),
+  onStart: (id) => startGuide({ page: id }).catch((e) => toast(e.message, { kind: "error" })),
+});
+installCopy($("help"), copyDeps);
 let sideJournalTimer = null;
 const sideJournalChanged = () => {
   journal.changed();
@@ -522,6 +544,7 @@ function render() {
   $("tab-add").classList.toggle("on", r.view === "spawn");
   $("settings-btn").classList.toggle("on", r.view === "settings");
   $("journal-btn").classList.toggle("on", r.view === "journal");
+  $("help-btn").classList.toggle("on", r.view === "help");
   root.dataset.mode = r.view === "read" ? "read" : "live";
   // Quota rows redraw on a quota patch, the timer, or a change of view; never
   // on a sessions patch, which would take the hover tooltip with them.
@@ -543,6 +566,7 @@ function render() {
     watchHost(null);
     follow(null);
     show("spawn");
+    if (newView) loadHints();
     $("sp-text").focus();
     setTitle("New session · aegis");
   } else if (r.view === "settings") {
@@ -557,6 +581,12 @@ function render() {
     show("journal");
     if (newView) journal.open();
     setTitle("Journal · aegis");
+  } else if (r.view === "help") {
+    watchHost(null);
+    follow(null);
+    show("help");
+    if (newView) helpTab.show(r.id);
+    setTitle("Help · aegis");
   } else if (r.view === "session") {
     watchHost(forKey(r.id).server || "");
     // Shown first: follow() sizes the message box, which measures 0 while hidden.
@@ -1437,6 +1467,9 @@ let spModels = { server: undefined, by: {} };
 // The server a new session starts on: null for this one. Its directory line
 // names it once a server is linked, since a path exists on one machine only.
 let spServer = null;
+// What help.state said for this person when the new tab last opened; null
+// until it answers, and then no hint shows.
+let helpState = null;
 
 function drawServerPick() {
   const pick = $("sp-server");
@@ -1465,6 +1498,7 @@ function setSpServer(server) {
   $("sp-cwd").value = ""; // the other machine's directories
   delete $("sp-agent").dataset.picked;
   loadAgents();
+  drawHints();
 }
 $("sp-server").addEventListener("change", () => setSpServer($("sp-server").value || null));
 const LAST_AGENT = "aegis.lastAgent";
@@ -1626,6 +1660,84 @@ $("sp-text").addEventListener("keydown", (ev) => {
   }
 });
 
+// -- the new tab's hints --------------------------------------------------------
+// Up to two lines under the chips: /tutorial while this person has started no
+// tutorial, /whats-new while the release it runs is newer than their last
+// tour. The record is the server's, per principal (helpstate.py), read each time the
+// new tab opens, so every device shows the same hint. It acts on this server
+// only: a linked server keeps its own record and may not know help.guide.
+async function loadHints() {
+  delete $("sp-hints").dataset.ready;
+  try {
+    helpState = await conn.call("help.state", {});
+  } catch {
+    helpState = null; // no hint rather than a wrong one
+  }
+  drawHints();
+  $("sp-hints").dataset.ready = "";
+}
+
+function drawHints() {
+  const away = !helpState || spServer !== null;
+  $("hint-tutorial").hidden = away || helpState.tutorial;
+  $("hint-whats-new").hidden = away || !helpState.whats_new;
+  $("hint-whats-new-v").textContent = helpState?.whats_new || "";
+}
+
+// What running or dismissing a hint records, as the server records it
+// (help_ops.help_guide, help_dismiss), so the hint hides without a new read.
+function ranHint(kind) {
+  if (!helpState) return;
+  helpState = kind === "tutorial" ? { ...helpState, tutorial: true } : { ...helpState, whats_new: null };
+}
+
+// A guide session (help.guide), and its tab, as a spawn from the new tab
+// opens one. `params` are spawn fields; none at all means default_agent.
+async function startGuide(params, kind = "tutorial") {
+  const r = await conn.call("help.guide", { kind, ...params });
+  ranHint(kind);
+  drawHints();
+  go(`#s=${r.log_id}`);
+  return r;
+}
+
+// A hint runs what Enter would, with the chips as they stand.
+async function guideFromComposer(kind, btn) {
+  const a = current();
+  if (!a || btn.disabled) return;
+  btn.disabled = true;
+  $("sp-error").textContent = "";
+  try {
+    await startGuide({ agent: a.name, cwd: $("sp-cwd").value.trim() || null, ...overrides() }, kind);
+    localStorage.setItem(LAST_AGENT, a.name);
+    pickAgent(a.name);
+  } catch (e) {
+    toast(e.message, { kind: "error" });
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// The cross records what running the hint would, and starts nothing.
+async function dismissHint(kind, row) {
+  row.hidden = true;
+  try {
+    await conn.call("help.dismiss", { what: kind });
+    ranHint(kind);
+  } catch (e) {
+    toast(e.message, { kind: "error" });
+    drawHints();
+  }
+}
+
+for (const [kind, id] of [
+  ["tutorial", "hint-tutorial"],
+  ["whats_new", "hint-whats-new"],
+]) {
+  $(`${id}-go`).addEventListener("click", () => guideFromComposer(kind, $(`${id}-go`)));
+  $(`${id}-x`).addEventListener("click", () => dismissHint(kind, $(id)));
+}
+
 // -- tab bar and keys -----------------------------------------------------------
 $("tab-fleet").addEventListener("click", () => go("#fleet"));
 $("tab-add").addEventListener("click", () => go("#new"));
@@ -1633,7 +1745,7 @@ $("tab-add").addEventListener("click", () => go("#new"));
 const keymap = $("keymap");
 renderKeys(keymap);
 const help = (open = keymap.hidden) => (keymap.hidden = !open);
-$("keys-btn").addEventListener("click", () => help());
+$("help-btn").addEventListener("click", () => go("#help"));
 $("settings-btn").addEventListener("click", () => go("#settings"));
 $("journal-btn").addEventListener("click", () => go("#journal"));
 keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));
@@ -1923,13 +2035,26 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
     else menu.openOverlay();
     return;
   }
+  // /help with words opens the Help tab searched for them (help.js).
+  const asked = /^\/help\s+(.+)$/s.exec(text);
+  if (asked) {
+    if (fromComposer) {
+      input.value = "";
+      autosize();
+      localStorage.removeItem(`aegis.draft.${s.key}`);
+    }
+    menu.close();
+    helpTab.ask(asked[1].trim());
+    go("#help");
+    return;
+  }
   if (text === "/close" && !(await confirmClose(s))) return;
   const box = $("replies");
   const was = box.hidden;
   box.hidden = true; // any send answers the turn the pills belonged to
   delete box.dataset.key; // so the next drawReplies always redraws
   try {
-    await callFor(s.key, "session.send", attachments.length ? { text, attachments } : { text });
+    const r = await callFor(s.key, "session.send", attachments.length ? { text, attachments } : { text });
     if (/^\/model\s/.test(text)) catalogs.delete(s.key); // its efforts may differ
     if (fromComposer) {
       localStorage.removeItem(`aegis.draft.${s.key}`);
@@ -1943,6 +2068,9 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
       $("composer").classList.remove("bad");
     }
     if (shown === s.key) transcript.toBottom();
+    // /tutorial and /whats-new start a guide in a new session (help.guide):
+    // open its tab, on the server that runs it, as a spawn from the new tab does.
+    if (/^\/(tutorial|whats-new)(\s|$)/.test(text) && r?.log_id) go(`#s=${keyOf(forKey(s.key).server, r.log_id)}`);
   } catch (e) {
     toast(e.message, { kind: "error" });
     box.hidden = was;
@@ -2004,10 +2132,19 @@ const send = async () => {
 // is kept, so keystrokes that arrive while it loads wait for the same call
 // instead of each asking the server again.
 const catalogs = new Map();
+// A session's menu: its commands, and the tutorial pages /tutorial completes.
+// A linked server without help.pages offers none.
+async function loadCommands(key) {
+  const [cat, pages] = await Promise.all([
+    callFor(key, "commands.list"),
+    conn.call("help.pages", {}, forKey(key).server).catch(() => []),
+  ]);
+  return { ...cat, tutorials: pages.filter((p) => p.kind === "tutorial") };
+}
 async function loadCatalog() {
   const s = focused();
   if (!s) return null;
-  if (!catalogs.has(s.key)) catalogs.set(s.key, callFor(s.key, "commands.list"));
+  if (!catalogs.has(s.key)) catalogs.set(s.key, loadCommands(s.key));
   try {
     return await catalogs.get(s.key);
   } catch (e) {
