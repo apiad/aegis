@@ -26,12 +26,13 @@ import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
-import { installBell, redrawFavicon, setTitle, updatePing } from "./ping.js";
+import { installBell, pingToast, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
 import "./pick.js";
 import { Dictation } from "./dictation.js";
 import { Attachments } from "./attach.js";
 import { dur, planTimes } from "./plantime.js";
+import { setToastOpener, toast } from "./toast.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -232,16 +233,6 @@ function go(hash) {
 
 window.addEventListener("hashchange", render);
 window.addEventListener("popstate", render);
-
-// A line at the foot of the page for a key that had nothing to do.
-let noteTimer = null;
-function note(text) {
-  const n = $("note");
-  n.textContent = text;
-  n.hidden = false;
-  clearTimeout(noteTimer);
-  noteTimer = setTimeout(() => (n.hidden = true), 2000);
-}
 
 function show(view, text) {
   root.dataset.view = view;
@@ -474,6 +465,21 @@ function onSessions() {
 
 // -- rendering -----------------------------------------------------------------
 const openSession = (id) => go(`#s=${id}`);
+setToastOpener(openSession);
+// Toasts from the server (App.toast): every browser shows each one once, and
+// an agent's goes to the desktop too while the page is hidden. The snapshot is
+// always empty, so a reconnect replays nothing.
+conn.subscribe(
+  "toasts",
+  () => {},
+  (ops) => {
+    for (const { toast: t } of ops) {
+      if (!t) continue;
+      toast(t.text, { kind: t.kind, from: t.from });
+      pingToast(t, openSession);
+    }
+  },
+);
 // Close for the Fleet's Archive button and a middle click on a card or a tab:
 // the session as it is now, not as the card or tab drew it.
 const closeById = (id) => {
@@ -1175,14 +1181,18 @@ async function askRecap(force) {
   const id = shown;
   if (!id) return;
   let why = "";
+  let kind = "error";
   try {
     const r = await callFor(id, "recap.request", { force });
     if (r.status === "off" || r.status === "failed") why = r.why;
-    else if (r.status === "busy") why = "the agent is still working; ask again when it is done";
+    else if (r.status === "busy") {
+      why = "the agent is still working; ask again when it is done";
+      kind = "info";
+    }
   } catch (e) {
     why = e.message;
   }
-  if (force && why && shown === id) $("send-error").textContent = why;
+  if (force && why && shown === id) toast(why, { kind });
 }
 $("entries").addEventListener("click", (ev) => {
   if (ev.target.closest("[data-recap=force]")) askRecap(true);
@@ -1200,7 +1210,7 @@ document.querySelector(".v-session .col").addEventListener("click", async (ev) =
   try {
     await conn.call("file.open", { file_id: b.dataset.fileId, name: b.dataset.name });
   } catch (e) {
-    $("send-error").textContent = e.message;
+    toast(e.message, { kind: "error" });
   } finally {
     setTimeout(() => (b.disabled = false), 800);
   }
@@ -1460,7 +1470,7 @@ async function loadAgents() {
   try {
     roster = await conn.call("agents.list", {}, spServer);
   } catch (e) {
-    $("sp-error").textContent = e.message;
+    toast(e.message, { kind: "error" });
     return;
   }
   // A reconnect or a config change rebuilds the options; the chips keep what
@@ -1572,7 +1582,7 @@ async function spawnFromComposer() {
     go(`#s=${key}`);
     if (held) sendFirst(key, text, spAtts.take("spawn"));
   } catch (e) {
-    $("sp-error").textContent = e.message;
+    toast(e.message, { kind: "error" });
   } finally {
     $("sp-go").disabled = false;
   }
@@ -1627,7 +1637,7 @@ const palette = new Palette($("palette"), () => route().view);
 // review, which drops it.
 function nextNeed() {
   const list = byNeed(ordered);
-  if (!list.length) return note("Nobody needs you");
+  if (!list.length) return toast("Nobody needs you");
   const r = route();
   const i = r.view === "session" ? list.findIndex((m) => m.key === r.id) : -1;
   const id = list[(i + 1) % list.length].key;
@@ -1806,7 +1816,7 @@ const dictation = new Dictation({
     for (const [b] of mics()) b.style.setProperty("--level", Math.min(1, x * 8).toFixed(2));
   },
   onError(message) {
-    $(dictation.target?.el === input ? "send-error" : "sp-error").textContent = message;
+    toast(message, { kind: "error" });
   },
 });
 // A session's box holds that session's draft, so text that lands after the
@@ -1907,7 +1917,6 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
     return;
   }
   if (text === "/close" && !(await confirmClose(s))) return;
-  $("send-error").textContent = "";
   const box = $("replies");
   const was = box.hidden;
   box.hidden = true; // any send answers the turn the pills belonged to
@@ -1928,7 +1937,7 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
     }
     if (shown === s.key) transcript.toBottom();
   } catch (e) {
-    $("send-error").textContent = e.message;
+    toast(e.message, { kind: "error" });
     box.hidden = was;
   }
 }
@@ -1948,14 +1957,14 @@ async function sendFirst(key, text, files) {
   }
   const ready = atts.ready(key);
   if (ready.error) {
-    $("send-error").textContent = ready.error;
+    toast(ready.error, { kind: "error" });
     return;
   }
   try {
     await callFor(key, "session.send", { text, attachments: ready.ids });
     atts.clear(key);
   } catch (e) {
-    $("send-error").textContent = e.message;
+    toast(e.message, { kind: "error" });
   }
 }
 const send = async () => {
@@ -1978,7 +1987,7 @@ const send = async () => {
   }
   const ready = atts.ready(s.key);
   if (ready.error) {
-    $("send-error").textContent = ready.error;
+    toast(ready.error, { kind: "error" });
     return;
   }
   return sendLine(text, true, ready.ids, s);
@@ -1996,7 +2005,7 @@ async function loadCatalog() {
     return await catalogs.get(s.key);
   } catch (e) {
     catalogs.delete(s.key); // the next open asks again
-    $("send-error").textContent = e.message;
+    toast(e.message, { kind: "error" });
     return null;
   }
 }
@@ -2038,7 +2047,7 @@ async function interrupt() {
   try {
     await callFor(s.key, "session.interrupt");
   } catch (e) {
-    $("send-error").textContent = e.message;
+    toast(e.message, { kind: "error" });
   }
 }
 

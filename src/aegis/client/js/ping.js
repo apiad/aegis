@@ -1,7 +1,8 @@
 // The ping outside the page: the count of sessions that need you or broke, in
 // the document title and on the favicon, and a desktop notification when a
-// session enters one of those states while the page is hidden. The states are
-// decided in Python; this only counts them and notices transitions.
+// session enters one of those states while the page is hidden, or when an agent
+// raises a toast then. The states are decided in Python; this only counts them
+// and notices transitions.
 
 import { MARK } from "./mark.js";
 
@@ -35,20 +36,38 @@ export function updatePing(metas, { onOpen }) {
     favicon(n);
   }
   const now = new Map(metas.map((m) => [m.key, m.attention]));
-  if (seen !== null && document.hidden && "Notification" in window && Notification.permission === "granted") {
+  if (seen !== null) {
     for (const m of metas) {
       if (!URGENT.has(m.attention) || seen.get(m.key) === m.attention) continue;
-      const note = new Notification(`${m.title || m.handle}: ${m.attention === "error" ? "error" : "needs you"}`, {
-        body: m.attention_line || "",
-        tag: `${m.key}:${m.attention}:${m.attention_line || ""}`,
-      });
-      note.onclick = () => {
-        window.focus();
-        onOpen(m.key);
-      };
+      notify(
+        `${m.title || m.handle}: ${m.attention === "error" ? "error" : "needs you"}`,
+        m.attention_line || "",
+        `${m.key}:${m.attention}:${m.attention_line || ""}`,
+        () => onOpen(m.key),
+      );
     }
   }
   seen = now;
+}
+
+// An agent's toast (toast.js) while the page is hidden: the card would leave
+// before anyone saw it, so it goes to the desktop as well. aegis's own toasts
+// answer something done on the page, so they never do.
+export function pingToast(t, onOpen) {
+  if (!t.from) return;
+  const { handle, id } = t.from;
+  notify(t.kind === "error" ? `${handle}: error` : handle, t.text, `toast:${id}:${t.text}`, () => onOpen(id));
+}
+
+// A desktop notification, only while the page is hidden and the browser allows
+// it; a click brings the page back on the session.
+function notify(title, body, tag, onClick) {
+  if (!document.hidden || !("Notification" in window) || Notification.permission !== "granted") return;
+  const note = new Notification(title, { body, tag });
+  note.onclick = () => {
+    window.focus();
+    onClick();
+  };
 }
 
 export function installBell(button) {
