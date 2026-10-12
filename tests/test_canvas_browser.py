@@ -169,6 +169,10 @@ def test_a_docked_file_follows_its_new_version(server, page):  # noqa: F811
     mcp(page, 2, "file_send", {"paths": ["r.md"]})
     pane.locator("text=Two").wait_for()
     assert pane.locator(".pbar").inner_text().count("v2") == 1
+    # A narrow pane's bar keeps the name: the size and type are its tooltip.
+    assert pane.locator(".pbar .fs").count() == 0
+    assert pane.locator(".pbar .fn").inner_text() == "r.md"
+    assert " B" in pane.locator(".pbar").get_attribute("title")
     old, new = page.locator(".row.file").first, page.locator(".row.file").last
     assert old.locator(".held").inner_text() == "replaced by v2"
     assert old.locator(".fbar .dock").is_hidden()

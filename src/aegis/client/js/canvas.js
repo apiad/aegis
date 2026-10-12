@@ -238,6 +238,10 @@ export class Canvas {
       const f = e || this.latestFile(id);
       if (!f) return this.loading(node, bar, acts, "Loading the file…");
       drawFile(f, { remote: false, glyph: "file", bar, body, acts, isCurrent: () => node._drawn === drawn });
+      // A pane can be narrow: its bar keeps the name and the version, and the
+      // size and type move to the bar's tooltip.
+      bar.querySelector(".fs")?.remove();
+      bar.title = f.summary || "";
       bar.append(el("span", "ver", `v${f.version}`));
       node.dataset.version = String(f.version);
     }
