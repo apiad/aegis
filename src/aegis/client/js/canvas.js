@@ -20,12 +20,15 @@
 // what the agent docked while the pointer was moving. The card that follows
 // redraws every browser on the session, this one included.
 //
-// On a phone (the client's 760 px drawer breakpoint), and whenever a column
-// would be drawn under its minimum width, the canvas draws as tabs: a strip
-// over one pane at a time, the others kept running behind it (visibility, so a
-// page's frame is never reloaded). The layout is not changed, so a wider
-// window draws the same columns again. The composer stays at the foot of the
-// transcript's pane, which fills the canvas under every tab.
+// A column whose share is under its minimum width is drawn at the minimum,
+// and the columns above theirs give up the difference; the stored shares do
+// not change. On a phone (a touch screen under the client's 760 px drawer
+// breakpoint), and whenever the minimums added up are wider than the canvas,
+// the canvas draws as tabs: a strip over one pane at a time, the others kept
+// running behind it (visibility, so a page's frame is never reloaded). The
+// layout is not changed, so a wider window draws the same columns again. The
+// composer stays at the foot of the transcript's pane, which fills the canvas
+// under every tab.
 //
 // A canvas can span browser windows. Window 1 is the session's tab; window n
 // is a tab at #w=<n>:<key> that draws window n alone, with no transcript.
@@ -67,6 +70,20 @@ function el(tag, cls, text) {
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const minWidth = (col) => (col.panes.some((p) => p.id === TRANSCRIPT) ? MIN_W_TRANSCRIPT : MIN_W);
+
+// The columns' shares as drawn in `width` px: each under its minimum raised
+// to it, and the difference taken from the columns above theirs, in
+// proportion to how far above they are. When the minimums do not fit, the
+// shares as they are (the canvas is tabs then).
+function fit(cols, width) {
+  const ws = cols.map((c) => c.w);
+  if (!width) return ws;
+  const mins = cols.map((c) => minWidth(c) / width);
+  const need = ws.reduce((s, w, i) => s + Math.max(0, mins[i] - w), 0);
+  const spare = ws.reduce((s, w, i) => s + Math.max(0, w - mins[i]), 0);
+  if (need <= 0 || spare < need) return ws;
+  return ws.map((w, i) => (w < mins[i] ? mins[i] : w - ((w - mins[i]) * need) / spare));
+}
 
 export class Canvas {
   constructor(root, { transcriptPane, entryOf, latestFile, call, onChange, refuse, openWindow }) {
@@ -116,7 +133,8 @@ export class Canvas {
     });
     this.strip.addEventListener("pointerdown", (ev) => this.press(ev));
     this.strip.addEventListener("contextmenu", (ev) => ev.preventDefault());
-    this.phone = matchMedia("(max-width: 760px)");
+    // A phone, not a narrow desktop window: that one has windows of its own.
+    this.phone = matchMedia("(max-width: 760px) and (pointer: coarse)");
     // A phone draws every window's panes in window 1: crossing the
     // breakpoint changes what is docked here.
     this.phone.addEventListener("change", () => {
@@ -225,22 +243,25 @@ export class Canvas {
     if (!keep.has(this.open)) this.open = this.n === 1 ? TRANSCRIPT : [...keep][0] || TRANSCRIPT;
     if (this.menu && !keep.has(this.menu.id)) this.closeMenu();
     this.tabbed = this.wantTabs();
+    if (!this.tabbed) this.dots.clear(); // a dot is a tab's, and the tabs are gone
+    const cols = this.window().columns;
+    const ws = fit(cols, this.root.clientWidth);
     let x = 0;
-    for (const col of this.window().columns) {
+    for (const [i, col] of cols.entries()) {
       let y = 0;
       for (const p of col.panes) {
         const node = p.id === TRANSCRIPT ? this.tr : this.pane(p.id);
         if (this.tabbed) this.tabBox(node, p.id);
         else {
-          this.box(node, x, y, col.w, p.h);
-          if (p.id === TRANSCRIPT) this.box(this.trBar, x, y, col.w, null);
+          this.box(node, x, y, ws[i], p.h);
+          if (p.id === TRANSCRIPT) this.box(this.trBar, x, y, ws[i], null);
         }
         // A rule on the edges a neighbour shares, drawn by the pane right or below.
         node.classList.toggle("lx", !this.tabbed && x > 0.0005);
         node.classList.toggle("ty", !this.tabbed && y > 0.0005);
         y += p.h;
       }
-      x += col.w;
+      x += ws[i];
     }
     this.root.dataset.docked = String(keep.size);
     if (this.writable) this.root.dataset.writable = "";
@@ -277,19 +298,16 @@ export class Canvas {
 
   // -- tabs ----------------------------------------------------------------
 
-  // Tabs on a phone; when the canvas is narrower than its columns' minimums
-  // added up (the transcript's 360 px, 280 for each other); and when the
-  // transcript's own column would draw under its 360, which a dock is not
-  // refused for. A canvas not laid out yet (its view hidden) keeps its mode.
+  // Tabs on a phone, and when the canvas is narrower than its columns'
+  // minimums added up (the transcript's 360 px, 280 for each other). A column
+  // under its minimum otherwise draws at it (fit). A canvas not laid out yet
+  // (its view hidden) keeps its mode.
   wantTabs() {
     if (!this.ids().length) return false;
     if (this.phone.matches) return true;
     const width = this.root.clientWidth;
     if (!width) return this.tabbed;
-    const cols = this.window().columns;
-    if (cols.reduce((s, c) => s + minWidth(c), 0) > width) return true;
-    const tr = cols.find((c) => c.panes.some((p) => p.id === TRANSCRIPT));
-    return !!tr && tr.w * width + 0.5 < MIN_W_TRANSCRIPT;
+    return this.window().columns.reduce((s, c) => s + minWidth(c), 0) > width;
   }
 
   // Every pane fills the canvas under the strip; a docked one stops above
@@ -419,15 +437,17 @@ export class Canvas {
   placeGrips(on) {
     const want = new Map();
     if (on) {
+      const cols = this.window().columns;
+      const ws = fit(cols, this.root.clientWidth);
       let x = 0;
-      this.window().columns.forEach((c, i) => {
+      cols.forEach((c, i) => {
         if (i > 0) want.set(`x${i}`, { i, j: null, x, y: 0, w: null });
         let y = 0;
         c.panes.forEach((p, j) => {
-          if (j > 0) want.set(`y${i}.${j}`, { i, j, x, y, w: c.w });
+          if (j > 0) want.set(`y${i}.${j}`, { i, j, x, y, w: ws[i] });
           y += p.h;
         });
-        x += c.w;
+        x += ws[i];
       });
     }
     for (const [k, node] of this.grips) {
@@ -830,9 +850,12 @@ export class Canvas {
     let at = null; // the pointer, once it has moved
     // The dragged pair's shares at the pointer, on a copy of the shown window.
     // A card that changed the window's shape under the pointer leaves it be.
+    // A column drag starts from the widths as drawn (fit), so the boundary
+    // stays under the pointer, and those are the widths it sends.
     const drag = (win) => {
       if (at === null) return;
       if (j === null) {
+        fit(win.columns, box.width).forEach((w, k) => (win.columns[k].w = w));
         const [a, b] = [win.columns[i - 1], win.columns[i]];
         if (!a || !b) return;
         const start = win.columns.slice(0, i - 1).reduce((s, c) => s + c.w, 0);

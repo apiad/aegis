@@ -482,20 +482,32 @@ def test_a_narrow_desktop_window_draws_tabs_and_widening_restores_the_columns(se
     assert page.locator("#tr").is_visible()
     assert page.locator(f'#canvas .pane[data-pane="{aid}"]').is_hidden()
     assert page.locator("#canvas .cgrip").count() == 0
+    # The agent's state dots the page's tab; leaving tab mode takes the dot
+    # with it, so narrowing again shows none.
+    tab = page.locator(f'#canvas .ptabs button[data-pane="{aid}"]')
+    mcp(page, 5, "artifact_update", {"id": aid, "state": {"n": 7}})
+    page.locator(f'#canvas .ptabs button[data-pane="{aid}"].dot').wait_for()
     page.set_viewport_size({"width": 1280, "height": 800})
     page.wait_for_function("!document.querySelector('#canvas').dataset.mode")
     assert page.locator("#canvas .ptabs").count() == 0
     assert page.evaluate(COLS) == wide
     assert page.locator("#canvas .cgrip").count() == 2
-    # A transcript's column under 360 px is drawn as tabs too, at any width
-    # that leaves it so: 0.3 of about 1020 is 306.
+    page.set_viewport_size({"width": 1100, "height": 800})
+    page.locator("#canvas[data-mode=tabs] .ptabs").wait_for()
+    assert "dot" not in tab.get_attribute("class")
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.wait_for_function("!document.querySelector('#canvas').dataset.mode")
+    # A transcript's share under its 360 px, where the minimums fit, is drawn
+    # at 360 from the other columns: 0.3 of about 1020 is 306.
     layout["windows"][0]["columns"][0]["w"] = 0.3
     layout["windows"][0]["columns"][1]["w"] = 0.35
     layout["windows"][0]["columns"][2]["w"] = 0.35
-    mcp(page, 5, "layout_set", layout)
-    page.locator("#canvas[data-mode=tabs] .ptabs").wait_for()
-    page.set_viewport_size({"width": 1600, "height": 800})
-    page.wait_for_function("!document.querySelector('#canvas').dataset.mode")
+    mcp(page, 6, "layout_set", layout)
+    page.wait_for_function(
+        "Math.round(document.querySelector('#tr-pane').getBoundingClientRect().width) === 360"
+    )
+    assert page.locator("#canvas").get_attribute("data-mode") is None
+    assert page.locator("#canvas .cgrip").count() == 2
     # The resizes woke the agent with no error from the page.
     assert page.locator(".row.inbox").count() == 0, page.locator(".row.inbox").all_inner_texts()
     assert page.errors == []
@@ -509,7 +521,8 @@ def test_a_narrow_panes_bar_keeps_the_name_and_undock(server, page):  # noqa: F8
     aid, _ = _artifact(page, server, PICK, 0)
     mcp(page, 3, "file_send", {"paths": ["report-final.md"]})
     fkey = page.locator(".row.file .fbar .dock").get_attribute("data-dock")
-    # About 1020 px of canvas: the file's 0.23 is about 235 px.
+    # About 1020 px of canvas: the file's 0.23 is about 235 px, drawn at its
+    # 280 px minimum, which is still under the 300 px a full bar needs.
     layout = {
         "windows": [
             {
@@ -526,7 +539,7 @@ def test_a_narrow_panes_bar_keeps_the_name_and_undock(server, page):  # noqa: F8
     pane = page.locator(f'#canvas .pane[data-pane="{fkey}"]')
     pane.locator("text=One").wait_for()
     assert page.locator("#canvas").get_attribute("data-mode") is None
-    assert pane.bounding_box()["width"] < 260
+    assert pane.bounding_box()["width"] < 300
     fn = pane.locator(".pbar .fn")
     assert fn.evaluate("n => n.scrollWidth <= n.clientWidth"), "the name is cut"
     assert pane.locator(".pbar .undock").is_visible()
@@ -716,3 +729,77 @@ def test_a_phone_strip_holds_every_windows_panes(server, page, browser):  # noqa
     assert win.locator(f'#canvas .pane[data-pane="{aid}"]').is_visible()
     assert phone.errors == []
     ctx.close()
+
+
+def _two_windows(aid, *more):
+    """window 1: the transcript and the panes ``more``, one column each;
+    window 2: ``aid``."""
+    return {
+        "windows": [
+            {"n": 1, "columns": [{"panes": [{"id": i}]} for i in ("transcript", *more)]},
+            {"n": 2, "columns": [{"panes": [{"id": aid}]}]},
+        ]
+    }
+
+
+def test_a_narrow_desktop_window_draws_only_its_own_windows_panes(server, page, browser):  # noqa: F811
+    (server.root / "r.md").write_text("# One\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    mcp(page, 3, "file_send", {"paths": ["r.md"]})
+    fkey = page.locator(".row.file .fbar .dock").get_attribute("data-dock")
+    mcp(page, 4, "layout_set", _two_windows(aid, fkey))
+    page.set_viewport_size({"width": 700, "height": 800})
+    page.locator(f'#canvas .pane[data-pane="{fkey}"]').locator("text=One").wait_for()
+    page.locator("#canvas .wchip").filter(has_text="window 2 · 1 pane").wait_for()
+    assert page.locator("#canvas").get_attribute("data-merged") is None
+    assert page.locator(f'#canvas .pane[data-pane="{aid}"]').count() == 0
+    assert page.locator(f'#canvas .pane[data-pane="{fkey}"] .move').is_visible()
+    assert page.locator(".row.artifact .acard .held").inner_text() == "in window 2 · open"
+    two = _watch(browser.new_page(viewport={"width": 700, "height": 800}))
+    two.goto(f"{server.url}#w=2:{sid}")
+    two.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").wait_for()
+    src = two.locator(f'#canvas iframe[data-artifact="{aid}"]').get_attribute("src")
+    assert _runs(two, src) == 1 and _runs(page, src) == 0
+    assert two.locator(f'#canvas .pane[data-pane="{fkey}"]').count() == 0
+    assert page.errors == [] and two.errors == []
+
+
+def test_columns_under_their_minimum_are_drawn_at_it_from_the_wider_ones(server, page):  # noqa: F811
+    for name in ("a.md", "b.md"):
+        (server.root / name).write_text(f"# {name}\n")
+    page.set_viewport_size({"width": 1700, "height": 900})
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    mcp(page, 3, "file_send", {"paths": ["a.md"]})
+    mcp(page, 4, "file_send", {"paths": ["b.md"]})
+    fa, fb = (page.locator(".row.file .fbar .dock").nth(i).get_attribute("data-dock") for i in (0, 1))
+    shares = {"transcript": 0.4, aid: 0.4, fa: 0.1, fb: 0.1}
+    mcp(page, 5, "layout_set", {"windows": [{"n": 1, "columns": [{"w": w, "panes": [{"id": i}]} for i, w in shares.items()]}]})
+    page.locator(f'#canvas .pane[data-pane="{fb}"]').wait_for()
+    assert page.locator("#canvas").get_attribute("data-mode") is None
+    width = page.evaluate("document.querySelector('#canvas').clientWidth")
+    assert width >= 360 + 3 * 280, width
+    drawn = dict(json.loads(page.evaluate(COLS)))
+    drawn["transcript"] = page.evaluate("document.querySelector('#tr-pane').getBoundingClientRect().width")
+    # The two narrow columns are raised to 280 px; the transcript and the page
+    # give it up in proportion to how far each is above its own minimum.
+    mins = {"transcript": 360, aid: 280, fa: 280, fb: 280}
+    need = sum(max(0, mins[i] - w * width) for i, w in shares.items())
+    spare = sum(max(0, w * width - mins[i]) for i, w in shares.items())
+    for i, w in shares.items():
+        px = w * width
+        want = mins[i] if px < mins[i] else px - (px - mins[i]) * need / spare
+        assert abs(drawn[i] - want) <= 2, (i, drawn[i], want)
+    # The grips sit on the drawn boundaries.
+    lefts = page.evaluate("[...document.querySelectorAll('#canvas > .cgrip.x')].map(g => Math.round(g.getBoundingClientRect().x + 4))")
+    edges = page.evaluate(
+        "ids => ids.map(i => Math.round((i === 'transcript' ? document.querySelector('#tr-pane') : document.querySelector(`#canvas .pane[data-pane='${i}']`)).getBoundingClientRect().x))",
+        list(shares)[1:],
+    )
+    assert all(abs(a - b) <= 2 for a, b in zip(sorted(lefts), sorted(edges))), (lefts, edges)
+    assert page.errors == []
