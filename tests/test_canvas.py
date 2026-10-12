@@ -201,3 +201,48 @@ async def test_a_closed_page_left_in_a_standing_layout_never_blocks_a_dock(
     assert layout.ids(lay) == ["transcript"]
     a.standing = {**a.standing, "layout": stale}
     assert layout.ids(ok(await turn(a, mcp("layout_read")))) == ["transcript"]
+
+
+async def test_the_agent_docks_as_it_sends(world, tmp_path):
+    a = await world.spawn()
+    made = ok(await turn(a, mcp("artifact_create", title="Knobs")))
+    (
+        tmp_path / ".aegis" / "state" / "artifacts" / made["id"] / "index.html"
+    ).write_text(PAGE)
+    sent = ok(await turn(a, mcp("artifact_send", id=made["id"], dock="right")))
+    assert sent["id"] == made["id"] and "docked" not in sent
+    (a.spec.cwd / "r.md").write_text("x")
+    (a.spec.cwd / "p.md").write_text("y")
+    ok(
+        await turn(
+            a, mcp("file_send", paths=["r.md", "p.md"], dock=f"below:{made['id']}")
+        )
+    )
+    keys = [
+        f["key"] for e in a.entries() if e["kind"] == "file" for f in e["detail"]["files"]
+    ]
+    cols = a.layout["windows"][0]["columns"]
+    assert [[p["id"] for p in c["panes"]] for c in cols] == [
+        ["transcript"],
+        [made["id"], *keys],
+    ]
+
+
+async def test_a_bad_dock_sends_nothing(world, tmp_path):
+    a = await world.spawn()
+    (a.spec.cwd / "r.md").write_text("x")
+    store = tmp_path / ".aegis" / "state" / "files"
+    before = set(store.glob("*")) if store.exists() else set()
+    said = await turn(a, mcp("file_send", paths=["r.md"], dock="below:nope"))
+    assert said.startswith("mcp error: bad_params"), said
+    assert "no pane nope" in said and "its panes are transcript" in said
+    assert not [e for e in a.entries() if e["kind"] == "file"]
+    assert (set(store.glob("*")) if store.exists() else set()) == before
+    made = ok(await turn(a, mcp("artifact_create", title="Knobs")))
+    (
+        tmp_path / ".aegis" / "state" / "artifacts" / made["id"] / "index.html"
+    ).write_text(PAGE)
+    said = await turn(a, mcp("artifact_send", id=made["id"], dock="sideways"))
+    assert said.startswith("mcp error: bad_params"), said
+    assert a.artifacts.get(made["id"]).status == "draft"
+    assert a.standing["layout"] is None

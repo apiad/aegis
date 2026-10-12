@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, Field, field_validator
 
 from . import artifacts, files
+from . import layout as canvas
 from .artifacts import ArtifactError
 from .ops import Caller, OpError
 
@@ -48,6 +49,10 @@ class ArtifactCreate(_Strict):
 
 class ArtifactId(_Strict):
     id: str
+
+
+class ArtifactSend(ArtifactId):
+    dock: str | None = Field(None, description=canvas.DOCK_DOC)
 
 
 class ArtifactUpdate(_Strict):
@@ -195,8 +200,8 @@ def register_artifact_ops(app: App) -> None:
         path = artifacts.draft_path(s.state_root, a.id)
         return {"id": a.id, "path": str(path), "html": path.read_text(encoding="utf-8")}
 
-    @r.op("artifact.send", ArtifactId, agent=True)
-    async def send(p: ArtifactId, caller):
+    @r.op("artifact.send", ArtifactSend, agent=True)
+    async def send(p: ArtifactSend, caller):
         """Land the draft in your transcript. The page is checked and, when
         the person's browser has this transcript open, run hidden there first:
         a page that throws is refused with `page_error` and the message, and
@@ -205,7 +210,7 @@ def register_artifact_ops(app: App) -> None:
         within 3 s (it landed untried; a script error then reaches your inbox
         when someone opens it). Only then write your message, which may refer to the card above
         it, and end the turn with turn_end(needs_you) when the page asks
-        something."""
+        something. With dock, the page also opens beside the transcript."""
         s = own(caller)
         try:
             a = s.artifacts.get(p.id)
@@ -216,7 +221,23 @@ def register_artifact_ops(app: App) -> None:
                 "not_draft",
                 f"{p.id} is {a.status}; artifact_update with resend to swap a live page",
             )
-        return await land(s, a, a.caption)
+        # place() lets the page through before it has landed; a bad dock is
+        # refused before anything is stored or probed.
+        if p.dock is not None:
+            try:
+                canvas.place(s.layout, a.id, p.dock, s.dockable)
+            except canvas.LayoutError as e:
+                raise OpError("bad_params", str(e)) from e
+        out = await land(s, a, a.caption)
+        if p.dock is not None:
+            # Against the layout as it is now: the probe can take 3 s, and the
+            # person may have moved a pane meanwhile. The page has landed, so a
+            # placement that no longer fits is reported, not raised.
+            try:
+                s.set_layout(canvas.place(s.layout, a.id, p.dock, s.dockable), "agent")
+            except canvas.LayoutError as e:
+                out |= {"docked": False, "reason": str(e)}
+        return out
 
     @r.op("artifact.read", ArtifactId, agent=True)
     async def read(p: ArtifactId, caller):

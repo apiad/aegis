@@ -39,6 +39,16 @@ _WHERE = re.compile(
 )
 
 
+# What dock= means, for artifact_send's and file_send's descriptions.
+DOCK_DOC = (
+    "Keep it in view beside the transcript: left or right (a new column at that "
+    "edge of window 1), left:<pane>, right:<pane>, above:<pane> or below:<pane> "
+    "(next to a pane already docked; layout_read lists them), window:<n> or "
+    "window:new (another browser window, which the person opens from the card). "
+    "A pane already docked moves."
+)
+
+
 class LayoutError(ValueError):
     """A layout or a placement aegis refuses; the message says which rule."""
 
