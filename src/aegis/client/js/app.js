@@ -34,6 +34,7 @@ import { Attachments } from "./attach.js";
 import { dur, planTimes } from "./plantime.js";
 import { setToastOpener, toast } from "./toast.js";
 import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
+import { closeInstallDialog, startInstall } from "./install.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -520,6 +521,7 @@ startWorker({
   onUpdate: () =>
     toast("A new version of aegis is ready.", { ms: Infinity, action: { label: "Reload", run: applyUpdate } }),
 });
+startInstall($("install-offer"));
 listenForOpen(openSession);
 setToastOpener(openSession);
 // Toasts from the server (App.toast): every browser shows each one once, and
@@ -1767,7 +1769,7 @@ installKeys(
       } else menu.openOverlay();
     },
     escape() {
-      if (cancelAsk()) return;
+      if (cancelAsk() || closeInstallDialog()) return;
       if (root.dataset.side === "open") return closeSide();
       if (!keymap.hidden) help(false);
       else if (viewer.close() || find.close() || closeMonitorCard() || closeCard()) return;

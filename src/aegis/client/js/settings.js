@@ -8,7 +8,9 @@
 // preset looks like the session it starts.
 //
 // "This browser" comes first: the theme, which only this browser keeps
-// (localStorage), so it is not part of the form and Save does not write it.
+// (localStorage), so it is not part of the form and Save does not write it,
+// then this device as an app: installed or not, and the build the service
+// worker keeps for offline use (install.js, appworker.js).
 //
 // The Servers section lists the servers this one links (links.py), and a
 // picker points the form at a linked server's .aegis.yaml: the same `config.*`
@@ -17,6 +19,8 @@
 import { elapsed } from "./gauges.js";
 import "./pick.js";
 import { who } from "./me.js";
+import { deviceCopy } from "./appworker.js";
+import { installState, onInstallState, openInstallDialog } from "./install.js";
 
 const h = (tag, props = {}, ...kids) => {
   const el = Object.assign(document.createElement(tag), props);
@@ -215,11 +219,14 @@ export class Settings {
       this.themeChip.setAttribute("aria-label", "Theme");
       this.themeChip.options = this.themes;
       this.themeChip.addEventListener("change", () => this.setTheme(this.themeChip.value));
+      this.appNode = h("div", { id: "set-app" });
+      onInstallState(() => this.drawApp());
       this.browserNode = h(
         "section",
         { className: "set-browser", id: "set-browser" },
         h("h3", { textContent: "This browser" }),
         h("div", { className: "set-browser-row" }, h("span", { className: "set-browser-k", textContent: "Theme" }), this.themeChip),
+        this.appNode,
         h("p", { className: "set-none", textContent: "Kept in this browser only: other browsers and devices keep their own." }),
       );
       // The draw that waited for the chip runs once the focus has left it.
@@ -230,7 +237,25 @@ export class Settings {
       );
     }
     this.themeChip.value = document.documentElement.dataset.theme;
+    this.drawApp();
     return this.browserNode;
+  }
+
+  // Whether aegis is installed here, and what the service worker keeps.
+  drawApp() {
+    const row = (k, v) => h("div", { className: "set-browser-row" }, h("span", { className: "set-browser-k", textContent: k }), v);
+    const { canPrompt, installed } = installState();
+    let app;
+    if (installed) app = h("span", { className: "set-app-v", textContent: "installed" });
+    else if (canPrompt) {
+      app = button("Install", null, openInstallDialog);
+      app.dataset.act = "install";
+    } else app = h("span", { className: "set-app-v", textContent: "your browser's menu installs it" });
+    const copy = h("span", { className: "set-app-v", textContent: navigator.serviceWorker ? "downloading" : "not kept: needs https" });
+    this.appNode.replaceChildren(row("App", app), row("Offline copy", copy));
+    deviceCopy().then((c) => {
+      if (c?.complete) copy.textContent = `build ${c.build} · ${Math.round(c.bytes / 1024).toLocaleString()} KB · ready`;
+    });
   }
 
   // The servers: this one, each link with its state, and a form to add one.

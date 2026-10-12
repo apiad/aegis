@@ -55,6 +55,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
   </main>
 
   <main class="view v-fleet">
+    <section class="install-offer" id="install-offer" hidden><div class="t">Install aegis as an app<span>Opens from the home screen, works without a connection, and can notify you.</span></div><button class="btn" type="button" data-act="later">Not now</button><button class="btn primary" type="button" data-act="install">Install</button></section>
     <section class="band" id="band">
       <div><h5><span class="band-server" id="band-server">server</span><span class="band-link"></span></h5><div class="counts band-counts" id="band-counts"></div></div>
       <div><h5>Host</h5><div class="band-host" id="band-host"></div></div>

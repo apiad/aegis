@@ -3683,6 +3683,80 @@ def test_a_connection_down_for_three_seconds_shows_the_banner(server, page):
     assert page.errors == []
 
 
+INSTALLABLE = """
+  window.__prompted = 0;
+  window.__installable = (outcome) => {
+    const e = new Event('beforeinstallprompt', { cancelable: true });
+    e.prompt = () => { window.__prompted++; return Promise.resolve(); };
+    e.userChoice = Promise.resolve({ outcome, platform: 'web' });
+    window.dispatchEvent(e);
+  };
+"""
+
+
+def test_the_install_dialog_downloads_installs_and_offers_notifications(
+    server, browser
+):
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.add_init_script(INSTALLABLE)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    assert pg.is_hidden("#install-offer")
+    pg.evaluate("window.__installable('accepted')")
+    pg.wait_for_selector("#install-offer", state="visible")
+    pg.click("#install-offer [data-act=install]")
+    pg.wait_for_selector("#install-dialog .irow[data-step=files].done", timeout=20000)
+    assert "build" in pg.text_content("#install-dialog .irow[data-step=files] .sub")
+    pg.click("#install-dialog .irow[data-step=app] button")
+    assert pg.evaluate("window.__prompted") == 1
+    pg.wait_for_selector(
+        "#install-dialog .irow[data-step=app] .pbar.ind", state="visible"
+    )
+    pg.evaluate("window.dispatchEvent(new Event('appinstalled'))")
+    pg.wait_for_selector("#install-dialog .irow[data-step=app].done")
+    pg.click("#install-dialog [data-act=done]")
+    assert pg.is_hidden("#install-dialog") and pg.is_hidden("#install-offer")
+    assert errors == []
+
+
+def test_not_now_hides_the_offer_for_thirty_days(server, browser):
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.add_init_script(INSTALLABLE)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("window.__installable('dismissed')")
+    pg.click("#install-offer [data-act=later]")
+    assert pg.is_hidden("#install-offer")
+    pg.reload()
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("window.__installable('dismissed')")
+    assert pg.is_hidden("#install-offer")
+    # Settings still offers it.
+    pg.click("#settings-btn")
+    pg.wait_for_selector("#set-app [data-act=install]")
+    assert errors == []
+
+
+def test_the_install_dialog_fits_a_phone(server, browser):
+    errors: list = []
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True)
+    pg = ctx.new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.add_init_script(INSTALLABLE)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("window.__installable('accepted')")
+    pg.click("#install-offer [data-act=install]")
+    pg.wait_for_selector("#install-dialog", state="visible")
+    assert pg.evaluate("document.documentElement.scrollWidth") <= 390
+    box = pg.locator("#install-dialog .panel").bounding_box()
+    assert box["x"] >= 0 and box["x"] + box["width"] <= 390
+    assert errors == []
+    ctx.close()
+
+
 @pytest.mark.parametrize("width", [1000, 1100, 1366])
 def test_each_quota_bar_shares_a_row_with_its_label_and_value(
     quota_server, browser, width

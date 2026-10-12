@@ -101,12 +101,18 @@ async function notify(title, body, tag, key, onOpen) {
   };
 }
 
+let drawBell = () => {};
+
+// Redraw the bell after the permission changed somewhere else (install.js).
+export const refreshBell = () => drawBell();
+
 export function installBell(button) {
   const draw = () => {
     const p = "Notification" in window ? Notification.permission : "denied";
     button.dataset.state = p;
     button.title = p === "granted" ? "Desktop notifications are on" : p === "denied" ? "Notifications are blocked in this browser" : "Turn on desktop notifications";
   };
+  drawBell = draw;
   draw();
   button.addEventListener("click", async () => {
     if ("Notification" in window && Notification.permission === "default") await Notification.requestPermission();

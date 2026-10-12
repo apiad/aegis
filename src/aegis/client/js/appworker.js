@@ -10,6 +10,7 @@ let reg = null;
 let reloading = false;
 let autoApply = false;
 let announce = () => {};
+let persisted = false;
 const progress = new Set();
 
 export function startWorker({ onUpdate }) {
@@ -25,6 +26,7 @@ export function startWorker({ onUpdate }) {
     .then((r) => {
       reg = r;
       if (r.waiting && sw.controller) announce();
+      keepUnderPressure();
       r.addEventListener("updatefound", () => {
         const w = r.installing;
         w?.addEventListener("statechange", () => {
@@ -35,6 +37,15 @@ export function startWorker({ onUpdate }) {
       });
     })
     .catch((e) => console.warn("aegis: service worker", e));
+}
+
+// Once this device holds a complete build, ask the browser not to evict it
+// under storage pressure. Asked once; the answer changes nothing here.
+async function keepUnderPressure() {
+  await sw.ready;
+  if (persisted || !(await deviceCopy())?.complete) return;
+  persisted = true;
+  navigator.storage?.persist?.();
 }
 
 export function onProgress(fn) {
