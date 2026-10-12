@@ -170,6 +170,11 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>Two module-level helpers beyond the contract</b> in <code>helpstate.py</code>: <code>installed()</code> and <code>newer(installed, toured)</code>. <code>get</code> returns the stored record <code>{"tutorial", "toured"}</code>, and <code>help.state</code> derives <code>whats_new</code> from it with <code>newer</code>.</li>
   <li><b>A damaged record is read as absent and decided again.</b> The spec is silent. The cost is one hint shown again; the alternative is a new tab that errors.</li>
 </ul>
+<p class="note">Added while executing:</p>
+<ul class="rules" id="added">
+  <li><b>Task 2 uses slice 1's names</b>: the ops are added inside <code>register_help_ops(app)</code> (<code>src/aegis/help_ops.py:90</code>), not <code>register(r, app)</code>; <code>r</code> is <code>app.registry</code> there and <code>index</code> is its local, so the plan's block went in unchanged from line 125. The imports were merged into slice 1's (<code>Literal</code> joins <code>TYPE_CHECKING</code>; <code>BaseModel</code> and <code>OpError</code> were already imported).</li>
+  <li><b>Task 4 imports the <code>browser</code> fixture with <code>page</code></b> (<code>tests/test_tutorial_browser.py:11</code>). <code>page</code> depends on <code>browser</code> (<code>tests/test_browser.py:245</code>), so the plan's <code>page, server, spawn</code> import failed with "fixture 'browser' not found" before any assertion ran.</li>
+</ul>
 
 <h2>Assumed from slices 1 and 2</h2>
 <p class="note">These exist when this slice starts but were not written when this plan was. Each task that leans on one opens with a step that confirms the name with <code>grep</code>; if the name differs, use the real one and record it under "added while executing".</p>
@@ -769,7 +774,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -- src/aegis/commands.p
 </details>
 
 <!-- ============================================================ TASK 4 -->
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">The menu completes /tutorial, and the guide's tab opens</span><span class="files">client/js/commands.js · client/js/app.js · tests/test_tutorial_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Typing <code>/tutorial </code> lists the tutorial pages from <code>help.pages</code>, as <code>/model </code> lists models. Enter on <code>/tutorial</code> alone sends it, because its argument is optional, and the guide's tab opens.</p>

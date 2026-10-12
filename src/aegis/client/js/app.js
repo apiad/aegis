@@ -1947,7 +1947,7 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
   box.hidden = true; // any send answers the turn the pills belonged to
   delete box.dataset.key; // so the next drawReplies always redraws
   try {
-    await callFor(s.key, "session.send", attachments.length ? { text, attachments } : { text });
+    const r = await callFor(s.key, "session.send", attachments.length ? { text, attachments } : { text });
     if (/^\/model\s/.test(text)) catalogs.delete(s.key); // its efforts may differ
     if (fromComposer) {
       localStorage.removeItem(`aegis.draft.${s.key}`);
@@ -1961,6 +1961,9 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
       $("composer").classList.remove("bad");
     }
     if (shown === s.key) transcript.toBottom();
+    // /tutorial starts a guide in a new session (help.guide): open its tab,
+    // on the server that runs it, as a spawn from the new tab does.
+    if (/^\/tutorial(\s|$)/.test(text) && r?.log_id) go(`#s=${keyOf(forKey(s.key).server, r.log_id)}`);
   } catch (e) {
     $("send-error").textContent = e.message;
     box.hidden = was;
@@ -2022,10 +2025,19 @@ const send = async () => {
 // is kept, so keystrokes that arrive while it loads wait for the same call
 // instead of each asking the server again.
 const catalogs = new Map();
+// A session's menu: its commands, and the tutorial pages /tutorial completes.
+// A linked server without help.pages offers none.
+async function loadCommands(key) {
+  const [cat, pages] = await Promise.all([
+    callFor(key, "commands.list"),
+    conn.call("help.pages", {}, forKey(key).server).catch(() => []),
+  ]);
+  return { ...cat, tutorials: pages.filter((p) => p.kind === "tutorial") };
+}
 async function loadCatalog() {
   const s = focused();
   if (!s) return null;
-  if (!catalogs.has(s.key)) catalogs.set(s.key, callFor(s.key, "commands.list"));
+  if (!catalogs.has(s.key)) catalogs.set(s.key, loadCommands(s.key));
   try {
     return await catalogs.get(s.key);
   } catch (e) {
