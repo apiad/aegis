@@ -1,14 +1,15 @@
 ---
 title: On a phone: install, offline, push
 kind: howto
-when: installing on a phone home screen, opening with no connection, messages written offline, push notifications
+when: installing on a phone home screen, opening with no connection, messages written offline, push notifications, docked panes as tabs on a phone
 ---
 
 The client runs in a browser, and on a phone it can live on the home screen
 like an app: it opens without a connection, keeps messages written offline
 until the connection returns, and receives push notifications while it is
 closed. All of it needs the server reached over https, or on localhost; over
-plain http the page works as before, without any of this.
+plain http the page works as before, without any of this. The last section
+covers a session's docked pages and files on a small screen.
 
 ## Install it as an app
 
@@ -82,3 +83,25 @@ Microsoft's); a self-hosted one is allowed with an environment variable naming
 its hosts, such as `AEGIS_PUSH_HOSTS=push.example.org`. A push that waits more
 than five minutes behind a slow service is dropped, and a device whose push
 service refuses it, or that fails five times in a row, is removed.
+
+## The canvas on a phone
+
+A session's canvas, the transcript with the pages and files docked beside it,
+draws as tabs on a screen under 760 px wide. A strip under the header holds
+one tab for the transcript, first, then one for each docked pane, in reading
+order: column by column, each from top to bottom. One pane fills the screen at
+a time. The others keep running behind it, so a page you leave keeps its
+state and the agent's updates still reach it.
+
+The message box stays at the foot on every tab, so you can write to the agent
+while you look at a page or a file.
+
+A tab whose pane changed while another tab was open gets a dot: a new version
+of a docked file, a page the agent sent again or gave a new state, or
+something newly docked. Opening the tab clears it. The agent docking
+something never switches the tab you are on; Show on a docked card does.
+
+Dragging panes and resizing them is for a desktop. On a phone, press and hold
+a tab other than the transcript's for half a second to get Undock, which puts
+the page or file back on its card in the transcript. The canvas itself does
+not change on a phone: a desktop on the same session still shows its columns.
