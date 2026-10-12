@@ -4163,11 +4163,13 @@ def test_a_message_written_offline_is_queued_and_goes_out_on_reconnect(server, p
     page.press("#input", "Enter")
     page.wait_for_selector("#queued", state="visible")
     assert "ship it" in page.text_content("#queued")
-    assert page.input_value("#input") == ""
+    # Queuing writes the device store first, then clears and redraws: wait.
+    page.wait_for_function("document.getElementById('input').value === ''")
     page.fill("#input", "and tag it")
     page.press("#input", "Enter")
-    assert "ship it\n\nand tag it" in page.evaluate(
-        "document.querySelector('#queued .text').textContent"
+    page.wait_for_function(
+        "t => document.querySelector('#queued .text').textContent.includes(t)",
+        arg="ship it\n\nand tag it",
     )
     page.reload()  # the draft lives on the device, not in the page
     page.wait_for_selector("#queued", state="visible", timeout=10000)
