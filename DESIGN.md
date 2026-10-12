@@ -371,13 +371,17 @@ because the card would leave before anyone saw it; aegis's own never do, since
 they answer something done on the page. An agent's toasts are capped at six a
 minute per session (#329).
 
-**Notifications come from the service worker.** `ping.js` raises every
-notification through the registration of `sw.js`, served from the root so its
-scope is the whole client. Chrome on Android refuses `new Notification()`, and
-a registration's notification still opens its session after the page is gone:
-the worker's `notificationclick` focuses an aegis window and posts which session
-to open, or opens `/#s=<key>` when none is open. The constructor remains only
-for a page without an active worker, which is a desktop on plain http (#342).
+**The service worker keeps one build.** `sw.js`, served from the root with
+the build id written in, downloads the files `/client-files.json` lists into a
+cache named after the build and serves `/`, `/static/**` and the manifest from
+it, so aegis opens with no connection. The page and its scripts always come from
+the same build: a new build downloads beside the old one and waits, and the page
+offers a reload (or takes it at once when the socket closes with 4400). A sign-in
+(`/?token=`) and everything outside the client go to the network. Notifications
+come from the worker's registration too: Chrome on Android refuses
+`new Notification()`, and the worker's `notificationclick` opens the session even
+after the page is gone. The constructor remains only for a page without an
+active worker, which is a desktop on plain http (#342).
 
 **Folding hides rows, it never unmounts them.** From which fold level a kind
 folds is a fact on the entry (`fold`: 0 never, 1 the work, 2 also what arrived

@@ -194,7 +194,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · installs, opens offline, pushes</span>
-  <span class="st"><span class="pill acc">slice 1 built</span><span class="pill">2026-10-11</span><span class="pill">#342 · builds on #330</span></span>
+  <span class="st"><span class="pill acc">slices 1–2 built</span><span class="pill">2026-10-11</span><span class="pill">#342 · builds on #330</span></span>
 </div>
 
 <div class="wrap">
@@ -226,7 +226,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <main>
 <h1>aegis as an app: it installs, opens without a connection, and pushes</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-11-installable-offline-push-design.html</span><span>·</span><span>slice 1 built</span><span>·</span><span>supersedes the service-worker decision and section 4 of 2026-10-08-mobile-and-pwa-design</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-11-installable-offline-push-design.html</span><span>·</span><span>slices 1–2 built</span><span>·</span><span>supersedes the service-worker decision and section 4 of 2026-10-08-mobile-and-pwa-design</span></div>
 <p class="lede">aegis on a phone today is a web page with a manifest. It opens only with a connection, and its notifications never show on Android. This spec adds a service worker: the client keeps its own files and opens without a network, shows what the device last saw, queues messages until the server is back, installs through aegis's own dialog with a progress bar, and receives Web Push while the app is closed.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -270,7 +270,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>Push encryption and signing</td><td>RFC 8291 and VAPID with <code>cryptography</code>, sent with <code>httpx</code></td><td class="why"><span class="who">maintainer</span> Both are already in <code>uv.lock</code>. <code>pywebpush</code> would add three packages and a synchronous HTTP client.</td></tr>
 <tr><td>Order</td><td>#330 merges first, then the notification fix, the worker and install, offline reading, the outbox, push</td><td class="why"><span class="who">maintainer</span> The fix is small and useful the day it lands; each later slice needs the worker.</td></tr>
 <tr><td>Cache key</td><td>A build id hashed from the client files' paths, sizes and mtimes, not the version</td><td class="why"><span class="who q">proposed</span> Two dev builds share a version number. Recomputing on request also catches a client edited while the server runs, which the <code>no-cache</code> header serves today.</td></tr>
-<tr><td>The page itself</td><td>Network first with a 3-second limit, then the cached page</td><td class="why"><span class="who q">proposed</span> An online start never gets an old page; an offline start does not wait long.</td></tr>
+<tr><td>The page itself</td><td>This build's cache; the network only when it has no copy</td><td class="why"><span class="who q">proposed</span> The page's scripts come from the worker's cache, so a fresh <code>index.html</code> from the network would run with the old build's JavaScript after a deploy. Serving <code>/</code> from the same cache keeps one build together; the browser still checks <code>/sw.js</code> on every navigation, the page checks again on every reconnect, and a socket refused with 4400 takes the new build as soon as it is ready.</td></tr>
 <tr><td>Where "moved on" is decided</td><td>On the server: <code>session.send</code> takes <code>expect_rev</code> and refuses with <code>stale</code></td><td class="why"><span class="who q">proposed</span> The page's revision can lag the server's at the moment it sends. The server compares and sends in one step.</td></tr>
 <tr><td>Queue shape</td><td>One draft per session. Writing again offline appends to it</td><td class="why"><span class="who q">proposed</span> Two queued messages to one session would make the second look stale once the first is sent.</td></tr>
 <tr><td>What queues offline</td><td>Text messages and reply chips only. Spawn, close, archive, attachments, dictation and Settings need the connection</td><td class="why"><span class="who q">proposed</span> Those change state another person may be changing too, or need an upload.</td></tr>
