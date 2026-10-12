@@ -67,6 +67,7 @@ from .push import register_push_ops
 from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
+from .layout_ops import register_layout_ops
 from .quota import Quota
 from .quota_gate import (
     POOLS,
@@ -353,6 +354,7 @@ class App:
         register_agent_ops(self)
         register_config_ops(self)
         register_artifact_ops(self)
+        register_layout_ops(self)
         self.push = register_push_ops(self)
         register_journal_ops(self)
         register_help_ops(self)

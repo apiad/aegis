@@ -4,6 +4,7 @@ the person's side is called through the registry as the browser would."""
 import pytest
 
 from aegis import layout
+from aegis.ops import OpError
 
 from .test_agents import CONFIG, World, mcp, turn
 from .test_artifacts_e2e import PAGE, ok
@@ -40,3 +41,87 @@ async def test_a_session_writes_a_layout_and_its_card_carries_it(world, tmp_path
     a.set_layout(new, "person")
     assert a.standing["layout"] == new
     assert world.app.sessions.card(a)["layout"] == new
+
+
+async def person(world, op, **params):
+    return await world.app.registry.call(op, params)
+
+
+async def test_the_person_docks_moves_resizes_and_undocks(world, tmp_path):
+    a = await world.spawn()
+    aid = await live_page(world, a, tmp_path)
+    lay = await person(world, "layout.dock", log_id=a.log_id, pane=aid, where="left")
+    assert layout.ids(lay) == [aid, "transcript"]
+    lay = await person(
+        world, "layout.resize", log_id=a.log_id, n=1, widths=[1, 3], heights=None
+    )
+    assert [c["w"] for c in lay["windows"][0]["columns"]] == [0.25, 0.75]
+    lay = await person(world, "layout.undock", log_id=a.log_id, pane=aid)
+    assert layout.ids(lay) == ["transcript"]
+    with pytest.raises(OpError) as e:
+        await person(world, "layout.undock", log_id=a.log_id, pane="transcript")
+    assert e.value.code == "bad_params"
+    with pytest.raises(OpError) as e:
+        await person(
+            world, "layout.dock", log_id=a.log_id, pane="art-nope", where="right"
+        )
+    assert e.value.code == "bad_params" and "no pane art-nope" in e.value.message
+
+
+async def test_a_persons_drop_keeps_what_the_agent_docked_a_moment_before(
+    world, tmp_path
+):
+    a = await world.spawn()
+    one = await live_page(world, a, tmp_path)
+    two = await live_page(world, a, tmp_path)
+    windows = [
+        {
+            "n": 1,
+            "columns": [{"panes": [{"id": "transcript"}]}, {"panes": [{"id": one}]}],
+        }
+    ]
+    ok(await turn(a, mcp("layout_set", windows=windows)))
+    lay = await person(
+        world, "layout.dock", log_id=a.log_id, pane=two, where=f"below:{one}"
+    )
+    assert layout.ids(lay) == ["transcript", one, two]
+
+
+async def test_the_agent_reads_and_sets_its_canvas(world, tmp_path):
+    a = await world.spawn()
+    aid = await live_page(world, a, tmp_path)
+    windows = [
+        {"n": 1, "columns": [{"panes": [{"id": "transcript"}]}]},
+        {"n": 2, "columns": [{"panes": [{"id": aid}]}]},
+    ]
+    ok(await turn(a, mcp("layout_set", windows=windows)))
+    got = ok(await turn(a, mcp("layout_read")))
+    assert got["windows"][1]["columns"][0]["panes"][0] == {
+        "id": aid,
+        "h": 1.0,
+        "kind": "artifact",
+        "title": "Knobs",
+    }
+    assert got["windows"][0]["columns"][0]["panes"][0]["kind"] == "transcript"
+    said = await turn(a, mcp("layout_set", windows=[{"n": 1, "columns": []}]))
+    assert "the transcript must be in the layout" in said
+
+
+async def test_the_canvas_survives_a_restart(world, tmp_path):
+    a = await world.spawn()
+    one = await live_page(world, a, tmp_path)
+    two = await live_page(world, a, tmp_path)
+    await person(world, "layout.dock", log_id=a.log_id, pane=one, where="right")
+    await person(world, "layout.dock", log_id=a.log_id, pane=two, where="right")
+    assert await turn(a, mcp("artifact_close", id=one)) == "mcp ok: closed"
+    before = a.standing["layout"]
+    assert layout.ids(before) == ["transcript", two]
+    await world.restart()
+    assert world.session(a.log_id).standing["layout"] == before
+
+
+async def test_layout_ops_check_ownership(world):
+    for name in ("layout.dock", "layout.undock", "layout.resize"):
+        assert world.app.registry._ops[name].owned == "log_id"
+    assert world.app.registry._ops["layout.read"].agent
+    assert world.app.registry._ops["layout.set"].agent
