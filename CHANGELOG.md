@@ -5,6 +5,173 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-10-12
+
+### Added
+
+A member token spends the subscription only below its lines. Each token, or every
+member by default, gets a policy per provider: closed, open, or a launch line and a
+stop line on each quota window, edited in Settings by dragging two handles on a
+gauge. Over its launch line a member's spawns are refused with the reason, its queue
+tasks wait and its messages are held; at its stop line aegis interrupts its turns and
+continues them when the gauge drops back under the launch line, restarts included.
+A member sees its own lines on its quota gauge. An admin's agents can now spawn on a
+linked server, where that server's policy for the link's token decides. (#311)
+  help: tokens#quota-lines
+
+A server holds many tokens, each a principal with a name and a role, and every
+session and queue task has an owner. A member reads every session and changes only
+the ones it owns; server settings, links, tokens and spawning on a linked server are
+for admins. Admins manage tokens in Settings and with `aegis token add`, `list` and
+`revoke`, and a link acts as the token it presents. (#311)
+  help: tokens#members-and-admins
+
+A restart of `aegis serve` continues the turns it interrupted, and sends the
+messages sessions were holding, instead of leaving each one for a person to restart.
+After a crash a turn continues once, and a harness the crash left running is ended
+first. A turn that restarts cut twice in a row, or a harness that failed on its own,
+waits for a person. (#312)
+  help: sessions#when-the-server-restarts
+
+- **Open shows a sent file or an artifact inside aegis, over the transcript.**
+  It used to leave for a new browser tab, where Markdown and source arrived as
+  unstyled plain text. The viewer covers the session's transcript and composer
+  and leaves the tabs and the session panel usable. Markdown renders in the
+  theme, source shows whole with line numbers and syntax colours, and PDFs,
+  HTML, images and media fill the view. A live artifact runs there and answers
+  the agent from there. Esc or the close button returns to the transcript, and
+  a new tab is one click away in the viewer's bar. The card's Open, new tab,
+  Open natively and Download are now compact icon buttons.
+  help: transcript#files-and-the-viewer
+
+- **A file path in an agent's reply opens the file.** Click
+  `src/app.py:142` in a reply and the viewer opens that file scrolled to line
+  142, with the line marked. Agents are now asked to quote files relative to
+  the folder aegis serves from, so the link finds them; a path that is not
+  there says where it looked, and one that names two files, in that folder
+  and in the session's own, asks which to open.
+  help: transcript#paths-in-replies
+
+Toasts. Refusals and failures that were red text under the message box, and the "Nobody needs you" note, are now cards in the corner that leave on their own, stack up to three and hold while hovered. Agents get a `toast` tool that shows one line in every open browser, naming the session; while the page is hidden it also arrives as a desktop notification; a click opens its tab (#329).
+  help: sessions#toasts
+
+On a phone, a session whose agent ended its turn as done now ends its transcript
+with an Archive button: one tap closes it, without opening the drawer for Close.
+The session stays in the archive. The desktop layout is unchanged. (#333)
+  help: sessions#stop-close-and-reopen
+
+- **Agents can look up how to use aegis.** aegis now ships help pages, written
+  for the installed version, on its sessions, monitors, queues, handoffs,
+  artifacts, links, configuration and commands, with a getting-started tour.
+  Every agent gets `help_search` and `help_read` to find and read them, and its
+  primer tells it to search before answering how to do something in aegis or
+  using a feature it has not used in the session. The pages are checked
+  against the code in both directions, in CI too: a tool, command, CLI
+  subcommand or config key no page names fails, and so does a page naming one
+  that does not exist.
+  help: writing-help-pages
+
+- **A Help tab reads and searches the help pages in the browser.** The `?` at
+  the right end of the tab bar opens it: the pages grouped as tutorials, how-to
+  pages and concepts, a search box that asks the same index agents search with
+  `help_search`, and each page drawn in the current theme. `/help` followed by
+  words opens it with those words searched; `/help` alone still opens the
+  command menu. On a phone the list and the page are two screens. The keyboard
+  list that button used to open is still on the `?` key, and the tab's "Every
+  key" opens it too. (#339)
+  help: getting-started#8-find-the-help-pages
+
+- **`/tutorial` starts a guide that walks you through a help page.** Run it in
+  any session, press Start this tutorial on a tutorial page in the Help tab, or
+  click the hint under the new tab's chips, which offers the getting-started
+  tour until you take it or dismiss it. The guide runs in a new tab, reads the
+  page with `help_read` and goes one step per turn, asking before anything that
+  spawns agents or spends quota. `/tutorial <page>` completes the tutorial
+  pages. The server remembers who has started a tutorial, so the hint is the
+  same on every device.
+  help: commands#slash-commands
+
+- **`/whats-new` walks you through what changed since your last tour.** After
+  an upgrade, a hint under the new tab's message box offers it until you take
+  it or dismiss it, and typing it in a session does the same. It starts a guide session in a new tab whose first
+  message carries the release notes you have not toured, newest last, and the
+  guide opens each entry's help page to show you how to use the change. The
+  changelog now ships inside the package, and every added or changed entry
+  names its help page on a last `help:` line.
+  help: commands#slash-commands
+
+- **Ten themes.** Settings now offers Electric, Phosphor, Blueprint, Amphora,
+  Riso, Solari, Aizome and Poster beside Ink and Logbook. Each commits to one
+  idea: a lit circuit trace, a green CRT with scanlines, a drafting sheet,
+  black-figure pottery, a two-ink risograph print, a departure board with
+  split-flap tool names, indigo cloth stitched in white, a brutalist print.
+  Electric replaces the navy theme, and a browser that saved the old name opens
+  in Electric. The fonts are Latin-only OFL subsets, about 590 KB, which a
+  browser fetches only for the theme in use.
+  help: config#the-theme
+
+- **aegis installs as an app and opens without a connection.** A service worker keeps the client on the device, so aegis opens with no network and a banner says the connection is down. aegis offers its own install dialog, whose bar is the real download of the client, and a new version downloads in the background and asks to reload.
+  help: phone#install-it-as-an-app
+
+- **Without a connection, aegis shows what this device last saw.** The Fleet and the twenty transcripts opened most recently are kept on the device and readable offline, marked with how long ago they were seen. With a connection, reopening aegis draws them at once and fetches only what changed.
+  help: phone#without-a-connection
+
+- **A message written without a connection waits and goes out when it returns.** It shows as queued in the transcript and survives a reload. If the session moved on while you were away, it asks before sending instead of answering a question nobody asks any more.
+  help: phone#messages-written-offline
+
+- **Push notifications reach a phone with aegis closed.** The bell subscribes this device and chooses what it hears about: a session that needs you, an error, something to read, finished work, or an agent's toast. Tapping one opens the session; a session already open in front stays quiet. Only the major browsers' push services are accepted; `AEGIS_PUSH_HOSTS` (comma-separated hosts) adds a self-hosted one.
+  help: phone#push-notifications
+
+### Changed
+
+- **The new tab's composer looks and behaves like a session's.** Attach, mic and send sit inside the message box; the agent, harness, model, effort and permission chips sit on a line below it. On a touch screen Enter adds a line there and the button starts the session, as it already did in a session, so a mistap no longer spawns one with half a message.
+  help: sessions#start-a-session
+
+Reopen is drawn like the actions around it: an archived session's side panel shows it as a tile like Stop, Restart and Close, and the archive's rows show Read and Reopen as icon buttons instead of filled text buttons.
+  help: sessions#stop-close-and-reopen
+
+- **Tool rows show code the way an editor does.** A file an agent read opens
+  as numbered, coloured lines; a Bash command is coloured; an edit shows side
+  by side on a wide screen and as one compact column on a phone, with the
+  changed words marked and, for Claude Code, the real line numbers. A file an
+  agent wrote shows as the file. Nothing more is downloaded until you open
+  the row.
+  help: transcript#tool-rows
+
+- **Replies read well on a phone, and their code is coloured.** A table no
+  longer breaks words mid-word: it scrolls sideways with its first column
+  pinned, and on a narrow screen each row becomes a small card. Code blocks
+  show their language and are coloured in each theme's own quiet palette, as
+  is code in the viewer; a phone downloads the colouring only for the
+  languages it meets. Task lists show checkboxes, and your own messages are
+  Markdown too. A reply no longer has a copy button of its own: each code
+  block and each table has one, and a table pastes as Markdown into a chat
+  and as cells into a spreadsheet. `c` still copies the selected reply.
+  help: transcript#replies
+
+The latest recap stays shown at the third fold level, where only the messages are left; older recaps still fold with the rest of the work (#327).
+  help: transcript#folding
+
+- **The archive leaves out queue workers unless you ask for them.** A worker's result already went to whoever enqueued its task, so its row was one nobody read, and on a server that runs queues they were about a quarter of the archive. A "Queue workers" chip in the archive header says how many match and shows them on a click. `archive.list` takes `workers: true` to include them and reports how many match in `workers`.
+  help: sessions#stop-close-and-reopen
+
+### Fixed
+
+The Journal row in the session's side panel draws each entry's icon again, instead of printing its name (`prompt`, `read`) over the entry's text (#318).
+
+`aegis doctor` reads `recap` as a known key: a valid block no longer warns, and a recap naming an undefined or non-Claude Code agent is an error on its own row (#325).
+
+- **Notifications show on Android.** They now come from a service worker, the only way Chrome on Android shows one; before, the bell said notifications were on and none appeared. Tapping one opens its session, also when aegis was closed.
+
+### Performance
+
+- **This release costs some load time for what it adds.** Measured against
+  2.6.0 on a quiet 4-core host, over two runs: booting with 100 sessions takes
+  about 3 ms more (+40%), a cold load of a 2,325-entry transcript about 70 ms
+  more (+16 to 21%), the Fleet about 90 ms more (+26 to 43%), the page's heap
+  about 4 MB more and the server about 8 MB more. #345 tracks finding which
+  change costs what.
+
 ## [2.6.0] - 2026-10-10
 
 ### Added

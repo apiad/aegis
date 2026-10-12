@@ -1,1 +1,0 @@
-- **Notifications show on Android.** They now come from a service worker, the only way Chrome on Android shows one; before, the bell said notifications were on and none appeared. Tapping one opens its session, also when aegis was closed.
