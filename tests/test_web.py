@@ -332,6 +332,102 @@ def test_spawn_send_and_watch_a_turn(project, fake_claude):
         )
 
 
+def _turn_ends(conn):
+    conn.until(
+        lambda m: (
+            m["t"] == "patch"
+            and m["channel"] == "sessions"
+            and any(
+                op.get("upsert", {}).get("state") == "idle"
+                and op["upsert"].get("cost_usd")
+                for op in m["ops"]
+            )
+        )
+    )
+
+
+def _says(s, text):
+    return any(
+        e["kind"] == "user" and text in json.dumps(e) for e in s.fold().entries()
+    )
+
+
+def test_a_send_expecting_the_current_content_is_delivered(project, fake_claude):
+    app = App(make_roots(project, None), claude_bin=fake_claude, interrupt_timeout=0.5)
+    with (
+        TestClient(build_web(app, TOKEN, {"testserver"})) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        conn = Conn(ws).hello()
+        ws.send_json({"t": "sub", "channel": "sessions"})
+        log_id = conn.call("session.spawn", agent="opus")["result"]["log_id"]
+        conn.call("session.send", log_id=log_id, text="hi")
+        _turn_ends(conn)
+        s = app.sessions.open(log_id)
+        r = conn.call(
+            "session.send",
+            log_id=log_id,
+            text="ship it",
+            expect_rev=s.fold().content_index,
+        )
+        assert r.get("error") is None
+        assert _says(s, "ship it")
+
+
+def test_a_send_the_session_moved_past_is_stale_and_sends_nothing(project, fake_claude):
+    app = App(make_roots(project, None), claude_bin=fake_claude, interrupt_timeout=0.5)
+    with (
+        TestClient(build_web(app, TOKEN, {"testserver"})) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        conn = Conn(ws).hello()
+        ws.send_json({"t": "sub", "channel": "sessions"})
+        log_id = conn.call("session.spawn", agent="opus")["result"]["log_id"]
+        s = app.sessions.open(log_id)
+        before = s.fold().rev  # as a page saw it before the turn
+        conn.call("session.send", log_id=log_id, text="hi")
+        _turn_ends(conn)
+        r = conn.call("session.send", log_id=log_id, text="ship it", expect_rev=before)
+        assert r["error"]["code"] == "stale"
+        assert not _says(s, "ship it")
+
+
+def test_a_send_after_only_a_stop_is_not_stale(project, fake_claude):
+    # A stop (as a deploy writes) is not something a person reads: a message
+    # written before it still answers the same transcript.
+    app = App(make_roots(project, None), claude_bin=fake_claude, interrupt_timeout=0.5)
+    with (
+        TestClient(build_web(app, TOKEN, {"testserver"})) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        conn = Conn(ws).hello()
+        ws.send_json({"t": "sub", "channel": "sessions"})
+        log_id = conn.call("session.spawn", agent="opus")["result"]["log_id"]
+        conn.call("session.send", log_id=log_id, text="hi")
+        _turn_ends(conn)
+        s = app.sessions.open(log_id)
+        seen = s.fold().rev
+        assert conn.call("session.stop", log_id=log_id).get("error") is None
+        assert s.fold().rev > seen
+        r = conn.call("session.send", log_id=log_id, text="ship it", expect_rev=seen)
+        assert r.get("error") is None
+        assert _says(s, "ship it")
+
+
+def test_a_send_expecting_a_rev_to_an_archived_session_is_archived(
+    project, fake_claude
+):
+    with (
+        client_for(project, fake_claude) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        conn = Conn(ws).hello()
+        log_id = conn.call("session.spawn", agent="opus")["result"]["log_id"]
+        assert conn.call("session.close", log_id=log_id).get("error") is None
+        r = conn.call("session.send", log_id=log_id, text="x", expect_rev=0)
+        assert r["error"]["code"] == "archived"
+
+
 def test_two_clients_see_the_same_patches(project, fake_claude):
     with client_for(project, fake_claude) as c:
         with (

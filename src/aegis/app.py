@@ -130,6 +130,8 @@ class SendParams(_Strict):
     text: str = ""
     # Upload ids from attachment.begin, every one complete (attachments.py).
     attachments: list[str] = Field(default_factory=list, max_length=att.MAX_FILES)
+    # The transcript revision a message written offline answered (outbox.js).
+    expect_rev: int | None = None
 
     @model_validator(mode="after")
     def _says_something(self) -> "SendParams":
@@ -962,6 +964,15 @@ class App:
         @r.op("session.send", SendParams, owned="log_id")
         async def send(p: SendParams, caller):
             s = reg.open(p.log_id)
+            # A message written offline carries the transcript's revision as the
+            # writer saw it: if anything a person reads has happened since, it
+            # goes back to ask instead of answering a question no longer asked.
+            if p.expect_rev is not None and s.fold().content_index > p.expect_rev:
+                raise OpError(
+                    "stale",
+                    "the session moved on since this was written; "
+                    "send it again to send it anyway",
+                )
             cmd = commands.split(p.text)
             if cmd is not None:
                 if p.attachments:
