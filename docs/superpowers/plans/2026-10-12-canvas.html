@@ -117,11 +117,12 @@ code,pre{font-variant-ligatures:none}
     verbatim, with no HTML escaping. Copy it from there. A script on the page renders them for people.
   - Code in this plan has been read by nobody and run by nothing. It is one hypothesis per task:
     the task's tests are the judge, and the reviewer of each task reads it harshly.
-  - Use superpowers:subagent-driven-development or superpowers:executing-plans, as the maintainer chose.
+  - Executed with one aegis queue worker per slice (know-how/running-a-plan.md). A worker does only its
+    slice's tasks and runs only the tests they name; the enqueuer runs the full gates at the end.
 -->
 <div class="chrome">
   <div class="bar"><span>aegis</span><span class="tab">plan · the canvas</span>
-    <span class="st"><span class="pill acc">execution method: not chosen yet</span><span class="pill">#347</span><span class="pill">2026-10-12</span></span></div>
+    <span class="st"><span class="pill acc">execution: one queue worker per slice</span><span class="pill">#347</span><span class="pill">2026-10-12</span></span></div>
   <div class="progress"><span id="pcount">0 of 0 done</span><div class="track" id="ptrack"></div></div>
 </div>
 <main>
@@ -148,6 +149,7 @@ code,pre{font-variant-ligatures:none}
   <li>A test that runs over 3 s without <code>@pytest.mark.slow</code> fails the fast lane. Browser tests are <code>pytest.mark.browser</code> and <code>slow</code>.</li>
   <li>Commits: conventional, English, one logical change, <code>git commit -- &lt;paths&gt;</code>, never amend, never <code>git add -A</code>. Nothing personal in this public repo.</li>
   <li>Prose in docs, docstrings, help pages and the changelog follows the workspace's unslop rules.</li>
+  <li>A changelog fragment that adds a feature names its help page (a <code>rift</code> rule): task 17's fragment links <code>help/transcript.md</code>.</li>
 </ul>
 
 <h2>Where this plan departs from the spec</h2>
