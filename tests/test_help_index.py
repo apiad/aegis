@@ -149,7 +149,10 @@ FIRST = [
     ("send the person a screenshot", "artifacts#send-a-file-instead"),
     ("keep a page in view", "artifacts#pages-that-stay-in-view"),
     ("dock a file beside the transcript", "transcript#the-canvas"),
-    ("pop a page out to a second browser window", "transcript#a-canvas-across-browser-windows"),
+    (
+        "pop a page out to a second browser window",
+        "transcript#a-canvas-across-browser-windows",
+    ),
     ("run a batch of tasks in parallel workers", "queues"),
     ("cancel a task I enqueued", "queues#check-cancel-and-resume"),
     ("give another session an instruction", "handoffs#hand-work-over"),

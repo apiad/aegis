@@ -246,7 +246,9 @@ def test_agent_state_reaches_a_docked_page_whose_card_row_is_unmounted(server, p
     page.press("#input", "Enter")
     page.locator(f'.row[data-id="{aid}"]').wait_for(state="detached", timeout=30_000)
     page.get_by_text("out 319").wait_for(timeout=30_000)
-    page.fill("#input", f"/mcp artifact_update {json.dumps({'id': aid, 'state': {'n': 7}})}")
+    page.fill(
+        "#input", f"/mcp artifact_update {json.dumps({'id': aid, 'state': {'n': 7}})}"
+    )
     page.press("#input", "Enter")
     inner.locator("#st").filter(has_text='{"n":7}').wait_for(timeout=10_000)
     assert page.errors == []
@@ -277,7 +279,9 @@ def test_a_docked_page_resent_while_its_tab_was_away_shows_the_new_page(
     other.goto(f"{server.url}#s={sid}")
     other.locator(frame).wait_for()
     path.write_text(path.read_text().replace("B</button>", "C</button>"))
-    other.fill("#input", f"/mcp artifact_update {json.dumps({'id': aid, 'resend': True})}")
+    other.fill(
+        "#input", f"/mcp artifact_update {json.dumps({'id': aid, 'resend': True})}"
+    )
     other.press("#input", "Enter")
     other.wait_for_function(
         "([sel, old]) => document.querySelector(sel)?.getAttribute('src') !== old",
@@ -322,7 +326,10 @@ def test_a_docked_page_fills_its_pane_and_a_refused_submit_says_why(server, page
     note.wait_for()
     assert note.inner_text().startswith("Not sent: ")
     # In view, not under the frame that fills the pane.
-    box, pane = note.bounding_box(), page.locator(f'#canvas .pane[data-pane="{aid}"]').bounding_box()
+    box, pane = (
+        note.bounding_box(),
+        page.locator(f'#canvas .pane[data-pane="{aid}"]').bounding_box(),
+    )
     assert box["y"] + box["height"] <= pane["y"] + pane["height"] + 1, (box, pane)
     assert page.errors == []
 
@@ -349,7 +356,9 @@ def test_a_drag_whose_pane_is_undocked_elsewhere_still_ends(server, page, browse
     page.mouse.up()
     assert page.locator("#canvas.dragging").count() == 0
     # Frames take clicks again: the page, back on its card, answers.
-    page.frame_locator(f'.row.artifact iframe[data-artifact="{aid}"]').locator("#b").click()
+    page.frame_locator(f'.row.artifact iframe[data-artifact="{aid}"]').locator(
+        "#b"
+    ).click()
     page.wait_for_selector(".row.artifact .acard[data-status=submitted]")
     assert page.errors == []
 
@@ -398,7 +407,9 @@ def tap_mcp(pg, n, tool, args):
     turns_done(pg, n)
 
 
-def test_a_phone_shows_the_canvas_as_tabs_with_the_composer_on_each(server, page, browser):  # noqa: F811
+def test_a_phone_shows_the_canvas_as_tabs_with_the_composer_on_each(
+    server, page, browser
+):  # noqa: F811
     # The page is made on a desktop (the helper sends with Enter) and docked
     # on the phone.
     page.goto(server.url)
@@ -428,8 +439,13 @@ def test_a_phone_shows_the_canvas_as_tabs_with_the_composer_on_each(server, page
     assert phone.locator("#input").is_visible()  # the composer stays at the foot
     pane = phone.locator(f'#canvas .pane[data-pane="{aid}"]').bounding_box()
     composer = phone.locator("#composer").bounding_box()
-    assert pane["width"] == 390 and pane["y"] + pane["height"] <= composer["y"] + 1, (pane, composer)
-    phone.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").filter(has_text="{}").wait_for()
+    assert pane["width"] == 390 and pane["y"] + pane["height"] <= composer["y"] + 1, (
+        pane,
+        composer,
+    )
+    phone.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").filter(
+        has_text="{}"
+    ).wait_for()
     # Show on the docked card opens the pane's tab.
     strip.locator('button[data-pane="transcript"]').click()
     assert phone.locator("#tr").is_visible()
@@ -442,7 +458,9 @@ def test_a_phone_shows_the_canvas_as_tabs_with_the_composer_on_each(server, page
     assert phone.locator("#tr").is_visible()
     # The frame kept running while hidden: the state is there when the tab opens.
     tab.click()
-    phone.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").filter(has_text='{"n":7}').wait_for()
+    phone.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").filter(
+        has_text='{"n":7}'
+    ).wait_for()
     # A long press offers Undock.
     box = tab.bounding_box()
     phone.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
@@ -461,7 +479,9 @@ def test_a_phone_shows_the_canvas_as_tabs_with_the_composer_on_each(server, page
 COLS = "JSON.stringify([...document.querySelectorAll('#canvas > .pane')].map(p => [p.dataset.pane, Math.round(p.getBoundingClientRect().width)]))"
 
 
-def test_a_narrow_desktop_window_draws_tabs_and_widening_restores_the_columns(server, page):  # noqa: F811
+def test_a_narrow_desktop_window_draws_tabs_and_widening_restores_the_columns(
+    server, page
+):  # noqa: F811
     (server.root / "r.md").write_text("# One\n")
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -521,7 +541,9 @@ def test_a_narrow_desktop_window_draws_tabs_and_widening_restores_the_columns(se
     assert page.locator("#canvas").get_attribute("data-mode") is None
     assert page.locator("#canvas .cgrip").count() == 2
     # The resizes woke the agent with no error from the page.
-    assert page.locator(".row.inbox").count() == 0, page.locator(".row.inbox").all_inner_texts()
+    assert page.locator(".row.inbox").count() == 0, page.locator(
+        ".row.inbox"
+    ).all_inner_texts()
     assert page.errors == []
 
 
@@ -616,9 +638,13 @@ def test_a_second_window_runs_its_page_live(server, page, browser):  # noqa: F81
     # The agent's state reaches it there.
     mcp(page, 4, "artifact_update", {"id": aid, "state": {"n": 7}})
     inner.locator("#st").filter(has_text='{"n":7}').wait_for()
-    inner.locator("#b").click()  # submits: the agent hears it, the page leaves the canvas
+    inner.locator(
+        "#b"
+    ).click()  # submits: the agent hears it, the page leaves the canvas
     page.wait_for_selector(
-        f".row.inbox .from >> text=artifact:{aid} · submit", state="attached", timeout=10000
+        f".row.inbox .from >> text=artifact:{aid} · submit",
+        state="attached",
+        timeout=10000,
     )
     two.locator("text=This window is empty").wait_for()
     assert two.errors == [] and page.errors == []
@@ -634,9 +660,13 @@ def test_pop_out_opens_a_live_window_and_bring_back_returns_it(server, page):  #
     with page.context.expect_page() as opened:
         page.click(".row.artifact .fbar .popout")
     two = _watch(opened.value)
-    two.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").wait_for()
+    two.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator(
+        "#st"
+    ).wait_for()
     assert two.url.endswith(f"#w=2:{sid}")
-    assert page.locator(".row.artifact .acard .held").inner_text() == "in window 2 · open"
+    assert (
+        page.locator(".row.artifact .acard .held").inner_text() == "in window 2 · open"
+    )
     # Open on the card focuses that tab by its name rather than opening another.
     pages = len(page.context.pages)
     page.click(".row.artifact .acard .held .locate")
@@ -648,7 +678,9 @@ def test_pop_out_opens_a_live_window_and_bring_back_returns_it(server, page):  #
     chip.locator(".bring").click()
     page.locator(f'#canvas .pane[data-pane="{aid}"]').wait_for()
     assert page.locator("#canvas .wchip").count() == 0
-    page.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").wait_for()
+    page.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator(
+        "#st"
+    ).wait_for()
     assert page.errors == []
 
 
@@ -666,7 +698,13 @@ def test_move_to_window_lists_the_windows_and_opens_the_one_chosen(server, page)
         "layout_set",
         {
             "windows": [
-                {"n": 1, "columns": [{"panes": [{"id": "transcript"}]}, {"panes": [{"id": fkey}]}]},
+                {
+                    "n": 1,
+                    "columns": [
+                        {"panes": [{"id": "transcript"}]},
+                        {"panes": [{"id": fkey}]},
+                    ],
+                },
                 {"n": 2, "columns": [{"panes": [{"id": aid}]}]},
             ]
         },
@@ -688,7 +726,10 @@ def test_move_to_window_lists_the_windows_and_opens_the_one_chosen(server, page)
     assert page.locator(".row.file .fcard .held").inner_text() == "in window 2 · open"
     # From window 2, the menu offers window 1 and a new one.
     two.locator(f'#canvas .pane[data-pane="{aid}"] .pbar .move').click()
-    assert two.locator("#canvas .pmenu button").all_inner_texts() == ["Window 1", "New window"]
+    assert two.locator("#canvas .pmenu button").all_inner_texts() == [
+        "Window 1",
+        "New window",
+    ]
     two.locator("#canvas .pmenu button", has_text="Window 1").click()
     page.locator(f'#canvas .pane[data-pane="{aid}"]').wait_for()
     page.locator("#canvas .wchip").filter(has_text="window 2 · 1 pane").wait_for()
@@ -710,7 +751,13 @@ def test_a_phone_strip_holds_every_windows_panes(server, page, browser):  # noqa
         "layout_set",
         {
             "windows": [
-                {"n": 1, "columns": [{"panes": [{"id": "transcript"}]}, {"panes": [{"id": fkey}]}]},
+                {
+                    "n": 1,
+                    "columns": [
+                        {"panes": [{"id": "transcript"}]},
+                        {"panes": [{"id": fkey}]},
+                    ],
+                },
                 {"n": 2, "columns": [{"panes": [{"id": aid}]}]},
             ]
         },
@@ -726,7 +773,9 @@ def test_a_phone_strip_holds_every_windows_panes(server, page, browser):  # noqa
     assert strip.locator("button").all_inner_texts() == ["transcript", "r.md", "Pick"]
     assert phone.locator("#canvas .wchip").count() == 0
     strip.locator(f'button[data-pane="{aid}"]').click()
-    phone.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").wait_for()
+    phone.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator(
+        "#st"
+    ).wait_for()
     assert phone.locator(f'#canvas .pane[data-pane="{aid}"] .move').is_hidden()
     assert phone.locator(f'#canvas .pane[data-pane="{aid}"] .popout').is_hidden()
     # Its card holds the docked line, not another window's.
@@ -748,13 +797,18 @@ def _two_windows(aid, *more):
     window 2: ``aid``."""
     return {
         "windows": [
-            {"n": 1, "columns": [{"panes": [{"id": i}]} for i in ("transcript", *more)]},
+            {
+                "n": 1,
+                "columns": [{"panes": [{"id": i}]} for i in ("transcript", *more)],
+            },
             {"n": 2, "columns": [{"panes": [{"id": aid}]}]},
         ]
     }
 
 
-def test_esc_closes_a_pane_menu_without_interrupting_and_a_card_leaves_it_open(server, page):  # noqa: F811
+def test_esc_closes_a_pane_menu_without_interrupting_and_a_card_leaves_it_open(
+    server, page
+):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
@@ -780,7 +834,9 @@ def test_esc_closes_a_pane_menu_without_interrupting_and_a_card_leaves_it_open(s
     assert page.errors == []
 
 
-def test_a_windows_only_pane_moved_to_a_new_window_gets_a_tab_of_its_own(server, page, browser):  # noqa: F811
+def test_a_windows_only_pane_moved_to_a_new_window_gets_a_tab_of_its_own(
+    server, page, browser
+):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     sid = spawn(page)
@@ -793,7 +849,9 @@ def test_a_windows_only_pane_moved_to_a_new_window_gets_a_tab_of_its_own(server,
     with two.context.expect_page() as opened:
         two.locator("#canvas .pmenu button", has_text="New window").click()
     three = _watch(opened.value)
-    three.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").wait_for()
+    three.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator(
+        "#st"
+    ).wait_for()
     assert three.url.endswith(f"#w=3:{sid}"), three.url
     two.locator("text=This window is empty").wait_for()
     page.locator("#canvas .wchip").filter(has_text="window 3 · 1 pane").wait_for()
@@ -805,7 +863,22 @@ def test_a_hidden_transcript_reads_nothing_dots_its_tab_and_find_opens_it(server
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
     aid, _ = _artifact(page, server, PICK, 0)
-    mcp(page, 3, "layout_set", {"windows": [{"n": 1, "columns": [{"panes": [{"id": "transcript"}]}, {"panes": [{"id": aid}]}]}]})
+    mcp(
+        page,
+        3,
+        "layout_set",
+        {
+            "windows": [
+                {
+                    "n": 1,
+                    "columns": [
+                        {"panes": [{"id": "transcript"}]},
+                        {"panes": [{"id": aid}]},
+                    ],
+                }
+            ]
+        },
+    )
     # 600 px is under the minimums' 360 + 280: tabs, on a desktop.
     page.set_viewport_size({"width": 600, "height": 800})
     strip = page.locator("#canvas[data-mode=tabs] .ptabs")
@@ -826,13 +899,17 @@ def test_a_hidden_transcript_reads_nothing_dots_its_tab_and_find_opens_it(server
     assert "on" in strip.locator(f'button[data-pane="{aid}"]').get_attribute("class")
     page.keyboard.press("Control+f")
     page.locator("#find").wait_for()
-    assert "on" in strip.locator('button[data-pane="transcript"]').get_attribute("class")
+    assert "on" in strip.locator('button[data-pane="transcript"]').get_attribute(
+        "class"
+    )
     assert page.locator("#find").is_visible()
     last.locator(".rm .ic.i-read").wait_for(timeout=6000)  # seen now, for a second
     assert page.errors == []
 
 
-def test_a_narrow_desktop_window_draws_only_its_own_windows_panes(server, page, browser):  # noqa: F811
+def test_a_narrow_desktop_window_draws_only_its_own_windows_panes(
+    server, page, browser
+):  # noqa: F811
     (server.root / "r.md").write_text("# One\n")
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -847,10 +924,14 @@ def test_a_narrow_desktop_window_draws_only_its_own_windows_panes(server, page, 
     assert page.locator("#canvas").get_attribute("data-merged") is None
     assert page.locator(f'#canvas .pane[data-pane="{aid}"]').count() == 0
     assert page.locator(f'#canvas .pane[data-pane="{fkey}"] .move').is_visible()
-    assert page.locator(".row.artifact .acard .held").inner_text() == "in window 2 · open"
+    assert (
+        page.locator(".row.artifact .acard .held").inner_text() == "in window 2 · open"
+    )
     two = _watch(browser.new_page(viewport={"width": 700, "height": 800}))
     two.goto(f"{server.url}#w=2:{sid}")
-    two.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").wait_for()
+    two.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator(
+        "#st"
+    ).wait_for()
     src = two.locator(f'#canvas iframe[data-artifact="{aid}"]').get_attribute("src")
     assert _runs(two, src) == 1 and _runs(page, src) == 0
     assert two.locator(f'#canvas .pane[data-pane="{fkey}"]').count() == 0
@@ -867,15 +948,34 @@ def test_columns_under_their_minimum_are_drawn_at_it_from_the_wider_ones(server,
     aid, _ = _artifact(page, server, PICK, 0)
     mcp(page, 3, "file_send", {"paths": ["a.md"]})
     mcp(page, 4, "file_send", {"paths": ["b.md"]})
-    fa, fb = (page.locator(".row.file .fbar .dock").nth(i).get_attribute("data-dock") for i in (0, 1))
+    fa, fb = (
+        page.locator(".row.file .fbar .dock").nth(i).get_attribute("data-dock")
+        for i in (0, 1)
+    )
     shares = {"transcript": 0.4, aid: 0.4, fa: 0.1, fb: 0.1}
-    mcp(page, 5, "layout_set", {"windows": [{"n": 1, "columns": [{"w": w, "panes": [{"id": i}]} for i, w in shares.items()]}]})
+    mcp(
+        page,
+        5,
+        "layout_set",
+        {
+            "windows": [
+                {
+                    "n": 1,
+                    "columns": [
+                        {"w": w, "panes": [{"id": i}]} for i, w in shares.items()
+                    ],
+                }
+            ]
+        },
+    )
     page.locator(f'#canvas .pane[data-pane="{fb}"]').wait_for()
     assert page.locator("#canvas").get_attribute("data-mode") is None
     width = page.evaluate("document.querySelector('#canvas').clientWidth")
     assert width >= 360 + 3 * 280, width
     drawn = dict(json.loads(page.evaluate(COLS)))
-    drawn["transcript"] = page.evaluate("document.querySelector('#tr-pane').getBoundingClientRect().width")
+    drawn["transcript"] = page.evaluate(
+        "document.querySelector('#tr-pane').getBoundingClientRect().width"
+    )
     # The two narrow columns are raised to 280 px; the transcript and the page
     # give it up in proportion to how far each is above its own minimum.
     mins = {"transcript": 360, aid: 280, fa: 280, fb: 280}
@@ -886,12 +986,17 @@ def test_columns_under_their_minimum_are_drawn_at_it_from_the_wider_ones(server,
         want = mins[i] if px < mins[i] else px - (px - mins[i]) * need / spare
         assert abs(drawn[i] - want) <= 2, (i, drawn[i], want)
     # The grips sit on the drawn boundaries.
-    lefts = page.evaluate("[...document.querySelectorAll('#canvas > .cgrip.x')].map(g => Math.round(g.getBoundingClientRect().x + 4))")
+    lefts = page.evaluate(
+        "[...document.querySelectorAll('#canvas > .cgrip.x')].map(g => Math.round(g.getBoundingClientRect().x + 4))"
+    )
     edges = page.evaluate(
         "ids => ids.map(i => Math.round((i === 'transcript' ? document.querySelector('#tr-pane') : document.querySelector(`#canvas .pane[data-pane='${i}']`)).getBoundingClientRect().x))",
         list(shares)[1:],
     )
-    assert all(abs(a - b) <= 2 for a, b in zip(sorted(lefts), sorted(edges))), (lefts, edges)
+    assert all(abs(a - b) <= 2 for a, b in zip(sorted(lefts), sorted(edges))), (
+        lefts,
+        edges,
+    )
     assert page.errors == []
 
 
@@ -904,7 +1009,15 @@ def test_a_window_tab_never_quiets_a_push_for_its_session(server, full_browser):
     pg.goto(f"{server.url}#w=2:{sid}")  # the session's window 2, focused and visible
     pg.wait_for_selector("#a2[data-view=window]")
     pg.wait_for_timeout(300)  # the page tells the worker what it shows
-    deliver({"title": "x: needs you", "body": "", "key": sid, "kind": "needs_you", "tag": f"{sid}:needs_you"})
+    deliver(
+        {
+            "title": "x: needs you",
+            "body": "",
+            "key": sid,
+            "kind": "needs_you",
+            "tag": f"{sid}:needs_you",
+        }
+    )
     deadline = time.monotonic() + 5
     while not pg.evaluate(SHOWN) and time.monotonic() < deadline:
         time.sleep(0.1)
@@ -919,17 +1032,23 @@ def test_the_viewer_offers_pop_out_for_a_live_page(server, page):  # noqa: F811
     aid, _ = _artifact(page, server, PICK, 0)
     page.click(".row.artifact .fbar .view")
     page.locator("#viewer iframe[data-artifact]").wait_for()
-    assert page.locator("#viewer .open").count() == 0, "no raw page with no bridge behind it"
+    assert page.locator("#viewer .open").count() == 0, (
+        "no raw page with no bridge behind it"
+    )
     with page.context.expect_page() as opened:
         page.click("#viewer .popout")
     two = _watch(opened.value)
-    two.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").wait_for()
+    two.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator(
+        "#st"
+    ).wait_for()
     assert two.url.endswith(f"#w=2:{sid}")
     assert page.locator("#viewer").is_hidden()
     assert page.errors == [] and two.errors == []
 
 
-def test_a_window_tab_runs_no_cards_page_and_its_keys_stay_in_the_window(server, page, browser):  # noqa: F811
+def test_a_window_tab_runs_no_cards_page_and_its_keys_stay_in_the_window(
+    server, page, browser
+):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     sid = spawn(page)
@@ -937,11 +1056,20 @@ def test_a_window_tab_runs_no_cards_page_and_its_keys_stay_in_the_window(server,
     other, _ = _artifact(page, server, PICK, 2, title="Other")
     mcp(page, 5, "layout_set", _two_windows(aid))
     two = _window_page(browser, f"{server.url}#w=2:{sid}")
-    two.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").wait_for()
+    two.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator(
+        "#st"
+    ).wait_for()
     two.locator(f'.row.artifact[data-id="{other}"]').wait_for(state="attached")
     assert two.locator("#entries iframe[data-artifact]").count() == 0
     # The keys that go to another tab, the Fleet or a new session do nothing here.
-    for k in ("Alt+BracketRight", "Alt+BracketLeft", "Alt+KeyN", "Alt+KeyJ", "Alt+Digit0", "Control+k"):
+    for k in (
+        "Alt+BracketRight",
+        "Alt+BracketLeft",
+        "Alt+KeyN",
+        "Alt+KeyJ",
+        "Alt+Digit0",
+        "Control+k",
+    ):
         two.keyboard.press(k)
     two.wait_for_timeout(300)
     assert two.url.endswith(f"#w=2:{sid}"), two.url
@@ -957,7 +1085,9 @@ def test_two_quick_pop_outs_open_two_windows(server, page):  # noqa: F811
     b, _ = _artifact(page, server, PICK, 2, title="Other")
     before = len(page.context.pages)
     # Both clicks before the first card lands.
-    page.evaluate("document.querySelectorAll('.row.artifact .fbar .popout').forEach(b => b.click())")
+    page.evaluate(
+        "document.querySelectorAll('.row.artifact .fbar .popout').forEach(b => b.click())"
+    )
     page.locator("#canvas .wchip").filter(has_text="window 3").wait_for()
     deadline = time.monotonic() + 5
     while len(page.context.pages) < before + 2 and time.monotonic() < deadline:
@@ -966,7 +1096,9 @@ def test_two_quick_pop_outs_open_two_windows(server, page):  # noqa: F811
     drawn = {}
     for t in tabs:
         t.locator("#canvas iframe[data-artifact]").wait_for()
-        drawn[t.url.split("#")[1]] = t.locator("#canvas iframe[data-artifact]").get_attribute("data-artifact")
+        drawn[t.url.split("#")[1]] = t.locator(
+            "#canvas iframe[data-artifact]"
+        ).get_attribute("data-artifact")
     assert drawn == {f"w=2:{sid}": a, f"w=3:{sid}": b}, drawn
     assert page.errors == []
 
@@ -981,7 +1113,10 @@ def test_bring_back_into_a_full_row_of_columns_stacks_the_rest(server, page):  #
     aid, _ = _artifact(page, server, PICK, 0)
     for n, name in enumerate(("r1.md", "r2.md", "r3.md"), start=3):
         mcp(page, n, "file_send", {"paths": [name]})
-    f1, f2, f3 = (page.locator(".row.file .fbar .dock").nth(i).get_attribute("data-dock") for i in range(3))
+    f1, f2, f3 = (
+        page.locator(".row.file .fbar .dock").nth(i).get_attribute("data-dock")
+        for i in range(3)
+    )
     lay = _two_windows(aid, f1, f2)
     lay["windows"][1]["columns"].append({"panes": [{"id": f3}]})
     mcp(page, 6, "layout_set", lay)
