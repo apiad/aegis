@@ -107,12 +107,84 @@ export function entryIcon(name) {
 
 // The Gorgoneion (mark.js) in the theme: the head and serpents in
 // currentColor, the eye knocked out in the background. The favicon keeps
-// its fixed amber; a page copy follows the theme.
+// its fixed amber; a page copy follows the theme, and moves (#348): the eye,
+// drawn 1.2 times the favicon's, looks left, right and blinks (base.css),
+// and each serpent bends so its tip crosses from one side of its body to
+// the other, the six out of phase so the wave travels round the head.
+const BEAT = 4.5; // seconds per serpent bend
+const FRAMES = 16; // outlines per beat
+const SWING = (14 * Math.PI) / 180; // the tip's angle either side of the axis
+
+// One serpent's bend as SMIL `values`. Every outline point turns about the
+// serpent's root (the midpoint of its first and last points, under the
+// disc) by an angle that grows from nothing at the root to the full swing at
+// the tip, so the body bends rather than pivots. Interpolating with the
+// serpent's mirror image instead collapses it to a line mid-beat, since a
+// point and its reflection average onto the axis.
+function bend(d) {
+  const n = d.replace(/[MZ]/g, " ").trim().split(/\s+/).map(Number);
+  const pts = [];
+  for (let i = 0; i < n.length; i += 2) pts.push([n[i], n[i + 1]]);
+  const [a, b] = [pts[0], pts[pts.length - 1]];
+  const [rx, ry] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const r = Math.hypot(rx - 32, ry - 32);
+  const [ux, uy] = [(rx - 32) / r, (ry - 32) / r];
+  const along = ([x, y]) => (x - rx) * ux + (y - ry) * uy;
+  const tip = pts.reduce((m, q) => (along(q) > along(m) ? q : m));
+  const len = along(tip);
+  // How far the drawn tip already leans off the axis: the swing is centred.
+  const lean = Math.atan2((tip[0] - rx) * uy - (tip[1] - ry) * ux, len);
+  const frames = [];
+  for (let k = 0; k <= FRAMES; k++) {
+    const th = -(lean + SWING * Math.sin((2 * Math.PI * k) / FRAMES));
+    const outline = pts.map(([x, y]) => {
+      const t = (th * Math.max(0, along([x, y]))) / len;
+      const [dx, dy, c, s] = [x - rx, y - ry, Math.cos(t), Math.sin(t)];
+      return `${(rx + dx * c + dy * s).toFixed(2)} ${(ry - dx * s + dy * c).toFixed(2)}`;
+    });
+    frames.push(`M${outline.join(" ")}Z`);
+  }
+  return frames.join(";");
+}
+
+const STILL = matchMedia("(prefers-reduced-motion: reduce)");
+let BENDS = null;
+
 export function gorgoneion() {
   const svg = document.createElementNS(NS, "svg");
   svg.setAttribute("class", "gorgon");
   svg.setAttribute("viewBox", "0 0 64 64");
   svg.setAttribute("aria-hidden", "true");
   svg.innerHTML = MARK.replaceAll('fill="#e0a872"', 'fill="currentColor"').replaceAll('fill="#11100e"', 'style="fill:var(--bg)"');
+  const [disc, snakes, eye, pupil] = svg.children;
+  const outlines = snakes.getAttribute("d").split(/ (?=M)/);
+  BENDS ??= outlines.map(bend);
+  const serpents = outlines.map((d, i) => {
+    const p = document.createElementNS(NS, "path");
+    p.setAttribute("class", "serpent");
+    p.setAttribute("fill", "currentColor");
+    p.setAttribute("d", d);
+    // SMIL ignores CSS, so reduced motion is honoured here and not in base.css.
+    if (!STILL.matches) {
+      const anim = document.createElementNS(NS, "animate");
+      anim.setAttribute("attributeName", "d");
+      anim.setAttribute("values", BENDS[i]);
+      anim.setAttribute("dur", `${BEAT}s`);
+      anim.setAttribute("begin", `${(-i * BEAT) / 6}s`);
+      anim.setAttribute("repeatCount", "indefinite");
+      p.append(anim);
+    }
+    return p;
+  });
+  eye.setAttribute("class", "eye");
+  pupil.setAttribute("class", "pupil");
+  const lid = document.createElementNS(NS, "g");
+  lid.setAttribute("class", "lid");
+  lid.append(pupil);
+  const eyes = document.createElementNS(NS, "g");
+  eyes.setAttribute("transform", "translate(32 32) scale(1.2) translate(-32 -32)");
+  eyes.append(eye, lid);
+  snakes.replaceWith(...serpents);
+  svg.append(eyes); // over the serpents' roots, as in mark.js
   return svg;
 }

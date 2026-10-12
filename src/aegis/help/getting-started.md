@@ -43,7 +43,10 @@ message until you have read it.
 
 Click Fleet, the first tab, or press Alt+0. Every open session is a card: its
 handle and title, the mark of what it needs, its agent and model, its plan and
-what it is doing now, its context and its cost.
+what it is doing now, its context and its cost. Above the cards, the band
+shows this server's sessions and its host, beside aegis's mark, the
+Gorgoneion, whose eye looks around and blinks; with your system set to reduce
+motion, it holds still.
 
 You should see your session's card. When its turn ends, its mark turns to
 done, review or needs you. With the Fleet ordered "Needs you first", a session

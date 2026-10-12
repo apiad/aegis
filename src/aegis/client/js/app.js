@@ -156,6 +156,8 @@ $("queued-g").append(icon("prompt"));
 $("working-g").append(icon("think"));
 $("closing-g").append(glyph("done"));
 $("sp-mark").prepend(gorgoneion());
+$("boot-mark").append(gorgoneion());
+$("band-mark").append(gorgoneion());
 installBell($("bell"), pushSupported() ? openPushPanel : null);
 $("nav-up").addEventListener("click", () => transcript.message(-1));
 $("nav-down").addEventListener("click", () => transcript.message(1));
@@ -894,6 +896,7 @@ function renderRemotes() {
       box.dataset.server = l.name;
       const band = $("band").cloneNode(true);
       band.removeAttribute("id");
+      band.querySelector(".band-mark")?.remove();
       for (const n of band.querySelectorAll("[id]")) n.removeAttribute("id");
       band.classList.add("far");
       const cards = document.createElement("section");
