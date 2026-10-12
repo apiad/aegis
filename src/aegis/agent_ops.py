@@ -943,7 +943,7 @@ def register_agent_ops(app: App) -> None:
             recs = await asyncio.to_thread(files.store_all, app.roots.state_root, paths)
         except files.FileError as e:
             # Agents write files after a cd in the shell, which does not carry
-            # over, then send the bare name (seen in Alex's first smoke test).
+            # over, then send the bare name (seen in the first smoke test).
             hint = (
                 f"; a relative path resolves against your session's working "
                 f"directory, {s.spec.cwd}; pass the file's absolute path"
