@@ -107,3 +107,23 @@ def test_the_cross_records_the_tour_and_a_typed_whats_new_opens_its_guide(
         "the session it was typed in stays open"
     )
     assert errors == []
+
+
+def test_a_refused_spawn_from_either_hint_shows_an_error_toast(
+    toured,
+    page,  # noqa: F811
+):
+    """Main moved failures into toasts (#329); a hint's refusal goes there too,
+    starts nothing and leaves the hint to try again."""
+    page.goto(toured.url)
+    open_new_tab(page)
+    page.fill("#sp-cwd", "/no/such/dir")
+    for kind in ("whats-new", "tutorial"):
+        page.click(f"#hint-{kind}-go")
+        page.wait_for_selector(".toast.error .msg", timeout=8000)
+        assert "bad_cwd" in page.inner_text(".toast.error .msg")
+        assert page.is_visible(f"#hint-{kind}")
+        page.evaluate("document.querySelectorAll('.toast').forEach(n => n.remove())")
+    assert page.evaluate("location.hash") == "#new"
+    assert not list((toured.root / ".aegis" / "state" / "sessions").glob("*.json"))
+    assert page.errors == []
