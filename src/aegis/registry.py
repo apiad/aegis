@@ -144,6 +144,7 @@ class Registry(Host):
             else [],
             **self._attention(session),
             **self._worker(session),
+            "layout": session.standing.get("layout"),
         }
 
     def _worker(self, s: Session) -> dict:
