@@ -15,7 +15,7 @@ from aegis import changelog_read
 from aegis.helpstate import installed
 from aegis.ops import OpError
 
-from .test_commands import CONFIG, first_user_md, make_app, spawn
+from .test_commands import CONFIG, first_user_md, make_app, send, spawn
 
 REPO = Path(__file__).resolve().parents[1]
 RELEASES = re.findall(
@@ -112,3 +112,24 @@ async def test_an_install_without_its_notes_refuses_and_starts_nothing(
     assert e.value.code == "no_release_notes"
     assert not app.sessions.sessions
     assert json.loads(record_path(tmp_path).read_text())["toured"] == RELEASES[1]
+
+
+async def test_a_typed_whats_new_starts_the_guide_and_leaves_its_session_open(start):
+    """App._command ends by closing the session for any aegis command it did
+    not match, so a missing branch would archive the tab it was typed in."""
+    app = await start({"tutorial": True, "toured": RELEASES[1]})
+    lid = await spawn(app)
+    r = await send(app, lid, "/whats-new")
+    md = await first_user_md(app, r["log_id"])
+    assert toured_in(md) == [RELEASES[0]]
+    assert lid in app.sessions.sessions and lid not in app.sessions.archived
+    guide_cwd = app.sessions.sessions[r["log_id"]].spec.cwd
+    assert guide_cwd == app.sessions.sessions[lid].spec.cwd
+
+
+async def test_typed_again_after_a_tour_it_repeats_the_installed_release(start):
+    app = await start({"tutorial": True, "toured": RELEASES[0]})
+    assert (await state(app))["whats_new"] is None
+    lid = await spawn(app)
+    md = await first_user_md(app, (await send(app, lid, "/whats-new"))["log_id"])
+    assert toured_in(md) == [RELEASES[0]]

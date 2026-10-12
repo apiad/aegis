@@ -2032,9 +2032,9 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
       $("composer").classList.remove("bad");
     }
     if (shown === s.key) transcript.toBottom();
-    // /tutorial starts a guide in a new session (help.guide): open its tab,
-    // on the server that runs it, as a spawn from the new tab does.
-    if (/^\/tutorial(\s|$)/.test(text) && r?.log_id) go(`#s=${keyOf(forKey(s.key).server, r.log_id)}`);
+    // /tutorial and /whats-new start a guide in a new session (help.guide):
+    // open its tab, on the server that runs it, as a spawn from the new tab does.
+    if (/^\/(tutorial|whats-new)(\s|$)/.test(text) && r?.log_id) go(`#s=${keyOf(forKey(s.key).server, r.log_id)}`);
   } catch (e) {
     $("send-error").textContent = e.message;
     box.hidden = was;

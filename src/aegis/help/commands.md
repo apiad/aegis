@@ -27,6 +27,7 @@ Tab or Enter picks one. Alt+/ opens the same menu over a draft.
 | `/help` | open the menu listing every command |
 | `/help <query>` | open the Help tab with those words searched, such as `/help queues` |
 | `/tutorial [page]` | start a guide session in a new tab that walks you through a help page, one step per turn. With no page it runs `getting-started`; after the space, the menu lists the tutorial pages. Typed in a session, the guide runs on the agent `default_agent:` names, in that session's directory, and nothing is sent to the session you typed it in. The hint under the new tab's chips does the same with the agent and chips you picked there. |
+| `/whats-new` | start a guide session in a new tab that walks you through what changed in aegis since your last tour, one change per turn, opening each change's help page to show you how to use it. It covers the releases after the last one you toured, up to the version you run, from the release notes that ship with it; if you have toured this version already, it tours it again. Typed in a session, the guide runs on the agent `default_agent:` names, in that session's directory. The hint under the new tab's chips does the same with the chips you picked there, and its × marks this version toured without starting a guide. |
 
 A line that starts with // is sent as text, its first slash turned into a
 space so the harness does not read a command, for when you mean the text. When

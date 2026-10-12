@@ -664,6 +664,13 @@ class App:
             params = {"kind": "tutorial", "page": arg or None, "cwd": str(s.spec.cwd)}
             r = await self.registry.call("help.guide", params, caller)
             return {**r, "server": self.server_name}
+        if name == "whats-new":
+            # A tour of the release notes in a new tab, on default_agent in
+            # this session's directory (help_ops.help_guide); the client opens
+            # its tab.
+            params = {"kind": "whats_new", "cwd": str(s.spec.cwd)}
+            r = await self.registry.call("help.guide", params, caller)
+            return {**r, "server": self.server_name}
         if name == "stop":
             await s.stop()
             return s.wire()

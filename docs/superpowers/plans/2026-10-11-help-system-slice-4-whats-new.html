@@ -1169,7 +1169,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"</script></li>
 </details>
 
 <!-- ============================================================ TASK 5 -->
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">The /whats-new command, its help section and its fragment</span><span class="files">src/aegis/commands.py · src/aegis/app.py · src/aegis/client/js/app.js · src/aegis/help/commands.md · changelog.d/339-whats-new.added.md · tests/test_whats_new.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Typed in a session, <code>/whats-new</code> calls <code>help.guide</code> with the server's default agent and that session's cwd, and the client opens the guide's tab. The command needs its own branch in <code>App._command</code>: the method's last line closes the session for any command it did not match.</p>

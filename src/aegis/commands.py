@@ -65,6 +65,7 @@ AEGIS: dict[str, Command] = {
         Command(
             "tutorial", "[page]", "Start a guided tour of a help page", "tutorials"
         ),
+        Command("whats-new", "", "Tour what changed since your last tour"),
     )
 }
 
