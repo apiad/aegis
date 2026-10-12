@@ -32,7 +32,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
   <header class="tabs">
     <div class="tab home" id="tab-fleet" title="Fleet (Alt+0)">Fleet</div>
     <div class="tablist" id="tablist"></div>
-    <div class="tab add" id="tab-add" title="New session (Alt+N)">+</div>
+    <div class="tab add needs-net" id="tab-add" title="New session (Alt+N)">+</div>
     <div class="gap"></div>
     <div class="servers"><span class="dot ghost" id="conn-dot"></span><span id="conn-text">connecting</span><span class="ver-top" id="ver-top" hidden></span></div>
     <button class="keys-btn set-btn" id="settings-btn" title="Settings (Alt+S)" aria-label="Settings"><span class="lbl">Settings</span></button>
@@ -85,9 +85,9 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
         <textarea id="sp-text" rows="3" aria-label="First message"
           placeholder="What should the agent do? Enter starts the session and sends this; Shift+Enter adds a line."></textarea>
         <div class="acts">
-          <button class="mic clip" id="sp-attach" type="button" title="Attach files" aria-label="Attach files"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 4.5 5.8 9.2a1.5 1.5 0 0 0 2.1 2.1l5-5a3 3 0 0 0-4.2-4.2l-5 5a4.5 4.5 0 0 0 6.4 6.4l4.2-4.2"/></svg></button><input type="file" id="sp-attach-pick" multiple hidden>
-          <button class="mic" id="sp-mic" type="button" data-state="idle" title="Dictate (Alt+M)" aria-label="Dictate"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" fill="none"/></svg></button>
-          <button class="send" type="submit" id="sp-go" title="Start the session" aria-label="Start the session"></button>
+          <button class="mic clip needs-net" id="sp-attach" type="button" title="Attach files" aria-label="Attach files"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 4.5 5.8 9.2a1.5 1.5 0 0 0 2.1 2.1l5-5a3 3 0 0 0-4.2-4.2l-5 5a4.5 4.5 0 0 0 6.4 6.4l4.2-4.2"/></svg></button><input type="file" id="sp-attach-pick" multiple hidden>
+          <button class="mic needs-net" id="sp-mic" type="button" data-state="idle" title="Dictate (Alt+M)" aria-label="Dictate"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" fill="none"/></svg></button>
+          <button class="send needs-net" type="submit" id="sp-go" title="Start the session" aria-label="Start the session"></button>
         </div>
       </div>
       <div class="chips">
@@ -107,7 +107,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
 
   <main class="view v-session">
     <section class="col">
-      <div class="tr" id="tr" tabindex="-1"><p class="notice tr-offline" id="tr-offline" hidden>Not saved on this device. It opens when the connection is back.</p><div id="entries"></div><div class="row replies" id="replies" hidden><span class="t"></span><span class="g" id="replies-g"></span><div class="body" id="replies-pills"></div></div><div class="row closing" id="closing" hidden><span class="t"></span><span class="g" id="closing-g"></span><div class="body"><button class="btn archive" id="closing-btn" type="button" title="Close this session; it stays in the archive">Archive</button></div></div><div class="row working" id="working" hidden><span class="t"></span><span class="g" id="working-g"></span><div class="body">Working <span class="meta" id="working-meta"></span></div></div></div>
+      <div class="tr" id="tr" tabindex="-1"><p class="notice tr-offline" id="tr-offline" hidden>Not saved on this device. It opens when the connection is back.</p><div id="entries"></div><div class="row replies" id="replies" hidden><span class="t"></span><span class="g" id="replies-g"></span><div class="body" id="replies-pills"></div></div><div class="row closing" id="closing" hidden><span class="t"></span><span class="g" id="closing-g"></span><div class="body"><button class="btn archive needs-net" id="closing-btn" type="button" title="Close this session; it stays in the archive">Archive</button></div></div><div class="row working" id="working" hidden><span class="t"></span><span class="g" id="working-g"></span><div class="body">Working <span class="meta" id="working-meta"></span></div></div></div>
       <div class="nav" id="nav" hidden>
         <button class="spark" id="nav-recap" title="Recap where this session stands" aria-label="Recap where this session stands"></button>
         <button class="fold" id="nav-fold" data-level="0" title="Fold tool calls and thinking (Z)" aria-label="Fold tool calls and thinking"></button>
@@ -130,7 +130,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
         <div class="atts" id="atts" hidden></div>
         <div class="box">
           <textarea id="input" rows="1" placeholder="Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts."></textarea>
-          <div class="acts"><button class="mic clip" id="attach" type="button" title="Attach files" aria-label="Attach files"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 4.5 5.8 9.2a1.5 1.5 0 0 0 2.1 2.1l5-5a3 3 0 0 0-4.2-4.2l-5 5a4.5 4.5 0 0 0 6.4 6.4l4.2-4.2"/></svg></button><input type="file" id="attach-pick" multiple hidden><button class="mic" id="mic" type="button" data-state="idle" title="Dictate (Alt+M)" aria-label="Dictate"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" fill="none"/></svg></button><button class="int" id="interrupt" title="Interrupt (Esc)" aria-label="Interrupt" hidden></button><button class="send" id="send" title="Send (Enter)" aria-label="Send"></button></div>
+          <div class="acts"><button class="mic clip needs-net" id="attach" type="button" title="Attach files" aria-label="Attach files"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 4.5 5.8 9.2a1.5 1.5 0 0 0 2.1 2.1l5-5a3 3 0 0 0-4.2-4.2l-5 5a4.5 4.5 0 0 0 6.4 6.4l4.2-4.2"/></svg></button><input type="file" id="attach-pick" multiple hidden><button class="mic needs-net" id="mic" type="button" data-state="idle" title="Dictate (Alt+M)" aria-label="Dictate"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" fill="none"/></svg></button><button class="int" id="interrupt" title="Interrupt (Esc)" aria-label="Interrupt" hidden></button><button class="send" id="send" title="Send (Enter)" aria-label="Send"></button></div>
         </div>
         <div class="chips">
           <span class="chip" id="chip-model"></span><span class="chip" id="chip-effort"></span><span class="chip" id="chip-perm"></span>
@@ -204,9 +204,9 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
         </div>
       </div>
       <div class="side-acts live-only">
-        <button class="act stop" id="stop-session" title="Stop: end the process; the next message resumes it"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/></svg><span>Stop</span></button>
-        <button class="act" id="restart" title="Restart: send “Continue”"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.5v3h-3"/></svg><span>Restart</span></button>
-        <button class="act" id="close" title="Close: archive it; the tab goes away in every browser"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="3" rx="1"/><path d="M3 6v6.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6M6.5 9h3"/></svg><span>Close</span></button>
+        <button class="act stop needs-net" id="stop-session" title="Stop: end the process; the next message resumes it"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/></svg><span>Stop</span></button>
+        <button class="act needs-net" id="restart" title="Restart: send “Continue”"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.5v3h-3"/></svg><span>Restart</span></button>
+        <button class="act needs-net" id="close" title="Close: archive it; the tab goes away in every browser"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="3" rx="1"/><path d="M3 6v6.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6M6.5 9h3"/></svg><span>Close</span></button>
       </div>
       <div class="side-acts read-only"><button class="act reopen" id="reopen" title="Reopen: continue the conversation in a live tab"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2.5 2.5v3h3"/></svg><span>Reopen</span></button></div>
       <p class="sub err-text" id="side-error"></p>

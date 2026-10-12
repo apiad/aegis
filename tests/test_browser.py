@@ -3873,6 +3873,47 @@ def test_offline_a_rows_detail_needs_the_connection(server, page, tmp_path):
     assert page.errors == []
 
 
+def test_offline_what_needs_the_server_is_disabled(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    spawn(page, "hello")
+    turns_done(page, 1)
+    server.stop()
+    page.wait_for_selector("#a2[data-offline]", state="attached", timeout=10000)
+    for sel in ["#tab-add", "#attach", "#mic", "#close", "#stop-session"]:
+        assert page.get_attribute(sel, "aria-disabled") == "true", sel
+        assert "connection" in (page.get_attribute(sel, "title") or "").lower(), sel
+    page.click("#tab-add", force=True)
+    assert page.get_attribute("#a2", "data-view") == "session"  # no spawn panel opened
+    server.start()
+    page.wait_for_function(
+        "!document.getElementById('a2').hasAttribute('data-offline')", timeout=20000
+    )
+    assert page.get_attribute("#tab-add", "aria-disabled") in (None, "false")
+    assert page.get_attribute("#tab-add", "title") == "New session (Alt+N)"
+
+
+def test_a_refused_token_empties_the_device(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    spawn(page, "hello")
+    turns_done(page, 1)
+    time.sleep(2.5)  # the debounced save
+    has = "import('/static/js/devicestore.js').then(s => s.loadFleet())"
+    assert page.evaluate(has)
+    page.context.clear_cookies()
+    page.reload()  # the page comes from the device; the socket is refused
+    page.wait_for_selector("#login", state="visible", timeout=10000)
+    assert page.get_attribute("#a2", "data-view") == "boot"
+    deadline = time.monotonic() + 8
+    while page.evaluate(has) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    assert page.evaluate(has) is None
+    assert page.locator("#tablist .tab").count() == 0
+
+
 def test_a_cold_start_asks_only_for_what_changed(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")

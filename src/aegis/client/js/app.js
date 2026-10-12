@@ -35,7 +35,8 @@ import { dur, planTimes } from "./plantime.js";
 import { setToastOpener, toast } from "./toast.js";
 import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
 import { closeInstallDialog, startInstall } from "./install.js";
-import { loadFleet, loadTranscript, saveFleet, saveTranscript } from "./devicestore.js";
+import { clearDevice, loadFleet, loadTranscript, saveFleet, saveTranscript } from "./devicestore.js";
+import { markNeedsNet, offline } from "./net.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -305,11 +306,28 @@ function markOffline(state) {
   if (state === "open") {
     live = true;
     delete root.dataset.offline;
-    return;
+  } else {
+    if (live) seenAt = Date.now();
+    live = false;
+    root.dataset.offline = "";
   }
-  if (live) seenAt = Date.now();
-  live = false;
-  root.dataset.offline = "";
+  markNeedsNet();
+}
+
+// The token no longer works: what this device kept goes before the sign-in
+// shows, and no saved card stays drawn behind it.
+let refused = false;
+function signedOut() {
+  refused = true;
+  clearTimeout(fleetSave);
+  clearTimeout(trSave);
+  fleetSave = trSave = null;
+  sessions.clear();
+  kept.clear();
+  ordered = [];
+  transcript.clear();
+  renderTabs($("tablist"), [], null, tabActions);
+  clearDevice().then(showLogin);
 }
 function bannerState(state) {
   if (state === "closed" && !closedSince) {
@@ -337,7 +355,7 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
     markOffline(state);
     drawOfflineNotice();
     bannerState(state);
-    if (state === "unauthorized") showLogin();
+    if (state === "unauthorized") signedOut();
     if (state === "version") {
       show(
         "boot",
@@ -525,7 +543,7 @@ conn.connect();
 // there is, and with one it shows until the live snapshot replaces it. A saved
 // session carries `stale` until its server's snapshot arrives.
 loadFleet().then((saved) => {
-  if (!saved || booted) return;
+  if (!saved || booted || refused) return;
   seenAt = saved.saved_at;
   for (const m of saved.metas) sessions.set(m.key, { ...m, stale: true });
   booted = true;
@@ -591,6 +609,7 @@ function flushSessions() {
     if (home.length < ids.size) renderRemotes();
     fleetMark(false);
     drawBand();
+    markNeedsNet(); // the cards' Archive buttons
   } else if (r.view === "session" && ids.has(r.id)) renderMeta(sessions.get(r.id));
   drawNav(); // the needs count
 }
@@ -686,6 +705,7 @@ function render() {
     fleetMark(false);
     watchHost("all");
     drawBand();
+    markNeedsNet(); // the cards' Archive buttons
     if (newView) drawQuota();
     if (!archiveLoaded) loadArchive();
     setTitle("Fleet · aegis");
@@ -1749,7 +1769,7 @@ function markDiffs() {
 
 async function spawnFromComposer() {
   const a = current();
-  if (!a || $("sp-go").disabled) return;
+  if (!a || $("sp-go").disabled || offline()) return;
   $("sp-go").disabled = true;
   $("sp-error").textContent = "";
   await dictation.finish($("sp-text"));
@@ -1807,7 +1827,7 @@ $("sp-text").addEventListener("keydown", (ev) => {
 
 // -- tab bar and keys -----------------------------------------------------------
 $("tab-fleet").addEventListener("click", () => go("#fleet"));
-$("tab-add").addEventListener("click", () => go("#new"));
+$("tab-add").addEventListener("click", () => !offline() && go("#new"));
 // The ? list: drawn once from the key table.
 const keymap = $("keymap");
 renderKeys(keymap);
@@ -1843,6 +1863,7 @@ installKeys(
       else if (v === "spawn") $("sp-text").focus();
     },
     dictate() {
+      if (offline()) return;
       const v = route().view;
       if (!navigator.mediaDevices || (v !== "session" && v !== "spawn")) return;
       dictation.toggle(v === "spawn" ? spawnTarget() : sessionTarget(), "key");
@@ -1938,7 +1959,7 @@ for (const [btn, pick, tray, key] of [
   ["attach", "attach-pick", atts, null],
   ["sp-attach", "sp-attach-pick", spAtts, "spawn"],
 ]) {
-  $(btn).addEventListener("click", () => $(pick).click());
+  $(btn).addEventListener("click", () => !offline() && $(pick).click());
   $(pick).addEventListener("change", (ev) => {
     tray.add([...ev.target.files], key ?? undefined);
     ev.target.value = "";
@@ -2015,8 +2036,8 @@ if (!navigator.mediaDevices) {
     b.title = "Dictation needs https or localhost";
   }
 }
-$("mic").addEventListener("click", () => dictation.toggle(sessionTarget(), "button"));
-$("sp-mic").addEventListener("click", () => dictation.toggle(spawnTarget(), "button"));
+$("mic").addEventListener("click", () => !offline() && dictation.toggle(sessionTarget(), "button"));
+$("sp-mic").addEventListener("click", () => !offline() && dictation.toggle(spawnTarget(), "button"));
 // On a touch screen Enter adds a line and the button sends: the key sits where
 // a mistap lands, and half a message costs a turn.
 const touch = matchMedia("(pointer: coarse)");
@@ -2079,7 +2100,7 @@ const askClose = (s) =>
 const confirmClose = async (s) => s.attention === "done" || (await askClose(s));
 
 async function closeSession(s) {
-  if (!(await confirmClose(s))) return;
+  if (offline() || !(await confirmClose(s))) return;
   try {
     await callFor(s.key, "session.close");
   } catch (e) {
@@ -2259,9 +2280,10 @@ $("send").addEventListener("click", send);
 $("interrupt").addEventListener("click", interrupt);
 // A nudge after an interrupt, an error or a stop: a message to a stopped
 // session resumes it, so Restart is one sentence to the agent.
-$("restart").addEventListener("click", () => sendLine("Continue", false));
+$("restart").addEventListener("click", () => !offline() && sendLine("Continue", false));
 
 $("stop-session").addEventListener("click", async () => {
+  if (offline()) return;
   const s = focused();
   if (!s) return;
   try {

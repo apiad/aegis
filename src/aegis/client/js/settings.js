@@ -21,6 +21,7 @@ import "./pick.js";
 import { who } from "./me.js";
 import { deviceCopy } from "./appworker.js";
 import { installState, onInstallState, openInstallDialog } from "./install.js";
+import { markNeedsNet, offline } from "./net.js";
 
 const h = (tag, props = {}, ...kids) => {
   const el = Object.assign(document.createElement(tag), props);
@@ -845,7 +846,7 @@ export class Settings {
     const dirty = this.dirty || this.policyChanges().length > 0;
     const status = this.status || (dirty ? "Unsaved changes" : "");
     b.classList.toggle("dirty", dirty);
-    const save = button("Save changes", "set-save", () => this.save(), "btn primary");
+    const save = button("Save changes", "set-save", () => !offline() && this.save(), "btn primary needs-net");
     save.disabled = !dirty || this.saving;
     const discard = button("Discard", "set-discard", () => {
       this.load(this.wire);
@@ -856,6 +857,7 @@ export class Settings {
     }, "btn");
     discard.hidden = !dirty;
     b.replaceChildren(h("span", { id: "set-status", textContent: status }), discard, save);
+    markNeedsNet(b);
   }
 
   // Each finding marks the card or row Python named; a problem with none to

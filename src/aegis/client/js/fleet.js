@@ -165,7 +165,7 @@ export function closeOnMiddle(node, close) {
 // Close for a finished session, from the Fleet. A real button, so Tab reaches
 // it and Enter or Space presses it like the archive rows' Read and Reopen.
 function archiveButton(m, onClose) {
-  const b = el("button", "btn archive", "Archive");
+  const b = el("button", "btn archive needs-net", "Archive");
   b.type = "button";
   b.title = "Close this session; it stays in the archive";
   b.addEventListener("click", () => onClose(m.key));
