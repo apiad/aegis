@@ -240,7 +240,7 @@ export class Canvas {
       this.drop(id, node);
     }
     for (const [id, n] of away) if (was.get(id) !== n && id.startsWith("art-")) hold(id, () => {}, this.entryOf(id), inWindow(n));
-    for (const id of this.dots) if (!keep.has(id)) this.dots.delete(id);
+    for (const id of this.dots) if (id !== TRANSCRIPT && !keep.has(id)) this.dots.delete(id);
     if (!keep.has(this.open)) this.open = this.n === 1 ? TRANSCRIPT : [...keep][0] || TRANSCRIPT;
     if (this.menu && !keep.has(this.menu.id)) this.closeMenu();
     this.tabbed = this.wantTabs();
@@ -372,7 +372,20 @@ export class Canvas {
     this.place();
   }
 
-  // A pane changed: a dot on its tab, unless it is the one open.
+  // Whether the person can see the transcript: window 1, and its tab open
+  // when the canvas is tabs. A hidden transcript marks nothing read and acts
+  // on no key.
+  transcriptShown() {
+    return this.n === 1 && (!this.tabbed || this.open === TRANSCRIPT);
+  }
+
+  // Open the transcript's tab, when the canvas is tabs.
+  showTranscript() {
+    if (this.n === 1 && this.tabbed && this.open !== TRANSCRIPT) this.openTab(TRANSCRIPT);
+  }
+
+  // A pane changed, or the transcript got an agent message: a dot on its
+  // tab, unless it is the one open.
   mark(id) {
     if (!this.tabbed || id === this.open) return;
     if (id === TRANSCRIPT ? this.n !== 1 : !this.panes.has(id)) return;
@@ -689,16 +702,26 @@ export class Canvas {
     }
     const want = n === "new" ? Math.max(...ws.map((w) => w.n)) + 1 : n;
     const tab = want === 1 ? null : this.openWindow(want);
-    return this.call("layout.dock", { pane: id, where: `window:${n}` }).then(
-      (lay) => {
-        const got = lay?.windows?.find((w) => w.columns.some((c) => c.panes.some((p) => p.id === id)))?.n;
-        if (tab && got && got !== want) this.openWindow(got, tab);
-      },
-      (err) => {
-        if (tab && n === "new") tab.close();
-        this.refuse(err.message || String(err));
-      },
-    );
+    let made = false; // a new tab is still at about:blank; a found one is at its window
+    try {
+      made = !!tab && tab.location.href === "about:blank";
+    } catch {}
+    if (n === "new") this.guesses.add(want);
+    return this.call("layout.dock", { pane: id, where: `window:${n}` })
+      .then(
+        (lay) => {
+          const got = lay?.windows?.find((w) => w.columns.some((c) => c.panes.some((p) => p.id === id)))?.n;
+          if (!got || got === want) return;
+          if (made && got === this.n) tab.close(); // it landed here: this tab draws it
+          else if (made) this.openWindow(got, tab);
+          else if (got !== this.n && got !== 1) this.openWindow(got);
+        },
+        (err) => {
+          if (made) tab.close();
+          this.refuse(err.message || String(err));
+        },
+      )
+      .finally(() => this.guesses.delete(want));
   }
 
   // Pop out: a page alone in a new window. One already in another window

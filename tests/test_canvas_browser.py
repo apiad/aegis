@@ -768,6 +768,38 @@ def test_esc_closes_a_pane_menu_without_interrupting_and_a_card_leaves_it_open(s
     assert page.errors == []
 
 
+def test_a_hidden_transcript_reads_nothing_dots_its_tab_and_find_opens_it(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    mcp(page, 3, "layout_set", {"windows": [{"n": 1, "columns": [{"panes": [{"id": "transcript"}]}, {"panes": [{"id": aid}]}]}]})
+    # 600 px is under the minimums' 360 + 280: tabs, on a desktop.
+    page.set_viewport_size({"width": 600, "height": 800})
+    strip = page.locator("#canvas[data-mode=tabs] .ptabs")
+    strip.wait_for()
+    strip.locator(f'button[data-pane="{aid}"]').click()
+    page.fill("#input", "hello again")
+    page.press("#input", "Enter")
+    turns_done(page, 4)
+    # The reply landed behind the page's tab: the transcript's tab is dotted,
+    # and the reply stays unread while nobody can see it.
+    strip.locator('button[data-pane="transcript"].dot').wait_for(timeout=5000)
+    page.wait_for_timeout(1500)
+    last = page.locator(".row.prose").last
+    assert last.locator(".rm .ic.i-unread").count() == 1
+    # j acts on nothing it cannot show; Ctrl+F opens the transcript's tab with its bar.
+    strip.locator(f'button[data-pane="{aid}"]').focus()
+    page.keyboard.press("j")
+    assert "on" in strip.locator(f'button[data-pane="{aid}"]').get_attribute("class")
+    page.keyboard.press("Control+f")
+    page.locator("#find").wait_for()
+    assert "on" in strip.locator('button[data-pane="transcript"]').get_attribute("class")
+    assert page.locator("#find").is_visible()
+    last.locator(".rm .ic.i-read").wait_for(timeout=6000)  # seen now, for a second
+    assert page.errors == []
+
+
 def test_a_narrow_desktop_window_draws_only_its_own_windows_panes(server, page, browser):  # noqa: F811
     (server.root / "r.md").write_text("# One\n")
     page.goto(server.url)

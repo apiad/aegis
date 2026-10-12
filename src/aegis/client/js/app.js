@@ -115,6 +115,8 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
     }
   },
   onSelect: drawNav,
+  // In tab mode with another tab open the transcript is laid out but hidden.
+  seen: () => canvas.transcriptShown(),
   loadDetail: (ids) => {
     const id = shown;
     return callFor(id, "transcript.detail", { ids }).then((got) => (shown === id ? got : []));
@@ -1234,7 +1236,10 @@ function follow(id) {
       },
       (ops) => {
         for (const op of ops) if (op.probe) artifacts.probe(op.probe, id, fileUrl(op.probe.url));
+        // A new agent message while another tab is open dots the transcript's.
+        const fresh = ops.some((op) => op.upsert?.unread && !transcript.entries.has(op.upsert.id));
         transcript.apply(ops);
+        if (fresh) canvas.mark("transcript");
         for (const op of ops) if (op.upsert?.kind === "artifact" || op.upsert?.kind === "file") canvas.onEntry(op.upsert);
         keepTranscript();
       },
@@ -2118,6 +2123,8 @@ function nextNeed() {
 
 // What each key in keys.js does. `input` and `editing` are declared below;
 // a key is pressed only after this module has run.
+// A transcript key does nothing while the canvas's tabs hide the transcript.
+const onTranscript = (run) => (ev) => canvas.transcriptShown() && run(ev);
 installKeys(
   {
     composer() {
@@ -2135,6 +2142,7 @@ installKeys(
     browse() {
       const v = route().view;
       if (v === "session" || v === "read") {
+        canvas.showTranscript();
         $("tr").focus({ preventScroll: true });
         transcript.pick();
       } else if (v === "fleet") {
@@ -2145,19 +2153,22 @@ installKeys(
     needs: nextNeed,
     tabPrev: () => cycle(-1),
     tabNext: () => cycle(1),
-    next: () => transcript.move(1),
-    prev: () => transcript.move(-1),
-    turnNext: () => transcript.moveTurn(1),
-    turnPrev: () => transcript.moveTurn(-1),
-    first: () => transcript.edge(false),
-    last: () => transcript.edge(true),
-    messagePrev: () => transcript.message(-1),
-    messageNext: () => transcript.message(1),
-    firstUnread: () => transcript.firstUnread(),
-    toggle: () => transcript.toggle(),
-    find: () => find.open(),
-    press: () => transcript.press(),
-    copy: () => transcript.selected && copyRow(transcript.selected, transcript.nodes.get(transcript.selected), copyDeps),
+    next: onTranscript(() => transcript.move(1)),
+    prev: onTranscript(() => transcript.move(-1)),
+    turnNext: onTranscript(() => transcript.moveTurn(1)),
+    turnPrev: onTranscript(() => transcript.moveTurn(-1)),
+    first: onTranscript(() => transcript.edge(false)),
+    last: onTranscript(() => transcript.edge(true)),
+    messagePrev: onTranscript(() => transcript.message(-1)),
+    messageNext: onTranscript(() => transcript.message(1)),
+    firstUnread: onTranscript(() => transcript.firstUnread()),
+    toggle: onTranscript(() => transcript.toggle()),
+    find() {
+      canvas.showTranscript(); // the bar is the transcript's
+      find.open();
+    },
+    press: onTranscript(() => transcript.press()),
+    copy: onTranscript(() => transcript.selected && copyRow(transcript.selected, transcript.nodes.get(transcript.selected), copyDeps)),
     foldLevel: () => foldLevel((transcript.foldLevel + 1) % 3),
     walk() {},
     fleetNext: () => fleetMove(1),
