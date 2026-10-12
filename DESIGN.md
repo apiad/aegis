@@ -371,6 +371,14 @@ because the card would leave before anyone saw it; aegis's own never do, since
 they answer something done on the page. An agent's toasts are capped at six a
 minute per session (#329).
 
+**Notifications come from the service worker.** `ping.js` raises every
+notification through the registration of `sw.js`, served from the root so its
+scope is the whole client. Chrome on Android refuses `new Notification()`, and
+a registration's notification still opens its session after the page is gone:
+the worker's `notificationclick` focuses an aegis window and posts which session
+to open, or opens `/#s=<key>` when none is open. The constructor remains only
+for a page without an active worker, which is a desktop on plain http (#342).
+
 **Folding hides rows, it never unmounts them.** From which fold level a kind
 folds is a fact on the entry (`fold`: 0 never, 1 the work, 2 also what arrived
 and what was shown; `transcript/entries.py`). The client draws each run of
