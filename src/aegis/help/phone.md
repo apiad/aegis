@@ -105,3 +105,8 @@ Dragging panes and resizing them is for a desktop. On a phone, press and hold
 a tab other than the transcript's for half a second to get Undock, which puts
 the page or file back on its card in the transcript. The canvas itself does
 not change on a phone: a desktop on the same session still shows its columns.
+
+A phone has one window. When the canvas spreads over several browser
+windows on a desktop, the phone's strip holds the panes of every window,
+window 1's before the others', and Move to window, Pop out and the window
+chips are not shown.
