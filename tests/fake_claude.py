@@ -9,6 +9,8 @@ stdout. The text of a prompt picks a script:
     /deafsleep N   the same, but it ignores interrupts.
     /fail          a Bash call that fails.
     /bash D => OUT a Bash call described D whose output is OUT, then a result.
+    /many N        N Bash calls in one turn, each with its output, then a
+                   result: N rows, for a test that needs a long transcript.
     /md TEXT       TEXT as the reply, each literal \\n a newline, then a result.
     /notice        three system notices and nothing else.
     /big           a Read whose result is 2 MB on one line.
@@ -117,6 +119,7 @@ SCRIPTS = (
     "sh",
     "write",
     "edit",
+    "many",
 )
 COMMANDS = (
     [
@@ -525,6 +528,19 @@ def run(text: str) -> None:
             }
         )
         tool_output(tid, out)
+        result()
+    elif word == "/many":
+        for k in range(int(arg or 1)):
+            tid = tool_id()
+            assistant(
+                {
+                    "type": "tool_use",
+                    "id": tid,
+                    "name": "Bash",
+                    "input": {"command": "true", "description": f"step {k}"},
+                }
+            )
+            tool_output(tid, f"out {k}")
         result()
     elif word == "/sh":
         tid = tool_id()
