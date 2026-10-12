@@ -16,8 +16,9 @@ open it, and nothing more is downloaded until you do. Open, it shows code the
 way an editor does:
 
 - A file the agent read shows its last 40 lines, numbered and coloured by the
-  file's language. A file it wrote shows the same way, and Show the file opens
-  the whole file as it is now.
+  file's language. A file it wrote shows the same way. Show the file, on a
+  row that read, wrote or edited a file, adds a card with the whole file as it
+  is now; Open on the card shows it.
 - A shell command is coloured.
 - An edit shows the old and new lines side by side when the transcript is at
   least 680 px wide, and as one compact column when it is narrower, with the
@@ -29,9 +30,8 @@ The fold button in the bar above the message box, z in a session, or Alt+Z
 steps through three levels. The first shows everything. The second folds each
 stretch of tool calls, thinking and notes between two messages into one line
 that says what it holds; click the line to open it. The third leaves only your
-messages and the agent's replies. The latest recap stays shown at every level,
-and older recaps fold with the rest of the work. The browser remembers the
-level.
+messages and the agent's replies. The latest recap stays shown at every level;
+older recaps fold at the third. The browser remembers the level.
 
 ## Replies
 

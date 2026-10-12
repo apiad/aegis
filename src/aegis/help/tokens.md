@@ -31,7 +31,7 @@ member with no policy and no default starts nothing.
 Lines are a launch line and a stop line on each quota window you tick. Drag
 the two handles on the window's gauge, or move one with the arrow keys. Tick
 pace instead of a launch line to let new work start while the spend projected
-at the reset stays under 100%. Codex reports no quota, so its rule is only
+at the reset stays at or under 100%. Codex reports no quota, so its rule is only
 closed or open.
 
 - Over a launch line, the member's spawns are refused with the reason and
@@ -40,6 +40,8 @@ closed or open.
   typed it, and held until the line clears when another session sent it.
 - At a stop line, aegis interrupts the member's running turns and continues
   them when the gauge is back under every launch line, across a restart too.
+  Until then a person's message to any of its sessions, running or not, is
+  refused, and one from another session is held.
 
 A member sees its own launch and stop lines on the quota gauges in its
 session panel. An admin's agents can spawn on a linked server, where that
