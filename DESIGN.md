@@ -421,9 +421,15 @@ hands it each toast, so a push is the same transition a page would notify; the
 first snapshot only records where sessions stand, so a restart pushes nothing,
 and `review` or `done` count only when a turn just ended. It encrypts each
 payload for the device (`webpush.py`, RFC 8291) and posts it to the push
-service from its own queue, so a slow service never delays the channel. The
-worker shows it unless a window of that device shows the session in front. A
-device with push leaves those sources to it, so one event never notifies twice
+service from its own queue, so a slow service never delays the channel. Each
+subscription has a lane of its own and the lanes run side by side, so a dead
+device delays no other; a push too old when its turn comes is dropped, and a
+row goes when its service refuses it or fails it five times in a row. Only
+endpoints at a known push service are taken (`AEGIS_PUSH_HOSTS` adds hosts),
+because the server posts wherever a token tells it. The worker shows a push
+unless a window of that device shows the session in front. A device with push
+leaves those sources to it for this server's sessions, so one event never
+notifies twice; a linked server's are not pushed, so the page notifies them
 (#342).
 
 **Folding hides rows, it never unmounts them.** From which fold level a kind
