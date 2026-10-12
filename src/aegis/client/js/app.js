@@ -135,6 +135,7 @@ $("journal-btn").append(icon("book"));
 $("send").append(icon("send"));
 $("sp-go").append(icon("send"));
 $("hint-tutorial-x").append(icon("close"));
+$("hint-whats-new-x").append(icon("close"));
 $("interrupt").append(icon("stop"));
 $("replies-g").append(icon("prompt"));
 $("working-g").append(icon("think"));
@@ -1642,9 +1643,10 @@ $("sp-text").addEventListener("keydown", (ev) => {
   }
 });
 
-// -- the new tab's hint ---------------------------------------------------------
-// One line under the chips while this person has started no tutorial. The
-// record is the server's, per principal (helpstate.py), read each time the
+// -- the new tab's hints --------------------------------------------------------
+// Up to two lines under the chips: /tutorial while this person has started no
+// tutorial, /whats-new while the release it runs is newer than their last
+// tour. The record is the server's, per principal (helpstate.py), read each time the
 // new tab opens, so every device shows the same hint. It acts on this server
 // only: a linked server keeps its own record and may not know help.guide.
 async function loadHints() {
@@ -1659,28 +1661,37 @@ async function loadHints() {
 }
 
 function drawHints() {
-  $("hint-tutorial").hidden = !helpState || helpState.tutorial || spServer !== null;
+  const away = !helpState || spServer !== null;
+  $("hint-tutorial").hidden = away || helpState.tutorial;
+  $("hint-whats-new").hidden = away || !helpState.whats_new;
+  $("hint-whats-new-v").textContent = helpState?.whats_new || "";
+}
+
+// What running or dismissing a hint records, as the server records it
+// (help_ops.help_guide, help_dismiss), so the hint hides without a new read.
+function ranHint(kind) {
+  if (!helpState) return;
+  helpState = kind === "tutorial" ? { ...helpState, tutorial: true } : { ...helpState, whats_new: null };
 }
 
 // A guide session (help.guide), and its tab, as a spawn from the new tab
 // opens one. `params` are spawn fields; none at all means default_agent.
-async function startGuide(params) {
-  const r = await conn.call("help.guide", { kind: "tutorial", ...params });
-  if (helpState) helpState = { ...helpState, tutorial: true };
+async function startGuide(params, kind = "tutorial") {
+  const r = await conn.call("help.guide", { kind, ...params });
+  ranHint(kind);
   drawHints();
   go(`#s=${r.log_id}`);
   return r;
 }
 
-// The hint runs what Enter would, with the chips as they stand.
-async function guideFromComposer() {
+// A hint runs what Enter would, with the chips as they stand.
+async function guideFromComposer(kind, btn) {
   const a = current();
-  const btn = $("hint-tutorial-go");
   if (!a || btn.disabled) return;
   btn.disabled = true;
   $("sp-error").textContent = "";
   try {
-    await startGuide({ agent: a.name, cwd: $("sp-cwd").value.trim() || null, ...overrides() });
+    await startGuide({ agent: a.name, cwd: $("sp-cwd").value.trim() || null, ...overrides() }, kind);
     localStorage.setItem(LAST_AGENT, a.name);
     pickAgent(a.name);
   } catch (e) {
@@ -1689,17 +1700,26 @@ async function guideFromComposer() {
     btn.disabled = false;
   }
 }
-$("hint-tutorial-go").addEventListener("click", guideFromComposer);
-$("hint-tutorial-x").addEventListener("click", async () => {
-  $("hint-tutorial").hidden = true;
+
+// The cross records what running the hint would, and starts nothing.
+async function dismissHint(kind, row) {
+  row.hidden = true;
   try {
-    await conn.call("help.dismiss", { what: "tutorial" });
-    if (helpState) helpState = { ...helpState, tutorial: true };
+    await conn.call("help.dismiss", { what: kind });
+    ranHint(kind);
   } catch (e) {
     $("sp-error").textContent = e.message;
     drawHints();
   }
-});
+}
+
+for (const [kind, id] of [
+  ["tutorial", "hint-tutorial"],
+  ["whats_new", "hint-whats-new"],
+]) {
+  $(`${id}-go`).addEventListener("click", () => guideFromComposer(kind, $(`${id}-go`)));
+  $(`${id}-x`).addEventListener("click", () => dismissHint(kind, $(id)));
+}
 
 // -- tab bar and keys -----------------------------------------------------------
 $("tab-fleet").addEventListener("click", () => go("#fleet"));
