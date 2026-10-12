@@ -28,6 +28,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
 </head>
 <body>
 <div id="a2" class="app" data-view="boot">
+  <div class="netbanner" id="netbanner" role="status" hidden><span class="lbl">no connection</span><span id="netbanner-t"></span><button class="btn" id="netbanner-retry" type="button">Retry now</button></div>
   <header class="tabs">
     <div class="tab home" id="tab-fleet" title="Fleet (Alt+0)">Fleet</div>
     <div class="tablist" id="tablist"></div>

@@ -3670,6 +3670,19 @@ def test_an_action_toast_stays_until_it_is_used(server, page):
     page.wait_for_selector(".toast .msg >> text=Sticky", state="detached")
 
 
+def test_a_connection_down_for_three_seconds_shows_the_banner(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert page.is_hidden("#netbanner")
+    server.stop()
+    page.wait_for_selector("#netbanner", state="visible", timeout=10000)
+    assert "retrying" in page.text_content("#netbanner-t")
+    server.start()
+    page.click("#netbanner-retry")
+    page.wait_for_selector("#netbanner", state="hidden", timeout=10000)
+    assert page.errors == []
+
+
 @pytest.mark.parametrize("width", [1000, 1100, 1366])
 def test_each_quota_bar_shares_a_row_with_its_label_and_value(
     quota_server, browser, width

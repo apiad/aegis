@@ -272,11 +272,39 @@ $("login").addEventListener("submit", async (ev) => {
 
 // -- the connection -----------------------------------------------------------
 let wasClosed = false; // a reconnect checks for a new build
+
+// The banner while the connection is down: a state, so it stays at the top of
+// the page rather than a toast. A socket that comes back within 3 s never
+// shows it; one that stays down counts down to the next attempt.
+const BANNER_AFTER_MS = 3000;
+let closedSince = 0;
+let bannerTimer = null;
+function drawBanner() {
+  const down = closedSince > 0 && Date.now() - closedSince >= BANNER_AFTER_MS;
+  $("netbanner").hidden = !down;
+  if (!down) return;
+  const s = Math.ceil((conn.retryAt - Date.now()) / 1000);
+  $("netbanner-t").textContent = conn.retryAt && s > 0 ? `retrying in ${s} s` : "retrying now";
+}
+function bannerState(state) {
+  if (state === "closed" && !closedSince) {
+    closedSince = Date.now();
+    bannerTimer = setInterval(drawBanner, 1000);
+  }
+  // A refused token or protocol is not a connection problem: they say so elsewhere.
+  if (state === "open" || state === "unauthorized" || state === "version") {
+    closedSince = 0;
+    clearInterval(bannerTimer);
+    bannerTimer = null;
+    $("netbanner").hidden = true;
+  }
+}
 const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`, {
   onState(state, server) {
     $("conn-dot").className = `dot ${state === "open" ? "ready" : state === "connecting" ? "ghost" : "err"}`;
     $("conn-text").textContent =
       state === "open" ? server : state === "connecting" ? "connecting" : state === "closed" ? "disconnected, retrying" : state;
+    bannerState(state);
     if (state === "unauthorized") showLogin();
     if (state === "version") {
       show("boot", "This page and the server speak different protocol versions. Reload the page.");
@@ -294,6 +322,12 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
       loadVersion();
     }
   },
+});
+// Retry at once when the network or the app comes back, or when asked.
+$("netbanner-retry").addEventListener("click", () => conn.retryNow());
+window.addEventListener("online", () => conn.retryNow());
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) conn.retryNow();
 });
 const settings = new Settings(conn, $("settings"), { themes: THEMES, setTheme });
 let landEntry = null; // {key, id}: reveal this entry once its transcript lands
