@@ -56,8 +56,8 @@ export function pageRef(href, ids, here) {
 
 export class Help {
   // go(hash): navigate as app.js does. onKeys(): open the ? list.
-  // onStart(page): start that tutorial; app.js passes help.guide. Without it
-  // a tutorial page carries the button hidden.
+  // onStart(page): start that tutorial, returning a promise; app.js passes
+  // help.guide. Without it a tutorial page carries the button hidden.
   constructor(conn, box, { go, onKeys, onStart = null }) {
     Object.assign(this, { conn, box, go, onKeys, onStart });
     this.pages = null; // help.pages's answer, once it arrives
@@ -94,7 +94,16 @@ export class Help {
     this.start = el("button", "btn primary hstart", "Start this tutorial");
     this.start.type = "button";
     this.start.hidden = !this.onStart;
-    this.start.addEventListener("click", () => this.onStart(this.shown));
+    // Disabled while the guide starts, so a double click starts one.
+    this.start.addEventListener("click", async () => {
+      if (this.start.disabled) return;
+      this.start.disabled = true;
+      try {
+        await this.onStart(this.shown);
+      } finally {
+        this.start.disabled = false;
+      }
+    });
     this.title = el("h2", "htitle");
     this.when = el("div", "hwhen");
     this.body = el("div", "hbody");

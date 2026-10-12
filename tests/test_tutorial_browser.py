@@ -135,3 +135,23 @@ def test_start_this_tutorial_in_the_help_tab_starts_the_guide(
     page.wait_for_function(ENTRIES_NAME, arg="getting-started", timeout=8000)
     assert meta(server, log_id)["agent"] == "opus"  # default_agent
     assert page.errors == []
+
+
+def test_a_double_click_on_start_this_tutorial_starts_one_guide(
+    server,  # noqa: F811
+    page,  # noqa: F811
+):
+    titled = "t => document.querySelector('.helpv .htitle')?.textContent === t"
+    page.goto(server.url)
+    page.click("#help-btn")
+    page.click('.helpv .hrow[data-ref="getting-started"]')
+    page.wait_for_function(titled, arg=TITLE["getting-started"])
+    page.dblclick("button:has-text('Start this tutorial')")
+    page.wait_for_selector("#a2[data-view=session]")
+    page.wait_for_function(ENTRIES_NAME, arg="getting-started", timeout=8000)
+    time.sleep(0.5)  # a second guide, had one started, has its tab by now
+    assert page.locator("#tablist .tab").count() == 1
+    assert (
+        len(list((server.root / ".aegis" / "state" / "sessions").glob("*.json"))) == 1
+    )
+    assert page.errors == []
