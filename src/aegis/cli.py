@@ -645,5 +645,73 @@ def link_list(root: Path | None = _ROOT_OPTION) -> None:
     typer.echo(f"{len(entries)} links")
 
 
+token_app = typer.Typer(
+    add_completion=False,
+    help="The tokens that may use this server: one per person, linked server "
+    "or job. A running server applies a change at its next request.",
+)
+app.add_typer(token_app, name="token")
+
+
+def _token_store(root: Path | None):
+    import getpass
+
+    from .roots import make_roots
+    from .tokens import TokenStore
+
+    return TokenStore(
+        make_roots(start=Path.cwd(), root=root).state_root, getpass.getuser()
+    )
+
+
+@token_app.command("add")
+def token_add(
+    name: str = typer.Argument(..., help="Who it is: lowercase, e.g. ben or laptop."),
+    role: str = typer.Option("member", help="member or admin."),
+    root: Path | None = _ROOT_OPTION,
+) -> None:
+    """Mint a token and print it, alone on stdout: the only time it is shown."""
+    from .ops import OpError
+
+    try:
+        token = _token_store(root).add(name, role)
+    except OpError as e:
+        typer.echo(e.message, err=True)
+        raise typer.Exit(1) from e
+    typer.echo(token)
+
+
+@token_app.command("list")
+def token_list(root: Path | None = _ROOT_OPTION) -> None:
+    """Names, roles and quota policies, never tokens."""
+    from .quota_gate import describe
+
+    store = _token_store(root)
+    rows = store.rows()
+    for r in rows:
+        own = "" if r["policy"] is not None or r["role"] == "admin" else " (default)"
+        typer.echo(
+            f"{r['name']:<16} {r['role']:<7} {describe(store.policy_of(r['name']))}{own}"
+            f"{'  (this server)' if r['owner'] else ''}"
+        )
+    typer.echo(f"{len(rows)} tokens")
+
+
+@token_app.command("revoke")
+def token_revoke(
+    name: str = typer.Argument(..., help="Whose token to end."),
+    root: Path | None = _ROOT_OPTION,
+) -> None:
+    """End a token. Revoking the admin's prints its replacement."""
+    from .ops import OpError
+
+    try:
+        new = _token_store(root).revoke(name)
+    except OpError as e:
+        typer.echo(e.message, err=True)
+        raise typer.Exit(1) from e
+    typer.echo(new if new else f"revoked {name}")
+
+
 def main() -> None:
     app()

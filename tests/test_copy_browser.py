@@ -49,35 +49,52 @@ PROMPT = r"/md Run this:\n\n```py\nprint('hi')\n```\n\n**Done.**"
 REPLY = "Run this:\n\n```py\nprint('hi')\n```\n\n**Done.**"
 
 
-def test_a_message_and_its_code_block_copy_their_markdown_and_their_code(
+def test_a_reply_copies_its_code_but_has_no_button_for_itself(
     server,  # noqa: F811
     page,
 ):
     page.goto(server.url)
     spawn(page, PROMPT)
     prose = page.locator(".row.prose").last
-    message = prose.locator(":scope > .body > .copy")
-    code = prose.locator("pre > .copy")
-    # Unobtrusive: nothing shows until the row is hovered.
+    assert prose.locator(":scope > .body > .copy").count() == 0, "no whole-reply button"
+    code = prose.locator(".fence .copy")
     page.mouse.move(0, 0)
-    assert message.evaluate("b => getComputedStyle(b).opacity") == "0"
-    prose.hover()
-    page.wait_for_function(  # it fades in
-        "b => getComputedStyle(b).opacity === '1'", arg=message.element_handle()
+    assert code.evaluate("b => getComputedStyle(b).opacity") == "0"
+    prose.locator(".fence").hover()
+    page.wait_for_function(
+        "b => getComputedStyle(b).opacity === '1'", arg=code.element_handle()
     )
-    icon = message.locator("svg")  # the icon's class is "copy" too: once, it hid
-    assert icon.evaluate("s => getComputedStyle(s).opacity") == "1"
-    assert icon.bounding_box()["width"] > 0
-
-    assert copied(page, message) == REPLY, "the Markdown, not the rendered text"
-    assert message.inner_text() == "copied"
     assert copied(page, code) == "print('hi')\n"
     user = page.locator(".row.user").first.locator(":scope > .body > .copy")
-    assert copied(page, user) == PROMPT
-    # The confirmation goes away.
+    assert copied(page, user) == PROMPT, "the person's message keeps its button"
+    assert page.errors == []
+
+
+TABLE = "| a | b |\n|---|--:|\n| x | 1 |"
+
+
+def test_a_table_copies_its_markdown_and_its_cells(server, page):  # noqa: F811
+    page.goto(server.url)
+    spawn(page, "/md Numbers:\\n\\n" + TABLE.replace("\n", "\\n") + "\\n\\nDone.")
+    blk = page.locator(".row.prose .tblk").last
+    button = blk.locator(":scope > .copy")
+    page.evaluate("navigator.clipboard.writeText('')")
+    blk.hover()
+    button.click()
     page.wait_for_function(
-        "b => !b.dataset.state", arg=message.element_handle(), timeout=4000
+        "b => b.dataset.state === 'done'", arg=button.element_handle()
     )
+    got = page.evaluate(
+        """async () => {
+          const [item] = await navigator.clipboard.read();
+          return {
+            text: await (await item.getType('text/plain')).text(),
+            html: await (await item.getType('text/html')).text(),
+          };
+        }"""
+    )
+    assert got["text"] == TABLE, "the lines the agent wrote"
+    assert "<table" in got["html"] and "data-label" not in got["html"]
     assert page.errors == []
 
 
@@ -98,24 +115,22 @@ def test_a_collapsed_tool_row_copies_its_whole_output_and_stays_closed(
     assert page.errors == []
 
 
-def test_the_c_key_copies_the_selected_row(server, page):  # noqa: F811
+def test_the_c_key_copies_the_selected_reply_and_marks_its_glyph(server, page):  # noqa: F811
     page.goto(server.url)
     spawn(page, PROMPT)
-    page.locator("#entries").click(position={"x": 5, "y": 5})  # out of the composer
-    page.keyboard.press("G")  # the last row: the turn's "done in" note
-    page.keyboard.press("k")  # the reply
+    page.locator("#entries").click(position={"x": 5, "y": 5})
+    page.keyboard.press("G")
+    page.keyboard.press("k")
     assert page.evaluate(
         "document.querySelector('.row.sel')?.classList.contains('prose')"
     )
     page.evaluate("navigator.clipboard.writeText('')")
     page.keyboard.press("c")
     page.wait_for_function(
-        "document.querySelector('.row.sel > .body > .copy').dataset.state === 'done'"
+        "document.querySelector('.row.sel > .g')?.dataset.copied === 'done'"
     )
     assert page.evaluate("navigator.clipboard.readText()") == REPLY
-    # No copy button is a Tab stop: Tab walks the summaries; `c` is the key.
     stops = page.evaluate(
         "[...document.querySelectorAll('button.copy')].map(b => b.tabIndex)"
     )
     assert stops and set(stops) == {-1}
-    assert page.errors == []

@@ -167,3 +167,75 @@ def test_closing_the_viewer_gives_a_live_page_back_to_its_card(
     card.locator("#st").filter(has_text="{}").wait_for()
     assert page.locator(".row.artifact .acard .held").count() == 0
     assert page.errors == []
+
+
+def test_the_viewer_colours_through_the_loader_and_fetches_one_language(
+    server,  # noqa: F811
+    page,  # noqa: F811
+):
+    """The viewer loads the highlighter's core and Python, not the old bundle
+    (#323)."""
+    (server.root / "code.py").write_text("def f():\n    return 1\n")
+    fetched: list[str] = []
+    page.on(
+        "request",
+        lambda r: (
+            "/vendor/" in r.url
+            and fetched.append(
+                r.url.rsplit("/", 2)[-2] + "/" + r.url.rsplit("/", 1)[-1]
+            )
+        ),
+    )
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    send(page, 1, ["code.py"])
+    page.click(".row.file .fbar .view")
+    page.locator("#viewer .code .hljs-keyword").first.wait_for()
+    assert "hljs/core.min.js" in fetched and "languages/python.min.js" in fetched
+    assert not any(u.endswith("highlight.mjs") for u in fetched)
+    colour = page.evaluate(
+        "getComputedStyle(document.querySelector('#viewer .hljs-keyword')).color"
+    )
+    assert colour == "rgb(201, 162, 122)", "ink's quiet --h-kw, #c9a27a"
+    assert page.errors == []
+
+
+def test_a_fence_in_the_viewer_copies_its_code(
+    server,  # noqa: F811
+    browser,  # noqa: F811
+):
+    """The copy listener sits on the viewer too, not only on the transcript
+    (#323)."""
+    (server.root / "snip.md").write_text("# Snip\n\n```python\nprint('hi')\n```\n")
+    ctx = browser.new_context(
+        viewport={"width": 1280, "height": 800},
+        permissions=["clipboard-read", "clipboard-write"],
+    )
+    pg = ctx.new_page()
+    errors: list = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    try:
+        pg.goto(server.url)
+        pg.wait_for_selector("#a2[data-view=fleet]")
+        spawn(pg)
+        send(pg, 1, ["snip.md"])
+        pg.click(".row.file .fbar .view")
+        fence = pg.locator("#viewer .vbody .doc .fence")
+        fence.wait_for()
+        button = fence.locator(".copy")
+        pg.evaluate("navigator.clipboard.writeText('')")
+        fence.hover()
+        button.click()
+        pg.wait_for_function(
+            "b => b.dataset.state === 'done' || b.dataset.state === 'err'",
+            arg=button.element_handle(),
+            timeout=3000,
+        )
+        assert button.get_attribute("data-state") == "done", button.get_attribute(
+            "title"
+        )
+        assert pg.evaluate("navigator.clipboard.readText()") == "print('hi')\n"
+        assert errors == []
+    finally:
+        ctx.close()

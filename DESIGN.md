@@ -232,7 +232,23 @@ journal notes, reading, waiting on other sessions and `file_send`. The registry 
 session's current permission on each call, so the rule holds for every harness
 and follows a live `/permission`, and Claude Code is told to let every aegis
 tool through, because its plan mode refuses MCP calls an allow rule names
-(`ops.py`, `claude/process.py`). People can do anything.
+(`ops.py`, `claude/process.py`).
+
+**A token is a principal, and a member changes only what it owns.** A server
+holds one token per person, linked server or job, each a name and a role
+(`tokens.py`): the token in `.aegis/state/token` is the admin's, the others are
+digests in `tokens.json`. Every session and queue task records its owner: the
+principal that started it, or the owner of the agent that did, so a member's
+agent cannot hand work to anyone else. An admin changes anything. A member reads
+everything and changes only what it owns; server settings, links, tokens and
+spawning on a linked server are for admins. Each operation declares `admin` or
+the param that names the session it changes, and `ops.Registry.call` checks both
+in one place. An agent acts as its session's owner with the owner's current role,
+and a link acts as the token it presented. A token revoked while its socket is
+open is refused at its next message, and reads nothing more. Every harness runs as
+the server's Linux user, so a member's agent with shell access can read the admin
+token: roles stop accidents between colleagues, not a hostile member, until
+sessions run as separate users.
 Closing is the one exception, and it asks for a second thought: `session_close`
 closes at once only a session the agent spawned, or a worker whose task it
 enqueued, whose attention is done. Anything else, the caller's own session
@@ -247,8 +263,31 @@ sessions it watches.
 A person's `/spawn` makes nobody's child, but its first message carries the
 last turns of the tab it was typed in and that tab's handle, so the new agent
 can find the referent of a three-word task (`agent_ops.spawn_opening`).
-An agent never spawns, enqueues or reads on another server: across a link it
-only hands off, to `handle@server` (`not_across_links` otherwise).
+An agent never enqueues on or reads another server: across a link it hands off,
+to `handle@server`, and an admin's agent spawns, as the link's token there, so
+the far server's quota policy for that token decides (`app._spawn_far`). Its
+permission is capped at the agent's, and the far session records where it came
+from as `spawned_from`, provenance the far side cannot check and never trusts.
+
+**A member spends the pool only below its lines.** A policy (`quota_gate.py`)
+gives each pool, `claude`, `opencode-go` or `codex`, a mode: closed, open, or
+lines, where each listed window of the pool's gauge has a launch line and a stop
+line. A member token takes its own policy or `default_policy` from
+`tokens.json`, a pool its policy does not name is closed, and so is a token with
+neither; an admin has none and is never gated. Below every launch line the owner
+may start harnesses; between the lines its running turns go on and nothing new
+starts; at a stop line aegis interrupts them. One question decides every start,
+`Registry.quota_hold`, asked by `session.spawn`, a queue's dispatch (a waiting
+task is skipped, never failed, so the next owner's runs), `Session.deliver`, a
+turn's end with held messages, a person's send, and the boot's continue: a
+message that may not start a turn is held with `held_for: "quota"`. After every
+reading and every minute `App.on_quota` pauses each working session whose gate
+says stopped (`quota_paused` in the meta, a `quota_paused` record) and continues
+each paused or holding one whose gate is open, with one `> from aegis:quota`
+message ahead of what it held. It is level-triggered, so a restart or a missed
+reading needs no memory, and only an open gate continues, so a gauge between the
+lines leaves a paused session paused and nothing flaps. A reading older than 15
+minutes closes the gate and stops nothing: a failed poll must not interrupt work.
 
 **A link is a client, and nothing travels from a linked server into an agent.**
 Alex's laptop must never run what someone else's token wrote, so a link only
@@ -282,16 +321,16 @@ with a fresh snapshot. Adding a subsystem adds operations and channels, never a 
 
 **Python decides, the browser draws.** Every fact and decision about a transcript
 entry is computed once in Python: its glyph (the name of a symbol in the
-client's SVG sprite, `js/glyphs.js`), title, summary, status, the diff window of
-an edit, and what collapses. The entry crosses the wire as data and the
+client's SVG sprite, `js/glyphs.js`), title, summary, status, the hunks of an
+edit, and what collapses. The entry crosses the wire as data and the
 browser only turns it into markup. One copy of each fact means no drift, and a
 data protocol version fails loudly across a link where mismatched markup would
 break silently.
 
-**The wire carries no collapsed detail.** A tool's arguments, output and diff, a
-system note's tail and thinking text stay on the server until a row opens and
-asks for them with `transcript.detail` (`transcript/wire.py`). They were 75% of a
-snapshot's bytes over 80 real transcripts. Every entry carries `rev`, the store
+**The wire carries no collapsed detail.** A tool's arguments, output, file view
+and diff, a system note's tail and thinking text stay on the server until a row
+opens and asks for them with `transcript.detail` (`transcript/wire.py`). They
+were 75% of a snapshot's bytes over 80 real transcripts. Every entry carries `rev`, the store
 index of the record that last changed it, so a returning client asks for what
 changed since the revision it holds, and the client keeps the last 8 tabs it
 showed.
@@ -428,6 +467,47 @@ its own origin, because any page in the browser can open a socket to localhost.
 The browser holds the token only as an HttpOnly cookie, named per state root,
 that no script on the page can read.
 
+**Markdown is drawn for the width it has, and code is coloured only near the
+view.** Two markdown-it renderers, configured alike, draw every Markdown body:
+one for agents' text, and one for the person's messages that keeps a typed line
+break. A table never breaks a word: it scrolls inside its row with its first
+column pinned, and under 600 px of width it draws as one card per table row.
+The container query that decides this sits on the transcript's scroller `#tr`
+and on the viewer's `.vbody`, never on a row: a size container inside the
+scroller stops Chromium's scroll anchoring, and the text being read jumps as
+rows above it draw. highlight.js is vendored as its core and one file per
+language behind `js/highlight.js`, which imports the core and a language the
+first time a block within 600 px of the view needs them, and caches each result
+so a reply re-rendered by every delta does not flash plain. A fence whose
+closing line has not arrived stays plain, and so does one whose file fails to
+load; the next block asks for that file again. The viewer colours through the
+same loader. Copy buttons sit on code
+blocks and tables, never on a whole reply; a table copies as its Markdown lines
+and as an HTML table at once (#323).
+
+**A tool row says what its views are; the browser lays them out.** The fold
+names a tool row's language (`describe.tool_lang`), turns a Read's numbered
+output and a Write's content into a file view (`detail.file`), and gives an
+Edit hunks with three lines of context, capped at 8 KB: Claude Code's own
+`structuredPatch`, numbered in the file, or `difflib`'s, numbered within the
+edit. All of it is lazy. The browser colours the views and lays an edit out
+side by side when the row is 680 px or wider and in one column below, from the
+same hunks, marking changed words by an LCS over tokens (#323).
+
+**A path in a reply is a link, checked when it is clicked.** The primer asks
+agents to quote a file relative to the config root or absolutely. The fold
+lists the inline code spans of a reply shaped like a path (`detail.paths`);
+it never touches the filesystem, so an archive's links do not depend on the
+machine that reads it. A click sends the reply's id and the path's index to
+`file.peek`, which resolves it as written when absolute, else under the config
+root and under the session's cwd, copies the file and returns its card record;
+the viewer opens it scrolled to the `:line` and marks it. A relative path that
+names two different files, one in each place, opens neither: it answers
+`ambiguous_path`, and the person picks with a button that sends only `root` or
+`cwd`. Agents quote from their own cwd, so taking the root's copy of a
+`README.md` would open the wrong file. A linked
+server's replies draw no links: the file would be on the other machine (#323).
+
 **A sent file's URL is its key, and its content runs nowhere near the token.**
 `file_send` copies the file into the state root under 128 random bits, and
 `/files/<id>/<name>` serves it to anyone with the link, because `<img>`, a new tab
@@ -484,8 +564,8 @@ runs in one place.** The viewer (`client/js/viewer.js`) covers the session's
 column, transcript and composer, and leaves the tabs and the panel in reach;
 each session keeps its own across a tab switch. Markdown and text are fetched
 whole, since the card carries only an excerpt, and drawn in the theme: text is
-coloured by highlight.js, loaded on first use, whose classes map onto the
-theme's variables. Anything else is the card's own preview at full size, so a
+coloured through the transcript's loader (`js/highlight.js`), in the theme's
+quiet palette (`--h-*`). Anything else is the card's own preview at full size, so a
 frame keeps the sandbox the card decided. A live artifact opened there leaves
 its card a line instead of a frame (`entries.hold`), because two frames of one
 page would each take the person's answer and only one would get the agent's

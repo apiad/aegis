@@ -18,9 +18,9 @@ const WAIT_MS = 120; // after the last keystroke, before searching
 // The text a row draws from its entry, as the client holds it.
 function held(e) {
   const d = e.detail || {};
-  const diff = d.diff ? [d.diff.path, ...d.diff.removed, ...d.diff.added] : [];
+  const diff = d.diff ? [d.diff.path, ...d.diff.hunks.flatMap((h) => h.lines.map((ln) => ln.slice(1)))] : [];
   const files = (d.files || []).map((f) => f.name);
-  return [e.title, e.summary, e.md, d.result, d.context, d.ask, d.label, d.tail, d.args, ...diff, ...files]
+  return [e.title, e.summary, e.md, d.result, d.context, d.ask, d.label, d.tail, d.args, d.file?.text, ...diff, ...files]
     .filter(Boolean)
     .join("\n")
     .toLowerCase();

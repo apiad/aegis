@@ -57,7 +57,7 @@
     <section class="cards" id="cards" tabindex="-1"></section>
     <div id="remotes"></div>
     <section class="archive">
-      <div class="archive-head"><h3>Archive</h3><input id="arch-q" placeholder="Filter by title, handle or directory" spellcheck="false"><div class="arch-servers" id="arch-servers" hidden></div></div>
+      <div class="archive-head"><h3>Archive</h3><input id="arch-q" placeholder="Filter by title, handle or directory" spellcheck="false"><div class="arch-servers" id="arch-servers" hidden></div><button class="arch-workers" id="arch-workers" type="button" aria-pressed="false" title="Queue workers: their results went to whoever enqueued them" hidden>Queue workers<b></b></button></div>
       <div id="arch-list"></div>
       <div class="arch-more" id="arch-more" hidden><span id="arch-count"></span><button class="btn" id="arch-next" type="button">Show 50 more</button></div>
     </section>
@@ -94,7 +94,7 @@
 
   <main class="view v-session">
     <section class="col">
-      <div class="tr" id="tr" tabindex="-1"><div id="entries"></div><div class="row replies" id="replies" hidden><span class="t"></span><span class="g" id="replies-g"></span><div class="body" id="replies-pills"></div></div><div class="row working" id="working" hidden><span class="t"></span><span class="g" id="working-g"></span><div class="body">Working <span class="meta" id="working-meta"></span></div></div></div>
+      <div class="tr" id="tr" tabindex="-1"><div id="entries"></div><div class="row replies" id="replies" hidden><span class="t"></span><span class="g" id="replies-g"></span><div class="body" id="replies-pills"></div></div><div class="row closing" id="closing" hidden><span class="t"></span><span class="g" id="closing-g"></span><div class="body"><button class="btn archive" id="closing-btn" type="button" title="Close this session; it stays in the archive">Archive</button></div></div><div class="row working" id="working" hidden><span class="t"></span><span class="g" id="working-g"></span><div class="body">Working <span class="meta" id="working-meta"></span></div></div></div>
       <div class="nav" id="nav" hidden>
         <button class="spark" id="nav-recap" title="Recap where this session stands" aria-label="Recap where this session stands"></button>
         <button class="fold" id="nav-fold" data-level="0" title="Fold tool calls and thinking (Z)" aria-label="Fold tool calls and thinking"></button>

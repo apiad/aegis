@@ -47,6 +47,9 @@ export class Connection {
         this.backoff = 500;
         this.server = msg.server;
         this.native = msg.native === true;
+        // Who this browser is here, and whose a session with no owner is (tokens.py).
+        this.me = msg.me || null;
+        this.owner = msg.owner || "";
         this.onState("open", msg.server);
         for (const key of this.subs.keys()) this._sendSub(key);
         break;

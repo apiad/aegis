@@ -286,7 +286,7 @@ def register_artifact_ops(app: App) -> None:
             raise _err(e) from e
         return s
 
-    @r.op("artifact.state", PageState)
+    @r.op("artifact.state", PageState, owned="log_id")
     async def state(p: PageState, caller):
         s = page(p)
         _sized(p.state, "state")
@@ -296,7 +296,7 @@ def register_artifact_ops(app: App) -> None:
             raise _err(e) from e
         return "ok"
 
-    @r.op("artifact.emit", PageEmit)
+    @r.op("artifact.emit", PageEmit, owned="log_id")
     async def emit(p: PageEmit, caller):
         s = page(p)
         _sized(p.data, "data")
@@ -307,7 +307,7 @@ def register_artifact_ops(app: App) -> None:
         await s.deliver(artifacts.header(p.artifact_id, p.name), artifacts.body(p.data))
         return "ok"
 
-    @r.op("artifact.submit", PageSubmit)
+    @r.op("artifact.submit", PageSubmit, owned="log_id")
     async def submit(p: PageSubmit, caller):
         s = page(p)
         _sized(p.data, "data")
@@ -320,7 +320,7 @@ def register_artifact_ops(app: App) -> None:
         )
         return "ok"
 
-    @r.op("artifact.error", PageError)
+    @r.op("artifact.error", PageError, owned="log_id")
     async def error(p: PageError, caller):
         s = page(p)
         if not s.artifacts.error_wakes(p.artifact_id):
@@ -331,7 +331,7 @@ def register_artifact_ops(app: App) -> None:
         )
         return "ok"
 
-    @r.op("artifact.probed", Probed)
+    @r.op("artifact.probed", Probed, owned="log_id")
     async def probed(p: Probed, caller):
         s = reg.open(p.log_id)
         return (
