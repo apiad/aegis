@@ -93,6 +93,37 @@ aegis, and every browser on the session shows the same one. Only someone who
 may change the session can rearrange it. The agent can dock pages and files
 and arrange the canvas too.
 
+## A canvas across browser windows
+
+A canvas can spread over more than one browser window, for a second screen.
+Window 1 is the session's tab, with the transcript. Each other window is a
+browser tab of its own that shows only its panes, with no tabs, panel or
+transcript. Its title is the session's name and the window's number, as in
+report-layout · window 2, so the browser's tab list tells the windows apart.
+A page in it is as live as a docked one: what you do in it reaches the
+agent, and the agent's updates reach it.
+
+- Pop out, on a live page's card or on its pane's bar, moves the page to a
+  new window and opens that window's tab. It takes the place of the card's
+  Open in a new tab, which showed the page with nothing behind it. A file's
+  card keeps Open in a new tab.
+- Move to window, the button with two arrows on a pane's bar, lists the
+  other windows in use and New window. Choosing one moves the pane there and
+  brings that window's tab to the front, or opens it.
+- The card of an item in another window says in window 2 · open. Open
+  brings that window's tab to the front, or opens it if this browser has
+  none.
+- Window 1 shows a chip at the top of its canvas for each other window,
+  such as window 2 · 1 pane, with Open and Bring back. Bring back moves the
+  window's panes into window 1, each of its columns as a new column on the
+  right, and the window goes.
+
+Closing a window's tab changes nothing: its panes stay where they were, and
+the chip in window 1 is how you get them back. The chip shows even when
+another browser has that window open, since this one cannot tell. A window
+tab whose panes have all gone, brought back, undocked or answered, says This
+window is empty. A canvas has at most 4 windows.
+
 ## Paths in replies
 
 A file path an agent quotes in backticks in a reply, such as
