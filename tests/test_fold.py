@@ -1364,3 +1364,20 @@ def test_a_reply_carries_the_paths_it_names():
     first, second = [e for e in f.entries() if e["kind"] == "prose"]
     assert first["detail"]["paths"] == ["src/a.py:3"]
     assert "paths" not in second["detail"]
+
+
+def test_artifact_and_file_rows_never_fold():
+    r = Rec()
+    r.own("file", caption=None, files=[_sent("a.png")])
+    r.own(
+        "artifact",
+        artifact_id="art-aaaa0009",
+        file_id="F",
+        name="index.html",
+        title="T",
+        caption=None,
+        state=None,
+        started=None,
+    )
+    f = fold_records(r.records)
+    assert [(e["kind"], e["fold"]) for e in f.entries()] == [("file", 0), ("artifact", 0)]
