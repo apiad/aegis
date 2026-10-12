@@ -501,9 +501,13 @@ class App:
         self.host.start()
         self.nudges.start()
         self.links.boot()
+        # Last: its first snapshot must hold every session the boot loaded,
+        # so none of them reads as a transition (push.py).
+        self.push.sender.start()
 
     async def shutdown(self) -> None:
         stopping_at = restarts.stopping(self.roots.state_root)
+        await self.push.sender.stop()
         self.queues.shutdown()
         if self._config_task is not None:
             self._config_task.cancel()
@@ -546,6 +550,7 @@ class App:
         if source is not None:
             t["from"] = {"handle": source.handle, "id": source.log_id}
         self.channels.publish("toasts", [{"toast": t}])
+        self.push.sender.on_toast(t)  # an agent's goes to subscribed devices
         return self.channels.subscribers("toasts")
 
     def _sessions_key(self, op: dict) -> tuple[str, bool]:

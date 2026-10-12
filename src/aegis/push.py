@@ -7,11 +7,24 @@ an endpoint and its two keys are all anyone needs to push to that device. Each
 row belongs to the principal whose token made it; a member changes only their
 own, an admin any, and revoking a token deletes its rows (``token.revoke`` in
 ``app.py``), so a lost phone stops hearing about the work.
+
+The sender listens to the ``sessions`` channel inside the server, as a browser
+does, and to ``App.toast``, and applies ping.js's rule: an event is a session
+entering an attention state it was not in, or an agent's toast. The first
+snapshot only records where each session stands, so a restart with sessions
+already waiting sends nothing. A channel callback only puts work on a queue;
+one task encrypts and posts it, so a slow or dead push service never delays
+the channel, whose other subscribers are the browsers.
 """
 
 from __future__ import annotations
 
+import asyncio
+import base64
+import contextlib
+import hashlib
 import json
+import logging
 import os
 import secrets
 import time
@@ -19,6 +32,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlsplit
 
+import httpx
 from pydantic import BaseModel, Field, field_validator
 
 from . import webpush
@@ -30,6 +44,20 @@ if TYPE_CHECKING:
 Source = Literal["needs_you", "error", "review", "done", "toast"]
 SOURCES: tuple[str, ...] = ("needs_you", "error", "review", "done", "toast")
 DEFAULT_SOURCES = ["needs_you", "error", "toast"]
+log = logging.getLogger("aegis.push")
+
+TTL_S = 86400  # how long a push service keeps a push for a device that is off
+TIMEOUT_S = 10.0  # per request, connection to answer
+BACKOFF_S = (1.0, 4.0)  # before the second and the third try
+MAX_PAYLOAD = 3072  # bytes of JSON; push services take about 4 KB encrypted
+JWT_FOR_S = 3600  # a VAPID token is reused this long (it is valid 12 hours)
+LABELS = {
+    "needs_you": "needs you",
+    "error": "error",
+    "review": "to read",
+    "done": "done",
+}
+URGENT = {"needs_you", "error"}
 
 
 def _write_private(path: Path, text: str) -> None:
@@ -128,12 +156,15 @@ class Subscriptions:
 
 
 class Push:
-    """What ``App.push`` holds: the subscriptions and this server's VAPID key,
-    made on first use (``webpush.load_key``)."""
+    """What ``App.push`` holds: the subscriptions, this server's VAPID key,
+    made on first use (``webpush.load_key``), the public origins aegis is
+    served at (``web.build_web`` sets them) and the sender."""
 
     def __init__(self, state_root: Path) -> None:
         self.dir = state_root / "push"
         self.subscriptions = Subscriptions(self.dir / "subscriptions.json")
+        self.origins: list[str] = []
+        self.sender: Sender | None = None
         self._key = None
 
     @property
@@ -141,6 +172,192 @@ class Push:
         if self._key is None:
             self._key = webpush.load_key(self.dir / "vapid.pem")
         return self._key
+
+
+def fit(payload: dict) -> dict:
+    """``payload`` with its body cut until its JSON is at most MAX_PAYLOAD bytes."""
+    out = dict(payload)
+    while len(json.dumps(out).encode()) > MAX_PAYLOAD and out["body"]:
+        excess = len(json.dumps(out).encode()) - MAX_PAYLOAD
+        body = out["body"].removesuffix("…")
+        out["body"] = body[: max(0, len(body) - max(excess // 2, 1))] + "…"
+    return out
+
+
+def topic(key: str) -> str:
+    """The Topic header for a session: a newer push for it replaces an older
+    one the service still holds. The header allows 32 URL-safe characters."""
+    digest = hashlib.sha256(key.encode()).digest()
+    return base64.urlsafe_b64encode(digest).decode().rstrip("=")[:32]
+
+
+class Sender:
+    """Turns transitions and agents' toasts into encrypted pushes (module doc)."""
+
+    # An httpx transport in place of the network: tests set it on the class,
+    # so it holds for the sender of an app that restarts.
+    transport = None
+
+    def __init__(self, app: App, push: Push, transport=None) -> None:
+        self.app = app
+        self.push = push
+        if transport is not None:
+            self.transport = transport
+        self._seen: dict[str, str | None] = {}  # log id -> attention
+        self._subs: list = []
+        self._queue: asyncio.Queue | None = None
+        self._task: asyncio.Task | None = None
+        self._client: httpx.AsyncClient | None = None
+        self._jwts: dict[str, tuple[str, float]] = {}  # origin -> (token, made)
+
+    def start(self) -> None:
+        """Called at the end of ``App.boot``, when every session is loaded, so
+        the first snapshot holds them all."""
+        self._queue = asyncio.Queue()
+        self._task = asyncio.create_task(self._drain())
+        self._subs = [self.app.channels.subscribe("sessions", self._on_sessions)]
+
+    async def stop(self) -> None:
+        for sub in self._subs:
+            self.app.channels.unsubscribe(sub)
+        self._subs = []
+        if self._task is not None:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+            self._task = None
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+    def _on_sessions(self, frame: dict) -> None:
+        if frame["t"] == "snapshot":
+            self._seen = {m["log_id"]: m.get("attention") for m in frame["data"]}
+            return
+        for op in frame.get("ops", ()):
+            if "remove" in op:
+                self._seen.pop(op["remove"], None)
+                continue
+            m = op.get("upsert")
+            if m is None:
+                continue
+            was = self._seen.get(m["log_id"])
+            now = self._seen[m["log_id"]] = m.get("attention")
+            if now == was or now not in LABELS:
+                continue
+            # A fresh session idles as done, and a reply to one that needs
+            # you passes through done on its way to working: only a turn
+            # that just ended is finished work, or something to read.
+            if now in ("review", "done") and was != "working":
+                continue
+            self._queue_for(
+                now,
+                {
+                    "title": f"{m.get('title') or m['handle']}: {LABELS[now]}",
+                    "body": m.get("attention_line") or "",
+                    "key": m["log_id"],
+                    "kind": now,
+                    "tag": f"{m['log_id']}:{now}",
+                },
+            )
+
+    def on_toast(self, t: dict) -> None:
+        """A toast as ``App.toast`` publishes it. Called by it rather than
+        subscribed to the ``toasts`` channel, whose subscribers it counts as
+        the browsers that saw the toast."""
+        if not t.get("from"):
+            return  # aegis's own toasts answer something done on a page
+        handle, sid = t["from"]["handle"], t["from"]["id"]
+        self._queue_for(
+            "toast",
+            {
+                "title": f"{handle}: error" if t.get("kind") == "error" else handle,
+                "body": t["text"],
+                "key": sid,
+                "kind": "toast",
+                "tag": f"toast:{sid}:{t['text']}",
+            },
+        )
+
+    def _queue_for(self, source: str, payload: dict) -> None:
+        if self._queue is None:
+            return
+        for row in self.push.subscriptions.list():
+            if source in row.get("sources", ()):
+                self._queue.put_nowait((row["id"], payload))
+
+    async def _drain(self) -> None:
+        while True:
+            sid, payload = await self._queue.get()
+            row = self.push.subscriptions.get(sid)
+            if row is None:
+                continue  # removed since
+            try:
+                await self.send_to(row, payload)
+            except Exception:
+                log.exception("aegis: a push to %s failed", row.get("device"))
+
+    def _jwt(self, origin: str) -> str:
+        cached = self._jwts.get(origin)
+        if cached and time.time() - cached[1] < JWT_FOR_S:
+            return cached[0]
+        https = [o for o in self.push.origins if o.startswith("https://")]
+        sub = https[0] if https else "mailto:aegis@localhost"
+        token = webpush.vapid_jwt(self.push.key, origin, sub)
+        self._jwts[origin] = (token, time.time())
+        return token
+
+    async def send_to(self, row: dict, payload: dict) -> int | None:
+        """Encrypt ``payload`` for one subscription and post it, trying a 429,
+        a 5xx or no answer three times in all. A 201 stamps ``last_ok_at``; a
+        404 or 410 means the browser dropped the subscription, which goes; any
+        other end counts a failure. Returns the last status, None for none."""
+        payload = fit(payload)
+        keys = row["keys"]
+        body = webpush.encrypt(
+            json.dumps(payload).encode(),
+            webpush.b64d(keys["p256dh"]),
+            webpush.b64d(keys["auth"]),
+        )
+        u = urlsplit(row["endpoint"])
+        public = webpush.b64e(webpush.raw_public(self.push.key))
+        headers = {
+            "TTL": str(TTL_S),
+            "Urgency": "high" if payload["kind"] in URGENT else "normal",
+            "Content-Encoding": "aes128gcm",
+            "Content-Type": "application/octet-stream",
+            "Authorization": f"vapid t={self._jwt(f'{u.scheme}://{u.netloc}')}, k={public}",
+        }
+        if payload["kind"] in LABELS and payload["key"]:
+            headers["Topic"] = topic(payload["key"])
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                timeout=TIMEOUT_S, transport=self.transport
+            )
+        status = None
+        for attempt in range(1 + len(BACKOFF_S)):
+            if attempt:
+                await asyncio.sleep(BACKOFF_S[attempt - 1])
+            try:
+                async with asyncio.timeout(TIMEOUT_S):
+                    r = await self._client.post(
+                        row["endpoint"], content=body, headers=headers
+                    )
+                status = r.status_code
+            except (httpx.HTTPError, TimeoutError) as e:
+                status = None
+                log.info("aegis: push to %s: %r", u.netloc, e)
+            if status is not None and 200 <= status < 300:
+                self.push.subscriptions.record(row["id"], ok=True)
+                return status
+            if status in (404, 410):
+                self.push.subscriptions.remove(row["id"])
+                return status
+            if status is not None and status != 429 and status < 500:
+                break
+        log.warning("aegis: push to %s failed: %s", u.netloc, status)
+        self.push.subscriptions.record(row["id"], ok=False)
+        return status
 
 
 class _Strict(BaseModel):
@@ -212,6 +429,7 @@ class SubId(_Strict):
 def register_push_ops(app: App) -> Push:
     """The ops of section 10 of the push spec; returns what ``App.push`` holds."""
     push = Push(app.roots.state_root)
+    push.sender = Sender(app, push)
     r = app.registry
 
     def mine(id: str, caller: Caller) -> dict:
@@ -269,8 +487,19 @@ def register_push_ops(app: App) -> Push:
 
     @r.op("push.test", SubId)
     async def push_test(p: SubId, caller):
-        """Send a test push to one subscription."""
-        mine(p.id, caller)
-        raise OpError("not_ready", "the sender is not built yet")
+        """Send a test push to one subscription; answers the push service's
+        status, null when it never answered."""
+        row = mine(p.id, caller)
+        status = await push.sender.send_to(
+            row,
+            {
+                "title": "aegis",
+                "body": "Push reaches this device.",
+                "key": "",
+                "kind": "test",
+                "tag": "test",
+            },
+        )
+        return {"status": status}
 
     return push

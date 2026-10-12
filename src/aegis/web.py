@@ -158,6 +158,7 @@ def build_web(
 ) -> Starlette:
     # Host header -> the one origin a socket naming that host must come from.
     public = {urlsplit(o).netloc: o for o in map(public_origin, origins)}
+    app.push.origins = list(public.values())  # the VAPID contact (push.py)
     cookie = cookie_name(app.roots.state_root)
 
     # ``token`` is the admin's (tokens.py); any token the store knows signs in.
