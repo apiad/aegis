@@ -344,7 +344,9 @@ def test_the_composer_overrides_a_chip_resets_it_and_spawns_with_the_first_messa
     page.press("#sp-text", "Enter")
     page.wait_for_selector("#a2[data-view=session]")
     turns_done(page, 1)
-    text = page.inner_text("#entries")
+    # textContent, not innerText: rows far from the viewport skip rendering
+    # (content-visibility:auto), and innerText leaves skipped rows out.
+    text = page.text_content("#entries")
     assert "/argv" in text and '"--effort", "max"' in text
 
     page.click("#tab-fleet")
@@ -5114,7 +5116,7 @@ def test_the_new_tab_on_a_phone_adds_a_line_on_enter_like_a_session(server, brow
     page.tap("#sp-go")
     page.wait_for_selector("#a2[data-view=session]")
     turns_done(page, 1)
-    assert "two" in page.inner_text("#entries")
+    assert "two" in page.text_content("#entries")  # innerText skips offscreen rows
     assert errs == []
 
 
