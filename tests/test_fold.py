@@ -1380,4 +1380,66 @@ def test_artifact_and_file_rows_never_fold():
         started=None,
     )
     f = fold_records(r.records)
-    assert [(e["kind"], e["fold"]) for e in f.entries()] == [("file", 0), ("artifact", 0)]
+    assert [(e["kind"], e["fold"]) for e in f.entries()] == [
+        ("file", 0),
+        ("artifact", 0),
+    ]
+
+
+def _art(r, aid):
+    r.own(
+        "artifact",
+        artifact_id=aid,
+        file_id="F",
+        name="index.html",
+        title="T",
+        caption=None,
+        state=None,
+        started=None,
+    )
+
+
+def _lay(*columns):
+    return [
+        {
+            "n": 1,
+            "columns": [
+                {"w": 1 / len(columns), "panes": [{"id": i, "h": 1.0}]} for i in columns
+            ],
+        }
+    ]
+
+
+def test_a_layout_record_is_standing_and_the_latest_wins():
+    r = Rec()
+    _art(r, "art-aaaa0010")
+    f = fold_records(r.records)
+    assert f.standing["layout"] is None
+    r.own("layout", by="person", windows=_lay("transcript", "art-aaaa0010"))
+    r.own("layout", by="agent", windows=_lay("art-aaaa0010", "transcript"))
+    live, ops = run(r)
+    assert ops[-1] == []  # a layout makes no entry
+    assert live.standing["layout"] == {"windows": _lay("art-aaaa0010", "transcript")}
+    assert fold_records(r.records).standing == live.standing
+
+
+def test_a_submit_or_a_close_takes_the_page_off_the_canvas():
+    r = Rec()
+    _art(r, "art-aaaa0011")
+    _art(r, "art-aaaa0012")
+    r.own(
+        "layout",
+        by="person",
+        windows=_lay("transcript", "art-aaaa0011", "art-aaaa0012"),
+    )
+    r.own("artifact_submit", artifact_id="art-aaaa0011", data={}, label="ok")
+    f = fold_records(r.records)
+    assert [
+        p["id"]
+        for c in f.standing["layout"]["windows"][0]["columns"]
+        for p in c["panes"]
+    ] == ["transcript", "art-aaaa0012"]
+    r.own("artifact_close", artifact_id="art-aaaa0012", label=None)
+    live, _ = run(r)
+    assert [c["w"] for c in live.standing["layout"]["windows"][0]["columns"]] == [1.0]
+    assert fold_records(r.records).standing == live.standing

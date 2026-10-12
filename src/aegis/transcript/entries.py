@@ -23,6 +23,7 @@ from collections import deque
 from typing import Any
 
 from .. import files
+from .. import layout as canvas
 from ..artifacts import EVENTS_KEPT
 from ..claude.stream import (
     CommandEcho,
@@ -114,6 +115,8 @@ EMPTY_STANDING: dict = {
     "ended": None,
     "plan_mark": None,
     "nudged": [],
+    # the canvas (layout.py); None is the default, the transcript alone
+    "layout": None,
 }
 
 NUDGE_HEADER = "> from aegis:nudge · "
@@ -461,6 +464,10 @@ class Fold:
             return self._upsert(
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary=line)
             )
+        if kind == "layout":
+            # Written already checked (layout_ops); the fold only keeps it.
+            self._stand(layout={"windows": list(rec.get("windows") or [])})
+            return []
         if kind == "plan":
             items, clock = replan(
                 self.standing["plan"],
@@ -678,6 +685,11 @@ class Fold:
             else:
                 status = "closed"
                 det.update(label=rec.get("label"), ended_ts=ts)
+            if kind in ("artifact_submit", "artifact_close"):
+                lay = self.standing["layout"]
+                if lay and e["id"] in canvas.ids(lay):
+                    # An ended page leaves the canvas; no record is written for it.
+                    self._stand(layout=canvas.trim(lay, e["id"]))
             return self._upsert(
                 {**e, "status": status, "summary": status, "detail": det}
             )
