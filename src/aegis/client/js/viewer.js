@@ -13,7 +13,7 @@
 // one, its card holds a line instead of a frame (entries.hold), and the
 // agent's state reaches the viewer's frame instead.
 
-import { artifactStage, fileActions, fileUrl, hold, markdown, preview } from "./entries.js";
+import { artifactStage, dockButton, fileActions, fileUrl, hold, markdown, preview } from "./entries.js";
 import { entryIcon, icon } from "./glyphs.js";
 import { colour, langOfPath, paint } from "./highlight.js";
 
@@ -222,7 +222,9 @@ export class Viewer {
 
   drawFile(item, bar, body, draw) {
     const acts = el("span", "acts");
-    drawFile(item.files[item.at], {
+    const f = item.files[item.at];
+    if (!item.remote) acts.append(dockButton(f.key || ""));
+    drawFile(f, {
       remote: item.remote,
       glyph: item.glyph,
       bar,
@@ -260,6 +262,7 @@ export class Viewer {
       return;
     }
     const acts = el("span", "acts");
+    if (e.status === "live") acts.append(dockButton(e.id));
     drawArtifact(e, { bar, body, acts });
     acts.append(this.closeButton());
     bar.append(acts);

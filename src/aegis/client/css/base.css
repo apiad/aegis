@@ -670,6 +670,27 @@ body{background:#000}
 #a2 .canvas>.pane>.pbar .acts{margin-left:auto}
 #a2 .canvas>.pane>.pbody{flex:1;min-height:0;overflow:auto;outline:none}
 #a2 .canvas>.pane.flash{outline:2px solid var(--accent);outline-offset:-2px}
+/* The person's handles: a pane's bar is what drags it, the transcript's is a
+   thin strip over its top edge, and the grips sit on the boundaries. While
+   something is dragged, frames take no pointer, or they would swallow it. */
+#a2 .canvas[data-writable]>.pane>.pbar{cursor:grab;touch-action:none}
+#a2 .canvas[data-writable]>.pane>.pbar .btn{cursor:pointer}
+#a2 .canvas:not([data-writable]) .undock{display:none}
+#a2 .canvas>.pbar.tr-handle{position:absolute;display:block;width:auto;height:7px;gap:0;z-index:8;cursor:grab;touch-action:none;background:var(--rule);opacity:.5}
+#a2 .canvas>.pbar.tr-handle:hover{background:var(--accent);opacity:1}
+#a2 .canvas>.col.viewing~.pbar.tr-handle{display:none}
+#a2 .canvas.dragging,#a2 .canvas.dragging *{cursor:grabbing;user-select:none}
+#a2 .canvas.dragging iframe{pointer-events:none}
+#a2 .canvas>.droptarget{position:absolute;z-index:9;box-sizing:border-box;background:var(--accent-soft);border:2px solid var(--accent);border-radius:var(--r);pointer-events:none}
+#a2 .canvas>.cgrip{position:absolute;z-index:8;touch-action:none}
+#a2 .canvas>.cgrip.x{top:0;bottom:0;width:9px;margin-left:-4px;cursor:col-resize}
+#a2 .canvas>.cgrip.y{height:9px;margin-top:-4px;cursor:row-resize}
+#a2 .canvas>.cgrip:after{content:"";position:absolute;transition:background .12s}
+#a2 .canvas>.cgrip.x:after{left:4px;top:0;bottom:0;width:1px}
+#a2 .canvas>.cgrip.y:after{top:4px;left:0;right:0;height:1px}
+#a2 .canvas>.cgrip:hover:after,#a2 .canvas>.cgrip.on:after{background:var(--accent)}
+#a2 .canvas>.cgrip.x:hover:after{left:3px;width:2px}
+#a2 .canvas>.cgrip.y:hover:after{top:3px;height:2px}
 #a2 .md code.path{color:var(--accent);cursor:pointer;border-style:dashed}
 #a2 .md code.path:hover{border-style:solid}
 #a2 .md code.path::before{content:"↗ ";opacity:.6}

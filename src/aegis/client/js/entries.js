@@ -115,7 +115,8 @@ function fileCard(files, glyph) {
   const { acts, set } = fileActions(remote);
   const view = iconButton(el("button", "btn primary view"), "expand", "Open");
   view.addEventListener("click", () => opener({ files: sent, at, remote, glyph }));
-  acts.prepend(view);
+  const dock = dockButton("");
+  acts.prepend(view, ...(remote ? [] : [dock]));
   bar.append(entryIcon(glyph), name, size);
   const prev = withIcon(el("button", "btn prev"), "left");
   const next = withIcon(el("button", "btn next"), "right");
@@ -137,6 +138,8 @@ function fileCard(files, glyph) {
     name.textContent = f.name;
     size.textContent = f.summary;
     set(f);
+    dock.dataset.dock = f.key || "";
+    dock.hidden = !docker.can(dock.dataset.dock);
     count.textContent = `${i + 1} / ${sent.length}`;
     prev.disabled = i === 0;
     next.disabled = i === sent.length - 1;
@@ -176,6 +179,27 @@ export function fileActions(remote) {
 let opener = () => {};
 export function setOpener(fn) {
   opener = fn;
+}
+
+// What Dock does, on a card and on the viewer's bar: app.js hands it the
+// canvas (js/canvas.js), so this module does not import it. can(id) says
+// whether the button shows: not while the item is docked, not for a file
+// sent before files had keys, and not on a session the person may not change.
+let docker = { dock: () => {}, can: () => false };
+export function setDocker(dock, can) {
+  docker = { dock, can: (id) => !!id && can(id) };
+}
+export function dockButton(id) {
+  const b = iconButton(el("button", "btn dock"), "dock", "Dock beside the transcript");
+  b.type = "button";
+  b.dataset.dock = id;
+  b.hidden = !docker.can(id);
+  b.addEventListener("click", () => docker.dock(b.dataset.dock));
+  return b;
+}
+// The canvas or who may change it changed: every Dock button drawn shows or hides.
+export function syncDock() {
+  for (const b of document.querySelectorAll("#a2 .btn.dock[data-dock]")) b.hidden = !docker.can(b.dataset.dock);
 }
 
 // One sent file's preview, or null when the browser cannot draw one. A click
@@ -449,7 +473,7 @@ const RENDERERS = {
     open.href = fileUrl(det.url);
     open.target = "_blank";
     open.rel = "noopener noreferrer";
-    acts.append(view, open);
+    acts.append(view, ...(e.status === "live" ? [dockButton(e.id)] : []), open);
     if (e.status !== "live") acts.prepend(el("button", "btn show", "Show"));
     card.dataset.md = e.md || ""; // the caption's source, for update() to compare exactly
     bar.append(entryIcon(e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);
