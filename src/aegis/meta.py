@@ -122,6 +122,7 @@ def rebuild(store_path: Path) -> dict | None:
         "priming": spawn.get("priming"),
         "overridden": spawn.get("overridden"),
         "spawned_by": spawn.get("spawned_by"),
+        "owner": spawn.get("owner"),
         "model": spec["model"],
         "effort": spec["effort"],
         "permission": spec["permission"],

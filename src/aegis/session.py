@@ -95,6 +95,11 @@ class Host:
     def catalog_ready(self, session: "Session", catalog: Catalog) -> None:
         """A process answered ``initialize``: its cwd's commands and models."""
 
+    def quota_hold(self, session: "Session") -> str | None:
+        """Why the session's owner may not start a turn now (quota_gate.py),
+        or None when it may."""
+        return None
+
 
 NO_HOST = Host()
 
@@ -123,6 +128,13 @@ class SpawnSpec:
     overridden: tuple[str, ...] = ()
     # The log id of the agent session that spawned this one.
     spawned_by: str | None = None
+    # The principal whose session this is (tokens.py); None from before owners,
+    # which reads as the admin's.
+    owner: str | None = None
+    # ``handle@server`` of the agent on a linked server that asked a link for
+    # this session. Provenance for the transcript and the journal, never
+    # authorization: this server cannot check it.
+    spawned_from: str | None = None
 
     def record(self) -> dict:
         """The fields a spawn record and a meta carry."""
@@ -140,6 +152,10 @@ class SpawnSpec:
             d["overridden"] = list(self.overridden)
         if self.spawned_by:
             d["spawned_by"] = self.spawned_by
+        if self.owner:
+            d["owner"] = self.owner
+        if self.spawned_from:
+            d["spawned_from"] = self.spawned_from
         return d
 
     @classmethod
@@ -156,6 +172,8 @@ class SpawnSpec:
             priming=d.get("priming") or None,
             overridden=tuple(d.get("overridden") or ()),
             spawned_by=d.get("spawned_by"),
+            owner=d.get("owner"),
+            spawned_from=d.get("spawned_from"),
         )
 
 
@@ -195,6 +213,7 @@ class Session:
         recap_cost_usd: float = 0.0,
         last_exit: dict | None = None,
         restart_continues: int = 0,
+        quota_paused: str | None = None,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
@@ -258,6 +277,10 @@ class Session:
         # because boot decides from metas alone.
         self.last_exit = last_exit
         self.restart_continues = restart_continues
+        # Why the quota gate interrupted this session's turn (app.on_quota),
+        # until the gate opens and continues it. In the meta, so a restart
+        # keeps it paused.
+        self.quota_paused = quota_paused
         # The process's start time from /proc, so a crashed server's successor
         # can tell this harness from a later process that reused its pid.
         self._pid_started: int | None = None
@@ -295,6 +318,7 @@ class Session:
             "pid_started": self._pid_started if self._proc else None,
             "last_exit": self.last_exit,
             "restart_continues": self.restart_continues,
+            "quota_paused": self.quota_paused,
         }
 
     def wire(self) -> dict:
@@ -546,16 +570,25 @@ class Session:
         """An inbox message. Idle or stopped: sent now (a stopped session is
         resumed to receive it). Mid-turn: held, and sent with any others when
         the turn ends, because a prompt written mid-turn would be injected at
-        the next tool boundary instead of waiting."""
+        the next tool boundary instead of waiting. When the owner's quota gate
+        says no turn may start, held with ``held_for: "quota"`` until it opens
+        (app.on_quota)."""
         if self.archived:
             raise Archived(self.log_id)
         msg = {"header": header, "body": body, "ts": time.time()}
         if self.status == "working" or self._flushing:
-            self.held.append(msg)
-            self._metas.write_soon(self.log_id, self.meta)
-            self._publish_now()
+            self._hold(msg)
+            return
+        if self._host.quota_hold(self) is not None:
+            self._hold(msg | {"held_for": "quota"})
             return
         await self.send(_inbox_text([msg]))
+
+    def _hold(self, msg: dict) -> None:
+        self.held.append(msg)
+        self._metas.write_soon(self.log_id, self.meta)
+        self._publish_now()
+        self._host.status_changed(self)
 
     async def _flush_held(self) -> None:
         self._flushing = True
@@ -784,7 +817,12 @@ class Session:
             self._publish_now()  # waiting on a background task shows on the card
             self._host.status_changed(self)
         if any(isinstance(ev, Result) for ev in events):
-            if self.held:
+            if self.held and self._host.quota_hold(self) is not None:
+                # The gate says no new turn: they wait for it to open.
+                self.held = [m | {"held_for": "quota"} for m in self.held]
+                self._metas.write_soon(self.log_id, self.meta)
+                self._publish_now()
+            elif self.held:
                 self._flushing = True
                 asyncio.get_running_loop().create_task(self._flush_held())
             self._host.turn_ended(self)

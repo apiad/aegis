@@ -51,7 +51,10 @@ export function hostSeverity(pct) {
   return pct >= 95 ? "critical" : pct >= 80 ? "warning" : "normal";
 }
 
-function bar(kind, pct, severity, tick) {
+// `lines` are a member's own quota lines on this window ({launch, stop}, as
+// its policy holds them, quota_gate.py): a green tick and a red one. A pace
+// launch line is the elapsed tick already drawn.
+function bar(kind, pct, severity, tick, lines = null) {
   const b = el("div", `bar ${kind} ${severity}`);
   const fill = el("i");
   fill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
@@ -59,6 +62,13 @@ function bar(kind, pct, severity, tick) {
   if (tick != null) {
     const t = el("span", "tick");
     t.style.left = `${tick * 100}%`;
+    b.append(t);
+  }
+  for (const [which, at] of [["l", lines?.launch], ["s", lines?.stop]]) {
+    if (typeof at !== "number") continue;
+    const t = el("span", `tick lim ${which}`);
+    t.style.left = `${at}%`;
+    t.title = `${which === "l" ? "launch" : "stop"} line ${at}%`;
     b.append(t);
   }
   return b;
@@ -101,7 +111,7 @@ export function quotaRow(p, w, now) {
   return g;
 }
 
-export function quotaSideRow(p, w, now) {
+export function quotaSideRow(p, w, now, lines = null) {
   const stale = p.state === "stale";
   const r = el("div", `qrow ${w.severity}${stale ? " stale" : ""}`);
   r.dataset.kind = w.kind;
@@ -114,7 +124,7 @@ export function quotaSideRow(p, w, now) {
   const dim = el("div", "kv dim");
   if (w.resets_at != null)
     dim.append(el("span", null, `resets in ${countdown(w.resets_at - now)}`), el("span", null, clock(w.resets_at)));
-  r.append(kv, bar("q", w.percent, w.severity, elapsed(w, now)), dim);
+  r.append(kv, bar("q", w.percent, w.severity, elapsed(w, now), lines), dim);
   return r;
 }
 

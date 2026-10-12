@@ -5,6 +5,7 @@
   --accent:#e0a872;--accent-soft:rgba(224,168,114,.16);--on-accent:#1a140d;
   --ok:#9db07e;--err:#d9806f;--err-bg:#221512;--warn:#e0a872;--comms:#9fb4d0;
   --add-bg:#18200f;--del-bg:#2a1512;
+  --h-kw:#c9a27a;--h-str:#a9b78c;--h-num:#d4a58e;--h-com:#6f6b62;--h-fn:#e6d6b0;--h-type:#a9b9cf;--h-var:#d2c7b4;--h-meta:#8a867b;
   --font-ui:'Inter',sans-serif;--font-prose:'SS4',serif;--font-mono:'JBM',monospace;
   --font-chrome:'JBM',monospace;--font-head:'JBM',monospace;
   --prose-size:16.5px;--r:6px;--r-lg:10px;--time:none;--thread:block;--row-cols:22px 1fr;--fill:var(--accent);

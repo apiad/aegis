@@ -224,3 +224,15 @@ def test_the_cache_dir_takes_the_override_then_xdg(monkeypatch, tmp_path):
     assert cache_dir() == tmp_path / "xdg" / "aegis" / "quota"
     monkeypatch.setenv("AEGIS_QUOTA_CACHE", str(tmp_path / "here"))
     assert cache_dir() == tmp_path / "here"
+
+
+async def test_listeners_hear_every_check_changed_or_not(tmp_path):
+    c = Clocks()
+    q, _, sent = make(tmp_path, c, [(71.0, 11160)])
+    heard = []
+    q.listeners.append(heard.append)
+    q.listeners.insert(0, lambda snap: 1 / 0)  # a broken listener stops nothing
+    await q.tick()
+    await q.tick()
+    assert len(sent) == 1 and len(heard) == 2
+    assert heard[0] == q.snapshot()

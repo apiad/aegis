@@ -280,9 +280,11 @@ def spawn_opening(source, prompt: str, home: str | None) -> str:
 
 
 ACROSS = (
-    "an agent on this server reaches a linked server only by handing off to a "
-    "session there (peer_handoff to handle@server); reading, spawning and "
-    "enqueueing on another server are for people"
+    "an agent on this server reaches a linked server by spawning there "
+    "(session_spawn with agent@server, gated by that server's quota policy for "
+    "the link) and by handing off to a session there (peer_handoff to "
+    "handle@server); reading, sending to and enqueueing on another server are "
+    "for people"
 )
 
 
@@ -295,7 +297,23 @@ FAR_ERRORS = {
     "archived": "{handle}@{server} is archived",
     "server_offline": "{server} is not linked right now",
     "timeout": "{server} did not answer in time",
+    "not_owner": "{handle}@{server} is not this server's link's to prompt there",
+    "quota_closed": "the quota gate on {server} for this server's link is closed: "
+    "nothing was started; a person here can see why with /spawn",
+    "not_for_members": "{server} lets this server's link do that only as an admin",
+    "not_allowed": "{server} refused the permission asked for",
+    "unknown_agent": "{server} has no such agent",
 }
+
+
+def far_error(e: OpError, server: str, handle: str = "") -> OpError:
+    """A linked server's refusal as this server words it: the code if it is
+    on the allowlist, never the far server's text."""
+    if e.code in FAR_ERRORS:
+        return OpError(e.code, FAR_ERRORS[e.code].format(handle=handle, server=server))
+    return OpError("far_error", f"{server} refused the call")
+
+
 USER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 # What session_list adds from a session's card, so one agent can follow
@@ -473,6 +491,12 @@ def register_agent_ops(app: App) -> None:
     def mine(t, caller: Caller):
         if caller.is_agent and t.enqueuer != caller.log_id:
             raise OpError("not_yours", "agents can change only the tasks they enqueued")
+        # A member changes only its own tasks; one from before owners is the admin's.
+        who = app.who(caller)
+        if not who.is_admin and (t.owner or app.user) != who.name:
+            raise OpError(
+                "not_owner", f"{t.id} belongs to {t.owner or app.user}; you can read it"
+            )
 
     def roster(owner: str, but: str | None = None) -> list[dict]:
         return [
@@ -542,6 +566,12 @@ def register_agent_ops(app: App) -> None:
             raise OpError("no_monitor", f"no live monitor {p.monitor_id!r}")
         if caller.is_agent and m.owner != caller.log_id:
             raise OpError("not_yours", "agents can cancel only their own monitors")
+        # A monitor wakes its session: a member stops only its own sessions' ones.
+        who, owner = app.who(caller), app.owner_of(m.owner)
+        if not who.is_admin and owner not in (None, who.name):
+            raise OpError(
+                "not_owner", f"{m.id} watches {owner}'s session; you can read it"
+            )
         app.monitors.cancel(m.id)
         return {"cancelled": m.id, "remaining": roster(m.owner)}
 
@@ -576,7 +606,12 @@ def register_agent_ops(app: App) -> None:
         enqueuer = own(caller) if caller.is_agent else None
         cwd = str(enqueuer.spec.cwd if enqueuer else app.roots.harness_cwd)
         t = await app.queues.enqueue(
-            p.queue, p.payload, p.callback, enqueuer.log_id if enqueuer else None, cwd
+            p.queue,
+            p.payload,
+            p.callback,
+            enqueuer.log_id if enqueuer else None,
+            cwd,
+            owner=app.who(caller).name,
         )
         return {"task_id": t.id, "status": t.status, "position": app.queues.position(t)}
 
@@ -613,9 +648,25 @@ def register_agent_ops(app: App) -> None:
         interrupt cuts that turn first. `handle@server` reaches a session on a
         server this one links; nothing there can reach you back."""
         handle, server = split_address(p.target, app.server_name)
+        who = app.who(caller)
         if server is not None:
+            # The link delivers as its own token on the far server (web.py).
+            if not who.is_admin:
+                raise OpError(
+                    "not_for_members",
+                    f"handing off to {server} through this server's link is for "
+                    "an admin here",
+                )
             return await far_handoff(handle, server, p, caller)
         to = target(p.target)
+        # A prompt or an interrupt changes the session: a member's reaches only
+        # its own (tokens.py).
+        owner = app.owner_of(to.log_id)
+        if not who.is_admin and owner != who.name:
+            raise OpError(
+                "not_owner",
+                f"{to.handle} belongs to {owner}; you can read it, not prompt it",
+            )
         sender = (
             f"agent:{reg.sessions[caller.log_id].handle}"
             if caller.is_agent and caller.log_id in reg.sessions
@@ -623,11 +674,13 @@ def register_agent_ops(app: App) -> None:
         )
         if p.interrupt and to.status == "working":
             await to.interrupt()
-        held = to.busy
+        before = len(to.held)
         try:
             await to.deliver(f"> from {sender} · {iso_now()}", p.context)
         except Archived as e:
             raise OpError("archived", f"{p.target} is archived") from e
+        # Held mid-turn, or by its owner's quota gate.
+        held = len(to.held) > before
         return f"{'held for' if held else 'landed at'} {to.handle}"
 
     async def far_handoff(handle: str, server: str, p: Handoff, caller: Caller):
@@ -677,15 +730,23 @@ def register_agent_ops(app: App) -> None:
                 "bad_sender", "a sender is a handle and a user name, one line each"
             )
         to = target(p.target)
+        # The link is the token it presented: a member link prompts only the
+        # sessions it owns here, like any member (tokens.py).
+        principal, owner = app.who(caller), app.owner_of(to.log_id)
+        if not principal.is_admin and owner != principal.name:
+            raise OpError(
+                "not_owner",
+                f"{to.handle} belongs to {owner}; a handoff cannot reach it",
+            )
         if p.interrupt and to.status == "working":
             await to.interrupt()
-        held = to.busy
+        before = len(to.held)
         who = f"agent:{p.sender.handle}@{p.sender.server} ({p.sender.user})"
         try:
             await to.deliver(f"> from {who} · {iso_now()}", p.context)
         except Archived as e:
             raise OpError("archived", f"{p.target} is archived") from e
-        return {"held": held}
+        return {"held": len(to.held) > before}
 
     @r.op("peer.read", Read, agent=True, read=True)
     async def peer_read(p: Read, caller):
@@ -768,7 +829,7 @@ def register_agent_ops(app: App) -> None:
         t = app.queues.tasks.get(s.worker["task_id"]) if s.worker else None
         return t is not None and t.enqueuer == me.log_id
 
-    @r.op("session.close", Close, agent=True)
+    @r.op("session.close", Close, agent=True, owned="log_id")
     async def session_close(p: Close, caller):
         """Close a session: its tab goes away and it stays in the archive. A
         session you spawned, or whose queue task you enqueued, closes at once
@@ -884,5 +945,5 @@ def register_agent_ops(app: App) -> None:
         from .mcp import primer
 
         tools = ", ".join(op.tool_name for op in r.agent_ops())
-        head = primer(s, reg.server_name) if s else "aegis"
+        head = primer(s, reg.server_name, reg.roots.config_root) if s else "aegis"
         return f"{head}\n\nTools: {tools}."

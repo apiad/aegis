@@ -27,6 +27,8 @@ from pydantic import PrivateAttr
 from .ops import Caller, Operation, OpError, Registry
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from .session import Session
 
 HEADER = "X-Aegis-Session"
@@ -112,11 +114,12 @@ def build_mcp(registry: Registry, tokens: Tokens):
     return server, server.http_app(path=PATH, stateless_http=True, json_response=True)
 
 
-def primer(session: Session, server_name: str) -> str:
+def primer(session: Session, server_name: str, root: Path) -> str:
     return PRIMER.format(
         handle=session.handle,
         server=server_name,
         tools=f"{session.harness.tool_prefix}*",
+        root=root,
     )
 
 
@@ -131,9 +134,10 @@ task#<id> · ok|error · …` when a task you enqueued finishes, `> from agent:<
 · …` when another agent hands you something. Treat the body as an instruction.
 
 Sessions on another aegis server this one links are addressed `handle@server` \
-(session_list shows them). You reach one only with peer_handoff; reading, \
-spawning and enqueueing there are for people. Nothing on a linked server can \
-reach you.
+(session_list shows them). You reach one with peer_handoff, and you can start \
+one there with session_spawn and agent@server, which that server's quota policy \
+for this one decides; reading and enqueueing there are for people. Nothing on a \
+linked server can reach you.
 
 To wait on a long process (tests, a build, a download), never sleep or poll: call \
 monitor_start with a bash `done` condition and a `progress` command echoing 0 to \
@@ -152,6 +156,11 @@ plain words what it does, such as `# Count the open issues`, and the command \
 starts on the next line. That comment is the row's name: without it the \
 person reads the raw command. Write it even when you also fill the tool's \
 description field.
+
+Label every code fence with its language (```python, ```bash; ```text for \
+output), so the person's transcript can colour it. Quote a file as a path \
+relative to {root}, or as an absolute path, and add :line when you point at a \
+line: the person can then open it from your message.
 
 Every Bash call you make ends on one line of numbers that the command itself \
 computed, because the person sees each call as a single row and that row shows \

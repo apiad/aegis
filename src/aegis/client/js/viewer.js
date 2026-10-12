@@ -15,15 +15,9 @@
 
 import { artifactStage, fileActions, fileUrl, hold, markdown, preview } from "./entries.js";
 import { entryIcon, icon } from "./glyphs.js";
+import { colour, langOfPath, paint } from "./highlight.js";
 
 const MAX_TEXT = 2 * 1024 * 1024; // bytes drawn of a text file; a new tab has the rest
-const MAX_COLOUR = 512 * 1024; // above this, text is drawn uncoloured: colouring would stall the page
-
-let hljs = null;
-async function highlighter() {
-  hljs ??= (await import("../vendor/highlight.mjs")).default;
-  return hljs;
-}
 
 // A file's text, at most MAX_TEXT bytes of it, cut at a line when cut.
 async function fetchText(url) {
@@ -52,14 +46,6 @@ async function fetchText(url) {
   return { text, cut };
 }
 
-// The highlight.js language a file's name implies, or null.
-function languageOf(lib, name) {
-  const lower = name.toLowerCase();
-  if (lower === "makefile" || lower.endsWith(".mk")) return "makefile";
-  const ext = lower.includes(".") ? lower.split(".").pop() : "";
-  return ext && lib.getLanguage(ext) ? ext : null;
-}
-
 function el(tag, cls, text) {
   const n = document.createElement(tag);
   if (cls) n.className = cls;
@@ -71,7 +57,7 @@ export class Viewer {
   constructor(root, { entry }) {
     this.root = root; // #viewer, inside .col
     this.entry = entry; // (id) -> the shown transcript's entry, or undefined
-    this.items = new Map(); // session key -> {files, at, remote, glyph} or {artifact}
+    this.items = new Map(); // session key -> {files, at, remote, glyph, line?} or {artifact}
     this.key = null; // the session shown
     this.drawn = 0; // bumped by every draw, so a fetch for an older one is dropped
   }
@@ -160,7 +146,7 @@ export class Viewer {
     body.dataset.preview = f.preview || "other";
     if (f.preview === "markdown" || f.preview === "text") {
       body.append(el("div", "vnote", "loading…"));
-      this.drawText(f, body, draw);
+      this.drawText(f, body, draw, item.line);
       return;
     }
     const stage = preview(f, item.remote);
@@ -177,11 +163,11 @@ export class Viewer {
     }
   }
 
-  async drawText(f, body, draw) {
+  async drawText(f, body, draw, line) {
+    // Fetch only the text; the loader brings what colouring needs.
     let got;
-    let lib = null;
     try {
-      [got, lib] = await Promise.all([fetchText(f.url), highlighter()]);
+      got = await fetchText(f.url);
     } catch (err) {
       if (draw === this.drawn) body.replaceChildren(el("div", "vnote", `Could not load the file: ${err.message}`));
       return;
@@ -192,13 +178,8 @@ export class Viewer {
     if (f.preview === "markdown") {
       const doc = markdown(text);
       doc.classList.add("doc");
-      for (const code of doc.querySelectorAll("pre > code[class^=language-]")) {
-        const lang = code.className.slice("language-".length);
-        if (lib.getLanguage(lang) && code.textContent.length <= MAX_COLOUR) {
-          code.innerHTML = lib.highlight(code.textContent, { language: lang, ignoreIllegals: true }).value;
-          code.classList.add("hljs");
-        }
-      }
+      await Promise.all([...doc.querySelectorAll(".fence")].map(paint));
+      if (draw !== this.drawn) return;
       out.push(doc);
     } else {
       const lines = text.endsWith("\n") ? text.slice(0, -1).split("\n") : text.split("\n");
@@ -207,9 +188,10 @@ export class Viewer {
       gutter.setAttribute("aria-hidden", "true");
       const src = el("pre", "src");
       const code = el("code", "hljs");
-      const lang = languageOf(lib, f.name);
-      // highlight.js escapes what it returns, so its HTML holds only its own spans.
-      if (lang && text.length <= MAX_COLOUR) code.innerHTML = lib.highlight(text, { language: lang, ignoreIllegals: true }).value;
+      const lang = langOfPath(f.name);
+      const hl = lang ? await colour(text, lang).catch(() => null) : null; // plain if it fails
+      if (draw !== this.drawn) return;
+      if (hl) code.innerHTML = hl.html;
       else code.textContent = text;
       src.append(code);
       view.append(gutter, src);
@@ -217,6 +199,20 @@ export class Viewer {
     }
     if (cut) out.push(el("div", "vnote", `Only the first ${MAX_TEXT / 1024 / 1024} MB is shown here; open it in a new tab for the rest.`));
     body.replaceChildren(...out);
+    // A path link's line: scrolled to a third of the way down, and marked.
+    const view = body.querySelector(".code");
+    if (line && view) {
+      const count = view.querySelector(".ln").textContent.split("\n").length;
+      const at = Math.min(line, count);
+      const src = view.querySelector(".src");
+      const lh = parseFloat(getComputedStyle(src).lineHeight);
+      const mark = el("div", "mark");
+      mark.dataset.line = String(at);
+      mark.style.top = `${(at - 1) * lh + src.offsetTop + parseFloat(getComputedStyle(src).paddingTop)}px`;
+      mark.style.height = `${lh}px`;
+      view.append(mark);
+      body.scrollTop += mark.getBoundingClientRect().top - body.getBoundingClientRect().top - body.clientHeight / 3;
+    }
   }
 
   drawArtifact(item, e, bar, body) {

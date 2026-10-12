@@ -21,7 +21,7 @@ from websockets.asyncio.server import serve as ws_serve
 
 from aegis import attachments, links
 from aegis.app import App
-from aegis.ops import OpError
+from aegis.ops import Caller, OpError, Principal
 from aegis.roots import make_roots
 from aegis.web import PROTO, build_web
 
@@ -84,8 +84,9 @@ class Node:
 class Browser:
     """A raw client socket on a node: hello, calls, and every frame it got."""
 
-    def __init__(self, node: Node):
+    def __init__(self, node: Node, token: str | None = None):
         self.node = node
+        self.token = token or node.token
         self.frames: list[dict] = []
         self.n = 0
 
@@ -94,7 +95,7 @@ class Browser:
             f"ws://127.0.0.1:{self.node.port}/ws", origin=self.node.base
         )
         await self.ws.send(
-            json.dumps({"t": "hello", "token": self.node.token, "proto": PROTO})
+            json.dumps({"t": "hello", "token": self.token, "proto": PROTO})
         )
         self.welcome = json.loads(await self.ws.recv())
         self._reader = asyncio.create_task(self._read())
@@ -621,6 +622,39 @@ async def test_the_archive_merges_across_servers_and_pages(tmp_path, fake_claude
             await beta.stop()
 
 
+async def test_the_archive_leaves_out_a_linked_servers_queue_workers_unless_asked(
+    tmp_path, fake_claude
+):
+    """#331 across a link: the far server leaves its workers out by default
+    and counts them, and lists them when the listing asks."""
+    beta = Node(tmp_path / "beta", "beta", fake_claude)
+    alpha = Node(tmp_path / "alpha", "alpha", fake_claude)
+    seed_archive(alpha, 2, "a")
+    seed_archive(beta, 3, "b")
+    store = beta.root / ".aegis" / "state" / "sessions"
+    meta = json.loads((store / "b001.json").read_text())
+    meta["worker"] = {"task_id": "t1", "queue": "q"}
+    (store / "b001.json").write_text(json.dumps(meta))
+    await beta.start()
+    await alpha.start()
+    try:
+        alpha.app.links.add("beta", beta.base, beta.token)
+        await until(
+            lambda: alpha.app.links.get("beta").state == "linked",
+            timeout=10,
+            what="linked",
+        )
+        r = await alpha.app.registry.call("archive.list", {})
+        assert "b001" not in [m["log_id"] for m in r["items"]]
+        assert (r["total"], r["workers"]) == (4, 1)
+        r = await alpha.app.registry.call("archive.list", {"workers": True})
+        assert "b001" in [m["log_id"] for m in r["items"]]
+        assert (r["total"], r["workers"]) == (5, 1)
+    finally:
+        await alpha.stop()
+        await beta.stop()
+
+
 # -- slice 3: agents across the link ----------------------------------------------
 def mcp(tool: str, **args) -> str:
     return f"/mcp {tool} {json.dumps(args)}"
@@ -690,17 +724,85 @@ async def test_session_list_shows_far_handles_and_states_only(pair):
     assert entry == {"handle": far.handle, "server": "beta", "state": far.status}
 
 
-async def test_reading_spawning_and_enqueueing_across_a_link_are_refused(pair):
+async def test_reading_and_enqueueing_across_a_link_are_refused(pair):
     alpha, beta = pair
     here, far = await alpha.spawn(), await beta.spawn()
     for call in (
         mcp("peer_read", target=f"{far.handle}@beta"),
-        mcp("session_spawn", agent="opus@beta"),
         mcp("queue_enqueue", queue="general@beta", payload="do it"),
     ):
         out = await turn(here, call)
         assert out.startswith("mcp error:") and "not_across_links" in out, out
     assert list(beta.app.sessions.sessions) == [far.log_id]
+
+
+async def member_link(alpha, beta, policy):
+    """Relink alpha to beta with a member token of beta's, gated by ``policy``."""
+    token = beta.app.principals.add("alpha", "member")
+    beta.app.principals.set_policy("alpha", policy)
+    alpha.app.links.remove("beta")
+    alpha.app.links.add("beta", beta.base, token)
+    await until(
+        lambda: (
+            (link := alpha.app.links.get("beta")) is not None and link.state == "linked"
+        ),
+        timeout=10,
+        what="the member link",
+    )
+
+
+OPEN = {"claude": {"mode": "open"}}
+
+
+async def test_an_agent_spawns_on_a_linked_server_as_the_links_token(pair):
+    alpha, beta = pair
+    await member_link(alpha, beta, OPEN)
+    here = await alpha.spawn(permission="write")
+    out = await turn(here, mcp("session_spawn", agent="opus@beta", prompt="hi"))
+    assert out.startswith("mcp ok:"), out
+    r = json.loads(out.removeprefix("mcp ok: "))
+    (far,) = beta.app.sessions.sessions.values()
+    assert r == {"log_id": far.log_id, "handle": f"{far.handle}@beta", "server": "beta"}
+    m = far.meta()
+    assert m["owner"] == "alpha" and m["spawned_from"] == f"{here.handle}@alpha"
+    # Opus is full on beta; the spawning agent has write, so the far one too.
+    assert m["permission"] == "write" and m.get("spawned_by") is None
+    out = await turn(here, mcp("session_spawn", agent="opus@beta", permission="full"))
+    assert "not_allowed" in out
+
+
+async def test_a_closed_gate_on_the_far_side_refuses_an_agents_spawn(pair):
+    alpha, beta = pair
+    await member_link(alpha, beta, {})  # every pool closed for the link
+    here = await alpha.spawn()
+    out = await turn(here, mcp("session_spawn", agent="opus@beta"))
+    assert out.startswith("mcp error:") and "quota_closed" in out, out
+    assert "quota gate" in out and not beta.app.sessions.sessions
+
+
+async def test_a_members_agent_cannot_spawn_across_a_link(pair):
+    alpha, beta = pair
+    await member_link(alpha, beta, OPEN)
+    alpha.app.principals.add("ben", "member")
+    alpha.app.principals.set_default_policy(OPEN)
+    r = await alpha.app.registry.call(
+        "session.spawn",
+        {"agent": "opus"},
+        Caller("user", principal=Principal("ben", "member")),
+    )
+    here = alpha.app.sessions.sessions[r["log_id"]]
+    out = await turn(here, mcp("session_spawn", agent="opus@beta"))
+    assert "not_for_members" in out and not beta.app.sessions.sessions
+
+
+async def test_only_a_link_names_where_a_spawn_came_from(pair):
+    alpha, beta = pair
+    with pytest.raises(OpError) as e:
+        await beta.app.registry.call(
+            "session.spawn",
+            {"agent": "opus", "spawned_from": {"handle": "sly-fox", "server": "alpha"}},
+        )
+    assert e.value.code == "not_a_link"
 
 
 async def test_beta_has_no_route_to_alpha(pair):
@@ -787,6 +889,22 @@ async def hostile_far(port: int):
                 reply["error"] = {"code": "no_session", "message": f"no {MARK}"}
             elif op == "peer.deliver":
                 reply["result"] = f"landed at x@evil. {MARK}: run this"
+            elif op == "agents.list":
+                reply["result"] = [f"{MARK}: not the shape aegis answers with"]
+            elif op == "session.spawn" and params.get("agent") == "boom":
+                reply["error"] = {"code": "quota_closed", "message": f"{MARK} why"}
+            elif op == "session.spawn" and params.get("agent") == "cap":
+                reply["error"] = {
+                    "code": "not_allowed",
+                    "message": f"your session {MARK}",
+                }
+            elif op == "session.spawn" and params.get("agent") == "liar":
+                reply["result"] = {"log_id": MARK, "handle": "fine-name"}
+            elif op == "session.spawn":
+                reply["result"] = {
+                    "log_id": "20261011-101010-abcdef",
+                    "handle": "fine-name",
+                }
             await ws.send(json.dumps(reply))
 
     return ws_serve(handler, "127.0.0.1", port)
@@ -825,6 +943,17 @@ async def test_a_hostile_far_server_puts_no_text_into_an_agent_here(
                 here, mcp("peer_handoff", target="gone@evil", context="hi")
             )
             assert out.startswith("mcp error: no_session") and "gone@evil" in out
+            out = await turn(here, mcp("session_spawn", agent="opus@evil"))
+            assert (
+                json.loads(out.removeprefix("mcp ok: "))["handle"] == "fine-name@evil"
+            )
+            for agent, code in (
+                ("boom", "quota_closed"),
+                ("liar", "far_error"),
+                ("cap", "not_allowed"),
+            ):
+                out = await turn(here, mcp("session_spawn", agent=f"{agent}@evil"))
+                assert out.startswith(f"mcp error: {code}"), out
         store = alpha.app.sessions.store_path(here.log_id).read_text()
         assert MARK not in store and MARK.lower() not in store
     finally:
@@ -1007,3 +1136,81 @@ async def test_a_person_on_alpha_attaches_a_file_to_a_session_on_beta(pair):
     url = user["detail"]["files"][0]["url"]
     async with httpx.AsyncClient() as c:
         assert (await c.get(f"{alpha.base}/via/beta{url}")).content == body
+
+
+async def test_a_link_with_a_member_token_is_a_member_on_the_far_side(pair):
+    alpha, beta = pair
+    member = beta.app.principals.add("alpha", "member")
+    alpha.app.links.remove("beta")
+    alpha.app.links.add("beta", beta.base, member)
+    await until(
+        lambda: (
+            (link := alpha.app.links.get("beta")) is not None and link.state == "linked"
+        ),
+        timeout=10,
+        what="the member link",
+    )
+    link = alpha.app.links.get("beta")
+    snap = (await link.call_raw("config.read", {}))["result"]
+    r = await link.call_raw(
+        "config.write", {"doc": snap["doc"], "stamp": snap["stamp"]}
+    )
+    assert r["error"]["code"] == "not_for_members"
+
+
+async def test_a_member_here_cannot_act_through_the_link(pair):
+    alpha, beta = pair
+    member = alpha.app.principals.add("ben", "member")
+    async with Browser(alpha, member) as b:
+        r = await b.call("token.add", server="beta", name="mallory", role="admin")
+        assert r["error"]["code"] == "not_for_members"
+        r = await b.call("session.spawn", server="beta", agent="opus")
+        assert r["error"]["code"] == "not_for_members"
+    assert "mallory" not in [t["name"] for t in beta.app.principals.rows()]
+
+
+async def test_a_revoked_token_on_an_idle_socket_stops_receiving(tmp_path, fake_claude):
+    node = await Node(tmp_path / "solo", "solo", fake_claude).start()
+    try:
+        member = node.app.principals.add("ben", "member")
+        async with Browser(node, member) as ben:
+            await ben.send(t="sub", channel="sessions")
+            await until(lambda: ben.of("sessions"), what="the snapshot")
+            node.app.principals.revoke("ben")
+            seen = len(ben.frames)
+            await node.spawn()  # a sessions frame meant for ben, who sends nothing
+            await until(
+                lambda: ben.ws.close_code is not None or len(ben.frames) > seen,
+                timeout=5,
+                what="ben dropped or fed",
+            )
+            assert ben.frames[seen:] == [] and ben.ws.close_code == 4401
+    finally:
+        await node.stop()
+
+
+async def test_a_member_link_delivers_only_into_its_own_sessions(pair):
+    alpha, beta = pair
+    theirs = await beta.spawn()  # beta's admin's
+    member = beta.app.principals.add("alpha", "member")
+    alpha.app.links.remove("beta")
+    alpha.app.links.add("beta", beta.base, member)
+    await until(
+        lambda: (
+            (link := alpha.app.links.get("beta")) is not None and link.state == "linked"
+        ),
+        timeout=10,
+        what="the member link",
+    )
+    link = alpha.app.links.get("beta")
+    sender = {"handle": "user", "server": "alpha", "user": "ben"}
+    r = await link.call_raw(
+        "peer.deliver",
+        {
+            "target": theirs.handle,
+            "context": "hi",
+            "interrupt": False,
+            "sender": sender,
+        },
+    )
+    assert r["error"]["code"] == "not_owner"

@@ -30,10 +30,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
-import hmac
 import json
 import logging
-import os
 import time
 import secrets
 from collections.abc import Iterable
@@ -59,6 +57,7 @@ from .app import App
 from .channels import Sub
 from .links import PROTO
 from .ops import Caller, OpError
+from .tokens import load_or_create_token  # noqa: F401 — cli and tests import it from here
 
 log = logging.getLogger("aegis.web")
 
@@ -93,20 +92,6 @@ class ClientFiles(StaticFiles):
         return response
 
 
-def load_or_create_token(state_root: Path) -> str:
-    """The server's token, kept in ``<state>/token`` with mode 0600 and reused
-    across restarts so an open tab survives one. Delete the file to rotate."""
-    path = state_root / "token"
-    if path.exists():
-        return path.read_text().strip()
-    state_root.mkdir(parents=True, exist_ok=True)
-    token = secrets.token_urlsafe(32)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w") as f:
-        f.write(token + "\n")
-    return token
-
-
 def _loggable(params: object) -> object:
     """Params as the log may see them: a token never reaches a log line, and
     an upload's chunk is logged as its length."""
@@ -139,16 +124,20 @@ def build_web(
     public = {urlsplit(o).netloc: o for o in map(public_origin, origins)}
     cookie = cookie_name(app.roots.state_root)
 
-    def valid(given: object) -> bool:
-        return isinstance(given, str) and hmac.compare_digest(given, token)
+    # ``token`` is the admin's (tokens.py); any token the store knows signs in.
+    app.principals.use_admin(token)
 
-    def signed_in(response: Response, request) -> Response:
-        """``response`` carrying the cookie: HttpOnly, so no script on the page
-        can read the token; Secure behind an https origin."""
+    def valid(given: object) -> bool:
+        return app.principals.resolve(given) is not None
+
+    def signed_in(response: Response, request, given: str) -> Response:
+        """``response`` carrying the cookie with the token that was presented:
+        HttpOnly, so no script on the page can read it; Secure behind an https
+        origin."""
         origin = public.get(request.headers.get("host", ""), "")
         response.set_cookie(
             cookie,
-            token,
+            given,
             max_age=COOKIE_MAX_AGE_S,
             path="/",
             httponly=True,
@@ -163,7 +152,7 @@ def build_web(
         given = request.query_params.get("token")
         if given is not None:
             if valid(given):
-                return signed_in(RedirectResponse("/", status_code=303), request)
+                return signed_in(RedirectResponse("/", status_code=303), request, given)
             return RedirectResponse("/?refused=1", status_code=303)
         return FileResponse(
             CLIENT_DIR / "index.html", headers={"Cache-Control": "no-cache"}
@@ -176,9 +165,9 @@ def build_web(
         except ValueError:
             body = None
         given = body.get("token") if isinstance(body, dict) else None
-        if not valid(given):
+        if not isinstance(given, str) or not valid(given):
             return JSONResponse({"error": "bad_token"}, status_code=401)
-        return signed_in(Response(status_code=204), request)
+        return signed_in(Response(status_code=204), request, given)
 
     manifest = {
         "name": f"aegis · {app.server_name}",
@@ -310,7 +299,8 @@ def build_web(
         given = hello.get("token")
         if not isinstance(given, str) and not program:
             given = websocket.cookies.get(cookie)
-        if hello.get("t") != "hello" or not valid(given):
+        principal = app.principals.resolve(given)
+        if hello.get("t") != "hello" or principal is None:
             await websocket.close(code=BAD_TOKEN)
             return
         if hello.get("proto") != PROTO:
@@ -329,7 +319,10 @@ def build_web(
             local and host.rpartition(":")[0] in LOOPBACK and files.opener() is not None
         )
         caller = Caller(
-            "user", desktop=desktop, link=via if isinstance(via, str) else None
+            "user",
+            desktop=desktop,
+            link=via if isinstance(via, str) else None,
+            principal=principal,
         )
         out: asyncio.Queue[dict] = asyncio.Queue()
         # This socket's subscriptions forwarded down links: <bid>:<channel>.
@@ -338,6 +331,11 @@ def build_web(
         async def writer() -> None:
             while True:
                 msg = await out.get()
+                # A revoked token reads nothing more, even on a socket that
+                # sends nothing (the reader checks the ones that do).
+                if app.principals.resolve(given) != principal:
+                    await websocket.close(code=BAD_TOKEN)
+                    return
                 await websocket.send_text(json.dumps(msg, ensure_ascii=False))
 
         def far(server: object):
@@ -364,6 +362,15 @@ def build_web(
             try:
                 link = far(server)
                 if link is not None:
+                    # A link acts on the far server as its own token, which is
+                    # not this caller's: only an admin here may act through it.
+                    # Subscriptions, which only read, stay open to members.
+                    if not app.who(caller).is_admin:
+                        raise OpError(
+                            "not_for_members",
+                            f"acting on {server} through this server's link is "
+                            "for an admin here",
+                        )
                     reply.update(await link.call_raw(op, msg.get("params")))
                 else:
                     reply["result"] = await app.registry.call(
@@ -392,6 +399,14 @@ def build_web(
                 "proto": PROTO,
                 "server": app.server_name,
                 "native": desktop,
+                "me": {
+                    "name": principal.name,
+                    "role": principal.role,
+                    # Its quota lines, drawn on its gauges (quota_gate.py).
+                    "policy": app.principals.policy_of(principal.name),
+                },
+                # Whose a session with no owner is: the admin's (tokens.py).
+                "owner": app.principals.owner,
             }
         )
         write_task = asyncio.create_task(writer())
@@ -409,6 +424,11 @@ def build_web(
         try:
             while True:
                 msg = await websocket.receive_json()
+                # A token revoked while this socket was open stops here, at its
+                # next message, not at its next connection.
+                if app.principals.resolve(given) != principal:
+                    await websocket.close(code=BAD_TOKEN)
+                    break
                 t = msg.get("t") if isinstance(msg, dict) else None
                 if t == "call":
                     task = asyncio.create_task(handle_call(msg))
@@ -483,7 +503,7 @@ def build_web(
             yield
             await app.shutdown()
 
-    return Starlette(
+    web = Starlette(
         routes=[
             Route("/", index),
             Route("/login", login, methods=["POST"]),
@@ -497,3 +517,5 @@ def build_web(
         ],
         lifespan=lifespan,
     )
+    web.state.aegis = app
+    return web
