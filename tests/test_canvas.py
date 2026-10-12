@@ -4,7 +4,7 @@ the person's side is called through the registry as the browser would."""
 import pytest
 
 from aegis import layout
-from aegis.ops import OpError
+from aegis.ops import Caller, OpError, Principal
 
 from .test_agents import CONFIG, World, mcp, turn
 from .test_artifacts_e2e import PAGE, ok
@@ -120,11 +120,20 @@ async def test_the_canvas_survives_a_restart(world, tmp_path):
     assert world.session(a.log_id).standing["layout"] == before
 
 
-async def test_layout_ops_check_ownership(world):
-    for name in ("layout.dock", "layout.undock", "layout.resize"):
-        assert world.app.registry._ops[name].owned == "log_id"
-    assert world.app.registry._ops["layout.read"].agent
-    assert world.app.registry._ops["layout.set"].agent
+async def test_a_member_cannot_arrange_anothers_canvas(world, tmp_path):
+    world.app.principals.add("ben", "member")
+    ben = Caller("user", principal=Principal("ben", "member"))
+    a = await world.spawn()
+    aid = await live_page(world, a, tmp_path)
+    for op, params in [
+        ("layout.dock", {"pane": aid, "where": "right"}),
+        ("layout.undock", {"pane": aid}),
+        ("layout.resize", {"n": 1, "widths": [1]}),
+    ]:
+        with pytest.raises(OpError) as e:
+            await world.app.registry.call(op, {"log_id": a.log_id, **params}, ben)
+        assert e.value.code == "not_owner", op
+    assert a.standing["layout"] is None
 
 
 async def test_one_file_by_a_relative_and_an_absolute_path_is_one_key(world, tmp_path):
