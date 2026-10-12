@@ -48,6 +48,7 @@ def test_open_shows_the_whole_file_over_the_transcript_until_closed(
     acts = page.locator(".row.file .fbar .acts .btn:visible")
     assert [acts.nth(i).get_attribute("title") for i in range(acts.count())] == [
         "Open",
+        "Dock beside the transcript",
         "Open in a new tab",
         "Download",
     ]
