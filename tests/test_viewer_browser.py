@@ -240,3 +240,37 @@ def test_a_fence_in_the_viewer_copies_its_code(
         assert errors == []
     finally:
         ctx.close()
+
+
+def test_a_refused_submit_in_the_viewer_says_why_in_view(
+    server,  # noqa: F811
+    page,  # noqa: F811
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    # A label over 140 characters is refused by the server; the page posts it
+    # raw, as one that skips the script's checks would. A page must call
+    # aegis.submit somewhere to be sent at all.
+    bad = (
+        '<button id="bad">bad</button><button id="ok">ok</button><span id="st"></span>',
+        "st.textContent = JSON.stringify(state);"
+        '  ok.onclick = () => aegis.submit({pick: "b"}, "Picked B");'
+        '  bad.onclick = () => parent.postMessage({jsonrpc: "2.0", id: 99, method: "aegis/submit",'
+        '    params: {data: {pick: "b"}, label: "x".repeat(200)}}, "*");',
+    )
+    aid, _ = _artifact(page, server, bad, 0)
+    page.frame_locator(f".row.artifact iframe[data-artifact={aid}]").locator(
+        "#st"
+    ).filter(has_text="{}").wait_for()
+    page.click(".row.artifact .fbar .view")
+    inner = page.frame_locator(f"#viewer iframe[data-artifact={aid}]")
+    inner.locator("#st").filter(has_text="{}").wait_for()
+    inner.locator("#bad").click()
+    note = page.locator("#viewer .vbody .refused")
+    note.wait_for()
+    assert note.inner_text().startswith("Not sent: ")
+    # In view, not under the frame that fills the viewer.
+    box, body = note.bounding_box(), page.locator("#viewer .vbody").bounding_box()
+    assert box["y"] + box["height"] <= body["y"] + body["height"] + 1, (box, body)
+    assert page.errors == []
