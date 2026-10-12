@@ -742,6 +742,32 @@ def _two_windows(aid, *more):
     }
 
 
+def test_esc_closes_a_pane_menu_without_interrupting_and_a_card_leaves_it_open(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    page.click(".row.artifact .fbar .dock")
+    pane = page.locator(f'#canvas .pane[data-pane="{aid}"]')
+    pane.wait_for()
+    page.fill("#input", "/sleep 3")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    menu = page.locator("#canvas .pmenu")
+    pane.locator(".pbar .move").click()
+    menu.wait_for()
+    page.keyboard.press("Escape")
+    menu.wait_for(state="detached")
+    assert page.is_visible(".row.tool.running"), "Esc on the menu does not interrupt"
+    # The turn's end lands a new card for the session: the menu stays open.
+    pane.locator(".pbar .move").click()
+    menu.wait_for()
+    turns_done(page, 3)
+    page.wait_for_timeout(300)
+    assert menu.is_visible()
+    assert page.errors == []
+
+
 def test_a_narrow_desktop_window_draws_only_its_own_windows_panes(server, page, browser):  # noqa: F811
     (server.root / "r.md").write_text("# One\n")
     page.goto(server.url)
