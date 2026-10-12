@@ -63,6 +63,9 @@ log = logging.getLogger("aegis.web")
 
 HELLO_TIMEOUT_S = 5.0
 CLIENT_DIR = Path(__file__).parent / "client"
+# The service worker lives outside CLIENT_DIR, so /static never serves it: it is
+# served only from the root, where its scope is the whole client.
+SERVICE_WORKER = Path(__file__).parent / "sw.js"
 
 # Close codes, in the 4000 range websockets leave to applications.
 BAD_ORIGIN = 4403
@@ -198,8 +201,8 @@ def build_web(
     }
 
     async def webmanifest(request):
-        """What Chrome installs: the server's name, so zion and the VPS differ
-        on a home screen. The service worker is ``sw.js``, and it caches
+        """What Chrome installs: the server's name, so two servers differ on a
+        home screen. The service worker is ``sw.js``, and it caches
         nothing yet, so a deploy cannot leave a stale client behind it."""
         return JSONResponse(manifest, media_type="application/manifest+json")
 
@@ -208,7 +211,7 @@ def build_web(
         ``no-cache`` makes the browser revalidate it on every update check, so
         a changed worker is found on the next load."""
         return FileResponse(
-            CLIENT_DIR / "sw.js",
+            SERVICE_WORKER,
             media_type="text/javascript",
             headers={"Cache-Control": "no-cache"},
         )

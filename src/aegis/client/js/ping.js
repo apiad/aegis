@@ -43,6 +43,7 @@ export function updatePing(metas, { onOpen }) {
   const before = seen;
   seen = new Map(metas.map((m) => [m.key, m.attention]));
   if (before === null) return;
+  for (const [key, was] of before) if (URGENT.has(was) && seen.get(key) !== was) withdraw(`${key}:${was}`);
   for (const m of metas) {
     if (!URGENT.has(m.attention) || before.get(m.key) === m.attention) continue;
     const title = `${m.title || m.handle}: ${m.attention === "error" ? "error" : "needs you"}`;
@@ -69,6 +70,16 @@ export function listenForOpen(onOpen) {
 }
 
 const refused = (e) => console.warn("aegis: notification refused", e);
+
+// A session answered, here or anywhere, or closed: its notification would only
+// open a question nobody asks any more.
+function withdraw(tag) {
+  navigator.serviceWorker
+    ?.getRegistration()
+    .then((reg) => reg?.getNotifications({ tag }))
+    .then((notes) => notes?.forEach((n) => n.close()))
+    .catch(() => {});
+}
 
 // A notification, only while the page is hidden and the browser allows it. It
 // comes from the service worker's registration when one is active: Chrome on

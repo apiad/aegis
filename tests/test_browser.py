@@ -3510,19 +3510,32 @@ def test_a_real_notification_shows_and_its_click_opens_the_session(
         and body == "Ship it?"
         and tag == f"{sid}:needs_you"
     )
-    # A click, as the browser delivers it: a notificationclick in the worker.
-    # Only a click the browser delivers may focus a window, so a scripted one
-    # stubs focus(); the rest of the worker's path runs as it is.
+    # The click: the worker's handler closes the notification and runs
+    # openSession with the key the notification carries. A scripted
+    # NotificationEvent is untrusted (its waitUntil throws), so the test runs
+    # openSession itself, with a non-aegis tab of the same scope in front: a
+    # file an agent sent, which has nobody listening.
     pg.click("#tab-fleet")
     pg.wait_for_selector("#a2[data-view=fleet]")
+    origin = re.match(r"https?://[^/]+", server.url).group(0)
+    other = ctx.new_page()
+    other.goto(f"{origin}/static/icons/aegis-192.png")
+    other.bring_to_front()
     [sw] = ctx.service_workers
-    sw.evaluate("""async () => {
-      WindowClient.prototype.focus = function () { return Promise.resolve(this); };
-      const [n] = await self.registration.getNotifications();
-      self.dispatchEvent(new NotificationEvent('notificationclick', { notification: n }));
-    }""")
+    key = sw.evaluate(
+        "async () => (await self.registration.getNotifications())[0].data.key"
+    )
+    assert key == sid
+    sw.evaluate("key => openSession(key)", key)
     pg.wait_for_selector("#a2[data-view=session]")
     assert pg.evaluate("location.hash.slice(3)") == sid
+    # Answered: the notification goes, since it would open a question nobody
+    # asks any more.
+    report(pg, attention="done", line="Shipped.", replies=[])
+    deadline = time.monotonic() + 8
+    while pg.evaluate(shown) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert pg.evaluate(shown) == []
     assert errors == []
     ctx.close()
 
