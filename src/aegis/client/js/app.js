@@ -35,6 +35,7 @@ import { dur, planTimes } from "./plantime.js";
 import { setToastOpener, toast } from "./toast.js";
 import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
 import { closeInstallDialog, startInstall } from "./install.js";
+import { loadFleet, saveFleet } from "./devicestore.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -285,7 +286,30 @@ function drawBanner() {
   $("netbanner").hidden = !down;
   if (!down) return;
   const s = Math.ceil((conn.retryAt - Date.now()) / 1000);
-  $("netbanner-t").textContent = conn.retryAt && s > 0 ? `retrying in ${s} s` : "retrying now";
+  const retry = conn.retryAt && s > 0 ? `retrying in ${s} s` : "retrying now";
+  $("netbanner-t").textContent = [seenText(), retry].filter(Boolean).join(" · ");
+}
+
+// When this device last saw the server live: the moment the socket last
+// closed, or the saved Fleet's saved_at at boot. 0 while it never has.
+let seenAt = 0;
+let live = false; // the socket is open
+function seenText() {
+  if (!seenAt) return "";
+  const m = Math.floor((Date.now() - seenAt) / 60000);
+  return m < 1 ? "seen just now" : m < 60 ? `seen ${m} min ago` : `seen ${Math.floor(m / 60)} h ago`;
+}
+// Offline (the socket is not open), the page draws what the device kept and
+// what needs the server is disabled.
+function markOffline(state) {
+  if (state === "open") {
+    live = true;
+    delete root.dataset.offline;
+    return;
+  }
+  if (live) seenAt = Date.now();
+  live = false;
+  root.dataset.offline = "";
 }
 function bannerState(state) {
   if (state === "closed" && !closedSince) {
@@ -305,6 +329,7 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
     $("conn-dot").className = `dot ${state === "open" ? "ready" : state === "connecting" ? "ghost" : "err"}`;
     $("conn-text").textContent =
       state === "open" ? server : state === "connecting" ? "connecting" : state === "closed" ? "disconnected, retrying" : state;
+    markOffline(state);
     bannerState(state);
     if (state === "unauthorized") showLogin();
     if (state === "version") {
@@ -370,7 +395,7 @@ function sessionHandlers(server) {
         sessions.set(w.key, w);
       }
       if (server) remote.get(server).loaded = true;
-      else booted = true;
+      else booted = homeLive = true;
       onSessions();
     },
     (ops) => {
@@ -398,7 +423,8 @@ function sessionHandlers(server) {
         if (!frame) frame = requestAnimationFrame(flushSessions);
         // Not in the frame: a hidden tab runs no frames, and that is when the
         // ping matters.
-        updatePing([...sessions.values()], { onOpen: openSession });
+        ping();
+        keepFleet();
       }
     },
   ];
@@ -445,6 +471,8 @@ function onLinks(list) {
     } else if (l.state === "linked" && r.state !== "linked") conn.resubscribe(l.name);
     r.state = l.state;
   }
+  // A saved session of a server no longer linked will never be replaced.
+  for (const [k, m] of sessions) if (m.stale && m.server && !names.has(m.server)) sessions.delete(k);
   for (const [k, m] of sessions) if (m.server) sessions.set(k, { ...m, off: isOff(m.server) });
   // Which servers are up changes what the archive can list: read it again.
   const sig = links.map((l) => `${l.name}:${l.state}`).join(",");
@@ -487,6 +515,35 @@ conn.subscribe(
 );
 conn.connect();
 
+// The Fleet this device saw last, drawn at once: with no connection it is all
+// there is, and with one it shows until the live snapshot replaces it. A saved
+// session carries `stale` until its server's snapshot arrives.
+loadFleet().then((saved) => {
+  if (!saved || booted) return;
+  seenAt = saved.saved_at;
+  for (const m of saved.metas) sessions.set(m.key, { ...m, stale: true });
+  booted = true;
+  onSessions();
+});
+
+// The Fleet is written to the device at most every SAVE_MS, SAVE_MS after the
+// first change since the last write, and at once when the page goes hidden
+// (Android may freeze it right after). Only while the socket is open, so
+// saved cards are never written back as fresh ones.
+const SAVE_MS = 2000;
+let fleetSave = null;
+function keepFleet() {
+  if (!fleetSave && conn.open) fleetSave = setTimeout(flushFleet, SAVE_MS);
+}
+function flushFleet() {
+  clearTimeout(fleetSave);
+  fleetSave = null;
+  if (conn.open && homeLive) saveFleet([...sessions.values()].filter((m) => !m.stale));
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && fleetSave) flushFleet();
+});
+
 // Patches that only update sessions the page already shows redraw once a
 // frame, however many arrive, and only those sessions' tab and card (#158).
 let changed = new Set();
@@ -517,7 +574,16 @@ function onSessions() {
   ordered = ids.map((id) => sessions.get(id));
   render();
   drawNav(); // the needs count
-  updatePing([...sessions.values()], { onOpen: openSession });
+  ping();
+  keepFleet();
+}
+
+// Notifications follow live sessions only. Until this server's snapshot
+// lands the saved Fleet is all there is, and a session that changed while
+// the page was closed would ping on every cold start.
+let homeLive = false;
+function ping() {
+  if (homeLive) updatePing([...sessions.values()].filter((m) => !m.stale), { onOpen: openSession });
 }
 
 // -- rendering -----------------------------------------------------------------
@@ -688,7 +754,9 @@ function drawHost() {
 
 function drawBand() {
   if (root.dataset.view !== "fleet") return;
-  renderBand($("band"), { metas: local(), host, server: conn.server, link: links.length ? "this server" : "" });
+  // Saved cards say how old they are.
+  const stale = local().some((m) => m.stale);
+  renderBand($("band"), { metas: local(), host, server: conn.server, link: stale ? seenText() : links.length ? "this server" : "", off: stale });
   for (const l of links) {
     const box = $("remotes").querySelector(`[data-server="${CSS.escape(l.name)}"]`);
     if (!box) continue;
@@ -1172,6 +1240,7 @@ function renderMeta(s) {
 setInterval(() => {
   tickMonitors();
   if (workingSince != null) $("working-meta").textContent = `${Math.round((Date.now() - workingSince) / 1000)}s, Esc interrupts`;
+  if (root.dataset.view === "fleet" && local().some((m) => m.stale)) drawBand();
   if (root.dataset.view === "fleet") for (const c of document.querySelectorAll(".card")) {
     const m = sessions.get(c.dataset.id);
     if (m) {
@@ -1375,7 +1444,8 @@ async function loadArchive(more = false) {
       archiveWorkerCount = r.workers || 0;
     }
   } catch (e) {
-    if (!more) [archived, archiveCursor, archiveTotal] = [[], null, 0];
+    // Offline, or failed: the next render reads it again.
+    if (!more) [archived, archiveCursor, archiveTotal, archiveLoaded] = [[], null, 0, false];
   }
   renderArchive($("arch-list"), archived, {
     onReopen: reopen,

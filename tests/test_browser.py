@@ -3749,6 +3749,41 @@ def test_without_indexeddb_the_store_answers_nothing(server, browser):
     assert errors == []
 
 
+def tab_strip_height(pg) -> float:
+    return pg.evaluate(
+        "document.querySelector('#a2 > .tabs').getBoundingClientRect().height"
+    )
+
+
+def test_offline_the_fleet_draws_from_the_device(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    sid = spawn(page, "hello")
+    turns_done(page, 1)
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card[data-id='{sid}']")
+    page.set_viewport_size({"width": 390, "height": 844})
+    online = tab_strip_height(page)
+    time.sleep(2.5)  # the debounced save
+    server.stop()
+    page.reload()
+    page.wait_for_selector(f".card[data-id='{sid}']", timeout=10000)
+    assert page.get_attribute("#a2", "data-offline") is not None
+    page.wait_for_selector("#netbanner", state="visible", timeout=10000)
+    assert "seen" in page.text_content("#netbanner-t")
+    assert "seen" in page.text_content("#band .band-link")
+    # The banner says it: the connection's words would wrap the phone's tab bar.
+    assert tab_strip_height(page) == online
+    server.start()
+    page.wait_for_function(
+        "!document.getElementById('a2').hasAttribute('data-offline')", timeout=20000
+    )
+    page.wait_for_selector(f".card[data-id='{sid}']")
+    assert "seen" not in page.text_content("#band .band-link")
+    assert page.errors == []
+
+
 INSTALLABLE = """
   window.__prompted = 0;
   window.__installable = (outcome) => {
