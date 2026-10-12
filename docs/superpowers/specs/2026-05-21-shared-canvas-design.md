@@ -1,8 +1,11 @@
 ---
 title: Shared Canvas — Blackboard Coordination Primitive
 date: 2026-05-21
-status: draft
+status: superseded
 ---
+
+> Never built. In aegis, the canvas is a session's docked panes: see
+> `2026-10-12-canvas-docking-design.html`.
 
 # Shared Canvas
 
