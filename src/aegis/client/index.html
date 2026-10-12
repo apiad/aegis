@@ -12,8 +12,19 @@
 <link rel="stylesheet" href="/static/css/base.css">
 <link rel="stylesheet" href="/static/themes/ink.css">
 <link rel="stylesheet" href="/static/themes/logbook.css">
-<link rel="stylesheet" href="/static/themes/syalia.css">
-<script>document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || "ink";</script>
+<link rel="stylesheet" href="/static/themes/electric.css">
+<link rel="stylesheet" href="/static/themes/phosphor.css">
+<link rel="stylesheet" href="/static/themes/blueprint.css">
+<link rel="stylesheet" href="/static/themes/amphora.css">
+<link rel="stylesheet" href="/static/themes/riso.css">
+<link rel="stylesheet" href="/static/themes/solari.css">
+<link rel="stylesheet" href="/static/themes/aizome.css">
+<link rel="stylesheet" href="/static/themes/poster.css">
+<script>
+// The theme once called syalia is electric now.
+if (localStorage.getItem("aegis.theme") === "syalia") localStorage.setItem("aegis.theme", "electric");
+document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || "ink";
+</script>
 </head>
 <body>
 <div id="a2" class="app" data-view="boot">
@@ -216,7 +227,6 @@
   </main>
   <div class="keymap" id="keymap" hidden></div>
   <div class="palette" id="palette" hidden></div>
-  <div class="note" id="note" role="status" hidden></div>
 </div>
 <div id="probes" hidden aria-hidden="true"></div>
 <script type="module" src="/static/js/app.js"></script>

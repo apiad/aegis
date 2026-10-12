@@ -497,8 +497,7 @@ def test_a_failed_spawn_keeps_the_text_and_says_why(server, page):
     page.fill("#sp-cwd", "/")
     page.fill("#sp-text", "keep me")
     page.press("#sp-text", "Enter")
-    page.wait_for_function("document.querySelector('#sp-error').textContent !== ''")
-    assert "outside" in page.inner_text("#sp-error")
+    page.wait_for_selector(".toast.error .msg >> text=outside")
     assert page.input_value("#sp-text") == "keep me"
     assert page.evaluate("document.querySelector('#a2').dataset.view") == "spawn"
 
@@ -2277,9 +2276,7 @@ def test_an_unknown_command_is_flagged_and_claudes_commands_render(server, page)
     page.fill("#input", "/bogus x")
     page.wait_for_selector(".composer.bad")
     page.press("#input", "Enter")
-    page.wait_for_function(
-        "() => document.getElementById('send-error').textContent.includes('// to send it as text')"
-    )
+    page.wait_for_selector('.toast.error .msg:has-text("// to send it as text")')
     page.fill("#input", "/context")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.command .cmd")
@@ -2911,9 +2908,9 @@ def test_the_landing_recap_request_shows_no_hint_and_the_sparkle_does(server, pa
     page.click(f".tab[data-id='{sid}']")
     page.wait_for_selector("#a2[data-view=session]")
     page.wait_for_timeout(1000)  # the landing request's answer has come back
-    assert page.text_content("#send-error") == ""
+    assert page.locator(".toast").count() == 0
     page.click("#nav-recap")
-    page.wait_for_selector("#send-error >> text=recap: {agent:", timeout=4000)
+    page.wait_for_selector(".toast.error .msg >> text=recap: {agent:", timeout=4000)
     assert page.errors == []
 
 
@@ -3091,7 +3088,7 @@ def test_alt_j_with_nobody_waiting_says_so_and_stays(server, page):
     sid = spawn(page, "hello")
     page.wait_for_selector(".tab.on .dot.ready", timeout=6000)  # read: idle dot
     page.keyboard.press("Alt+KeyJ")
-    page.wait_for_selector("#note >> text=Nobody needs you")
+    page.wait_for_selector(".toast.info .msg >> text=Nobody needs you")
     assert page.evaluate("location.hash.slice(3)") == sid
     assert page.errors == []
 
@@ -4490,9 +4487,7 @@ def test_a_model_that_cannot_be_had_says_so_and_stops(
         pg.wait_for_selector("#a2[data-view=fleet]")
         spawn(pg)
         pg.click("#mic")
-        pg.wait_for_function(
-            "() => document.getElementById('send-error').textContent.includes('Dictation model unavailable')"
-        )
+        pg.wait_for_selector(".toast.error .msg >> text=Dictation model unavailable")
         pg.wait_for_selector("#mic[data-state=idle]")
         assert pg.input_value("#input") == ""
     finally:
@@ -5484,12 +5479,27 @@ def test_settings_keeps_the_theme_for_this_browser(server, page):
     assert first.locator("h3").inner_text() == "This browser"
     assert "this browser only" in first.inner_text()
     assert picked(page, "#set-theme") == "ink"
-    pick(page, "#set-theme", "syalia")
-    page.wait_for_function("document.documentElement.dataset.theme === 'syalia'")
+    # A pick from a fixed list raises no phone keyboard (#340).
+    assert page.get_attribute("#set-theme input", "inputmode") == "none"
+    pick(page, "#set-theme", "electric")
+    page.wait_for_function("document.documentElement.dataset.theme === 'electric'")
     page.reload()
     page.wait_for_selector("#a2[data-view=settings] #set-theme")
-    assert page.evaluate("document.documentElement.dataset.theme") == "syalia"
-    assert picked(page, "#set-theme") == "syalia"
+    assert page.evaluate("document.documentElement.dataset.theme") == "electric"
+    assert picked(page, "#set-theme") == "electric"
+    assert page.errors == []
+
+
+def test_a_browser_that_saved_syalia_opens_in_electric(server, page):
+    """The navy theme was renamed (#340); a browser that kept its old name
+    would otherwise open in no theme at all."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.evaluate("localStorage.setItem('aegis.theme', 'syalia')")
+    page.reload()
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert page.evaluate("document.documentElement.dataset.theme") == "electric"
+    assert page.evaluate("localStorage.getItem('aegis.theme')") == "electric"
     assert page.errors == []
 
 
@@ -5733,7 +5743,7 @@ def test_a_waiting_send_goes_to_its_own_session_after_a_tab_switch(
         inbox_of(server, b).glob("*-big.bin")
     )
     assert page.locator(".row.user").count() == 0  # B's transcript got nothing
-    assert page.text_content("#send-error") == ""
+    assert page.locator(".toast.error").count() == 0
     assert page.errors == []
 
 
@@ -5750,7 +5760,7 @@ def test_enter_twice_during_an_upload_sends_once(server, page, tmp_path):
     turns_done(page, 1)
     page.wait_for_timeout(500)
     assert page.locator(".row.user").count() == 1
-    assert page.text_content("#send-error") == ""
+    assert page.locator(".toast.error").count() == 0
     assert page.errors == []
 
 
@@ -5896,10 +5906,8 @@ def test_a_member_over_its_launch_line_is_told_why_nothing_started(
     pg.wait_for_function("document.querySelector('#sp-agent').value !== ''")
     pg.fill("#sp-text", "do the thing")
     pg.click("#sp-go")
-    pg.wait_for_function(
-        "document.getElementById('sp-error').textContent.includes('cannot start')"
-    )
-    err = pg.text_content("#sp-error")
+    pg.wait_for_selector(".toast.error .msg >> text=cannot start")
+    err = pg.text_content(".toast.error .msg")
     assert "ben cannot start a session now" in err and "71%" in err and "50%" in err
     assert pg.input_value("#sp-text") == "do the thing"
 
@@ -6018,3 +6026,110 @@ def test_a_policy_save_for_a_token_revoked_meanwhile_saves_the_rest(
     assert "no token named ben" in page.text_content("#set-status")
     assert json.loads(path.read_text())["default_policy"] == {"codex": {"mode": "open"}}
     page.wait_for_function("!document.querySelector('#set-tokens .tok-ben')")
+
+
+# -- toasts (#329) -----------------------------------------------------------------
+def toast_texts(pg) -> list[str]:
+    return pg.evaluate(
+        "[...document.querySelectorAll('.toasts .toast:not(.out) .msg')].map(m => m.textContent)"
+    )
+
+
+def test_toasts_stack_three_merge_repeats_hold_on_hover_and_dismiss(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.evaluate(
+        """async () => {
+          const { toast } = await import('/static/js/toast.js');
+          for (const t of ['one', 'two', 'three', 'four', 'four']) toast(t, { ms: 1500 });
+        }"""
+    )
+    # A fourth pushes out the oldest; the same text again keeps one toast.
+    assert toast_texts(page) == ["two", "three", "four"]
+    page.hover(".toast:has-text('three')")
+    page.wait_for_timeout(1900)
+    assert toast_texts(page) == ["three"]  # held while hovered; the others left
+    page.click(".toast:has-text('three') .x")
+    page.wait_for_function("!document.querySelector('.toasts .toast')")
+    assert page.errors == []
+
+
+def test_the_recap_button_mid_turn_says_busy_in_a_toast(recap_server, page):
+    page.goto(recap_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "first")
+    page.fill("#input", "/sleep 2")
+    page.press("#input", "Enter")
+    page.wait_for_function(
+        "() => (document.querySelector('.tab.on')?.title || '').includes('working')",
+        timeout=4000,
+    )
+    page.click("#nav-recap")
+    page.wait_for_selector(".toast.info .msg >> text=the agent is still working")
+    assert page.text_content("#send-error") == ""
+    assert page.errors == []
+
+
+def test_an_agent_toast_reaches_every_browser_and_its_click_opens_the_tab(
+    server, page, browser
+):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    errors: list = []
+    other = new_page(browser, errors)
+    other.goto(server.url)
+    other.wait_for_selector("#a2[data-view=fleet]")
+    page.fill("#input", '/mcp toast {"text": "Spec is ready"}')
+    page.press("#input", "Enter")
+    for pg in (page, other):
+        pg.wait_for_selector(".toast.from .msg >> text=Spec is ready")
+    handle = page.get_attribute(".tab.on", "title").split(":")[0]
+    assert other.text_content(".toast.from .hd .nm") == handle
+    other.click(".toast.from")
+    other.wait_for_selector("#a2[data-view=session]")
+    assert other.evaluate("location.hash.slice(3)") == sid
+    assert errors == [] and page.errors == []
+
+
+def test_an_agent_toast_goes_to_the_desktop_only_while_the_page_is_hidden(
+    server, page, browser
+):
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    errors: list = []
+    other = ctx.new_page()
+    other.on("pageerror", lambda e: errors.append(str(e)))
+    other.add_init_script("""
+      window.__notes = [];
+      window.__hidden = false;
+      window.Notification = class {
+        constructor(t, o) { window.__notes.push([t, o]); this.onclick = null; }
+        static get permission() { return 'granted'; }
+        static requestPermission() { return Promise.resolve('granted'); } };
+      Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
+    """)
+    other.goto(server.url)
+    other.wait_for_selector("#a2[data-view=fleet]")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    handle = page.get_attribute(".tab.on", "title").split(":")[0]
+    page.fill("#input", '/mcp toast {"text": "Seen while visible"}')
+    page.press("#input", "Enter")
+    other.wait_for_selector(".toast.from .msg >> text=Seen while visible")
+    assert other.evaluate("window.__notes.length") == 0
+    other.evaluate("window.__hidden = true")
+    page.fill("#input", '/mcp toast {"text": "Build failed", "kind": "error"}')
+    page.press("#input", "Enter")
+    other.wait_for_function("() => window.__notes.length === 1", timeout=8000)
+    assert other.evaluate("window.__notes[0]") == [
+        f"{handle}: error",
+        {"body": "Build failed", "tag": other.evaluate("window.__notes[0][1].tag")},
+    ]
+    # aegis's own toasts answer something done on the page: never on the desktop.
+    other.evaluate(
+        "async () => (await import('/static/js/toast.js')).toast('Nobody needs you')"
+    )
+    assert other.evaluate("window.__notes.length") == 1
+    assert errors == [] and page.errors == []
+    ctx.close()

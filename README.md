@@ -66,6 +66,9 @@ own token, so no tool asks who is calling.
 - `plan_update` and `turn_end` tell you what the agent is doing and how each turn
   ended: a question for you, something to read, or finished work, with up to
   three replies you send with one tap.
+- `toast` shows you one line mid-turn, in every open browser, as a card in the
+  corner that names the session, and as a desktop notification while the page is
+  hidden; a click opens its tab.
 - `journal_search` asks what was done on this server, by day, words, a path or
   a session, and `journal_note` adds a decision or a blocker to it.
 
@@ -161,7 +164,7 @@ transcript, so the workplace grows with what its agents build.
   including tool output and thinking the page has not loaded, and opens the row
   each match is in. Messages, code blocks and tool output carry a copy button
   that copies the raw text, and `c` copies the selected row.
-- **Three themes.** Ink, Logbook and Syalia.
+- **Ten themes.** Ink, Logbook, Electric, Phosphor, Blueprint, Amphora, Riso, Solari, Aizome and Poster.
 
 ## Configure
 

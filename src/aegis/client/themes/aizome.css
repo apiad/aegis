@@ -1,0 +1,23 @@
+/* Aizome: indigo-dyed cloth; cotton-white sashiko stitches for the thread and rules, seigaiha waves in the panel. */
+[data-theme=aizome] #a2{
+  --bg:#15213f;--chrome:#0f1832;--side:#121d39;--surface:#1b2a4f;--raised:#22335d;--rule:#33477a;
+  --ink:#e8e1cf;--strong:#f7f1e3;--muted:#aab2c9;--faint:#7883a6;
+  --accent:#f1e7cf;--accent-soft:rgba(241,231,207,.12);--on-accent:#15213f;
+  --ok:#a9d4a0;--err:#f39a86;--err-bg:#2c2440;--warn:#e9a75a;--comms:#c0b4f0;
+  --add-bg:#1d3b47;--del-bg:#3a2a46;
+  --h-kw:#e9a75a;--h-str:#a9d4a0;--h-num:#f39a86;--h-com:#7883a6;--h-fn:#f7f1e3;--h-type:#c0b4f0;--h-var:#d8d2c2;--h-meta:#aab2c9;
+  --font-ui:'Zen Kaku Gothic New',sans-serif;--font-prose:'Shippori Mincho',serif;--font-mono:'JBM',monospace;
+  --font-chrome:'Zen Kaku Gothic New',sans-serif;--font-head:'Shippori Mincho',serif;
+  --prose-size:16.5px;--r:4px;--r-lg:6px;--time:none;--thread:block;--row-cols:22px 1fr;--fill:var(--accent);
+  --stitch:rgba(241,231,207,.42);
+}
+[data-theme=aizome] #a2 .tr:before{width:2px;left:31.5px;background:repeating-linear-gradient(180deg,var(--stitch) 0 9px,transparent 9px 15px)}
+[data-theme=aizome] #a2 .tabs{border-bottom:none;background:linear-gradient(90deg,var(--stitch) 0 9px,transparent 9px 15px) left bottom/15px 2px repeat-x,var(--chrome)}
+[data-theme=aizome] #a2 .tab.on{box-shadow:none}
+[data-theme=aizome] #a2 .side{border-left:none;background:linear-gradient(180deg,var(--stitch) 0 9px,transparent 9px 15px) left top/2px 15px repeat-y,
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='20' viewBox='0 0 40 20'%3E%3Cg fill='none' stroke='%23f1e7cf' stroke-opacity='.06' stroke-width='1'%3E%3Cpath d='M0 20a20 20 0 0 1 40 0M-20 20a20 20 0 0 1 40 0M20 20a20 20 0 0 1 40 0'/%3E%3Cpath d='M6 20a14 14 0 0 1 28 0M14 20a6 6 0 0 1 12 0'/%3E%3Cpath d='M-20 10a20 20 0 0 1 40 0M20 10a20 20 0 0 1 40 0'/%3E%3C/g%3E%3C/svg%3E") 0 0/40px 20px,var(--side)}
+[data-theme=aizome] #a2 .row.user .body{outline:1.5px dashed rgba(241,231,207,.32);outline-offset:-5px;padding:11px 14px}
+[data-theme=aizome] #a2 .composer .box{border:1.5px dashed rgba(241,231,207,.35)}
+[data-theme=aizome] #a2 .md h1,[data-theme=aizome] #a2 .md h2,[data-theme=aizome] #a2 .md h3{font-size:1.25em}
+[data-theme=aizome] #a2 .side .title{font-family:var(--font-head);font-weight:600;font-size:17px}
+[data-theme=aizome] #a2 .md pre,[data-theme=aizome] #a2 .diff{border:1px dashed var(--rule)}

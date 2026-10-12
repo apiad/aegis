@@ -1,0 +1,29 @@
+/* Electric: ultraviolet night; the thread is a lit trace and the glyphs are its nodes. */
+[data-theme=electric] #a2{
+  --bg:#07071c;--chrome:#050514;--side:#06061a;--surface:#0d0d2b;--raised:#14143a;--rule:#23235a;
+  --ink:#d6dcff;--strong:#f5f7ff;--muted:#8d93cf;--faint:#5c62a0;
+  --accent:#38e8ff;--accent-soft:rgba(56,232,255,.13);--on-accent:#04041a;
+  --ok:#5cffc8;--err:#ff5c9a;--err-bg:#1f0a22;--warn:#ffd25c;--comms:#b18cff;
+  --add-bg:#0a2430;--del-bg:#2a0b26;
+  --h-kw:#b18cff;--h-str:#5cffc8;--h-num:#ffd25c;--h-com:#5c62a0;--h-fn:#38e8ff;--h-type:#ff7ad9;--h-var:#c9d0ff;--h-meta:#8d93cf;
+  --font-ui:'Inter',sans-serif;--font-prose:'Inter',sans-serif;--font-mono:'JBM',monospace;
+  --font-chrome:'SpaceG',sans-serif;--font-head:'SpaceG',sans-serif;
+  --prose-size:15px;--r:8px;--r-lg:12px;--time:none;--thread:block;--row-cols:22px 1fr;
+  --fill:linear-gradient(90deg,#38e8ff,#7b6bff,#ff4fd8);
+  --volt:linear-gradient(120deg,#38e8ff,#7b6bff 55%,#ff4fd8);
+}
+[data-theme=electric] #a2 .tr:before{width:2px;background:linear-gradient(180deg,#38e8ff,#7b6bff 45%,#ff4fd8 85%,transparent);box-shadow:0 0 8px rgba(56,232,255,.6),0 0 22px rgba(123,107,255,.35)}
+[data-theme=electric] #a2 .row.tool .g,[data-theme=electric] #a2 .row.prose .g{color:var(--accent)}
+[data-theme=electric] #a2 .tabs{border-bottom-color:#1a1a48}
+[data-theme=electric] #a2 .tab.on{box-shadow:none;border-radius:8px 8px 0 0}
+[data-theme=electric] #a2 .tab.on:after{content:"";position:absolute;left:10px;right:10px;bottom:0;height:2px;border-radius:2px;background:var(--volt);box-shadow:0 0 10px rgba(56,232,255,.8)}
+[data-theme=electric] #a2 .row.user .body{border:1px solid transparent;border-radius:12px;background:linear-gradient(var(--raised),var(--raised)) padding-box,var(--volt) border-box}
+[data-theme=electric] #a2 .tn{font-family:var(--font-chrome);font-weight:600;color:var(--accent)}
+[data-theme=electric] #a2 .send,[data-theme=electric] #a2 .btn.primary,[data-theme=electric] #a2 .act.primary{background:var(--volt);color:#fff;border-radius:999px;box-shadow:0 0 16px rgba(123,107,255,.45)}
+[data-theme=electric] #a2 .chip{border-radius:999px}
+[data-theme=electric] #a2 .composer .box:focus-within,[data-theme=electric] #a2 .composer .box{box-shadow:0 0 0 1px rgba(56,232,255,.18),0 0 28px rgba(56,232,255,.08)}
+[data-theme=electric] #a2 .row.working .body{background:linear-gradient(90deg,#38e8ff,#ff4fd8,#38e8ff) 0 0/200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:el-arc 2.4s linear infinite}
+[data-theme=electric] #a2 .side .title{font-family:var(--font-head);font-weight:600;font-size:16px}
+[data-theme=electric] #a2 .bar i{box-shadow:0 0 8px rgba(56,232,255,.6)}
+@keyframes el-arc{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){[data-theme=electric] #a2 .row.working .body{animation:none}}

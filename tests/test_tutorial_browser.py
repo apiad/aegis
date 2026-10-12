@@ -179,13 +179,14 @@ def test_enter_on_a_bare_command_with_an_argument_does_what_it_did(
     }
     for name, (line, error) in expect.items():
         page.fill("#input", "")
-        page.evaluate("document.getElementById('send-error').textContent = ''")
         page.fill("#input", f"/{name}")
         page.wait_for_selector("#cmd-menu:not([hidden])")
         page.press("#input", "Enter")
         if error:
+            # Refusals show as error toasts (#329).
             page.wait_for_function(
-                "e => document.getElementById('send-error').textContent.startsWith(e)",
+                "e => [...document.querySelectorAll('.toast.error .msg')]"
+                ".some((m) => m.textContent.startsWith(e))",
                 arg=error,
             )
         else:
