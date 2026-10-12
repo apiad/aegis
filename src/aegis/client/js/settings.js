@@ -147,7 +147,16 @@ export class Settings {
     } catch (e) {
       this.status = e.message;
     }
-    if (!this.dirty) this.draw();
+    if (this.dirty) return;
+    // A redraw replaces the form: never under a field being typed in, which
+    // would drop what was typed. It waits until the focus leaves the page.
+    if (!this.box.contains(document.activeElement)) return this.draw();
+    const later = () =>
+      setTimeout(() => {
+        if (this.box.contains(document.activeElement)) return this.box.addEventListener("focusout", later, { once: true });
+        if (!this.dirty) this.draw();
+      });
+    this.box.addEventListener("focusout", later, { once: true });
   }
 
   touch() {
