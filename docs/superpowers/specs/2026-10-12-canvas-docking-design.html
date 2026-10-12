@@ -34,6 +34,7 @@ html{scroll-behavior:smooth;scroll-padding-top:56px}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:14px;line-height:1.5}
 a{color:var(--accent);text-decoration:none}
 a:hover{text-decoration:underline}
+code,pre{font-variant-ligatures:none}
 code{font-family:var(--font-mono);font-size:.86em;background:var(--raised);border:1px solid var(--rule);border-radius:4px;padding:0 4px;color:var(--strong)}
 
 .chrome{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;height:40px;padding:0 18px;
@@ -211,6 +212,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <a href="#transcript">The transcript beside it</a>
   <a href="#files">Files that update</a>
   <a href="#panes">Panes</a>
+  <a href="#windows">Windows</a>
   <a href="#phone">On a phone</a>
   <a href="#who">Who may change it</a>
   <a href="#delivery">Delivery</a>
@@ -221,7 +223,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <main>
 <h1>The canvas: artifacts and files docked beside the transcript</h1>
 <div class="meta"><span>docs/superpowers/specs/2026-10-12-canvas-docking-design.html</span><span>·</span><span>draft, not started</span><span>·</span><span>issue #347</span></div>
-<p class="lede">Any page or file an agent sends into a transcript can be docked: pinned beside the transcript as a pane that stays in view while the work goes on. A session's panes form its canvas, a few columns that each hold a stack of panes, arranged by dragging or by the agent. A file the agent sends again from the same path updates its pane in place, so a page of controls, the document it shapes and the conversation about it can all stay on one screen.</p>
+<p class="lede">Any page or file an agent sends into a transcript can be docked: pinned beside the transcript as a pane that stays in view while the work goes on. A session's panes form its canvas, a few columns that each hold a stack of panes, arranged by dragging or by the agent. A file the agent sends again from the same path updates its pane in place, so a page of controls, the document it shapes and the conversation about it can all stay on one screen. When one screen is not enough, panes move to a second browser window that stays live, so a control panel can sit on another monitor.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
 <div class="trio">
@@ -231,7 +233,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   </div>
   <div class="card">
     <h4>A canvas you can talk into existence</h4>
-    <p>Columns of stacked panes, with the transcript as one pane among them. The person drags panes by their title bars; the agent docks with <code>dock=</code> on <code>artifact_send</code> and <code>file_send</code>, and reads or rewrites the arrangement with <code>layout_read</code> and <code>layout_set</code>. The canvas is part of the session and survives reloads, restarts and other browsers.</p>
+    <p>Columns of stacked panes, with the transcript as one pane among them. The person drags panes by their title bars; the agent docks with <code>dock=</code> on <code>artifact_send</code> and <code>file_send</code>, and reads or rewrites the arrangement with <code>layout_read</code> and <code>layout_set</code>. The canvas is part of the session and survives reloads, restarts and other browsers. It can span windows: a pane moved to window 2 runs live in a second browser tab, on another monitor if there is one.</p>
   </div>
   <div class="card">
     <h4>Files that update</h4>
@@ -260,6 +262,12 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>Where the layout lives</td><td>In the session's transcript store, as a <code>layout</code> record folded into standing state, like the plan</td><td class="why"><span class="who">maintainer</span> The agent must be able to set and read it, and it must survive a reload, a restart and a second browser. A record gets all three, and the fold tests check it at every cut. This departs from the vision doc, which leaned toward keeping the arrangement in each browser and left the question open.</td></tr>
 <tr><td>One layout per</td><td>Session. Everyone who opens the session sees the same canvas</td><td class="why"><span class="who">maintainer</span> The canvas is the session's UI, built with its agent. A per-person layout would need a second key and give the agent two arrangements to reason about.</td></tr>
 <tr><td>Agent's tools</td><td><code>dock=</code> on both send tools, plus <code>layout_read</code> and <code>layout_set</code></td><td class="why"><span class="who">maintainer</span> <code>dock=</code> covers the common case in one call. <code>layout_set</code> lets "put the controls under the PDF" move panes that are already docked.</td></tr>
+<tr><td>Buttons on cards and panes</td><td>A file keeps Open in a new tab, Open in the desktop app and Download, on its card and on its pane's bar. Dock joins them</td><td class="why"><span class="who">maintainer</span> Docking adds a place to look at a file; it takes none of the existing ways to get at one away.</td></tr>
+<tr><td>A second window</td><td>Panes can live in more windows than one. Each extra window is a browser tab running the aegis client in window mode, drawing only that window's panes, live</td><td class="why"><span class="who">maintainer</span> Two monitors: a control panel on one, the transcript and the preview on the other. A raw page in a tab cannot do it, because its bridge has no host page to talk to.</td></tr>
+<tr><td>Moving between windows</td><td>"Move to window" on a pane's bar. Dragging works within a window only</td><td class="why"><span class="who q">proposed</span> Pointer events do not cross browser windows. A menu is the one move that works the same on every platform.</td></tr>
+<tr><td>An artifact's Open in a new tab</td><td>Becomes Pop out: the page moves to a new window, live. A file's Open in a new tab still opens the raw file</td><td class="why"><span class="who q">proposed</span> Today it opens the raw page, whose <code>aegis.emit</code> and <code>aegis.state</code> go nowhere: it looks alive and is not. A PDF needs no bridge, so a file's Open stays as it is.</td></tr>
+<tr><td>A window nobody shows</td><td>Its panes stay assigned to it. Window 1 shows a chip with Open and Bring back</td><td class="why"><span class="who q">proposed</span> Closing a tab by accident must not lose an arrangement, and the panes must stay reachable from the main window.</td></tr>
+<tr><td>The agent and windows</td><td>The agent can place panes in any window, and cannot open one</td><td class="why"><span class="who q">proposed</span> Browsers block a window that no click opened. The card says where its item is, and the person's click opens the tab.</td></tr>
 <tr><td>Where the composer goes</td><td>Under the transcript pane on a desktop; at the foot of the session on a phone and in tab mode, whichever tab is open</td><td class="why"><span class="who q">proposed</span> On a phone the person wants to type "bigger margins" while looking at the preview, not after switching back.</td></tr>
 <tr><td>Limits</td><td>At most 4 columns and 3 panes per column. A column is at least 280 px wide (the transcript's 360 px), a pane at least 120 px high</td><td class="why"><span class="who q">proposed</span> On a 1440 px screen, a fifth column or a fourth stacked pane is too small to read. Below the minimums the canvas switches to tabs, as on a phone.</td></tr>
 <tr><td>An artifact that ends</td><td>A submitted or closed artifact leaves the canvas; its card collapses as it does today</td><td class="why"><span class="who q">proposed</span> A finished page has nothing left to do in view, and the card's Show still re-mounts it read-only.</td></tr>
@@ -310,7 +318,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <li><code>src/aegis/layout.py</code> (new): the layout's shape, its validation against what the session can dock, and the <code>dock=</code> placement grammar. Pure functions, so the ops, the tools and the tests share one rule.</li>
   <li><code>src/aegis/agent_ops.py</code> and <code>src/aegis/artifact_ops.py</code>: <code>dock</code> on <code>FileSend</code> and on <code>artifact.send</code>; the agent ops <code>layout.read</code> and <code>layout.set</code>; the person op <code>layout.set</code>, <code>owned="log_id"</code>.</li>
   <li><code>src/aegis/files.py</code>: <code>store</code> returns the resolved source path, which the file record keeps and the wire never carries.</li>
-  <li><code>src/aegis/client/js/canvas.js</code> (new): draws the columns, the grips and the drag targets, and the tab strip in tab mode. <code>js/viewer.js</code> splits its drawing from its overlay, so a pane and the overlay share one renderer.</li>
+  <li><code>src/aegis/client/js/canvas.js</code> (new): draws one window's columns, the grips and the drag targets, and the tab strip in tab mode. <code>js/viewer.js</code> splits its drawing from its overlay, so a pane and the overlay share one renderer.</li>
+  <li><code>src/aegis/client/js/app.js</code>: a route, <code>#/s/&lt;log_id&gt;/w/&lt;n&gt;</code>, that boots the client in window mode: the same connection, login and artifact bridge, with the tab strip, the session panel and the transcript left out.</li>
 </ul>
 
 <h2 id="layout"><span class="n">04</span>The layout</h2>
@@ -319,26 +328,29 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <h3 id="record">The layout record</h3>
 <pre><span class="c">// one line in the session's store, src aegis</span>
-{<span class="k">"kind"</span>: <span class="s">"layout"</span>, <span class="k">"by"</span>: <span class="s">"person"</span>, <span class="k">"columns"</span>: [
-  {<span class="k">"w"</span>: 0.32, <span class="k">"panes"</span>: [{<span class="k">"id"</span>: <span class="s">"f-3a9c41d07be2"</span>, <span class="k">"h"</span>: 1}]},
-  {<span class="k">"w"</span>: 0.43, <span class="k">"panes"</span>: [{<span class="k">"id"</span>: <span class="s">"transcript"</span>, <span class="k">"h"</span>: 1}]},
-  {<span class="k">"w"</span>: 0.25, <span class="k">"panes"</span>: [{<span class="k">"id"</span>: <span class="s">"art-6889d6ba"</span>, <span class="k">"h"</span>: 0.6},
-                         {<span class="k">"id"</span>: <span class="s">"f-77b1e0c2aa10"</span>, <span class="k">"h"</span>: 0.4}]}
+{<span class="k">"kind"</span>: <span class="s">"layout"</span>, <span class="k">"by"</span>: <span class="s">"person"</span>, <span class="k">"windows"</span>: [
+  {<span class="k">"n"</span>: 1, <span class="k">"columns"</span>: [
+    {<span class="k">"w"</span>: 0.6, <span class="k">"panes"</span>: [{<span class="k">"id"</span>: <span class="s">"transcript"</span>, <span class="k">"h"</span>: 1}]},
+    {<span class="k">"w"</span>: 0.4, <span class="k">"panes"</span>: [{<span class="k">"id"</span>: <span class="s">"f-3a9c41d07be2"</span>, <span class="k">"h"</span>: 0.65},
+                          {<span class="k">"id"</span>: <span class="s">"f-77b1e0c2aa10"</span>, <span class="k">"h"</span>: 0.35}]}]},
+  {<span class="k">"n"</span>: 2, <span class="k">"columns"</span>: [
+    {<span class="k">"w"</span>: 1, <span class="k">"panes"</span>: [{<span class="k">"id"</span>: <span class="s">"art-6889d6ba"</span>, <span class="k">"h"</span>: 1}]}]}
 ]}</pre>
 <ul>
-  <li>A pane id is <code>transcript</code>, an artifact id, or a file key (<a href="#files">section 07</a>). The transcript appears exactly once.</li>
+  <li>A pane id is <code>transcript</code>, an artifact id, or a file key (<a href="#files">section 07</a>). The transcript appears exactly once, in window 1. Any id appears at most once in the whole record.</li>
+  <li>A window's <code>n</code> is stable: a new window takes one more than the highest in use, and a window that empties is dropped without renumbering the others, so a tab open on window 3 never starts showing what was window 4. Window 1 always exists. <a href="#windows">Section 09</a> covers windows.</li>
   <li><code>w</code> and <code>h</code> are fractions. The server normalises them so the columns' widths, and each column's heights, add up to 1. A width or height left out means an equal share.</li>
   <li><code>by</code> is <code>person</code> or <code>agent</code>, so the history says who arranged what.</li>
-  <li>The fold keeps the latest record as <code>standing.layout</code>. An <code>artifact_submit</code> or <code>artifact_close</code> removes that artifact's pane from it, dropping an emptied column and renormalising, so the canvas never shows an ended page and no extra record is written.</li>
+  <li>The fold keeps the latest record as <code>standing.layout</code>. An <code>artifact_submit</code> or <code>artifact_close</code> removes that artifact's pane from it, dropping an emptied column, then an emptied window other than window 1, and renormalising, so the canvas never shows an ended page and no extra record is written.</li>
   <li>A drag writes one record when the pointer is released. A grip writes one record when released. Nothing is written while the pointer moves, so no coalescing is needed.</li>
   <li>Each earlier layout stays in the store. Undo is not in this spec, but nothing has to change for it to be added.</li>
 </ul>
 
 <h3 id="limits">Limits and narrow screens</h3>
 <ul>
-  <li>At most 4 columns and 3 panes in a column. <code>layout.set</code> and <code>dock=</code> refuse a layout over either limit with <code>bad_params</code> and a message that says which.</li>
+  <li>At most 4 columns in a window, 3 panes in a column and 4 windows. <code>layout.set</code> and <code>dock=</code> refuse a layout over either limit with <code>bad_params</code> and a message that says which.</li>
   <li>A column is at least 280 px wide, the transcript's column at least 360 px. A pane is at least 120 px high. Grips stop at those minimums.</li>
-  <li>When the window cannot give every column its minimum width, the canvas draws as tabs, as on a phone (<a href="#phone">section 09</a>). The layout itself does not change, so widening the window brings the columns back.</li>
+  <li>When the window cannot give every column its minimum width, the canvas draws as tabs, as on a phone (<a href="#phone">section 10</a>). The layout itself does not change, so widening the window brings the columns back.</li>
 </ul>
 
 <h3 id="try">Try it</h3>
@@ -376,6 +388,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <li>A pane's title bar is its handle. Dropping on another pane's left or right fifth makes a new column on that side; on its top or bottom third stacks above or below it; in the middle swaps the two. The drop target is drawn while the pointer moves.</li>
   <li>Grips between columns and between stacked panes resize them.</li>
   <li>× on a pane's bar undocks it: the pane goes and its card draws in full again. The transcript's pane has no ×.</li>
+  <li>A pane's bar carries the item's own buttons: for a file, Open in a new tab, Open in the desktop app (where the server allows it) and Download; for an artifact, Pop out. Then Move to window and ×.</li>
 </ul>
 
 <h3 id="by-agent">By the agent</h3>
@@ -384,11 +397,11 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tbody>
 <tr><td>artifact_send(id, dock=None)</td><td>Lands the page as today and, when <code>dock</code> is given, places its pane. A re-send of a docked artifact keeps its pane where it is unless <code>dock</code> moves it.</td></tr>
 <tr><td>file_send(paths, caption=None, dock=None)</td><td>Sends the files as today. With <code>dock</code>, the first file goes to that place and the others stack under it. A file whose key is already docked stays in its pane and shows the new version.</td></tr>
-<tr><td>layout_read()</td><td>The canvas as it stands: columns with their widths, and each pane's id, kind (<code>transcript</code>, <code>artifact</code>, <code>file</code>), title and height.</td></tr>
-<tr><td>layout_set(columns)</td><td>Replaces the canvas. Takes the record's <code>columns</code>; widths and heights are optional. Refused with <code>bad_params</code> when a pane id is unknown or ended, the transcript is missing or doubled, or a limit is broken.</td></tr>
+<tr><td>layout_read()</td><td>The canvas as it stands: its windows, each with columns and their widths, and each pane's id, kind (<code>transcript</code>, <code>artifact</code>, <code>file</code>), title and height.</td></tr>
+<tr><td>layout_set(windows)</td><td>Replaces the canvas. Takes the record's <code>windows</code>; widths and heights are optional. Refused with <code>bad_params</code> when a pane id is unknown or ended, the transcript is missing or doubled, or a limit is broken.</td></tr>
 </tbody>
 </table>
-<p>The <code>dock</code> grammar is one string: <code>left</code> or <code>right</code> makes a new column at that edge of the canvas, and <code>left:&lt;pane&gt;</code>, <code>right:&lt;pane&gt;</code>, <code>above:&lt;pane&gt;</code> or <code>below:&lt;pane&gt;</code> places it next to that pane. A pane already docked is moved. A bad value is refused before anything is sent, so a refused call never leaves a card behind. The error names the panes that exist, so the agent can correct the call without a <code>layout_read</code>.</p>
+<p>The <code>dock</code> grammar is one string: <code>left</code> or <code>right</code> makes a new column at that edge of the canvas, and <code>left:&lt;pane&gt;</code>, <code>right:&lt;pane&gt;</code>, <code>above:&lt;pane&gt;</code> or <code>below:&lt;pane&gt;</code> places it next to that pane, in whichever window holds it. <code>window:&lt;n&gt;</code> makes a new column at the right of window <code>n</code>, and <code>window:new</code> opens a new window holding only this pane. Plain <code>left</code> and <code>right</code> mean window 1. A pane already docked is moved. A bad value is refused before anything is sent, so a refused call never leaves a card behind. The error names the panes that exist, so the agent can correct the call without a <code>layout_read</code>.</p>
 <p>An agent's docking applies at once in every browser on the session; that is the point of talking a canvas into existence. On a phone it does not switch tabs: the new tab gets a dot.</p>
 <p>The help pages change with the tools: <code>help/artifacts.md</code> gains a section on pages meant to stay docked, including the rule that a control should emit when the person lets go of it, not while it moves, because each emit wakes the agent for a turn and the page may emit 20 times a minute. <code>help/transcript.md</code> and <code>help/phone.md</code> describe the canvas for people.</p>
 
@@ -418,24 +431,74 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <li>Switching tabs hides the canvas with the session and keeps its frames, as the viewer keeps its item per session today.</li>
 </ul>
 
-<h2 id="phone"><span class="n">09</span>On a phone</h2>
-<p>Under 760 px, the client's drawer breakpoint, and whenever the columns do not fit, the canvas draws as a strip of tabs under the header: the transcript first, then the other panes in reading order (column by column, top to bottom). One pane fills the view. The composer sits at the foot on every tab. A tab whose pane changed while another was open, a new file version or a newly docked item, gets a dot until it is opened. Dragging is a desktop act; on a phone a long press on a tab offers Undock. Set "phone width" in the mockup above to see it.</p>
+<h2 id="windows"><span class="n">09</span>Windows</h2>
+<p>A canvas can span more than one browser window. Window 1 is the session's tab, with the transcript. Every other window is a browser tab opened at <code>#/s/&lt;log_id&gt;/w/&lt;n&gt;</code>, which boots the aegis client in window mode: the same connection, login and artifact bridge, drawing only window <code>n</code>'s columns, with no tab strip, no session panel and no transcript. A page in that tab is as live as a docked one: its emits wake the agent, its state is kept, and <code>artifact_update</code> reaches it.</p>
+<figure>
+<svg viewBox="0 0 900 290" width="100%" role="img" aria-label="Two monitors. The left one shows window 2, a browser tab holding the layout controls page. The right one shows window 1, the session's tab, with the transcript and the PDF preview side by side. Both tabs talk to the same aegis server over their own connection and draw their own window from the shared layout record." style="font-family:var(--font-mono);font-size:11.5px">
+  <g fill="#191814" stroke="#2a2721">
+    <rect x="10" y="10" width="330" height="210" rx="8"/>
+    <rect x="370" y="10" width="520" height="210" rx="8"/>
+    <rect x="330" y="248" width="240" height="34" rx="6"/>
+  </g>
+  <g fill="#1d1b17"><rect x="11" y="11" width="328" height="22"/><rect x="371" y="11" width="518" height="22"/></g>
+  <text x="22" y="27" fill="#8a867b">#/s/…/w/2 · window 2</text>
+  <text x="382" y="27" fill="#8a867b">#/s/… · window 1</text>
+  <text x="26" y="58" fill="#e0a872">Layout controls</text>
+  <g stroke="#e0a872" stroke-width="3"><path d="M26 86 H 300"/><path d="M26 126 H 300"/><path d="M26 166 H 300"/></g>
+  <g fill="#e0a872"><circle cx="190" cy="86" r="7"/><circle cx="120" cy="126" r="7"/><circle cx="60" cy="166" r="7"/></g>
+  <text x="26" y="78" fill="#8a867b">font size</text><text x="26" y="118" fill="#8a867b">margins</text><text x="26" y="158" fill="#8a867b">columns</text>
+  <path d="M630 33 V 219" stroke="#2a2721"/>
+  <text x="384" y="58" fill="#e0a872">transcript</text>
+  <g fill="#2a2721"><rect x="384" y="72" width="220" height="8" rx="3"/><rect x="420" y="90" width="184" height="8" rx="3"/><rect x="384" y="108" width="200" height="8" rx="3"/><rect x="384" y="126" width="160" height="8" rx="3"/></g>
+  <rect x="384" y="180" width="232" height="26" rx="6" fill="none" stroke="#2a2721"/>
+  <text x="394" y="197" fill="#6f6b62">Message the agent…</text>
+  <text x="644" y="58" fill="#e0a872">report.pdf · v4</text>
+  <rect x="690" y="70" width="140" height="140" fill="#f6f3ea"/>
+  <g fill="#bbb"><rect x="704" y="84" width="80" height="8"/><rect x="704" y="102" width="112" height="5"/><rect x="704" y="114" width="112" height="5"/><rect x="704" y="126" width="90" height="5"/></g>
+  <text x="344" y="270" fill="#dcd9cf">aegis serve · one layout record</text>
+  <g stroke="#8a867b" fill="none"><path d="M175 220 C 175 250, 300 265, 328 265"/><path d="M630 220 C 630 250, 600 265, 572 265"/></g>
+</svg>
+<figcaption>Window 2 on the left monitor holds the controls; window 1 on the right holds the transcript and the preview. Each tab draws its own window from the same record.</figcaption>
+</figure>
+<ul>
+  <li>Each tab draws only its own window, so a page still runs in one place without any coordination between tabs. The card of an item in another window holds the line <code>in window 2 · open</code>. Open calls <code>window.open</code> with the name <code>aegis-&lt;log_id&gt;-w2</code>, which focuses that tab if it exists and opens it if not.</li>
+  <li>A pane moves between windows through Move to window on its bar: window 1, any other window in use, or a new one. A new one is written to the layout and opened by the same click. Within a window, panes drag as before.</li>
+  <li>Pop out, on an artifact's card or pane, is Move to a new window. It replaces the card's Open in a new tab for artifacts, which today opens the raw page with no bridge behind it.</li>
+  <li>Closing a window's tab changes nothing in the layout. Window 1 shows a chip at the top of its canvas for each window whose panes are not drawn anywhere this browser can see: <code>window 2 · 1 pane</code>, with Open and Bring back. Bring back moves that window's panes into window 1 as a new column and drops the window. The chip shows even when another browser has the window open; this browser cannot know, and Open is harmless.</li>
+  <li>The agent places panes in any window with <code>dock="window:2"</code> or <code>layout_set</code>, and <code>dock="window:new"</code> creates one. It cannot open a tab: browsers block a window that no click opened. The card's <code>in window 3 · open</code> line and the chip are where the person finds it.</li>
+  <li>A window tab whose window has been dropped (its last pane undocked, or brought back) shows one line, <code>This window is empty</code>, and closes nothing by itself.</li>
+  <li>A window tab shows the session's name in its title, <code>report-layout · window 2</code>, so the browser's tab list and the OS window list tell the windows apart.</li>
+</ul>
+<div class="sv" style="max-width:560px">
+  <div class="tabs"><span class="tab on">report-layout</span></div>
+  <div style="padding:10px 12px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--rule);font:11.5px var(--font-chrome);color:var(--muted)">
+    <span style="border:1px solid var(--rule);border-radius:999px;padding:2px 10px">window 2 · 1 pane · <a>open</a> · <a>bring back</a></span>
+  </div>
+  <div style="padding:12px">
+    <div class="fcard"><div class="fbar"><span class="ic">◈</span><span class="fn">Layout controls</span><span class="fs">live</span></div><div class="held">in window 2 · <a>open</a></div></div>
+  </div>
+</div>
+<p style="font-size:13px;color:var(--faint);font-family:var(--font-mono)">Static: the chip at the top of window 1's canvas, and a card whose page lives in window 2.</p>
 
-<h2 id="who"><span class="n">10</span>Who may change it</h2>
+<h2 id="phone"><span class="n">10</span>On a phone</h2>
+<p>Under 760 px, the client's drawer breakpoint, and whenever the columns do not fit, the canvas draws as a strip of tabs under the header: the transcript first, then the other panes in reading order (column by column, top to bottom). One pane fills the view. The composer sits at the foot on every tab. A tab whose pane changed while another was open, a new file version or a newly docked item, gets a dot until it is opened. Dragging is a desktop act; on a phone a long press on a tab offers Undock. A phone has one window, so the strip holds every window's panes, window 1's first, and the window chips and Move to window are hidden. Set "phone width" in the mockup above to see it.</p>
+
+<h2 id="who"><span class="n">11</span>Who may change it</h2>
 <p>The person op <code>layout.set</code> is <code>owned="log_id"</code>: a member may change the canvas of sessions they own, an admin any. The agent ops act on the calling agent's own session. Someone who may read a session but not write to it sees its canvas and cannot drag, dock or undock; the title bars draw without handles and the Dock buttons are hidden.</p>
 
-<h2 id="delivery"><span class="n">11</span>Delivery</h2>
+<h2 id="delivery"><span class="n">12</span>Delivery</h2>
 <p>One PR from branch <code>canvas-dock</code>, built in vertical slices so each one can be tried in a browser before the next starts.</p>
 <div class="steps">
   <div class="step"><div class="n">1</div><div><h4>Rows never fold, and the person docks an artifact</h4><p>The <code>FOLD_LEVEL</code> change, the layout record and its fold, <code>layout.set</code>, <code>canvas.js</code> with columns, drag and grips, the viewer split, the docked hold. Ends when a page docked in one browser is still docked after a reload and shows in a second one.</p></div></div>
   <div class="step"><div class="n">2</div><div><h4>Files dock and update</h4><p><code>source</code> on file records, keys and versions in the fold, the replaced line, a pane that swaps versions. Ends when re-sending a docked PDF changes the pane without touching the layout.</p></div></div>
   <div class="step"><div class="n">3</div><div><h4>The agent arranges it</h4><p><code>dock=</code> on both sends, <code>layout_read</code>, <code>layout_set</code>, the help pages. Ends when a real Claude Code session builds the preview-and-controls canvas from one prompt.</p></div></div>
   <div class="step"><div class="n">4</div><div><h4>Phones and narrow windows</h4><p>Tab mode, the composer at the foot, the dots, long-press Undock. Ends with the phone render check and a pass on a real phone.</p></div></div>
+  <div class="step"><div class="n">5</div><div><h4>More windows</h4><p>Window mode at <code>#/s/&lt;log_id&gt;/w/&lt;n&gt;</code>, Move to window, Pop out, the <code>in window N</code> hold, the chips and Bring back, <code>window:</code> in the dock grammar. Ends when a page popped out to a second monitor wakes the agent on release and its re-rendered preview updates in window 1. If the PR has grown too large by then, this slice lands as its own PR from the same spec: slices 1 to 4 already write the <code>windows</code> list, with window 1 only.</p></div></div>
 </div>
 <p>Done means what AGENTS.md says: <code>make check</code> and <code>make test-slow</code> green, the bench table in the PR body, DESIGN.md gaining the rule below, a <code>changelog.d/347-canvas.added.md</code> fragment, and the maintainer's smoke test through <code>bin/aegis-dev</code> on the branch.</p>
 <p>The DESIGN.md rule: <em>the canvas is a record, and a docked page still runs in one place.</em> The layout is folded standing state written by the person's drags and the agent's tools alike, trimmed by the fold when an artifact ends; a docked item's frame lives in its pane and its card holds a line, as the viewer's hold already does.</p>
 
-<h2 id="testing"><span class="n">12</span>Testing</h2>
+<h2 id="testing"><span class="n">13</span>Testing</h2>
 <ul class="checks">
   <li>Fold: a <code>layout</code> record sets <code>standing.layout</code>; a later one replaces it; a submit and a close trim the artifact and drop an emptied column; the delta tests agree with a refold at every cut.</li>
   <li>Fold: <code>file</code> and <code>artifact</code> entries carry fold level 0; two sends of one source give versions 1 and 2 under one key, and the first is patched <code>replaced</code>; a record without <code>source</code> keys by <code>file_id</code>.</li>
@@ -447,10 +510,12 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <li>Browser (slow): a re-sent artifact swaps the pane's frame and keeps its state; a re-sent file swaps the pane's preview and the old card says replaced; an <code>artifact_update</code> state reaches the docked frame.</li>
   <li>Browser (slow): at fold level 2, artifact and file rows are visible.</li>
   <li>Browser (slow) at 390 px: the tab strip, the transcript first, the composer on every tab, a dot after a new version.</li>
+  <li>Fold and <code>layout.py</code>: window numbers stay stable when one empties; the transcript outside window 1 is refused; a fifth window is refused; <code>window:new</code> takes the next number.</li>
+  <li>Browser (slow): a second page at <code>#/s/…/w/2</code> draws only window 2; an emit from a page there reaches the agent; the card in window 1 says <code>in window 2</code>; Bring back returns the pane to window 1, and the window 2 page then says it is empty.</li>
   <li>Live (<code>make test-live</code>): a real Claude Code session, asked for a document with controls, docks both and updates the preview when a slider is released.</li>
 </ul>
 
-<h2 id="nongoals"><span class="n">13</span>Non-goals and open questions</h2>
+<h2 id="nongoals"><span class="n">14</span>Non-goals and open questions</h2>
 <ul>
   <li>Not here: panes nested deeper than columns of stacks; editing inside a docked item; a canvas spanning several sessions; a layout per person; undo of a layout change; docking on the Fleet view.</li>
   <li>The 2026-05-21 "shared canvas" spec used the word for a blackboard that several agents write to. It was never built, and this spec supersedes the name: in aegis, the canvas is a session's docked panes.</li>
@@ -564,7 +629,8 @@ function card(r) {
     };
     acts.append(d);
   }
-  acts.append(h("button", "btn", "Open"));
+  if (it.kind === "file") acts.append(h("button", "btn", "Open"), tip(h("button", "btn", "⧉"), "Open in the desktop app"), tip(h("button", "btn", "↓"), "Download"));
+  else if (!r.replaced) { const po = h("button", "btn", "Pop out"); po.onclick = () => popout(); acts.append(po); }
   bar.append(acts);
   fc.append(bar);
   if (r.replaced) fc.append(h("div", "held", `replaced by v${r.replaced}`));
@@ -603,6 +669,13 @@ function body(id) {
   return d;
 }
 const ro = () => false;
+function tip(n, t) { n.title = t; n.setAttribute("aria-label", t); return n; }
+function popout() {
+  const n = h("div", "refuse", "Pop out moves the page to window 2 and opens that window in a new tab (section 09; not drawn in this mockup).");
+  Object.assign(n.style, { color: "var(--strong)", background: "var(--raised)", borderColor: "var(--accent)" });
+  $("stage").append(n);
+  setTimeout(() => n.remove(), 2800);
+}
 function composer() { return h("div", "composer", "<div>Message the agent…</div>"); }
 
 function render() {
@@ -639,6 +712,8 @@ function render() {
         pane.style.flex = String(p.h);
         pane.dataset.c = ci; pane.dataset.p = pi; pane.dataset.id = p.id;
         const ph = h("div", "ph", `<span class="t">${it.title}</span>${it.kind === "file" ? `<span class="v">v${it.version}</span>` : ""}`);
+        if (it.kind === "file") ph.append(tip(h("button", "", "↗"), "Open in a new tab"), tip(h("button", "", "⧉"), "Open in the desktop app"), tip(h("button", "", "↓"), "Download"));
+        if (it.kind === "artifact") { const po = tip(h("button", "", "↗"), "Pop out"); po.onclick = (ev) => { ev.stopPropagation(); popout(); }; ph.append(po); }
         if (p.id !== "transcript") {
           const x = h("button", "", "×");
           x.title = "Undock";
@@ -661,7 +736,7 @@ function render() {
   const trb = st.querySelector('.pb[data-id="transcript"]');
   if (trb) trb.scrollTop = trb.scrollHeight;
   $("m-narrow").classList.toggle("on", narrow);
-  $("m-json").textContent = "// sample: the layout record this canvas would write\n" + JSON.stringify({ kind: "layout", by: "person", columns: cols }, null, 1).replace(/\n\s+(?=[\]}"0-9])/g, " ");
+  $("m-json").textContent = "// sample: the layout record this canvas would write\n" + JSON.stringify({ kind: "layout", by: "person", windows: [{ n: 1, columns: cols }] }, null, 1).replace(/\n\s+(?=[\]}"0-9])/g, " ");
 }
 
 function refuse(msg) {
