@@ -104,7 +104,7 @@ window.addEventListener("message", async (ev) => {
     return;
   }
   if (m.method === "aegis/size") {
-    if (frame.closest("#viewer")) return; // the viewer's frame fills it
+    if (frame.closest("#viewer, #canvas .pane.docked")) return; // the viewer's frame and a pane's fill them
     frame.style.height = `${Math.min(Math.max(80, m.params?.height || 0), MAX_HEIGHT())}px`;
     return;
   }
@@ -150,10 +150,11 @@ function reasonOf(err) {
   return { code, message: text.startsWith(`${code}: `) ? text.slice(code.length + 2) : text };
 }
 
-// The note under a card's frame, or the viewer's: set by a refused submit,
-// cleared by the next one that lands. A card redrawn for a new status starts without it.
+// The note under a card's frame, the viewer's or a docked pane's: set by a
+// refused submit, cleared by the next one that lands. A card redrawn for a new
+// status starts without it.
 function showRefused(frame, refused) {
-  const card = frame.closest(".acard, #viewer .vbody");
+  const card = frame.closest(".acard, #viewer .vbody, #canvas .pane.docked .pbody");
   if (!card) return;
   let note = card.querySelector(":scope > .refused");
   if (!refused) {
