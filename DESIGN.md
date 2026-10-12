@@ -405,9 +405,12 @@ draft is sent with `expect_rev`, the transcript revision its writer saw, and
 `session.send` refuses it as `stale` when the session's `content_index` (the
 last record a person reads: user, prose, tool, inbox) is past it, so a deploy
 or a stop while the device was away does not count as moving on. A stale or
-closed session's draft stays and asks. A flush takes each draft out of the
-store in one transaction before sending it, so two tabs never send one twice
-(#342).
+closed session's draft stays and asks, as does one refused for another reason,
+with the reason. Every change to a draft is one IndexedDB transaction: a send
+marks it `sending` and only the send's answer settles it, so two tabs never
+send one twice, a page closed mid-send leaves it to be sent again (with its
+revision, so a send that did arrive asks instead of repeating), and text
+written meanwhile becomes the next draft (#342).
 
 **Folding hides rows, it never unmounts them.** From which fold level a kind
 folds is a fact on the entry (`fold`: 0 never, 1 the work, 2 also what arrived

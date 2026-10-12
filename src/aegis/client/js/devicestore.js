@@ -85,17 +85,60 @@ export async function clearDevice() {
   for (const name of ["fleet", "transcripts", "outbox"]) await run(name, "readwrite", (os) => os.clear());
 }
 
-// The outbox store, for outbox.js (slice 4): one draft per session key.
-export const outboxPut = (key, draft) => run("outbox", "readwrite", (os) => os.put(draft, key));
+// The outbox store, for outbox.js: one draft per session key. Every change is
+// one read-modify-write transaction, so two tabs, or a flush and a typed
+// message, never overwrite each other.
 export const outboxDelete = (key) => run("outbox", "readwrite", (os) => os.delete(key));
-// The draft for `key`, deleted in the same transaction: of two tabs flushing
-// at once, one gets it and the other gets null.
-export const outboxTake = (key) =>
+
+// `fn(draft or undefined)` returns the draft to store, or null to delete it,
+// or undefined to leave it; answers what was there before.
+const outboxChange = (key, fn) =>
   run("outbox", "readwrite", (os) => {
     const req = os.get(key);
-    req.addEventListener("success", () => req.result !== undefined && os.delete(key));
+    req.addEventListener("success", () => {
+      const next = fn(req.result);
+      if (next === null) os.delete(key);
+      else if (next !== undefined) os.put(next, key);
+    });
     return req;
   });
+
+// A message written offline. Appended to the session's draft; while that draft
+// is being sent, kept aside in `more` (with the revision its writer saw) to
+// become the next draft once the send settles.
+export const outboxAppend = (key, text, rev) =>
+  outboxChange(key, (d) => {
+    if (!d) return { text, rev, written_at: Date.now(), state: "queued" };
+    if (d.state === "sending") return { ...d, more: d.more ? `${d.more}\n\n${text}` : text, moreRev: d.moreRev ?? rev };
+    return { ...d, text: `${d.text}\n\n${text}` };
+  });
+
+// Mark a draft as being sent if `ok(draft)` holds, judged inside the same
+// transaction; answers the draft as it was, or null when it did not hold (say,
+// another tab claimed it first). The draft stays on the device until the
+// send's answer settles it.
+export const outboxClaim = (key, ok = (d) => d.state === "queued") => {
+  let took = null;
+  return outboxChange(key, (d) => {
+    if (!d || !ok(d)) return undefined;
+    took = d;
+    return { ...d, state: "sending", sent_at: Date.now() };
+  }).then(() => took);
+};
+
+// The answer to a send: "sent" deletes the draft (or makes what was written
+// meanwhile the next one); anything else puts it back in `state`, with `error`
+// for a refusal the person should read. A draft discarded mid-send stays gone.
+export const outboxSettle = (key, state, error = "") =>
+  outboxChange(key, (d) => {
+    if (!d) return undefined;
+    if (state === "sent")
+      return d.more ? { text: d.more, rev: d.moreRev ?? -1, written_at: Date.now(), state: "queued" } : null;
+    const { more, moreRev, ...rest } = d;
+    const text = more ? `${d.text}\n\n${more}` : d.text;
+    return { ...rest, text, state, ...(error && { error }) };
+  });
+
 export async function outboxAll() {
   const vals = await run("outbox", "readonly", (os) => os.getAll());
   const keys = await run("outbox", "readonly", (os) => os.getAllKeys());

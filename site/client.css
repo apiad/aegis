@@ -880,9 +880,10 @@ body{background:#000}
 .a2 .row.queued .lbl{display:block;font-family:var(--font-chrome);font-size:11.5px;color:var(--accent);margin-bottom:4px}
 .a2 .row.queued .text{color:var(--strong);font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
 .a2 .row.queued .ctl{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
-.a2 .row.queued:is(.stale,.gone) .body{border-color:var(--err)}
-.a2 .row.queued:is(.stale,.gone) :is(.g,.lbl){color:var(--err)}
-.a2 .row.queued:not(.stale) [data-act=send],.a2 .row.queued:not(.gone) [data-act=copy],.a2 .row.queued:is(.stale,.gone) [data-act=edit]{display:none}
+.a2 .row.queued:is(.stale,.gone,.error) .body{border-color:var(--err)}
+.a2 .row.queued:is(.stale,.gone,.error) :is(.g,.lbl){color:var(--err)}
+.a2 .row.queued:not(.stale):not(.error) [data-act=send],.a2 .row.queued:not(.gone) [data-act=copy],.a2 .row.queued:is(.stale,.gone,.error) [data-act=edit]{display:none}
+.a2 .row.queued.sending .ctl{display:none}
 /* Settings: agents are cards carrying the composer's chips; queues are one
    sentence each; the doctor is one line until it finds something. */
 .a2[data-view=settings] .v-settings{display:flex;flex-direction:column;overflow:auto}

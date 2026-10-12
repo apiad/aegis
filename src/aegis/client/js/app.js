@@ -2096,6 +2096,7 @@ function drawReplies(s) {
 // The shown session's message written offline (outbox.js), after the last row.
 const QUEUED_LABEL = {
   queued: "queued · goes out when the connection is back",
+  sending: "sending…",
   stale: "The session moved on since you wrote this",
   gone: "The session is closed",
 };
@@ -2104,9 +2105,9 @@ function drawQueued() {
   const d = shown && draftFor(shown);
   box.hidden = !d;
   if (!d) return;
-  box.classList.toggle("stale", d.state === "stale");
-  box.classList.toggle("gone", d.state === "gone");
-  $("queued-lbl").textContent = QUEUED_LABEL[d.state] || QUEUED_LABEL.queued;
+  for (const st of ["sending", "stale", "gone", "error"]) box.classList.toggle(st, d.state === st);
+  // A refusal the person should read, word for word: a quota gate, an owner.
+  $("queued-lbl").textContent = d.state === "error" ? `Not sent: ${d.error}` : QUEUED_LABEL[d.state] || QUEUED_LABEL.queued;
   box.querySelector(".text").textContent = d.text;
   if (transcript.following) transcript.toBottom();
 }

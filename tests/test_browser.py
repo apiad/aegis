@@ -3954,6 +3954,120 @@ def test_a_message_written_offline_is_queued_and_goes_out_on_reconnect(server, p
     assert page.errors == []
 
 
+# The outbox with a fake sender in the page: what the send answers, and when.
+# `delay` ms, then reject with `code` (or resolve without one); `calls` counts.
+FAKE_SENDER = """([code, delay]) => import('/static/js/outbox.js').then(o => {
+  window.__calls = [];
+  o.setSender((key, params) => new Promise((ok, no) => {
+    window.__calls.push(params);
+    setTimeout(() => code ? no(Object.assign(new Error('refused: ' + code), { code })) : ok({}), delay);
+  }));
+  return true;
+})"""
+
+
+def drafts(pg) -> dict:
+    return pg.evaluate(
+        "import('/static/js/devicestore.js').then(s => s.outboxAll())"
+        ".then(all => Object.fromEntries(all))"
+    )
+
+
+def outbox_page(server, page) -> str:
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    turns_done(page, 1)
+    return sid
+
+
+def test_a_refusal_keeps_the_draft_says_why_and_the_next_still_goes(server, page):
+    sid = outbox_page(server, page)
+    page.evaluate(FAKE_SENDER, ["quota_closed", 0])
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => o.queue(k, 'ship it', 1e9))", sid
+    )
+    page.evaluate(
+        "import('/static/js/outbox.js').then(o => o.queue('other', 'and this', 1e9))"
+    )
+    page.evaluate("import('/static/js/outbox.js').then(o => o.flushNow())")
+    page.wait_for_selector("#queued.error", timeout=10000)
+    assert "Not sent: refused: quota_closed" in page.text_content("#queued")
+    # The walk went on to the next draft instead of stopping at the refusal.
+    assert len(page.evaluate("window.__calls")) == 2
+    assert drafts(page)[sid]["state"] == "error"
+    assert page.errors == []
+
+
+def test_send_anyway_tapped_twice_sends_once(server, page):
+    sid = outbox_page(server, page)
+    page.evaluate(FAKE_SENDER, ["", 600])
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => o.queue(k, 'ship it', 1e9))", sid
+    )
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => Promise.all([o.sendAnyway(k), o.sendAnyway(k)]))",
+        sid,
+    )
+    assert len(page.evaluate("window.__calls")) == 1
+    assert drafts(page) == {}
+    assert page.errors == []
+
+
+def test_a_draft_discarded_while_it_is_sent_stays_gone(server, page):
+    sid = outbox_page(server, page)
+    page.evaluate(FAKE_SENDER, ["offline", 600])
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => o.queue(k, 'ship it', 1e9))", sid
+    )
+    page.evaluate(
+        "import('/static/js/outbox.js').then(o => { window.__round = o.flushNow(); })"
+    )
+    page.wait_for_selector("#queued.sending", timeout=5000)
+    assert page.is_hidden("#queued [data-act=discard]")  # nothing to tap mid-send
+    page.evaluate("k => import('/static/js/outbox.js').then(o => o.discard(k))", sid)
+    page.evaluate("window.__round")
+    assert drafts(page) == {}
+    page.wait_for_selector("#queued", state="hidden")
+
+
+def test_text_written_while_a_draft_is_sent_becomes_the_next_draft(server, page):
+    sid = outbox_page(server, page)
+    page.evaluate(FAKE_SENDER, ["", 600])
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => o.queue(k, 'ship it', 1e9))", sid
+    )
+    page.evaluate(
+        "import('/static/js/outbox.js').then(o => { window.__round = o.flushNow(); })"
+    )
+    page.wait_for_selector("#queued.sending", timeout=5000)
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => o.queue(k, 'and tag it', 1e9))",
+        sid,
+    )
+    page.evaluate("window.__round")
+    assert [c["text"] for c in page.evaluate("window.__calls")] == ["ship it"]
+    left = drafts(page)[sid]
+    assert left["text"] == "and tag it" and left["state"] == "queued"
+
+
+def test_a_send_its_page_never_heard_back_from_goes_again(server, page):
+    # A page closed mid-send leaves the draft "sending" on the device: the next
+    # flush takes it once it is old enough, and sends it with its revision.
+    sid = outbox_page(server, page)
+    page.evaluate(
+        """k => new Promise(r => { const q = indexedDB.open('aegis'); q.onsuccess = () => {
+          const tx = q.result.transaction('outbox', 'readwrite');
+          tx.objectStore('outbox').put({ text: 'ship it', rev: 1e9, written_at: 0, state: 'sending', sent_at: 0 }, k);
+          tx.oncomplete = () => r(true); }; })""",
+        sid,
+    )
+    page.evaluate(FAKE_SENDER, ["", 0])
+    page.evaluate("import('/static/js/outbox.js').then(o => o.flushNow())")
+    assert page.evaluate("window.__calls") == [{"text": "ship it", "expect_rev": 1e9}]
+    assert drafts(page) == {}
+
+
 def test_a_draft_the_session_moved_past_asks_before_it_is_sent(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
