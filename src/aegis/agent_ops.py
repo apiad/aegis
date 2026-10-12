@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 from . import files
+from . import layout as canvas
 from .confirm import TTL_S
 from .monitors import iso_now
 from .names import SPAWN_HEAD, SPAWN_TASK, valid_handle
@@ -146,6 +147,11 @@ class FileSend(_Strict):
     )
     caption: str | None = Field(
         None, description="A line of Markdown shown above the files."
+    )
+    dock: str | None = Field(
+        None,
+        description=canvas.DOCK_DOC
+        + " Several files stack in one column, the first at dock.",
     )
 
 
@@ -900,7 +906,10 @@ def register_agent_ops(app: App) -> None:
         """Hand files to the person: one card in your transcript, paging
         through them, with a preview when the browser can draw one, and Open
         and Download links. The files are copied, so later changes to them are
-        not seen. If one cannot be sent, none is."""
+        not seen until you send them again: a file sent again from the same
+        path is its next version, and its card and any pane it is docked in
+        show the newest. With dock, they also open beside the transcript. If
+        one cannot be sent, none is."""
         s = own(caller)
         paths = [Path(x).expanduser() for x in p.paths]
         relative = {s.spec.cwd / x for x in paths if not x.is_absolute()}
@@ -914,6 +923,22 @@ def register_agent_ops(app: App) -> None:
                 "bad_params",
                 f"{', '.join(twice)} is listed more than once; send it once",
             )
+        # Each file's pane id (layout.file_key), so a bad dock is refused
+        # before anything is stored: the first file at dock, each next one
+        # below the one before.
+        keys = [canvas.file_key(str(x)) for x in sources]
+
+        def docked(lay: dict) -> dict:
+            wheres = [p.dock] + [f"below:{k}" for k in keys[:-1]]
+            for k, where in zip(keys, wheres):
+                lay = canvas.place(lay, k, where, lambda i: i in keys or s.dockable(i))
+            return lay
+
+        if p.dock is not None:
+            try:
+                docked(s.layout)
+            except canvas.LayoutError as e:
+                raise OpError("bad_params", str(e)) from e
         try:
             recs = await asyncio.to_thread(files.store_all, app.roots.state_root, paths)
         except files.FileError as e:
@@ -933,7 +958,7 @@ def register_agent_ops(app: App) -> None:
             for r, src in zip(recs, sources)
         ]
         s.record_file({"kind": "file", "files": sent, "caption": p.caption})
-        return [
+        out = [
             {
                 "url": files.url(r["file_id"], r["name"]),
                 "name": r["name"],
@@ -942,6 +967,14 @@ def register_agent_ops(app: App) -> None:
             }
             for r in recs
         ]
+        if p.dock is not None:
+            # Against the layout as it is now, after the copy; the files are
+            # sent, so a placement that no longer fits is reported, not raised.
+            try:
+                s.set_layout(docked(s.layout), "agent")
+            except canvas.LayoutError as e:
+                return {"files": out, "docked": False, "reason": str(e)}
+        return out
 
     @r.op("plan.update", PlanUpdate, agent=True, read=True)
     async def plan_update(p: PlanUpdate, caller):
