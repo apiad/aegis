@@ -181,8 +181,10 @@ class Fold:
         self._interrupted = False
         self._last_cost = 0.0
         self._parsers: dict[str, Any] = {}
-        # file key -> the latest version's sent file (task 9 fills it)
+        # file key -> the latest version's sent file, and where that file is:
+        # its entry's id and its index in the entry's files.
         self.file_keys: dict[str, dict] = {}
+        self._file_at: dict[str, tuple[str, int]] = {}
         # Entries only deltas made, whose part has not closed yet.
         self._live: set[str] = set()
         # The store index of the record being folded; stamped on every entry
@@ -603,9 +605,33 @@ class Fold:
             )
         if kind == "file":
             # One record per file_send; a record from before sets is one file.
-            sent = [_sent_file(f) for f in rec.get("files") or [rec]]
+            # A file sent again from one source path is a new version of one
+            # file (layout.file_key), and the older copy's card says it was
+            # replaced. A record from before sources keys by its id and never
+            # updates. file_send refuses one path twice in a send.
+            sent, ops = [], []
+            for at, f in enumerate(rec.get("files") or [rec]):
+                key = (
+                    canvas.file_key(str(f["source"]))
+                    if f.get("source")
+                    else f"f-{f.get('file_id')}"
+                )
+                latest = self.file_keys.get(key)
+                version = latest["version"] + 1 if latest else 1
+                prev = self._file_at.get(key)
+                old = self._entries.get(prev[0]) if prev else None
+                if old is not None:
+                    was = list(old["detail"]["files"])
+                    was[prev[1]] = {**was[prev[1]], "replaced": version}
+                    ops += self._upsert(
+                        {**old, "detail": {**old["detail"], "files": was}}
+                    )
+                one = {**_sent_file(f), "key": key, "version": version}
+                sent.append(one)
+                self._file_at[key] = (f"e{i}", at)
+                self.file_keys[key] = one
             more = len(sent) - 1
-            return self._upsert(
+            return ops + self._upsert(
                 _entry(
                     f"e{i}",
                     "file",
