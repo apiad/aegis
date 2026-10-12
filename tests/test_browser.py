@@ -1417,6 +1417,91 @@ def test_a_set_of_files_is_one_card_that_pages_between_them(server, page):
     assert page.errors == []
 
 
+def mark_size(pg, sel: str) -> float:
+    return pg.locator(f"{sel} svg.gorgon").bounding_box()["width"]
+
+
+def pupil_at(pg, sel: str, ms: int) -> tuple[float, float, float]:
+    """The pupil's centre and height with the eye's CSS cycle frozen at ms."""
+    pg.evaluate(
+        "([sel, ms]) => document.querySelector(sel).getAnimations({subtree: true})"
+        ".forEach(a => { a.pause(); a.currentTime = ms; })",
+        [f"{sel} svg.gorgon", ms],
+    )
+    b = pg.locator(f"{sel} .pupil").bounding_box()
+    return b["x"] + b["width"] / 2, b["y"] + b["height"] / 2, b["height"]
+
+
+def tip_x_at(pg, sel: str, s: float) -> float:
+    """The top serpent's highest point, with the serpents' clock frozen at s."""
+    return pg.evaluate(
+        """([sel, s]) => {
+          const svg = document.querySelector(sel);
+          svg.pauseAnimations(); svg.setCurrentTime(s);
+          const p = svg.querySelector('.serpent'), l = p.getTotalLength();
+          let top = null;
+          for (let i = 0; i <= 200; i++) {
+            const q = p.getPointAtLength(l * i / 200);
+            if (!top || q.y < top.y) top = q;
+          }
+          return top.x;
+        }""",
+        [f"{sel} svg.gorgon", s],
+    )
+
+
+def test_the_gorgoneion_looks_blinks_and_writhes_wherever_it_shows(server, page):
+    # The boot screen: a browser not signed in stays on it, under the mark.
+    page.goto(re.sub(r"token=[^&]+", "token=wrong", server.url))
+    page.wait_for_selector("#login", state="visible")
+    assert page.locator(".boot svg.gorgon").is_visible()
+    assert mark_size(page, ".boot") == 96
+
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert mark_size(page, "#band") == 44
+    # Six serpents, each bending through its own frames.
+    assert page.locator("#band .serpent").count() == 6
+    assert page.locator("#band .serpent > animate").count() == 6
+    # The tip crosses from one side of the serpent's axis (x=32) to the other.
+    sides = [tip_x_at(page, "#band", s) - 32 for s in (1.0, 3.3)]
+    assert sides[0] > 3 and sides[1] < -3, sides
+
+    page.click("#tab-add")
+    page.wait_for_selector("#a2[data-view=spawn]")
+    assert mark_size(page, "#sp-mark") == 50
+    # The eye looks left, then right, then blinks about its own centre: the
+    # pupil flattens where it stood instead of drifting toward the top.
+    x0, y0, h0 = pupil_at(page, "#sp-mark", 0)
+    xl, _, _ = pupil_at(page, "#sp-mark", 1200)
+    xr, _, _ = pupil_at(page, "#sp-mark", 2500)
+    xb, yb, hb = pupil_at(page, "#sp-mark", 3850)
+    assert xl < x0 - 2 and xr > x0 + 2
+    assert abs(xb - x0) < 0.5 and abs(yb - y0) < 0.5
+    assert hb < h0 / 5
+    assert page.errors == []
+
+
+def test_the_gorgoneion_holds_still_for_reduced_motion(server, browser):
+    errors: list = []
+    ctx = browser.new_context(
+        reduced_motion="reduce", viewport={"width": 1280, "height": 800}
+    )
+    pg = ctx.new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    assert pg.locator("#band .serpent").count() == 6
+    assert pg.locator("svg.gorgon animate").count() == 0
+    running = pg.evaluate(
+        "[...document.querySelectorAll('svg.gorgon')]"
+        ".flatMap(s => s.getAnimations({subtree: true})).length"
+    )
+    assert running == 0
+    assert errors == []
+    ctx.close()
+
+
 def test_a_read_rows_file_opens_inside_the_row_on_request(server, page):
     notes = server.root / "notes.md"
     notes.write_text("# Notes\n")
@@ -5994,6 +6079,9 @@ def test_a_linked_servers_sessions_show_under_its_band(linked, browser, page):
     assert page.inner_text(f"{box} .band-server") == "beta"
     assert "linked" in page.inner_text(f"{box} .band-link")
     assert page.locator("#cards .card").count() == 0  # alpha holds none itself
+    # The Gorgoneion marks this server's band only, not a copy per link (#348).
+    assert page.locator("#band svg.gorgon").count() == 1
+    assert page.locator(f"{box} svg.gorgon").count() == 0
     tab = page.locator(f"#tablist .tab[data-id='beta/{lid}']")
     assert tab.locator(".where").inner_text() == "beta"
     assert not page.errors
@@ -7102,6 +7190,77 @@ def test_a_waiting_send_goes_to_its_own_session_after_a_tab_switch(
     )
     assert page.locator(".row.user").count() == 0  # B's transcript got nothing
     assert page.locator(".toast.error").count() == 0
+    assert page.errors == []
+
+
+def held_sends(pg):
+    """Route the page's socket through a gate that, while shut, holds every
+    session.send the page writes, as a stalled connection does (#350)."""
+    gate = {"shut": False, "held": []}
+
+    def route(ws):
+        far = ws.connect_to_server()
+
+        def from_page(msg):
+            if gate["shut"] and '"session.send"' in msg:
+                gate["held"].append(msg)
+            else:
+                far.send(msg)
+
+        ws.on_message(from_page)
+        gate["far"] = far
+
+    pg.route_web_socket(re.compile(r"/ws"), route)
+
+    def release():
+        gate["shut"] = False
+        for msg in gate["held"]:
+            gate["far"].send(msg)
+
+    gate["release"] = release
+    return gate
+
+
+def test_a_stalled_send_locks_the_box_answers_in_seconds_and_lands_once(server, page):
+    gate = held_sends(page)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    lid = spawn(page)
+    gate["shut"] = True
+    page.fill("#input", "only once")
+    page.click("#send")
+    # Sending: the box and the button are locked, and the button spins.
+    page.wait_for_selector("#composer.sending")
+    assert page.evaluate("document.getElementById('input').readOnly")
+    assert page.is_disabled("#send")
+    page.press("#input", "Enter")  # a second press while it is out does nothing
+    page.wait_for_timeout(300)
+    assert len(gate["held"]) == 1
+    # No answer within seconds: unlocked, the text still there, and why.
+    page.wait_for_selector("#composer:not(.sending)", timeout=5000)
+    assert page.input_value("#input") == "only once"
+    assert "No answer in 3 s" in page.text_content("#send-error")
+    # Sent again: the same message under the same nonce.
+    page.click("#send")
+    page.wait_for_timeout(300)
+    assert len(gate["held"]) == 2
+    nonces = {json.loads(m)["params"].get("nonce") for m in gate["held"]}
+    assert len(nonces) == 1 and None not in nonces
+    # The connection recovers and both copies arrive: one message, box cleared.
+    gate["release"]()
+    turns_done(page, 1)
+    page.wait_for_function("document.getElementById('input').value === ''")
+    page.wait_for_selector("#composer:not(.sending)")
+    assert page.text_content("#send-error") == ""
+    page.wait_for_timeout(500)
+    assert page.locator(".row.user").count() == 1
+    store = server.root / ".aegis" / "state" / "transcripts" / f"{lid}.jsonl"
+    sends = [
+        r
+        for r in map(json.loads, store.read_text().splitlines())
+        if r.get("kind") == "send" and r.get("text") == "only once"
+    ]
+    assert len(sends) == 1
     assert page.errors == []
 
 

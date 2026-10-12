@@ -57,5 +57,11 @@ The worker knows nothing but its first prompt. Say:
    every place it departed from the plan with the reason, and anything it could
    not finish.
 
+Say also that the report must be its last message: if a monitor or anything
+else wakes it after it wrote the report, it ends that turn by repeating the
+whole report. Only the last message reaches the enqueuer; on the canvas plan
+(#347) one worker answered a late monitor with a one-line note, and the report
+had to be dug out of its transcript store.
+
 The worker's final message is the slice's report. Copy its departures into the
 plan's "Where this plan departs from the spec" section before the PR.

@@ -44,6 +44,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
 
   <main class="view v-boot">
     <div class="boot">
+      <div class="boot-mark" id="boot-mark"></div>
       <div class="notice" id="boot-text">Connecting…</div>
       <form class="login" id="login" hidden>
         <label for="login-token">Paste the token <code>aegis serve</code> printed. This browser stays signed in.</label>
@@ -57,6 +58,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
   <main class="view v-fleet">
     <section class="install-offer" id="install-offer" hidden><div class="t">Install aegis as an app<span>Opens from the home screen, works without a connection, and can notify you.</span></div><button class="btn" type="button" data-act="later">Not now</button><button class="btn primary" type="button" data-act="install">Install</button></section>
     <section class="band" id="band">
+      <div class="band-mark" id="band-mark"></div>
       <div><h5><span class="band-server" id="band-server">server</span><span class="band-link"></span></h5><div class="counts band-counts" id="band-counts"></div></div>
       <div><h5>Host</h5><div class="band-host" id="band-host"></div></div>
       <div class="q band-quota-col" id="band-quota-col" hidden><h5><span>Quota</span><span class="age band-quota-age" id="band-quota-age"></span></h5><div class="band-quota" id="band-quota"></div></div>

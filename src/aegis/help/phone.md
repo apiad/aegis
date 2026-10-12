@@ -58,6 +58,13 @@ and one the server refused for another reason shows the reason. Only plain
 text waits like this: a slash command or a message with files needs the
 connection.
 
+A connection can also stall without dropping, which a phone on a weak signal
+does often. While a message is on its way the box is locked and the send
+button spins. If the server has not answered within 3 seconds, the box unlocks
+with the text still in it and says the send was not confirmed. Sending it again
+is safe: the server recognizes the same message and delivers it once, and if
+the first attempt arrives late the box clears by itself.
+
 ## Push notifications
 
 The bell turns push on for this device and chooses what it hears about: a
