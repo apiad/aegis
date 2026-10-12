@@ -1,0 +1,22 @@
+/* Solari: a departure board; times in signal yellow, each tool name on a split-flap tile. */
+[data-theme=solari] #a2{
+  --bg:#0f1012;--chrome:#060607;--side:#0b0c0d;--surface:#1a1b1e;--raised:#222327;--rule:#2b2d31;
+  --ink:#e8e5da;--strong:#ffffff;--muted:#9b988e;--faint:#6a6860;
+  --accent:#ffc905;--accent-soft:rgba(255,201,5,.13);--on-accent:#111;
+  --ok:#7fd88a;--err:#ff5b47;--err-bg:#2a1210;--warn:#ffc905;--comms:#8fc4ff;
+  --add-bg:#12261a;--del-bg:#2c1412;
+  --h-kw:#ffc905;--h-str:#7fd88a;--h-num:#ff9e7a;--h-com:#6a6860;--h-fn:#ffffff;--h-type:#8fc4ff;--h-var:#e8e5da;--h-meta:#9b988e;
+  --font-ui:'Barlow',sans-serif;--font-prose:'Barlow',sans-serif;--font-mono:'JBM',monospace;
+  --font-chrome:'Barlow Condensed',sans-serif;--font-head:'Barlow Condensed',sans-serif;
+  --prose-size:16px;--r:3px;--r-lg:4px;--time:block;--thread:none;--row-cols:44px 18px 1fr;--fill:var(--accent);
+}
+[data-theme=solari] #a2 .row .t{width:44px;color:var(--accent);font-family:var(--font-chrome);font-size:13.5px;font-weight:600}
+[data-theme=solari] #a2 .tn{font-family:var(--font-chrome);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:#fff;
+  background:linear-gradient(#26272b 0 48%,#050505 48% 53%,#1b1c1f 53%);padding:1px 7px;border-radius:2px;min-width:68px;text-align:center;box-shadow:0 1px 0 #000}
+[data-theme=solari] #a2 .row.tool .line{align-items:center}
+[data-theme=solari] #a2 .row.user .body{background:var(--surface);border-left:3px solid var(--accent);border-radius:0;font-size:14.5px}
+[data-theme=solari] #a2 .tabs{font-size:14px}
+[data-theme=solari] #a2 .tab.on{box-shadow:inset 0 -3px 0 var(--accent);border-radius:0;background:none}
+[data-theme=solari] #a2 .side .title{font-family:var(--font-head);font-size:21px;font-weight:600;line-height:1.1}
+[data-theme=solari] #a2 .side h4{font-family:var(--font-chrome);font-size:12.5px;color:var(--accent)}
+[data-theme=solari] #a2 .md h1,[data-theme=solari] #a2 .md h2,[data-theme=solari] #a2 .md h3{font-size:1.3em}

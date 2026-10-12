@@ -1,0 +1,25 @@
+/* Riso: a two-ink risograph print; blue ink on paper, fluoro pink printed a little off register, grain over it all. */
+[data-theme=riso] #a2{
+  --bg:#efeee8;--chrome:#e5e3dc;--side:#e9e7e0;--surface:#f7f6f1;--raised:#e3e4ee;--rule:#c3c8e0;
+  --ink:#2440a8;--strong:#16298a;--muted:#5468b8;--faint:#8b96c8;
+  --accent:#ff3d9a;--accent-soft:rgba(255,61,154,.16);--on-accent:#16298a;
+  --ok:#00866b;--err:#e8312f;--err-bg:#fde1e6;--warn:#c56a00;--comms:#8a3fd1;
+  --add-bg:#d8f0e6;--del-bg:#ffd9e6;
+  --h-kw:#e0267f;--h-str:#00866b;--h-num:#c56a00;--h-com:#8b96c8;--h-fn:#16298a;--h-type:#8a3fd1;--h-var:#2440a8;--h-meta:#5468b8;
+  --font-ui:'Bricolage Grotesque',sans-serif;--font-prose:'Bricolage Grotesque',sans-serif;--font-mono:'Space Mono',monospace;
+  --font-chrome:'Space Mono',monospace;--font-head:'Bricolage Grotesque',sans-serif;
+  --prose-size:15.5px;--r:2px;--r-lg:4px;--time:none;--thread:none;--row-cols:22px 1fr;--fill:var(--accent);
+}
+[data-theme=riso] #a2{position:relative}
+[data-theme=riso] #a2:after{content:"";position:absolute;inset:0;pointer-events:none;z-index:100;opacity:.32;mix-blend-mode:multiply;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .14 0 0 0 0 .25 0 0 0 0 .66 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+[data-theme=riso] #a2 .row.user .body{background:var(--surface);border:1.5px solid var(--strong);box-shadow:4px 3px 0 var(--accent);border-radius:2px}
+[data-theme=riso] #a2 .md h1,[data-theme=riso] #a2 .md h2,[data-theme=riso] #a2 .md h3,[data-theme=riso] #a2 .side .title{font-weight:800;text-shadow:2px 1px 0 rgba(255,61,154,.75)}
+[data-theme=riso] #a2 .md h1,[data-theme=riso] #a2 .md h2,[data-theme=riso] #a2 .md h3{font-size:1.35em;letter-spacing:-.01em}
+[data-theme=riso] #a2 .side .title{font-size:19px}
+[data-theme=riso] #a2 .tab.on{background:var(--accent);color:var(--strong);box-shadow:none}
+[data-theme=riso] #a2 .tn{font-weight:700}
+[data-theme=riso] #a2 .composer .box{border:1.5px solid var(--strong)}
+[data-theme=riso] #a2 .send,[data-theme=riso] #a2 .act.primary{border:1.5px solid var(--strong)}
+[data-theme=riso] #a2 .md pre,[data-theme=riso] #a2 .diff{background:#e8e9f2}
+[data-theme=riso] #a2 .row.user{padding:0 5px 5px 0}

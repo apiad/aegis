@@ -1,0 +1,28 @@
+/* Phosphor: a green CRT; scanlines and bloom, errors in inverse video, a block cursor while working. */
+[data-theme=phosphor] #a2{
+  --bg:#020c06;--chrome:#010703;--side:#020a05;--surface:#03140a;--raised:#062012;--rule:#0f3d20;
+  --ink:#5dff8f;--strong:#c9ffd9;--muted:#36bd69;--faint:#227f46;
+  --accent:#b3ffcb;--accent-soft:rgba(93,255,143,.14);--on-accent:#021008;
+  --ok:#5dff8f;--err:#ffb000;--err-bg:#1a1203;--warn:#ffb000;--comms:#8cffd0;
+  --add-bg:#063015;--del-bg:#2a1a04;
+  --h-kw:#c9ffd9;--h-str:#8cffb0;--h-num:#ffb000;--h-com:#227f46;--h-fn:#e6fff0;--h-type:#b3ffcb;--h-var:#5dff8f;--h-meta:#36bd69;
+  --font-ui:'IBM Plex Mono',monospace;--font-prose:'IBM Plex Mono',monospace;--font-mono:'IBM Plex Mono',monospace;
+  --font-chrome:'IBM Plex Mono',monospace;--font-head:'VT323',monospace;
+  --prose-size:14.5px;--r:0;--r-lg:0;--time:block;--thread:none;--row-cols:38px 18px 1fr;--fill:var(--ink);
+  text-shadow:0 0 5px rgba(93,255,143,.45);
+}
+[data-theme=phosphor] #a2{position:relative}
+[data-theme=phosphor] #a2:after{content:"";position:absolute;inset:0;pointer-events:none;z-index:100;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,.26) 0 1px,transparent 1px 3px),radial-gradient(ellipse at center,transparent 58%,rgba(0,0,0,.5))}
+[data-theme=phosphor] #a2 .tab.on{background:var(--ink);color:var(--bg);box-shadow:none;text-shadow:none}
+[data-theme=phosphor] #a2 .tab.on .srv{opacity:.7}
+[data-theme=phosphor] #a2 .row.user .body{background:none;border:1px solid var(--rule);color:var(--strong)}
+[data-theme=phosphor] #a2 .row.tool.err .tn,[data-theme=phosphor] #a2 .row.error .body{background:var(--err);color:var(--bg);padding:0 5px;text-shadow:none}
+[data-theme=phosphor] #a2 .row.working .body:after{content:"█";margin-left:6px;animation:ph-blink 1s steps(1) infinite}
+[data-theme=phosphor] #a2 .md h1,[data-theme=phosphor] #a2 .md h2,[data-theme=phosphor] #a2 .md h3{font-size:1.75em;font-weight:400;line-height:1}
+[data-theme=phosphor] #a2 .side .title{font-family:var(--font-head);font-size:24px;line-height:1}
+[data-theme=phosphor] #a2 .side h4{font-family:var(--font-chrome)}
+[data-theme=phosphor] #a2 .send,[data-theme=phosphor] #a2 .act.primary{background:var(--ink);color:var(--bg);text-shadow:none}
+[data-theme=phosphor] #a2 code{background:none;color:var(--strong)}
+@keyframes ph-blink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){[data-theme=phosphor] #a2 .row.working .body:after{animation:none}}

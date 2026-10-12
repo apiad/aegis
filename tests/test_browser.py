@@ -5482,12 +5482,25 @@ def test_settings_keeps_the_theme_for_this_browser(server, page):
     assert first.locator("h3").inner_text() == "This browser"
     assert "this browser only" in first.inner_text()
     assert picked(page, "#set-theme") == "ink"
-    pick(page, "#set-theme", "syalia")
-    page.wait_for_function("document.documentElement.dataset.theme === 'syalia'")
+    pick(page, "#set-theme", "electric")
+    page.wait_for_function("document.documentElement.dataset.theme === 'electric'")
     page.reload()
     page.wait_for_selector("#a2[data-view=settings] #set-theme")
-    assert page.evaluate("document.documentElement.dataset.theme") == "syalia"
-    assert picked(page, "#set-theme") == "syalia"
+    assert page.evaluate("document.documentElement.dataset.theme") == "electric"
+    assert picked(page, "#set-theme") == "electric"
+    assert page.errors == []
+
+
+def test_a_browser_that_saved_syalia_opens_in_electric(server, page):
+    """The navy theme was renamed (#340); a browser that kept its old name
+    would otherwise open in no theme at all."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.evaluate("localStorage.setItem('aegis.theme', 'syalia')")
+    page.reload()
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert page.evaluate("document.documentElement.dataset.theme") == "electric"
+    assert page.evaluate("localStorage.getItem('aegis.theme')") == "electric"
     assert page.errors == []
 
 

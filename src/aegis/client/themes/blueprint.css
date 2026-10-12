@@ -1,0 +1,27 @@
+/* Blueprint: a drafting sheet; white linework on a grid, square corners, the panel as a title block. */
+[data-theme=blueprint] #a2{
+  --bg:#0e3d78;--chrome:#0a3060;--side:#0c376c;--surface:#114583;--raised:#164e92;--rule:#5b88c4;
+  --ink:#e4eeff;--strong:#ffffff;--muted:#a8c2e8;--faint:#7c9dce;
+  --accent:#ffffff;--accent-soft:rgba(255,255,255,.13);--on-accent:#0e3d78;
+  --ok:#9ef0c4;--err:#ff9c8f;--err-bg:#40305e;--warn:#ffe08a;--comms:#c9b8ff;
+  --add-bg:#165c6e;--del-bg:#4a3264;
+  --h-kw:#ffe08a;--h-str:#9ef0c4;--h-num:#ffb8a8;--h-com:#7c9dce;--h-fn:#ffffff;--h-type:#c9b8ff;--h-var:#d6e6ff;--h-meta:#a8c2e8;
+  --font-ui:'IBM Plex Sans',sans-serif;--font-prose:'IBM Plex Sans',sans-serif;--font-mono:'IBM Plex Mono',monospace;
+  --font-chrome:'IBM Plex Sans Condensed',sans-serif;--font-head:'IBM Plex Sans Condensed',sans-serif;
+  --prose-size:15px;--r:0;--r-lg:0;--time:block;--thread:none;--row-cols:38px 18px 1fr;--fill:#fff;
+  --grid:linear-gradient(rgba(255,255,255,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.08) 1px,transparent 1px),
+    linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);
+}
+[data-theme=blueprint] #a2 .tr{background-image:var(--grid);background-size:120px 120px,120px 120px,24px 24px,24px 24px;background-attachment:local}
+[data-theme=blueprint] #a2 .row .g{background:none}
+[data-theme=blueprint] #a2 .row.user .body{background:rgba(14,61,120,.75);border:1px solid #fff}
+[data-theme=blueprint] #a2 .row.tool .line{border-bottom:1px dashed rgba(255,255,255,.2)}
+[data-theme=blueprint] #a2 .tab.on{box-shadow:inset 0 -2px 0 #fff;background:var(--bg)}
+[data-theme=blueprint] #a2 .tabs{border-bottom-color:#fff}
+[data-theme=blueprint] #a2 .side{gap:0;border-left:1px solid #fff}
+[data-theme=blueprint] #a2 .side>.sec{border:1px solid var(--rule);padding:9px 11px 11px;margin-top:-1px}
+[data-theme=blueprint] #a2 .side h4{font-size:11px;letter-spacing:.04em}
+[data-theme=blueprint] #a2 .side .title{font-size:17px;font-weight:600}
+[data-theme=blueprint] #a2 .md h1,[data-theme=blueprint] #a2 .md h2,[data-theme=blueprint] #a2 .md h3{font-size:1.2em;border-bottom:1px solid var(--rule);padding-bottom:3px}
+[data-theme=blueprint] #a2 .composer .box{border-color:#fff;background:rgba(14,61,120,.6)}
+[data-theme=blueprint] #a2 .md pre,[data-theme=blueprint] #a2 .diff{border:1px solid var(--rule);background:rgba(10,48,96,.6)}
