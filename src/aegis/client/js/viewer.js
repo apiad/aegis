@@ -136,17 +136,21 @@ async function drawText(f, body, line, isCurrent) {
 }
 
 // An artifact's page at full size, drawn into a bar and a body: its glyph,
-// title and status in the bar, Open in a new tab in acts, the frame in the
-// body. Who holds the page (entries.hold) is the caller's business.
-export function drawArtifact(e, { bar, body, acts }) {
-  const open = el("a", "btn icon open");
-  open.append(icon("open"));
-  open.title = "Open in a new tab";
-  open.setAttribute("aria-label", open.title);
-  open.href = fileUrl(e.detail?.url);
-  open.target = "_blank";
-  open.rel = "noopener noreferrer";
-  acts.append(open);
+// title and status in the bar, Open in a new tab in acts (or the `popout`
+// button a pane passes instead), the frame in the body. Who holds the page
+// (entries.hold) is the caller's business.
+export function drawArtifact(e, { bar, body, acts, popout = null }) {
+  if (popout) acts.append(popout);
+  else {
+    const open = el("a", "btn icon open");
+    open.append(icon("open"));
+    open.title = "Open in a new tab";
+    open.setAttribute("aria-label", open.title);
+    open.href = fileUrl(e.detail?.url);
+    open.target = "_blank";
+    open.rel = "noopener noreferrer";
+    acts.append(open);
+  }
   bar.append(entryIcon(e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary));
   body.dataset.preview = "html";
   const stage = artifactStage(e);

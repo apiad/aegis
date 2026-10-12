@@ -205,10 +205,20 @@ export function setOpener(fn) {
 // sent before files had keys, and not on a session the person may not change.
 // docked(id) is true when a pane shows it here, the window's number when a
 // pane in another window does, and false otherwise. show(id) outlines that
-// pane (a docked card's Show), and open(n) focuses or opens window n's tab.
-let docker = { dock: () => {}, can: () => false, docked: () => false, show: () => {}, open: () => {} };
-export function setDocker(dock, can, docked, show, open) {
-  docker = { dock, can: (id) => !!id && can(id), docked, show, open };
+// pane (a docked card's Show), open(n) focuses or opens window n's tab, and
+// pop(id) moves a page to a window of its own; canPop(id) says whether Pop
+// out shows (not on a phone, which has one window).
+let docker = {
+  dock: () => {},
+  can: () => false,
+  docked: () => false,
+  show: () => {},
+  open: () => {},
+  pop: () => {},
+  canPop: () => false,
+};
+export function setDocker(d) {
+  docker = { ...d, can: (id) => !!id && d.can(id) };
 }
 export function dockButton(id) {
   const b = iconButton(el("button", "btn dock"), "dock", "Dock beside the transcript");
@@ -218,11 +228,22 @@ export function dockButton(id) {
   b.addEventListener("click", () => docker.dock(b.dataset.dock));
   return b;
 }
-// The canvas or who may change it changed: every Dock button drawn shows or
-// hides, and a file card whose page was docked or undocked redraws its stage
-// in place (an artifact's card follows hold() instead).
+// Pop out, on a live page's card and pane: it takes the place of Open in a
+// new tab, which ran the page with no bridge behind it.
+export function popButton(id) {
+  const b = iconButton(el("button", "btn popout"), "open", "Pop out into a browser window of its own");
+  b.type = "button";
+  b.dataset.pop = id;
+  b.hidden = !docker.canPop(id);
+  b.addEventListener("click", () => docker.pop(b.dataset.pop));
+  return b;
+}
+// The canvas or who may change it changed: every Dock and Pop out button
+// drawn shows or hides, and a file card whose page was docked or undocked
+// redraws its stage in place (an artifact's card follows hold() instead).
 export function syncDock() {
   for (const b of document.querySelectorAll("#a2 .btn.dock[data-dock]")) b.hidden = !docker.can(b.dataset.dock);
+  for (const b of document.querySelectorAll("#a2 .btn.popout[data-pop]")) b.hidden = !docker.canPop(b.dataset.pop);
   for (const card of document.querySelectorAll("#entries .fcard:not(.acard)")) card._sync?.();
 }
 
@@ -511,11 +532,14 @@ const RENDERERS = {
     const acts = el("span", "acts");
     const view = iconButton(el("button", "btn primary view"), "expand", "Open");
     view.addEventListener("click", () => opener({ artifact: e.id }));
-    const open = iconButton(el("a", "btn open"), "open", "Open in a new tab");
-    open.href = fileUrl(det.url);
-    open.target = "_blank";
-    open.rel = "noopener noreferrer";
-    acts.append(view, ...(e.status === "live" ? [dockButton(e.id)] : []), open);
+    if (e.status === "live") acts.append(view, dockButton(e.id), popButton(e.id));
+    else {
+      const open = iconButton(el("a", "btn open"), "open", "Open in a new tab");
+      open.href = fileUrl(det.url);
+      open.target = "_blank";
+      open.rel = "noopener noreferrer";
+      acts.append(view, open);
+    }
     if (e.status !== "live") acts.prepend(el("button", "btn show", "Show"));
     card.dataset.md = e.md || ""; // the caption's source, for update() to compare exactly
     bar.append(entryIcon(e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);

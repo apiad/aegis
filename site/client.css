@@ -724,7 +724,17 @@ body{background:#000}
    something is dragged, frames take no pointer, or they would swallow it. */
 .a2 .canvas[data-writable]>.pane>.pbar{cursor:grab;touch-action:none}
 .a2 .canvas[data-writable]>.pane>.pbar .btn{cursor:pointer}
-.a2 .canvas:not([data-writable]) .undock{display:none}
+.a2 .canvas:not([data-writable]) .undock,.a2 .canvas:not([data-writable]) .move{display:none}
+/* a phone has one window: no Move to window */
+.a2 .canvas[data-merged] .move{display:none}
+/* window 1's chips, one per other window, in a row over the canvas */
+.a2 .canvas{--wchips-h:34px}
+.a2 .canvas[data-chips]{margin-top:var(--wchips-h)}
+.a2 .canvas>.wchips{position:absolute;left:0;right:0;top:calc(-1 * var(--wchips-h));height:var(--wchips-h);box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 12px;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--rule);background:var(--bg);font:11.5px var(--font-chrome);color:var(--muted)}
+.a2 .canvas>.wchips::-webkit-scrollbar{display:none}
+.a2 .canvas>.wchips .wchip{flex:none;border:1px solid var(--rule);border-radius:999px;padding:2px 10px;white-space:nowrap}
+.a2 .canvas>.wchips .btn.link{display:inline;width:auto;height:auto;background:none;border:none;padding:0;color:var(--muted);font:inherit;text-decoration:underline;cursor:pointer}
+.a2 .canvas>.wchips .btn.link:hover{color:var(--accent)}
 .a2 .canvas>.pbar.tr-handle{position:absolute;display:block;width:auto;height:7px;gap:0;z-index:8;cursor:grab;touch-action:none;background:var(--rule);opacity:.5}
 .a2 .canvas>.pbar.tr-handle:hover{background:var(--accent);opacity:1}
 .a2 .canvas>.col.viewing~.pbar.tr-handle{display:none}

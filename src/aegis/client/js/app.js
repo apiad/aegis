@@ -155,26 +155,41 @@ const canvas = new Canvas($("canvas"), {
   // by itself (entries.hold).
   onChange: () => syncDock(),
   refuse: (message) => toast(message, { kind: "error" }),
+  openWindow: (n, tab) => openWindow(shown, n, tab),
 });
 // Dock on a card or the viewer's bar. The viewer lets go of what it docks.
-setDocker(
-  (id) => {
-    const item = viewer.isOpen ? viewer.items.get(viewer.key) : null;
-    if (item && (item.artifact || item.files[item.at].key) === id) viewer.close();
+// The viewer lets go of what it docks or pops out.
+function leaveViewer(id) {
+  const item = viewer.isOpen ? viewer.items.get(viewer.key) : null;
+  if (item && (item.artifact || item.files[item.at].key) === id) viewer.close();
+}
+setDocker({
+  dock: (id) => {
+    leaveViewer(id);
     canvas.dock(id);
   },
-  (id) => canvas.writable && !canvas.has(id) && !canvas.elsewhere(id),
-  (id) => canvas.has(id) || canvas.elsewhere(id) || false,
-  (id) => canvas.flash(id),
-  (n) => openWindow(shown, n),
-);
+  can: (id) => canvas.writable && !canvas.has(id) && !canvas.elsewhere(id),
+  docked: (id) => canvas.has(id) || canvas.elsewhere(id) || false,
+  show: (id) => canvas.flash(id),
+  open: (n) => openWindow(shown, n),
+  pop: (id) => {
+    leaveViewer(id);
+    canvas.popOut(id);
+  },
+  canPop: () => canvas.writable && !canvas.merged(),
+});
 // Window n of a session's canvas, in the browser tab named for it: focused if
-// this browser has that tab open, opened if not.
+// this browser has that tab open, opened if not. Given `tab`, a tab opened
+// for another number is renamed and pointed at window n instead.
 function windowUrl(key, n) {
   return `${location.pathname}${location.search}#w=${n}:${key}`;
 }
-function openWindow(key, n) {
-  return window.open(windowUrl(key, n), `aegis-${key}-w${n}`);
+function openWindow(key, n, tab = null) {
+  const name = `aegis-${key}-w${n}`;
+  if (!tab) return window.open(windowUrl(key, n), name);
+  tab.name = name;
+  tab.location.replace(windowUrl(key, n));
+  return tab;
 }
 // The shown session's canvas, from its card: window 1 in the session view,
 // window n in a window tab. A page the viewer shows that is now docked

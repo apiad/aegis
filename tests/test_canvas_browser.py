@@ -534,15 +534,20 @@ def test_a_narrow_panes_bar_keeps_the_name_and_undock(server, page):  # noqa: F8
     assert pane.locator(".pbar .dl").is_hidden()
     # A wider pane keeps its buttons.
     wide = page.locator(f'#canvas .pane[data-pane="{aid}"]')
-    assert wide.locator(".pbar .open").is_visible()
+    assert wide.locator(".pbar .popout").is_visible()
     assert page.errors == []
+
+
+def _watch(pg):
+    """``pg`` keeping its page errors in ``pg.errors``."""
+    pg.errors = []
+    pg.on("pageerror", lambda e: pg.errors.append(str(e)))
+    return pg
 
 
 def _window_page(browser, url, **ctx):  # noqa: F811
     """A second browser tab at ``url``, keeping its page errors."""
-    pg = browser.new_page(viewport={"width": 1280, "height": 800}, **ctx)
-    pg.errors = []
-    pg.on("pageerror", lambda e: pg.errors.append(str(e)))
+    pg = _watch(browser.new_page(viewport={"width": 1280, "height": 800}, **ctx))
     pg.goto(url)
     return pg
 
@@ -603,7 +608,7 @@ def test_pop_out_opens_a_live_window_and_bring_back_returns_it(server, page):  #
     assert page.locator(".row.artifact .fbar .open").count() == 0
     with page.context.expect_page() as opened:
         page.click(".row.artifact .fbar .popout")
-    two = opened.value
+    two = _watch(opened.value)
     two.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator("#st").wait_for()
     assert two.url.endswith(f"#w=2:{sid}")
     assert page.locator(".row.artifact .acard .held").inner_text() == "in window 2 · open"
@@ -650,7 +655,7 @@ def test_move_to_window_lists_the_windows_and_opens_the_one_chosen(server, page)
     assert items == ["Window 2", "New window"], items
     with page.context.expect_page() as opened:
         page.locator("#canvas .pmenu button", has_text="Window 2").click()
-    two = opened.value
+    two = _watch(opened.value)
     assert two.url.endswith(f"#w=2:{sid}")
     two.locator(f'#canvas .pane[data-pane="{fkey}"]').locator("text=One").wait_for()
     two.locator(f'#canvas .pane[data-pane="{aid}"]').wait_for()

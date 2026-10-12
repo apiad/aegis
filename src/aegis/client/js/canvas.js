@@ -33,9 +33,16 @@
 // card of an item in another window holds "in window n · open" instead of its
 // frame. A phone has one window, so on a phone window 1 draws every window's
 // panes as its tabs, window 1's first.
+//
+// Window 1 shows a chip for every other window in the layout, always: this
+// browser cannot know whether another one shows it. A pane moves between
+// windows by Move to window on its bar, and Pop out moves it to a new one.
+// Either opens the window's tab in the click itself, before the call: a
+// browser lets a click open a tab only for a few seconds (Chrome) or not at
+// all after an await (Safari).
 
 import { drawArtifact, drawFile } from "./viewer.js";
-import { DOCKED, fileUrl, hold, inWindow } from "./entries.js";
+import { DOCKED, fileUrl, hold, inWindow, popButton } from "./entries.js";
 import { icon } from "./glyphs.js";
 
 const TRANSCRIPT = "transcript";
@@ -44,6 +51,7 @@ const DEFAULT = { windows: [{ n: 1, columns: [{ w: 1, panes: [{ id: TRANSCRIPT, 
 // layout.py's limits, and the spec's minimums a grip stops at.
 const MAX_COLUMNS = 4;
 const MAX_PANES = 3;
+const MAX_WINDOWS = 4;
 const MIN_W = 280;
 const MIN_W_TRANSCRIPT = 360;
 const MIN_H = 120;
@@ -61,7 +69,7 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const minWidth = (col) => (col.panes.some((p) => p.id === TRANSCRIPT) ? MIN_W_TRANSCRIPT : MIN_W);
 
 export class Canvas {
-  constructor(root, { transcriptPane, entryOf, latestFile, call, onChange, refuse }) {
+  constructor(root, { transcriptPane, entryOf, latestFile, call, onChange, refuse, openWindow }) {
     this.root = root; // #canvas
     this.tr = transcriptPane; // #tr-pane
     this.entryOf = entryOf; // (id) -> the shown transcript's entry, or undefined
@@ -69,6 +77,7 @@ export class Canvas {
     this.call = call; // (op, params) -> Promise, on the shown session
     this.onChange = onChange; // (before, after): the docked ids changed
     this.refuse = refuse; // (message): a refusal the person should read
+    this.openWindow = openWindow; // (n, tab?) -> the tab of window n, focused or opened; or `tab` pointed at it
     this.key = null; // the session shown
     this.n = 1; // the window this tab draws
     this.layout = null; // the card's layout; null is the default
@@ -83,6 +92,8 @@ export class Canvas {
     this.trBar = el("div", "pbar tr-handle");
     this.trBar.title = "Drag to move the transcript";
     this.target = el("div", "droptarget");
+    this.chips = el("div", "wchips"); // window 1's chips, one per other window
+    this.chipSig = "";
     root.addEventListener("pointerdown", (ev) => {
       if (ev.target.closest(".cgrip")) this.resizeFrom(ev);
       else if (ev.target.closest(".pbar")) this.grab(ev);
@@ -108,7 +119,11 @@ export class Canvas {
     this.phone = matchMedia("(max-width: 760px)");
     // A phone draws every window's panes in window 1: crossing the
     // breakpoint changes what is docked here.
-    this.phone.addEventListener("change", () => this.key !== null && this.redraw());
+    this.phone.addEventListener("change", () => {
+      if (this.key === null) return;
+      this.redraw();
+      this.onChange(this.ids(), this.ids()); // Pop out shows only off a phone
+    });
     // The redraw waits for the next frame: resizing a page's frame while
     // observers are being told of sizes raises the page's own "ResizeObserver
     // loop" error, which would reach the agent as the page's error.
@@ -232,7 +247,10 @@ export class Canvas {
     else delete this.root.dataset.writable;
     if (this.tabbed) this.root.dataset.mode = "tabs";
     else delete this.root.dataset.mode;
+    if (this.merged()) this.root.dataset.merged = "";
+    else delete this.root.dataset.merged;
     this.syncStrip();
+    this.syncChips();
     // Handles only where there is something to arrange, for someone who may,
     // and not on tabs: dragging is a desktop act. The transcript's, only in
     // the window that holds it.
@@ -358,29 +376,34 @@ export class Canvas {
     for (const t of ["pointerup", "pointercancel", "pointerleave"]) b.addEventListener(t, cancel);
   }
 
-  openMenu(id, tab) {
+  // A small menu under `anchor` (a tab, a pane's Move button): [label, act]
+  // items, closed by a choice or a press anywhere else.
+  openMenu(id, anchor, items = [["Undock", () => this.undock(id)]]) {
     this.closeMenu();
     const node = el("div", "pmenu");
     node.setAttribute("role", "menu");
-    const undock = el("button", "btn", "Undock");
-    undock.type = "button";
-    undock.setAttribute("role", "menuitem");
-    undock.addEventListener("click", () => {
-      this.closeMenu();
-      this.undock(id);
-    });
-    node.append(undock);
-    const r = tab.getBoundingClientRect();
+    for (const [label, act] of items) {
+      const b = el("button", "btn", label);
+      b.type = "button";
+      b.setAttribute("role", "menuitem");
+      b.addEventListener("click", () => {
+        this.closeMenu();
+        act();
+      });
+      node.append(b);
+    }
+    const r = anchor.getBoundingClientRect();
     const box = this.root.getBoundingClientRect();
     node.style.left = `${Math.max(0, Math.min(r.left - box.left, box.width - 160))}px`;
+    node.style.top = `${r.bottom - box.top + 4}px`;
     // A press anywhere else closes it.
     const away = (e) => {
-      if (!node.contains(e.target)) this.closeMenu();
+      if (!node.contains(e.target) && !anchor.contains(e.target)) this.closeMenu();
     };
     document.addEventListener("pointerdown", away, true);
     this.menu = { id, node, away };
     this.root.append(node);
-    undock.focus({ preventScroll: true });
+    node.firstChild.focus({ preventScroll: true });
   }
 
   closeMenu() {
@@ -465,7 +488,7 @@ export class Canvas {
     if (id.startsWith("art-")) {
       const entry = e || this.entryOf(id);
       if (!entry) return this.loading(node, bar, acts, "Loading the page…");
-      drawArtifact(entry, { bar, body, acts });
+      drawArtifact(entry, { bar, body, acts, popout: popButton(id) });
       node.dataset.agentRev = String(entry.detail?.state_rev);
       // An ended page leaves the layout with its submit; until that card
       // lands it shows read-only, and its card keeps its own line.
@@ -482,8 +505,24 @@ export class Canvas {
       bar.append(el("span", "ver", `v${f.version}`));
       node.dataset.version = String(f.version);
     }
-    acts.append(this.undockButton(id));
+    acts.append(this.moveButton(id), this.undockButton(id));
     bar.append(acts);
+  }
+
+  moveButton(id) {
+    const b = el("button", "btn icon move");
+    b.type = "button";
+    b.append(icon("swap"));
+    b.title = "Move to another browser window";
+    b.setAttribute("aria-label", "Move to window");
+    b.addEventListener("click", () => {
+      if (this.menu?.id === id) return this.closeMenu();
+      const ws = this.windows();
+      const items = ws.filter((w) => w.n !== this.n).map((w) => [`Window ${w.n}`, () => this.toWindow(id, w.n)]);
+      if (ws.length < MAX_WINDOWS) items.push(["New window", () => this.toWindow(id, "new")]);
+      this.openMenu(id, b, items);
+    });
+    return b;
   }
 
   undockButton(id) {
@@ -607,6 +646,92 @@ export class Canvas {
 
   undock(id) {
     return this.call("layout.undock", { pane: id }).catch((err) => this.refuse(err.message || String(err)));
+  }
+
+  // Move a pane to window n, or to a new one, and focus or open that
+  // window's tab (window 1 is the session's own tab, which has no name to
+  // find it by). A new window takes one more than the highest in use
+  // (layout.place); if the agent took that number meanwhile, the tab opened
+  // for it is pointed at the window the pane landed in.
+  toWindow(id, n) {
+    const ws = this.windows();
+    if (n === "new" && ws.length >= MAX_WINDOWS) {
+      this.refuse(`A canvas has at most ${MAX_WINDOWS} windows. Bring one back first.`);
+      return Promise.resolve();
+    }
+    const want = n === "new" ? Math.max(...ws.map((w) => w.n)) + 1 : n;
+    const tab = want === 1 ? null : this.openWindow(want);
+    return this.call("layout.dock", { pane: id, where: `window:${n}` }).then(
+      (lay) => {
+        const got = lay?.windows?.find((w) => w.columns.some((c) => c.panes.some((p) => p.id === id)))?.n;
+        if (tab && got && got !== want) this.openWindow(got, tab);
+      },
+      (err) => {
+        if (tab && n === "new") tab.close();
+        this.refuse(err.message || String(err));
+      },
+    );
+  }
+
+  // Pop out: a page alone in a new window. One already in another window
+  // only has its tab focused or opened.
+  popOut(id) {
+    const n = this.elsewhere(id);
+    if (n) this.openWindow(n);
+    else this.toWindow(id, "new");
+  }
+
+  // Bring back: window n's panes into window 1, each of its columns a new
+  // column at window 1's right edge, stacked as they were. One call per
+  // pane, in order; a refusal (window 1 is full) stops there and says why.
+  async bringBack(n) {
+    const w = this.windows().find((x) => x.n === n);
+    if (!w) return;
+    try {
+      for (const c of w.columns) {
+        let above = null;
+        for (const p of c.panes) {
+          await this.call("layout.dock", { pane: p.id, where: above ? `below:${above}` : "right" });
+          above = p.id;
+        }
+      }
+    } catch (err) {
+      this.refuse(err.message || String(err));
+    }
+  }
+
+  // Window 1's chips: "window 2 · 1 pane", Open and Bring back. Rebuilt only
+  // when they change, so a card landing mid-click keeps the button pressed.
+  syncChips() {
+    const others = this.n === 1 && this.key !== null && !this.merged() ? this.windows().filter((w) => w.n !== 1) : [];
+    const counts = others.map((w) => [w.n, w.columns.reduce((s, c) => s + c.panes.length, 0)]);
+    const sig = JSON.stringify([counts, this.writable]);
+    if (sig === this.chipSig) return;
+    this.chipSig = sig;
+    if (!counts.length) {
+      this.chips.remove();
+      delete this.root.dataset.chips;
+      return;
+    }
+    const link = (cls, text, title, act) => {
+      const b = el("button", `btn link ${cls}`, text);
+      b.type = "button";
+      b.title = title;
+      b.addEventListener("click", act);
+      return b;
+    };
+    this.chips.replaceChildren(
+      ...counts.map(([n, k]) => {
+        const chip = el("span", "wchip", `window ${n} · ${k} pane${k === 1 ? "" : "s"} · `);
+        chip.dataset.n = String(n);
+        chip.append(link("show", "open", `Focus or open window ${n}'s tab`, () => this.openWindow(n)));
+        if (this.writable)
+          chip.append(" · ", link("bring", "bring back", `Move window ${n}'s panes here`, () => this.bringBack(n)));
+        return chip;
+      }),
+    );
+    if (!this.chips.isConnected) this.root.append(this.chips);
+    this.root.dataset.chips = "";
   }
 
   // Drag a pane by its bar. While the pointer moves, the pane under it shows
@@ -779,5 +904,9 @@ export class Canvas {
     this.strip.remove();
     this.closeMenu();
     delete this.root.dataset.mode;
+    delete this.root.dataset.merged;
+    this.chips.remove();
+    this.chipSig = "";
+    delete this.root.dataset.chips;
   }
 }
