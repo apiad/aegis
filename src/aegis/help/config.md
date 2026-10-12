@@ -76,8 +76,8 @@ a natural break. 0 turns that line off.
 
 `cold_after:` (3600 seconds) and `cold_min:` (100000 tokens) decide when a
 session's tab warns that its prompt cache has expired: idle at least
-`cold_after`, with a context of at least `cold_min`. The next message then
-rewrites the whole context, about 20 times what a warm turn reads. The warning
+`cold_after:`, with a context of at least `cold_min:`. The next message then
+rewrites the whole context, as much as about 20 warm turns read. The warning
 covers Claude Code only, because only its cache lifetime was measured.
 
 A `context:` block with a wrong key or value leaves all three defaults in

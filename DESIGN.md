@@ -80,7 +80,10 @@ behind the file's back. A file that does not parse, or is empty, leaves the last
 one that did in force and says so, because a half-typed edit must not stop every
 spawn. `aegis init` and the Settings page write through one writer that keeps
 comments and refuses a stale write; `aegis doctor` and `config.doctor` check the
-file against the harnesses actually installed (`doctor.py`).
+file against the harnesses actually installed (`doctor.py`). Its `context:`
+block is the one section with defaults: a wrong one keeps them all in force
+and `aegis doctor` names the mistake, because a typo there must never stop a
+`turn_end`.
 
 **Relative imports, and nothing from the legacy tree.** Imports inside aegis are
 relative, which is what made taking over the `aegis` name one directory move, and no
@@ -98,7 +101,10 @@ server never sees them.
 **A session's card is published when it changes, at most four times a second.**
 Status, handle, title, model and the agent's standing go out at once; activity,
 context and cost change on nearly every line of a turn and are coalesced for
-250 ms. Publishing them per line doubled the server's cost per line.
+250 ms. Publishing them per line doubled the server's cost per line. The
+cache counters (`tool_calls`, `cache_recent`, `compactions`) are coalesced the
+same way. They count only the main thread's events, like `context_tokens`,
+and one usage repeated across the lines of one call counts once (`cache.py`).
 
 **A session's attention is decided in Python, from facts and the agent's own
 reports.** Working, error and waiting are facts the server holds: the turn, the
