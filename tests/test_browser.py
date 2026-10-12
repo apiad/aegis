@@ -7655,3 +7655,39 @@ def test_an_agent_toast_goes_to_the_desktop_only_while_the_page_is_hidden(
     assert other.evaluate("window.__notes.length") == 1
     assert errors == [] and page.errors == []
     ctx.close()
+
+
+@pytest.fixture
+def cold_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    (tmp_path / ".aegis.yaml").write_text(
+        CONFIG + "context: {cold_after: 1, cold_min: 100000}\n"
+    )
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
+    yield s
+    s.stop()
+
+
+def test_counters_show_under_the_context_gauge(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/ctx 200000 dup")
+    page.hover("#p-usage")  # the context gauge is in the Usage row's card
+    page.wait_for_selector("#p-usage .pcard", state="visible")
+    page.wait_for_selector("#s-counters:not([hidden]) >> text=tools 1")
+    page.wait_for_selector("#s-counters >> text=cache 100%")
+    page.fill("#input", "/ctx 200000 miss")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    page.wait_for_selector("#s-counters .bad >> text=cache 50%")
+
+
+def test_the_cold_notice_appears_for_a_large_idle_context_only(cold_server, page):
+    page.goto(cold_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/ctx 50000")
+    page.wait_for_timeout(1500)
+    assert page.is_hidden("#coldnote")
+    page.fill("#input", "/ctx 150000")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    page.wait_for_selector("#coldnote:not([hidden]) >> text=150k tokens", timeout=4000)

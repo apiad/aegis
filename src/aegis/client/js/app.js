@@ -1045,6 +1045,16 @@ function drawSideUsage(s) {
   $("s-ctxnote").textContent =
     tokens != null && !s.context_window ? `${s.harness_label} does not report the model's window, so there is no share of it.` : "";
   $("s-cost").textContent = cost;
+  // What the cache did (cache.py): red when the warm calls miss.
+  const cn = $("s-counters");
+  cn.hidden = s.cache_hit == null;
+  if (s.cache_hit != null) {
+    const hit = document.createElement("span");
+    hit.textContent = `cache ${s.cache_hit}%`;
+    hit.classList.toggle("bad", !!s.cache_alarm);
+    hit.title = s.cache_alarm ? "Below 80% while warm: something broke the cache" : "";
+    cn.replaceChildren(`tools ${s.tool_calls ?? 0} · `, hit, ` · compactions ${s.compactions ?? 0}`);
+  }
 
   // With a share of the window, context leads and the quota follows; without
   // one, the quota's windows take the row and context moves to the foot.
@@ -1461,6 +1471,7 @@ function renderMeta(s) {
   if (s.key === shown) showCanvas(s);
   drawSideJournal(s.key);
   drawReplies(s);
+  drawCold(s);
   drawClosing(s);
   $("s-cwd").textContent = s.cwd;
   $("chip-model").textContent = s.model;
@@ -1521,6 +1532,7 @@ setInterval(() => {
   if (root.dataset.view === "session" && shown) {
     const s = sessions.get(shown);
     if (s && (s.plan || []).length) tickSidePlan(s);
+    drawCold(s);
   }
 }, 1000);
 
@@ -2381,6 +2393,22 @@ function focused() {
 // change: renderMeta runs on every patch of the open session. They sit after the
 // transcript's last row, not in the composer, so they scroll away with it and
 // never take reading space (#286).
+// The prompt cache is cold once the session has sat idle past its harness's
+// measured lifetime; the card names the thresholds, or null (cache.py).
+function drawCold(s) {
+  const box = $("coldnote");
+  const c = s && s.cache_cold;
+  const on = !!c && s.state !== "working" && (s.context_tokens ?? 0) >= c.min && nowS() - (s.last_activity || nowS()) >= c.after;
+  const key = on ? `${s.log_id}:${s.context_tokens}` : "";
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.hidden = !on;
+  $("coldnote-t").textContent = on
+    ? `The prompt cache has expired, so your next message rewrites all ${fmtTokens(s.context_tokens)} tokens of this context, about 20 times what a warm turn reads.`
+    : "";
+  if (on && transcript.following) transcript.toBottom();
+}
+
 function drawReplies(s) {
   const box = $("replies");
   const replies = s.state === "working" ? [] : s.replies || [];
