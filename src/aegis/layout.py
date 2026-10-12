@@ -194,6 +194,9 @@ def place(
         raise LayoutError("a pane cannot dock next to itself")
     if m["side"]:
         _find(lay, m["to"])  # before the move, so the error lists what exists
+    # Counted before the pane leaves: a window it empties is dropped, and a new
+    # one taking that number would be drawn by the tab still open on it too.
+    new_n = max(w["n"] for w in lay["windows"]) + 1
     _without(lay, pane)
     new_col = {"w": 0, "panes": [{"id": pane, "h": 0}]}
     if m["edge"]:
@@ -201,8 +204,7 @@ def place(
         cols.insert(0 if m["edge"] == "left" else len(cols), new_col)
     elif m["win"]:
         if m["win"] == "new":
-            n = max(w["n"] for w in lay["windows"]) + 1
-            lay["windows"].append({"n": n, "columns": [new_col]})
+            lay["windows"].append({"n": new_n, "columns": [new_col]})
         else:
             w = next((w for w in lay["windows"] if w["n"] == int(m["win"])), None)
             if w is None:

@@ -114,6 +114,15 @@ def test_windows_new_and_numbered():
         place(lay, "d", "window:7", ANY)
 
 
+def test_a_windows_only_pane_moved_to_a_new_window_never_reuses_its_number():
+    # A tab still draws window 2: had the new window been 2 again, the browser
+    # would have two tabs drawing one window, and its page would run twice.
+    lay = place(None, "a", "window:new", ANY)
+    lay = place(lay, "a", "window:new", ANY)
+    assert [w["n"] for w in lay["windows"]] == [1, 3]
+    assert layout.window_of(lay, "a") == 3
+
+
 def test_the_transcript_stays_in_window_one():
     lay = place(None, "a", "window:new", ANY)
     with pytest.raises(LayoutError, match="window 1"):
