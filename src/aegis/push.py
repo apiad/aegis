@@ -28,6 +28,7 @@ import logging
 import os
 import secrets
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlsplit
@@ -43,7 +44,10 @@ if TYPE_CHECKING:
 
 Source = Literal["needs_you", "error", "review", "done", "toast"]
 SOURCES: tuple[str, ...] = ("needs_you", "error", "review", "done", "toast")
-DEFAULT_SOURCES = ["needs_you", "error", "toast"]
+DEFAULT_SOURCES: list[Source] = ["needs_you", "error", "toast"]
+# Subscriptions.list shadows the builtin inside its class.
+Rows = list[dict]
+Names = Sequence[str]
 log = logging.getLogger("aegis.push")
 
 TTL_S = 86400  # how long a push service keeps a push for a device that is off
@@ -85,7 +89,7 @@ class Subscriptions:
     def _save(self) -> None:
         _write_private(self.path, json.dumps(self._rows, indent=1))
 
-    def list(self) -> list[dict]:
+    def list(self) -> Rows:
         return [dict(r) for r in self._rows]
 
     def get(self, id: str) -> dict | None:
@@ -96,13 +100,13 @@ class Subscriptions:
         sub: dict,
         owner: str,
         device: str,
-        sources: list[str],
+        sources: Names,
         id: str | None = None,
     ) -> str:
         """Store a subscription and return its id. With the ``id`` of an
         existing row, that row takes the new endpoint and keys: the browser
         rotated its subscription and the page subscribed again."""
-        row = self.get(id) if id else None
+        row: dict | None = self.get(id) if id else None
         if row is None:
             row = {
                 "id": "p_" + secrets.token_hex(4),
@@ -122,7 +126,7 @@ class Subscriptions:
         return row["id"]
 
     def update(
-        self, id: str, sources: list[str] | None = None, device: str | None = None
+        self, id: str, sources: Names | None = None, device: str | None = None
     ) -> None:
         row = self.get(id)
         if row is None:
@@ -160,12 +164,12 @@ class Push:
     made on first use (``webpush.load_key``), the public origins aegis is
     served at (``web.build_web`` sets them) and the sender."""
 
-    def __init__(self, state_root: Path) -> None:
-        self.dir = state_root / "push"
+    def __init__(self, app: App) -> None:
+        self.dir = app.roots.state_root / "push"
         self.subscriptions = Subscriptions(self.dir / "subscriptions.json")
         self.origins: list[str] = []
-        self.sender: Sender | None = None
         self._key = None
+        self.sender = Sender(app, self)
 
     @property
     def key(self):
@@ -205,7 +209,7 @@ class Sender:
             self.transport = transport
         self._seen: dict[str, str | None] = {}  # log id -> attention
         self._subs: list = []
-        self._queue: asyncio.Queue | None = None
+        self._queue: asyncio.Queue = asyncio.Queue()
         self._task: asyncio.Task | None = None
         self._client: httpx.AsyncClient | None = None
         self._jwts: dict[str, tuple[str, float]] = {}  # origin -> (token, made)
@@ -213,7 +217,6 @@ class Sender:
     def start(self) -> None:
         """Called at the end of ``App.boot``, when every session is loaded, so
         the first snapshot holds them all."""
-        self._queue = asyncio.Queue()
         self._task = asyncio.create_task(self._drain())
         self._subs = [self.app.channels.subscribe("sessions", self._on_sessions)]
 
@@ -280,8 +283,8 @@ class Sender:
         )
 
     def _queue_for(self, source: str, payload: dict) -> None:
-        if self._queue is None:
-            return
+        if self._task is None:
+            return  # not started, or stopped
         for row in self.push.subscriptions.list():
             if source in row.get("sources", ()):
                 self._queue.put_nowait((row["id"], payload))
@@ -412,7 +415,7 @@ Device = Field(min_length=1, max_length=80, pattern=r"^[^\n]+$")
 class Subscribe(_Strict):
     subscription: Subscription
     device: str = Device
-    sources: list[Source] = Field(default_factory=lambda: list(DEFAULT_SOURCES))
+    sources: list[Source] = list(DEFAULT_SOURCES)  # pydantic copies it per call
     id: str | None = None
 
 
@@ -428,8 +431,7 @@ class SubId(_Strict):
 
 def register_push_ops(app: App) -> Push:
     """The ops of section 10 of the push spec; returns what ``App.push`` holds."""
-    push = Push(app.roots.state_root)
-    push.sender = Sender(app, push)
+    push = Push(app)
     r = app.registry
 
     def mine(id: str, caller: Caller) -> dict:
