@@ -47,7 +47,7 @@ const PAGE = 100;
 const NEAR_TOP_PX = 400;
 
 export class Transcript {
-  constructor(scroller, list, jump, { loadDetail, onRead = () => {}, onSelect = () => {} } = {}) {
+  constructor(scroller, list, jump, { loadDetail, onRead = () => {}, onSelect = () => {}, seen = () => true } = {}) {
     this.scroller = scroller;
     this.list = list;
     this.jump = jump;
@@ -109,7 +109,9 @@ export class Transcript {
     // of the row is visible, or it fills half the view: a reply taller than
     // twice the view is never half visible. The observer calls back only when
     // the ratio crosses a threshold, and a row five views tall never passes
-    // 0.2, so the thresholds step every 1%.
+    // 0.2, so the thresholds step every 1%. seen() is false while the
+    // transcript is laid out but hidden (another of the canvas's tabs is
+    // open); a row is read only after a second seen once it shows again.
     this.onRead = onRead;
     this.since = new Map(); // id -> when it was first seen
     this.sent = new Set(); // ids reported and not yet echoed back as read
@@ -131,7 +133,7 @@ export class Transcript {
       },
       { root: scroller, threshold: Array.from({ length: 101 }, (_, i) => i / 100) },
     );
-    const looking = () => document.visibilityState === "visible" && document.hasFocus();
+    const looking = () => document.visibilityState === "visible" && document.hasFocus() && seen();
     const restart = () => {
       for (const id of this.since.keys()) this.since.set(id, performance.now());
     };
@@ -140,6 +142,7 @@ export class Transcript {
       if (document.visibilityState === "visible") restart();
     });
     setInterval(() => {
+      if (!seen()) restart();
       if (!looking()) return;
       const now = performance.now();
       const ids = [];
