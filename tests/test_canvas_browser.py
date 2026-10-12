@@ -275,3 +275,37 @@ def test_a_docked_page_resent_while_its_tab_was_away_shows_the_new_page(
     )
     assert page.frame_locator(frame).locator("#b").inner_text() == "C"
     assert page.errors == []
+
+
+FILL = "([sel]) => { const f = document.querySelector(sel); return [f.getBoundingClientRect().height, f.closest('.pbody').getBoundingClientRect().height]; }"
+
+
+def test_a_docked_page_fills_its_pane_and_a_refused_submit_says_why(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    # A label over 140 characters is refused by the server, with a short
+    # reason; the page posts it raw, as one that skips the script's checks would.
+    bad = (
+        '<button id="bad">bad</button><button id="ok">ok</button><span id="st"></span>',
+        "st.textContent = JSON.stringify(state);"
+        '  ok.onclick = () => aegis.submit({pick: "b"}, "Picked B");'
+        '  bad.onclick = () => parent.postMessage({jsonrpc: "2.0", id: 99, method: "aegis/submit",'
+        '    params: {data: {pick: "b"}, label: "x".repeat(200)}}, "*");',
+    )
+    aid, _ = _artifact(page, server, bad, 0)
+    page.click(".row.artifact .fbar .dock")
+    frame = f'#canvas iframe[data-artifact="{aid}"]'
+    inner = page.frame_locator(frame)
+    inner.locator("#st").filter(has_text="{}").wait_for()
+    page.wait_for_timeout(500)  # the page has said its size by now
+    got, body = page.evaluate(FILL, [frame])
+    assert abs(got - body) < 2, (got, body)
+    inner.locator("#bad").click()
+    note = page.locator(f'#canvas .pane[data-pane="{aid}"] .pbody .refused')
+    note.wait_for()
+    assert note.inner_text().startswith("Not sent: ")
+    # In view, not under the frame that fills the pane.
+    box, pane = note.bounding_box(), page.locator(f'#canvas .pane[data-pane="{aid}"]').bounding_box()
+    assert box["y"] + box["height"] <= pane["y"] + pane["height"] + 1, (box, pane)
+    assert page.errors == []
