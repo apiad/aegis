@@ -11,6 +11,8 @@ stdout. The text of a prompt picks a script:
     /bash D => OUT a Bash call described D whose output is OUT, then a result.
     /many N        N Bash calls in one turn, each with its output, then a
                    result: N rows, for a test that needs a long transcript.
+    /ctx N [miss|dup]  one reply at context N; miss writes the cache instead
+                   of reading it, dup repeats the usage on a tool line.
     /md TEXT       TEXT as the reply, each literal \\n a newline, then a result.
     /notice        three system notices and nothing else.
     /big           a Read whose result is 2 MB on one line.
@@ -120,6 +122,7 @@ SCRIPTS = (
     "write",
     "edit",
     "many",
+    "ctx",
 )
 COMMANDS = (
     [
@@ -387,6 +390,10 @@ def control(msg: dict) -> None:
     emit({"type": "control_response", "response": resp})
 
 
+def usage_line(blocks: list[dict], usage: dict) -> None:
+    emit({"type": "assistant", "message": {"content": blocks, "usage": usage}})
+
+
 def tool_id() -> str:
     state["tool"] += 1
     return f"toolu_fake_{state['tool']}"
@@ -541,6 +548,31 @@ def run(text: str) -> None:
                 }
             )
             tool_output(tid, f"out {k}")
+        result()
+    elif word == "/ctx":
+        n, _, how = arg.partition(" ")
+        usage = {"input_tokens": 10, "output_tokens": 20}
+        cached = (
+            "cache_creation_input_tokens"
+            if how == "miss"
+            else "cache_read_input_tokens"
+        )
+        usage[cached] = int(n) - 30
+        usage_line([{"type": "text", "text": f"ctx {n}"}], usage)
+        if how == "dup":
+            tid = tool_id()
+            usage_line(
+                [
+                    {
+                        "type": "tool_use",
+                        "id": tid,
+                        "name": "Bash",
+                        "input": {"command": "true"},
+                    }
+                ],
+                usage,
+            )
+            tool_output(tid, "")
         result()
     elif word == "/sh":
         tid = tool_id()
