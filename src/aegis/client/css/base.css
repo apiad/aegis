@@ -684,6 +684,10 @@ body{background:#000}
 #a2 .canvas>.pane.docked{display:flex;flex-direction:column;background:var(--bg);overflow:hidden}
 #a2 .canvas>.pane>.pbar{display:flex;width:auto;height:auto;gap:10px;flex:none;border-bottom:1px solid var(--rule)}
 #a2 .canvas>.pane>.pbar .acts{margin-left:auto}
+/* A pane under 300 px keeps its name and ×: open and download stay on the
+   item's card in the transcript. */
+#a2 .canvas>.pane.docked{container:pane/inline-size}
+@container pane (max-width:300px){#a2 .canvas>.pane>.pbar .acts>:not(.undock){display:none}}
 #a2 .canvas>.pane>.pbar .ver{color:var(--faint);font-family:var(--font-chrome);font-size:12px;white-space:nowrap}
 #a2 .canvas>.pane>.pbody{flex:1;min-height:0;overflow:auto;outline:none}
 /* A refused submit's note, under a frame that fills the body: kept in view,

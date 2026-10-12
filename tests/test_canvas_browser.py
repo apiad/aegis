@@ -499,3 +499,40 @@ def test_a_narrow_desktop_window_draws_tabs_and_widening_restores_the_columns(se
     # The resizes woke the agent with no error from the page.
     assert page.locator(".row.inbox").count() == 0, page.locator(".row.inbox").all_inner_texts()
     assert page.errors == []
+
+
+def test_a_narrow_panes_bar_keeps_the_name_and_undock(server, page):  # noqa: F811
+    (server.root / "report-final.md").write_text("# One\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    aid, _ = _artifact(page, server, PICK, 0)
+    mcp(page, 3, "file_send", {"paths": ["report-final.md"]})
+    fkey = page.locator(".row.file .fbar .dock").get_attribute("data-dock")
+    # About 1020 px of canvas: the file's 0.23 is about 235 px.
+    layout = {
+        "windows": [
+            {
+                "n": 1,
+                "columns": [
+                    {"w": 0.42, "panes": [{"id": "transcript"}]},
+                    {"w": 0.35, "panes": [{"id": aid}]},
+                    {"w": 0.23, "panes": [{"id": fkey}]},
+                ],
+            }
+        ]
+    }
+    mcp(page, 4, "layout_set", layout)
+    pane = page.locator(f'#canvas .pane[data-pane="{fkey}"]')
+    pane.locator("text=One").wait_for()
+    assert page.locator("#canvas").get_attribute("data-mode") is None
+    assert pane.bounding_box()["width"] < 260
+    fn = pane.locator(".pbar .fn")
+    assert fn.evaluate("n => n.scrollWidth <= n.clientWidth"), "the name is cut"
+    assert pane.locator(".pbar .undock").is_visible()
+    assert pane.locator(".pbar .open").is_hidden()
+    assert pane.locator(".pbar .dl").is_hidden()
+    # A wider pane keeps its buttons.
+    wide = page.locator(f'#canvas .pane[data-pane="{aid}"]')
+    assert wide.locator(".pbar .open").is_visible()
+    assert page.errors == []
