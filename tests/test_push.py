@@ -340,7 +340,8 @@ async def test_subscriptions_survive_a_restart(world):
 class FakePushService(httpx.BaseTransport, httpx.AsyncBaseTransport):
     """A push service for the sender's ``transport``: it records each request,
     decrypts its body as the browser would, and answers ``status``. ``hang``
-    makes it never answer, on the async path and the sync one alike."""
+    makes it never answer, on the async path and the sync one alike, and
+    ``dead`` does so for the endpoints in it only (``tried`` counts them)."""
 
     def __init__(self):
         self.ua = ec.generate_private_key(ec.SECP256R1())
@@ -348,6 +349,8 @@ class FakePushService(httpx.BaseTransport, httpx.AsyncBaseTransport):
         self.status = 201
         self.statuses: list[int] = []  # answered first, before ``status``
         self.hang = 0.0
+        self.dead: set[str] = set()
+        self.tried: list[str] = []
         self.got: list[tuple[httpx.Request, dict]] = []
 
     def subscription(self, endpoint="https://push.example.test/abc"):
@@ -367,6 +370,9 @@ class FakePushService(httpx.BaseTransport, httpx.AsyncBaseTransport):
         return self.answer(request)
 
     async def handle_async_request(self, request):
+        self.tried.append(str(request.url))
+        if str(request.url) in self.dead:
+            await asyncio.sleep(3600)
         await asyncio.sleep(self.hang)
         return self.answer(request)
 
@@ -484,13 +490,86 @@ async def test_an_agents_toast_pushes_and_aegis_own_does_not(world, service):
     assert second["title"] == f"{a.handle}: error" and second["body"] == "Build broke"
 
 
-async def test_a_gone_subscription_is_deleted(world, service):
+@pytest.mark.parametrize("status", [401, 403, 404, 410])
+async def test_a_gone_subscription_is_deleted(world, service, status):
     await subscribe(world, service, ["toast"])
-    service.status = 410
+    service.status = status
     a = await world.spawn()
     await turn(a, mcp("toast", text="Anyone?"))
     await until(lambda: world.app.push.subscriptions.list() == [], what="the deletion")
     assert len(service.got) == 1
+
+
+async def test_five_failures_in_a_row_delete_a_subscription(world, service):
+    await subscribe(world, service, ["toast"])
+    a = await world.spawn()
+    rows = world.app.push.subscriptions.list
+
+    async def toast(status, n):
+        service.statuses = [status] * n
+        sent = len(service.got)
+        for i in range(n):
+            world.app.toast(f"t{i}", source=a)
+        await until(lambda: len(service.got) == sent + n, what=f"{n} pushes")
+        await asyncio.sleep(0.05)  # the last outcome is recorded
+
+    await toast(400, 4)
+    assert rows()[0]["failures"] == 4
+    await toast(201, 1)  # a success starts the count again
+    await toast(400, 4)
+    assert rows()[0]["failures"] == 8
+    await toast(400, 1)
+    assert rows() == []
+
+
+async def test_a_dead_device_never_delays_another(world, service):
+    # The dead one first: one queue would try it three times, ten seconds
+    # each, before the other's turn.
+    service.dead.add("https://push.example.test/dead")
+    await subscribe(
+        world, service, ["needs_you"], endpoint="https://push.example.test/dead"
+    )
+    await subscribe(
+        world, service, ["needs_you"], endpoint="https://push.example.test/live"
+    )
+    a = await world.spawn()
+    await turn(a, mcp("turn_end", attention="needs_you", line="One?"))
+    await until(lambda: len(service.got) == 1, what="the live device's push")
+    await turn(a, "hello")
+    await turn(a, mcp("turn_end", attention="needs_you", line="Two?"))
+    await until(lambda: len(service.got) == 2, what="its second push")
+    assert {str(r.url) for r, _ in service.got} == {"https://push.example.test/live"}
+
+
+async def test_a_push_older_than_its_age_is_dropped_when_its_turn_comes(
+    world, service, monkeypatch
+):
+    monkeypatch.setattr(push, "TIMEOUT_S", 0.3)
+    monkeypatch.setattr(push, "MAX_AGE_S", 0.5)
+    service.dead.add("https://push.example.test/abc")
+    await subscribe(world, service, ["toast"])
+    a = await world.spawn()
+    world.app.toast("first", source=a)
+    world.app.toast("second", source=a)
+    # The first takes three tries of 0.3 s; the second is then too old.
+    await until(
+        lambda: world.app.push.subscriptions.list()[0]["failures"] == 1,
+        what="the first push's failure",
+    )
+    await asyncio.sleep(0.5)
+    assert len(service.tried) == 3
+    assert world.app.push.subscriptions.list()[0]["failures"] == 1
+
+
+async def test_the_queue_keeps_the_newest(world, service, monkeypatch):
+    monkeypatch.setattr(push, "MAX_QUEUE", 3)
+    await subscribe(world, service, ["toast"])
+    a = await world.spawn()
+    for i in range(6):
+        world.app.toast(f"t{i}", source=a)
+    await until(lambda: len(service.got) == 3, what="three pushes")
+    await asyncio.sleep(0.2)
+    assert [p["body"] for p in service.payloads()] == ["t3", "t4", "t5"]
 
 
 async def test_a_503_is_tried_three_times_then_counted(world, service):

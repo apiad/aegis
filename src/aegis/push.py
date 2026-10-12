@@ -15,6 +15,14 @@ snapshot only records where each session stands, so a restart with sessions
 already waiting sends nothing. A channel callback only puts work on a queue;
 one task encrypts and posts it, so a slow or dead push service never delays
 the channel, whose other subscribers are the browsers.
+
+Each subscription has its own lane: its pushes go out in order, one at a
+time, while the lanes run side by side, at most CONCURRENCY at once, so a
+device whose push service never answers holds up nobody else. A push waits
+at most MAX_AGE_S for its turn (a "needs you" two hours late is noise), and
+the queue keeps the newest MAX_QUEUE. A row goes when its push service says it
+is gone or refuses it (401, 403, 404, 410), and after MAX_FAILING failures in
+a row.
 """
 
 from __future__ import annotations
@@ -28,6 +36,7 @@ import logging
 import os
 import secrets
 import time
+from collections import deque
 from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -57,6 +66,11 @@ MAX_PAYLOAD = 3072  # bytes of JSON; push services take about 4 KB encrypted
 SHORT_MAX = 256  # bytes of UTF-8 in a title or a tag
 ELLIPSIS = "…".encode()
 JWT_FOR_S = 3600  # a VAPID token is reused this long (it is valid 12 hours)
+CONCURRENCY = 8  # lanes posting at once
+MAX_AGE_S = 300.0  # a queued push older than this when its turn comes is dropped
+MAX_QUEUE = 1000  # queued pushes; beyond it the oldest go
+MAX_FAILING = 5  # failures in a row that delete a subscription
+GONE = (401, 403, 404, 410)  # the push service no longer takes this subscription
 LABELS = {
     "needs_you": "needs you",
     "error": "error",
@@ -141,6 +155,7 @@ class Subscriptions:
                 "created_at": int(time.time()),
                 "last_ok_at": None,
                 "failures": 0,
+                "failing": 0,
             }
             self._rows.append(row)
         row.update(
@@ -175,14 +190,25 @@ class Subscriptions:
 
     def record(self, id: str, ok: bool) -> None:
         """A delivery's outcome: a success stamps ``last_ok_at``, a failure
-        counts, and Settings shows both."""
+        counts, and Settings shows both. MAX_FAILING failures in a row (a
+        success starts ``failing`` again) delete the row."""
         row = self.get(id)
         if row is None:
             return
         if ok:
             row["last_ok_at"] = int(time.time())
+            row["failing"] = 0
         else:
             row["failures"] = row.get("failures", 0) + 1
+            row["failing"] = row.get("failing", 0) + 1
+            if row["failing"] >= MAX_FAILING:
+                log.warning(
+                    "aegis: %d pushes in a row to %s failed; removing it",
+                    row["failing"],
+                    row.get("device"),
+                )
+                self.remove(id)
+                return
         self._save()
 
 
@@ -257,26 +283,32 @@ class Sender:
             self.transport = transport
         self._seen: dict[str, str | None] = {}  # log id -> attention
         self._subs: list = []
-        self._queue: asyncio.Queue = asyncio.Queue()
-        self._task: asyncio.Task | None = None
+        self._running = False
+        # subscription id -> its pushes waiting, each with when it was queued
+        self._pending: dict[str, deque[tuple[dict, float]]] = {}
+        self._lanes: dict[str, asyncio.Task] = {}
+        self._slots = asyncio.Semaphore(CONCURRENCY)
         self._client: httpx.AsyncClient | None = None
         self._jwts: dict[str, tuple[str, float]] = {}  # origin -> (token, made)
 
     def start(self) -> None:
         """Called at the end of ``App.boot``, when every session is loaded, so
         the first snapshot holds them all."""
-        self._task = asyncio.create_task(self._drain())
+        self._running = True
         self._subs = [self.app.channels.subscribe("sessions", self._on_sessions)]
 
     async def stop(self) -> None:
         for sub in self._subs:
             self.app.channels.unsubscribe(sub)
         self._subs = []
-        if self._task is not None:
-            self._task.cancel()
+        self._running = False
+        self._pending.clear()
+        lanes = list(self._lanes.values())
+        for task in lanes:
+            task.cancel()
+        for task in lanes:
             with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
+                await task
         if self._client is not None:
             await self._client.aclose()
             self._client = None
@@ -331,22 +363,42 @@ class Sender:
         )
 
     def _queue_for(self, source: str, payload: dict) -> None:
-        if self._task is None:
+        if not self._running:
             return  # not started, or stopped
+        now = time.monotonic()
         for row in self.push.subscriptions.list():
-            if source in row.get("sources", ()):
-                self._queue.put_nowait((row["id"], payload))
+            if source not in row.get("sources", ()):
+                continue
+            sid = row["id"]
+            self._pending.setdefault(sid, deque()).append((payload, now))
+            if sid not in self._lanes:
+                self._lanes[sid] = asyncio.create_task(self._lane(sid))
+        while sum(map(len, self._pending.values())) > MAX_QUEUE:
+            oldest = min(
+                (q for q in self._pending.values() if q), key=lambda q: q[0][1]
+            )
+            oldest.popleft()
 
-    async def _drain(self) -> None:
-        while True:
-            sid, payload = await self._queue.get()
-            row = self.push.subscriptions.get(sid)
-            if row is None:
-                continue  # removed since
-            try:
-                await self.send_to(row, payload)
-            except Exception:
-                log.exception("aegis: a push to %s failed", row.get("device"))
+    async def _lane(self, sid: str) -> None:
+        """One subscription's pushes, in order. It ends when none wait; the
+        next one queued starts it again. No await separates the last look at
+        the queue from leaving ``_lanes``, so no push is left behind."""
+        try:
+            while q := self._pending.get(sid):
+                payload, queued = q.popleft()
+                row = self.push.subscriptions.get(sid)
+                if row is None:
+                    break  # removed since
+                async with self._slots:
+                    if time.monotonic() - queued > MAX_AGE_S:
+                        continue
+                    try:
+                        await self.send_to(row, payload)
+                    except Exception:
+                        log.exception("aegis: a push to %s failed", row.get("device"))
+        finally:
+            self._lanes.pop(sid, None)
+            self._pending.pop(sid, None)
 
     def _jwt(self, origin: str) -> str:
         cached = self._jwts.get(origin)
@@ -361,8 +413,9 @@ class Sender:
     async def send_to(self, row: dict, payload: dict) -> int | None:
         """Encrypt ``payload`` for one subscription and post it, trying a 429,
         a 5xx or no answer three times in all. A 201 stamps ``last_ok_at``; a
-        404 or 410 means the browser dropped the subscription, which goes; any
-        other end counts a failure. Returns the last status, None for none."""
+        status in GONE means the browser dropped the subscription or the push
+        service no longer takes it, and it goes; any other end counts a
+        failure. Returns the last status, None for none."""
         payload = fit(payload)
         keys = row["keys"]
         body = webpush.encrypt(
@@ -401,7 +454,7 @@ class Sender:
             if status is not None and 200 <= status < 300:
                 self.push.subscriptions.record(row["id"], ok=True)
                 return status
-            if status in (404, 410):
+            if status in GONE:
                 self.push.subscriptions.remove(row["id"])
                 return status
             if status is not None and status != 429 and status < 500:
