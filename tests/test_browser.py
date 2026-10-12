@@ -3561,6 +3561,74 @@ def test_the_url_the_worker_opens_boots_straight_into_the_session(server, browse
     ctx.close()
 
 
+def wait_for_device_copy(pg) -> dict:
+    """The build the worker finished keeping, read from its marker entry. It
+    polls the caches rather than awaiting ``serviceWorker.ready``, which never
+    resolves when the install fails and would hang the test."""
+    expr = """caches.keys().then(async names => {
+      for (const n of names.filter(n => n.startsWith('aegis-'))) {
+        const hit = await (await caches.open(n)).match('/__aegis/build.json');
+        if (hit) return hit.json();
+      }
+      return null;
+    })"""
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        if done := pg.evaluate(expr):
+            return done
+        time.sleep(0.2)
+    raise AssertionError("the worker never finished keeping the client")
+
+
+def test_the_worker_keeps_every_file_of_the_build(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    done = wait_for_device_copy(page)
+    listed = page.evaluate("fetch('/client-files.json').then(r => r.json())")
+    assert done["build"] == listed["build"] and done["files"] == len(listed["files"])
+    kept = page.evaluate(
+        "b => caches.open('aegis-' + b).then(c => c.keys())"
+        ".then(ks => ks.map(k => new URL(k.url).pathname))",
+        done["build"],
+    )
+    assert sorted(kept) == sorted(
+        [f["url"] for f in listed["files"]] + ["/__aegis/build.json"]
+    )
+    assert not any("token" in k for k in kept)
+    assert page.errors == []
+
+
+def test_the_client_opens_with_the_server_down(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    server.stop()
+    page.reload()
+    # The page and its scripts came from the device: app.js ran and is
+    # trying to reach the server.
+    page.wait_for_function(
+        "document.getElementById('conn-text').textContent === 'disconnected, retrying'",
+        timeout=10000,
+    )
+    server.start()
+    page.wait_for_selector("#a2[data-view=fleet]", timeout=20000)
+
+
+def test_the_token_url_still_reaches_the_server_with_the_worker_on(server, browser):
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(pg)
+    pg.context.clear_cookies()
+    # The worker answers / from the device, but /?token= must still set the
+    # cookie: with it cleared, only the server can sign this page in again.
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    assert any(c["name"].startswith("aegis_") for c in pg.context.cookies())
+    assert errors == []
+
+
 @pytest.mark.parametrize("width", [1000, 1100, 1366])
 def test_each_quota_bar_shares_a_row_with_its_label_and_value(
     quota_server, browser, width
