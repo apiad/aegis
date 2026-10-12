@@ -11,11 +11,15 @@ help.state, help.dismiss and help.guide are the person's, never agent tools.
 They read and write the caller's record in helpstate.py, deciding it before a
 guide spawns so the guide's own session cannot make a new person look like a
 returning one. help.guide spawns through session.spawn, the path /spawn takes,
-so the quota gate and ownership apply to a guide as to any session.
+so the quota gate and ownership apply to a guide as to any session. The
+tutorial counts as taken once the guide runs: a spawn that fails marks
+nothing, and a title that cannot be set leaves the guide untitled rather than
+failing a call whose session already exists.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Literal
 
@@ -27,6 +31,8 @@ from .ops import OpError
 
 if TYPE_CHECKING:
     from .app import App
+
+log = logging.getLogger("aegis.help_ops")
 
 
 class _Strict(BaseModel):
@@ -176,8 +182,11 @@ def register_help_ops(app: App) -> None:
         started = await r.call(
             "session.spawn", fields | {"prompt": tutorial_prompt(page_id)}, caller
         )
-        app.sessions.rename(
-            started["log_id"], None, f"Tutorial: {index.pages[page_id].title}"
-        )
         state.mark_tutorial(name)
+        try:
+            app.sessions.rename(
+                started["log_id"], None, f"Tutorial: {index.pages[page_id].title}"
+            )
+        except OpError as e:
+            log.warning("aegis: guide %s left untitled: %s", started["log_id"], e)
         return {"log_id": started["log_id"], "handle": started["handle"]}

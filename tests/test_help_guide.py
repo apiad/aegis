@@ -87,6 +87,25 @@ async def test_the_guide_spawns_from_the_chips_and_the_agent_reads_the_page(app)
     assert await call(app, "help.state") == {"tutorial": True, "whats_new": None}
 
 
+async def test_a_spawn_that_fails_leaves_the_tutorial_on_offer(app):
+    with pytest.raises(OpError):
+        await call(app, "help.guide", {"kind": "tutorial", "agent": "nosuch"})
+    assert app.sessions.sessions == {}
+    assert (await call(app, "help.state"))["tutorial"] is False
+
+
+async def test_a_guide_whose_title_cannot_be_set_still_counts_and_opens(
+    app, monkeypatch
+):
+    def refuse(*_):
+        raise OpError("bad_title", "refused")
+
+    monkeypatch.setattr(app.sessions, "rename", refuse)
+    r = await call(app, "help.guide", {"kind": "tutorial"})
+    assert r["log_id"] in app.sessions.sessions
+    assert (await call(app, "help.state"))["tutorial"] is True
+
+
 async def test_a_mistyped_page_starts_nothing_and_any_real_page_can_be_toured(app):
     with pytest.raises(OpError) as e:
         await call(app, "help.guide", {"kind": "tutorial", "page": "getting-startd"})
