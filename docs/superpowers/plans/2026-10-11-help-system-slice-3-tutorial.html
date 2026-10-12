@@ -231,7 +231,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <h2>Tasks</h2>
 
 <!-- ============================================================ TASK 1 -->
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="num">1</span><span><span class="ttl">The per-principal help record</span><span class="files">src/aegis/helpstate.py · tests/test_helpstate.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>A record per principal at <code>&lt;state&gt;/help/&lt;principal&gt;.json</code>, written by write-then-rename like <code>meta.py</code>. The first read decides whether the principal is new; the decision is written at once, so the principal's own first session does not change it.</p>
