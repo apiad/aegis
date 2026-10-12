@@ -43,3 +43,8 @@ async def test_a_miss_in_a_warm_session_turns_the_rate_red(world):
     await turn(a, "/ctx 200000 miss")
     w = a.wire()
     assert w["cache_hit"] < 80 and w["cache_alarm"] is True
+
+
+async def test_the_card_carries_the_cold_thresholds_for_claude(world):
+    a = await world.spawn()
+    assert a.wire()["cache_cold"] == {"after": 3600, "min": 100000}
