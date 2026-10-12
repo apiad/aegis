@@ -137,14 +137,6 @@ async def test_a_dismiss_is_recorded_for_that_person_only(app):
     assert (await call(app, "help.state", caller=BEN))["whats_new"] is None
 
 
-async def test_whats_new_guides_wait_for_slice_4(app):
-    # Slice 4 replaces this test with one that tours the release notes.
-    with pytest.raises(OpError) as e:
-        await call(app, "help.guide", {"kind": "whats_new"})
-    assert e.value.code == "not_yet"
-    assert app.sessions.sessions == {}
-
-
 async def test_slash_tutorial_runs_on_default_agent_in_the_sessions_directory(
     app, tmp_path
 ):

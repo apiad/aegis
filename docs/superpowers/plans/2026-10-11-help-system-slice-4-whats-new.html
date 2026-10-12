@@ -953,7 +953,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"</script></li>
 </details>
 
 <!-- ============================================================ TASK 4 -->
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">help.guide tours the release notes</span><span class="files">src/aegis/help_ops.py · tests/test_whats_new.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Slice 3 already offers the tour (<code>help.state</code> returns <code>whats_new</code>) and records a dismissed hint (<code>help.dismiss</code>), and its <code>help.guide</code> refuses <code>whats_new</code> with <code>not_yet</code>. This task replaces that refusal: the prompt carries the sections after the person's last tour, the session is titled "What's new in &lt;version&gt;", and the tour is recorded once the spawn succeeds. The tests also pin slice 3's two <code>whats_new</code> paths, since this slice is the one that ships them.</p>

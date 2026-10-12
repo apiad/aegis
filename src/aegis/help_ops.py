@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
+from .changelog_read import changelog_text, sections_between
 from .helppages import Index, load
 from .helpstate import HelpState, installed, newer
 from .ops import OpError
@@ -72,6 +73,44 @@ def tutorial_prompt(page_id: str) -> str:
         "spawns agents, spends quota or reaches another server. When the page "
         "ends, suggest the next tutorial."
     )
+
+
+WHATS_NEW = """\
+aegis was upgraded. Below are the release notes since my last tour. Guide me
+through them, simplest first, one change per turn, and end each turn with
+turn_end. For each entry, read its help page with help_read and show me how to
+use the feature, not only that it exists. Ask me before any step that spawns
+agents, spends quota or reaches another server."""
+
+
+def whats_new_prompt(notes: str) -> str:
+    """A /whats-new guide's first message: the instructions, then the release
+    sections the person has not toured, newest last."""
+    return f"{WHATS_NEW}\n\n{notes}"
+
+
+def whats_new_guide(
+    text: str | None, installed: str | None, toured: str | None
+) -> tuple[str, str]:
+    """The title and prompt of a /whats-new guide.
+
+    The sections after the last tour up to the installed release. When none
+    is left, the installed release alone: a person who types /whats-new after
+    touring this version wants it again, not a guide with nothing to say. An
+    install with no notes for its version, a missing file or a build ahead of
+    its changelog, is refused before anything spawns."""
+    notes = ""
+    if text and installed:
+        notes = sections_between(text, toured, installed) or sections_between(
+            text, None, installed
+        )
+    if not notes:
+        raise OpError(
+            "no_release_notes",
+            f"this install has no release notes for {installed or 'its version'}, "
+            "so there is nothing to tour",
+        )
+    return f"What's new in {installed}", whats_new_prompt(notes)
 
 
 class DismissParams(BaseModel):
@@ -164,12 +203,25 @@ def register_help_ops(app: App) -> None:
 
     @r.op("help.guide", GuideParams)
     async def help_guide(p: GuideParams, caller):
-        """Start a guide session: spawn with the prompt built here, title it,
-        record what the person did. Any page can be toured; the client offers
-        tutorial pages. Returns the new session's log id and handle so the
-        client can open its tab."""
+        """Start a guide session: a tutorial on a help page, or a tour of the
+        release notes since the person's last one. Spawn with the prompt built
+        here, record what the person did, title it. Any page can be toured; the
+        client offers tutorial pages. Returns the new session's log id and
+        handle so the client can open its tab."""
         if p.kind == "whats_new":
-            raise OpError("not_yet", "/whats-new guides are not in this build")
+            # Decided before the spawn, as for a tutorial; a missing release
+            # refuses here, before anything starts or is recorded.
+            name, rec = record(caller)
+            version = installed()
+            title, prompt = whats_new_guide(changelog_text(), version, rec["toured"])
+            fields = p.model_dump(exclude={"kind", "page"}, exclude_none=True)
+            started = await r.call("session.spawn", fields | {"prompt": prompt}, caller)
+            state.mark_toured(name, version)
+            try:
+                app.sessions.rename(started["log_id"], None, title)
+            except OpError as e:
+                log.warning("aegis: guide %s left untitled: %s", started["log_id"], e)
+            return {"log_id": started["log_id"], "handle": started["handle"]}
         page_id = p.page or TUTORIAL_DEFAULT
         try:
             index.read(page_id)
