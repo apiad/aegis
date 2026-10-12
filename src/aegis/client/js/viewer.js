@@ -223,7 +223,7 @@ export class Viewer {
   drawFile(item, bar, body, draw) {
     const acts = el("span", "acts");
     const f = item.files[item.at];
-    if (!item.remote) acts.append(dockButton(f.key || ""));
+    if (!item.remote) acts.append(dockButton(f.replaced ? "" : f.key || ""));
     drawFile(f, {
       remote: item.remote,
       glyph: item.glyph,

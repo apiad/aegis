@@ -21,7 +21,7 @@
 // redraws every browser on the session, this one included.
 
 import { drawArtifact, drawFile } from "./viewer.js";
-import { fileUrl, hold } from "./entries.js";
+import { DOCKED, fileUrl, hold } from "./entries.js";
 import { icon } from "./glyphs.js";
 
 const TRANSCRIPT = "transcript";
@@ -202,10 +202,12 @@ export class Canvas {
   // (Re)draw one pane's contents: on creation, when its entry first arrives,
   // and when it changes (a resend, a new status, a new file version). The bar
   // is the item's own (its glyph, title and buttons, as the viewer draws them)
-  // and ×, and it is the handle the pane is dragged by.
+  // and ×, and it is the handle the pane is dragged by. `e` is the artifact's
+  // entry, or the file to show; by default the newest the browser has.
   draw(id, e) {
     const node = this.panes.get(id);
     if (!node) return;
+    const drawn = (node._drawn = (node._drawn || 0) + 1); // a late fetch for an older draw draws nothing
     const bar = el("div", "fbar pbar");
     const body = el("div", "pbody");
     body.tabIndex = -1;
@@ -218,12 +220,14 @@ export class Canvas {
       drawArtifact(entry, { bar, body, acts });
       // An ended page leaves the layout with its submit; until that card
       // lands it shows read-only, and its card keeps its own line.
-      if (entry.status === "live") hold(id, (next) => this.onEntry(next), entry, "docked");
+      if (entry.status === "live") hold(id, (next) => this.onEntry(next), entry, DOCKED);
       else hold(id, null, entry);
     } else {
-      const f = this.latestFile(id);
+      const f = e || this.latestFile(id);
       if (!f) return this.loading(node, bar, acts, "Loading the file…");
-      drawFile(f, { remote: false, glyph: "file", bar, body, acts });
+      drawFile(f, { remote: false, glyph: "file", bar, body, acts, isCurrent: () => node._drawn === drawn });
+      bar.append(el("span", "ver", `v${f.version}`));
+      node.dataset.version = String(f.version);
     }
     acts.append(this.undockButton(id));
     bar.append(acts);
@@ -248,14 +252,30 @@ export class Canvas {
   }
 
   // The transcript's entries arrived or changed in bulk (a snapshot, a
-  // restore): fill the panes that were waiting for theirs.
+  // restore): fill the panes that were waiting for theirs, and show a file's
+  // newest version if one came with them.
   refresh() {
-    for (const [id, node] of this.panes) if ("loading" in node.dataset) this.draw(id);
+    for (const [id, node] of this.panes) {
+      if ("loading" in node.dataset) this.draw(id);
+      else if (!id.startsWith("art-")) {
+        const f = this.latestFile(id);
+        if (f && String(f.version) !== node.dataset.version) this.draw(id, f);
+      }
+    }
   }
 
   // An entry was drawn again. A pane redraws only when what it shows changed:
-  // a new page (src) or a new status. Files: task 10.
+  // a new page (src) or a new status; a file pane, when a newer version of its
+  // key lands, in place (a frame or an image gets the new URL, text is fetched
+  // again).
   onEntry(e) {
+    if (e.kind === "file") {
+      for (const f of e.detail?.files || []) {
+        const node = f.key && !f.replaced && this.panes.get(f.key);
+        if (node && ("loading" in node.dataset || node.dataset.version !== String(f.version))) this.draw(f.key, f);
+      }
+      return;
+    }
     const node = this.panes.get(e.id);
     if (!node || e.kind !== "artifact") return;
     if ("loading" in node.dataset) return this.draw(e.id, e);

@@ -138,14 +138,27 @@ function fileCard(files, glyph) {
     name.textContent = f.name;
     size.textContent = f.summary;
     set(f);
-    dock.dataset.dock = f.key || "";
+    // An older version docks nothing: its key's pane shows the newest.
+    dock.dataset.dock = f.replaced ? "" : f.key || "";
     dock.hidden = !docker.can(dock.dataset.dock);
     count.textContent = `${i + 1} / ${sent.length}`;
     prev.disabled = i === 0;
     next.disabled = i === sent.length - 1;
     stage?.remove();
-    stage = preview(f, remote, () => view.click());
+    // A replaced file, or one docked as a pane, holds a line instead of its
+    // preview; syncDock() redraws it when the docking changes.
+    const hd = holds(f);
+    card.dataset.held = hd;
+    stage =
+      hd === "replaced" ? el("div", "held", `replaced by v${f.replaced}`)
+      : hd === "docked" ? heldLine(f.key, DOCKED)
+      : preview(f, remote, () => view.click());
     if (stage) card.append(stage);
+  };
+  // What the shown page holds now: "replaced", "docked" or "".
+  const holds = (f) => (f.replaced ? "replaced" : f.key && !remote && docker.docked(f.key) ? "docked" : "");
+  card._sync = () => {
+    if (holds(sent[at]) !== card.dataset.held) show(at);
   };
   prev.addEventListener("click", () => show(at - 1));
   next.addEventListener("click", () => show(at + 1));
@@ -185,9 +198,11 @@ export function setOpener(fn) {
 // canvas (js/canvas.js), so this module does not import it. can(id) says
 // whether the button shows: not while the item is docked, not for a file
 // sent before files had keys, and not on a session the person may not change.
-let docker = { dock: () => {}, can: () => false };
-export function setDocker(dock, can) {
-  docker = { dock, can: (id) => !!id && can(id) };
+// docked(id) says whether a pane shows it here, and show(id) outlines that
+// pane (a docked card's Show).
+let docker = { dock: () => {}, can: () => false, docked: () => false, show: () => {} };
+export function setDocker(dock, can, docked, show) {
+  docker = { dock, can: (id) => !!id && can(id), docked, show };
 }
 export function dockButton(id) {
   const b = iconButton(el("button", "btn dock"), "dock", "Dock beside the transcript");
@@ -197,9 +212,27 @@ export function dockButton(id) {
   b.addEventListener("click", () => docker.dock(b.dataset.dock));
   return b;
 }
-// The canvas or who may change it changed: every Dock button drawn shows or hides.
+// The canvas or who may change it changed: every Dock button drawn shows or
+// hides, and a file card whose page was docked or undocked redraws its stage
+// in place (an artifact's card follows hold() instead).
 export function syncDock() {
   for (const b of document.querySelectorAll("#a2 .btn.dock[data-dock]")) b.hidden = !docker.can(b.dataset.dock);
+  for (const card of document.querySelectorAll("#entries .fcard:not(.acard)")) card._sync?.();
+}
+
+// The line a held card shows instead of its stage. A docked one carries Show,
+// which outlines its pane.
+export const DOCKED = "docked";
+function heldLine(id, label) {
+  const line = el("div", "held", label);
+  if (label === DOCKED) {
+    const show = el("button", "btn link locate", "show");
+    show.type = "button";
+    show.title = "Outline its pane";
+    show.addEventListener("click", () => docker.show(id));
+    line.append(" · ", show);
+  }
+  return line;
 }
 
 // One sent file's preview, or null when the browser cannot draw one. A click
@@ -480,7 +513,7 @@ const RENDERERS = {
     card.append(bar);
     const holder = held.get(e.id);
     holder?.onEntry(e);
-    if (e.status === "live" && holder) card.append(el("div", "held", holder.label));
+    if (e.status === "live" && holder) card.append(heldLine(e.id, holder.label));
     else if (e.status === "live") card.append(artifactStage(e));
     else {
       const what = det.label || (e.status === "closed" ? "closed by the agent" : "answered");
@@ -545,10 +578,8 @@ export function hold(id, onEntry, entry, label = "open in the viewer") {
   const card = document.querySelector(`#entries .row[data-id="${CSS.escape(id)}"] .acard`);
   if (onEntry) {
     held.set(id, { onEntry, label });
-    const stage = card?.dataset.status === "live" && card.querySelector(":scope > .stage");
-    if (stage) stage.replaceWith(el("div", "held", label));
-    const line = card?.querySelector(":scope > .held");
-    if (line) line.textContent = label;
+    const was = card?.dataset.status === "live" && card.querySelector(":scope > .stage, :scope > .held");
+    if (was) was.replaceWith(heldLine(id, label));
     return;
   }
   held.delete(id);

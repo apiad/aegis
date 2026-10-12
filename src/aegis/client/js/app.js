@@ -123,19 +123,33 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
 artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
 const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(id) });
 // Open on a docked item shows its pane, so a page never runs in the viewer
-// and a pane at once.
+// and a pane at once. An older version of a docked file opens in the viewer:
+// the pane shows the newest.
 setOpener((item) => {
-  const id = item.artifact || item.files?.[item.at]?.key;
+  const f = item.files?.[item.at];
+  const id = item.artifact || (f && !f.replaced ? f.key : null);
   if (!(id && canvas.flash(id))) viewer.open(item);
 });
+// The newest sent file with a key, for its pane: the last file entry that
+// holds it unreplaced. Walked on a pane's draw only.
+function latestFile(key) {
+  const es = [...transcript.entries.values()];
+  for (let i = es.length - 1; i >= 0; i--) {
+    if (es[i].kind !== "file") continue;
+    const f = (es[i].detail?.files || []).find((x) => x.key === key && !x.replaced);
+    if (f) return f;
+  }
+  return undefined;
+}
 // The canvas: docked pages and files beside the transcript (js/canvas.js).
 const canvas = new Canvas($("canvas"), {
   transcriptPane: $("tr-pane"),
   entryOf: (id) => transcript.entries.get(id),
-  latestFile: () => undefined, // files dock in a later slice
+  latestFile,
   call: (op, params) => callFor(shown, op, params),
-  // A card's Dock button hides while its item is docked; a docked page's
-  // card swaps its frame for a line by itself (entries.hold).
+  // A card's Dock button hides while its item is docked, and a file card's
+  // page swaps its preview for a line; a docked page's card swaps its frame
+  // by itself (entries.hold).
   onChange: () => syncDock(),
   refuse: (message) => toast(message, { kind: "error" }),
 });
@@ -147,6 +161,8 @@ setDocker(
     canvas.dock(id);
   },
   (id) => canvas.writable && !canvas.has(id),
+  (id) => canvas.has(id),
+  (id) => canvas.flash(id),
 );
 // The shown session's canvas, from its card. A page the viewer shows that is
 // now docked leaves the viewer first, so it never runs in both.

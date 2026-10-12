@@ -631,7 +631,9 @@ body{background:#000}
 #a2 .acard .refused{padding:8px 12px;color:var(--err);background:var(--err-bg);font-family:var(--font-chrome);font-size:12.5px;border-top:1px solid var(--rule);overflow-wrap:anywhere}
 #a2 .acard[data-status=submitted] .fbar>.ic{color:var(--ok)}
 #a2 .fbar .btn.icon{padding:5px 7px}
-#a2 .acard>.held{padding:10px 12px;color:var(--faint);font-family:var(--font-chrome);font-size:12.5px;border-top:1px solid var(--rule)}
+#a2 .fcard>.held{padding:10px 12px;color:var(--faint);font-family:var(--font-chrome);font-size:12.5px;border-top:1px solid var(--rule)}
+#a2 .fcard>.held .locate{background:none;border:none;padding:0;color:var(--muted);font:inherit;text-decoration:underline;cursor:pointer}
+#a2 .fcard>.held .locate:hover{color:var(--accent)}
 /* The viewer (js/viewer.js): a file or a page over the session's column. What it covers is hidden, so neither the eye nor Tab reaches it. */
 #a2 .viewer{position:absolute;inset:0;z-index:7;display:flex;flex-direction:column;background:var(--bg);min-width:0}
 #a2 .viewer[hidden]{display:none}
@@ -668,6 +670,7 @@ body{background:#000}
 #a2 .canvas>.pane.docked{display:flex;flex-direction:column;background:var(--bg);overflow:hidden}
 #a2 .canvas>.pane>.pbar{display:flex;width:auto;height:auto;gap:10px;flex:none;border-bottom:1px solid var(--rule)}
 #a2 .canvas>.pane>.pbar .acts{margin-left:auto}
+#a2 .canvas>.pane>.pbar .ver{color:var(--faint);font-family:var(--font-chrome);font-size:12px;white-space:nowrap}
 #a2 .canvas>.pane>.pbody{flex:1;min-height:0;overflow:auto;outline:none}
 #a2 .canvas>.pane.flash{outline:2px solid var(--accent);outline-offset:-2px}
 /* The person's handles: a pane's bar is what drags it, the transcript's is a
@@ -684,13 +687,15 @@ body{background:#000}
 #a2 .canvas>.droptarget{position:absolute;z-index:9;box-sizing:border-box;background:var(--accent-soft);border:2px solid var(--accent);border-radius:var(--r);pointer-events:none}
 #a2 .canvas>.cgrip{position:absolute;z-index:8;touch-action:none}
 #a2 .canvas>.cgrip.x{top:0;bottom:0;width:9px;margin-left:-4px;cursor:col-resize}
-#a2 .canvas>.cgrip.y{height:9px;margin-top:-4px;cursor:row-resize}
+/* A row grip sits wholly above its boundary: the bar below it is the pane's
+   handle, and a press on the bar's top edge must drag, not resize. */
+#a2 .canvas>.cgrip.y{height:6px;margin-top:-6px;cursor:row-resize}
 #a2 .canvas>.cgrip:after{content:"";position:absolute;transition:background .12s}
 #a2 .canvas>.cgrip.x:after{left:4px;top:0;bottom:0;width:1px}
-#a2 .canvas>.cgrip.y:after{top:4px;left:0;right:0;height:1px}
+#a2 .canvas>.cgrip.y:after{top:5px;left:0;right:0;height:1px}
 #a2 .canvas>.cgrip:hover:after,#a2 .canvas>.cgrip.on:after{background:var(--accent)}
 #a2 .canvas>.cgrip.x:hover:after{left:3px;width:2px}
-#a2 .canvas>.cgrip.y:hover:after{top:3px;height:2px}
+#a2 .canvas>.cgrip.y:hover:after{top:4px;height:2px}
 #a2 .md code.path{color:var(--accent);cursor:pointer;border-style:dashed}
 #a2 .md code.path:hover{border-style:solid}
 #a2 .md code.path::before{content:"↗ ";opacity:.6}
