@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import re
 
 KIND_BY_NAME = {
     "Read": "read",
@@ -166,33 +167,58 @@ def diff_counts(old_text: str, new_text: str) -> tuple[int, int]:
     return added, removed
 
 
-def diff_window(
-    old_text: str, new_text: str, max_lines: int = 6
-) -> tuple[list[str], list[str], int]:
-    """The changed window of an edit, capped at ``max_lines`` rows: removed
-    rows first, then added. Returns ``(removed, added, elided)``."""
-    old_lines = old_text.splitlines() if old_text else []
-    new_lines = new_text.splitlines() if new_text else []
-    head = 0
-    while (
-        head < len(old_lines)
-        and head < len(new_lines)
-        and old_lines[head] == new_lines[head]
-    ):
-        head += 1
-    tail = 0
-    while (
-        tail < len(old_lines) - head
-        and tail < len(new_lines) - head
-        and old_lines[len(old_lines) - 1 - tail] == new_lines[len(new_lines) - 1 - tail]
-    ):
-        tail += 1
-    removed = old_lines[head : len(old_lines) - tail]
-    added = new_lines[head : len(new_lines) - tail]
-    shown_r = removed[:max_lines]
-    shown_a = added[: max(0, max_lines - len(shown_r))]
-    elided = len(removed) + len(added) - len(shown_r) - len(shown_a)
-    return shown_r, shown_a, elided
+def diff_hunks(old: str, new: str, context: int = 3) -> list[dict]:
+    """The edit's hunks, ``context`` unchanged lines around each change, lines
+    prefixed with a space, ``-`` or ``+``; numbered within the edit's text."""
+    a, b = old.splitlines(), new.splitlines()
+    out = []
+    matcher = difflib.SequenceMatcher(None, a, b, autojunk=False)
+    for group in matcher.get_grouped_opcodes(context):
+        lines: list[str] = []
+        for tag, i1, i2, j1, j2 in group:
+            if tag == "equal":
+                lines += [" " + x for x in a[i1:i2]]
+            if tag in ("replace", "delete"):
+                lines += ["-" + x for x in a[i1:i2]]
+            if tag in ("replace", "insert"):
+                lines += ["+" + x for x in b[j1:j2]]
+        out.append({"a": group[0][1] + 1, "b": group[0][3] + 1, "lines": lines})
+    return out
+
+
+def hunks_from_patch(patch: list) -> list[dict]:
+    """Claude Code's ``structuredPatch`` as hunks; its marker lines
+    (``\\ No newline at end of file``) dropped."""
+    return [
+        {
+            "a": int(h["oldStart"]),
+            "b": int(h["newStart"]),
+            "lines": [
+                str(x) for x in h.get("lines", []) if str(x)[:1] in (" ", "-", "+")
+            ],
+        }
+        for h in patch
+        if isinstance(h, dict) and "oldStart" in h and "newStart" in h
+    ]
+
+
+def cap_hunks(hunks: list[dict], max_bytes: int = 8192) -> tuple[list[dict], int]:
+    """Lines in order up to ``max_bytes``, the same cap as ``output_tail``;
+    the changed lines after the cap are counted, not kept."""
+    kept, size, elided, full = [], 0, 0, False
+    for h in hunks:
+        lines = []
+        for ln in h["lines"]:
+            cost = len(ln.encode()) + 1
+            if full or size + cost > max_bytes:
+                full = True
+                elided += ln.startswith(("+", "-"))
+                continue
+            size += cost
+            lines.append(ln)
+        if lines:
+            kept.append({**h, "lines": lines})
+    return kept, elided
 
 
 FILE_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit")
@@ -202,6 +228,42 @@ def file_path(name: str, inp: dict) -> str | None:
     """The file a file tool read or changed, else None."""
     path = inp.get("file_path") or inp.get("notebook_path")
     return path if name in FILE_TOOLS and isinstance(path, str) else None
+
+
+# The highlight.js language (client/js/highlight.js LANGS) a file's name implies.
+LANG_BY_EXT = {
+    "sh": "bash", "bash": "bash", "zsh": "bash", "py": "python", "pyi": "python",
+    "js": "javascript", "mjs": "javascript", "cjs": "javascript", "jsx": "javascript",
+    "ts": "typescript", "tsx": "typescript", "json": "json", "jsonl": "json",
+    "yaml": "yaml", "yml": "yaml", "toml": "ini", "ini": "ini", "cfg": "ini",
+    "diff": "diff", "patch": "diff", "md": "markdown", "css": "css", "html": "xml",
+    "xml": "xml", "svg": "xml", "sql": "sql", "rs": "rust", "go": "go", "c": "c",
+    "h": "c", "cc": "cpp", "cpp": "cpp", "hpp": "cpp", "java": "java", "lua": "lua",
+    "rb": "ruby", "php": "php", "kt": "kotlin", "swift": "swift", "mk": "makefile",
+}  # fmt: skip
+LANG_BY_NAME = {
+    "makefile": "makefile",
+    "dockerfile": "dockerfile",
+    "nginx.conf": "nginx",
+}
+
+
+def lang_of_path(path: str) -> str | None:
+    name = _tail(path).lower()
+    if name in LANG_BY_NAME:
+        return LANG_BY_NAME[name]
+    ext = name.rsplit(".", 1)[-1] if "." in name else ""
+    return LANG_BY_EXT.get(ext)
+
+
+def tool_lang(name: str, inp: dict) -> str | None:
+    """The language a tool row's views draw in: Bash's command, a file tool's
+    file, every other tool's ``key: value`` arguments (#323)."""
+    if name in ("Bash", "BashOutput"):
+        return "bash"
+    if path := file_path(name, inp):
+        return lang_of_path(path)
+    return "yaml"
 
 
 def edit_pair(name: str, inp: dict) -> tuple[str, str, str] | None:
@@ -285,6 +347,66 @@ def output_tail(text: str, max_lines: int = 40, max_bytes: int = 8192) -> str:
     if len(tail.encode()) > max_bytes:
         tail = "…" + tail.encode()[-max_bytes:].decode("utf-8", "ignore")
     return tail
+
+
+_NUMBERED = re.compile(r"^\s*(\d+)\t(.*)$")
+
+
+def numbered_lines(text: str) -> tuple[int, list[str]] | None:
+    """Claude Code's Read output (``     7\\tline``): the first line's number and
+    the lines without their numbers, up to the first line that is not numbered
+    (the harness appends notes after the file). None when it is not that shape."""
+    first, out = None, []
+    for ln in text.splitlines():
+        m = _NUMBERED.match(ln)
+        if not m:
+            if out:
+                break
+            continue
+        if first is None:
+            first = int(m.group(1))
+        out.append(m.group(2))
+    return (first, out) if first is not None else None
+
+
+def file_window(first: int, lines: list[str]) -> dict:
+    """The end of a file view, as much as ``output_tail`` keeps, and the
+    number of the first line kept."""
+    text = output_tail("\n".join(lines))
+    return {"first": first + len(lines) - len(text.splitlines()), "text": text}
+
+
+_FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+_SPAN = re.compile(r"(`+)([^`\n]+?)\1")
+_PATH = re.compile(
+    r"(?:~?/)?(?:[\w.@+-]+/)*[\w@+-][\w.@+-]*\.[A-Za-z][A-Za-z0-9]*(?::\d+)?"
+)
+_BARE = re.compile(r"[A-Z][A-Z0-9_-]*\.[a-z]+(?::\d+)?")
+
+
+def inline_paths(md: str) -> list[str]:
+    """The inline code spans of a reply shaped like a file path, with an
+    optional ``:line``, in order and without repeats; fenced blocks skipped.
+    A path has a slash and an extension, or is a capitalised name such as
+    DESIGN.md. Whether the file exists is asked at click time (#323)."""
+    out: list[str] = []
+    fence = None
+    for line in md.splitlines():
+        if m := _FENCE.match(line):
+            mark = m.group(1)
+            if fence is None:
+                fence = mark
+            elif mark[0] == fence[0] and len(mark) >= len(fence):
+                fence = None
+            continue
+        if fence is not None:
+            continue
+        for span in _SPAN.finditer(line):
+            text = span.group(2).strip()
+            shaped = ("/" in text and _PATH.fullmatch(text)) or _BARE.fullmatch(text)
+            if shaped and "://" not in text and text not in out:
+                out.append(text)
+    return out
 
 
 def money(usd: float) -> str:

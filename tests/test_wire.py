@@ -245,3 +245,16 @@ def test_a_delta_from_any_cut_rebuilds_an_attached_send():
     for k in range(len(r.records) + 1):
         held = fold_records(r.records[:k]).snapshot()
         assert rebuild(held["entries"], final.snapshot(held["rev"])) == want, k
+
+
+def test_a_file_view_is_lazy_and_searchable():
+    from aegis.transcript.wire import withheld_text
+
+    r = Rec()
+    r.call("t1", "Write", {"file_path": "/x/a.py", "content": "NEEDLE = 1\n"})
+    r.output("t1", "File created successfully at: /x/a.py")
+    f, _ = run(r)
+    (e,) = f.entries()
+    assert "file" in LAZY["tool"]
+    assert "file" not in wire(e)["detail"] and wire(e)["detail"]["more"] is True
+    assert "NEEDLE" in withheld_text(e)

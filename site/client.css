@@ -142,6 +142,7 @@ body{background:#000}
 /* Off-screen rows skip layout and paint, and keep their last height once drawn (#157). */
 .a2 #entries>.row{content-visibility:auto;contain-intrinsic-size:auto 40px}
 .a2 .row.user .body{color:var(--strong);background:var(--raised);padding:9px 12px;border-radius:var(--r);font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.a2 .row.user .body .md{white-space:normal}
 .a2 .row.user .g{color:var(--accent)}
 .a2 .row.sel{background:var(--accent-soft);position:relative}
 .a2 .row.sel:before{content:"";position:absolute;left:-8px;top:0;bottom:0;width:2px;background:var(--accent)}
@@ -157,20 +158,65 @@ body{background:#000}
 .a2 .row.prose .rm .ic.i-unread{color:var(--accent)}
 .a2 .row.prose .rm .ic.i-read{color:var(--faint)}
 .a2 .card .ft .unr{color:var(--accent)}
+/* Tables query the transcript's scroller, not their row: a size container
+   inside the scroller stops Chromium's scroll anchoring, so rows drawn above
+   the view would push the text being read (#323). */
+.a2 #tr,.a2 .vbody{container:md/inline-size}
 .a2 .md>:first-child{margin-top:0}.a2 .md>:last-child{margin-bottom:0}
-.a2 .md p,.a2 .md ul,.a2 .md ol{margin:0 0 .6em}
-.a2 .md h1,.a2 .md h2,.a2 .md h3,.a2 .md h4{font-family:var(--font-head);color:var(--strong);font-weight:600;margin:.9em 0 .4em;font-size:1.05em}
-.a2 .md a{color:var(--accent)}
+.a2 .md p,.a2 .md ul,.a2 .md ol{margin:0 0 .65em}
+.a2 .md ul,.a2 .md ol{padding-left:1.4em}
+.a2 .md li{margin:.15em 0}
+.a2 .md li.task{list-style:none;margin-left:-1.3em}
+.a2 .md li.task input{accent-color:var(--accent);margin:0 .4em 0 0;vertical-align:-.1em}
+.a2 .md h1,.a2 .md h2,.a2 .md h3,.a2 .md h4{font-family:var(--font-head);color:var(--strong);font-weight:600;line-height:1.3}
+.a2 .md h1{font-size:1.25em;margin:1.1em 0 .5em}
+.a2 .md h2{font-size:1.15em;margin:1.1em 0 .45em}
+.a2 .md h3{font-size:1.02em;margin:1em 0 .4em}
+.a2 .md h4{font-size:1em;margin:.9em 0 .35em;color:var(--ink)}
+.a2 .md a{color:var(--accent);text-underline-offset:2px}
+.a2 .md :not(pre)>code{font:.84em var(--font-mono);font-variant-ligatures:none;background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:.05em .35em}
+.a2 .md blockquote{margin:.6em 0;padding:.35em 12px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 var(--r) var(--r) 0;color:var(--ink)}
+.a2 .md blockquote>:last-child{margin-bottom:0}
+.a2 .md hr{border:0;border-top:1px solid var(--rule);margin:1em 0}
 .a2 .md pre{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;overflow-x:auto;font-size:12.5px;line-height:1.45}
-.a2 .md pre code{background:none;padding:0}
-.a2 .md table{border-collapse:collapse;font-size:.88em;font-family:var(--font-ui)}
-.a2 .md th,.a2 .md td{border:1px solid var(--rule);padding:4px 8px;text-align:left}
-.a2 .md blockquote{margin:0 0 .6em;padding-left:12px;border-left:2px solid var(--rule);color:var(--muted)}
+.a2 .md pre code{background:none;border:0;padding:0;font-size:inherit}
+.a2 .md .fence{margin:.7em 0;border:1px solid var(--rule);border-radius:var(--r);background:var(--surface)}
+.a2 .md .fh{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 4px 0 12px;min-height:20px}
+.a2 .md .fh .lang{font:10.5px/1 var(--font-ui);letter-spacing:.04em;color:var(--faint);text-transform:uppercase}
+.a2 .md .fh .lang.guessed::after{content:" ?"}
+.a2 .md .fence pre{margin:0;padding:2px 12px 10px;background:none;border:0;border-radius:0;font:12.5px/1.55 var(--font-mono);font-variant-ligatures:none;tab-size:4}
+.a2 .md .tblk{position:relative;margin:.8em 0;width:max-content;max-width:100%}
+.a2 .md .tw{overflow-x:auto;max-width:100%;padding-right:22px}
+.a2 .md .tw.more-r{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent)}
+.a2 .md table{border-collapse:collapse;font:13px/1.45 var(--font-ui);width:max-content}
+.a2 .md th,.a2 .md td{padding:5px 10px;text-align:left;vertical-align:top;max-width:30ch;overflow-wrap:normal;word-break:normal}
+.a2 .md th{white-space:nowrap;font-weight:600;font-size:11.5px;letter-spacing:.03em;color:var(--muted);border-bottom:1.5px solid var(--muted)}
+.a2 .md td{border-bottom:1px solid var(--rule)}
+.a2 .md td[style*=right],.a2 .md th[style*=right]{font-variant-numeric:tabular-nums;white-space:nowrap}
+.a2 .md tr:hover td{background:var(--accent-soft)}
+.a2 .md td:first-child,.a2 .md th:first-child{position:sticky;left:0;background:var(--bg);z-index:1}
+.a2 .md tr:hover td:first-child{background:color-mix(in srgb,var(--accent) 16%,var(--bg))} /* opaque: it covers the cells scrolled under it */
+/* 600 px of #tr's content box, which is a row's whole width (its padding
+   does not count): 542 px of Markdown in an agent's row, 498 px in logbook's. */
+@container md (max-width:600px){
+  .a2 .md .tblk{width:auto}
+  .a2 .md .tw{overflow:visible;padding-right:0}
+  .a2 .md .tw.more-r{-webkit-mask-image:none;mask-image:none}
+  .a2 .md table,.a2 .md tbody,.a2 .md tr,.a2 .md td{display:block;width:auto;max-width:none}
+  .a2 .md thead{display:none}
+  .a2 .md tr{border:1px solid var(--rule);border-radius:var(--r);padding:6px 10px;margin:0 0 8px;background:var(--surface)}
+  .a2 .md td{border:0;padding:2px 0 2px 42%;position:relative;text-align:left!important;white-space:normal;background:none!important}
+  .a2 .md td::before{content:attr(data-label);position:absolute;left:0;width:40%;color:var(--muted);font-size:11.5px;line-height:1.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .a2 .md td:first-child{font-weight:600;color:var(--strong);padding-left:0;position:relative}
+  .a2 .md td:first-child::before{display:none}
+}
 .a2 code{font-family:var(--font-mono);font-size:.82em;background:var(--raised);padding:1px 5px;border-radius:4px}
-/* Copy (js/copy.js): a message's and a code block's sit in their top-right
-   corner, a tool's at the end of its line. Each shows while its row or block
-   is hovered, its row selected, or itself focused or confirming; a screen
-   without hover always shows them, faint. */
+/* Copy (js/copy.js): a person's message's and a bare code block's sit in their
+   top-right corner, a fence's at the end of its header, a table's at its
+   top-right corner, a tool's at the end of its line. Each shows while its row
+   or block is hovered, its row selected, or itself focused or confirming; a
+   screen without hover always shows them, faint. A reply has no button: `c`
+   on it marks its glyph instead (.g[data-copied]). */
 .a2 button.copy{display:inline-flex;align-items:center;gap:4px;padding:2px 5px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);color:var(--faint);font:400 11px/1 var(--font-chrome);font-style:normal;cursor:pointer;opacity:0;transition:opacity .12s}
 .a2 button.copy .ic{width:12px;height:12px;vertical-align:0}
 .a2 button.copy span:empty{display:none}
@@ -178,9 +224,11 @@ body{background:#000}
 .a2 button.copy:focus-visible{opacity:1;outline:1px solid var(--accent);outline-offset:1px}
 .a2 button.copy[data-state=done]{opacity:1;color:var(--ok)}
 .a2 button.copy[data-state=err]{opacity:1;color:var(--err)}
-.a2 .row>.body:has(>button.copy),.a2 .md pre{position:relative}
-.a2 .row>.body>button.copy,.a2 .md pre>button.copy{position:absolute;top:4px;right:4px;z-index:1}
-.a2 .row:hover>.body>button.copy,.a2 .row.sel>.body>button.copy,.a2 .md pre:hover>button.copy,.a2 .row.tool:hover .line>button.copy,.a2 .row.tool.sel .line>button.copy{opacity:1}
+.a2 .row>.body:has(>button.copy),.a2 .md pre:not(.fence pre){position:relative}
+.a2 .row>.body>button.copy,.a2 .md pre:not(.fence pre)>button.copy{position:absolute;top:4px;right:4px;z-index:1}
+.a2 .md .tblk>button.copy{position:absolute;top:-2px;right:0;z-index:2}
+.a2 .row:hover>.body>button.copy,.a2 .row.sel>.body>button.copy,.a2 .md pre:hover>button.copy,.a2 .md .fence:hover .fh>button.copy,.a2 .row.sel .md .fh>button.copy,.a2 .md .tblk:hover>button.copy,.a2 .row.sel .md .tblk>button.copy,.a2 .row.tool:hover .line>button.copy,.a2 .row.tool.sel .line>button.copy{opacity:1}
+.a2 .row>.g[data-copied=done]{color:var(--ok)}.a2 .row>.g[data-copied=err]{color:var(--err)}
 .a2 .row.tool .line>button.copy{flex:none;align-self:center}
 @media (hover:none){.a2 button.copy{opacity:.6}}
 
@@ -202,10 +250,28 @@ body{background:#000}
 .a2 .more{margin:6px 0 2px;display:grid;gap:6px}
 .a2 .more pre,.a2 pre.out{margin:0;padding:7px 10px;font-size:11.5px;white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--font-mono);background:var(--surface);border-left:2px solid var(--rule);color:var(--muted);max-height:420px;overflow:auto}
 .a2 .row.tool.err pre.out,.a2 .row.error pre.out{background:var(--err-bg);color:var(--err);border-left-color:var(--err)}
-.a2 .diff{margin:0;padding:6px 0;font-size:11.5px;font-family:var(--font-mono);background:var(--surface);border-radius:4px;overflow-x:auto}
-.a2 .diff div{padding:0 10px;white-space:pre}
-.a2 .diff .del{background:var(--del-bg);color:var(--err)}.a2 .diff .add{background:var(--add-bg);color:var(--ok)}
-.a2 .diff .path,.a2 .diff .elided{color:var(--faint)}
+.a2 .lines,.a2 .diff{border:1px solid var(--rule);border-radius:var(--r);background:var(--surface);font:12px/1.55 var(--font-mono);margin:6px 0 0}
+.a2 .lines{display:grid;grid-template-columns:auto minmax(0,1fr);overflow:auto;max-height:60vh}
+.a2 .lines .n,.a2 .diff .n{color:var(--faint);text-align:right;padding:0 8px 0 10px;user-select:none;font-size:11px}
+.a2 .lines .c,.a2 .diff .c{white-space:pre;padding-right:12px;min-height:1.55em}
+.a2 .diff{overflow:hidden}
+.a2 .diff .hunk{background:var(--raised);color:var(--faint);font-size:11px;padding:1px 10px}
+.a2 .diff .split{display:none;grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr)}
+.a2 .diff .split .c{white-space:pre-wrap;overflow-wrap:anywhere}
+.a2 .diff .unified{display:grid;grid-template-columns:auto auto minmax(max-content,1fr);overflow-x:auto}
+/* An edit side by side from 680 px of #tr's content box, a row's whole width:
+   the spec's 640 px of body plus the row's gutter (#323). */
+@container md (min-width:680px){.a2 .diff .split{display:grid}.a2 .diff .unified{display:none}}
+.a2 .diff .s{user-select:none;padding:0 6px 0 2px;color:var(--faint)}
+.a2 .diff .del{background:var(--del-bg)}.a2 .diff .add{background:var(--add-bg)}
+.a2 .diff .s.del{color:var(--err)}.a2 .diff .s.add{color:var(--ok)}
+.a2 .diff .n.del,.a2 .diff .n.add{color:var(--muted)}
+.a2 .diff .del mark{background:color-mix(in srgb,var(--err) 32%,transparent);color:inherit;border-radius:2px}
+.a2 .diff .add mark{background:color-mix(in srgb,var(--ok) 32%,transparent);color:inherit;border-radius:2px}
+.a2 .diff .nil{background:repeating-linear-gradient(135deg,transparent 0 5px,var(--rule) 5px 6px);opacity:.5}
+.a2 .diff .elided{color:var(--faint);font-size:11px;padding:2px 10px}
+.a2 .row.tool .md.args{margin-top:6px}
+.a2 .row.tool .md.args .fence{margin:0}
 .a2 .row.think{color:var(--faint);font-style:italic}
 .a2 .row.think summary{cursor:pointer}
 .a2 .row.think .md{font-family:var(--font-prose);font-size:14px;color:var(--muted);margin-top:4px}
@@ -541,17 +607,26 @@ body{background:#000}
 .a2 .viewer .code .ln{position:sticky;left:0;padding:14px 12px 40px 16px;text-align:right;color:var(--faint);background:var(--bg);border-right:1px solid var(--rule);user-select:none}
 .a2 .viewer .code .src{padding-left:14px;padding-right:24px;color:var(--ink)}
 .a2 .viewer .code code{font-size:inherit;background:none;padding:0;border-radius:0}
+.a2 .md code.path{color:var(--accent);cursor:pointer;border-style:dashed}
+.a2 .md code.path:hover{border-style:solid}
+.a2 .md code.path::before{content:"↗ ";opacity:.6}
+.a2 .row .patherr{font:12px var(--font-ui);color:var(--err);margin-top:4px}
+.a2 .row .patherr .btn{margin:6px 6px 0 0}
+.a2 #viewer .code{position:relative}
+.a2 #viewer .code .mark{position:absolute;left:0;right:0;background:var(--accent-soft);border-left:2px solid var(--accent);pointer-events:none}
 @media (max-width:760px){.a2 .viewer .vbar .fs{display:none}}
 /* highlight.js's classes, coloured from the theme so every theme reads its own way. */
-.a2 .hljs-keyword,.a2 .hljs-selector-tag,.a2 .hljs-name,.a2 .hljs-meta .hljs-keyword{color:var(--accent)}
-.a2 .hljs-string,.a2 .hljs-regexp,.a2 .hljs-addition,.a2 .hljs-meta .hljs-string{color:var(--ok)}
-.a2 .hljs-number,.a2 .hljs-literal,.a2 .hljs-symbol,.a2 .hljs-bullet,.a2 .hljs-deletion{color:var(--err)}
-.a2 .hljs-built_in,.a2 .hljs-type,.a2 .hljs-title.class_,.a2 .hljs-selector-class,.a2 .hljs-selector-id{color:var(--warn)}
-.a2 .hljs-attr,.a2 .hljs-attribute,.a2 .hljs-property,.a2 .hljs-variable,.a2 .hljs-template-variable,.a2 .hljs-params{color:var(--comms)}
-.a2 .hljs-title,.a2 .hljs-section{color:var(--strong);font-weight:600}
-.a2 .hljs-comment,.a2 .hljs-quote{color:var(--faint);font-style:italic}
-.a2 .hljs-meta,.a2 .hljs-punctuation,.a2 .hljs-tag{color:var(--muted)}
+.a2 .hljs-comment,.a2 .hljs-quote{color:var(--h-com);font-style:italic}
+.a2 .hljs-keyword,.a2 .hljs-selector-tag,.a2 .hljs-literal,.a2 .hljs-name,.a2 .hljs-meta .hljs-keyword{color:var(--h-kw)}
+.a2 .hljs-string,.a2 .hljs-regexp,.a2 .hljs-doctag,.a2 .hljs-meta .hljs-string{color:var(--h-str)}
+.a2 .hljs-number,.a2 .hljs-symbol,.a2 .hljs-bullet{color:var(--h-num)}
+.a2 .hljs-title,.a2 .hljs-section,.a2 .hljs-title.function_{color:var(--h-fn)}
+.a2 .hljs-type,.a2 .hljs-title.class_,.a2 .hljs-built_in,.a2 .hljs-selector-class,.a2 .hljs-selector-id{color:var(--h-type)}
+.a2 .hljs-attr,.a2 .hljs-attribute,.a2 .hljs-property,.a2 .hljs-variable,.a2 .hljs-template-variable,.a2 .hljs-params{color:var(--h-var)}
+.a2 .hljs-meta,.a2 .hljs-subst,.a2 .hljs-punctuation,.a2 .hljs-tag{color:var(--h-meta)}
+.a2 .hljs-addition{color:var(--ok)}.a2 .hljs-deletion{color:var(--err)}
 .a2 .hljs-emphasis{font-style:italic}.a2 .hljs-strong{font-weight:600}
+.a2 code,.a2 pre,.a2 .diff,.a2 .lines{font-variant-ligatures:none}
 #probes{position:fixed;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
 
 /* inbox rows, monitors, workers */
@@ -687,6 +762,10 @@ body{background:#000}
 .a2 .side .qrow{margin-bottom:9px}
 .a2 .side .qrow .bar{position:relative;overflow:visible;margin:4px 0 0}
 .a2 .side .qrow .bar .tick{top:-1px;bottom:-1px}
+/* A member's own quota lines on its gauge (gauges.js). */
+.a2 .bar .tick.lim{opacity:1}
+.a2 .bar .tick.lim.l{background:var(--ok)}
+.a2 .bar .tick.lim.s{background:var(--err)}
 .a2 .side .gnote{color:var(--warn)}
 .a2 .pcard .qrow{margin-bottom:10px}
 
@@ -735,6 +814,7 @@ body{background:#000}
 .a2 .replies .body{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .a2 .rp{font-family:var(--font-ui);font-size:13px;color:var(--strong);background:var(--surface);border:1px solid var(--rule);border-radius:999px;padding:5px 13px;cursor:pointer;line-height:1.3;text-align:left}
 .a2 .rp:hover{border-color:var(--accent);background:var(--accent-soft)}
+.a2 .row.closing{display:none}
 /* Settings: agents are cards carrying the composer's chips; queues are one
    sentence each; the doctor is one line until it finds something. */
 .a2[data-view=settings] .v-settings{display:flex;flex-direction:column;overflow:auto}
@@ -979,6 +1059,9 @@ body{background:#000}
   .a2 #arch-list td.acts{position:absolute;top:0;right:0;bottom:0;display:flex;align-items:center;overflow:visible}
   .a2 #arch-list td.acts .read{display:none}
   .a2[data-view=spawn] .v-spawn{padding:16px 10px;place-items:start stretch}
+  .a2 .row.closing{display:grid}
+  .a2 .row.closing .g{color:var(--ok)}
+  .a2 #closing-btn{min-height:44px;padding:10px 18px;font-size:14.5px}
 }
 @media (prefers-reduced-motion:reduce){.a2 .side{transition:none}}
 /* Touch, at any width: 44 px targets. */
@@ -1061,7 +1144,65 @@ body{background:#000}
 .a2 .tab .who,.a2 .card .who{font-family:var(--font-mono);font-size:10.5px;color:var(--comms);border:1px solid var(--rule);border-radius:999px;padding:0 7px;margin-left:6px;white-space:nowrap}
 .a2 .set-once{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
 .a2 .set-once code{font-family:var(--font-mono);font-size:12px;overflow-wrap:anywhere}
-@media (max-width:640px){.a2 .set-tokens .set-linkrow{flex-wrap:wrap}.a2 .set-tokens .set-linkrow .set-in{flex-basis:100%}.a2 .set-tokens .tbl td.m{white-space:normal}}
+/* Settings: the tokens and their quota policies (quota_gate.py), from the
+   multi-user spec's editor mockup. A card is a .set-agent; a window's track
+   is drawn like a quota gauge, with a green launch handle and a red stop one. */
+.a2 .set-tokens{margin:0 0 22px}
+.a2 .set-tokens h3{margin:0 0 4px;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
+.a2 .set-tokens>.set-none{margin:0 0 10px}
+.a2 .set-pill.warn{color:var(--warn)}
+.a2 .set-tok .set-pill{flex:none}
+.a2 .set-tok .set-used{font-size:11.5px}
+.a2 .set-tok .set-gap{margin-left:auto}
+.a2 .set-tok .link.danger{opacity:1}
+.a2 .set-tokens .poolnow{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 24px;padding:10px 14px;background:var(--side);border:1px solid var(--rule);border-radius:var(--r-lg);margin-bottom:10px}
+.a2 .set-tokens .poolnow h5{margin:0 0 2px;font:500 11.5px var(--font-chrome);color:var(--faint)}
+.a2 .set-tokens .poolnow .bar{position:relative;overflow:visible;margin:4px 0 6px}
+.a2 .set-tokens .pol{grid-column:1/-1;display:grid;gap:10px;margin-top:4px;padding-top:10px;border-top:1px dashed var(--rule)}
+.a2 .set-tokens .poolrow{display:grid;grid-template-columns:108px minmax(0,1fr);gap:8px 12px;align-items:start}
+.a2 .set-tokens .poolrow .pl{font:500 12px var(--font-chrome);color:var(--strong);padding-top:4px}
+.a2 .set-tokens .modeline{display:flex;gap:10px;align-items:center;margin-bottom:2px}
+.a2 .set-tokens .winrow{display:grid;grid-template-columns:96px minmax(0,1fr) 230px;grid-template-areas:"name track read";gap:4px 12px;align-items:center;margin:2px 0}
+.a2 .set-tokens .winrow .wl{grid-area:name;display:flex;flex-direction:column;gap:3px}
+.a2 .set-tokens .winrow .track{grid-area:track}
+.a2 .set-tokens .winrow .wv{grid-area:read}
+.a2 .set-tokens .winrow label{font:11.5px var(--font-chrome);color:var(--muted);display:flex;gap:5px;align-items:center;cursor:pointer}
+.a2 .set-tokens .winrow input[type=checkbox]{accent-color:var(--accent);margin:0}
+.a2 .set-tokens .track{position:relative;height:6px;background:var(--raised);border-radius:3px;margin:18px 7px 8px;touch-action:none}
+.a2 .set-tokens .winrow.off .track{opacity:.35;margin-top:8px}
+.a2 .set-tokens .track>i{position:absolute;left:0;top:0;bottom:0;background:var(--ok);opacity:.55;border-radius:3px}
+.a2 .set-tokens .zone{position:absolute;top:0;bottom:0}
+.a2 .set-tokens .zone.closed{background:color-mix(in srgb,var(--warn) 22%,transparent)}
+.a2 .set-tokens .zone.stop{background:color-mix(in srgb,var(--err) 32%,transparent);border-radius:0 3px 3px 0}
+.a2 .set-tokens .h{position:absolute;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2px solid var(--surface);padding:0;cursor:grab;z-index:2}
+.a2 .set-tokens .h:active{cursor:grabbing}
+.a2 .set-tokens .h.l{background:var(--ok)}
+.a2 .set-tokens .h.s{background:var(--err)}
+.a2 .set-tokens .h:focus-visible{outline:2px solid var(--strong);outline-offset:1px}
+.a2 .set-tokens .h span,.a2 .set-tokens .pace span{position:absolute;bottom:13px;left:50%;transform:translateX(-50%);font:10.5px var(--font-chrome);white-space:nowrap;pointer-events:none}
+.a2 .set-tokens .h.l span,.a2 .set-tokens .pace span{color:var(--ok)}
+.a2 .set-tokens .h.s span{color:var(--err)}
+.a2 .set-tokens .pace{position:absolute;top:-5px;bottom:-5px;width:2px;margin-left:-1px;background:var(--ok);z-index:1}
+.a2 .set-tokens .wv{font:11px var(--font-chrome);color:var(--faint);display:flex;flex-direction:column;gap:3px}
+@media (max-width:640px){
+  .a2 .set-tokens .set-linkrow{flex-wrap:wrap}
+  .a2 .set-tokens .set-linkrow .set-in{flex-basis:100%}
+  .a2 .set-tokens .set-linkrow .btn{flex:1}
+  .a2 .set-tokens .poolnow{grid-template-columns:1fr 1fr;padding:8px 10px;gap:6px 16px}
+  .a2 .set-tokens .poolrow{grid-template-columns:1fr;gap:4px}
+  .a2 .set-tokens .poolrow .pl{padding-top:0}
+  .a2 .set-tokens .modeline{flex-wrap:wrap}
+  .a2 .set-tokens .winrow{grid-template-columns:minmax(0,1fr);grid-template-areas:"name" "track" "read";margin:6px 0 2px}
+  .a2 .set-tokens .winrow .wl{flex-direction:row;gap:14px}
+  .a2 .set-tokens .track{margin:20px 11px 10px}
+  .a2 .set-tokens .winrow.off .track{display:none}
+}
+/* Fingers: a bigger dot, and a hit area wider than the dot. */
+@media (pointer:coarse){
+  .a2 .set-tokens .h{width:20px;height:20px;margin:-10px 0 0 -10px}
+  .a2 .set-tokens .h::before{content:"";position:absolute;inset:-12px}
+  .a2 .set-tokens .h span{bottom:18px}
+}
 .a2 .set-linkrow .set-in{flex:1;min-width:0;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 9px;font-family:var(--font-mono);font-size:12px;color:var(--ink)}
 .a2 .set-srvpick{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:12.5px;color:var(--muted)}
 .a2 .band .prov.same{color:var(--faint)}
@@ -1072,6 +1213,11 @@ body{background:#000}
 .a2 .arch-servers button.on{background:var(--accent-soft);color:var(--strong)}
 .a2 .arch-servers button b{margin-left:6px;color:var(--faint);font-weight:500}
 .a2 .arch-servers .off{padding:5px 10px;color:var(--err)}
+.a2 .arch-workers{flex:none;background:var(--surface);color:var(--muted);border:1px solid var(--rule);border-radius:999px;padding:3px 10px;cursor:pointer;font-family:var(--font-mono);font-size:11.5px}
+.a2 .arch-workers[hidden]{display:none}
+.a2 .arch-workers:hover{border-color:var(--faint)}
+.a2 .arch-workers.on{background:var(--accent-soft);color:var(--strong)}
+.a2 .arch-workers b{margin-left:6px;color:var(--faint);font-weight:500}
 /* Ink: the TUI's warm dark palette and amber accent; glyphs on a thread. */
 [data-theme=ink] .a2{
   --bg:#11100e;--chrome:#0b0a09;--side:#0d0c0b;--surface:#191814;--raised:#1d1b17;--rule:#2a2721;
@@ -1079,6 +1225,7 @@ body{background:#000}
   --accent:#e0a872;--accent-soft:rgba(224,168,114,.16);--on-accent:#1a140d;
   --ok:#9db07e;--err:#d9806f;--err-bg:#221512;--warn:#e0a872;--comms:#9fb4d0;
   --add-bg:#18200f;--del-bg:#2a1512;
+  --h-kw:#c9a27a;--h-str:#a9b78c;--h-num:#d4a58e;--h-com:#6f6b62;--h-fn:#e6d6b0;--h-type:#a9b9cf;--h-var:#d2c7b4;--h-meta:#8a867b;
   --font-ui:'Inter',sans-serif;--font-prose:'SS4',serif;--font-mono:'JBM',monospace;
   --font-chrome:'JBM',monospace;--font-head:'JBM',monospace;
   --prose-size:16.5px;--r:6px;--r-lg:10px;--time:none;--thread:block;--row-cols:22px 1fr;--fill:var(--accent);
@@ -1091,6 +1238,7 @@ body{background:#000}
   --accent:#2f5ba8;--accent-soft:rgba(47,91,168,.10);--on-accent:#fff;
   --ok:#3e7d5a;--err:#b3412e;--err-bg:#fbeeea;--warn:#a8641a;--comms:#6a4fb3;
   --add-bg:#eaf5ee;--del-bg:#fbeeea;
+  --h-kw:#2f5ba8;--h-str:#3e7d5a;--h-num:#a8641a;--h-com:#9aa1ab;--h-fn:#1d2430;--h-type:#6a4fb3;--h-var:#4b5563;--h-meta:#7a828d;
   --font-ui:'Inter',sans-serif;--font-prose:'SS4',serif;--font-mono:'JBM',monospace;
   --font-chrome:'Inter',sans-serif;--font-head:'SS4',serif;
   --prose-size:16.5px;--r:6px;--r-lg:10px;--time:block;--thread:none;--row-cols:38px 18px 1fr;--fill:var(--accent);
@@ -1105,6 +1253,7 @@ body{background:#000}
   --accent:#2563eb;--accent-soft:rgba(129,140,248,.14);--on-accent:#fff;
   --ok:#34d399;--err:#f87171;--err-bg:#1a0f17;--warn:#fbbf24;--comms:#a78bfa;
   --add-bg:#0b2a22;--del-bg:#2a0f17;
+  --h-kw:#a5b4fc;--h-str:#86d7b0;--h-num:#e9c27a;--h-com:#64748b;--h-fn:#bfdbfe;--h-type:#c4b5fd;--h-var:#cbd5e1;--h-meta:#94a3b8;
   --font-ui:'Inter',sans-serif;--font-prose:'Inter',sans-serif;--font-mono:'JBM',monospace;
   --font-chrome:'Inter',sans-serif;--font-head:'SpaceG',sans-serif;
   --prose-size:15px;--r:10px;--r-lg:12px;--time:none;--thread:none;--row-cols:22px 1fr;

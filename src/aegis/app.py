@@ -28,15 +28,19 @@ import asyncio
 import base64
 import binascii
 import contextlib
+import dataclasses
 import getpass
+import logging
+import re
 import time
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from . import archive, attachments as att, commands, dictation, files, restarts
-from .agent_ops import register_agent_ops, spawn_opening
+from .agent_ops import far_error, register_agent_ops, spawn_opening
 from .artifact_ops import register_artifact_ops
 from .agents import (
     EFFORTS,
@@ -54,19 +58,34 @@ from .confirm import Confirmations
 from .host import HostSampler
 from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
-from .monitors import Monitors
+from .monitors import Monitors, iso_now
+from .names import valid_handle
 from .nudges import Nudges
 from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .quota import Quota
+from .quota_gate import (
+    POOLS,
+    Gate,
+    continued,
+    decide,
+    pool_for,
+    pools_wire,
+    refusal,
+)
 from .recaps import Recaps
 from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
 from .tokens import TokenStore
 from .registry import Registry
 from .roots import Roots
+from .transcript.entries import _sent_file
 from .session import PUBLISH_EVERY_S
 from .version import Versions
+
+log = logging.getLogger("aegis.app")
+# A log id as registry.new_log_id mints it, checked on what a link answers.
+LOG_ID = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{6}$")
 
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 Permission = Literal["read", "write", "full", "auto"]
@@ -74,6 +93,11 @@ Permission = Literal["read", "write", "full", "auto"]
 
 class _Strict(BaseModel):
     model_config = {"extra": "forbid"}
+
+
+class SpawnedFrom(_Strict):
+    handle: str
+    server: str
 
 
 class SpawnParams(_Strict):
@@ -96,6 +120,9 @@ class SpawnParams(_Strict):
     prompt: str | None = Field(
         None, min_length=1, description="The new session's first message."
     )
+    # Set by a server that links this one, for an agent of its own that
+    # spawns here (app.spawn); refused from anything but a link.
+    spawned_from: SkipJsonSchema[SpawnedFrom | None] = Field(None, exclude=True)
 
 
 class SendParams(_Strict):
@@ -180,6 +207,10 @@ class FileRef(_Strict):
 class PeekParams(_Strict):
     log_id: str
     entry_id: str
+    # a path link: the index into a reply's detail.paths
+    index: int | None = None
+    # the person's choice when a path names two files
+    pick: Literal["root", "cwd"] | None = None
 
 
 class LinkAdd(_Strict):
@@ -203,9 +234,19 @@ class TokenName(_Strict):
     name: str
 
 
+class TokenPolicy(_Strict):
+    name: str = Field(description="Whose policy; * sets the default for members.")
+    policy: dict | None = Field(
+        description="Pool -> {mode, lines} (quota_gate.py); null: use the default."
+    )
+
+
 class ArchiveParams(_Strict):
     query: str | None = None
     server: str | None = Field(None, description="One server only; omitted: all.")
+    workers: bool = Field(
+        False, description="Include queue workers; omitted: leave them out."
+    )
     limit: int = Field(default=50, ge=1, le=200)
     cursor: str | None = Field(
         None, description="The cursor the last page returned; omitted: the first."
@@ -292,6 +333,11 @@ class App:
         # The tokens that may use this server, the admin's first (tokens.py).
         self.principals = TokenStore(roots.state_root, self.user)
         self.links = Links(roots.state_root, server_name, self.user, self.publish)
+        # Sessions a pause or a continue is under way for, so a reading that
+        # lands before it finishes does not start a second one.
+        self._quota_busy: set[str] = set()
+        self.quota.listeners.append(self.on_quota)
+        reg.gate = self.gate
         self.registry = Ops()
         self.registry.who = self.who
         self.registry.owner_of = self.owner_of
@@ -314,6 +360,109 @@ class App:
             name = self.owner_of(caller.log_id or "") or self.user
             return Principal(name, self.principals.role_of(name) or "member")
         return Principal(self.user, "admin")  # the server's own calls
+
+    def gate(self, owner: str | None, harness: str, model: str | None) -> Gate:
+        """Whether ``owner`` may start a harness on that pool now. A session
+        from before owners is the admin's."""
+        return decide(
+            self.principals.policy_of(owner or self.user),
+            pool_for(harness, model),
+            self.quota.snapshot(),
+            time.time(),
+        )
+
+    def on_quota(self, snapshot: dict) -> None:
+        """After every reading, and every minute because pace moves with the
+        clock: pause each member's working session whose gate says stopped,
+        and continue each paused or holding one whose gate is open. Only open
+        continues, so a gauge between the lines leaves a paused session
+        paused and a stopped token cannot flap. Level-triggered, so a reading
+        missed or a restart in between changes nothing."""
+        now = time.time()
+        for s in list(self.sessions.sessions.values()):
+            # A turn the restart guard declined waits for a person (restarts.py).
+            if s.log_id in self._quota_busy or s.log_id in self.sessions.declined:
+                continue
+            policy = self.principals.policy_of(s.spec.owner or self.user)
+            if policy is None:
+                continue
+            g = decide(policy, pool_for(s.spec.harness, s.spec.model), snapshot, now)
+            holding = any(m.get("held_for") == "quota" for m in s.held)
+            if g.state == "stopped" and s.status == "working" and not s.quota_paused:
+                self._quota_task(s, self._pause(s, g))
+            elif g.state == "open" and (s.quota_paused or holding):
+                self._quota_task(s, self._continue(s))
+        if any(t.status == "pending" for t in self.queues.tasks.values()):
+            t = asyncio.create_task(self.queues.dispatch())
+            self._background.add(t)
+            t.add_done_callback(self._background.discard)
+
+    def _quota_task(self, s, coro) -> None:
+        self._quota_busy.add(s.log_id)
+        t = asyncio.create_task(coro)
+        self._background.add(t)
+
+        def done(t: asyncio.Task) -> None:
+            self._background.discard(t)
+            self._quota_busy.discard(s.log_id)
+            if not t.cancelled() and t.exception() is not None:
+                log.error(
+                    "aegis: the quota gate failed on %s",
+                    s.handle,
+                    exc_info=t.exception(),
+                )
+
+        t.add_done_callback(done)
+
+    async def _pause(self, s, g: Gate) -> None:
+        """Interrupt a turn the owner's stop line cut; held until it opens."""
+        if not self._live(s) or s.status != "working":
+            return  # closed, or the turn ended since the reading
+        s.report({"kind": "quota_paused", "why": g.why})
+        s.quota_paused = g.why
+        self.sessions.metas.write(s.meta())
+        await s.interrupt()
+        s._publish_now()
+
+    async def _continue(self, s) -> None:
+        """The gate is open again: one message saying so ahead of what the
+        session held, in one turn, as continue_after_boot does. One that
+        cannot start stays as it was, so the next reading tries again."""
+        if not self._live(s):
+            return
+        paused = s.quota_paused
+        msgs = [{k: v for k, v in m.items() if k != "held_for"} for m in s.held]
+        if s.quota_paused:
+            owner = s.spec.owner or self.user
+            msgs.insert(
+                0,
+                {
+                    "header": f"> from aegis:quota · {iso_now()}",
+                    "body": continued(owner, s.quota_paused),
+                    "ts": time.time(),
+                },
+            )
+        s.quota_paused = None
+        s.held = msgs
+        self.sessions.metas.write(s.meta())
+        if s.in_turn:
+            s._publish_now()  # they go out when its turn ends
+            return
+        try:
+            await s._flush_held()
+        except Exception:
+            # _flush_held empties held before it sends: put the batch back,
+            # ahead of anything that arrived meanwhile, still waiting.
+            log.exception("aegis: could not continue %s after its quota stop", s.handle)
+            s.quota_paused = paused
+            if paused:
+                msgs = msgs[1:]  # the next continue writes its own
+            s.held = [m | {"held_for": "quota"} for m in msgs + s.held]
+            self.sessions.metas.write(s.meta())
+            s._publish_now()
+
+    def _live(self, s) -> bool:
+        return not s.archived and self.sessions.sessions.get(s.log_id) is s
 
     def owner_of(self, log_id: str) -> str | None:
         """A session's owner by log id, None for no such session. One from
@@ -564,21 +713,90 @@ class App:
         r = await link.call("session.spawn", params)
         return {**r, "server": far}
 
+    async def _spawn_far(
+        self, p: SpawnParams, name: str, far: str, parent, caller: Caller
+    ) -> dict:
+        """An agent here spawns on a linked server, through the link, as the
+        token the link presents there; that server's policy for it decides.
+        The far session's permission is at most the agent's, the far agent's
+        preset read first. Nothing the far server wrote reaches the agent: its
+        handle and log id are checked, its errors worded here (agent_ops)."""
+        if not self.who(caller).is_admin:
+            raise OpError(
+                "not_for_members",
+                "spawning on a linked server is for an admin's agents",
+            )
+        link = self.links.get(far)
+        if link is None:
+            raise OpError("unknown_server", f"this server links no server named {far}")
+        if link.state != "linked":
+            raise OpError(
+                "server_offline", f"{far} is not linked right now; nothing was started"
+            )
+        cap = parent.spec.permission
+        try:
+            listed = await link.call("agents.list", {})
+        except OpError as e:
+            raise far_error(e, far) from None
+        # What the far server says of its agents only lowers the permission.
+        presets = listed.get("agents") if isinstance(listed, dict) else None
+        agent = name or (listed.get("default") if isinstance(listed, dict) else None)
+        preset = next(
+            (
+                a.get("permission")
+                for a in presets or []
+                if isinstance(a, dict) and a.get("name") == agent
+            ),
+            None,
+        )
+        permission = p.permission or preset
+        if permission not in PERMISSION_ORDER or PERMISSION_ORDER.index(
+            permission
+        ) > PERMISSION_ORDER.index(cap):
+            if p.permission:
+                raise OpError(
+                    "not_allowed",
+                    f"your session runs with {cap}, so a session you spawn can "
+                    f"have at most {cap} (this one would have {p.permission})",
+                )
+            permission = cap
+        params = p.model_dump(exclude_none=True) | {
+            "agent": name or None,
+            "permission": permission,
+            "spawned_from": {"handle": parent.handle, "server": self.server_name},
+        }
+        try:
+            r = await link.call(
+                "session.spawn", {k: v for k, v in params.items() if v is not None}
+            )
+        except OpError as e:
+            raise far_error(e, far) from None
+        if not isinstance(r, dict):
+            raise OpError("far_error", f"{far} answered the spawn with something else")
+        handle, log_id = r.get("handle"), r.get("log_id")
+        if not (isinstance(handle, str) and valid_handle(handle)) or not (
+            isinstance(log_id, str) and LOG_ID.match(log_id)
+        ):
+            raise OpError("far_error", f"{far} answered the spawn with something else")
+        return {"log_id": log_id, "handle": f"{handle}@{far}", "server": far}
+
     async def _archive(self, p: ArchiveParams, caller: Caller) -> dict:
         positions = archive.decode(p.cursor)
         # A link asking reads this server's archive only: links are not relayed.
         only = self.server_name if caller.link is not None else p.server
         pages: dict[str, tuple[list[dict], archive.Position | None]] = {}
         counts: dict[str, int] = {}
+        workers = 0
         for name, fetch in self._archive_sources(only):
             if name in positions and positions[name] is None:
                 continue  # exhausted on an earlier page
-            got = await fetch(p.query, p.limit, positions.get(name))
+            got = await fetch(p.query, p.limit, positions.get(name), p.workers)
             if got is None:
                 continue  # a linked server that is down keeps its place
-            items, total, last = got
+            items, total, n_workers, last = got
             pages[name] = ([{**m, "server": name} for m in items], last)
             counts[name] = total
+            workers += n_workers
         items, positions = archive.merge(pages, p.limit, positions)
         more = any(v is not None for v in positions.values()) or any(
             name not in positions for name in pages
@@ -595,6 +813,7 @@ class App:
             "items": items,
             "total": sum(counts.values()),
             "counts": counts,
+            "workers": workers,
             "offline": offline,
             "cursor": archive.encode(positions) if more else None,
         }
@@ -602,8 +821,9 @@ class App:
     def _archive_sources(self, only: str | None):
         """Each server an archive listing reads, with how to fetch a page."""
 
-        async def local(query, limit, after):
-            return self.sessions.archive(query, limit, after)
+        async def local(query, limit, after, workers):
+            items, total, last = self.sessions.archive(query, limit, after, workers)
+            return items, total, self.sessions.archived_workers(query), last
 
         if only in (None, self.server_name):
             yield self.server_name, local
@@ -611,22 +831,24 @@ class App:
             if only not in (None, link.name):
                 continue
 
-            async def far(query, limit, after, link=link):
+            async def far(query, limit, after, workers, link=link):
                 cursor = archive.encode({link.name: after}) if after else None
+                params = {
+                    "query": query,
+                    "limit": limit,
+                    "server": link.name,
+                    "cursor": cursor,
+                }
+                # Sent only when set: a server older than #331 refuses the
+                # field, and leaving it out is the default on a newer one.
+                if workers:
+                    params["workers"] = True
                 try:
-                    r = await link.call(
-                        "archive.list",
-                        {
-                            "query": query,
-                            "limit": limit,
-                            "server": link.name,
-                            "cursor": cursor,
-                        },
-                    )
+                    r = await link.call("archive.list", params)
                 except OpError:
                     return None  # down since the listing started: keep its place
                 last = archive.decode(r.get("cursor")).get(link.name)
-                return r.get("items", []), r.get("total", 0), last
+                return r.get("items", []), r.get("total", 0), r.get("workers", 0), last
 
             yield link.name, far
 
@@ -657,15 +879,29 @@ class App:
             effort or permission if you need to, and send it `prompt` as its
             first message. Its permission can be at most yours. Returns its log
             id and handle. It does not report back: read it with peer_read,
-            message it with peer_handoff."""
+            message it with peer_handoff. With agent@server it starts on that
+            linked server, as this server's link there, and that server's quota
+            policy for the link decides; you can hand off to it, not read it."""
+            parent = reg.sessions.get(caller.log_id) if caller.is_agent else None
             if p.agent and "@" in p.agent:
+                name, _, server = p.agent.rpartition("@")
+                if server != self.server_name:
+                    if parent is None:
+                        raise OpError(
+                            "not_across_links",
+                            f"{p.agent}: a person spawns on a linked server with "
+                            "/spawn agent@server",
+                        )
+                    return await self._spawn_far(p, name, server, parent, caller)
+                p = p.model_copy(update={"agent": name})
+            if p.spawned_from is not None and (
+                caller.link is None or p.spawned_from.server != caller.link
+            ):
                 raise OpError(
-                    "not_across_links",
-                    f"{p.agent}: an agent spawns only on its own server; a person "
-                    "spawns on a linked one with /spawn agent@server",
+                    "not_a_link",
+                    "only a link, for its own server, says where a spawn came from",
                 )
             agents, default = self._agents()
-            parent = reg.sessions.get(caller.log_id) if caller.is_agent else None
             spec = resolve(
                 agents,
                 default,
@@ -682,6 +918,13 @@ class App:
                 # hand work to anyone else; a person's session is theirs.
                 owner=parent.spec.owner if parent else self.who(caller).name,
             )
+            if p.spawned_from is not None:
+                if not valid_handle(p.spawned_from.handle):
+                    raise OpError("bad_sender", "spawned_from names a handle")
+                spec = dataclasses.replace(
+                    spec,
+                    spawned_from=f"{p.spawned_from.handle}@{p.spawned_from.server}",
+                )
             # An agent cannot hand a session more power than it has itself.
             if parent is not None and PERMISSION_ORDER.index(
                 spec.permission
@@ -692,6 +935,9 @@ class App:
                     f"you spawn can have at most {parent.spec.permission} "
                     f"(this one would have {spec.permission}); pass permission",
                 )
+            g = self.gate(spec.owner, spec.harness, spec.model)
+            if not g.may_start:
+                raise OpError("quota_closed", refusal(spec.owner or self.user, g))
             try:
                 s = await reg.spawn(spec)
             except FileNotFoundError as e:
@@ -734,6 +980,13 @@ class App:
                         "start the line with // to send it as text",
                     )
             text = commands.escape(p.text)
+            if (why := reg.quota_hold(s)) is not None:
+                owner = s.spec.owner or self.user
+                raise OpError(
+                    "quota_closed",
+                    f"{owner}'s quota gate holds this session: {why}. "
+                    "It continues when the gate opens.",
+                )
             try:
                 # The harness first: a send that cannot reach the agent leaves
                 # its uploads staged, to send again.
@@ -902,7 +1155,9 @@ class App:
         async def archive_list(p: ArchiveParams, caller):
             """A page of closed sessions, newest first, across this server and
             the servers it links (archive.py). ``total`` and ``counts`` are of
-            the servers this page read; the first page reads every one."""
+            the servers this page read; the first page reads every one.
+            Queue workers are left out unless ``workers`` is set; ``workers``
+            in the reply is how many match either way."""
             return await self._archive(p, caller)
 
         @r.op("file.open", FileRef)
@@ -922,6 +1177,48 @@ class App:
             except (files.FileError, OSError) as e:
                 raise OpError("open_failed", str(e)) from e
 
+        async def peek_path(s, row, index: int, pick: str | None):
+            """A path a reply named, resolved now: as written when absolute,
+            else under the config root and under the session's cwd (#323).
+            When both hold a file and they differ, it opens neither and asks:
+            `pick` ("root" or "cwd") is the person's answer. The browser sends
+            only the index and the pick, so it can open nothing the agent did
+            not write. Nothing is recorded on the reply."""
+            paths = (
+                row["detail"].get("paths", []) if row and row["kind"] == "prose" else []
+            )
+            if not 0 <= index < len(paths):
+                raise OpError("no_path", "that reply names no such path")
+            raw = re.sub(r":\d+$", "", paths[index])
+            given = Path(raw).expanduser()
+            if given.is_absolute():
+                tried, where = {"absolute": given}, ""
+            else:
+                tried = {
+                    "root": self.roots.config_root / given,
+                    "cwd": s.spec.cwd / given,
+                }
+                where = f" under {self.roots.config_root} or {s.spec.cwd}"
+            found = {k: t for k, t in tried.items() if t.is_file()}
+            if not found:
+                raise OpError("no_file", f"no file {raw}{where}")
+            if len(found) == 2 and found["root"].resolve() != found["cwd"].resolve():
+                if pick is None:
+                    raise OpError(
+                        "ambiguous_path",
+                        f"{raw} names two files: {found['root']} and {found['cwd']}",
+                    )
+                path = found[pick]
+            else:
+                path = next(iter(found.values()))
+            try:
+                (rec,) = await asyncio.to_thread(
+                    files.store_all, self.roots.state_root, [path]
+                )
+            except files.FileError as e:
+                raise OpError(e.code, e.message) from e
+            return [_sent_file(rec)]
+
         @r.op("file.peek", PeekParams)
         async def file_peek(p: PeekParams, caller):
             """Copy the file a Read, Write or Edit row used, as it is now, and
@@ -929,6 +1226,8 @@ class App:
             did not send; the agent never sees it."""
             s = reg.open(p.log_id)
             row = s.fold().entry(p.entry_id)
+            if p.index is not None:
+                return await peek_path(s, row, p.index, p.pick)
             raw = row["detail"].get("path") if row and row["kind"] == "tool" else None
             if not raw:
                 raise OpError("no_path", "that row used no file")
@@ -973,8 +1272,26 @@ class App:
 
         @r.op("token.list", admin=True)
         async def token_list(_, caller):
-            """The tokens that may use this server, the admin's first."""
-            return {"tokens": self.principals.rows()}
+            """The tokens that may use this server, the admin's first, the
+            policy of every member without its own, the pools a policy names,
+            and each member's gate on each pool now."""
+            snap, now = self.quota.snapshot(), time.time()
+
+            def gates(policy: dict | None) -> dict | None:
+                if policy is None:
+                    return None
+                return {pool: decide(policy, pool, snap, now).state for pool in POOLS}
+
+            rows = self.principals.rows()
+            for row in rows:
+                row["gates"] = gates(self.principals.policy_of(row["name"]))
+            default = self.principals.default_policy()
+            return {
+                "tokens": rows,
+                "default_policy": default,
+                "default_gates": gates(default or {}),
+                "pools": pools_wire(),
+            }
 
         @r.op("token.add", TokenAdd, admin=True)
         async def token_add(p: TokenAdd, caller):
@@ -987,6 +1304,15 @@ class App:
             """End a token. The admin's is replaced, and the new one returned
             to whoever revoked it, so that browser can sign in again."""
             return {"token": self.principals.revoke(p.name)}
+
+        @r.op("token.policy", TokenPolicy, admin=True)
+        async def token_policy(p: TokenPolicy, caller):
+            """Set a member's quota policy, or with name * the default one.
+            The gate applies it at the next reading."""
+            if p.name == "*":
+                self.principals.set_default_policy(p.policy)
+            else:
+                self.principals.set_policy(p.name, p.policy)
 
         @r.op("server.version")
         async def server_version(_, caller):

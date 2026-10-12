@@ -17,6 +17,7 @@ def test_the_token_commands(tmp_path):
     assert len(token) >= 40 and "\n" not in token
     listed = run(tmp_path, "list").stdout
     assert "ben" in listed and "member" in listed
+    assert "every pool closed" in listed and "never gated" in listed
     assert run(tmp_path, "revoke", "ben").exit_code == 0
     assert "ben" not in run(tmp_path, "list").stdout
     gone = run(tmp_path, "revoke", "ben")

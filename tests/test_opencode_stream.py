@@ -131,7 +131,10 @@ def test_an_edit_has_its_diff():
         for e in fold("edit").entries()
         if e["kind"] == "tool" and e["title"] == "Edit"
     ]
-    assert t["detail"]["diff"]["removed"] and t["detail"]["diff"]["added"]
+    lines = [ln for h in t["detail"]["diff"]["hunks"] for ln in h["lines"]]
+    assert any(ln.startswith("-") for ln in lines) and any(
+        ln.startswith("+") for ln in lines
+    )
 
 
 def test_a_task_counts_its_child_session_as_steps():

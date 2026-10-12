@@ -8,13 +8,14 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, fileUrl, setFileBase, setOpener } from "./entries.js";
+import { artifactStage, fadeTables, fileUrl, setFileBase, setOpener } from "./entries.js";
+import { setScroller } from "./highlight.js";
 import { Viewer } from "./viewer.js";
 import { copyRow, installCopy } from "./copy.js";
 import { Find } from "./find.js";
 import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
-import { mine, ownerOf, setWho } from "./me.js";
+import { linesOf, mine, ownerOf, setWho } from "./me.js";
 import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan } from "./fleet.js";
 import { age, countdown, elapsed, hostRow, hostSeverity, providerFor, quotaSideRow, quotaTile, tile } from "./gauges.js";
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
@@ -107,12 +108,15 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
 artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
 const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(id) });
 setOpener((item) => viewer.open(item));
+setScroller($("tr"));
+new ResizeObserver(() => fadeTables($("entries"))).observe($("tr"));
 const copyDeps = {
   entry: (id) => transcript.entries.get(id),
   output: (id) => callFor(shown, "transcript.output", { id }).then((r) => r.text),
   detail: (id) => callFor(shown, "transcript.detail", { ids: [id] }).then((got) => got[0]),
 };
 installCopy($("entries"), copyDeps);
+installCopy($("viewer"), copyDeps);
 const find = new Find($("find"), transcript, (q) => callFor(shown, "transcript.search", { q }).then((r) => r.ids));
 $("find-prev").append(icon("up"));
 $("find-next").append(icon("down"));
@@ -133,6 +137,7 @@ $("sp-go").append(icon("send"));
 $("interrupt").append(icon("stop"));
 $("replies-g").append(icon("prompt"));
 $("working-g").append(icon("think"));
+$("closing-g").append(glyph("done"));
 $("sp-mark").prepend(gorgoneion());
 installBell($("bell"));
 $("nav-up").addEventListener("click", () => transcript.message(-1));
@@ -407,10 +412,12 @@ conn.subscribe(
   (snap) => {
     quota = snap || { providers: [] };
     drawQuota();
+    settings.onQuota(quota);
   },
   (ops) => {
     for (const op of ops) if (op.set) quota = op.set;
     drawQuota();
+    settings.onQuota(quota);
   },
 );
 conn.subscribe(
@@ -755,7 +762,9 @@ function drawSideQuota(s) {
     return;
   }
   head.textContent = p.read_at != null ? `read ${ago(p.read_at)}` : ""; // "read just now", "read 2m ago"
-  const rows = p.state === "failed" ? [] : p.windows.map((w) => quotaSideRow(p, w, now));
+  // A member's own lines, on its own server's gauges only.
+  const lines = (w) => (s.server ? null : linesOf(p.name, w.kind));
+  const rows = p.state === "failed" ? [] : p.windows.map((w) => quotaSideRow(p, w, now, lines(w)));
   if (p.state !== "ok") {
     const n = document.createElement("p");
     n.className = "cnote gnote";
@@ -1050,6 +1059,7 @@ function renderMeta(s) {
   drawPlan(s);
   drawSideJournal(s.key);
   drawReplies(s);
+  drawClosing(s);
   $("s-cwd").textContent = s.cwd;
   $("chip-model").textContent = s.model;
   $("chip-model").title = s.model_id || "";
@@ -1232,6 +1242,40 @@ $("entries").addEventListener("click", async (ev) => {
   }
 });
 
+// -- Open a path a reply named, in the viewer at its line -----------------------
+$("entries").addEventListener("click", async (ev) => {
+  const code = ev.target.closest(".md code.path");
+  if (!code) return;
+  const row = code.closest(".row");
+  const body = row.querySelector(":scope > .body");
+  const line = Number(/:(\d+)$/.exec(code.textContent.trim())?.[1]) || null;
+  const open = async (pick) => {
+    body.querySelector(":scope > .patherr")?.remove();
+    try {
+      const files = await conn.call("file.peek", { log_id: forKey(shown).log_id, entry_id: row.dataset.id, index: Number(code.dataset.index), pick });
+      viewer.open({ files, at: 0, remote: false, glyph: "file", line });
+    } catch (e) {
+      const note = document.createElement("div");
+      note.className = "patherr";
+      note.textContent = e.message;
+      // A path under both the config root and the session's folder: the person picks.
+      if (e.code === "ambiguous_path") {
+        const picks = document.createElement("div");
+        for (const [pick, text] of [["root", "Open the root's"], ["cwd", "Open the session folder's"]]) {
+          const b = document.createElement("button");
+          b.className = "btn";
+          b.textContent = text;
+          b.addEventListener("click", () => open(pick));
+          picks.append(b);
+        }
+        note.append(picks);
+      }
+      body.append(note);
+    }
+  };
+  await open();
+});
+
 // -- archive -------------------------------------------------------------------
 let archived = [];
 let archiveCursor = null; // the next page's cursor; null: nothing more
@@ -1239,6 +1283,8 @@ let archiveTotal = 0; // the first page's count of everything matching
 let archiveServer = null; // the server filter: null for every server
 let archiveCounts = {}; // the first page's count per server
 let archiveOffline = []; // linked servers that were down for the first page
+let archiveWorkers = false; // queue workers shown: the chip is on
+let archiveWorkerCount = 0; // the first page's count of matching queue workers
 let archiveLoaded = false;
 let archiveTimer = null;
 
@@ -1249,6 +1295,7 @@ async function loadArchive(more = false) {
   const q = $("arch-q").value.trim();
   const params = q ? { query: q } : {};
   if (archiveServer) params.server = archiveServer;
+  if (archiveWorkers) params.workers = true;
   if (more && archiveCursor) params.cursor = archiveCursor;
   try {
     const r = await conn.call("archive.list", params);
@@ -1260,6 +1307,7 @@ async function loadArchive(more = false) {
       archiveTotal = r.total;
       if (!archiveServer) archiveCounts = r.counts || {};
       archiveOffline = r.offline || [];
+      archiveWorkerCount = r.workers || 0;
     }
   } catch (e) {
     if (!more) [archived, archiveCursor, archiveTotal] = [[], null, 0];
@@ -1272,8 +1320,24 @@ async function loadArchive(more = false) {
   $("arch-count").textContent = `Showing ${archived.length} of ${Math.max(archiveTotal, archived.length)}`;
   $("arch-next").hidden = !archiveCursor;
   drawArchiveServers();
+  drawArchiveWorkers();
   fleetMark(false);
 }
+
+// Queue workers are left out of the archive unless this chip is on (#331): a
+// worker's result went to whoever enqueued it. The chip says how many match,
+// and goes away when none do.
+function drawArchiveWorkers() {
+  const b = $("arch-workers");
+  b.hidden = !archiveWorkerCount && !archiveWorkers;
+  b.classList.toggle("on", archiveWorkers);
+  b.setAttribute("aria-pressed", String(archiveWorkers));
+  b.querySelector("b").textContent = archiveWorkerCount;
+}
+$("arch-workers").addEventListener("click", () => {
+  archiveWorkers = !archiveWorkers;
+  loadArchive();
+});
 
 // The archive's server filter, once a server is linked: every server with its
 // count, and a down one named so its rows are not silently missing.
@@ -1806,11 +1870,26 @@ function drawReplies(s) {
   if (transcript.following) transcript.toBottom();
 }
 
+// On a phone Close sits in the drawer, so a session whose agent said done gets
+// an Archive button after its last row, one tap from where the reading ended.
+// The stylesheet shows it only in the phone layout (#333).
+function drawClosing(s) {
+  const box = $("closing");
+  const hide = s.attention !== "done";
+  if (box.hidden === hide) return;
+  box.hidden = hide;
+  if (transcript.following) transcript.toBottom();
+}
+$("closing-btn").addEventListener("click", () => {
+  const s = focused();
+  if (s) closeSession(s);
+});
+
 const askClose = (s) =>
   ask(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`, { ok: "Close" });
 // The one rule for when closing asks: a done session has nothing left to lose,
-// anything else may be mid-work. The Close button, /close and the Fleet's
-// Archive button all pass through it.
+// anything else may be mid-work. The Close button, /close, the Fleet's Archive
+// button and the phone's Archive row all pass through it.
 const confirmClose = async (s) => s.attention === "done" || (await askClose(s));
 
 async function closeSession(s) {

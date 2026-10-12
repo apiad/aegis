@@ -8,6 +8,11 @@ timestamp with the last row of a page was skipped; the log id breaks the tie.
 A cursor is the positions of every server in a listing, as urlsafe base64 of
 JSON, so the client hands back what it was given and never reads it. A server
 whose archive is exhausted has the position ``None``.
+
+Queue workers are left out unless asked for (#331): a worker's result went to
+whoever enqueued its task, so its row is one nobody reads, and on a server that
+runs queues they were a quarter of the archive. They are filtered here, in the
+page, because a page filtered in the browser comes up short and miscounts.
 """
 
 from __future__ import annotations
@@ -28,24 +33,35 @@ def key(meta: dict) -> Position:
     return (float(meta.get("last_activity") or 0), str(meta.get("log_id", "")))
 
 
+def matches(meta: dict, query: str | None) -> bool:
+    q = (query or "").lower()
+    return not q or q in " ".join(str(meta.get(k) or "") for k in SEARCHED).lower()
+
+
 def page(
-    metas: Iterable[dict], query: str | None, limit: int, after: Position | None
+    metas: Iterable[dict],
+    query: str | None,
+    limit: int,
+    after: Position | None,
+    workers: bool = True,
 ) -> tuple[list[dict], int, Position | None]:
     """The next ``limit`` metas matching ``query`` after ``after``, the number
-    matching in all, and where the next page starts (None: nothing is left)."""
-    q = (query or "").lower()
+    matching in all, and where the next page starts (None: nothing is left).
+    ``workers`` False leaves out queue workers, as a page and in the count."""
     matching = sorted(
-        (
-            m
-            for m in metas
-            if not q or q in " ".join(str(m.get(k) or "") for k in SEARCHED).lower()
-        ),
+        (m for m in metas if matches(m, query) and (workers or not m.get("worker"))),
         key=key,
         reverse=True,
     )
     rest = matching if after is None else [m for m in matching if key(m) < after]
     items = rest[:limit]
     return items, len(matching), key(items[-1]) if len(rest) > limit else None
+
+
+def count_workers(metas: Iterable[dict], query: str | None) -> int:
+    """How many queue workers match ``query``: what a page that leaves them out
+    is hiding."""
+    return sum(1 for m in metas if m.get("worker") and matches(m, query))
 
 
 def merge(

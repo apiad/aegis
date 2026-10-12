@@ -8,14 +8,81 @@ import markdownit from "../vendor/markdown-it.mjs";
 import { copyButton } from "./copy.js";
 import { money } from "./fleet.js";
 import { entryIcon, icon } from "./glyphs.js";
+import { diffView } from "./diff.js";
+import { cachedColour, colour, isPlain, langName, paint, splitLines } from "./highlight.js";
 
-const md = markdownit({ html: false, linkify: true, breaks: false });
-const defaultLink = md.renderer.rules.link_open || ((t, i, o, e, s) => s.renderToken(t, i, o));
-md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
-  tokens[idx].attrSet("target", "_blank");
-  tokens[idx].attrSet("rel", "noopener noreferrer");
-  return defaultLink(tokens, idx, options, env, self);
-};
+const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// Two renderers: the person's messages keep a typed newline (breaks), an
+// agent's text follows Markdown's own rule.
+const mdAgent = makeMd(false);
+const mdTyped = makeMd(true);
+
+function makeMd(breaks) {
+  const m = markdownit({ html: false, linkify: true, breaks });
+  const defaultLink = m.renderer.rules.link_open || ((t, i, o, e, s) => s.renderToken(t, i, o));
+  m.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+    tokens[idx].attrSet("target", "_blank");
+    tokens[idx].attrSet("rel", "noopener noreferrer");
+    return defaultLink(tokens, idx, options, env, self);
+  };
+  // A table sits in a block that holds its copy button, over a scroller; its
+  // source lines go along for the copy (copy.js).
+  m.renderer.rules.table_open = (t, i) => `<div class="tblk" data-lines="${t[i].map[0]}-${t[i].map[1]}"><div class="tw"><table>`;
+  m.renderer.rules.table_close = () => "</table></div></div>";
+  m.renderer.rules.fence = (t, i, o, env) => fenceHtml(t[i].content, t[i].info.trim().split(/\s+/)[0] || "", !closed(t[i], env));
+  m.core.ruler.after("inline", "tasks", tasks);
+  return m;
+}
+
+// A fence is closed when its last line is a closing marker; an open one runs
+// to the end of the text (a reply still streaming, or one cut off). Inside a
+// quote or a list that line keeps the container's ">" and indent.
+function closed(tok, env) {
+  const [a, z] = tok.map;
+  const last = env.lines?.[z - 1];
+  if (z - 1 <= a || last === undefined) return false;
+  const m = /^[\s>]*(`{3,}|~{3,})\s*$/.exec(last);
+  return !!m && m[1][0] === tok.markup[0] && m[1].length >= tok.markup.length;
+}
+
+// A fenced block: a header with its language, then the code. A block whose
+// colour is already cached is drawn coloured at once, so a reply re-rendered
+// by every delta does not flash plain; the rest is coloured by
+// highlight.paint when it nears the view (transcript.js).
+export function fenceHtml(text, label, open = false) {
+  const name = langName(label);
+  const may = !open && !isPlain(label) && (name || !label);
+  const hit = may ? cachedColour(text, name) : undefined;
+  const tag = hit?.guessed ? `<span class="lang guessed">${esc(hit.lang)}</span>` : `<span class="lang">${esc(label)}</span>`;
+  const attrs = `data-lang="${esc(label)}"${open ? " data-open" : ""}${hit !== undefined ? ' data-painted="1"' : ""}`;
+  return `<div class="fence" ${attrs}><div class="fh">${tag}</div><pre><code${hit ? ' class="hljs"' : ""}>${hit ? hit.html : esc(text)}</code></pre></div>`;
+}
+
+// "- [ ] x" and "- [x] x" become a disabled checkbox; ten lines, no plugin.
+function tasks(state) {
+  const ts = state.tokens;
+  for (let i = 2; i < ts.length; i++) {
+    const inl = ts[i];
+    if (inl.type !== "inline" || ts[i - 1].type !== "paragraph_open" || ts[i - 2].type !== "list_item_open") continue;
+    const m = /^\[([ xX])\] /.exec(inl.content);
+    const first = inl.children?.[0];
+    if (!m || first?.type !== "text" || !first.content.startsWith(m[0])) continue;
+    first.content = first.content.slice(m[0].length);
+    const box = new state.Token("html_inline", "", 0);
+    box.content = `<input type="checkbox" disabled${m[1] === " " ? "" : " checked"}> `;
+    inl.children.unshift(box);
+    ts[i - 2].attrJoin("class", "task");
+  }
+}
+
+// A table wider than its row fades at the edge it can still scroll to.
+function fade(tw) {
+  tw.classList.toggle("more-r", tw.scrollLeft + tw.clientWidth < tw.scrollWidth - 2);
+}
+export function fadeTables(root) {
+  for (const tw of root.querySelectorAll(".md .tw")) fade(tw);
+}
 
 // Where a sent file's URL is fetched from: "" on this server, `/via/<server>`
 // for a transcript from a linked one (web.py streams it from there).
@@ -147,11 +214,36 @@ export function preview(f, remote, zoom) {
   return stage;
 }
 
-export function markdown(text) {
+export function markdown(text, { breaks = false, paths = null } = {}) {
   const div = document.createElement("div");
   div.className = "md";
-  div.innerHTML = md.render(text || "");
-  for (const pre of div.querySelectorAll("pre")) pre.append(copyButton("code"));
+  const src = text || "";
+  div._src = src; // what a table's copy slices its lines from (copy.js)
+  div.innerHTML = (breaks ? mdTyped : mdAgent).render(src, { lines: src.split("\n") });
+  for (const fh of div.querySelectorAll(".fence > .fh")) fh.append(copyButton("code"));
+  for (const pre of div.querySelectorAll("pre")) if (!pre.closest(".fence")) pre.append(copyButton("code"));
+  for (const blk of div.querySelectorAll(".tblk")) {
+    blk.prepend(copyButton("table"));
+    const heads = [...blk.querySelectorAll("thead th")].map((th) => th.textContent);
+    for (const tr of blk.querySelectorAll("tbody tr")) {
+      [...tr.children].forEach((td, i) => {
+        td.dataset.label = heads[i] ?? "";
+      });
+    }
+    const tw = blk.querySelector(".tw");
+    tw.addEventListener("scroll", () => fade(tw), { passive: true });
+  }
+  // The spans a reply listed as paths (detail.paths) open the file in the
+  // viewer; a linked server's do not, as the file is on the other machine.
+  if (paths?.length && fileBase === "") {
+    for (const code of div.querySelectorAll(":not(pre) > code")) {
+      const i = paths.indexOf(code.textContent.trim());
+      if (i < 0) continue;
+      code.classList.add("path");
+      code.dataset.index = String(i);
+      code.title = "Open in the viewer";
+    }
+  }
   return div;
 }
 
@@ -191,18 +283,33 @@ function row(entry, cls, body) {
   return r;
 }
 
-function diffBlock(diff) {
-  const d = el("div", "diff");
-  d.append(el("div", "path", diff.path));
-  for (const line of diff.removed) d.append(el("div", "del", `- ${line}`));
-  for (const line of diff.added) d.append(el("div", "add", `+ ${line}`));
-  if (diff.elided) d.append(el("div", "elided", `… ${diff.elided} more changed lines`));
-  return d;
+// A file's lines, numbered from where the view starts, coloured once the
+// language has loaded (the row is open, so it is in view).
+function fileView(file, lang) {
+  const view = el("div", "lines");
+  const draw = (html) => {
+    view.innerHTML = html.map((h, i) => `<span class="n">${file.first + i}</span><span class="c">${h}</span>`).join("");
+  };
+  draw(file.text.split("\n").map(esc));
+  if (lang) colour(file.text, lang).then((got) => got && draw(splitLines(got.html)), () => {});
+  return view;
+}
+
+// A tool's arguments: a coloured block for a command or other arguments, the
+// plain lines for a file tool's (its path and range).
+function argsView(text, lang) {
+  if (!lang) return el("pre", "args", text);
+  const wrap = el("div", "md args");
+  wrap.innerHTML = fenceHtml(text, lang);
+  wrap.querySelector(".fh").append(copyButton("code"));
+  paint(wrap.firstChild);
+  return wrap;
 }
 
 const RENDERERS = {
   user(e) {
-    const body = el("div", "body", e.md);
+    const body = el("div", "body");
+    if (e.md) body.append(markdown(e.md, { breaks: true }));
     if (e.detail?.files?.length) {
       // What the person attached: one card that pages, as a file_send's.
       const card = fileCard(e.detail.files, "▤");
@@ -228,9 +335,8 @@ const RENDERERS = {
   },
 
   prose(e) {
-    const body = markdown(e.md);
+    const body = markdown(e.md, { paths: e.detail?.paths });
     body.classList.add("body");
-    body.append(copyButton("message"));
     const r = row(e, "prose", body);
     // Only the live view carries the flag; an archived transcript draws no mark.
     if (e.unread !== undefined) {
@@ -277,9 +383,10 @@ const RENDERERS = {
     if (det.peek) {
       more.append(el("div", "peekcap", `as of ${hhmm(det.peek.ts)}`), fileCard(det.peek.files, det.peek.glyph));
     }
-    if (det.diff) more.append(diffBlock(det.diff));
+    if (det.file) more.append(fileView(det.file, det.lang));
+    if (det.diff) more.append(diffView(det.diff, det.lang));
     if (det.tail) more.append(el("pre", "out", det.tail));
-    if (det.args) more.append(el("pre", "args", det.args));
+    if (det.args && !det.file && !det.diff) more.append(argsView(det.args, det.path ? null : det.lang));
     if (det.more) more.append(el("div", "loading", "loading…"));
     if (more.childNodes.length) d.append(more);
     const body = el("div", "body");
@@ -302,7 +409,7 @@ const RENDERERS = {
     const body = el("div", "body");
     body.append(el("div", "from", e.title));
     const text = (e.md || "").split("\n").filter((l) => !l.startsWith("> from ")).join("\n");
-    body.append(markdown(text), copyButton("message"));
+    body.append(markdown(text));
     return row(e, "inbox", body);
   },
 

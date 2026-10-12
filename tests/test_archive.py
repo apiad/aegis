@@ -42,6 +42,17 @@ def test_page_counts_the_total_matching_the_query():
     assert ids(items) == ["l9", "l7"] and total == 5
 
 
+def test_a_page_can_leave_out_queue_workers_and_count_them():
+    metas = [meta("a", 1), meta("w1", 2, "deploy"), meta("w2", 3), meta("b", 4)]
+    for m in metas[1:3]:
+        m["worker"] = {"task_id": "t", "queue": "q"}
+    items, total, pos = archive.page(metas, None, 5, None, workers=False)
+    assert ids(items) == ["b", "a"] and total == 2 and pos is None
+    assert ids(archive.page(metas, None, 5, None)[0]) == ["b", "w2", "w1", "a"]
+    assert archive.count_workers(metas, None) == 2
+    assert archive.count_workers(metas, "deploy") == 1
+
+
 def test_a_null_last_activity_sorts_as_the_oldest():
     metas = [{"log_id": "z", "last_activity": None}, meta("a", 1)]
     assert ids(archive.page(metas, None, 5, None)[0]) == ["a", "z"]
@@ -134,3 +145,33 @@ async def test_archive_list_pages_with_a_cursor_and_names_the_server(
     with pytest.raises(OpError) as e:
         await app.registry.call("archive.list", {"cursor": "%%%"})
     assert e.value.code == "bad_cursor"
+
+
+async def test_archive_list_leaves_out_queue_workers_unless_asked(
+    tmp_path, fake_claude
+):
+    """#331: a worker's result went to whoever enqueued it, so the archive
+    leaves workers out by default and says how many it left out."""
+    import json
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+
+    (tmp_path / ".aegis.yaml").write_text("agents: {}\n")
+    roots = make_roots(tmp_path, None)
+    store = roots.state_root / "sessions"
+    store.mkdir(parents=True)
+    for i in range(5):
+        m = {"log_id": f"l{i}", "handle": f"h-{i}", "archived": True}
+        m["last_activity"] = float(i)
+        if i % 2:
+            m["worker"] = {"task_id": f"t{i}", "queue": "q"}
+        (store / f"l{i}.json").write_text(json.dumps(m))
+    app = App(roots, claude_bin=fake_claude, server_name="zion")
+    app.sessions.boot()
+    r = await app.registry.call("archive.list", {})
+    assert [m["log_id"] for m in r["items"]] == ["l4", "l2", "l0"]
+    assert (r["total"], r["workers"]) == (3, 2)
+    r = await app.registry.call("archive.list", {"workers": True})
+    assert [m["log_id"] for m in r["items"]] == ["l4", "l3", "l2", "l1", "l0"]
+    assert (r["total"], r["workers"]) == (5, 2)

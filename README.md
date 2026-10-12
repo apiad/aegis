@@ -218,8 +218,14 @@ asked for with `--host`. The printed token is the admin's. It lives in
 signs every browser out. `aegis token add NAME` gives another person, a linked
 server or a job a token of its own, a member by default: it reads every session
 and changes only the ones it starts. `aegis token list` names them and `aegis
-token revoke NAME` ends one; revoking the admin's prints its replacement. A
-member's agents run as the same Linux user as everyone's, so one with shell access
+token revoke NAME` ends one; revoking the admin's prints its replacement. Each
+member spends the subscription only below its lines: in Settings, an admin gives
+a token, or every member by default, a launch line and a stop line on each quota
+window, or opens or closes a provider outright. Below the launch line the
+member's sessions start; above it nothing new starts and its messages wait; at the
+stop line aegis interrupts its turns and continues them when the gauge is back
+under the launch line. The same policies sit in `.aegis/state/tokens.json`, and
+`aegis token list` prints them. A member's agents run as the same Linux user as everyone's, so one with shell access
 can read `.aegis/state/token` and act as the admin: tokens keep colleagues from
 changing each other's sessions by accident, and give only people you trust with
 the machine a token. Opening
