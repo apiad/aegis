@@ -27,13 +27,19 @@ import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
 import { Help } from "./help.js";
-import { installBell, pingToast, redrawFavicon, setTitle, updatePing } from "./ping.js";
+import { installBell, listenForOpen, pingToast, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
 import "./pick.js";
 import { Dictation } from "./dictation.js";
 import { Attachments } from "./attach.js";
 import { dur, planTimes } from "./plantime.js";
 import { setToastOpener, toast } from "./toast.js";
+import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
+import { closeInstallDialog, startInstall } from "./install.js";
+import { checkRotation, closePushPanel, openPushPanel, pushSupported, setupPush } from "./pushpanel.js";
+import { clearDevice, loadFleet, loadTranscript, saveFleet, saveTranscript } from "./devicestore.js";
+import { markNeedsNet, offline } from "./net.js";
+import { discard, draftFor, flushNow, loadDrafts, onDrafts, queue, sendAnyway, setSender } from "./outbox.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -146,10 +152,11 @@ $("hint-tutorial-x").append(icon("close"));
 $("hint-whats-new-x").append(icon("close"));
 $("interrupt").append(icon("stop"));
 $("replies-g").append(icon("prompt"));
+$("queued-g").append(icon("prompt"));
 $("working-g").append(icon("think"));
 $("closing-g").append(glyph("done"));
 $("sp-mark").prepend(gorgoneion());
-installBell($("bell"));
+installBell($("bell"), pushSupported() ? openPushPanel : null);
 $("nav-up").addEventListener("click", () => transcript.message(-1));
 $("nav-down").addEventListener("click", () => transcript.message(1));
 $("nav-pos").addEventListener("click", () => transcript.firstUnread());
@@ -282,15 +289,110 @@ $("login").addEventListener("submit", async (ev) => {
 });
 
 // -- the connection -----------------------------------------------------------
+let wasClosed = false; // a reconnect checks for a new build
+
+// The banner while the connection is down: a state, so it stays at the top of
+// the page rather than a toast. A socket that comes back within 3 s never
+// shows it; one that stays down counts down to the next attempt.
+const BANNER_AFTER_MS = 3000;
+let closedSince = 0;
+let bannerTimer = null;
+function drawBanner() {
+  const down = closedSince > 0 && Date.now() - closedSince >= BANNER_AFTER_MS;
+  $("netbanner").hidden = !down;
+  if (!down) return;
+  const s = Math.ceil((conn.retryAt - Date.now()) / 1000);
+  const retry = conn.retryAt && s > 0 ? `retrying in ${s} s` : "retrying now";
+  $("netbanner-t").textContent = [seenText(), retry].filter(Boolean).join(" · ");
+}
+
+// When this device last saw the server live: the moment the socket last
+// closed, or the saved Fleet's saved_at at boot. 0 while it never has.
+let seenAt = 0;
+let live = false; // the socket is open
+function seenText() {
+  if (!seenAt) return "";
+  const m = Math.floor((Date.now() - seenAt) / 60000);
+  return m < 1 ? "seen just now" : m < 60 ? `seen ${m} min ago` : `seen ${Math.floor(m / 60)} h ago`;
+}
+// Offline (the socket is not open), the page draws what the device kept and
+// what needs the server is disabled.
+function markOffline(state) {
+  if (state === "open") {
+    live = true;
+    delete root.dataset.offline;
+  } else {
+    if (live) seenAt = Date.now();
+    live = false;
+    root.dataset.offline = "";
+  }
+  markNeedsNet();
+}
+
+// The token no longer works: what this device kept goes before the sign-in
+// shows, and no saved card stays drawn behind it.
+let refused = false;
+function signedOut() {
+  refused = true;
+  clearTimeout(fleetSave);
+  clearTimeout(trSave);
+  fleetSave = trSave = null;
+  sessions.clear();
+  kept.clear();
+  ordered = [];
+  transcript.clear();
+  renderTabs($("tablist"), [], null, tabActions);
+  clearDevice().then(showLogin);
+}
+function bannerState(state) {
+  if (state === "closed" && !closedSince) {
+    closedSince = Date.now();
+    bannerTimer = setInterval(drawBanner, 1000);
+  }
+  // A refused token or protocol is not a connection problem: they say so elsewhere.
+  if (state === "open" || state === "unauthorized" || state === "version") {
+    closedSince = 0;
+    clearInterval(bannerTimer);
+    bannerTimer = null;
+    $("netbanner").hidden = true;
+  }
+}
+// This device's push against the server's row (pushpanel.js): on every
+// connect, and whenever the page comes back in front.
+const checkPush = () => checkRotation().catch((e) => console.warn("aegis: checking push failed", e));
 const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`, {
   onState(state, server) {
     $("conn-dot").className = `dot ${state === "open" ? "ready" : state === "connecting" ? "ghost" : "err"}`;
     $("conn-text").textContent =
       state === "open" ? server : state === "connecting" ? "connecting" : state === "closed" ? "disconnected, retrying" : state;
-    if (state === "unauthorized") showLogin();
-    if (state === "version") show("boot", "This page and the server speak different protocol versions. Reload the page.");
+    // For the band offline, where the welcome that names the server is out of reach.
+    if (state === "open" && server) localStorage.setItem("aegis.server", server);
+    // What arrived before a close is still the server's latest: kept at once.
+    if (state === "closed" && live) {
+      if (fleetSave) flushFleet(true);
+      if (trSave) flushTranscript(true);
+    }
+    markOffline(state);
+    drawOfflineNotice();
+    bannerState(state);
+    if (state === "unauthorized") signedOut();
+    if (state === "version") {
+      show(
+        "boot",
+        // With a worker, a reload would serve this same build again: the new
+        // one is fetched and taken as soon as it is ready (appworker.js).
+        navigator.serviceWorker
+          ? "This page and the server speak different protocol versions. Updating aegis…"
+          : "This page and the server speak different protocol versions. Reload the page.",
+      );
+      setAutoApply();
+    }
+    if (state === "closed") wasClosed = true;
     if (state === "open") {
+      if (wasClosed) checkForUpdate();
+      wasClosed = false;
       setWho(conn.me, conn.owner);
+      checkPush(); // after setWho: the rows are this token's
       // Whether this browser runs on the server's desktop (Open natively).
       if (conn.native) root.dataset.native = "";
       else delete root.dataset.native;
@@ -298,6 +400,14 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
       loadVersion();
     }
   },
+});
+// Retry at once when the network or the app comes back, or when asked.
+$("netbanner-retry").addEventListener("click", () => conn.retryNow());
+window.addEventListener("online", () => conn.retryNow());
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  conn.retryNow();
+  if (conn.open) checkPush(); // otherwise the connect does
 });
 const settings = new Settings(conn, $("settings"), { themes: THEMES, setTheme });
 let landEntry = null; // {key, id}: reveal this entry once its transcript lands
@@ -342,8 +452,10 @@ function sessionHandlers(server) {
         sessions.set(w.key, w);
       }
       if (server) remote.get(server).loaded = true;
-      else booted = true;
+      else booted = homeLive = true;
       onSessions();
+      // The server is reachable again: what was written meanwhile goes out.
+      flushNow((key) => forKey(key).server === server);
     },
     (ops) => {
       for (const op of ops) {
@@ -370,7 +482,8 @@ function sessionHandlers(server) {
         if (!frame) frame = requestAnimationFrame(flushSessions);
         // Not in the frame: a hidden tab runs no frames, and that is when the
         // ping matters.
-        updatePing([...sessions.values()], { onOpen: openSession });
+        ping();
+        keepFleet();
       }
     },
   ];
@@ -417,6 +530,8 @@ function onLinks(list) {
     } else if (l.state === "linked" && r.state !== "linked") conn.resubscribe(l.name);
     r.state = l.state;
   }
+  // A saved session of a server no longer linked will never be replaced.
+  for (const [k, m] of sessions) if (m.stale && m.server && !names.has(m.server)) sessions.delete(k);
   for (const [k, m] of sessions) if (m.server) sessions.set(k, { ...m, off: isOff(m.server) });
   // Which servers are up changes what the archive can list: read it again.
   const sig = links.map((l) => `${l.name}:${l.state}`).join(",");
@@ -459,6 +574,61 @@ conn.subscribe(
 );
 conn.connect();
 
+// The Fleet this device saw last, drawn at once: with no connection it is all
+// there is, and with one it shows until the live snapshot replaces it. A saved
+// session carries `stale` until its server's snapshot arrives.
+loadFleet().then((saved) => {
+  if (!saved || booted || refused) return;
+  seenAt = saved.saved_at;
+  for (const m of saved.metas) sessions.set(m.key, { ...m, stale: true });
+  booted = true;
+  onSessions();
+});
+
+// The Fleet is written to the device at most every SAVE_MS, SAVE_MS after the
+// first change since the last write, and at once when the page goes hidden
+// (Android may freeze it right after). Only while the socket is open, so
+// saved cards are never written back as fresh ones.
+const SAVE_MS = 2000;
+let fleetSave = null;
+function keepFleet() {
+  if (!fleetSave && conn.open) fleetSave = setTimeout(flushFleet, SAVE_MS);
+}
+// `closing`: the socket has just closed, and what the page holds is still
+// what it last carried.
+function flushFleet(closing = false) {
+  clearTimeout(fleetSave);
+  fleetSave = null;
+  if ((conn.open || closing) && homeLive) saveFleet([...sessions.values()].filter((m) => !m.stale));
+}
+// The shown transcript, likewise, after each snapshot, delta and patch.
+let trSave = null;
+function keepTranscript() {
+  if (!trSave && conn.open && shown) trSave = setTimeout(flushTranscript, SAVE_MS);
+}
+function flushTranscript(closing = false) {
+  clearTimeout(trSave);
+  trSave = null;
+  // Not mid-turn: streamed entries exist only in the server's memory until the
+  // turn ends, so a copy taken now could bring back half-written rows after a
+  // restart. The turn's last patch arms the save again.
+  if (sessions.get(shown)?.state === "working") return;
+  if ((conn.open || closing) && shown && transcript.rev >= 0)
+    saveTranscript(shown, { entries: [...transcript.entries.values()], rev: transcript.rev });
+}
+// Going hidden writes the Fleet even unchanged: its saved_at is when this
+// device last saw the server, which is what "seen N min ago" says offline.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) return;
+  flushFleet();
+  if (trSave) flushTranscript();
+});
+
+// Offline, a session with nothing kept on this device says so.
+function drawOfflineNotice() {
+  $("tr-offline").hidden = live || !shown || transcript.entries.size > 0;
+}
+
 // Patches that only update sessions the page already shows redraw once a
 // frame, however many arrive, and only those sessions' tab and card (#158).
 let changed = new Set();
@@ -480,6 +650,7 @@ function flushSessions() {
     if (home.length < ids.size) renderRemotes();
     fleetMark(false);
     drawBand();
+    markNeedsNet(); // the cards' Archive buttons
   } else if (r.view === "session" && ids.has(r.id)) renderMeta(sessions.get(r.id));
   drawNav(); // the needs count
 }
@@ -489,11 +660,29 @@ function onSessions() {
   ordered = ids.map((id) => sessions.get(id));
   render();
   drawNav(); // the needs count
-  updatePing([...sessions.values()], { onOpen: openSession });
+  ping();
+  keepFleet();
+}
+
+// Notifications follow live sessions only. Until this server's snapshot
+// lands the saved Fleet is all there is, and a session that changed while
+// the page was closed would ping on every cold start.
+let homeLive = false;
+function ping() {
+  if (homeLive) updatePing([...sessions.values()].filter((m) => !m.stale), { onOpen: openSession });
 }
 
 // -- rendering -----------------------------------------------------------------
 const openSession = (id) => go(`#s=${id}`);
+// The service worker (sw.js): it keeps this build for offline use and raises
+// notifications. A new build downloads beside this one; reloading takes it.
+startWorker({
+  onUpdate: () =>
+    toast("A new version of aegis is ready.", { ms: Infinity, action: { label: "Reload", run: applyUpdate } }),
+});
+startInstall($("install-offer"));
+setupPush((op, params) => conn.call(op, params));
+listenForOpen(openSession);
 setToastOpener(openSession);
 // Toasts from the server (App.toast): every browser shows each one once, and
 // an agent's goes to the desktop too while the page is hidden. The snapshot is
@@ -535,6 +724,9 @@ function render() {
     const far = forKey(r.id).server;
     // A far session whose server's list has not arrived yet: wait for it.
     if (far && (!linksLoaded || (linkOf(far) && !remote.get(far)?.loaded))) return;
+    // Likewise a home session while only the device's saved list is drawn: a
+    // notification's tap or a link opens a session the saved list may predate.
+    if (!far && !homeLive) return;
     go("#fleet"); // closed here or elsewhere
     return;
   }
@@ -559,6 +751,7 @@ function render() {
     fleetMark(false);
     watchHost("all");
     drawBand();
+    markNeedsNet(); // the cards' Archive buttons
     if (newView) drawQuota();
     if (!archiveLoaded) loadArchive();
     setTitle("Fleet · aegis");
@@ -660,7 +853,9 @@ function drawHost() {
 
 function drawBand() {
   if (root.dataset.view !== "fleet") return;
-  renderBand($("band"), { metas: local(), host, server: conn.server, link: links.length ? "this server" : "" });
+  // Saved cards say how old they are.
+  const stale = local().some((m) => m.stale);
+  renderBand($("band"), { metas: local(), host, server: conn.server || localStorage.getItem("aegis.server") || "", link: stale ? seenText() : links.length ? "this server" : "", off: stale });
   for (const l of links) {
     const box = $("remotes").querySelector(`[data-server="${CSS.escape(l.name)}"]`);
     if (!box) continue;
@@ -868,8 +1063,22 @@ setInterval(drawQuota, 30 * 1000);
 const TAB_CACHE = 8;
 const kept = new Map(); // key -> transcript.stash()
 
+let follows = 0; // which follow() a device read answers
+
+// The worker shows a push unless a window shows its session in front of the
+// person (sw.js), so it hears what this one shows whenever that may change.
+function tellView() {
+  navigator.serviceWorker?.controller?.postMessage({ t: "view", key: shown || "", visible: !document.hidden && document.hasFocus() });
+}
+for (const ev of ["focus", "blur"]) window.addEventListener(ev, tellView);
+document.addEventListener("visibilitychange", tellView);
+// A worker that took this page over, on a first visit or after an update, has
+// heard nothing from it yet.
+navigator.serviceWorker?.addEventListener("controllerchange", tellView);
+
 function follow(id) {
   if (shown === id) return;
+  if (trSave) flushTranscript(); // before its rows go
   closeSide();
   if (unsubTranscript) unsubTranscript();
   unsubTranscript = null;
@@ -882,7 +1091,10 @@ function follow(id) {
   find.close(false); // it searched the old session
   if (dictation.target?.el === input) dictation.stop("tab"); // a recording belongs to its session
   shown = id;
+  tellView();
+  const turn = ++follows;
   atts.show(id);
+  drawQueued();
   if (!id) return viewer.show(null);
   const saved = kept.get(id);
   if (saved) {
@@ -895,34 +1107,55 @@ function follow(id) {
   const where = forKey(id);
   setFileBase(where.server ? `/via/${where.server}` : "");
   viewer.show(id); // after the base: a far artifact's frame is built from it
-  unsubTranscript = conn.subscribe(
-    `transcript:${where.log_id}`,
-    (data) => {
-      if (data.since !== undefined) transcript.resume(data);
-      else transcript.snapshot(data);
-      if (!placed) {
-        transcript.setSince(sinceText(sessions.get(id)));
-        askRecap(false); // the server decides whether it is worth one
-        if (landUnread === id) transcript.firstUnread();
-        landUnread = null;
-        if (landEntry && landEntry.key === id) transcript.reveal(landEntry.id);
-        landEntry = null;
-      }
-      placed = true;
-      // Read by scripts/bench.py: when the snapshot was drawn and painted.
-      const mark = (window.__a2snapshot = { at: performance.now(), count: transcript.entries.size });
-      requestAnimationFrame(() => (mark.painted = performance.now()));
-    },
-    (ops) => {
-      for (const op of ops) if (op.probe) artifacts.probe(op.probe, id, fileUrl(op.probe.url));
-      transcript.apply(ops);
-    },
-    undefined,
-    // Holding nothing, a full snapshot mounts only the last rows; a delta
-    // from -1 would mount every row through apply().
-    () => (transcript.rev >= 0 ? transcript.rev : null),
-    where.server,
-  );
+  const subscribe = () => {
+    unsubTranscript = conn.subscribe(
+      `transcript:${where.log_id}`,
+      (data) => {
+        // A server that cannot resume from the revision asked (the session was
+        // reset, its store rewritten) answers in full, and the full answer
+        // replaces whatever was drawn.
+        if (data.since !== undefined) transcript.resume(data);
+        else transcript.snapshot(data);
+        keepTranscript();
+        drawOfflineNotice();
+        if (!placed) {
+          transcript.setSince(sinceText(sessions.get(id)));
+          askRecap(false); // the server decides whether it is worth one
+          if (landUnread === id) transcript.firstUnread();
+          landUnread = null;
+          if (landEntry && landEntry.key === id) transcript.reveal(landEntry.id);
+          landEntry = null;
+        }
+        placed = true;
+        // Read by scripts/bench.py: when the snapshot was drawn and painted.
+        const mark = (window.__a2snapshot = { at: performance.now(), count: transcript.entries.size });
+        requestAnimationFrame(() => (mark.painted = performance.now()));
+      },
+      (ops) => {
+        for (const op of ops) if (op.probe) artifacts.probe(op.probe, id, fileUrl(op.probe.url));
+        transcript.apply(ops);
+        keepTranscript();
+      },
+      undefined,
+      // Holding nothing, a full snapshot mounts only the last rows; a delta
+      // from -1 would mount every row through apply().
+      () => (transcript.rev >= 0 ? transcript.rev : null),
+      where.server,
+    );
+  };
+  if (saved) {
+    subscribe();
+    drawOfflineNotice();
+  } else
+    // What this device kept of the session, drawn at once. The subscription
+    // waits for it (a local read, a few ms) so that it asks only for what
+    // changed since its revision.
+    loadTranscript(id).then((copy) => {
+      if (turn !== follows) return; // moved on
+      if (copy) transcript.snapshot({ entries: copy.entries, rev: copy.rev });
+      drawOfflineNotice();
+      subscribe();
+    });
   menu.close();
   $("input").value = localStorage.getItem(`aegis.draft.${id}`) || "";
   autosize();
@@ -1144,6 +1377,7 @@ function renderMeta(s) {
 setInterval(() => {
   tickMonitors();
   if (workingSince != null) $("working-meta").textContent = `${Math.round((Date.now() - workingSince) / 1000)}s, Esc interrupts`;
+  if (root.dataset.view === "fleet" && local().some((m) => m.stale)) drawBand();
   if (root.dataset.view === "fleet") for (const c of document.querySelectorAll(".card")) {
     const m = sessions.get(c.dataset.id);
     if (m) {
@@ -1347,7 +1581,8 @@ async function loadArchive(more = false) {
       archiveWorkerCount = r.workers || 0;
     }
   } catch (e) {
-    if (!more) [archived, archiveCursor, archiveTotal] = [[], null, 0];
+    // Offline, or failed: the next render reads it again.
+    if (!more) [archived, archiveCursor, archiveTotal, archiveLoaded] = [[], null, 0, false];
   }
   renderArchive($("arch-list"), archived, {
     onReopen: reopen,
@@ -1604,7 +1839,7 @@ function markDiffs() {
 
 async function spawnFromComposer() {
   const a = current();
-  if (!a || $("sp-go").disabled) return;
+  if (!a || $("sp-go").disabled || offline()) return;
   $("sp-go").disabled = true;
   $("sp-error").textContent = "";
   await dictation.finish($("sp-text"));
@@ -1740,7 +1975,7 @@ for (const [kind, id] of [
 
 // -- tab bar and keys -----------------------------------------------------------
 $("tab-fleet").addEventListener("click", () => go("#fleet"));
-$("tab-add").addEventListener("click", () => go("#new"));
+$("tab-add").addEventListener("click", () => !offline() && go("#new"));
 // The ? list: drawn once from the key table.
 const keymap = $("keymap");
 renderKeys(keymap);
@@ -1776,6 +2011,7 @@ installKeys(
       else if (v === "spawn") $("sp-text").focus();
     },
     dictate() {
+      if (offline()) return;
       const v = route().view;
       if (!navigator.mediaDevices || (v !== "session" && v !== "spawn")) return;
       dictation.toggle(v === "spawn" ? spawnTarget() : sessionTarget(), "key");
@@ -1812,7 +2048,7 @@ installKeys(
     fleetPrev: () => fleetMove(-1),
     fleetOpen,
     filter: () => $("arch-q").focus(),
-    spawn: () => go("#new"),
+    spawn: () => offline() || go("#new"), // a new session needs the server
     settings: () => go("#settings"),
     journal: () => go("#journal"),
     tab(ev) {
@@ -1830,7 +2066,7 @@ installKeys(
       } else menu.openOverlay();
     },
     escape() {
-      if (cancelAsk()) return;
+      if (cancelAsk() || closeInstallDialog() || closePushPanel()) return;
       if (root.dataset.side === "open") return closeSide();
       if (!keymap.hidden) help(false);
       else if (viewer.close() || find.close() || closeMonitorCard() || closeCard()) return;
@@ -1871,7 +2107,7 @@ for (const [btn, pick, tray, key] of [
   ["attach", "attach-pick", atts, null],
   ["sp-attach", "sp-attach-pick", spAtts, "spawn"],
 ]) {
-  $(btn).addEventListener("click", () => $(pick).click());
+  $(btn).addEventListener("click", () => !offline() && $(pick).click());
   $(pick).addEventListener("change", (ev) => {
     tray.add([...ev.target.files], key ?? undefined);
     ev.target.value = "";
@@ -1948,8 +2184,8 @@ if (!navigator.mediaDevices) {
     b.title = "Dictation needs https or localhost";
   }
 }
-$("mic").addEventListener("click", () => dictation.toggle(sessionTarget(), "button"));
-$("sp-mic").addEventListener("click", () => dictation.toggle(spawnTarget(), "button"));
+$("mic").addEventListener("click", () => !offline() && dictation.toggle(sessionTarget(), "button"));
+$("sp-mic").addEventListener("click", () => !offline() && dictation.toggle(spawnTarget(), "button"));
 // On a touch screen Enter adds a line and the button sends: the key sits where
 // a mistap lands, and half a message costs a turn.
 const touch = matchMedia("(pointer: coarse)");
@@ -1989,6 +2225,48 @@ function drawReplies(s) {
   if (transcript.following) transcript.toBottom();
 }
 
+// The shown session's message written offline (outbox.js), after the last row.
+const QUEUED_LABEL = {
+  queued: "queued · goes out when the connection is back",
+  sending: "sending…",
+  stale: "The session moved on since you wrote this",
+  gone: "The session is closed",
+};
+function drawQueued() {
+  const box = $("queued");
+  const d = shown && draftFor(shown);
+  box.hidden = !d;
+  if (!d) return;
+  for (const st of ["sending", "stale", "gone", "error"]) box.classList.toggle(st, d.state === st);
+  // A refusal the person should read, word for word: a quota gate, an owner.
+  $("queued-lbl").textContent = d.state === "error" ? `Not sent: ${d.error}` : QUEUED_LABEL[d.state] || QUEUED_LABEL.queued;
+  box.querySelector(".text").textContent = d.text;
+  if (transcript.following) transcript.toBottom();
+}
+onDrafts(drawQueued);
+loadDrafts();
+setSender((key, params) => callFor(key, "session.send", params));
+$("queued").addEventListener("click", (ev) => {
+  const act = ev.target.closest("[data-act]")?.dataset.act;
+  const key = shown;
+  const d = key && draftFor(key);
+  if (!act || !d) return;
+  if (act === "discard") discard(key);
+  if (act === "send") sendAnyway(key).catch((e) => toast(e.message, { kind: "error" }));
+  if (act === "copy")
+    navigator.clipboard.writeText(d.text).then(
+      () => toast("Copied"),
+      () => toast("Could not copy", { kind: "error" }),
+    );
+  if (act === "edit") {
+    input.value = input.value ? `${d.text}\n\n${input.value}` : d.text;
+    localStorage.setItem(`aegis.draft.${key}`, input.value);
+    autosize();
+    input.focus();
+    discard(key);
+  }
+});
+
 // On a phone Close sits in the drawer, so a session whose agent said done gets
 // an Archive button after its last row, one tap from where the reading ended.
 // The stylesheet shows it only in the phone layout (#333).
@@ -2012,7 +2290,7 @@ const askClose = (s) =>
 const confirmClose = async (s) => s.attention === "done" || (await askClose(s));
 
 async function closeSession(s) {
-  if (!(await confirmClose(s))) return;
+  if (offline() || !(await confirmClose(s))) return;
   try {
     await callFor(s.key, "session.close");
   } catch (e) {
@@ -2049,6 +2327,20 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
     return;
   }
   if (text === "/close" && !(await confirmClose(s))) return;
+  // With no way to the session's server, plain text waits as its draft on this
+  // device (outbox.js); a command or files still need the connection.
+  if ((!conn.open || s.off) && !text.startsWith("/") && !attachments.length) {
+    await queue(s.key, text, shown === s.key ? transcript.rev : -1);
+    if (fromComposer) localStorage.removeItem(`aegis.draft.${s.key}`);
+    if (fromComposer && shown === s.key) {
+      input.value = "";
+      autosize();
+      menu.close();
+      $("composer").classList.remove("bad");
+    }
+    if (shown === s.key) transcript.toBottom();
+    return;
+  }
   const box = $("replies");
   const was = box.hidden;
   box.hidden = true; // any send answers the turn the pills belonged to
@@ -2217,9 +2509,10 @@ $("send").addEventListener("click", send);
 $("interrupt").addEventListener("click", interrupt);
 // A nudge after an interrupt, an error or a stop: a message to a stopped
 // session resumes it, so Restart is one sentence to the agent.
-$("restart").addEventListener("click", () => sendLine("Continue", false));
+$("restart").addEventListener("click", () => !offline() && sendLine("Continue", false));
 
 $("stop-session").addEventListener("click", async () => {
+  if (offline()) return;
   const s = focused();
   if (!s) return;
   try {

@@ -212,7 +212,12 @@ export class Transcript {
         const f = got.find((x) => x.id === id);
         if (f && this.entries.get(id)?.rev !== f.rev && this.nodes.get(id)?.querySelector("details")?.open) this.fetch(id);
       })
-      .catch(() => this.fetching.delete(id));
+      .catch((e) => {
+        this.fetching.delete(id);
+        // Not cached: opening the row again once the connection is back fetches.
+        if (e?.code === "offline")
+          for (const n of this.nodes.get(id)?.querySelectorAll(".loading") || []) n.textContent = "Needs the connection.";
+      });
   }
 
   // A whole snapshot of the session already shown (a reconnect the server

@@ -63,6 +63,7 @@ from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from .monitors import Monitors, iso_now
 from .names import valid_handle
 from .nudges import Nudges
+from .push import register_push_ops
 from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
@@ -132,6 +133,8 @@ class SendParams(_Strict):
     text: str = ""
     # Upload ids from attachment.begin, every one complete (attachments.py).
     attachments: list[str] = Field(default_factory=list, max_length=att.MAX_FILES)
+    # The transcript revision a message written offline answered (outbox.js).
+    expect_rev: int | None = None
 
     @model_validator(mode="after")
     def _says_something(self) -> "SendParams":
@@ -350,6 +353,7 @@ class App:
         register_agent_ops(self)
         register_config_ops(self)
         register_artifact_ops(self)
+        self.push = register_push_ops(self)
         register_journal_ops(self)
         register_help_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
@@ -500,9 +504,13 @@ class App:
         self.host.start()
         self.nudges.start()
         self.links.boot()
+        # Last: its first snapshot must hold every session the boot loaded,
+        # so none of them reads as a transition (push.py).
+        self.push.sender.start()
 
     async def shutdown(self) -> None:
         stopping_at = restarts.stopping(self.roots.state_root)
+        await self.push.sender.stop()
         self.queues.shutdown()
         if self._config_task is not None:
             self._config_task.cancel()
@@ -545,6 +553,7 @@ class App:
         if source is not None:
             t["from"] = {"handle": source.handle, "id": source.log_id}
         self.channels.publish("toasts", [{"toast": t}])
+        self.push.sender.on_toast(t)  # an agent's goes to subscribed devices
         return self.channels.subscribers("toasts")
 
     def _sessions_key(self, op: dict) -> tuple[str, bool]:
@@ -978,6 +987,15 @@ class App:
         @r.op("session.send", SendParams, owned="log_id")
         async def send(p: SendParams, caller):
             s = reg.open(p.log_id)
+            # A message written offline carries the transcript's revision as the
+            # writer saw it: if anything a person reads has happened since, it
+            # goes back to ask instead of answering a question no longer asked.
+            if p.expect_rev is not None and s.fold().content_index > p.expect_rev:
+                raise OpError(
+                    "stale",
+                    "the session moved on since this was written; "
+                    "send it again to send it anyway",
+                )
             cmd = commands.split(p.text)
             if cmd is not None:
                 if p.attachments:
@@ -1318,8 +1336,11 @@ class App:
         @r.op("token.revoke", TokenName, admin=True)
         async def token_revoke(p: TokenName, caller):
             """End a token. The admin's is replaced, and the new one returned
-            to whoever revoked it, so that browser can sign in again."""
-            return {"token": self.principals.revoke(p.name)}
+            to whoever revoked it, so that browser can sign in again. Its
+            devices stop hearing pushes (push.py)."""
+            token = self.principals.revoke(p.name)
+            self.push.subscriptions.remove_owner(p.name)
+            return {"token": token}
 
         @r.op("token.policy", TokenPolicy, admin=True)
         async def token_policy(p: TokenPolicy, caller):

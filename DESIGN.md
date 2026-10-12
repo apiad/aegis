@@ -371,6 +371,67 @@ because the card would leave before anyone saw it; aegis's own never do, since
 they answer something done on the page. An agent's toasts are capped at six a
 minute per session (#329).
 
+**The service worker keeps one build.** `sw.js`, served from the root with
+the build id written in, downloads the files `/client-files.json` lists into a
+cache named after the build and serves `/`, `/static/**` and the manifest from
+it, so aegis opens with no connection. The page and its scripts always come from
+the same build: a new build downloads beside the old one and waits, the page
+offers a reload (or takes it at once when the socket closes with 4400), and every
+tab the old build loaded reloads when the new worker takes over. Only a complete
+build is served; a failed download never fails the worker's install, so
+notifications keep working, and the worker downloads again when a page asks,
+which every page does when it loads and reconnects. A sign-in
+(`/?token=`) and everything outside the client go to the network. Notifications
+come from the worker's registration too: Chrome on Android refuses
+`new Notification()`, and the worker's `notificationclick` opens the session even
+after the page is gone. The constructor remains only for a page without an
+active worker, which is a desktop on plain http (#342).
+
+**The device keeps what it saw.** `js/devicestore.js` holds the last Fleet and
+the twenty transcripts saved most recently in IndexedDB, as the wire carried
+them (no collapsed detail, never a token). The Fleet draws from it at boot and
+the transcript when a session opens; a saved session is `stale` until its
+server's live snapshot replaces it, and a transcript's subscription waits for
+the saved copy so that it asks only for what changed since its revision. Both
+are written at most every 2 seconds, only from what a live socket carried, and
+notifications follow live sessions only, so a cold start never pings for what
+changed while the page was closed. Offline, what needs the server is disabled
+(`.needs-net`, `js/net.js`), and a socket refused with 4401 empties the device
+(#342).
+
+**A message written offline waits as a draft.** One per session, in the device
+store's outbox (`js/outbox.js`); writing again appends to it. On reconnect each
+draft is sent with `expect_rev`, the transcript revision its writer saw, and
+`session.send` refuses it as `stale` when the session's `content_index` (the
+last record a person reads: user, prose, tool, inbox) is past it, so a deploy
+or a stop while the device was away does not count as moving on. A stale or
+closed session's draft stays and asks, as does one refused for another reason,
+with the reason. Every change to a draft is one IndexedDB transaction: a send
+marks it `sending` and only the send's answer settles it, so two tabs never
+send one twice, a page closed mid-send leaves it to be sent again (with its
+revision, so a send that did arrive asks instead of repeating), and text
+written meanwhile becomes the next draft (#342).
+
+**Push goes from the server, encrypted for the device.** A device subscribes
+from the bell with its sources (`needs_you`, `error`, `review`, `done`, `toast`);
+`push.py` keeps the subscriptions and this server's VAPID key under
+`<state>/push/` (0600, since an endpoint and its keys are enough to push to that
+device). It listens to the `sessions` channel like a browser, and `App.toast`
+hands it each toast, so a push is the same transition a page would notify; the
+first snapshot only records where sessions stand, so a restart pushes nothing,
+and `review` or `done` count only when a turn just ended. It encrypts each
+payload for the device (`webpush.py`, RFC 8291) and posts it to the push
+service from its own queue, so a slow service never delays the channel. Each
+subscription has a lane of its own and the lanes run side by side, so a dead
+device delays no other; a push too old when its turn comes is dropped, and a
+row goes when its service refuses it or fails it five times in a row. Only
+endpoints at a known push service are taken (`AEGIS_PUSH_HOSTS` adds hosts),
+because the server posts wherever a token tells it. The worker shows a push
+unless a window of that device shows the session in front. A device with push
+leaves those sources to it for this server's sessions, so one event never
+notifies twice; a linked server's are not pushed, so the page notifies them
+(#342).
+
 **Folding hides rows, it never unmounts them.** From which fold level a kind
 folds is a fact on the entry (`fold`: 0 never, 1 the work, 2 also what arrived
 and what was shown; `transcript/entries.py`). The client draws each run of

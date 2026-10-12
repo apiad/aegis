@@ -1,0 +1,2 @@
+- **A message written without a connection waits and goes out when it returns.** It shows as queued in the transcript and survives a reload. If the session moved on while you were away, it asks before sending instead of answering a question nobody asks any more.
+help: phone#messages-written-offline

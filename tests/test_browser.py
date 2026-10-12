@@ -43,8 +43,17 @@ class Server:
         # Off the network: the latest release is whatever this file says. Off
         # the desktop: a click on Open natively must not launch real apps.
         hidden = ("DISPLAY", "WAYLAND_DISPLAY", "AEGIS_OPENER")
+        # The push tests' fake endpoint is https://127.0.0.1:9, a closed port,
+        # let through as a self-hosted push service would be (push.py).
         env = {k: v for k, v in os.environ.items() if k not in hidden}
-        return env | {"AEGIS_RELEASES_URL": self.releases.as_uri()} | self.env
+        return (
+            env
+            | {
+                "AEGIS_RELEASES_URL": self.releases.as_uri(),
+                "AEGIS_PUSH_HOSTS": "127.0.0.1",
+            }
+            | self.env
+        )
 
     def start(self) -> "Server":
         self.proc = subprocess.Popen(
@@ -335,7 +344,9 @@ def test_the_composer_overrides_a_chip_resets_it_and_spawns_with_the_first_messa
     page.press("#sp-text", "Enter")
     page.wait_for_selector("#a2[data-view=session]")
     turns_done(page, 1)
-    text = page.inner_text("#entries")
+    # textContent, not innerText: rows far from the viewport skip rendering
+    # (content-visibility:auto), and innerText leaves skipped rows out.
+    text = page.text_content("#entries")
     assert "/argv" in text and '"--effort", "max"' in text
 
     page.click("#tab-fleet")
@@ -3290,6 +3301,16 @@ def favicon_dot(pg) -> str | None:
     return m.group(1) if m else None
 
 
+def test_the_page_registers_the_service_worker(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    url = page.evaluate("navigator.serviceWorker.ready.then(r => r.active.scriptURL)")
+    # server.url carries the sign-in token: the worker sits at its origin.
+    origin = re.match(r"https?://[^/]+", server.url).group(0)
+    assert url == origin + "/sw.js"
+    assert page.errors == []
+
+
 def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     server, browser
 ):
@@ -3303,17 +3324,23 @@ def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     pg.add_init_script("""
       window.__notes = [];
       window.__hidden = sessionStorage.getItem('hidden') === '1';
-      window.Notification = class { constructor(t, o) { window.__notes.push([t, o]); }
+      // As on Chrome for Android: the constructor is refused, and a notification
+      // can only come from a service worker's registration.
+      window.Notification = class {
+        constructor() { throw new TypeError("Illegal constructor"); }
         static get permission() { return 'granted'; }
         static requestPermission() { return Promise.resolve('granted'); } };
+      ServiceWorkerRegistration.prototype.showNotification = function (t, o) {
+        window.__notes.push([t, o]); return Promise.resolve(); };
       Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
       const raf = window.requestAnimationFrame.bind(window);
       window.requestAnimationFrame = (cb) => (window.__hidden ? 0 : raf(cb));
     """)
     pg.goto(server.url)
     pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("navigator.serviceWorker.ready.then(() => true)")
     first = spawn(pg, "hello")
-    spawn(pg, "hello")
+    sid = spawn(pg, "hello")
     assert not pg.title().startswith("(")
     assert favicon_dot(pg) is None
     # While the page is visible, a session that needs you counts but sends no
@@ -3335,6 +3362,8 @@ def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     title, opts = pg.evaluate("window.__notes[0]")
     assert title.endswith(": needs you")
     assert opts["body"] == "Merge or rebase?"
+    assert opts["tag"] == f"{sid}:needs_you"
+    assert opts["data"] == {"key": sid}
     # Another session's turn, still hidden: the one that needs you has not
     # changed, so it does not notify again.
     pg.evaluate("id => (location.hash = '#s=' + id)", first)
@@ -3351,6 +3380,7 @@ def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     # does not notify: nothing changed while the page was there.
     pg.evaluate("sessionStorage.setItem('hidden', '1')")
     pg.reload()
+    pg.evaluate("navigator.serviceWorker.ready.then(() => true)")
     pg.wait_for_function(
         "() => document.title.startsWith('(1) ')", polling=100, timeout=8000
     )
@@ -3362,6 +3392,1334 @@ def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     assert favicon_dot(pg) == "#2f5ba8"
     pg.click("#tab-fleet")
     assert pg.title().startswith("(1) Fleet")
+    assert errors == []
+    ctx.close()
+
+
+ANDROID_NOTIFICATIONS = """
+  window.__notes = [];
+  window.__calls = 0;
+  window.__hidden = false;
+  window.Notification = class {
+    constructor() { throw new TypeError("Illegal constructor"); }
+    static get permission() { return 'granted'; }
+    static requestPermission() { return Promise.resolve('granted'); } };
+  // The first notification is refused, as a browser may; the rest are shown.
+  ServiceWorkerRegistration.prototype.showNotification = function (t, o) {
+    window.__calls++;
+    if (window.__calls === 1) return Promise.reject(new TypeError("refused"));
+    window.__notes.push([t, o]); return Promise.resolve(); };
+  Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
+"""
+
+
+def test_a_refused_notification_does_not_block_the_next_one(server, browser):
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.add_init_script(ANDROID_NOTIFICATIONS)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("navigator.serviceWorker.ready.then(() => true)")
+    first = spawn(pg, "hello")
+    second = spawn(pg, "hello")
+    pg.evaluate("window.__hidden = true")
+    report(pg, attention="needs_you", line="Refused", replies=[])
+    pg.wait_for_function("() => window.__calls === 1", timeout=8000)
+    pg.evaluate("id => (location.hash = '#s=' + id)", first)
+    pg.wait_for_selector(f"#tablist .tab.on[data-id='{first}']")
+    # A turn that fails puts the session in error (turn_end cannot say error).
+    pg.fill("#input", "/exit 4")
+    pg.press("#input", "Enter")
+    pg.wait_for_function("() => window.__notes.length === 1", timeout=8000)
+    title, opts = pg.evaluate("window.__notes[0]")
+    assert title.endswith(": error") and opts["tag"] == f"{first}:error"
+    # Another update does not try the refused notification again: its
+    # transition was seen.
+    pg.fill("#input", "hello")
+    pg.press("#input", "Enter")
+    turns_done(pg, 2)
+    assert pg.evaluate("window.__calls") == 2
+    assert second != first
+    assert errors == []
+
+
+def test_without_a_service_worker_a_desktop_still_notifies(server, browser):
+    # Plain http on a host other than localhost: no navigator.serviceWorker.
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.add_init_script("""
+      window.__notes = [];
+      window.__hidden = false;
+      Object.defineProperty(Navigator.prototype, 'serviceWorker', { get: () => undefined });
+      window.Notification = class { constructor(t, o) { window.__notes.push([t, o]); }
+        static get permission() { return 'granted'; }
+        static requestPermission() { return Promise.resolve('granted'); } };
+      Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
+    """)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg, "hello")
+    pg.evaluate("window.__hidden = true")
+    report(pg, attention="needs_you", line="No worker here", replies=[])
+    pg.wait_for_function("() => window.__notes.length === 1", timeout=8000)
+    assert pg.evaluate("window.__notes[0][1].body") == "No worker here"
+    assert errors == []
+
+
+def test_the_workers_open_message_opens_the_session(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    page.click("#tab-fleet")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.evaluate(
+        "key => navigator.serviceWorker.dispatchEvent("
+        "new MessageEvent('message', {data: {t: 'open', key}}))",
+        sid,
+    )
+    page.wait_for_selector("#a2[data-view=session]")
+    assert page.evaluate("location.hash.slice(3)") == sid
+    assert page.errors == []
+
+
+@pytest.fixture
+def full_browser():
+    """The full Chromium build in headless mode. The default headless shell
+    denies notification permission whatever the context grants, so a real
+    notification needs this one."""
+    with playwright.sync_playwright() as p:
+        b = p.chromium.launch(channel="chromium")
+        yield b
+        b.close()
+
+
+def test_a_real_notification_shows_and_its_click_opens_the_session(
+    server, full_browser
+):
+    errors: list = []
+    ctx = full_browser.new_context(viewport={"width": 1280, "height": 800})
+    ctx.grant_permissions(["notifications"])
+    pg = ctx.new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.add_init_script("""
+      window.__hidden = false;
+      Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
+    """)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    assert pg.evaluate("Notification.permission") == "granted"
+    pg.evaluate("navigator.serviceWorker.ready.then(() => true)")
+    sid = spawn(pg, "hello")
+    pg.evaluate("window.__hidden = true")
+    report(pg, attention="needs_you", line="Ship it?", replies=[])
+    shown = "navigator.serviceWorker.ready.then(r => r.getNotifications()).then(ns => ns.map(n => [n.title, n.body, n.tag]))"
+    # wait_for_function does not await a promise: poll it instead.
+    deadline = time.monotonic() + 8
+    while not pg.evaluate(shown) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    [[title, body, tag]] = pg.evaluate(shown)
+    assert (
+        title.endswith(": needs you")
+        and body == "Ship it?"
+        and tag == f"{sid}:needs_you"
+    )
+    # The click: the worker's handler closes the notification and runs
+    # openSession with the key the notification carries. A scripted
+    # NotificationEvent is untrusted (its waitUntil throws), so the test runs
+    # openSession itself, with a non-aegis tab of the same scope in front: a
+    # file an agent sent, which has nobody listening.
+    pg.click("#tab-fleet")
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    origin = re.match(r"https?://[^/]+", server.url).group(0)
+    other = ctx.new_page()
+    other.goto(f"{origin}/static/icons/aegis-192.png")
+    other.bring_to_front()
+    [sw] = ctx.service_workers
+    key = sw.evaluate(
+        "async () => (await self.registration.getNotifications())[0].data.key"
+    )
+    assert key == sid
+    sw.evaluate("key => openSession(key)", key)
+    pg.wait_for_selector("#a2[data-view=session]")
+    assert pg.evaluate("location.hash.slice(3)") == sid
+    # Answered: the notification goes, since it would open a question nobody
+    # asks any more.
+    report(pg, attention="done", line="Shipped.", replies=[])
+    deadline = time.monotonic() + 8
+    while pg.evaluate(shown) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert pg.evaluate(shown) == []
+    assert errors == []
+    ctx.close()
+
+
+def push_ready(ctx, pg, url: str) -> callable:
+    """Open ``url`` with a CDP session watching the worker; return a function
+    that delivers a push with ``data`` (a dict) to it."""
+    cdp = ctx.new_cdp_session(pg)
+    regs: list = []
+    cdp.on(
+        "ServiceWorker.workerRegistrationUpdated",
+        lambda e: regs.extend(e["registrations"]),
+    )
+    cdp.send("ServiceWorker.enable")
+    pg.goto(url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("navigator.serviceWorker.ready.then(() => true)")
+    deadline = time.monotonic() + 5
+    while not regs and time.monotonic() < deadline:
+        pg.wait_for_timeout(100)
+    rid = regs[-1]["registrationId"]
+    origin = re.match(r"https?://[^/]+", url).group(0)
+    return lambda data: cdp.send(
+        "ServiceWorker.deliverPushMessage",
+        {"origin": origin, "registrationId": rid, "data": json.dumps(data)},
+    )
+
+
+SHOWN = "navigator.serviceWorker.ready.then(r => r.getNotifications()).then(ns => ns.map(n => [n.title, n.tag]))"
+
+
+def test_a_push_shows_a_notification(server, full_browser):
+    ctx = full_browser.new_context()
+    ctx.grant_permissions(["notifications"])
+    pg = ctx.new_page()
+    deliver = push_ready(ctx, pg, server.url)
+    deliver(
+        {
+            "title": "build: needs you",
+            "body": "Ship it?",
+            "key": "abc",
+            "kind": "needs_you",
+            "tag": "abc:needs_you",
+        }
+    )
+    deadline = time.monotonic() + 5
+    while not pg.evaluate(SHOWN) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert pg.evaluate(SHOWN) == [["build: needs you", "abc:needs_you"]]
+    ctx.close()
+
+
+def test_a_push_for_the_session_in_front_stays_quiet(server, full_browser):
+    ctx = full_browser.new_context()
+    ctx.grant_permissions(["notifications"])
+    pg = ctx.new_page()
+    deliver = push_ready(ctx, pg, server.url)
+    sid = spawn(pg, "hello")  # the page now shows it, focused and visible
+    pg.wait_for_timeout(300)  # the page tells the worker what it shows
+    deliver(
+        {
+            "title": "x: needs you",
+            "body": "",
+            "key": sid,
+            "kind": "needs_you",
+            "tag": f"{sid}:needs_you",
+        }
+    )
+    deliver(
+        {
+            "title": "y: needs you",
+            "body": "",
+            "key": "other",
+            "kind": "needs_you",
+            "tag": "other:needs_you",
+        }
+    )
+    deadline = time.monotonic() + 5
+    while not pg.evaluate(SHOWN) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert pg.evaluate(SHOWN) == [["y: needs you", "other:needs_you"]]
+    ctx.close()
+
+
+def test_the_worker_forgets_the_views_of_closed_windows(server, full_browser):
+    ctx = full_browser.new_context()
+    ctx.grant_permissions(["notifications"])
+    pg = ctx.new_page()
+    deliver = push_ready(ctx, pg, server.url)
+    other = ctx.new_page()
+    other.goto(server.url)
+    other.wait_for_selector("#a2[data-view=fleet]")
+    other.evaluate("window.dispatchEvent(new Event('focus'))")  # it tells the worker
+    [worker] = ctx.service_workers
+    deadline = time.monotonic() + 5
+    while worker.evaluate("views.size") < 2 and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert worker.evaluate("views.size") == 2
+    other.close()
+    deliver({"title": "x", "body": "", "key": "k", "kind": "needs_you", "tag": "t"})
+    deadline = time.monotonic() + 5
+    while not pg.evaluate(SHOWN) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert pg.evaluate(SHOWN) == [["x", "t"]]
+    assert worker.evaluate("views.size") == 1
+    ctx.close()
+
+
+# A browser that subscribes to push, without a push service: the headless
+# shell has none, and denies notifications, so both are stood in for. The
+# endpoint is a closed port here, so the server's sender (a real one) reaches
+# nothing outside this machine. The subscription survives a reload, as a
+# browser's does, and ``fake.endpoint`` stands in for one the browser rotated.
+# ``fake.perm`` sets the permission, and ``fake.asked`` counts the prompts.
+FAKE_PUSH = """
+  const fake = { endpoint: localStorage.getItem('fake.endpoint') || 'https://127.0.0.1:9/abc', options: {},
+    toJSON() { return { endpoint: this.endpoint, expirationTime: null, keys: { p256dh: 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4', auth: 'BTBZMqHH6r4Tts7J_aSIgg' } }; },
+    unsubscribe() { localStorage.removeItem('fake.sub'); return Promise.resolve(true); } };
+  PushManager.prototype.subscribe = function () { localStorage.setItem('fake.sub', '1'); return Promise.resolve(fake); };
+  PushManager.prototype.getSubscription = function () { return Promise.resolve(localStorage.getItem('fake.sub') ? fake : null); };
+  window.__notes = [];
+  window.__hidden = false;
+  window.Notification = class {
+    constructor() { throw new TypeError("Illegal constructor"); }
+    static get permission() { return localStorage.getItem('fake.perm') || 'granted'; }
+    static requestPermission() {
+      localStorage.setItem('fake.asked', String(Number(localStorage.getItem('fake.asked')) + 1));
+      return Promise.resolve(this.permission); } };
+  ServiceWorkerRegistration.prototype.showNotification = function (t, o) {
+    window.__notes.push([t, o]); return Promise.resolve(); };
+  Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
+"""
+MINE = "import('/static/js/pushpanel.js').then(p => p.listMine())"
+
+
+def push_page(browser, server, errors: list, init: str = FAKE_PUSH):
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    pg = ctx.new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.add_init_script(init)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("navigator.serviceWorker.ready.then(() => true)")
+    return ctx, pg
+
+
+def poll(pg, expr: str, pred, timeout: float = 5):
+    """``expr``'s value once ``pred`` holds for it, or the last one. A promise
+    is awaited each time, which wait_for_function would not do."""
+    deadline = time.monotonic() + timeout
+    while not pred(value := pg.evaluate(expr)) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    return value
+
+
+def test_the_bell_subscribes_this_device_with_the_default_sources(server, browser):
+    errors: list = []
+    ctx, pg = push_page(browser, server, errors)
+    pg.click("#bell")
+    pg.wait_for_selector("#push-panel", state="visible")
+    assert pg.is_disabled("#push-panel input[data-src=needs_you]")
+    pg.click("#push-panel [data-act=on]")
+    pg.wait_for_selector("#push-panel input[data-src=needs_you]:checked")
+    listed = pg.evaluate(MINE)
+    assert len(listed) == 1 and sorted(listed[0]["sources"]) == [
+        "error",
+        "needs_you",
+        "toast",
+    ]
+    assert listed[0]["endpoint"] == "https://127.0.0.1:9/abc" and listed[0]["device"]
+    assert pg.evaluate("localStorage.getItem('aegis.push.id')") == listed[0]["id"]
+    pg.click("#push-panel input[data-src=done]")
+    mine = poll(pg, MINE, lambda v: "done" in v[0]["sources"])
+    assert "done" in mine[0]["sources"]
+    # The test button reaches the server, which tries the endpoint: closed.
+    pg.click("#push-panel [data-act=test]")
+    pg.wait_for_function(
+        "() => /push service|no answer/.test(document.querySelector('#push-panel .st').textContent)",
+        timeout=15000,
+    )
+    # Off: the row goes from the server and this browser forgets it.
+    pg.click("#push-panel [data-act=off]")
+    assert poll(pg, MINE, lambda v: v == []) == []
+    assert pg.evaluate("localStorage.getItem('aegis.push.id')") is None
+    pg.keyboard.press("Escape")
+    pg.wait_for_selector("#push-panel", state="hidden")
+    assert errors == []
+    ctx.close()
+
+
+def test_a_device_with_push_leaves_its_sources_to_it(server, browser):
+    errors: list = []
+    ctx, pg = push_page(browser, server, errors)
+    other_ctx, other = push_page(browser, server, errors)
+    pg.evaluate("import('/static/js/pushpanel.js').then(p => p.subscribePush())")
+    assert poll(pg, MINE, lambda v: len(v) == 1)
+    spawn(pg, "hello")
+    for p in (pg, other):
+        p.evaluate("window.__hidden = true")
+    report(pg, attention="needs_you", line="Merge or rebase?", replies=[])
+    # The browser without push notifies; by then the other saw the same patch.
+    other.wait_for_function("() => window.__notes.length === 1", timeout=8000)
+    pg.wait_for_function("() => document.title.startsWith('(1) ')", timeout=8000)
+    pg.wait_for_timeout(300)
+    assert pg.evaluate("window.__notes") == []
+    assert other.evaluate("window.__notes[0][1].body") == "Merge or rebase?"
+    assert errors == []
+    ctx.close()
+    other_ctx.close()
+
+
+def test_a_linked_servers_session_still_notifies_on_a_device_with_push(linked, browser):
+    # Push carries this server's sessions only; a far session's question
+    # reaches this device through the page's own notification.
+    errors: list = []
+    ctx, pg = push_page(browser, linked.alpha, errors)
+    pg.evaluate("import('/static/js/pushpanel.js').then(p => p.subscribePush())")
+    assert poll(pg, MINE, lambda v: len(v) == 1)
+    far = new_page(browser, errors)
+    far.goto(linked.beta.url)
+    far.wait_for_selector("#a2[data-view=fleet]")
+    lid = spawn(far, "hello")
+    pg.wait_for_selector(
+        f"#remotes .remote[data-server=beta] .card[data-id='beta/{lid}']"
+    )
+    pg.evaluate("window.__hidden = true")
+    report(far, attention="needs_you", line="Merge or rebase?", replies=[])
+    pg.wait_for_function("() => window.__notes.length === 1", timeout=8000)
+    assert pg.evaluate("window.__notes[0][1].body") == "Merge or rebase?"
+    assert errors == []
+    far.close()
+    ctx.close()
+
+
+def test_a_rotated_subscription_is_sent_again_under_the_same_id(server, browser):
+    errors: list = []
+    ctx, pg = push_page(browser, server, errors)
+    pg.evaluate("import('/static/js/pushpanel.js').then(p => p.subscribePush())")
+    [row] = poll(pg, MINE, lambda v: len(v) == 1)
+    pg.evaluate("localStorage.setItem('fake.endpoint', 'https://127.0.0.1:9/rotated')")
+    pg.reload()
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    rows = poll(pg, MINE, lambda v: v and v[0]["endpoint"].endswith("/rotated"))
+    assert [(r["id"], r["endpoint"]) for r in rows] == [
+        (row["id"], "https://127.0.0.1:9/rotated")
+    ]
+    assert pg.evaluate("localStorage.getItem('aegis.push.id')") == row["id"]
+    assert errors == []
+    ctx.close()
+
+
+SOCKETS = """
+  window.__sockets = [];
+  const WS = window.WebSocket;
+  window.WebSocket = class extends WS {
+    constructor(...a) { super(...a); window.__sockets.push(this); }
+  };
+"""
+
+
+@pytest.mark.parametrize("trigger", ["reconnect", "visible"])
+def test_a_row_removed_elsewhere_turns_push_off_here_without_a_reload(
+    server, browser, trigger
+):
+    errors: list = []
+    ctx, pg = push_page(browser, server, errors, FAKE_PUSH + SOCKETS)
+    pg.evaluate("import('/static/js/pushpanel.js').then(p => p.subscribePush())")
+    [row] = poll(pg, MINE, lambda v: len(v) == 1)
+    # Another device removes it from Settings.
+    other_ctx, other = push_page(browser, server, errors)
+    other.click("#settings-btn")
+    other.click(f"#set-push .set-push-row[data-id={row['id']}] button")
+    assert poll(other, MINE, lambda v: v == []) == []
+    if trigger == "reconnect":
+        pg.evaluate("window.__sockets.at(-1).close()")
+    else:
+        pg.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
+    got = poll(pg, "localStorage.getItem('aegis.push.id')", lambda v: v is None)
+    assert got is None
+    assert pg.get_attribute("#bell", "data-push") == "off"
+    # Forgotten, not subscribed again: a row removed elsewhere stays removed.
+    pg.wait_for_timeout(500)
+    assert pg.evaluate(MINE) == []
+    assert errors == []
+    ctx.close()
+    other_ctx.close()
+
+
+def test_a_rotation_never_asks_for_permission_without_a_click(server, browser):
+    errors: list = []
+    ctx, pg = push_page(browser, server, errors)
+    pg.evaluate("import('/static/js/pushpanel.js').then(p => p.subscribePush())")
+    [row] = poll(pg, MINE, lambda v: len(v) == 1)
+    pg.evaluate(
+        "localStorage.setItem('fake.endpoint', 'https://127.0.0.1:9/rotated');"
+        "localStorage.setItem('fake.perm', 'default')"
+    )
+    pg.reload()
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.wait_for_timeout(1500)  # the check on open has run
+    assert pg.evaluate("localStorage.getItem('fake.asked')") is None
+    assert [r["endpoint"] for r in pg.evaluate(MINE)] == [row["endpoint"]]
+    assert errors == []
+    ctx.close()
+
+
+def test_turning_push_off_offline_stays_off(server, browser):
+    errors: list = []
+    ctx, pg = push_page(browser, server, errors)
+    pg.evaluate("import('/static/js/pushpanel.js').then(p => p.subscribePush())")
+    [row] = poll(pg, MINE, lambda v: len(v) == 1)
+    server.stop()
+    pg.wait_for_function(
+        "document.getElementById('conn-text').textContent === 'disconnected, retrying'"
+    )
+    off = (
+        "import('/static/js/pushpanel.js')"
+        ".then(p => p.unsubscribePush()).then(() => 'off', (e) => e.message)"
+    )
+    assert pg.evaluate(off) == "off"
+    assert pg.evaluate("localStorage.getItem('aegis.push.id')") is None
+    assert pg.evaluate("localStorage.getItem('fake.sub')") is None
+    server.start()
+    pg.wait_for_function(
+        "!document.getElementById('a2').hasAttribute('data-offline')", timeout=20000
+    )
+    pg.wait_for_timeout(1000)  # the check on open has run
+    assert pg.evaluate("localStorage.getItem('aegis.push.id')") is None
+    assert pg.evaluate("localStorage.getItem('fake.sub')") is None
+    # The server's row stays until its next push comes back 404 or 410.
+    assert [r["id"] for r in pg.evaluate(MINE)] == [row["id"]]
+    assert errors == []
+    ctx.close()
+
+
+def test_the_install_row_turns_push_on_and_settings_lists_and_removes_it(
+    server, browser
+):
+    errors: list = []
+    ctx, pg = push_page(browser, server, errors, FAKE_PUSH + INSTALLABLE)
+    pg.evaluate("window.__installable('accepted')")
+    pg.click("#install-offer [data-act=install]")
+    pg.click("#install-dialog .irow[data-step=notify] button")
+    pg.wait_for_selector("#install-dialog .irow[data-step=notify].done")
+    assert "push on" in pg.text_content("#install-dialog .irow[data-step=notify] .sub")
+    [row] = poll(pg, MINE, lambda v: len(v) == 1)
+    assert sorted(row["sources"]) == ["error", "needs_you", "toast"]
+    pg.click("#install-dialog [data-act=done]")
+    pg.click("#settings-btn")
+    pg.wait_for_selector(f"#set-push .set-push-row[data-id={row['id']}]")
+    text = pg.text_content(f"#set-push .set-push-row[data-id={row['id']}]")
+    assert "this device" in text and "needs_you" in text
+    assert "push on" in pg.text_content("#set-app")
+    pg.click(f"#set-push .set-push-row[data-id={row['id']}] button")
+    pg.wait_for_selector(
+        f"#set-push .set-push-row[data-id={row['id']}]", state="detached"
+    )
+    assert poll(pg, MINE, lambda v: v == []) == []
+    assert pg.evaluate("localStorage.getItem('aegis.push.id')") is None
+    assert errors == []
+    ctx.close()
+
+
+def test_the_url_the_worker_opens_boots_straight_into_the_session(server, browser):
+    # With no aegis window open, a click on a notification opens /#s=<key>:
+    # no token in it, only the cookie an earlier sign-in left.
+    errors: list = []
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    pg = ctx.new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(pg, "hello")
+    pg.close()
+    fresh = ctx.new_page()
+    fresh.on("pageerror", lambda e: errors.append(str(e)))
+    origin = re.match(r"https?://[^/]+", server.url).group(0)
+    fresh.goto(f"{origin}/#s={sid}")
+    fresh.wait_for_selector("#a2[data-view=session]")
+    assert fresh.evaluate("location.hash.slice(3)") == sid
+    assert errors == []
+    ctx.close()
+
+
+def wait_for_device_copy(pg) -> dict:
+    """The build the worker finished keeping, read from its marker entry. It
+    polls the caches rather than awaiting ``serviceWorker.ready``, which never
+    resolves when the install fails and would hang the test."""
+    expr = """caches.keys().then(async names => {
+      for (const n of names.filter(n => n.startsWith('aegis-'))) {
+        const hit = await (await caches.open(n)).match('/__aegis/build.json');
+        if (hit) return hit.json();
+      }
+      return null;
+    })"""
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        if done := pg.evaluate(expr):
+            return done
+        time.sleep(0.2)
+    raise AssertionError("the worker never finished keeping the client")
+
+
+def test_the_worker_keeps_every_file_of_the_build(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    done = wait_for_device_copy(page)
+    listed = page.evaluate("fetch('/client-files.json').then(r => r.json())")
+    assert done["build"] == listed["build"] and done["files"] == len(listed["files"])
+    kept = page.evaluate(
+        "b => caches.open('aegis-' + b).then(c => c.keys())"
+        ".then(ks => ks.map(k => new URL(k.url).pathname))",
+        done["build"],
+    )
+    assert sorted(kept) == sorted(
+        [f["url"] for f in listed["files"]] + ["/__aegis/build.json"]
+    )
+    assert not any("token" in k for k in kept)
+    assert page.errors == []
+
+
+def test_the_client_opens_with_the_server_down(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    server.stop()
+    page.reload()
+    # The page and its scripts came from the device: app.js ran and is
+    # trying to reach the server.
+    page.wait_for_function(
+        "document.getElementById('conn-text').textContent === 'disconnected, retrying'",
+        timeout=10000,
+    )
+    server.start()
+    page.wait_for_selector("#a2[data-view=fleet]", timeout=20000)
+
+
+def test_the_token_url_still_reaches_the_server_with_the_worker_on(server, browser):
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(pg)
+    pg.context.clear_cookies()
+    # The worker answers / from the device, but /?token= must still set the
+    # cookie: with it cleared, only the server can sign this page in again.
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    assert any(c["name"].startswith("aegis_") for c in pg.context.cookies())
+    assert errors == []
+
+
+def test_a_new_build_downloads_beside_the_old_and_offers_a_reload(server, browser):
+    from aegis.web import CLIENT_DIR
+
+    errors: list = []
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    page = ctx.new_page()
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    first = wait_for_device_copy(page)["build"]
+    # A second tab of the same browser: when the first takes the new build,
+    # the new worker serves this one too, so it must reload as well.
+    other = ctx.new_page()
+    other.on("pageerror", lambda e: errors.append(str(e)))
+    other.goto(server.url)
+    other.wait_for_selector("#a2[data-view=fleet]")
+    for pg in (page, other):
+        pg.evaluate("window.__oldPage = true")
+    # A new build, as a deploy or an edit to the client makes one: only the
+    # mtime of a theme file moves, and moves back afterwards.
+    css = CLIENT_DIR / "themes" / "ink.css"
+    st = css.stat()
+    try:
+        os.utime(css, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+        page.evaluate("import('/static/js/appworker.js').then(m => m.checkForUpdate())")
+        page.wait_for_selector(".toast .act", timeout=20000)
+        assert "ready" in page.text_content(".toast .msg")
+        page.click(".toast .act")
+        for pg in (page, other):
+            pg.wait_for_function("!window.__oldPage", timeout=20000)
+            pg.wait_for_selector("#a2[data-view=fleet]", timeout=20000)
+        now = page.evaluate(
+            "import('/static/js/appworker.js').then(m => m.deviceCopy())"
+        )
+        assert now["complete"] and now["build"] != first
+        names = page.evaluate("caches.keys()")
+        assert [n for n in names if n.startswith("aegis-")] == [f"aegis-{now['build']}"]
+    finally:
+        os.utime(css, ns=(st.st_atime_ns, st.st_mtime_ns))
+    assert errors == []
+    ctx.close()
+
+
+def test_a_lost_copy_is_downloaded_again(server, page):
+    # Another build's activation, storage pressure or a failed download can
+    # leave the active worker without its copy: it serves from the network and
+    # downloads again when a page asks.
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    build = wait_for_device_copy(page)["build"]
+    page.evaluate("b => caches.delete('aegis-' + b)", build)
+    page.reload()  # from the network now: the worker no longer has the page
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert wait_for_device_copy(page)["build"] == build
+    assert page.errors == []
+
+
+def test_an_action_toast_stays_until_it_is_used(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.evaluate("""() => import('/static/js/toast.js').then(m => m.toast('Sticky', {
+      ms: Infinity, action: { label: 'Do it', run: () => { window.__ran = 1; } } }))""")
+    page.wait_for_selector(".toast .act >> text=Do it")
+    time.sleep(5)  # longer than an info toast lives
+    assert page.locator(".toast:not(.out) .msg >> text=Sticky").count() == 1
+    page.click(".toast .act")
+    assert page.evaluate("window.__ran") == 1
+    page.wait_for_selector(".toast .msg >> text=Sticky", state="detached")
+
+
+def test_a_connection_down_for_three_seconds_shows_the_banner(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert page.is_hidden("#netbanner")
+    server.stop()
+    page.wait_for_selector("#netbanner", state="visible", timeout=10000)
+    assert "retrying" in page.text_content("#netbanner-t")
+    server.start()
+    page.click("#netbanner-retry")
+    page.wait_for_selector("#netbanner", state="hidden", timeout=10000)
+    assert page.errors == []
+
+
+def test_the_device_store_keeps_the_twenty_latest_transcripts(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    got = page.evaluate("""async () => {
+      const s = await import('/static/js/devicestore.js');
+      for (let i = 0; i < 21; i++) await s.saveTranscript('k' + i, { entries: [{ id: 'e' + i }], rev: i });
+      const first = await s.loadTranscript('k0');
+      const last = await s.loadTranscript('k20');
+      await s.saveFleet([{ key: 'a' }]);
+      const fleet = await s.loadFleet();
+      await s.clearDevice();
+      return { first, last, fleet, after: await s.loadFleet(), gone: await s.loadTranscript('k20') };
+    }""")
+    assert got["first"] is None
+    assert got["last"]["rev"] == 20 and got["last"]["entries"] == [{"id": "e20"}]
+    assert got["fleet"]["metas"] == [{"key": "a"}] and got["fleet"]["saved_at"] > 0
+    assert got["after"] is None and got["gone"] is None
+    assert page.errors == []
+
+
+def test_without_indexeddb_the_store_answers_nothing(server, browser):
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.add_init_script(
+        "Object.defineProperty(window, 'indexedDB', { get: () => undefined });"
+    )
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    got = pg.evaluate("""async () => {
+      const s = await import('/static/js/devicestore.js');
+      await s.saveFleet([{ key: 'a' }]);
+      return [await s.loadFleet(), await s.loadTranscript('x')];
+    }""")
+    assert got == [None, None]
+    assert errors == []
+
+
+def tab_strip_height(pg) -> float:
+    return pg.evaluate(
+        "document.querySelector('#a2 > .tabs').getBoundingClientRect().height"
+    )
+
+
+def test_offline_the_fleet_draws_from_the_device(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    sid = spawn(page, "hello")
+    turns_done(page, 1)
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card[data-id='{sid}']")
+    page.set_viewport_size({"width": 390, "height": 844})
+    online = tab_strip_height(page)
+    time.sleep(2.5)  # the debounced save
+    server.stop()
+    page.reload()
+    page.wait_for_selector(f".card[data-id='{sid}']", timeout=10000)
+    assert page.get_attribute("#a2", "data-offline") is not None
+    page.wait_for_selector("#netbanner", state="visible", timeout=10000)
+    # The band names the server even with no welcome to say it.
+    assert page.text_content("#band-server") not in ("", "server")
+    assert "seen" in page.text_content("#netbanner-t")
+    assert "seen" in page.text_content("#band .band-link")
+    # The banner says it: the connection's words would wrap the phone's tab bar.
+    assert tab_strip_height(page) == online
+    server.start()
+    page.wait_for_function(
+        "!document.getElementById('a2').hasAttribute('data-offline')", timeout=20000
+    )
+    page.wait_for_selector(f".card[data-id='{sid}']")
+    assert "seen" not in page.text_content("#band .band-link")
+    assert page.errors == []
+
+
+def test_offline_an_opened_transcript_reads_as_it_was(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    sid = spawn(page, "hello")
+    turns_done(page, 1)
+    live = page.text_content("#entries")
+    time.sleep(2.5)  # the debounced save
+    server.stop()
+    page.reload()
+    page.wait_for_selector("#a2[data-view=session]", timeout=10000)
+    assert page.evaluate("location.hash.slice(3)") == sid
+    page.wait_for_function(
+        "document.querySelectorAll('#entries .row').length > 0", timeout=10000
+    )
+    assert page.text_content("#entries") == live
+    assert page.is_hidden("#tr-offline")
+    server.start()
+    page.wait_for_function(
+        "!document.getElementById('a2').hasAttribute('data-offline')", timeout=20000
+    )
+    assert page.errors == []
+
+
+def test_offline_a_session_never_opened_here_says_so(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    first = spawn(page, "hello")
+    turns_done(page, 1)
+    page.click("#tab-fleet")
+    time.sleep(2.5)  # the Fleet's and the transcript's saves
+    # Its transcript is gone from the device, its card is not: a session
+    # another browser opened, that this one only saw on the Fleet.
+    page.evaluate(
+        """key => new Promise(r => { const q = indexedDB.open('aegis');
+          q.onsuccess = () => { const tx = q.result.transaction('transcripts', 'readwrite');
+            tx.objectStore('transcripts').delete(key); tx.oncomplete = () => r(); }; })""",
+        first,
+    )
+    assert (
+        page.evaluate(
+            "k => import('/static/js/devicestore.js').then(s => s.loadTranscript(k))",
+            first,
+        )
+        is None
+    )
+    server.stop()
+    page.reload()
+    page.wait_for_selector(f".card[data-id='{first}']", timeout=10000)
+    page.evaluate("id => (location.hash = '#s=' + id)", first)
+    page.wait_for_selector("#tr-offline", state="visible", timeout=10000)
+    assert "not saved on this device" in page.text_content("#tr-offline").lower()
+    server.start()
+    page.wait_for_selector("#tr-offline", state="hidden", timeout=20000)
+    page.wait_for_function(
+        "document.querySelectorAll('#entries .row').length > 0", timeout=10000
+    )
+    assert page.errors == []
+
+
+def test_offline_a_rows_detail_needs_the_connection(server, page, tmp_path):
+    (tmp_path / "notes.txt").write_text("one\ntwo\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    spawn(page, f"/read {tmp_path / 'notes.txt'}")
+    turns_done(page, 1)
+    time.sleep(2.5)  # the debounced save
+    server.stop()
+    page.reload()
+    tool = page.locator(".row.tool").first
+    tool.locator("summary").first.click(timeout=10000)
+    page.wait_for_function(
+        "document.querySelector('.row.tool .loading')?.textContent === 'Needs the connection.'",
+        timeout=10000,
+    )
+    server.start()
+    page.wait_for_function(
+        "!document.getElementById('a2').hasAttribute('data-offline')", timeout=20000
+    )
+    # Not cached: closed and opened again online, the row fetches.
+    tool = page.locator(".row.tool").first
+    tool.locator("summary").first.click()
+    tool.locator("summary").first.click()
+    page.wait_for_selector(".row.tool .loading", state="detached", timeout=10000)
+    assert page.errors == []
+
+
+def test_a_link_to_a_session_the_saved_fleet_predates_opens_it(server, browser):
+    # A notification's tap opens /#s=<key> with no window open; the device's
+    # saved Fleet may be older than the session. The page must wait for the
+    # live list instead of sending the person to the Fleet.
+    errors: list = []
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    pg = ctx.new_page()
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(pg, "hello")
+    turns_done(pg, 1)
+    pg.close()  # going hidden saves the Fleet; the older one is written after
+    origin = re.match(r"https?://[^/]+", server.url).group(0)
+    side = ctx.new_page()  # same origin, not the app: it saves nothing itself
+    side.goto(f"{origin}/static/icons/aegis-192.png")
+    side.evaluate("import('/static/js/devicestore.js').then(s => s.saveFleet([]))")
+    side.close()
+    pg = ctx.new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(f"{origin}/#s={sid}")
+    pg.wait_for_selector("#a2[data-view=session]", timeout=10000)
+    pg.wait_for_timeout(500)
+    assert pg.evaluate("location.hash.slice(3)") == sid
+    assert errors == []
+    ctx.close()
+
+
+def test_offline_what_needs_the_server_is_disabled(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    spawn(page, "hello")
+    turns_done(page, 1)
+    server.stop()
+    page.wait_for_selector("#a2[data-offline]", state="attached", timeout=10000)
+    for sel in ["#tab-add", "#attach", "#mic", "#close", "#stop-session"]:
+        assert page.get_attribute(sel, "aria-disabled") == "true", sel
+        assert "connection" in (page.get_attribute(sel, "title") or "").lower(), sel
+    page.click("#tab-add", force=True)
+    page.keyboard.press("Alt+KeyN")  # the key takes the same way round
+    page.wait_for_timeout(300)
+    assert page.get_attribute("#a2", "data-view") == "session"  # no spawn panel opened
+    server.start()
+    page.wait_for_function(
+        "!document.getElementById('a2').hasAttribute('data-offline')", timeout=20000
+    )
+    assert page.get_attribute("#tab-add", "aria-disabled") in (None, "false")
+    assert page.get_attribute("#tab-add", "title") == "New session (Alt+N)"
+    assert page.errors == []
+
+
+def test_a_message_written_offline_is_queued_and_goes_out_on_reconnect(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    spawn(page, "hello")
+    turns_done(page, 1)
+    server.stop()
+    page.wait_for_selector("#a2[data-offline]", state="attached", timeout=10000)
+    page.fill("#input", "ship it")
+    page.press("#input", "Enter")
+    page.wait_for_selector("#queued", state="visible")
+    assert "ship it" in page.text_content("#queued")
+    # Queuing writes the device store first, then clears and redraws: wait.
+    page.wait_for_function("document.getElementById('input').value === ''")
+    page.fill("#input", "and tag it")
+    page.press("#input", "Enter")
+    page.wait_for_function(
+        "t => document.querySelector('#queued .text').textContent.includes(t)",
+        arg="ship it\n\nand tag it",
+    )
+    page.reload()  # the draft lives on the device, not in the page
+    page.wait_for_selector("#queued", state="visible", timeout=10000)
+    server.start()
+    page.wait_for_selector("#queued", state="hidden", timeout=20000)
+    page.wait_for_selector(".toast .msg >> text=queued message sent")
+    turns_done(page, 2)
+    assert "and tag it" in page.text_content("#entries")
+    assert page.errors == []
+
+
+# The outbox with a fake sender in the page: what the send answers, and when.
+# `delay` ms, then reject with `code` (or resolve without one); `calls` counts.
+FAKE_SENDER = """([code, delay]) => import('/static/js/outbox.js').then(o => {
+  window.__calls = [];
+  o.setSender((key, params) => new Promise((ok, no) => {
+    window.__calls.push(params);
+    setTimeout(() => code ? no(Object.assign(new Error('refused: ' + code), { code })) : ok({}), delay);
+  }));
+  return true;
+})"""
+
+
+def drafts(pg) -> dict:
+    return pg.evaluate(
+        "import('/static/js/devicestore.js').then(s => s.outboxAll())"
+        ".then(all => Object.fromEntries(all))"
+    )
+
+
+def outbox_page(server, page) -> str:
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    turns_done(page, 1)
+    return sid
+
+
+def test_a_refusal_keeps_the_draft_says_why_and_the_next_still_goes(server, page):
+    sid = outbox_page(server, page)
+    page.evaluate(FAKE_SENDER, ["quota_closed", 0])
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => o.queue(k, 'ship it', 1e9))", sid
+    )
+    page.evaluate(
+        "import('/static/js/outbox.js').then(o => o.queue('other', 'and this', 1e9))"
+    )
+    page.evaluate("import('/static/js/outbox.js').then(o => o.flushNow())")
+    page.wait_for_selector("#queued.error", timeout=10000)
+    assert "Not sent: refused: quota_closed" in page.text_content("#queued")
+    # The walk went on to the next draft instead of stopping at the refusal.
+    assert len(page.evaluate("window.__calls")) == 2
+    assert drafts(page)[sid]["state"] == "error"
+    assert page.errors == []
+
+
+def test_send_anyway_tapped_twice_sends_once(server, page):
+    sid = outbox_page(server, page)
+    page.evaluate(FAKE_SENDER, ["", 600])
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => o.queue(k, 'ship it', 1e9))", sid
+    )
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => Promise.all([o.sendAnyway(k), o.sendAnyway(k)]))",
+        sid,
+    )
+    assert len(page.evaluate("window.__calls")) == 1
+    assert drafts(page) == {}
+    assert page.errors == []
+
+
+def test_a_draft_discarded_while_it_is_sent_stays_gone(server, page):
+    sid = outbox_page(server, page)
+    page.evaluate(FAKE_SENDER, ["offline", 600])
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => o.queue(k, 'ship it', 1e9))", sid
+    )
+    page.evaluate(
+        "import('/static/js/outbox.js').then(o => { window.__round = o.flushNow(); })"
+    )
+    page.wait_for_selector("#queued.sending", timeout=5000)
+    assert page.is_hidden("#queued [data-act=discard]")  # nothing to tap mid-send
+    page.evaluate("k => import('/static/js/outbox.js').then(o => o.discard(k))", sid)
+    page.evaluate("window.__round")
+    assert drafts(page) == {}
+    page.wait_for_selector("#queued", state="hidden")
+
+
+def test_text_written_while_a_draft_is_sent_becomes_the_next_draft(server, page):
+    sid = outbox_page(server, page)
+    page.evaluate(FAKE_SENDER, ["", 600])
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => o.queue(k, 'ship it', 1e9))", sid
+    )
+    page.evaluate(
+        "import('/static/js/outbox.js').then(o => { window.__round = o.flushNow(); })"
+    )
+    page.wait_for_selector("#queued.sending", timeout=5000)
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => o.queue(k, 'and tag it', 1e9))",
+        sid,
+    )
+    page.evaluate("window.__round")
+    assert [c["text"] for c in page.evaluate("window.__calls")] == ["ship it"]
+    left = drafts(page)[sid]
+    assert left["text"] == "and tag it" and left["state"] == "queued"
+
+
+def test_a_send_its_page_never_heard_back_from_goes_again(server, page):
+    # A page closed mid-send leaves the draft "sending" on the device: the next
+    # flush takes it once it is old enough, and sends it with its revision.
+    sid = outbox_page(server, page)
+    page.evaluate(
+        """k => new Promise(r => { const q = indexedDB.open('aegis'); q.onsuccess = () => {
+          const tx = q.result.transaction('outbox', 'readwrite');
+          tx.objectStore('outbox').put({ text: 'ship it', rev: 1e9, written_at: 0, state: 'sending', sent_at: 0 }, k);
+          tx.oncomplete = () => r(true); }; })""",
+        sid,
+    )
+    page.evaluate(FAKE_SENDER, ["", 0])
+    page.evaluate("import('/static/js/outbox.js').then(o => o.flushNow())")
+    assert page.evaluate("window.__calls") == [{"text": "ship it", "expect_rev": 1e9}]
+    assert drafts(page) == {}
+
+
+def test_a_draft_the_session_moved_past_asks_before_it_is_sent(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    turns_done(page, 1)
+    # A draft written before anything a person reads, as from a page that held
+    # no transcript (rev -1): the session has content now, so it moved on.
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => o.queue(k, 'ship it', -1))", sid
+    )
+    page.evaluate("import('/static/js/outbox.js').then(o => o.flushNow())")
+    page.wait_for_selector("#queued.stale", timeout=10000)
+    assert "moved on" in page.text_content("#queued")
+    page.wait_for_selector(".toast .msg >> text=need")
+    page.click("#queued [data-act=send]")
+    page.wait_for_selector("#queued", state="hidden")
+    turns_done(page, 2)
+    assert "ship it" in page.text_content("#entries")
+    assert page.errors == []
+
+
+def test_two_tabs_flushing_at_once_send_a_draft_once(server, browser):
+    # Two tabs of one browser share the device store, and both flush when the
+    # connection is back: the draft must reach the agent once.
+    errors: list = []
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    page, other = ctx.new_page(), ctx.new_page()
+    for pg in (page, other):
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    turns_done(page, 1)
+    other.goto(server.url)
+    other.wait_for_selector("#a2[data-view=fleet]")
+    page.evaluate(
+        "k => import('/static/js/outbox.js').then(o => o.queue(k, 'ship it', 1e9))",
+        sid,
+    )
+    # Both at the same wall-clock instant, as two reconnects would.
+    at = page.evaluate("Date.now() + 500")
+    for pg in (page, other):
+        pg.evaluate(
+            "at => import('/static/js/outbox.js').then(o =>"
+            " setTimeout(() => o.flushNow(), at - Date.now()))",
+            at,
+        )
+    turns_done(page, 2)
+    page.wait_for_timeout(2000)
+    said = page.evaluate(
+        "[...document.querySelectorAll('#entries .row.user')]"
+        ".filter(r => r.textContent.includes('ship it')).length"
+    )
+    assert said == 1
+    assert errors == []
+    ctx.close()
+
+
+OUTBOX = "import('/static/js/outbox.js')"
+STORED = "import('/static/js/devicestore.js').then(s => s.outboxAll())"
+
+
+def outbox_empties(pg) -> None:
+    # Polled through evaluate, which awaits: wait_for_function takes a returned
+    # Promise as truthy and would pass at once.
+    deadline = time.monotonic() + 5
+    while pg.evaluate(STORED):
+        assert time.monotonic() < deadline, "the draft stayed on the device"
+        time.sleep(0.1)
+
+
+def test_discard_drops_a_stale_draft_from_the_screen_and_the_device(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    page.evaluate(f"k => {OUTBOX}.then(o => o.queue(k, 'ship it', -1))", sid)
+    page.evaluate(f"{OUTBOX}.then(o => o.flushNow())")
+    page.wait_for_selector("#queued.stale", timeout=10000)
+    assert page.is_hidden("#queued [data-act=edit]")
+    page.click("#queued [data-act=discard]")
+    page.wait_for_selector("#queued", state="hidden")
+    outbox_empties(page)
+    assert page.errors == []
+
+
+def test_edit_puts_a_queued_draft_back_in_the_message_box(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    page.evaluate(f"k => {OUTBOX}.then(o => o.queue(k, 'ship it', 1e9))", sid)
+    page.wait_for_selector("#queued", state="visible")
+    assert page.is_hidden("#queued [data-act=send]")
+    page.click("#queued [data-act=edit]")
+    page.wait_for_selector("#queued", state="hidden")
+    assert page.input_value("#input") == "ship it"
+    outbox_empties(page)
+    assert page.errors == []
+
+
+def test_a_draft_for_a_closed_session_offers_copy_and_discard(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    page.evaluate(f"k => {OUTBOX}.then(o => o.queue(k, 'ship it', 1e9))", sid)
+    close_session(page)
+    page.wait_for_selector("#a2:not([data-view=session])")
+    page.evaluate(f"{OUTBOX}.then(o => o.flushNow())")
+    page.wait_for_selector(".toast .msg >> text=needs a look")
+    page.evaluate("id => (location.hash = '#read=' + id)", sid)
+    page.wait_for_selector("#queued.gone", timeout=10000)
+    assert "closed" in page.text_content("#queued")
+    assert page.is_visible("#queued [data-act=copy]")
+    assert page.is_hidden("#queued [data-act=send]")
+    page.click("#queued [data-act=discard]")
+    page.wait_for_selector("#queued", state="hidden")
+    assert page.errors == []
+
+
+def test_a_command_typed_offline_is_not_queued(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    server.stop()
+    page.wait_for_selector("#a2[data-offline]", state="attached", timeout=10000)
+    page.fill("#input", "/model x")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".toast.error .msg >> text=offline")
+    assert page.is_hidden("#queued")
+    assert page.evaluate(STORED) == []
+    server.start()
+    page.wait_for_function(
+        "!document.getElementById('a2').hasAttribute('data-offline')", timeout=20000
+    )
+
+
+def test_a_refused_token_empties_the_device(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    spawn(page, "hello")
+    turns_done(page, 1)
+    time.sleep(2.5)  # the debounced save
+    has = "import('/static/js/devicestore.js').then(s => s.loadFleet())"
+    assert page.evaluate(has)
+    page.context.clear_cookies()
+    page.reload()  # the page comes from the device; the socket is refused
+    page.wait_for_selector("#login", state="visible", timeout=10000)
+    assert page.get_attribute("#a2", "data-view") == "boot"
+    deadline = time.monotonic() + 8
+    while page.evaluate(has) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    assert page.evaluate(has) is None
+    assert page.locator("#tablist .tab").count() == 0
+
+
+def test_a_cold_start_asks_only_for_what_changed(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    turns_done(page, 1)
+    time.sleep(2.5)  # the debounced save
+    subs: list = []
+    page.on(
+        "websocket",
+        lambda ws: ws.on(
+            "framesent", lambda f: subs.append(f) if '"t":"sub"' in f else None
+        ),
+    )
+    page.reload()
+    page.wait_for_selector("#a2[data-view=session]")
+    page.wait_for_function("document.querySelectorAll('#entries .row').length > 0")
+    page.wait_for_function("window.__a2snapshot !== undefined")
+    mine = [json.loads(f) for f in subs if f"transcript:{sid}" in f]
+    assert mine and isinstance(mine[0].get("since"), int) and mine[0]["since"] >= 0
+    assert page.errors == []
+
+
+INSTALLABLE = """
+  window.__prompted = 0;
+  window.__installable = (outcome) => {
+    const e = new Event('beforeinstallprompt', { cancelable: true });
+    e.prompt = () => { window.__prompted++; return Promise.resolve(); };
+    e.userChoice = Promise.resolve({ outcome, platform: 'web' });
+    window.dispatchEvent(e);
+  };
+"""
+
+
+def test_the_install_dialog_downloads_installs_and_offers_notifications(
+    server, browser
+):
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.add_init_script(INSTALLABLE)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    assert pg.is_hidden("#install-offer")
+    pg.evaluate("window.__installable('accepted')")
+    pg.wait_for_selector("#install-offer", state="visible")
+    pg.click("#install-offer [data-act=install]")
+    pg.wait_for_selector("#install-dialog .irow[data-step=files].done", timeout=20000)
+    assert "build" in pg.text_content("#install-dialog .irow[data-step=files] .sub")
+    # The bar spans its row and is full: the Fleet's plan segments are a .pbar
+    # too, 48 px wide, and must not shape this one.
+    # The fill's width moves through a short transition: wait it out, as a
+    # slow runner may measure it half-way.
+    widths = """() => { const b = document.querySelector('#install-dialog .irow[data-step=files] .pbar');
+          return [b.getBoundingClientRect().width, b.querySelector('i').getBoundingClientRect().width]; }"""
+    deadline = time.monotonic() + 5
+    while (w := pg.evaluate(widths))[1] != w[0] and time.monotonic() < deadline:
+        time.sleep(0.05)
+    bar, fill = pg.evaluate(widths)
+    assert bar > 150 and fill == bar
+    pg.click("#install-dialog .irow[data-step=app] button")
+    assert pg.evaluate("window.__prompted") == 1
+    pg.wait_for_selector(
+        "#install-dialog .irow[data-step=app] .pbar.ind", state="visible"
+    )
+    pg.evaluate("window.dispatchEvent(new Event('appinstalled'))")
+    pg.wait_for_selector("#install-dialog .irow[data-step=app].done")
+    pg.click("#install-dialog [data-act=done]")
+    assert pg.is_hidden("#install-dialog") and pg.is_hidden("#install-offer")
+    assert errors == []
+
+
+def test_a_dismissed_prompt_leaves_no_dead_button(server, browser):
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.add_init_script(INSTALLABLE)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("window.__installable('dismissed')")
+    pg.click("#install-offer [data-act=install]")
+    pg.click("#install-dialog .irow[data-step=app] button")
+    # An event prompts once: the button goes, and so does the Fleet's offer.
+    pg.wait_for_selector(
+        "#install-dialog .irow[data-step=app] button", state="detached"
+    )
+    assert "menu" in pg.text_content("#install-dialog .irow[data-step=app] .sub")
+    pg.click("#install-dialog [data-act=done]")
+    assert pg.is_hidden("#install-offer")
+    assert pg.evaluate("window.__prompted") == 1
+    assert errors == []
+
+
+def test_not_now_hides_the_offer_for_thirty_days(server, browser):
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.add_init_script(INSTALLABLE)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("window.__installable('dismissed')")
+    pg.click("#install-offer [data-act=later]")
+    assert pg.is_hidden("#install-offer")
+    pg.reload()
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("window.__installable('dismissed')")
+    assert pg.is_hidden("#install-offer")
+    # Settings still offers it.
+    pg.click("#settings-btn")
+    pg.wait_for_selector("#set-app [data-act=install]")
+    assert errors == []
+
+
+def test_the_install_dialog_fits_a_phone(server, browser):
+    errors: list = []
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True)
+    pg = ctx.new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.add_init_script(INSTALLABLE)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    pg.evaluate("window.__installable('accepted')")
+    pg.click("#install-offer [data-act=install]")
+    pg.wait_for_selector("#install-dialog", state="visible")
+    assert pg.evaluate("document.documentElement.scrollWidth") <= 390
+    box = pg.locator("#install-dialog .panel").bounding_box()
+    assert box["x"] >= 0 and box["x"] + box["width"] <= 390
     assert errors == []
     ctx.close()
 
@@ -3758,7 +5116,7 @@ def test_the_new_tab_on_a_phone_adds_a_line_on_enter_like_a_session(server, brow
     page.tap("#sp-go")
     page.wait_for_selector("#a2[data-view=session]")
     turns_done(page, 1)
-    assert "two" in page.inner_text("#entries")
+    assert "two" in page.text_content("#entries")  # innerText skips offscreen rows
     assert errs == []
 
 
@@ -6102,17 +7460,22 @@ def test_an_agent_toast_goes_to_the_desktop_only_while_the_page_is_hidden(
     other.add_init_script("""
       window.__notes = [];
       window.__hidden = false;
+      // As on Chrome for Android: the constructor is refused, and a notification
+      // can only come from a service worker's registration.
       window.Notification = class {
-        constructor(t, o) { window.__notes.push([t, o]); this.onclick = null; }
+        constructor() { throw new TypeError("Illegal constructor"); }
         static get permission() { return 'granted'; }
         static requestPermission() { return Promise.resolve('granted'); } };
+      ServiceWorkerRegistration.prototype.showNotification = function (t, o) {
+        window.__notes.push([t, o]); return Promise.resolve(); };
       Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
     """)
     other.goto(server.url)
     other.wait_for_selector("#a2[data-view=fleet]")
+    other.evaluate("navigator.serviceWorker.ready.then(() => true)")
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
-    spawn(page, "hello")
+    sid = spawn(page, "hello")
     handle = page.get_attribute(".tab.on", "title").split(":")[0]
     page.fill("#input", '/mcp toast {"text": "Seen while visible"}')
     page.press("#input", "Enter")
@@ -6122,10 +7485,10 @@ def test_an_agent_toast_goes_to_the_desktop_only_while_the_page_is_hidden(
     page.fill("#input", '/mcp toast {"text": "Build failed", "kind": "error"}')
     page.press("#input", "Enter")
     other.wait_for_function("() => window.__notes.length === 1", timeout=8000)
-    assert other.evaluate("window.__notes[0]") == [
-        f"{handle}: error",
-        {"body": "Build failed", "tag": other.evaluate("window.__notes[0][1].tag")},
-    ]
+    title, opts = other.evaluate("window.__notes[0]")
+    assert title == f"{handle}: error"
+    assert opts["body"] == "Build failed"
+    assert opts["data"]["key"] == sid
     # aegis's own toasts answer something done on the page: never on the desktop.
     other.evaluate(
         "async () => (await import('/static/js/toast.js')).toast('Nobody needs you')"

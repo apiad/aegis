@@ -1,4 +1,5 @@
 import json
+import os
 import stat
 import struct
 import time
@@ -329,6 +330,102 @@ def test_spawn_send_and_watch_a_turn(project, fake_claude):
             conn.call("session.send", log_id="nope", text="x")["error"]["code"]
             == "no_session"
         )
+
+
+def _turn_ends(conn):
+    conn.until(
+        lambda m: (
+            m["t"] == "patch"
+            and m["channel"] == "sessions"
+            and any(
+                op.get("upsert", {}).get("state") == "idle"
+                and op["upsert"].get("cost_usd")
+                for op in m["ops"]
+            )
+        )
+    )
+
+
+def _says(s, text):
+    return any(
+        e["kind"] == "user" and text in json.dumps(e) for e in s.fold().entries()
+    )
+
+
+def test_a_send_expecting_the_current_content_is_delivered(project, fake_claude):
+    app = App(make_roots(project, None), claude_bin=fake_claude, interrupt_timeout=0.5)
+    with (
+        TestClient(build_web(app, TOKEN, {"testserver"})) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        conn = Conn(ws).hello()
+        ws.send_json({"t": "sub", "channel": "sessions"})
+        log_id = conn.call("session.spawn", agent="opus")["result"]["log_id"]
+        conn.call("session.send", log_id=log_id, text="hi")
+        _turn_ends(conn)
+        s = app.sessions.open(log_id)
+        r = conn.call(
+            "session.send",
+            log_id=log_id,
+            text="ship it",
+            expect_rev=s.fold().content_index,
+        )
+        assert r.get("error") is None
+        assert _says(s, "ship it")
+
+
+def test_a_send_the_session_moved_past_is_stale_and_sends_nothing(project, fake_claude):
+    app = App(make_roots(project, None), claude_bin=fake_claude, interrupt_timeout=0.5)
+    with (
+        TestClient(build_web(app, TOKEN, {"testserver"})) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        conn = Conn(ws).hello()
+        ws.send_json({"t": "sub", "channel": "sessions"})
+        log_id = conn.call("session.spawn", agent="opus")["result"]["log_id"]
+        s = app.sessions.open(log_id)
+        before = s.fold().rev  # as a page saw it before the turn
+        conn.call("session.send", log_id=log_id, text="hi")
+        _turn_ends(conn)
+        r = conn.call("session.send", log_id=log_id, text="ship it", expect_rev=before)
+        assert r["error"]["code"] == "stale"
+        assert not _says(s, "ship it")
+
+
+def test_a_send_after_only_a_stop_is_not_stale(project, fake_claude):
+    # A stop (as a deploy writes) is not something a person reads: a message
+    # written before it still answers the same transcript.
+    app = App(make_roots(project, None), claude_bin=fake_claude, interrupt_timeout=0.5)
+    with (
+        TestClient(build_web(app, TOKEN, {"testserver"})) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        conn = Conn(ws).hello()
+        ws.send_json({"t": "sub", "channel": "sessions"})
+        log_id = conn.call("session.spawn", agent="opus")["result"]["log_id"]
+        conn.call("session.send", log_id=log_id, text="hi")
+        _turn_ends(conn)
+        s = app.sessions.open(log_id)
+        seen = s.fold().rev
+        assert conn.call("session.stop", log_id=log_id).get("error") is None
+        assert s.fold().rev > seen
+        r = conn.call("session.send", log_id=log_id, text="ship it", expect_rev=seen)
+        assert r.get("error") is None
+        assert _says(s, "ship it")
+
+
+def test_a_send_expecting_a_rev_to_an_archived_session_is_archived(
+    project, fake_claude
+):
+    with (
+        client_for(project, fake_claude) as c,
+        c.websocket_connect("/ws", headers=ORIGIN) as ws,
+    ):
+        conn = Conn(ws).hello()
+        log_id = conn.call("session.spawn", agent="opus")["result"]["log_id"]
+        assert conn.call("session.close", log_id=log_id).get("error") is None
+        r = conn.call("session.send", log_id=log_id, text="x", expect_rev=0)
+        assert r["error"]["code"] == "archived"
 
 
 def test_two_clients_see_the_same_patches(project, fake_claude):
@@ -975,6 +1072,86 @@ def test_the_manifest_names_the_server_and_its_icons_load(project, fake_claude):
         }
         page = c.get("/").text
         assert '<link rel="manifest" href="/manifest.webmanifest">' in page
+
+
+def test_the_service_worker_is_served_from_the_root(project, fake_claude):
+    # From the root, so its scope is the whole client; revalidated on every
+    # update check, so a new client is never hidden behind an old worker.
+    with client_for(project, fake_claude) as c:
+        r = c.get("/sw.js")
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("text/javascript")
+        assert r.headers["cache-control"] == "no-cache"
+        assert "notificationclick" in r.text
+
+
+def test_the_file_list_names_every_client_file_once(project, fake_claude):
+    from aegis.web import CLIENT_DIR
+
+    with client_for(project, fake_claude) as c:
+        r = c.get("/client-files.json")
+        assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
+        doc = r.json()
+        urls = [f["url"] for f in doc["files"]]
+        on_disk = {
+            "/"
+            if p.name == "index.html" and p.parent == CLIENT_DIR
+            else "/static/" + p.relative_to(CLIENT_DIR).as_posix()
+            for p in CLIENT_DIR.rglob("*")
+            if p.is_file()
+            and "__pycache__" not in p.parts
+            and not p.name.startswith(".")
+        }
+        assert sorted(urls) == sorted(on_disk | {"/manifest.webmanifest"})
+        assert len(urls) == len(set(urls))
+        assert "/static/sw.js" not in urls and "/sw.js" not in urls
+        assert doc["bytes"] == sum(f["bytes"] for f in doc["files"])
+        assert len(doc["build"]) == 12
+
+
+def test_a_change_to_the_worker_alone_is_a_new_build(project, fake_claude):
+    from aegis.web import SERVICE_WORKER
+
+    with client_for(project, fake_claude) as c:
+        build = c.get("/client-files.json").json()["build"]
+        st = SERVICE_WORKER.stat()
+        try:
+            os.utime(
+                SERVICE_WORKER, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000)
+            )
+            assert c.get("/client-files.json").json()["build"] != build
+        finally:
+            os.utime(SERVICE_WORKER, ns=(st.st_atime_ns, st.st_mtime_ns))
+
+
+def test_the_worker_carries_the_build_and_a_client_edit_changes_it(
+    project, fake_claude
+):
+    from aegis.web import CLIENT_DIR
+
+    with client_for(project, fake_claude) as c:
+        build = c.get("/client-files.json").json()["build"]
+        sw = c.get("/sw.js").text
+        assert f'"{build}"' in sw and "__AEGIS_BUILD__" not in sw
+        # An edit to any client file, here only its mtime, is a new build, and
+        # the worker's bytes change with it, which is what the browser compares.
+        css = CLIENT_DIR / "themes" / "ink.css"
+        st = css.stat()
+        try:
+            os.utime(css, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+            assert c.get("/client-files.json").json()["build"] != build
+            assert c.get("/sw.js").text != sw
+        finally:
+            os.utime(css, ns=(st.st_atime_ns, st.st_mtime_ns))
+
+
+def test_the_notification_badge_is_a_white_silhouette(project, fake_claude):
+    with client_for(project, fake_claude) as c:
+        r = c.get("/static/icons/aegis-badge-96.png")
+        assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+        assert png_size(r.content) == (96, 96)
+        # IHDR colour type 6: RGBA, so Android has an alpha channel to draw.
+        assert r.content[25] == 6
 
 
 def test_the_artifact_script_and_stylesheet_are_served(project, fake_claude):

@@ -11,7 +11,9 @@ tests/fixtures/session.jsonl:
   the row being in the DOM of headless Chromium, through a real
   ``aegis serve``, p50 and p95;
 - cold load: the fixture replayed to 2,000+ entries, then a page load timed
-  from navigation start to the first frame painted after the snapshot;
+  from navigation start to the first frame painted after the snapshot, with
+  nothing kept on the device; and the transcript bytes a reload receives when
+  the device kept a copy, so it asks only for what changed (#342);
 - memory after that replay: the server's RSS and the page's JS heap;
 - typing in that session: the renderer main thread's time per keystroke in
   the composer, from a trace. Every layout pays a hover hit test and a paint
@@ -332,8 +334,18 @@ def browser_runs(playwright) -> dict:
                     "websocket",
                     lambda ws: ws.on("framereceived", lambda f: frames.append(f)),
                 )
+
+                # The page keeps the transcript on the device 2 s after it
+                # lands; these loads measure the page holding nothing.
+                def forget() -> None:
+                    page.wait_for_timeout(2500)
+                    page.evaluate(
+                        "import('/static/js/devicestore.js').then(s => s.clearDevice())"
+                    )
+
                 loads = []
                 for _ in range(3):
+                    forget()
                     frames.clear()
                     page.reload()
                     page.wait_for_function(
@@ -344,6 +356,17 @@ def browser_runs(playwright) -> dict:
                 snap = [
                     f for f in frames if '"t": "snapshot"' in f and "transcript:" in f
                 ]
+                # A cold start with the copy on the device: it asks since the
+                # copy's revision and receives only what changed.
+                page.wait_for_timeout(2500)
+                frames.clear()
+                page.reload()
+                page.wait_for_function(
+                    "window.__a2snapshot && window.__a2snapshot.painted",
+                    timeout=60_000,
+                )
+                page.wait_for_timeout(500)
+                saved = [f for f in frames if "transcript:" in f]
                 here = page.evaluate("location.hash")
                 page.evaluate("location.hash = '#fleet'")
                 page.wait_for_selector("#a2[data-view=fleet]")
@@ -358,6 +381,7 @@ def browser_runs(playwright) -> dict:
                     cold_load_ms=min(loads),
                     cold_load_entries=page.evaluate("window.__a2snapshot.count"),
                     cold_snapshot_kb=sum(map(len, snap)) / 1000,
+                    cold_saved_kb=sum(map(len, saved)) / 1000,
                     return_tab_kb=sum(map(len, back)) / 1000,
                     server_rss_mb=srv.rss_mb(),
                     browser_heap_mb=page.evaluate("performance.memory.usedJSHeapSize")

@@ -28,6 +28,9 @@ export function redrawFavicon() {
   favicon(count);
 }
 
+const ICON = "/static/icons/aegis-192.png";
+const BADGE = "/static/icons/aegis-badge-96.png";
+
 export function updatePing(metas, { onOpen }) {
   const n = metas.filter((m) => URGENT.has(m.attention)).length;
   if (n !== count || seen === null) {
@@ -35,19 +38,19 @@ export function updatePing(metas, { onOpen }) {
     setTitle(base);
     favicon(n);
   }
-  const now = new Map(metas.map((m) => [m.key, m.attention]));
-  if (seen !== null) {
-    for (const m of metas) {
-      if (!URGENT.has(m.attention) || seen.get(m.key) === m.attention) continue;
-      notify(
-        `${m.title || m.handle}: ${m.attention === "error" ? "error" : "needs you"}`,
-        m.attention_line || "",
-        `${m.key}:${m.attention}:${m.attention_line || ""}`,
-        () => onOpen(m.key),
-      );
-    }
+  // `seen` moves first, so a notification the browser refuses is not tried
+  // again on every update while the page stays hidden.
+  const before = seen;
+  seen = new Map(metas.map((m) => [m.key, m.attention]));
+  if (before === null) return;
+  for (const [key, was] of before) if (URGENT.has(was) && seen.get(key) !== was) withdraw(`${key}:${was}`);
+  for (const m of metas) {
+    if (!URGENT.has(m.attention) || before.get(m.key) === m.attention) continue;
+    const title = `${m.title || m.handle}: ${m.attention === "error" ? "error" : "needs you"}`;
+    // Push carries this server's sessions only: a linked server's always notify here.
+    const source = m.server ? null : m.attention;
+    notify(title, m.attention_line || "", `${m.key}:${m.attention}`, m.key, onOpen, source).catch(refused);
   }
-  seen = now;
 }
 
 // An agent's toast (toast.js) while the page is hidden: the card would leave
@@ -56,28 +59,82 @@ export function updatePing(metas, { onOpen }) {
 export function pingToast(t, onOpen) {
   if (!t.from) return;
   const { handle, id } = t.from;
-  notify(t.kind === "error" ? `${handle}: error` : handle, t.text, `toast:${id}:${t.text}`, () => onOpen(id));
+  const title = t.kind === "error" ? `${handle}: error` : handle;
+  notify(title, t.text, `toast:${id}:${t.text}`, id, onOpen, "toast").catch(refused);
 }
 
-// A desktop notification, only while the page is hidden and the browser allows
-// it; a click brings the page back on the session.
-function notify(title, body, tag, onClick) {
+// A click on a notification the worker showed: sw.js focuses this page and
+// posts which session to open.
+export function listenForOpen(onOpen) {
+  navigator.serviceWorker?.addEventListener("message", (ev) => {
+    if (ev.data?.t === "open" && typeof ev.data.key === "string") onOpen(ev.data.key);
+  });
+}
+
+const refused = (e) => console.warn("aegis: notification refused", e);
+
+function pushCovers(source) {
+  if (!localStorage.getItem("aegis.push.id")) return false;
+  try {
+    return JSON.parse(localStorage.getItem("aegis.push.sources") || "[]").includes(source);
+  } catch {
+    return false;
+  }
+}
+
+// A session answered, here or anywhere, or closed: its notification would only
+// open a question nobody asks any more.
+function withdraw(tag) {
+  navigator.serviceWorker
+    ?.getRegistration()
+    .then((reg) => reg?.getNotifications({ tag }))
+    .then((notes) => notes?.forEach((n) => n.close()))
+    .catch(() => {});
+}
+
+// A notification, only while the page is hidden and the browser allows it. It
+// comes from the service worker's registration when one is active: Chrome on
+// Android refuses `new Notification()` ("Illegal constructor"), and a
+// registration's notification still opens its session after the page is gone.
+// Without an active worker (plain http on another host, or the first load
+// before the worker activates) the constructor still works on a desktop.
+// A source this device gets pushes for (pushpanel.js) is left to the push,
+// so one event never notifies twice; ``source`` is null for an event push
+// does not carry.
+async function notify(title, body, tag, key, onOpen, source) {
   if (!document.hidden || !("Notification" in window) || Notification.permission !== "granted") return;
+  if (pushCovers(source)) return;
+  const reg = await navigator.serviceWorker?.getRegistration();
+  if (reg?.active) {
+    await reg.showNotification(title, { body, tag, renotify: true, icon: ICON, badge: BADGE, data: { key } });
+    return;
+  }
   const note = new Notification(title, { body, tag });
   note.onclick = () => {
     window.focus();
-    onClick();
+    onOpen(key);
   };
 }
 
-export function installBell(button) {
+let drawBell = () => {};
+
+// Redraw the bell after the permission changed somewhere else (install.js).
+export const refreshBell = () => drawBell();
+
+// ``open``, where this browser can take push, opens the bell's panel
+// (pushpanel.js) instead of asking for permission at once.
+export function installBell(button, open = null) {
   const draw = () => {
     const p = "Notification" in window ? Notification.permission : "denied";
+    const push = Boolean(localStorage.getItem("aegis.push.id"));
     button.dataset.state = p;
-    button.title = p === "granted" ? "Desktop notifications are on" : p === "denied" ? "Notifications are blocked in this browser" : "Turn on desktop notifications";
+    button.dataset.push = push ? "on" : "off";
+    button.title = push ? "Push is on for this device" : p === "granted" ? "Desktop notifications are on" : p === "denied" ? "Notifications are blocked in this browser" : "Turn on desktop notifications";
   };
+  drawBell = draw;
   draw();
   button.addEventListener("click", async () => {
+    if (open) return open(button);
     if ("Notification" in window && Notification.permission === "default") await Notification.requestPermission();
     draw();
   });

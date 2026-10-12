@@ -30,9 +30,14 @@ export class Connection {
     this.subs = new Map(); // key -> {channel, server, seq, onSnapshot, onPatch, onError, since}
     this.backoff = 500;
     this.stopped = false;
+    this.retryTimer = null;
+    this.retryAt = 0; // epoch ms of the next attempt, or 0
   }
 
   connect() {
+    clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    this.retryAt = 0;
     this.onState("connecting");
     const ws = (this.ws = new WebSocket(this.url));
     ws.onopen = () => ws.send(JSON.stringify({ t: "hello", proto: PROTO }));
@@ -103,8 +108,16 @@ export class Connection {
     }
     this.onState("closed");
     if (this.stopped) return;
-    setTimeout(() => this.connect(), this.backoff);
+    this.retryAt = Date.now() + this.backoff;
+    this.retryTimer = setTimeout(() => this.connect(), this.backoff);
     this.backoff = Math.min(this.backoff * 2, 5000);
+  }
+
+  // Try now instead of at the end of the backoff: the network or the app
+  // came back, or the person asked.
+  retryNow() {
+    if (this.open || this.stopped || !this.retryTimer) return;
+    this.connect();
   }
 
   call(op, params = {}, server = null) {

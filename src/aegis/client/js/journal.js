@@ -183,8 +183,8 @@ export class Journal {
     if (!this.drawn || this.box.offsetParent === null) return;
     clearTimeout(this.patchTimer);
     // journal.rows takes at most 500 rows; a longer list reloads its first 500.
-    const limit = Math.min(500, Math.max(PAGE, this.rows.length));
-    this.patchTimer = setTimeout(() => this.load(false, limit), 300);
+    // Measured when the reload runs: a page shown meanwhile is kept.
+    this.patchTimer = setTimeout(() => this.load(false, Math.min(500, Math.max(PAGE, this.rows.length))), 300);
   }
 
   params(offset, limit = PAGE) {

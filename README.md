@@ -153,6 +153,11 @@ transcript, so the workplace grows with what its agents build.
   reach (Cuba, some corporate networks) the first install sits on
   "Installing…" and gives up; do it once over a VPN, and the installed app
   then runs without one.
+- **An app that opens offline and pushes.** Installed or not, aegis keeps its
+  client on the device and opens without a connection, showing what it last
+  saw and queueing what you write until the server is back. The bell
+  subscribes a phone to push, so a session that needs you, an error or an
+  agent's toast reaches it with aegis closed.
 - **Dictation.** The mic in the message box (Alt+M) transcribes in your browser
   with a 17.8 MB model downloaded once. The text lands in the box and is never
   sent on its own.

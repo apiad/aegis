@@ -57,12 +57,48 @@ from .app import App
 from .channels import Sub
 from .links import PROTO
 from .ops import Caller, OpError
+from .version import running
 from .tokens import load_or_create_token  # noqa: F401 — cli and tests import it from here
 
 log = logging.getLogger("aegis.web")
 
 HELLO_TIMEOUT_S = 5.0
 CLIENT_DIR = Path(__file__).parent / "client"
+# The service worker lives outside CLIENT_DIR, so /static never serves it: it is
+# served only from the root, where its scope is the whole client.
+SERVICE_WORKER = Path(__file__).parent / "sw.js"
+
+
+def client_files(version: str) -> dict:
+    """The client as the service worker keeps it: every file under CLIENT_DIR by
+    the URL the page asks for it, plus the manifest, and a build id hashed from
+    each file's path, size and mtime, the worker's own and the version, so a
+    change to sw.js alone is a new build with a cache of its own. Computed per
+    request: about a hundred ``stat`` calls, and an edit to the client while
+    the server runs is a new build at once, which is what the browser's byte
+    comparison of ``/sw.js`` needs to see."""
+    h = hashlib.sha256(version.encode())
+    files = []
+    for path in sorted(CLIENT_DIR.rglob("*")):
+        if (
+            not path.is_file()
+            or "__pycache__" in path.parts
+            or path.name.startswith(".")
+        ):
+            continue
+        rel = path.relative_to(CLIENT_DIR).as_posix()
+        st = path.stat()
+        h.update(f"{rel}\0{st.st_size}\0{st.st_mtime_ns}\n".encode())
+        files.append(
+            {
+                "url": "/" if rel == "index.html" else f"/static/{rel}",
+                "bytes": st.st_size,
+            }
+        )
+    st = SERVICE_WORKER.stat()
+    h.update(f"sw.js\0{st.st_size}\0{st.st_mtime_ns}\n".encode())
+    return {"build": h.hexdigest()[:12], "version": version, "files": files}
+
 
 # Close codes, in the 4000 range websockets leave to applications.
 BAD_ORIGIN = 4403
@@ -122,6 +158,7 @@ def build_web(
 ) -> Starlette:
     # Host header -> the one origin a socket naming that host must come from.
     public = {urlsplit(o).netloc: o for o in map(public_origin, origins)}
+    app.push.origins = list(public.values())  # the VAPID contact (push.py)
     cookie = cookie_name(app.roots.state_root)
 
     # ``token`` is the admin's (tokens.py); any token the store knows signs in.
@@ -197,12 +234,35 @@ def build_web(
         ],
     }
 
+    version = running()["version"] or "dev"
+
+    def listing() -> dict:
+        doc = client_files(version)
+        doc["files"].append(
+            {"url": "/manifest.webmanifest", "bytes": len(json.dumps(manifest))}
+        )
+        doc["bytes"] = sum(f["bytes"] for f in doc["files"])
+        return doc
+
+    async def files_list(request):
+        """What the service worker downloads to open the client offline (sw.js)."""
+        return JSONResponse(listing(), headers={"Cache-Control": "no-cache"})
+
     async def webmanifest(request):
-        """What Chrome installs: the server's name, so zion and the VPS differ
-        on a home screen. No service worker: Chrome installs from its menu
-        without one since 108 on Android, and a caching one could serve a stale
-        client after an upgrade."""
+        """What Chrome installs: the server's name, so two servers differ on a
+        home screen. The service worker is ``sw.js``, and it keeps this
+        manifest with the build it belongs to."""
         return JSONResponse(manifest, media_type="application/manifest+json")
+
+    async def service_worker(request):
+        """The service worker, from the root so its scope is the whole client,
+        with this build's id written in: a new build changes the worker's
+        bytes, which is how the browser finds it. ``no-cache`` makes the
+        browser revalidate it on every update check."""
+        text = SERVICE_WORKER.read_text().replace("__AEGIS_BUILD__", listing()["build"])
+        return Response(
+            text, media_type="text/javascript", headers={"Cache-Control": "no-cache"}
+        )
 
     async def sent_file(request):
         """A file an agent sent. The id is the secret (files.py); a Host the
@@ -508,6 +568,8 @@ def build_web(
             Route("/", index),
             Route("/login", login, methods=["POST"]),
             Route("/manifest.webmanifest", webmanifest),
+            Route("/sw.js", service_worker),
+            Route("/client-files.json", files_list),
             Mount("/static", ClientFiles(directory=CLIENT_DIR)),
             Route("/files/{file_id}/{name}", sent_file),
             Route("/via/{server}/files/{file_id}/{name}", via_file),

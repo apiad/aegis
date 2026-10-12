@@ -8,7 +8,9 @@
 // preset looks like the session it starts.
 //
 // "This browser" comes first: the theme, which only this browser keeps
-// (localStorage), so it is not part of the form and Save does not write it.
+// (localStorage), so it is not part of the form and Save does not write it,
+// then this device as an app: installed or not, and the build the service
+// worker keeps for offline use (install.js, appworker.js).
 //
 // The Servers section lists the servers this one links (links.py), and a
 // picker points the form at a linked server's .aegis.yaml: the same `config.*`
@@ -17,6 +19,10 @@
 import { elapsed } from "./gauges.js";
 import "./pick.js";
 import { who } from "./me.js";
+import { deviceCopy } from "./appworker.js";
+import { installState, onInstallState, openInstallDialog } from "./install.js";
+import { onPushState, pushState, unsubscribePush } from "./pushpanel.js";
+import { markNeedsNet, offline } from "./net.js";
 
 const h = (tag, props = {}, ...kids) => {
   const el = Object.assign(document.createElement(tag), props);
@@ -143,7 +149,16 @@ export class Settings {
     } catch (e) {
       this.status = e.message;
     }
-    if (!this.dirty) this.draw();
+    if (this.dirty) return;
+    // A redraw replaces the form: never under a field being typed in, which
+    // would drop what was typed. It waits until the focus leaves the page.
+    if (!this.box.contains(document.activeElement)) return this.draw();
+    const later = () =>
+      setTimeout(() => {
+        if (this.box.contains(document.activeElement)) return this.box.addEventListener("focusout", later, { once: true });
+        if (!this.dirty) this.draw();
+      });
+    this.box.addEventListener("focusout", later, { once: true });
   }
 
   touch() {
@@ -215,11 +230,21 @@ export class Settings {
       this.themeChip.setAttribute("aria-label", "Theme");
       this.themeChip.options = this.themes;
       this.themeChip.addEventListener("change", () => this.setTheme(this.themeChip.value));
+      this.appNode = h("div", { id: "set-app" });
+      this.pushNode = h("div", { id: "set-push" });
+      onInstallState(() => this.drawApp());
+      onPushState(() => {
+        this.drawApp();
+        this.loadPush();
+      });
+      this.loadPush();
       this.browserNode = h(
         "section",
         { className: "set-browser", id: "set-browser" },
         h("h3", { textContent: "This browser" }),
         h("div", { className: "set-browser-row" }, h("span", { className: "set-browser-k", textContent: "Theme" }), this.themeChip),
+        this.appNode,
+        this.pushNode,
         h("p", { className: "set-none", textContent: "Kept in this browser only: other browsers and devices keep their own." }),
       );
       // The draw that waited for the chip runs once the focus has left it.
@@ -230,7 +255,68 @@ export class Settings {
       );
     }
     this.themeChip.value = document.documentElement.dataset.theme;
+    this.drawApp();
     return this.browserNode;
+  }
+
+  // Whether aegis is installed here, and what the service worker keeps.
+  drawApp() {
+    const row = (k, v) => h("div", { className: "set-browser-row" }, h("span", { className: "set-browser-k", textContent: k }), v);
+    const { canPrompt, installed } = installState();
+    let app;
+    if (installed) app = h("span", { className: "set-app-v", textContent: "installed" });
+    else if (canPrompt) {
+      app = button("Install", null, openInstallDialog);
+      app.dataset.act = "install";
+    } else app = h("span", { className: "set-app-v", textContent: "your browser's menu installs it" });
+    const copy = h("span", { className: "set-app-v", textContent: navigator.serviceWorker ? "downloading" : "not kept: needs https" });
+    const push = pushState();
+    const note = !push.supported
+      ? "not here: push needs https"
+      : push.subscribed
+        ? `push on · ${push.sources.length} sources · the bell chooses them`
+        : "push off · the bell turns it on";
+    this.appNode.replaceChildren(row("App", app), row("Offline copy", copy), row("Notifications", h("span", { className: "set-app-v", textContent: note })));
+    deviceCopy().then((c) => {
+      if (c?.complete) copy.textContent = `build ${c.build} · ${Math.round(c.bytes / 1024).toLocaleString()} KB · ready`;
+    });
+  }
+
+  // Every device this token gets push on (push.py), so a lost phone can be
+  // cut off from another device. Always this server's: push is per server,
+  // whichever server the form below edits.
+  loadPush() {
+    this.conn
+      .call("push.list")
+      .then(({ subscriptions }) => {
+        this.pushRows = subscriptions.filter((r) => r.owner === who.name);
+        this.drawPush();
+      })
+      .catch(() => {}); // offline: the list waits for the next change
+  }
+
+  drawPush() {
+    const here = pushState().id;
+    const when = (t) => (t ? new Date(t * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" }) : "never");
+    const rows = (this.pushRows || []).map((r) => {
+      const remove = button("Remove", null, async () => {
+        remove.disabled = true;
+        if (r.id === here) await unsubscribePush().catch(() => {});
+        else await this.conn.call("push.remove", { id: r.id }).catch(() => {});
+        this.loadPush();
+      });
+      const facts = [r.sources.join(", ") || "no sources", `last delivered ${when(r.last_ok_at)}`, r.failures ? `${r.failures} failed` : null].filter(Boolean);
+      const el = h(
+        "div",
+        { className: "set-push-row" },
+        h("span", { className: "set-push-dev" }, h("b", { textContent: r.device }), r.id === here && h("span", { className: "set-push-here", textContent: " · this device" })),
+        h("span", { className: "set-push-facts", textContent: facts.join(" · ") }),
+        remove,
+      );
+      el.dataset.id = r.id;
+      return el;
+    });
+    this.pushNode.replaceChildren(...(rows.length ? [h("div", { className: "set-browser-k", textContent: "Push to" }), ...rows] : []));
   }
 
   // The servers: this one, each link with its state, and a form to add one.
@@ -811,7 +897,7 @@ export class Settings {
     const dirty = this.dirty || this.policyChanges().length > 0;
     const status = this.status || (dirty ? "Unsaved changes" : "");
     b.classList.toggle("dirty", dirty);
-    const save = button("Save changes", "set-save", () => this.save(), "btn primary");
+    const save = button("Save changes", "set-save", () => !offline() && this.save(), "btn primary needs-net");
     save.disabled = !dirty || this.saving;
     const discard = button("Discard", "set-discard", () => {
       this.load(this.wire);
@@ -822,6 +908,7 @@ export class Settings {
     }, "btn");
     discard.hidden = !dirty;
     b.replaceChildren(h("span", { id: "set-status", textContent: status }), discard, save);
+    markNeedsNet(b);
   }
 
   // Each finding marks the card or row Python named; a problem with none to
