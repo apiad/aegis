@@ -34,6 +34,7 @@ import getpass
 import logging
 import re
 import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import Literal
 
@@ -89,6 +90,8 @@ from .version import Versions
 log = logging.getLogger("aegis.app")
 # A log id as registry.new_log_id mints it, checked on what a link answers.
 LOG_ID = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{6}$")
+# How many nonced sends the server remembers, across every session.
+SEND_NONCES = 512
 
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 Permission = Literal["read", "write", "full", "auto"]
@@ -135,6 +138,9 @@ class SendParams(_Strict):
     attachments: list[str] = Field(default_factory=list, max_length=att.MAX_FILES)
     # The transcript revision a message written offline answered (outbox.js).
     expect_rev: int | None = None
+    # The page's id for this message: a retry with the same nonce is answered
+    # without being delivered again (#350).
+    nonce: str | None = Field(default=None, min_length=8, max_length=64)
 
     @model_validator(mode="after")
     def _says_something(self) -> "SendParams":
@@ -327,6 +333,9 @@ class App:
         self.catalogs = commands.Catalogs(
             roots.state_root / "stderr" / "catalog-probe.log"
         )
+        # The last sends that carried a nonce, oldest first: (log_id, nonce)
+        # -> the delivery a retry answers with instead of delivering again.
+        self._sends: OrderedDict[tuple[str, str], asyncio.Future] = OrderedDict()
         reg.catalogs = self.catalogs
         reg.mcp_url = f"{base_url.rstrip('/')}{MCP_PATH}" if base_url else None
         self.versions = Versions()
@@ -984,8 +993,7 @@ class App:
                     ) from e
             return {"log_id": s.log_id, "handle": s.handle}
 
-        @r.op("session.send", SendParams, owned="log_id")
-        async def send(p: SendParams, caller):
+        async def deliver(p: SendParams, caller):
             s = reg.open(p.log_id)
             # A message written offline carries the transcript's revision as the
             # writer saw it: if anything a person reads has happened since, it
@@ -1041,6 +1049,29 @@ class App:
                 ) from e
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e
+
+        @r.op("session.send", SendParams, owned="log_id")
+        async def send(p: SendParams, caller):
+            # A page that got no answer in time sends again with the same nonce,
+            # and a stalled socket can flush every copy at once (#350): each
+            # copy answers with the first one's delivery. One that failed is
+            # forgotten, so its retry is delivered. Shielded: a caller that
+            # goes away does not cut a delivery short.
+            if p.nonce is None:
+                return await deliver(p, caller)
+            key = (p.log_id, p.nonce)
+            first = self._sends.get(key)
+            if first is None:
+                first = self._sends[key] = asyncio.ensure_future(deliver(p, caller))
+                if len(self._sends) > SEND_NONCES:
+                    self._sends.popitem(last=False)
+
+                def forget(f: asyncio.Future) -> None:
+                    if (f.cancelled() or f.exception()) and self._sends.get(key) is f:
+                        del self._sends[key]
+
+                first.add_done_callback(forget)
+            return await asyncio.shield(first)
 
         @r.op("attachment.begin", AttachBegin, owned="log_id")
         async def attachment_begin(p: AttachBegin, caller):
