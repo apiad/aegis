@@ -3,6 +3,8 @@
 // them through this one, and a click on one comes back here to open its
 // session, also when no aegis window is open. It caches nothing yet.
 
+const BUILD = "__AEGIS_BUILD__"; // web.py writes the build id here
+
 // Taking over at once is safe only while nothing is cached: once the worker
 // serves a build's files, a new one must wait until the page reloads, or a
 // page of the old build would load files of the new one.

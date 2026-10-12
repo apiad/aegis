@@ -1,4 +1,5 @@
 import json
+import os
 import stat
 import struct
 import time
@@ -986,6 +987,51 @@ def test_the_service_worker_is_served_from_the_root(project, fake_claude):
         assert r.headers["content-type"].startswith("text/javascript")
         assert r.headers["cache-control"] == "no-cache"
         assert "notificationclick" in r.text
+
+
+def test_the_file_list_names_every_client_file_once(project, fake_claude):
+    from aegis.web import CLIENT_DIR
+
+    with client_for(project, fake_claude) as c:
+        r = c.get("/client-files.json")
+        assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
+        doc = r.json()
+        urls = [f["url"] for f in doc["files"]]
+        on_disk = {
+            "/"
+            if p.name == "index.html" and p.parent == CLIENT_DIR
+            else "/static/" + p.relative_to(CLIENT_DIR).as_posix()
+            for p in CLIENT_DIR.rglob("*")
+            if p.is_file()
+            and "__pycache__" not in p.parts
+            and not p.name.startswith(".")
+        }
+        assert sorted(urls) == sorted(on_disk | {"/manifest.webmanifest"})
+        assert len(urls) == len(set(urls))
+        assert "/static/sw.js" not in urls and "/sw.js" not in urls
+        assert doc["bytes"] == sum(f["bytes"] for f in doc["files"])
+        assert len(doc["build"]) == 12
+
+
+def test_the_worker_carries_the_build_and_a_client_edit_changes_it(
+    project, fake_claude
+):
+    from aegis.web import CLIENT_DIR
+
+    with client_for(project, fake_claude) as c:
+        build = c.get("/client-files.json").json()["build"]
+        sw = c.get("/sw.js").text
+        assert f'"{build}"' in sw and "__AEGIS_BUILD__" not in sw
+        # An edit to any client file, here only its mtime, is a new build, and
+        # the worker's bytes change with it, which is what the browser compares.
+        css = CLIENT_DIR / "themes" / "ink.css"
+        st = css.stat()
+        try:
+            os.utime(css, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+            assert c.get("/client-files.json").json()["build"] != build
+            assert c.get("/sw.js").text != sw
+        finally:
+            os.utime(css, ns=(st.st_atime_ns, st.st_mtime_ns))
 
 
 def test_the_notification_badge_is_a_white_silhouette(project, fake_claude):
