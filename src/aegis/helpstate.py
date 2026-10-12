@@ -7,8 +7,8 @@ the name percent-quoted so that one read from a hand-edited tokens.json, such as
     {"tutorial": true, "toured": "2.6.0"}
 
 ``tutorial`` turns true when the person starts any tutorial or dismisses the
-tutorial hint. ``toured`` is the release whose notes they last toured or
-dismissed. The record is the server's, not the browser's, so a person sees the
+tutorial hint. ``toured`` is the newest release whose notes they toured
+or dismissed. The record is the server's, not the browser's, so a person sees the
 same new-tab hints on every device.
 
 The first read of a principal with no record decides who is new. A principal
@@ -76,6 +76,11 @@ class HelpState:
         self._update(principal, tutorial=True)
 
     def mark_toured(self, principal: str, version: str) -> None:
+        """Never backwards: after a downgrade and back, the releases the
+        person toured on the newer install are not offered again."""
+        rec = self._read(principal)
+        if rec and rec["toured"] and newer(rec["toured"], version):
+            return
         self._update(principal, toured=version)
 
     def _update(self, principal: str, **changes: object) -> None:

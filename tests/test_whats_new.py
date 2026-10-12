@@ -153,3 +153,14 @@ async def test_notes_that_lack_the_installed_release_offer_and_tour_nothing(
         await guide(app)
     assert e.value.code == "no_release_notes"
     assert not app.sessions.sessions
+
+
+async def test_a_tour_on_an_older_install_keeps_the_newer_tour(start, tmp_path):
+    """After a downgrade, touring or dismissing the older release must not
+    lower the record, or the way back up offers what was toured."""
+    app = await start({"tutorial": True, "toured": "99.0.0"})
+    assert (await state(app))["whats_new"] is None
+    await app.registry.call("help.dismiss", {"what": "whats_new"})
+    md = await first_user_md(app, (await guide(app))["log_id"])
+    assert toured_in(md) == [RELEASES[0]]
+    assert json.loads(record_path(tmp_path).read_text())["toured"] == "99.0.0"
