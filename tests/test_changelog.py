@@ -200,3 +200,60 @@ def test_a_new_section_that_sorts_first_goes_above_the_existing_one(tmp_path):
     out = collate(HEADER, read_fragments(tmp_path))
     unreleased = out.split("## [0.39.0]")[0]
     assert unreleased.index("### Added") < unreleased.index("### Changed")
+
+
+# ---------- the help line ------------------------------------------------
+
+
+def test_a_help_line_is_kept_as_the_entrys_last_line(tmp_path):
+    """/whats-new hands each entry's page to its guide, so the line survives
+    collation, indented so Markdown keeps it inside the bullet."""
+    _write(
+        tmp_path, "7-a.added.md", "- **A.** Body\n  more.\nhelp: monitors#start-one\n"
+    )
+    [f] = read_fragments(tmp_path)
+    assert (f.body, f.help) == ("- **A.** Body\n  more.", "monitors#start-one")
+    out = collate(HEADER, [f], version="0.40.0", date="2026-09-28")
+    assert "- **A.** Body\n  more.\n  help: monitors#start-one\n" in out
+
+
+def test_check_refuses_a_feature_fragment_without_a_help_line(tmp_path, capsys):
+    _write(tmp_path, "7-a.added.md", "- **A.**\n")
+    _write(tmp_path, "8-b.changed.md", "- **B.**\nhelp: sessions\n")
+    _write(tmp_path, "9-c.fixed.md", "- **C.**\n")
+    _write(
+        tmp_path, "10-d.changed.md", "- **D.**\nhelp: sessions\nand a line after it\n"
+    )
+    assert changelog.main(["check", "--dir", str(tmp_path)]) == 1
+    err = capsys.readouterr().err
+    assert "7-a.added.md" in err and "10-d.changed.md" in err
+    assert "8-b" not in err and "9-c" not in err
+
+
+def test_check_passes_when_every_feature_names_its_page(tmp_path, capsys):
+    _write(tmp_path, "8-b.changed.md", "- **B.**\nhelp: sessions\n")
+    _write(tmp_path, "9-c.fixed.md", "- **C.**\n")
+    assert changelog.main(["check", "--dir", str(tmp_path)]) == 0
+    assert "2 fragment(s), all valid" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "help: Sessions",
+        "help:sessions",
+        "help: sessions page",
+        "help: sessions#",
+        "help:  sessions",
+    ],
+)
+def test_a_malformed_help_line_is_refused_by_name(tmp_path, line):
+    _write(tmp_path, "7-a.added.md", f"- **A.**\n{line}\n")
+    with pytest.raises(FragmentError, match="7-a.added.md"):
+        read_fragments(tmp_path)
+
+
+def test_a_help_line_alone_is_refused(tmp_path):
+    _write(tmp_path, "7-a.added.md", "help: sessions\n")
+    with pytest.raises(FragmentError, match="7-a.added.md"):
+        read_fragments(tmp_path)

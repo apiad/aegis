@@ -118,3 +118,19 @@ rules:
       regex: '`((?:src|docs|tests|know-how|scripts|changelog\.d)/[A-Za-z0-9_./-]+)`'
     require:
       exists: true
+
+  # /whats-new hands each changelog entry's help page to its guide, so a
+  # feature fragment names one. The "last line" half is changelog-check's and
+  # tests/test_help_pages.py's; this asks that the line is there at all.
+  - name: "a fragment that adds or changes a feature names its help page"
+    contain:
+      in: ["changelog.d/*.added.md", "changelog.d/*.changed.md"]
+      zone: { after: '\A' }          # the whole file
+      matches: '^help: [a-z0-9-]+(#[a-z0-9-]+)?$'
+
+  - name: "the help page a fragment names exists"
+    extract:
+      file: "changelog.d/*.md"
+      regex: '^help: ([a-z0-9-]+)'
+      sub: ['^(.*)$', 'src/aegis/help/\1.md']
+    require: { exists: true }

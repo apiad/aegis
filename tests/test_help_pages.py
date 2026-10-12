@@ -20,7 +20,8 @@ from aegis import cli
 from aegis.app import App
 from aegis.commands import AEGIS
 from aegis.config import AgentDoc, ConfigDoc, QueueDoc
-from aegis.helppages import HELP_DIR, KINDS, Index, load
+from aegis import helppages
+from aegis.helppages import HELP_DIR, KINDS, Index, Page, load
 from aegis.ops import Caller, OpError
 from aegis.roots import make_roots
 
@@ -192,3 +193,42 @@ async def test_the_help_tab_lists_every_page_and_agents_cannot_ask(
     with pytest.raises(OpError) as e:
         await app.registry.call("help.pages", {}, Caller("agent", log_id="x"))
     assert e.value.code == "not_for_agents"
+
+
+REPO = Path(__file__).resolve().parents[1]
+FRAGMENT_HELP = re.compile(r"^help: ([a-z0-9-]+)(?:#([a-z0-9-]+))?$")
+
+
+def fragment_problems(directory: Path, pages: dict[str, Page]) -> list[str]:
+    """Each added or changed fragment whose last line does not name a real help
+    page and section, as "<file>: <why>"."""
+    out = []
+    found = [*directory.glob("*.added.md"), *directory.glob("*.changed.md")]
+    for f in sorted(found, key=lambda p: p.name):
+        lines = f.read_text().strip().splitlines()
+        m = FRAGMENT_HELP.match(lines[-1]) if lines else None
+        if m is None:
+            out.append(f"{f.name}: the last line is not 'help: page[#section]'")
+        elif m[1] not in pages:
+            out.append(f"{f.name}: no help page {m[1]!r}")
+        elif m[2] and m[2] not in {s.slug for s in pages[m[1]].sections}:
+            out.append(f"{f.name}: page {m[1]!r} has no section {m[2]!r}")
+    return out
+
+
+def test_every_feature_fragment_names_a_help_page_that_exists():
+    pages = {p.id: p for p in helppages.load()}
+    assert fragment_problems(REPO / "changelog.d", pages) == []
+
+
+def test_the_fragment_check_fails_on_a_missing_line_page_or_section(tmp_path):
+    pages = {p.id: p for p in helppages.load()}
+    (tmp_path / "1-ok.added.md").write_text("- **A.**\nhelp: transcript#tool-rows\n")
+    (tmp_path / "2-none.changed.md").write_text("- **B.**\n")
+    (tmp_path / "3-page.added.md").write_text("- **C.**\nhelp: no-such-page\n")
+    (tmp_path / "4-sec.added.md").write_text(
+        "- **D.**\nhelp: transcript#no-such-section\n"
+    )
+    (tmp_path / "5-fix.fixed.md").write_text("- **E.**\n")
+    names = [p.split(":")[0] for p in fragment_problems(tmp_path, pages)]
+    assert names == ["2-none.changed.md", "3-page.added.md", "4-sec.added.md"]

@@ -51,6 +51,15 @@ _UNRELEASED = "## [Unreleased]"
 # make the file unique and the PR readable.
 _NAME = re.compile(r"^(?P<slug>.+)\.(?P<category>[a-z]+)\.md$")
 
+# The last line of an added or changed fragment: the help page that shows the
+# feature (src/aegis/help/), which /whats-new hands to its guide. The same
+# pattern as the rift rule in .rift.yaml.
+_HELP = re.compile(r"^help: (?P<ref>[a-z0-9-]+(?:#[a-z0-9-]+)?)$")
+
+#: Categories whose fragments describe something a person uses, so they must
+#: name the help page that shows it.
+NEEDS_HELP: tuple[str, ...] = ("added", "changed")
+
 
 class FragmentError(ValueError):
     """A fragment that would be silently dropped from the release notes.
@@ -66,6 +75,7 @@ class Fragment:
     slug: str
     category: str
     body: str  # the bullet(s), verbatim, no trailing newline
+    help: str | None = None  # "page" or "page#section", from the last line
 
 
 def parse_fragment_name(name: str) -> tuple[str, str]:
@@ -83,6 +93,28 @@ def parse_fragment_name(name: str) -> tuple[str, str]:
             f"use one of: {', '.join(CATEGORIES)}"
         )
     return m.group("slug"), category
+
+
+def split_help(name: str, text: str) -> tuple[str, str | None]:
+    """The body and the help reference of a fragment's stripped text.
+
+    Only a last line starting ``help:`` is a help line. A malformed one is
+    refused rather than kept as prose, because a guide given a wrong page
+    reads nothing."""
+    head, _, last = text.rpartition("\n")
+    if not last.startswith("help:"):
+        return text, None
+    m = _HELP.match(last)
+    if m is None:
+        raise FragmentError(
+            f"{name}: {last!r} is not 'help: page' or 'help: page#section' "
+            "(lowercase, digits and hyphens)"
+        )
+    if not head.strip():
+        raise FragmentError(
+            f"{name} has a help line and nothing else; write the bullet"
+        )
+    return head.rstrip(), m["ref"]
 
 
 def read_fragments(directory: Path) -> list[Fragment]:
@@ -104,15 +136,27 @@ def read_fragments(directory: Path) -> list[Fragment]:
         body = path.read_text().strip()
         if not body:
             raise FragmentError(f"{path.name} is empty — write the bullet or delete it")
-        out.append(Fragment(slug=slug, category=category, body=body))
+        body, ref = split_help(path.name, body)
+        out.append(Fragment(slug=slug, category=category, body=body, help=ref))
     return out
 
 
 def _render(fragments: list[Fragment]) -> dict[str, list[str]]:
     by_category: dict[str, list[str]] = {}
     for f in fragments:
-        by_category.setdefault(f.category, []).append(f.body)
+        # Indented, so Markdown keeps it inside the bullet as its last line.
+        entry = f.body if f.help is None else f"{f.body}\n  help: {f.help}"
+        by_category.setdefault(f.category, []).append(entry)
     return by_category
+
+
+def missing_help(fragments: list[Fragment]) -> list[str]:
+    """The added and changed fragments that name no help page, by filename."""
+    return [
+        f"{f.slug}.{f.category}.md"
+        for f in fragments
+        if f.category in NEEDS_HELP and f.help is None
+    ]
 
 
 def _section_bounds(text: str, start: int) -> int:
@@ -247,6 +291,15 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if args.verb == "check":
+        missing = missing_help(fragments)
+        for name in missing:
+            print(
+                f"error: {name} names no help page; end it with "
+                "'help: page' or 'help: page#section' (changelog.d/README.md)",
+                file=sys.stderr,
+            )
+        if missing:
+            return 1
         print(f"{len(fragments)} fragment(s), all valid")
         return 0
 
