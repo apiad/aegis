@@ -658,6 +658,12 @@ class App:
             return reg.rename(s.log_id, None, arg)
         if name == "help":
             return None  # the client opens its menu or the Help tab; nothing goes to claude
+        if name == "tutorial":
+            # A guide in a new tab, on default_agent in this session's
+            # directory (help_ops.help_guide); the client opens its tab.
+            params = {"kind": "tutorial", "page": arg or None, "cwd": str(s.spec.cwd)}
+            r = await self.registry.call("help.guide", params, caller)
+            return {**r, "server": self.server_name}
         if name == "stop":
             await s.stop()
             return s.wire()

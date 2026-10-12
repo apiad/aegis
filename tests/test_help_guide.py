@@ -9,6 +9,7 @@ from aegis.helppages import load
 from aegis.helpstate import installed
 from aegis.ops import USER, Caller, OpError, Principal
 from aegis.roots import make_roots
+from aegis.transcript.store import read_store
 
 from .conftest import until
 
@@ -116,3 +117,30 @@ async def test_whats_new_guides_wait_for_slice_4(app):
         await call(app, "help.guide", {"kind": "whats_new"})
     assert e.value.code == "not_yet"
     assert app.sessions.sessions == {}
+
+
+async def test_slash_tutorial_runs_on_default_agent_in_the_sessions_directory(
+    app, tmp_path
+):
+    work = tmp_path / "work"
+    work.mkdir()
+    src = await call(app, "session.spawn", {"agent": "quick", "cwd": str(work)})
+    r = await call(
+        app, "session.send", {"log_id": src["log_id"], "text": "/tutorial monitors"}
+    )
+    assert r["server"] == app.server_name
+    s = app.sessions.sessions[r["log_id"]]
+    assert (s.spec.agent, s.spec.cwd) == ("opus", work.resolve())
+    assert "`monitors`" in await replied(app, r["log_id"])
+
+
+async def test_slash_tutorial_alone_runs_getting_started_and_completes_tutorials(app):
+    src = await call(app, "session.spawn", {"agent": "opus"})
+    listed = await call(app, "commands.list", {"log_id": src["log_id"]})
+    tut = next(c for c in listed["commands"] if c["name"] == "tutorial")
+    assert (tut["hint"], tut["args"], tut["source"]) == ("[page]", "tutorials", "aegis")
+    r = await call(app, "session.send", {"log_id": src["log_id"], "text": "/tutorial"})
+    assert "`getting-started`" in await replied(app, r["log_id"])
+    # Nothing went to the session it was typed in.
+    records, _ = read_store(app.sessions.store_path(src["log_id"]))
+    assert not [x for x in records if x.get("kind") == "send"]
