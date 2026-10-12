@@ -3446,6 +3446,79 @@ def test_the_workers_open_message_opens_the_session(server, page):
     assert page.errors == []
 
 
+@pytest.fixture
+def full_browser():
+    """The full Chromium build in headless mode. The default headless shell
+    denies notification permission whatever the context grants, so a real
+    notification needs this one."""
+    with playwright.sync_playwright() as p:
+        b = p.chromium.launch(channel="chromium")
+        yield b
+        b.close()
+
+
+def test_a_real_notification_shows_and_its_click_opens_the_session(server, full_browser):
+    errors: list = []
+    ctx = full_browser.new_context(viewport={"width": 1280, "height": 800})
+    ctx.grant_permissions(["notifications"])
+    pg = ctx.new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.add_init_script("""
+      window.__hidden = false;
+      Object.defineProperty(document, 'hidden', { get: () => window.__hidden === true });
+    """)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    assert pg.evaluate("Notification.permission") == "granted"
+    pg.evaluate("navigator.serviceWorker.ready.then(() => true)")
+    sid = spawn(pg, "hello")
+    pg.evaluate("window.__hidden = true")
+    report(pg, attention="needs_you", line="Ship it?", replies=[])
+    shown = "navigator.serviceWorker.ready.then(r => r.getNotifications()).then(ns => ns.map(n => [n.title, n.body, n.tag]))"
+    # wait_for_function does not await a promise: poll it instead.
+    deadline = time.monotonic() + 8
+    while not pg.evaluate(shown) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    [[title, body, tag]] = pg.evaluate(shown)
+    assert title.endswith(": needs you") and body == "Ship it?" and tag == f"{sid}:needs_you"
+    # A click, as the browser delivers it: a notificationclick in the worker.
+    # Only a click the browser delivers may focus a window, so a scripted one
+    # stubs focus(); the rest of the worker's path runs as it is.
+    pg.click("#tab-fleet")
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    [sw] = ctx.service_workers
+    sw.evaluate("""async () => {
+      WindowClient.prototype.focus = function () { return Promise.resolve(this); };
+      const [n] = await self.registration.getNotifications();
+      self.dispatchEvent(new NotificationEvent('notificationclick', { notification: n }));
+    }""")
+    pg.wait_for_selector("#a2[data-view=session]")
+    assert pg.evaluate("location.hash.slice(3)") == sid
+    assert errors == []
+    ctx.close()
+
+
+def test_the_url_the_worker_opens_boots_straight_into_the_session(server, browser):
+    # With no aegis window open, a click on a notification opens /#s=<key>:
+    # no token in it, only the cookie an earlier sign-in left.
+    errors: list = []
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    pg = ctx.new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(pg, "hello")
+    pg.close()
+    fresh = ctx.new_page()
+    fresh.on("pageerror", lambda e: errors.append(str(e)))
+    origin = re.match(r"https?://[^/]+", server.url).group(0)
+    fresh.goto(f"{origin}/#s={sid}")
+    fresh.wait_for_selector("#a2[data-view=session]")
+    assert fresh.evaluate("location.hash.slice(3)") == sid
+    assert errors == []
+    ctx.close()
+
+
 @pytest.mark.parametrize("width", [1000, 1100, 1366])
 def test_each_quota_bar_shares_a_row_with_its_label_and_value(
     quota_server, browser, width
