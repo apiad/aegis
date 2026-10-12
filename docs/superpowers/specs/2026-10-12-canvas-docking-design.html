@@ -194,7 +194,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · the canvas</span>
-  <span class="st"><span class="pill acc">draft, in review</span><span class="pill">2026-10-12</span><span class="pill">#347</span></span>
+  <span class="st"><span class="pill acc">built, on branch canvas-dock</span><span class="pill">2026-10-12</span><span class="pill">#347</span></span>
 </div>
 
 <div class="wrap">
@@ -218,11 +218,12 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <a href="#delivery">Delivery</a>
   <a href="#testing">Testing</a>
   <a href="#nongoals">Non-goals and open questions</a>
+  <a href="#built">As built</a>
 </nav>
 
 <main>
 <h1>The canvas: artifacts and files docked beside the transcript</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-12-canvas-docking-design.html</span><span>·</span><span>draft, not started</span><span>·</span><span>issue #347</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-12-canvas-docking-design.html</span><span>·</span><span>built, on branch canvas-dock</span><span>·</span><span>issue #347</span></div>
 <p class="lede">Any page or file an agent sends into a transcript can be docked: pinned beside the transcript as a pane that stays in view while the work goes on. A session's panes form its canvas, a few columns that each hold a stack of panes, arranged by dragging or by the agent. A file the agent sends again from the same path updates its pane in place, so a page of controls, the document it shapes and the conversation about it can all stay on one screen. When one screen is not enough, panes move to a second browser window that stays live, so a control panel can sit on another monitor.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -521,6 +522,19 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <li>The 2026-05-21 "shared canvas" spec used the word for a blackboard that several agents write to. It was never built, and this spec supersedes the name: in aegis, the canvas is a session's docked panes.</li>
   <li>Open: whether an agent should be able to dock a page from a peer session it was handed, once an agent can read another session's artifacts.</li>
   <li>Open: whether a pane should offer the version history of a file (step back to v2) or leave that to the transcript's older cards.</li>
+</ul>
+
+<h2 id="built"><span class="n">15</span>As built</h2>
+<p>Where the code departs from the sections above, and why. The plan (<code>docs/superpowers/plans/2026-10-12-canvas.html</code>) lists each with the file that forced it.</p>
+<ul>
+  <li>The person's operations are moves, <code>layout.dock(pane, where)</code>, <code>layout.undock</code> and <code>layout.resize</code>, not one <code>layout.set</code>: the server applies each to the layout as it is when it arrives, so a drop never overwrites what the agent docked meanwhile.</li>
+  <li>A window tab's route is <code>#w=&lt;n&gt;:&lt;key&gt;</code>, like the client's other routes, not <code>#/s/&lt;log_id&gt;/w/&lt;n&gt;</code>.</li>
+  <li>A tab switch rebuilds the panes, as the viewer rebuilds its item; a page re-initialises from the server's state.</li>
+  <li><code>standing.layout</code> is <code>null</code> until the first layout record and means the transcript alone. A layout record does not count as activity. <code>Session.layout</code> trims ids that can no longer dock.</li>
+  <li>Open on a docked item flashes its pane instead of opening the viewer. A docked card's line is <code>docked · show</code>; in tab mode Show opens that pane's tab.</li>
+  <li>A window draws as tabs on a phone, when its column minimums summed exceed its width, or when the transcript's column would be under 360 px. Another column can draw under 280 px, because a new column gets an equal share.</li>
+  <li>Pop out opens its tab in the click, at the window number the server will give, because a browser may block a popup opened after an await. It is hidden on a phone and for someone who may not change the session. Bring back keeps the window's columns.</li>
+  <li>Under 300 px a pane's bar keeps only the name, the version and ×.</li>
 </ul>
 </main>
 </div>
