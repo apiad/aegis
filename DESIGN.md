@@ -387,6 +387,18 @@ come from the worker's registration too: Chrome on Android refuses
 after the page is gone. The constructor remains only for a page without an
 active worker, which is a desktop on plain http (#342).
 
+**The device keeps what it saw.** `js/devicestore.js` holds the last Fleet and
+the twenty transcripts saved most recently in IndexedDB, as the wire carried
+them (no collapsed detail, never a token). The Fleet draws from it at boot and
+the transcript when a session opens; a saved session is `stale` until its
+server's live snapshot replaces it, and a transcript's subscription waits for
+the saved copy so that it asks only for what changed since its revision. Both
+are written at most every 2 seconds, only from what a live socket carried, and
+notifications follow live sessions only, so a cold start never pings for what
+changed while the page was closed. Offline, what needs the server is disabled
+(`.needs-net`, `js/net.js`), and a socket refused with 4401 empties the device
+(#342).
+
 **Folding hides rows, it never unmounts them.** From which fold level a kind
 folds is a fact on the entry (`fold`: 0 never, 1 the work, 2 also what arrived
 and what was shown; `transcript/entries.py`). The client draws each run of

@@ -1,0 +1,1 @@
+- **Without a connection, aegis shows what this device last saw.** The Fleet and the twenty transcripts opened most recently are kept on the device and readable offline, marked with how long ago they were seen. With a connection, reopening aegis draws them at once and fetches only what changed.
