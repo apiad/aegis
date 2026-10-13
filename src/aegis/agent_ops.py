@@ -808,11 +808,23 @@ def register_agent_ops(app: App) -> None:
             raise OpError("archived", f"{p.target} is archived") from e
         return {"held": len(to.held) > before}
 
+    def readable(handle: str, caller) -> list[dict]:
+        """A transcript peer_read may read: an open session's, or the archived
+        one the caller continues after a handoff (#354), and no other archived
+        one."""
+        h = here(handle)
+        if reg.by_handle(h) is None and h not in reg.sessions:
+            me = reg.sessions.get(caller.log_id or "")
+            old = me.spec.continues if me else None
+            if old in reg.archived and h in (old, reg.archived[old].get("handle")):
+                return reg.archived_entries(old)
+        return target(handle).entries()
+
     @r.op("peer.read", Read, agent=True, read=True)
     async def peer_read(p: Read, caller):
         """The last entries of another session's transcript, one line each."""
-        s = target(p.target)
-        lines = [x for e in s.entries()[-p.last * 3 :] if (x := _render(e, p.tools))]
+        entries = readable(p.target, caller)
+        lines = [x for e in entries[-p.last * 3 :] if (x := _render(e, p.tools))]
         return "\n".join(lines[-p.last :]) or "(nothing yet)"
 
     @r.op("session.list", NoArgs, agent=True, read=True)

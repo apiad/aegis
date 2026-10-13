@@ -170,3 +170,16 @@ async def test_the_archive_survives_a_restart_before_the_first_turn(world):
     reg = world.app.sessions
     await turn(world.session(log_b), "go on")
     await until(lambda: log_a in reg.archived, 8, "archived after restart")
+
+
+async def test_peer_read_reaches_the_archived_predecessor_for_its_successor_only(world):
+    a, b = await handed(world)
+    reg = world.app.sessions
+    await until(lambda: a.log_id in reg.archived, 8, "archived")
+    read = {"target": a.handle, "last": 5}
+    got = await world.app.registry.call("peer.read", read, Caller("agent", b.log_id))
+    assert "ctx 342000" in got
+    c = await world.spawn()
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call("peer.read", read, Caller("agent", c.log_id))
+    assert e.value.code == "archived"
