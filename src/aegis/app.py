@@ -42,7 +42,13 @@ from pydantic import BaseModel, Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 from . import archive, attachments as att, commands, dictation, files, restarts
-from .agent_ops import far_error, register_agent_ops, spawn_opening
+from .agent_ops import (
+    far_error,
+    handoff_opening,
+    register_agent_ops,
+    spawn_opening,
+    spawn_tail,
+)
 from .artifact_ops import register_artifact_ops
 from .agents import (
     EFFORTS,
@@ -1052,6 +1058,42 @@ class App:
                 ) from e
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e
+
+        @r.op("session.handoff", LogParams, owned="log_id")
+        async def handoff(p: LogParams, caller):
+            """Continue a session's work in a fresh one: the same agent, folder,
+            model and effort, opened with its handoff brief and last turns. The
+            old session is archived when the new one finishes its first turn."""
+            old = reg.open(p.log_id)
+            if old.continued_by:
+                raise OpError("handed_off", f"{old.handle} is already being continued")
+            if old.in_turn:
+                raise OpError(
+                    "busy", f"{old.handle} is working; hand it off when its turn ends"
+                )
+            report = old.standing.get("report") or {}
+            prompt = handoff_opening(
+                old.handle, report.get("handoff"), spawn_tail(old.entries())
+            )
+            spec = dataclasses.replace(
+                old.spec, continues=old.log_id, spawned_by=None, spawned_from=None
+            )
+            g = self.gate(spec.owner, spec.harness, spec.model)
+            if not g.may_start:
+                raise OpError("quota_closed", refusal(spec.owner or self.user, g))
+            # Set before the spawn awaits, so a second click in that window is
+            # refused rather than starting a second session.
+            old.mark_continued("starting")
+            try:
+                s = await reg.spawn(spec)
+            except (OSError, TimeoutError) as e:
+                old.mark_continued(None)
+                raise OpError(
+                    "harness_failed", f"{self._bin(spec.harness)!r} did not start: {e}"
+                ) from e
+            old.mark_continued(s.log_id)
+            await s.send(prompt)
+            return {"log_id": s.log_id, "handle": s.handle}
 
         @r.op("session.send", SendParams, owned="log_id")
         async def send(p: SendParams, caller):
