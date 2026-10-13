@@ -114,7 +114,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 -->
 <div class="chrome">
   <div class="bar"><span>aegis</span><span class="tab">plan · context handoff and cache counters</span>
-    <span class="st"><span class="pill acc">execution method: not chosen yet</span><span class="pill">#354</span><span class="pill">2026-10-12</span></span></div>
+    <span class="st"><span class="pill acc">executed natively · slice 1 #356, slice 2 branch context-handoff-impl</span><span class="pill">#354</span><span class="pill">2026-10-12</span></span></div>
   <div class="progress"><span id="pcount">0 of 0 done</span><div class="track" id="ptrack"></div></div>
 </div>
 <main>
@@ -168,7 +168,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 
 <h3>Slice 1 · PR "counters and the cold-cache warning"</h3>
 
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="num">1</span><span><span class="ttl">The fake claude reports a chosen context size</span><span class="files">tests/fake_claude.py · tests/test_context_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Every test after this one needs a session at a chosen context size, a cache miss, and one usage repeated across two lines.</p>
@@ -218,7 +218,7 @@ async def test_ctx_sets_the_context_size(world):
 </div>
 </details>
 
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">aegis/cache.py: the TTL table and the hit-rate arithmetic</span><span class="files">src/aegis/cache.py · tests/test_cache.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>One pure module, so the rules are tested without a session. It replaces <code>legacy/aegis/cold_cache.py</code> and keeps its measured docstring.</p>
@@ -336,7 +336,7 @@ def cold_policy(harness: str, context: dict) -> dict | None:
 </div>
 </details>
 
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="num">3</span><span><span class="ttl">Sessions count tool calls, cache use and compactions</span><span class="files">src/aegis/session.py · src/aegis/registry.py · tests/test_context_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -400,7 +400,7 @@ add the three keys to the dict <code>meta()</code> returns, and to <code>wire()<
 </div>
 </details>
 
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">The context: block in .aegis.yaml, and aegis doctor</span><span class="files">src/aegis/config.py · src/aegis/doctor.py · src/aegis/help/config.md · tests/test_config.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -481,7 +481,7 @@ and in <code>doctor()</code>, after the queue findings: <code>out.append(_contex
 </div>
 </details>
 
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">The card names the cold-cache thresholds</span><span class="files">src/aegis/registry.py · src/aegis/app.py · tests/test_context_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The client decides when the cache is cold, because time passes there without any event. It needs the thresholds for this session's harness, which the registry adds to the card.</p>
@@ -505,7 +505,7 @@ and in <code>doctor()</code>, after the queue findings: <code>out.append(_contex
 </div>
 </details>
 
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">The client: the counter row and the cold-cache notice</span><span class="files">src/aegis/client/index.html · js/app.js · css/base.css · tests/test_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -579,7 +579,7 @@ function drawCold(s) {
 </div>
 </details>
 
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="done">
 <summary><span class="num">7</span><span><span class="ttl">Slice 1 docs, changelog, gates and the PR</span><span class="files">DESIGN.md · src/aegis/help/sessions.md · changelog.d/</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -600,7 +600,7 @@ function drawCold(s) {
 <h3>Slice 2 · PR "continue in a fresh session"</h3>
 <p class="note">Branch from <code>origin/main</code> after slice 1 has merged.</p>
 
-<details class="task" id="task-8" data-state="pending">
+<details class="task" id="task-8" data-state="done">
 <summary><span class="num">8</span><span><span class="ttl">turn_end answers with the context size and takes a brief</span><span class="files">src/aegis/agent_ops.py · transcript/entries.py · attention.py · tests/test_context_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -684,7 +684,7 @@ async def test_handoff_at_zero_turns_the_line_off(world):
 </div>
 </details>
 
-<details class="task" id="task-9" data-state="pending">
+<details class="task" id="task-9" data-state="done">
 <summary><span class="num">9</span><span><span class="ttl">session.handoff starts the fresh session</span><span class="files">src/aegis/session.py · registry.py · agent_ops.py · app.py · tests/test_context_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -790,7 +790,7 @@ def handoff_opening(handle: str, brief: str | None, tail: str) -> str:
 </div>
 </details>
 
-<details class="task" id="task-10" data-state="pending">
+<details class="task" id="task-10" data-state="done">
 <summary><span class="num">10</span><span><span class="ttl">The old session is archived after the new one's first turn</span><span class="files">src/aegis/registry.py · tests/test_context_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -873,7 +873,7 @@ async def test_the_archive_survives_a_restart_before_the_first_turn(world):
 </div>
 </details>
 
-<details class="task" id="task-11" data-state="pending">
+<details class="task" id="task-11" data-state="done">
 <summary><span class="num">11</span><span><span class="ttl">peer_read reads the archived session the caller continues</span><span class="files">src/aegis/agent_ops.py · src/aegis/registry.py · tests/test_context_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -918,7 +918,7 @@ async def test_the_archive_survives_a_restart_before_the_first_turn(world):
 </div>
 </details>
 
-<details class="task" id="task-12" data-state="pending">
+<details class="task" id="task-12" data-state="done">
 <summary><span class="num">12</span><span><span class="ttl">The client: the handoff chip, the brief and the buttons</span><span class="files">src/aegis/client/index.html · js/app.js · css/base.css · tests/test_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1010,7 +1010,7 @@ function drawReplies(s) {
 </div>
 </details>
 
-<details class="task" id="task-13" data-state="pending">
+<details class="task" id="task-13" data-state="done">
 <summary><span class="num">13</span><span><span class="ttl">Slice 2 docs, changelog, a live check and the PR</span><span class="files">DESIGN.md · help/sessions.md · help/handoffs.md · changelog.d/ · the spec's status</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>steps</h4>

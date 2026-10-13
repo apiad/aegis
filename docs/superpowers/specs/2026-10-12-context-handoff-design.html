@@ -146,7 +146,7 @@ svg text{font-family:var(--font-mono)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · context handoff and cache counters</span>
-  <span class="st"><span class="pill acc">not started</span><span class="pill">2026-10-12</span><span class="pill">#354</span></span>
+  <span class="st"><span class="pill acc">built: slice 1 in #356, slice 2 on context-handoff-impl</span><span class="pill">2026-10-12</span><span class="pill">#354</span></span>
 </div>
 
 <div class="wrap">
@@ -168,7 +168,7 @@ svg text{font-family:var(--font-mono)}
 
 <main>
 <h1>Hand a long session to a fresh one at a natural break, warn before a cold-cache resume, and count what the cache does</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-12-context-handoff-design.html</span><span>·</span><span>not started</span><span>·</span><span>issue #354</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-12-context-handoff-design.html</span><span>·</span><span>built, in review</span><span>·</span><span>issue #354</span></div>
 <p class="lede">Every turn of a session rereads its whole context, so a session at 340k tokens pays about eleven times per turn what a fresh one at 30k does. aegis already knows each session's context size, and the agent knows when its task has reached a break. This spec joins the two: past a threshold the agent hears its size, writes a brief when the moment is right, and the person gets one button that continues the work in a fresh session.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
