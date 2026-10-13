@@ -2,6 +2,8 @@
 
 import pytest
 
+from aegis.ops import Caller
+
 from .conftest import until
 from .test_agents import CONFIG, World, turn
 
@@ -48,3 +50,43 @@ async def test_a_miss_in_a_warm_session_turns_the_rate_red(world):
 async def test_the_card_carries_the_cold_thresholds_for_claude(world):
     a = await world.spawn()
     assert a.wire()["cache_cold"] == {"after": 3600, "min": 100000}
+
+
+async def end(world, a, **args):
+    args = {"attention": "done", "line": "Shipped it."} | args
+    return await world.app.registry.call("turn.end", args, Caller("agent", a.log_id))
+
+
+async def test_turn_end_answers_noted_below_the_threshold(world):
+    a = await world.spawn()
+    await turn(a, "/ctx 299999")
+    assert await end(world, a) == "noted"
+
+
+async def test_turn_end_names_the_context_above_it_and_takes_a_brief(world):
+    a = await world.spawn()
+    await turn(a, "/ctx 342000")
+    said = await end(world, a)
+    assert said.startswith("noted. Your context is 342k tokens")
+    assert "handoff" in said
+    assert await end(world, a, handoff="Done: A. Next: B.") == "noted"
+    assert a.wire()["handoff"] == "Done: A. Next: B."
+    await end(world, a)
+    assert a.wire()["handoff"] is None  # a later turn_end without one clears it
+
+
+async def test_handoff_at_zero_turns_the_line_off(world):
+    cfg = world.root / ".aegis.yaml"
+    cfg.write_text(cfg.read_text() + "context: {handoff_at: 0}\n")
+    a = await world.spawn()
+    await turn(a, "/ctx 900000")
+    assert await end(world, a) == "noted"
+
+
+async def test_a_queue_worker_always_hears_noted_and_keeps_no_brief(world):
+    a = await world.spawn()
+    await turn(a, "/ctx 400000")
+    a.worker = {"queue": "general", "task_id": "t1"}  # what queues.py sets
+    assert await end(world, a) == "noted"
+    assert await end(world, a, handoff="Brief.") == "noted"
+    assert a.standing["report"].get("handoff") is None
