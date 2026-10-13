@@ -54,6 +54,21 @@ session's log id and handle. The new session does not report back either:
 read it with `peer_read`, message it with `peer_handoff`, or wait for it with
 `monitor_sessions`.
 
+## Continue in a fresh session
+
+A long session rereads its whole context on every turn. Once it passes 300k
+tokens (`context:` in `.aegis.yaml` moves the threshold), the agent's
+`turn_end` hears its size, and at a break the agent writes a brief: what is
+done, what is next, the files, the decisions, what not to retry.
+
+The reply row then starts with a chip, "continue fresh", and the context
+size. Clicking it shows the brief; "Continue in a fresh session" starts the
+same agent in the same folder with the brief and the last three turns, and
+opens its tab. The old session is archived when the new one finishes its first
+turn, unless you have written to it since; the new one can still `peer_read`
+it. A cache-expired notice carries the same button, with the last turns alone
+when no brief was written.
+
 ## Peers on a linked server
 
 A session on a server this one links is addressed `handle@server`. An agent

@@ -44,7 +44,11 @@ hundreds costs hundreds of small reads; a missing or damaged meta is rebuilt fro
 its store and the session lands in the archive. Boot writes to no store, except one
 `server_stopped` record for a session whose turn the last run's end cut. Continuing
 those turns is not part of reading: `continue_after_boot` runs after it, before the
-monitors are armed, and writes through the ordinary send path.
+monitors are armed, and writes through the ordinary send path. A handoff
+(#354) is meta too: the new session's spec names the session it `continues`,
+the old one's meta names it in `continued_by`, so the old session is archived
+when the new one's first turn ends, before or after a restart, with nothing
+held in memory.
 
 **A restart gives back what it cut.** aegis writes `<state>/server.json` at both ends
 of a clean shutdown, so boot tells a restart from a crash. A turn the server's own
@@ -115,7 +119,13 @@ them something to read, or just finished, only the agent knows, and it says so
 with `turn_end`; its plan comes from `plan_update`. Both are aegis records in the
 store, so the fold derives a session's `standing` and a refold gives the same
 card; the meta keeps it, so boot still reads no store. `attention.py` holds the
-precedence. No model reads a transcript to guess what a turn meant. The fold also
+precedence. No model reads a transcript to guess what a turn meant. Past the
+`context:` block's `handoff_at`, `turn_end` answers with the session's context
+size, and the agent passes a `handoff` brief in a second call when its task is
+at a break; the answer is a tool result, not part of the system prompt, so it
+never breaks the prompt cache. The brief rides in the report, and
+`session.handoff`, which only a person can call, starts the fresh session
+from it. The fold also
 times the plan from the records' `ts`: work is time inside a turn and after a
 turn that did not hand back to the person, idle is the rest, and each item gets
 the work done while it was `doing`. It accrues only at a plan record and at turn
@@ -230,7 +240,7 @@ held message and no Claude task still open (`task_started` without its
 mid-wait in the legacy tree.
 
 **Agents change only what they created.** An agent reads and messages any session
-it can see, and changes only its own monitors, its own session's names and the
+it can see (and, through `peer_read`, the archived session it continues), and changes only its own monitors, its own session's names and the
 tasks it enqueued. A session an agent spawns runs with at most the agent's own
 permission, so spawning is never a way to gain power. A session whose
 permission is read calls only the operations marked `read`: its own card and

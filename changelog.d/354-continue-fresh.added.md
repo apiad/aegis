@@ -1,0 +1,2 @@
+- **A session past 300k tokens can continue in a fresh one at a natural break.** `turn_end` tells the agent its context size, the agent passes a brief when its task is at a break, and the reply row offers "continue fresh": the same agent starts with the brief and the last turns, and the old session is archived once the new one has answered. Over one week, 10 of 530 sessions passed 300k tokens and carried 38% of all the context tokens read.
+help: handoffs#continue-in-a-fresh-session

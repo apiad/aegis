@@ -78,7 +78,9 @@ Two calls keep the person informed without reading the transcript:
 - `turn_end` labels the turn the agent hands back: needs_you when the
   message asks something, review when it gives something to read, done when
   it reports finished work, with a one-line summary and up to three replies
-  the person can click to answer.
+  the person can click to answer. Past 300k tokens of context its answer
+  names the size, and at a break the agent calls it again with `handoff`: a
+  brief that lets a fresh session continue the work.
 
 The mark on the tab and the card comes from `turn_end`, except working,
 waiting and error, which aegis sees for itself; a turn with no `turn_end`
