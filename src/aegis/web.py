@@ -146,11 +146,13 @@ def _loggable(params: object) -> object:
     upload's chunk is logged as its length, and every other field is capped."""
     if not isinstance(params, dict):
         return _capped(params)
-    out = {k: _capped(v) for k, v in params.items()}
+    out = dict(params)
+    data = out.get("data")
+    out = {k: _capped(v) for k, v in out.items()}
     if "token" in out:
         out["token"] = "***"
-    if isinstance(params.get("data"), str):
-        out["data"] = f"<{len(params['data'])} chars>"
+    if isinstance(data, str):
+        out["data"] = f"<{len(data)} chars>"
     return out
 
 
