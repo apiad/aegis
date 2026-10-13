@@ -51,9 +51,12 @@ comments say why each line is there:
   caps it below the host's RAM, so a runaway meets an OOM inside the unit.
 - `OOMScoreAdjust=-500`: in a host-wide OOM the kernel picks the server last,
   and the agents' processes, raised to 500, first.
+- `Delegate=yes`: aegis gives each session a cgroup of its own, capped by
+  `session_memory_max`, so a runaway session is killed alone.
 
-Do not add `ManagedOOMMemoryPressure=kill`: the unit is one cgroup, and
-systemd-oomd would kill the server and every session together.
+Do not add `ManagedOOMMemoryPressure=kill`: systemd-oomd would choose among
+every cgroup in the unit, the server's included, or, without delegation, kill
+the whole unit.
 
 ## Check an installed unit
 

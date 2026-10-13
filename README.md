@@ -336,12 +336,11 @@ Delegate=yes
 WantedBy=multi-user.target
 ```
 
-`ManagedOOMMemoryPressure=kill` is safe only with `Delegate=yes`. oomd kills
-one cgroup below the unit it watches, and with delegation each session is its
-own cgroup, while the server sits apart in `server/`, small enough that oomd
-does not choose it. Without delegation the unit is a single cgroup, and oomd
-would kill the server and every session together. aegis logs a warning at
-start when it runs under systemd and finds no delegation.
+Leave `ManagedOOMMemoryPressure` off. Without delegation the unit is one
+cgroup, and systemd-oomd would kill the server and every session together;
+with it, oomd chooses among every cgroup below the unit, the server's own
+`server/` included. Each session's own cap already contains a runaway. aegis
+logs a warning at start when it runs under systemd and finds no delegation.
 
 Behind a reverse proxy, name the public origin with `aegis serve --origin
 https://dev.example`, keep `--host` on loopback, and let the proxy terminate TLS.
