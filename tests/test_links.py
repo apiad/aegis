@@ -357,7 +357,14 @@ async def test_a_link_to_itself_is_refused(pair):
     assert e.value.code == "bad_link"
 
 
-async def test_an_edit_to_links_json_reaches_a_running_server(pair):
+@pytest.fixture
+def quick_watch(monkeypatch):
+    """Before `pair`: the watcher reads WATCH_EVERY_S as it goes to sleep. Two
+    edits at the real 1 s took the test past the 3 s budget under load (#359)."""
+    monkeypatch.setattr(links, "WATCH_EVERY_S", 0.05)
+
+
+async def test_an_edit_to_links_json_reaches_a_running_server(quick_watch, pair):
     alpha, beta = pair
     store = links.LinkStore(alpha.app.roots.state_root / "links.json")
     store.save([])
