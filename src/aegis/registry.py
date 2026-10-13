@@ -14,6 +14,7 @@ names one conversation for as long as the server keeps it.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import secrets
 import time
@@ -110,6 +111,31 @@ class Registry(Host):
             self.queues.turn_ended(session)
         if self.quota is not None:
             self.quota.turn_ended()
+        self._retire_predecessor(session)
+
+    def _retire_predecessor(self, new: Session) -> None:
+        """After a handoff, archive the old session once the new one has
+        answered (#354). Stateless, so a restart in between changes nothing:
+        the new session's spec names the old one, the old one's meta names the
+        new. Called off, with continued_by cleared, when the new turn failed or
+        the person has used the old session since the new one started."""
+        old = self.sessions.get(new.spec.continues or "")
+        if old is None or old.continued_by != new.log_id:
+            return
+        if (
+            new.standing.get("turn_error")
+            or old.in_turn
+            or old.last_activity > new.created_at
+        ):
+            old.mark_continued(None)
+            return
+        asyncio.get_running_loop().create_task(self._archive(old))
+
+    async def _archive(self, s: Session) -> None:
+        try:
+            await self.close(s.log_id)
+        except Exception:
+            log.exception("aegis: could not archive %s after its handoff", s.handle)
 
     def recorded(self, session: Session, record: dict, events: list | None) -> None:
         if self.journal is not None:
@@ -126,6 +152,11 @@ class Registry(Host):
             self.tokens.drop(session.log_id)
         if self.queues is not None:
             self.queues.exited(session, code, stderr_tail)
+        # A handoff whose new session died before answering: the old one stays.
+        old = self.sessions.get(session.spec.continues or "")
+        if old is not None and old.continued_by == session.log_id:
+            if session.status != "idle":
+                old.mark_continued(None)
 
     def quota_hold(self, session: Session) -> str | None:
         """A paused session waits for its gate to open; any other may start a

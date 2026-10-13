@@ -13,6 +13,7 @@ stdout. The text of a prompt picks a script:
                    result: N rows, for a test that needs a long transcript.
     /ctx N [miss|dup]  one reply at context N; miss writes the cache instead
                    of reading it, dup repeats the usage on a tool line.
+    [[slow]]       anywhere in a prompt: wait 1.5 s before answering.
     /md TEXT       TEXT as the reply, each literal \\n a newline, then a result.
     /notice        three system notices and nothing else.
     /big           a Read whose result is 2 MB on one line.
@@ -480,6 +481,8 @@ def run(text: str) -> None:
         result()
         return
     echo(text)
+    if "[[slow]]" in text:
+        time.sleep(1.5)
     before = earlier_prompts()
     with open(prompts_file(), "a") as f:
         f.write(json.dumps(text) + "\n")
