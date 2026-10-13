@@ -1,10 +1,13 @@
 # aegis
 
-aegis is a programmable multi-agent meta-harness. It runs the coding agents you
-already pay for, Claude Code, OpenCode and Codex, side by side in one browser workplace.
-Its agents hand work to each other and wait on each other, on one machine or
-across several. And when prose is not enough, they write the interface they need
-into the conversation.
+aegis is the programmable meta-harness that grows with you. It runs the coding
+agents you already pay for, Claude Code, OpenCode and Codex, side by side in one
+browser workplace. You start with one agent in a tab. As you need more, you shape
+the workplace with what is already there: agent presets and queues in one file,
+agents that hand work to each other and wait on each other, and pages they write
+for your decisions and dock beside the conversation. The same harness that runs
+one session runs a studio: a director, team leads with their workers, QA, and you
+deciding as the producer.
 
 ```bash
 uv tool install aegis-harness
@@ -14,6 +17,33 @@ aegis
 
 The last line starts the server and opens it in a browser window. Python 3.13 or
 newer, MIT license.
+
+## From one agent to a studio
+
+Climb only as far as the work needs. Each rung adds one kind of thing, and the
+rungs below keep working.
+
+1. **One agent.** A session in a browser tab under your own subscription, with a
+   transcript that folds the work, the quota and its pace, and replies you send
+   with one tap.
+2. **Several side by side.** Sessions on different harnesses and models hand
+   context to each other, read each other, and wait on CI or on each other with
+   monitors instead of polling. You add agent presets.
+3. **Delegated work.** Queues of workers report back as turns, plans stay where
+   you see them, choices arrive as pages you click, and a long session continues
+   in a fresh one at a break. You add queues.
+4. **A team.** A lead spawns implementers in their own worktrees, reviews their
+   pull requests and merges on green, following know-how written in the repo.
+   You add briefs and procedures.
+5. **A studio.** A director runs several teams on one project and brings you
+   decisions as pages and checklists you mark from a phone, with the pages the
+   work needs docked beside the transcript and other machines linked in. You
+   are the producer.
+
+aegis has no studio mode. Every rung uses the same tools; the structure lives in
+your own files, so it is versioned, reviewed and copied to the next project like
+code. The vision behind this is in
+[`docs/superpowers/specs/2026-10-13-aegis-grows-with-you-vision.html`](docs/superpowers/specs/2026-10-13-aegis-grows-with-you-vision.html).
 
 ## Bring your own subscriptions
 
@@ -101,9 +131,10 @@ and can use the theme's colors and type.
 
 This is how an agent asks you to pick one of three layouts, tune a value and
 confirm it, explore a chart, or answer a question with more structure than a
-sentence. Today a page lives for one exchange and stays in the transcript as a
-record. Next, an agent will keep the pages it writes and dock them beside the
-transcript, so the workplace grows with what its agents build.
+sentence. A page can also stay: docked beside the transcript, arranged in
+columns, moved to a second browser window, or shown as tabs on a phone, so the
+workplace grows with what its agents build. An agent docks a page or a file as
+it sends it, and a file sent again from the same path updates its card.
 
 ## The workplace
 
