@@ -57,16 +57,14 @@ def store(
     )
 
 
-def opencode_step(part_id: str, *, inp: int, out: int, read: int) -> dict:
-    """OpenCode's step-finish part, which carries a step's tokens."""
+def opencode_step(step_id: str, *, inp: int, out: int, read: int) -> dict:
+    """OpenCode's end of a step, which carries the step's tokens."""
     return {
-        "type": "message.part.updated",
-        "properties": {
-            "part": {
-                "id": part_id,
-                "type": "step-finish",
-                "tokens": {"input": inp, "output": out, "cache": {"read": read}},
-            }
+        "type": "session.step.ended",
+        "data": {
+            "sessionID": "ses_1",
+            "assistantMessageID": step_id,
+            "tokens": {"input": inp, "output": out, "cache": {"read": read}},
         },
     }
 

@@ -2454,7 +2454,7 @@ def test_an_opencode_session_streams_and_calls_aegis(server, page):
     page.press("#input", "Enter")
     turns_done(page, 2)
     assert "meta" in page.locator(".row.tool.ok").last.inner_text()
-    assert "OpenCode 1.18.31" in page.inner_text("#entries")
+    assert "OpenCode 2.0.28" in page.inner_text("#entries")
 
 
 # -- attention (#171) -----------------------------------------------------------

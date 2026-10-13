@@ -186,8 +186,8 @@ thread's writer lease and the child's pipes. The parsers emit the same events, s
 the entry rules exist once. Token deltas, OpenCode's, Codex's and Claude's
 (`--include-partial-messages`), are the one thing folded and never stored: the
 part's closing update carries the whole text, so the live view is ahead of a
-fresh fold only while a part is open. OpenCode's closing update keeps the part's
-id; Claude's is the assistant line for that block, whose row replaces the one its
+fresh fold only while a part is open. OpenCode's closing event names the same
+step and ordinal as its deltas; Claude's is the assistant line for that block, whose row replaces the one its
 deltas drew (`claude/stream.py`). A prompt OpenCode reads mid-turn while a part
 streams is the one known exception: live it sits after that part, and a reload
 puts it before.
@@ -195,9 +195,9 @@ puts it before.
 **A `/` line is resolved on the server, and a typo costs nothing.** `session.send`
 runs an aegis command (`commands.py`) as the operation it stands for, passes a name
 in the session's catalog to its harness as typed (OpenCode's run through its
-command endpoint), and refuses anything else: Claude answers an unknown command
+command endpoint, or as a prompt with the skill attached), and refuses anything else: Claude answers an unknown command
 with the model. The catalog is the harness's own (Claude's `initialize` answer,
-OpenCode's `/command` and `/config/providers`), in memory by harness and cwd,
+OpenCode's `/api/command`, `/api/skill` and `/api/model`), in memory by harness and cwd,
 never on disk, so an upgraded CLI never
 meets a stale list. `/model`, `/effort` and `/permission` are aegis's, because the
 spec the next `--resume` is built from has to change with the process; they reach

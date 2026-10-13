@@ -1,6 +1,8 @@
 # OpenCode sessions in aegis 2
 
 > **Status:** implemented, 2026-10-08. Plan: `docs/superpowers/plans/2026-10-08-aegis-2-opencode-harness.md`.
+> Its protocol sections describe OpenCode 1 and are superseded by
+> `2026-10-13-opencode-2-driver.html` (#357), which drops OpenCode 1.
 > Issue: [#180](https://github.com/apiad/aegis/issues/180).
 > Related: [#78](https://github.com/apiad/aegis/issues/78) (ACP sessions never
 > streamed), [#49](https://github.com/apiad/aegis/issues/49) (no titles outside

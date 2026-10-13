@@ -102,15 +102,16 @@ async def oc(tmp_path, fake_opencode):
 async def test_a_prompt_runs_a_turn_with_cost_context_title_and_model(oc):
     await oc.turn("hello")
     s = oc.session
-    assert oc.statuses() == ["idle", "working", "idle"]
+    # OpenCode names the model as it creates the session, before the start
+    # ends: that update still says stopped, which the session was.
+    assert oc.statuses() in (["idle", "working", "idle"], ["stopped", "idle", "working", "idle"])
     assert oc.prose() == ["you said: hello"]
     assert s.cost_usd == pytest.approx(0.002) and s.context_tokens == 1030
     assert s.context_window == 1000000 and s.model_id == "opencode-go/fake-pro"
     assert s.resume_id and s.resume_id.startswith("ses_")
     assert s.title == "Fake title: hello"
     assert s.wire()["harness_label"] == "OpenCode"
-    # OpenCode names the model once prompted, so this line follows the echo.
-    assert "OpenCode 1.18.31 · opencode-go/fake-pro" in [
+    assert "OpenCode 2.0.28 · opencode-go/fake-pro" in [
         e["summary"] for e in s.entries()
     ]
 
@@ -191,10 +192,9 @@ async def test_a_resume_opencode_lost_starts_anew_and_says_so(oc):
 async def test_model_and_effort_apply_from_the_next_prompt(oc):
     await oc.session.configure(model="opencode-go/fake-flash", effort="low")
     await oc.turn("hello")
-    await oc.turn("/body")
+    await oc.turn("/state")
     assert (
-        '"modelID": "fake-flash"' in oc.prose()[-1]
-        and '"variant": "low"' in oc.prose()[-1]
+        '"id": "fake-flash"' in oc.prose()[-1] and '"variant": "low"' in oc.prose()[-1]
     )
     assert oc.session.context_window == 500000
 
@@ -203,7 +203,8 @@ async def test_a_permission_change_restarts_the_child_before_the_next_prompt(oc)
     pid = oc.session.pid
     await oc.session.configure(permission="read")
     await oc.turn("/config")
-    assert oc.session.pid != pid and '"bash": "deny"' in oc.prose()[-1]
+    assert oc.session.pid != pid
+    assert '{"action": "shell", "effect": "deny", "resource": "*"}' in oc.prose()[-1]
 
 
 async def test_a_title_someone_set_is_kept(oc):
@@ -316,5 +317,8 @@ async def test_opencode_may_read_its_inbox_under_write(oc):
     await oc.session.configure(permission="write")
     await oc.turn("/config")
     cfg = json.loads(oc.prose()[-1].removeprefix("config: "))
-    ext = cfg["permission"]["external_directory"]
-    assert ext == {"*": "deny", f"{oc.session.inbox}/*": "allow"}
+    ext = [r for r in cfg["permissions"] if r["action"] == "external_directory"]
+    assert [(r["resource"], r["effect"]) for r in ext] == [
+        ("*", "deny"),
+        (f"{oc.session.inbox}/*", "allow"),
+    ]

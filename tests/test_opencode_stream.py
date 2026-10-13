@@ -14,22 +14,26 @@ from aegis.claude.stream import (
     ToolCall,
     ToolOutput,
 )
-from aegis.opencode.stream import DELTA, Parser, tool_input, tool_name
+from aegis.opencode.stream import DELTAS, STORED, Parser, tool_input, tool_name
 from aegis.transcript.entries import Fold
 
 FIX = Path(__file__).parent / "fixtures" / "opencode"
 
 
 def lines(name: str) -> list[str]:
-    return [ln for ln in (FIX / f"{name}.jsonl").read_text().splitlines() if ln]
+    """The fixture's lines a session keeps: the stored types and the deltas."""
+    return [
+        ln
+        for ln in (FIX / f"{name}.jsonl").read_text().splitlines()
+        if ln and json.loads(ln)["type"] in STORED | DELTAS
+    ]
 
 
 def first_prompt(name: str) -> str:
     for ln in lines(name):
         e = json.loads(ln)
-        part = e["properties"].get("part") or {}
-        if e["type"] == "message.part.updated" and part.get("type") == "text":
-            return part["text"]
+        if e["type"] == "session.inbox.enqueued":
+            return e["data"]["item"]["payload"]["text"]
     raise AssertionError("no prompt")
 
 
@@ -51,7 +55,7 @@ def fold(name: str, *sends: str, interrupt_before: str | None = None) -> Fold:
             own("interrupt")
             interrupt_before = None
         evs = f.parse("opencode", ln)
-        if json.loads(ln)["type"] == DELTA:
+        if json.loads(ln)["type"] in DELTAS:
             f.live(evs)
             continue
         f.apply({"i": i, "ts": 1.0 + i, "src": "opencode", "line": ln}, evs)
@@ -72,7 +76,7 @@ def refold(name: str, *sends: str) -> list[dict]:
     recs += [
         {"src": "opencode", "line": ln}
         for ln in lines(name)
-        if json.loads(ln)["type"] != DELTA
+        if json.loads(ln)["type"] not in DELTAS
     ]
     for r in recs:
         f.apply({"i": i, "ts": 1.0 + i, **r})
@@ -95,10 +99,10 @@ def test_live_deltas_end_where_a_reload_starts(name):
 def test_a_plain_turn():
     f = fold("plain")
     e = f.entries()
-    assert e[1]["summary"].startswith("OpenCode ") and "opencode-go/" in e[1]["summary"]
+    assert e[1]["summary"].startswith("OpenCode ") and "opencode/" in e[1]["summary"]
     assert [k for k in kinds(f) if k[0] == "user"] == [("user", "ok")]
     assert any(x["kind"] == "prose" and x["md"].strip() for x in e)
-    assert e[-1]["summary"].startswith("done in") and "$" in e[-1]["summary"]
+    assert e[-1]["summary"].startswith("done in")  # a free model: no cost shown
 
 
 def test_a_tool_call_is_a_bash_row_with_its_output():
@@ -108,13 +112,13 @@ def test_a_tool_call_is_a_bash_row_with_its_output():
 
 
 def test_a_prompt_sent_mid_turn_is_read_and_one_result_ends_both():
-    f = fold("midturn", "Run `sleep 6` in bash, then say A.", "Also say B.")
+    f = fold("midturn", "Run `sleep 6` in the shell, then say A.", "Also say B.")
     assert [k for k in kinds(f) if k[0] == "user"] == [("user", "ok"), ("user", "ok")]
     assert sum(e["summary"].startswith("done in") for e in f.entries()) == 1
 
 
-def test_an_abort_is_interrupted_once_and_its_late_tool_part_changes_nothing():
-    f = fold("abort", interrupt_before='"session.error"')
+def test_an_interrupt_marks_the_call_interrupted_once():
+    f = fold("abort", interrupt_before='"session.tool.failed"')
     tools = [e for e in f.entries() if e["kind"] == "tool"]
     assert [(t["status"], t["detail"]["result"]) for t in tools] == [
         ("err", "interrupted")
@@ -137,7 +141,7 @@ def test_an_edit_has_its_diff():
     )
 
 
-def test_a_task_counts_its_child_session_as_steps():
+def test_a_subagent_counts_its_child_session_as_steps():
     (t,) = [e for e in fold("task").entries() if e["title"] == "Task"]
     assert t["status"] == "ok" and t["detail"]["steps"] > 0
 
@@ -150,124 +154,110 @@ def test_a_command_shows_the_line_as_typed_with_its_template_under_it():
 
 
 def test_names_and_inputs_are_claudes():
-    assert [tool_name(n) for n in ("bash", "edit", "aegis_monitor_start", "other_x")] == [
-        "Bash", "Edit", "mcp__aegis__monitor_start", "other_x",
+    names = ("shell", "edit", "subagent", "aegis_monitor_start", "other_x")
+    assert [tool_name(n) for n in names] == [
+        "Bash", "Edit", "Task", "mcp__aegis__monitor_start", "other_x",
     ]  # fmt: skip
-    assert tool_input({"filePath": "a", "oldString": "b", "replaceAll": True}) == {
+    assert tool_input("edit", {"path": "a", "oldString": "b", "replaceAll": True}) == {
         "file_path": "a", "old_string": "b", "replace_all": True,
     }  # fmt: skip
+    assert tool_input("aegis_x", {"path": "a"}) == {"path": "a"}
+    assert tool_input("subagent", {"agent": "explore"}) == {"subagent_type": "explore"}
 
 
-def ev(type_, **props) -> str:
-    return json.dumps({"type": type_, "properties": props})
+def ev(type_, created=None, **data) -> str:
+    out = {"type": type_, "data": data}
+    if created is not None:
+        out["created"] = created
+    return json.dumps(out)
 
 
 def test_the_parser_maps_one_turn():
     p = Parser()
-    info = {"id": "ses_1", "title": "New session - x", "version": "1.18.31",
-            "model": {"id": "flash", "providerID": "go"}}  # fmt: skip
-    assert p.feed(ev("session.created", sessionID="ses_1", info=info)) == [
-        Init(
-            session_id="ses_1", model="go/flash", version="1.18.31", harness="OpenCode"
-        )
+    created = ev("session.created", sessionID="ses_1", version="2.0.28",
+                 model={"id": "flash", "providerID": "go"}, location={"directory": "/r/x"})  # fmt: skip
+    assert p.feed(created) == [
+        Init(session_id="ses_1", model="go/flash", version="2.0.28",
+             harness="OpenCode", cwd="/r/x")  # fmt: skip
     ]
-    user = {"id": "msg_u", "role": "user", "sessionID": "ses_1", "time": {"created": 1}}
-    assert p.feed(ev("message.updated", sessionID="ses_1", info=user)) == []
-    part = {
-        "id": "prt_u",
-        "messageID": "msg_u",
-        "sessionID": "ses_1",
-        "type": "text",
-        "text": "hi",
-    }
-    assert p.feed(ev("message.part.updated", sessionID="ses_1", part=part)) == [
-        Echo(text="hi", expands=True)
+    user = ev("session.inbox.enqueued", sessionID="ses_1", inboxID="msg_u",
+              item={"type": "user", "payload": {"text": "hi"}, "delivery": "steer"})  # fmt: skip
+    assert p.feed(user) == [Echo(text="hi", expands=True)]
+    assert p.feed(user) == []
+    assert p.feed(ev("session.execution.started", 10, sessionID="ses_1")) == []
+    a = {"sessionID": "ses_1", "assistantMessageID": "msg_a", "ordinal": 0}
+    assert p.feed(ev("session.text.started", **a)) == [
+        Text(text="", parent=None, usage=None, key="msg_a/prose/0")
     ]
-    assert p.feed(ev("message.part.updated", sessionID="ses_1", part=part)) == []
-    synth = {**part, "id": "prt_s", "synthetic": True}
-    assert p.feed(ev("message.part.updated", sessionID="ses_1", part=synth)) == []
-    asst = {
-        "id": "msg_a",
-        "role": "assistant",
-        "sessionID": "ses_1",
-        "time": {"created": 10},
-    }
-    p.feed(ev("message.updated", sessionID="ses_1", info=asst))
-    opened = {
-        "id": "prt_t",
-        "messageID": "msg_a",
-        "sessionID": "ses_1",
-        "type": "text",
-        "text": "",
-    }
-    assert p.feed(ev("message.part.updated", sessionID="ses_1", part=opened)) == [
-        Text(text="", parent=None, usage=None, key="prt_t")
+    assert p.feed(ev("session.text.delta", **a, delta="Hel")) == [
+        Delta(key="msg_a/prose/0", kind="prose", text="Hel")
     ]
-    assert p.feed(ev(DELTA, sessionID="ses_1", messageID="msg_a", partID="prt_t",
-                     field="text", delta="Hel")) == [Delta(key="prt_t", kind="prose", text="Hel")]  # fmt: skip
     assert p.feed(
-        ev(DELTA, sessionID="ses_1", partID="prt_nope", field="text", delta="x")
+        ev("session.text.delta", sessionID="ses_1", assistantMessageID="x", delta="y")
     ) == [Delta(key="", kind="", text="")]
-    running = {"id": "prt_c", "messageID": "msg_a", "sessionID": "ses_1", "type": "tool",
-               "tool": "read", "callID": "c1", "state": {"status": "running", "input": {"filePath": "/a"}}}  # fmt: skip
-    assert p.feed(ev("message.part.updated", sessionID="ses_1", part=running)) == [
-        ToolCall(
-            id="c1", name="Read", input={"file_path": "/a"}, parent=None, usage=None
-        )
+    call = {"sessionID": "ses_1", "assistantMessageID": "msg_a", "id": "c1"}
+    assert p.feed(ev("session.tool.input.started", **call, name="read")) == []
+    called = ev("session.tool.called", **call, input={"path": "/a"})
+    assert p.feed(called) == [
+        ToolCall(id="c1", name="Read", input={"file_path": "/a"}, parent=None, usage=None)
     ]
-    assert p.feed(ev("message.part.updated", sessionID="ses_1", part=running)) == []
-    done = {
-        **running,
-        "state": {"status": "completed", "input": {"filePath": "/a"}, "output": "x"},
-    }
-    assert p.feed(ev("message.part.updated", sessionID="ses_1", part=done)) == [
+    assert p.feed(called) == []
+    content = [{"type": "text", "text": "x"}]
+    assert p.feed(ev("session.tool.success", **call, content=content)) == [
         ToolOutput(id="c1", text="x", is_error=False, parent=None)
     ]
-    step = {"id": "prt_f", "messageID": "msg_a", "sessionID": "ses_1", "type": "step-finish",
-            "tokens": {"total": 130, "input": 100, "output": 20, "reasoning": 5,
-                       "cache": {"read": 3, "write": 2}}, "cost": 0.5}  # fmt: skip
-    (st,) = p.feed(ev("message.part.updated", sessionID="ses_1", part=step))
+    tokens = {"input": 100, "output": 20, "reasoning": 5, "cache": {"read": 3, "write": 2}}
+    (st,) = p.feed(ev("session.step.ended", sessionID="ses_1", tokens=tokens, cost=0.5))
     assert isinstance(st, Step) and st.usage.context == 130
-    asst_done = {**asst, "cost": 0.5, "time": {"created": 10, "completed": 1510}}
-    p.feed(ev("message.updated", sessionID="ses_1", info=asst_done))
-    titled = {**info, "title": "Fix the parser"}
-    assert p.feed(ev("session.updated", sessionID="ses_1", info=titled)) == [
+    assert p.feed(ev("session.renamed", sessionID="ses_1", title="Fix the parser")) == [
         Title(text="Fix the parser")
     ]
-    (r,) = p.feed(ev("session.idle", sessionID="ses_1"))
+    (r,) = p.feed(ev("session.execution.succeeded", 1510, sessionID="ses_1"))
     assert isinstance(r, Result) and (r.is_error, r.duration_ms, r.cost_usd) == (
         False,
         1500,
         0.5,
     )
-    assert p.feed(ev("session.idle", sessionID="ses_1")) == []
-    assert p.feed(ev("session.idle", sessionID="ses_other")) == []
+    assert p.feed(ev("session.execution.succeeded", sessionID="ses_other")) == []
     assert p.feed("not json")[0].raw == "not json"
 
 
-def _turn_start(p: Parser, mid: str, created: int) -> None:
-    info = {
-        "id": mid,
-        "role": "assistant",
-        "sessionID": "ses_1",
-        "time": {"created": created},
-    }
-    p.feed(ev("message.updated", sessionID="ses_1", info=info))
+def test_a_failed_turn_says_why():
+    p = Parser()
+    p.feed(ev("session.created", sessionID="ses_1"))
+    err = {"type": "provider.no-route", "message": "Model unavailable: go/x"}
+    (r,) = p.feed(ev("session.execution.failed", sessionID="ses_1", error=err))
+    assert r.is_error and r.subtype == "provider.no-route: Model unavailable: go/x"
+
+
+def test_a_model_switch_is_a_new_init():
+    p = Parser()
+    p.feed(ev("session.created", sessionID="ses_1", model={"id": "a", "providerID": "go"}))
+    (i,) = p.feed(ev("session.model.selected", sessionID="ses_1",
+                     model={"id": "b", "providerID": "go", "variant": "high"}))  # fmt: skip
+    assert isinstance(i, Init) and i.model == "go/b"
+
+
+def test_a_child_is_named_by_its_calls_progress():
+    p = Parser()
+    p.feed(ev("session.created", sessionID="ses_1"))
+    for c in ("c1", "c2"):
+        p.feed(ev("session.tool.input.started", sessionID="ses_1", id=c, name="subagent"))
+    p.feed(ev("session.created", sessionID="ses_k", parentID="ses_1"))
+    p.feed(ev("session.tool.progress", sessionID="ses_1", id="c2",
+              metadata={"sessionID": "ses_k"}))  # fmt: skip
+    p.feed(ev("session.tool.input.started", sessionID="ses_k", id="k1", name="shell"))
+    (call,) = p.feed(ev("session.tool.called", sessionID="ses_k", id="k1", input={}))
+    assert call.parent == "c2"
 
 
 def test_every_delta_line_is_a_delta_even_one_nothing_draws():
     p = Parser()
-    p.feed(ev("session.created", sessionID="ses_1", info={"id": "ses_1"}))
-    p.feed(
-        ev(
-            "session.created",
-            sessionID="ses_k",
-            info={"id": "ses_k", "parentID": "ses_1"},
-        )
-    )
+    p.feed(ev("session.created", sessionID="ses_1"))
+    p.feed(ev("session.created", sessionID="ses_k", parentID="ses_1"))
     for line in (
-        ev(DELTA, sessionID="ses_k", partID="prt_k", field="text", delta="child"),
-        ev(DELTA, sessionID="ses_1", partID="prt_unknown", field="text", delta="x"),
+        ev("session.text.delta", sessionID="ses_k", assistantMessageID="m", delta="child"),
+        ev("session.text.delta", sessionID="ses_1", assistantMessageID="?", delta="x"),
     ):
         (d,) = p.feed(line)
         assert isinstance(d, Delta) and not d.key
@@ -281,10 +271,8 @@ def test_an_exit_mid_turn_does_not_leak_into_the_next_turn():
     def line(s):
         f.apply({"i": next(rec), "ts": 1.0, "src": "opencode", "line": s})
 
-    line(ev("session.created", sessionID="ses_1", info={"id": "ses_1"}))
-    line(ev("message.updated", sessionID="ses_1",
-            info={"id": "m1", "role": "assistant", "sessionID": "ses_1", "time": {"created": 1000}}))  # fmt: skip
-    line(ev("session.error", sessionID="ses_1", error={"name": "APIError"}))
+    line(ev("session.created", sessionID="ses_1"))
+    line(ev("session.execution.started", 1000, sessionID="ses_1"))
     f.apply(
         {
             "i": next(rec),
@@ -295,36 +283,6 @@ def test_an_exit_mid_turn_does_not_leak_into_the_next_turn():
             "stderr_tail": [],
         }
     )
-    line(ev("message.updated", sessionID="ses_1",
-            info={"id": "m2", "role": "assistant", "sessionID": "ses_1",
-                  "time": {"created": 5000, "completed": 6000}}))  # fmt: skip
-    line(ev("session.idle", sessionID="ses_1"))
+    line(ev("session.execution.started", 5000, sessionID="ses_1"))
+    line(ev("session.execution.succeeded", 6000, sessionID="ses_1"))
     assert f.entries()[-1]["summary"].startswith("done in 1.0s")
-
-
-def test_a_late_text_part_of_an_aborted_message_changes_nothing():
-    p = Parser()
-    p.feed(ev("session.created", sessionID="ses_1", info={"id": "ses_1"}))
-    _turn_start(p, "m1", 10)
-    opened = {
-        "id": "prt_t",
-        "messageID": "m1",
-        "sessionID": "ses_1",
-        "type": "text",
-        "text": "",
-    }
-    p.feed(ev("message.part.updated", sessionID="ses_1", part=opened))
-    p.feed(
-        ev("session.error", sessionID="ses_1", error={"name": "MessageAbortedError"})
-    )
-    assert len(p.feed(ev("session.idle", sessionID="ses_1"))) == 1
-    closed = {**opened, "text": "half"}
-    assert p.feed(ev("message.part.updated", sessionID="ses_1", part=closed)) == []
-
-
-def test_the_session_names_its_working_directory():
-    p = Parser()
-    info = {"id": "ses_1", "directory": "/r/x", "version": "1",
-            "model": {"id": "flash", "providerID": "go"}}  # fmt: skip
-    (init,) = p.feed(ev("session.created", sessionID="ses_1", info=info))
-    assert isinstance(init, Init) and init.cwd == "/r/x"
