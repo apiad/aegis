@@ -238,6 +238,7 @@ $("interrupt").append(icon("stop"));
 $("replies-g").append(icon("prompt"));
 $("queued-g").append(icon("prompt"));
 $("working-g").append(icon("think"));
+$("coldnote-g").append(icon("wait"));
 $("closing-g").append(glyph("done"));
 $("sp-mark").prepend(gorgoneion());
 $("boot-mark").append(gorgoneion());
