@@ -41,11 +41,41 @@ from .roots import CONFIG_FILE
 log = logging.getLogger("aegis.config")
 
 WATCH_EVERY_S = 1.0
-TOP_KEYS = ("agents", "queues", "default_agent", "recap")
+TOP_KEYS = ("agents", "queues", "default_agent", "recap", "context")
 AGENT_KEYS = ("harness", "provider", "model", "effort", "permission", "priming")
 QUEUE_KEYS = ("agent", "max_parallel")
 
 Stamp = tuple[int, int, int]
+
+# When turn_end names the context size, and when the client warns that the
+# prompt cache has gone cold (cache.py, #354).
+CONTEXT_DEFAULTS = {"handoff_at": 300_000, "cold_after": 3600, "cold_min": 100_000}
+
+
+def context_from(raw: object) -> dict:
+    """The ``context:`` block over its defaults. A wrong block keeps every
+    default in force and carries ``error`` for aegis doctor, so a typo never
+    stops a turn_end."""
+    out: dict = dict(CONTEXT_DEFAULTS)
+    if raw is None:
+        return out
+    if not isinstance(raw, dict):
+        return out | {
+            "error": "context must be a mapping of handoff_at, cold_after, cold_min"
+        }
+    for k, v in raw.items():
+        if k not in CONTEXT_DEFAULTS:
+            return dict(CONTEXT_DEFAULTS) | {
+                "error": f"context has no key {k!r}; it takes handoff_at, cold_after, cold_min"
+            }
+        positive = k == "cold_after"
+        if isinstance(v, bool) or not isinstance(v, int) or v < (1 if positive else 0):
+            kind = "positive" if positive else "non-negative"
+            return dict(CONTEXT_DEFAULTS) | {
+                "error": f"context.{k} {v!r} is not a {kind} integer"
+            }
+        out[k] = v
+    return out
 
 
 def stamp_of(path: Path) -> Stamp | None:
@@ -165,6 +195,7 @@ class Snapshot:
     queues: dict[str, dict] = field(default_factory=dict)
     unknown_keys: tuple[str, ...] = ()
     doc: ConfigDoc = field(default_factory=ConfigDoc)
+    context: dict = field(default_factory=lambda: dict(CONTEXT_DEFAULTS))
     # Why the file on disk is not the one in force, when it does not parse.
     error: str | None = None
 
@@ -180,6 +211,7 @@ class Snapshot:
             queues=queues_from(data.get("queues")),
             unknown_keys=tuple(str(k) for k in data if k not in TOP_KEYS),
             doc=doc_from(data),
+            context=context_from(data.get("context")),
         )
 
     def wire(self) -> dict:

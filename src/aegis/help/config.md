@@ -24,6 +24,7 @@ agents:
 queues:
   general: {agent: opus, max_parallel: 3}
 recap: {agent: quick}
+context: {handoff_at: 300000, cold_after: 3600, cold_min: 100000}
 ```
 
 ## Add an agent
@@ -65,6 +66,22 @@ tasks run.
 `recap:` with `agent:` names a Claude Code agent that writes a short recap
 when a person returns to a tab with a long unread stretch. Without it, recaps
 are off. A cheap, fast agent is enough.
+
+## Context size and the cache
+
+`context:` sets three thresholds, and every one has a default. `handoff_at:`
+(300000) is the context size, in tokens, from which `turn_end` tells an agent
+how large its context is, so that it can write a brief for a fresh session at
+a natural break. 0 turns that line off.
+
+`cold_after:` (3600 seconds) and `cold_min:` (100000 tokens) decide when a
+session's tab warns that its prompt cache has expired: idle at least
+`cold_after:`, with a context of at least `cold_min:`. The next message then
+rewrites the whole context, as much as about 20 warm turns read. The warning
+covers Claude Code only, because only its cache lifetime was measured.
+
+A `context:` block with a wrong key or value leaves all three defaults in
+force, and `aegis doctor` names the mistake.
 
 ## Editing it
 

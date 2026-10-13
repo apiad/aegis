@@ -21,7 +21,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .archive import Position, count_workers, page as archive_page
-from . import attention, restarts
+from . import attention, cache, restarts
+from .config import CONTEXT_DEFAULTS
 from .harness import harness_for
 from .meta import MetaStore, rebuild
 from .names import TITLE_MAX, mint_handle, valid_handle
@@ -78,6 +79,9 @@ class Registry(Host):
         self.monitors = None
         self.queues = None
         self.quota = None
+        # The live config's context block (config.py); the app points it at
+        # Config.current().
+        self.context: Callable[[], dict] = lambda: dict(CONTEXT_DEFAULTS)
         # The app's quota gate: (owner, harness, model) -> quota_gate.Gate.
         self.gate = None
         self.journal = None
@@ -145,6 +149,7 @@ class Registry(Host):
             **self._attention(session),
             **self._worker(session),
             "layout": session.standing.get("layout"),
+            "cache_cold": cache.cold_policy(session.spec.harness, self.context()),
         }
 
     def _worker(self, s: Session) -> dict:
@@ -268,6 +273,9 @@ class Registry(Host):
             last_exit=meta.get("last_exit"),
             restart_continues=meta.get("restart_continues") or 0,
             quota_paused=meta.get("quota_paused"),
+            tool_calls=meta.get("tool_calls") or 0,
+            cache_recent=meta.get("cache_recent"),
+            compactions=meta.get("compactions") or 0,
         )
 
     def boot(self, prev: restarts.Previous = restarts.CLEAN) -> None:

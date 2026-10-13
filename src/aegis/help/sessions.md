@@ -128,6 +128,20 @@ leaves it waiting for you, with a note saying so. After a crash, a harness
 the dead server left running is ended first. A harness that failed on its own
 is not restarted.
 
+## Context and the cache
+
+The Usage row's card shows the session's context and, under it, three
+counters: tool calls, the share of the last ten calls' input read from the
+prompt cache, and compactions. A healthy session reads nearly all of its input
+from the cache. The share turns red below 80% while the session is warm,
+which means something broke the cache: a model switch, an MCP server added
+mid-session, a changed prefix.
+
+A Claude Code session that has sat idle for an hour has lost its cache. When
+its context is over 100k tokens, its tab says so at the end of the transcript: the next
+message rewrites the whole context, as much as about 20 warm turns read.
+`context:` in `.aegis.yaml` moves both thresholds (the config page says how).
+
 ## The journal, quota and the rest
 
 - `journal_search` asks what was done on this server, by day, words, path,

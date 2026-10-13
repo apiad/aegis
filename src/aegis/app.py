@@ -328,6 +328,7 @@ class App:
             self.queues,
             server_name,
         )
+        reg.context = lambda: self.config.current().context
         reg.quota = self.quota
         self.journal = Journal(roots.state_root, self.publish)
         reg.journal = self.journal
