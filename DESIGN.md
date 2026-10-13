@@ -748,5 +748,5 @@ runner, twice each in the order base, head, head, base, so neither pays for
 running second. Each figure is a median of samples taken after a warm-up and
 the JS heap is read after a forced collection: single samples moved 40 to
 140% between identical runs. A metric warns when it is 20% worse and head's
-best sample is worse than base's worst. A regression is a warning a reader
+samples are worse than base's in 90% of their pairs. A regression is a warning a reader
 has to weigh.

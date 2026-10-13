@@ -8,10 +8,12 @@ alternate base and head and neither pays for running second (#282).
 
 Writes a Markdown table to $GITHUB_STEP_SUMMARY when it is set, else to
 stdout, and prints a GitHub ``::warning::`` line on stdout for every metric
-more than 20% worse whose best head sample is also worse than base's worst
-(and, for a ``*_kb`` metric, more than 10 KB larger):
-a change inside the metric's own spread is noise, and warning on it trained
-readers to skip the warnings. Every measured metric is lower-is-better;
+more than 20% worse whose head samples are also worse than base's in 90% of
+their pairs (and, for a ``*_kb`` metric, more than 10 KB larger): a change
+inside the metric's own spread is noise, and warning on it trained readers to
+skip the warnings. Over 30 comparisons of identical trees, two runs a side,
+this warned 0 times where the 20% rule alone warned 76; it still warns on
+the cold load v2.7.0 lost to v2.6.0 (+33%, worse in 94% of pairs). Every measured metric is lower-is-better;
 counts (``*_entries``, ``*_lines``) are context. A missing BASE prints HEAD
 alone.
 """
@@ -29,6 +31,16 @@ WORSE = 0.20
 # device kept a copy is 1 to 6 KB depending on what changed in the moment, and
 # a regression worth seeing is the 660 KB snapshot coming back.
 KB_FLOOR = 10.0
+# The share of (head, base) sample pairs in which head is worse. Requiring
+# head's best to beat base's worst instead missed that +33% cold load: one slow
+# base run was enough to block it.
+SURE = 0.9
+
+
+def worse_share(head: list[float], base: list[float]) -> float:
+    return sum((h > b) + 0.5 * (h == b) for h in head for b in base) / (
+        len(head) * len(base)
+    )
 
 
 def load(path: str) -> tuple[dict, dict] | None:
@@ -100,8 +112,10 @@ def compare(
         worse = (
             change > WORSE
             and h - b > floor
-            and min((head_samples or {}).get(k) or [h])
-            > max((base_samples or {}).get(k) or [b])
+            and worse_share(
+                (head_samples or {}).get(k) or [h], (base_samples or {}).get(k) or [b]
+            )
+            >= SURE
         )
         rows.append(
             f"| {k} | {fmt(b)} | {fmt(h)} | {change:+.0%}{' ⚠' if worse else ''} |"

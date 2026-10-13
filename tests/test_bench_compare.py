@@ -33,17 +33,21 @@ def test_no_base_reports_head_alone():
 def test_a_change_inside_the_samples_spread_does_not_warn():
     base = {"cold_load_ms": 100.0}
     head = {"cold_load_ms": 130.0}
-    spread = {"cold_load_ms": [90.0, 100.0, 140.0]}
+    # Head is worse in 7 of 9 pairs: a spread this wide does not warn.
     _, warnings = bc.compare(
-        base, head, spread, {"cold_load_ms": [125.0, 130.0, 160.0]}
+        base,
+        head,
+        {"cold_load_ms": [90.0, 100.0, 140.0]},
+        {"cold_load_ms": [125.0, 130.0, 160.0]},
     )
     assert warnings == []
+    # One slow base run does not hide a shift the other samples agree on:
+    # head is worse in 36 of 40 pairs.
     _, warnings = bc.compare(
-        base, head, spread, {"cold_load_ms": [145.0, 130.0, 160.0]}
-    )
-    assert warnings == []  # head's best (130) is below base's worst (140)
-    _, warnings = bc.compare(
-        base, head, {"cold_load_ms": [95.0, 100.0]}, {"cold_load_ms": [125.0, 135.0]}
+        base,
+        head,
+        {"cold_load_ms": [95.0, 98.0, 100.0, 102.0, 140.0]},
+        {"cold_load_ms": [125.0, 128.0, 130.0, 133.0, 150.0, 155.0, 160.0, 170.0]},
     )
     assert len(warnings) == 1
 
