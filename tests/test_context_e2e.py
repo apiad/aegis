@@ -183,3 +183,11 @@ async def test_peer_read_reaches_the_archived_predecessor_for_its_successor_only
     with pytest.raises(OpError) as e:
         await world.app.registry.call("peer.read", read, Caller("agent", c.log_id))
     assert e.value.code == "archived"
+
+
+async def test_the_line_asks_outright_at_a_break_and_conditionally_on_a_question(world):
+    a = await world.spawn()
+    await turn(a, "/ctx 342000")
+    assert "This turn is a natural break" in await end(world, a, attention="review")
+    asked = await end(world, a, attention="needs_you", line="Merge or rebase?")
+    assert "If a fresh session could carry on" in asked
