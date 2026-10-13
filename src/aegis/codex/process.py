@@ -31,7 +31,7 @@ from typing import Any
 import httpx
 
 from ..claude.control import Catalog
-from ..harness import Launch
+from ..harness import Launch, raise_oom_score
 from .config import (
     SANDBOX_MODE,
     SANDBOX_POLICY,
@@ -142,6 +142,7 @@ class CodexProcess:
             limit=LINE_LIMIT,
             start_new_session=True,
         )
+        raise_oom_score(self._proc.pid)
         self._keep(self._drain(self._proc.stderr))
         self._keep(self._read())
         self._wait_task = asyncio.create_task(self._wait())
