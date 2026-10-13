@@ -11,7 +11,7 @@ Cost is priced from tokens through ``prices.py``, never taken from Claude's
 running ``total_cost_usd``: Claude Code's files do not carry it, and a model
 without a price is counted as unpriced rather than charged at another's rate.
 Only Claude sessions are priced. An OpenCode session's tokens, from its
-``step-finish`` parts, are counted as unpriced work. A Codex session's requests,
+``session.step.ended`` lines, are counted as unpriced work. A Codex session's requests,
 from its ``thread/tokenUsage/updated`` lines, are priced by ``codex_prices_for``
 with the model of their turn's ``aegis/turn`` line.
 """
@@ -372,16 +372,16 @@ class Scanner:
                     self._unsplit.append(call)
 
     def _opencode_step(self, scan: SessionScan, ts: str, obj: dict) -> None:
-        """OpenCode reports a step's tokens on its ``step-finish`` part, once
-        per part id. None of its models has a price here, so they count as
+        """OpenCode reports a step's tokens when the step ends (or fails),
+        once per step. None of its models has a price here, so they count as
         unpriced work rather than vanishing."""
-        if obj.get("type") != "message.part.updated":
+        if obj.get("type") not in ("session.step.ended", "session.step.failed"):
             return
-        part = (obj.get("properties") or {}).get("part") or {}
-        tokens = part.get("tokens")
-        if part.get("type") != "step-finish" or not isinstance(tokens, dict):
+        data = obj.get("data") or {}
+        tokens = data.get("tokens")
+        if not isinstance(tokens, dict):
             return
-        key = f"opencode:{part.get('id')}"
+        key = f"opencode:{data.get('assistantMessageID')}"
         if key in self.seen:
             return
         self.seen.add(key)

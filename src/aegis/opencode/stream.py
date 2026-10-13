@@ -1,25 +1,30 @@
 """OpenCode's event stream, one ``data:`` payload at a time, as typed events.
 
 The events are the ones ``claude/stream.py`` defines, so the fold keeps one set
-of rules for both harnesses. Measured on OpenCode 1.18.31 (spec
-``2026-10-08-aegis-2-opencode-harness-design.md``; fixtures in
-``tests/fixtures/opencode/``, recorded by ``scripts/record_opencode.py``):
+of rules for every harness. Measured on OpenCode 2.0.28 (spec
+``2026-10-13-opencode-2-driver.html``; fixtures in ``tests/fixtures/opencode/``,
+recorded by ``scripts/record_opencode.py``). Every payload is
+``{"type", "created", "data": {"sessionID", ...}}``:
 
-- A message's role arrives in ``message.updated`` before its parts.
-- A text or reasoning part opens with an empty ``message.part.updated``,
-  streams as ``message.part.delta`` and closes with its full text; the part id
-  is the entry id, so all three touch one entry.
-- A tool part goes ``pending`` (no input), ``running`` (input), then
-  ``completed`` or ``error``, under one ``callID``.
-- ``session.idle`` ends a turn. An abort sends ``session.error`` first, then
-  ``session.idle``, then completes the aborted tool part, then idles again: a
-  call still open at the idle is closed, and its late part changes nothing.
-- A ``task`` call runs a child session, whose events are steps of that call.
+- ``session.execution.started`` opens a turn and ``.succeeded``, ``.failed`` or
+  ``.interrupted`` closes it, after everything else the turn emits.
+- A turn is steps, each under its own ``assistantMessageID``. Text and
+  reasoning open (``*.started``), stream (``*.delta``) and close (``*.ended``
+  with the full text) under that id and an ``ordinal``; the three name one
+  entry. ``session.step.ended`` (or ``.failed``) carries the step's tokens.
+- A tool call is named in ``session.tool.input.started``, gets its input in
+  ``session.tool.called`` and ends in ``session.tool.success`` or ``.failed``,
+  all under one call id.
+- A ``subagent`` call runs a child session, created with a ``parentID``; the
+  call's ``session.tool.progress`` names the child. The child's events are
+  steps of that call.
+- The prompt reaches the session as ``session.inbox.enqueued``, a command as
+  its expanded template.
 
-The parser keeps what one line cannot carry alone (roles, part kinds, costs,
-the turn's span), so it must see every stored line in order, which is why the
-fold owns it. Every value comes from the lines and none from the clock, so a
-fold of the store equals the live fold.
+The parser keeps what one line cannot carry alone (tool names, children, the
+turn's span and cost), so it must see every stored line in order, which is why
+the fold owns it. Every value comes from the lines and none from the clock, so
+a fold of the store equals the live fold.
 """
 
 from __future__ import annotations
@@ -47,36 +52,54 @@ from ..claude.stream import (
 )
 
 LABEL = "OpenCode"
-DELTA = "message.part.delta"
-# What the store keeps; everything else on the stream (heartbeats, plugins,
-# diffs, deltas) carries nothing a reload needs.
+DELTAS = frozenset({"session.text.delta", "session.reasoning.delta"})
+# What the store keeps; everything else on the stream (shells, usage ticks,
+# instructions, catalog updates, deltas) carries nothing a reload needs.
 STORED = frozenset(
     {
         "session.created",
-        "session.updated",
-        "session.status",
-        "session.idle",
-        "session.error",
-        "session.compacted",
-        "message.updated",
-        "message.part.updated",
+        "session.renamed",
+        "session.model.selected",
+        "session.inbox.enqueued",
+        "session.execution.started",
+        "session.execution.succeeded",
+        "session.execution.failed",
+        "session.execution.interrupted",
+        "session.text.started",
+        "session.text.ended",
+        "session.reasoning.started",
+        "session.reasoning.ended",
+        "session.tool.input.started",
+        "session.tool.called",
+        "session.tool.progress",
+        "session.tool.success",
+        "session.tool.failed",
+        "session.step.ended",
+        "session.step.failed",
+        "session.compaction.ended",
     }
 )
-PLACEHOLDER_TITLE = "New session - "
+TURN_ENDS = frozenset(
+    {
+        "session.execution.succeeded",
+        "session.execution.failed",
+        "session.execution.interrupted",
+    }
+)
 TOOL_NAMES = {
-    "bash": "Bash",
+    "shell": "Bash",
     "read": "Read",
     "write": "Write",
     "edit": "Edit",
-    "multiedit": "MultiEdit",
     "glob": "Glob",
     "grep": "Grep",
-    "list": "LS",
     "webfetch": "WebFetch",
     "websearch": "WebSearch",
-    "todowrite": "TodoWrite",
-    "task": "Task",
+    "subagent": "Task",
+    "skill": "Skill",
 }
+# OpenCode's input keys, after snake-casing, in the vocabulary describe.py reads.
+INPUT_KEYS = {"path": "file_path", "agent": "subagent_type"}
 AEGIS_TOOL = "aegis_"
 _CAMEL = re.compile(r"(?<!^)(?=[A-Z])")
 
@@ -90,25 +113,15 @@ def tool_name(name: str) -> str:
     return name
 
 
-def tool_input(inp: Any) -> dict:
-    """camelCase keys as snake_case: ``filePath`` is ``file_path``."""
+def tool_input(name: str, inp: Any) -> dict:
+    """camelCase keys as snake_case (``oldString`` is ``old_string``), and a
+    built-in tool's keys as Claude Code names them (``path`` is ``file_path``)."""
     if not isinstance(inp, dict):
         return {}
-    return {_CAMEL.sub("_", k).lower(): v for k, v in inp.items()}
-
-
-def session_of(props: dict) -> str | None:
-    """The session an event belongs to."""
-    sid = props.get("sessionID")
-    if isinstance(sid, str):
-        return sid
-    for key in ("info", "part"):
-        d = props.get(key)
-        if isinstance(d, dict):
-            v = d.get("sessionID") or (d.get("id") if key == "info" else None)
-            if isinstance(v, str):
-                return v
-    return None
+    out = {_CAMEL.sub("_", k).lower(): v for k, v in inp.items()}
+    if name in TOOL_NAMES:
+        out = {INPUT_KEYS.get(k, k): v for k, v in out.items()}
+    return out
 
 
 def _usage(tokens: Any) -> Usage | None:
@@ -131,36 +144,55 @@ def _str(v: Any) -> str | None:
     return v if isinstance(v, str) else None
 
 
+def _model(m: Any) -> str | None:
+    m = _dict(m)
+    if m.get("providerID") and m.get("id"):
+        return f"{m['providerID']}/{m['id']}"
+    return None
+
+
+def _content(content: Any) -> str:
+    if not isinstance(content, list):
+        return ""
+    return "".join(str(c.get("text") or "") for c in content if isinstance(c, dict))
+
+
+def _error(err: Any) -> str:
+    err = _dict(err)
+    kind, msg = _str(err.get("type")), _str(err.get("message"))
+    return f"{kind}: {msg}" if kind and msg else kind or msg or "error"
+
+
+def entry_key(data: dict, kind: str) -> str:
+    """The entry a text or reasoning block (and its deltas) belongs to."""
+    return f"{data.get('assistantMessageID')}/{kind}/{data.get('ordinal', 0)}"
+
+
 class Parser:
     def __init__(self) -> None:
         self.root: str | None = None
         self.children: dict[str, str | None] = {}  # child session -> its Task call
-        self.roles: dict[str, str] = {}
-        self.part_kinds: dict[str, str] = {}
+        self.names: dict[str, str] = {}  # call -> tool name
+        self.waiting: list[str] = []  # the root's subagent calls with no child yet
         self.echoed: set[str] = set()
+        self.keys: set[str] = set()
         self.open_calls: set[str] = set()
         self.closed_calls: set[str] = set()
-        self.task_call: str | None = None
-        self.costs: dict[str, float] = {}
-        self.turn_messages: set[str] = set()
-        self.closed_messages: set[str] = set()
+        self.cost = 0.0
         self.model: str | None = None
         self.title: str | None = None
-        self.turn_open = False
         self.turn_start: int | None = None
-        self.turn_end: int | None = None
         self.error: str | None = None
 
     def end_turn(self) -> None:
-        """The turn ended (an idle, or for the fold an exit, a stop, a server
-        restart or a new conversation): nothing of it may reach the next."""
+        """The turn ended (its last event, or for the fold an exit, a stop, a
+        server restart or a new conversation): nothing of it may reach the
+        next."""
         self.closed_calls |= self.open_calls
         self.open_calls.clear()
-        self.closed_messages |= self.turn_messages
-        self.turn_messages.clear()
-        self.turn_open = False
-        self.turn_start = self.turn_end = None
-        self.error = None
+        self.waiting.clear()
+        self.turn_start = self.error = None
+        self.cost = 0.0
 
     def feed(self, line: str) -> list[Event]:
         try:
@@ -170,15 +202,16 @@ class Parser:
         if not isinstance(obj, dict):
             return [Garbled(raw=line)]
         kind = str(obj.get("type"))
-        handler = getattr(self, "_" + kind.replace(".", "_").replace("-", "_"), None)
+        handler = getattr(self, "_" + kind.replace(".", "_"), None)
         if handler is None:
             return [Ignored(type=kind)]
-        return handler(_dict(obj.get("properties")))
+        return handler(_dict(obj.get("data")), obj)
 
     # -- whose event ---------------------------------------------------
-    def _belongs(self, sid: str | None) -> tuple[bool, str | None]:
+    def _belongs(self, d: dict) -> tuple[bool, str | None]:
         """Whether the event is this conversation's, and the Task call it is
         a step of (None for the conversation itself)."""
+        sid = _str(d.get("sessionID"))
         if sid is None:
             return False, None
         if self.root is None and sid not in self.children:
@@ -186,200 +219,205 @@ class Parser:
         if sid == self.root:
             return True, None
         if sid in self.children:
-            # A child is never the conversation itself, even one whose Task
-            # call was not seen: its own id then names no entry.
+            # A child is never the conversation itself, even one whose call was
+            # not seen: its own id then names no entry.
             return True, self.children[sid] or sid
         return False, None
 
     # -- sessions ------------------------------------------------------
-    def _session_created(self, p: dict) -> list[Event]:
-        info = _dict(p.get("info"))
-        sid, parent = _str(info.get("id")), _str(info.get("parentID"))
+    def _session_created(self, d: dict, obj: dict) -> list[Event]:
+        sid, parent = _str(d.get("sessionID")), _str(d.get("parentID"))
         if sid is None:
             return []
         if parent is not None:
             if parent == self.root or parent in self.children:
-                self.children[sid] = self.task_call
+                self.children[sid] = self.waiting.pop(0) if self.waiting else None
             return []
         self.root, self.model = sid, None  # a new conversation
-        return self._info(info)
+        return self._init(d, obj)
 
-    def _session_updated(self, p: dict) -> list[Event]:
-        info = _dict(p.get("info"))
-        if info.get("parentID"):
+    def _init(self, d: dict, obj: dict) -> list[Event]:
+        model = _model(d.get("model"))
+        if model is None or model == self.model:
             return []
-        ok, parent = self._belongs(_str(info.get("id")))
-        return self._info(info) if ok and parent is None else []
-
-    def _info(self, info: dict) -> list[Event]:
-        out: list[Event] = []
-        m = _dict(info.get("model"))
-        model = (
-            f"{m['providerID']}/{m['id']}"
-            if m.get("providerID") and m.get("id")
-            else None
-        )
-        if model is not None and model != self.model:
-            self.model = model
-            out.append(
-                Init(
-                    session_id=_str(info.get("id")),
-                    model=model,
-                    version=_str(info.get("version")),
-                    harness=LABEL,
-                    cwd=_str(info.get("directory")),
-                )
+        self.model = model
+        where = _dict(d.get("location")) or _dict(obj.get("location"))
+        return [
+            Init(
+                session_id=self.root,
+                model=model,
+                version=_str(d.get("version")),
+                harness=LABEL,
+                cwd=_str(where.get("directory")),
             )
-        title = _str(info.get("title"))
-        if title and not title.startswith(PLACEHOLDER_TITLE) and title != self.title:
-            self.title = title
-            out.append(Title(text=title))
-        return out
+        ]
 
-    def _session_status(self, p: dict) -> list[Event]:
-        ok, parent = self._belongs(_str(p.get("sessionID")))
-        if ok and parent is None and _dict(p.get("status")).get("type") == "busy":
-            self.turn_open = True
-        return []
+    def _session_model_selected(self, d: dict, obj: dict) -> list[Event]:
+        ok, parent = self._belongs(d)
+        return self._init(d, obj) if ok and parent is None else []
 
-    def _session_error(self, p: dict) -> list[Event]:
-        ok, parent = self._belongs(_str(p.get("sessionID")))
-        if ok and parent is None:
-            self.error = str(_dict(p.get("error")).get("name") or "error")
-        return []
+    def _session_renamed(self, d: dict, obj: dict) -> list[Event]:
+        ok, parent = self._belongs(d)
+        title = _str(d.get("title"))
+        if not ok or parent is not None or not title or title == self.title:
+            return []
+        self.title = title
+        return [Title(text=title)]
 
-    def _session_compacted(self, p: dict) -> list[Event]:
-        ok, parent = self._belongs(_str(p.get("sessionID")))
+    def _session_compaction_ended(self, d: dict, obj: dict) -> list[Event]:
+        ok, parent = self._belongs(d)
         return [Compact(pre_tokens=0, post_tokens=0)] if ok and parent is None else []
 
-    def _session_idle(self, p: dict) -> list[Event]:
-        ok, parent = self._belongs(_str(p.get("sessionID")))
-        if not ok or parent is not None or not self.turn_open:
+    def _session_inbox_enqueued(self, d: dict, obj: dict) -> list[Event]:
+        ok, parent = self._belongs(d)
+        item, iid = _dict(d.get("item")), str(d.get("inboxID") or "")
+        text = str(_dict(item.get("payload")).get("text") or "")
+        if not ok or parent is not None or item.get("type") != "user":
             return []
+        if iid in self.echoed or not text.strip():
+            return []
+        self.echoed.add(iid)
+        return [Echo(text=text, expands=True)]
+
+    # -- the turn ------------------------------------------------------
+    def _session_execution_started(self, d: dict, obj: dict) -> list[Event]:
+        ok, parent = self._belongs(d)
+        if ok and parent is None and isinstance(obj.get("created"), int):
+            self.turn_start = obj["created"]
+        return []
+
+    def _end(self, d: dict, obj: dict, error: str | None) -> list[Event]:
+        ok, parent = self._belongs(d)
+        if not ok or parent is not None:
+            return []
+        end = obj.get("created")
         span = (
-            self.turn_end - self.turn_start
-            if self.turn_start is not None and self.turn_end is not None
+            end - self.turn_start
+            if self.turn_start is not None and isinstance(end, int)
             else None
         )
         result = Result(
-            is_error=self.error is not None,
-            subtype=self.error or "success",
+            is_error=error is not None,
+            subtype=error or "success",
             duration_ms=span,
-            cost_usd=sum(self.costs.values()) if self.costs else None,
+            cost_usd=self.cost,
             stop_reason=None,
             context_window=None,
         )
         self.end_turn()
         return [result]
 
-    # -- messages and parts ------------------------------------------
-    def _message_updated(self, p: dict) -> list[Event]:
-        info = _dict(p.get("info"))
-        ok, parent = self._belongs(_str(info.get("sessionID")))
-        mid, role = _str(info.get("id")), info.get("role")
-        if not ok or mid is None or role not in ("user", "assistant"):
-            return []
-        self.roles[mid] = str(role)
-        if role != "assistant":
-            return []
-        cost = info.get("cost")
-        if isinstance(cost, (int, float)):
-            self.costs[mid] = float(cost)
-        if parent is not None or mid in self.closed_messages:
-            return []  # a child's, or an abort's late update to a closed turn
-        self.turn_messages.add(mid)
-        self.turn_open = True
-        t = _dict(info.get("time"))
-        if isinstance(t.get("created"), int) and self.turn_start is None:
-            self.turn_start = t["created"]
-        if isinstance(t.get("completed"), int):
-            self.turn_end = max(self.turn_end or 0, t["completed"])
-        err = _dict(info.get("error"))
-        if err.get("name"):
-            self.error = str(err["name"])
-        return []
+    def _session_execution_succeeded(self, d: dict, obj: dict) -> list[Event]:
+        return self._end(d, obj, None)
 
-    def _message_part_updated(self, p: dict) -> list[Event]:
-        part = _dict(p.get("part"))
-        ok, parent = self._belongs(_str(part.get("sessionID")))
+    def _session_execution_failed(self, d: dict, obj: dict) -> list[Event]:
+        return self._end(d, obj, _error(d.get("error")))
+
+    def _session_execution_interrupted(self, d: dict, obj: dict) -> list[Event]:
+        return self._end(d, obj, "interrupted")
+
+    def _session_step_ended(self, d: dict, obj: dict) -> list[Event]:
+        ok, parent = self._belongs(d)
         if not ok:
             return []
-        ptype, pid = part.get("type"), str(part.get("id") or "")
-        mid = str(part.get("messageID"))
-        if ptype in ("text", "reasoning") and mid in self.closed_messages:
-            return []  # an abort's late close of a part: its turn has ended
-        role = self.roles.get(mid)
-        if ptype == "text":
-            text = str(part.get("text") or "")
-            if role == "user":
-                if (
-                    parent is not None
-                    or part.get("synthetic")
-                    or part.get("ignored")
-                    or pid in self.echoed
-                    or not text.strip()
-                ):
-                    return []
-                self.echoed.add(pid)
-                return [Echo(text=text, expands=True)]
-            self.part_kinds[pid] = "prose"
-            return [Text(text=text, parent=parent, usage=None, key=pid)]
-        if ptype == "reasoning":
-            self.part_kinds[pid] = "thinking"
-            text = str(part.get("text") or "")
-            return [Thinking(text=text, parent=parent, usage=None, key=pid)]
-        if ptype == "tool":
-            return self._tool(part, parent)
-        if ptype == "step-finish":
-            u = _usage(part.get("tokens"))
-            return [Step(usage=u, parent=parent)] if u is not None else []
+        if isinstance(d.get("cost"), (int, float)):
+            self.cost += float(d["cost"])
+        u = _usage(d.get("tokens"))
+        return [Step(usage=u, parent=parent)] if u is not None else []
+
+    _session_step_failed = _session_step_ended
+
+    # -- text and reasoning --------------------------------------------
+    def _block(self, d: dict, kind: str, text: str) -> list[Event]:
+        ok, parent = self._belongs(d)
+        if not ok:
+            return []
+        key = entry_key(d, kind)
+        if parent is None:
+            self.keys.add(key)
+        cls = Text if kind == "prose" else Thinking
+        return [cls(text=text, parent=parent, usage=None, key=key)]
+
+    def _session_text_started(self, d: dict, obj: dict) -> list[Event]:
+        return self._block(d, "prose", "")
+
+    def _session_text_ended(self, d: dict, obj: dict) -> list[Event]:
+        return self._block(d, "prose", str(d.get("text") or ""))
+
+    def _session_reasoning_started(self, d: dict, obj: dict) -> list[Event]:
+        return self._block(d, "thinking", "")
+
+    def _session_reasoning_ended(self, d: dict, obj: dict) -> list[Event]:
+        return self._block(d, "thinking", str(d.get("text") or ""))
+
+    def _delta(self, d: dict, kind: str) -> list[Event]:
+        """Always one Delta, so the session never stores a delta line; one with
+        no key (a child's, or a block not seen opening) draws nothing."""
+        ok, parent = self._belongs(d)
+        key = entry_key(d, kind)
+        if not ok or parent is not None or key not in self.keys:
+            return [Delta(key="", kind="", text="")]
+        return [Delta(key=key, kind=kind, text=str(d.get("delta") or ""))]
+
+    def _session_text_delta(self, d: dict, obj: dict) -> list[Event]:
+        return self._delta(d, "prose")
+
+    def _session_reasoning_delta(self, d: dict, obj: dict) -> list[Event]:
+        return self._delta(d, "thinking")
+
+    # -- tools ---------------------------------------------------------
+    def _session_tool_input_started(self, d: dict, obj: dict) -> list[Event]:
+        ok, parent = self._belongs(d)
+        call, name = str(d.get("id") or ""), str(d.get("name") or "?")
+        if ok:
+            self.names[call] = name
+            if name == "subagent" and parent is None:
+                self.waiting.append(call)  # its child may start before it runs
         return []
 
-    def _tool(self, part: dict, parent: str | None) -> list[Event]:
-        call = str(part.get("callID") or part.get("id") or "")
-        if call in self.closed_calls:
-            return []  # its turn already ended: an abort's late part
-        state = _dict(part.get("state"))
-        status = state.get("status")
-        name = tool_name(str(part.get("tool") or "?"))
-        out: list[Event] = []
-        if name == "Task" and parent is None and status == "pending":
-            self.task_call = call  # its child session may start before it runs
-        if status in ("running", "completed", "error") and call not in self.open_calls:
-            self.open_calls.add(call)
-            out.append(
-                ToolCall(
-                    id=call,
-                    name=name,
-                    input=tool_input(state.get("input")),
-                    parent=parent,
-                    usage=None,
-                )
+    def _session_tool_called(self, d: dict, obj: dict) -> list[Event]:
+        ok, parent = self._belongs(d)
+        call = str(d.get("id") or "")
+        if not ok or call in self.open_calls or call in self.closed_calls:
+            return []
+        self.open_calls.add(call)
+        raw = self.names.get(call, "?")
+        name = tool_name(raw)
+        return [
+            ToolCall(
+                id=call,
+                name=name,
+                input=tool_input(raw, d.get("input")),
+                parent=parent,
+                usage=None,
             )
-            if name == "Task" and parent is None:
-                self.task_call = call
-        if status in ("completed", "error"):
-            self.open_calls.discard(call)
-            self.closed_calls.add(call)
-            if call == self.task_call:
-                self.task_call = None
-            text = state.get("output") if status == "completed" else state.get("error")
-            out.append(
-                ToolOutput(
-                    id=call,
-                    text=str(text or ""),
-                    is_error=status == "error",
-                    parent=parent,
-                )
-            )
-        return out
+        ]
 
-    def _message_part_delta(self, p: dict) -> list[Event]:
-        """Always one Delta, so the session never stores a delta line; one with
-        no key (a child's, or a part not seen opening) draws nothing."""
-        ok, parent = self._belongs(_str(p.get("sessionID")))
-        pid = str(p.get("partID") or "")
-        kind = self.part_kinds.get(pid)
-        if not ok or parent is not None or kind is None or p.get("field") != "text":
-            return [Delta(key="", kind="", text="")]
-        return [Delta(key=pid, kind=kind, text=str(p.get("delta") or ""))]
+    def _session_tool_progress(self, d: dict, obj: dict) -> list[Event]:
+        ok, parent = self._belongs(d)
+        child = _str(_dict(d.get("metadata")).get("sessionID"))
+        call = str(d.get("id") or "")
+        if ok and parent is None and child is not None:
+            self.children[child] = call
+            if call in self.waiting:
+                self.waiting.remove(call)
+        return []
+
+    def _tool_end(self, d: dict, text: str, is_error: bool) -> list[Event]:
+        ok, parent = self._belongs(d)
+        call = str(d.get("id") or "")
+        if not ok or call in self.closed_calls:
+            return []  # its turn already ended
+        self.open_calls.discard(call)
+        self.closed_calls.add(call)
+        if call in self.waiting:
+            self.waiting.remove(call)
+        return [ToolOutput(id=call, text=text, is_error=is_error, parent=parent)]
+
+    def _session_tool_success(self, d: dict, obj: dict) -> list[Event]:
+        return self._tool_end(d, _content(d.get("content")), False)
+
+    def _session_tool_failed(self, d: dict, obj: dict) -> list[Event]:
+        err = _dict(d.get("error"))
+        text = "interrupted" if err.get("type") == "aborted" else _error(err)
+        return self._tool_end(d, text, True)

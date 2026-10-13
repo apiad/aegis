@@ -31,7 +31,9 @@ context: {handoff_at: 300000, cold_after: 3600, cold_min: 100000}
 
 `agents:` maps a name to a preset. Each one has:
 
-- `harness:` one of claude-code, opencode or codex;
+- `harness:` one of claude-code, opencode or codex. aegis drives the latest
+  stable release of each; for OpenCode that is OpenCode 2
+  (`npm install -g @opencode/cli`), and `aegis doctor` names an older one;
 - `model:` the model to run, such as opus or haiku for Claude Code. OpenCode
   and Codex models are written provider/model;
 - `effort:` low, medium, high, xhigh or max;
