@@ -20,17 +20,24 @@ tests/fixtures/session.jsonl:
   over the mounted rows, so this is what grows if the transcript's DOM does
   (#157).
 
-scripts/bench_compare.py turns two of these files into a table and warnings.
+Each figure is the median of several samples taken after a warm-up, and
+the samples are kept in the result's ``samples``: one run's figures moved by
+40 to 140% between identical runs when each was a single sample or the
+minimum of three (#145, #282). scripts/bench_compare.py turns these files
+into a table, and warns only when head is 20% worse and its best sample is
+worse than base's worst.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import gc
 import json
 import os
 import re
 import socket
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -48,6 +55,16 @@ sys.path.insert(0, str(ROOT / "src"))
 def pct(xs: list[float], q: float) -> float:
     xs = sorted(xs)
     return xs[min(len(xs) - 1, int(q * len(xs)))]
+
+
+# Each metric's samples, by name; main() writes them beside the medians.
+SAMPLES: dict[str, list[float]] = {}
+
+
+def median(name: str, xs: list[float]) -> float:
+    """Record a metric's samples and return their median."""
+    SAMPLES[name] = [round(x, 3) for x in xs]
+    return statistics.median(xs)
 
 
 OPENCODE_FIXTURE = ROOT / "tests" / "fixtures" / "opencode" / "tool.jsonl"
@@ -71,7 +88,21 @@ def claude_lines() -> list[str]:
 
 
 # -- 1. server cost per line --------------------------------------------------
-async def server_cost(rounds: int = 40, harness: str = "claude-code") -> dict:
+async def server_cost(
+    rounds: int = 40, harness: str = "claude-code", repeats: int = 7
+) -> dict:
+    """Per-line cost, p50 and p95, each the median over ``repeats`` replays."""
+    runs = [await server_cost_once(rounds, harness) for _ in range(repeats)]
+    tag = "" if harness == "claude-code" else f"_{harness}"
+    key = f"server_line{tag}"
+    return {
+        f"{key}_p50_us": median(f"{key}_p50_us", [r[0] for r in runs]),
+        f"{key}_p95_us": median(f"{key}_p95_us", [r[1] for r in runs]),
+        (f"server{tag}_lines" if tag else "server_lines"): runs[0][2],
+    }
+
+
+async def server_cost_once(rounds: int, harness: str) -> tuple[float, float, int]:
     from aegis.meta import MetaStore
     from aegis.session import Session, SpawnSpec
     from aegis.transcript.store import Store
@@ -114,13 +145,7 @@ async def server_cost(rounds: int = 40, harness: str = "claude-code") -> dict:
                 s._on_line(line)
                 samples.append((time.perf_counter_ns() - t0) / 1000)
         s.store.close()
-    tag = "" if harness == "claude-code" else f"_{harness}"
-    key = f"server_line{tag}"
-    return {
-        f"{key}_p50_us": pct(samples, 0.5),
-        f"{key}_p95_us": pct(samples, 0.95),
-        (f"server{tag}_lines" if tag else "server_lines"): len(samples),
-    }
+    return pct(samples, 0.5), pct(samples, 0.95), len(samples)
 
 
 # -- 2 and 3: through a real server and a real browser ------------------------
@@ -228,7 +253,7 @@ new MutationObserver((ms) => {
 """
 
 
-def key_cost(browser, page, keys: int = 60) -> float:
+def key_cost(browser, page, keys: int = 40) -> float:
     """Main-thread milliseconds per keystroke typed into the composer."""
     page.click("#input")
     with tempfile.TemporaryDirectory() as tmp:
@@ -261,45 +286,69 @@ def key_cost(browser, page, keys: int = 60) -> float:
     return busy / 1000 / keys
 
 
+def heap_mb(page) -> float:
+    """The page's JS heap after two forced collections. Read without one, the
+    figure is whatever V8 had not collected yet, and doubled between identical
+    runs (#145)."""
+    cdp = page.context.new_cdp_session(page)
+    try:
+        for _ in range(2):
+            cdp.send("HeapProfiler.collectGarbage")
+        return page.evaluate("performance.memory.usedJSHeapSize") / 2**20
+    finally:
+        cdp.detach()
+
+
+def entry_latency(browser, rounds: int = 4) -> list[float]:
+    """Milliseconds from each tool line's emit to its row in the DOM."""
+    with tempfile.TemporaryDirectory() as tmp:
+        log = Path(tmp) / "emit.log"
+        srv = Server(
+            Path(tmp),
+            {
+                "FAKE_CLAUDE_REPLAY": str(FIXTURE),
+                "FAKE_CLAUDE_PACE": "0.01",
+                "FAKE_CLAUDE_REPEAT": str(rounds),
+                "FAKE_CLAUDE_EMIT_LOG": str(log),
+            },
+        )
+        try:
+            page = browser.new_page()
+            page.add_init_script(WATCH)
+            start_session(page, srv.url)
+            calls = sum('"tool_use"' in ln for ln in claude_lines()) * rounds
+            page.wait_for_function(
+                "n => Object.keys(window.__seen).length >= n",
+                arg=calls,
+                timeout=120_000,
+            )
+            seen = page.evaluate("window.__seen")
+            page.close()
+            emitted = dict(line.split() for line in log.read_text().splitlines())
+            return [seen[i] - float(t) * 1000 for i, t in emitted.items() if i in seen]
+        finally:
+            srv.stop()
+
+
 def browser_runs(playwright) -> dict:
     out: dict = {}
     browser = playwright.chromium.launch(args=["--enable-precise-memory-info"])
     try:
-        # Latency: a paced replay, each tool row's DOM time against its emit time.
-        with tempfile.TemporaryDirectory() as tmp:
-            log = Path(tmp) / "emit.log"
-            rounds = 4
-            srv = Server(
-                Path(tmp),
-                {
-                    "FAKE_CLAUDE_REPLAY": str(FIXTURE),
-                    "FAKE_CLAUDE_PACE": "0.01",
-                    "FAKE_CLAUDE_REPEAT": str(rounds),
-                    "FAKE_CLAUDE_EMIT_LOG": str(log),
-                },
-            )
-            try:
-                page = browser.new_page()
-                page.add_init_script(WATCH)
-                start_session(page, srv.url)
-                calls = sum('"tool_use"' in ln for ln in claude_lines()) * rounds
-                page.wait_for_function(
-                    "n => Object.keys(window.__seen).length >= n",
-                    arg=calls,
-                    timeout=120_000,
-                )
-                seen = page.evaluate("window.__seen")
-                emitted = dict(line.split() for line in log.read_text().splitlines())
-                lat = [
-                    seen[i] - float(t) * 1000 for i, t in emitted.items() if i in seen
-                ]
-                out.update(
-                    browser_entry_p50_ms=pct(lat, 0.5),
-                    browser_entry_p95_ms=pct(lat, 0.95),
-                    browser_entries=len(lat),
-                )
-            finally:
-                srv.stop()
+        # Latency: a paced replay, each tool row's DOM time against its emit
+        # time. One replay gave 32 samples, and their p95 was the second
+        # worst; four fresh sessions of the same length are pooled instead.
+        lat: list[float] = []
+        p95s: list[float] = []
+        for _ in range(4):
+            one = entry_latency(browser)
+            lat += one
+            p95s.append(pct(one, 0.95))
+        SAMPLES["browser_entry_p95_ms"] = p95s
+        out.update(
+            browser_entry_p50_ms=pct(lat, 0.5),
+            browser_entry_p95_ms=pct(lat, 0.95),
+            browser_entries=len(lat),
+        )
 
         # Cold load of 2,000+ entries, then memory.
         with tempfile.TemporaryDirectory() as tmp:
@@ -343,8 +392,9 @@ def browser_runs(playwright) -> dict:
                         "import('/static/js/devicestore.js').then(s => s.clearDevice())"
                     )
 
+                # Two loads warm the page's code; the next five are measured.
                 loads = []
-                for _ in range(3):
+                for _ in range(7):
                     forget()
                     frames.clear()
                     page.reload()
@@ -353,6 +403,7 @@ def browser_runs(playwright) -> dict:
                         timeout=60_000,
                     )
                     loads.append(page.evaluate("window.__a2snapshot.painted"))
+                loads = loads[2:]
                 snap = [
                     f for f in frames if '"t": "snapshot"' in f and "transcript:" in f
                 ]
@@ -378,16 +429,21 @@ def browser_runs(playwright) -> dict:
                 page.wait_for_timeout(500)
                 back = [f for f in frames if "transcript:" in f]
                 out.update(
-                    cold_load_ms=min(loads),
+                    cold_load_ms=median("cold_load_ms", loads),
                     cold_load_entries=page.evaluate("window.__a2snapshot.count"),
                     cold_snapshot_kb=sum(map(len, snap)) / 1000,
                     cold_saved_kb=sum(map(len, saved)) / 1000,
                     return_tab_kb=sum(map(len, back)) / 1000,
                     server_rss_mb=srv.rss_mb(),
-                    browser_heap_mb=page.evaluate("performance.memory.usedJSHeapSize")
-                    / 2**20,
+                    browser_heap_mb=median(
+                        "browser_heap_mb", [heap_mb(page) for _ in range(3)]
+                    ),
                 )
-                out.update(cold_key_ms=key_cost(browser, page))
+                out.update(
+                    cold_key_ms=median(
+                        "cold_key_ms", [key_cost(browser, page) for _ in range(3)]
+                    )
+                )
             finally:
                 srv.stop()
     finally:
@@ -438,13 +494,15 @@ def boot_cost() -> dict:
         make_world(Path(tmp))
         roots = make_roots(Path(tmp), None)
         times = []
-        for _ in range(5):
+        for _ in range(23):
+            gc.collect()
             t0 = time.perf_counter()
             r = Registry(roots, lambda ch, ops: None)
             r.boot()
             times.append((time.perf_counter() - t0) * 1000)
             assert len(r.sessions) == 20 and len(r.archived) == 80
-    return {"boot_100_ms": min(times)}
+    # The first three warm the imports and the page cache.
+    return {"boot_100_ms": median("boot_100_ms", times[3:])}
 
 
 def fleet_load(playwright) -> dict:
@@ -455,8 +513,10 @@ def fleet_load(playwright) -> dict:
             srv = Server(Path(tmp), {}, keep_config=True)
             try:
                 page = browser.new_page()
+                # The first loads compile the page's code and warm the
+                # server: they fell from about 800 to 300 ms over five loads.
                 loads = []
-                for _ in range(3):
+                for _ in range(12):
                     page.goto(srv.url + "#fleet")
                     loads.append(
                         page.wait_for_function(
@@ -469,7 +529,7 @@ def fleet_load(playwright) -> dict:
                 srv.stop()
     finally:
         browser.close()
-    return {"fleet_load_ms": min(loads)}
+    return {"fleet_load_ms": median("fleet_load_ms", loads[5:])}
 
 
 def main() -> None:
@@ -491,7 +551,12 @@ def main() -> None:
         capture_output=True,
         text=True,
     ).stdout.strip()
-    result = {"commit": commit, "host": socket.gethostname(), "metrics": metrics}
+    result = {
+        "commit": commit,
+        "host": socket.gethostname(),
+        "metrics": metrics,
+        "samples": SAMPLES,
+    }
     for k, v in metrics.items():
         print(f"{k:24} {v:10.2f}" if isinstance(v, float) else f"{k:24} {v:10}")
     if args.out:
