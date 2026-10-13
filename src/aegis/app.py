@@ -1065,7 +1065,11 @@ class App:
             model and effort, opened with its handoff brief and last turns. The
             old session is archived when the new one finishes its first turn."""
             old = reg.open(p.log_id)
-            if old.continued_by:
+            if old.worker:
+                raise OpError(
+                    "worker", f"{old.handle} is a queue worker; its task owns it"
+                )
+            if reg.successor(old) is not None:
                 raise OpError("handed_off", f"{old.handle} is already being continued")
             if old.in_turn:
                 raise OpError(
@@ -1091,8 +1095,17 @@ class App:
                 raise OpError(
                     "harness_failed", f"{self._bin(spec.harness)!r} did not start: {e}"
                 ) from e
+            except BaseException:
+                old.mark_continued(None)
+                raise
             old.mark_continued(s.log_id)
-            await s.send(prompt)
+            try:
+                await s.send(prompt)
+            except (BrokenPipeError, ConnectionResetError, FileNotFoundError) as e:
+                old.mark_continued(None)
+                raise OpError(
+                    "harness_failed", f"{s.handle} did not take its first message: {e}"
+                ) from e
             return {"log_id": s.log_id, "handle": s.handle}
 
         @r.op("session.send", SendParams, owned="log_id")

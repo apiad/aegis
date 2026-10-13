@@ -2404,6 +2404,8 @@ function drawCold(s) {
   if (box.dataset.key === key) return;
   box.dataset.key = key;
   box.hidden = !on;
+  // A queue worker's task owns it, so it is never handed off (#354).
+  $("coldnote-go").hidden = !!s.worker;
   $("coldnote-go").onclick = on ? () => handOff(s) : null;
   $("coldnote-t").textContent = on
     ? `The prompt cache has expired, so your next message rewrites all ${fmtTokens(s.context_tokens)} tokens of this context, about 20 times what a warm turn reads.`
@@ -2457,9 +2459,12 @@ function drawReplies(s) {
   };
   const next = s.continued_by && sessions.get(keyOf(s.server, s.continued_by));
   $("handoff-done").hidden = !s.continued_by;
-  $("handoff-done").textContent = s.continued_by
-    ? `continued in ${next ? next.handle : "a fresh session"}; this tab is archived when it finishes its first turn`
-    : "";
+  const who = next ? next.handle : "a fresh session";
+  $("handoff-done").textContent = !s.continued_by
+    ? ""
+    : s.archived
+      ? `continued in ${who}`
+      : `continued in ${who}; this tab is archived when it finishes its first turn`;
   // Outside the rows the transcript watches for growth: follow the end here.
   if (transcript.following) transcript.toBottom();
 }

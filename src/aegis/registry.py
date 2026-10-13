@@ -122,8 +122,11 @@ class Registry(Host):
         old = self.sessions.get(new.spec.continues or "")
         if old is None or old.continued_by != new.log_id:
             return
+        # Only a turn that ended with the model's answer counts: a send that
+        # failed reaches here with no Result, so no "ended" at all.
+        ended = new.standing.get("ended") or {}
         if (
-            new.standing.get("turn_error")
+            ended.get("how") not in ("reported", "silent", "command")
             or old.in_turn
             or old.last_activity > new.created_at
         ):
@@ -153,10 +156,19 @@ class Registry(Host):
         if self.queues is not None:
             self.queues.exited(session, code, stderr_tail)
         # A handoff whose new session died before answering: the old one stays.
+        # One that answered has already archived the old one, so this is a no-op.
         old = self.sessions.get(session.spec.continues or "")
         if old is not None and old.continued_by == session.log_id:
-            if session.status != "idle":
-                old.mark_continued(None)
+            old.mark_continued(None)
+
+    def successor(self, old: Session) -> Session | str | None:
+        """The live session continuing ``old`` after a handoff: "starting"
+        while it spawns, the open session it names, or None when the name is
+        stale (the new session was closed, or a crash left it behind)."""
+        c = old.continued_by
+        if c == "starting":
+            return c
+        return self.sessions.get(c) if c else None
 
     def quota_hold(self, session: Session) -> str | None:
         """A paused session waits for its gate to open; any other may start a
@@ -181,6 +193,10 @@ class Registry(Host):
             **self._worker(session),
             "layout": session.standing.get("layout"),
             "cache_cold": cache.cold_policy(session.spec.harness, self.context()),
+            # Only a live successor counts; an archived session keeps its own.
+            "continued_by": session.continued_by
+            if session.archived or self.successor(session) is not None
+            else None,
         }
 
     def _worker(self, s: Session) -> dict:
@@ -307,7 +323,10 @@ class Registry(Host):
             tool_calls=meta.get("tool_calls") or 0,
             cache_recent=meta.get("cache_recent"),
             compactions=meta.get("compactions") or 0,
-            continued_by=meta.get("continued_by"),
+            # "starting" names no session: a crash mid-handoff left it behind.
+            continued_by=None
+            if meta.get("continued_by") == "starting"
+            else meta.get("continued_by"),
         )
 
     def boot(self, prev: restarts.Previous = restarts.CLEAN) -> None:
@@ -514,7 +533,14 @@ class Registry(Host):
         meta = self.archived.pop(log_id, None)
         if meta is None:
             raise OpError("no_session", f"no session {log_id!r}")
-        meta = {**meta, "archived": False, "last_status": "stopped"}
+        # A person reopening a handed-off session is using it again: it must
+        # not be archived a second time when its successor's next turn ends.
+        meta = {
+            **meta,
+            "archived": False,
+            "last_status": "stopped",
+            "continued_by": None,
+        }
         s = self._session(meta)
         self.sessions[log_id] = s
         self.metas.write(s.meta())

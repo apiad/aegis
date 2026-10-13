@@ -1,5 +1,7 @@
 """Context size, cache counters and the handoff, end to end on the fake claude."""
 
+import asyncio
+
 import pytest
 
 from aegis.ops import Caller, OpError
@@ -191,3 +193,58 @@ async def test_the_line_asks_outright_at_a_break_and_conditionally_on_a_question
     assert "This turn is a natural break" in await end(world, a, attention="review")
     asked = await end(world, a, attention="needs_you", line="Merge or rebase?")
     assert "If a fresh session could carry on" in asked
+
+
+async def test_a_failed_first_send_keeps_the_old_session(world, monkeypatch):
+    from aegis.session import Session
+
+    real = Session.send
+
+    async def send(self, text, *args, **kwargs):
+        if text.startswith("You continue the work of session"):
+            raise BrokenPipeError("the pipe broke")
+        return await real(self, text, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "send", send)
+    a = await world.spawn()
+    await turn(a, "/ctx 342000")
+    await end(world, a, handoff="Brief.")
+    with pytest.raises(OpError):
+        await handoff(world, a)
+    await asyncio.sleep(0.5)
+    assert a.log_id in world.app.sessions.sessions and a.continued_by is None
+
+
+async def test_a_successor_closed_before_answering_frees_the_old_session(world):
+    a, b = await handed(world, "[[slow]] Brief.")
+    await world.app.sessions.close(b.log_id)
+    assert a.wire()["continued_by"] is None
+    await handoff(world, a)  # not refused as "already being continued"
+
+
+async def test_a_starting_mark_left_by_a_crash_is_dropped_at_boot(world):
+    a = await world.spawn()
+    a.mark_continued("starting")
+    world.app.sessions.metas.write(a.meta())  # as a crash would have left it
+    log_id = a.log_id
+    await world.restart()
+    assert world.session(log_id).continued_by is None
+
+
+async def test_a_reopened_predecessor_is_not_archived_again(world):
+    a, b = await handed(world)
+    reg = world.app.sessions
+    await until(lambda: a.log_id in reg.archived, 8, "archived")
+    again = reg.reopen(a.log_id)
+    assert again.continued_by is None
+    await turn(b, "more")
+    assert a.log_id in reg.sessions
+
+
+async def test_a_queue_worker_cannot_be_handed_off(world):
+    a = await world.spawn()
+    await turn(a, "/ctx 342000")
+    a.worker = {"queue": "general", "task_id": "t1"}
+    with pytest.raises(OpError) as e:
+        await handoff(world, a)
+    assert e.value.code == "worker"
