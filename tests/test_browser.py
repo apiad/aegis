@@ -2807,6 +2807,20 @@ def test_a_reply_read_on_screen_turns_its_mark_and_clears_the_done_badge(server,
     assert page.errors == []
 
 
+def test_a_reply_that_turns_read_keeps_its_row(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    assert page.evaluate(
+        "(window.__row = document.querySelector('.row.prose')).classList.contains('unread')"
+    )
+    page.wait_for_selector(".row.prose .rm .ic.i-read", timeout=6000)
+    # Only the mark flips: a remount dropped the hover and any selection in the
+    # row, and a test holding one of its buttons waited on a detached node (#359).
+    assert page.evaluate("window.__row === document.querySelector('.row.prose')")
+    assert page.errors == []
+
+
 def test_a_reply_taller_than_the_view_becomes_read(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
