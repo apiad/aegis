@@ -38,14 +38,23 @@ which prints nothing old, so the store and the fold simply continue. Only shutdo
 reaps idle sessions, because a Claude session waiting on its own background task
 wakes itself when the task ends, and stopping it would kill the task.
 
-**In a host OOM, a session dies before the server.** Every harness child, and
-everything it starts, lives in the server's cgroup, so the kernel chooses
-among them by score alone. The server raises each child's `oom_score_adj` to
-500 right after the spawn (`harness.raise_oom_score`), so a runaway tree is
-killed instead of the server that holds every session; a deployment gives the
-server a negative `OOMScoreAdjust` to widen the gap (#360). Sessions do not
-get a cgroup each: that needs `Delegate=yes` on the unit, and without it the
-server cannot create one.
+**A session's memory is its own, where the unit delegates.** When the server
+runs as a systemd service with `Delegate=yes`, it moves itself into
+`<unit>/server` at boot, before any session starts, and runs each harness
+child in `<unit>/sessions/<log_id>` with `memory.max` from
+`session_memory_max`. The child joins its cgroup before it execs, through a
+`/bin/sh` wrapper, so nothing it starts escapes the cap. When the process ends
+(exit, Stop, Close, shutdown) its cgroup is killed and removed, and boot
+removes the empty ones a crash left. Everything stays inside the unit, so the
+unit's `MemoryMax` still covers the whole tree and `KillMode` still kills every
+session when the unit stops. Without delegation every child lives in the
+server's cgroup, as before (`cgroups.py`, #360).
+
+**In a host OOM, a session dies before the server.** The server raises each
+child's `oom_score_adj` to 500 right after the spawn
+(`harness.raise_oom_score`), so a runaway tree is killed instead of the server
+that holds every session; a deployment gives the server a negative
+`OOMScoreAdjust` to widen the gap (#360).
 
 **Boot reads meta files, never stores.** Each session has a small JSON meta next to
 its store, written by write-then-rename. Boot reads only those, so an archive of

@@ -1,7 +1,7 @@
 ---
 title: Configuration
 kind: concept
-when: adding or changing agents, the default agent, queues and recaps in .aegis.yaml, or picking a theme
+when: adding or changing agents, the default agent, queues, recaps or the per-session memory cap in .aegis.yaml, or picking a theme
 ---
 
 aegis reads one file, `.aegis.yaml`, at the root it serves: `--root` when
@@ -82,6 +82,28 @@ covers Claude Code only, because only its cache lifetime was measured.
 
 A `context:` block with a wrong key or value leaves all three defaults in
 force, and `aegis doctor` names the mistake.
+
+## Memory per session
+
+`session_memory_max:` caps the memory one session may use: its agent and
+everything the agent starts, such as test runs, browsers and builds. It reads
+like systemd's `MemoryMax`: a size (`3G`, `512M`), a share of the host's RAM
+(`40%`, the default), or `max` for no cap.
+
+```yaml
+session_memory_max: 3G
+```
+
+A session that goes past it hits an out-of-memory kill inside its own
+cgroup, which takes its largest process, usually a runaway test worker, and
+leaves the agent, the server and every other session running. The kernel
+starts slowing the session down a tenth below the cap. A new value applies to
+the next process a session starts.
+
+The cap needs a cgroup per session, which aegis makes only when it runs as a
+systemd service with `Delegate=yes`. Anywhere else, every session shares the
+server's cgroup, as before, and the key has no effect. A value that is not a
+size leaves the default in force, and `aegis doctor` names the mistake.
 
 ## Editing it
 

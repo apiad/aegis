@@ -290,7 +290,10 @@ either way.
 
 Every session, and everything its agent starts (test runs, browsers, builds),
 lives in the server's unit, so the unit's memory settings decide what one
-runaway session can take down. For a host with 8 GB:
+runaway session can take down. With `Delegate=yes`, aegis also gives each
+session a cgroup of its own inside the unit, capped by `session_memory_max`
+in `.aegis.yaml` (40% of the host's RAM by default), so a runaway session hits
+an OOM kill inside its own cgroup and nothing else does. For a host with 8 GB:
 
 ```ini
 [Service]
@@ -303,11 +306,18 @@ MemoryMax=6.5G
 # In a host OOM, the kernel picks the server last. aegis raises every agent
 # process it starts to oom_score_adj 500, so a runaway session dies first.
 OOMScoreAdjust=-500
+# Let aegis build a cgroup per session below the unit's own.
+Delegate=yes
+# Under memory pressure, systemd-oomd kills one session's cgroup, not the unit.
+ManagedOOMMemoryPressure=kill
 ```
 
-Do not point systemd-oomd at the unit (`ManagedOOMMemoryPressure=kill`): the
-unit is one cgroup, and oomd kills a whole cgroup, server and every session
-with it.
+`ManagedOOMMemoryPressure=kill` is safe only with `Delegate=yes`. oomd kills
+one cgroup below the unit it watches, and with delegation each session is its
+own cgroup, while the server sits apart in `server/`, small enough that oomd
+does not choose it. Without delegation the unit is a single cgroup, and oomd
+would kill the server and every session together. aegis logs a warning at
+start when it runs under systemd and finds no delegation.
 
 Behind a reverse proxy, name the public origin with `aegis serve --origin
 https://dev.example`, keep `--host` on loopback, and let the proxy terminate TLS.
