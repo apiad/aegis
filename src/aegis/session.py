@@ -856,6 +856,11 @@ class Session:
         self._record({"src": self.harness.src, "line": line}, events)
         changes: dict[str, object] = {}
         tasks = len(self.open_tasks)
+        recent, tools, compactions = (
+            self.cache_recent,
+            self.tool_calls,
+            self.compactions,
+        )
         for ev in events:
             if isinstance(ev, TURN_BEARING) and self.status == "idle":
                 changes["status"] = "working"
@@ -864,17 +869,14 @@ class Session:
                 changes["context_tokens"] = usage.context
                 if usage != self._last_usage:
                     self._last_usage = usage
-                    changes["cache_recent"] = cache.push(
-                        changes.get("cache_recent", self.cache_recent),
-                        usage,
-                        time.time(),
-                    )
+                    recent = cache.push(recent, usage, time.time())
+                    changes["cache_recent"] = recent
             if isinstance(ev, ToolCall) and ev.parent is None:
-                changes["tool_calls"] = changes.get("tool_calls", self.tool_calls) + 1
+                tools += 1
+                changes["tool_calls"] = tools
             if isinstance(ev, Compact):
-                changes["compactions"] = (
-                    changes.get("compactions", self.compactions) + 1
-                )
+                compactions += 1
+                changes["compactions"] = compactions
             if isinstance(ev, Title) and not self.title_set:
                 changes["title"] = ev.text
             if isinstance(ev, Init):
