@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>aegis: a programmable multi-agent meta-harness</title>
+<title>aegis: the programmable meta-harness that grows with you</title>
 <meta name="description" content="aegis runs the coding agents you already pay for, Claude Code and OpenCode, side by side in one browser workplace. Its agents hand work to each other across machines, and write the interface they need into the conversation.">
 <meta property="og:title" content="aegis: a programmable multi-agent meta-harness">
 <meta property="og:description" content="Bring your own subscriptions, let the agents work together across machines, and let them write their own interface. uv tool install aegis-harness.">
@@ -35,6 +35,7 @@
 <nav class="top">
   <a class="mark" href="#">aegis</a>
   <a href="#install">Install</a>
+  <a href="#grows">Grows with you</a>
   <a href="#subscriptions">Subscriptions</a>
   <a href="#together">Multi-agent</a>
   <a href="#programmable">Programmable</a>
@@ -44,20 +45,32 @@
 </nav>
 
 <header class="hero" id="install">
-  <h1>A programmable multi&#8209;agent meta&#8209;harness.</h1>
-  <p class="lede">aegis runs the coding agents you already pay for, Claude Code and OpenCode, side by side in one browser workplace. Its agents hand work to each other and wait on each other, on one machine or across several. And when prose is not enough, they write the interface they need into the conversation.</p>
+  <h1>The programmable meta&#8209;harness that grows with you.</h1>
+  <p class="lede">aegis runs the coding agents you already pay for, Claude Code, OpenCode and Codex, side by side in one browser workplace. Start with one agent in a tab. As you need more, shape the workplace with what is already there: presets and queues in one file, agents that hand work to each other and wait on each other, and pages they write for your decisions and dock beside the conversation. The same harness that runs one session runs a studio, with you as the producer.</p>
   <div class="install">
     <pre><code>uv tool install aegis-harness
 cd ~/your/project
 aegis</code></pre>
-    <p class="note">The last line starts the server and opens it in a browser window. <span id="ver">Version 2.3.0</span> on PyPI, MIT license, Python 3.13 or newer.</p>
+    <p class="note">The last line starts the server and opens it in a browser window. <span id="ver">Version 2.8.0</span> on PyPI, MIT license, Python 3.13 or newer.</p>
   </div>
   <ul class="pillars">
-    <li><a href="#subscriptions"><b>Meta-harness</b>It runs <code>claude</code> and <code>opencode</code> under your own subscriptions. aegis calls no model and holds no API key.</a></li>
-    <li><a href="#together"><b>Multi-agent</b>Agents hand off work, queue it for workers, watch long jobs and read each other, across linked machines.</a></li>
-    <li><a href="#programmable"><b>Programmable</b>An agent writes a page into the transcript, and your clicks come back to it as answers.</a></li>
+    <li><a href="#subscriptions"><b>Meta-harness</b>It runs <code>claude</code>, <code>opencode</code> and <code>codex</code> under your own subscriptions. aegis calls no model and holds no API key.</a></li>
+    <li><a href="#programmable"><b>Programmable</b>Agents hand each other work and write the pages you decide through; presets, queues, monitors and links change while it runs.</a></li>
+    <li><a href="#grows"><b>Grows with you</b>One agent, then several, then queues, a team and a studio. Each step adds one file or habit, and nothing below it is thrown away.</a></li>
   </ul>
 </header>
+
+<section class="plain" id="grows">
+  <h2>From one agent to a studio</h2>
+  <p>Climb only as far as the work needs. aegis has no studio mode: every rung uses the same tools, and the structure lives in your own files, so it is versioned, reviewed and copied to the next project like code.</p>
+  <ol class="ladder">
+    <li><b>One agent</b>A session in a browser tab under your own subscription, with a transcript that folds the work, the quota and its pace, and replies you send with one tap.</li>
+    <li><b>Several side by side</b>Sessions on different harnesses hand context to each other, read each other, and wait on CI or on each other with monitors instead of polling. <i>You add agent presets.</i></li>
+    <li><b>Delegated work</b>Queues of workers report back as turns, plans stay in view, choices arrive as pages you click, and a long session continues in a fresh one at a break. <i>You add queues.</i></li>
+    <li><b>A team</b>A lead spawns implementers in their own worktrees, reviews their pull requests and merges on green, following know-how written in the repo. <i>You add briefs and procedures.</i></li>
+    <li><b>A studio</b>A director runs several teams on one project and brings you decisions as pages and checklists you mark from a phone, with the pages the work needs docked beside the transcript. <i>You are the producer.</i></li>
+  </ol>
+</section>
 
 <section class="app" id="features">
   <div class="steps">
@@ -65,8 +78,8 @@ aegis</code></pre>
 
     <article class="step" data-step="subs">
       <h3>The agents you already pay for</h3>
-      <p>aegis calls no model. Each session is the vendor's own command-line agent, <code>claude</code> or <code>opencode</code>, running under your account: a Claude plan, OpenCode Go or Zen, or any provider OpenCode reaches. aegis holds no API key, and your prompts go from the CLI to the vendor as they would from a terminal.</p>
-      <p>Sessions of both harnesses share one tab bar, each with its own model, effort and permission. The panel shows the quota the session spends: this one runs on OpenCode Go, so it shows Go's three windows.</p>
+      <p>aegis calls no model. Each session is the vendor's own command-line agent, <code>claude</code>, <code>opencode</code> or <code>codex</code>, running under your account: a Claude plan, OpenCode Go or Zen, a ChatGPT plan, or any provider OpenCode or Codex reaches. aegis holds no API key, and your prompts go from the CLI to the vendor as they would from a terminal.</p>
+      <p>Sessions of every harness share one tab bar, each with its own model, effort and permission. The panel shows the quota the session spends: this one runs on OpenCode Go, so it shows Go's three windows.</p>
     </article>
 
     <article class="step" data-step="quota">
@@ -100,7 +113,7 @@ aegis</code></pre>
     <article class="step" data-step="answer">
       <h3>The page answers the agent</h3>
       <p>You click, drag, pick or type, and the page sends the result back. A submit wakes the agent and folds the page to one line. An event wakes it and leaves the page live. A state write waits until the agent reads it. The agent can push new state or a new version into a live page.</p>
-      <p>Today a page lives for one exchange and stays in the transcript as a record. Next, agents keep the pages they write and dock them beside the transcript, so the workplace grows with what its agents build.</p>
+      <p>A page can also stay: docked beside the transcript, arranged in columns, moved to a second browser window, or shown as tabs on a phone, so the workplace grows with what its agents build.</p>
     </article>
 
     <h2 id="workplace"><span class="eyebrow">The workplace</span>Everything around it</h2>
@@ -153,7 +166,7 @@ aegis</code></pre>
           </div>
           <div class="tab add">+</div>
           <div class="gap"></div>
-          <div class="servers"><span class="dot ready"></span><span>studio</span><span class="ver-top">2.4.0</span></div>
+          <div class="servers"><span class="dot ready"></span><span>studio</span><span class="ver-top">2.8.0</span></div>
           <button class="keys-btn" type="button">Settings</button>
           <button class="side-btn" type="button" aria-label="Session panel" data-feature="panel" data-act="collapse"><svg><use href="#g-panel"/></svg></button>
           <button class="keys-btn" type="button">?</button>
@@ -432,8 +445,8 @@ progress: gh run view 4821 --json jobs -q '[.jobs[]|select(.status=="completed")
               <button class="act" type="button"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.5v3h-3"/></svg><span>Restart</span></button>
               <button class="act" type="button"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="3" rx="1"/><path d="M3 6v6.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6M6.5 9h3"/></svg><span>Close</span></button>
             </div>
-            <div class="ver"><div class="prow" data-feature="panel"><span>aegis</span><span class="v">2.4.0</span><span class="ok">✓</span>
-              <div class="pcard"><div class="csec"><h5>aegis on studio</h5><div class="kv"><span>running</span><span>2.4.0</span></div><div class="kv"><span>latest</span><span>2.4.0 ✓ current</span></div></div></div>
+            <div class="ver"><div class="prow" data-feature="panel"><span>aegis</span><span class="v">2.8.0</span><span class="ok">✓</span>
+              <div class="pcard"><div class="csec"><h5>aegis on studio</h5><div class="kv"><span>running</span><span>2.8.0</span></div><div class="kv"><span>latest</span><span>2.4.0 ✓ current</span></div></div></div>
             </div></div>
           </aside>
 
@@ -461,7 +474,7 @@ progress: gh run view 4821 --json jobs -q '[.jobs[]|select(.status=="completed")
 <span class="k">queues</span>:
   <span class="k">general</span>: {agent: opus, max_parallel: 5}
 <span class="k">recap</span>: {agent: opus}</code></pre>
-  <p>Permission is <code>read</code> for plan mode, <code>write</code> to accept edits, <code>auto</code>, or <code>full</code> to bypass permissions. An OpenCode agent names its model as <code>provider/model</code>. The optional <code>recap</code> names the agent that writes a two-sentence recap when you come back to a tab after a while.</p>
+  <p>Permission is <code>read</code> for plan mode, <code>write</code> to accept edits, <code>auto</code>, or <code>full</code> to bypass permissions. An OpenCode or Codex agent names its model as <code>provider/model</code>. The optional <code>recap</code> names the agent that writes a two-sentence recap when you come back to a tab after a while.</p>
 </section>
 
 <section class="plain" id="tools">

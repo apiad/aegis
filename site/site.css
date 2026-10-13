@@ -139,6 +139,12 @@ pre code{background:none;padding:0;font-size:inherit}
 .plain{width:var(--col);margin:150px auto 0;text-align:center}
 .plain h2{font-size:clamp(28px,3.4vw,40px);line-height:1.15}
 .plain>p{margin:22px auto 0;max-width:820px}
+.ladder{list-style:none;counter-reset:rung;margin:44px auto 0;padding:0;max-width:820px;display:flex;flex-direction:column;gap:12px;text-align:left}
+.ladder li{counter-increment:rung;position:relative;padding:16px 20px 16px 64px;border:1px solid var(--rule);border-radius:10px;color:var(--muted);font-size:15.5px;line-height:1.5}
+.ladder li::before{content:counter(rung);position:absolute;left:22px;top:14px;font-size:24px;color:var(--accent)}
+.ladder li:last-child{border-color:var(--accent)}
+.ladder b{display:block;color:var(--strong);font-weight:400;font-size:19px;margin-bottom:4px}
+.ladder i{font-style:normal;color:var(--ink)}
 /* sized to its longest line; a narrow page wraps it rather than scroll it */
 .code{margin:32px auto 26px;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:18px 24px;font-family:var(--mono);font-size:13.5px;line-height:1.65;color:var(--ink);width:fit-content;max-width:100%;box-sizing:border-box;white-space:pre-wrap;overflow-wrap:anywhere;text-align:left}
 .code .k{color:var(--accent)}
