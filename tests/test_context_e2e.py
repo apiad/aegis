@@ -134,3 +134,39 @@ async def test_an_agent_cannot_hand_a_session_off(world):
         await world.app.registry.call(
             "session.handoff", {"log_id": a.log_id}, Caller("agent", a.log_id)
         )
+
+
+async def handed(world, brief="Brief."):
+    a = await world.spawn()
+    await turn(a, "/ctx 342000")
+    await end(world, a, handoff=brief)
+    r = await handoff(world, a)
+    return a, world.session(r["log_id"])
+
+
+async def test_the_old_session_is_archived_after_the_new_ones_first_turn(world):
+    a, b = await handed(world)
+    reg = world.app.sessions
+    await until(lambda: a.log_id in reg.archived, 8, "the old session archived")
+    assert reg.archived[a.log_id]["continued_by"] == b.log_id
+    await turn(b, "more")
+    assert b.log_id in reg.sessions  # a later turn archives nothing else
+
+
+async def test_a_message_to_the_old_session_calls_the_archive_off(world):
+    a, b = await handed(world, "[[slow]] Brief.")  # b's first turn takes 1.5 s
+    await turn(a, "still here")  # the person types into the old tab meanwhile
+    reg = world.app.sessions
+    await until(
+        lambda: a.continued_by is None or a.log_id in reg.archived, 8, "b answered"
+    )
+    assert a.log_id in reg.sessions and a.continued_by is None
+
+
+async def test_the_archive_survives_a_restart_before_the_first_turn(world):
+    a, b = await handed(world, "[[slow]] Brief.")
+    log_a, log_b = a.log_id, b.log_id
+    await world.restart()
+    reg = world.app.sessions
+    await turn(world.session(log_b), "go on")
+    await until(lambda: log_a in reg.archived, 8, "archived after restart")
