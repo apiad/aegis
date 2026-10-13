@@ -1314,3 +1314,68 @@ async def test_a_real_codex_session(tmp_path: Path, monkeypatch):
         server.should_exit = True
         await asyncio.wait_for(task, 30)
         await app.shutdown()
+
+
+async def test_real_claude_passes_a_brief_past_handoff_at_and_hands_off(tmp_path: Path):
+    """The context line in turn_end's answer, followed by a real model (#354):
+    at a finished task past a low handoff_at, it calls turn_end again with a
+    brief, and session.handoff continues the work in a fresh session that
+    archives the old one after its first turn."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.ops import Caller
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+        "context: {handoff_at: 5000}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "Write the word ALPHA into a file named notes.txt in your working "
+            "directory. That finishes this task; report it as done."
+        )
+        await until(
+            lambda: (s.standing.get("report") or {}).get("handoff"),
+            timeout=180,
+            what="a turn_end carrying a handoff brief",
+        )
+        brief = s.standing["report"]["handoff"]
+        assert "notes.txt" in brief or "ALPHA" in brief, brief
+        await until(lambda: s.status == "idle", timeout=60, what="the turn's end")
+        r = await app.registry.call(
+            "session.handoff", {"log_id": s.log_id}, Caller("user")
+        )
+        b = app.sessions.sessions[r["log_id"]]
+        await until(
+            lambda: s.log_id in app.sessions.archived,
+            timeout=180,
+            what="the old session archived after the new one's first turn",
+        )
+        assert b.spec.continues == s.log_id
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)

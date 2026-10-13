@@ -2399,33 +2399,72 @@ function focused() {
 function drawCold(s) {
   const box = $("coldnote");
   const c = s && s.cache_cold;
-  const on = !!c && s.state !== "working" && (s.context_tokens ?? 0) >= c.min && nowS() - (s.last_activity || nowS()) >= c.after;
+  const on = !!c && s.state !== "working" && !s.continued_by && (s.context_tokens ?? 0) >= c.min && nowS() - (s.last_activity || nowS()) >= c.after;
   const key = on ? `${s.log_id}:${s.context_tokens}` : "";
   if (box.dataset.key === key) return;
   box.dataset.key = key;
   box.hidden = !on;
+  // A queue worker's task owns it, so it is never handed off (#354).
+  $("coldnote-go").hidden = !!s.worker;
+  $("coldnote-go").onclick = on ? () => handOff(s) : null;
   $("coldnote-t").textContent = on
     ? `The prompt cache has expired, so your next message rewrites all ${fmtTokens(s.context_tokens)} tokens of this context, about 20 times what a warm turn reads.`
     : "";
   if (on && transcript.following) transcript.toBottom();
 }
 
+// Continue the session's work in a fresh one (session.handoff, #354); the
+// old tab is archived once the new session has answered.
+async function handOff(s) {
+  try {
+    const r = await callFor(s.key, "session.handoff");
+    go(`#s=${keyOf(s.server, r.log_id)}`);
+  } catch (e) {
+    toast(e.message, { kind: "error" });
+  }
+}
+
 function drawReplies(s) {
   const box = $("replies");
-  const replies = s.state === "working" ? [] : s.replies || [];
-  const key = JSON.stringify([s.log_id, replies]);
+  const working = s.state === "working";
+  const replies = working ? [] : s.replies || [];
+  // The agent's brief for a fresh session, offered until a handoff starts.
+  const brief = !working && !s.continued_by ? s.handoff || null : null;
+  const key = JSON.stringify([s.log_id, replies, brief, s.continued_by]);
   if (box.dataset.key === key) return;
   box.dataset.key = key;
-  box.hidden = !replies.length;
-  $("replies-pills").replaceChildren(
-    ...replies.map((text) => {
-      const b = document.createElement("button");
-      b.className = "rp";
-      b.textContent = text;
-      b.addEventListener("click", () => sendLine(text, false));
-      return b;
-    }),
-  );
+  box.hidden = !replies.length && !brief && !s.continued_by;
+  const chips = replies.map((text) => {
+    const b = document.createElement("button");
+    b.className = "rp";
+    b.textContent = text;
+    b.addEventListener("click", () => sendLine(text, false));
+    return b;
+  });
+  if (brief) {
+    const h = document.createElement("button");
+    h.className = "rp hand";
+    h.textContent = `continue fresh · ${fmtTokens(s.context_tokens)}`;
+    h.addEventListener("click", () => {
+      $("handoff").hidden = !$("handoff").hidden;
+    });
+    chips.unshift(h);
+  }
+  $("replies-pills").replaceChildren(...chips);
+  $("handoff").hidden = true;
+  $("handoff-brief").textContent = brief || "";
+  $("handoff-go").onclick = () => handOff(s);
+  $("handoff-keep").onclick = () => {
+    $("handoff").hidden = true;
+  };
+  const next = s.continued_by && sessions.get(keyOf(s.server, s.continued_by));
+  $("handoff-done").hidden = !s.continued_by;
+  const who = next ? next.handle : "a fresh session";
+  $("handoff-done").textContent = !s.continued_by
+    ? ""
+    : s.archived
+      ? `continued in ${who}`
+      : `continued in ${who}; this tab is archived when it finishes its first turn`;
   // Outside the rows the transcript watches for growth: follow the end here.
   if (transcript.following) transcript.toBottom();
 }

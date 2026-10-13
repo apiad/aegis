@@ -206,6 +206,35 @@ class TurnEnd(_Strict):
         "would type them: their language, lowercase, no final period. Only when you "
         "laid out options or wait for a go-ahead; empty otherwise.",
     )
+    handoff: str | None = Field(
+        None,
+        min_length=1,
+        max_length=4000,
+        description="Only when turn_end answered with your context size and the task "
+        "is at a natural break: a brief for a fresh session that continues this work. "
+        "What is done, what is next, the files, the decisions, what not to retry.",
+    )
+
+
+# What turn_end answers past the context block's handoff_at (#354). A tool
+# result, never the system prompt: it is the newest message, so it cannot
+# break the prompt cache. A turn reported done or review is at a break by
+# definition, so the line asks for the brief outright; a real Sonnet ignored
+# the conditional wording on a finished task in 2 of 3 runs.
+CONTEXT_LINE = (
+    "noted. Your context is {k} tokens, and every turn from here rereads all of it. "
+)
+BRIEF_NOW = (
+    "This turn is a natural break, so call turn_end again now, before your final "
+    "message, with the same arguments plus handoff: a brief for a fresh session "
+    "that continues this work (what is done, what is next, the files, the "
+    "decisions, what not to retry)."
+)
+BRIEF_IF = (
+    "If a fresh session could carry on from here, call turn_end again now with the "
+    "same arguments plus handoff: a brief for it (what is done, what is next, the "
+    "files, the decisions, what not to retry)."
+)
 
 
 class NoArgs(_Strict):
@@ -245,6 +274,24 @@ def _render(e: dict, tools: bool) -> str | None:
 # calls, and 42% of its windows held none of the person's words.
 SPAWN_TAIL_TURNS = 3
 SPAWN_TAIL_CHARS = 8000
+
+
+HANDOFF_HEAD = (
+    "You continue the work of session {handle}, whose context had grown large. "
+    "It is archived once you finish your first turn; peer_read {handle} still "
+    "reads it after that, if you need more than what follows."
+)
+
+
+def handoff_opening(handle: str, brief: str | None, tail: str) -> str:
+    """A handoff's first message: who it continues, the brief when the agent
+    wrote one, and the last turns as /spawn carries them (#354)."""
+    parts = [HANDOFF_HEAD.format(handle=handle)]
+    if brief:
+        parts.append("Its brief for you:\n\n" + brief)
+    if tail:
+        parts.append("Its last turns:\n\n" + tail)
+    return "\n\n".join(parts)
 
 
 def spawn_tail(entries: list[dict]) -> str:
@@ -771,11 +818,23 @@ def register_agent_ops(app: App) -> None:
             raise OpError("archived", f"{p.target} is archived") from e
         return {"held": len(to.held) > before}
 
+    def readable(handle: str, caller) -> list[dict]:
+        """A transcript peer_read may read: an open session's, or the archived
+        one the caller continues after a handoff (#354), and no other archived
+        one."""
+        h = here(handle)
+        if reg.by_handle(h) is None and h not in reg.sessions:
+            me = reg.sessions.get(caller.log_id or "")
+            old = me.spec.continues if me else None
+            if old in reg.archived and h in (old, reg.archived[old].get("handle")):
+                return reg.archived_entries(old)
+        return target(handle).entries()
+
     @r.op("peer.read", Read, agent=True, read=True)
     async def peer_read(p: Read, caller):
         """The last entries of another session's transcript, one line each."""
-        s = target(p.target)
-        lines = [x for e in s.entries()[-p.last * 3 :] if (x := _render(e, p.tools))]
+        entries = readable(p.target, caller)
+        lines = [x for e in entries[-p.last * 3 :] if (x := _render(e, p.tools))]
         return "\n".join(lines[-p.last :]) or "(nothing yet)"
 
     @r.op("session.list", NoArgs, agent=True, read=True)
@@ -992,15 +1051,21 @@ def register_agent_ops(app: App) -> None:
         person, and not when you end a turn to wait on a monitor or a queue task.
         It sets the mark on your tab and the line on your card."""
         s = own(caller)
-        s.report(
-            {
-                "kind": "turn_end",
-                "attention": p.attention,
-                "line": p.line,
-                "replies": p.replies,
-            }
-        )
-        return "noted"
+        rec = {
+            "kind": "turn_end",
+            "attention": p.attention,
+            "line": p.line,
+            "replies": p.replies,
+        }
+        if p.handoff and not s.worker:
+            rec["handoff"] = p.handoff
+        s.report(rec)
+        at = app.config.current().context["handoff_at"]
+        n = s.context_tokens or 0
+        if s.worker or p.handoff or not at or n < at:
+            return "noted"
+        then = BRIEF_IF if p.attention == "needs_you" else BRIEF_NOW
+        return CONTEXT_LINE.format(k=f"{round(n / 1000)}k") + then
 
     toasted: dict[str, list[float]] = {}
 

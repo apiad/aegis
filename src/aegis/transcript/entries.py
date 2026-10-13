@@ -502,6 +502,9 @@ class Fold:
                     "attention": rec.get("attention"),
                     "line": rec.get("line") or "",
                     "replies": list(rec.get("replies") or []),
+                    # Only when the agent wrote one (#354), so a report without
+                    # it keeps its old shape.
+                    **({"handoff": h} if (h := rec.get("handoff")) else {}),
                 }
             )
             return []

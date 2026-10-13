@@ -63,6 +63,7 @@ def card(
         "blink": blink,
         "attention_line": line,
         "replies": list(report["replies"]) if report and shows_report else [],
+        "handoff": report.get("handoff") if report and shows_report else None,
         "waiting_on": ", ".join(waits) if kind == "waiting" else "",
         "plan": plan,
         "plan_now": next((i["text"] for i in plan if i["state"] == "doing"), ""),

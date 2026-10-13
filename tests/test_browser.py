@@ -7691,3 +7691,23 @@ def test_the_cold_notice_appears_for_a_large_idle_context_only(cold_server, page
     page.press("#input", "Enter")
     turns_done(page, 2)
     page.wait_for_selector("#coldnote:not([hidden]) >> text=150k tokens", timeout=4000)
+
+
+def test_the_handoff_chip_opens_the_brief_and_continues_fresh(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    old = spawn(page, "/ctx 342000")
+    report(page, attention="done", line="Shipped.", handoff="Done: A. Next: B.")
+    turns_done(page, 2)
+    page.click("#replies .rp.hand >> text=continue fresh")
+    page.wait_for_selector("#handoff:not([hidden]) >> text=Done: A. Next: B.")
+    page.click("#handoff-go")
+    page.wait_for_function("k => location.hash.slice(3) !== k", arg=old)
+    page.wait_for_selector(".row >> text=Its brief for you")
+    turns_done(page, 1)
+    # The old tab is gone from the strip once the new session has answered.
+    page.wait_for_function(
+        "k => !document.querySelector(`#tablist .tab[data-id='${k}']`)",
+        arg=old,
+        timeout=8000,
+    )
