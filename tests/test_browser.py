@@ -2821,6 +2821,32 @@ def test_a_reply_that_turns_read_keeps_its_row(server, page):
     assert page.errors == []
 
 
+def test_the_transcript_follows_when_it_grows_under_its_own_scroll(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "\n\n".join(f"line {i}" for i in range(120)))
+    page.evaluate("document.querySelector('#tr').scrollTop = 0")
+    page.wait_for_timeout(100)  # the reader's scroll lets go of the bottom
+    # Back to the bottom, and the rows grow before that scroll's event fires,
+    # as a card's frame sizing itself or a row leaving its placeholder height
+    # does. The event then reads "not at the bottom", but the reader never
+    # moved: the transcript keeps following, and new rows land in view (#359).
+    page.evaluate(
+        """() => {
+          document.querySelector('#jump').click();
+          const d = document.createElement('div');
+          d.style.height = '600px';
+          document.querySelector('#entries').append(d);
+        }"""
+    )
+    page.wait_for_function(
+        "() => { const t = document.querySelector('#tr');"
+        " return t.scrollHeight - t.scrollTop - t.clientHeight < 2; }",
+        timeout=2000,
+    )
+    assert page.errors == []
+
+
 def test_a_reply_taller_than_the_view_becomes_read(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
