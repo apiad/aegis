@@ -1422,14 +1422,21 @@ def mark_size(pg, sel: str) -> float:
 
 
 def pupil_at(pg, sel: str, ms: int) -> tuple[float, float, float]:
-    """The pupil's centre and height with the eye's CSS cycle frozen at ms."""
-    pg.evaluate(
-        "([sel, ms]) => document.querySelector(sel).getAnimations({subtree: true})"
-        ".forEach(a => { a.pause(); a.currentTime = ms; })",
+    """The pupil's centre, from the mark's corner, and its height, with the
+    eye's CSS cycle frozen at ms. From the corner, in the same frame: the mark
+    itself moves while the spawn view settles (the title's serif face swaps in
+    and re-centres it by 4.66 px), and a page position caught on either side of
+    that read as the eye looking the wrong way (#359)."""
+    x, y, h = pg.evaluate(
+        """([sel, ms]) => {
+          const svg = document.querySelector(sel);
+          svg.getAnimations({subtree: true}).forEach(a => { a.pause(); a.currentTime = ms; });
+          const s = svg.getBoundingClientRect(), p = svg.querySelector('.pupil').getBoundingClientRect();
+          return [p.x + p.width / 2 - s.x, p.y + p.height / 2 - s.y, p.height];
+        }""",
         [f"{sel} svg.gorgon", ms],
     )
-    b = pg.locator(f"{sel} .pupil").bounding_box()
-    return b["x"] + b["width"] / 2, b["y"] + b["height"] / 2, b["height"]
+    return x, y, h
 
 
 def tip_x_at(pg, sel: str, s: float) -> float:
