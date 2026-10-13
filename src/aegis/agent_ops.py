@@ -266,6 +266,24 @@ SPAWN_TAIL_TURNS = 3
 SPAWN_TAIL_CHARS = 8000
 
 
+HANDOFF_HEAD = (
+    "You continue the work of session {handle}, whose context had grown large. "
+    "It is archived once you finish your first turn; peer_read {handle} still "
+    "reads it after that, if you need more than what follows."
+)
+
+
+def handoff_opening(handle: str, brief: str | None, tail: str) -> str:
+    """A handoff's first message: who it continues, the brief when the agent
+    wrote one, and the last turns as /spawn carries them (#354)."""
+    parts = [HANDOFF_HEAD.format(handle=handle)]
+    if brief:
+        parts.append("Its brief for you:\n\n" + brief)
+    if tail:
+        parts.append("Its last turns:\n\n" + tail)
+    return "\n\n".join(parts)
+
+
 def spawn_tail(entries: list[dict]) -> str:
     """The last ``SPAWN_TAIL_TURNS`` turns as ``peer_read`` renders them, without
     tools or status notes, at most ``SPAWN_TAIL_CHARS``: the person's lines first, then the

@@ -2,7 +2,7 @@
 
 import pytest
 
-from aegis.ops import Caller
+from aegis.ops import Caller, OpError
 
 from .conftest import until
 from .test_agents import CONFIG, World, turn
@@ -90,3 +90,47 @@ async def test_a_queue_worker_always_hears_noted_and_keeps_no_brief(world):
     assert await end(world, a) == "noted"
     assert await end(world, a, handoff="Brief.") == "noted"
     assert a.standing["report"].get("handoff") is None
+
+
+async def handoff(world, a):
+    return await world.app.registry.call(
+        "session.handoff", {"log_id": a.log_id}, Caller("user")
+    )
+
+
+def first_message(s) -> str:
+    return next(str(e) for e in s.entries() if e["kind"] == "user")
+
+
+async def test_handoff_starts_the_same_agent_with_the_brief_and_the_tail(world):
+    a = await world.spawn()
+    await turn(a, "/ctx 342000")
+    await end(world, a, handoff="Done: the parser. Next: the archive view.")
+    r = await handoff(world, a)
+    b = world.session(r["log_id"])
+    assert b.spec.continues == a.log_id and b.spec.agent == a.spec.agent
+    assert b.spec.cwd == a.spec.cwd and b.spec.model == a.spec.model
+    assert a.continued_by == b.log_id and a.wire()["continued_by"] == b.log_id
+    await until(lambda: any(e["kind"] == "user" for e in b.entries()), 8, "b's prompt")
+    said = first_message(b)
+    assert "Done: the parser." in said and "ctx 342000" in said and a.handle in said
+
+
+async def test_a_second_click_starts_nothing(world):
+    a = await world.spawn()
+    await turn(a, "/ctx 342000")
+    await end(world, a, handoff="Brief.")
+    await handoff(world, a)
+    with pytest.raises(OpError) as e:
+        await handoff(world, a)
+    assert e.value.code == "handed_off"
+    sessions = world.app.sessions.sessions.values()
+    assert sum(1 for s in sessions if s.spec.continues == a.log_id) == 1
+
+
+async def test_an_agent_cannot_hand_a_session_off(world):
+    a = await world.spawn()
+    with pytest.raises(OpError):
+        await world.app.registry.call(
+            "session.handoff", {"log_id": a.log_id}, Caller("agent", a.log_id)
+        )

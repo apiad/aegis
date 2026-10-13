@@ -276,6 +276,7 @@ class Registry(Host):
             tool_calls=meta.get("tool_calls") or 0,
             cache_recent=meta.get("cache_recent"),
             compactions=meta.get("compactions") or 0,
+            continued_by=meta.get("continued_by"),
         )
 
     def boot(self, prev: restarts.Previous = restarts.CLEAN) -> None:

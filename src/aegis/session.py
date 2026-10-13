@@ -63,7 +63,7 @@ Publish = Callable[[str, list[dict]], None]
 # each message, activity with each call), so they wait up to PUBLISH_EVERY_S
 # and go out together. Publishing them per line doubled the server's cost per
 # line in the bench (issue #127).
-_NOW = ("status", "handle", "title", "model_id", "standing")
+_NOW = ("status", "handle", "title", "model_id", "standing", "continued_by")
 _SOON = (
     "activity",
     "cost_usd",
@@ -148,6 +148,8 @@ class SpawnSpec:
     # this session. Provenance for the transcript and the journal, never
     # authorization: this server cannot check it.
     spawned_from: str | None = None
+    # The log id of the session this one continues after a handoff (#354).
+    continues: str | None = None
 
     def record(self) -> dict:
         """The fields a spawn record and a meta carry."""
@@ -169,6 +171,8 @@ class SpawnSpec:
             d["owner"] = self.owner
         if self.spawned_from:
             d["spawned_from"] = self.spawned_from
+        if self.continues:
+            d["continues"] = self.continues
         return d
 
     @classmethod
@@ -187,6 +191,7 @@ class SpawnSpec:
             spawned_by=d.get("spawned_by"),
             owner=d.get("owner"),
             spawned_from=d.get("spawned_from"),
+            continues=d.get("continues"),
         )
 
 
@@ -230,6 +235,7 @@ class Session:
         tool_calls: int = 0,
         cache_recent: list[list] | None = None,
         compactions: int = 0,
+        continued_by: str | None = None,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
@@ -305,6 +311,9 @@ class Session:
         self.compactions = compactions
         # The last usage counted: one call written as several lines repeats it.
         self._last_usage = None
+        # The session a handoff started from this one (#354): "starting" while
+        # it spawns, its log id after, None when the archive was called off.
+        self.continued_by = continued_by
         # The process's start time from /proc, so a crashed server's successor
         # can tell this harness from a later process that reused its pid.
         self._pid_started: int | None = None
@@ -346,6 +355,7 @@ class Session:
             "tool_calls": self.tool_calls,
             "cache_recent": self.cache_recent,
             "compactions": self.compactions,
+            "continued_by": self.continued_by,
         }
 
     def wire(self) -> dict:
@@ -372,6 +382,11 @@ class Session:
     def busy(self) -> bool:
         """Mid-turn, or about to start one to receive held messages."""
         return self.status == "working" or self._flushing or bool(self.held)
+
+    def mark_continued(self, log_id: str | None) -> None:
+        """Name the session a handoff started from this one, or clear it when
+        the archive was called off (registry._retire_predecessor)."""
+        self._set(continued_by=log_id)
 
     @property
     def in_turn(self) -> bool:
