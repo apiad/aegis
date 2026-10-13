@@ -128,16 +128,29 @@ class ClientFiles(StaticFiles):
         return response
 
 
+_LOG_FIELD = 200
+
+
+def _capped(value: object) -> object:
+    """``value``, or its first ``_LOG_FIELD`` characters and its size when it
+    is longer. A 64 KB artifact submit logged whole could fill a stdout pipe
+    nobody drained and block the server on its own log line (#277)."""
+    text = value if isinstance(value, str) else repr(value)
+    if len(text) <= _LOG_FIELD:
+        return value
+    return f"{text[:_LOG_FIELD]}… <{len(text)} chars>"
+
+
 def _loggable(params: object) -> object:
-    """Params as the log may see them: a token never reaches a log line, and
-    an upload's chunk is logged as its length."""
+    """Params as the log may see them: a token never reaches a log line, an
+    upload's chunk is logged as its length, and every other field is capped."""
     if not isinstance(params, dict):
-        return params
-    out = dict(params)
+        return _capped(params)
+    out = {k: _capped(v) for k, v in params.items()}
     if "token" in out:
         out["token"] = "***"
-    if isinstance(out.get("data"), str):
-        out["data"] = f"<{len(out['data'])} chars>"
+    if isinstance(params.get("data"), str):
+        out["data"] = f"<{len(params['data'])} chars>"
     return out
 
 

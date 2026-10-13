@@ -10,31 +10,16 @@ import pytest
 from aegis import artifacts
 
 from .test_browser import (  # noqa: F401
-    CONFIG,
-    Server,
     _artifact,
     browser,
     page,
+    server,
     spawn,
 )
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
 OVER = artifacts.MAX_STATE_BYTES + 1000
-
-
-@pytest.fixture
-def server(tmp_path, fake_claude, fake_opencode):
-    """The browser tests' server, logging at warning. The fixture reads the
-    server's stdout only until it prints its URL, and `call artifact.submit`
-    logs the whole 64 KB+ params at info: that line fills the pipe and the
-    server blocks on its own log until the test ends."""
-    (tmp_path / ".aegis.yaml").write_text(CONFIG)
-    s = Server(tmp_path, fake_claude, fake_opencode)
-    s.args = ["--log-level", "warning"]
-    s.start()
-    yield s
-    s.stop()
 
 
 # `big` submits data over the cap, `ok` a small answer; `st` shows the last
@@ -48,7 +33,7 @@ BIG_OR_OK = (
 
 
 def test_a_refused_submit_shows_its_reason_on_the_card_and_a_valid_one_clears_it(
-    server,
+    server,  # noqa: F811
     page,  # noqa: F811
 ):
     page.goto(server.url)
