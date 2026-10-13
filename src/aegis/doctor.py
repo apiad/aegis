@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .agents import EFFORTS, HARNESSES, Agent
+from .cgroups import parse_size, total_ram
 from .claude.control import Catalog, Model
 from .config import (
     AGENT_KEYS,
@@ -297,6 +298,19 @@ def _context(context: dict) -> Finding:
     )
 
 
+def _session_memory(snap: Snapshot) -> Finding:
+    if snap.session_memory_error:
+        return Finding("error", "session_memory_max", snap.session_memory_error)
+    cap = parse_size(snap.session_memory_max, total_ram())
+    shown = "no cap" if cap is None else f"{cap / 1024**3:.1f} GB"
+    return Finding(
+        "ok",
+        "session_memory_max",
+        f"{snap.session_memory_max} ({shown}) per session, where the unit "
+        "delegates its cgroup",
+    )
+
+
 def _state(roots: Roots) -> Finding:
     sr = roots.state_root
     if found := legacy_state(sr):
@@ -352,5 +366,6 @@ async def doctor(
     out += [_queue(name, q, by_name) for name, q in snap.queues.items()]
     out += _recap(roots)
     out.append(_context(snap.context))
+    out.append(_session_memory(snap))
     out.append(_state(roots))
     return out

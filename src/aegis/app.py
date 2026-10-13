@@ -58,6 +58,7 @@ from .agents import (
     model_suggestions,
     resolve,
 )
+from .cgroups import SessionCgroups
 from .channels import Channels, Throttle
 from .claude.process import PERMISSION_MODE, ControlError
 from .config import Config, Snapshot
@@ -505,6 +506,10 @@ class App:
 
     async def boot(self) -> None:
         self._config_task = asyncio.create_task(self.config.watch())
+        # Before any session starts, so every harness child gets its cgroup.
+        self.sessions.cgroups = SessionCgroups.setup(
+            lambda: self.config.current().session_memory_max
+        )
         # Before sessions.boot(), which records server_stopped for every session
         # whose turn the last run's end cut: the journal must see those records.
         self.journal.start()

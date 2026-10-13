@@ -31,6 +31,7 @@ from typing import Any
 import httpx
 
 from ..claude.control import Catalog
+from ..cgroups import wrap
 from ..harness import Launch, raise_oom_score
 from .config import (
     SANDBOX_MODE,
@@ -133,7 +134,10 @@ class CodexProcess:
         mcp = self._launch.mcp
         self._launch.stderr_path.parent.mkdir(parents=True, exist_ok=True)
         self._proc = await asyncio.create_subprocess_exec(
-            *argv(self._bin, mcp[0] if mcp else None, person_excludes()),
+            *wrap(
+                self._launch.cgroup,
+                argv(self._bin, mcp[0] if mcp else None, person_excludes()),
+            ),
             cwd=self._launch.cwd,
             env=child_env(os.environ, mcp),
             stdin=asyncio.subprocess.PIPE,

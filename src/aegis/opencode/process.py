@@ -35,6 +35,7 @@ from typing import Any
 import httpx
 
 from ..claude.control import Catalog
+from ..cgroups import wrap
 from ..harness import Launch, raise_oom_score
 from .config import catalog_from, child_config, split_model
 from .stream import DELTA, STORED, _dict, session_of
@@ -127,7 +128,9 @@ class OpenCodeProcess:
         }
         self._launch.stderr_path.parent.mkdir(parents=True, exist_ok=True)
         self._proc = await asyncio.create_subprocess_exec(
-            self._bin, "serve", "--hostname", "127.0.0.1", "--port", "0",
+            *wrap(self._launch.cgroup, [
+                self._bin, "serve", "--hostname", "127.0.0.1", "--port", "0",
+            ]),
             cwd=self._launch.cwd, env=env,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,

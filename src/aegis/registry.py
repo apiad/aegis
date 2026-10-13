@@ -23,6 +23,7 @@ from pathlib import Path
 
 from .archive import Position, count_workers, page as archive_page
 from . import attention, cache, restarts
+from .cgroups import SessionCgroups
 from .config import CONTEXT_DEFAULTS
 from .harness import harness_for
 from .meta import MetaStore, rebuild
@@ -87,6 +88,9 @@ class Registry(Host):
         self.gate = None
         self.journal = None
         self.catalogs = None
+        # One cgroup per session, when the unit is delegated (cgroups.py); the
+        # app sets it at boot.
+        self.cgroups: SessionCgroups | None = None
         # What boot decided about the turns the last run's end cut (restarts.py):
         # each continued session, and whether that end was a crash; the ones a
         # person must continue.
@@ -105,6 +109,13 @@ class Registry(Host):
         if priming:
             prompt += "\n\n" + priming
         return (self.mcp_url, self.tokens.mint(session.log_id)), prompt
+
+    def cgroup(self, session: Session) -> Path | None:
+        return self.cgroups.create(session.log_id) if self.cgroups else None
+
+    def released(self, session: Session) -> None:
+        if self.cgroups is not None:
+            self.cgroups.release(session.log_id)
 
     def turn_ended(self, session: Session) -> None:
         if self.queues is not None:

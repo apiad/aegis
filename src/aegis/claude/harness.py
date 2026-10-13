@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..cgroups import wrap
 from ..harness import Launch
 from . import control
 from .control import Catalog
@@ -44,7 +45,11 @@ class ClaudeSession:
             add_dirs=launch.read_dirs,
         )
         self._proc = ClaudeProcess(
-            argv, launch.cwd, launch.stderr_path, launch.on_line, launch.on_exit
+            wrap(launch.cgroup, argv),
+            launch.cwd,
+            launch.stderr_path,
+            launch.on_line,
+            launch.on_exit,
         )
 
     @property
