@@ -88,7 +88,29 @@ export class Settings {
     this.links = links;
     this.home = home;
     if (this.server && !links.some((l) => l.name === this.server)) this.pick(null);
-    else if (this.box.isConnected && this.box.offsetParent !== null && !this.dirty) this.draw();
+    else if (this.box.isConnected && this.box.offsetParent !== null && !this.dirty) this.editing() ? this.later() : this.draw();
+  }
+
+  // Whether a field of the form has the focus. A chip's typed filter is not
+  // an edit until Enter takes it, so the form is not dirty yet, and a redraw
+  // would replace the chip and drop the choice (#284).
+  editing() {
+    const el = document.activeElement;
+    return this.box.contains(el) && el.matches("input, textarea");
+  }
+
+  // Catch up with what the channels sent once the focus leaves the form.
+  later() {
+    if (this.waiting) return;
+    this.waiting = true;
+    const done = () =>
+      setTimeout(() => {
+        if (this.editing()) return this.box.addEventListener("focusout", done, { once: true });
+        this.waiting = false;
+        if (this.wire) this.onConfig(this.wire);
+        else this.draw();
+      });
+    this.box.addEventListener("focusout", done, { once: true });
   }
 
   // Point the form at a server: its config replaces the form, edits and all.
@@ -123,10 +145,12 @@ export class Settings {
   }
 
   // A config from the channel. An untouched form follows the file; an edited
-  // one keeps its edits and says the file moved.
+  // one keeps its edits and says the file moved. Neither happens under a
+  // field being typed in: the chips hold the doc they were drawn from.
   onConfig(wire) {
     this.wire = wire;
     if (this.saving) return;
+    if (this.doc !== null && this.editing()) return this.later();
     if (!this.dirty || this.doc === null) this.load(wire);
     else if (wire.stamp !== this.stamp) this.stale = true;
     if (this.box.isConnected && this.box.offsetParent !== null) this.draw();

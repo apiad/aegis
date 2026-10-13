@@ -2710,6 +2710,61 @@ def test_settings_saves_an_edit_to_the_file_and_the_composer_follows(
     assert page.errors == []
 
 
+def frame_with(pg, frames: list[str], text: str) -> None:
+    """Wait until the page has received a websocket frame carrying `text`."""
+    deadline = time.monotonic() + 10
+    while not any(text in f for f in frames):
+        assert time.monotonic() < deadline, f"no frame carried {text!r}"
+        pg.wait_for_timeout(50)
+
+
+def test_a_config_push_under_a_choice_being_typed_keeps_it(settings_server, page):
+    """A chip's typed filter is not an edit until Enter takes it, so a config
+    that arrives in between must not redraw the form under it: Enter would land
+    on a fresh chip and Save stay disabled (#284). The form catches up once the
+    focus leaves, as an edited form does: it keeps the edit and says the file
+    moved."""
+    frames = frames_on(page)
+    open_settings(page, settings_server.url)
+    chip = '.set-agent[data-row="agents.opus"] pick-chip[name=effort]'
+    page.click(chip + " input")
+    page.fill(chip + " input", "max")
+    (settings_server.root / ".aegis.yaml").write_text(
+        SETTINGS_CONFIG
+        + "  extra: {harness: claude-code, model: sonnet, effort: low, permission: read}\n"
+    )
+    frame_with(page, frames, "extra")
+    page.press(chip + " input", "Enter")
+    page.wait_for_selector("#set-save:not([disabled])", timeout=2000)
+    assert picked(page, chip) == "max"
+    page.click("#set-status")  # the focus leaves the field
+    page.wait_for_selector("#set-stale", timeout=5000)
+    assert picked(page, chip) == "max"
+    assert page.errors == []
+
+
+def test_a_links_push_under_a_choice_being_typed_keeps_it(linked, page):
+    """The same for the links channel: a link going offline redraws Servers,
+    and must not take the chip being typed in with it (#284)."""
+    frames = frames_on(page)
+    open_settings(page, linked.alpha.url)
+    page.wait_for_selector("#set-servers .link-beta")
+    chip = '.set-agent[data-row="agents.opus"] pick-chip[name=effort]'
+    page.click(chip + " input")
+    page.fill(chip + " input", "max")
+    linked.beta.stop()
+    frame_with(page, frames, '"offline"')
+    page.press(chip + " input", "Enter")
+    page.wait_for_selector("#set-save:not([disabled])", timeout=2000)
+    assert picked(page, chip) == "max"
+    page.click("#set-status")
+    page.wait_for_function(
+        "document.querySelector('#set-servers .link-beta')?.textContent.includes('offline')"
+    )
+    assert picked(page, chip) == "max"
+    assert not [e for e in page.errors if "server_offline" not in e]
+
+
 def test_an_edit_on_disk_reloads_the_open_settings_page(settings_server, page):
     open_settings(page, settings_server.url)
     (settings_server.root / ".aegis.yaml").write_text(
