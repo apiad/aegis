@@ -645,9 +645,11 @@ export function artifactStage(e) {
 const UPDATERS = {
   // Being read re-sends the message with its revision unchanged: only the
   // mark flips, and the row keeps the pointer's hover and any selection in it.
-  prose(e, node) {
+  // A delta does not move the revision either, but it grows the text (#373).
+  prose(e, node, prev) {
     const rm = node.querySelector(":scope > .rm");
     if (!rm || e.unread === undefined || node.dataset.rev !== String(e.rev)) return false;
+    if (prev?.md !== e.md) return false;
     rm.replaceChildren(icon(e.unread ? "unread" : "read"));
     node.classList.toggle("unread", e.unread);
     return true;
@@ -680,7 +682,7 @@ const UPDATERS = {
     return true;
   },
 };
-export function update(e, node) {
+export function update(e, node, prev) {
   const u = UPDATERS[e.kind];
-  return u ? u(e, node) : false;
+  return u ? u(e, node, prev) : false;
 }
