@@ -50,6 +50,9 @@ MemoryMax={memory_max}
 # In a host OOM, the kernel picks the server last. aegis raises every agent
 # process it starts to oom_score_adj 500, so a runaway session dies first.
 OOMScoreAdjust=-500
+# Let aegis give each session a cgroup of its own below the unit's, capped by
+# session_memory_max, so a runaway session is OOM-killed alone.
+Delegate=yes
 
 [Install]
 WantedBy=multi-user.target
@@ -65,6 +68,7 @@ POLICY = (
     "MemoryHigh",
     "MemoryMax",
     "OOMScoreAdjust",
+    "Delegate",
 )
 MEMORY = ("MemoryHigh", "MemoryMax")
 # Where a unit is looked for, and whether systemd runs it as a user unit.

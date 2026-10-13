@@ -68,6 +68,9 @@ class Launch:
     on_error: Callable[[str, bool, str | None], None] = _no_error
     # Folders outside the cwd the agent may read: its inbox (attachments.py).
     read_dirs: tuple[Path, ...] = ()
+    # The session's cgroup the child joins before it execs (cgroups.py), or
+    # None when the server's unit is not delegated.
+    cgroup: Path | None = None
 
 
 class Process(Protocol):

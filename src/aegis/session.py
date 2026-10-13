@@ -90,6 +90,13 @@ class Host:
         prompt, for a new process."""
         return None, None
 
+    def cgroup(self, session: "Session") -> Path | None:
+        """The cgroup a new process starts in (cgroups.py), or None."""
+        return None
+
+    def released(self, session: "Session") -> None:
+        """The session's process ended: empty and remove its cgroup."""
+
     def turn_ended(self, session: "Session") -> None: ...
 
     def recorded(self, session: "Session", record: dict, events: list | None) -> None:
@@ -519,6 +526,7 @@ class Session:
                 on_exit=on_exit,
                 on_error=self._on_error,
                 read_dirs=(inbox,),
+                cgroup=self._host.cgroup(self),
             )
         )
         # Before the start: a harness can speak while it starts (OpenCode's
@@ -711,6 +719,7 @@ class Session:
         if proc is not None:
             self._stopping = True
             await proc.terminate()
+            self._host.released(self)
 
     async def _interrupt_deadline(self) -> None:
         await asyncio.sleep(self._interrupt_timeout)
@@ -919,6 +928,7 @@ class Session:
         if self._stopping:
             return
         self._proc = None
+        self._host.released(self)
         self.open_tasks.clear()
         # The status it cut, so a restart continues only a turn (restarts.py).
         self.last_exit = {"code": code, "at": time.time(), "status": self.status}

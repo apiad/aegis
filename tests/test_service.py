@@ -125,6 +125,7 @@ def test_doctor_names_each_setting_a_live_unit_does_differently(host):
     assert [(f.level, f.where, f.message) for f in found] == [
         ("warn", "service.aegis-web.service.KillMode", "control-group, recommended mixed"),
         ("warn", "service.aegis-web.service.OOMScoreAdjust", "unset, recommended -500"),
+        ("warn", "service.aegis-web.service.Delegate", "unset, recommended yes"),
     ]  # fmt: skip
 
 

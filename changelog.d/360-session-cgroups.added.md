@@ -1,0 +1,2 @@
+- **Each session gets its own memory cap when aegis runs as a systemd service with `Delegate=yes`.** aegis runs every agent, and everything it starts, in a cgroup of its own, capped by the new `session_memory_max` key (40% of the host's RAM by default). A runaway test run then hits an out-of-memory kill inside its own session, which takes its largest process and leaves the agent, the server and every other session running. Without delegation nothing changes.
+help: config#memory-per-session

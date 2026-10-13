@@ -293,9 +293,12 @@ without writing it. `aegis doctor` compares an installed unit against what
 
 Every session, and everything its agent starts (test runs, browsers, builds),
 lives in the server's unit, so the unit's memory settings decide what one
-runaway session can take down. On a host with 8 GB, with the user, root and
-paths given as flags, the unit is the one below; its comments say why each
-setting is there.
+runaway session can take down. With `Delegate=yes`, aegis also gives each
+session a cgroup of its own inside the unit, capped by `session_memory_max`
+in `.aegis.yaml` (40% of the host's RAM by default), so a runaway session hits
+an OOM kill inside its own cgroup and nothing else does. On a host with 8 GB,
+with the user, root and paths given as flags, the unit is the one below; its
+comments say why each setting is there.
 
 ```ini
 [Unit]
@@ -325,14 +328,19 @@ MemoryMax=6.5G
 # In a host OOM, the kernel picks the server last. aegis raises every agent
 # process it starts to oom_score_adj 500, so a runaway session dies first.
 OOMScoreAdjust=-500
+# Let aegis give each session a cgroup of its own below the unit's, capped by
+# session_memory_max, so a runaway session is OOM-killed alone.
+Delegate=yes
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Do not point systemd-oomd at the unit (`ManagedOOMMemoryPressure=kill`): the
-unit is one cgroup, and oomd kills a whole cgroup, server and every session
-with it.
+Leave `ManagedOOMMemoryPressure` off. Without delegation the unit is one
+cgroup, and systemd-oomd would kill the server and every session together;
+with it, oomd chooses among every cgroup below the unit, the server's own
+`server/` included. Each session's own cap already contains a runaway. aegis
+logs a warning at start when it runs under systemd and finds no delegation.
 
 Behind a reverse proxy, name the public origin with `aegis serve --origin
 https://dev.example`, keep `--host` on loopback, and let the proxy terminate TLS.

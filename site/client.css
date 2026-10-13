@@ -1189,7 +1189,7 @@ body{background:#000}
   .a2 .hpage{padding:12px 14px 40px}
   /* the back arrow stays at the top of the column while the page scrolls */
   .a2 .hpage .hback{display:inline-block;margin:0 8px 12px 0;position:sticky;top:0;z-index:2}
-  .a2 .hbody .doc h2{scroll-margin-top:56px}
+  .a2 .hbody .doc h2{scroll-margin-top:68px}  /* .hpage padding 12 + sticky .hback 44 + 12 */
 }
 @media (pointer:coarse){
   .a2 .hrow{padding:10px 8px}

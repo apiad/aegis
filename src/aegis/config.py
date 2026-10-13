@@ -34,6 +34,7 @@ from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 from .agents import EFFORTS, HARNESSES, PERMISSION_ORDER, Agent, agents_from
+from .cgroups import DEFAULT_MEMORY_MAX, parse_size
 from .ops import OpError
 from .queues import queues_from
 from .roots import CONFIG_FILE
@@ -41,7 +42,9 @@ from .roots import CONFIG_FILE
 log = logging.getLogger("aegis.config")
 
 WATCH_EVERY_S = 1.0
-TOP_KEYS = ("agents", "queues", "default_agent", "recap", "context")
+TOP_KEYS = (
+    "agents", "queues", "default_agent", "recap", "context", "session_memory_max"
+)  # fmt: skip
 AGENT_KEYS = ("harness", "provider", "model", "effort", "permission", "priming")
 QUEUE_KEYS = ("agent", "max_parallel")
 
@@ -76,6 +79,18 @@ def context_from(raw: object) -> dict:
             }
         out[k] = v
     return out
+
+
+def session_memory_max_from(raw: object) -> tuple[object, str | None]:
+    """The per-session memory cap (cgroups.py) and, for a value that is not a
+    size, why; a wrong one keeps the default, as the context block does."""
+    if raw is None:
+        return DEFAULT_MEMORY_MAX, None
+    try:
+        parse_size(raw, 1)
+    except ValueError as e:
+        return DEFAULT_MEMORY_MAX, f"session_memory_max: {e}"
+    return raw, None
 
 
 def stamp_of(path: Path) -> Stamp | None:
@@ -196,12 +211,15 @@ class Snapshot:
     unknown_keys: tuple[str, ...] = ()
     doc: ConfigDoc = field(default_factory=ConfigDoc)
     context: dict = field(default_factory=lambda: dict(CONTEXT_DEFAULTS))
+    session_memory_max: object = DEFAULT_MEMORY_MAX
+    session_memory_error: str | None = None
     # Why the file on disk is not the one in force, when it does not parse.
     error: str | None = None
 
     @classmethod
     def parse(cls, path: Path, stamp: Stamp | None, data: dict) -> Snapshot:
         d = data.get("default_agent")
+        mem, mem_error = session_memory_max_from(data.get("session_memory_max"))
         return cls(
             path=path,
             exists=True,
@@ -212,6 +230,8 @@ class Snapshot:
             unknown_keys=tuple(str(k) for k in data if k not in TOP_KEYS),
             doc=doc_from(data),
             context=context_from(data.get("context")),
+            session_memory_max=mem,
+            session_memory_error=mem_error,
         )
 
     def wire(self) -> dict:
