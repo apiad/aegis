@@ -88,7 +88,29 @@ export class Settings {
     this.links = links;
     this.home = home;
     if (this.server && !links.some((l) => l.name === this.server)) this.pick(null);
-    else if (this.box.isConnected && this.box.offsetParent !== null && !this.dirty) this.draw();
+    else if (this.box.isConnected && this.box.offsetParent !== null && !this.dirty) this.editing() ? this.later() : this.draw();
+  }
+
+  // Whether a field of the form has the focus. A chip's typed filter is not
+  // an edit until Enter takes it, so the form is not dirty yet, and a redraw
+  // would replace the chip and drop the choice (#284).
+  editing() {
+    const el = document.activeElement;
+    return this.box.contains(el) && el.matches("input, textarea");
+  }
+
+  // Catch up with what the channels sent once the focus leaves the form.
+  later() {
+    if (this.waiting) return;
+    this.waiting = true;
+    const done = () =>
+      setTimeout(() => {
+        if (this.editing()) return this.box.addEventListener("focusout", done, { once: true });
+        this.waiting = false;
+        if (this.wire) this.onConfig(this.wire);
+        else this.draw();
+      });
+    this.box.addEventListener("focusout", done, { once: true });
   }
 
   // Point the form at a server: its config replaces the form, edits and all.
@@ -123,10 +145,19 @@ export class Settings {
   }
 
   // A config from the channel. An untouched form follows the file; an edited
-  // one keeps its edits and says the file moved.
+  // one keeps its edits and says the file moved. Under a field being typed in
+  // nothing is redrawn: the chips hold the doc they were drawn from. An edited
+  // form says the file moved at once, in place; an untouched one waits.
   onConfig(wire) {
     this.wire = wire;
     if (this.saving) return;
+    if (this.doc !== null && this.editing()) {
+      if (this.dirty && wire.stamp !== this.stamp && !this.stale) {
+        this.stale = true;
+        this.box.querySelector(".set-checks")?.before(this.staleAlert());
+      }
+      return this.later();
+    }
     if (!this.dirty || this.doc === null) this.load(wire);
     else if (wire.stamp !== this.stamp) this.stale = true;
     if (this.box.isConnected && this.box.offsetParent !== null) this.draw();
@@ -204,22 +235,25 @@ export class Settings {
       this.servers(),
       this.tokens(),
       w.error && h("p", { className: "set-alert err", id: "set-error", textContent: `The file on disk does not parse, so aegis is still using the last version that did. ${w.error}` }),
-      this.stale &&
-        h(
-          "p",
-          { className: "set-alert", id: "set-stale", textContent: "The file changed on disk since you opened it. " },
-          button("Reload from disk", "set-reload", () => {
-            this.load(this.wire);
-            this.findings = null;
-            this.draw();
-          }),
-        ),
+      this.stale && this.staleAlert(),
       this.checks(),
       this.agents(),
       this.queues(),
     );
     this.box.replaceChildren(full, this.bar());
     this.mark();
+  }
+
+  staleAlert() {
+    return h(
+      "p",
+      { className: "set-alert", id: "set-stale", textContent: "The file changed on disk since you opened it. " },
+      button("Reload from disk", "set-reload", () => {
+        this.load(this.wire);
+        this.findings = null;
+        this.draw();
+      }),
+    );
   }
 
   // What this browser alone keeps. Built once and moved into each draw, with
