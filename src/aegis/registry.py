@@ -463,6 +463,10 @@ class Registry(Host):
         path = self.store_path(log_id)
         return tool_output(read_store(path)[0], entry_id) if path.exists() else None
 
+    def archived_entries(self, log_id: str) -> list[dict]:
+        """An archived session's transcript entries, read from its store."""
+        return self._archived_fold(log_id).entries()
+
     def _archived_fold(self, log_id: str) -> Fold:
         path = self.store_path(log_id)
         return fold_records(read_store(path)[0]) if path.exists() else Fold()
