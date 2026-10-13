@@ -17,14 +17,22 @@ import json
 import secrets
 from typing import TYPE_CHECKING, Any
 
+import fastmcp
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.tools import Tool
 from fastmcp.tools import ToolResult
+from fastmcp.utilities.logging import configure_logging
 from pydantic import PrivateAttr
 
 from .ops import Caller, Operation, OpError, Registry
+
+# fastmcp logs every ToolError with its traceback, and every refused op is one
+# (a no_session is an answer, not a crash). Its own handler renders that
+# traceback rich, which held the event loop, and every session on it, for
+# about 0.5 s per refusal (#366). Plain text costs a few milliseconds.
+configure_logging(level=fastmcp.settings.log_level, enable_rich_tracebacks=False)
 
 if TYPE_CHECKING:
     from pathlib import Path
