@@ -185,7 +185,8 @@ class Fold:
         # its entry's id and its index in the entry's files.
         self.file_keys: dict[str, dict] = {}
         self._file_at: dict[str, tuple[str, int]] = {}
-        # Entries only deltas made, whose part has not closed yet.
+        # Entries of parts that opened or that only deltas made, whose part
+        # has not closed yet.
         self._live: set[str] = set()
         # The store index of the record being folded; stamped on every entry
         # it changes as ``rev`` (-1 before the first record).
@@ -308,6 +309,27 @@ class Fold:
             end = getattr(p, "end_turn", None)
             if end is not None:
                 end()
+
+    def _open(self, key: str, kind: str, ts: float | None) -> list[dict]:
+        """A keyed part opening (OpenCode's, Codex's): its entry goes in now,
+        empty, so the part sits where it opened, live and on a reload alike;
+        deltas and the close fill it in place. A part that never closes goes
+        with its turn. Seen already, it is left as it is."""
+        if key in self._entries:
+            return []
+        self._live.add(key)
+        thinking = kind == "thinking"
+        return self._upsert(
+            _entry(
+                key,
+                kind,
+                "ok",
+                ts,
+                d.THINKING_GLYPH if thinking else d.PROSE_GLYPH,
+                title="Thinking" if thinking else "",
+                md="",
+            )
+        )
 
     def _unlive(self, key: str | None) -> list[dict]:
         """The live entry a whole block replaces, gone; nothing on a reload."""
@@ -923,6 +945,8 @@ class Fold:
         if isinstance(ev, Text):
             eid = ev.key or id
             gone = self._unlive(ev.replaces)
+            if ev.key and not ev.text.strip():
+                return gone + self._open(ev.key, "prose", ts)
             if ev.key:
                 self._live.discard(ev.key)
             if not ev.text.strip():
@@ -946,9 +970,9 @@ class Fold:
             eid = ev.key or id
             gone = self._unlive(ev.replaces)
             if ev.key:
-                self._live.discard(ev.key)
                 if not ev.text.strip():
-                    return gone  # an opening part
+                    return gone + self._open(ev.key, "thinking", ts)
+                self._live.discard(ev.key)
             return gone + self._upsert(
                 _entry(
                     eid,

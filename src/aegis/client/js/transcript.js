@@ -335,7 +335,8 @@ export class Transcript {
       if (op.upsert) {
         const e = op.upsert;
         if (e.rev > this.rev) this.rev = e.rev;
-        const known = this.entries.has(e.id);
+        const prev = this.entries.get(e.id);
+        const known = prev !== undefined;
         this.entries.set(e.id, e);
         if (!e.unread) {
           this.sent.delete(e.id);
@@ -343,7 +344,7 @@ export class Transcript {
         }
         const old = this.nodes.get(e.id);
         if (old) {
-          if (update(e, old)) this.nodes.set(e.id, old);
+          if (update(e, old, prev)) this.nodes.set(e.id, old);
           else {
             this.watch.unobserve(old);
             unwatch(old);

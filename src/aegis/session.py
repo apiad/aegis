@@ -791,7 +791,7 @@ class Session:
         new = [
             op["upsert"]["id"]
             for op in ops
-            if op.get("upsert", {}).get("kind") == "prose"
+            if op.get("upsert", {}).get("kind") == "prose" and op["upsert"]["md"]
         ]
         if new:
             # Before dressing the ops, so the new rows go out unread. "unread" is

@@ -307,3 +307,50 @@ def test_an_exit_mid_turn_does_not_leak_into_the_next_turn():
     line(ev("session.execution.started", 5000, sessionID="ses_1"))
     line(ev("session.execution.succeeded", 6000, sessionID="ses_1"))
     assert f.entries()[-1]["summary"].startswith("done in 1.0s")
+
+
+def test_a_prompt_read_while_a_part_streams_sits_where_a_reload_puts_it():
+    """The second prompt is read after the answer to the first opens and
+    before it closes (#373): the answer sits above it, live and on a reload."""
+    a = {"sessionID": "ses_1", "assistantMessageID": "msg_a", "ordinal": 0}
+    b = {"sessionID": "ses_1", "assistantMessageID": "msg_b", "ordinal": 0}
+
+    def user(iid, text):
+        item = {"type": "user", "payload": {"text": text}, "delivery": "steer"}
+        return ev("session.inbox.enqueued", sessionID="ses_1", inboxID=iid, item=item)
+
+    stream = [
+        ev("session.created", sessionID="ses_1", version="2.0.28",
+           model={"id": "flash", "providerID": "go"}, location={"directory": "/r"}),
+        user("msg_1", "one"),
+        ev("session.execution.started", 10, sessionID="ses_1"),
+        ev("session.text.started", **a),
+        ev("session.text.delta", **a, delta="you said: "),
+        user("msg_2", "two"),
+        ev("session.text.delta", **a, delta="one"),
+        ev("session.text.ended", **a, text="you said: one"),
+        ev("session.text.started", **b),
+        ev("session.text.delta", **b, delta="you said: two"),
+        ev("session.text.ended", **b, text="you said: two"),
+        ev("session.execution.succeeded", 20, sessionID="ses_1"),
+    ]  # fmt: skip
+
+    def folded(live: bool) -> Fold:
+        f = Fold()
+        recs = [
+            {"src": "aegis", "kind": "spawn", "agent": "a", "model": "m", "cwd": "/r"}
+        ]
+        recs += [{"src": "aegis", "kind": "send", "text": t} for t in ("one", "two")]
+        recs += [{"src": "opencode", "line": ln} for ln in stream]
+        for i, r in enumerate(recs):
+            if r["src"] == "opencode" and json.loads(r["line"])["type"] in DELTAS:
+                if live:
+                    f.live(f.parse("opencode", r["line"]))
+                continue
+            f.apply({"i": i, "ts": 1.0 + i, **r})
+        return f
+
+    live = folded(live=True).entries()
+    assert live == folded(live=False).entries()
+    said = [e["md"] for e in live if e["kind"] in ("user", "prose")]
+    assert said == ["one", "you said: one", "two", "you said: two"]
