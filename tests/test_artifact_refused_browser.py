@@ -95,7 +95,8 @@ def test_a_submit_to_an_answered_artifact_says_so_on_its_card(server, page):  # 
         '<button id="ok">ok</button><button id="again">again</button>',
         '  ok.onclick = () => aegis.submit({pick: "b"}, "Picked B");'
         '  again.onclick = () => parent.postMessage({jsonrpc: "2.0", id: 99, method: "aegis/submit",'
-        '    params: {data: {pick: "c"}, label: "Twice"}}, "*");',
+        '    params: {data: {pick: "c"}, label: "Twice"}}, "*");'
+        "  again.dataset.wired = '1';",
     )
     aid, _ = _artifact(page, server, again, 0)
     page.frame_locator(f"iframe[data-artifact={aid}]").locator("#ok").click()
@@ -105,7 +106,11 @@ def test_a_submit_to_an_answered_artifact_says_so_on_its_card(server, page):  # 
     page.locator(".row.artifact button.show").click()
     # The page's stylesheet turns pointer events off once it is not live, so the
     # click is dispatched on the button, as a script on the page could.
-    page.frame_locator(".row.artifact iframe").locator("#again").dispatch_event("click")
+    # The button is in the page before its script wires it, after the host
+    # answers ui/initialize: on a slow runner a click on sight did nothing (#300).
+    shown = page.frame_locator(".row.artifact iframe")
+    shown.locator("#again[data-wired]").wait_for(state="attached")
+    shown.locator("#again").dispatch_event("click")
 
     note = page.locator(".row.artifact .acard .refused")
     note.wait_for()

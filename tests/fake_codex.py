@@ -20,7 +20,8 @@ argument), because aegis sends a ``/name`` line as a skill:
     argv           text "argv: <JSON of argv>".
     env            text "env: <AEGIS_SESSION_TOKEN or none>".
     body           text "body: <JSON of the last turn/start params>".
-    exit N         a stderr line, then exit with code N.
+    exit N         a stderr line, then exit with code N before answering
+                   turn/start, as a child that dies under a send does.
 
 A plain prompt is answered "you said: <prompt>". Text streams as an opening
 item, three deltas and the closing item. Each turn reports 1,030 tokens
@@ -328,10 +329,6 @@ def run(t: Turn, name: str, args: str, text: str) -> None:
         t.say("env: " + os.environ.get("AEGIS_SESSION_TOKEN", "none"))
     elif name == "body":
         t.say("body: " + json.dumps(STATE["body"]))
-    elif name == "exit":
-        sys.stderr.write("fake codex is exiting\n")
-        sys.stderr.flush()
-        os._exit(int(args or 1))
     else:
         t.say(f"you said: {text}")
     t.usage()
@@ -379,6 +376,10 @@ def handle(msg: dict) -> dict | None:
         STATE["turn"], STATE["steer"] = t.id, []
         STATE["stop"].clear()
         name, args, text = turn_input(p.get("input") or [])
+        if name == "exit":
+            sys.stderr.write("fake codex is exiting\n")
+            sys.stderr.flush()
+            os._exit(int(args or 1))
         threading.Thread(target=run, args=(t, name, args, text), daemon=True).start()
         return {"turn": {"id": t.id, "status": "inProgress", "items": []}}
     if method == "turn/steer":
