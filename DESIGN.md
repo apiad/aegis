@@ -98,6 +98,14 @@ block is the one section with defaults: a wrong one keeps them all in force
 and `aegis doctor` names the mistake, because a typo there must never stop a
 `turn_end`.
 
+**The systemd unit comes from one template.** `aegis service install` renders
+it, the README's example is it rendered for a host with 8 GB, and `aegis
+doctor` compares an installed unit against it rendered for this host
+(`service.py`). Hand-written units drifted from the recommended settings and
+nothing said so; one template and a test against the README keep the three
+from disagreeing. aegis writes the unit where the person says and prints the
+`sudo` commands, because installing a system service is theirs to run.
+
 **Relative imports, and nothing from the legacy tree.** Imports inside aegis are
 relative, which is what made taking over the `aegis` name one directory move, and no
 module imports `legacy/`, which is not packaged. `tests/test_imports.py` enforces
