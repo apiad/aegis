@@ -218,12 +218,22 @@ class TurnEnd(_Strict):
 
 # What turn_end answers past the context block's handoff_at (#354). A tool
 # result, never the system prompt: it is the newest message, so it cannot
-# break the prompt cache.
+# break the prompt cache. A turn reported done or review is at a break by
+# definition, so the line asks for the brief outright; a real Sonnet ignored
+# the conditional wording on a finished task in 2 of 3 runs.
 CONTEXT_LINE = (
     "noted. Your context is {k} tokens, and every turn from here rereads all of it. "
-    "If the task is at a natural break, call turn_end again with the same arguments "
-    "plus handoff: a brief for a fresh session (what is done, what is next, the "
-    "files, the decisions, what not to retry). Otherwise carry on; this costs nothing."
+)
+BRIEF_NOW = (
+    "This turn is a natural break, so call turn_end again now, before your final "
+    "message, with the same arguments plus handoff: a brief for a fresh session "
+    "that continues this work (what is done, what is next, the files, the "
+    "decisions, what not to retry)."
+)
+BRIEF_IF = (
+    "If a fresh session could carry on from here, call turn_end again now with the "
+    "same arguments plus handoff: a brief for it (what is done, what is next, the "
+    "files, the decisions, what not to retry)."
 )
 
 
@@ -1054,7 +1064,8 @@ def register_agent_ops(app: App) -> None:
         n = s.context_tokens or 0
         if s.worker or p.handoff or not at or n < at:
             return "noted"
-        return CONTEXT_LINE.format(k=f"{round(n / 1000)}k")
+        then = BRIEF_IF if p.attention == "needs_you" else BRIEF_NOW
+        return CONTEXT_LINE.format(k=f"{round(n / 1000)}k") + then
 
     toasted: dict[str, list[float]] = {}
 
