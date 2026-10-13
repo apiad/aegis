@@ -44,7 +44,9 @@ class Server:
             OPENCODE_CONFIG_CONTENT=json.dumps(
                 {
                     "commands": COMMAND,
-                    "permissions": [{"action": "*", "resource": "*", "effect": "allow"}],
+                    "permissions": [
+                        {"action": "*", "resource": "*", "effect": "allow"}
+                    ],
                 }
             ),
         )
@@ -105,9 +107,9 @@ class Server:
             d = e.get("data") or {}
             if e["type"] == "session.created" and d.get("parentID") in mine:
                 mine.add(d["sessionID"])
-            owner = d.get("sessionID") or ((d.get("info") or {}).get("metadata") or {}).get(
-                "sessionID"
-            )
+            owner = d.get("sessionID") or (
+                (d.get("info") or {}).get("metadata") or {}
+            ).get("sessionID")
             if owner in mine:
                 out.append(json.dumps(e))
         (OUT / f"{name}.jsonl").write_text("\n".join(out) + "\n")
@@ -128,7 +130,9 @@ def main() -> None:
         srv = Server(args.bin, cwd)
         try:
 
-            def turn(name: str, *texts: str, gap: float = 0, interrupt_after: float = 0):
+            def turn(
+                name: str, *texts: str, gap: float = 0, interrupt_after: float = 0
+            ):
                 n = len(srv.events)
                 sid = srv.req("POST", "/api/session", {"model": M})["id"]
                 for k, text in enumerate(texts):
