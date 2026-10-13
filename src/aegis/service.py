@@ -111,7 +111,8 @@ def size(n: int) -> str:
 def caps(total: int) -> tuple[str, str]:
     """MemoryHigh and MemoryMax for a host with ``total`` bytes of RAM."""
     step = GIB // 4 if total >= 4 * GIB else 64 * 1024**2
-    return tuple(size(max(1, round(total * f / step)) * step) for f in (0.7, 0.8))
+    high, top = (max(1, round(total * f / step)) * step for f in (0.7, 0.8))
+    return size(high), size(top)
 
 
 def parse_size(value: str, total: int) -> int | None:
