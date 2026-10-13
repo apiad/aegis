@@ -98,3 +98,18 @@ def test_find_reaches_a_folded_collapsed_row_steps_and_closes_with_esc(
     page.keyboard.press("Control+f")
     assert page.input_value("#find-q") == "no such text"
     assert page.errors == []
+
+
+def test_a_part_with_no_words_yet_draws_no_row(server, page):  # noqa: F811
+    # A part that opened holds its place with an empty entry (#373).
+    page.goto(server.url)
+    hidden = page.evaluate(
+        """async () => {
+          const { render } = await import('/static/js/entries.js');
+          const e = (kind, md, summary = '') =>
+            ({ id: kind + md, kind, status: 'ok', glyph: kind, title: '', summary, md, detail: {} });
+          return [e('prose', ''), e('thinking', ''), e('prose', 'hi'),
+                  e('thinking', 'hm'), e('thinking', '', 'thought')].map((x) => render(x).hidden);
+        }"""
+    )
+    assert hidden == [True, True, False, False, False]
