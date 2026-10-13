@@ -117,7 +117,7 @@ class Title:
 
 @dataclass(frozen=True)
 class Step:
-    """What one finished model step used (OpenCode's ``step-finish``)."""
+    """What one finished model step used (OpenCode's ``session.step.ended``)."""
 
     usage: Usage
     parent: str | None = None

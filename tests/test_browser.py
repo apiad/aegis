@@ -1424,14 +1424,21 @@ def mark_size(pg, sel: str) -> float:
 
 
 def pupil_at(pg, sel: str, ms: int) -> tuple[float, float, float]:
-    """The pupil's centre and height with the eye's CSS cycle frozen at ms."""
-    pg.evaluate(
-        "([sel, ms]) => document.querySelector(sel).getAnimations({subtree: true})"
-        ".forEach(a => { a.pause(); a.currentTime = ms; })",
+    """The pupil's centre, from the mark's corner, and its height, with the
+    eye's CSS cycle frozen at ms. From the corner, in the same frame: the mark
+    itself moves while the spawn view settles (the title's serif face swaps in
+    and re-centres it by 4.66 px), and a page position caught on either side of
+    that read as the eye looking the wrong way (#359)."""
+    x, y, h = pg.evaluate(
+        """([sel, ms]) => {
+          const svg = document.querySelector(sel);
+          svg.getAnimations({subtree: true}).forEach(a => { a.pause(); a.currentTime = ms; });
+          const s = svg.getBoundingClientRect(), p = svg.querySelector('.pupil').getBoundingClientRect();
+          return [p.x + p.width / 2 - s.x, p.y + p.height / 2 - s.y, p.height];
+        }""",
         [f"{sel} svg.gorgon", ms],
     )
-    b = pg.locator(f"{sel} .pupil").bounding_box()
-    return b["x"] + b["width"] / 2, b["y"] + b["height"] / 2, b["height"]
+    return x, y, h
 
 
 def tip_x_at(pg, sel: str, s: float) -> float:
@@ -1644,7 +1651,9 @@ def _artifact(page, server, body, n, title="Pick", caption=None):
     page.press("#input", "Enter")
     turns_done(page, n + 1)
     # Markdown eats the backslash of the skeleton's \" so the prose is no longer JSON.
-    said = page.locator(".row.prose .md").last.inner_text()
+    # textContent: a row appended this frame has not been rendered yet, and
+    # innerText reads a content-visibility row that skips rendering as "" (#359).
+    said = page.locator(".row.prose .md").last.text_content()
     made = dict(
         zip(
             ("id", "path"),
@@ -1659,7 +1668,7 @@ def _artifact(page, server, body, n, title="Pick", caption=None):
     page.fill("#input", f"/mcp artifact_send {json.dumps({'id': made['id']})}")
     page.press("#input", "Enter")
     turns_done(page, n + 2)
-    return made["id"], page.locator(".row.prose .md").last.inner_text()
+    return made["id"], page.locator(".row.prose .md").last.text_content()
 
 
 PICK = (
@@ -2456,7 +2465,7 @@ def test_an_opencode_session_streams_and_calls_aegis(server, page):
     page.press("#input", "Enter")
     turns_done(page, 2)
     assert "meta" in page.locator(".row.tool.ok").last.inner_text()
-    assert "OpenCode 1.18.31" in page.inner_text("#entries")
+    assert "OpenCode 2.0.28" in page.inner_text("#entries")
 
 
 # -- attention (#171) -----------------------------------------------------------
@@ -2806,6 +2815,66 @@ def test_a_reply_read_on_screen_turns_its_mark_and_clears_the_done_badge(server,
         timeout=6000,
     )
     page.wait_for_selector(".tab.on .dot.ready")  # done, read: the plain idle dot
+    assert page.errors == []
+
+
+def test_a_reply_that_turns_read_keeps_its_row(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    assert page.evaluate(
+        "(window.__row = document.querySelector('.row.prose')).classList.contains('unread')"
+    )
+    page.wait_for_selector(".row.prose .rm .ic.i-read", timeout=6000)
+    # Only the mark flips: a remount dropped the hover and any selection in the
+    # row, and a test holding one of its buttons waited on a detached node (#359).
+    assert page.evaluate("window.__row === document.querySelector('.row.prose')")
+    assert page.errors == []
+
+
+def test_the_transcript_follows_when_it_grows_under_its_own_scroll(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "\n\n".join(f"line {i}" for i in range(120)))
+    page.evaluate("document.querySelector('#tr').scrollTop = 0")
+    page.wait_for_timeout(100)  # the reader's scroll lets go of the bottom
+    # Back to the bottom, and the rows grow before that scroll's event fires,
+    # as a card's frame sizing itself or a row leaving its placeholder height
+    # does. The event then reads "not at the bottom", but the reader never
+    # moved: the transcript keeps following, and new rows land in view (#359).
+    page.evaluate(
+        """() => {
+          document.querySelector('#jump').click();
+          const d = document.createElement('div');
+          d.style.height = '600px';
+          document.querySelector('#entries').append(d);
+        }"""
+    )
+    page.wait_for_function(
+        "() => { const t = document.querySelector('#tr');"
+        " return t.scrollHeight - t.scrollTop - t.clientHeight < 2; }",
+        timeout=2000,
+    )
+    assert page.errors == []
+
+
+def test_selecting_the_row_under_the_new_divider_keeps_the_divider(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    # Opened afresh with the reply unread: the divider sits on the prompt's row.
+    page.goto("about:blank")
+    page.goto(f"{server.url}#s={sid}")
+    row = page.locator(".row.user.since")
+    row.wait_for()
+    button = row.locator(":scope > .body > .copy")
+    before = button.bounding_box()["y"]
+    # Pressing a button in the row focuses it, and focus selects the row. The
+    # selection's bar took the divider's ::before, the row shrank under the
+    # pointer between press and release, and the click was lost (#359).
+    button.focus()
+    page.wait_for_selector(".row.user.since.sel")
+    assert button.bounding_box()["y"] == before
     assert page.errors == []
 
 

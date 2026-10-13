@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from aegis.opencode.stream import DELTA
+from aegis.opencode.stream import DELTAS
 from aegis.transcript.entries import Fold, fold_records
 from aegis.transcript.store import read_store
 from aegis.transcript.wire import LAZY, wire, wire_ops
@@ -63,7 +63,7 @@ def stream(name: str):
     own("send", text=first_prompt(name))
     for ln in lines(name):
         evs = f.parse("opencode", ln)
-        if json.loads(ln)["type"] == DELTA:
+        if json.loads(ln)["type"] in DELTAS:
             f.live(evs)
         else:
             f.apply({"i": i, "ts": 1.0 + i, "src": "opencode", "line": ln}, evs)

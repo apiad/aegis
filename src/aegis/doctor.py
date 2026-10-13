@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import shutil
 import tempfile
 from asyncio.subprocess import PIPE, STDOUT
@@ -44,6 +45,7 @@ from .session import SpawnSpec
 
 VERSION_TIMEOUT_S = 5.0
 PROBE_TIMEOUT_S = 20.0
+UPGRADE = "aegis drives OpenCode 2 (`npm install -g @opencode/cli`)"
 LABELS = {"claude-code": "Claude Code", "opencode": "OpenCode", "codex": "Codex"}
 
 
@@ -108,6 +110,11 @@ async def _find(name: str, bins: dict[str, str], cwd: Path) -> Found:
         version = await _version(bin)
     except (OSError, RuntimeError) as e:
         return Found(name, bin, error=f"`{bin} --version` failed: {e}")
+    if name == "opencode" and (m := re.search(r"(\d+)\.\d+", version)):
+        if int(m.group(1)) < 2:
+            return Found(
+                name, bin, version, error=f"OpenCode {version} is too old: {UPGRADE}"
+            )
     try:
         cat = await _catalog(name, {**bins, name: bin}, cwd)
     except RuntimeError as e:

@@ -1,3 +1,4 @@
+import logging
 import base64
 import json
 from pathlib import Path
@@ -194,6 +195,19 @@ def test_a_chunk_never_reaches_the_log():
     )
     assert got == {"log_id": "l", "upload_id": "u", "offset": 0, "data": "<400 chars>"}
     assert _loggable({"token": "s"}) == {"token": "***"}
+
+
+def test_a_large_submit_logs_a_bounded_line(caplog):
+    """An artifact submit near its 64 KB cap once logged whole, and one such
+    line could fill an undrained stdout pipe and block the server (#277)."""
+    big = {"artifact_id": "a1", "data": {"blob": "x" * 65_000}, "caption": "Hi"}
+    with caplog.at_level(logging.INFO):
+        logging.getLogger("aegis.web").info("call %s %s", "x", _loggable(big))
+    line = caplog.records[-1].getMessage()
+    assert len(line) < 400, len(line)
+    assert "65012 chars" in line  # the size survives the cut
+    assert "'artifact_id': 'a1'" in line and "'caption': 'Hi'" in line
+    assert len(str(_loggable("y" * 10_000))) < 300  # params that are not a dict
 
 
 async def test_claude_starts_with_its_inbox_as_an_added_dir(app):

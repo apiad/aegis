@@ -6,6 +6,7 @@ import pytest
 
 from aegis.harness import Launch
 from aegis.opencode.process import OpenCodeProcess, probe
+from aegis.opencode.stream import TURN_ENDS
 
 from .conftest import until
 
@@ -36,15 +37,17 @@ class Rig:
 
     def texts(self) -> list[str]:
         return [
-            e["properties"]["part"]["text"]
+            e["data"]["text"]
             for e in self.lines
-            if e["type"] == "message.part.updated"
-            and e["properties"]["part"]["type"] == "text"
-            and e["properties"]["part"]["text"]
+            if e["type"] == "session.text.ended" and e["data"]["text"]
         ]
 
     def idles(self) -> int:
-        return self.types().count("session.idle")
+        return sum(t in TURN_ENDS for t in self.types())
+
+    async def state(self) -> dict:
+        await self.turn("/state")
+        return json.loads(self.texts()[-1].removeprefix("state: "))
 
     async def turn(self, text: str, n: int = 1) -> None:
         before = self.idles()
@@ -66,29 +69,33 @@ async def test_start_makes_a_session_and_only_its_kept_events_arrive(rig):
     assert rig.proc.session_id.startswith("ses_") and rig.proc.running
     await rig.turn("hello")
     assert "you said: hello" in rig.texts()
-    assert "message.part.delta" in rig.types()
+    assert "session.text.delta" in rig.types()
     assert not {
-        "plugin.added",
-        "session.diff",
+        "plugin.updated",
+        "session.usage.updated",
+        "session.tool.input.ended",
         "server.heartbeat",
         "server.connected",
     } & set(rig.types())
 
 
-async def test_the_prompt_carries_model_variant_and_system(rig):
-    await rig.turn("hello")
-    await rig.turn("/body")
-    body = json.loads(rig.texts()[-1].removeprefix("body: "))
-    assert body["model"] == {"providerID": "opencode-go", "modelID": "fake-pro"}
-    assert (body["variant"], body["system"]) == ("high", "You are in aegis.")
+async def test_the_session_has_the_model_variant_and_system_prompt(rig):
+    state = await rig.state()
+    assert state["model"] == {"providerID": "opencode-go", "id": "fake-pro"}
+    assert state["variant"] == "high"
+    assert state["instructions"] == {"aegis": "You are in aegis."}
 
 
 async def test_an_effort_the_model_does_not_list_is_not_sent(rig):
     await rig.proc.set("model", "opencode-go/fake-plain")
-    await rig.turn("hello")
-    await rig.turn("/body")
-    body = json.loads(rig.texts()[-1].removeprefix("body: "))
-    assert body["model"]["modelID"] == "fake-plain" and "variant" not in body
+    state = await rig.state()
+    assert state["model"]["id"] == "fake-plain" and state["variant"] == "default"
+
+
+async def test_a_skill_is_a_prompt_with_the_skill_attached(rig):
+    await rig.turn("/unslop this draft")
+    assert "you said: this draft" in rig.texts()
+    assert (await rig.state())["skills"] == [{"id": "unslop"}]
 
 
 async def test_a_resume_keeps_the_id_and_an_unknown_one_starts_anew(
@@ -124,16 +131,19 @@ async def test_a_permission_change_restarts_the_child_at_the_next_send_only(rig)
     await until(lambda: rig.idles() >= 1, timeout=5, what="the turn")
     await rig.turn("/config")
     assert rig.proc.pid != pid
-    rules = json.loads(rig.texts()[-1].removeprefix("config: "))["permission"]
-    assert rules["edit"] == "deny" and rules["bash"] == "deny"
+    rules = json.loads(rig.texts()[-1].removeprefix("config: "))["permissions"]
+    denied = {r["action"] for r in rules if r["effect"] == "deny"}
+    assert {"edit", "shell"} <= denied
 
 
 async def test_interrupt_aborts_the_turn(rig):
     await rig.proc.send("/sleep 5")
-    await until(lambda: "message.part.updated" in rig.types(), what="the call")
+    await until(lambda: "session.tool.called" in rig.types(), what="the call")
     await asyncio.sleep(0.2)
     await rig.proc.interrupt()
-    await until(lambda: "session.error" in rig.types(), what="the abort")
+    await until(
+        lambda: "session.execution.interrupted" in rig.types(), what="the interrupt"
+    )
 
 
 async def test_a_command_runs_without_blocking_and_an_unknown_one_is_an_error(rig):
@@ -145,7 +155,7 @@ async def test_a_command_runs_without_blocking_and_an_unknown_one_is_an_error(ri
     await rig.proc.send("/nope x")
     await until(lambda: rig.errors, what="the refusal")
     text, idle, line = rig.errors[0]
-    assert "400" in text and idle and line == "/nope x"
+    assert "404" in text and idle and line == "/nope x"
 
 
 async def test_an_exit_reports_the_code_and_the_stderr_tail(rig):

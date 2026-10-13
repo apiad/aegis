@@ -107,6 +107,14 @@ block is the one section with defaults: a wrong one keeps them all in force
 and `aegis doctor` names the mistake, because a typo there must never stop a
 `turn_end`.
 
+**The systemd unit comes from one template.** `aegis service install` renders
+it, the README's example is it rendered for a host with 8 GB, and `aegis
+doctor` compares an installed unit against it rendered for this host
+(`service.py`). Hand-written units drifted from the recommended settings and
+nothing said so; one template and a test against the README keep the three
+from disagreeing. aegis writes the unit where the person says and prints the
+`sudo` commands, because installing a system service is theirs to run.
+
 **Relative imports, and nothing from the legacy tree.** Imports inside aegis are
 relative, which is what made taking over the `aegis` name one directory move, and no
 module imports `legacy/`, which is not packaged. `tests/test_imports.py` enforces
@@ -204,8 +212,8 @@ thread's writer lease and the child's pipes. The parsers emit the same events, s
 the entry rules exist once. Token deltas, OpenCode's, Codex's and Claude's
 (`--include-partial-messages`), are the one thing folded and never stored: the
 part's closing update carries the whole text, so the live view is ahead of a
-fresh fold only while a part is open. OpenCode's closing update keeps the part's
-id; Claude's is the assistant line for that block, whose row replaces the one its
+fresh fold only while a part is open. OpenCode's closing event names the same
+step and ordinal as its deltas; Claude's is the assistant line for that block, whose row replaces the one its
 deltas drew (`claude/stream.py`). A prompt OpenCode reads mid-turn while a part
 streams is the one known exception: live it sits after that part, and a reload
 puts it before.
@@ -213,9 +221,9 @@ puts it before.
 **A `/` line is resolved on the server, and a typo costs nothing.** `session.send`
 runs an aegis command (`commands.py`) as the operation it stands for, passes a name
 in the session's catalog to its harness as typed (OpenCode's run through its
-command endpoint), and refuses anything else: Claude answers an unknown command
+command endpoint, or as a prompt with the skill attached), and refuses anything else: Claude answers an unknown command
 with the model. The catalog is the harness's own (Claude's `initialize` answer,
-OpenCode's `/command` and `/config/providers`), in memory by harness and cwd,
+OpenCode's `/api/command`, `/api/skill` and `/api/model`), in memory by harness and cwd,
 never on disk, so an upgraded CLI never
 meets a stale list. `/model`, `/effort` and `/permission` are aegis's, because the
 spec the next `--resume` is built from has to change with the process; they reach

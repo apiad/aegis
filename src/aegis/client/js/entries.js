@@ -434,6 +434,7 @@ const RENDERERS = {
       rm.append(icon(e.unread ? "unread" : "read"));
       r.append(rm);
       r.classList.toggle("unread", e.unread);
+      r.dataset.rev = String(e.rev);
     }
     return r;
   },
@@ -642,6 +643,15 @@ export function artifactStage(e) {
 // A row updated in place, so a live frame is not reloaded by every patch.
 // True when the node now shows the entry; false when it must be remounted.
 const UPDATERS = {
+  // Being read re-sends the message with its revision unchanged: only the
+  // mark flips, and the row keeps the pointer's hover and any selection in it.
+  prose(e, node) {
+    const rm = node.querySelector(":scope > .rm");
+    if (!rm || e.unread === undefined || node.dataset.rev !== String(e.rev)) return false;
+    rm.replaceChildren(icon(e.unread ? "unread" : "read"));
+    node.classList.toggle("unread", e.unread);
+    return true;
+  },
   artifact(e, node) {
     const card = node.querySelector(".acard");
     // A page the viewer or a pane holds runs only there: the card keeps a

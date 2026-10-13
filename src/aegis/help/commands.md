@@ -41,7 +41,8 @@ and no aegis command is refused before it costs a turn.
 | `aegis` | serve this directory's root and open a browser window on it |
 | `aegis serve` | serve the root: `--port` (8742), `--host` (127.0.0.1), `--name` (this server's name, the host name by default), `--origin` for a public proxy's address, `--window` to open a window, `--detach` to run in the background |
 | `aegis init` | write a first `.aegis.yaml` from the harnesses installed here; `--yes` takes every proposal |
-| `aegis doctor` | check `.aegis.yaml`, the harnesses it names and the state directory; exits 1 on an error |
+| `aegis doctor` | check `.aegis.yaml`, the harnesses it names and the state directory, and warn where an installed aegis systemd unit differs from what `aegis service install` writes; exits 1 on an error |
+| `aegis service install` | write a systemd unit for `aegis serve` with the recommended settings and print the `sudo` commands that install it; `--yes` takes every default, `--dry-run` prints the unit, `--output` names the file. See the systemd page |
 | `aegis link add <name> <url>` | link another aegis server, reading its token from standard input; `--as` names this server there |
 | `aegis link list` | the linked servers, by name and URL |
 | `aegis link remove <name>` | end a link |

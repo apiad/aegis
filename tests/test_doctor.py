@@ -232,3 +232,16 @@ def test_propose_takes_the_first_free_opencode_model():
     assert (doc.agents[0].name, doc.agents[0].model) == ("pickle", "o/pickle")
     doc = propose([Found("opencode", "/bin/opencode", "1.18", (paid,))])
     assert doc.agents[0].model == "g/pro", "with nothing free, the first model"
+
+
+async def test_an_opencode_older_than_2_is_named_with_the_upgrade(
+    tmp_path, fake_claude
+):
+    old = tmp_path / "old" / "opencode"
+    old.parent.mkdir()
+    old.write_text("#!/bin/sh\necho 1.19.0\n")
+    old.chmod(0o755)
+    found = await run(tmp_path, GOOD, fake_claude, str(old))
+    (oc,) = at(found, "harness.opencode")
+    assert oc.level == "error" and "1.19.0 is too old" in oc.message
+    assert "@opencode/cli" in oc.message

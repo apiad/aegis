@@ -1,10 +1,14 @@
 """One ``opencode serve`` child per session, driven over HTTP.
 
-Measured on OpenCode 1.18.31 (spec ``2026-10-08-aegis-2-opencode-harness-design.md``):
-the v1 routes run a turn and the v2 ``/api/session`` routes do not;
-``--port 0`` takes 4096 when it is free and another free port otherwise, so the
-port is read from the line the server prints; ``POST /session/{id}/command``
-blocks until the turn ends, so it runs on its own task.
+Measured on OpenCode 2.0.28 (spec ``2026-10-13-opencode-2-driver.html``): every
+route lives under ``/api`` and any other path serves the web app's HTML;
+``--port 0`` takes a free port, read from the line the server prints. A prompt
+or a command returns once OpenCode has queued it, and the turn's end arrives as
+an event. The model and its variant belong to the session, not the prompt, so a
+change is sent before the next prompt; the system prompt is an instructions
+entry of the session, set once per child. The command and skill lists fill a
+moment after the server first reads the directory, which ``command.updated``
+announces.
 
 The child reads its config once, at start, from ``OPENCODE_CONFIG_CONTENT``:
 the aegis MCP server with this session's token, and the permission rules. A
@@ -38,10 +42,14 @@ from ..claude.control import Catalog
 from ..cgroups import wrap
 from ..harness import Launch, raise_oom_score
 from .config import catalog_from, child_config, split_model
-from .stream import DELTA, STORED, _dict, session_of
+from .stream import DELTAS, STORED, TURN_ENDS, _dict
 
 START_S = 15.0
 REQUEST_S = 30.0
+CATALOG_S = 10.0
+MCP_S = 15.0
+MCP_SETTLED = ("connected", "failed", "disabled", "needs_auth")
+INSTRUCTIONS = "aegis"  # the key of aegis's instructions entry
 TERM_GRACE_S = 5.0
 STDERR_TAIL = 20
 _LISTENING = re.compile(r"listening on (http://\S+)")
@@ -68,11 +76,11 @@ class OpenCodeProcess:
         self._catalog: Catalog | None = None
         # Sent something since the last idle: a turn is running or about to.
         self._busy = False
-        # OpenCode says a turn is running (its status events).
+        # OpenCode says a turn is running (its execution events).
         self._turn_running = False
-        # Set when OpenCode has taken the last command (its user message).
-        self._admitted = asyncio.Event()
-        self._admitted.set()
+        self._commands_ready = asyncio.Event()
+        # The model and variant the OpenCode session has, as aegis last set them.
+        self._applied: tuple[str, str | None] | None = None
         self._restart = False
         self._quiet = False  # ending the child on purpose: report nothing
         self._tail: deque[str] = deque(maxlen=STDERR_TAIL)
@@ -98,8 +106,12 @@ class OpenCodeProcess:
             if resume and await self._exists(resume):
                 self._session_id = resume
             else:
-                created = await self._call("POST", "/session", json={})
+                body = {"model": split_model(self.model)} if self.model else {}
+                created = await self._call("POST", "/api/session", json=body)
                 self._session_id = created["id"]
+                self._applied = (self.model, None)
+            await self._instruct()
+            await self._await_mcp()
         except (httpx.HTTPError, OSError, TimeoutError, KeyError, TypeError) as e:
             await self._end_child()
             raise ConnectionError(f"opencode serve did not start a session: {e}") from e
@@ -107,6 +119,51 @@ class OpenCodeProcess:
         for raw in early:
             self._deliver(raw)
         await self._try_catalog()
+
+    async def _instruct(self) -> None:
+        """The system prompt, as this session's instructions entry: OpenCode
+        keeps it with the session, but a child sets it again in case it
+        changed. The route is experimental in OpenCode, so a refusal is noted
+        and the session runs without it."""
+        if not self._launch.system_prompt:
+            return
+        try:
+            await self._call(
+                "PUT",
+                f"/api/experimental/session/{self._session_id}/instructions/entries/{INSTRUCTIONS}",
+                json={"value": self._launch.system_prompt},
+            )
+        except httpx.HTTPStatusError as e:
+            self._note(f"the system prompt was refused: {e.response.status_code}")
+
+    async def _await_mcp(self) -> None:
+        """Wait until OpenCode has connected aegis's MCP server. It connects
+        when it first reads the directory, about 2.5 s after the start, and a
+        prompt sent before that runs without aegis's tools."""
+        if self._launch.mcp is None:
+            return
+        status = "pending"
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + MCP_S
+        while loop.time() < deadline:
+            servers = await self._call("GET", "/api/mcp") or []
+            for srv in servers:
+                if isinstance(srv, dict) and srv.get("name") == "aegis":
+                    st = srv.get("status")
+                    status = str(
+                        (st.get("status") if isinstance(st, dict) else st) or ""
+                    )
+                    if status in MCP_SETTLED:
+                        if status != "connected":
+                            err = st.get("error") if isinstance(st, dict) else None
+                            self._note(
+                                f"aegis's MCP server is {status}: {err or ''}".rstrip(
+                                    ": "
+                                )
+                            )
+                        return
+            await asyncio.sleep(0.2)
+        self._note(f"aegis's MCP server was still {status} after {MCP_S:g}s")
 
     async def _try_catalog(self) -> None:
         """The catalog is optional (a slow MCP server can hold up /command):
@@ -151,6 +208,7 @@ class OpenCodeProcess:
             timeout=httpx.Timeout(REQUEST_S, read=None),
         )
         self._connected = asyncio.Event()
+        self._commands_ready = asyncio.Event()
         self._pump_task = asyncio.create_task(self._pump())
         try:
             await asyncio.wait_for(self._connected.wait(), START_S)
@@ -234,7 +292,7 @@ class OpenCodeProcess:
     async def _pump(self) -> None:
         assert self._client is not None
         try:
-            async with self._client.stream("GET", "/event") as r:
+            async with self._client.stream("GET", "/api/event") as r:
                 r.raise_for_status()
                 async for line in r.aiter_lines():
                     if line.startswith("data:"):
@@ -258,30 +316,27 @@ class OpenCodeProcess:
             if kind == "server.connected":
                 self._connected.set()
                 return
-            if kind not in STORED and kind != DELTA:
+            if kind == "command.updated":
+                self._commands_ready.set()
                 return
-            props: dict = _dict(obj.get("properties"))
+            if kind not in STORED and kind not in DELTAS:
+                return
+            data: dict = _dict(obj.get("data"))
             if self._session_id is None:
                 self._early.append(raw)
                 return
-            info: dict = _dict(props.get("info"))
-            if kind == "session.created" and info.get("parentID") in (
+            sid = data.get("sessionID")
+            if kind == "session.created" and data.get("parentID") in (
                 {self._session_id} | self._children
             ):
-                self._children.add(str(info.get("id")))
-            sid = session_of(props)
+                self._children.add(str(sid))
             if sid != self._session_id and sid not in self._children:
                 return
-            if kind == "session.status" and sid == self._session_id:
-                self._turn_running = (props.get("status") or {}).get("type") == "busy"
-            if kind == "session.idle" and sid == self._session_id:
-                self._busy = self._turn_running = False
-            if (
-                kind == "message.updated"
-                and sid == self._session_id
-                and info.get("role") == "user"
-            ):
-                self._admitted.set()
+            if sid == self._session_id:
+                if kind == "session.execution.started":
+                    self._turn_running = True
+                elif kind in TURN_ENDS:
+                    self._busy = self._turn_running = False
         self._launch.on_line(raw)
 
     # -- requests -----------------------------------------------------
@@ -293,6 +348,7 @@ class OpenCodeProcess:
         json: Any = None,
         timeout: float | None = REQUEST_S,
     ) -> Any:
+        """A request; the reply's ``data``, which every v2 route wraps it in."""
         if self._client is None:
             raise ConnectionResetError("opencode serve is not running")
         req = self._client.request(method, path, json=json)
@@ -301,11 +357,12 @@ class OpenCodeProcess:
         except httpx.TransportError as e:
             raise ConnectionResetError(str(e)) from e
         r.raise_for_status()
-        return r.json() if r.content else None
+        out = r.json() if r.content else None
+        return out.get("data") if isinstance(out, dict) and "data" in out else out
 
     async def _exists(self, sid: str) -> bool:
         try:
-            await self._call("GET", f"/session/{sid}")
+            await self._call("GET", f"/api/session/{sid}")
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 return False
@@ -313,13 +370,39 @@ class OpenCodeProcess:
         return True
 
     async def _read_catalog(self) -> Catalog:
-        commands = await self._call("GET", "/command")
-        providers = await self._call("GET", "/config/providers")
-        return catalog_from(commands or [], providers or {})
+        commands = await self._call("GET", "/api/command")
+        if not commands:
+            # The first read starts the directory's load; its end is announced.
+            try:
+                await asyncio.wait_for(self._commands_ready.wait(), CATALOG_S)
+            except TimeoutError:
+                pass
+            commands = await self._call("GET", "/api/command")
+        skills = await self._call("GET", "/api/skill")
+        models = await self._call("GET", "/api/model")
+        return catalog_from(commands or [], skills or [], models or [])
 
     def _variant(self) -> str | None:
         m = self._catalog.model(self.model) if self._catalog else None
         return self.effort if m is not None and self.effort in m.efforts else None
+
+    async def _apply_model(self) -> None:
+        """The session's model and variant, sent only when aegis changed them."""
+        want = (self.model, self._variant())
+        if not self.model or want == self._applied:
+            return
+        ref = split_model(self.model)
+        if want[1]:
+            ref["variant"] = want[1]
+        # Claimed before the request, so two sends at once switch it once.
+        before, self._applied = self._applied, want
+        try:
+            await self._call(
+                "POST", f"/api/session/{self._session_id}/model", json={"model": ref}
+            )
+        except BaseException:
+            self._applied = before
+            raise
 
     async def _maybe_restart(self) -> None:
         if not self._restart or self._busy:
@@ -329,55 +412,46 @@ class OpenCodeProcess:
         self._launch = dataclasses.replace(self._launch, resume_id=self._session_id)
         try:
             await self._spawn()
-        except (OSError, TimeoutError) as e:
+            await self._instruct()
+            await self._await_mcp()
+        except (OSError, TimeoutError, httpx.HTTPError) as e:
             # _end_child silenced the old child's exit, so this one says it.
             self._launch.on_exit(-1, [*self._tail, f"the restart failed: {e}"])
             raise ConnectionResetError(f"opencode serve did not restart: {e}") from e
 
     async def send(self, text: str) -> None:
         await self._maybe_restart()
-        # Busy from the send on, not from OpenCode's busy event: a prompt sent
+        # Busy from the send on, not from OpenCode's start event: a prompt sent
         # right after must not restart the child under the turn it started.
         self._busy = True
-        if self._catalog is None:
-            await self._try_catalog()
-        if text.startswith("/"):
-            name, _, args = text[1:].partition(" ")
-            # The command's request lasts the whole turn, so it runs on its own
-            # task; what is sent next waits until OpenCode has taken it, or a
-            # prompt could overtake it.
-            self._admitted.clear()
-            self._keep(self._command(name, args.strip(), text))
-            try:
-                await asyncio.wait_for(self._admitted.wait(), REQUEST_S)
-            except TimeoutError:
-                pass
-            return
-        body: dict[str, Any] = {
-            "parts": [{"type": "text", "text": text}],
-            "model": split_model(self.model),
-        }
-        if variant := self._variant():
-            body["variant"] = variant
-        if self._launch.system_prompt:
-            body["system"] = self._launch.system_prompt
         try:
+            if self._catalog is None:
+                await self._try_catalog()
+            await self._apply_model()
+            if text.startswith("/"):
+                return await self._command(text)
             await self._call(
-                "POST", f"/session/{self._session_id}/prompt_async", json=body
+                "POST", f"/api/session/{self._session_id}/prompt", json={"text": text}
             )
         except (httpx.HTTPStatusError, OSError, TimeoutError):
             if not self._turn_running:
                 self._busy = False  # this send started nothing
             raise
 
-    async def _command(self, name: str, args: str, line: str) -> None:
-        body: dict[str, Any] = {"command": name, "arguments": args, "model": self.model}
-        if variant := self._variant():
-            body["variant"] = variant
+    async def _command(self, line: str) -> None:
+        """A ``/name args`` line: a command, or a skill with the arguments as
+        its prompt. OpenCode refusing it ends nothing that was running."""
+        name, _, args = line[1:].partition(" ")
+        args = args.strip()
+        sid = self._session_id
+        if self._catalog is not None and any(
+            c["name"] == name and c["source"] == "skill" for c in self._catalog.commands
+        ):
+            path, body = f"/api/session/{sid}/prompt", {"text": args or line, "skills": [{"id": name}]}  # fmt: skip
+        else:
+            path, body = f"/api/session/{sid}/command", {"name": name, "text": args}
         try:
-            await self._call(
-                "POST", f"/session/{self._session_id}/command", json=body, timeout=None
-            )
+            await self._call("POST", path, json=body)
         except httpx.HTTPStatusError as e:
             r = e.response
             if not self._turn_running:
@@ -389,11 +463,9 @@ class OpenCodeProcess:
             )
         except ConnectionResetError:
             pass  # the child is gone; its exit is reported
-        finally:
-            self._admitted.set()
 
     async def interrupt(self) -> None:
-        await self._call("POST", f"/session/{self._session_id}/abort", json={})
+        await self._call("POST", f"/api/session/{self._session_id}/interrupt", json={})
 
     async def set(self, kind: str, value: str) -> None:
         if kind == "model":

@@ -245,7 +245,10 @@ async def test_the_link_reconnects_and_says_so(pair):
         assert "offline" in states()
 
 
-async def test_a_wrong_token_stops_retrying(tmp_path, fake_claude):
+async def test_a_wrong_token_stops_retrying(tmp_path, fake_claude, monkeypatch):
+    # A retry would come after BACKOFF_MIN_S, then twice that: shortened, the
+    # wait below spans several retries instead of sleeping 2 s for one (#263).
+    monkeypatch.setattr(links, "BACKOFF_MIN_S", 0.05)
     beta = await Node(tmp_path / "beta", "beta", fake_claude).start()
     alpha = await Node(tmp_path / "alpha", "alpha", fake_claude).start()
     try:
@@ -255,7 +258,7 @@ async def test_a_wrong_token_stops_retrying(tmp_path, fake_claude):
             lambda: link.state == "unauthorized", timeout=10, what="unauthorized"
         )
         attempts = link.attempts
-        await asyncio.sleep(2)  # the first retry would come after 1 s
+        await asyncio.sleep(0.5)
         assert link.attempts == attempts
     finally:
         await alpha.stop()
@@ -354,7 +357,14 @@ async def test_a_link_to_itself_is_refused(pair):
     assert e.value.code == "bad_link"
 
 
-async def test_an_edit_to_links_json_reaches_a_running_server(pair):
+@pytest.fixture
+def quick_watch(monkeypatch):
+    """Before `pair`: the watcher reads WATCH_EVERY_S as it goes to sleep. Two
+    edits at the real 1 s took the test past the 3 s budget under load (#359)."""
+    monkeypatch.setattr(links, "WATCH_EVERY_S", 0.05)
+
+
+async def test_an_edit_to_links_json_reaches_a_running_server(quick_watch, pair):
     alpha, beta = pair
     store = links.LinkStore(alpha.app.roots.state_root / "links.json")
     store.save([])
@@ -426,21 +436,25 @@ async def test_a_sent_file_is_streamed_through_via(pair, tmp_path):
 async def test_aegis_link_add_reads_the_token_from_stdin_and_checks_the_name(
     pair, tmp_path
 ):
-    import sys
+    from typer.testing import CliRunner
+
+    from aegis.cli import app as cli
 
     _, beta = pair
     root = tmp_path / "gamma"
     root.mkdir()
     (root / ".aegis.yaml").write_text(CONFIG)
 
+    # The command runs in-process, on a thread of its own: `link add` calls
+    # asyncio.run, and beta serves on this loop. Five cold interpreters cost
+    # about 0.3 s each idle and stretched past the 3 s budget under load
+    # (#263); the test that a far server predates links still goes through
+    # `python -m aegis`.
     async def run(*args: str, stdin: str = "") -> tuple[int, str]:
-        p = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "aegis", "link", *args, "--root", str(root),
-            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )  # fmt: skip
-        out, _ = await p.communicate(stdin.encode())
-        return p.returncode, out.decode()
+        r = await asyncio.to_thread(
+            CliRunner().invoke, cli, ["link", *args, "--root", str(root)], stdin
+        )
+        return r.exit_code, r.output
 
     rc, out = await run(
         "add", "delta", beta.base, "--as", "gamma", stdin=beta.token + "\n"

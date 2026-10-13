@@ -10,31 +10,16 @@ import pytest
 from aegis import artifacts
 
 from .test_browser import (  # noqa: F401
-    CONFIG,
-    Server,
     _artifact,
     browser,
     page,
+    server,
     spawn,
 )
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
 OVER = artifacts.MAX_STATE_BYTES + 1000
-
-
-@pytest.fixture
-def server(tmp_path, fake_claude, fake_opencode):
-    """The browser tests' server, logging at warning. The fixture reads the
-    server's stdout only until it prints its URL, and `call artifact.submit`
-    logs the whole 64 KB+ params at info: that line fills the pipe and the
-    server blocks on its own log until the test ends."""
-    (tmp_path / ".aegis.yaml").write_text(CONFIG)
-    s = Server(tmp_path, fake_claude, fake_opencode)
-    s.args = ["--log-level", "warning"]
-    s.start()
-    yield s
-    s.stop()
 
 
 # `big` submits data over the cap, `ok` a small answer; `st` shows the last
@@ -48,7 +33,7 @@ BIG_OR_OK = (
 
 
 def test_a_refused_submit_shows_its_reason_on_the_card_and_a_valid_one_clears_it(
-    server,
+    server,  # noqa: F811
     page,  # noqa: F811
 ):
     page.goto(server.url)
@@ -95,7 +80,8 @@ def test_a_submit_to_an_answered_artifact_says_so_on_its_card(server, page):  # 
         '<button id="ok">ok</button><button id="again">again</button>',
         '  ok.onclick = () => aegis.submit({pick: "b"}, "Picked B");'
         '  again.onclick = () => parent.postMessage({jsonrpc: "2.0", id: 99, method: "aegis/submit",'
-        '    params: {data: {pick: "c"}, label: "Twice"}}, "*");',
+        '    params: {data: {pick: "c"}, label: "Twice"}}, "*");'
+        "  again.dataset.wired = '1';",
     )
     aid, _ = _artifact(page, server, again, 0)
     page.frame_locator(f"iframe[data-artifact={aid}]").locator("#ok").click()
@@ -105,7 +91,11 @@ def test_a_submit_to_an_answered_artifact_says_so_on_its_card(server, page):  # 
     page.locator(".row.artifact button.show").click()
     # The page's stylesheet turns pointer events off once it is not live, so the
     # click is dispatched on the button, as a script on the page could.
-    page.frame_locator(".row.artifact iframe").locator("#again").dispatch_event("click")
+    # The button is in the page before its script wires it, after the host
+    # answers ui/initialize: on a slow runner a click on sight did nothing (#300).
+    shown = page.frame_locator(".row.artifact iframe")
+    shown.locator("#again[data-wired]").wait_for(state="attached")
+    shown.locator("#again").dispatch_event("click")
 
     note = page.locator(".row.artifact .acard .refused")
     note.wait_for()

@@ -39,7 +39,12 @@ def fast(monkeypatch):
     monkeypatch.setattr(nudges, "PLAN_STALE_S", 3600.0)
 
 
-async def test_a_silent_idle_session_is_asked_once_per_stretch(fast, world):
+async def test_a_silent_idle_session_is_asked_once_per_stretch(
+    fast, world, monkeypatch
+):
+    # Shorter than `fast`'s, so the three idle stretches below fit the fast
+    # lane's budget under load (#359); every wait is a multiple of it.
+    monkeypatch.setattr(nudges, "IDLE_S", 0.2)
     a = await world.spawn()
     await turn(a, "write the summary")
     await until(lambda: nudges_of(a, "idle"), timeout=5, what="the idle nudge")
@@ -51,7 +56,7 @@ async def test_a_silent_idle_session_is_asked_once_per_stretch(fast, world):
     # The fake answers the nudge with a turn that says nothing: that is not a
     # new stretch, so there is no second nudge.
     await until(lambda: a.status == "idle", timeout=5, what="the nudge's turn")
-    await asyncio.sleep(1.5)
+    await asyncio.sleep(3 * nudges.IDLE_S)
     assert len(nudges_of(a, "idle")) == 1
     # The person writes again: a new stretch, asked once more.
     await turn(a, "and the tests")
@@ -79,16 +84,18 @@ async def test_a_session_waiting_on_a_monitor_is_not_nudged(fast, world):
 
 async def test_a_stale_plan_is_reminded_once_per_plan(fast, world, monkeypatch):
     monkeypatch.setattr(nudges, "IDLE_S", 3600.0)
-    monkeypatch.setattr(nudges, "PLAN_STALE_S", 0.6)
+    # Each `/sleep 0.4` works past it; halved from 0.6 and 0.8 for the fast
+    # lane's budget under load (#359).
+    monkeypatch.setattr(nudges, "PLAN_STALE_S", 0.3)
     a = await world.spawn()
     plan = [
         {"text": "build it", "state": "doing"},
         {"text": "ship it", "state": "pending"},
     ]
     await turn(a, mcp("plan_update", items=plan))
-    await asyncio.sleep(0.3)
+    await asyncio.sleep(0.15)
     assert inbox(a) == [], "a plan just written is not stale"
-    await turn(a, "/sleep 0.8")
+    await turn(a, "/sleep 0.4")
     await until(lambda: nudges_of(a, "plan"), timeout=5, what="the plan nudge")
     assert "Update it with plan_update, or carry on" in nudges_of(a, "plan")[0]["md"]
     # The fake answers with a turn that leaves the plan as it was: still
@@ -99,7 +106,7 @@ async def test_a_stale_plan_is_reminded_once_per_plan(fast, world, monkeypatch):
     # A plan record re-arms it: work past the threshold again earns one more.
     plan[0]["state"] = "done"
     await turn(a, mcp("plan_update", items=plan))
-    await turn(a, "/sleep 0.8")
+    await turn(a, "/sleep 0.4")
     await until(
         lambda: len(nudges_of(a, "plan")) == 2, timeout=5, what="the re-armed nudge"
     )

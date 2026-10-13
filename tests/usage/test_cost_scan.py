@@ -269,10 +269,10 @@ def test_writes_without_the_cache_split_take_the_measured_one_hour_share(
 
 
 def test_an_opencode_step_counts_once_as_unpriced_work(tmp_path, repo_path):
-    """OpenCode reports a step's tokens on its step-finish part, which can
-    arrive more than once; no OpenCode model has a price here."""
+    """OpenCode reports a step's tokens when the step ends; a line read twice
+    counts once, and no OpenCode model has a price here."""
     state = tmp_path / ".aegis" / "state"
-    step = opencode_step("prt_1", inp=500, out=100, read=5000)
+    step = opencode_step("msg_1", inp=500, out=100, read=5000)
     opencode_store(
         state, "20260602-130000-oooooo", repo_path, "2026-06-02T13:05:00Z", step, step
     )
