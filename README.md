@@ -288,6 +288,27 @@ prints the URLs, the pid and how to stop it. The log goes to
 stops aegis and aegis ends its agents. A restart continues the turns it cut
 either way.
 
+Every session, and everything its agent starts (test runs, browsers, builds),
+lives in the server's unit, so the unit's memory settings decide what one
+runaway session can take down. For a host with 8 GB:
+
+```ini
+[Service]
+# An OOM kill of one child is that child's problem, not a reason to stop the unit.
+OOMPolicy=continue
+# Throttle the unit before the host runs out, and cap it below the host's RAM,
+# so a runaway hits an OOM inside the unit instead of a host-wide one.
+MemoryHigh=5.5G
+MemoryMax=6.5G
+# In a host OOM, the kernel picks the server last. aegis raises every agent
+# process it starts to oom_score_adj 500, so a runaway session dies first.
+OOMScoreAdjust=-500
+```
+
+Do not point systemd-oomd at the unit (`ManagedOOMMemoryPressure=kill`): the
+unit is one cgroup, and oomd kills a whole cgroup, server and every session
+with it.
+
 Behind a reverse proxy, name the public origin with `aegis serve --origin
 https://dev.example`, keep `--host` on loopback, and let the proxy terminate TLS.
 Do not proxy `/mcp`: agents reach it on loopback. Anyone with the token drives

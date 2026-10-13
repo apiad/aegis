@@ -18,6 +18,8 @@ from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 
+from ..harness import raise_oom_score
+
 
 LINE_LIMIT = 64 * 1024 * 1024
 STDERR_TAIL = 20
@@ -155,6 +157,7 @@ class ClaudeProcess:
             stderr=asyncio.subprocess.PIPE,
             limit=LINE_LIMIT,
         )
+        raise_oom_score(self._proc.pid)
         err = asyncio.create_task(self._pump_stderr())
         self._tasks = [err, asyncio.create_task(self._pump_stdout(err))]
 

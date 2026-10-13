@@ -35,7 +35,7 @@ from typing import Any
 import httpx
 
 from ..claude.control import Catalog
-from ..harness import Launch
+from ..harness import Launch, raise_oom_score
 from .config import catalog_from, child_config, split_model
 from .stream import DELTA, STORED, _dict, session_of
 
@@ -133,6 +133,7 @@ class OpenCodeProcess:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )  # fmt: skip
+        raise_oom_score(self._proc.pid)
         self._keep(self._drain(self._proc.stderr))
         try:
             url = await asyncio.wait_for(self._listening(), START_S)
