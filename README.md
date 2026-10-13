@@ -284,16 +284,38 @@ on the page can read it.
 outlives the terminal or the SSH connection. It returns once the port listens and
 prints the URLs, the pid and how to stop it. The log goes to
 `.aegis/state/serve.log`. For a host that must survive reboots, run plain
-`aegis serve` under systemd, with `KillMode=mixed` in the unit so that systemd
-stops aegis and aegis ends its agents. A restart continues the turns it cut
-either way.
+`aegis serve` under systemd. `aegis service install` writes the unit: it asks
+for the user, the port, the root and the memory caps, proposes defaults sized
+to the host, and prints the `sudo` commands that install and start it without
+running them. `--yes` takes every default and `--dry-run` prints the unit
+without writing it. `aegis doctor` compares an installed unit against what
+`install` would write and names each setting that differs.
 
 Every session, and everything its agent starts (test runs, browsers, builds),
 lives in the server's unit, so the unit's memory settings decide what one
-runaway session can take down. For a host with 8 GB:
+runaway session can take down. On a host with 8 GB, with the user, root and
+paths given as flags, the unit is the one below; its comments say why each
+setting is there.
 
 ```ini
+[Unit]
+Description=aegis on /srv/aegis
+After=network-online.target
+Wants=network-online.target
+
 [Service]
+Type=simple
+User=aegis
+WorkingDirectory=/srv/aegis
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/local/bin/aegis serve --port 8742
+# systemd stops the server, and the server ends its agents. A restart
+# continues the turns it cut.
+KillMode=mixed
+Restart=always
+RestartSec=3
+# Every session, and everything its agent starts, lives in this unit, so these
+# lines decide what one runaway session can take down.
 # An OOM kill of one child is that child's problem, not a reason to stop the unit.
 OOMPolicy=continue
 # Throttle the unit before the host runs out, and cap it below the host's RAM,
@@ -303,6 +325,9 @@ MemoryMax=6.5G
 # In a host OOM, the kernel picks the server last. aegis raises every agent
 # process it starts to oom_score_adj 500, so a runaway session dies first.
 OOMScoreAdjust=-500
+
+[Install]
+WantedBy=multi-user.target
 ```
 
 Do not point systemd-oomd at the unit (`ManagedOOMMemoryPressure=kill`): the

@@ -1,4 +1,4 @@
-"""``aegis serve``, ``aegis init``, ``aegis doctor``, ``aegis link``, ``aegis usage``,
+"""``aegis serve``, ``aegis init``, ``aegis doctor``, ``aegis link``, ``aegis service``, ``aegis usage``,
 ``aegis journal``, and ``aegis`` alone, which is ``serve --window``.
 
 This is the only module that reads the process's working directory.
@@ -371,12 +371,14 @@ def doctor(
     """Check .aegis.yaml, the harnesses it names and the state directory."""
     from .doctor import doctor as run_doctor
     from .roots import make_roots
+    from .service import check as service_check
 
     start = Path.cwd()
     roots = make_roots(start=start, root=root)
     findings = asyncio.run(
         run_doctor(roots, _bins(claude, opencode, codex), start=None if root else start)
     )
+    findings += service_check()
     raise typer.Exit(1 if _report(findings) else 0)
 
 
@@ -643,6 +645,82 @@ def link_list(root: Path | None = _ROOT_OPTION) -> None:
     for e in entries:
         typer.echo(f"{e['name']:<16} {e['url']}")
     typer.echo(f"{len(entries)} links")
+
+
+service_app = typer.Typer(
+    add_completion=False, help="Run aegis under systemd, with the recommended unit."
+)
+app.add_typer(service_app, name="service")
+
+
+def _ask_or(value, label: str, default, yes: bool):
+    if value is not None:
+        return value
+    return default if yes else typer.prompt(label, default=default)
+
+
+@service_app.command("install")
+def service_install(
+    user: str | None = typer.Option(None, help="The user the server runs as."),
+    port: int | None = typer.Option(
+        None, help=f"The port it serves on ({DEFAULT_PORT})."
+    ),
+    root: Path | None = typer.Option(
+        None, help="The directory it serves; default: here."
+    ),
+    memory_high: str | None = typer.Option(
+        None, help="MemoryHigh; default: about 70% of this host's RAM."
+    ),
+    memory_max: str | None = typer.Option(
+        None, help="MemoryMax; default: about 80% of this host's RAM."
+    ),
+    aegis: str | None = typer.Option(
+        None, help="The aegis executable; default: the one on PATH."
+    ),
+    output: Path = typer.Option(Path("aegis.service"), help="Where to write the unit."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Print the unit and write nothing."
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Take every default without asking."
+    ),
+) -> None:
+    """Write a systemd unit for `aegis serve` and print the commands that
+    install it. Never runs sudo."""
+    import getpass
+    import os
+    import shutil
+    import sys
+
+    from . import service
+    from .service import Unit, caps, mem_total, parse_size, render
+
+    total = mem_total(service.MEMINFO.read_text())
+    high, top = caps(total)
+    exe = shutil.which("aegis") or str(Path(sys.argv[0]).resolve())
+    unit = Unit(
+        user=_ask_or(user, "User", getpass.getuser(), yes),
+        root=Path(_ask_or(root, "Root directory", str(Path.cwd()), yes)).resolve(),
+        port=int(_ask_or(port, "Port", DEFAULT_PORT, yes)),
+        aegis=_ask_or(aegis, "aegis executable", exe, yes),
+        path=os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+        memory_high=_ask_or(memory_high, "MemoryHigh", high, yes),
+        memory_max=_ask_or(memory_max, "MemoryMax", top, yes),
+    )
+    for key, v in (("MemoryHigh", unit.memory_high), ("MemoryMax", unit.memory_max)):
+        if parse_size(v, total) is None:
+            typer.echo(f"{key}={v} is not a size systemd reads, such as 5.5G", err=True)
+            raise typer.Exit(1)
+    text = render(unit)
+    if dry_run:
+        typer.echo(text, nl=False)
+        return
+    output.write_text(text)
+    path = output.resolve()
+    typer.echo(f"wrote {path}. To install and start it:\n")
+    typer.echo(f"  sudo install -m 644 {path} /etc/systemd/system/{path.name}")
+    typer.echo("  sudo systemctl daemon-reload")
+    typer.echo(f"  sudo systemctl enable --now {path.name}")
 
 
 token_app = typer.Typer(
