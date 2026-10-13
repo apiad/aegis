@@ -205,9 +205,9 @@ the entry rules exist once. Token deltas, OpenCode's, Codex's and Claude's
 part's closing update carries the whole text, so the live view is ahead of a
 fresh fold only while a part is open. OpenCode's closing event names the same
 step and ordinal as its deltas; Claude's is the assistant line for that block, whose row replaces the one its
-deltas drew (`claude/stream.py`). A prompt OpenCode reads mid-turn while a part
-streams is the one known exception: live it sits after that part, and a reload
-puts it before.
+deltas drew (`claude/stream.py`). OpenCode's and Codex's parts are stored
+opening too, and the fold puts the entry in, empty, at the open, so a prompt
+read while a part streams sits after that part, live and on a reload (#373).
 
 **A `/` line is resolved on the server, and a typo costs nothing.** `session.send`
 runs an aegis command (`commands.py`) as the operation it stands for, passes a name

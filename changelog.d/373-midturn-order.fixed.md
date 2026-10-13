@@ -1,0 +1,1 @@
+An OpenCode or Codex session that reads a second prompt while an answer is still streaming keeps that answer above the prompt after a reload, as it was shown live; before, the reload moved the prompt above the answer.
