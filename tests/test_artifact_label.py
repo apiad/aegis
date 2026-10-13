@@ -16,6 +16,8 @@ from pydantic import ValidationError
 from aegis import artifacts
 from aegis.artifact_ops import PageSubmit
 
+from .conftest import browser_slot
+
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
 playwright = pytest.importorskip("playwright.sync_api")
@@ -80,7 +82,7 @@ def _sent(browser) -> list:
 
 @pytest.fixture(scope="module")
 def sent():
-    with playwright.sync_playwright() as p:
+    with browser_slot(), playwright.sync_playwright() as p:
         b = p.chromium.launch()
         try:
             yield _sent(b)

@@ -15,6 +15,8 @@ from urllib.parse import unquote
 
 import pytest
 
+from .conftest import browser_slot
+
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
 playwright = pytest.importorskip("playwright.sync_api")
@@ -229,7 +231,7 @@ def quota_server(tmp_path: Path, fake_claude: str):
 
 @pytest.fixture
 def browser():
-    with playwright.sync_playwright() as p:
+    with browser_slot(), playwright.sync_playwright() as p:
         b = p.chromium.launch()
         yield b
         b.close()
@@ -3572,7 +3574,7 @@ def full_browser():
     """The full Chromium build in headless mode. The default headless shell
     denies notification permission whatever the context grants, so a real
     notification needs this one."""
-    with playwright.sync_playwright() as p:
+    with browser_slot(), playwright.sync_playwright() as p:
         b = p.chromium.launch(channel="chromium")
         yield b
         b.close()
@@ -5813,7 +5815,7 @@ def mic_page(tmp_path: Path):
                 for i in range(5 * 16000)
             )
         )
-    with playwright.sync_playwright() as p:
+    with browser_slot(), playwright.sync_playwright() as p:
         b = p.chromium.launch(
             args=[
                 "--use-fake-ui-for-media-stream",
@@ -5980,7 +5982,7 @@ def test_live_dictation_transcribes_a_librispeech_clip(
     s.env["AEGIS_DICTATION_DIR"] = str(cache / "aegis" / "dictation")
     s.start()
     try:
-        with playwright.sync_playwright() as p:
+        with browser_slot(), playwright.sync_playwright() as p:
             b = p.chromium.launch(
                 args=[
                     "--use-fake-ui-for-media-stream",

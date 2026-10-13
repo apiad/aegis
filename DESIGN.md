@@ -38,6 +38,15 @@ which prints nothing old, so the store and the fold simply continue. Only shutdo
 reaps idle sessions, because a Claude session waiting on its own background task
 wakes itself when the task ends, and stopping it would kill the task.
 
+**In a host OOM, a session dies before the server.** Every harness child, and
+everything it starts, lives in the server's cgroup, so the kernel chooses
+among them by score alone. The server raises each child's `oom_score_adj` to
+500 right after the spawn (`harness.raise_oom_score`), so a runaway tree is
+killed instead of the server that holds every session; a deployment gives the
+server a negative `OOMScoreAdjust` to widen the gap (#360). Sessions do not
+get a cgroup each: that needs `Delegate=yes` on the unit, and without it the
+server cannot create one.
+
 **Boot reads meta files, never stores.** Each session has a small JSON meta next to
 its store, written by write-then-rename. Boot reads only those, so an archive of
 hundreds costs hundreds of small reads; a missing or damaged meta is rebuilt from

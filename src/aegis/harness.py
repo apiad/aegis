@@ -28,6 +28,28 @@ def _no_error(text: str, idle: bool, line: str | None) -> None:
     return None
 
 
+# Above the 0 the server and unrelated user services run at, so in a host OOM
+# the kernel kills a session's tree before the server that holds every session
+# (#360). An unprivileged process may raise a score, never lower it.
+OOM_SCORE_ADJ = 500
+
+
+def raise_oom_score(pid: int) -> None:
+    """Mark a harness child as the OOM killer's first choice.
+
+    The server writes ``/proc/<pid>/oom_score_adj`` as soon as the spawn
+    returns, rather than a ``preexec_fn`` in the child, because a
+    ``preexec_fn`` is not safe in a process with threads. By then the child
+    has exec'd and is still starting up, so everything it spawns later (tools,
+    MCP servers, test runs) inherits the score. Off Linux there is no such
+    file, and nothing happens.
+    """
+    try:
+        Path(f"/proc/{pid}/oom_score_adj").write_text(f"{OOM_SCORE_ADJ}\n")
+    except OSError:
+        pass
+
+
 @dataclass(frozen=True)
 class Launch:
     cwd: Path

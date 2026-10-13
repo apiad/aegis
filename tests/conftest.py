@@ -1,7 +1,12 @@
 import asyncio
+import fcntl
 import json
+import os
 import stat
 import sys
+import tempfile
+import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -175,3 +180,84 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     for seconds, nodeid in over:
         terminalreporter.line(f"{seconds:6.2f}s  {nodeid}")
     terminalreporter.line("make them faster, or mark them @pytest.mark.slow")
+
+
+# -- a host-wide cap on concurrent browsers (#360) -----------------------------
+# Several `pytest -n auto` runs on one host each started a Chromium per worker,
+# and together they ran the host out of memory. A browser now takes one of N
+# slot files under flock first, so every run on the host shares N. A doc rule
+# saying "don't run suites in parallel" does not stop an agent; this does.
+BROWSER_SLOT_DIR = Path(tempfile.gettempdir()) / f"aegis-test-browsers-{os.getuid()}"
+# A Chromium, the aegis serve it drives and that server's fake harnesses.
+BROWSER_SLOT_KB = 1024 * 1024
+BROWSER_SLOT_WAIT_S = 900.0
+_slots: int | None = None
+_held = 0
+
+
+def browser_slots() -> int:
+    """AEGIS_TEST_BROWSERS, or one slot per GiB of available memory, at most
+    one per core and at least one. Read once per process."""
+    global _slots
+    if _slots is None:
+        if env := os.environ.get("AEGIS_TEST_BROWSERS"):
+            _slots = max(1, int(env))
+        else:
+            cores = os.cpu_count() or 1
+            try:
+                meminfo = Path("/proc/meminfo").read_text().splitlines()
+                kb = next(
+                    int(x.split()[1]) for x in meminfo if x.startswith("MemAvailable:")
+                )
+                _slots = max(1, min(cores, kb // BROWSER_SLOT_KB))
+            except (OSError, StopIteration):
+                _slots = cores
+    return _slots
+
+
+@contextmanager
+def browser_slot():
+    """Hold one browser slot for as long as the block runs. The lock is the
+    open file, so a killed run frees its slot with its process."""
+    global _held
+    BROWSER_SLOT_DIR.mkdir(exist_ok=True)
+    deadline = time.monotonic() + BROWSER_SLOT_WAIT_S
+    fd = None
+    while fd is None:
+        for i in range(browser_slots()):
+            f = os.open(BROWSER_SLOT_DIR / f"slot-{i}", os.O_CREAT | os.O_RDWR, 0o600)
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                os.close(f)
+                continue
+            fd = f
+            break
+        else:
+            if time.monotonic() > deadline:
+                pytest.fail(
+                    f"no browser slot free in {BROWSER_SLOT_DIR} after {BROWSER_SLOT_WAIT_S:g}s"
+                )
+            time.sleep(0.2)
+    _held += 1
+    try:
+        yield
+    finally:
+        _held -= 1
+        os.close(fd)
+
+
+try:
+    from playwright.sync_api import BrowserType
+except ImportError:
+    pass
+else:
+    _launch = BrowserType.launch
+
+    def _launch_in_a_slot(self, *args, **kwargs):
+        assert _held, (
+            "launch a browser inside `with browser_slot():` (tests/conftest.py)"
+        )
+        return _launch(self, *args, **kwargs)
+
+    BrowserType.launch = _launch_in_a_slot
