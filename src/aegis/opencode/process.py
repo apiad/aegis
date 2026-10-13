@@ -46,6 +46,8 @@ from .stream import DELTAS, STORED, TURN_ENDS, _dict
 START_S = 15.0
 REQUEST_S = 30.0
 CATALOG_S = 10.0
+MCP_S = 15.0
+MCP_SETTLED = ("connected", "failed", "disabled", "needs_auth")
 INSTRUCTIONS = "aegis"  # the key of aegis's instructions entry
 TERM_GRACE_S = 5.0
 STDERR_TAIL = 20
@@ -108,6 +110,7 @@ class OpenCodeProcess:
                 self._session_id = created["id"]
                 self._applied = (self.model, None)
             await self._instruct()
+            await self._await_mcp()
         except (httpx.HTTPError, OSError, TimeoutError, KeyError, TypeError) as e:
             await self._end_child()
             raise ConnectionError(f"opencode serve did not start a session: {e}") from e
@@ -131,6 +134,35 @@ class OpenCodeProcess:
             )
         except httpx.HTTPStatusError as e:
             self._note(f"the system prompt was refused: {e.response.status_code}")
+
+    async def _await_mcp(self) -> None:
+        """Wait until OpenCode has connected aegis's MCP server. It connects
+        when it first reads the directory, about 2.5 s after the start, and a
+        prompt sent before that runs without aegis's tools."""
+        if self._launch.mcp is None:
+            return
+        status = "pending"
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + MCP_S
+        while loop.time() < deadline:
+            servers = await self._call("GET", "/api/mcp") or []
+            for srv in servers:
+                if isinstance(srv, dict) and srv.get("name") == "aegis":
+                    st = srv.get("status")
+                    status = str(
+                        (st.get("status") if isinstance(st, dict) else st) or ""
+                    )
+                    if status in MCP_SETTLED:
+                        if status != "connected":
+                            err = st.get("error") if isinstance(st, dict) else None
+                            self._note(
+                                f"aegis's MCP server is {status}: {err or ''}".rstrip(
+                                    ": "
+                                )
+                            )
+                        return
+            await asyncio.sleep(0.2)
+        self._note(f"aegis's MCP server was still {status} after {MCP_S:g}s")
 
     async def _try_catalog(self) -> None:
         """The catalog is optional (a slow MCP server can hold up /command):
@@ -378,6 +410,7 @@ class OpenCodeProcess:
         try:
             await self._spawn()
             await self._instruct()
+            await self._await_mcp()
         except (OSError, TimeoutError, httpx.HTTPError) as e:
             # _end_child silenced the old child's exit, so this one says it.
             self._launch.on_exit(-1, [*self._tail, f"the restart failed: {e}"])
@@ -425,6 +458,8 @@ class OpenCodeProcess:
                 not self._turn_running,
                 line,
             )
+        except ConnectionResetError:
+            pass  # the child is gone; its exit is reported
 
     async def interrupt(self) -> None:
         await self._call("POST", f"/api/session/{self._session_id}/interrupt", json={})

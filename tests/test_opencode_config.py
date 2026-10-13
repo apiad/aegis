@@ -5,7 +5,13 @@ import pytest
 from aegis.agents import PERMISSION_ORDER
 from aegis.claude.process import PERMISSION_MODE
 from aegis.mcp import HEADER
-from aegis.opencode.config import catalog_from, child_config, rules, ruleset, split_model
+from aegis.opencode.config import (
+    catalog_from,
+    child_config,
+    rules,
+    ruleset,
+    split_model,
+)
 
 
 @pytest.mark.parametrize("permission", list(PERMISSION_MODE))
@@ -61,11 +67,18 @@ def model(mid, name="m", cost=None, tools=True, output=("text",), **kw):
 
 def test_the_catalog_lists_models_with_variants_and_windows_and_commands():
     cat = catalog_from(
-        [{"name": "hello", "description": "Greet someone. More."}, {"description": "x"}],
+        [
+            {"name": "hello", "description": "Greet someone. More."},
+            {"description": "x"},
+        ],
         [{"id": "unslop", "name": "Unslop", "description": "Cut AI tells."}],
         [
-            model("pro", "Pro", limit={"context": 1000000},
-                  variants=[{"id": "high"}, {"id": "max"}]),  # fmt: skip
+            model(
+                "pro",
+                "Pro",
+                limit={"context": 1000000},
+                variants=[{"id": "high"}, {"id": "max"}],
+            ),  # fmt: skip
             model("plain", "Plain", limit={"context": 200000}),
             model("off", enabled=False),
         ],

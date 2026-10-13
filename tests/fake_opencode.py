@@ -37,7 +37,8 @@ until the first read of it, and fills a moment later with ``command.updated``.
 Each session id's prompts are appended to ``$FAKE_OPENCODE_HOME/<id>.prompts``,
 which is also how ``GET /api/session/{id}`` knows a session an earlier process
 made. ``FAKE_OPENCODE_LOG=<file>`` gets one ``METHOD path`` line per request.
-``FAKE_OPENCODE_DIE=1`` exits with code 1 before listening;
+``/api/mcp`` says the configured servers are pending at its first read and
+connected after. ``FAKE_OPENCODE_DIE=1`` exits with code 1 before listening;
 ``FAKE_OPENCODE_FAIL_SESSION=1`` answers ``POST /api/session`` with a 500. The
 log also gets ``START <pid>`` when the server starts, so a test can check every
 child it caused is gone. A prompt whose text is ``FAIL500`` is answered 500.
@@ -64,7 +65,12 @@ PASSWORD = os.environ.get("OPENCODE_SERVER_PASSWORD")
 HOME = os.environ.get("FAKE_OPENCODE_HOME") or tempfile.gettempdir()
 LOG = os.environ.get("FAKE_OPENCODE_LOG")
 COST = 0.002
-TOKENS = {"input": 1000, "output": 20, "reasoning": 10, "cache": {"read": 0, "write": 0}}
+TOKENS = {
+    "input": 1000,
+    "output": 20,
+    "reasoning": 10,
+    "cache": {"read": 0, "write": 0},
+}
 TEMPLATES = {"hello": "Say hello to $ARGUMENTS."}
 SCRIPTS = (
     "sleep",
@@ -85,7 +91,9 @@ COMMANDS = [
     {"name": "hello", "description": "Greet someone."},
     {"name": "review", "description": "Review the changes."},
 ]
-SKILLS = [{"id": "unslop", "name": "Unslop", "description": "Cut AI tells from any writing."}]
+SKILLS = [
+    {"id": "unslop", "name": "Unslop", "description": "Cut AI tells from any writing."}
+]
 
 
 def _model(mid: str, name: str, context: int, variants=(), cost=(1.0, 4.0),
@@ -100,7 +108,9 @@ def _model(mid: str, name: str, context: int, variants=(), cost=(1.0, 4.0),
 MODELS = [
     _model("fake-pro", "Fake Pro", 1000000, ("high", "max")),
     # Free, but it makes video and calls no tools: no agent can run on it.
-    _model("fake-video", "Fake Video", 8000, cost=(0, 0), tools=False, output=("video",)),
+    _model(
+        "fake-video", "Fake Video", 8000, cost=(0, 0), tools=False, output=("video",)
+    ),
     _model("fake-flash", "Fake Flash", 500000, ("low", "high", "max"), cost=(0, 0)),
     _model("fake-plain", "Fake Plain", 200000),
     {**_model("fake-off", "Fake Off", 1000), "enabled": False},
@@ -112,6 +122,7 @@ _n = [0]
 subscribers: list[queue.Queue] = []
 sessions: dict[str, "Sess"] = {}
 commands_loaded = threading.Event()
+mcp_read = threading.Event()
 
 
 def nid(prefix: str) -> str:
@@ -138,7 +149,9 @@ class Aborted(Exception):
 
 
 class Sess:
-    def __init__(self, sid: str, parent: str | None = None, model: dict | None = None) -> None:
+    def __init__(
+        self, sid: str, parent: str | None = None, model: dict | None = None
+    ) -> None:
         self.id, self.parent = sid, parent
         self.model = model or {"id": "fake-flash", "providerID": "opencode-go"}
         self.variant = "default"
@@ -187,8 +200,14 @@ class Step:
         emit("session.step.started", sessionID=s.id, agent="build", assistantMessageID=self.id,
              model={**s.model, "variant": s.variant}, started=now_ms())  # fmt: skip
 
-    def text(self, text: str, pace: float = 0.0, chunks: list[str] | None = None) -> None:
-        a = {"sessionID": self.s.id, "assistantMessageID": self.id, "ordinal": self.ordinal}
+    def text(
+        self, text: str, pace: float = 0.0, chunks: list[str] | None = None
+    ) -> None:
+        a = {
+            "sessionID": self.s.id,
+            "assistantMessageID": self.id,
+            "ordinal": self.ordinal,
+        }
         self.ordinal += 1
         emit("session.text.started", **a)
         if chunks is None:
@@ -221,7 +240,12 @@ class Step:
                  kind: str = "tool.execution") -> None:  # fmt: skip
         a = {"sessionID": self.s.id, "assistantMessageID": self.id, "id": call}
         if error is not None:
-            emit("session.tool.failed", **a, error={"type": kind, "message": error}, executed=False)
+            emit(
+                "session.tool.failed",
+                **a,
+                error={"type": kind, "message": error},
+                executed=False,
+            )
         else:
             emit("session.tool.success", **a, content=[{"type": "text", "text": output or ""}],
                  metadata={"truncated": False}, executed=False)  # fmt: skip
@@ -312,7 +336,11 @@ def run(s: Sess, text: str) -> None:
                 error=None if ok else out)  # fmt: skip
         return after_tool(s, st, "called it")
     if word == "/task":
-        inp = {"agent": "general", "description": "look around", "prompt": "List the files."}
+        inp = {
+            "agent": "general",
+            "description": "look around",
+            "prompt": "List the files.",
+        }
         call = st.tool_start("subagent", inp)
         child = Sess(nid("ses"), parent=s.id, model=s.model)
         sessions[child.id] = child
@@ -372,7 +400,9 @@ def worker(s: Sess) -> None:
 
 def new_session(body: dict) -> Sess:
     m = body.get("model") or None
-    s = Sess(nid("ses"), model={"id": m["id"], "providerID": m["providerID"]} if m else None)
+    s = Sess(
+        nid("ses"), model={"id": m["id"], "providerID": m["providerID"]} if m else None
+    )
     sessions[s.id] = s
     open(prompts_file(s.id), "a").close()  # OpenCode keeps a session from creation
     s.created()
@@ -453,6 +483,17 @@ class Handler(BaseHTTPRequestHandler):
                 threading.Thread(target=load_commands, daemon=True).start()
                 return self._json(200, [])
             return self._json(200, COMMANDS)
+        if method == "GET" and path == "/api/mcp":
+            # Pending at the first read, as OpenCode connects while it loads.
+            if not mcp_read.is_set():
+                mcp_read.set()
+                status = "pending"
+            else:
+                status = "connected"
+            servers = (CONFIG.get("mcp") or {}).get("servers") or {}
+            return self._json(
+                200, [{"name": n, "status": {"status": status}} for n in servers]
+            )
         if method == "GET" and path == "/api/skill":
             return self._json(200, SKILLS)
         if method == "GET" and path == "/api/model":
@@ -473,7 +514,11 @@ class Handler(BaseHTTPRequestHandler):
             if method == "GET" and not rest:
                 return self._json(200, s.info())
             body = self._body()
-            if method == "PUT" and rest[:2] == ["instructions", "entries"] and len(rest) == 3:
+            if (
+                method == "PUT"
+                and rest[:2] == ["instructions", "entries"]
+                and len(rest) == 3
+            ):
                 s.instructions[rest[2]] = body.get("value")
                 return self._json(204, None)
             if method != "POST":
@@ -504,7 +549,9 @@ class Handler(BaseHTTPRequestHandler):
                 if name in SCRIPTS:
                     text = f"/{name} {args}".strip()
                 else:
-                    text = TEMPLATES.get(name, f"Run {name}.").replace("$ARGUMENTS", args)
+                    text = TEMPLATES.get(name, f"Run {name}.").replace(
+                        "$ARGUMENTS", args
+                    )
                 take_prompt(s, text)
                 return self._json(204, None)
         return self._json(404, {"_tag": "NotFound"}, wrap=False)
@@ -518,13 +565,17 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("cache-control", "no-cache")
         self.end_headers()
         try:
-            self.wfile.write(b'data: {"id":"evt_0","type":"server.connected","data":{}}\n\n')
+            self.wfile.write(
+                b'data: {"id":"evt_0","type":"server.connected","data":{}}\n\n'
+            )
             self.wfile.flush()
             while True:
                 try:
                     line = q.get(timeout=10)
                 except queue.Empty:
-                    line = json.dumps({"id": nid("evt"), "type": "server.heartbeat", "data": {}})
+                    line = json.dumps(
+                        {"id": nid("evt"), "type": "server.heartbeat", "data": {}}
+                    )
                 self.wfile.write(f"data: {line}\n\n".encode())
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):

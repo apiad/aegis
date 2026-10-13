@@ -104,7 +104,10 @@ async def test_a_prompt_runs_a_turn_with_cost_context_title_and_model(oc):
     s = oc.session
     # OpenCode names the model as it creates the session, before the start
     # ends: that update still says stopped, which the session was.
-    assert oc.statuses() in (["idle", "working", "idle"], ["stopped", "idle", "working", "idle"])
+    assert oc.statuses() in (
+        ["idle", "working", "idle"],
+        ["stopped", "idle", "working", "idle"],
+    )
     assert oc.prose() == ["you said: hello"]
     assert s.cost_usd == pytest.approx(0.002) and s.context_tokens == 1030
     assert s.context_window == 1000000 and s.model_id == "opencode-go/fake-pro"

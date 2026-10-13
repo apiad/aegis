@@ -111,7 +111,9 @@ async def _find(name: str, bins: dict[str, str], cwd: Path) -> Found:
         return Found(name, bin, error=f"`{bin} --version` failed: {e}")
     if name == "opencode" and (m := re.search(r"(\d+)\.\d+", version)):
         if int(m.group(1)) < 2:
-            return Found(name, bin, version, error=f"OpenCode {version} is too old: {UPGRADE}")
+            return Found(
+                name, bin, version, error=f"OpenCode {version} is too old: {UPGRADE}"
+            )
     try:
         cat = await _catalog(name, {**bins, name: bin}, cwd)
     except RuntimeError as e:

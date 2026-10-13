@@ -177,8 +177,13 @@ def test_the_parser_maps_one_turn():
     created = ev("session.created", sessionID="ses_1", version="2.0.28",
                  model={"id": "flash", "providerID": "go"}, location={"directory": "/r/x"})  # fmt: skip
     assert p.feed(created) == [
-        Init(session_id="ses_1", model="go/flash", version="2.0.28",
-             harness="OpenCode", cwd="/r/x")  # fmt: skip
+        Init(
+            session_id="ses_1",
+            model="go/flash",
+            version="2.0.28",
+            harness="OpenCode",
+            cwd="/r/x",
+        )  # fmt: skip
     ]
     user = ev("session.inbox.enqueued", sessionID="ses_1", inboxID="msg_u",
               item={"type": "user", "payload": {"text": "hi"}, "delivery": "steer"})  # fmt: skip
@@ -199,14 +204,21 @@ def test_the_parser_maps_one_turn():
     assert p.feed(ev("session.tool.input.started", **call, name="read")) == []
     called = ev("session.tool.called", **call, input={"path": "/a"})
     assert p.feed(called) == [
-        ToolCall(id="c1", name="Read", input={"file_path": "/a"}, parent=None, usage=None)
+        ToolCall(
+            id="c1", name="Read", input={"file_path": "/a"}, parent=None, usage=None
+        )
     ]
     assert p.feed(called) == []
     content = [{"type": "text", "text": "x"}]
     assert p.feed(ev("session.tool.success", **call, content=content)) == [
         ToolOutput(id="c1", text="x", is_error=False, parent=None)
     ]
-    tokens = {"input": 100, "output": 20, "reasoning": 5, "cache": {"read": 3, "write": 2}}
+    tokens = {
+        "input": 100,
+        "output": 20,
+        "reasoning": 5,
+        "cache": {"read": 3, "write": 2},
+    }
     (st,) = p.feed(ev("session.step.ended", sessionID="ses_1", tokens=tokens, cost=0.5))
     assert isinstance(st, Step) and st.usage.context == 130
     assert p.feed(ev("session.renamed", sessionID="ses_1", title="Fix the parser")) == [
@@ -232,7 +244,9 @@ def test_a_failed_turn_says_why():
 
 def test_a_model_switch_is_a_new_init():
     p = Parser()
-    p.feed(ev("session.created", sessionID="ses_1", model={"id": "a", "providerID": "go"}))
+    p.feed(
+        ev("session.created", sessionID="ses_1", model={"id": "a", "providerID": "go"})
+    )
     (i,) = p.feed(ev("session.model.selected", sessionID="ses_1",
                      model={"id": "b", "providerID": "go", "variant": "high"}))  # fmt: skip
     assert isinstance(i, Init) and i.model == "go/b"
@@ -242,7 +256,9 @@ def test_a_child_is_named_by_its_calls_progress():
     p = Parser()
     p.feed(ev("session.created", sessionID="ses_1"))
     for c in ("c1", "c2"):
-        p.feed(ev("session.tool.input.started", sessionID="ses_1", id=c, name="subagent"))
+        p.feed(
+            ev("session.tool.input.started", sessionID="ses_1", id=c, name="subagent")
+        )
     p.feed(ev("session.created", sessionID="ses_k", parentID="ses_1"))
     p.feed(ev("session.tool.progress", sessionID="ses_1", id="c2",
               metadata={"sessionID": "ses_k"}))  # fmt: skip
@@ -256,7 +272,12 @@ def test_every_delta_line_is_a_delta_even_one_nothing_draws():
     p.feed(ev("session.created", sessionID="ses_1"))
     p.feed(ev("session.created", sessionID="ses_k", parentID="ses_1"))
     for line in (
-        ev("session.text.delta", sessionID="ses_k", assistantMessageID="m", delta="child"),
+        ev(
+            "session.text.delta",
+            sessionID="ses_k",
+            assistantMessageID="m",
+            delta="child",
+        ),
         ev("session.text.delta", sessionID="ses_1", assistantMessageID="?", delta="x"),
     ):
         (d,) = p.feed(line)
