@@ -60,6 +60,7 @@ LINKS_SINCE = "2.4.0"
 
 HELLO_TIMEOUT_S = 10.0
 CALL_TIMEOUT_S = 15.0
+BACKOFF_MIN_S = 1.0
 BACKOFF_MAX_S = 30.0
 WATCH_EVERY_S = 1.0
 ACCEPTED = ("welcome", "reply", "snapshot", "patch", "error")
@@ -246,7 +247,7 @@ class Link:
             self.on_change()
 
     async def _run(self) -> None:
-        backoff = 1.0
+        backoff = BACKOFF_MIN_S
         while True:
             self.attempts += 1
             try:
@@ -270,7 +271,7 @@ class Link:
                 await asyncio.sleep(BACKOFF_MAX_S)
                 continue
             self._ws, self.remote, self.rtt_ms = ws, welcome, round(rtt)
-            backoff = 1.0
+            backoff = BACKOFF_MIN_S
             self._set("linked")
             writer = asyncio.get_running_loop().create_task(self._write(ws))
             try:
