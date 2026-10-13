@@ -244,7 +244,7 @@ body{background:#000}
 .a2 .row.user .body .md{white-space:normal}
 .a2 .row.user .g{color:var(--accent)}
 .a2 .row.sel{background:var(--accent-soft);position:relative}
-.a2 .row.sel:before{content:"";position:absolute;left:-8px;top:0;bottom:0;width:2px;background:var(--accent)}
+.a2 .row.sel:after{content:"";position:absolute;left:-8px;top:0;bottom:0;width:2px;background:var(--accent)}
 .a2 .row.sel .g{background:none}
 .a2 .row.user.pending .body{opacity:.55;border:1px dashed var(--rule)}
 .a2 .row.user.pending .body:after{content:"not read yet";display:block;font-size:11px;color:var(--faint);margin-top:4px;font-family:var(--font-chrome)}

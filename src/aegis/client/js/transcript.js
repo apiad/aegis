@@ -13,7 +13,9 @@
 // page. Rows skip
 // layout off screen (content-visibility in base.css) and take their real
 // height when they near the viewport, so while following, a change in the
-// list's height pins it to the bottom again.
+// list's height pins it to the bottom again. Only the reader moving up lets
+// go: a scroll event that reads short because the list grew after toBottom()
+// keeps following.
 //
 // It also watches what the reader has seen: an unread agent message on screen
 // for a second is reported through onRead. Only mounted unread rows are
@@ -56,6 +58,7 @@ export class Transcript {
     this.opened = new Map(); // id -> open, for rows whose details the reader toggled
     this.touched = new Set();
     this.following = true;
+    this.bottomAt = 0; // the scrollTop toBottom() last left the view at
     this.selected = null; // an entry id: apply() replaces nodes, ids stay
     this.sinceId = null; // the entry the "new since you left" divider sits above
     this.sinceText = "";
@@ -78,7 +81,13 @@ export class Transcript {
     scroller.addEventListener("scroll", () => {
       // A scroll that is not the hold's own lets go of the held row (mountEarlier).
       if (this.held && this.scroller.scrollTop !== this.held.at) this.held = null;
-      this.following = this.atBottom();
+      // A scroll event comes a frame after the scroll. When the list grew in
+      // between (a card's frame sizing itself, a row leaving its placeholder
+      // height), the event of toBottom's own scroll reads "not at the bottom";
+      // only a move up from where toBottom left the view lets go (#359).
+      const kept = this.following && this.scroller.scrollTop >= this.bottomAt;
+      this.following = this.atBottom() || kept;
+      if (kept && !this.atBottom()) this.toBottom();
       if (this.following) this.jump.classList.remove("new");
       this.fillTop();
     });
@@ -163,6 +172,7 @@ export class Transcript {
 
   toBottom() {
     this.scroller.scrollTop = this.scroller.scrollHeight;
+    this.bottomAt = this.scroller.scrollTop;
     this.following = true;
     this.jump.classList.remove("new");
   }
