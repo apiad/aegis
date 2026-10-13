@@ -2854,6 +2854,26 @@ def test_the_transcript_follows_when_it_grows_under_its_own_scroll(server, page)
     assert page.errors == []
 
 
+def test_selecting_the_row_under_the_new_divider_keeps_the_divider(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page, "hello")
+    # Opened afresh with the reply unread: the divider sits on the prompt's row.
+    page.goto("about:blank")
+    page.goto(f"{server.url}#s={sid}")
+    row = page.locator(".row.user.since")
+    row.wait_for()
+    button = row.locator(":scope > .body > .copy")
+    before = button.bounding_box()["y"]
+    # Pressing a button in the row focuses it, and focus selects the row. The
+    # selection's bar took the divider's ::before, the row shrank under the
+    # pointer between press and release, and the click was lost (#359).
+    button.focus()
+    page.wait_for_selector(".row.user.since.sel")
+    assert button.bounding_box()["y"] == before
+    assert page.errors == []
+
+
 def test_a_reply_taller_than_the_view_becomes_read(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
