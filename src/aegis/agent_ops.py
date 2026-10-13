@@ -206,6 +206,25 @@ class TurnEnd(_Strict):
         "would type them: their language, lowercase, no final period. Only when you "
         "laid out options or wait for a go-ahead; empty otherwise.",
     )
+    handoff: str | None = Field(
+        None,
+        min_length=1,
+        max_length=4000,
+        description="Only when turn_end answered with your context size and the task "
+        "is at a natural break: a brief for a fresh session that continues this work. "
+        "What is done, what is next, the files, the decisions, what not to retry.",
+    )
+
+
+# What turn_end answers past the context block's handoff_at (#354). A tool
+# result, never the system prompt: it is the newest message, so it cannot
+# break the prompt cache.
+CONTEXT_LINE = (
+    "noted. Your context is {k} tokens, and every turn from here rereads all of it. "
+    "If the task is at a natural break, call turn_end again with the same arguments "
+    "plus handoff: a brief for a fresh session (what is done, what is next, the "
+    "files, the decisions, what not to retry). Otherwise carry on; this costs nothing."
+)
 
 
 class NoArgs(_Strict):
@@ -992,15 +1011,20 @@ def register_agent_ops(app: App) -> None:
         person, and not when you end a turn to wait on a monitor or a queue task.
         It sets the mark on your tab and the line on your card."""
         s = own(caller)
-        s.report(
-            {
-                "kind": "turn_end",
-                "attention": p.attention,
-                "line": p.line,
-                "replies": p.replies,
-            }
-        )
-        return "noted"
+        rec = {
+            "kind": "turn_end",
+            "attention": p.attention,
+            "line": p.line,
+            "replies": p.replies,
+        }
+        if p.handoff and not s.worker:
+            rec["handoff"] = p.handoff
+        s.report(rec)
+        at = app.config.current().context["handoff_at"]
+        n = s.context_tokens or 0
+        if s.worker or p.handoff or not at or n < at:
+            return "noted"
+        return CONTEXT_LINE.format(k=f"{round(n / 1000)}k")
 
     toasted: dict[str, list[float]] = {}
 

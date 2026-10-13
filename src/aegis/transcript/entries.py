@@ -502,6 +502,7 @@ class Fold:
                     "attention": rec.get("attention"),
                     "line": rec.get("line") or "",
                     "replies": list(rec.get("replies") or []),
+                    "handoff": rec.get("handoff"),
                 }
             )
             return []
