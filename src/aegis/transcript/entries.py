@@ -314,9 +314,13 @@ class Fold:
         """A keyed part opening (OpenCode's, Codex's): its entry goes in now,
         empty, so the part sits where it opened, live and on a reload alike;
         deltas and the close fill it in place. A part that never closes goes
-        with its turn. Seen already, it is left as it is."""
+        with its turn. Seen already, it is left as it is, unless it is still
+        empty: then this is the part closing with no text, and it goes."""
         if key in self._entries:
-            return []
+            if self._entries[key].get("md"):
+                return []
+            self._live.discard(key)
+            return self._remove(key)
         self._live.add(key)
         thinking = kind == "thinking"
         return self._upsert(

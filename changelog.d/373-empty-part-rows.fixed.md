@@ -1,0 +1,1 @@
+- **An OpenCode or Codex reply no longer flashes an empty row before its first words.** A part that ends with no text leaves no entry behind, rather than an empty one until its turn ends.

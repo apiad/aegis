@@ -594,7 +594,10 @@ const RENDERERS = {
 };
 
 export function render(entry) {
-  return (RENDERERS[entry.kind] || RENDERERS.system)(entry);
+  const r = (RENDERERS[entry.kind] || RENDERERS.system)(entry);
+  // A part that opened has its place before its first words: nothing shows yet.
+  if ((entry.kind === "prose" || entry.kind === "thinking") && !entry.md && !entry.summary && !entry.detail?.more) r.hidden = true;
+  return r;
 }
 
 // A sent file's or artifact's URL as this page may use it: on a linked

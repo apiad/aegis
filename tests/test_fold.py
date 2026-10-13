@@ -706,6 +706,18 @@ def test_a_live_entry_whose_part_never_closed_is_dropped_at_the_turns_end():
     assert all(e["id"] != "prt_1" for e in f.entries())
 
 
+@pytest.mark.parametrize("cls", ["Text", "Thinking"])
+def test_a_part_that_opened_and_closed_empty_leaves_no_entry(cls):
+    from aegis.claude import stream
+
+    part = getattr(stream, cls)
+    f = Fold()
+    f._event("e1.0", 1.0, part(text="", parent=None, usage=None, key="prt_1"))
+    assert [e["id"] for e in f.entries()] == ["prt_1"]
+    ops = f._event("e2.0", 2.0, part(text="", parent=None, usage=None, key="prt_1"))
+    assert ops == [{"remove": "prt_1"}] and f.entries() == []
+
+
 def test_a_harness_error_loses_the_send_it_answers_and_a_reset_is_said():
     r = Rec()
     r.own("send", text="/nope x")
