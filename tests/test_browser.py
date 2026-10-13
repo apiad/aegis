@@ -1649,7 +1649,9 @@ def _artifact(page, server, body, n, title="Pick", caption=None):
     page.press("#input", "Enter")
     turns_done(page, n + 1)
     # Markdown eats the backslash of the skeleton's \" so the prose is no longer JSON.
-    said = page.locator(".row.prose .md").last.inner_text()
+    # textContent: a row appended this frame has not been rendered yet, and
+    # innerText reads a content-visibility row that skips rendering as "" (#359).
+    said = page.locator(".row.prose .md").last.text_content()
     made = dict(
         zip(
             ("id", "path"),
@@ -1664,7 +1666,7 @@ def _artifact(page, server, body, n, title="Pick", caption=None):
     page.fill("#input", f"/mcp artifact_send {json.dumps({'id': made['id']})}")
     page.press("#input", "Enter")
     turns_done(page, n + 2)
-    return made["id"], page.locator(".row.prose .md").last.inner_text()
+    return made["id"], page.locator(".row.prose .md").last.text_content()
 
 
 PICK = (
