@@ -1,2 +1,0 @@
-- **The sidebar counts tool calls, the cache hit rate and compactions, and a large idle session warns before its cache goes cold.** The hit rate turns red below 80% while the session is warm, which means something broke the cache. A Claude Code session over 100k tokens that has sat idle past the cache's one-hour lifetime says that its next message rewrites the whole context, about 20 times what a warm turn reads; over one week, 17 such resumes rewrote 5.9M tokens. The terminal app had both, and 2.0 had dropped them.
-help: sessions#context-and-the-cache

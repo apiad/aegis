@@ -1,2 +1,0 @@
-- **Pages and files can stay in view beside the transcript.** Dock any page or sent file from its card, then arrange the panes in columns by dragging, or move them to a second browser window for another monitor; on a phone they become tabs. Agents dock with `dock=` on `artifact_send` and `file_send`, and read or rewrite the arrangement with `layout_read` and `layout_set`. A file sent again from the same path updates its card and its pane. Sent files and pages no longer fold away at the second fold level.
-help: transcript#the-canvas

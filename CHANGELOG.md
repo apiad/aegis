@@ -5,6 +5,33 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-10-13
+
+### Added
+
+- **Pages and files can stay in view beside the transcript.** Dock any page or sent file from its card, then arrange the panes in columns by dragging, or move them to a second browser window for another monitor; on a phone they become tabs. Agents dock with `dock=` on `artifact_send` and `file_send`, and read or rewrite the arrangement with `layout_read` and `layout_set`. A file sent again from the same path updates its card and its pane. Sent files and pages no longer fold away at the second fold level.
+  help: transcript#the-canvas
+
+- **The Gorgoneion moves, on the new tab, the boot screen and the Fleet band.**
+  The eye looks left, right and blinks every 5 seconds, and each serpent bends
+  so its tip crosses from one side of its body to the other, the six out of
+  phase so the wave travels round the head. The new tab's mark grows from 30 to
+  50 px, the boot screen shows it at 96 px above "Connecting…" and the sign-in
+  form, and this server's Fleet band carries it at 44 px (32 px on a phone).
+  With the system's reduce-motion setting on, it holds still. The favicon and
+  the app icons do not change.
+  help: getting-started#3-open-the-fleet
+
+- **The sidebar counts tool calls, the cache hit rate and compactions, and a large idle session warns before its cache goes cold.** The hit rate turns red below 80% while the session is warm, which means something broke the cache. A Claude Code session over 100k tokens that has sat idle past the cache's one-hour lifetime says that its next message rewrites the whole context, about 20 times what a warm turn reads; over one week, 17 such resumes rewrote 5.9M tokens. The terminal app had both, and 2.0 had dropped them.
+  help: sessions#context-and-the-cache
+
+- **A session past 300k tokens can continue in a fresh one at a natural break.** `turn_end` tells the agent its context size, the agent passes a brief when its task is at a break, and the reply row offers "continue fresh": the same agent starts with the brief and the last turns, and the old session is archived once the new one has answered. Over one week, 10 of 530 sessions passed 300k tokens and carried 38% of all the context tokens read.
+  help: handoffs#continue-in-a-fresh-session
+
+### Fixed
+
+- **A message sent on a bad connection locks the box, gets a verdict in 3 seconds, and never arrives twice.** On a socket that stalled without closing, Send left the text in an editable box with no sign of progress or failure, so the person pressed again, and when the connection came back every press was delivered: one transcript held the same message three times, 5 ms apart. Now the box and the button lock with a spinner until the server answers; after 3 s with no answer the box unlocks with the text and says it was not confirmed. Each message carries a nonce that `session.send` remembers, so sending it again, or a stalled socket flushing several copies at once, delivers it once.
+
 ## [2.7.0] - 2026-10-12
 
 ### Added

@@ -169,6 +169,13 @@ transcript, so the workplace grows with what its agents build.
   including tool output and thinking the page has not loaded, and opens the row
   each match is in. Messages, code blocks and tool output carry a copy button
   that copies the raw text, and `c` copies the selected row.
+- **Long sessions and the prompt cache.** Every turn rereads a session's whole
+  context. Past 300k tokens the agent hears its size and, at a natural break,
+  writes a brief; the reply row then offers "continue fresh", which starts the
+  same agent with the brief and archives the old session once the new one has
+  answered. A large session idle past the cache's one-hour lifetime says that
+  its next message rewrites the whole context, and the Usage card counts tool
+  calls, the cache hit rate and compactions.
 - **Ten themes.** Ink, Logbook, Electric, Phosphor, Blueprint, Amphora, Riso, Solari, Aizome and Poster.
 
 ## Configure
@@ -191,18 +198,22 @@ agents:
 queues:
   general: {agent: opus, max_parallel: 5}
 recap: {agent: opus}
+context: {handoff_at: 300000, cold_after: 3600, cold_min: 100000}
 ```
 
 An agent is a preset. A new tab starts from one, and you can change its harness,
 model, effort and permission for that session. Its `priming` is appended to
-aegis's own system prompt. Nothing has a default: an agent names all four fields,
+aegis's own system prompt. Nothing in agents and queues has a default: an agent names all four fields,
 a queue names its agent and `max_parallel`, and one that does not is shown with
 what is missing. `permission` is `read` (plan mode), `write` (accept edits),
 `auto` or `full` (bypass permissions). An OpenCode or Codex agent names its
 model as `provider/model`, such as `openai/gpt-6.1-sol` or
 `openrouter/nvidia/nemotron-3-super-120b-a12b:free`, where the provider is one
 Codex knows from its own `~/.codex/config.toml`. `recap` names the agent that writes a two-sentence recap when
-you come back to a tab after a while; without it nothing is called.
+you come back to a tab after a while; without it nothing is called. `context`
+sets when an agent hears its context size (`handoff_at`, tokens) and when a
+tab warns that its prompt cache has gone cold (`cold_after` seconds idle,
+`cold_min` tokens); it is the one block with defaults, the values shown.
 
 `aegis init` writes a first file from the harnesses installed on the machine, and
 `aegis doctor` names every problem in it by its place in the file. The Settings
