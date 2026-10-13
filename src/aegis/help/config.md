@@ -96,8 +96,9 @@ session_memory_max: 3G
 
 A session that goes past it hits an out-of-memory kill inside its own
 cgroup, which takes its largest process, usually a runaway test worker, and
-leaves the agent, the server and every other session running. The kernel
-starts slowing the session down a tenth below the cap. A new value applies to
+leaves the agent, the server and every other session running. A session
+under a cap gets no swap, so it is killed at the cap instead of paging the
+host into the ground. A new value applies to
 the next process a session starts.
 
 The cap needs a cgroup per session, which aegis makes only when it runs as a

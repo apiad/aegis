@@ -189,16 +189,18 @@ def test_a_session_cgroup_carries_its_limits(tmp_path, monkeypatch):
     d = cg.create("log-abc")
     assert d == cg.sessions / "log-abc"
     assert (d / "memory.max").read_text() == str(4 * GB)
-    assert (d / "memory.high").read_text() == str(int(4 * GB * 0.9))
     # An OOM kills the runaway process, not the whole session.
     assert (d / "memory.oom.group").read_text() == "0"
+    # memory.max counts RAM alone: without this a runaway pages into swap.
+    assert (d / "memory.swap.max").read_text() == "0"
 
 
 def test_max_means_no_cap_and_a_bad_value_means_the_default(tmp_path, monkeypatch):
     monkeypatch.setattr(cgroups, "total_ram", lambda: 10 * GB)
     t = Tree(tmp_path)
     d = t.setup("max").create("a")
-    assert (d / "memory.max").read_text() == "max" == (d / "memory.high").read_text()
+    assert (d / "memory.max").read_text() == "max"
+    assert (d / "memory.swap.max").read_text() == "max"
     d = SessionCgroups(t.unit, lambda: "plenty").create("b")
     assert (d / "memory.max").read_text() == str(4 * GB)
 
@@ -343,9 +345,11 @@ DELEGATED = SessionCgroups.check()
 @pytest.mark.skipif(
     not isinstance(DELEGATED, Path), reason=f"no delegated cgroup: {DELEGATED}"
 )
-async def test_a_real_session_cgroup_caps_its_child(tmp_path, fake_claude):
+async def test_a_real_session_cgroup_caps_its_child(tmp_path, fake_claude, monkeypatch):
     """Run under a unit with Delegate=yes (the PR body has the command). It
     moves this pytest into <unit>/server, as the server would move itself."""
+    # A real cgroup is removed by rmdir; the autouse fake's rmtree gets EPERM.
+    monkeypatch.setattr(SessionCgroups, "remove", staticmethod(os.rmdir))
     cg = SessionCgroups.setup(lambda: "64M")
     assert cg is not None
     me = Path("/proc/self/cgroup").read_text()
@@ -353,12 +357,18 @@ async def test_a_real_session_cgroup_caps_its_child(tmp_path, fake_claude):
     d = cg.create("log-real")
     assert (d / "memory.max").read_text().strip() == str(64 * 1024**2)
     assert (d / "memory.oom.group").read_text().strip() == "0"
+    assert (d / "memory.swap.max").read_text().strip() == "0"
 
     p = ClaudeCode(fake_claude).process(launch(tmp_path, d))
     await p.start()
     try:
-        own = Path(f"/proc/{p.pid}/cgroup").read_text().strip()
-        assert own.endswith("/sessions/log-real")
+        # The wrapper joins before it execs, which can be after start returns.
+        cgroup_file = Path(f"/proc/{p.pid}/cgroup")
+        await until(
+            lambda: cgroup_file.read_text().strip().endswith("/sessions/log-real"),
+            timeout=3,
+            what="the harness in its session cgroup",
+        )
         # A runaway in the session is killed by a memcg OOM; this process,
         # the "server", and the harness itself live on.
         hog = await asyncio.create_subprocess_exec(

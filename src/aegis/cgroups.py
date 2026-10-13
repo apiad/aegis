@@ -34,11 +34,16 @@ fails the harness still starts, uncontained, and says so on its stderr: a
 session that cannot start is worse than one without a cap.
 
 The limits: ``memory.max`` is ``session_memory_max`` from ``.aegis.yaml``
-(default 40% of the host's RAM), ``memory.high`` a tenth below it, so the
-kernel reclaims and throttles before it kills. ``memory.oom.group`` is 0: an
+(default 40% of the host's RAM). ``memory.high`` stays unset: with swap off
+there is nothing for it to reclaim, so it only throttles, and a runaway that
+would have died at the cap in a second crawls toward it for minutes, stalling
+its session (measured under a 64M cap). ``memory.oom.group`` is 0: an
 OOM inside a session kills its largest process, which is nearly always a
 runaway test worker, not the whole session. With 1 the agent itself would die
 with its tests, and the person would lose the turn that could have noticed.
+``memory.swap.max`` is 0 under a cap: ``memory.max`` counts RAM alone, so a
+runaway at its cap would otherwise page into swap until the host thrashes, and
+the OOM the cap exists for would never come.
 
 A session's cgroup is emptied (``cgroup.kill``) and removed when its process
 ends, by exit, Stop, Close or shutdown, so a background job the harness left
@@ -63,8 +68,6 @@ MOUNT = Path("/sys/fs/cgroup")
 PROC = Path("/proc")
 CONTROLLERS = ("memory", "pids")
 DEFAULT_MEMORY_MAX = "40%"
-# memory.high as a share of memory.max.
-HIGH_SHARE = 0.9
 _SIZE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([KMGT%]?)\s*$", re.IGNORECASE)
 _UNITS = {"": 1, "K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
 # The join, then the harness: $0 is the cgroup, "$@" the harness's argv.
@@ -245,13 +248,15 @@ class SessionCgroups:
             limit = parse_size(DEFAULT_MEMORY_MAX, total_ram())
         try:
             d.mkdir(exist_ok=True)
-            high = "max" if limit is None else str(int(limit * HIGH_SHARE))
             (d / "memory.max").write_text("max" if limit is None else str(limit))
-            (d / "memory.high").write_text(high)
             (d / "memory.oom.group").write_text("0")
         except OSError as e:
             log.warning("aegis: no cgroup for session %s: %s", log_id, e)
             return None
+        try:
+            (d / "memory.swap.max").write_text("max" if limit is None else "0")
+        except OSError:
+            pass  # a kernel without swap accounting has no swap to cap
         return d
 
     def release(self, log_id: str) -> None:
