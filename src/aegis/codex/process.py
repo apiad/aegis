@@ -31,7 +31,7 @@ from typing import Any
 import httpx
 
 from ..claude.control import Catalog
-from ..harness import Launch
+from ..harness import Launch, raise_oom_score
 from .config import (
     SANDBOX_MODE,
     SANDBOX_POLICY,
@@ -57,6 +57,11 @@ EXIT_POLL_S = 0.1
 
 class RpcError(Exception):
     """app-server answered a request with an error."""
+
+
+class Exited(ConnectionResetError):
+    """The child exited while a request waited for its answer. Its exit is
+    reported through ``on_exit``, so a send it cut does not raise as well."""
 
 
 def _dict(v: Any) -> dict:
@@ -142,6 +147,7 @@ class CodexProcess:
             limit=LINE_LIMIT,
             start_new_session=True,
         )
+        raise_oom_score(self._proc.pid)
         self._keep(self._drain(self._proc.stderr))
         self._keep(self._read())
         self._wait_task = asyncio.create_task(self._wait())
@@ -208,7 +214,7 @@ class CodexProcess:
         proc = self._proc
         code = await _exited(proc)
         self._signal(proc, signal.SIGKILL)  # whatever it left holds the thread
-        self._fail_pending(ConnectionResetError("codex app-server exited"))
+        self._fail_pending(Exited("codex app-server exited"))
         if self._quiet:
             return
         self._quiet = True
@@ -340,6 +346,12 @@ class CodexProcess:
         await self._maybe_restart()
         if self._catalog is None:
             await self._try_catalog()
+        try:
+            await self._send(text)
+        except Exited:
+            pass  # the child died under the send; its exit is the report
+
+    async def _send(self, text: str) -> None:
         if text.startswith("/"):
             await self._command(text)
             return
