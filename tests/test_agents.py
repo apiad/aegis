@@ -96,7 +96,11 @@ def mcp(tool: str, **args) -> str:
 
 
 async def turn(s, text: str, timeout: float = 8) -> str:
-    """Send a prompt, wait for the session's next idle, return its last prose."""
+    """Send a prompt, wait for the session's next idle, return the reply to it.
+
+    The reply is the first prose after the prompt, not the last: a fast queue
+    worker's callback can arrive and end a second turn before the idle is
+    seen, and its prose would be read as this turn's answer (#375)."""
     before = len([e for e in s.entries() if e["kind"] == "prose"])
     await s.send(text)
     await until(
@@ -107,7 +111,7 @@ async def turn(s, text: str, timeout: float = 8) -> str:
         timeout=timeout,
         what=f"the turn {text[:40]!r}",
     )
-    return [e["md"] for e in s.entries() if e["kind"] == "prose"][-1]
+    return [e["md"] for e in s.entries() if e["kind"] == "prose"][before]
 
 
 def inbox(s) -> list[dict]:
