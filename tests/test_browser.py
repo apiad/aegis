@@ -8041,3 +8041,23 @@ def test_btw_keeps_the_reply_pills_and_cancel_folds_the_block(
         assert page.errors == []
     finally:
         s.stop()
+
+
+def test_folding_a_side_note_leaves_another_sessions_alone(btw_server, page):
+    page.goto(btw_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    ids = []
+    for _ in range(2):
+        spawn(page, "same start")
+        ids.append(page.evaluate("location.hash.slice(3)"))
+        turns_done(page, 1)
+        page.fill("#input", "/btw same question")
+        page.press("#input", "Enter")
+        page.wait_for_selector(".row.btw .ans:not(.wait)", timeout=8000)
+    rows = page.eval_on_selector(".row.btw", "r => r.dataset.id")
+    page.click(".row.btw .hd")  # fold it in the second session
+    page.wait_for_selector(".row.btw.folded")
+    page.click(f".tab[data-id='{ids[0]}']")
+    page.wait_for_selector(f".row.btw[data-id='{rows}']")
+    assert page.locator(".row.btw:not(.folded)").count() == 1
+    assert page.errors == []

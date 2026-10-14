@@ -1686,7 +1686,7 @@ $("entries").addEventListener("click", (ev) => {
   const btwRow = ev.target.closest(".row.btw");
   if (btwRow && (ev.target.closest(".hd") || btwRow.classList.contains("folded"))) {
     const folded = !btwRow.classList.contains("folded");
-    btwFolds.set(btwRow.dataset.id, folded);
+    btwFolds.set(btwRow.dataset.btw, folded);
     btwRow.classList.toggle("folded", folded);
   }
 });

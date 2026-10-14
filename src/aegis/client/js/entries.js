@@ -432,7 +432,8 @@ export function hhmm(ts) {
 }
 
 // A click folds or opens a side note in this browser only; the server's
-// "folded" is the default until then (spec /btw, section 07).
+// "folded" is the default until then (spec /btw, section 07). Keyed by the
+// side note's own id: entry ids repeat across sessions.
 export const btwFolds = new Map();
 
 function row(entry, cls, body) {
@@ -684,8 +685,9 @@ const RENDERERS = {
     }
     full.append(ft);
     body.append(sum, hd, full);
-    const folded = btwFolds.has(e.id) ? btwFolds.get(e.id) : det.folded;
+    const folded = btwFolds.has(det.id) ? btwFolds.get(det.id) : det.folded;
     const r = row(e, folded ? "btw folded" : "btw", body);
+    r.dataset.btw = det.id; // unique across sessions, unlike the entry id
     r.querySelector(".g").replaceChildren(icon("btw"));
     return r;
   },
