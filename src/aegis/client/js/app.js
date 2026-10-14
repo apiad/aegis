@@ -1475,6 +1475,11 @@ function renderMeta(s) {
   $("s-effort").textContent = s.effort || "";
   $("s-perm").textContent = s.permission || "";
   $("s-server").textContent = s.server || conn.server || "this server";
+  // The handle as peers address it, handle@server, and the badge a Fleet card
+  // gives a queue worker.
+  $("s-at").textContent = s.server || conn.server ? `@${s.server || conn.server}` : "";
+  $("s-worker").hidden = !s.worker;
+  $("s-worker").textContent = s.worker ? `worker · ${s.worker.queue}` : "";
   if (s.attention === undefined) {
     // The archived read view: a stored meta has no attention, so the state alone.
     $("s-status").textContent = s.state;
