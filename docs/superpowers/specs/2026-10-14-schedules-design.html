@@ -192,7 +192,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · schedules</span>
-  <span class="st"><span class="pill acc">draft · not started</span><span class="pill">2026-10-14</span><span class="pill">#390</span></span>
+  <span class="st"><span class="pill acc">approved · not started</span><span class="pill">2026-10-14</span><span class="pill">#390</span></span>
 </div>
 
 <div class="wrap">
@@ -224,7 +224,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <main>
 <h1>Schedules: a prompt fired on a clock, into a new session or an existing one</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-14-schedules-design.html</span><span>·</span><span>draft, not started</span><span>·</span><a href="https://github.com/apiad/aegis/issues/390">#390</a></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-14-schedules-design.html</span><span>·</span><span>approved, not started</span><span>·</span><a href="https://github.com/apiad/aegis/issues/390">#390</a></div>
 <p class="lede">A schedule sends a prompt to an agent when a clock says so. Each tick passes through a stack of layers, and only a tick that passes all of them fires: a clock, an overlap rule, an optional bash check, and the fire itself, into a fresh session or into one already open. Schedules live in aegis's state, are made the same way by people and agents, and get a view of their own where each one shows its layers and its recent runs.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -250,7 +250,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </div>
 
 <h2 id="decisions"><span class="n">02</span>Decisions</h2>
-<p><span class="who">maintainer</span> marks a decision the maintainer made while designing this. <span class="who q">proposed</span> marks one this spec proposes and nobody has ruled on yet.</p>
+<p><span class="who">maintainer</span> marks a decision the maintainer made while designing this.</p>
 <table class="tbl">
 <thead><tr><th>Question</th><th>Decision</th><th>Why</th></tr></thead>
 <tbody>
@@ -264,12 +264,12 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>Where the clock runs</td><td>A module <code>schedules.py</code> inside <code>aegis serve</code></td><td class="why"><span class="who">maintainer</span> The overlap layer needs the sessions' state, which only the server has. An external cron could not see it, and a schedule built on queues would bend their semantics (workers always archive, results go to whoever enqueued).</td></tr>
 <tr><td>The view</td><td>A <code>#schedules</code> view with a button in the top bar next to Settings; list on the left, layers and runs on the right; the editor in the same panel</td><td class="why"><span class="who">maintainer</span> Approved as the mockup in <a href="#view">07</a>.</td></tr>
 <tr><td>Quiet ticks</td><td>Logged, collapsed into one row per stretch ("no change ×5"), hidden by default</td><td class="why"><span class="who">maintainer</span> Part of the approved mockup. A check every 5 minutes would otherwise bury its fires under 287 rows a day.</td></tr>
-<tr><td>Missed ticks</td><td>All the ticks missed while aegis was down or the machine slept become one tick, which passes every layer. A past <code>at</code> fires at boot</td><td class="why"><span class="who q">proposed</span> A schedule that was meant to run once an hour should not run eight times in a row after a night off.</td></tr>
-<tr><td>Cron</td><td>aegis's own five-field parser, no dependency</td><td class="why"><span class="who q">proposed</span> aegis has eight runtime dependencies and none parses cron. The parser and its next-tick search are about a hundred lines, and every case is a unit test.</td></tr>
-<tr><td>Time zone</td><td>The server's local zone, shown in the view</td><td class="why"><span class="who q">proposed</span> <code>0 6 * * 1-5</code> should mean six in the morning where the server is. A per-schedule zone is an open question.</td></tr>
-<tr><td>A failing check</td><td>Three errors in a row pause the schedule and raise a toast</td><td class="why"><span class="who q">proposed</span> A check that fails on every tick is broken, and silently retrying it 288 times a day hides that.</td></tr>
-<tr><td>A closed quota gate</td><td>The tick is held, as with <code>wait</code>, and fires when the gate opens</td><td class="why"><span class="who q">proposed</span> The work was not wrong, only early. Dropping it would lose a fire the person expected.</td></tr>
-<tr><td>Escaping spawn: false</td><td>A run with <code>spawn: false</code> may not create schedules either</td><td class="why"><span class="who q">proposed</span> Otherwise a run could create a schedule with <code>target: new</code> and start agents through it.</td></tr>
+<tr><td>Missed ticks</td><td>All the ticks missed while aegis was down or the machine slept become one tick, which passes every layer. A past <code>at</code> fires at boot</td><td class="why"><span class="who">maintainer</span> A schedule that was meant to run once an hour should not run eight times in a row after a night off.</td></tr>
+<tr><td>Cron</td><td>aegis's own five-field parser, no dependency</td><td class="why"><span class="who">maintainer</span> aegis has eight runtime dependencies and none parses cron. The parser and its next-tick search are about a hundred lines, and every case is a unit test.</td></tr>
+<tr><td>Time zone</td><td>The server's local zone, shown in the view</td><td class="why"><span class="who">maintainer</span> <code>0 6 * * 1-5</code> should mean six in the morning where the server is. A per-schedule zone is an open question.</td></tr>
+<tr><td>A failing check</td><td>Three errors in a row pause the schedule and raise a toast</td><td class="why"><span class="who">maintainer</span> A check that fails on every tick is broken, and silently retrying it 288 times a day hides that.</td></tr>
+<tr><td>A closed quota gate</td><td>The tick is held, as with <code>wait</code>, and fires when the gate opens</td><td class="why"><span class="who">maintainer</span> The work was not wrong, only early. Dropping it would lose a fire the person expected.</td></tr>
+<tr><td>Escaping spawn: false</td><td>A run with <code>spawn: false</code> may not create schedules either</td><td class="why"><span class="who">maintainer</span> Otherwise a run could create a schedule with <code>target: new</code> and start agents through it.</td></tr>
 </tbody>
 </table>
 
