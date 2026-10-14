@@ -2008,6 +2008,7 @@ async function spawnFromComposer() {
     const r = await conn.call("session.spawn", params, spServer);
     localStorage.setItem(LAST_AGENT, a.name);
     $("sp-text").value = "";
+    spawnGrow();
     pickAgent(a.name);
     const key = keyOf(spServer, r.log_id);
     go(`#s=${key}`);
@@ -2049,6 +2050,24 @@ $("sp-text").addEventListener("keydown", (ev) => {
     spawnFromComposer();
   }
 });
+
+// The first message grows with its text until the form fills the view, and only
+// then scrolls (#384): the new tab has nothing else to show. The room left
+// changes with the window and with what sits around the box (files, hints, an
+// error), so those are watched too. A hidden view has no height to fill.
+function spawnGrow() {
+  const t = $("sp-text");
+  const view = t.closest(".view");
+  if (!view.clientHeight) return;
+  t.style.height = "";
+  const css = getComputedStyle(view);
+  const pad = parseFloat(css.paddingTop) + parseFloat(css.paddingBottom);
+  const room = view.clientHeight - pad - ($("spawn").offsetHeight - t.offsetHeight);
+  t.style.height = `${Math.max(t.offsetHeight, Math.min(t.scrollHeight, room))}px`;
+}
+$("sp-text").addEventListener("input", spawnGrow);
+const spawnRoom = new ResizeObserver(spawnGrow);
+for (const el of [$("sp-text").closest(".view"), $("sp-atts"), $("sp-hints"), $("sp-error")]) spawnRoom.observe(el);
 
 // -- the new tab's hints --------------------------------------------------------
 // Up to two lines under the chips: /tutorial while this person has started no
