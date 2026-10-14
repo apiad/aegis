@@ -107,7 +107,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 -->
 <div class="chrome">
   <div class="bar"><span>aegis</span><span class="tab">plan · /btw</span>
-    <span class="st"><span class="pill acc">execution method: not chosen yet</span><span class="pill">#397</span><span class="pill">2026-10-14</span></span></div>
+    <span class="st"><span class="pill acc">execution method: inline (native)</span><span class="pill">#397</span><span class="pill">2026-10-14</span></span></div>
   <div class="progress"><span id="pcount">0 of 0 done</span><div class="track" id="ptrack"></div></div>
 </div>
 <main>
@@ -155,7 +155,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <h2>Tasks</h2>
 
 <!-- ============================================================ TASK 1 -->
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="num">1</span><span><span class="ttl">oneshot.py: the recap's one-shot path, shared</span><span class="files">src/aegis/oneshot.py · src/aegis/recap.py · src/aegis/recaps.py · tests/test_oneshot.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Move the config loader, the argv, the parser and the subprocess out of the recap so /btw can call them. The recap keeps its public names (<code>argv</code>, <code>parse</code>, <code>load_recap</code>, <code>TIMEOUT_S</code>) as thin wrappers, so its tests pass unedited.</p>
@@ -409,7 +409,7 @@ and import it: <code>from . import oneshot, recap</code>.</li>
 </details>
 
 <!-- ============================================================ TASK 2 -->
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">btw.py: the window, the prompt and the schema</span><span class="files">src/aegis/btw.py · tests/test_btw.py · tests/test_session_opencode.py · tests/test_session_codex.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Port <code>legacy/aegis/btw/window.py</code> to fold entries. Pure: entries in, text out. Read the legacy module's docstrings first; the reasons for each rule live there and move into this module's docstring.</p>
@@ -774,7 +774,7 @@ and to <code>tests/test_session_codex.py</code>:
 </details>
 
 <!-- ============================================================ TASK 3 -->
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="num">3</span><span><span class="ttl">The fold: a question and its answer make one btw entry</span><span class="files">src/aegis/transcript/entries.py · src/aegis/transcript/describe.py · src/aegis/session.py · tests/test_fold.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -942,7 +942,7 @@ def test_a_cancelled_note_folds_and_server_stopped_fails_a_running_one():
 </details>
 
 <!-- ============================================================ TASK 4 -->
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">The runner and the command: /btw answers end to end</span><span class="files">src/aegis/btws.py · src/aegis/commands.py · src/aegis/app.py · src/aegis/registry.py · src/aegis/session.py · tests/fake_claude.py · tests/test_btw_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1250,7 +1250,7 @@ In <code>registry.py</code> line 330 load it as <code>btw_cost_usd=meta.get("btw
 </details>
 
 <!-- ============================================================ TASK 5 -->
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">The block in the browser: four states, a local fold, cancel</span><span class="files">client/js/entries.js · client/js/glyphs.js · client/js/app.js · client/css/base.css · tests/test_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Paths are under <code>src/aegis/client/</code>. The block takes the recap's box in <code>--comms</code>, as the spec's mockup shows.</p>
@@ -1403,7 +1403,7 @@ Check that <code>row()</code> sets <code>data-id</code> on the row (<code>grep -
 </details>
 
 <!-- ============================================================ TASK 6 -->
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">Docs, the gates, the live test and the PR</span><span class="files">src/aegis/help/*.md · changelog.d/ · DESIGN.md · the spec · tests/live</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
