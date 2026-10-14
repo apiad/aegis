@@ -19,8 +19,9 @@ Channels: ``sessions`` (every open session's meta; patches ``upsert`` and
 subscribe ``since`` a revision gets what changed after it), ``quota`` (each
 provider's windows; patches ``set``), ``host`` (CPU, RAM and disk while someone
 watches; patches ``set``), ``journal`` (when its rows last changed; patches
-``set``) and ``config`` (``.aegis.yaml`` as aegis holds it;
-patches ``set``).
+``set``), ``schedules`` (every schedule's state; patches ``upsert`` and
+``remove``, ``schedules.py``) and ``config`` (``.aegis.yaml`` as aegis holds
+it; patches ``set``).
 """
 
 from __future__ import annotations
@@ -77,6 +78,7 @@ from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .layout_ops import register_layout_ops
+from .schedules import Schedules
 from .quota import Quota
 from .quota_gate import (
     POOLS,
@@ -350,6 +352,8 @@ class App:
         reg.quota = self.quota
         self.journal = Journal(roots.state_root, self.publish)
         reg.journal = self.journal
+        self.schedules = Schedules(self)
+        reg.schedules = self.schedules
         self.catalogs = commands.Catalogs(
             roots.state_root / "stderr" / "catalog-probe.log"
         )
@@ -432,6 +436,7 @@ class App:
                 self._quota_task(s, self._pause(s, g))
             elif g.state == "open" and (s.quota_paused or holding):
                 self._quota_task(s, self._continue(s))
+        self.schedules.quota_opened()
         if any(t.status == "pending" for t in self.queues.tasks.values()):
             t = asyncio.create_task(self.queues.dispatch())
             self._background.add(t)
@@ -537,6 +542,9 @@ class App:
         await self.sessions.continue_after_boot()
         self.monitors.arm_all()
         await self.queues.resume_after_boot(self.queues.boot())
+        # After the sessions and their continues, so a live run is found live.
+        self.schedules.boot()
+        self.schedules.start()
         self.quota.start()
         self.host.start()
         self.nudges.start()
@@ -548,6 +556,7 @@ class App:
     async def shutdown(self) -> None:
         stopping_at = restarts.stopping(self.roots.state_root)
         await self.push.sender.stop()
+        await self.schedules.stop()
         self.queues.shutdown()
         if self._config_task is not None:
             self._config_task.cancel()
@@ -632,6 +641,8 @@ class App:
             return lambda: self.config.current().wire()
         if name == "links":
             return self.links.wire
+        if name == "schedules":
+            return self.schedules.wire_all
         if name == "toasts":
             # Always empty: a browser that subscribes later never replays a toast.
             return lambda: []

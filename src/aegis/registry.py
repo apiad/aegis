@@ -80,6 +80,7 @@ class Registry(Host):
         self.server_name = "aegis"
         self.monitors = None
         self.queues = None
+        self.schedules = None
         self.quota = None
         # The live config's context block (config.py); the app points it at
         # Config.current().
@@ -124,6 +125,8 @@ class Registry(Host):
             self.quota.turn_ended()
         self._retire_predecessor(session)
         self._maybe_unquiet(session)
+        if self.schedules is not None:
+            self.schedules.changed()
 
     def _retire_predecessor(self, new: Session) -> None:
         """After a handoff, archive the old session once the new one has
@@ -288,6 +291,8 @@ class Registry(Host):
         parent = session.spec.spawned_by
         if parent and parent in self.sessions:
             self.refresh_card(parent)
+        if self.schedules is not None:
+            self.schedules.changed()
 
     def finished(self, s: Session) -> bool:
         """Done working, which a turn ending is not: not busy (held messages
@@ -589,6 +594,8 @@ class Registry(Host):
         self.metas.write(meta)
         self.archived[log_id] = meta
         self._publish("sessions", [{"remove": log_id}])
+        if self.schedules is not None:
+            self.schedules.changed()
 
     def reopen(self, log_id: str) -> Session:
         if log_id in self.sessions:
