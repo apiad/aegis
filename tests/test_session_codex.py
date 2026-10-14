@@ -368,3 +368,11 @@ async def test_a_stop_during_a_provider_restart_leaves_no_child(
     await until(
         lambda: not any(alive(p) for p in pids), timeout=2, what="every child gone"
     )
+
+
+async def test_a_side_note_window_reads_a_codex_fold(cx):
+    from aegis import btw
+
+    await cx.turn("hello")
+    text = btw.window(cx.session.entries()).text
+    assert "user: hello" in text and "assistant: you said: hello" in text

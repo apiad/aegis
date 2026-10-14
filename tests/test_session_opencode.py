@@ -326,3 +326,11 @@ async def test_opencode_may_read_its_inbox_under_write(oc):
         ("*", "deny"),
         (f"{oc.session.inbox}/*", "allow"),
     ]
+
+
+async def test_a_side_note_window_reads_an_opencode_fold(oc):
+    from aegis import btw
+
+    await oc.turn("hello")
+    text = btw.window(oc.session.entries()).text
+    assert "user: hello" in text and "assistant: " in text
