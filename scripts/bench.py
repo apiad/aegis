@@ -532,6 +532,63 @@ def fleet_load(playwright) -> dict:
     return {"fleet_load_ms": median("fleet_load_ms", loads[5:])}
 
 
+async def _term_echo(samples: int = 200) -> dict:
+    """A keystroke's echo in one terminal while another prints at full speed
+    (terminal.py's READ_PER_S cap)."""
+    import os
+    import statistics
+    import tempfile
+
+    from aegis.term_store import CastStore
+    from aegis.terminal import Terminal
+
+    got = asyncio.Event()
+
+    def heard(t, ops):
+        if any("x" in o.get("o", "") for o in ops):
+            got.set()
+
+    def meta(name):
+        return {
+            "id": f"t-bench-{name}",
+            "name": name,
+            "profile": name,
+            "cols": 120,
+            "rows": 40,
+        }
+
+    env = {"PATH": os.environ["PATH"], "TERM": "xterm-256color"}
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        flood = Terminal(
+            meta("flood"), CastStore(root / "f"), lambda t, ops: None, lambda t: None
+        )
+        echo = Terminal(meta("echo"), CastStore(root / "e"), heard, lambda t: None)
+        await flood.start(
+            ["yes", "a line of output from a busy program"], root, env, None
+        )
+        await echo.start(["cat"], root, env, None)
+        await asyncio.sleep(0.5)
+        loop = asyncio.get_running_loop()
+        began, read0 = loop.time(), flood.bytes_read
+        times = []
+        for _ in range(samples):
+            got.clear()
+            t0 = time.perf_counter()
+            echo.input("x")
+            await asyncio.wait_for(got.wait(), 5)
+            times.append((time.perf_counter() - t0) * 1000)
+            await asyncio.sleep(0.01)
+        rate = (flood.bytes_read - read0) / (loop.time() - began) / 1e6
+        await flood.stop(1)
+        await echo.stop(1)
+    SAMPLES["term_echo_p95_ms"] = [round(x, 3) for x in times]
+    return {
+        "term_echo_p95_ms": statistics.quantiles(times, n=20)[18],
+        "term_flood_mb_s": rate,
+    }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path)
@@ -542,6 +599,7 @@ def main() -> None:
     metrics.update(asyncio.run(server_cost(harness="opencode")))
     metrics.update(asyncio.run(server_cost(harness="codex")))
     metrics.update(boot_cost())
+    metrics.update(asyncio.run(_term_echo()))
     with sync_playwright() as p:
         metrics.update(browser_runs(p))
         metrics.update(fleet_load(p))
