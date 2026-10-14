@@ -202,7 +202,10 @@ export async function mountTerminal(host, { id, conn, server = null, readOnly = 
     get appCursor() {
       return term.modes.applicationCursorKeysMode;
     },
+    // The host outlives this terminal: the next one mounts in it.
     dispose() {
+      leave();
+      host.removeEventListener("click", enter);
       unsub();
       ro.disconnect();
       clearTimeout(timer);

@@ -35,6 +35,7 @@ import { Dictation } from "./dictation.js";
 import { Attachments } from "./attach.js";
 import { dur, planTimes } from "./plantime.js";
 import { setToastOpener, toast } from "./toast.js";
+import { closeTerm, drawCard, openTerm } from "./termview.js";
 import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
 import { closeInstallDialog, startInstall } from "./install.js";
 import { checkRotation, closePushPanel, openPushPanel, pushSupported, setupPush } from "./pushpanel.js";
@@ -315,7 +316,7 @@ for (const b of document.querySelectorAll("#fleet-order button"))
     render();
   });
 
-// -- routing: #fleet, #new, #settings, #journal, #help[=<page>], #s=<key>, #read=<key>, #w=<n>:<key> --
+// -- routing: #fleet, #new, #settings, #journal, #help[=<page>], #s=<key>, #t=<key>, #read=<key>, #w=<n>:<key> --
 // A help ref is URI-encoded; a hand-typed malformed one is a page name nobody has.
 const unhash = (s) => {
   try {
@@ -327,6 +328,7 @@ const unhash = (s) => {
 function route() {
   const h = location.hash.slice(1);
   if (h.startsWith("s=")) return { view: "session", id: h.slice(2) };
+  if (h.startsWith("t=")) return { view: "term", id: h.slice(2) };
   if (h.startsWith("read=")) return { view: "read", id: h.slice(5) };
   // Window n of a session's canvas, a browser tab of its own (js/canvas.js).
   const w = /^w=(\d+):(.+)$/.exec(h);
@@ -739,7 +741,7 @@ function flushSessions() {
   if (!booted) return;
   ordered = ordered.map((m) => sessions.get(m.key)).filter(Boolean);
   const r = route();
-  for (const id of ids) if (sessions.has(id)) patchTab($("tablist"), sessions.get(id), r.view === "session" ? r.id : null, tabActions);
+  for (const id of ids) if (sessions.has(id)) patchTab($("tablist"), sessions.get(id), tabFocus(r), tabActions);
   if (r.view === "fleet") {
     const home = [...ids].filter((id) => !sessions.get(id)?.server);
     const regroup = home.some((id) => !patchCard($("cards"), sessions.get(id), openSession, fleetOrder, closeById));
@@ -749,12 +751,15 @@ function flushSessions() {
     drawBand();
     markNeedsNet(); // the cards' Archive buttons
   } else if (r.view === "session" && ids.has(r.id)) renderMeta(sessions.get(r.id));
+  else if (r.view === "term" && ids.has(r.id)) drawCard(termCard(r.id));
   else if (r.view === "window" && ids.has(r.id)) drawWindow(r);
   drawNav(); // the needs count
 }
 
 function onSessions() {
-  const ids = order.arrange([...sessions.values()].sort((a, b) => a.created_at - b.created_at).map((m) => m.key));
+  // A terminal's card has no created_at; it starts when it started.
+  const since = (m) => m.created_at ?? m.started_at ?? 0;
+  const ids = order.arrange([...sessions.values()].sort((a, b) => since(a) - since(b)).map((m) => m.key));
   ordered = ids.map((id) => sessions.get(id));
   render();
   drawNav(); // the needs count
@@ -767,13 +772,21 @@ function onSessions() {
 // the page was closed would ping on every cold start.
 let homeLive = false;
 function ping() {
-  if (homeLive) updatePing([...sessions.values()].filter((m) => !m.stale), { onOpen: openSession });
+  if (homeLive) updatePing([...sessions.values()].filter((m) => !m.stale && m.kind !== "term"), { onOpen: openSession });
 }
 
 // -- rendering -----------------------------------------------------------------
 // A window tab draws one window of a session's canvas and never becomes
 // another view: window 1's pages would run in it a second time.
-const openSession = (id) => route().view === "window" || go(`#s=${id}`);
+const openSession = (id) => route().view === "window" || go(hashOf(id));
+// A tab's hash: a terminal's view, or a session's.
+const hashOf = (key) => (sessions.get(key)?.kind === "term" ? `#t=${key}` : `#s=${key}`);
+const tabFocus = (r) => (r.view === "session" || r.view === "term" ? r.id : null);
+// The open terminal's card, with the log id and server it is reached by.
+function termCard(key) {
+  const m = sessions.get(key);
+  return m && { ...m, id: forKey(key).log_id };
+}
 // The service worker (sw.js): it keeps this build for offline use and raises
 // notifications. A new build downloads beside this one; reloading takes it.
 startWorker({
@@ -821,7 +834,13 @@ function render() {
   if (!booted) return;
   tellView(); // the view may have changed with the same session shown
   const r = route();
-  if (r.view === "session" && !sessions.has(r.id)) {
+  if (r.view !== "term") closeTerm();
+  // A session's link to a terminal, or the reverse, opens the right view.
+  if ((r.view === "session" || r.view === "term") && sessions.has(r.id) && `#${r.view[0]}=${r.id}` !== hashOf(r.id)) {
+    history.replaceState(null, "", hashOf(r.id));
+    return render();
+  }
+  if ((r.view === "session" || r.view === "term") && !sessions.has(r.id)) {
     const far = forKey(r.id).server;
     // A far session whose server's list has not arrived yet: wait for it.
     if (far && (!linksLoaded || (linkOf(far) && !remote.get(far)?.loaded))) return;
@@ -831,7 +850,7 @@ function render() {
     go("#fleet"); // closed here or elsewhere
     return;
   }
-  renderTabs($("tablist"), ordered, r.view === "session" ? r.id : null, tabActions);
+  renderTabs($("tablist"), ordered, tabFocus(r), tabActions);
   $("tablist").querySelector(".tab.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   $("tab-fleet").classList.toggle("on", r.view === "fleet");
   $("tab-add").classList.toggle("on", r.view === "spawn");
@@ -891,6 +910,13 @@ function render() {
       drawQuota();
       drawSideHost();
     }
+  } else if (r.view === "term") {
+    watchHost(null);
+    follow(null);
+    show("term");
+    const card = termCard(r.id);
+    openTerm(card.id, card, { conn, server: card.server ?? null }).catch((e) => toast(e.message, { kind: "error" }));
+    setTitle(`${card.name} · aegis`);
   } else if (r.view === "window") {
     // The session's card and transcript, as the session view has them (the
     // panes need the entries), with only window n drawn.
@@ -1143,7 +1169,7 @@ function drawSideHost() {
   }
   $("s-host-tiles").replaceChildren(...tiles);
   $("s-host-rows").replaceChildren(...rows);
-  const live = (s.server ? on(s.server) : local()).filter((m) => m.state !== "stopped");
+  const live = (s.server ? on(s.server) : local()).filter((m) => m.state !== "stopped" && m.kind !== "term");
   const sized = live.filter((m) => m.context_window && m.context_tokens);
   $("s-host-live").textContent = String(live.length);
   $("s-host-ctx").textContent = sized.length
@@ -1534,7 +1560,7 @@ setInterval(() => {
   if (root.dataset.view === "fleet" && local().some((m) => m.stale)) drawBand();
   if (root.dataset.view === "fleet") for (const c of document.querySelectorAll(".card")) {
     const m = sessions.get(c.dataset.id);
-    if (m) {
+    if (m && m.kind !== "term") {
       c.querySelector(".when").textContent = ago(m.last_activity);
       tickPlan(c, m);
     }
@@ -1824,7 +1850,7 @@ function fleetMove(delta) {
 
 function fleetOpen() {
   const n = fleetItems().find((x) => x.dataset.id === fleetSel);
-  if (n) go(n.classList.contains("card") ? `#s=${fleetSel}` : `#read=${fleetSel}`);
+  if (n) go(n.classList.contains("card") ? hashOf(fleetSel) : `#read=${fleetSel}`);
 }
 
 $("arch-q").addEventListener("input", () => {
@@ -2234,7 +2260,7 @@ installKeys(
     tab(ev) {
       const n = Number(ev.altKey ? ev.code.slice(5) : ev.key);
       if (n === 0) go("#fleet");
-      else if (ordered[n - 1]) go(`#s=${ordered[n - 1].key}`);
+      else if (ordered[n - 1]) go(hashOf(ordered[n - 1].key));
     },
     commands() {
       if (route().view !== "session") return;
@@ -2261,7 +2287,7 @@ installKeys(
 
 // Alt+[ and Alt+]: the Fleet, then the tabs, round.
 function cycle(d) {
-  const all = ["#fleet", ...ordered.map((m) => `#s=${m.key}`)];
+  const all = ["#fleet", ...ordered.map((m) => hashOf(m.key))];
   const i = all.indexOf(location.hash || "#fleet");
   go(all[i < 0 ? (d > 0 ? 0 : all.length - 1) : (i + d + all.length) % all.length]);
 }
@@ -2563,6 +2589,10 @@ const confirmClose = async (s) => s.attention === "done" || (await askClose(s));
 
 async function closeSession(s) {
   if (offline() || !(await confirmClose(s))) return;
+  if (s.kind === "term") {
+    const { server, log_id } = forKey(s.key);
+    return conn.call("term.close", { id: log_id }, server).catch((e) => toast(e.message, { kind: "error" }));
+  }
   try {
     await callFor(s.key, "session.close");
   } catch (e) {

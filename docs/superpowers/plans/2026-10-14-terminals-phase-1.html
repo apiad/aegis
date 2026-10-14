@@ -2182,7 +2182,7 @@ export async function mountTerminal(host, { id, conn, server = null, readOnly = 
 </div>
 </details>
 
-<details class="task" id="task-8" data-state="pending">
+<details class="task" id="task-8" data-state="done">
 <summary><span class="num">8</span><span><span class="ttl">The terminal's tab: the view, both modes, the box, the key row, the panel</span><span class="files">client/index.html · js/termview.js · js/app.js · js/tabs.js · js/fleet.js · js/keys.js · tests/test_terminal_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>A terminal's tab has a session's skeleton: the terminal where the transcript is, a box under it, the panel on the right (spec section 06). The client has no per-tab view module (<code>app.js:820-910</code>), so this task adds a view, a route and a branch in each place that draws a card.</p>
