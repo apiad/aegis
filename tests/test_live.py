@@ -1379,3 +1379,59 @@ async def test_real_claude_passes_a_brief_past_handoff_at_and_hands_off(tmp_path
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)
+
+
+async def test_real_btw_answers_mid_turn_and_the_agent_never_receives_it(
+    tmp_path: Path,
+):
+    """A side note asked while a real session runs a long Bash call: the
+    answer comes from the transcript, the turn goes on, and nothing of the
+    side note is ever sent to claude."""
+    from .test_agents import World
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"default_agent: haiku\nagents:\n"
+        f"  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
+        "btw: {agent: haiku}\n"
+    )
+    w = await World(tmp_path, claude).start()
+    try:
+        r = await w.app.registry.call("session.spawn", {"agent": "haiku"})
+        s = w.app.sessions.sessions[r["log_id"]]
+        await s.send("Remember the secret word HERON. Reply with the single word OK.")
+        await until(lambda: s.status == "idle" and s.cost_usd, timeout=90, what="OK")
+        await s.send(
+            "Run exactly this bash command in the foreground: python3 -c 'import time; time.sleep(30)'"
+        )
+        await until(
+            lambda: any(e["kind"] == "tool" for e in s.entries()),
+            timeout=90,
+            what="the Bash call",
+        )
+        q = "what is the secret word I asked you to remember?"
+        await w.app.registry.call(
+            "session.send", {"log_id": s.log_id, "text": f"/btw {q}"}
+        )
+        await until(
+            lambda: any(
+                e["kind"] == "btw" and e["status"] != "running" for e in s.entries()
+            ),
+            timeout=90,
+            what="the side note's answer",
+        )
+        (e,) = [e for e in s.entries() if e["kind"] == "btw"]
+        assert e["status"] == "ok", e["detail"]
+        assert "HERON" in e["detail"]["answer"].upper()
+        assert s.status == "working", "the turn went on while the side note ran"
+        await until(lambda: s.status == "idle", timeout=90, what="the turn's end")
+        sent = [
+            r.get("text", "")
+            for r in read_store(w.app.sessions.store_path(s.log_id))[0]
+            if r.get("kind") == "send"
+        ]
+        assert sent and not any("secret word I asked" in t for t in sent)
+        assert s.wire()["btw_cost_usd"] > 0
+    finally:
+        await w.stop()

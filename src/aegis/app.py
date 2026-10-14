@@ -2,7 +2,7 @@
 
 Operations: ``agents.list``, ``session.spawn``, ``session.send`` (which
 resolves a ``/`` line first, ``commands.py``), ``session.read``,
-``recap.request``, ``dictation.prepare``, ``session.configure``,
+``recap.request``, ``btw.cancel``, ``dictation.prepare``, ``session.configure``,
 ``commands.list``, ``session.interrupt``, ``session.stop``, ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``, ``file.peek``,
 ``attachment.begin``, ``attachment.put``, ``attachment.drop``,
@@ -87,6 +87,7 @@ from .quota_gate import (
     pools_wire,
     refusal,
 )
+from .btws import SideNotes
 from .recaps import Recaps
 from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
 from .tokens import TokenStore
@@ -190,6 +191,11 @@ class ReadParams(_Strict):
 class RecapParams(_Strict):
     log_id: str
     force: bool = False
+
+
+class BtwCancelParams(_Strict):
+    log_id: str
+    id: str
 
 
 class ConfigureParams(_Strict):
@@ -360,6 +366,8 @@ class App:
         reg.mcp_url = f"{base_url.rstrip('/')}{MCP_PATH}" if base_url else None
         self.versions = Versions()
         self.recaps = Recaps(self)
+        self.side_notes = SideNotes(self)
+        self.sessions.side_notes = self.side_notes
         self.nudges = Nudges(self.sessions)
         # Who the people on this server are, as a link tells the far side. One
         # user per server for now: whoever started it (links.py).
@@ -556,6 +564,7 @@ class App:
         await self.host.stop()
         await self.monitors.shutdown()
         await self.recaps.shutdown()
+        await self.side_notes.shutdown()
         await self.sessions.shutdown()
         await asyncio.to_thread(self.journal.stop)
         restarts.stopped(self.roots.state_root, stopping_at)
@@ -713,6 +722,8 @@ class App:
             return reg.rename(s.log_id, arg, None)
         if name == "title":
             return reg.rename(s.log_id, None, arg)
+        if name == "btw":
+            return self.side_notes.ask(s, arg)
         if name == "help":
             return None  # the client opens its menu or the Help tab; nothing goes to claude
         if name == "tutorial":
@@ -1207,6 +1218,11 @@ class App:
         async def recap_request(p: RecapParams, caller):
             """A recap of where the session stands, for a person landing on its tab."""
             return await self.recaps.request(reg.open(p.log_id), p.force)
+
+        @r.op("btw.cancel", BtwCancelParams, owned="log_id")
+        async def btw_cancel(p: BtwCancelParams, caller):
+            """Cancel a running side note; its block keeps the question, folded."""
+            return self.side_notes.cancel(reg.open(p.log_id), p.id)
 
         @r.op("dictation.prepare", NoParams)
         async def dictation_prepare(p: NoParams, caller):

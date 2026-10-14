@@ -6,10 +6,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
 import time
 
-from . import recap
+from . import oneshot, recap
 
 
 class Recaps:
@@ -57,37 +56,15 @@ class Recaps:
 
     async def _make(self, s, cfg: dict, upto: int) -> dict:
         prompt = recap.window(s.fold().entries(), s.unread, s.standing)
-        cwd = self.app.roots.state_root / "oneshot"
-        cwd.mkdir(parents=True, exist_ok=True)
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *recap.argv(self.app.claude_bin, cfg["model"], prompt),
-                cwd=cwd,
-                env={**os.environ, "MAX_THINKING_TOKENS": "0"},
-                stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
+            out = await oneshot.run(
+                recap.argv(self.app.claude_bin, cfg["model"], prompt),
+                self.app.roots.state_root / "oneshot",
+                recap.TIMEOUT_S,
             )
-        except OSError as e:
+        except oneshot.OneshotError as e:
             return {"status": "failed", "why": str(e)}
-        try:
-            out, _ = await asyncio.wait_for(proc.communicate(), recap.TIMEOUT_S)
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-            return {"status": "failed", "why": f"no answer in {recap.TIMEOUT_S}s"}
-        except BaseException:
-            # Cancelled (server shutdown): a claude left running would keep billing.
-            if proc.returncode is None:
-                proc.kill()
-                await proc.wait()
-            raise
-        if proc.returncode != 0:
-            return {
-                "status": "failed",
-                "why": f"claude exited with code {proc.returncode}",
-            }
-        value, cost, ms = recap.parse(out.decode(errors="replace"))
+        value, cost, ms = recap.parse(out)
         if value is None:
             s.add_recap_cost(cost)  # paid, even with nothing to show
             return {"status": "failed", "why": "the model returned nothing usable"}

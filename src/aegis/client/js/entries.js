@@ -431,6 +431,11 @@ export function hhmm(ts) {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+// A click folds or opens a side note in this browser only; the server's
+// "folded" is the default until then (spec /btw, section 07). Keyed by the
+// side note's own id: entry ids repeat across sessions.
+export const btwFolds = new Map();
+
 function row(entry, cls, body) {
   const r = el("div", `row ${cls}`);
   r.dataset.id = entry.id;
@@ -648,6 +653,42 @@ const RENDERERS = {
     body.append(ft);
     const r = row(e, "recap", body);
     r.querySelector(".g").replaceChildren(icon("sparkle"));
+    return r;
+  },
+
+  btw(e) {
+    const det = e.detail || {};
+    const body = el("div", "body");
+    const sum = el("span", "sum");
+    const end = e.status === "ok" ? det.answer : e.status === "running" ? "…" : e.status === "cancelled" ? "cancelled" : det.why;
+    sum.append(el("span", "lbl", "btw · "), el("span", null, `${det.question} · ${end || ""}`));
+    const hd = el("div", "hd");
+    hd.append(el("span", null, "btw"), el("span", "q", det.question));
+    const full = el("div", "full");
+    if (e.status === "running") {
+      full.append(el("div", "ans wait", "reading the transcript…"));
+    } else if (e.status === "ok") {
+      const ans = markdown(det.answer);
+      ans.classList.add("ans");
+      full.append(ans);
+      if (det.needs_more) full.append(el("div", "more", "needs more: the window did not hold the answer"));
+    } else if (e.status === "failed") {
+      full.append(el("div", "why", `failed: ${det.why}`));
+    }
+    const ft = el("div", "ft");
+    const secs = det.duration_ms ? `${(det.duration_ms / 1000).toFixed(1)}s` : "";
+    ft.append(el("span", null, [det.model, secs, det.cost_usd ? money(det.cost_usd) : "", det.header].filter(Boolean).join(" · ")));
+    if (e.status === "running") {
+      const stop = el("button", "btn link", "cancel");
+      stop.dataset.btwCancel = det.id;
+      ft.append(stop);
+    }
+    full.append(ft);
+    body.append(sum, hd, full);
+    const folded = btwFolds.has(det.id) ? btwFolds.get(det.id) : det.folded;
+    const r = row(e, folded ? "btw folded" : "btw", body);
+    r.dataset.btw = det.id; // unique across sessions, unlike the entry id
+    r.querySelector(".g").replaceChildren(icon("btw"));
     return r;
   },
 

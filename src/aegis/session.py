@@ -78,6 +78,7 @@ _SOON = (
     "context_window",
     "unread",
     "recap_cost_usd",
+    "btw_cost_usd",
     "tool_calls",
     "cache_recent",
     "compactions",
@@ -243,6 +244,7 @@ class Session:
         unread: list[str] | None = None,
         last_read_at: float | None = None,
         recap_cost_usd: float = 0.0,
+        btw_cost_usd: float = 0.0,
         last_exit: dict | None = None,
         restart_continues: int = 0,
         quota_paused: str | None = None,
@@ -311,6 +313,7 @@ class Session:
         self.last_read_at = last_read_at
         # What this session's recaps cost (recaps.py), apart from its own turns.
         self.recap_cost_usd = recap_cost_usd
+        self.btw_cost_usd = btw_cost_usd
         # How the last process ended ({"code", "at"}), and how many times in a
         # row a restart has continued this turn (restarts.py). Both in the meta,
         # because boot decides from metas alone.
@@ -364,6 +367,7 @@ class Session:
             "unread": sorted(self.unread),
             "last_read_at": self.last_read_at,
             "recap_cost_usd": self.recap_cost_usd,
+            "btw_cost_usd": self.btw_cost_usd,
             "pid": self.pid,
             "pid_started": self._pid_started if self._proc else None,
             "last_exit": self.last_exit,
@@ -792,6 +796,9 @@ class Session:
     def add_recap_cost(self, cost: float) -> None:
         self._set(recap_cost_usd=round(self.recap_cost_usd + cost, 6))
 
+    def add_btw_cost(self, cost: float) -> None:
+        self._set(btw_cost_usd=round(self.btw_cost_usd + cost, 6))
+
     def _record(self, record: dict, events: list | None = None) -> None:
         fold = self.fold()
         stored = self.store.append({"ts": time.time(), "src": "aegis", **record})
@@ -802,10 +809,13 @@ class Session:
             "artifact_event",
             "name",
             "layout",
+            "btw",
+            "btw_answer",
         ):
             # aegis talking to the person, not the session doing anything; nor
             # a person acting on a page, so the needs-you order holds still
-            # while they drag a slider; nor a rename; nor arranging the canvas.
+            # while they drag a slider; nor a rename; nor arranging the canvas;
+            # nor a side note, which the person asked and the agent never sees.
             self.last_activity = stored["ts"]
         ops = fold.apply(stored, events)
         new = [

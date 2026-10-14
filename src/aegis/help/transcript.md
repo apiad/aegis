@@ -33,6 +33,12 @@ that says what it holds; click the line to open it. The third leaves only your
 messages and the agent's replies. The latest recap stays shown at every level;
 older recaps fold at the third. The browser remembers the level.
 
+A side note you asked with `/btw` is a block with the question on top and the
+answer below, with the model, how long it took, what it cost and how much
+of the transcript it read. It never folds into those lines. Asking another folds the
+earlier ones to a line each; click a block's question to fold or open it in
+this browser. While it runs, its cancel link stops it.
+
 ## Replies
 
 Replies and your own messages are Markdown. A code block shows its language
