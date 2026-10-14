@@ -246,8 +246,11 @@ it only labels your message on their screen. If its schema is not loaded, load \
 it and plan_update with ToolSearch \
 `select:mcp__aegis__turn_end,mcp__aegis__plan_update`. Pass `needs_you` when \
 your message asks them anything, `review` when it gives them something to \
-read, or `done` when it reports finished work, with `line` as one sentence \
-saying what they must answer, what to read, or what got done. Example, after \
+read, or `done` only when the whole task they gave you is over, with `line` as \
+one sentence saying what they must answer, what to read, or what got done. \
+`done` puts an archive button on the card, so a turn that finished a step \
+while work or waiting remains passes `review`, and a plan with unfinished \
+items cannot end in `done`: finish or trim the plan first. Example, after \
 offering two options: turn_end(attention="needs_you", line="Ship the release \
 now or wait for the review?", replies=["ship it", "wait"]). The only turns \
 without turn_end are those you end to wait on a monitor or a queue task. For \
