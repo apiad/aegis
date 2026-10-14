@@ -7,6 +7,7 @@ from aegis.app import App
 from aegis.help_ops import tutorial_prompt
 from aegis.helppages import load
 from aegis.helpstate import installed
+from aegis.names import TITLE_MAX
 from aegis.ops import USER, Caller, OpError, Principal
 from aegis.roots import make_roots
 from aegis.transcript.store import read_store
@@ -122,7 +123,7 @@ async def test_a_mistyped_page_starts_nothing_and_any_real_page_can_be_toured(ap
     assert (await call(app, "help.state"))["tutorial"] is False
     r = await call(app, "help.guide", {"kind": "tutorial", "page": "monitors"})
     s = app.sessions.sessions[r["log_id"]]
-    assert s.title == f"Tutorial: {PAGES['monitors'].title}"
+    assert s.title == f"Tour: {PAGES['monitors'].title}"
 
 
 async def test_a_dismiss_is_recorded_for_that_person_only(app):
@@ -162,3 +163,46 @@ async def test_slash_tutorial_alone_runs_getting_started_and_completes_tutorials
     # Nothing went to the session it was typed in.
     records, _ = read_store(app.sessions.store_path(src["log_id"]))
     assert not [x for x in records if x.get("kind") == "send"]
+
+
+async def test_a_how_to_page_is_toured_and_leaves_the_tutorial_on_offer(app):
+    r = await call(app, "help.guide", {"kind": "tutorial", "page": "monitors"})
+    s = app.sessions.sessions[r["log_id"]]
+    assert s.title == f"Tour: {PAGES['monitors'].title}"
+    md = await replied(app, r["log_id"])
+    assert "`monitors`" in md and "guided tour" in md
+    assert (await call(app, "help.state"))["tutorial"] is False
+
+
+async def test_an_ask_carries_the_question_and_the_page_it_came_from(app):
+    q = "Can two queues share a worker?"
+    r = await call(app, "help.guide", {"kind": "ask", "question": q, "page": "queues"})
+    s = app.sessions.sessions[r["log_id"]]
+    assert s.title == f"Help: {q}"
+    md = await replied(app, r["log_id"])
+    assert q in md and "`queues`" in md and "help_search" in md
+    assert (await call(app, "help.state"))["tutorial"] is False
+
+
+async def test_an_ask_from_the_list_names_no_page(app):
+    r = await call(app, "help.guide", {"kind": "ask", "question": "what is a mark"})
+    md = await replied(app, r["log_id"])
+    assert "the list of help pages" in md
+
+
+async def test_an_ask_without_a_question_or_with_a_wrong_page_starts_nothing(app):
+    with pytest.raises(OpError) as e:
+        await call(app, "help.guide", {"kind": "ask"})
+    assert e.value.code == "bad_params"
+    with pytest.raises(OpError) as e:
+        await call(app, "help.guide", {"kind": "ask", "question": "x", "page": "nope"})
+    assert e.value.code == "unknown_page"
+    assert app.sessions.sessions == {}
+
+
+async def test_a_long_question_with_line_breaks_gets_a_one_line_title(app):
+    q = "why\ndoes   this\n" + "x" * 500
+    r = await call(app, "help.guide", {"kind": "ask", "question": q})
+    title = app.sessions.sessions[r["log_id"]].title
+    assert "\n" not in title and len(title) <= TITLE_MAX
+    assert title.startswith("Help: why does this x")
