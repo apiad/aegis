@@ -442,7 +442,10 @@ def run(text: str) -> None:
                 "claude_code_version": "0.0-fake",
             }
         )
-    word, _, arg = text.partition(" ")
+    # A scheduled prompt's command is the line under its header; the check's
+    # stdout below that is not part of it. The echo keeps the whole prompt.
+    cmd = text.splitlines()[1] if text.startswith("> from schedule:") else text
+    word, _, arg = cmd.partition(" ")
     if word in ("/context", "/model", "/effort", "/rename"):
         emit(
             {

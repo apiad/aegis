@@ -378,6 +378,9 @@ class App:
         self.registry.permission_of = lambda log_id: (
             s.spec.permission if (s := self.sessions.sessions.get(log_id)) else None
         )
+        self.registry.schedule_of = lambda log_id: (
+            s.schedule if (s := self.sessions.sessions.get(log_id)) else None
+        )
         self._register()
         register_agent_ops(self)
         register_config_ops(self)
@@ -1005,7 +1008,13 @@ class App:
             if not g.may_start:
                 raise OpError("quota_closed", refusal(spec.owner or self.user, g))
             try:
-                s = await reg.spawn(spec, quiet=p.quiet)
+                # A run's child carries its schedule, so spawn: false holds for
+                # grandchildren too (ops.NO_SPAWN).
+                s = await reg.spawn(
+                    spec,
+                    quiet=p.quiet,
+                    schedule=parent.schedule if parent else None,
+                )
             except FileNotFoundError as e:
                 raise OpError(
                     "harness_not_found", f"cannot run {self._bin(spec.harness)!r}: {e}"

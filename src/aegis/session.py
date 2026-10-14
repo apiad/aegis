@@ -236,6 +236,7 @@ class Session:
         host: Host = NO_HOST,
         held: list[dict] | None = None,
         worker: dict | None = None,
+        schedule: dict | None = None,
         opencode_bin: str = "opencode",
         codex_bin: str = "codex",
         title_set: bool = False,
@@ -301,6 +302,9 @@ class Session:
         self.worker = worker
         # No tab until its turn ends (#386); a card in the Fleet meanwhile.
         self.quiet = quiet
+        # A schedule's run: {"name", "run", "spawn"}, inherited by its children
+        # (schedules.py); None for any other session.
+        self.schedule = schedule
         # The fold's view of the agent's plan and last report; persisted so a
         # card at boot needs no store (DESIGN.md, boot reads meta files).
         self.standing: dict = standing or EMPTY_STANDING
@@ -360,6 +364,7 @@ class Session:
             "activity": self.activity,
             "held": self.held,
             "worker": self.worker,
+            "schedule": self.schedule,
             "standing": self.standing,
             "unread": sorted(self.unread),
             "last_read_at": self.last_read_at,

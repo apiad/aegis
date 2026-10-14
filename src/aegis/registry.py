@@ -363,6 +363,7 @@ class Registry(Host):
             host=self,
             held=meta.get("held"),
             worker=meta.get("worker"),
+            schedule=meta.get("schedule"),
             standing=meta.get("standing"),
             unread=meta.get("unread"),
             last_read_at=meta.get("last_read_at"),
@@ -547,6 +548,7 @@ class Registry(Host):
         worker: dict | None = None,
         title: str = "",
         quiet: bool = False,
+        schedule: dict | None = None,
     ) -> Session:
         log_id = mint_log_id()
         s = self._session(
@@ -557,6 +559,7 @@ class Registry(Host):
                 "worker": worker,
                 "title": title,
                 "quiet": quiet,
+                "schedule": schedule,
             }
         )
         self.sessions[log_id] = s
