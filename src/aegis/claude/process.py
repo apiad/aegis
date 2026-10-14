@@ -188,11 +188,15 @@ class ClaudeProcess:
     async def _pump_stderr(self) -> None:
         proc = self._proc
         assert proc and proc.stderr
-        with self.stderr_path.open("ab") as f:
-            async for raw in proc.stderr:
-                f.write(raw)
-                f.flush()
-                self._stderr_tail.append(raw.decode("utf-8", "replace").rstrip())
+        async for raw in proc.stderr:
+            self._stderr_tail.append(raw.decode("utf-8", "replace").rstrip())
+            try:
+                with self.stderr_path.open("ab") as f:
+                    f.write(raw)
+            except OSError:
+                # The tail keeps it for the exit report. Raising would end the
+                # drain, fill the pipe and block the child (#395).
+                pass
 
     async def write(self, obj: dict) -> None:
         proc = self._proc

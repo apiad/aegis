@@ -61,7 +61,9 @@ started a session yet.
 
 `queues:` maps a queue's name to `agent:` (the agent its workers start from)
 and `max_parallel:` (how many workers run at once, a positive number). A queue
-missing either is reported and takes no tasks. See the queues page for how
+missing either is reported and takes no tasks. `quiet:` is true unless set to
+false: a worker then has no tab, only a dimmed card in the Fleet, unless it
+fails. See the queues page for how
 tasks run.
 
 ## Recaps

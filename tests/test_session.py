@@ -1,3 +1,4 @@
+import errno
 import os
 from pathlib import Path
 
@@ -202,6 +203,61 @@ async def test_a_2mb_line_is_stored_and_its_entry_carries_only_the_tail(h):
     assert tool["status"] == "ok" and tool["detail"]["result"] == "30000 lines"
     assert len(tool["detail"]["tail"].encode()) <= 8192 + 3
     assert h.path.stat().st_size > 2_000_000
+
+
+async def test_a_line_the_store_cannot_take_is_dropped_and_the_next_turn_shows(
+    tmp_path, fake_claude
+):
+    """A full disk fails the store's append. The line is lost, but the reader
+    goes on, so the session shows the next turn once there is room (#395)."""
+    h = Harness(tmp_path, fake_claude)
+    s = h.session
+    await s.start()
+    try:
+        append, dropped, full = s.store.append, [], [False]
+
+        def append_unless_full(record: dict) -> dict:
+            if full[0]:
+                dropped.append(record.get("line", ""))
+                raise OSError(errno.ENOSPC, "No space left on device")
+            return append(record)
+
+        s.store.append = append_unless_full
+        await s.send("first")
+        full[0] = True
+        await until(
+            lambda: any('"type": "result"' in line for line in dropped),
+            what="the first turn's result, dropped",
+        )
+        full[0] = False
+        await s.send("second")
+        await until(
+            lambda: any(
+                e["kind"] == "prose" and "second" in e["md"] for e in s.entries()
+            ),
+            what="the second turn's answer",
+        )
+        await until(lambda: s.status == "idle", what="idle")
+    finally:
+        await s.stop()
+
+
+async def test_a_stderr_file_that_cannot_be_written_still_reports_the_exit(
+    tmp_path, fake_claude
+):
+    """The stderr drain keeps the tail in memory when the file refuses a write,
+    so a dead child still leaves the session stopped with its last words (#395)."""
+    h = Harness(tmp_path, fake_claude)
+    (tmp_path / "state" / "stderr" / "log-abc.log").mkdir(parents=True)
+    await h.session.start()
+    try:
+        await h.session.send("/exit 3")
+        await until(lambda: h.session.status == "stopped", what="stopped")
+        last = h.session.entries()[-1]
+        assert last["summary"] == "Claude Code exited with code 3"
+        assert "fatal: something broke" in last["detail"]["tail"]
+    finally:
+        await h.session.stop()
 
 
 async def test_stop_ends_the_child_and_keeps_the_session(h):

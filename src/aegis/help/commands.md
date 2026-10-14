@@ -23,7 +23,7 @@ Tab or Enter picks one. Alt+/ opens the same menu over a draft.
 | `/title <text>` | set this session's title |
 | `/stop` | stop the process and keep the session |
 | `/btw <question>` | ask a side question about this session, even while the agent works. aegis answers it from the transcript with the agent `btw:` names in `.aegis.yaml`, in one call with no tools, and shows the answer as a block you can fold. The agent never sees the question or the answer. One runs at a time per session; the block's cancel stops it |
-| `/spawn <agent>[@server] [prompt]` | start a session, here or on a linked server; flags `--model`, `--effort`, `--permission` and `--cwd` go before the prompt |
+| `/spawn <agent>[@server] [prompt]` | start a session, here or on a linked server; flags `--quiet` (no tab until its turn ends; needs a prompt), `--model`, `--effort`, `--permission` and `--cwd` go before the prompt |
 | `/close` | close the session; it stays in the archive. The browser asks first unless the session is done |
 | `/help` | open the menu listing every command |
 | `/help <query>` | open the Help tab with those words searched, such as `/help queues` |

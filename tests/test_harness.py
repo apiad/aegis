@@ -60,6 +60,18 @@ def test_the_primer_asks_for_a_language_on_every_fence():
     assert "Label every code fence with its language" in PRIMER
 
 
+def test_the_primer_prefers_aegis_tools_over_the_harness():
+    """A harness's own waits, todo list and subagents never reach the person's
+    screen (#387)."""
+    from aegis.mcp import PRIMER
+
+    rule = PRIMER.split("Where aegis and your harness both offer a way")[1]
+    rule = rule.split("\n\n")[0]
+    for tool in ("monitor_start", "plan_update", "queue_enqueue", "session_spawn"):
+        assert tool in rule
+    assert "one self-contained HTML page" in PRIMER
+
+
 def test_opencode_is_a_harness():
     from aegis.opencode.harness import OpenCode
 

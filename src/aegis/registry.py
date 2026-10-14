@@ -124,6 +124,7 @@ class Registry(Host):
         if self.quota is not None:
             self.quota.turn_ended()
         self._retire_predecessor(session)
+        self._maybe_unquiet(session)
 
     def _retire_predecessor(self, new: Session) -> None:
         """After a handoff, archive the old session once the new one has
@@ -172,6 +173,11 @@ class Registry(Host):
         old = self.sessions.get(session.spec.continues or "")
         if old is not None and old.continued_by == session.log_id:
             old.mark_continued(None)
+        # A process that ends on its own failed: whatever its card says, the
+        # person should see it (#386). A SIGTERM is most likely the server's
+        # own stop under systemd, and the next boot continues the session.
+        if session.quiet and code not in restarts.SIGTERM_CODES:
+            self.set_quiet(session.log_id, False)
 
     def successor(self, old: Session) -> Session | str | None:
         """The live session continuing ``old`` after a handoff: "starting"
@@ -218,6 +224,22 @@ class Registry(Host):
             return {}
         t = self.queues.tasks.get(s.worker["task_id"]) if self.queues else None
         return {"worker": {**s.worker, "status": t.status if t else "gone"}}
+
+    # The attentions that end a quiet session's quiet (#386). A worker's
+    # result goes to its enqueuer and the worker is archived, so only its
+    # error is the person's.
+    BACK = frozenset({"done", "review", "needs_you", "error"})
+
+    def _maybe_unquiet(self, s: Session) -> None:
+        if not s.quiet:
+            return
+        kind = self._attention(s)["attention"]
+        # A worker done with its task is archived at once: its error goes to
+        # the enqueuer, and a tab would only flash while it stops.
+        if s.worker and self.queues is not None and self.queues.finished(s):
+            return
+        if kind == "error" or (not s.worker and kind in self.BACK):
+            self.set_quiet(s.log_id, False)
 
     def _attention(self, s: Session) -> dict:
         last = s.standing.get("last_message")
@@ -340,6 +362,7 @@ class Registry(Host):
             continued_by=None
             if meta.get("continued_by") == "starting"
             else meta.get("continued_by"),
+            quiet=bool(meta.get("quiet")),
         )
 
     def boot(self, prev: restarts.Previous = restarts.CLEAN) -> None:
@@ -504,13 +527,22 @@ class Registry(Host):
         return fold_records(read_store(path)[0]) if path.exists() else Fold()
 
     async def spawn(
-        self, spec: SpawnSpec, worker: dict | None = None, title: str = ""
+        self,
+        spec: SpawnSpec,
+        worker: dict | None = None,
+        title: str = "",
+        quiet: bool = False,
     ) -> Session:
         log_id = mint_log_id()
         s = self._session(
             {"log_id": log_id, "handle": mint_handle(self._handles())}
             | spec.record()
-            | {"created_at": time.time(), "worker": worker, "title": title}
+            | {
+                "created_at": time.time(),
+                "worker": worker,
+                "title": title,
+                "quiet": quiet,
+            }
         )
         self.sessions[log_id] = s
         self._publish("sessions", [{"upsert": s.wire()}])
@@ -555,6 +587,7 @@ class Registry(Host):
             "archived": False,
             "last_status": "stopped",
             "continued_by": None,
+            "quiet": False,  # a person reopening it wants to see it (#386)
         }
         s = self._session(meta)
         self.sessions[log_id] = s
@@ -602,6 +635,20 @@ class Registry(Host):
             meta["title_set"] = True
         self.metas.write(meta)
         return _public(meta)
+
+    def set_quiet(self, log_id: str, quiet: bool) -> dict:
+        """Hide a session's tab until its turn ends, or show it again (#386)."""
+        s = self.open(log_id)
+        attention = s.wire()["attention"]
+        if quiet and attention not in ("working", "waiting"):
+            raise OpError(
+                "not_running",
+                f"{s.handle} is {attention}; only a working or waiting session "
+                "can be quiet, since only its turn's end brings it back",
+            )
+        s._set(quiet=quiet)
+        self.metas.write(s.meta())
+        return s.wire()
 
     def archive(
         self,

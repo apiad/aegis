@@ -56,8 +56,8 @@ AEGIS: dict[str, Command] = {
         Command(
             "spawn",
             "<agent>[@server] [prompt]",
-            "Start a session, here or on a linked server; flags: --model, "
-            "--effort, --permission, --cwd",
+            "Start a session, here or on a linked server; flags: --quiet, "
+            "--model, --effort, --permission, --cwd",
         ),
         Command("close", "", "Close the session; it stays in the archive"),
         # The browser answers it: alone by opening the menu, with words by
@@ -83,7 +83,8 @@ def split(text: str) -> tuple[str, str] | None:
 
 SPAWN_FLAGS = ("model", "effort", "permission", "cwd")
 SPAWN_USAGE = (
-    "usage: /spawn <agent>[@server] [--model m] [--effort e] [--cwd path] [prompt]"
+    "usage: /spawn <agent>[@server] [--quiet] [--model m] [--effort e] [--cwd path] "
+    "[prompt]"
 )
 
 
@@ -96,6 +97,7 @@ class SpawnLine:
     effort: str | None = None
     permission: str | None = None
     cwd: str | None = None
+    quiet: bool = False
 
 
 def parse_spawn(arg: str) -> SpawnLine:
@@ -108,10 +110,15 @@ def parse_spawn(arg: str) -> SpawnLine:
     if not agent or (at and not server):
         raise OpError("bad_spawn", SPAWN_USAGE)
     flags: dict[str, str] = {}
+    quiet = False
     rest = rest.lstrip()
     while rest.startswith("--"):
         word, _, rest = rest.partition(" ")
         name = word[2:]
+        if name == "quiet":  # a bare flag: no tab until its turn ends (#386)
+            quiet = True
+            rest = rest.lstrip()
+            continue
         if name not in SPAWN_FLAGS:
             raise OpError("bad_spawn", f"no flag --{name}; {SPAWN_USAGE}")
         value, _, rest = rest.lstrip().partition(" ")
@@ -119,7 +126,7 @@ def parse_spawn(arg: str) -> SpawnLine:
             raise OpError("bad_spawn", f"--{name} needs a value; {SPAWN_USAGE}")
         flags[name] = value
         rest = rest.lstrip()
-    return SpawnLine(agent, server or None, rest or None, **flags)
+    return SpawnLine(agent, server or None, rest or None, quiet=quiet, **flags)
 
 
 def escape(text: str) -> str:
