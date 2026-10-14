@@ -213,6 +213,7 @@ class Fold:
         self.content_index = -1
         self._recaps: list[str] = []  # recap entry ids no send has folded yet
         self.last_recap_upto: int | None = None
+        self._btws: dict[str, str] = {}  # side note id -> entry id
 
     @property
     def rev(self) -> int:
@@ -448,6 +449,28 @@ class Fold:
         return [{"remove": id}]
 
     # -- what aegis itself did ---------------------------------------
+    def _settle_btws(self, why: str, fold: bool) -> list[dict]:
+        """Fail every side note still running; with ``fold``, fold them all.
+        One runs at a time per session, so a new question means any earlier
+        one still running lost its answer (a crash, a cut store)."""
+        ops: list[dict] = []
+        for eid in self._btws.values():
+            e = self._entries.get(eid)
+            if e is None:
+                continue
+            new = e
+            if e["status"] == "running":
+                new = {
+                    **new,
+                    "status": "failed",
+                    "detail": {**new["detail"], "why": why},
+                }
+            if fold and not new["detail"]["folded"]:
+                new = {**new, "detail": {**new["detail"], "folded": True}}
+            if new is not e:
+                ops += self._upsert(new)
+        return ops
+
     def _own(self, i: int, ts: float | None, rec: dict) -> list[dict]:
         kind = rec.get("kind")
         if kind == "send":
@@ -534,6 +557,44 @@ class Fold:
                 }
             )
             return []
+        if kind == "btw":
+            # A side note: the newest is open, asking another folds the rest.
+            ops = self._settle_btws("no answer was recorded", fold=True)
+            bid = str(rec.get("id"))
+            question = str(rec.get("question") or "")
+            self._btws[bid] = f"e{i}"
+            return ops + self._upsert(
+                _entry(
+                    f"e{i}",
+                    "btw",
+                    "running",
+                    ts,
+                    d.BTW_GLYPH,
+                    title="btw",
+                    summary=question,
+                    detail={"id": bid, "question": question, "folded": False},
+                )
+            )
+        if kind == "btw_answer":
+            prev = self._entries.get(self._btws.get(str(rec.get("id")), ""))
+            if prev is None:
+                return []  # its question is missing: a damaged store
+            status = rec.get("status")
+            if status not in ("ok", "failed", "cancelled"):
+                status = "failed"
+            detail = {
+                **prev["detail"],
+                "answer": str(rec.get("answer") or ""),
+                "needs_more": bool(rec.get("needs_more")),
+                "why": str(rec.get("why") or ""),
+                "header": str(rec.get("header") or ""),
+                "model": str(rec.get("model") or ""),
+                "cost_usd": float(rec.get("cost_usd") or 0.0),
+                "duration_ms": int(rec.get("duration_ms") or 0),
+            }
+            if status == "cancelled":
+                detail["folded"] = True
+            return self._upsert({**prev, "status": status, "detail": detail})
         if kind == "recap":
             # A refresh replaces the recap on screen: one full box, never two.
             folded = []
@@ -609,7 +670,12 @@ class Fold:
             if kind == "server_stopped":
                 self._stand(turn_error=line)
             return (
-                self._drop_live()
+                (
+                    self._settle_btws(line, fold=False)
+                    if kind == "server_stopped"
+                    else []
+                )
+                + self._drop_live()
                 + self._end_calls("no result")
                 + self._lose_pending()
                 + self._upsert(

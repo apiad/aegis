@@ -791,10 +791,13 @@ class Session:
             "artifact_event",
             "name",
             "layout",
+            "btw",
+            "btw_answer",
         ):
             # aegis talking to the person, not the session doing anything; nor
             # a person acting on a page, so the needs-you order holds still
-            # while they drag a slider; nor a rename; nor arranging the canvas.
+            # while they drag a slider; nor a rename; nor arranging the canvas;
+            # nor a side note, which the person asked and the agent never sees.
             self.last_activity = stored["ts"]
         ops = fold.apply(stored, events)
         new = [
