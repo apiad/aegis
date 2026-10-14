@@ -38,6 +38,9 @@ log = logging.getLogger("aegis.terminals")
 CLOSE_GRACE_S = 5.0
 STOP_GRACE_S = 1.0  # at shutdown, well inside systemd's own stop timeout
 COLS, ROWS = 120, 40
+# What boot needs in a meta.json before it trusts it; any other is skipped.
+META_KEYS = {"id", "name", "profile", "spec", "title", "cwd", "owner",
+             "started_by", "cols", "rows", "state", "code", "reason"}  # fmt: skip
 
 
 def mint_term_id() -> str:
@@ -194,23 +197,28 @@ class Terminals:
         starts again in the same terminal."""
         for path in sorted(self.dir.glob("*/meta.json")):
             try:
-                meta = json.loads(path.read_text())
-            except (OSError, ValueError) as e:
-                log.warning("aegis: skipping terminal %s: %s", path.parent.name, e)
-                continue
-            if meta.get("archived"):
-                self.archived[meta["id"]] = meta
-                continue
-            if meta["state"] == "running":
-                meta.update(state="ended", reason="server_stopped")
-            t = self._terminal(meta)
-            self.open[meta["id"]] = t
-            self._save(t)
-            if meta["spec"]["restart"] != "no":
-                try:
-                    await self._start(t)
-                except OpError as e:
-                    log.warning("aegis: service %s did not start: %s", meta["name"], e)
+                await self._boot_one(path)
+            except Exception as e:
+                log.warning("aegis: skipping terminal %s: %r", path.parent.name, e)
+
+    async def _boot_one(self, path: Path) -> None:
+        meta = json.loads(path.read_text())
+        if missing := META_KEYS - set(meta):
+            raise ValueError(f"meta.json lacks {sorted(missing)}")
+        if meta.get("archived"):
+            self.archived[meta["id"]] = meta
+            return
+        service = meta["spec"]["restart"] != "no"
+        if meta["state"] == "running":
+            meta.update(state="ended", reason="server_stopped")
+        t = self._terminal(meta)
+        self.open[meta["id"]] = t
+        self._save(t)
+        if service:
+            try:
+                await self._start(t)
+            except OpError as e:
+                log.warning("aegis: service %s did not start: %s", meta["name"], e)
 
     async def shutdown(self) -> None:
         running = [t for t in self.open.values() if t.running]

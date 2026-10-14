@@ -1,6 +1,7 @@
 """The terminals registry: spawn, cards, the channel, close, restart, boot."""
 
 import asyncio
+import json
 
 import pytest
 
@@ -146,5 +147,22 @@ async def test_boot_starts_services_again_and_ends_the_rest(tmp_path):
         assert (ended["state"], ended["reason"]) == ("ended", "server_stopped")
         assert "before" in again.channel(shell.id, None)()["tail"]
         assert again.open[svc.id].running
+    finally:
+        await again.shutdown()
+
+
+async def test_boot_skips_a_meta_that_parses_but_is_not_a_terminal(tmp_path):
+    r, _ = registry(tmp_path)
+    bad = [{"id": "t-x", "state": "running"}, {}, [1, 2], {"archived": True}]
+    for n, meta in enumerate(bad):
+        d = r.dir / f"t-bad-{n}"
+        d.mkdir(parents=True)
+        (d / "meta.json").write_text(json.dumps(meta))
+    good = await r.spawn("echo", owner="ana")
+    await r.shutdown()
+    again, _ = registry(tmp_path)
+    await again.boot()
+    try:
+        assert list(again.open) == [good.id] and again.archived == {}
     finally:
         await again.shutdown()
