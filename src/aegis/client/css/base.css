@@ -1149,6 +1149,11 @@ body{background:#000}
 #a2 .hkeys{margin-top:auto;align-self:flex-start;background:none;border:0;padding:12px 8px 0;font:11.5px var(--font-mono);color:var(--faint);cursor:pointer}
 #a2 .hkeys:hover{color:var(--strong)}
 #a2 .hkeys kbd{margin-left:8px;border:1px solid var(--rule);border-radius:4px;padding:0 5px;font:inherit}
+#a2 .hask{display:flex;gap:8px;align-items:baseline;width:100%;text-align:left;background:var(--accent-soft);border:1px solid var(--rule);border-radius:var(--r);padding:7px 8px;margin-bottom:6px;cursor:pointer;color:var(--strong);font:12.5px var(--font-ui)}
+#a2 .hask:hover,#a2 .hask:focus-visible{border-color:var(--accent);outline:none}
+#a2 .hask i{flex:none;font:normal 11px var(--font-mono);color:var(--accent)}
+#a2 .hask span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (pointer:coarse){#a2 .hask{min-height:44px}}
 #a2 .hpage{min-height:0;overflow:auto;outline:none;padding:22px 32px 56px;container:md/inline-size}
 #a2 .hpage .hback{display:none}
 #a2 .hpage .hstart{margin:0 0 12px}

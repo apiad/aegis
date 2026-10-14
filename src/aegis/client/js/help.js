@@ -58,8 +58,9 @@ export class Help {
   // go(hash): navigate as app.js does. onKeys(): open the ? list.
   // onStart(page, tutorial): start a guided tour of that page, returning a
   // promise; app.js passes help.guide. Without it the button stays hidden.
-  constructor(conn, box, { go, onKeys, onStart = null }) {
-    Object.assign(this, { conn, box, go, onKeys, onStart });
+  // onAsk(question, page): ask an agent, page null from the list screen.
+  constructor(conn, box, { go, onKeys, onStart = null, onAsk = null }) {
+    Object.assign(this, { conn, box, go, onKeys, onStart, onAsk });
     this.pages = null; // help.pages's answer, once it arrives
     this.shown = null; // the page whose Markdown is drawn
     this.ref = null; // what was asked of it: the page, or "page#section"
@@ -80,6 +81,26 @@ export class Help {
     this.q.setAttribute("autocorrect", "off");
     const search = el("label", "jsearch");
     search.append(icon("search"), this.q);
+    if (this.onAsk) this.q.placeholder = "Search help, or ask";
+    // A typed query can go to an agent instead: a new session in a new tab,
+    // with the page on screen. Not an .hrow, so Enter still opens the best hit.
+    this.askRow = el("button", "hask");
+    this.askRow.type = "button";
+    this.askRow.title = "Starts an agent in a new tab and spends quota";
+    this.askText = el("span");
+    this.askRow.append(el("i", null, "Ask an agent"), this.askText);
+    this.askRow.hidden = true;
+    this.askRow.addEventListener("click", async () => {
+      const q = this.q.value.trim();
+      if (!q || this.askRow.disabled) return;
+      this.askRow.disabled = true;
+      try {
+        // The list screen on a phone shows no page, so the question claims none.
+        await this.onAsk(q, this.box.dataset.screen === "page" ? this.shown : null);
+      } finally {
+        this.askRow.disabled = false;
+      }
+    });
     this.rows = el("div", "hrows");
     const keys = el("button", "hkeys", "Every key");
     keys.type = "button";
@@ -87,7 +108,7 @@ export class Help {
     keys.addEventListener("click", () => this.onKeys());
     this.list = el("nav", "hlist");
     this.list.setAttribute("aria-label", "Help pages");
-    this.list.append(search, this.rows, keys);
+    this.list.append(search, this.askRow, this.rows, keys);
     this.back = el("button", "btn hback", "← Help");
     this.back.type = "button";
     this.back.addEventListener("click", () => this.go("#help"));
@@ -165,6 +186,8 @@ export class Help {
   drawList() {
     if (!this.pages) return; // a search answered first; show() draws once the pages arrive
     const q = this.q.value.trim();
+    this.askRow.hidden = !(this.onAsk && q);
+    this.askText.textContent = `“${q}”`;
     const words = q
       .toLowerCase()
       .split(/\s+/)

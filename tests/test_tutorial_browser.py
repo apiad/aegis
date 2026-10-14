@@ -202,3 +202,29 @@ def test_enter_on_a_bare_command_with_an_argument_does_what_it_did(
         assert page.is_visible("#cmd-menu"), name
     assert page.evaluate(sent) == before, "none of them reached the agent"
     assert page.errors == []
+
+
+def test_a_question_typed_in_help_goes_to_an_agent_and_enter_still_searches(
+    server,  # noqa: F811
+    page,  # noqa: F811
+):
+    titled = "t => document.querySelector('.helpv .htitle')?.textContent === t"
+    q = "can two queues share a worker"
+    page.goto(server.url)
+    page.click("#help-btn")
+    page.click('.helpv .hrow[data-ref="queues"]')
+    page.wait_for_function(titled, arg=TITLE["queues"])
+    assert page.locator(".helpv .hask").is_hidden()
+    page.fill(".helpv .jq", q)
+    page.wait_for_selector(".helpv .hask:not([hidden])")
+    page.press(".helpv .jq", "Enter")
+    page.wait_for_function("() => location.hash.startsWith('#help=')")
+    assert page.locator("#tablist .tab").count() == 0
+    page.dblclick(".helpv .hask")
+    page.wait_for_selector("#a2[data-view=session]")
+    log_id = page.evaluate("location.hash.slice(3)")
+    page.wait_for_function(ENTRIES_NAME, arg=q, timeout=8000)
+    assert meta(server, log_id)["title"] == f"Help: {q}"
+    time.sleep(0.5)  # a second session, had the double click started one
+    assert page.locator("#tablist .tab").count() == 1
+    assert page.errors == []

@@ -525,6 +525,8 @@ const helpTab = new Help(conn, $("help"), {
   onKeys: () => help(true),
   onStart: (id, tutorial) =>
     startGuide({ page: id }, "tutorial", tutorial).catch((e) => toast(e.message, { kind: "error" })),
+  onAsk: (question, page) =>
+    startGuide({ question, page }, "ask", false).catch((e) => toast(e.message, { kind: "error" })),
 });
 installCopy($("help"), copyDeps);
 let sideJournalTimer = null;
