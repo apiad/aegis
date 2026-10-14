@@ -124,3 +124,10 @@ def test_the_prompt_puts_the_question_last_after_plan_report_and_history():
     assert "AGENT REPORT (review): Read the diff" in p and "[doing] land it" in p
     assert "Q: q2" not in p and "Q: q3" in p and "Q: q7" in p  # the last five
     assert "all 1 turn" in p
+
+
+def test_peer_read_never_shows_a_side_note():
+    from aegis.agent_ops import _render
+
+    e = {**note(1, "the secret side question", "a"), "summary": "the secret side question"}
+    assert _render(e, True) is None
