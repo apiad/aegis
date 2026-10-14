@@ -1,1 +1,0 @@
-- **A reload no longer moves a prompt above the answer it arrived during.** When an OpenCode or Codex session read a second prompt while the answer to the first was still streaming, the transcript showed the answer first, but a reload put the prompt above it. Both now keep the answer where it started.

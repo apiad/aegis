@@ -5,6 +5,69 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-10-14
+
+### Added
+
+- **Each session gets its own memory cap when aegis runs as a systemd service with `Delegate=yes`.** aegis runs every agent, and everything it starts, in a cgroup of its own, capped by the new `session_memory_max` key (40% of the host's RAM by default). A runaway test run then hits an out-of-memory kill inside its own session, which takes its largest process and leaves the agent, the server and every other session running. Without delegation nothing changes.
+  help: config#memory-per-session
+
+- **`aegis service install` writes the systemd unit, and `aegis doctor` checks
+  an installed one.** The unit's settings (`KillMode=mixed`,
+  `OOMPolicy=continue`, memory caps sized to the host, a negative
+  `OOMScoreAdjust`) were copied by hand from the README, and a hand-written
+  unit drifted from them with nothing reporting it. `install` asks for the
+  user, port, root and memory caps with defaults from the host, takes each as
+  a flag, and prints the `sudo` commands rather than running them;
+  `--dry-run` prints the unit. The doctor warns on each setting a live aegis
+  unit sets differently.
+  help: service
+
+### Removed
+
+- **OpenCode 1 is no longer supported.** aegis drives the latest stable release of each harness; install OpenCode 2 with `npm install -g @opencode/cli`. `aegis doctor` reports an older `opencode` as an error that says so. Transcripts of OpenCode 1 sessions keep their stored lines but no longer render their turns.
+
+### Fixed
+
+- **A large request no longer logs its whole params.** `aegis serve` logged
+  every call's params at info level in full, so one artifact submit near the
+  64 KB cap wrote a 65 KB line; where stdout was a pipe nobody drained, that
+  line could block the server on its own log. Each field is now cut at 200
+  characters, with its total size.
+
+- **Settings no longer drops a choice being typed when the config or a link changes.** A chip's typed filter is not an edit until Enter takes it, so a config change on disk or a link going on or offline in that moment redrew the form and replaced the chip: Enter then landed on a fresh one, the choice was lost and Save stayed disabled. The form now waits until the focus leaves its fields, then catches up, keeping the edit and saying the file moved if it did.
+
+- **A Codex child that dies under a send is reported once, by its exit.** When
+  `codex app-server` exited before it answered the request a send was waiting
+  on, the send also failed: the transcript gained a "the message did not reach
+  the agent" error on top of the exit row, the session went idle before it went
+  stopped, and whoever sent the message got an error. Now the exit row is the
+  only report, as it already was for OpenCode.
+
+- **OpenCode sessions run on OpenCode 2.** OpenCode 2 moved its whole server API under `/api` and serves its web app on every other path, so aegis read an HTML page where it expected events: no OpenCode session could start ("the event stream closed") and the model picker was empty (#357). The driver now speaks OpenCode 2's API and its event stream, sets the model and system prompt on the session, and runs aegis's tools by name rather than through OpenCode's code mode.
+
+- **A reply turning read no longer redraws its row, and the transcript no longer stops following on its own.** Being read re-sent the message and replaced its row, which dropped the pointer's hover and any text selected in it. And when the list grew between a scroll to the bottom and that scroll's event (a page's card sizing itself, a row taking its real height), the transcript read its own scroll as the reader moving away, stopped following, and new replies landed below the view. Pressing a button in the row under the "new since you left" divider also lost the click: selecting the row hid the divider and the row shrank between press and release.
+
+- **In a host OOM, the kernel kills a runaway session before the server.**
+  Every agent process aegis starts now raises its `oom_score_adj` to 500, so
+  the processes it spawns inherit it; before, they shared the server's 0, and
+  the kernel could kill the server and every session with it. The README
+  gives the unit settings to pair with it: `OOMPolicy=continue`, `MemoryHigh`,
+  `MemoryMax` and a negative `OOMScoreAdjust`.
+- **Concurrent test runs on one host share a cap on browsers.** Each browser
+  test takes one of N slots under `flock` first (one per GiB of available
+  memory, at most one per core; `AEGIS_TEST_BROWSERS` overrides it), so
+  several `pytest -n auto` runs no longer start a Chromium per worker each.
+
+- **A refused tool call no longer stalls the server.** fastmcp logged each
+  refused aegis tool call (a `no_session`, a `quota_closed`) as a rich
+  traceback, and rendering it held the event loop, and every session on it,
+  for about half a second. The traceback is still logged, as plain text.
+
+- **A reload no longer moves a prompt above the answer it arrived during.** When an OpenCode or Codex session read a second prompt while the answer to the first was still streaming, the transcript showed the answer first, but a reload put the prompt above it. Both now keep the answer where it started.
+
+- **On a phone, a help section opened from a search hit no longer lands under the "← Help" arrow.** Its offset left out the page's top padding, so the heading touched the arrow.
+
 ## [2.8.0] - 2026-10-13
 
 ### Added

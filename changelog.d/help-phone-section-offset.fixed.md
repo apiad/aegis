@@ -1,1 +1,0 @@
-- **On a phone, a help section opened from a search hit no longer lands under the "← Help" arrow.** Its offset left out the page's top padding, so the heading touched the arrow.

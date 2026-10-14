@@ -1,1 +1,0 @@
-- **OpenCode 1 is no longer supported.** aegis drives the latest stable release of each harness; install OpenCode 2 with `npm install -g @opencode/cli`. `aegis doctor` reports an older `opencode` as an error that says so. Transcripts of OpenCode 1 sessions keep their stored lines but no longer render their turns.
