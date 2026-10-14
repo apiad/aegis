@@ -172,6 +172,15 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>Slice 1, the restart test rebinds <code>call</code> after <code>world.restart()</code>.</b> <code>World.restart</code> builds a new <code>App</code> (<code>tests/test_agents.py:75-77</code>), so the plan's test sent <code>term.restart</code> to the stopped app.</li>
   <li><b>Slice 1, the echo bench records its samples in <code>SAMPLES</code> directly</b>, not through <code>median()</code> (<code>scripts/bench.py:61-67</code>), so <code>bench_compare.py</code> sees them while the reported figure stays the 95th percentile. Measured on 4 CPUs: <code>term_echo_p95_ms</code> 6.81, <code>term_flood_mb_s</code> 4.02.</li>
   <li><b>Slice 1, the store is checked with <code>asciinema cat</code></b> (asciinema 2.x through <code>uvx</code>), which parsed a store with output, a resize and a marker; <code>asciinema play</code> needs a real terminal.</li>
+  <li><b>Slice 1's review found eight defects</b> no test caught, each fixed with a test that failed first: two restarts at once spawned two children and left a reader spinning (a start lock now); shutdown during Close's grace left a SIGHUP-ignoring program alive; a meta missing a key stopped boot; input had no cap (1 MB now, <code>busy</code> past it); a lone surrogate raised; the tail could start inside an escape, and vim that quit counted as a clear; <code>stop()</code> could wait forever or miss bash's foreground job; an archived terminal's channel read a stale store that was never freed.</li>
+  <li><b>Slice 2, the browser tests got a <code>TermServer.call</code> helper</b> that speaks the websocket with an <code>Origin</code> (<code>web.py:356</code>), and use <code>f"{server.url}#t=..."</code> because <code>server.url</code> ends in <code>?token=</code> (<code>tests/test_browser.py:722</code>).</li>
+  <li><b>Slice 2, the box's keys are bound on the box in <code>termview.js</code></b>, as the composer's are (<code>app.js:2802</code>): inside a text field <code>keys.js</code> runs only global chords (<code>keys.js:177</code>), so a <code>term</code> scope would never fire. <code>keys.js</code> is unchanged.</li>
+  <li><b>Slice 2, the filter is one chip group in the Fleet's order bar</b>, applied at each <code>renderCards</code> call in <code>app.js</code>, and its predicate is <code>kindShown</code> because <code>app.js</code> already has a <code>shown</code>.</li>
+  <li><b>Slice 2, <code>#t=</code> carries the card's key</b> (<code>server/id</code> for a linked server) as <code>#s=</code> does, and each hash that names the other kind redirects.</li>
+  <li><b>Slice 2, a refused call shows as an error toast</b> (<code>busy</code>, <code>running</code>, a failed spawn or close), through an <code>onError</code> option on <code>mountTerminal</code>; and <code>dispose()</code> removes its click listener from the shared <code>#term-host</code>.</li>
+  <li><b>Slice 2, session-only fields made safe for terminal cards</b>: the sort's <code>created_at</code>, notifications and the favicon count, the side panel's live counts, the one-second ticker, navigation through <code>hashOf</code>, and the close path.</li>
+  <li><b>Slice 2, the help page says a service starts with aegis only once it has been opened</b>, because boot reads existing meta files (<code>terminals.py</code>).</li>
+  <li><b>Task 11 hands the PR to the release coordinator</b>, who merges it into v2.10.0 and runs one smoke test for the whole release, instead of a smoke test for this PR alone.</li>
 </ul>
 
 <h3>Slice 1 · the server</h3>
@@ -2625,7 +2634,7 @@ help: terminals</script></li>
 </div>
 </details>
 
-<details class="task" id="task-11" data-state="pending">
+<details class="task" id="task-11" data-state="doing">
 <summary><span class="num">11</span><span><span class="ttl">The enqueuer's gates: merge main, the full suites, bench, the PR, the smoke test</span><span class="files">no new files</span></span><span class="state"></span></summary>
 <div class="body">
 <p>This task is the enqueuer's, not a worker's (<code>know-how/running-a-plan.md</code>).</p>
@@ -2634,7 +2643,7 @@ help: terminals</script></li>
 <li>Merge <code>origin/main</code> into the branch and run <code>make check</code>, <code>make test-slow</code> and <code>rift check</code>.</li>
 <li>Run <code>make bench</code> and put its table in the PR body, with <code>term_echo_p95_ms</code> and <code>term_flood_mb_s</code> named.</li>
 <li>Retitle PR #392 and rewrite its body: what phase 1 delivers, the pyte measurement and why the snapshot is a raw tail, what was left for phases 2 to 4.</li>
-<li>Offer the maintainer the guided smoke test (<code>know-how/smoke-testing.md</code>): open the shell, run vim and htop, Ctrl-C a sleep, close the tab and reopen it, restart aegis with a service profile, open a terminal on a phone.</li>
+<li>Hand the PR to the v2.10.0 release coordinator with "PR #392 ready", the head commit and any bench warning explained. The coordinator merges it and runs one guided smoke test for the release.</li>
 </ol>
 <div class="verify"><span class="lbl">verify</span><p>CI is green on the PR, the bench table is in its body, and the maintainer has run the smoke test.</p></div>
 </div>
