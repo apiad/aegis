@@ -22,7 +22,7 @@ Tab or Enter picks one. Alt+/ opens the same menu over a draft.
 | `/rename <handle>` | rename this session's handle |
 | `/title <text>` | set this session's title |
 | `/stop` | stop the process and keep the session |
-| `/spawn <agent>[@server] [prompt]` | start a session, here or on a linked server; flags `--model`, `--effort`, `--permission` and `--cwd` go before the prompt |
+| `/spawn <agent>[@server] [prompt]` | start a session, here or on a linked server; flags `--quiet` (no tab until its turn ends; needs a prompt), `--model`, `--effort`, `--permission` and `--cwd` go before the prompt |
 | `/close` | close the session; it stays in the archive. The browser asks first unless the session is done |
 | `/help` | open the menu listing every command |
 | `/help <query>` | open the Help tab with those words searched, such as `/help queues` |

@@ -520,13 +520,22 @@ class Registry(Host):
         return fold_records(read_store(path)[0]) if path.exists() else Fold()
 
     async def spawn(
-        self, spec: SpawnSpec, worker: dict | None = None, title: str = ""
+        self,
+        spec: SpawnSpec,
+        worker: dict | None = None,
+        title: str = "",
+        quiet: bool = False,
     ) -> Session:
         log_id = mint_log_id()
         s = self._session(
             {"log_id": log_id, "handle": mint_handle(self._handles())}
             | spec.record()
-            | {"created_at": time.time(), "worker": worker, "title": title}
+            | {
+                "created_at": time.time(),
+                "worker": worker,
+                "title": title,
+                "quiet": quiet,
+            }
         )
         self.sessions[log_id] = s
         self._publish("sessions", [{"upsert": s.wire()}])

@@ -136,6 +136,11 @@ class SpawnParams(_Strict):
     )
     # Set by a server that links this one, for an agent of its own that
     # spawns here (app.spawn); refused from anything but a link.
+    quiet: bool = Field(
+        False,
+        description="Start it without a tab, for background work: its tab "
+        "appears when its turn ends. Needs a prompt.",
+    )
     spawned_from: SkipJsonSchema[SpawnedFrom | None] = Field(None, exclude=True)
 
 
@@ -740,6 +745,7 @@ class App:
                 ("effort", line.effort),
                 ("permission", line.permission),
                 ("cwd", line.cwd),
+                ("quiet", line.quiet or None),
             )
             if v is not None
         }
@@ -983,11 +989,17 @@ class App:
                     f"you spawn can have at most {parent.spec.permission} "
                     f"(this one would have {spec.permission}); pass permission",
                 )
+            if p.quiet and not p.prompt:
+                raise OpError(
+                    "quiet_needs_prompt",
+                    "a quiet session needs a prompt: without one it is idle "
+                    "and nothing would ever bring its tab back",
+                )
             g = self.gate(spec.owner, spec.harness, spec.model)
             if not g.may_start:
                 raise OpError("quota_closed", refusal(spec.owner or self.user, g))
             try:
-                s = await reg.spawn(spec)
+                s = await reg.spawn(spec, quiet=p.quiet)
             except FileNotFoundError as e:
                 raise OpError(
                     "harness_not_found", f"cannot run {self._bin(spec.harness)!r}: {e}"

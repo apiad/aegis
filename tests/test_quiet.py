@@ -4,6 +4,8 @@ import json
 
 import pytest
 
+from aegis.commands import parse_spawn
+
 from .conftest import until
 from .test_agents import CONFIG, World, hold, inbox, mcp, turn
 
@@ -87,3 +89,26 @@ async def test_a_session_whose_process_dies_comes_back(world):
     await world.app.registry.call("session.quiet", {"log_id": b.log_id})
     await b.send("/exit 3")
     await until(lambda: not b.quiet, timeout=8, what="back after the exit")
+
+
+async def test_a_quiet_spawn_starts_without_a_tab(world):
+    a = await world.spawn()
+    said = await turn(
+        a, mcp("session_spawn", agent="opus", prompt="/sleep 2", quiet=True)
+    )
+    assert not said.startswith("mcp error"), said
+    log_id = json.loads(said.removeprefix("mcp ok: "))["log_id"]
+    assert world.session(log_id).quiet is True
+
+
+async def test_a_quiet_spawn_needs_a_prompt(world):
+    a = await world.spawn()
+    said = await turn(a, mcp("session_spawn", agent="opus", quiet=True))
+    assert said.startswith("mcp error: quiet_needs_prompt"), said
+
+
+def test_spawn_line_takes_quiet_as_a_bare_flag():
+    line = parse_spawn("opus --quiet --model sonnet fix the build")
+    assert line.quiet is True and line.model == "sonnet"
+    assert line.prompt == "fix the build"
+    assert parse_spawn("opus hello").quiet is False
