@@ -231,7 +231,7 @@ async def test_shutdown_during_a_close_still_ends_a_program_that_ignores_sighup(
     pid = t.pid
     try:
         await r.close(t.id)
-        await asyncio.wait_for(r.shutdown(), 2.5)
+        await asyncio.wait_for(r.shutdown(), 4)
         with pytest.raises(ProcessLookupError):
             os.killpg(pid, 0)
     finally:

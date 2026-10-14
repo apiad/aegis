@@ -182,10 +182,13 @@ class Terminal:
                 self._signal(groups, signal.SIGKILL)
                 break
             await asyncio.sleep(0.05)
-        try:
-            await asyncio.wait_for(self.exited.wait(), KILL_WAIT_S)
-        except TimeoutError:
-            log.warning("aegis: terminal %s outlived SIGKILL", self.meta["name"])
+        # SIGKILL lands, and the dead are reaped, a moment after it is sent.
+        end = loop.time() + KILL_WAIT_S
+        while not self.exited.is_set() or any(map(_alive, groups)):
+            if loop.time() >= end:
+                log.warning("aegis: terminal %s outlived SIGKILL", self.meta["name"])
+                return
+            await asyncio.sleep(0.05)
 
     def _signal(self, groups: set[int], sig: int) -> None:
         for pgid in groups:
