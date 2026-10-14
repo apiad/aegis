@@ -58,6 +58,7 @@ def test_a_line_past_the_end_opens_at_the_last_line(server, page):  # noqa: F811
 def test_a_missing_file_says_where_it_looked(server, page):  # noqa: F811
     page.goto(server.url)
     spawn(page, "/md See `gone/none.py`.")
+    page.locator(".row.prose code.ref[data-kind=missing]").wait_for()
     page.locator(".row.prose code.ref").first.click()
     note = page.locator(".row.prose .patherr")
     note.wait_for()
@@ -144,4 +145,31 @@ def test_repos_and_urls_link_without_the_disk(server, page):  # noqa: F811
     assert page.locator(".row.prose a code.ref, .row.prose a a").count() == 0, (
         "a span inside a link stays the agent's link"
     )
+    assert page.errors == []
+
+
+def test_each_path_shows_what_it_names_once_in_view(server, page):  # noqa: F811
+    (server.root / "src").mkdir()
+    (server.root / "src" / "a.py").write_text("a = 1\n")
+    page.goto(server.url)
+    spawn(page, "/md See `src/a.py:1`, `src/`, `gone/x.py`, `octo/aegis` and `a/b/c`.")
+    page.locator(".row.prose code.ref[data-kind=missing]").wait_for()
+    kinds = page.eval_on_selector_all(
+        ".row.prose code.ref", "els => els.map(e => [e.textContent, e.dataset.kind])"
+    )
+    assert kinds == [["src/a.py:1", "file"], ["src/", "dir"], ["gone/x.py", "missing"]]
+    icons = page.eval_on_selector_all(
+        ".row.prose code.ref use", "els => els.map(e => e.getAttribute('href'))"
+    )
+    assert icons == ["#g-file", "#g-folder", "#g-file-gone"]
+    assert (
+        page.locator(".row.prose a.repo").get_attribute("href")
+        == "https://github.com/octo/aegis"
+    )
+    plain = page.locator(".row.prose .md code", has_text="a/b/c")
+    assert plain.get_attribute("class") in (None, ""), (
+        "a missing folder shape is plain code"
+    )
+    page.locator(".row.prose code.ref[data-kind=dir]").click()
+    assert page.locator("#viewer").is_hidden(), "a folder opens nothing"
     assert page.errors == []

@@ -121,6 +121,12 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
     const id = shown;
     return callFor(id, "transcript.detail", { ids }).then((got) => (shown === id ? got : []));
   },
+  // Only this server's replies carry pending refs (entries.js), so a linked
+  // server is never asked.
+  statPaths: (entryId) => {
+    const id = shown;
+    return callFor(id, "path.stat", { entry_id: entryId }).then((got) => (shown === id ? got : { kinds: [] }));
+  },
 });
 artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
 const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(id) });
