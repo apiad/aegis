@@ -121,6 +121,7 @@ pre .c{color:var(--faint)}
 /* proposed for base.css: a quiet card is dimmed and carries a zz mark */
 .card.quiet{opacity:.55;border-style:dashed}
 .card.quiet:hover{opacity:1}
+.cards .grp-h{grid-column:1/-1;font-family:var(--font-mono);font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin-top:4px}
 .zz{font-family:var(--font-chrome);font-size:10.5px;color:var(--muted);border:1px solid var(--rule);border-radius:999px;padding:0 6px;margin-left:auto}
 .view h5{font-family:var(--font-mono);font-weight:500;font-size:11px;color:var(--faint);margin:0 0 8px}
 .log{font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-top:10px;min-height:1.5em}
@@ -201,6 +202,7 @@ pre .c{color:var(--faint)}
     <tr><td>What can be quieted</td><td>A session whose attention is <code>working</code> or <code>waiting</code>. <span class="who">maintainer</span></td><td class="why">A stopped or idle session has no turn to end, so it would never come back by itself.</td></tr>
     <tr><td>What brings it back</td><td>The turn ends with attention <code>done</code>, <code>review</code>, <code>needs_you</code> or <code>error</code>, or the person clicks its Fleet card. <span class="who">maintainer</span></td><td class="why">A turn that ends to wait on a monitor, a queue task or a background Bash reads <code>waiting</code>. The agent has not finished, so it stays quiet.</td></tr>
     <tr><td>A queue worker</td><td>Comes back on <code>error</code> only.</td><td class="why"><code>attention.card</code> already turns a worker's <code>needs_you</code> into <code>done</code>, and <code>Queues._complete</code> archives a worker once its task completes. Coming back on <code>done</code> would flash a tab that is archived a moment later.</td></tr>
+    <tr><td>Where quiet cards sit</td><td>Last in "Needs you first", in a third group of their own, <code>Quiet</code>. <span class="who">maintainer</span></td><td class="why">A quiet session needs nobody yet, so it sits below everything that might.</td></tr>
     <tr><td>After it comes back</td><td>It stays visible until quieted again. <span class="who">maintainer</span></td><td class="why">Predictable. Quieting it again is one click or one tool call.</td></tr>
     <tr><td>Who un-quiets</td><td>The end of a turn, or the person's click. Agents can only quiet.</td><td class="why">Nothing has asked for an agent to bring another one back early.</td></tr>
     <tr><td>A quiet spawn with no prompt</td><td>Refused.</td><td class="why">A session with no first message is idle, so nothing would end its turn and it would stay hidden.</td></tr>
@@ -302,6 +304,7 @@ def _maybe_unquiet(self, s: Session) -> None:
   <li><strong>The open tab goes quiet.</strong> When the session in view becomes quiet, by the button or by an agent, the view moves to the neighbouring tab, or to the Fleet when no tab is left.</li>
   <li><strong>The button.</strong> <code>Quiet</code> joins <code>.side-acts</code> in <code>index.html</code>, whose grid goes from three columns to four. It is enabled only while the attention is <code>working</code> or <code>waiting</code>, and calls <code>session.quiet</code> through <code>callFor</code>, as Stop does.</li>
   <li><strong>The Fleet.</strong> A quiet card gets the <code>quiet</code> class: dimmed, a dashed border and a <code>zz</code> pill, as in the mockup. Clicking it calls <code>session.unquiet</code> and opens the session.</li>
+  <li><strong>A third group.</strong> In the "Needs you first" order, <code>renderCards</code> in <code>fleet.js</code> draws quiet cards last, under their own <code>Quiet</code> heading, after "Needs you" and "Everything else". <code>group(m)</code> returns <code>"quiet"</code> for a quiet session before it looks at the mark, so <code>patchCard</code> regroups when a session goes quiet or comes back. The "Tab order" view keeps each card where its tab would be.</li>
   <li><strong>Attention.</strong> <code>byNeed</code> (Alt+J) and the desktop notification in <code>ping.js</code> skip quiet sessions. They rarely meet one, because the attentions they react to are the ones that clear the flag.</li>
 </ul>
 
@@ -315,7 +318,7 @@ def _maybe_unquiet(self, s: Session) -> None:
   <li><strong>Spawn:</strong> <code>quiet=true</code> without a prompt is refused; with one, the session starts quiet. <code>/spawn --quiet</code> parses.</li>
   <li><strong>Queues:</strong> a worker starts quiet, and with <code>quiet: false</code> on its queue it does not.</li>
   <li><strong>Restart:</strong> the flag survives a server restart.</li>
-  <li><strong>Browser:</strong> the tab bar skips quiet sessions, a quiet card carries the class, clicking it un-quiets, and quieting the open tab moves the view.</li>
+  <li><strong>Browser:</strong> the tab bar skips quiet sessions, a quiet card carries the class and sits in the <code>Quiet</code> group last in "Needs you first", clicking it un-quiets, and quieting the open tab moves the view.</li>
   <li><strong>By hand:</strong> quiet a working session from the sidebar, watch its tab leave, watch it come back when the turn ends.</li>
 </ul>
 
@@ -377,9 +380,14 @@ function draw() {
   const v = $("m-view");
   v.replaceChildren();
   if (view === "fleet") {
-    v.append(el("h5", "", "FLEET"));
+    v.append(el("h5", "", "FLEET · NEEDS YOU FIRST"));
     const box = el("div", "cards");
-    for (const s of S) {
+    const NEED = new Set(["needs_you", "error", "review"]);
+    const grp = (s) => (s.quiet ? 2 : NEED.has(s.att) ? 0 : 1);
+    const HEAD = ["Needs you", "Everything else", "Quiet"];
+    let last = -1;
+    for (const s of [...S].sort((a, b) => grp(a) - grp(b))) {
+      if (grp(s) !== last) { last = grp(s); box.append(el("div", "grp-h", HEAD[last])); }
       const c = el("div", "card " + s.att + (s.quiet ? " quiet" : ""));
       const hd = el("div", "hd");
       hd.append(el("span", "mk " + s.att), el("span", "", s.id));
