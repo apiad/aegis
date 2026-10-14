@@ -1500,3 +1500,22 @@ body{background:#000}
   #a2 .term-pane{padding:6px 8px max(8px,env(safe-area-inset-bottom))}
   #a2 .term-side{border-left:none;border-top:1px solid var(--rule);padding:10px 12px}
 }
+/* The + view's two groups, agents and terminals, and the Fleet's kind filter. */
+#a2 .spawn .sp-head,#a2 .sp-terms h3{justify-self:start;margin:6px 0 0;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
+#a2 .sp-terms{width:100%;display:grid;gap:8px}
+#a2 .sp-terms[hidden]{display:none}
+#a2 .sp-term-list{display:flex;flex-wrap:wrap;gap:6px}
+#a2 .sp-term-list button{display:flex;gap:8px;align-items:baseline;min-width:0;max-width:100%;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 10px;color:var(--muted);font-family:var(--font-mono);font-size:12.5px;cursor:pointer;text-align:left}
+#a2 .sp-term-list button b{color:var(--strong);font-weight:600}
+#a2 .sp-term-list button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2 .sp-term-list button:hover:not(:disabled){border-color:var(--accent)}
+#a2 .sp-term-list button:disabled{cursor:not-allowed;opacity:.7}
+#a2 .sp-term-list button:disabled span{color:var(--err)}
+#a2 .order{gap:10px;flex-wrap:wrap}
+#a2 .order h3{flex:1}
+#a2 .seg button[aria-checked=true]{background:var(--accent-soft);color:var(--strong)}
+#a2 .arch-terms{margin-top:16px}
+#a2 .arch-terms[hidden]{display:none}
+#a2 .arch-terms h4{margin:0 0 8px;font-family:var(--font-head);font-weight:500;font-size:13.5px;color:var(--strong)}
+#a2 .card.term .ln{font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (pointer:coarse){#a2 .sp-term-list button,#a2 .kinds button{min-height:44px}}

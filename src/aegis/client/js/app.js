@@ -308,6 +308,22 @@ function markOrder() {
   for (const b of document.querySelectorAll("#fleet-order button")) b.classList.toggle("on", b.dataset.order === fleetOrder);
 }
 markOrder();
+// Which kinds the Fleet and the archive show: all, agents or terminals. This
+// browser's choice, like the order.
+let fleetKind = localStorage.getItem("aegis.kind") || "all";
+const kindShown = (m) => fleetKind === "all" || (fleetKind === "terminals") === (m.kind === "term");
+function markKind() {
+  for (const b of document.querySelectorAll(".kinds button")) b.setAttribute("aria-checked", String(b.dataset.kind === fleetKind));
+}
+markKind();
+for (const b of document.querySelectorAll(".kinds button"))
+  b.addEventListener("click", () => {
+    fleetKind = b.dataset.kind;
+    localStorage.setItem("aegis.kind", fleetKind);
+    markKind();
+    render();
+    loadArchive();
+  });
 for (const b of document.querySelectorAll("#fleet-order button"))
   b.addEventListener("click", () => {
     fleetOrder = b.dataset.order;
@@ -745,7 +761,7 @@ function flushSessions() {
   if (r.view === "fleet") {
     const home = [...ids].filter((id) => !sessions.get(id)?.server);
     const regroup = home.some((id) => !patchCard($("cards"), sessions.get(id), openSession, fleetOrder, closeById));
-    if (regroup) renderCards($("cards"), local(), openSession, fleetOrder, closeById);
+    if (regroup) renderCards($("cards"), local().filter(kindShown), openSession, fleetOrder, closeById);
     if (home.length < ids.size) renderRemotes();
     fleetMark(false);
     drawBand();
@@ -840,6 +856,22 @@ function render() {
     history.replaceState(null, "", hashOf(r.id));
     return render();
   }
+  // A reload into a closed terminal: its row comes from term.closed.
+  if (r.view === "term" && !sessions.has(r.id) && !closedTerms.has(r.id) && homeLive && !closedTermsLoaded) {
+    loadClosedTerms().then(render);
+    return;
+  }
+  if (r.view === "term" && !sessions.has(r.id) && closedTerms.has(r.id)) {
+    const card = { ...closedTerms.get(r.id), state: "ended", reason: "closed", archived: true };
+    renderTabs($("tablist"), ordered, null, tabActions);
+    $("tab-fleet").classList.remove("on");
+    watchHost(null);
+    follow(null);
+    show("term");
+    openTerm(card.id, card, { conn }).catch((e) => toast(e.message, { kind: "error" }));
+    setTitle(`${card.name} · aegis`);
+    return;
+  }
   if ((r.view === "session" || r.view === "term") && !sessions.has(r.id)) {
     const far = forKey(r.id).server;
     // A far session whose server's list has not arrived yet: wait for it.
@@ -866,7 +898,7 @@ function render() {
   if (r.view === "fleet") {
     follow(null);
     show("fleet");
-    renderCards($("cards"), local(), openSession, fleetOrder, closeById);
+    renderCards($("cards"), local().filter(kindShown), openSession, fleetOrder, closeById);
     renderRemotes();
     fleetMark(false);
     watchHost("all");
@@ -1039,7 +1071,7 @@ function renderRemotes() {
       if (r) renderBandQuota(band, { ...farQuota(r.quota), now: nowS() });
     }
     host.append(box); // keep the links' order
-    const metas = on(l.name);
+    const metas = on(l.name).filter(kindShown);
     if (metas.length) renderCards(box.querySelector(".cards"), metas, openSession, fleetOrder, closeById);
     else box.querySelector(".cards").replaceChildren();
   }
@@ -1765,7 +1797,8 @@ async function loadArchive(more = false) {
     // Offline, or failed: the next render reads it again.
     if (!more) [archived, archiveCursor, archiveTotal, archiveLoaded] = [[], null, 0, false];
   }
-  renderArchive($("arch-list"), archived, {
+  if (!more) loadClosedTerms();
+  renderArchive($("arch-list"), archived.filter(kindShown), {
     onReopen: reopen,
     onRead: (id) => go(`#read=${id}`),
   });
@@ -1775,6 +1808,37 @@ async function loadArchive(more = false) {
   drawArchiveServers();
   drawArchiveWorkers();
   fleetMark(false);
+}
+
+// Closed terminals on this server (term.closed), in a section of their own
+// after the archive's list. Read opens one read-only, from closedTerms.
+const closedTerms = new Map(); // id -> its row
+let closedTermsLoaded = false;
+async function loadClosedTerms() {
+  let rows = [];
+  try {
+    rows = await conn.call("term.closed");
+    closedTermsLoaded = true;
+  } catch {
+    // Offline, or a server without terminals: the section stays empty.
+  }
+  closedTerms.clear();
+  for (const t of rows) closedTerms.set(t.id, t);
+  const shownRows = fleetKind === "agents" ? [] : rows;
+  $("arch-terms").hidden = !shownRows.length;
+  const t = document.createElement("table");
+  t.className = "tbl";
+  for (const row of shownRows) {
+    const tr = t.insertRow();
+    tr.dataset.id = row.id;
+    for (const [cls, text] of [[null, row.name], ["m", row.title], ["m", ago(row.closed_at)], ["m", row.code == null ? "-" : `exit ${row.code}`]])
+      Object.assign(tr.insertCell(), { textContent: text ?? "" }, cls ? { className: cls } : {});
+    const read = Object.assign(document.createElement("button"), { type: "button", className: "btn", textContent: "Read" });
+    read.title = "Replay what it printed";
+    read.addEventListener("click", () => go(`#t=${row.id}`));
+    tr.insertCell().append(read);
+  }
+  document.querySelector("#arch-terms .arch-term-list").replaceChildren(t);
 }
 
 // Queue workers are left out of the archive unless this chip is on (#331): a
@@ -1920,7 +1984,39 @@ $("sp-server").addEventListener("change", () => setSpServer($("sp-server").value
 const LAST_AGENT = "aegis.lastAgent";
 const PICKS = ["harness", "model", "effort", "permission"];
 
+// The + view's Terminals group: one button per profile on the picked server,
+// the built-in shell first.
+function drawProfiles(list, server) {
+  $("sp-terms").hidden = !list.length;
+  const host = document.querySelector("#sp-terms .sp-term-list");
+  host.replaceChildren(
+    ...list.map((p) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.profile = p.name;
+      b.disabled = Boolean(p.error);
+      b.title = p.error || p.cmd || "your login shell";
+      const name = document.createElement("b");
+      name.textContent = p.name;
+      const what = document.createElement("span");
+      what.textContent = p.error || p.cmd || "login shell";
+      b.append(name, " ", what);
+      b.addEventListener("click", () =>
+        conn.call("term.spawn", { profile: p.name }, server).then(
+          (card) => go(`#t=${keyOf(server, card.id)}`),
+          (e) => toast(e.message, { kind: "error" }),
+        ),
+      );
+      return b;
+    }),
+  );
+}
+
 async function loadAgents() {
+  conn.call("term.profiles", {}, spServer).then(
+    (list) => drawProfiles(list, spServer),
+    () => drawProfiles([], spServer), // a server without terminals
+  );
   // The picked agent as the chips last knew it, to tell the person's overrides
   // from values an edit to .aegis.yaml has since changed.
   const was = current();

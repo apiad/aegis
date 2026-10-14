@@ -147,3 +147,44 @@ def test_a_terminal_tab_is_marked_and_closes(server, browser):  # noqa: F811
     assert tab.locator(".dot.ready").count() == 1
     page.click("#term-close")
     page.wait_for_selector(f".tab[data-id='{tid}']", state="detached")
+
+
+def test_the_picker_offers_the_shell_and_the_profiles(server, browser):  # noqa: F811
+    page = browser.new_page()
+    page.goto(f"{server.url}#new")
+    group = page.locator("#sp-terms")
+    assert group.locator("[data-profile]").all_inner_texts()[0].startswith("shell")
+    group.locator("[data-profile=sh]").click()
+    page.wait_for_selector("#term-host .xterm-rows")
+    assert page.url.split("#")[1].startswith("t=t-")
+
+
+def test_the_filter_shows_only_terminals_and_is_remembered(server, browser):  # noqa: F811
+    server.call("session.spawn", {"agent": "opus"})
+    server.call("term.spawn", {"profile": "sh"})
+    page = browser.new_page()
+    page.goto(server.url)
+    page.wait_for_selector("#cards .card.term")  # the Fleet has drawn
+    page.click(".kinds [data-kind=terminals]")
+    assert (
+        page.locator("#cards .card").count()
+        == page.locator("#cards .card.term").count()
+        == 1
+    )
+    page.reload()
+    page.wait_for_selector("#cards .card.term")
+    assert page.locator("#cards .card").count() == 1
+    assert page.locator(".kinds [data-kind=terminals][aria-checked=true]").count() == 1
+
+
+def test_a_closed_terminal_is_in_the_archive_and_replays(server, browser):  # noqa: F811
+    tid = server.call("term.spawn", {"profile": "tui"})["id"]
+    server.call("term.close", {"id": tid})
+    page = browser.new_page()
+    page.goto(server.url)
+    row = page.locator(f"#arch-terms [data-id='{tid}']")
+    row.locator("button", has_text="Read").click()
+    page.wait_for_function(
+        "document.querySelector('#term-host .xterm-rows')?.innerText.includes('TUI-SCREEN-UP')"
+    )
+    assert page.locator("#term-close").is_hidden()
