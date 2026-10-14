@@ -139,3 +139,19 @@ async def test_closing_the_session_kills_the_call(world, monkeypatch, tmp_path):
         r.get("kind") for r in read_store(world.app.sessions.store_path(a.log_id))[0]
     ]
     assert kinds[-1] == "close"  # nothing written after the store shut
+
+
+async def test_cancel_settles_a_block_left_running_by_a_crash(world):
+    a = await world.spawn()
+    # A question record with no call behind it: what a killed server leaves.
+    a.report({"kind": "btw", "id": "orphan", "question": "q"})
+    r = await world.app.registry.call(
+        "btw.cancel", {"log_id": a.log_id, "id": "orphan"}
+    )
+    assert r["status"] == "cancelled"
+    (e,) = notes(a)
+    assert e["status"] == "cancelled" and e["detail"]["folded"]
+    again = await world.app.registry.call(
+        "btw.cancel", {"log_id": a.log_id, "id": "orphan"}
+    )
+    assert again["status"] == "none"

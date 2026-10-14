@@ -89,12 +89,22 @@ class SideNotes:
         if not s.archived:  # a closed session's store is shut
             s.report(record)
 
-    def cancel(self, log_id: str, bid: str) -> dict:
-        cur = self._running.get(log_id)
-        if cur is None or cur[0] != bid:
-            return {"status": "none"}
-        cur[1].cancel()
-        return {"status": "cancelled"}
+    def cancel(self, s, bid: str) -> dict:
+        cur = self._running.get(s.log_id)
+        if cur is not None and cur[0] == bid:
+            cur[1].cancel()
+            return {"status": "cancelled"}
+        if any(
+            e["kind"] == "btw"
+            and e["detail"].get("id") == bid
+            and e["status"] == "running"
+            for e in s.fold().entries()
+        ):
+            # Running in the transcript with no call behind it: the server that
+            # ran it stopped hard. Settle it, or its cancel link does nothing.
+            self._answer(s, {"kind": "btw_answer", "id": bid, "status": "cancelled"})
+            return {"status": "cancelled"}
+        return {"status": "none"}
 
     def drop(self, log_id: str) -> None:
         """A session closing: its call dies with it."""

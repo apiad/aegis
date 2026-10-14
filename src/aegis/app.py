@@ -1222,8 +1222,7 @@ class App:
         @r.op("btw.cancel", BtwCancelParams, owned="log_id")
         async def btw_cancel(p: BtwCancelParams, caller):
             """Cancel a running side note; its block keeps the question, folded."""
-            reg.open(p.log_id)
-            return self.side_notes.cancel(p.log_id, p.id)
+            return self.side_notes.cancel(reg.open(p.log_id), p.id)
 
         @r.op("dictation.prepare", NoParams)
         async def dictation_prepare(p: NoParams, caller):
