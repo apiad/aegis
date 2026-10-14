@@ -1,8 +1,10 @@
 """The terminals registry: spawn, cards, the channel, close, restart, boot."""
 
 import asyncio
+import contextlib
 import json
 import os
+import signal
 from pathlib import Path
 
 import pytest
@@ -217,3 +219,20 @@ async def test_a_close_during_spawn_leaves_the_terminal_archived(reg):
     assert reg.archived[tid]["state"] == "ended" and tid not in reg.open
     last = [o for c, ops in reg.bus.msgs if c == "sessions" for o in ops][-1]
     assert last == {"remove": tid}
+
+
+async def test_shutdown_during_a_close_still_ends_a_program_that_ignores_sighup(
+    tmp_path,
+):
+    r, bus = registry(tmp_path)
+    t = await r.spawn("stubborn", owner="ana")
+    await until(lambda: "ready" in bus.text(t.id), what="ready")
+    pid = t.pid
+    try:
+        await r.close(t.id)
+        await asyncio.wait_for(r.shutdown(), 2.5)
+        with pytest.raises(ProcessLookupError):
+            os.killpg(pid, 0)
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(pid, signal.SIGKILL)

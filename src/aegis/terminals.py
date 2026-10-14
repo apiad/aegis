@@ -10,7 +10,8 @@ reason, ``closed`` or ``server_stopped``. A restart of aegis ends every
 terminal's process, as it ends every harness. At boot a service (a profile
 whose ``restart`` is not ``no``) starts again in the same terminal; any other
 stays ended, with its output, until a person restarts it. Closing sends
-SIGHUP, then SIGKILL after CLOSE_GRACE_S, and archives the terminal.
+SIGHUP, then SIGKILL after CLOSE_GRACE_S, and archives the terminal; one
+still inside that grace when aegis stops is stopped with the open ones.
 
 The card rides the ``sessions`` channel with ``kind: "term"`` and ``log_id``
 set to the id, because the channel's throttle and the client key every card
@@ -63,6 +64,7 @@ class Terminals:
         self._cgroups = cgroups
         self.open: dict[str, Terminal] = {}
         self.archived: dict[str, dict] = {}
+        self.closing: dict[str, Terminal] = {}  # closed, their program not yet ended
         self._read_only: dict[str, Terminal] = {}
         self._background: set[asyncio.Task] = set()
 
@@ -126,9 +128,11 @@ class Terminals:
         self._save(t)
         self._publish("sessions", [{"remove": tid}])
         if t.running:
+            self.closing[tid] = t
             task = asyncio.create_task(t.stop(CLOSE_GRACE_S))
             self._background.add(task)
             task.add_done_callback(self._background.discard)
+            task.add_done_callback(lambda _: self.closing.pop(tid, None))
         else:
             t.store.close()
 
@@ -224,15 +228,16 @@ class Terminals:
                 log.warning("aegis: service %s did not start: %s", meta["name"], e)
 
     async def shutdown(self) -> None:
+        for task in list(self._background):
+            task.cancel()
         running = [t for t in self.open.values() if t.running]
         for t in running:
             t.meta.update(state="ended", reason="server_stopped")
-        await asyncio.gather(*(t.stop(STOP_GRACE_S) for t in running))
+        closing = list(self.closing.values())
+        await asyncio.gather(*(t.stop(STOP_GRACE_S) for t in running + closing))
         for t in self.open.values():
             t.store.close()
             self._save(t)
-        for task in list(self._background):
-            task.cancel()
 
     def _terminal(self, meta: dict) -> Terminal:
         return Terminal(
