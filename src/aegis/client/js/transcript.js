@@ -147,6 +147,7 @@ export class Transcript {
     this.statPaths = statPaths;
     this.kinds = new Map(); // id -> kinds, for this session's replies
     this.statting = new Set();
+    this.gen = 0; // bumped by clear(): an answer for an older transcript is dropped
     this.refWatch = new IntersectionObserver(
       (items) => {
         for (const it of items) {
@@ -155,14 +156,16 @@ export class Transcript {
           const id = it.target.dataset.id;
           if (this.nodes.get(id) !== it.target || this.statting.has(id)) continue;
           this.statting.add(id);
+          const gen = this.gen;
           this.statPaths(id)
             .then(({ kinds }) => {
+              if (gen !== this.gen) return;
               this.kinds.set(id, kinds);
               const n = this.nodes.get(id);
               if (n) applyKinds(n, kinds);
             })
             .catch(() => {}) // the refs stay pending, and still open on a click
-            .finally(() => this.statting.delete(id));
+            .finally(() => gen === this.gen && this.statting.delete(id));
         }
       },
       { root: scroller, rootMargin: "600px 0px" },
@@ -439,6 +442,8 @@ export class Transcript {
     unwatch(this.list);
     this.refWatch.disconnect();
     this.kinds.clear();
+    this.statting.clear();
+    this.gen++;
     this.since.clear();
     this.sent.clear();
     this.list.replaceChildren();

@@ -57,10 +57,19 @@ def kind(text: str, cwd: Path, root: Path) -> str:
     if REPO_N.fullmatch(text) or GITHUB.fullmatch(text):
         return "repo"
     places = tried(text.rstrip("/"), cwd, root).values()
-    if any(p.is_file() for p in places):
+    if any(_is(p, Path.is_file) for p in places):
         return "file"
-    if any(p.is_dir() for p in places):
+    if any(_is(p, Path.is_dir) for p in places):
         return "dir"
     if REPO.fullmatch(text) and not EXT.search(text):
         return "repo"
     return "missing" if path_shaped(text) else "code"
+
+
+def _is(path: Path, test) -> bool:
+    """A place this process may not look into (EACCES, which is_file raises
+    since 3.13) holds nothing it can show."""
+    try:
+        return test(path)
+    except OSError:
+        return False

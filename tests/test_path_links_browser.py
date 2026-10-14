@@ -173,3 +173,43 @@ def test_each_path_shows_what_it_names_once_in_view(server, page):  # noqa: F811
     page.locator(".row.prose code.ref[data-kind=dir]").click()
     assert page.locator("#viewer").is_hidden(), "a folder opens nothing"
     assert page.errors == []
+
+
+def test_a_late_answer_from_another_session_is_dropped(server, page):  # noqa: F811
+    # Entry ids repeat across sessions: an answer for session A's e1.0 that
+    # lands after the switch must not draw on session B's e1.0.
+    page.goto(server.url)
+    got = page.evaluate(
+        """async () => {
+          const { Transcript } = await import('/static/js/transcript.js');
+          const sc = document.createElement('div');
+          sc.style.cssText = 'position:fixed;top:0;left:0;width:600px;height:400px;overflow:auto;z-index:9999';
+          const list = document.createElement('div');
+          const jump = document.createElement('button');
+          sc.append(list);
+          document.body.append(sc, jump);
+          let release;
+          const calls = [];
+          const t = new Transcript(sc, list, jump, {
+            loadDetail: async () => [],
+            statPaths: (id) => {
+              calls.push(id);
+              if (calls.length === 1) return new Promise((r) => { release = r; });
+              return Promise.resolve({ kinds: ['file'] });
+            },
+          });
+          const row = (md, path) => ({ id: 'e1.0', rev: 1, kind: 'prose', status: 'ok', ts: null,
+            glyph: 'prose', title: '', summary: '', md, detail: { paths: [path] } });
+          const tick = () => new Promise((r) => setTimeout(r, 250));
+          t.snapshot({ rev: 1, entries: [row('See `a/b.py`.', 'a/b.py')] });
+          await tick();
+          t.snapshot({ rev: 1, entries: [row('See `c/d.py`.', 'c/d.py')] });
+          await tick();
+          release({ kinds: ['missing'] });
+          await tick();
+          const code = list.querySelector('code.ref');
+          return { calls: calls.length, kind: code && code.dataset.kind };
+        }"""
+    )
+    assert got == {"calls": 2, "kind": "file"}
+    assert page.errors == []

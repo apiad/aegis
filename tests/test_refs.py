@@ -36,3 +36,15 @@ def test_kind_expands_home_and_takes_absolute_paths(tmp_path, monkeypatch):
     assert refs.tried("/etc/x.conf:3", elsewhere, elsewhere) == {
         "absolute": Path("/etc/x.conf")
     }
+
+
+def test_an_unreadable_path_is_missing_not_an_error(tmp_path):
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    (locked / "a.py").write_text("a = 1\n")
+    locked.chmod(0)
+    try:
+        assert refs.kind("locked/a.py", tmp_path, tmp_path) == "missing"
+        assert refs.kind("src/x.py", tmp_path, tmp_path) == "missing"
+    finally:
+        locked.chmod(0o755)

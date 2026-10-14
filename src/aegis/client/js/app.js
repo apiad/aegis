@@ -125,7 +125,10 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
   // server is never asked.
   statPaths: (entryId) => {
     const id = shown;
-    return callFor(id, "path.stat", { entry_id: entryId }).then((got) => (shown === id ? got : { kinds: [] }));
+    return callFor(id, "path.stat", { entry_id: entryId }).then((got) => {
+      if (shown !== id) throw new Error("another session is shown");
+      return got;
+    });
   },
 });
 artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
