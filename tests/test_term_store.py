@@ -81,3 +81,19 @@ def test_a_long_tail_is_cut_at_a_line_start(tmp_path):
         s.output(f"row {i:04d}\r\n")  # 10 characters a row
     t = s.tail(limit=95)
     assert t.startswith("row ") and t.endswith("row 0999\r\n") and len(t) <= 95
+
+
+def test_a_cut_with_no_newline_starts_at_the_next_escape_not_inside_one(tmp_path):
+    s = store(tmp_path)
+    s.output("a" * 10 + "\x1b[31m" + "b" * 10 + "\x1b[0m" + "c" * 10)
+    assert s.tail(limit=27) == "\x1b[0m" + "c" * 10  # the limit cuts \x1b[31m
+
+
+def test_a_full_screen_program_that_quit_does_not_clear_the_tail(tmp_path):
+    s = store(tmp_path)
+    s.output("$ ls\r\nREADME\r\n$ vim\r\n")
+    s.output("\x1b[?1049h\x1b[2J\x1b[Hvim screen")
+    s.output("\x1b[?1049l$ ")
+    assert s.tail().startswith("$ ls\r\nREADME")
+    s.output("\x1b[2Jcleared")
+    assert s.tail() == "\x1b[2Jcleared"

@@ -31,8 +31,11 @@ from pathlib import Path
 SEGMENT_BYTES = 8 * 1024 * 1024
 RING_BYTES = 1024 * 1024
 SNAPSHOT_BYTES = 256 * 1024
-# A full-screen clear: nothing printed before one is still on the screen.
-CLEAR = re.compile(r"\x1b\[2J|\x1b\[\?1049h|\x1bc")
+# A full-screen clear, \x1b[2J or \x1bc, and the alternate screen's enter (h)
+# and leave (l). Nothing printed before a clear on the main screen is still on
+# it, nor before entering the alternate screen while a program is on it. A
+# program that left it (vim, quit) gave the main screen back as it was.
+CLEAR = re.compile(r"\x1b\[2J|\x1bc|\x1b\[\?1049([hl])")
 
 Event = tuple[int, str, str]  # rev, code, data
 
@@ -113,7 +116,7 @@ class CastStore:
     def tail(self, limit: int = SNAPSHOT_BYTES) -> str:
         """What a browser with nothing replays: the output since the last
         full-screen clear in the ring, at most ``limit`` characters, cut at a
-        line start when the limit cuts it."""
+        line start or an escape sequence's start when the limit cuts it."""
         self.load()
         parts: list[str] = []
         size = 0
@@ -128,10 +131,22 @@ class CastStore:
         cut = len(text) > limit
         if cut:
             text = text[-limit:]
-        if clears := list(CLEAR.finditer(text)):
-            return text[clears[-1].start() :]
-        if cut and (nl := text.find("\n")) >= 0:
-            return text[nl + 1 :]
+        start, alt = None, None  # the last clear on the main screen; the enter
+        for m in CLEAR.finditer(text):
+            if m[1] == "h":
+                alt = m.start()
+            elif m[1] == "l":
+                alt = None
+            elif alt is None:
+                start = m.start()
+        if alt is not None or start is not None:
+            return text[alt if alt is not None else start :]
+        if cut:
+            # Never start inside an escape sequence: at the next one or the next
+            # line, whichever comes first.
+            esc, nl = text.find("\x1b"), text.find("\n")
+            if starts := [i for i in (esc, nl + 1 if nl >= 0 else -1) if i >= 0]:
+                return text[min(starts) :]
         return text
 
     def flush(self) -> None:
