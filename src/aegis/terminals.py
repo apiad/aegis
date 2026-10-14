@@ -65,7 +65,6 @@ class Terminals:
         self.open: dict[str, Terminal] = {}
         self.archived: dict[str, dict] = {}
         self.closing: dict[str, Terminal] = {}  # closed, their program not yet ended
-        self._read_only: dict[str, Terminal] = {}
         self._background: set[asyncio.Task] = set()
 
     def profiles(self) -> dict[str, dict]:
@@ -182,11 +181,11 @@ class Terminals:
         return sorted(rows, key=lambda r: r["closed_at"] or 0, reverse=True)
 
     def channel(self, tid: str, since: int | None) -> Callable[[], dict] | None:
-        t = self.open.get(tid) or self._archived(tid)
-        if t is None:
+        if tid not in self.open and tid not in self.archived:
             return None
 
         def snapshot() -> dict:
+            t = self.open.get(tid) or self.closing.get(tid) or self._archived(tid)
             t.store.load()
             m = t.meta
             data = {"id": tid, "cols": m["cols"], "rows": m["rows"],
@@ -244,12 +243,10 @@ class Terminals:
             meta, CastStore(self.dir / meta["id"]), self._on_output, self._on_exit
         )
 
-    def _archived(self, tid: str) -> Terminal | None:
-        if tid not in self.archived:
-            return None
-        if tid not in self._read_only:
-            self._read_only[tid] = self._terminal(self.archived[tid])
-        return self._read_only[tid]
+    def _archived(self, tid: str) -> Terminal:
+        """A read-only terminal over an archived one's files, built for one
+        snapshot so it reads what is there now and nothing stays in memory."""
+        return self._terminal(self.archived[tid])
 
     async def _start(self, t: Terminal) -> None:
         spec = t.meta["spec"]

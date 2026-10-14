@@ -25,6 +25,7 @@ PROFILES = {
     "svc": profile("echo up; sleep 100", restart="always"),
     "missing": profile("no-such-binary-xyz"),
     "stubborn": profile("trap '' HUP; echo ready; sleep 100"),
+    "polite": profile("trap 'echo bye; exit' HUP; echo ready; sleep 100"),
     "broken": {"error": "cmd is missing"},
 }
 
@@ -236,3 +237,12 @@ async def test_shutdown_during_a_close_still_ends_a_program_that_ignores_sighup(
     finally:
         with contextlib.suppress(ProcessLookupError):
             os.killpg(pid, signal.SIGKILL)
+
+
+async def test_a_closed_terminal_shows_what_it_printed_on_its_way_out(reg):
+    t = await reg.spawn("polite", owner="ana")
+    await until(lambda: "ready" in reg.bus.text(t.id), what="ready")
+    await reg.close(t.id)
+    assert "ready" in reg.channel(t.id, None)()["tail"]  # while it is ending
+    await asyncio.wait_for(t.exited.wait(), 3)
+    assert "bye" in reg.channel(t.id, None)()["tail"]
