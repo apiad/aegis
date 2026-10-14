@@ -140,7 +140,7 @@ svg text{font-family:'JBM',ui-monospace,monospace}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · /btw, a side question</span>
-  <span class="st"><span class="pill acc">draft</span><span class="pill">2026-10-14</span><span class="pill">#397</span></span>
+  <span class="st"><span class="pill acc">built, on branch btw</span><span class="pill">2026-10-14</span><span class="pill">#397</span></span>
 </div>
 
 <div class="wrap">
@@ -160,7 +160,7 @@ svg text{font-family:'JBM',ui-monospace,monospace}
 
 <main>
 <h1>/btw: a side question that costs no turn</h1>
-<div class="meta"><span>status: draft</span><span>·</span><span>issue #397</span><span>·</span><span>supersedes nothing; ports legacy/aegis/btw/</span></div>
+<div class="meta"><span>status: built, on branch btw</span><span>·</span><span>issue #397</span><span>·</span><span>supersedes nothing; ports legacy/aegis/btw/</span></div>
 <p class="lede">A person types <code>/btw why did we drop the cache?</code> in any session's composer, even while the agent is mid-turn. aegis reads the session's transcript, asks a configured agent in one tool-less call, and puts the answer in the transcript as a collapsible block. The agent never sees the question or the answer.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -368,6 +368,13 @@ The person's side question: <span class="k">{question}</span></pre>
   <li><b>Claude Code's <code>side_question</code> control request.</b> Claude Code 2.1.296 answers <code>{"subtype": "side_question", "question": …, "history": [{question, response}]}</code> over stream-json. A probe against a running session answered mid-turn from the full context: asked 4.0 s into a 600-word story, it answered at 7.4 s, and the story still finished at 10.9 s with 553 words. It would give Claude sessions a full context and a warm cache. It is left out because it serves one harness of three; it remains the path to take if a Claude-only fast path is ever wanted.</li>
   <li>/btw from the Fleet view, or about several sessions at once.</li>
   <li>Tools for the side note. It reads the window and nothing else; <code>needs_more</code> is how it says that is not enough.</li>
+</ul>
+<h3>Where the build departs from this page</h3>
+<ul>
+  <li>No image rule in the window: the fold stores a digest of each result (<code>describe.result_digest</code>), so no base64 reaches it.</li>
+  <li>A server shutdown leaves a running side note <code>cancelled</code>, not <code>failed</code>: its task writes the record on the way out. A crash leaves it running until the next side note or a <code>server_stopped</code> record fails it.</li>
+  <li>A new glyph, <code>btw</code>, a question mark: the only one in the sprite was the needs-you badge.</li>
+  <li>The help page's example config names a larger model for <code>btw:</code> than for <code>recap:</code>, to show why the keys are separate.</li>
 </ul>
 <h3>Open</h3>
 <ul>
