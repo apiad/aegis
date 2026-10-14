@@ -1445,3 +1445,32 @@ body{background:#000}
 #a2 .arch-workers:hover{border-color:var(--faint)}
 #a2 .arch-workers.on{background:var(--accent-soft);color:var(--strong)}
 #a2 .arch-workers b{margin-left:6px;color:var(--faint);font-weight:500}
+
+/* Terminals (#362): xterm.js reads these through js/terminal.js. */
+#a2 {
+  --term-bg: var(--surface);
+  --term-fg: var(--ink);
+  --term-cursor: var(--accent);
+  --term-cursor-text: var(--surface);
+  --term-selection: var(--accent-soft);
+  --term-selection-inactive: var(--accent-soft);
+  --ansi-black: var(--chrome);
+  --ansi-red: var(--err);
+  --ansi-green: var(--ok);
+  --ansi-yellow: var(--warn);
+  --ansi-blue: var(--accent);
+  --ansi-magenta: var(--comms);
+  --ansi-cyan: color-mix(in oklab, var(--accent) 50%, var(--ok));
+  --ansi-white: var(--ink);
+  --ansi-bright-black: var(--muted);
+  --ansi-bright-red: color-mix(in oklab, var(--ansi-red) 75%, var(--strong));
+  --ansi-bright-green: color-mix(in oklab, var(--ansi-green) 75%, var(--strong));
+  --ansi-bright-yellow: color-mix(in oklab, var(--ansi-yellow) 75%, var(--strong));
+  --ansi-bright-blue: color-mix(in oklab, var(--ansi-blue) 75%, var(--strong));
+  --ansi-bright-magenta: color-mix(in oklab, var(--ansi-magenta) 75%, var(--strong));
+  --ansi-bright-cyan: color-mix(in oklab, var(--ansi-cyan) 75%, var(--strong));
+  --ansi-bright-white: var(--strong);
+  --term-font: var(--font-mono);
+}
+#a2 .term-host { flex: 1; min-height: 0; overflow-x: auto; background: var(--term-bg); padding: 6px 8px; border-radius: var(--r); cursor: text; }
+#a2 .term-host.direct { outline: 1px solid var(--accent); }
