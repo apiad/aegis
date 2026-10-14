@@ -117,7 +117,7 @@ def test_the_hint_hides_while_the_composer_points_at_a_linked_server(
     assert page.errors == []
 
 
-def test_start_this_tutorial_in_the_help_tab_starts_the_guide(
+def test_guided_tour_in_the_help_tab_starts_a_tutorial_or_a_tour(
     server,  # noqa: F811
     page,  # noqa: F811
 ):
@@ -126,18 +126,23 @@ def test_start_this_tutorial_in_the_help_tab_starts_the_guide(
     page.click("#help-btn")
     page.click('.helpv .hrow[data-ref="monitors"]')
     page.wait_for_function(titled, arg=TITLE["monitors"])
-    assert page.locator("button", has_text="Start this tutorial").is_hidden()
+    page.click("button:has-text('Guided tour')")
+    page.wait_for_selector("#a2[data-view=session]")
+    tour = page.evaluate("location.hash.slice(3)")
+    page.wait_for_function(ENTRIES_NAME, arg="monitors", timeout=8000)
+    assert meta(server, tour)["title"] == f"Tour: {TITLE['monitors']}"
+    page.click("#help-btn")
     page.click('.helpv .hrow[data-ref="getting-started"]')
     page.wait_for_function(titled, arg=TITLE["getting-started"])
-    page.click("button:has-text('Start this tutorial')")
-    page.wait_for_selector("#a2[data-view=session]")
+    page.click("button:has-text('Guided tour')")
+    page.wait_for_function("t => location.hash.slice(3) !== t", arg=tour)
     log_id = page.evaluate("location.hash.slice(3)")
     page.wait_for_function(ENTRIES_NAME, arg="getting-started", timeout=8000)
     assert meta(server, log_id)["agent"] == "opus"  # default_agent
     assert page.errors == []
 
 
-def test_a_double_click_on_start_this_tutorial_starts_one_guide(
+def test_a_double_click_on_guided_tour_starts_one_guide(
     server,  # noqa: F811
     page,  # noqa: F811
 ):
@@ -146,7 +151,7 @@ def test_a_double_click_on_start_this_tutorial_starts_one_guide(
     page.click("#help-btn")
     page.click('.helpv .hrow[data-ref="getting-started"]')
     page.wait_for_function(titled, arg=TITLE["getting-started"])
-    page.dblclick("button:has-text('Start this tutorial')")
+    page.dblclick("button:has-text('Guided tour')")
     page.wait_for_selector("#a2[data-view=session]")
     page.wait_for_function(ENTRIES_NAME, arg="getting-started", timeout=8000)
     time.sleep(0.5)  # a second guide, had one started, has its tab by now

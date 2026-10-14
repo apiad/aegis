@@ -56,8 +56,8 @@ export function pageRef(href, ids, here) {
 
 export class Help {
   // go(hash): navigate as app.js does. onKeys(): open the ? list.
-  // onStart(page): start that tutorial, returning a promise; app.js passes
-  // help.guide. Without it a tutorial page carries the button hidden.
+  // onStart(page, tutorial): start a guided tour of that page, returning a
+  // promise; app.js passes help.guide. Without it the button stays hidden.
   constructor(conn, box, { go, onKeys, onStart = null }) {
     Object.assign(this, { conn, box, go, onKeys, onStart });
     this.pages = null; // help.pages's answer, once it arrives
@@ -91,15 +91,16 @@ export class Help {
     this.back = el("button", "btn hback", "← Help");
     this.back.type = "button";
     this.back.addEventListener("click", () => this.go("#help"));
-    this.start = el("button", "btn primary hstart", "Start this tutorial");
+    this.start = el("button", "btn primary hstart", "Guided tour");
     this.start.type = "button";
+    this.start.title = "Starts an agent in a new tab and spends quota";
     this.start.hidden = !this.onStart;
     // Disabled while the guide starts, so a double click starts one.
     this.start.addEventListener("click", async () => {
       if (this.start.disabled) return;
       this.start.disabled = true;
       try {
-        await this.onStart(this.shown);
+        await this.onStart(this.shown, this.shownTutorial);
       } finally {
         this.start.disabled = false;
       }
@@ -279,8 +280,8 @@ export class Help {
       for (const h of doc.querySelectorAll("h2")) h.id = `h-${slug(h.textContent)}`;
       this.title.textContent = meta.title;
       this.when.textContent = `${page} · ${meta.when}`;
-      if (meta.kind === "tutorial") this.back.after(this.start);
-      else this.start.remove();
+      this.back.after(this.start);
+      this.shownTutorial = meta.kind === "tutorial";
       this.body.replaceChildren(doc);
       this.shown = page;
       this.mark();

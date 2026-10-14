@@ -77,7 +77,7 @@ def test_every_page_reads_with_each_section_where_search_points(server, page):  
         shown(page, p.id)
         ids = page.eval_on_selector_all(".helpv .hbody h2", "hs => hs.map(h => h.id)")
         assert ids == ["h-" + s.slug for s in p.sections[1:]], p.id
-        assert page.locator(".helpv .hstart").count() == (p.kind == "tutorial"), p.id
+        assert page.locator(".helpv .hstart").count() == 1, p.id  # Guided tour
         assert page.locator(".helpv .hbody > .md.doc").count() == 1
         # The title is drawn once, over the page, not again as its body's h1.
         assert page.locator(".helpv .hbody h1").count() == 0, p.id
