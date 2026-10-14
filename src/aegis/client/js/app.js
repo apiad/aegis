@@ -8,7 +8,7 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, fadeTables, fileUrl, setDocker, setFileBase, setOpener, syncDock } from "./entries.js";
+import { artifactStage, btwFolds, fadeTables, fileUrl, setDocker, setFileBase, setOpener, syncDock } from "./entries.js";
 import { setScroller } from "./highlight.js";
 import { Viewer } from "./viewer.js";
 import { Canvas } from "./canvas.js";
@@ -1631,6 +1631,17 @@ async function askRecap(force) {
 }
 $("entries").addEventListener("click", (ev) => {
   if (ev.target.closest("[data-recap=force]")) askRecap(true);
+  const cancel = ev.target.closest("[data-btw-cancel]");
+  if (cancel && shown) {
+    callFor(shown, "btw.cancel", { id: cancel.dataset.btwCancel }).catch((e) => toast(e.message, { kind: "error" }));
+    return;
+  }
+  const btwRow = ev.target.closest(".row.btw");
+  if (btwRow && (ev.target.closest(".hd") || btwRow.classList.contains("folded"))) {
+    const folded = !btwRow.classList.contains("folded");
+    btwFolds.set(btwRow.dataset.id, folded);
+    btwRow.classList.toggle("folded", folded);
+  }
 });
 // Coming back to the page is landing again; the server decides.
 document.addEventListener("visibilitychange", () => {
@@ -2624,8 +2635,11 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
   }
   const box = $("replies");
   const was = box.hidden;
-  box.hidden = true; // any send answers the turn the pills belonged to
-  delete box.dataset.key; // so the next drawReplies always redraws
+  const aside = /^\/btw(\s|$)/.test(text);
+  if (!aside) {
+    box.hidden = true; // any send answers the turn the pills belonged to
+    delete box.dataset.key; // so the next drawReplies always redraws
+  }
   const params = attachments.length ? { text, attachments } : { text };
   // A linked server older than nonces would refuse the field.
   if (fromComposer && !forKey(s.key).server) params.nonce = nonceFor(s.key, JSON.stringify([text, attachments]));
