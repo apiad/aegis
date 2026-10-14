@@ -26,6 +26,7 @@ import asyncio
 import codecs
 import contextlib
 import fcntl
+import logging
 import os
 import re
 import signal
@@ -43,12 +44,15 @@ READ_PER_S = 4 * 1024 * 1024
 TICK_S = 0.016
 READ_MAX = 65536
 DRAIN_READS = 16  # what is left after the child exits: a PTY buffer or two
+KILL_WAIT_S = 2.0  # after SIGKILL, before stop gives up and logs
 INPUT_MAX = 1024 * 1024  # input the program has not read yet
 ANSI = re.compile(
     r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]"
 )
 
 Ops = list[dict]
+
+log = logging.getLogger("aegis.terminal")
 
 
 class Terminal:
@@ -141,16 +145,35 @@ class Terminal:
             self._schedule()
 
     async def stop(self, grace: float) -> None:
-        """SIGHUP to the terminal's process group, then SIGKILL after
-        ``grace`` seconds, as closing an SSH session does."""
+        """SIGHUP to the terminal's process group and its foreground job's,
+        then SIGKILL after ``grace`` seconds to whichever is left, as closing
+        an SSH session does. A shell's job control puts a foreground job in a
+        group of its own, and a child that has not run setsid yet has no group,
+        so the child itself is signalled too."""
         if self.proc is None or self.fd is None:
             return
-        _killpg(self.proc.pid, signal.SIGHUP)
+        groups = {self.proc.pid}
+        with contextlib.suppress(OSError):
+            groups.add(os.tcgetpgrp(self.fd))  # 0 while the PTY has no session
+        groups -= {0, os.getpgrp()}
+        self._signal(groups, signal.SIGHUP)
+        loop = asyncio.get_running_loop()
+        end = loop.time() + grace
+        while not self.exited.is_set() or any(map(_alive, groups)):
+            if loop.time() >= end:
+                self._signal(groups, signal.SIGKILL)
+                break
+            await asyncio.sleep(0.05)
         try:
-            await asyncio.wait_for(self.exited.wait(), grace)
+            await asyncio.wait_for(self.exited.wait(), KILL_WAIT_S)
         except TimeoutError:
-            _killpg(self.proc.pid, signal.SIGKILL)
-            await self.exited.wait()
+            log.warning("aegis: terminal %s outlived SIGKILL", self.meta["name"])
+
+    def _signal(self, groups: set[int], sig: int) -> None:
+        for pgid in groups:
+            _killpg(pgid, sig)
+        with contextlib.suppress(ProcessLookupError):
+            self.proc.send_signal(sig)
 
     def last_line(self) -> str:
         """The newest line of output that is not blank, as plain text, with a
@@ -266,7 +289,16 @@ def _winsize(fd: int, cols: int, rows: int) -> None:
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
 
-def _killpg(pid: int, sig: int) -> None:
-    # setsid made the child its own process group's leader: its pid is the group's.
+def _killpg(pgid: int, sig: int) -> None:
     with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(pid, sig)
+        os.killpg(pgid, sig)
+
+
+def _alive(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass
+    return True

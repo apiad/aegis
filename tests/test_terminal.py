@@ -132,3 +132,34 @@ async def test_input_a_program_does_not_read_is_refused_past_the_cap(tmp_path):
             t.input("x" * 100_000)
     assert e.value.code == "busy" and len(t._out) <= terminal.INPUT_MAX
     await t.stop(grace=0.5)
+
+
+async def test_stop_before_the_child_ran_setsid_does_not_hang(tmp_path, monkeypatch):
+    spawn = asyncio.create_subprocess_exec
+
+    def late(*argv, **kw):  # the child is still in aegis's process group
+        return spawn("sh", "-c", 'sleep 0.5; exec "$@"', "sh", *argv, **kw)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", late)
+    t, rec = await run(tmp_path, ["sh", "-c", "trap '' HUP; sleep 100"])
+    await asyncio.wait_for(t.stop(grace=0.1), 2.5)
+    assert t.exited.is_set()
+
+
+async def test_stop_kills_a_foreground_job_in_its_own_process_group(tmp_path):
+    t, rec = await run(tmp_path, ["bash", "--norc", "-i"])
+    t.input("sh -c 'trap \"\" HUP; echo $$ > job.pid; exec sleep 100'\r")
+    pidfile = tmp_path / "job.pid"
+    await until(lambda: pidfile.exists() and pidfile.read_text().strip(), what="pid")
+    pid = int(pidfile.read_text())
+    await asyncio.wait_for(t.stop(grace=0.3), 2.5)
+    await until(lambda: not _alive(pid), timeout=1, what="the job to end")
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    with open(f"/proc/{pid}/stat") as f:
+        return f.read().split(") ")[1][0] != "Z"
