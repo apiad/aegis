@@ -121,6 +121,15 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
     const id = shown;
     return callFor(id, "transcript.detail", { ids }).then((got) => (shown === id ? got : []));
   },
+  // Only this server's replies carry pending refs (entries.js), so a linked
+  // server is never asked.
+  statPaths: (entryId) => {
+    const id = shown;
+    return callFor(id, "path.stat", { entry_id: entryId }).then((got) => {
+      if (shown !== id) throw new Error("another session is shown");
+      return got;
+    });
+  },
 });
 artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
 const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(id) });
@@ -1670,7 +1679,7 @@ $("entries").addEventListener("click", async (ev) => {
 
 // -- Open a path a reply named, in the viewer at its line -----------------------
 $("entries").addEventListener("click", async (ev) => {
-  const code = ev.target.closest(".md code.path");
+  const code = ev.target.closest(".md code.ref:not([data-kind=dir])");
   if (!code) return;
   const row = code.closest(".row");
   const body = row.querySelector(":scope > .body");

@@ -11,6 +11,8 @@ import difflib
 import json
 import re
 
+from .. import refs
+
 KIND_BY_NAME = {
     "Read": "read",
     "Bash": "execute",
@@ -378,17 +380,13 @@ def file_window(first: int, lines: list[str]) -> dict:
 
 _FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
 _SPAN = re.compile(r"(`+)([^`\n]+?)\1")
-_PATH = re.compile(
-    r"(?:~?/)?(?:[\w.@+-]+/)*[\w@+-][\w.@+-]*\.[A-Za-z][A-Za-z0-9]*(?::\d+)?"
-)
-_BARE = re.compile(r"[A-Z][A-Z0-9_-]*\.[a-z]+(?::\d+)?")
 
 
 def inline_paths(md: str) -> list[str]:
-    """The inline code spans of a reply shaped like a file path, with an
-    optional ``:line``, in order and without repeats; fenced blocks skipped.
-    A path has a slash and an extension, or is a capitalised name such as
-    DESIGN.md. Whether the file exists is asked at click time (#323)."""
+    """The inline code spans of a reply that may name a file, a folder or a
+    GitHub repo (refs.candidate), with an optional ``:line``, in order and
+    without repeats; fenced blocks skipped. What each one names is asked when
+    the reply is shown (path.stat, #393); a click asks again (#323)."""
     out: list[str] = []
     fence = None
     for line in md.splitlines():
@@ -403,8 +401,7 @@ def inline_paths(md: str) -> list[str]:
             continue
         for span in _SPAN.finditer(line):
             text = span.group(2).strip()
-            shaped = ("/" in text and _PATH.fullmatch(text)) or _BARE.fullmatch(text)
-            if shaped and "://" not in text and text not in out:
+            if refs.candidate(text) and text not in out:
                 out.append(text)
     return out
 

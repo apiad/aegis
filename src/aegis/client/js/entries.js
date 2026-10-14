@@ -10,6 +10,7 @@ import { money } from "./fleet.js";
 import { entryIcon, icon } from "./glyphs.js";
 import { diffView } from "./diff.js";
 import { cachedColour, colour, isPlain, langName, paint, splitLines } from "./highlight.js";
+import { hostIcon, repoUrl, shortLabel, sureRepo } from "./refs.js";
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -24,6 +25,9 @@ function makeMd(breaks) {
   m.renderer.rules.link_open = (tokens, idx, options, env, self) => {
     tokens[idx].attrSet("target", "_blank");
     tokens[idx].attrSet("rel", "noopener noreferrer");
+    tokens[idx].attrJoin("class", "web");
+    // markdown-it's own link from bare text: its label is ours to shorten.
+    if (tokens[idx].markup === "linkify" || tokens[idx].markup === "autolink") tokens[idx].attrJoin("class", "auto");
     return defaultLink(tokens, idx, options, env, self);
   };
   // A table sits in a block that holds its copy button, over a scroller; its
@@ -323,18 +327,79 @@ export function markdown(text, { breaks = false, paths = null } = {}) {
     const tw = blk.querySelector(".tw");
     tw.addEventListener("scroll", () => fade(tw), { passive: true });
   }
-  // The spans a reply listed as paths (detail.paths) open the file in the
-  // viewer; a linked server's do not, as the file is on the other machine.
-  if (paths?.length && fileBase === "") {
-    for (const code of div.querySelectorAll(":not(pre) > code")) {
-      const i = paths.indexOf(code.textContent.trim());
-      if (i < 0) continue;
-      code.classList.add("path");
-      code.dataset.index = String(i);
-      code.title = "Open in the viewer";
+  for (const a of div.querySelectorAll("a.web")) decorateLink(a);
+  // The spans a reply listed as paths (detail.paths): an issue ref or a
+  // github.com path links at once; on this server the rest wait for
+  // path.stat (transcript.js, applyKinds). A linked server's open nothing,
+  // as the files are on the other machine. A span inside a link stays the
+  // agent's link.
+  for (const code of div.querySelectorAll(":not(pre) > code")) {
+    if (code.closest("a")) continue;
+    const t = code.textContent.trim();
+    if (sureRepo(t)) {
+      asRepo(code, t);
+      continue;
     }
+    const i = fileBase === "" && paths ? paths.indexOf(t) : -1;
+    if (i < 0) continue;
+    code.classList.add("ref");
+    code.dataset.index = String(i);
+    code.title = "Open in the viewer";
   }
   return div;
+}
+
+// A URL gets its host's icon; one markdown-it made from bare text also gets
+// a short label, the full URL kept as its title.
+function decorateLink(a) {
+  let u;
+  try {
+    u = new URL(a.getAttribute("href"));
+  } catch {
+    return;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return;
+  if (a.classList.contains("auto")) {
+    a.title = a.getAttribute("href");
+    a.textContent = shortLabel(u);
+  }
+  a.prepend(icon(hostIcon(u)));
+}
+
+function asRepo(code, text) {
+  const a = document.createElement("a");
+  a.className = "repo";
+  a.href = repoUrl(text);
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  code.classList.remove("ref");
+  delete code.dataset.index;
+  code.removeAttribute("title");
+  code.prepend(icon("github"));
+  code.replaceWith(a);
+  a.append(code);
+}
+
+const KIND_ICON = { file: "file", dir: "folder", missing: "file-gone" };
+const KIND_TITLE = { file: "Open in the viewer", dir: "A folder", missing: "No such file when shown; click to look again" };
+
+// What path.stat answered, drawn on a reply's pending refs. Applied twice,
+// it changes nothing.
+export function applyKinds(node, kinds) {
+  for (const code of node.querySelectorAll(".md code.ref[data-index]")) {
+    if (code.dataset.kind) continue;
+    const k = kinds[Number(code.dataset.index)];
+    if (k === "repo") asRepo(code, code.textContent.trim());
+    else if (k === "code") {
+      code.classList.remove("ref");
+      code.removeAttribute("title");
+      delete code.dataset.index;
+    } else if (KIND_ICON[k]) {
+      code.dataset.kind = k;
+      code.prepend(icon(KIND_ICON[k]));
+      code.title = KIND_TITLE[k];
+    }
+  }
 }
 
 function el(tag, cls, text) {
