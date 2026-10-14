@@ -175,7 +175,10 @@ FIRST = [
 # Questions two pages answer: one of them must be in the first three.
 EITHER = [
     ("step by step tutorial for linked servers", {"tutorial-links", "links"}),
-    ("learn the canvas and docked panes step by step", {"tutorial-layouts", "transcript"}),
+    (
+        "learn the canvas and docked panes step by step",
+        {"tutorial-layouts", "transcript"},
+    ),
     ("try aegis on my phone step by step", {"tutorial-phone", "phone"}),
     ("tutorial for running a server for other people", {"tutorial-server", "tokens"}),
     ("send work to another server", {"handoffs", "links"}),
@@ -203,8 +206,6 @@ def test_getting_started_comes_first_and_its_next_names_every_other_tutorial():
     index = Index(load())
     tutorials = [p["id"] for p in index.listing() if p["kind"] == "tutorial"]
     assert tutorials[0] == "getting-started"
-    nxt = next(
-        s for s in index.pages["getting-started"].sections if s.slug == "next"
-    )
+    nxt = next(s for s in index.pages["getting-started"].sections if s.slug == "next")
     linked = re.findall(r"\]\(([a-z0-9-]+)\)", nxt.text)
     assert sorted(linked) == sorted(tutorials[1:])
