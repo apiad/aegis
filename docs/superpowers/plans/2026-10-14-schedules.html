@@ -177,7 +177,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 
 <h3>Slice 1 · foundations (branch schedules-engine)</h3>
 
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="num">1</span><span><span class="ttl">The clock: every, cron and at</span><span class="files">src/aegis/clock.py · tests/test_clock.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>A pure module that parses a clock and finds its ticks, in the server's local zone. Nothing else depends on its internals: the engine calls <code>clock_from</code>, <code>Clock.due</code>, <code>Clock.next_after</code> and <code>Clock.upcoming</code>.</p>
@@ -520,7 +520,7 @@ def _parse(kind: str, value: str) -> Clock:
 </div>
 </details>
 
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">One finish rule and one bash runner</span><span class="files">src/aegis/registry.py · src/aegis/queues.py · src/aegis/monitors.py · tests/test_finished.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The test a queue's task ends on moves to the registry, and also waits for working children. The bash runner leaves the <code>Monitors</code> class so the engine can call it with its own timeout.</p>
@@ -626,7 +626,7 @@ async def test_run_bash_says_the_code_the_output_and_why_it_could_not_run():
 </div>
 </details>
 
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="num">3</span><span><span class="ttl">A run's schedule meta and the spawn refusal</span><span class="files">session.py · registry.py · ops.py · app.py · tests/fake_claude.py · tests/test_schedule_meta.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>A session started by a schedule carries <code>schedule: {name, run, spawn}</code> in its meta, as a queue worker carries <code>worker</code>. A child inherits it. A run with <code>spawn: false</code> is refused the three operations that start work. The fake claude learns to run the line under a <code>&gt; from schedule:</code> header.</p>
@@ -758,7 +758,7 @@ and in the <code>session.spawn</code> op, <code>s = await reg.spawn(spec)</code>
 </div>
 </details>
 
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">Definitions and the run log</span><span class="files">src/aegis/schedule_log.py · tests/test_schedule_log.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Everything about a schedule that needs no server: the pydantic definition, the stored form, the fold that rebuilds the runtime state from the log, compaction, and the rows the runs table draws.</p>
@@ -1271,7 +1271,7 @@ class RunLog:
 
 <h3>Slice 2 · the engine</h3>
 
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">The engine: clock task, layers, watcher and close rule</span><span class="files">src/aegis/schedules.py · app.py · registry.py · tests/test_schedules_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>One object on the app owns every schedule. Tests stop its wall clock and move it forward, then call <code>step()</code>, so nothing in them waits for a real tick.</p>
@@ -2334,7 +2334,7 @@ Add <code>schedules</code> to the channel list in <code>app.py</code>'s module d
 
 <h3>Slice 3 · operations, tools and docs · PR 1</h3>
 
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">The schedule operations and their tools</span><span class="files">src/aegis/schedule_ops.py · app.py · tests/test_schedule_ops.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Nine operations, each an MCP tool. Ownership follows <code>agent_ops.mine</code>: an agent changes what it created, a member what it owns, an admin anything.</p>
@@ -2701,7 +2701,7 @@ def register_schedule_ops(app: App) -> None:
 </div>
 </details>
 
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="done">
 <summary><span class="num">7</span><span><span class="ttl">Help page, primer, DESIGN.md, changelog and PR 1</span><span class="files">help/schedules.md · mcp.py · DESIGN.md · changelog.d/ · the spec's status</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>steps</h4>
