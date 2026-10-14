@@ -4,6 +4,7 @@ touching the disk, so an archive's links never depend on the machine that
 reads it; path.stat asks kind() when the reply is shown."""
 
 import re
+from pathlib import Path
 
 # A file: a slash and an extension, with an optional :line (#323).
 PATH = re.compile(
@@ -38,3 +39,28 @@ def candidate(text: str) -> bool:
     if path_shaped(text) or REPO_N.fullmatch(text) or GITHUB.fullmatch(text):
         return True
     return bool(SLASHED.fullmatch(text)) and re.search(r"[A-Za-z]", text) is not None
+
+
+def tried(raw: str, cwd: Path, root: Path) -> dict[str, Path]:
+    """Where a path a reply named is looked for: as written when absolute,
+    else under the config root and under the session's cwd (#323)."""
+    given = Path(LINE.sub("", raw)).expanduser()
+    if given.is_absolute():
+        return {"absolute": given}
+    return {"root": root / given, "cwd": cwd / given}
+
+
+def kind(text: str, cwd: Path, root: Path) -> str:
+    """What a candidate names now: file, dir, missing, repo or code. An issue
+    ref and a github.com path are a repo whatever the disk holds; a bare
+    owner/repo is one only when no local path has its name."""
+    if REPO_N.fullmatch(text) or GITHUB.fullmatch(text):
+        return "repo"
+    places = tried(text.rstrip("/"), cwd, root).values()
+    if any(p.is_file() for p in places):
+        return "file"
+    if any(p.is_dir() for p in places):
+        return "dir"
+    if REPO.fullmatch(text) and not EXT.search(text):
+        return "repo"
+    return "missing" if path_shaped(text) else "code"
