@@ -1269,7 +1269,7 @@ def test_the_actions_are_one_row_of_equal_cells_with_icons(server, page):
     spawn(page)
     row = page.locator(".side-acts.live-only").bounding_box()
     cells = page.eval_on_selector_all(".side-acts.live-only .act", ACTS)
-    assert [c["icon"] for c in cells] == [True, True, True]
+    assert [c["icon"] for c in cells] == [True, True, True, True]  # Quiet (#386)
     widths = [c["width"] for c in cells]
     assert max(widths) - min(widths) < 1, widths
     # The row is covered edge to edge.
@@ -4564,6 +4564,35 @@ def test_a_link_to_a_session_the_saved_fleet_predates_opens_it(server, browser):
     pg.goto(f"{origin}/#s={sid}")
     pg.wait_for_selector("#a2[data-view=session]", timeout=10000)
     pg.wait_for_timeout(500)
+    assert pg.evaluate("location.hash.slice(3)") == sid
+    assert errors == []
+    ctx.close()
+
+
+def test_a_link_to_a_quiet_session_the_saved_fleet_predates_opens_it(server, browser):
+    """#386: only a session seen visible and then quiet moves the view; one
+    the saved Fleet never had arrives quiet and must stay open."""
+    errors: list = []
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    pg = ctx.new_page()
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg, "hello")
+    sid = spawn(pg, HOLD)
+    pg.wait_for_function("!document.querySelector('#quiet-session').disabled")
+    pg.click("#quiet-session")
+    pg.wait_for_function("id => location.hash !== '#s=' + id", arg=sid)
+    pg.close()
+    origin = re.match(r"https?://[^/]+", server.url).group(0)
+    side = ctx.new_page()
+    side.goto(f"{origin}/static/icons/aegis-192.png")
+    side.evaluate("import('/static/js/devicestore.js').then(s => s.saveFleet([]))")
+    side.close()
+    pg = ctx.new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(f"{origin}/#s={sid}")
+    pg.wait_for_selector("#a2[data-view=session]", timeout=10000)
+    pg.wait_for_timeout(800)
     assert pg.evaluate("location.hash.slice(3)") == sid
     assert errors == []
     ctx.close()

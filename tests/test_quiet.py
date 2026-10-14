@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from aegis import restarts
 from aegis.commands import parse_spawn
 from aegis.queues import queues_from
 
@@ -134,7 +135,10 @@ async def test_a_worker_starts_quiet_and_never_shows_when_it_finishes(world):
     t = world.app.queues.tasks[task_id]
     await until(lambda: t.worker, timeout=8, what="the worker")
     assert world.session(t.worker).quiet is True
-    await until(lambda: t.status == "completed", timeout=12, what="completion")
+    # The task completes a moment before its worker is archived (queues.py).
+    await until(
+        lambda: t.worker in world.app.sessions.archived, timeout=12, what="archive"
+    )
     # Archived without ever coming back: its last meta is still quiet.
     assert world.app.sessions.archived[t.worker]["quiet"] is True
 
@@ -152,7 +156,44 @@ async def test_a_reopened_session_starts_visible(world):
     a = await world.spawn()
     said = await turn(a, mcp("queue_enqueue", queue="general", payload="hi"))
     t = world.app.queues.tasks[json.loads(said.removeprefix("mcp ok: "))["task_id"]]
-    await until(lambda: t.status == "completed", timeout=12, what="completion")
+    # The task completes a moment before its worker is archived (queues.py).
+    await until(
+        lambda: t.worker in world.app.sessions.archived, timeout=12, what="archive"
+    )
     assert world.app.sessions.archived[t.worker]["quiet"] is True
     r = await world.app.registry.call("session.reopen", {"log_id": t.worker})
     assert r["quiet"] is False and meta_of(world, t.worker)["quiet"] is False
+
+
+async def test_a_sigterm_exit_keeps_a_session_quiet(world):
+    """Under systemd every harness gets SIGTERM a moment before aegis stops;
+    the next boot continues it, so it stays quiet (restarts.py)."""
+    b = await world.spawn()
+    await hold(b)
+    await world.app.registry.call("session.quiet", {"log_id": b.log_id})
+    world.app.sessions.exited(b, restarts.SIGTERM_CODES[0], [])
+    assert b.quiet
+
+
+async def test_a_finished_worker_whose_turn_errs_stays_quiet(world):
+    """Its task completes and it is archived at once: a tab for the length
+    of the stop would only flash."""
+    a = await world.spawn()
+    payload = mcp(
+        "monitor_start", description="w", done="false", progress=None, interval_s=60
+    )
+    said = await turn(a, mcp("queue_enqueue", queue="general", payload=payload))
+    t = world.app.queues.tasks[json.loads(said.removeprefix("mcp ok: "))["task_id"]]
+    await until(
+        lambda: t.worker and world.app.monitors.of(t.worker), timeout=10, what="hold"
+    )
+    w = world.session(t.worker)
+    await until(lambda: w.status == "idle", timeout=10, what="the worker idle")
+    w.standing = {**w.standing, "turn_error": "boom"}
+    world.app.sessions._maybe_unquiet(w)  # still waiting on its monitor
+    assert not w.quiet, "an unfinished worker's error is the person's"
+    w._set(quiet=True)
+    world.app.monitors.drop_owner(w.log_id)
+    assert world.app.queues.finished(w)
+    world.app.sessions._maybe_unquiet(w)
+    assert w.quiet, "a finished worker is archived; its error is the enqueuer's"

@@ -173,8 +173,9 @@ class Registry(Host):
         if old is not None and old.continued_by == session.log_id:
             old.mark_continued(None)
         # A process that ends on its own failed: whatever its card says, the
-        # person should see it (#386).
-        if session.quiet:
+        # person should see it (#386). A SIGTERM is most likely the server's
+        # own stop under systemd, and the next boot continues the session.
+        if session.quiet and code not in restarts.SIGTERM_CODES:
             self.set_quiet(session.log_id, False)
 
     def successor(self, old: Session) -> Session | str | None:
@@ -232,6 +233,10 @@ class Registry(Host):
         if not s.quiet:
             return
         kind = self._attention(s)["attention"]
+        # A worker done with its task is archived at once: its error goes to
+        # the enqueuer, and a tab would only flash while it stops.
+        if s.worker and self.queues is not None and self.queues.finished(s):
+            return
         if kind == "error" or (not s.worker and kind in self.BACK):
             self.set_quiet(s.log_id, False)
 

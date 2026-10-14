@@ -739,7 +739,7 @@ function flushSessions() {
   if (!booted) return;
   ordered = ordered.map((m) => sessions.get(m.key)).filter(Boolean);
   // A session that went quiet or came back changes the set of tabs (#386).
-  if (quietSeen && ordered.some((m) => !!m.quiet !== quietSeen.has(m.key))) {
+  if (quietChanged()) {
     render();
     drawNav();
     return;
@@ -822,19 +822,21 @@ const tabActions = {
 // This server's sessions, and a linked server's, in tab order.
 const local = () => ordered.filter((m) => !m.server);
 
-// Quiet sessions have no tab (#386). The view leaves a session only when it
-// turns quiet while shown, so a link to a quiet one still opens it.
+// Quiet sessions have no tab (#386). The view leaves a session only when it was
+// seen visible and then turned quiet, so a link to a quiet one still opens it,
+// even when the saved Fleet or a linked server's list arrives after the page.
 const tabbed = () => ordered.filter((m) => !m.quiet);
-let quietSeen = null; // null until the first render, which only takes note
+const quietSeen = new Map(); // key -> whether it was quiet when last drawn
+const quietChanged = () => ordered.some((m) => !!m.quiet !== (quietSeen.get(m.key) ?? !!m.quiet));
 
 function leaveIfQuieted(r) {
-  const now = new Set(ordered.filter((m) => m.quiet).map((m) => m.key));
-  const fresh = quietSeen !== null && r.view === "session" && now.has(r.id) && !quietSeen.has(r.id);
-  quietSeen = now;
+  const fresh = r.view === "session" && sessions.get(r.id)?.quiet && quietSeen.get(r.id) === false;
+  quietSeen.clear();
+  for (const m of ordered) quietSeen.set(m.key, !!m.quiet);
   if (!fresh) return false;
   const all = ordered.map((m) => m.key);
   const at = all.indexOf(r.id);
-  const next = all.slice(at + 1).concat(all.slice(0, at).reverse()).find((k) => !now.has(k));
+  const next = all.slice(at + 1).concat(all.slice(0, at).reverse()).find((k) => !quietSeen.get(k));
   go(next ? `#s=${next}` : "#fleet");
   return true;
 }
@@ -849,7 +851,7 @@ async function openCard(key) {
       toast(e.message, { kind: "error" });
       return;
     }
-    quietSeen?.delete(key);
+    quietSeen.set(key, false);
   }
   openSession(key);
 }
