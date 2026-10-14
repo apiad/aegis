@@ -112,7 +112,8 @@ async def test_a_prompt_runs_a_turn_with_cost_context_title_and_model(oc):
     assert s.cost_usd == pytest.approx(0.002) and s.context_tokens == 1030
     assert s.context_window == 1000000 and s.model_id == "opencode-go/fake-pro"
     assert s.resume_id and s.resume_id.startswith("ses_")
-    assert s.title == "Fake title: hello"
+    # OpenCode renames the session after the turn ends (#379).
+    await until(lambda: s.title == "Fake title: hello", what="the title")
     assert s.wire()["harness_label"] == "OpenCode"
     assert "OpenCode 2.0.28 · opencode-go/fake-pro" in [
         e["summary"] for e in s.entries()
