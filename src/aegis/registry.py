@@ -289,6 +289,23 @@ class Registry(Host):
         if parent and parent in self.sessions:
             self.refresh_card(parent)
 
+    def finished(self, s: Session) -> bool:
+        """Done working, which a turn ending is not: not busy (held messages
+        included), not paused by the quota gate, no live monitor, no open
+        Claude task, and no child session still working or waiting. A queue's
+        task and a schedule's run both end on it."""
+        return (
+            not s.busy
+            and not s.quota_paused
+            and not (self.monitors is not None and self.monitors.of(s.log_id))
+            and not s.open_tasks
+            and not any(
+                o.spec.spawned_by == s.log_id
+                and self._attention(o)["attention"] in ("working", "waiting")
+                for o in self.sessions.values()
+            )
+        )
+
     def catalog_ready(self, session: Session, catalog) -> None:
         if self.catalogs is not None:
             self.catalogs.put(session.spec.harness, session.spec.cwd, catalog)
