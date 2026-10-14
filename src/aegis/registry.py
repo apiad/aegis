@@ -338,6 +338,7 @@ class Registry(Host):
             continued_by=None
             if meta.get("continued_by") == "starting"
             else meta.get("continued_by"),
+            quiet=bool(meta.get("quiet")),
         )
 
     def boot(self, prev: restarts.Previous = restarts.CLEAN) -> None:
@@ -598,6 +599,20 @@ class Registry(Host):
             meta["title_set"] = True
         self.metas.write(meta)
         return _public(meta)
+
+    def set_quiet(self, log_id: str, quiet: bool) -> dict:
+        """Hide a session's tab until its turn ends, or show it again (#386)."""
+        s = self.open(log_id)
+        attention = s.wire()["attention"]
+        if quiet and attention not in ("working", "waiting"):
+            raise OpError(
+                "not_running",
+                f"{s.handle} is {attention}; only a working or waiting session "
+                "can be quiet, since only its turn's end brings it back",
+            )
+        s._set(quiet=quiet)
+        self.metas.write(s.meta())
+        return s.wire()
 
     def archive(
         self,

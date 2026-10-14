@@ -1260,6 +1260,10 @@ class App:
         async def stop(p: LogParams, caller):
             await reg.open(p.log_id).stop()
 
+        @r.op("session.unquiet", LogParams, owned="log_id")
+        async def unquiet(p: LogParams, caller):
+            return reg.set_quiet(p.log_id, False)
+
         @r.op("session.reopen", LogParams, owned="log_id")
         async def reopen(p: LogParams, caller):
             return reg.reopen(p.log_id).wire()

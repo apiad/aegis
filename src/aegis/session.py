@@ -63,7 +63,7 @@ Publish = Callable[[str, list[dict]], None]
 # each message, activity with each call), so they wait up to PUBLISH_EVERY_S
 # and go out together. Publishing them per line doubled the server's cost per
 # line in the bench (issue #127).
-_NOW = ("status", "handle", "title", "model_id", "standing", "continued_by")
+_NOW = ("status", "handle", "title", "model_id", "standing", "continued_by", "quiet")
 _SOON = (
     "activity",
     "cost_usd",
@@ -243,6 +243,7 @@ class Session:
         cache_recent: list[list] | None = None,
         compactions: int = 0,
         continued_by: str | None = None,
+        quiet: bool = False,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
@@ -291,6 +292,8 @@ class Session:
         # Claude's own tasks started and not yet notified (Bash, background).
         self.open_tasks: set[str] = set()
         self.worker = worker
+        # No tab until its turn ends (#386); a card in the Fleet meanwhile.
+        self.quiet = quiet
         # The fold's view of the agent's plan and last report; persisted so a
         # card at boot needs no store (DESIGN.md, boot reads meta files).
         self.standing: dict = standing or EMPTY_STANDING
@@ -363,6 +366,7 @@ class Session:
             "cache_recent": self.cache_recent,
             "compactions": self.compactions,
             "continued_by": self.continued_by,
+            "quiet": self.quiet,
         }
 
     def wire(self) -> dict:
