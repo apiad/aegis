@@ -30,8 +30,9 @@ while its owner's quota policy keeps the harness it needs closed.
 
 ## What a worker is
 
-A worker is an ordinary session with a tab, marked as a worker of its queue on
-its card, started in the enqueuer's working directory. Its task is its first
+A worker is an ordinary session, marked as a worker of its queue on its card,
+started in the enqueuer's working directory. It starts quiet: no tab, only a
+card in the Fleet's last group, unless its queue sets `quiet: false`. Its task is its first
 prompt and its final message is the result, so it should end on the answer
 the enqueuer needs.
 
@@ -46,7 +47,7 @@ result, the worker is archived, and, with a callback, you are woken with:
 > from queue:<name> · task#<id> · ok · 2026-10-11T14:02:11Z
 ```
 
-A worker whose process exits on its own fails its task and keeps its tab, and
+A worker whose process exits on its own fails its task and gets its tab, and
 the wake says `error` with the exit code and the last ten lines of its stderr.
 
 ## Check, cancel and resume
