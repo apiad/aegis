@@ -13,7 +13,11 @@ and ``artifact.create``, ``artifact.send``, ``artifact.read``,
 ``artifact.submit``, ``artifact.error`` and ``artifact.probed``
 (``artifact_ops.py``),
 and ``journal.search``, ``journal.note`` and ``journal.rows`` (``journal/ops.py``),
-and ``help.search``, ``help.read`` and ``help.pages`` (``help_ops.py``).
+and ``help.search``, ``help.read`` and ``help.pages`` (``help_ops.py``),
+and ``schedule.list``, ``schedule.runs``, ``schedule.create``,
+``schedule.update``, ``schedule.delete``, ``schedule.pause``,
+``schedule.resume``, ``schedule.fire`` and ``schedule.test``
+(``schedule_ops.py``).
 Channels: ``sessions`` (every open session's meta; patches ``upsert`` and
 ``remove``), ``transcript:<log_id>`` (any session, archived included; a
 subscribe ``since`` a revision gets what changed after it), ``quota`` (each
@@ -78,6 +82,7 @@ from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .layout_ops import register_layout_ops
+from .schedule_ops import register_schedule_ops
 from .schedules import Schedules
 from .quota import Quota
 from .quota_gate import (
@@ -393,6 +398,7 @@ class App:
         self.push = register_push_ops(self)
         register_journal_ops(self)
         register_help_ops(self)
+        register_schedule_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
 
     def who(self, caller: Caller) -> Principal:
