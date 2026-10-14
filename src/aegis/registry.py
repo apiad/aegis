@@ -123,6 +123,7 @@ class Registry(Host):
         if self.quota is not None:
             self.quota.turn_ended()
         self._retire_predecessor(session)
+        self._maybe_unquiet(session)
 
     def _retire_predecessor(self, new: Session) -> None:
         """After a handoff, archive the old session once the new one has
@@ -171,6 +172,10 @@ class Registry(Host):
         old = self.sessions.get(session.spec.continues or "")
         if old is not None and old.continued_by == session.log_id:
             old.mark_continued(None)
+        # A process that ends on its own failed: whatever its card says, the
+        # person should see it (#386).
+        if session.quiet:
+            self.set_quiet(session.log_id, False)
 
     def successor(self, old: Session) -> Session | str | None:
         """The live session continuing ``old`` after a handoff: "starting"
@@ -217,6 +222,18 @@ class Registry(Host):
             return {}
         t = self.queues.tasks.get(s.worker["task_id"]) if self.queues else None
         return {"worker": {**s.worker, "status": t.status if t else "gone"}}
+
+    # The attentions that end a quiet session's quiet (#386). A worker's
+    # result goes to its enqueuer and the worker is archived, so only its
+    # error is the person's.
+    BACK = frozenset({"done", "review", "needs_you", "error"})
+
+    def _maybe_unquiet(self, s: Session) -> None:
+        if not s.quiet:
+            return
+        kind = self._attention(s)["attention"]
+        if kind == "error" or (not s.worker and kind in self.BACK):
+            self.set_quiet(s.log_id, False)
 
     def _attention(self, s: Session) -> dict:
         last = s.standing.get("last_message")
