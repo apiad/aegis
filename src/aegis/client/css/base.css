@@ -530,7 +530,7 @@ body{background:#000}
 #a2 .side .foot>span{overflow:hidden;text-overflow:ellipsis}
 #a2 .side .foot .ic,#a2 .gauge .val .ic,#a2 .qrow .sv .ic,#a2 .tile .v small .ic{width:11px;height:11px;vertical-align:-1px}
 /* the actions: one row of equal cells, labels dropped on a narrow panel */
-#a2 .side-acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:auto}
+#a2 .side-acts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:auto}
 #a2 .side-acts.read-only{grid-template-columns:minmax(0,1fr)}
 #a2 .act{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:0;padding:8px 4px 7px;border:1px solid var(--rule);border-radius:var(--r);background:var(--surface);color:var(--ink);font-size:11.5px;cursor:pointer}
 #a2 .act svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;color:var(--muted)}
@@ -571,6 +571,9 @@ body{background:#000}
 #a2 .card.sel{outline:2px solid var(--accent);outline-offset:1px}
 #a2 .card.error{border-color:var(--err)}
 #a2 .card.stopped{opacity:.6}
+#a2 .card.quiet{opacity:.55;border-style:dashed}
+#a2 .card.quiet:hover,#a2 .card.quiet:focus-within,#a2 .card.quiet.sel{opacity:1}
+#a2 .card .hd .zz{font-family:var(--font-chrome);font-size:10.5px;color:var(--muted);border:1px solid var(--rule);border-radius:999px;padding:0 6px}
 #a2 .card.finished{opacity:.5}
 #a2 .card.finished:hover,#a2 .card.finished:focus-within,#a2 .card.finished.sel{opacity:1}
 #a2 .card.stopped.at-error{opacity:1}

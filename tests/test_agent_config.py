@@ -210,7 +210,7 @@ def test_a_queue_names_its_agent_and_max_parallel(tmp_path):
         "  zero: {agent: opus, max_parallel: 0}\n",
     )
     assert load_queues(root) == {
-        "ok": {"agent": "opus", "max_parallel": 3},
+        "ok": {"agent": "opus", "max_parallel": 3, "quiet": True},
         "nolimit": {"error": "max_parallel is missing"},
         "bare": {"error": "agent, max_parallel are missing"},
         "zero": {"error": "max_parallel 0 is not a positive integer"},

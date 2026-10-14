@@ -216,6 +216,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
       </div>
       <div class="side-acts live-only">
         <button class="act stop needs-net" id="stop-session" title="Stop: end the process; the next message resumes it"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/></svg><span>Stop</span></button>
+        <button class="act" id="quiet-session" title="Quiet: hide the tab until the turn ends; its card stays in the Fleet"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h4L3 9h4M9 7h4l-4 5h4"/></svg><span>Quiet</span></button>
         <button class="act needs-net" id="restart" title="Restart: send “Continue”"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.5v3h-3"/></svg><span>Restart</span></button>
         <button class="act needs-net" id="close" title="Close: archive it; the tab goes away in every browser"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="3" rx="1"/><path d="M3 6v6.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6M6.5 9h3"/></svg><span>Close</span></button>
       </div>
