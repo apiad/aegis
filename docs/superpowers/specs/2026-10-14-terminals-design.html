@@ -140,6 +140,11 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 .tmock .tab .mk{width:7px;height:7px;border-radius:50%;background:var(--faint)}
 .tmock .mk.run{background:var(--ok)} .tmock .mk.you{background:var(--warn);box-shadow:0 0 0 3px var(--accent-soft)} .tmock .mk.work{background:transparent;border:1.5px solid var(--accent)}
 .tmock .tab.add{font-size:15px;padding:4px 12px}
+.tmock .tab[draggable=true]{cursor:grab}
+.tmock .tab.dropdock{outline:1.5px dashed var(--accent);outline-offset:-3px;color:var(--strong)}
+.tmock .tab.dropdock::after{content:"dock here";font-size:10px;color:var(--accent)}
+.tmock .tabs.dropundock{box-shadow:inset 0 -2px 0 var(--accent)}
+.tmock .thead[draggable=true]{cursor:grab}
 .tmock .body{display:grid;grid-template-columns:minmax(0,1fr) 250px;min-height:430px}
 .tmock .col{display:flex;flex-direction:column;min-width:0}
 .tmock .thead{display:flex;align-items:baseline;gap:10px;padding:8px 14px;border-bottom:1px solid var(--rule);font-family:var(--font-mono);font-size:12px;color:var(--strong);min-width:0}
@@ -329,7 +334,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>Default access</td><td><code>propose</code> for agents a person adds to a person's terminal; <code>write</code> for the agent that started the terminal; <code>none</code> for everyone else</td><td class="why"><span class="who">maintainer</span> The issue's defaults, with the third case spelled out: an agent nobody added sees the terminal in <code>term_list</code> and nothing more.</td></tr>
 <tr><td>Hidden input</td><td>While the TTY has echo off and canonical mode on, agents cannot write and the person's keystrokes are not stored</td><td class="why"><span class="who">maintainer</span> That is the shape of a password prompt (<code>sudo</code>, <code>read -s</code>). Raw mode, as in <code>vim</code>, also turns echo off but leaves canonical mode off, so it is not mistaken for one.</td></tr>
 <tr><td>Size with several browsers</td><td>One size per terminal, set by the browser a person last typed in or resized while focused; 120×40 when none has</td><td class="why"><span class="who">maintainer</span> A PTY has one size. Whoever is typing needs it to fit their window; the others draw it at that size.</td></tr>
-<tr><td>Docking</td><td>A terminal is at tab level or docked in one session's canvas, never both. Dock in its header picks the session from a list; Undock brings the tab back</td><td class="why"><span class="who">maintainer</span> One place at a time, under the same rules as every docked pane, so a person always knows where a terminal is.</td></tr>
+<tr><td>Docking</td><td>A terminal is at tab level or docked in one session's canvas, never both. Dock in its header picks the session from a list, or its tab is dragged onto the session's tab; Undock, or dragging the pane to the tab bar, brings the tab back</td><td class="why"><span class="who">maintainer</span> One place at a time, under the same rules as every docked pane, so a person always knows where a terminal is.</td></tr>
 <tr><td>Lifecycle</td><td>Ephemeral, or a service with <code>restart: on-failure | always</code></td><td class="why"><span class="who">maintainer</span> A dev server should come back after it crashes; a shell should not.</td></tr>
 <tr><td>A restart of aegis</td><td>Ends every terminal's process, as it ends every harness. Services start again at boot; other terminals show <code>ended by restart</code> with their scrollback and a Restart button</td><td class="why"><span class="who q">proposed</span> The unit's <code>KillMode=mixed</code> kills everything in the unit, and keeping a PTY alive across a restart needs a holder process in a unit of its own. That is a second daemon to install and supervise. See the open questions.</td></tr>
 <tr><td>The output store</td><td>One asciicast v2 file per terminal, <code>&lt;state&gt;/terminals/&lt;id&gt;/cast.jsonl</code>, capped at 16 MB in two segments</td><td class="why"><span class="who q">proposed</span> The store keeps raw output, as a transcript store does. asciicast's lines are <code>[t, "o", data]</code>, so the store is already the recording the issue asks for, playable by <code>asciinema play</code>. The issue's 10 MB in-memory ring becomes 1 MB in memory over this file.</td></tr>
@@ -517,7 +522,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </table>
 
 <h3 id="view-try"><span class="try">try it</span>The view</h3>
-<p>Sample data. Click the terminal to type into it directly (Esc leaves), or type a line in the box: <code>ls</code>, <code>pytest -q</code>, <code>false</code> and <code>sudo systemctl restart nginx</code> are wired. Click an agent's access level to change it, then press "agent writes" to see what each level does. The <code>+</code> tab opens the picker, and "dock" in the header moves the terminal into an agent's canvas and back. On a phone, direct mode adds a row of keys a phone keyboard lacks.</p>
+<p>Sample data. Click the terminal to type into it directly (Esc leaves), or type a line in the box: <code>ls</code>, <code>pytest -q</code>, <code>false</code> and <code>sudo systemctl restart nginx</code> are wired. Click an agent's access level to change it, then press "agent writes" to see what each level does. The <code>+</code> tab opens the picker, and "dock" in the header moves the terminal into an agent's canvas and back. With a mouse you can also drag a terminal's tab onto <code>api-fixer</code>'s tab, and drag the docked terminal's header back onto the tab bar. On a phone, direct mode adds a row of keys a phone keyboard lacks.</p>
 <div class="tmock tvars" id="tm">
   <div class="tabs" id="tm-tabs"></div>
   <div id="tm-pick"></div>
@@ -600,6 +605,7 @@ term_read(name="api", since=4182, max_lines=60)
 
 <h3 id="docking">Docking</h3>
 <p>A terminal is in one place at a time: its own tab (tab level), or a pane in one session's canvas (dock level). The terminal's header has a Dock button. It opens a chip list (<code>js/pick.js</code>, never a native select) of the open sessions on this server, each with its access level on this terminal. Choosing one moves the terminal into that session's canvas as <code>term-&lt;id&gt;</code>, and its tab leaves the tab bar until it is undocked. The pane's header has Undock, which puts the tab back, and Dock, which moves the pane straight to another session.</p>
+<p>Dragging does the same two moves. A terminal's tab dropped on the middle of a session's tab docks it in that session; the target tab is outlined and says "dock here" while the pointer is over it. Dropped near the edge of a tab, it reorders the tab bar as today, so the middle half of a session's tab docks and the outer quarters reorder. A docked pane's header dragged onto the tab bar undocks it, and onto another session's tab moves it there. A drag calls the same operation as the button, <code>layout.dock</code> or <code>layout.undock</code>, so the rules below hold for both. On a touch screen the buttons are the way: the tab bar's touch handling scrolls it.</p>
 <ul>
 <li><b>The same rules as every dock.</b> The pane goes through the placement rule every docked page goes through: the next free column, at most 4 columns of 3 panes, then dragged and resized like any pane. The session's <code>layout</code> record is the only record of where it is. The terminal's card carries <code>docked_in</code>, derived from that record, so every browser's tab bar hides the tab at once, as the tabs are the server's.</li>
 <li><b>Docking grants nothing.</b> Access stays in the terminal's panel. The chip list shows each session's level so that a person sees whether the agent can read what sits beside its transcript, and can change it there.</li>
@@ -688,6 +694,7 @@ term_read(name="api", since=4182, max_lines=60)
 <li>OSC 52 printed into a terminal leaves the clipboard unchanged; an OSC 8 link to <code>javascript:</code> does nothing.<span class="b">slow</span></li>
 <li>The contrast test fails when one theme's <code>--ansi-yellow</code> is set to its <code>--term-bg</code>.<span class="b">slow</span></li>
 <li>Docking <code>shell</code> into a session hides its tab in a second browser at once; closing that session puts the tab back with the terminal still running; an agent docking a person's terminal gets <code>not_yours</code>.<span class="b">slow</span></li>
+<li>A terminal's tab dragged onto the middle of a session's tab docks it there; dragged onto that tab's edge, it only reorders the tabs; the docked pane's header dragged onto the tab bar undocks it.<span class="b">slow</span></li>
 <li>The view at a 390 px viewport with touch: no wider than the viewport; the key row sends Esc and Ctrl-C.<span class="b">slow</span></li>
 <li><code>make bench</code> before and after phase 1, in the PR body.<span class="b">bench</span></li>
 </ul>
@@ -775,7 +782,7 @@ function render() {
     if (S.docked[k]) continue;
     const x = S.terms[k];
     const mk = x.mark === "bad" ? '<span class="mk" style="background:var(--err)"></span>' : `<span class="mk ${x.mark}"></span>`;
-    tabs.push(`<span class="tab${k === S.cur ? " on" : ""}" data-t="${k}"><span class="tg">▸_</span>${k}${mk}</span>`);
+    tabs.push(`<span class="tab${k === S.cur ? " on" : ""}" data-t="${k}" draggable="true"><span class="tg">▸_</span>${k}${mk}</span>`);
   }
   tabs.push(`<span class="tab add" id="tm-add">+</span>`);
   let picker = "";
@@ -787,6 +794,7 @@ function render() {
   if (S.dockMenu) picker = `<div class="picker" style="left:auto;right:12px;top:78px"><div class="pg">DOCK ${esc(t.name.toUpperCase())} INTO</div>
     ${Object.entries(t.access).map(([a, l]) => `<div class="po" data-dock="${a}">${a} <small>has ${l} here</small></div>`).join("")}</div>`;
   $("tm-pick").innerHTML = picker;
+  document.querySelector("#tm .thead").draggable = !!S.docked[S.cur];
   const db = $("tm-dock");
   db.textContent = S.docked[S.cur] ? "undock → tab" : "dock ▾";
   $("tm-name").textContent = "▸_ " + t.name + (S.docked[S.cur] ? " · pane in " + S.docked[S.cur] : "");
@@ -891,6 +899,33 @@ function onTabs(e) {
   render();
 }
 $("tm-tabs").addEventListener("click", onTabs);
+// Dragging: a terminal's tab onto the middle of the agent's tab docks it;
+// the docked pane's header onto the tab bar undocks it.
+let drag = null;
+const middle = (el, x) => { const r = el.getBoundingClientRect(); return x > r.left + r.width / 4 && x < r.right - r.width / 4; };
+function clearDrop() { document.querySelectorAll("#tm .dropdock").forEach((x) => x.classList.remove("dropdock")); $("tm-tabs").classList.remove("dropundock"); }
+$("tm-tabs").addEventListener("dragstart", (e) => { const t = e.target.closest("[data-t]"); if (!t) return; drag = {kind: "tab", t: t.dataset.t}; e.dataTransfer.setData("text/plain", t.dataset.t); });
+document.querySelector("#tm .thead").addEventListener("dragstart", (e) => { if (!S.docked[S.cur]) return; drag = {kind: "pane", t: S.cur}; e.dataTransfer.setData("text/plain", S.cur); });
+$("tm-tabs").addEventListener("dragover", (e) => {
+  if (!drag) return;
+  e.preventDefault(); clearDrop();
+  const ag = e.target.closest("[data-agent]");
+  if (drag.kind === "tab" && ag && middle(ag, e.clientX)) ag.classList.add("dropdock");
+  else if (drag.kind === "pane") $("tm-tabs").classList.add("dropundock");
+});
+$("tm-tabs").addEventListener("dragleave", (e) => { if (!$("tm-tabs").contains(e.relatedTarget)) clearDrop(); });
+$("tm-tabs").addEventListener("drop", (e) => {
+  if (!drag) return;
+  e.preventDefault(); clearDrop();
+  const ag = e.target.closest("[data-agent]"), d = drag; drag = null;
+  if (d.kind === "tab" && ag && middle(ag, e.clientX)) {
+    S.cur = d.t; S.docked[d.t] = "api-fixer"; S.dockMenu = false; S.picker = false;
+    S.note = {cls: "", lbl: "docked by drag", text: `▸_ ${d.t} is a pane in api-fixer's canvas; the drag called layout.dock, as the button does.`};
+  } else if (d.kind === "tab") S.note = {cls: "", lbl: "reordered", text: "dropped on a tab's edge, or not on a session: the tab bar is reordered, nothing docks."};
+  else if (d.kind === "pane") { delete S.docked[d.t]; S.note = {cls: "", lbl: "undocked by drag", text: `▸_ ${d.t} is back in the tab bar.`}; }
+  render();
+});
+document.addEventListener("dragend", () => { drag = null; clearDrop(); });
 $("tm-pick").addEventListener("click", onTabs);
 $("tm-side").addEventListener("click", (e) => {
   const b = e.target.closest(".lv"); if (!b) return;
