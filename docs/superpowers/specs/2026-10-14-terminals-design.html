@@ -146,6 +146,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 .tmock .thead .sub{color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .tmock .thead .mode{margin-left:auto;font-size:10.5px;color:var(--faint);white-space:nowrap}
 .tmock .thead .mode.direct{color:var(--accent)}
+.tmock #tm-dock{white-space:nowrap;flex:none}
 .tmock .scr{position:relative;flex:1;min-height:250px;max-height:320px;overflow:auto;background:var(--t-bg);color:var(--t-fg);
   font-family:var(--font-mono);font-size:12px;line-height:1.5;padding:10px 12px 10px 18px;cursor:text;outline:none;white-space:pre-wrap;overflow-wrap:anywhere}
 .tmock .scr.direct{box-shadow:inset 0 0 0 2px var(--t-cursor)}
@@ -219,6 +220,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   .tmock .scr{max-height:260px;font-size:11px}
   .tmock .scr.direct~.keys{display:flex}
   .tmock .thead .sub{display:none}
+  .tmock .thead .mode{display:none}
+  .tmock #tm-dock{margin-left:auto}
   .tmock .picker{left:8px!important;right:8px;width:auto}
   .lab .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
@@ -326,6 +329,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>Default access</td><td><code>propose</code> for agents a person adds to a person's terminal; <code>write</code> for the agent that started the terminal; <code>none</code> for everyone else</td><td class="why"><span class="who">maintainer</span> The issue's defaults, with the third case spelled out: an agent nobody added sees the terminal in <code>term_list</code> and nothing more.</td></tr>
 <tr><td>Hidden input</td><td>While the TTY has echo off and canonical mode on, agents cannot write and the person's keystrokes are not stored</td><td class="why"><span class="who">maintainer</span> That is the shape of a password prompt (<code>sudo</code>, <code>read -s</code>). Raw mode, as in <code>vim</code>, also turns echo off but leaves canonical mode off, so it is not mistaken for one.</td></tr>
 <tr><td>Size with several browsers</td><td>One size per terminal, set by the browser a person last typed in or resized while focused; 120×40 when none has</td><td class="why"><span class="who">maintainer</span> A PTY has one size. Whoever is typing needs it to fit their window; the others draw it at that size.</td></tr>
+<tr><td>Docking</td><td>A terminal is at tab level or docked in one session's canvas, never both. Dock in its header picks the session from a list; Undock brings the tab back</td><td class="why"><span class="who">maintainer</span> One place at a time, under the same rules as every docked pane, so a person always knows where a terminal is.</td></tr>
 <tr><td>Lifecycle</td><td>Ephemeral, or a service with <code>restart: on-failure | always</code></td><td class="why"><span class="who">maintainer</span> A dev server should come back after it crashes; a shell should not.</td></tr>
 <tr><td>A restart of aegis</td><td>Ends every terminal's process, as it ends every harness. Services start again at boot; other terminals show <code>ended by restart</code> with their scrollback and a Restart button</td><td class="why"><span class="who q">proposed</span> The unit's <code>KillMode=mixed</code> kills everything in the unit, and keeping a PTY alive across a restart needs a holder process in a unit of its own. That is a second daemon to install and supervise. See the open questions.</td></tr>
 <tr><td>The output store</td><td>One asciicast v2 file per terminal, <code>&lt;state&gt;/terminals/&lt;id&gt;/cast.jsonl</code>, capped at 16 MB in two segments</td><td class="why"><span class="who q">proposed</span> The store keeps raw output, as a transcript store does. asciicast's lines are <code>[t, "o", data]</code>, so the store is already the recording the issue asks for, playable by <code>asciinema play</code>. The issue's 10 MB in-memory ring becomes 1 MB in memory over this file.</td></tr>
@@ -513,13 +517,13 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </table>
 
 <h3 id="view-try"><span class="try">try it</span>The view</h3>
-<p>Sample data. Click the terminal to type into it directly (Esc leaves), or type a line in the box: <code>ls</code>, <code>pytest -q</code>, <code>false</code> and <code>sudo systemctl restart nginx</code> are wired. Click an agent's access level to change it, then press "agent writes" to see what each level does. The <code>+</code> tab opens the picker. On a phone, direct mode adds a row of keys a phone keyboard lacks.</p>
+<p>Sample data. Click the terminal to type into it directly (Esc leaves), or type a line in the box: <code>ls</code>, <code>pytest -q</code>, <code>false</code> and <code>sudo systemctl restart nginx</code> are wired. Click an agent's access level to change it, then press "agent writes" to see what each level does. The <code>+</code> tab opens the picker, and "dock" in the header moves the terminal into an agent's canvas and back. On a phone, direct mode adds a row of keys a phone keyboard lacks.</p>
 <div class="tmock tvars" id="tm">
   <div class="tabs" id="tm-tabs"></div>
   <div id="tm-pick"></div>
   <div class="body">
     <div class="col">
-      <div class="thead"><span id="tm-name"></span><span class="sub" id="tm-cmd"></span><span class="mode" id="tm-mode">line mode</span></div>
+      <div class="thead"><span id="tm-name"></span><span class="sub" id="tm-cmd"></span><span class="mode" id="tm-mode">line mode</span><button class="btn2" id="tm-dock">dock ▾</button></div>
       <div class="scr" id="tm-scr" tabindex="0"><div id="tm-out"></div><textarea class="ta" id="tm-ta" aria-label="terminal input" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea></div>
       <div class="keys" id="tm-keys"><button data-k="esc">Esc</button><button data-k="tab">Tab</button><button data-k="ctrlc">Ctrl-C</button><button data-k="up">↑</button><button data-k="down">↓</button><button data-k="leave">done</button></div>
       <div class="banner" id="tm-banner" hidden></div>
@@ -538,7 +542,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </ul>
 
 <h3 id="lists">Tabs, Fleet, archive</h3>
-<p>A terminal's tab shows <code>▸_</code> and its name. Its mark is green while running, grey when exited or ended, red when it exited non-zero, and amber, as for a session, when it needs the person: a monitor on it fired, or it waits on hidden input (<a href="#echo">Hidden input</a>). The Fleet card shows the command, the state and the last line of the screen. The archive lists closed terminals with their store, so a person can replay what a terminal printed after it is gone. The filter all · agents · terminals sits above the Fleet and the archive, and lives in the browser like the theme.</p>
+<p>A terminal's tab shows <code>▸_</code> and its name. Its mark is green while running, grey when exited or ended, red when it exited non-zero, and amber, as for a session, when it needs the person: a monitor on it fired, or it waits on hidden input (<a href="#echo">Hidden input</a>). The Fleet card shows the command, the state and the last line of the screen. The archive lists closed terminals with their store, so a person can replay what a terminal printed after it is gone. A docked terminal has no tab of its own (<a href="#docking">Docking</a>). The filter all · agents · terminals sits above the Fleet and the archive, and lives in the browser like the theme.</p>
 
 <h2 id="access"><span class="n">07</span>Agent access</h2>
 <h3 id="levels">The four levels</h3>
@@ -595,7 +599,17 @@ term_read(name="api", since=4182, max_lines=60)
 <p><code>monitor_start</code> takes <code>term: {name, pattern}</code> in place of <code>done</code>. Its watcher subscribes to the terminal's output as a browser does, matches each new line against the pattern, and ends the first time it matches, waking the agent with the matching line and the 20 lines before it. With <code>repeat: true</code> it rearms after each wake, at most once a minute, so a log that floods errors wakes an agent once a minute and not once per line. The terminal exiting ends the monitor with <code>failed</code>. Progress has nothing to count, so it is null. It persists in <code>monitors.json</code> and rearms at boot like any monitor; after a restart it resumes from the store's last sequence number.</p>
 
 <h3 id="docking">Docking</h3>
-<p>A terminal docks into a session's canvas as <code>term-&lt;id&gt;</code>, with <code>layout_set</code> or a drag, so a person can watch an agent work its terminal beside the transcript. Unlike a page, a terminal may draw in many panes at once, because each xterm.js is only a subscriber: the canvas rule that a page runs in one place does not apply to it.</p>
+<p>A terminal is in one place at a time: its own tab (tab level), or a pane in one session's canvas (dock level). The terminal's header has a Dock button. It opens a chip list (<code>js/pick.js</code>, never a native select) of the open sessions on this server, each with its access level on this terminal. Choosing one moves the terminal into that session's canvas as <code>term-&lt;id&gt;</code>, and its tab leaves the tab bar until it is undocked. The pane's header has Undock, which puts the tab back, and Dock, which moves the pane straight to another session.</p>
+<ul>
+<li><b>The same rules as every dock.</b> The pane goes through the placement rule every docked page goes through: the next free column, at most 4 columns of 3 panes, then dragged and resized like any pane. The session's <code>layout</code> record is the only record of where it is. The terminal's card carries <code>docked_in</code>, derived from that record, so every browser's tab bar hides the tab at once, as the tabs are the server's.</li>
+<li><b>Docking grants nothing.</b> Access stays in the terminal's panel. The chip list shows each session's level so that a person sees whether the agent can read what sits beside its transcript, and can change it there.</li>
+<li><b>An agent docks only what it started.</b> <code>layout_set</code> with <code>term-&lt;id&gt;</code> is refused with <code>not_yours</code> for a terminal the agent did not start, so an agent never pulls a person's terminal out of the tab bar. Undock is for a person, or for the agent that docked it.</li>
+<li><b>A session that goes away gives its terminals back.</b> When the session is closed or archived, each terminal docked in it returns to tab level and keeps running.</li>
+<li><b>An ended terminal keeps its pane.</b> It shows the last screen and its state, <code>exited (1)</code> or <code>ended</code>, until a person undocks or closes it, because the last screen is often why it was docked.</li>
+<li><b>Still listed.</b> The Fleet and the archive list a docked terminal with "in &lt;handle&gt;", and opening it opens that session's tab.</li>
+<li><b>Size and input as in its tab.</b> The pane draws at the terminal's size and scales its font to fit. Typing in it in direct mode makes it the browser that sets the size. The composer under the transcript still talks to the agent.</li>
+<li><b>Only this server's terminals.</b> A linked server's terminal does not dock here: agents cannot reach far terminals, and a canvas belongs to an agent's session.</li>
+</ul>
 
 <h2 id="osc"><span class="n">09</span>Shell integration</h2>
 <p>Shell integration marks where each prompt, command and output begins, with the escape sequences <code>OSC 133;A</code> to <code>OSC 133;D;&lt;exit&gt;</code>. aegis starts <code>bash</code> with <code>--rcfile</code> pointing at a short file of its own that sources the user's <code>~/.bashrc</code> and then adds the marks to <code>PROMPT_COMMAND</code> and <code>PS0</code>; <code>zsh</code> gets the same through <code>ZDOTDIR</code>. A shell aegis does not know runs without marks, and everything else still works.</p>
@@ -673,6 +687,7 @@ term_read(name="api", since=4182, max_lines=60)
 <li>An agent calls <code>term_read(name="api@far")</code>: <code>not_across_links</code>.<span class="b">fast</span></li>
 <li>OSC 52 printed into a terminal leaves the clipboard unchanged; an OSC 8 link to <code>javascript:</code> does nothing.<span class="b">slow</span></li>
 <li>The contrast test fails when one theme's <code>--ansi-yellow</code> is set to its <code>--term-bg</code>.<span class="b">slow</span></li>
+<li>Docking <code>shell</code> into a session hides its tab in a second browser at once; closing that session puts the tab back with the terminal still running; an agent docking a person's terminal gets <code>not_yours</code>.<span class="b">slow</span></li>
 <li>The view at a 390 px viewport with touch: no wider than the viewport; the key row sends Esc and Ctrl-C.<span class="b">slow</span></li>
 <li><code>make bench</code> before and after phase 1, in the PR body.<span class="b">bench</span></li>
 </ul>
@@ -700,7 +715,7 @@ const LEVELS = ["none", "read", "propose", "write"];
 const PROMPT = '<span class="g">ana@box</span>:<span class="b">~/app</span>$ ';
 function fresh() {
   return {
-    cur: "shell", mode: "line", dest: "term", proposal: null, echoOff: false, picker: false, note: null,
+    cur: "shell", mode: "line", dest: "term", proposal: null, echoOff: false, picker: false, note: null, dockMenu: false, docked: {},
     terms: {
       shell: {name: "shell", cmd: "bash", cwd: "~/app", pid: 48213, up: "41 min", restart: "no", by: "ana",
         prompt: true, input: "", mark: "run",
@@ -755,8 +770,9 @@ function accept() {
 function render() {
   const t = T();
   const tabs = [`<span class="tab"><span class="tg">◉</span>Fleet</span>`,
-    `<span class="tab" data-agent><span class="mk work"></span>api-fixer</span>`];
+    `<span class="tab${S.docked[S.cur] ? " on" : ""}" data-agent><span class="mk work"></span>api-fixer${Object.keys(S.docked).map((k) => ` <span class="tg">+▸_ ${k}</span>`).join("")}</span>`];
   for (const k of Object.keys(S.terms)) {
+    if (S.docked[k]) continue;
     const x = S.terms[k];
     const mk = x.mark === "bad" ? '<span class="mk" style="background:var(--err)"></span>' : `<span class="mk ${x.mark}"></span>`;
     tabs.push(`<span class="tab${k === S.cur ? " on" : ""}" data-t="${k}"><span class="tg">▸_</span>${k}${mk}</span>`);
@@ -768,8 +784,12 @@ function render() {
     <div class="pg">TERMINALS</div><div class="po" data-p="shell">▸_ shell <small>bash · .</small></div>
     <div class="po" data-p="api">▸_ api <small>uvicorn app.main:app --reload</small></div><div class="po" data-p="logs">▸_ logs <small>journalctl -fu nginx</small></div></div>`;
   $("tm-tabs").innerHTML = tabs.join("");
+  if (S.dockMenu) picker = `<div class="picker" style="left:auto;right:12px;top:78px"><div class="pg">DOCK ${esc(t.name.toUpperCase())} INTO</div>
+    ${Object.entries(t.access).map(([a, l]) => `<div class="po" data-dock="${a}">${a} <small>has ${l} here</small></div>`).join("")}</div>`;
   $("tm-pick").innerHTML = picker;
-  $("tm-name").textContent = "▸_ " + t.name;
+  const db = $("tm-dock");
+  db.textContent = S.docked[S.cur] ? "undock → tab" : "dock ▾";
+  $("tm-name").textContent = "▸_ " + t.name + (S.docked[S.cur] ? " · pane in " + S.docked[S.cur] : "");
   $("tm-cmd").textContent = t.cmd + " · " + t.cwd;
   const md = $("tm-mode");
   md.textContent = S.mode === "direct" ? "direct · Esc leaves" : "line mode";
@@ -855,8 +875,12 @@ $("tm-keys").addEventListener("click", (e) => {
 });
 function onTabs(e) {
   const tab = e.target.closest("[data-t]"), add = e.target.closest("#tm-add"), po = e.target.closest(".po");
-  if (tab) { S.cur = tab.dataset.t; S.picker = false; S.proposal = null; S.note = null; S.mode = "line"; }
-  else if (add) { S.picker = !S.picker; S.pickerX = Math.max(8, add.getBoundingClientRect().left - $("tm").getBoundingClientRect().left - 200); }
+  const dk = e.target.closest("[data-dock]");
+  if (dk) {
+    S.dockMenu = false; S.docked[S.cur] = dk.dataset.dock;
+    S.note = {cls: "", lbl: "docked", text: `▸_ ${T().name} is a pane in ${dk.dataset.dock}'s canvas, beside its transcript; its own tab is gone until you undock it. ${dk.dataset.dock} still has ${T().access[dk.dataset.dock]} on it: docking grants nothing.`};
+  } else if (tab) { S.cur = tab.dataset.t; S.picker = false; S.proposal = null; S.note = null; S.mode = "line"; }
+  else if (add) { S.dockMenu = false; S.picker = !S.picker; S.pickerX = Math.max(8, add.getBoundingClientRect().left - $("tm").getBoundingClientRect().left - 200); }
   else if (po) {
     S.picker = false;
     const p = po.dataset.p;
@@ -915,6 +939,11 @@ $("ev-trace").addEventListener("click", () => {
   render();
 });
 $("ev-reset").addEventListener("click", () => { S = fresh(); render(); });
+$("tm-dock").addEventListener("click", () => {
+  if (S.docked[S.cur]) { delete S.docked[S.cur]; S.note = {cls: "", lbl: "undocked", text: `▸_ ${T().name} is back in the tab bar.`}; S.dockMenu = false; }
+  else { S.dockMenu = !S.dockMenu; S.picker = false; }
+  render();
+});
 render();
 })();
 
