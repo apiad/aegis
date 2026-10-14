@@ -102,6 +102,18 @@ it also arrives as a desktop notification, if the browser allows them. A
 session can send six a minute at most, and one with read permission can send
 them too.
 
+## Quiet sessions
+
+A quiet session has no tab. Its card stays in the Fleet, dimmed and marked
+`zz`, in the last group of "Needs you first". It comes back to the tab bar by
+itself when its turn ends done, review, needs_you or error, and stays there
+until it is quieted again; a queue worker comes back only on an error.
+
+- The Quiet button in the session panel, beside Stop, quiets a session that
+  is working or waiting.
+- An agent calls `session_quiet` with a handle, its own included.
+- Clicking a quiet card in the Fleet brings the session back at once.
+
 ## Stop, close and reopen
 
 - Stop (in the session panel, or `/stop`) ends the process and keeps the

@@ -747,12 +747,18 @@ function flushSessions() {
   changed = new Set();
   if (!booted) return;
   ordered = ordered.map((m) => sessions.get(m.key)).filter(Boolean);
+  // A session that went quiet or came back changes the set of tabs (#386).
+  if (quietChanged()) {
+    render();
+    drawNav();
+    return;
+  }
   const r = route();
   for (const id of ids) if (sessions.has(id)) patchTab($("tablist"), sessions.get(id), r.view === "session" ? r.id : null, tabActions);
   if (r.view === "fleet") {
     const home = [...ids].filter((id) => !sessions.get(id)?.server);
-    const regroup = home.some((id) => !patchCard($("cards"), sessions.get(id), openSession, fleetOrder, closeById));
-    if (regroup) renderCards($("cards"), local(), openSession, fleetOrder, closeById);
+    const regroup = home.some((id) => !patchCard($("cards"), sessions.get(id), openCard, fleetOrder, closeById));
+    if (regroup) renderCards($("cards"), local(), openCard, fleetOrder, closeById);
     if (home.length < ids.size) renderRemotes();
     fleetMark(false);
     drawBand();
@@ -824,12 +830,47 @@ const tabActions = {
 
 // This server's sessions, and a linked server's, in tab order.
 const local = () => ordered.filter((m) => !m.server);
+
+// Quiet sessions have no tab (#386). The view leaves a session only when it was
+// seen visible and then turned quiet, so a link to a quiet one still opens it,
+// even when the saved Fleet or a linked server's list arrives after the page.
+const tabbed = () => ordered.filter((m) => !m.quiet);
+const quietSeen = new Map(); // key -> whether it was quiet when last drawn
+const quietChanged = () => ordered.some((m) => !!m.quiet !== (quietSeen.get(m.key) ?? !!m.quiet));
+
+function leaveIfQuieted(r) {
+  const fresh = r.view === "session" && sessions.get(r.id)?.quiet && quietSeen.get(r.id) === false;
+  quietSeen.clear();
+  for (const m of ordered) quietSeen.set(m.key, !!m.quiet);
+  if (!fresh) return false;
+  const all = ordered.map((m) => m.key);
+  const at = all.indexOf(r.id);
+  const next = all.slice(at + 1).concat(all.slice(0, at).reverse()).find((k) => !quietSeen.get(k));
+  go(next ? `#s=${next}` : "#fleet");
+  return true;
+}
+
+// A click on a quiet card brings the session back to the tab bar, then opens it.
+async function openCard(key) {
+  const m = sessions.get(key);
+  if (m?.quiet) {
+    try {
+      Object.assign(m, await callFor(key, "session.unquiet"), { quiet: false });
+    } catch (e) {
+      toast(e.message, { kind: "error" });
+      return;
+    }
+    quietSeen.set(key, false);
+  }
+  openSession(key);
+}
 const on = (server) => ordered.filter((m) => m.server === server);
 
 function render() {
   if (!booted) return;
   tellView(); // the view may have changed with the same session shown
   const r = route();
+  if (leaveIfQuieted(r)) return;
   if (r.view === "session" && !sessions.has(r.id)) {
     const far = forKey(r.id).server;
     // A far session whose server's list has not arrived yet: wait for it.
@@ -840,7 +881,7 @@ function render() {
     go("#fleet"); // closed here or elsewhere
     return;
   }
-  renderTabs($("tablist"), ordered, r.view === "session" ? r.id : null, tabActions);
+  renderTabs($("tablist"), tabbed(), r.view === "session" ? r.id : null, tabActions);
   $("tablist").querySelector(".tab.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   $("tab-fleet").classList.toggle("on", r.view === "fleet");
   $("tab-add").classList.toggle("on", r.view === "spawn");
@@ -856,7 +897,7 @@ function render() {
   if (r.view === "fleet") {
     follow(null);
     show("fleet");
-    renderCards($("cards"), local(), openSession, fleetOrder, closeById);
+    renderCards($("cards"), local(), openCard, fleetOrder, closeById);
     renderRemotes();
     fleetMark(false);
     watchHost("all");
@@ -1023,7 +1064,7 @@ function renderRemotes() {
     }
     host.append(box); // keep the links' order
     const metas = on(l.name);
-    if (metas.length) renderCards(box.querySelector(".cards"), metas, openSession, fleetOrder, closeById);
+    if (metas.length) renderCards(box.querySelector(".cards"), metas, openCard, fleetOrder, closeById);
     else box.querySelector(".cards").replaceChildren();
   }
   drawBand();
@@ -1510,6 +1551,7 @@ function renderMeta(s) {
   $("restart").disabled = working || theirs;
   $("working").hidden = !working;
   $("stop-session").disabled = s.state === "stopped" || theirs;
+  $("quiet-session").disabled = !["working", "waiting"].includes(s.attention) || theirs;
   $("interrupt").disabled = theirs;
   $("close").disabled = theirs;
   if (working && workingSince == null) workingSince = Date.now();
@@ -2243,7 +2285,7 @@ installKeys(
     tab(ev) {
       const n = Number(ev.altKey ? ev.code.slice(5) : ev.key);
       if (n === 0) go("#fleet");
-      else if (ordered[n - 1]) go(`#s=${ordered[n - 1].key}`);
+      else if (tabbed()[n - 1]) go(`#s=${tabbed()[n - 1].key}`);
     },
     commands() {
       if (route().view !== "session") return;
@@ -2270,7 +2312,7 @@ installKeys(
 
 // Alt+[ and Alt+]: the Fleet, then the tabs, round.
 function cycle(d) {
-  const all = ["#fleet", ...ordered.map((m) => `#s=${m.key}`)];
+  const all = ["#fleet", ...tabbed().map((m) => `#s=${m.key}`)];
   const i = all.indexOf(location.hash || "#fleet");
   go(all[i < 0 ? (d > 0 ? 0 : all.length - 1) : (i + d + all.length) % all.length]);
 }
@@ -2820,6 +2862,17 @@ $("interrupt").addEventListener("click", interrupt);
 // A nudge after an interrupt, an error or a stop: a message to a stopped
 // session resumes it, so Restart is one sentence to the agent.
 $("restart").addEventListener("click", () => !offline() && sendLine("Continue", false));
+
+$("quiet-session").addEventListener("click", async () => {
+  if (offline()) return;
+  const s = focused();
+  if (!s) return;
+  try {
+    await callFor(s.key, "session.quiet");
+  } catch (e) {
+    $("side-error").textContent = e.message;
+  }
+});
 
 $("stop-session").addEventListener("click", async () => {
   if (offline()) return;
