@@ -181,7 +181,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · tutorial ramp and help tours</span>
-  <span class="st"><span class="pill acc">draft: in review</span><span class="pill">2026-10-14</span></span>
+  <span class="st"><span class="pill acc">approved: not started</span><span class="pill">2026-10-14</span></span>
 </div>
 
 <div class="wrap">
@@ -208,7 +208,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 
 <main>
 <h1>A five-level tutorial, guided tours of any page, and asking an agent from Help</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-14-tutorial-ramp-design.html</span><span>·</span><span>draft</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-14-tutorial-ramp-design.html</span><span>·</span><span>approved, not started</span></div>
 <p class="lede">The getting-started tutorial walks a new person through eight loose steps and stops before queues and docked pages. This spec rewrites it as one page with five levels, from one session to a queue of workers. The advanced parts move into four extra tutorials that the page lists at its end, and the guide that runs a tutorial now opens with a welcome, says what the page covers, answers questions along the way and brings the person back to the step they were on. In the Help tab, every page gets a Guided tour button, and a question typed in the search box can go to an agent; both start a new session in its own tab.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -244,13 +244,13 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 <tr><td>What leaves the ramp</td><td>Linked servers, several docked panes and the canvas, the phone, tokens and quota lines</td><td class="why"><span class="who">maintainer</span> They go into extra tutorials, which the ramp lists at its end.</td></tr>
 <tr><td>How the guide opens</td><td>"Welcome to the aegis tutorial", what the page covers, and an offer to answer questions</td><td class="why"><span class="who">maintainer</span> A guide that says where it is going reads as a guide, and a person who knows they may ask will ask instead of getting lost.</td></tr>
 <tr><td>Detours</td><td>The guide answers, then returns to the step it was on</td><td class="why"><span class="who">maintainer</span> Questions are welcome; losing the thread of the tour is not.</td></tr>
-<tr><td>Language of the welcome</td><td>The person's language; the English line is the model</td><td class="why"><span class="who q">proposed</span> The prompt already says to talk in the person's language. A fixed English greeting before a Spanish tour would be the one line in the wrong language.</td></tr>
-<tr><td>A level key in the frontmatter</td><td>None</td><td class="why"><span class="who q">proposed</span> One page holds the levels, so nothing needs to sort them. A key can come with a second ramp.</td></tr>
-<tr><td>Ids of the extras</td><td><code>tutorial-layouts</code>, <code>tutorial-links</code>, <code>tutorial-phone</code>, <code>tutorial-server</code></td><td class="why"><span class="who q">proposed</span> The how-to pages already own <code>links</code> and <code>phone</code>. A shared prefix keeps the tutorials together in <code>/tutorial</code>'s menu.</td></tr>
+<tr><td>Language of the welcome</td><td>The person's language; the English line is the model</td><td class="why"><span class="who">maintainer</span> Accepted in review. The prompt already says to talk in the person's language. A fixed English greeting before a Spanish tour would be the one line in the wrong language.</td></tr>
+<tr><td>A level key in the frontmatter</td><td>None</td><td class="why"><span class="who">maintainer</span> Accepted in review. One page holds the levels, so nothing needs to sort them. A key can come with a second ramp.</td></tr>
+<tr><td>Ids of the extras</td><td><code>tutorial-layouts</code>, <code>tutorial-links</code>, <code>tutorial-phone</code>, <code>tutorial-server</code></td><td class="why"><span class="who">maintainer</span> Accepted in review. The how-to pages already own <code>links</code> and <code>phone</code>. A shared prefix keeps the tutorials together in <code>/tutorial</code>'s menu.</td></tr>
 <tr><td>A tour of any page</td><td>A Guided tour button on every help page, not only tutorials</td><td class="why"><span class="who">maintainer</span> Any page can become a guided tour based on that page; <code>help.guide</code> already accepts any page.</td></tr>
 <tr><td>Asking from Help</td><td>A question goes to a new session in a new tab, with the page it was asked from</td><td class="why"><span class="who">maintainer</span> No agent lives inside the Help tab; the answer is an ordinary session the person can continue.</td></tr>
-<tr><td>Where Ask lives</td><td>In the search box: a row above the hits</td><td class="why"><span class="who q">proposed</span> The person already typed the question there. Section 07 shows both variants.</td></tr>
-<tr><td>The how-to and concept pages</td><td>Unchanged</td><td class="why"><span class="who q">proposed</span> The tutorials point at them for depth. Search answers questions from those pages and its tests already hold them to it.</td></tr>
+<tr><td>Where Ask lives</td><td>In the search box: a row above the hits</td><td class="why"><span class="who">maintainer</span> Accepted in review. The person already typed the question there. Section 07 shows both variants; the maintainer chose the search box.</td></tr>
+<tr><td>The how-to and concept pages</td><td>Unchanged</td><td class="why"><span class="who">maintainer</span> Accepted in review. The tutorials point at them for depth. Search answers questions from those pages and its tests already hold them to it.</td></tr>
 </tbody>
 </table>
 
