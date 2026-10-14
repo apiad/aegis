@@ -2649,6 +2649,28 @@ def test_a_finished_worker_fades_and_sinks_below_the_live_cards_and_an_errored_o
     assert page.errors == []
 
 
+def test_the_session_panel_names_the_server_and_marks_a_queue_worker(
+    queue_server, page
+):
+    """The panel said neither which server a session runs on (only in the
+    hover card) nor that it was a queue worker, which the Fleet card says."""
+    page.goto(queue_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    server = page.evaluate("localStorage.getItem('aegis.server')")
+    assert server
+    page.wait_for_selector(f"#s-at >> text=@{server}")
+    assert page.is_hidden("#s-worker")
+    enqueue(page, "/sleep 4")
+    page.click("#tab-fleet")
+    page.wait_for_selector("#cards .card .badge >> text=worker · q")
+    page.click("#cards .card:has(.badge)")
+    page.wait_for_selector("#a2[data-view=session]")
+    page.wait_for_selector("#s-worker:visible >> text=worker · q")
+    assert page.text_content("#s-at") == f"@{server}"
+    assert page.errors == []
+
+
 def test_a_patch_that_changes_a_cards_group_regroups_the_open_fleet(
     server, browser, page
 ):

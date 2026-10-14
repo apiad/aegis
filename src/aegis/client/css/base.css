@@ -465,6 +465,8 @@ body{background:#000}
 #a2 .side .sline{display:flex;align-items:center;gap:8px;margin-top:5px;font-family:var(--font-chrome);font-size:11.5px;color:var(--muted)}
 #a2 .side .sline .handle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 #a2 .side .sline .st{margin-left:auto;white-space:nowrap}
+#a2 .side .sline .at{margin-left:-8px;opacity:.7;white-space:nowrap;flex-shrink:0}
+#a2 .side .sline .badge{white-space:nowrap;flex-shrink:0}
 #a2 .prow{position:relative;margin:-6px -8px;padding:6px 8px;border-radius:var(--r);outline:none;cursor:default}
 #a2 .prow:hover,#a2 .prow.open,#a2 .prow:focus-visible{background:var(--raised)}
 #a2 .prow.more{margin:3px -8px -4px;padding:3px 8px 3px 30px;font-family:var(--font-mono);font-size:11px;color:var(--faint)}
