@@ -3,6 +3,10 @@ aes128gcm content coding of RFC 8188) and the VAPID token of RFC 8292, with
 ``cryptography``, which aegis already depends on. ``push.py`` uses them; nothing
 here does I/O except ``load_key``.
 
+``cryptography`` is imported inside the functions that sign and encrypt, never
+at the top: importing it with the server cost every server about 7 MB of
+resident memory, and a server nobody subscribed to never calls them (#345).
+
 A browser's subscription gives an endpoint at its vendor's push service, its
 own P-256 public key (``p256dh``) and a 16-byte ``auth`` secret. ``encrypt``
 derives a content key from an ECDH between a fresh key and ``p256dh`` and the
@@ -19,12 +23,10 @@ import os
 import struct
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+if TYPE_CHECKING:
+    from cryptography.hazmat.primitives.asymmetric import ec
 
 RECORD_SIZE = 4096
 
@@ -41,12 +43,17 @@ def b64e(b: bytes) -> str:
 
 def raw_public(key: ec.EllipticCurvePrivateKey) -> bytes:
     """The public half as the 65-byte uncompressed point the browser expects."""
+    from cryptography.hazmat.primitives import serialization
+
     return key.public_key().public_bytes(
         serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
     )
 
 
 def _hkdf(salt: bytes, ikm: bytes, info: bytes, n: int) -> bytes:
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
     return HKDF(algorithm=hashes.SHA256(), length=n, salt=salt, info=info).derive(ikm)
 
 
@@ -62,6 +69,9 @@ def encrypt(
     86-byte header (salt, record size, this message's public key), then the
     ciphertext of the plaintext and its 0x02 delimiter. ``as_private`` and
     ``salt`` are fresh for every message; tests pass the RFC's."""
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
     as_private = as_private or ec.generate_private_key(ec.SECP256R1())
     salt = salt or os.urandom(16)
     as_public = raw_public(as_private)
@@ -79,6 +89,9 @@ def vapid_jwt(
 ) -> str:
     """The ES256 token for one push service (``aud`` is the endpoint's origin),
     valid 12 hours. ``sub`` is how the push service could reach the operator."""
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
     def part(d: dict) -> str:
         return b64e(json.dumps(d, separators=(",", ":")).encode())
@@ -92,6 +105,9 @@ def vapid_jwt(
 def load_key(path: Path) -> ec.EllipticCurvePrivateKey:
     """This server's VAPID key, made on first use and kept at ``path`` (0600).
     Every subscription is bound to its public half, so it must never change."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
     if path.exists():
         key = serialization.load_pem_private_key(path.read_bytes(), password=None)
         assert isinstance(key, ec.EllipticCurvePrivateKey)

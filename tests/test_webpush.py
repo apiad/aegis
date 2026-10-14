@@ -93,3 +93,19 @@ def test_the_key_is_made_once_and_kept_private(tmp_path):
     b = webpush.load_key(path)
     assert webpush.raw_public(a) == webpush.raw_public(b)
     assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_the_server_loads_cryptography_only_when_it_pushes():
+    # cryptography's bindings cost the server about 7 MB of resident memory
+    # (#345), and a server nobody subscribed to never signs or encrypts.
+    import subprocess
+    import sys
+
+    code = (
+        "import sys, aegis.app\n"
+        "print(sorted(m for m in sys.modules if m.startswith('cryptography')))"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    ).stdout
+    assert out.strip() == "[]"
