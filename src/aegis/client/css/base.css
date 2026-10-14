@@ -749,9 +749,17 @@ body{background:#000}
 #a2 .canvas>.pmenu{position:absolute;top:calc(var(--ptabs-h) + 4px);z-index:10;min-width:140px;padding:4px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);box-shadow:0 6px 18px rgba(0,0,0,.25)}
 #a2 .canvas>.pmenu .btn{display:block;width:100%;text-align:left}
 @media (pointer:coarse){#a2 .canvas{--ptabs-h:44px}}
-#a2 .md code.path{color:var(--accent);cursor:pointer;border-style:dashed}
-#a2 .md code.path:hover{border-style:solid}
-#a2 .md code.path::before{content:"↗ ";opacity:.6}
+#a2 .md code.ref{color:var(--accent);cursor:pointer;border-style:dashed}
+#a2 .md code.ref:hover{border-style:solid}
+#a2 .md code .ic,#a2 .md a.web .ic{width:1em;height:1em;vertical-align:-.14em;margin-right:.3em;opacity:.75}
+#a2 .md code.ref[data-kind=dir]{color:var(--strong);border-style:solid;cursor:default}
+#a2 .md code.ref[data-kind=missing]{color:var(--err);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--err) 50%,transparent)}
+#a2 .md code.ref[data-kind=missing] .ic{opacity:1}
+#a2 .md a.repo{text-decoration:none}
+#a2 .md a.repo code{color:var(--accent)}
+#a2 .md a.repo:hover code{border-color:var(--accent)}
+#a2 .md a.web.auto{font-family:var(--font-mono);font-size:.86em}
+@media (max-width:640px){#a2 .md code.ref,#a2 .md a.repo code{display:inline-block;max-width:100%;overflow-wrap:anywhere}}
 #a2 .row .patherr{font:12px var(--font-ui);color:var(--err);margin-top:4px}
 #a2 .row .patherr .btn{margin:6px 6px 0 0}
 #a2 #viewer .code{position:relative}

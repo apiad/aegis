@@ -1670,7 +1670,7 @@ $("entries").addEventListener("click", async (ev) => {
 
 // -- Open a path a reply named, in the viewer at its line -----------------------
 $("entries").addEventListener("click", async (ev) => {
-  const code = ev.target.closest(".md code.path");
+  const code = ev.target.closest(".md code.ref:not([data-kind=dir])");
   if (!code) return;
   const row = code.closest(".row");
   const body = row.querySelector(":scope > .body");
