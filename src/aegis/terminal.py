@@ -81,6 +81,7 @@ class Terminal:
         self._out = bytearray()
         self._writing = False
         self._waiter: asyncio.Task | None = None
+        self._starting = asyncio.Lock()
 
     @property
     def id(self) -> str:
@@ -91,10 +92,27 @@ class Terminal:
         return self.fd is not None
 
     @property
+    def starting(self) -> bool:
+        return self._starting.locked()
+
+    async def started(self) -> None:
+        """Return once a start under way has finished, or failed."""
+        async with self._starting:
+            pass
+
+    @property
     def pid(self) -> int | None:
         return self.proc.pid if self.proc is not None and self.running else None
 
     async def start(
+        self, argv: list[str], cwd: Path, env: dict[str, str], cgroup: Path | None
+    ) -> None:
+        if self.running or self.starting:
+            raise OpError("running", f"terminal {self.meta['name']} is running")
+        async with self._starting:
+            await self._start(argv, cwd, env, cgroup)
+
+    async def _start(
         self, argv: list[str], cwd: Path, env: dict[str, str], cgroup: Path | None
     ) -> None:
         cols, rows = self.meta["cols"], self.meta["rows"]
@@ -121,7 +139,7 @@ class Terminal:
         self._paused = self._eof = False
         self.store.open(cols, rows, {"id": self.id, "profile": self.meta["profile"]})
         self.store.marker("start")
-        asyncio.get_running_loop().add_reader(master, self._readable)
+        asyncio.get_running_loop().add_reader(master, self._readable, master)
         self._waiter = asyncio.create_task(self._wait())
 
     def input(self, data: str) -> None:
@@ -188,9 +206,12 @@ class Terminal:
                     return text[:200]
         return ""
 
-    def _readable(self) -> None:
+    def _readable(self, fd: int) -> None:
+        if fd != self.fd:  # a reader left from an earlier child: never read another's
+            asyncio.get_running_loop().remove_reader(fd)
+            return
         try:
-            data = os.read(self.fd, min(READ_MAX, self._budget))
+            data = os.read(fd, min(READ_MAX, self._budget))
         except BlockingIOError:
             return
         except OSError:  # EIO: every descriptor on the slave side is closed
@@ -224,7 +245,7 @@ class Terminal:
         self._budget = int(READ_PER_S * TICK_S)
         if self._paused and self.fd is not None and not self._eof:
             self._paused = False
-            loop.add_reader(self.fd, self._readable)
+            loop.add_reader(self.fd, self._readable, self.fd)
         self.store.flush()
         if self._pending:
             ops, self._pending = self._pending, []

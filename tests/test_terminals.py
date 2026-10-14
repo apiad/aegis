@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import os
+from pathlib import Path
 
 import pytest
 
@@ -166,3 +168,52 @@ async def test_boot_skips_a_meta_that_parses_but_is_not_a_terminal(tmp_path):
         assert list(again.open) == [good.id] and again.archived == {}
     finally:
         await again.shutdown()
+
+
+def descendants(name: str) -> int:
+    """How many live processes called ``name`` descend from this one."""
+    procs = {}
+    for stat in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            head, rest = stat.read_text().rsplit(") ", 1)
+        except OSError:
+            continue
+        state, ppid = rest.split()[:2]
+        if state != "Z":
+            procs[int(stat.parent.name)] = (head.split(" (", 1)[1], int(ppid))
+
+    def ours(pid):
+        while pid in procs:
+            pid = procs[pid][1]
+            if pid == os.getpid():
+                return True
+        return False
+
+    return sum(comm == name and ours(pid) for pid, (comm, _) in procs.items())
+
+
+async def test_two_restarts_at_once_start_one_child(reg):
+    t = await reg.spawn("echo", owner="ana")
+    t.input("\x04")  # cat ends at end of input
+    await asyncio.wait_for(t.exited.wait(), 3)
+    results = await asyncio.gather(
+        reg.restart(t.id), reg.restart(t.id), return_exceptions=True
+    )
+    errors = [r for r in results if isinstance(r, OpError)]
+    assert len(errors) == 1 and errors[0].code == "running"
+    await until(lambda: descendants("cat"), what="cat")
+    await asyncio.sleep(0.1)  # time for a second child to show, were there one
+    assert t.running and descendants("cat") == 1
+
+
+async def test_a_close_during_spawn_leaves_the_terminal_archived(reg):
+    spawning = asyncio.create_task(reg.spawn("echo", owner="ana"))
+    await asyncio.sleep(0)  # spawn runs until it waits for the child
+    assert not spawning.done()
+    tid = next(iter(reg.open))
+    await reg.close(tid)
+    t = await spawning
+    await asyncio.wait_for(t.exited.wait(), 3)
+    assert reg.archived[tid]["state"] == "ended" and tid not in reg.open
+    last = [o for c, ops in reg.bus.msgs if c == "sessions" for o in ops][-1]
+    assert last == {"remove": tid}

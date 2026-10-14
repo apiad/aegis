@@ -115,6 +115,9 @@ class Terminals:
 
     async def close(self, tid: str) -> None:
         t = self.get(tid)
+        if t.starting:  # close what the start leaves, never under it
+            await t.started()
+            t = self.get(tid)
         t.meta.update(
             state="ended", reason="closed", archived=True, closed_at=time.time()
         )
@@ -131,7 +134,7 @@ class Terminals:
 
     async def restart(self, tid: str) -> None:
         t = self.get(tid)
-        if t.running:
+        if t.running or t.starting:
             raise OpError("running", f"terminal {t.meta['name']} is running")
         await self._start(t)
 
