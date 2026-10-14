@@ -105,8 +105,9 @@ This level starts up to three workers and spends quota.
 
 1. Enqueue. Ask "Enqueue three tasks on the general queue with
    queue_enqueue: each counts the lines of one file in this directory and
-   ends on the number." You should see worker cards appear on the Fleet, each
-   marked as a worker of its queue. If the agent reports that there is no
+   ends on the number." You should see worker cards appear in the Fleet's
+   last group, dimmed, marked zz and marked as workers of their queue: a
+   worker starts quiet, with no tab. If the agent reports that there is no
    such queue, this server has none configured: whoever runs it adds one as
    the configuration page shows, and you run this step again.
 2. Wait for the results. You should see the first session wake once per task
