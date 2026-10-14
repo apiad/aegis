@@ -738,6 +738,40 @@ def test_close_in_one_browser_removes_the_tab_in_another(server, browser, page):
     assert errors == [] and page.errors == []
 
 
+HOLD = (
+    '/mcp monitor_start {"description": "hold", "done": "false", '
+    '"progress": null, "interval_s": 60}'
+)
+
+
+def test_quiet_hides_the_tab_and_a_click_on_its_card_brings_it_back(server, page):
+    """#386: a quiet session leaves the tab bar, sits last in the Fleet, and
+    a click on its card brings it back."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "stays")
+    b = spawn(page, HOLD)
+    page.wait_for_function("!document.querySelector('#quiet-session').disabled")
+    page.click("#quiet-session")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
+    assert tab_ids(page) == [a]
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card.quiet[data-id='{b}']")
+    heads = page.eval_on_selector_all(".grp-h", "hs => hs.map(h => h.textContent)")
+    assert heads[-1] == "Quiet"
+    page.click(f".card.quiet[data-id='{b}']")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=b)
+    assert tab_ids(page) == [a, b]
+    assert page.errors == []
+
+
+def test_quiet_is_disabled_on_an_idle_session(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    assert page.is_disabled("#quiet-session")
+
+
 def test_a_closed_session_is_in_the_archive_without_a_reload(server, page):
     """#160: the Fleet's archive was read before the Close and nothing read it
     again, so the closed session appeared only after a reload."""
@@ -2575,9 +2609,10 @@ def test_a_finished_worker_fades_and_sinks_below_the_live_cards_and_an_errored_o
     page.click("#tab-fleet")
     page.wait_for_selector("#cards .card:not(.at-error) .badge >> text=worker · q")
     worker = page.get_attribute("#cards .card:not(.at-error):has(.badge)", "data-id")
-    # Live: a card like any other session's.
+    # Live: not finished, but quiet (#386): dimmed, last, with no tab.
     assert page.locator(f"#cards .card[data-id='{worker}'].finished").count() == 0
-    assert card_opacity(page, worker) == "1"
+    assert page.locator(f"#cards .card[data-id='{worker}'].quiet").count() == 1
+    assert card_opacity(page, worker) == "0.55"
     # Done, the task archives the worker, out of sight until the chip shows
     # workers (#331); reopened, its task is still over.
     page.wait_for_selector("#arch-workers:not([hidden]) b >> text=1", timeout=20000)

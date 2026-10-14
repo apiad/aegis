@@ -146,3 +146,13 @@ async def test_a_quiet_worker_that_fails_comes_back(world):
     await until(lambda: inbox(a), timeout=10, what="the error callback")
     assert t.worker in world.app.sessions.sessions
     assert world.session(t.worker).quiet is False
+
+
+async def test_a_reopened_session_starts_visible(world):
+    a = await world.spawn()
+    said = await turn(a, mcp("queue_enqueue", queue="general", payload="hi"))
+    t = world.app.queues.tasks[json.loads(said.removeprefix("mcp ok: "))["task_id"]]
+    await until(lambda: t.status == "completed", timeout=12, what="completion")
+    assert world.app.sessions.archived[t.worker]["quiet"] is True
+    r = await world.app.registry.call("session.reopen", {"log_id": t.worker})
+    assert r["quiet"] is False and meta_of(world, t.worker)["quiet"] is False

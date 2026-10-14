@@ -578,6 +578,7 @@ class Registry(Host):
             "archived": False,
             "last_status": "stopped",
             "continued_by": None,
+            "quiet": False,  # a person reopening it wants to see it (#386)
         }
         s = self._session(meta)
         self.sessions[log_id] = s
