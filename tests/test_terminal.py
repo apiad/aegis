@@ -3,7 +3,10 @@
 import asyncio
 import os
 
+import pytest
+
 from aegis import terminal
+from aegis.ops import OpError
 from aegis.term_store import CastStore
 from aegis.terminal import Terminal
 
@@ -119,4 +122,13 @@ async def test_a_lone_surrogate_in_input_is_replaced_not_raised(tmp_path):
     t, rec = await run(tmp_path, ["cat"])
     t.input("a\ud83db\r")
     await until(lambda: "a?b" in rec.text(), what="the replaced character")
+    await t.stop(grace=0.5)
+
+
+async def test_input_a_program_does_not_read_is_refused_past_the_cap(tmp_path):
+    t, rec = await run(tmp_path, ["sleep", "100"])
+    with pytest.raises(OpError) as e:
+        for _ in range(30):
+            t.input("x" * 100_000)
+    assert e.value.code == "busy" and len(t._out) <= terminal.INPUT_MAX
     await t.stop(grace=0.5)

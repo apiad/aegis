@@ -14,6 +14,9 @@ across two reads arrives whole, and a byte that is not UTF-8 becomes U+FFFD.
 Chunks go to subscribers once per tick, TICK_S, never through the sessions
 channel's 250 ms throttle: typing has to echo within a frame.
 
+Input the program has not read yet waits in memory, at most INPUT_MAX bytes;
+past that, input fails ``busy`` rather than growing without bound.
+
 Nothing here decides who may type; the registry and the operations do.
 """
 
@@ -40,6 +43,7 @@ READ_PER_S = 4 * 1024 * 1024
 TICK_S = 0.016
 READ_MAX = 65536
 DRAIN_READS = 16  # what is left after the child exits: a PTY buffer or two
+INPUT_MAX = 1024 * 1024  # input the program has not read yet
 ANSI = re.compile(
     r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]"
 )
@@ -119,7 +123,10 @@ class Terminal:
     def input(self, data: str) -> None:
         if self.fd is None:
             raise OpError("not_running", f"terminal {self.meta['name']} is not running")
-        self._out += data.encode("utf-8", "replace")
+        raw = data.encode("utf-8", "replace")
+        if len(self._out) + len(raw) > INPUT_MAX:
+            raise OpError("busy", f"terminal {self.meta['name']} is not reading input")
+        self._out += raw
         self._write()
 
     def resize(self, cols: int, rows: int) -> None:
