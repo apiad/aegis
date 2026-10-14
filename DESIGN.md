@@ -56,6 +56,21 @@ child's `oom_score_adj` to 500 right after the spawn
 that holds every session; a deployment gives the server a negative
 `OOMScoreAdjust` to widen the gap (#360).
 
+**A terminal is a PTY the server holds, beside the sessions.** A terminal
+(`terminals.py`, #362) is a child on a PTY, started from a profile in the
+`terminals:` block or from the built-in shell. It belongs to the server and has
+an owner, so it outlives every browser. Its reader (`terminal.py`) reads at
+most 4 MB/s and flushes what it read every 16 ms. Everything it reads goes to
+an asciicast store on disk (`term_store.py`), whose newest 1 MB is also kept in
+memory. Its card rides the `sessions` channel with `kind: "term"` and `log_id`
+set to its id, because the channel and the client key every card by `log_id`.
+Its output rides `term:<id>`: a browser holding a revision that memory still
+covers gets the events after it, and any other gets the raw output since the
+last screen clear, at most 256 KB. The browser's xterm.js is the only terminal
+emulator; the server keeps the bytes and parses none of them, because a Python
+parser measured at under 0.4 MB/s cannot keep up with the reader
+(`docs/superpowers/specs/2026-10-14-terminals-design.html`).
+
 **Boot reads meta files, never stores.** Each session has a small JSON meta next to
 its store, written by write-then-rename. Boot reads only those, so an archive of
 hundreds costs hundreds of small reads; a missing or damaged meta is rebuilt from
