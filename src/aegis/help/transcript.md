@@ -139,3 +139,11 @@ line marked. Agents are asked to quote files relative to the folder aegis
 serves from, so the link finds them. A path that is not there says where it
 looked, and one that names two different files, one in that folder and one in
 the session's own, asks which to open.
+
+Each path shows what it names when its reply comes into view: a file icon
+when the file is there, a folder icon for a folder, and a struck-out red name
+when nothing is there. A missing file still answers a click, in case it has
+appeared since. A GitHub repo in backticks, such as `octo/aegis` or
+`octo/aegis#358`, links to GitHub with its mark, unless a local folder has that
+name. A bare link shows its site's icon and a short name: a GitHub pull
+request reads `octo/aegis#358`, a PyPI page the package's name.
