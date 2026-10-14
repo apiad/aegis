@@ -458,17 +458,14 @@ class Fold:
             e = self._entries.get(eid)
             if e is None:
                 continue
-            new = e
-            if e["status"] == "running":
-                new = {
-                    **new,
-                    "status": "failed",
-                    "detail": {**new["detail"], "why": why},
-                }
-            if fold and not new["detail"]["folded"]:
-                new = {**new, "detail": {**new["detail"], "folded": True}}
-            if new is not e:
-                ops += self._upsert(new)
+            status = "failed" if e["status"] == "running" else e["status"]
+            detail: dict = dict(e["detail"])
+            if status != e["status"]:
+                detail["why"] = why
+            if fold:
+                detail["folded"] = True
+            if status != e["status"] or detail != e["detail"]:
+                ops += self._upsert({**e, "status": status, "detail": detail})
         return ops
 
     def _own(self, i: int, ts: float | None, rec: dict) -> list[dict]:
