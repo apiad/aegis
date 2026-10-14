@@ -199,7 +199,7 @@ body{background:#000}
 .a2 .spawn .cwd:hover,.a2 .spawn .cwd:focus{border-bottom-color:var(--faint);color:var(--ink)}
 .a2 .spawn .box{width:100%;display:flex;align-items:flex-end;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg)}
 .a2 .spawn .box:focus-within{border-color:var(--accent)}
-.a2 .spawn textarea{flex:1;min-width:0;width:0;resize:none;padding:12px 14px;background:none;border:none;outline:none;color:var(--strong);font-family:var(--font-ui);font-size:14px;line-height:1.45;max-height:40vh}
+.a2 .spawn textarea{flex:1;min-width:0;width:0;resize:none;padding:12px 14px;background:none;border:none;outline:none;color:var(--strong);font-family:var(--font-ui);font-size:14px;line-height:1.45}
 /* As in a session: attach, mic and send inside the box, bottom right, and the
    chips on a line below it, wrapping however long a model id gets (#207, #315). */
 .a2 .spawn .acts{flex:none;display:flex;gap:6px;align-items:center;padding:8px 8px 8px 0}
