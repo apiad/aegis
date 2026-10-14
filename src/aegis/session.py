@@ -20,6 +20,10 @@ sent prompt or a turn-bearing event moves it to ``working``, and only ``result``
 moves it back to ``idle``; system notices never do. ``error`` is an interrupt
 that went unanswered. A child that exits leaves the session ``stopped``.
 
+A line that cannot be stored (a full disk) is logged and dropped, never raised:
+the reader that called ``_on_line`` would die with it, nothing would read the
+child's stdout again, and the session would freeze until a restart (#395).
+
 A clean server shutdown records nothing in the store. The meta keeps the last
 status, and the registry marks a session that was ``working`` at its next boot,
 so a crash and a clean stop read the same.
@@ -29,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -56,6 +61,8 @@ from .transcript.entries import EMPTY_STANDING, Fold, fold_records
 from .transcript.store import Store, read_store
 from .transcript.wire import wire, wire_ops
 
+log = logging.getLogger("aegis.session")
+
 Publish = Callable[[str, list[dict]], None]
 
 # What a fleet card shows. A change to one of _NOW publishes the session at
@@ -63,7 +70,7 @@ Publish = Callable[[str, list[dict]], None]
 # each message, activity with each call), so they wait up to PUBLISH_EVERY_S
 # and go out together. Publishing them per line doubled the server's cost per
 # line in the bench (issue #127).
-_NOW = ("status", "handle", "title", "model_id", "standing", "continued_by")
+_NOW = ("status", "handle", "title", "model_id", "standing", "continued_by", "quiet")
 _SOON = (
     "activity",
     "cost_usd",
@@ -243,6 +250,7 @@ class Session:
         cache_recent: list[list] | None = None,
         compactions: int = 0,
         continued_by: str | None = None,
+        quiet: bool = False,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
@@ -291,6 +299,8 @@ class Session:
         # Claude's own tasks started and not yet notified (Bash, background).
         self.open_tasks: set[str] = set()
         self.worker = worker
+        # No tab until its turn ends (#386); a card in the Fleet meanwhile.
+        self.quiet = quiet
         # The fold's view of the agent's plan and last report; persisted so a
         # card at boot needs no store (DESIGN.md, boot reads meta files).
         self.standing: dict = standing or EMPTY_STANDING
@@ -363,6 +373,7 @@ class Session:
             "cache_recent": self.cache_recent,
             "compactions": self.compactions,
             "continued_by": self.continued_by,
+            "quiet": self.quiet,
         }
 
     def wire(self) -> dict:
@@ -850,6 +861,12 @@ class Session:
         self._publish("sessions", [{"upsert": self.wire()}])
 
     def _on_line(self, line: str) -> None:
+        try:
+            self._take_line(line)
+        except Exception:
+            log.exception("%s: a line from the harness was dropped", self.handle)
+
+    def _take_line(self, line: str) -> None:
         if self._stopping:
             return
         fold = self.fold()

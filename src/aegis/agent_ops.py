@@ -137,6 +137,12 @@ class Close(_Strict):
     log_id: SkipJsonSchema[str | None] = None
 
 
+class Quiet(_Strict):
+    handle: str | None = Field(None, description="The session's handle.")
+    # A person's client names a tab by its log id; an agent names it by handle.
+    log_id: SkipJsonSchema[str | None] = None
+
+
 class FileSend(_Strict):
     paths: list[Annotated[str, Field(min_length=1)]] = Field(
         min_length=1,
@@ -959,6 +965,24 @@ def register_agent_ops(app: App) -> None:
         handle = s.handle
         await reg.close(s.log_id)
         return f"closed {handle}: its tab is gone, and it stays in the archive"
+
+    @r.op("session.quiet", Quiet, agent=True, owned="log_id")
+    async def session_quiet(p: Quiet, caller):
+        """Hide a session's tab while it works: it stays in the Fleet, dimmed,
+        and its tab comes back by itself when its turn ends done, review,
+        needs_you or error. Only a working or waiting session can be quiet.
+        Use it for a session doing background work the person need not
+        watch, your own included."""
+        if not caller.is_agent:
+            if p.log_id is None:
+                raise OpError("bad_params", "log_id is required")
+            return reg.set_quiet(p.log_id, True)
+        own(caller)
+        if p.handle is None:
+            raise OpError("bad_params", "handle is required")
+        s = target(p.handle)
+        reg.set_quiet(s.log_id, True)
+        return f"{s.handle} is quiet: its tab is hidden until its turn ends"
 
     @r.op("file.send", FileSend, agent=True, read=True)
     async def file_send(p: FileSend, caller):

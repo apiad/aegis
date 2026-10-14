@@ -594,7 +594,10 @@ does.
 
 **A damaged file never takes a session down.** A store line that does not parse is
 skipped and counted; a stdout line that does not parse is stored and shown as a
-system entry.
+system entry. A line that cannot be written (a full disk) is logged and dropped,
+and a stderr line the file refuses stays in the in-memory tail: the readers keep
+reading, because a reader that dies leaves the child blocked on a full pipe and
+the session frozen until a restart.
 
 **Agent text is untrusted.** Markdown renders with raw HTML disabled, and the
 localhost port is not trusted either: the websocket needs the server's token and

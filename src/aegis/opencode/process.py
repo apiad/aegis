@@ -238,8 +238,11 @@ class OpenCodeProcess:
         if not line:
             return
         self._tail.append(line)
-        with self._launch.stderr_path.open("a") as f:
-            f.write(line + "\n")
+        try:
+            with self._launch.stderr_path.open("a") as f:
+                f.write(line + "\n")
+        except OSError:
+            pass  # The tail keeps it; raising would end the drain (#395).
 
     async def _drain(self, stream: asyncio.StreamReader | None) -> None:
         if stream is None:
