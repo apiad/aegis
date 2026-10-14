@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from aegis.schedule_log import (
+    DEFAULT_QUOTA,
     KEEP_FIRES,
     Definition,
     RunLog,
@@ -154,12 +155,52 @@ def test_rows_join_a_fire_with_its_end_and_leave_out_its_tick():
             },
             "less than or equal to 300",
         ),
+        (
+            {
+                "clock": {"every": "5m"},
+                "fire": FIRE,
+                "prompt": "x",
+                "quota": {"codex": {}},
+            },
+            "aegis reads no quota for 'codex'",
+        ),
+        (
+            {
+                "clock": {"every": "5m"},
+                "fire": FIRE,
+                "prompt": "x",
+                "quota": {"claude": {"weekly": 50}},
+            },
+            "claude has no window 'weekly'",
+        ),
+        (
+            {
+                "clock": {"every": "5m"},
+                "fire": FIRE,
+                "prompt": "x",
+                "quota": {"claude": {"session": 100}},
+            },
+            "less than or equal to 99",
+        ),
     ],
 )
 def test_a_bad_definition_says_what_is_wrong(raw, says):
     with pytest.raises(ValidationError) as e:
         Definition.model_validate(raw)
     assert says in str(e.value)
+
+
+def test_a_schedule_without_quota_keeps_its_weekly_window_on_pace():
+    d = Definition.model_validate(
+        {"clock": {"every": "5m"}, "fire": FIRE, "prompt": "x"}
+    )
+    assert d.quota == DEFAULT_QUOTA
+    # Each definition owns its copy: editing one never edits the default.
+    assert d.quota["claude"] is not DEFAULT_QUOTA["claude"]
+    none = Definition.model_validate(
+        {"clock": {"every": "5m"}, "fire": FIRE, "prompt": "x", "quota": {}}
+    )
+    assert Schedule.load("n", Schedule("n", {}, 0, 0, none).dump()).d.quota == {}
 
 
 def test_a_schedule_round_trips_through_its_stored_form():

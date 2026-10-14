@@ -270,7 +270,9 @@ test is `Registry.finished`, and a schedule's run ends on it too.
 `schedules.py` runs one clock task in the server. It wakes at the next tick or
 after a minute and compares wall time, because asyncio's sleep stops while a
 machine is suspended. A tick goes through the overlap rule, the bash check and
-the fire. Definitions are `<state>/schedules.json`; everything that happens is
+the fire. The fire waits under the schedule's own quota lines, the weekly window
+on pace by default, judged by `quota_gate.decide` like a token's policy: an
+admin has no policy, and a forgotten schedule must not spend the week. Definitions are `<state>/schedules.json`; everything that happens is
 `<state>/schedule-runs.jsonl`, and boot folds the live runs, the held tick and
 the errors in a row from it (`schedule_log.py`), so nothing is stored twice. A
 run ends on `Registry.finished`, the test a queue's task ends on, which also

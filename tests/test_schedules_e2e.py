@@ -2,6 +2,7 @@
 test moves forward instead of waiting for (schedules.py)."""
 
 import asyncio
+import time
 
 import pytest
 
@@ -274,6 +275,78 @@ async def test_a_closed_quota_gate_holds_the_tick_and_fires_it_when_it_opens(wor
     seed(world, session=40)
     await app.schedules.step()
     assert len(runs(world, "ben-brief", "fired")) == 1
+
+
+def gauge(world, session=10.0, weekly_projected=None) -> None:
+    """Every reading says Claude's 5 hours are at ``session``% and the week is
+    projected to reach ``weekly_projected``% at its reset."""
+    now = time.time()
+
+    def window(kind, percent, projected, span):
+        return {
+            "kind": kind,
+            "label": kind,
+            "percent": percent,
+            "projected": projected,
+            "resets_at": now + span,
+        }
+
+    world.app.quota.snapshot = lambda: {
+        "providers": [
+            {
+                "name": "claude",
+                "label": "Claude",
+                "harness": "claude-code",
+                "state": "ok",
+                "read_at": now - 30,
+                "windows": [
+                    window("session", session, None, 3600),
+                    window("weekly_all", 20.0, weekly_projected, 86400),
+                ],
+            }
+        ]
+    }
+
+
+async def test_a_week_off_pace_holds_a_schedule_by_default_until_it_is_back(world):
+    t = frozen(world)
+    gauge(world, weekly_projected=130)
+    create(world, "pace-me", DONE)
+    await tick(world, t)
+    (held,) = runs(world, "pace-me", "tick")
+    assert (held["out"], held["why"]) == ("held", "quota")
+    assert "on pace for 130%" in held["line"]
+    gauge(world, weekly_projected=90)
+    world.app.schedules.quota_opened()
+    await world.app.schedules.step()
+    assert len(runs(world, "pace-me", "fired")) == 1
+
+
+async def test_a_launch_line_holds_a_fire_into_an_existing_session(world):
+    t = frozen(world)
+    a = await world.spawn()
+    await turn(a, "hello")
+    gauge(world, session=63)
+    create(
+        world,
+        "under-half",
+        "keep going",
+        fire={"target": "existing", "session": a.log_id},
+        quota={"claude": {"session": 50}},
+    )
+    await tick(world, t)
+    assert outs(world, "under-half") == ["held"] and not inbox(a)
+    gauge(world, session=40)
+    await world.app.schedules.step()
+    await until(lambda: inbox(a), 10, "the released message")
+
+
+async def test_an_empty_quota_sets_no_line(world):
+    t = frozen(world)
+    gauge(world, session=99, weekly_projected=400)
+    create(world, "no-limit", DONE, quota={})
+    await tick(world, t)
+    assert len(runs(world, "no-limit", "fired")) == 1
 
 
 # -- children ------------------------------------------------------------------------------

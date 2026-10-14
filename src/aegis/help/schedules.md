@@ -26,7 +26,9 @@ Call `schedule_create` with:
   per fire;
 - `check` (optional): `{"bash": "...", "timeout_s": 30}`, described below;
 - `fire`: where the prompt goes, described below;
-- `prompt`: what the agent is asked on each fire.
+- `prompt`: what the agent is asked on each fire;
+- `quota` (default: the weekly window on pace): the launch lines a fire
+  waits under, described below.
 
 An every counts from when the schedule was created or last edited. A cron
 line with no tick in the next year is refused. An at fires once and then
@@ -90,6 +92,24 @@ A run with `spawn: false`, the default, is refused `session_spawn`,
 The sessions the run starts carry the same flag, the run stays live until
 they stop working, and each one is closed by the run's rule, read from its
 own last `turn_end`.
+
+## Quota lines
+
+A fire waits while the pool it draws on is over the schedule's own launch
+line, and goes once, at most one tick, when it drops back under. `quota` maps
+a pool to its windows and each window to a percent from 0 to 99 or to
+`"pace"`, which holds while the window is projected to pass 100% by its
+reset. The pool claude has the windows session and weekly_all, and the pool
+opencode-go has rolling, weekly and monthly. Without `quota` a
+schedule holds while either weekly window is off pace; `{}` sets no line.
+
+```json
+{"claude": {"session": 60, "weekly_all": "pace"}}
+```
+
+The lines apply to a fire into an open session too. They only hold what has
+not started: a live run goes on. A pool aegis has never read sets no line, and
+a token's own quota gate still applies on top of them.
 
 ## Change, pause and fire
 

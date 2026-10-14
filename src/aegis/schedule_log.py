@@ -25,16 +25,25 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 from .clock import ClockError, clock_from
+from .quota_gate import KINDS
 
 CHECK_TIMEOUT_MAX = 300
 KEEP_FIRES = 100
 # The tick outcomes a person reads as nothing happening.
 QUIET = "quiet"
+# A tick fires only while each window named for the pool it draws on is under
+# its launch line. The default keeps a forgotten schedule from spending the
+# week; {} sets no line.
+Launch = Annotated[int, Field(ge=0, le=99)] | Literal["pace"]
+DEFAULT_QUOTA: dict[str, dict[str, Launch]] = {
+    "claude": {"weekly_all": "pace"},
+    "opencode-go": {"weekly": "pace"},
+}
 
 
 class _Strict(BaseModel):
@@ -75,6 +84,12 @@ class Definition(_Strict):
     check: Check | None = None
     fire: Fire
     prompt: str = Field(min_length=1)
+    quota: dict[str, dict[str, Launch]] = Field(
+        default_factory=lambda: {k: dict(v) for k, v in DEFAULT_QUOTA.items()},
+        description="Launch lines by pool and window: a percent under which a "
+        'tick may fire, or "pace" (projected at most 100% at reset). A pool not '
+        "named has no line; {} sets none. Default: the weekly window on pace.",
+    )
 
     @model_validator(mode="after")
     def _valid(self) -> "Definition":
@@ -82,6 +97,13 @@ class Definition(_Strict):
             clock_from(self.clock)
         except ClockError as e:
             raise ValueError(str(e)) from None
+        for pool, lines in self.quota.items():
+            if not KINDS.get(pool):
+                raise ValueError(f"aegis reads no quota for {pool!r}")
+            for kind in lines:
+                if kind not in KINDS[pool]:
+                    have = ", ".join(KINDS[pool])
+                    raise ValueError(f"{pool} has no window {kind!r}; it has {have}")
         if self.overlap == "parallel" and self.fire.target == "existing":
             raise ValueError(
                 "parallel needs a new session per fire; an existing session's "
@@ -112,7 +134,7 @@ class Schedule:
 
     @classmethod
     def load(cls, name: str, raw: dict) -> "Schedule":
-        keys = ("clock", "overlap", "check", "fire", "prompt")
+        keys = ("clock", "overlap", "check", "fire", "prompt", "quota")
         return cls(
             name=name,
             owner=raw["owner"],
@@ -243,7 +265,7 @@ def rows(rs: list[dict], handle: Callable[[str], str | None]) -> list[dict]:
             if r.get("out") == "fired":
                 continue
             row = {"t": r["t"], "kind": r["out"]}
-            for k in ("n", "from", "to", "rc", "err", "why", "manual"):
+            for k in ("n", "from", "to", "rc", "err", "why", "line", "manual"):
                 if k in r:
                     row[k] = r[k]
         elif ev == "fired":

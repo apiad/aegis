@@ -3,6 +3,8 @@
   an agent or into an open session's inbox. An optional bash check fires a
   tick only when its output changed, and hands that output to the agent. The
   overlap rule waits for a run still working, skips the tick or runs beside
-  it, and a new run is archived when its last `turn_end` said done. Agents get
-  nine `schedule_*` tools (#390).
+  it, and a new run is archived when its last `turn_end` said done. A fire
+  waits while the quota is over the schedule's own launch lines, by default
+  while the weekly window is off pace. Agents get nine `schedule_*` tools
+  (#390).
 help: schedules

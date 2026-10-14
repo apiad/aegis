@@ -47,6 +47,7 @@ from .clock import Clock, clock_from
 from .monitors import run_bash
 from .names import valid_handle
 from .ops import OpError
+from .quota_gate import decide, pool_for
 from .schedule_log import (
     Check,
     Definition,
@@ -247,10 +248,40 @@ class Schedules:
         if st.held == "overlap":
             return not st.live
         try:
+            if s.d.fire.target == "existing":
+                t = self._target(s).spec
+                return self._line(s, t.harness, t.model) is None
             spec = self._spec(s)
         except OpError:
             return True  # the fire says what is wrong
-        return self._app.gate(spec.owner, spec.harness, spec.model).may_start
+        return (
+            self._app.gate(spec.owner, spec.harness, spec.model).may_start
+            and self._line(s, spec.harness, spec.model) is None
+        )
+
+    def _line(self, s: Schedule, harness: str, model: str | None) -> str | None:
+        """Why the schedule's own launch line for the pool a fire draws on
+        holds it, or None when every line is clear (quota_gate.decide). A
+        pool aegis has never read has no line: there is nothing to measure,
+        and holding every tick would stop the schedule for good. A stale
+        reading holds, as it does a token's gate."""
+        pool = pool_for(harness, model)
+        lines = s.d.quota.get(pool or "")
+        snap = self._app.quota.snapshot()
+        read = any(
+            p.get("name") == pool and p.get("read_at") is not None
+            for p in snap.get("providers", [])
+        )
+        if not pool or not lines or not read:
+            return None
+        policy = {
+            pool: {
+                "mode": "lines",
+                "lines": {k: {"launch": v, "stop": 100} for k, v in lines.items()},
+            }
+        }
+        g = decide(policy, pool, snap, time.time())
+        return None if g.may_start else g.why
 
     # -- the layers ---------------------------------------------------------------
     async def _layers(self, name: str, tick: int, manual: bool = False) -> str:
@@ -289,6 +320,10 @@ class Schedules:
                 spec = self._spec(s)
                 if not self._app.gate(spec.owner, spec.harness, spec.model).may_start:
                     return self._tick(name, tick, "held", why="quota", **extra)
+                if line := self._line(s, spec.harness, spec.model):
+                    return self._tick(
+                        name, tick, "held", why="quota", line=line, **extra
+                    )
                 ses = await self._reg.spawn(
                     spec,
                     title=f"{name} · run {run}",
@@ -297,6 +332,10 @@ class Schedules:
                 await ses.send(f"{head}\n{text}")
             else:
                 ses = self._target(s)
+                if line := self._line(s, ses.spec.harness, ses.spec.model):
+                    return self._tick(
+                        name, tick, "held", why="quota", line=line, **extra
+                    )
                 await ses.deliver(head, text)
         except OpError as e:
             self._tick(name, tick, "error", err=e.message, **extra)
