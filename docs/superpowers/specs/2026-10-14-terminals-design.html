@@ -322,7 +322,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </div>
 
 <h2 id="decisions"><span class="n">02</span>Decisions</h2>
-<p><span class="who">maintainer</span> marks a decision the maintainer made in issue #362. <span class="who q">proposed</span> marks one this spec proposes and nobody has ruled on yet; four of those depart from the issue and say so.</p>
+<p><span class="who">maintainer</span> marks a decision the maintainer made in issue #362. <span class="who q">proposed</span> marks one this spec proposes and nobody has ruled on yet; three of those depart from the issue and say so.</p>
 <table class="tbl">
 <thead><tr><th>Question</th><th>Decision</th><th>Why</th></tr></thead>
 <tbody>
@@ -341,7 +341,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>The transport</td><td>A <code>term:&lt;id&gt;</code> channel on the existing websocket. A patch carries chunks of text with their sequence numbers; input goes up as an operation, <code>term.input</code></td><td class="why"><span class="who q">proposed</span> "Adding a subsystem adds operations and channels, never a protocol field." A second, binary socket would need its own origin and token checks, and links would need a second relay.</td></tr>
 <tr><td>The emulator</td><td><a href="https://github.com/selectel/pyte">pyte</a>, fed in the reader. Phase 1 benchmarks it, and moves it to a child process if a flood slows other terminals' echo</td><td class="why"><span class="who q">proposed</span> Pure Python, MIT, no build step, and it keeps scrollback. Whether it is fast enough under a flood is measured, not assumed (<a href="#limits">Limits</a>).</td></tr>
 <tr><td>Theme fallbacks</td><td>As in the issue, except magenta falls back to <code>--comms</code>, not a mix of accent and error</td><td class="why"><span class="who q">proposed</span> Departs from the issue. Eight of the ten themes already set <code>--comms</code> to a violet or purple, and the mix gave a brown in ink.</td></tr>
-<tr><td>Strong authentication</td><td>Not in this spec. Opening a terminal needs the same cookie as everything else</td><td class="why"><span class="who q">proposed</span> Departs from the issue, which asks for a passkey. aegis has no passkeys, and the cookie already drives agents with full permission, which run shell commands as the same user. A passkey in front of terminals alone would protect nothing that a stolen cookie lacks. It belongs to the whole server; see <a href="#security">Security</a>.</td></tr>
+<tr><td>Strong authentication</td><td>Open. Three options are on the table: the cookie alone, a passkey to open a terminal, or a passkey for the whole server (<a href="#security">Security</a>)</td><td class="why"><span class="who">maintainer</span> Left open on purpose. aegis has no passkeys today, so until this is decided a terminal is reached with the same cookie as everything else; phase 1 adds no gate and closes no option.</td></tr>
 <tr><td>A person's agent cursor</td><td>Each line an agent wrote gets a mark in the gutter, in that agent's colour (<code>--agent-1</code> to <code>--agent-6</code>)</td><td class="why"><span class="who q">proposed</span> Departs from the issue's "cursor colour per agent": a PTY has one cursor, and the program, not aegis, decides what is drawn under it. A gutter mark through xterm.js decorations shows who typed a line without touching the program's output.</td></tr>
 </tbody>
 </table>
@@ -658,7 +658,12 @@ term_read(name="api", since=4182, max_lines=60)
 <h2 id="security"><span class="n">11</span>Security</h2>
 <ul>
 <li><b>A terminal is a shell as the server's user.</b> Anyone holding the cookie could already get one through an agent with full permission. Terminals make it direct; they do not widen it. The defence that matters is the one aegis has for every operation: the token, the origin check and the HttpOnly cookie.</li>
-<li><b>Strong authentication belongs to the server.</b> A passkey on the sign-in, or a re-check before any operation that runs code, would protect terminals and full-permission agents alike. That is its own spec. Gating terminals alone would leave the same shell one agent away.</li>
+<li><b>Strong authentication is open.</b> The options, with what each costs:
+<ul>
+<li><i>The cookie alone.</i> Nothing to build, and linked servers' terminals and plain-http servers work. A person at an unlocked browser, or anyone holding a leaked token, gets a shell in one click.</li>
+<li><i>A passkey to open a terminal</i>, as #362 asks. A real gate for the interactive shell against an open browser. But the same cookie still reaches a full-permission agent that runs shell commands, it needs WebAuthn (registration, challenges, recovery of a lost key), WebAuthn needs https or localhost on a stable domain, and a link cannot present a person's passkey on the far server, so far terminals either break or are exempt.</li>
+<li><i>A passkey for the whole server</i>: a browser becomes elevated for a few hours, and opening a terminal, spawning a full-permission session and writing to one all need it. It covers both ways to a shell, at the same costs as the second option.</li>
+</ul></li>
 <li><b>Bytes from a terminal are untrusted, like agent text.</b> xterm.js gets no clipboard add-on, so OSC 52 cannot write the person's clipboard. Links (OSC 8 and bare URLs) open only <code>http</code> and <code>https</code>, in a new tab, never on aegis's origin. The window title a program sets is ignored. This matters most for a linked server's terminals, whose bytes the far side controls.</li>
 <li><b>Nothing from a terminal reaches an agent unasked.</b> Output enters an agent's context only through a tool it called or a monitor it armed, and a monitor's wake carries the terminal's lines as the body of an inbox message, headed by aegis, never as instructions from aegis.</li>
 <li><b>Agent writes are recorded.</b> Each <code>term_write</code> is a tool row in the agent's own store, so the journal derives "wrote to <code>shell</code>" from it with no new source, and the terminal's store marks the write with an <code>"m"</code> event naming the session.</li>
@@ -702,7 +707,7 @@ term_read(name="api", since=4182, max_lines=60)
 <h2 id="nongoals"><span class="n">14</span>Non-goals and open questions</h2>
 <ul>
 <li><b>Open: terminals that survive a restart of aegis.</b> A holder process per terminal, in a systemd unit of its own, would keep the PTY while aegis restarts, and aegis would reconnect to it over a Unix socket. It is the right shape if people keep long <code>pdb</code> or <code>ssh</code> sessions in terminals. It is also a second daemon to install, upgrade and clean up. This spec leaves it out until terminals have been used across a few deploys.</li>
-<li><b>Open: strong authentication</b>, for the whole server, as <a href="#security">Security</a> argues. The maintainer asked for it on terminals; this spec proposes moving it to its own spec rather than dropping it.</li>
+<li><b>Open: strong authentication.</b> The maintainer has left it open: neither the cookie alone nor a server-wide passkey is settled, and the passkey for terminals from #362 stays on the table. <a href="#security">Security</a> lists the three options and their costs. Phase 1 adds no gate, so none of them is ruled out.</li>
 <li><b>Open: black on light themes.</b> Black falls back to <code>--chrome</code>, which is light on logbook, poster and riso, so a program that prints black text on the default background is unreadable there until the theme sets <code>--ansi-black</code>.</li>
 <li><b>Not here: splitting a terminal into panes.</b> The canvas already lays out several terminals side by side; tmux inside a terminal still works.</li>
 <li><b>Not here: agents on far terminals</b>, for the same reason agents do not read far sessions.</li>
