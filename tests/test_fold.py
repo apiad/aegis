@@ -1391,15 +1391,20 @@ def test_inline_paths_finds_paths_and_skips_the_rest():
 
     md = (
         "See `src/aegis/quota/reader.py:142`, `DESIGN.md`, `~/notes/a.md` and `/etc/hosts.conf`.\n"
-        "Not `a.b`, `e.g.`, `foo/bar`, `1.5/2.0`, `https://x.io/a.py`, `make check`.\n"
+        "Folders and repos: `src/aegis`, `docs/`, `octo/aegis#358`, `github.com/octo/aegis/pull/3`.\n"
+        "Not `a.b`, `e.g.`, `1.5/2.0`, `https://x.io/a.py`, `make check`, `a / b`.\n"
         "```\n`src/in/fence.py`\n```\n"
-        "Again `DESIGN.md`."
+        "Again `DESIGN.md` and `src/aegis`."
     )
     assert d.inline_paths(md) == [
         "src/aegis/quota/reader.py:142",
         "DESIGN.md",
         "~/notes/a.md",
         "/etc/hosts.conf",
+        "src/aegis",
+        "docs/",
+        "octo/aegis#358",
+        "github.com/octo/aegis/pull/3",
     ]
 
 
