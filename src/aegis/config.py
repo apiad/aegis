@@ -46,7 +46,7 @@ TOP_KEYS = (
     "agents", "queues", "default_agent", "recap", "context", "session_memory_max"
 )  # fmt: skip
 AGENT_KEYS = ("harness", "provider", "model", "effort", "permission", "priming")
-QUEUE_KEYS = ("agent", "max_parallel")
+QUEUE_KEYS = ("agent", "max_parallel", "quiet")
 
 Stamp = tuple[int, int, int]
 

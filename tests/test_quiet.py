@@ -5,6 +5,7 @@ import json
 import pytest
 
 from aegis.commands import parse_spawn
+from aegis.queues import queues_from
 
 from .conftest import until
 from .test_agents import CONFIG, World, hold, inbox, mcp, turn
@@ -112,3 +113,36 @@ def test_spawn_line_takes_quiet_as_a_bare_flag():
     assert line.quiet is True and line.model == "sonnet"
     assert line.prompt == "fix the build"
     assert parse_spawn("opus hello").quiet is False
+
+
+def test_a_queue_is_quiet_unless_it_says_otherwise():
+    qs = queues_from(
+        {
+            "a": {"agent": "opus", "max_parallel": 1},
+            "b": {"agent": "opus", "max_parallel": 1, "quiet": False},
+            "c": {"agent": "opus", "max_parallel": 1, "quiet": "no"},
+        }
+    )
+    assert qs["a"]["quiet"] is True and qs["b"]["quiet"] is False
+    assert qs["c"] == {"error": "quiet 'no' is not true or false"}
+
+
+async def test_a_worker_starts_quiet_and_never_shows_when_it_finishes(world):
+    a = await world.spawn()
+    said = await turn(a, mcp("queue_enqueue", queue="general", payload="/sleep 1"))
+    task_id = json.loads(said.removeprefix("mcp ok: "))["task_id"]
+    t = world.app.queues.tasks[task_id]
+    await until(lambda: t.worker, timeout=8, what="the worker")
+    assert world.session(t.worker).quiet is True
+    await until(lambda: t.status == "completed", timeout=12, what="completion")
+    # Archived without ever coming back: its last meta is still quiet.
+    assert world.app.sessions.archived[t.worker]["quiet"] is True
+
+
+async def test_a_quiet_worker_that_fails_comes_back(world):
+    a = await world.spawn()
+    said = await turn(a, mcp("queue_enqueue", queue="general", payload="/exit 4"))
+    t = world.app.queues.tasks[json.loads(said.removeprefix("mcp ok: "))["task_id"]]
+    await until(lambda: inbox(a), timeout=10, what="the error callback")
+    assert t.worker in world.app.sessions.sessions
+    assert world.session(t.worker).quiet is False
