@@ -434,7 +434,9 @@ the twenty transcripts saved most recently in IndexedDB, as the wire carried
 them (no collapsed detail, never a token). The Fleet draws from it at boot and
 the transcript when a session opens; a saved session is `stale` until its
 server's live snapshot replaces it, and a transcript's subscription waits for
-the saved copy so that it asks only for what changed since its revision. Both
+the saved copy so that it asks only for what changed since its revision. The
+copy of the session the URL opens is read at boot, while the socket connects,
+so that wait costs nothing on a reload (#345). Both
 are written at most every 2 seconds, only from what a live socket carried, and
 notifications follow live sessions only, so a cold start never pings for what
 changed while the page was closed. Offline, what needs the server is disabled
@@ -474,7 +476,9 @@ device). It listens to the `sessions` channel like a browser, and `App.toast`
 hands it each toast, so a push is the same transition a page would notify; the
 first snapshot only records where sessions stand, so a restart pushes nothing,
 and `review` or `done` count only when a turn just ended. It encrypts each
-payload for the device (`webpush.py`, RFC 8291) and posts it to the push
+payload for the device (`webpush.py`, RFC 8291, which imports `cryptography`
+only when it first signs or encrypts: about 7 MB a server with no subscriber
+never pays) and posts it to the push
 service from its own queue, so a slow service never delays the channel. Each
 subscription has a lane of its own and the lanes run side by side, so a dead
 device delays no other; a push too old when its turn comes is dropped, and a
