@@ -114,7 +114,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 -->
 <div class="chrome">
   <div class="bar"><span>aegis</span><span class="tab">plan · rich references</span>
-    <span class="st"><span class="pill acc">for review</span><span class="pill">#393</span><span class="pill">2026-10-14</span></span></div>
+    <span class="st"><span class="pill acc">executed natively · PR on rich-refs</span><span class="pill">#393</span><span class="pill">2026-10-14</span></span></div>
   <div class="progress"><span id="pcount">0 of 0 done</span><div class="track" id="ptrack"></div></div>
 </div>
 <main>
@@ -161,7 +161,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b><code>owner/repo#n</code> and <code>github.com/…</code> are checked before the disk.</b> The spec's numbered rules put the disk first while its testing section says these are a repo "either way"; checking them first makes both true for every real name.</li>
 </ul>
 
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="num">1</span><span><span class="ttl">aegis/refs.py: the shapes, and inline_paths keeps folders and repos</span><span class="files">src/aegis/refs.py · src/aegis/transcript/describe.py · tests/test_fold.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Candidates only: nothing here reads the disk. Old replies keep the <code>detail.paths</code> they have.</p>
@@ -265,7 +265,7 @@ def candidate(text: str) -> bool:
 </div>
 </details>
 
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">refs.kind() and the path.stat op; file.peek shares the resolution</span><span class="files">src/aegis/refs.py · src/aegis/app.py · tests/test_refs.py · tests/test_agents.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The one place that reads the disk for a reference. <code>peek_path</code> moves its "where to look" onto <code>refs.tried</code> so the two ops can never disagree about a path.</p>
@@ -400,7 +400,7 @@ The rest of <code>peek_path</code> (<code>found = …</code> onward) stays. If <
 </div>
 </details>
 
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="num">3</span><span><span class="ttl">The client draws repos, URLs and pending refs</span><span class="files">client/js/refs.js · entries.js · glyphs.js · app.js · base.css · tests/test_path_links_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Everything that needs no disk, drawn in <code>markdown()</code>: sure repos, URL icons and labels, and candidate spans marked <code>code.ref</code> (pending) on this server. The <code>↗</code> arrow goes. Also the <code>applyKinds</code> function task 4 calls.</p>
@@ -594,7 +594,7 @@ Then run <code>make site-css</code>.</li>
 </div>
 </details>
 
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">The transcript asks path.stat once per reply in view</span><span class="files">client/js/transcript.js · app.js · tests/test_path_links_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>A reply with pending refs is watched; when it comes within 600 px of the view, one <code>path.stat</code> call answers for all its refs, and the answer is kept by entry id until the transcript is cleared.</p>
@@ -683,7 +683,7 @@ In <code>clear()</code>, after <code>unwatch(this.list);</code>, add <code>this.
 </div>
 </details>
 
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">Docs, changelog, gates and the PR</span><span class="files">DESIGN.md · src/aegis/help/transcript.md · changelog.d/393-rich-references.added.md</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>files</h4>
