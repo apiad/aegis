@@ -1517,6 +1517,9 @@ body{background:#000}
 #a2 .spawn .sp-head,#a2 .sp-terms h3{justify-self:start;margin:6px 0 0;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
 #a2 .sp-terms{width:100%;display:grid;gap:8px}
 #a2 .sp-terms[hidden]{display:none}
+/* Typing a first message is choosing an agent: the box takes the room the
+   two groups and their headings held (#384). */
+#a2 .spawn:has(#sp-text:not(:placeholder-shown)) :is(.sp-terms,.sp-head){display:none}
 #a2 .sp-term-list{display:flex;flex-wrap:wrap;gap:6px}
 #a2 .sp-term-list button{display:flex;gap:8px;align-items:baseline;min-width:0;max-width:100%;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 10px;color:var(--muted);font-family:var(--font-mono);font-size:12.5px;cursor:pointer;text-align:left}
 #a2 .sp-term-list button b{color:var(--strong);font-weight:600}
