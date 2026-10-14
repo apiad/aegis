@@ -67,9 +67,12 @@ def test_a_browser_gets_output_and_on_reconnect_only_what_it_missed(
             snap = back.until(lambda m: m["t"] == "snapshot")["data"]
             assert "tail" not in snap
             revs = [o["rev"] for o in snap["delta"]]
-            assert revs == list(range(held + 1, snap["rev"] + 1))
+            assert revs == sorted(set(revs)) and revs[0] > held
+            markers = snap["rev"] - held - len(revs)  # the delta leaves them out
+            assert 0 <= snap["rev"] - revs[-1] <= markers
             text = "".join(o.get("o", "") for o in snap["delta"])
-            assert "\r\n500\r\n" in text and "done-4" in text
+            lines = set(text.split("\r\n"))
+            assert all(str(n) in lines for n in range(1, 501)) and "done-4" in text
 
 
 @pytest.fixture
