@@ -144,6 +144,21 @@ its context is over 100k tokens, its tab says so at the end of the transcript: t
 message rewrites the whole context, as much as about 20 warm turns read.
 `context:` in `.aegis.yaml` moves both thresholds (the config page says how).
 
+## Aegis tools first
+
+The primer tells every agent to use aegis's tool wherever its harness has one
+for the same job, because only aegis's shows on the person's screen:
+
+- to wait, `monitor_start`, not a background command the harness wakes it from;
+- for its plan, `plan_update`, not the harness's todo list;
+- for work it would hand a subagent, a queue task with `queue_enqueue`, whose
+  result comes back as a message; `session_spawn` is for an agent the person
+  may talk to.
+
+It also asks for documents meant for the person (a spec, a plan, a report) as
+one self-contained HTML page sent with `file_send`, and keeps Markdown for
+files agents read.
+
 ## The journal, quota and the rest
 
 - `journal_search` asks what was done on this server, by day, words, path,
