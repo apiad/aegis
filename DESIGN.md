@@ -753,4 +753,9 @@ of the code it runs and its guide opens the right page for each.
 **Performance is measured on every PR and never gates.** `scripts/bench.py`
 replays a recorded transcript through the fake harness in
 `tests/fake_claude.py`, and CI compares the PR's base and head on the same
-runner. A regression is a warning a reader has to weigh.
+runner, twice each in the order base, head, head, base, so neither pays for
+running second. Each figure is a median of samples taken after a warm-up and
+the JS heap is read after a forced collection: single samples moved 40 to
+140% between identical runs. A metric warns when it is 20% worse and head's
+samples are worse than base's in 90% of their pairs. A regression is a warning a reader
+has to weigh.

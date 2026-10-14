@@ -63,14 +63,21 @@ jobs:
       - run: pip install uv
       - run: uv sync --locked
       - run: uv run playwright install --with-deps chromium
-      - name: bench head
-        run: uv run python scripts/bench.py --out /tmp/head.json
-      - name: bench base
+      # Base, head, head, base: whichever tree runs second read up to 6 MB
+      # and tens of percent slower (#282), so each pays for it once.
+      - name: bench base and head, alternating
         run: |
           git worktree add /tmp/base ${{ github.event.pull_request.base.sha }}
-          if [ -f /tmp/base/scripts/bench.py ]; then
-            cd /tmp/base && uv sync --locked && uv run python scripts/bench.py --out /tmp/base.json
-          fi
+          mkdir -p /tmp/bench/base /tmp/bench/head
+          bench_base() {
+            [ -f /tmp/base/scripts/bench.py ] || return 0
+            (cd /tmp/base && uv run python scripts/bench.py --out /tmp/bench/base/$1.json)
+          }
+          bench_head() { uv run python scripts/bench.py --out /tmp/bench/head/$1.json; }
+          (cd /tmp/base && uv sync --locked)
+          for run in "base 1" "head 1" "head 2" "base 2"; do
+            bench_$run || echo "::warning title=aegis bench::bench $run failed"
+          done
       - name: compare
         if: always()
-        run: uv run python scripts/bench_compare.py /tmp/base.json /tmp/head.json
+        run: uv run python scripts/bench_compare.py /tmp/bench/base /tmp/bench/head
