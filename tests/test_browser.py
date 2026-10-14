@@ -503,6 +503,33 @@ def test_the_model_chip_lists_what_opencode_can_reach_and_filters_it(server, pag
     assert page.errors == []
 
 
+def test_the_first_message_grows_until_the_form_fills_the_view(server, page):
+    # #384: the box was three lines tall whatever was typed, so the fourth
+    # scrolled inside it with the view mostly empty around the form.
+    page.goto(server.url)
+    page.click("#tab-add")
+    page.wait_for_selector("#a2[data-view=spawn]")
+    box = "document.querySelector('#sp-text')"
+    empty = page.evaluate(f"{box}.clientHeight")
+    page.fill("#sp-text", "\n".join(f"line {i}" for i in range(8)))
+    assert page.evaluate(f"{box}.clientHeight") > empty
+    assert page.evaluate(f"{box}.scrollHeight <= {box}.clientHeight")
+    page.fill("#sp-text", "\n".join(f"line {i}" for i in range(200)))
+    # Now it scrolls inside, and the form fills the view without overflowing it.
+    assert page.evaluate(f"{box}.scrollHeight > {box}.clientHeight")
+    view = "document.querySelector('.v-spawn')"
+    assert page.evaluate(f"{view}.scrollHeight <= {view}.clientHeight")
+    wide = page.viewport_size
+    assert page.evaluate(f"{box}.clientHeight") > wide["height"] * 0.6
+    # A phone, or a keyboard coming up: the box shrinks to the new room.
+    page.set_viewport_size({"width": 390, "height": 600})
+    page.wait_for_function(f"{view}.scrollHeight <= {view}.clientHeight")
+    assert page.evaluate(f"{box}.clientHeight") > 300
+    page.set_viewport_size(wide)
+    page.fill("#sp-text", "")
+    assert page.evaluate(f"{box}.clientHeight") == empty
+
+
 def test_a_failed_spawn_keeps_the_text_and_says_why(server, page):
     page.goto(server.url)
     page.click("#tab-add")

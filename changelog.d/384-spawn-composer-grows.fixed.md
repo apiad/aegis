@@ -1,0 +1,1 @@
+- **The new tab's message box grows with what you type.** It stayed three lines tall and scrolled from the fourth line on, with the view mostly empty around it. It now grows until the form fills the view, and only then scrolls.
