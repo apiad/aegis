@@ -119,7 +119,7 @@ class Terminal:
     def input(self, data: str) -> None:
         if self.fd is None:
             raise OpError("not_running", f"terminal {self.meta['name']} is not running")
-        self._out += data.encode()
+        self._out += data.encode("utf-8", "replace")
         self._write()
 
     def resize(self, cols: int, rows: int) -> None:

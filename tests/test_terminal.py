@@ -113,3 +113,10 @@ async def test_the_last_line_is_plain_text(tmp_path):
     )
     await asyncio.wait_for(t.exited.wait(), 3)
     assert t.last_line() == "done 100%"
+
+
+async def test_a_lone_surrogate_in_input_is_replaced_not_raised(tmp_path):
+    t, rec = await run(tmp_path, ["cat"])
+    t.input("a\ud83db\r")
+    await until(lambda: "a?b" in rec.text(), what="the replaced character")
+    await t.stop(grace=0.5)
