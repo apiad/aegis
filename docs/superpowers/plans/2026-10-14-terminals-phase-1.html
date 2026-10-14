@@ -169,6 +169,9 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>Bare URLs are not links yet.</b> xterm.js 6 links OSC 8 itself; linking bare URLs needs <code>addon-web-links</code>, which phase 4 can vendor with the theme work.</li>
   <li><b><code>terminal_memory_max</code> defaults to the session cap, 40%.</b> The spec names the key and no value.</li>
   <li><b>A delta leaves out the store's <code>"m"</code> markers</b>; they matter to a player, not to a browser.</li>
+  <li><b>Slice 1, the restart test rebinds <code>call</code> after <code>world.restart()</code>.</b> <code>World.restart</code> builds a new <code>App</code> (<code>tests/test_agents.py:75-77</code>), so the plan's test sent <code>term.restart</code> to the stopped app.</li>
+  <li><b>Slice 1, the echo bench records its samples in <code>SAMPLES</code> directly</b>, not through <code>median()</code> (<code>scripts/bench.py:61-67</code>), so <code>bench_compare.py</code> sees them while the reported figure stays the 95th percentile. Measured on 4 CPUs: <code>term_echo_p95_ms</code> 6.81, <code>term_flood_mb_s</code> 4.02.</li>
+  <li><b>Slice 1, the store is checked with <code>asciinema cat</code></b> (asciinema 2.x through <code>uvx</code>), which parsed a store with output, a resize and a marker; <code>asciinema play</code> needs a real terminal.</li>
 </ul>
 
 <h3>Slice 1 · the server</h3>
