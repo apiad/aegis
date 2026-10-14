@@ -269,6 +269,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>Time zone</td><td>The server's local zone, shown in the view</td><td class="why"><span class="who">maintainer</span> <code>0 6 * * 1-5</code> should mean six in the morning where the server is. A per-schedule zone is an open question.</td></tr>
 <tr><td>A failing check</td><td>Three errors in a row pause the schedule and raise a toast</td><td class="why"><span class="who">maintainer</span> A check that fails on every tick is broken, and silently retrying it 288 times a day hides that.</td></tr>
 <tr><td>A closed quota gate</td><td>The tick is held, as with <code>wait</code>, and fires when the gate opens</td><td class="why"><span class="who">maintainer</span> The work was not wrong, only early. Dropping it would lose a fire the person expected.</td></tr>
+<tr><td>The schedule's own quota lines</td><td><code>quota</code> maps a pool to its windows and each window to a launch line: a percent or <code>pace</code>. Default: the weekly window on pace; <code>{}</code> sets none. Over a line, the tick is held like a closed gate. Applies to <code>existing</code> fires too. A pool never read sets no line</td><td class="why"><span class="who">maintainer</span> The token gate limits members only: an admin has no policy, so without this a forgotten hourly schedule could spend the whole week. Added after approval.</td></tr>
 <tr><td>Escaping spawn: false</td><td>A run with <code>spawn: false</code> may not create schedules either</td><td class="why"><span class="who">maintainer</span> Otherwise a run could create a schedule with <code>target: new</code> and start agents through it.</td></tr>
 </tbody>
 </table>
@@ -381,6 +382,7 @@ Triage the new pull requests listed below: label, assign, comment if CI is red.
 <li><code>target: existing</code> calls <code>Session.deliver</code> (<code>session.py:621</code>) on the named session. A session mid-turn holds the message until the turn ends; a stopped one is resumed to receive it. An archived target is an error that pauses the schedule at once, because no later tick can succeed.</li>
 </ul>
 <p>When the quota gate is closed, a <code>new</code> fire does not start: the tick is held as with <code>wait</code> and goes through the layers again when <code>on_quota</code> (<code>app.py:400</code>) reports the gate open.</p>
+<p>A fire also waits under the schedule's own <code>quota</code> lines, built into a policy and judged by <code>quota_gate.decide</code>, so the same pace and percent rules apply. They hold a fire into an <code>existing</code> session too, and only what has not started: a live run goes on.</p>
 
 <h3 id="stored">What is stored</h3>
 <p><code>&lt;state&gt;/schedules.json</code> holds the definitions and the paused flag, written whole on each change. Everything that happens is in the run log (<a href="#log">05</a>), and the runtime state is folded from it at boot: the last fire's stdout hash, the held tick, the live run, the count of errors in a row and the last tick.</p>
