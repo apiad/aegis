@@ -667,6 +667,13 @@ conn.connect();
 // The Fleet this device saw last, drawn at once: with no connection it is all
 // there is, and with one it shows until the live snapshot replaces it. A saved
 // session carries `stale` until its server's snapshot arrives.
+// The copy this device kept of the session the URL opens, read while the
+// socket connects. follow() waits for it before it subscribes, and read only
+// once the Fleet's snapshot had arrived it held the subscription back by about
+// 40 ms on every cold load (#345). Any other first view leaves it unused.
+const boot = route();
+let early = ["session", "window", "read"].includes(boot.view) ? { id: boot.id, copy: loadTranscript(boot.id) } : null;
+
 loadFleet().then((saved) => {
   if (!saved || booted || refused) return;
   seenAt = saved.saved_at;
@@ -1213,6 +1220,8 @@ function follow(id) {
   shown = id;
   tellView();
   const turn = ++follows;
+  const first = early;
+  early = null; // read once: a later visit reads what the device holds then
   atts.show(id);
   drawQueued();
   if (!id) {
@@ -1280,7 +1289,7 @@ function follow(id) {
     // What this device kept of the session, drawn at once. The subscription
     // waits for it (a local read, a few ms) so that it asks only for what
     // changed since its revision.
-    loadTranscript(id).then((copy) => {
+    (first?.id === id ? first.copy : loadTranscript(id)).then((copy) => {
       if (turn !== follows) return; // moved on
       if (copy) transcript.snapshot({ entries: copy.entries, rev: copy.rev });
       canvas.refresh();

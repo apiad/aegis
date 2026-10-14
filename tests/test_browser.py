@@ -4393,6 +4393,28 @@ def test_offline_an_opened_transcript_reads_as_it_was(server, page):
     assert page.errors == []
 
 
+def test_a_reload_into_a_kept_session_asks_only_for_what_changed(server, page):
+    # The copy is read while the socket connects, before the Fleet's snapshot
+    # (#345); the subscription still waits for it and says its revision.
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    wait_for_device_copy(page)
+    spawn(page, "hello")
+    turns_done(page, 1)
+    live = page.text_content("#entries")
+    time.sleep(2.5)  # the debounced save
+    sent = []
+    page.on("websocket", lambda ws: ws.on("framesent", lambda f: sent.append(f)))
+    page.reload()
+    page.wait_for_function(
+        "window.__a2snapshot && window.__a2snapshot.painted", timeout=10000
+    )
+    subs = [json.loads(f) for f in sent if '"transcript:' in f and '"sub"' in f]
+    assert subs and isinstance(subs[0].get("since"), int), subs
+    assert page.text_content("#entries") == live
+    assert page.errors == []
+
+
 def test_offline_a_session_never_opened_here_says_so(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
