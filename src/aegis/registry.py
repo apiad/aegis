@@ -79,6 +79,7 @@ class Registry(Host):
         self.tokens = None
         self.server_name = "aegis"
         self.monitors = None
+        self.side_notes = None
         self.queues = None
         self.quota = None
         # The live config's context block (config.py); the app points it at
@@ -328,6 +329,7 @@ class Registry(Host):
             unread=meta.get("unread"),
             last_read_at=meta.get("last_read_at"),
             recap_cost_usd=meta.get("recap_cost_usd") or 0.0,
+            btw_cost_usd=meta.get("btw_cost_usd") or 0.0,
             last_exit=meta.get("last_exit"),
             restart_continues=meta.get("restart_continues") or 0,
             quota_paused=meta.get("quota_paused"),
@@ -527,6 +529,8 @@ class Registry(Host):
         s = self.open(log_id)
         if self.monitors is not None:
             self.monitors.drop_owner(log_id)
+        if self.side_notes is not None:
+            self.side_notes.drop(log_id)
         await s.stop()
         s.report({"kind": "close"})
         del self.sessions[log_id]
