@@ -118,8 +118,10 @@ def test_terminal_bytes_cannot_write_the_clipboard_or_run_a_javascript_link(
         "document.querySelector('#term-host .xterm-rows').innerText.includes('clickme')"
     )
     # xterm's screen lies over its rows and takes the mouse; force clicks there.
-    page.get_by_text("clickme").click(modifiers=["Control"], force=True)
-    page.get_by_text("clickme").click(force=True)
+    # Scoped to the rows: the terminal's Fleet card can show the same last line.
+    link = page.locator("#term-host .xterm-rows").get_by_text("clickme")
+    link.click(modifiers=["Control"], force=True)
+    link.click(force=True)
     assert page.evaluate("navigator.clipboard.readText()") == "before"
     assert len(context.pages) == 1
 
