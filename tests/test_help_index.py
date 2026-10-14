@@ -166,6 +166,7 @@ FIRST = [
     ("rename my session", "sessions#rename-it"),
     ("run aegis in the background", "commands"),
     ("first time using aegis", "getting-started"),
+    ("learn aegis from my first session to a queue of workers", "getting-started"),
     ("update a help page after changing a tool", "writing-help-pages"),
 ]
 
