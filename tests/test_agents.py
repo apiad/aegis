@@ -879,6 +879,33 @@ async def test_a_path_in_both_the_root_and_the_cwd_asks_which_one(world, tmp_pat
     assert e.value.code == "no_path", "a forged index opens nothing"
 
 
+async def test_path_stat_says_what_each_path_in_a_reply_is(world, tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("a = 1\n")
+    a = await world.spawn()
+    await turn(
+        a,
+        "/md See `src/a.py:2`, `src/`, `src/gone.py`, `octo/aegis#3`, `octo/none` and `a/b/c`.",
+    )
+    reply = [e for e in a.entries() if e["kind"] == "prose"][-1]
+    call = world.app.registry.call
+    got = await call("path.stat", {"log_id": a.log_id, "entry_id": reply["id"]})
+    assert got == {"kinds": ["file", "dir", "missing", "repo", "repo", "code"]}
+    assert "peek" not in a.fold().entry(reply["id"])["detail"], "a stat records nothing"
+    forged = await call("path.stat", {"log_id": a.log_id, "entry_id": "no-such-row"})
+    assert forged == {"kinds": []}
+
+
+async def test_path_stat_answers_at_most_64_kinds(world, tmp_path):
+    a = await world.spawn()
+    await turn(a, "/md " + " ".join(f"`d/f{n}.py`" for n in range(70)))
+    reply = [e for e in a.entries() if e["kind"] == "prose"][-1]
+    got = await world.app.registry.call(
+        "path.stat", {"log_id": a.log_id, "entry_id": reply["id"]}
+    )
+    assert got["kinds"] == ["missing"] * 64 + ["code"] * 6
+
+
 async def test_a_session_at_the_root_finds_one_file_not_two(world, tmp_path):
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "x.md").write_text("# Root\n")

@@ -46,7 +46,8 @@ const NEEDS = new Set(["needs_you", "error", "review"]);
 export const finished = (m) =>
   !!m.worker && ["completed", "cancelled"].includes(m.worker.status) && ["done", "review"].includes(m.attention);
 
-const group = (m) => (NEEDS.has(m.mark) && !finished(m) ? "needs" : "rest");
+// A quiet session (#386) needs nobody yet: its own group, last.
+const group = (m) => (m.quiet ? "quiet" : NEEDS.has(m.mark) && !finished(m) ? "needs" : "rest");
 
 // Which session needs you most: what blocks on you, then failures, then results
 // to read, and within each the one waiting longest. A read review or done shows
@@ -62,7 +63,7 @@ const byWait = (a, b) => RANK[a.mark] - RANK[b.mark] || (a.last_activity || 0) -
 const rank = (m) => (group(m) === "needs" ? `${m.mark}:${m.last_activity}` : "");
 
 export function byNeed(metas) {
-  return metas.filter((m) => Object.hasOwn(RANK, m.mark) && (!m.worker || m.mark === "error")).sort(byWait);
+  return metas.filter((m) => !m.quiet && Object.hasOwn(RANK, m.mark) && (!m.worker || m.mark === "error")).sort(byWait);
 }
 
 export function renderCards(box, metas, onOpen, order = "attention", onClose = () => {}) {
@@ -80,8 +81,10 @@ export function renderCards(box, metas, onOpen, order = "attention", onClose = (
   const rest = metas.filter((m) => group(m) === "rest").sort((a, b) => finished(a) - finished(b));
   if (needs.length) out.push(el("div", "grp-h", "Needs you"), ...needs.map((m) => card(m, onOpen, onClose)));
   // With nobody needing you, the order bar's "Sessions" heading names the list.
-  if (rest.length && needs.length) out.push(el("div", "grp-h", "Everything else"));
+  const quiet = metas.filter((m) => group(m) === "quiet");
+  if (rest.length && (needs.length || quiet.length)) out.push(el("div", "grp-h", "Everything else"));
   out.push(...rest.map((m) => card(m, onOpen, onClose)));
+  if (quiet.length) out.push(el("div", "grp-h", "Quiet"), ...quiet.map((m) => card(m, onOpen, onClose)));
   box.replaceChildren(...out);
 }
 
@@ -126,7 +129,7 @@ function termCard(m, onOpen, onClose) {
 
 function card(m, onOpen, onClose) {
   if (m.kind === "term") return termCard(m, onOpen, onClose);
-  const c = el("div", `card ${m.state} at-${m.attention}${m.off ? " off" : ""}${finished(m) ? " finished" : ""}`);
+  const c = el("div", `card ${m.state} at-${m.attention}${m.off ? " off" : ""}${finished(m) ? " finished" : ""}${m.quiet ? " quiet" : ""}`);
   c.dataset.id = m.key;
   c.dataset.group = group(m);
   c.dataset.rank = rank(m);
@@ -135,6 +138,7 @@ function card(m, onOpen, onClose) {
   const owner = shownOwner(m);
   if (owner) hd.append(el("span", "who", owner));
   if (m.worker) hd.append(el("span", "badge", `worker · ${m.worker.queue}`));
+  if (m.quiet) hd.append(el("span", "zz", "zz"));
   const label = m.attention === "waiting" && m.waiting_on ? `waiting · ${m.waiting_on}` : LABEL[m.attention] || m.state;
   hd.append(el("span", `s at-${m.attention}`, label));
   if (m.attention === "done") hd.append(archiveButton(m, onClose));

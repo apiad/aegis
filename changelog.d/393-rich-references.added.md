@@ -1,0 +1,2 @@
+- **A reply's references say what they are before a click.** A path in backticks shows a file icon, a folder icon, or a struck-out name when nothing is there; `owner/repo` and `owner/repo#n` link to GitHub unless a local path has the name; a bare URL carries its site's icon (GitHub, PyPI, arXiv, npm, or a globe) and a short label. A new read-only op, `path.stat`, answers once per reply as it nears the view.
+help: transcript#paths-in-replies

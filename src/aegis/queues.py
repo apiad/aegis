@@ -95,8 +95,15 @@ def queues_from(raw: Any) -> dict[str, dict]:
             out[str(name)] = {
                 "error": f"max_parallel {limit!r} is not a positive integer"
             }
+        elif not isinstance(q.get("quiet", True), bool):
+            out[str(name)] = {"error": f"quiet {q['quiet']!r} is not true or false"}
         else:
-            out[str(name)] = {"agent": str(agent), "max_parallel": limit}
+            # A worker starts with no tab: its result goes to its enqueuer (#386).
+            out[str(name)] = {
+                "agent": str(agent),
+                "max_parallel": limit,
+                "quiet": q.get("quiet", True),
+            }
     return out
 
 
@@ -299,6 +306,7 @@ class Queues:
                 spec,
                 worker={"task_id": t.id, "queue": t.queue},
                 title=default_title(t.payload),
+                quiet=q["quiet"],
             )
         except Exception as e:
             self._fail(t, f"its worker could not start: {e}")

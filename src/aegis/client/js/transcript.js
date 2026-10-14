@@ -28,7 +28,7 @@
 // The latest recap is the exception: it stays shown at every level. Hidden rows stay mounted, so the
 // window above still holds; the walks below skip them.
 
-import { fadeTables, hhmm, render, update } from "./entries.js";
+import { applyKinds, fadeTables, hhmm, render, update } from "./entries.js";
 import { icon } from "./glyphs.js";
 import { unwatch, watch } from "./highlight.js";
 
@@ -49,7 +49,7 @@ const PAGE = 100;
 const NEAR_TOP_PX = 400;
 
 export class Transcript {
-  constructor(scroller, list, jump, { loadDetail, onRead = () => {}, onSelect = () => {}, seen = () => true } = {}) {
+  constructor(scroller, list, jump, { loadDetail, statPaths = null, onRead = () => {}, onSelect = () => {}, seen = () => true } = {}) {
     this.scroller = scroller;
     this.list = list;
     this.jump = jump;
@@ -142,6 +142,34 @@ export class Transcript {
       },
       { root: scroller, threshold: Array.from({ length: 101 }, (_, i) => i / 100) },
     );
+    // A reply's paths, asked once when it nears the view (path.stat): the
+    // answer is kept by entry id, so a redraw draws it without a call.
+    this.statPaths = statPaths;
+    this.kinds = new Map(); // id -> kinds, for this session's replies
+    this.statting = new Set();
+    this.gen = 0; // bumped by clear(): an answer for an older transcript is dropped
+    this.refWatch = new IntersectionObserver(
+      (items) => {
+        for (const it of items) {
+          if (!it.isIntersecting) continue;
+          this.refWatch.unobserve(it.target);
+          const id = it.target.dataset.id;
+          if (this.nodes.get(id) !== it.target || this.statting.has(id)) continue;
+          this.statting.add(id);
+          const gen = this.gen;
+          this.statPaths(id)
+            .then(({ kinds }) => {
+              if (gen !== this.gen) return;
+              this.kinds.set(id, kinds);
+              const n = this.nodes.get(id);
+              if (n) applyKinds(n, kinds);
+            })
+            .catch(() => {}) // the refs stay pending, and still open on a click
+            .finally(() => gen === this.gen && this.statting.delete(id));
+        }
+      },
+      { root: scroller, rootMargin: "600px 0px" },
+    );
     const looking = () => document.visibilityState === "visible" && document.hasFocus() && seen();
     const restart = () => {
       for (const id of this.since.keys()) this.since.set(id, performance.now());
@@ -186,6 +214,11 @@ export class Transcript {
   mount(e) {
     const n = render(this.whole(e));
     for (const f of n.querySelectorAll(".fence")) watch(f);
+    if (this.statPaths && n.querySelector(".md code.ref[data-index]")) {
+      const known = this.kinds.get(e.id);
+      if (known) applyKinds(n, known);
+      else this.refWatch.observe(n);
+    }
     if (n.querySelector(".md .tw")) requestAnimationFrame(() => fadeTables(n));
     if (this.opened.has(e.id)) {
       const d = n.querySelector("details");
@@ -202,6 +235,12 @@ export class Transcript {
     return n;
   }
 
+  // A row swapped out or dropped: nothing watches it any more.
+  drop(n) {
+    unwatch(n);
+    this.refWatch.unobserve(n);
+  }
+
   // A row opened: fetch what the wire left out, unless it is here and current.
   // An upsert that lands while the fetch is out fetches again once it answers.
   fetch(id) {
@@ -216,7 +255,7 @@ export class Transcript {
           const cur = this.entries.get(f.id);
           const old = this.nodes.get(f.id);
           if (cur && old && cur.rev === f.rev) {
-            unwatch(old);
+            this.drop(old);
             swap(old, this.mount(cur));
           }
         }
@@ -347,7 +386,7 @@ export class Transcript {
           if (update(e, old, prev)) this.nodes.set(e.id, old);
           else {
             this.watch.unobserve(old);
-            unwatch(old);
+            this.drop(old);
             swap(old, this.mount(e));
           }
         }
@@ -361,7 +400,7 @@ export class Transcript {
         const old = this.nodes.get(op.remove);
         if (old) {
           this.watch.unobserve(old);
-          unwatch(old);
+          this.drop(old);
           old.remove();
         }
         this.since.delete(op.remove);
@@ -374,7 +413,7 @@ export class Transcript {
         const first = this.list.firstElementChild;
         this.nodes.delete(first.dataset.id);
         this.watch.unobserve(first);
-        unwatch(first);
+        this.drop(first);
         this.since.delete(first.dataset.id);
         first.remove();
       }
@@ -401,6 +440,10 @@ export class Transcript {
     this.marked = false;
     this.watch.disconnect();
     unwatch(this.list);
+    this.refWatch.disconnect();
+    this.kinds.clear();
+    this.statting.clear();
+    this.gen++;
     this.since.clear();
     this.sent.clear();
     this.list.replaceChildren();

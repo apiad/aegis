@@ -609,7 +609,10 @@ does.
 
 **A damaged file never takes a session down.** A store line that does not parse is
 skipped and counted; a stdout line that does not parse is stored and shown as a
-system entry.
+system entry. A line that cannot be written (a full disk) is logged and dropped,
+and a stderr line the file refuses stays in the in-memory tail: the readers keep
+reading, because a reader that dies leaves the child blocked on a full pipe and
+the session frozen until a restart.
 
 **Agent text is untrusted.** Markdown renders with raw HTML disabled, and the
 localhost port is not trusted either: the websocket needs the server's token and
@@ -658,6 +661,15 @@ names two different files, one in each place, opens neither: it answers
 `cwd`. Agents quote from their own cwd, so taking the root's copy of a
 `README.md` would open the wrong file. A linked
 server's replies draw no links: the file would be on the other machine (#323).
+
+The candidates are wider than files: a folder, `owner/repo`, `owner/repo#n` and
+`github.com/…` spans are kept too (`aegis/refs.py`). What each names is asked
+when the reply nears the view, by `path.stat`, one call per reply, which
+resolves it the way `file.peek` does and answers file, dir, missing, repo or
+code; a local path wins over a repo of the same name. The builder still reads
+no disk, so a transcript rebuilt from its log draws the same. Bare URLs carry
+an icon from a fixed set in the sprite and a short label: no favicon is
+fetched, so a link an agent writes sends no request anywhere (#393).
 
 **A sent file's URL is its key, and its content runs nowhere near the token.**
 `file_send` copies the file into the state root under 128 random bits, and

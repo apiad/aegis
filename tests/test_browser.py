@@ -738,6 +738,40 @@ def test_close_in_one_browser_removes_the_tab_in_another(server, browser, page):
     assert errors == [] and page.errors == []
 
 
+HOLD = (
+    '/mcp monitor_start {"description": "hold", "done": "false", '
+    '"progress": null, "interval_s": 60}'
+)
+
+
+def test_quiet_hides_the_tab_and_a_click_on_its_card_brings_it_back(server, page):
+    """#386: a quiet session leaves the tab bar, sits last in the Fleet, and
+    a click on its card brings it back."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "stays")
+    b = spawn(page, HOLD)
+    page.wait_for_function("!document.querySelector('#quiet-session').disabled")
+    page.click("#quiet-session")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
+    assert tab_ids(page) == [a]
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card.quiet[data-id='{b}']")
+    heads = page.eval_on_selector_all(".grp-h", "hs => hs.map(h => h.textContent)")
+    assert heads[-1] == "Quiet"
+    page.click(f".card.quiet[data-id='{b}']")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=b)
+    assert tab_ids(page) == [a, b]
+    assert page.errors == []
+
+
+def test_quiet_is_disabled_on_an_idle_session(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    assert page.is_disabled("#quiet-session")
+
+
 def test_a_closed_session_is_in_the_archive_without_a_reload(server, page):
     """#160: the Fleet's archive was read before the Close and nothing read it
     again, so the closed session appeared only after a reload."""
@@ -1235,7 +1269,7 @@ def test_the_actions_are_one_row_of_equal_cells_with_icons(server, page):
     spawn(page)
     row = page.locator(".side-acts.live-only").bounding_box()
     cells = page.eval_on_selector_all(".side-acts.live-only .act", ACTS)
-    assert [c["icon"] for c in cells] == [True, True, True]
+    assert [c["icon"] for c in cells] == [True, True, True, True]  # Quiet (#386)
     widths = [c["width"] for c in cells]
     assert max(widths) - min(widths) < 1, widths
     # The row is covered edge to edge.
@@ -2575,9 +2609,10 @@ def test_a_finished_worker_fades_and_sinks_below_the_live_cards_and_an_errored_o
     page.click("#tab-fleet")
     page.wait_for_selector("#cards .card:not(.at-error) .badge >> text=worker · q")
     worker = page.get_attribute("#cards .card:not(.at-error):has(.badge)", "data-id")
-    # Live: a card like any other session's.
+    # Live: not finished, but quiet (#386): dimmed, last, with no tab.
     assert page.locator(f"#cards .card[data-id='{worker}'].finished").count() == 0
-    assert card_opacity(page, worker) == "1"
+    assert page.locator(f"#cards .card[data-id='{worker}'].quiet").count() == 1
+    assert card_opacity(page, worker) == "0.55"
     # Done, the task archives the worker, out of sight until the chip shows
     # workers (#331); reopened, its task is still over.
     page.wait_for_selector("#arch-workers:not([hidden]) b >> text=1", timeout=20000)
@@ -2611,6 +2646,28 @@ def test_a_finished_worker_fades_and_sinks_below_the_live_cards_and_an_errored_o
     page.wait_for_selector(f"#cards .card[data-id='{worker}'].at-error")
     assert page.locator(f"#cards .card[data-id='{worker}'].finished").count() == 0
     assert card_opacity(page, worker) == "1"
+    assert page.errors == []
+
+
+def test_the_session_panel_names_the_server_and_marks_a_queue_worker(
+    queue_server, page
+):
+    """The panel said neither which server a session runs on (only in the
+    hover card) nor that it was a queue worker, which the Fleet card says."""
+    page.goto(queue_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    server = page.evaluate("localStorage.getItem('aegis.server')")
+    assert server
+    page.wait_for_selector(f"#s-at >> text=@{server}")
+    assert page.is_hidden("#s-worker")
+    enqueue(page, "/sleep 4")
+    page.click("#tab-fleet")
+    page.wait_for_selector("#cards .card .badge >> text=worker · q")
+    page.click("#cards .card:has(.badge)")
+    page.wait_for_selector("#a2[data-view=session]")
+    page.wait_for_selector("#s-worker:visible >> text=worker · q")
+    assert page.text_content("#s-at") == f"@{server}"
     assert page.errors == []
 
 
@@ -4529,6 +4586,35 @@ def test_a_link_to_a_session_the_saved_fleet_predates_opens_it(server, browser):
     pg.goto(f"{origin}/#s={sid}")
     pg.wait_for_selector("#a2[data-view=session]", timeout=10000)
     pg.wait_for_timeout(500)
+    assert pg.evaluate("location.hash.slice(3)") == sid
+    assert errors == []
+    ctx.close()
+
+
+def test_a_link_to_a_quiet_session_the_saved_fleet_predates_opens_it(server, browser):
+    """#386: only a session seen visible and then quiet moves the view; one
+    the saved Fleet never had arrives quiet and must stay open."""
+    errors: list = []
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    pg = ctx.new_page()
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg, "hello")
+    sid = spawn(pg, HOLD)
+    pg.wait_for_function("!document.querySelector('#quiet-session').disabled")
+    pg.click("#quiet-session")
+    pg.wait_for_function("id => location.hash !== '#s=' + id", arg=sid)
+    pg.close()
+    origin = re.match(r"https?://[^/]+", server.url).group(0)
+    side = ctx.new_page()
+    side.goto(f"{origin}/static/icons/aegis-192.png")
+    side.evaluate("import('/static/js/devicestore.js').then(s => s.saveFleet([]))")
+    side.close()
+    pg = ctx.new_page()
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(f"{origin}/#s={sid}")
+    pg.wait_for_selector("#a2[data-view=session]", timeout=10000)
+    pg.wait_for_timeout(800)
     assert pg.evaluate("location.hash.slice(3)") == sid
     assert errors == []
     ctx.close()

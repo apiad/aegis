@@ -68,6 +68,7 @@ from .help_ops import register_help_ops
 from .host import HostSampler
 from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
+from . import refs
 from .monitors import Monitors, iso_now
 from .names import valid_handle
 from .nudges import Nudges
@@ -138,6 +139,11 @@ class SpawnParams(_Strict):
     )
     # Set by a server that links this one, for an agent of its own that
     # spawns here (app.spawn); refused from anything but a link.
+    quiet: bool = Field(
+        False,
+        description="Start it without a tab, for background work: its tab "
+        "appears when its turn ends. Needs a prompt.",
+    )
     spawned_from: SkipJsonSchema[SpawnedFrom | None] = Field(None, exclude=True)
 
 
@@ -223,6 +229,11 @@ class RenameParams(_Strict):
 class FileRef(_Strict):
     file_id: str
     name: str
+
+
+class StatParams(_Strict):
+    log_id: str
+    entry_id: str
 
 
 class PeekParams(_Strict):
@@ -764,6 +775,7 @@ class App:
                 ("effort", line.effort),
                 ("permission", line.permission),
                 ("cwd", line.cwd),
+                ("quiet", line.quiet or None),
             )
             if v is not None
         }
@@ -1007,11 +1019,17 @@ class App:
                     f"you spawn can have at most {parent.spec.permission} "
                     f"(this one would have {spec.permission}); pass permission",
                 )
+            if p.quiet and not p.prompt:
+                raise OpError(
+                    "quiet_needs_prompt",
+                    "a quiet session needs a prompt: without one it is idle "
+                    "and nothing would ever bring its tab back",
+                )
             g = self.gate(spec.owner, spec.harness, spec.model)
             if not g.may_start:
                 raise OpError("quota_closed", refusal(spec.owner or self.user, g))
             try:
-                s = await reg.spawn(spec)
+                s = await reg.spawn(spec, quiet=p.quiet)
             except FileNotFoundError as e:
                 raise OpError(
                     "harness_not_found", f"cannot run {self._bin(spec.harness)!r}: {e}"
@@ -1284,6 +1302,10 @@ class App:
         async def stop(p: LogParams, caller):
             await reg.open(p.log_id).stop()
 
+        @r.op("session.unquiet", LogParams, owned="log_id")
+        async def unquiet(p: LogParams, caller):
+            return reg.set_quiet(p.log_id, False)
+
         @r.op("session.reopen", LogParams, owned="log_id")
         async def reopen(p: LogParams, caller):
             return reg.reopen(p.log_id).wire()
@@ -1341,16 +1363,13 @@ class App:
             )
             if not 0 <= index < len(paths):
                 raise OpError("no_path", "that reply names no such path")
-            raw = re.sub(r":\d+$", "", paths[index])
-            given = Path(raw).expanduser()
-            if given.is_absolute():
-                tried, where = {"absolute": given}, ""
-            else:
-                tried = {
-                    "root": self.roots.config_root / given,
-                    "cwd": s.spec.cwd / given,
-                }
-                where = f" under {self.roots.config_root} or {s.spec.cwd}"
+            raw = refs.LINE.sub("", paths[index])
+            tried = refs.tried(raw, s.spec.cwd, self.roots.config_root)
+            where = (
+                ""
+                if "absolute" in tried
+                else f" under {self.roots.config_root} or {s.spec.cwd}"
+            )
             found = {k: t for k, t in tried.items() if t.is_file()}
             if not found:
                 raise OpError("no_file", f"no file {raw}{where}")
@@ -1396,6 +1415,23 @@ class App:
             s.record_peek({"kind": "peek", "entry": p.entry_id, "files": [sent]})
             url = files.url(rec["file_id"], rec["name"])
             return [{"url": url, "name": rec["name"], "size": rec["size"]}]
+
+        @r.op("path.stat", StatParams)
+        async def path_stat(p: StatParams, caller):
+            """What each path a reply named is now: file, dir, missing, repo or
+            code, one per entry of its detail.paths, at most refs.MAX. The
+            client draws each reference by it (#393). Records nothing."""
+            s = reg.open(p.log_id)
+            row = s.fold().entry(p.entry_id)
+            paths = (
+                row["detail"].get("paths", []) if row and row["kind"] == "prose" else []
+            )
+            cwd, root = s.spec.cwd, self.roots.config_root
+            head = paths[: refs.MAX]
+            kinds = await asyncio.to_thread(
+                lambda: [refs.kind(t, cwd, root) for t in head]
+            )
+            return {"kinds": kinds + ["code"] * (len(paths) - len(head))}
 
         @r.op("link.list")
         async def link_list(_, caller):

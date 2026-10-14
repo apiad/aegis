@@ -122,6 +122,15 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
     const id = shown;
     return callFor(id, "transcript.detail", { ids }).then((got) => (shown === id ? got : []));
   },
+  // Only this server's replies carry pending refs (entries.js), so a linked
+  // server is never asked.
+  statPaths: (entryId) => {
+    const id = shown;
+    return callFor(id, "path.stat", { entry_id: entryId }).then((got) => {
+      if (shown !== id) throw new Error("another session is shown");
+      return got;
+    });
+  },
 });
 artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
 const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(id) });
@@ -756,12 +765,18 @@ function flushSessions() {
   changed = new Set();
   if (!booted) return;
   ordered = ordered.map((m) => sessions.get(m.key)).filter(Boolean);
+  // A session that went quiet or came back changes the set of tabs (#386).
+  if (quietChanged()) {
+    render();
+    drawNav();
+    return;
+  }
   const r = route();
   for (const id of ids) if (sessions.has(id)) patchTab($("tablist"), sessions.get(id), tabFocus(r), tabActions);
   if (r.view === "fleet") {
     const home = [...ids].filter((id) => !sessions.get(id)?.server);
-    const regroup = home.some((id) => !patchCard($("cards"), sessions.get(id), openSession, fleetOrder, closeById));
-    if (regroup) renderCards($("cards"), local().filter(kindShown), openSession, fleetOrder, closeById);
+    const regroup = home.some((id) => !patchCard($("cards"), sessions.get(id), openCard, fleetOrder, closeById));
+    if (regroup) renderCards($("cards"), local().filter(kindShown), openCard, fleetOrder, closeById);
     if (home.length < ids.size) renderRemotes();
     fleetMark(false);
     drawBand();
@@ -844,6 +859,40 @@ const tabActions = {
 
 // This server's sessions, and a linked server's, in tab order.
 const local = () => ordered.filter((m) => !m.server);
+
+// Quiet sessions have no tab (#386). The view leaves a session only when it was
+// seen visible and then turned quiet, so a link to a quiet one still opens it,
+// even when the saved Fleet or a linked server's list arrives after the page.
+const tabbed = () => ordered.filter((m) => !m.quiet);
+const quietSeen = new Map(); // key -> whether it was quiet when last drawn
+const quietChanged = () => ordered.some((m) => !!m.quiet !== (quietSeen.get(m.key) ?? !!m.quiet));
+
+function leaveIfQuieted(r) {
+  const fresh = r.view === "session" && sessions.get(r.id)?.quiet && quietSeen.get(r.id) === false;
+  quietSeen.clear();
+  for (const m of ordered) quietSeen.set(m.key, !!m.quiet);
+  if (!fresh) return false;
+  const all = ordered.map((m) => m.key);
+  const at = all.indexOf(r.id);
+  const next = all.slice(at + 1).concat(all.slice(0, at).reverse()).find((k) => !quietSeen.get(k));
+  go(next ? `#s=${next}` : "#fleet");
+  return true;
+}
+
+// A click on a quiet card brings the session back to the tab bar, then opens it.
+async function openCard(key) {
+  const m = sessions.get(key);
+  if (m?.quiet) {
+    try {
+      Object.assign(m, await callFor(key, "session.unquiet"), { quiet: false });
+    } catch (e) {
+      toast(e.message, { kind: "error" });
+      return;
+    }
+    quietSeen.set(key, false);
+  }
+  openSession(key);
+}
 const on = (server) => ordered.filter((m) => m.server === server);
 
 function render() {
@@ -851,6 +900,7 @@ function render() {
   tellView(); // the view may have changed with the same session shown
   const r = route();
   if (r.view !== "term") closeTerm();
+  if (leaveIfQuieted(r)) return;
   // A session's link to a terminal, or the reverse, opens the right view.
   if ((r.view === "session" || r.view === "term") && sessions.has(r.id) && `#${r.view[0]}=${r.id}` !== hashOf(r.id)) {
     history.replaceState(null, "", hashOf(r.id));
@@ -863,7 +913,7 @@ function render() {
   }
   if (r.view === "term" && !sessions.has(r.id) && closedTerms.has(r.id)) {
     const card = { ...closedTerms.get(r.id), state: "ended", reason: "closed", archived: true };
-    renderTabs($("tablist"), ordered, null, tabActions);
+    renderTabs($("tablist"), tabbed(), null, tabActions);
     $("tab-fleet").classList.remove("on");
     watchHost(null);
     follow(null);
@@ -882,7 +932,7 @@ function render() {
     go("#fleet"); // closed here or elsewhere
     return;
   }
-  renderTabs($("tablist"), ordered, tabFocus(r), tabActions);
+  renderTabs($("tablist"), tabbed(), tabFocus(r), tabActions);
   $("tablist").querySelector(".tab.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   $("tab-fleet").classList.toggle("on", r.view === "fleet");
   $("tab-add").classList.toggle("on", r.view === "spawn");
@@ -898,7 +948,7 @@ function render() {
   if (r.view === "fleet") {
     follow(null);
     show("fleet");
-    renderCards($("cards"), local().filter(kindShown), openSession, fleetOrder, closeById);
+    renderCards($("cards"), local().filter(kindShown), openCard, fleetOrder, closeById);
     renderRemotes();
     fleetMark(false);
     watchHost("all");
@@ -1072,7 +1122,7 @@ function renderRemotes() {
     }
     host.append(box); // keep the links' order
     const metas = on(l.name).filter(kindShown);
-    if (metas.length) renderCards(box.querySelector(".cards"), metas, openSession, fleetOrder, closeById);
+    if (metas.length) renderCards(box.querySelector(".cards"), metas, openCard, fleetOrder, closeById);
     else box.querySelector(".cards").replaceChildren();
   }
   drawBand();
@@ -1524,6 +1574,11 @@ function renderMeta(s) {
   $("s-effort").textContent = s.effort || "";
   $("s-perm").textContent = s.permission || "";
   $("s-server").textContent = s.server || conn.server || "this server";
+  // The handle as peers address it, handle@server, and the badge a Fleet card
+  // gives a queue worker.
+  $("s-at").textContent = s.server || conn.server ? `@${s.server || conn.server}` : "";
+  $("s-worker").hidden = !s.worker;
+  $("s-worker").textContent = s.worker ? `worker · ${s.worker.queue}` : "";
   if (s.attention === undefined) {
     // The archived read view: a stored meta has no attention, so the state alone.
     $("s-status").textContent = s.state;
@@ -1559,6 +1614,7 @@ function renderMeta(s) {
   $("restart").disabled = working || theirs;
   $("working").hidden = !working;
   $("stop-session").disabled = s.state === "stopped" || theirs;
+  $("quiet-session").disabled = !["working", "waiting"].includes(s.attention) || theirs;
   $("interrupt").disabled = theirs;
   $("close").disabled = theirs;
   if (working && workingSince == null) workingSince = Date.now();
@@ -1728,7 +1784,7 @@ $("entries").addEventListener("click", async (ev) => {
 
 // -- Open a path a reply named, in the viewer at its line -----------------------
 $("entries").addEventListener("click", async (ev) => {
-  const code = ev.target.closest(".md code.path");
+  const code = ev.target.closest(".md code.ref:not([data-kind=dir])");
   if (!code) return;
   const row = code.closest(".row");
   const body = row.querySelector(":scope > .body");
@@ -2356,7 +2412,7 @@ installKeys(
     tab(ev) {
       const n = Number(ev.altKey ? ev.code.slice(5) : ev.key);
       if (n === 0) go("#fleet");
-      else if (ordered[n - 1]) go(hashOf(ordered[n - 1].key));
+      else if (tabbed()[n - 1]) go(hashOf(tabbed()[n - 1].key));
     },
     commands() {
       if (route().view !== "session") return;
@@ -2383,7 +2439,7 @@ installKeys(
 
 // Alt+[ and Alt+]: the Fleet, then the tabs, round.
 function cycle(d) {
-  const all = ["#fleet", ...ordered.map((m) => hashOf(m.key))];
+  const all = ["#fleet", ...tabbed().map((m) => hashOf(m.key))];
   const i = all.indexOf(location.hash || "#fleet");
   go(all[i < 0 ? (d > 0 ? 0 : all.length - 1) : (i + d + all.length) % all.length]);
 }
@@ -2937,6 +2993,17 @@ $("interrupt").addEventListener("click", interrupt);
 // A nudge after an interrupt, an error or a stop: a message to a stopped
 // session resumes it, so Restart is one sentence to the agent.
 $("restart").addEventListener("click", () => !offline() && sendLine("Continue", false));
+
+$("quiet-session").addEventListener("click", async () => {
+  if (offline()) return;
+  const s = focused();
+  if (!s) return;
+  try {
+    await callFor(s.key, "session.quiet");
+  } catch (e) {
+    $("side-error").textContent = e.message;
+  }
+});
 
 $("stop-session").addEventListener("click", async () => {
   if (offline()) return;

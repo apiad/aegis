@@ -48,7 +48,7 @@ TOP_KEYS = (
     "terminals", "terminal_memory_max",
 )  # fmt: skip
 AGENT_KEYS = ("harness", "provider", "model", "effort", "permission", "priming")
-QUEUE_KEYS = ("agent", "max_parallel")
+QUEUE_KEYS = ("agent", "max_parallel", "quiet")
 
 Stamp = tuple[int, int, int]
 
