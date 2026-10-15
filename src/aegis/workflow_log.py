@@ -42,7 +42,7 @@ class NodeState:
     items: list | None = None  # a map's [[key, value], ...], once it starts
     cmd: str = ""  # an sh's or sh check's command, rendered
     pid: int | None = None  # a running command's process, for boot to end
-    pstart: float | None = None  # and its start time, so a reused pid is spared
+    pstart: int | None = None  # its start in clock ticks, so a reused pid is spared
     until: float | None = None  # a wait's end, wall time
     attempts: int = 0  # retries so far
     took: str | None = None  # an if's branch: then, else or none
