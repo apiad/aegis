@@ -7,10 +7,8 @@ sentence for the person, what it does: the workflow is the plan they approve.
 
 ``parse`` reads, lints and assigns an id to every node without one, in one
 pass, and returns every error with its YAML path, so an agent fixes the file
-in one round. This version reads every kind but ``gate``, with ``after``,
-caps, limits, deadlines, retries, blocks and ``defs``; the lint knows every
-kind the spec names and refuses the others by name, so a later slice adds a
-kind here as one branch. An ``after`` and every ``{{expression}}`` are
+in one round. This version reads every kind the spec names, with ``after``,
+caps, limits, deadlines, retries, blocks and ``defs``. An ``after`` and every ``{{expression}}`` are
 checked on one graph of start and finish points (``_Parser.order``). An id is
 unique in its scope (the top level, a map's item, a loop's round) and a node's
 ``key`` names it in the whole file; a ``ref`` is expanded here, at parse.
@@ -40,7 +38,7 @@ KINDS = (
     "gate",
     "ref",
 )
-RUNS = frozenset(KINDS) - {"gate"}  # the kinds this version runs
+RUNS = frozenset(KINDS)  # the kinds this version runs
 COMMON = frozenset({"id", "say", "after", "deadline", "retries", "see", "cap"})
 MAP_FIELDS = frozenset({"over", "as", "cap", "do"})
 TYPES = frozenset({"object", "array", "string", "integer", "number", "boolean"})
@@ -705,6 +703,8 @@ def rows(wf: Workflow, items=lambda path: None) -> list[dict]:
             row["probe"] = n.body["probe"]
         if n.kind == "wait":
             row["wait"] = n.body.get("wait")
+        if n.kind == "gate":
+            row |= {k: n.body.get(k) for k in ("by", "ask", "show")}
         if n.kind == "loop":
             row["max"] = n.body.get("max")
         if n.branch:
@@ -882,11 +882,35 @@ class _Parser:
                     "wait is a duration such as 20m, or one {{expression}}",
                 )
             node.body = {"wait": body}
+        elif kind == "gate":
+            node.body = self.gate(body, f"{path}.gate")
         elif kind == "if":
             self.branch_if(body, f"{path}.if", node)
         elif kind == "loop":
             self.loop(body, f"{path}.loop", node)
         return node
+
+    def gate(self, body, path: str) -> dict:
+        """A stop for the main agent or the person (spec §04): ask is the
+        question, show the values the decider sees, rendered once."""
+        if not isinstance(body, dict):
+            self.err(path, "gate holds ask, by and an optional show")
+            return {"by": None, "ask": "", "show": []}
+        for k in body:
+            if k not in ("ask", "by", "show"):
+                self.err(f"{path}.{k}", f"{k} is not a gate field")
+        if body.get("by") not in ("main", "person"):
+            self.err(f"{path}.by", "a gate is answered by main or by person")
+        if not isinstance(body.get("ask"), str) or not body["ask"].strip():
+            self.err(f"{path}.ask", "a gate needs ask: the question")
+        show = body.get("show", [])
+        if not isinstance(show, list) or not all(isinstance(s, str) for s in show):
+            self.err(
+                f"{path}.show",
+                "show is a list of references, such as impl or review.verdict",
+            )
+            show = []
+        return {"by": body.get("by"), "ask": body.get("ask", ""), "show": show}
 
     def ref(self, raw: dict, path: str) -> Node | None:
         """A use of a block: a copy of its root, with the ref's common
@@ -1371,6 +1395,8 @@ class _Parser:
             return [(f"{at}.expr", probe["expr"])]
         if "judge" in probe:
             return [(f"{at}.judge.inputs", i) for i in probe["judge"]["inputs"]]
+        if n.kind == "gate":
+            return [(f"{n.path}.gate.show", s) for s in n.body.get("show") or []]
         return []
 
     @staticmethod
@@ -1387,6 +1413,8 @@ class _Parser:
             out.append((n.path + ".wait", n.body["wait"]))
         if n.kind == "loop" and isinstance(n.body.get("max"), str):
             out.append((n.path + ".loop.max", n.body["max"]))
+        if n.kind == "gate" and isinstance(n.body.get("ask"), str):
+            out.append((n.path + ".gate.ask", n.body["ask"]))
         probe, at = n.body.get("probe") or {}, _Parser._probe_path(n)
         if "sh" in probe:
             out.append((f"{at}.sh", probe["sh"]))

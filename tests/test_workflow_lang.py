@@ -1,6 +1,10 @@
 """The workflow language: what parses, what the lint refuses and where."""
 
+import pytest
+
 from aegis.workflow_lang import (
+    KINDS,
+    RUNS,
     check_value,
     duration,
     item_keys,
@@ -73,9 +77,8 @@ def test_an_unknown_agent_is_refused():
     assert "$.root.seq[1].agent: no agent gpt in .aegis.yaml" in errors
 
 
-def test_a_kind_from_a_later_slice_is_named():
-    _, errors = errs(GOOD.replace("seq:", "gate:"))
-    assert "$.root: gate is not in this version yet" in errors
+def test_every_kind_the_spec_names_runs():
+    assert RUNS == frozenset(KINDS)
 
 
 def test_render_and_check_value():
@@ -339,7 +342,6 @@ root:
 
 def test_what_slice_2_does_not_run_is_still_named():
     for old, new, msg in (
-        ("par:", "gate:", "$.root: gate is not in this version yet"),
         (
             '"Build {{s.id}}."}',
             '"Build {{s.id}}.", session: main}',
@@ -411,10 +413,8 @@ root:
         )
 
 
-def test_the_specs_example_trips_only_on_what_this_version_does_not_run():
-    """The example in spec §04, read from the spec itself: every error is a
-    kind or field a later slice runs, and the lint does not crash on an
-    after naming an item of a map whose do it refused."""
+def test_the_specs_example_lints():
+    """The example in spec §04, read from the spec itself, gate and all."""
     import html
     import re
     from pathlib import Path
@@ -425,13 +425,8 @@ def test_the_specs_example_trips_only_on_what_this_version_does_not_run():
     pre = re.search(r'<h3 id="example">.*?<pre>(.*?)</pre>', spec.read_text(), re.S)
     example = html.unescape(pre.group(1))
     wf, got = errs(example)
-    assert wf is None and got
-    assert got == ["$.root.seq[2]: gate is not in this version yet"]
-    # With its gate left out, the example lints with no error at all.
-    lines = example.splitlines(keepends=True)
-    at = next(i for i, ln in enumerate(lines) if ln.lstrip().startswith("- gate:"))
-    wf, got = errs("".join(lines[:at] + lines[at + 2 :]))
     assert wf is not None and got == []
+    assert any(n.kind == "gate" for n in wf.by_key.values())
 
 
 def test_a_reference_reaches_positional_keys_and_dashed_names():
@@ -806,16 +801,6 @@ def test_a_wait_is_a_duration_or_one_expression():
     ]  # not one whole expression
 
 
-def test_gate_is_still_not_in_this_version():
-    _, errors = errs(
-        STEPS.replace(
-            '    - sh: "gh pr merge',
-            '    - gate: {by: person, ask: Go?}\n      say: Ask.\n    - sh: "gh pr merge',
-        )
-    )
-    assert "$.root.seq[4]: gate is not in this version yet" in errors
-
-
 def _one_sh(cmd: str, probe: bool = False) -> list[str]:
     import json
 
@@ -876,3 +861,77 @@ def test_a_workflow_nested_too_deep_is_a_lint_error():
         node = f"{{seq: [{node}], say: Group.}}"
     wf, got = errs(f"id: d\ntitle: D\nsay: D.\nroot: {node}\n")
     assert wf is None and got and "too deep" in got[0], got[:1]
+
+
+def test_a_gate_parses_with_ask_by_and_show():
+    wf, errors = errs(
+        "id: g\ntitle: G\nsay: G.\nroot:\n  seq:\n"
+        '    - {sh: "true", id: a, say: A.}\n'
+        '    - {gate: {by: person, ask: "Go on after {{a.code}}?", show: [a, a.out]}, id: ok, say: Ask.}\n'
+        "  say: S.\n"
+    )
+    assert errors == []
+    g = wf.by_key["ok"]
+    assert g.kind == "gate" and g.body == {
+        "by": "person",
+        "ask": "Go on after {{a.code}}?",
+        "show": ["a", "a.out"],
+    }
+
+
+@pytest.mark.parametrize(
+    "gate, path, message",
+    [
+        (
+            "{by: robot, ask: Go?}",
+            "$.root.seq[0].gate.by",
+            "a gate is answered by main or by person",
+        ),
+        ("{by: person}", "$.root.seq[0].gate.ask", "a gate needs ask: the question"),
+        (
+            "{by: main, ask: Go?, show: a}",
+            "$.root.seq[0].gate.show",
+            "show is a list of references",
+        ),
+        (
+            "{by: main, ask: Go?, when: x}",
+            "$.root.seq[0].gate.when",
+            "when is not a gate field",
+        ),
+        (
+            '{by: main, ask: "{{later.x}}"}',
+            "$.root.seq[0].gate.ask",
+            "later may not have finished",
+        ),
+    ],
+)
+def test_a_bad_gate_is_refused_at_its_path(gate, path, message):
+    text = (
+        "id: g\ntitle: G\nsay: G.\nroot:\n  seq:\n"
+        f"    - {{gate: {gate}, id: ok, say: Ask.}}\n"
+        '    - {sh: "true", id: later, say: L.}\n  say: S.\n'
+    )
+    _, errors = errs(text)
+    assert any(e.startswith(path) and message in e for e in errors), errors
+
+
+def test_a_gate_takes_no_retries():
+    _, errors = errs(
+        "id: g\ntitle: G\nsay: G.\nroot: {gate: {by: main, ask: Go?}, retries: 1, say: Ask.}\n"
+    )
+    assert (
+        "$.root.retries: retries go on agent, sh and check; repeat a group with loop"
+        in errors
+    )
+
+
+def test_a_gate_shows_only_what_has_finished():
+    text = (
+        "id: g\ntitle: G\nsay: G.\nroot:\n  seq:\n"
+        "    - {gate: {by: main, ask: Go?, show: [later]}, id: ok, say: Ask.}\n"
+        '    - {sh: "true", id: later, say: L.}\n  say: S.\n'
+    )
+    _, errors = errs(text)
+    assert any(
+        e.startswith("$.root.seq[0].gate.show") and "later" in e for e in errors
+    ), errors
