@@ -586,7 +586,7 @@ function editPanel(w, e) {
     return box;
   }
   const btns = el("div", "btns");
-  for (const [label, op, cls] of [["Apply change", "workflow.apply_edit", "primary"], ["Keep the plan", "workflow.reject_edit", ""]]) {
+  for (const [label, op, cls] of [["Apply change", "workflow.edit.apply", "primary"], ["Keep the plan", "workflow.edit.reject", ""]]) {
     const b = el("button", `btn ${cls}`.trim(), label);
     b.type = "button";
     b.onclick = async () => {

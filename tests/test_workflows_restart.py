@@ -470,7 +470,7 @@ async def test_a_proposed_edit_stays_proposed_and_held_after_a_restart(world):  
     await wf.step()
     assert {r["id"]: r for r in wf.wire(run_id)["tree"]}["ship"].get("held")
     assert "ship" not in wf.runs[run_id].nodes
-    await world.app.registry.call("workflow.apply_edit", {"run": run_id, "v": 2})
+    await world.app.registry.call("workflow.edit.apply", {"run": run_id, "v": 2})
     st = await finished(world, run_id)
     assert st.status == "done" and st.version == 2
     assert st.nodes["ship"].cmd == "true && true"
