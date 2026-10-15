@@ -61,17 +61,22 @@ time.sleep(40)
 """
 
 
-def _pid_of(argv: list[str]) -> int:
-    for d in Path("/proc").iterdir():
-        if d.name.isdigit():
-            try:
-                if (d / "cmdline").read_bytes().split(b"\0")[:-1] == [
-                    a.encode() for a in argv
-                ]:
-                    return int(d.name)
-            except OSError:
-                pass
-    raise AssertionError(f"no process {argv}")
+def _pid_of(argv: list[str], wait: float = 5.0) -> int:
+    """The pid running ``argv``. It waits: a ``bash -c 'cmd &'`` can exit before
+    its child has exec'd ``cmd``, which a loaded CI runner showed."""
+    want = [a.encode() for a in argv]
+    deadline = time.monotonic() + wait
+    while True:
+        for d in Path("/proc").iterdir():
+            if d.name.isdigit():
+                try:
+                    if (d / "cmdline").read_bytes().split(b"\0")[:-1] == want:
+                        return int(d.name)
+                except OSError:
+                    pass
+        if time.monotonic() > deadline:
+            raise AssertionError(f"no process {argv}")
+        time.sleep(0.05)
 
 
 def test_strays_are_what_a_park_would_kill_and_not_what_the_harness_keeps():
@@ -91,7 +96,7 @@ def test_strays_are_what_a_park_would_kill_and_not_what_the_harness_keeps():
         h.kill()
         for argv in (["sleep", "41"], ["sleep", "40"]):
             try:
-                os.kill(_pid_of(argv), 9)
+                os.kill(_pid_of(argv, wait=0), 9)
             except AssertionError:
                 pass
 
@@ -111,7 +116,7 @@ def test_without_keep_servers_every_child_is_a_stray():
         h.kill()
         for argv in (["sleep", "41"], ["sleep", "40"]):
             try:
-                os.kill(_pid_of(argv), 9)
+                os.kill(_pid_of(argv, wait=0), 9)
             except AssertionError:
                 pass
 
@@ -134,7 +139,7 @@ def test_a_shell_the_harness_runs_is_a_stray():
     finally:
         h.kill()
         try:
-            os.kill(_pid_of(["sleep", "42"]), 9)
+            os.kill(_pid_of(["sleep", "42"], wait=0), 9)
         except AssertionError:
             pass
 
