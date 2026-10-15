@@ -56,6 +56,7 @@ DURATION = re.compile(r"^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$")
 RETRYABLE = frozenset({"agent", "sh", "check"})
 MAX_RETRIES = 10
 MAX_ROUNDS = 1000
+MAX_NESTING = 64  # nodes inside nodes, fixed whatever the caller's stack
 PROBE_EVERY_S = 30.0
 MIN_EVERY_S = 5.0
 JUDGE_FIELDS = frozenset({"agent", "prompt", "inputs"})
@@ -742,11 +743,22 @@ class _Parser:
         self.used: set[str] = set()  # the blocks some ref uses
         self.using: list[tuple[str, str]] = []  # (block, ref path) being expanded
         self.caps: list[tuple[str, int]] = []  # each cap, for limits.agents
+        self.depth = 0  # the nodes being parsed, outermost first
 
     def err(self, path: str, message: str) -> None:
         self.errors.append(LintError(path, message))
 
     def node(self, raw, path: str) -> Node | None:
+        if self.depth >= MAX_NESTING:
+            self.err(path, f"nodes nest at most {MAX_NESTING} levels deep")
+            return None
+        self.depth += 1
+        try:
+            return self._node(raw, path)
+        finally:
+            self.depth -= 1
+
+    def _node(self, raw, path: str) -> Node | None:
         if not isinstance(raw, dict):
             self.err(path, "a node is a mapping with one kind key")
             return None
@@ -1395,6 +1407,16 @@ def _parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError
         raw = YAML(typ="safe").load(io.StringIO(text))
     except YAMLError as e:
         return None, [LintError("$", f"the YAML does not parse: {e}")]
+    # Measured without recursion, so the limit is the same on any stack:
+    # four YAML levels per node is more than any kind takes.
+    todo, deepest = [(raw, 1)], 0
+    while todo:
+        x, d = todo.pop()
+        deepest = max(deepest, d)
+        if isinstance(x, dict | list) and deepest <= 4 * MAX_NESTING:
+            todo += [(v, d + 1) for v in (x.values() if isinstance(x, dict) else x)]
+    if deepest > 4 * MAX_NESTING:
+        return None, [LintError("$", "the workflow is nested too deep")]
     p = _Parser(agents)
     if not isinstance(raw, dict):
         return None, [
