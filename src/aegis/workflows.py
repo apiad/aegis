@@ -316,6 +316,16 @@ class Workflows:
             "ended": st.ended,
             "tree": tree,
             "story": st.story,
+            # What the person approves to run without asking, and where.
+            "cwd": st.cwd,
+            "commands": {
+                "sh": sum(n.kind == "sh" for n in walk(wf.root)) if wf else 0,
+                "probes": sum(
+                    "sh" in (n.body.get("probe") or {}) for n in walk(wf.root)
+                )
+                if wf
+                else 0,
+            },
         }
 
     def _row(self, st: RunState, wf: Workflow, row: dict) -> dict:
@@ -343,7 +353,14 @@ class Workflows:
                 "summary": n.summary,
                 "error": n.error,
                 "outputs": sorted(n.outputs),
+                "attempts": n.attempts,
             }
+            if n.cmd and (node.kind == "sh" or "sh" in (node.body.get("probe") or {})):
+                row["cmd"] = n.cmd  # the command as it ran, rendered
+            if node.kind == "loop" and n.max is not None:
+                row["rounds"] = {"round": n.round, "max": n.max}
+        if (reading := self._readings.get((st.run, inst))) is not None:
+            row["reading"] = reading
         if node.after:
             row["after"] = [
                 {

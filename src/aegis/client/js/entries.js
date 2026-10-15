@@ -289,14 +289,51 @@ export function tickWorkflows() {
   }
 }
 
+// Seconds as a workflow writes them: 2s, 20m, 1h30m.
+function fmtSecs(s) {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = Math.round(s % 60);
+  return `${h ? `${h}h` : ""}${m ? `${m}m` : ""}${r || (!h && !m) ? `${r}s` : ""}`;
+}
+
+// A probe as the card names it: how often an sh runs, or what judges.
+function probeTag(p) {
+  if (!p) return "";
+  if (p.sh) return `sh · every ${fmtSecs(p.every)}`;
+  if (p.expr) return "expr";
+  return `judge · ${p.judge.agent}`;
+}
+
 // A row's kind as the card names it: who runs an agent, how a par or a map
-// spreads. A map's do, drawn once before its items are known, says so.
+// spreads, what a check, an if or a loop asks. A map's do, drawn once before
+// its items are known, says so.
 function kindTag(r) {
   const cap = r.cap ? ` · ${r.cap} at a time` : "";
   if (r.kind === "agent") return `agent · ${r.agent}`;
   if (r.kind === "map") return `for each ${r.as}${cap}`;
   if (r.kind === "par") return `at once${cap}`;
+  if (r.kind === "check") return `check · ${probeTag(r.probe)}`;
+  if (r.kind === "if") return `if · ${probeTag(r.probe).split(" ·")[0]}`;
+  if (r.kind === "loop") return `repeat · up to ${r.max}`;
+  if (r.kind === "wait") return `wait ${r.wait}`;
   return r.kind;
+}
+
+// The command or expression a row runs, never folded: a person approves the
+// action itself. An sh's is rendered once it has started.
+function commandOf(r) {
+  if (r.kind === "sh") return `$ ${r.cmd}`;
+  if (r.probe?.sh) return `$ ${r.cmd || r.probe.sh}`;
+  if (r.probe?.expr) return r.probe.expr;
+  return null;
+}
+
+// The commands a person approves, counted for the line above Approve.
+function runsLine(w) {
+  const { sh = 0, probes = 0 } = w.commands || {};
+  if (!sh && !probes) return null;
+  const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  const parts = [sh && n(sh, "shell command", "shell commands"), probes && n(probes, "probe", "probes")].filter(Boolean);
+  return el("span", "runs", `Runs ${parts.join(" and ")} in ${w.cwd}, without asking.`);
 }
 
 const COUNT_ORDER = ["done", "running", "queued", "pending", "failed", "stopped"];
@@ -374,10 +411,15 @@ export function fillWorkflow(card) {
     main.append(el("div", "say", r.say));
     const tags = el("div", "tags");
     tags.append(el("span", "kind", kindTag(r)));
+    if (r.branch) tags.append(el("span", "branch", r.branch));
     if (r.handle) tags.append(el("span", "who", r.handle));
     for (const a of r.after || []) tags.append(el("span", `after${a.met ? " met" : ""}`, `after ${a.name}`));
+    if (r.deadline) tags.append(el("span", "deadline", `⏱ ${fmtSecs(r.deadline)}`));
+    if (r.retries) tags.append(el("span", "retries", `retries ${r.retries}`));
+    if (r.attempts) tags.append(el("span", "attempt", `attempt ${r.attempts + 1} of ${(r.retries || 0) + 1}`));
     const key = `${w.run}/${r.id}`;
-    if (r.prompt) {
+    const prompt = r.prompt || r.probe?.judge?.prompt;
+    if (prompt) {
       const tog = el("button", "tog", openPrompts.has(key) ? "▾ prompt" : "▸ prompt");
       tog.type = "button";
       tog.onclick = () => {
@@ -387,10 +429,14 @@ export function fillWorkflow(card) {
       tags.append(tog);
     }
     main.append(tags);
-    if (r.prompt && openPrompts.has(key)) main.append(el("pre", null, r.prompt));
+    const cmd = commandOf(r);
+    if (cmd) main.append(el("pre", "cmd", cmd));
+    if (prompt && openPrompts.has(key)) main.append(el("pre", null, prompt));
+    if (r.reading) main.append(el("div", "out", r.reading));
+    if (r.rounds) main.append(el("div", "out", `round ${r.rounds.round} of ${r.rounds.max}`));
     if (r.count) main.append(el("div", "out", countLine(r.count)));
     if (r.summary || r.error) main.append(el("div", `out ${r.error ? "bad" : ""}`, r.error || r.summary));
-    const waiting = r.state === "pending" || r.state === "queued";
+    const waiting = r.state === "pending" || r.state === "queued" || r.state === "skipped";
     row.append(el("span", `dot ${r.state}`), main, el("span", "dur", waiting ? "" : since(r.started, r.ended)));
     tree.append(row);
   }
@@ -411,6 +457,8 @@ export function fillWorkflow(card) {
     foot.append(b);
   };
   if (w.status === "armed") {
+    const runs = runsLine(w);
+    if (runs) foot.append(runs);
     act("Approve and run", "workflow.approve", "primary");
     act("Reject", "workflow.reject");
   } else if (w.status === "running") act("Stop", "workflow.stop", "danger");

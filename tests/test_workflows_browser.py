@@ -35,6 +35,40 @@ def test_a_person_reads_the_plan_approves_it_and_watches_it_finish(server, page)
     assert not page.errors
 
 
+STEPS_FLOW = """id: steps
+title: Steps
+say: Commands, a probe and a pause.
+root:
+  seq:
+    - {sh: "printf hi", id: hi, say: Say hi.}
+    - {check: {sh: "test -n {{hi.out}}"}, id: ok, deadline: 2h, retries: 1, say: Check it.}
+    - {wait: 1s, id: pause, say: Pause.}
+  say: All of it.
+"""
+
+
+def test_the_card_shows_every_command_before_approval(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(
+        page,
+        "/mcp workflow_arm " + json.dumps({"definition": STEPS_FLOW, "args": {}}),
+    )
+    card = ".wfcard[data-status=armed]"
+    page.wait_for_selector(f"{card} .wfrow[data-node=hi] pre.cmd >> text=$ printf hi")
+    page.wait_for_selector(
+        f"{card} .wfrow[data-node=ok] pre.cmd >> text=$ test -n {{{{hi.out}}}}"
+    )
+    page.wait_for_selector(f"{card} .wfrow[data-node=ok] .tags >> text=⏱ 2h")
+    page.wait_for_selector(
+        f"{card} .apbar .runs >> text=Runs 1 shell command and 1 probe"
+    )
+    page.click(f"{card} button >> text=Approve and run")
+    page.wait_for_selector(".wfcard[data-status=done]", timeout=20000)
+    page.wait_for_selector(".wfcard .wfrow[data-node=ok] pre.cmd >> text=$ test -n hi")
+    assert not page.errors
+
+
 def test_the_card_fits_a_phone(server, browser):  # noqa: F811
     from .test_browser import new_page
 
@@ -49,6 +83,10 @@ def test_the_card_fits_a_phone(server, browser):  # noqa: F811
         + json.dumps({"definition": flow(RESULT, RESULT), "args": {}}),
     )
     pg.wait_for_selector(".wfcard")
+    # A long command wraps rather than widening the page.
+    long = STEPS_FLOW.replace("printf hi", "printf hi" + " && echo" + " word" * 40)
+    spawn(pg, "/mcp workflow_arm " + json.dumps({"definition": long, "args": {}}))
+    pg.wait_for_selector(".wfcard .wfrow[data-node=hi] pre.cmd")
     assert pg.evaluate("document.documentElement.scrollWidth") <= 390 and not errors
 
 
