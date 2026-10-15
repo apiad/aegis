@@ -369,6 +369,88 @@ def render(template: str, scope: dict, quote=None) -> str:
     return TEMPLATE.sub(one, template)
 
 
+def quoted_templates(cmd: str) -> list[tuple[str, str]]:
+    """Each ``{{...}}`` in a command that sits inside shell quoting, with
+    where: single or double quotes, backticks, a ``$(...)`` or an unquoted
+    heredoc. render quotes a value for a bare word; inside quotes its quotes
+    close them instead, and a ``$(...)`` in the value runs."""
+    out: list[tuple[str, str]] = []
+    stack: list[str] = []  # ' " ` $( and ( (a plain subshell, harmless)
+    heredocs: list[tuple[str, bool, bool]] = []  # delimiter, expands, strips tabs
+    names = {"'": "single quotes", '"': "double quotes", "`": "backticks"}
+    i, n = 0, len(cmd)
+    while i < n:
+        if cmd.startswith("{{", i) and (m := TEMPLATE.match(cmd, i)):
+            where = next((s for s in reversed(stack) if s != "("), None)
+            if where is not None:
+                out.append((m.group(0), names.get(where, "a $(...)")))
+            i = m.end()
+            continue
+        c = cmd[i]
+        top = stack[-1] if stack else None
+        if top == "'":
+            if c == "'":
+                stack.pop()
+            i += 1
+            continue
+        if c == "\\":
+            i += 2
+            continue
+        if top in ('"', "`"):
+            if c == top:
+                stack.pop()
+            elif cmd.startswith("$(", i):
+                stack.append("$(")
+                i += 1
+            elif c == "`":
+                stack.append("`")
+            i += 1
+            continue
+        # A bare word, or inside a $(...) or a subshell.
+        if c in "'\"`":
+            stack.append(c)
+        elif cmd.startswith("$(", i):
+            stack.append("$(")
+            i += 1
+        elif c == "(":
+            stack.append("(")
+        elif c == ")" and stack:
+            stack.pop()
+        elif c == "#" and (i == 0 or cmd[i - 1] in " \t\n;&|("):
+            i = cmd.find("\n", i)
+            i = n if i < 0 else i
+            continue
+        elif cmd.startswith("<<", i) and not cmd.startswith("<<<", i):
+            m = re.match(r"<<(-?)[ \t]*((?:[^\s;&|<>()]|\\.)+)", cmd[i:])
+            if m:
+                word = m.group(2)
+                expands = not any(q in word for q in "'\"\\")
+                heredocs.append(
+                    (re.sub(r"['\"\\]", "", word), expands, bool(m.group(1)))
+                )
+                i += m.end()
+                continue
+        elif c == "\n" and heredocs:
+            i += 1
+            for delim, expands, tabs in heredocs:
+                while i < n:
+                    end = cmd.find("\n", i)
+                    end = n if end < 0 else end
+                    line = cmd[i:end]
+                    i = end + 1
+                    if (line.lstrip("\t") if tabs else line) == delim:
+                        break
+                    if expands:
+                        out += [
+                            (m.group(0), "an unquoted heredoc")
+                            for m in TEMPLATE.finditer(line)
+                        ]
+            heredocs = []
+            continue
+        i += 1
+    return out
+
+
 def value_of(raw, scope: dict):
     """A string that is one ``{{expr}}`` gives the expression's value, not
     its text (a map's over, a loop's max, a wait); anything else is itself."""
@@ -616,6 +698,8 @@ class _Parser:
         elif kind == "sh":
             if not isinstance(body, str) or not body.strip():
                 self.err(f"{path}.sh", "sh holds the command, as one string")
+            else:
+                self.command(body, f"{path}.sh")
             node.body = {"sh": body}
         elif kind == "check":
             node.body = {"probe": self.probe(body, f"{path}.check")}
@@ -658,6 +742,15 @@ class _Parser:
         finally:
             self.using.pop()
 
+    def command(self, cmd: str, path: str) -> None:
+        """A command's templates are bare words: render quotes each value."""
+        for tpl, where in quoted_templates(cmd):
+            self.err(
+                path,
+                f"{tpl} sits inside {where}; write it bare, since every value "
+                "in a command is shell-quoted already",
+            )
+
     def probe(self, raw, path: str) -> dict:
         """One of three probes (spec §04): sh passes on exit 0, expr on a
         truthy value, judge on an agent's yes."""
@@ -677,6 +770,7 @@ class _Parser:
                 return {}
             out: dict = {kind: raw[kind]}
             if kind == "sh":
+                self.command(raw["sh"], f"{path}.sh")
                 every = duration(raw["every"]) if "every" in raw else PROBE_EVERY_S
                 if every is None or every < MIN_EVERY_S:
                     self.err(f"{path}.every", "every is a duration of at least 5s")
