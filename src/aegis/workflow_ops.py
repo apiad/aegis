@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from . import layout as canvas
 from .ops import Caller, OpError
 
 if TYPE_CHECKING:
@@ -39,6 +40,7 @@ class Arm(_Strict):
         default=None,
         description="A stopped or failed run of yours to arm again; it keeps its args.",
     )
+    dock: str | None = Field(default=None, description=canvas.DOCK_DOC)
 
     @model_validator(mode="after")
     def _one(self):
@@ -168,11 +170,30 @@ def register_workflow_ops(app: App) -> None:
         plan_update is for work you do yourself. With run, arms a stopped
         or failed run of yours again: what finished keeps its result, the
         rest runs after a new approval; a definition given with it may
-        change only what an edit may."""
+        change only what an edit may. With dock, the card also opens beside
+        the transcript, as artifact_send's page does."""
         if p.run is not None:
             owned(p.run, caller)
-        st = wf.arm(me(caller), p.definition, p.args, run=p.run)
-        return {"run": st.run, "status": st.status}
+        s = me(caller)
+        # place() lets the pane it places through, so the run's id is not
+        # needed yet: a bad dock is refused before anything is armed.
+        if p.dock is not None:
+            try:
+                canvas.place(s.layout, "wf-new", p.dock, s.dockable)
+            except canvas.LayoutError as e:
+                raise OpError("bad_params", str(e)) from e
+        st = wf.arm(s, p.definition, p.args, run=p.run)
+        out = {"run": st.run, "status": st.status}
+        if p.dock is not None:
+            # The run exists now; a placement that no longer fits is
+            # reported, not raised, as artifact_send does.
+            try:
+                s.set_layout(
+                    canvas.place(s.layout, f"wf-{st.run}", p.dock, s.dockable), "agent"
+                )
+            except canvas.LayoutError as e:
+                out |= {"docked": False, "reason": str(e)}
+        return out
 
     @r.op("workflow.approve", RunName)
     async def workflow_approve(p: RunName, caller):
