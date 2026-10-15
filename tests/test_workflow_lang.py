@@ -344,12 +344,32 @@ def test_what_slice_2_does_not_run_is_still_named():
     for old, new, msg in (
         (
             '"Build {{s.id}}."}',
-            '"Build {{s.id}}.", session: main}',
-            "$.root.par[0].map.do.agent.session: session is not in this version yet",
+            '"Build {{s.id}}.", session: impl}',
+            "$.root.par[0].map.do.agent.session: session: impl is not in this version yet; session: main runs the step in the main agent's session",
         ),
     ):
         _, errors = errs(TEAMS.replace(old, new, 1))
         assert msg in errors, (new, errors)
+
+
+def test_session_main_takes_no_agent_and_other_sessions_wait():
+    base = (
+        "id: m\ntitle: M\nsay: M.\nroot: {{agent: {{{body}}}, id: tick, say: Tick.}}\n"
+    )
+    assert errs(base.format(body="session: main, prompt: check the deploy"))[1] == []
+    _, got = errs(base.format(body="session: main, agent: opus, prompt: p"))
+    assert (
+        "$.root.agent.agent: agent does not go with session: main: the main agent runs it"
+        in got
+    )
+    _, got = errs(base.format(body="session: impl, agent: opus, prompt: p"))
+    assert any(
+        e.startswith("$.root.agent.session: session: impl is not in this version yet")
+        for e in got
+    )
+    wf, _ = errs(base.format(body="session: main, prompt: check the deploy"))
+    (row,) = rows(wf)
+    assert row["main"] is True and row["agent"] is None
 
 
 def test_value_of_and_item_keys():
