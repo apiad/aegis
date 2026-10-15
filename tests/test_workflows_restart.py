@@ -214,3 +214,45 @@ async def test_a_cut_sh_past_the_default_limit_is_not_run_again(world, monkeypat
     st = await ended(world, run_id, timeout=10)
     assert st.status == "failed" and st.nodes["s"].error.startswith("cut by restart")
     assert (world.root / "tries").read_text().count("x") == 1
+
+
+def _log_path(w, run_id: str):
+    return w.app.roots.state_root / "workflow-runs" / f"{run_id}.jsonl"
+
+
+async def test_a_crash_right_after_a_loop_starts_keeps_round_one(world):  # noqa: F811
+    run_id = await run(
+        world,
+        flow("{loop: {max: 2, do: {wait: 1s, id: w, say: Pause.}}, id: l, say: Two.}"),
+    )
+    await running(world, run_id, "l")
+    await world.stop()
+    # As a crash leaves it: the loop's start is the last record written.
+    recs = lines(world, run_id)
+    cut = next(i for i, r in enumerate(recs) if r.get("ev") == "loop_started")
+    _log_path(world, run_id).write_text(
+        "".join(json.dumps(r) + "\n" for r in recs[: cut + 1])
+    )
+    await world.start()
+    st = await ended(world, run_id, timeout=20)
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+    assert sorted(k for k in st.nodes if k.endswith(".w")) == ["l.1.w", "l.2.w"]
+
+
+async def test_a_crash_between_a_failure_and_its_retry_still_retries(world):  # noqa: F811
+    run_id = await run(
+        world,
+        flow(
+            '{sh: "echo x >> tries && (test $(wc -l < tries) -ge 2 || sleep 30)", id: s, retries: 1, say: Flaky.}'
+        ),
+    )
+    await running(world, run_id, "s", lambda n: n.pid)
+    await world.stop()
+    # As a crash leaves it: the failure that retries, and nothing after.
+    rec = {"t": time.time(), "ev": "failed", "node": "s", "error": "exit 1"}
+    with _log_path(world, run_id).open("a") as f:
+        f.write(json.dumps(rec | {"retrying": 2, "of": 2}) + "\n")
+    await world.start()
+    st = await ended(world, run_id, timeout=20)
+    assert st.status == "done", st.nodes["s"].error
+    assert st.nodes["s"].attempts == 1
