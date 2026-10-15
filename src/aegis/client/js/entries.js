@@ -269,6 +269,7 @@ export function setWorkflows(w) {
 export const workflowTitle = (run) => workflows.get(run)?.title;
 export function refreshWorkflows() {
   for (const c of document.querySelectorAll(".wfcard")) fillWorkflow(c);
+  for (const c of document.querySelectorAll(".wfdcard")) fillDecision(c);
 }
 
 // The once-a-second count of a running card: only its times change, so only
@@ -308,7 +309,8 @@ function probeTag(p) {
 // its items are known, says so.
 function kindTag(r) {
   const cap = r.cap ? ` · ${r.cap} at a time` : "";
-  if (r.kind === "agent") return `agent · ${r.agent}`;
+  if (r.kind === "agent") return r.main ? "agent · main agent" : `agent · ${r.agent}`;
+  if (r.kind === "gate") return r.by === "person" ? "gate · you decide" : "gate · the main agent decides";
   if (r.kind === "map") return `for each ${r.as}${cap}`;
   if (r.kind === "par") return `at once${cap}`;
   if (r.kind === "check") return `check · ${probeTag(r.probe)}`;
@@ -358,7 +360,21 @@ function since(a, b) {
   return s >= 3600 ? `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}` : `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}`;
 }
 
-const WF_WORDS = { armed: "waits for your go", done: "done", failed: "failed", stopped: "stopped", rejected: "rejected" };
+const WF_WORDS = { armed: "waits for your go", done: "done", failed: "failed", stopped: "stopped", rejected: "rejected", replaced: "replaced" };
+const MARKS = { ok: "✓", bad: "✗", ask: "?", note: "·" };
+
+// What a run waits on, in one line under its lede: the person first.
+function openLine(w) {
+  const open = w.open || [];
+  const mine = open.filter((o) => o.kind === "gate" && o.by === "person");
+  if (mine.length) return el("div", "wfopen you", `waits on you: ${mine.map((o) => w.tree.find((r) => r.id === o.node)?.say || o.node).join(", ")}`);
+  const n = (k, one, many) => {
+    const c = open.filter((o) => o.kind === k).length;
+    return c ? `${c} ${c === 1 ? one : many}` : null;
+  };
+  const parts = [n("failed", "failed step", "failed steps"), n("gate", "gate", "gates"), n("ask", "question", "questions")].filter(Boolean);
+  return parts.length ? el("div", "wfopen", `waits on the main agent: ${parts.join(", ")}`) : null;
+}
 
 // Where a run's card is held: "docked", "in window <n>" or "".
 function docked(id) {
@@ -382,6 +398,14 @@ export function fillWorkflow(card) {
   card.dataset.status = w.status;
   card.dataset.held = docked(id);
   const title = [entryIcon("pip"), el("span", "fn", w.title), el("span", "fs", workflowStatus(w))];
+  if (w.status === "replaced" && !pane) {
+    // Armed again before approval: the newer card under a later call is the one.
+    const v = workflows.get(w.replaced_by)?.version || w.version + 1;
+    const head = el("div", "fbar");
+    head.append(...title);
+    card.replaceChildren(head, el("div", "wflede", `replaced by v${v}`));
+    return;
+  }
   const kids = [];
   if (pane) {
     // A pane's bar is the canvas's (canvas.js draw): the title goes before
@@ -399,12 +423,14 @@ export function fillWorkflow(card) {
     kids.push(head);
   }
   kids.push(el("div", "wflede", w.say));
+  const waits = w.status === "running" ? openLine(w) : null;
+  if (waits) kids.push(waits);
   if (w.story.length) {
     const story = el("div", "story");
     for (const s of w.story) {
       const line = el("div", "line");
       line.dataset.mark = s.mark;
-      line.append(el("span", "tm", hhmm(s.t)), el("span", "mk", s.mark === "ok" ? "✓" : s.mark === "bad" ? "✗" : "?"), el("span", null, s.text));
+      line.append(el("span", "tm", hhmm(s.t)), el("span", "mk", MARKS[s.mark] || "?"), el("span", null, s.text));
       story.append(line);
     }
     kids.push(story);
@@ -426,6 +452,7 @@ export function fillWorkflow(card) {
     if (r.deadline) tags.append(el("span", "deadline", `⏱ ${fmtSecs(r.deadline)}`));
     if (r.retries) tags.append(el("span", "retries", `retries ${r.retries}`));
     if (r.attempts) tags.append(el("span", "attempt", `attempt ${r.attempts + 1} of ${(r.retries || 0) + 1}`));
+    if (r.held) tags.append(el("span", "held", "waits for the change"));
     const key = `${w.run}/${r.id}`;
     const prompt = r.prompt || r.probe?.judge?.prompt;
     if (prompt) {
@@ -444,12 +471,14 @@ export function fillWorkflow(card) {
     if (r.reading) main.append(el("div", "out", r.reading));
     if (r.rounds) main.append(el("div", "out", `round ${r.rounds.round} of ${r.rounds.max}`));
     if (r.count) main.append(el("div", "out", countLine(r.count)));
-    if (r.summary || r.error) main.append(el("div", `out ${r.error ? "bad" : ""}`, r.error || r.summary));
+    if (r.kind === "gate" && !r.each && r.state !== "pending") main.append(gatePanel(w, r));
+    else if (r.summary || r.error) main.append(el("div", `out ${r.error ? "bad" : ""}`, r.error || r.summary));
     const waiting = r.state === "pending" || r.state === "queued" || r.state === "skipped";
     row.append(el("span", `dot ${r.state}`), main, el("span", "dur", waiting ? "" : since(r.started, r.ended)));
     tree.append(row);
   }
   kids.push(tree);
+  if (w.proposal && w.edits?.length) kids.push(editPanel(w, w.edits.at(-1)));
   const foot = el("div", "apbar");
   const act = (label, op, cls = "") => {
     const b = el("button", `btn ${cls}`.trim(), label);
@@ -472,7 +501,168 @@ export function fillWorkflow(card) {
     act("Reject", "workflow.reject");
   } else if (w.status === "running") act("Stop", "workflow.stop", "danger");
   if (foot.children.length) kids.push(foot);
+  const refocus = keepDraft(card);
   card.replaceChildren(...kids);
+  refocus();
+}
+
+// What a person typed at a gate, by run and node: a card is redrawn on every
+// change of its run, and the answer box must keep its text and its focus.
+const gateDrafts = new Map();
+function keepDraft(card) {
+  const f = card.contains(document.activeElement) ? document.activeElement : null;
+  const key = f?.dataset?.draft;
+  if (!key) return () => {};
+  const at = [f.selectionStart, f.selectionEnd];
+  return () => {
+    const box = card.querySelector(`textarea[data-draft="${CSS.escape(key)}"]`);
+    box?.focus();
+    box?.setSelectionRange(...at);
+  };
+}
+
+// A gate's panel: the question, the values the decider sees, and for an
+// open person gate an answer box with Continue and Stop (workflow.gate, an
+// operation no agent reaches). Answered, one line says who and what.
+function gatePanel(w, r) {
+  const box = el("div", "gate");
+  box.append(el("div", "q", r.ask || r.say));
+  for (const [k, v] of Object.entries(r.shown || {})) box.append(el("pre", null, `${k}: ${JSON.stringify(v)}`));
+  if (r.state !== "running" || r.by !== "person" || w.status !== "running") {
+    if (r.summary) box.append(el("div", "out", r.summary.replace("by the person", "by you")));
+    else if (r.error) box.append(el("div", "out bad", r.error));
+    else if (r.state === "stopped") box.append(el("div", "out bad", "Stopped there."));
+    else if (r.by === "main" && r.state === "running") box.append(el("div", "out", "Waiting for the main agent."));
+    return box;
+  }
+  const key = `${w.run}/${r.id}`;
+  const answer = el("textarea");
+  answer.rows = 2;
+  answer.placeholder = "answer (optional): later steps read it";
+  answer.value = gateDrafts.get(key) || "";
+  answer.oninput = () => gateDrafts.set(key, answer.value);
+  answer.dataset.draft = key;
+  const go = (yes, b) => async () => {
+    b.disabled = true;
+    try {
+      await workflows.call("workflow.gate", { run: w.run, node: r.id, go: yes, answer: answer.value });
+      gateDrafts.delete(key);
+    } catch (err) {
+      b.disabled = false;
+      b.title = String(err?.message || err);
+    }
+  };
+  const btns = el("div", "btns");
+  const ok = el("button", "btn primary", "Continue");
+  const no = el("button", "btn danger", "Stop");
+  ok.type = no.type = "button";
+  ok.onclick = go(true, ok);
+  no.onclick = go(false, no);
+  btns.append(ok, no);
+  box.append(answer, btns);
+  return box;
+}
+
+// An edit's panel: the diff in the steps' sentences, the commands it adds,
+// and Apply change and Keep the plan while it is the open proposal.
+const DIFF_OP = { add: "+", remove: "−", change: "~" };
+function editPanel(w, e) {
+  const box = el("div", "edit");
+  for (const d of e.diff) {
+    const line = el("div", `d ${d.op}`);
+    const what = d.key === "$" ? `The workflow's ${d.fields.join(", ").replaceAll("its ", "")}` : d.say;
+    const text = el("span", "w", what);
+    if (d.was) text.title = `was: ${d.was}`;
+    line.append(el("span", "op", DIFF_OP[d.op]), text);
+    if (d.fields?.length && d.key !== "$") line.append(el("span", "f", d.fields.join(", ")));
+    if (d.cmd) line.append(el("pre", "cmd", `$ ${d.cmd}`));
+    box.append(line);
+  }
+  const c = e.commands || w.proposal?.commands || {};
+  const n = (k, one) => (k ? `${k} ${one}${k > 1 ? "s" : ""}` : null);
+  if (c.sh || c.probes) box.append(el("div", "runs", `Adds ${[n(c.sh, "shell command"), n(c.probes, "probe")].filter(Boolean).join(" and ")}, run in ${w.cwd} without asking. Steps that ran keep their results.`));
+  if (e.status !== "proposed" || w.status !== "running") {
+    box.append(el("div", "out", e.status === "replaced" ? "replaced by a later change" : e.status === "proposed" ? `not applied: the run is ${WF_WORDS[w.status] || w.status}` : e.status));
+    return box;
+  }
+  const btns = el("div", "btns");
+  for (const [label, op, cls] of [["Apply change", "workflow.apply_edit", "primary"], ["Keep the plan", "workflow.reject_edit", ""]]) {
+    const b = el("button", `btn ${cls}`.trim(), label);
+    b.type = "button";
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        await workflows.call(op, { run: w.run, v: e.v });
+      } catch (err) {
+        b.disabled = false;
+        b.title = String(err?.message || err);
+      }
+    };
+    btns.append(b);
+  }
+  box.append(btns);
+  return box;
+}
+
+const LEAF_KINDS = new Set(["agent", "sh", "wait", "check", "gate"]);
+
+// A card for what a run waits on a person for, under the call that asked:
+// a gate, an edit, or arming again. Filled from the workflows channel, as
+// the run's own card is; the answer box keeps its text across redraws.
+function fillDecision(card) {
+  const w = workflows.get(card.dataset.run);
+  if (!w) {
+    card.replaceChildren(el("div", "fbar", "workflow not found"));
+    return;
+  }
+  const { what, key } = card.dataset;
+  const refocus = keepDraft(card);
+  let panel = null;
+  let state = "";
+  if (what === "gate") {
+    const r = w.tree.find((x) => x.id === key);
+    if (r) panel = gatePanel(w, r);
+    const open = r && r.state === "running" && r.by === "person" && w.status === "running";
+    state = open ? "waits for you" : r?.state === "done" ? "continued" : r?.state === "stopped" ? "stopped" : WF_WORDS[w.status] || w.status;
+  } else if (what === "edit") {
+    const e = (w.edits || []).find((x) => String(x.v) === key);
+    if (e) panel = editPanel(w, e);
+    state = e?.status === "proposed" && w.status === "running" ? "waits for you" : e?.status || "";
+  } else if (what === "again") {
+    const agains = w.story.map((s, i) => [s, i]).filter(([s]) => s.text.startsWith("Armed again"));
+    const current = agains.at(-1)?.[1] === Number(key);
+    const leaves = w.tree.filter((r) => LEAF_KINDS.has(r.kind) && !r.each);
+    const kept = leaves.filter((r) => r.state === "done" || r.state === "skipped").length;
+    panel = el("div", "again");
+    panel.append(el("div", "q", `Run again: ${kept} done step${kept === 1 ? "" : "s"} kept, ${leaves.length - kept} to run`));
+    if (current && w.status === "armed") {
+      state = "waits for you";
+      const btns = el("div", "btns");
+      for (const [label, op, cls] of [["Approve and run", "workflow.approve", "primary"], ["Reject", "workflow.reject", ""]]) {
+        const b = el("button", `btn ${cls}`.trim(), label);
+        b.type = "button";
+        b.onclick = async () => {
+          b.disabled = true;
+          try {
+            await workflows.call(op, { run: w.run });
+          } catch (err) {
+            b.disabled = false;
+            b.title = String(err?.message || err);
+          }
+        };
+        btns.append(b);
+      }
+      panel.append(btns);
+    } else {
+      state = current ? (w.status === "rejected" ? "rejected" : "approved") : "armed again later";
+      panel.append(el("div", "out", state));
+    }
+  }
+  card.dataset.state = state === "waits for you" ? "waiting" : "answered";
+  const head = el("div", "fbar");
+  head.append(entryIcon("pip"), el("span", "fn", w.title), el("span", "fs", state));
+  card.replaceChildren(head, ...(panel ? [panel] : []));
+  refocus();
 }
 
 // What Dock does, on a card and on the viewer's bar: app.js hands it the
@@ -887,6 +1077,17 @@ const RENDERERS = {
     fillWorkflow(card);
     body.append(card);
     return row(e, "workflow", body);
+  },
+
+  workflow_decision(e) {
+    // What a run waits on a person for (workflows.py): a gate, an edit, or
+    // arming again. Never folded; filled from the workflows channel.
+    const body = el("div", "body");
+    const card = el("div", "fcard wfdcard");
+    Object.assign(card.dataset, { run: e.detail?.run || "", what: e.detail?.what || "", key: e.detail?.key || "" });
+    fillDecision(card);
+    body.append(card);
+    return row(e, "workflow_decision", body);
   },
 
   artifact(e) {
