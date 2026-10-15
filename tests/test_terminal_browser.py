@@ -155,6 +155,9 @@ def test_the_picker_offers_the_shell_and_the_profiles(server, browser):  # noqa:
     page = browser.new_page()
     page.goto(f"{server.url}#new")
     group = page.locator("#sp-terms")
+    page.wait_for_selector(
+        "#sp-terms [data-profile]"
+    )  # term.profiles answers after the view draws
     assert group.locator("[data-profile]").all_inner_texts()[0].startswith("shell")
     group.locator("[data-profile=sh]").click()
     page.wait_for_selector("#term-host .xterm-rows")
