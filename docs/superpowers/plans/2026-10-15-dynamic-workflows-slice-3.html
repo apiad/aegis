@@ -1899,7 +1899,7 @@ async def test_a_loop_without_until_runs_max_rounds(world):
 </div>
 </details>
 
-<details class="task" id="task-9" data-state="pending">
+<details class="task" id="task-9" data-state="done">
 <summary><span class="num">9</span><span><span class="ttl">Deadlines and retries in the engine</span><span class="files">workflows.py · tests/test_workflows_steps.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -2472,6 +2472,9 @@ item, loop round or top level. `defs: {pr: schema}` names a result schema;
   <li>Task 7: <code>_state</code> read only an agent's state from the log, so an <code>sh</code>, <code>wait</code> or <code>check</code> with no children folded to done: a <code>par</code> or <code>map</code> skipped them and finished without running them. Every leaf (<code>LEAVES</code>) now reads the log.</li>
   <li>Task 7: <code>test_judges_count_in_the_pool</code> as written passed with the judges' room check removed: the judges came first, so the agent's own check kept the third session out. The agent now comes first, and the break fails the test with a peak of 3.</li>
   <li>Task 7: <code>_spawn_node</code> also takes the agent node's rendered <code>cwd</code>. A judge's session is closed through <code>_settle</code> once its verdict is logged and its turn has finished, not mid-turn. <code>_end</code>, <code>_release</code> and <code>_fail</code> act on a node's judges' sessions as on its agent's (<code>_lids</code>), and <code>_end</code> also interrupts a judge still deciding an <code>if</code>, whose node is not marked running. An if's or until's sh probe keeps its outcome in <code>_probed</code> until a pass reads it.</li>
+  <li>Task 8: <code>_value</code> of a loop returns the last round's <code>{node id: value}</code> itself, not keyed by the round, so <code>{{count.bump.out}}</code> reads it. <code>wire</code> marks every row under a skipped branch row skipped by depth, after <code>_row</code> marks the branch row.</li>
+  <li>Task 9: a leaf that failed inside a pass with retries left (an agent's second empty turn, a judge's no, a deadline) logged its <code>retry</code> and still returned <code>failed</code>, which ended the run before the next attempt. <code>_advance</code> now wraps <code>_move</code> and reports such a leaf as running. <code>test_a_retried_agent_leaves_one_open_session</code> had passed only because the run ended after the first attempt; with the fix the break fails it with two sessions.</li>
+  <li>Task 9: <code>_begun_at</code> became <code>_under</code>: a seq's or par's children are not prefixed by its id, so a group's start is the earliest logged instance of its subtree under the same map item, not of <code>inst + "."</code>. <code>_end_at</code> returns the end and the span that set it (the message names the deadline that fired) and skips that scan for a node with nothing to bound. <code>_expire</code> halts every instance inside that has not finished, so a judge deciding an <code>if</code> is interrupted too. <code>_advance</code> returns <code>failed</code> at once for an instance already failed, so a deadline is logged once. The stale-attempt refusal sits in <code>_reporting</code>, so it covers <code>result</code>, <code>output</code> and judges alike.</li>
 </ul>
 </main>
 <script>

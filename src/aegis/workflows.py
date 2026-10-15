@@ -6,12 +6,15 @@ appended to the run's log (workflow_log.py), which boot folds back. Like the
 schedules' clock, the engine is level-triggered: each pass looks at every
 live run, so a missed hook only changes how soon a node moves.
 
-This version runs ``seq``, ``par``, ``map``, ``agent``, ``sh``, ``wait``
-and ``check``. An sh and a check's sh probe are asyncio tasks the engine
-holds (``_tasks``), never awaited by a pass: each logs its outcome and wakes
-one. An sh running in the log with no task after a boot was cut by the
-restart and fails, never run again; a wait resumes on its logged end. Every
-node
+This version runs every kind but ``gate``. An sh and an sh probe are
+asyncio tasks the engine holds (``_tasks``), never awaited by a pass: each
+logs its outcome, or keeps it in memory for the card, and wakes one. An sh
+running in the log with no task after a boot was cut by the restart and
+fails, never run again; a wait resumes on its logged end. A judge is a
+quiet session in the pool, as an agent node is. An if's branch, a loop's
+rounds and each until are logged once, so a restart never asks a probe
+again. Every deadline on the path from the root is checked on each pass
+against wall time; a leaf with retries left goes back to pending. Every node
 instance has a path (``images.base.impl`` inside item ``base`` of map
 ``images``); only leaves and a map's items are logged, and every other state
 is derived from them on each pass (``_state``), so a restart rebuilds them by
@@ -22,7 +25,7 @@ workflow_result and Registry.finished says it is done; a turn that ends
 without a result is nudged once and then fails the run. The main agent hears
 only the end, as one inbox turn: a pass and a stop share one lock, so a stop
 never lands between a node's spawn and its record, and ``_end`` writes a run's
-ending once. One run's exception fails that node and never stalls the others. Later slices add branches to ``_advance``.
+ending once. One run's exception fails that node and never stalls the others.
 """
 
 from __future__ import annotations
@@ -55,6 +58,7 @@ from .workflow_lang import (
     duration,
     evaluate,
     find,
+    fmt_duration,
     item_keys,
     parse,
     render,
@@ -572,6 +576,16 @@ class Workflows:
         st = self.runs.get(wf_ref.get("run", ""))
         if st is None or st.status != "running":
             raise OpError("not_a_node", f"only a running workflow node calls {tool}")
+        n = st.nodes.get(wf_ref["node"]) or NodeState()
+        if wf_ref.get("probe") == "judge":
+            cur = (n.judges.get(wf_ref.get("round", "")) or {}).get("log_id")
+        else:
+            cur = n.log_id
+        if cur != s.log_id:
+            raise OpError(
+                "stale_attempt",
+                "this session is an earlier attempt at its node; the node has moved on",
+            )
         return st, wf_ref["node"]
 
     def output(self, s: Session, name: str, value, summary: str) -> dict:
@@ -681,8 +695,18 @@ class Workflows:
     async def _advance(
         self, st: RunState, wf: Workflow, node: Node, prefix: str
     ) -> str:
-        """Move one instance on and say where it stands. A node not begun
-        checks its after on every pass; once begun it is not checked again."""
+        """Move one instance on and say where it stands. A leaf that failed
+        with retries left is back to pending and runs again on the next
+        pass, so it reads as running, not failed."""
+        got = await self._move(st, wf, node, prefix)
+        n = st.nodes.get(prefix + node.id)
+        if got == "failed" and n is not None and n.status == "pending":
+            return "running"
+        return got
+
+    async def _move(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
+        """One instance's move. A node not begun checks its after on every
+        pass; once begun it is not checked again."""
         inst = prefix + node.id
         if node.after and self._state(st, node, inst) in ("pending", "queued"):
             for a in node.after:
@@ -693,6 +717,15 @@ class Workflows:
                     return "failed"
                 if not met:
                     return "pending"
+        mine = st.nodes.get(inst)
+        if mine is not None and mine.status == "failed":
+            return "failed"
+        end = self._end_at(st, wf, node, inst)
+        if end is not None:
+            if time.time() >= end[0]:
+                await self._expire(st, node, inst, end[1])
+                return "failed"
+            self._due_at(end[0])
         if node.kind == "seq":
             for i, c in enumerate(node.children):
                 s = await self._advance(st, wf, c, prefix)
@@ -819,6 +852,70 @@ class Workflows:
         self._log(st.run, {"ev": "round", "node": inst, "n": k + 1})
         self.changed()
         return "running"
+
+    def _under(
+        self, st: RunState, node: Node, inst: str
+    ) -> list[tuple[str, NodeState]]:
+        """The logged instances inside this one, itself included: the
+        nodes of its subtree under the same item of every enclosing map."""
+        prefix, keys = inst[: -len(node.id)], {c.key for c in walk(node)}
+        return [
+            (k, n)
+            for k, n in st.nodes.items()
+            if k.startswith(prefix) and template_key(k) in keys
+        ]
+
+    def _end_at(
+        self, st: RunState, wf: Workflow, node: Node, inst: str
+    ) -> tuple[float, float] | None:
+        """When this instance must have finished, and the span that says so:
+        its own deadline from its start (its first logged instance's); at
+        the root, also the run's from approval; for an sh or a check with no
+        deadline over it, their defaults. An ancestor's deadline is enforced
+        at the ancestor, which every pass reaches first."""
+        ends: list[tuple[float, float]] = []
+        leaf = node.kind in ("sh", "check")
+        if not (node.deadline or leaf or (node is wf.root and wf.deadline)):
+            return None  # nothing to scan for: most nodes, on most passes
+        times = [n.started for _, n in self._under(st, node, inst) if n.started]
+        began = min(times) if times else None
+        if node.deadline and began:
+            ends.append((began + node.deadline, node.deadline))
+        if node is wf.root and wf.deadline and st.started:
+            ends.append((st.started + wf.deadline, wf.deadline))
+        if leaf and began and not self._bounded(wf, node):
+            span = SH_LIMIT_S if node.kind == "sh" else CHECK_LIMIT_S
+            ends.append((began + span, span))
+        return min(ends) if ends else None
+
+    def _bounded(self, wf: Workflow, node: Node) -> bool:
+        """Whether a deadline on this node or one above it bounds it."""
+        x: Node | None = node
+        while x is not None:
+            if x.deadline or (x is wf.root and wf.deadline):
+                return True
+            x = wf.parent.get(x.key)
+        return False
+
+    async def _expire(self, st: RunState, node: Node, inst: str, span: float) -> None:
+        """A deadline passed: end every running leaf inside, then fail the
+        instance it bounds."""
+        for k, n in self._under(st, node, inst):
+            if n.status not in ("done", "failed", "stopped"):
+                await self._halt(st, k, n)
+        self._fail(st, inst, f"ran past its deadline of {fmt_duration(span)}")
+
+    async def _halt(self, st: RunState, inst: str, n: NodeState) -> None:
+        """End one running leaf: kill its task, interrupt its session and its
+        judges' through the lock. The sessions stay for a person to read."""
+        task = self._tasks.pop((st.run, inst), None)
+        if task is not None:
+            task.cancel()
+        for lid in _lids(n):
+            s = self._reg.sessions.get(lid)
+            if s is not None and s.status == "working":
+                with contextlib.suppress(Exception):
+                    await s.interrupt(through_lock=True)
 
     def _met(
         self, st: RunState, wf: Workflow, node: Node, prefix: str, a: str
@@ -1310,6 +1407,14 @@ class Workflows:
         or the quota gate have no room for it (the caller queues)."""
         owner = self.owner(st)
         assert owner is not None  # the caller failed the node already
+        # An earlier attempt's session is archived when the next one spawns,
+        # so a retried node holds one slot; its transcript stays readable.
+        same = {k: v for k, v in tag.items() if k != "attempt"}
+        for x in list(self._reg.sessions.values()):
+            w = x.workflow or {}
+            if w != tag and {k: v for k, v in w.items() if k != "attempt"} == same:
+                with contextlib.suppress(Exception):
+                    await self._reg.close(x.log_id)
         # A crash between a spawn and its record leaves the session behind:
         # it is this node's, so it is adopted rather than doubled.
         s = next((x for x in self._reg.sessions.values() if x.workflow == tag), None)
@@ -1380,7 +1485,9 @@ class Workflows:
         except RENDER_ERRORS as e:
             self._fail(st, inst, f"a reference has no value: {e}")
             return False
-        tag = {"run": st.run, "node": inst}
+        tag: dict = {"run": st.run, "node": inst}
+        if (tried := (st.nodes.get(inst) or NodeState()).attempts) > 0:
+            tag["attempt"] = tried  # adoption after a crash finds this attempt
         s = await self._spawn_node(st, wf, node.body["agent"], tag, say, cwd)
         if s is None:
             return False
@@ -1487,10 +1594,21 @@ class Workflows:
     def _fail(
         self, st: RunState, node: str, why: str, say: str = "", retry: bool = True
     ) -> None:
-        """Fail one node. ``retry`` False marks a failure a retry would only
-        repeat (a reference with no value, a cut command)."""
-        rec = {"ev": "failed", "node": node, "error": why}
-        self._log(st.run, rec | ({"say": say} if say else {}))
+        """Fail one node, or send it back to pending while it has retries
+        left. ``retry`` False marks a failure a retry would only repeat (a
+        reference with no value, a cut command)."""
+        rec = {"ev": "failed", "node": node, "error": why} | (
+            {"say": say} if say else {}
+        )
+        wf = self.defs.get(st.run)
+        tpl = wf.by_key.get(template_key(node)) if wf else None
+        tried = (st.nodes.get(node) or NodeState()).attempts
+        if retry and tpl is not None and tried < tpl.retries:
+            self._log(st.run, rec | {"retrying": tried + 2, "of": tpl.retries + 1})
+            self._log(st.run, {"ev": "retry", "node": node})
+            self.changed()
+            return
+        self._log(st.run, rec)
         # A failed node's session keeps its card and gets a tab, as a failed
         # queue worker does (spec §05).
         n = st.nodes.get(node)
