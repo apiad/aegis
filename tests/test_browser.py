@@ -2853,6 +2853,29 @@ def test_settings_saves_an_edit_to_the_file_and_the_composer_follows(
     assert page.errors == []
 
 
+def test_settings_parks_a_harness_after_minutes_written_as_seconds(
+    settings_server, page
+):
+    open_settings(page, settings_server.url)
+    page.fill('#set-park [data-row="park.claude-code"] input', "20")
+    page.click("#set-save")
+    page.wait_for_function(
+        "document.querySelector('#set-status').textContent === 'Saved'"
+    )
+    text = (settings_server.root / ".aegis.yaml").read_text()
+    assert "# kept across a save" in text and "claude-code: 1200" in text
+    page.wait_for_function(
+        "document.querySelector('#set-park [data-row=\"park.claude-code\"] input').value === '20'"
+    )
+    page.fill('#set-park [data-row="park.claude-code"] input', "")
+    page.click("#set-save")
+    page.wait_for_function(
+        "document.querySelector('#set-status').textContent === 'Saved'"
+    )
+    assert "park" not in (settings_server.root / ".aegis.yaml").read_text()
+    assert page.errors == []
+
+
 def frame_with(pg, frames: list[str], text: str) -> None:
     """Wait until the page has received a websocket frame carrying `text`."""
     deadline = time.monotonic() + 10
@@ -7695,6 +7718,7 @@ def test_a_members_settings_hold_only_this_browser(server, browser):
     pg.wait_for_selector("text=edited by an admin")
     assert pg.locator("#set-servers").count() == 0
     assert pg.locator("#set-tokens").count() == 0
+    assert pg.locator("#set-park").count() == 0
 
 
 def test_an_admin_adds_and_revokes_a_token_in_settings(server, page):
