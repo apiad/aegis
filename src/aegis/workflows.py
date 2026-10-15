@@ -630,7 +630,7 @@ class Workflows:
             for s in self._reg.sessions.values()
             if s.workflow and self.live(s.workflow["run"])
         ]
-        mine = [s for s in live if s.workflow["run"] == st.run]
+        mine = [s for s in live if (s.workflow or {}).get("run") == st.run]
         pool = self._app.config.current().workflows["max_agents"]
         for bound, among in ((pool, live), (wf.limits, mine)):
             if len(among) >= bound.get("total", math.inf):

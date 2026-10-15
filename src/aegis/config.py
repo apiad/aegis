@@ -102,17 +102,18 @@ def workflows_from(raw: object) -> dict:
     the default in force and carries ``error`` for aegis doctor, as the
     context block does. Whether each alias names an agent is the doctor's
     to say, since the agents are another block."""
-    default = {"max_agents": dict(WORKFLOWS_DEFAULTS["max_agents"])}
+    default: dict = {"max_agents": dict(WORKFLOWS_DEFAULTS["max_agents"])}
     if raw is None:
         return default
     if not isinstance(raw, dict):
         return default | {"error": "workflows must be a mapping with max_agents"}
-    for k in raw:
+    m: object = default["max_agents"]
+    for k, v in raw.items():
         if k != "max_agents":
             return default | {
                 "error": f"workflows has no key {k!r}; it takes max_agents"
             }
-    m = raw.get("max_agents", default["max_agents"])
+        m = v
     if _positive(m):
         return {"max_agents": {"total": m}}
     if not isinstance(m, dict):
