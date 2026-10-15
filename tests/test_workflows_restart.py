@@ -5,6 +5,8 @@ import asyncio
 import json
 import time
 
+import pytest
+
 from aegis import restarts
 
 from .conftest import until
@@ -66,6 +68,7 @@ async def test_a_judge_continues_after_a_restart(world):  # noqa: F811
     assert sum(r.get("ev") == "judge_started" for r in lines(world, run_id)) == 1
 
 
+@pytest.mark.slow
 async def test_an_sh_cut_by_a_restart_is_never_run_again(world):  # noqa: F811
     marker = world.root / "ran"
     run_id = await run(
@@ -81,6 +84,7 @@ async def test_an_sh_cut_by_a_restart_is_never_run_again(world):  # noqa: F811
     assert not marker.exists()
 
 
+@pytest.mark.slow
 async def test_an_sh_a_crash_left_running_is_ended_at_boot(world, monkeypatch):  # noqa: F811
     marker = world.root / "ran"
     # Longer than the 2 s + 2 s a cancelled task waits on its group.
@@ -103,6 +107,7 @@ async def test_an_sh_a_crash_left_running_is_ended_at_boot(world, monkeypatch): 
     assert not marker.exists()
 
 
+@pytest.mark.slow
 async def test_an_sh_check_runs_its_probe_again(world):  # noqa: F811
     run_id = await run(
         world,
@@ -118,6 +123,7 @@ async def test_an_sh_check_runs_its_probe_again(world):  # noqa: F811
     assert sum(r.get("ev") == "node_started" for r in lines(world, run_id)) == 1
 
 
+@pytest.mark.slow
 async def test_a_wait_resumes_against_wall_time(world):  # noqa: F811
     t0 = time.time()
     run_id = await run(world, flow("{wait: 4s, id: w, say: Pause.}"))
@@ -128,6 +134,7 @@ async def test_a_wait_resumes_against_wall_time(world):  # noqa: F811
     assert st.status == "done" and 4 <= took < 12
 
 
+@pytest.mark.slow
 async def test_an_if_deciding_asks_its_probe_again_and_logs_one_branch(world):  # noqa: F811
     run_id = await run(
         world,
@@ -142,6 +149,7 @@ async def test_an_if_deciding_asks_its_probe_again_and_logs_one_branch(world):  
     assert sum(r.get("ev") == "branch" for r in lines(world, run_id)) == 1
 
 
+@pytest.mark.slow
 async def test_a_loop_keeps_its_round_through_a_restart(world):  # noqa: F811
     run_id = await run(
         world,
@@ -159,6 +167,7 @@ async def test_a_loop_keeps_its_round_through_a_restart(world):  # noqa: F811
     assert sum(r.get("ev") == "loop_started" for r in lines(world, run_id)) == 1
 
 
+@pytest.mark.slow
 async def test_a_deadline_that_passed_while_down_fires_at_boot(world):  # noqa: F811
     run_id = await run(world, flow("{wait: 1h, id: w, deadline: 3s, say: Too long.}"))
     await running(world, run_id, "w")
@@ -184,6 +193,7 @@ async def test_a_retry_count_survives_a_restart(world):  # noqa: F811
     )
 
 
+@pytest.mark.slow
 async def test_a_cut_sh_whose_deadline_passed_while_down_is_not_run_again(world):  # noqa: F811
     run_id = await run(
         world,
@@ -201,6 +211,7 @@ async def test_a_cut_sh_whose_deadline_passed_while_down_is_not_run_again(world)
     assert (world.root / "tries").read_text().count("x") == 1
 
 
+@pytest.mark.slow
 async def test_a_cut_sh_past_the_default_limit_is_not_run_again(world, monkeypatch):  # noqa: F811
     monkeypatch.setattr("aegis.workflows.SH_LIMIT_S", 3.0)
     run_id = await run(
@@ -258,6 +269,7 @@ async def test_a_crash_between_a_failure_and_its_retry_still_retries(world):  # 
     assert st.nodes["s"].attempts == 1
 
 
+@pytest.mark.slow
 async def test_boot_ends_a_group_whose_leader_is_gone(world, monkeypatch):  # noqa: F811
     import os
     import signal

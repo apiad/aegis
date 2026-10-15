@@ -2,6 +2,7 @@
 agents: a node cannot push the server's live agents past max_agents, nor its
 run's past its limits, by spawning helpers."""
 
+import pytest
 from aegis.ops import Caller, OpError
 
 from .conftest import until
@@ -42,6 +43,7 @@ root: {leaf("n", "Spawn two.", spawner(agent))}
     ]
 
 
+@pytest.mark.slow
 async def test_a_node_cannot_spawn_past_the_servers_total(world):
     """max_agents total 2: the node and one helper. The second spawn is
     refused, and the node's turn goes on to its result."""
@@ -49,11 +51,13 @@ async def test_a_node_cannot_spawn_past_the_servers_total(world):
     assert len(kids) == 1
 
 
+@pytest.mark.slow
 async def test_a_node_cannot_spawn_past_its_runs_limits(world):
     (world.root / ".aegis.yaml").write_text(CONFIG + "workflows: {max_agents: 8}\n")
     assert len(await helpers(world, "limits: {total: 2}")) == 1
 
 
+@pytest.mark.slow
 async def test_a_helper_counts_under_its_own_agents_number(world):
     (world.root / ".aegis.yaml").write_text(
         CONFIG + "workflows: {max_agents: {total: 8, reviewer: 1}}\n"

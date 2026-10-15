@@ -136,6 +136,7 @@ async def test_a_wait_waits_on_wall_time(world):
     assert time.time() - t0 < 10  # woken at its end, not on the 30 s pass
 
 
+@pytest.mark.slow
 async def test_a_check_polls_until_its_probe_passes(world):
     run_id = await run(
         world,
@@ -197,6 +198,7 @@ async def test_a_judge_that_says_no_fails_its_check_with_its_reason(world):
     assert st.nodes["no"].error == "the judge said no: It does not hold."
 
 
+@pytest.mark.slow
 async def test_judges_count_in_the_pool(world):
     """max_agents is 2: an agent and two judges side by side never hold
     three sessions open. The agent comes first, so only the judges' own
@@ -326,6 +328,7 @@ async def test_a_leaf_past_its_deadline_fails(world):
     assert slow.ended - slow.started < 2 + 4
 
 
+@pytest.mark.slow
 async def test_a_group_past_its_deadline_stops_the_agent_inside_it(world):
     slow = json.dumps("/sleep 30")
     text = f"""id: group
@@ -389,6 +392,7 @@ async def test_a_retried_agent_leaves_one_open_session(world):
     assert len(open_) == 1  # the first attempt's session was archived
 
 
+@pytest.mark.slow
 async def test_a_deadline_retry_runs_the_next_attempt_and_ends_it(world):
     from aegis import restarts
 
@@ -409,6 +413,7 @@ async def test_a_deadline_retry_runs_the_next_attempt_and_ends_it(world):
     await until(lambda: all(restarts.started_at(p) is None for p in pids), timeout=5)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("kind", ["check", "if"])
 async def test_a_stop_ends_a_probe_and_everything_it_started(world, kind):
     marker = world.root / "probed"
@@ -537,6 +542,7 @@ async def test_a_nul_byte_in_a_value_fails_its_command(world, node):
 MEMBER = "(trap '' TERM; exec sleep 30) >/dev/null 2>&1 & echo $! > member && sleep 30"
 
 
+@pytest.mark.slow
 async def test_a_deadline_kills_a_member_that_ignores_sigterm(world):
     from aegis import restarts
 
