@@ -563,12 +563,12 @@ function gatePanel(w, r) {
   return box;
 }
 
-// An edit's panel: the diff in the steps' sentences, the commands it adds,
-// and Apply change and Keep the plan while it is the open proposal.
+// A change in the steps' sentences and the commands it adds: an edit's,
+// or a new definition given when arming again.
 const DIFF_OP = { add: "+", remove: "−", change: "~", move: "→" };
-function editPanel(w, e) {
+function diffPanel(w, diff, commands) {
   const box = el("div", "edit");
-  for (const d of e.diff) {
+  for (const d of diff) {
     const line = el("div", `d ${d.op}`);
     const what = d.key === "$" ? `The workflow's ${d.fields.join(", ").replaceAll("its ", "")}` : d.say;
     const text = el("span", "w", what);
@@ -578,9 +578,16 @@ function editPanel(w, e) {
     if (d.cmd) line.append(el("pre", "cmd", `$ ${d.cmd}`));
     box.append(line);
   }
-  const c = e.commands || w.proposal?.commands || {};
+  const c = commands || {};
   const n = (k, one) => (k ? `${k} ${one}${k > 1 ? "s" : ""}` : null);
   if (c.sh || c.probes) box.append(el("div", "runs", `Adds ${[n(c.sh, "shell command"), n(c.probes, "probe")].filter(Boolean).join(" and ")}, run in ${w.cwd} without asking. Steps that ran keep their results.`));
+  return box;
+}
+
+// An edit's panel: its diff, and Apply change and Keep the plan while it
+// is the open proposal.
+function editPanel(w, e) {
+  const box = diffPanel(w, e.diff, e.commands || w.proposal?.commands);
   if (e.status !== "proposed" || w.status !== "running") {
     box.append(el("div", "out", e.status === "replaced" ? "replaced by a later change" : e.status === "proposed" ? `not applied: the run is ${WF_WORDS[w.status] || w.status}` : e.status));
     return box;
@@ -635,6 +642,8 @@ function fillDecision(card) {
     const kept = leaves.filter((r) => r.state === "done" || r.state === "skipped").length;
     panel = el("div", "again");
     panel.append(el("div", "q", `Run again: ${kept} done step${kept === 1 ? "" : "s"} kept, ${leaves.length - kept} to run`));
+    const line = w.story[Number(key)];
+    if (line?.diff?.length) panel.append(diffPanel(w, line.diff, line.commands));
     if (current && w.status === "armed") {
       state = "waits for you";
       const btns = el("div", "btns");

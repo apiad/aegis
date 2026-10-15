@@ -275,3 +275,29 @@ async def test_arming_again_starts_a_groups_deadline_afresh(world):
     await until(lambda: {"y", "grp"} & set(wf.runs[run].open), timeout=10)
     assert "grp" not in wf.runs[run].open, wf.runs[run].open
     assert wf.runs[run].nodes["y"].error.startswith("exit 3")
+
+
+async def test_arming_again_with_a_command_needs_full_permission(world):
+    waits = (
+        "id: ed\ntitle: Edit\nsay: Edit.\nroot:\n  seq:\n"
+        "    - {wait: 30s, id: build, say: Build.}\n"
+        "  say: One.\n"
+    )
+    main, run = await armed(world, agent="writer", definition=waits)
+    wf = world.app.workflows
+    await world.app.registry.call("workflow.stop", {"run": run})
+    await until(
+        lambda: woke(main, " · stopped · ") and main.status == "idle", timeout=10
+    )
+    shelled = waits.replace("{wait: 30s, id: build", '{sh: "make", id: build')
+    with pytest.raises(OpError) as e:
+        wf.arm(main, shelled, {}, run=run)
+    assert e.value.code == "not_allowed" and "full permission" in e.value.message
+    # A change the session may make is armed with its diff on the story line.
+    later = waits.replace("wait: 30s", "wait: 1s")
+    wf.arm(main, later, {}, run=run)
+    line = wf.runs[run].story[-1]
+    assert line["text"].startswith("Armed again")
+    assert [(d["op"], d["key"]) for d in line["diff"]] == [("change", "build")]
+    card = [e for e in main.entries() if e["kind"] == "workflow_decision"][-1]
+    assert wf.runs[run].story[int(card["detail"]["key"])] is line
