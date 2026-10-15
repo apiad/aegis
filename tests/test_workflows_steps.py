@@ -488,3 +488,29 @@ async def test_a_false_expr_check_fails_at_once(world):
     c = st.nodes["c"]
     assert st.status == "failed" and c.attempts == 0
     assert c.error == "a.out == '7' is false"
+
+
+async def test_a_judge_gives_one_verdict_and_no_early_output(world):
+    j = json.dumps(script(["sleep", 20]))
+    run_id = await run(
+        world,
+        flow(f"{{check: {{judge: {{agent: opus, prompt: {j}}}}}, id: c, say: Judge.}}"),
+    )
+    wf = world.app.workflows
+    await until(
+        lambda: (
+            wf.runs[run_id].nodes.get("c") is not None
+            and wf.runs[run_id].nodes["c"].judges.get("", {}).get("log_id")
+        ),
+        timeout=15,
+    )
+    s = world.app.sessions.sessions[wf.runs[run_id].nodes["c"].judges[""]["log_id"]]
+    with pytest.raises(OpError) as e:
+        wf.output(s, "early", 1, "An early output.")
+    assert e.value.code == "judge"
+    yes = {"pass": True, "why": "It holds."}
+    assert wf.result(s, yes, "It holds.") == {"accepted": True}
+    with pytest.raises(OpError) as e:
+        wf.result(s, {"pass": False, "why": "No."}, "No.")
+    assert e.value.code == "verdict_given"
+    assert wf.runs[run_id].nodes["c"].judges[""]["pass"] is True

@@ -610,6 +610,10 @@ class Workflows:
 
     def output(self, s: Session, name: str, value, summary: str) -> dict:
         st, inst = self._reporting(s, "workflow_output")
+        if (s.workflow or {}).get("probe") == "judge":
+            raise OpError(
+                "judge", "a judge gives only its verdict, with workflow_result"
+            )
         n = st.nodes.get(inst)
         if n is not None and name in n.outputs:
             raise OpError(
@@ -627,6 +631,9 @@ class Workflows:
         st, inst = self._reporting(s, "workflow_result")
         wf_ref = s.workflow or {}
         if wf_ref.get("probe") == "judge":
+            j = st.nodes[inst].judges.get(wf_ref.get("round", "")) or {}
+            if "pass" in j:
+                raise OpError("verdict_given", "this judge gave its verdict already")
             problems = check_value(value, JUDGE_SCHEMA)
             if problems:
                 raise OpError(
