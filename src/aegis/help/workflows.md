@@ -77,7 +77,10 @@ applies. The workflow's `limits`, such as `{total: 4, opus: 2}`, bound this
 run: `total` counts all its agents together, and a number under an agent's
 name counts that agent alone. The server's `workflows: {max_agents: ...}` in
 `.aegis.yaml` has the same shape and bounds every workflow together, 4 in
-total by default. Last comes the quota the server keeps for its owner. An
+total by default. A session a node spawns, or one spawned under it, counts
+in both as an agent of its own alias while the run lives; `session_spawn`
+refuses it with `no_room` when it does not fit, and the node goes on
+without it. Last comes the quota the server keeps for its owner. An
 agent without a number of its own is bound only by the totals, and a `cap`
 above `limits.total` is refused.
 

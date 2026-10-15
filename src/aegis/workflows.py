@@ -636,23 +636,23 @@ class Workflows:
         self._fail(st, inst, "its turn ended twice with no workflow_result")
         return "failed"
 
-    def _room(self, st: RunState, wf: Workflow, node: Node) -> bool:
-        """Whether one more node session fits in every counter that applies:
-        the server's max_agents total and its number for this node's agent
-        alias, counting every live run's open node sessions in the registry
-        (a session whose node is done but not yet closed still holds
-        memory), then the run's limits total and its number for the alias.
-        An alias without a number of its own is bound only by the totals.
-        The quota gate is asked after this."""
-        alias = node.body["agent"]
+    def _room(self, st: RunState, wf: Workflow, alias: str) -> bool:
+        """Whether one more session of agent ``alias`` fits in every counter
+        that applies: the server's max_agents total and its number for the
+        alias, counting every open session that is a live run's node or was
+        spawned under one (a session whose node is done but not yet closed
+        still holds memory), then the run's limits total and its number for
+        the alias, counting the same sessions of this run. An alias without
+        a number of its own is bound only by the totals. The quota gate is
+        asked after this."""
         live = [
-            s
+            (s, run)
             for s in self._reg.sessions.values()
-            if s.workflow and self.live(s.workflow["run"])
+            if (run := self._run_of(s)) is not None and self.live(run)
         ]
-        mine = [s for s in live if (s.workflow or {}).get("run") == st.run]
+        mine = [s for s, run in live if run == st.run]
         pool = self._app.config.current().workflows["max_agents"]
-        for bound, among in ((pool, live), (wf.limits, mine)):
+        for bound, among in ((pool, [s for s, _ in live]), (wf.limits, mine)):
             if len(among) >= bound.get("total", math.inf):
                 return False
             if (
@@ -661,6 +661,23 @@ class Workflows:
             ):
                 return False
         return True
+
+    def admit(self, parent: Session, alias: str) -> None:
+        """Refuse a session that a node, or a session under one, spawns past
+        the pool or its run's limits: it holds memory as a node does. The
+        spawn is refused rather than held, so the node's turn goes on."""
+        run = self._run_of(parent)
+        wf = self.defs.get(run or "")
+        if run is None or wf is None or not self.live(run):
+            return
+        if not self._room(self.runs[run], wf, alias):
+            raise OpError(
+                "no_room",
+                f"you work inside workflow run {run}, and a session you spawn "
+                f"counts in the server's workflows max_agents and the run's "
+                f"limits, which have no room for another {alias}: do the work "
+                "in this session",
+            )
 
     async def _start_agent(
         self, st: RunState, wf: Workflow, node: Node, prefix: str
@@ -694,7 +711,7 @@ class Workflows:
         # it is this node's, so it is adopted rather than doubled.
         s = next((x for x in self._reg.sessions.values() if x.workflow == tag), None)
         if s is None:
-            if not self._room(st, wf, node):
+            if not self._room(st, wf, node.body["agent"]):
                 return False  # a session closing wakes a pass (Registry.archive -> changed)
             g = self._app.gate(spec.owner, spec.harness, spec.model)
             if not g.may_start:
@@ -806,8 +823,11 @@ class Workflows:
         )
 
     def _in_a_node(self, s: Session) -> bool:
-        """Whether ``s`` or any session up its spawned_by line is a node,
-        archived ones read from their meta."""
+        return self._run_of(s) is not None
+
+    def _run_of(self, s: Session) -> str | None:
+        """The run whose node ``s`` is, or the first session up its
+        spawned_by line is, archived ones read from their meta."""
         lid: str | None = s.log_id
         seen: set[str] = set()
         while lid and lid not in seen:
@@ -819,9 +839,9 @@ class Workflows:
                 else self._reg.archived.get(lid) or {}
             )
             if meta.get("workflow"):
-                return True
+                return meta["workflow"].get("run", "")
             lid = meta.get("spawned_by")
-        return False
+        return None
 
     def _check_permission(self, owner: Session, n: Node) -> None:
         agents, default = self._app._agents()
