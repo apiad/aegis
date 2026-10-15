@@ -318,7 +318,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <p>An agent inside a workflow gets three tools and no others from this feature:</p>
 <ul>
   <li><code>workflow_result(value, summary)</code>. The server checks <code>value</code> against the node's <code>result</code> schema and refuses a mismatch, so the agent retries. <code>summary</code> is one plain sentence and is required. The node's output is this call, never the agent's last message.</li>
-  <li><code>workflow_output(name, value, summary)</code>. An early named output while the node keeps running; another node may wait on it with <code>after: [probe.timers]</code>.</li>
+  <li><code>workflow_output(name, value, summary)</code>. An early named output while the node keeps running; another node may wait on it with <code>after: [probe.timers]</code>, which a key of that name in the result also meets. <code>{{probe.timers}}</code> reads the output whatever the result holds.</li>
   <li><code>workflow_ask(question)</code>. Returns at once; the answer arrives in the agent's inbox.</li>
 </ul>
 <p><code>{{…}}</code> in strings and <code>expr</code> probes share one small evaluator, with no <code>eval</code>: references (<code>impl.pr</code>, <code>item.title</code>, <code>args.issue</code>, <code>gate.value</code>), literals, <code>== != &lt; &gt; &lt;= &gt;=</code>, <code>and or not</code>, and <code>or</code> as a default.</p>
@@ -376,6 +376,8 @@ blocks:
   <li>two nodes with the same <code>id</code></li>
   <li>a reference to a node that does not exist, or that may not have finished when it is read: it must come earlier in a <code>seq</code>, or be named in <code>after</code></li>
   <li>a cycle in the <code>after</code> edges, or an <code>after</code> that names the node's own ancestor</li>
+  <li>an <code>after</code> from inside one branch of a <code>par</code> whose <code>cap</code> is below its number of branches to another of its branches: the waiting branch holds its slot, so the other may never start</li>
+  <li>a result schema with a property named like an output some <code>after</code> waits on, since <code>{{node.name}}</code> reads the output</li>
   <li>an <code>agent</code> name not in <code>.aegis.yaml</code></li>
   <li>a <code>loop</code> without <code>max</code>, a <code>cap</code> above the workflow's <code>limits.total</code>, or a limit naming an agent not in <code>.aegis.yaml</code></li>
   <li>a <code>session: &lt;id&gt;</code> naming a node that is not an earlier agent node</li>
@@ -408,7 +410,7 @@ blocks:
 </table>
 
 <h3 id="pool">How many at once</h3>
-<p>A node waits as <code>queued</code> until it has room in every counter that applies: a server-wide <code>workflows: {max_agents: {total: N, &lt;agent&gt;: M}}</code> in <code>.aegis.yaml</code>, because both out-of-memory kills came from too many sessions at once, both its <code>total</code> and the number for the node's agent alias; then the run's <code>limits</code>, the same shape, both its <code>total</code> and the number for the alias; and last the quota gate, the same one schedules wait under. <code>total</code> always counts every agent together; an alias without a number of its own is bound only by the totals. Each session's memory is already capped by <code>session_memory_max</code>.</p>
+<p>A node waits as <code>queued</code> until it has room in every counter that applies: a server-wide <code>workflows: {max_agents: {total: N, &lt;agent&gt;: M}}</code> in <code>.aegis.yaml</code>, because both out-of-memory kills came from too many sessions at once, both its <code>total</code> and the number for the node's agent alias; then the run's <code>limits</code>, the same shape, both its <code>total</code> and the number for the alias; and last the quota gate, the same one schedules wait under. <code>total</code> always counts every agent together; an alias without a number of its own is bound only by the totals. A session a node spawns, or one spawned under it, counts in the server's counters and in its run's as an agent of its own alias, and <code>session_spawn</code> refuses it when it does not fit. A begun branch of a <code>par</code> or <code>map</code> holds its slot of the <code>cap</code> until it finishes, even while a node inside it waits on an <code>after</code>. Each session's memory is already capped by <code>session_memory_max</code>.</p>
 <p>When the root finishes or the run is stopped, the engine archives the finished node sessions, leaves the failed ones open, and sends the main agent one inbox turn headed <code>&gt; from workflow:&lt;id&gt; · done|failed|stopped · …</code> with the results.</p>
 
 <h2 id="main"><span class="n">06</span>The main agent</h2>

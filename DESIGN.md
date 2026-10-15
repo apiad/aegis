@@ -323,7 +323,8 @@ every seq, par and map state is derived from them on each pass, and a node
 inside a map item is named by its instance path (`images.base.impl`). A node
 starts only when it has room under the run's `limits` and the server's
 `workflows: {max_agents}`, in total and for its agent alias, counted from the
-registry's open node sessions, so the bound holds for processes. A node's result is a `workflow_result` call
+registry's open node sessions and every session spawned under one (a spawn
+past the bound is refused), so the bound holds for processes. A node's result is a `workflow_result` call
 checked against its schema, never its last message, and the main agent is
 woken once, when the run ends: a pass and a stop hold one lock, so a run's
 ending is written once. The main agent is the session that armed the run or
