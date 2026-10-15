@@ -247,7 +247,8 @@ class Workflows:
         s = st.nodes.get(inst)
         if node.kind == "agent":
             if s is None or s.status == "pending":
-                return "queued" if inst in self._queued.get(st.run, ()) else "pending"
+                waiting = st.status == "running" and inst in self._queued.get(st.run, ())
+                return "queued" if waiting else "pending"
             return s.status
         if s is not None and s.status in ("failed", "stopped"):
             return s.status  # a map whose items could not be read
@@ -761,6 +762,11 @@ class Workflows:
                 with contextlib.suppress(Exception):
                     await s.interrupt(through_lock=True)
         self._release(st)
+        # Nothing of an ended run waits for room, and the room it held is
+        # free now: a queued node of another run starts on this wake.
+        self._queued.pop(st.run, None)
+        self._publish(st.run)
+        self.changed()
         await self._tell_owner(st, outcome, body)
 
     def _release(self, st: RunState) -> None:
