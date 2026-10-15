@@ -15,6 +15,14 @@ is logged. Seq, par and map have no state of their own here: the engine
 derives it from their leaves. A failure that says ``retrying`` sends its leaf
 back to pending with one more attempt, keeping its early outputs (a step may
 have started on them), in that one record, so no crash lands between the two.
+
+What a run waits on is folded into ``open``, keyed by the id the main agent
+answers to: a failure that will not retry, a gate, a question, an edit's
+outcome. ``woke`` records that the main agent was told, so a restart tells
+again only what was never delivered; the answers (``retried``, ``skipped``,
+``gate_answered``, ``answered``, ``edit_applied``, ``edit_rejected``) close
+the items. A stop or an ending stops only leaves: a loop or an if keeps its
+round and branch, so arming a run again goes on from there.
 """
 
 from __future__ import annotations
@@ -28,7 +36,7 @@ LIVE = frozenset({"armed", "running"})
 
 @dataclass
 class NodeState:
-    # pending | running | done | failed | stopped; queued is never stored.
+    # pending | running | done | failed | stopped | skipped; queued is never stored.
     status: str = "pending"
     log_id: str | None = None
     started: float | None = None
@@ -51,6 +59,8 @@ class NodeState:
     untils: dict[int, dict] = field(default_factory=dict)  # round -> {pass, why}
     # A judge's session and verdict by round ("" for a check or an if).
     judges: dict[str, dict] = field(default_factory=dict)
+    gate: dict | None = None  # {by, ask, shown} once a gate opened
+    main: bool = False  # a session: main step, run in the main agent's session
 
 
 @dataclass
@@ -66,10 +76,41 @@ class RunState:
     ended: float | None = None
     nodes: dict[str, NodeState] = field(default_factory=dict)
     story: list[dict] = field(default_factory=list)
+    version: int = 1
+    replaced_by: str | None = None
+    asks: int = 0  # questions asked so far, for the next q id
+    # What the run waits on, by the id the main agent answers to: a failed
+    # node's or a gate's instance path, a question's q<n>, an edit's v<n>.
+    open: dict[str, dict] = field(default_factory=dict)
+    proposal: dict | None = None  # the edit waiting for the person
+    edits: list[dict] = field(default_factory=list)  # {v, diff, status, t}
 
 
 def _tell(st: RunState, t: float, mark: str, text: str) -> None:
     st.story.append({"t": t, "mark": mark, "text": text})
+
+
+def _stop_leaves(st: RunState, t: float) -> None:
+    """A stop or an ending stops the leaves still running. A loop or an
+    if keeps its own state (round, branch), so arming again keeps it."""
+    for n in st.nodes.values():
+        if n.status == "running" and n.max is None and n.took is None:
+            n.status, n.ended = "stopped", t
+
+
+def _reset(st: RunState, insts: list[str]) -> None:
+    """Each instance back to pending with one attempt more, keeping its early
+    outputs: a retry by the main agent, or arming the run again."""
+    for k in insts:
+        n = st.nodes.get(k)
+        if n is not None:
+            st.nodes[k] = NodeState(attempts=n.attempts + 1, outputs=n.outputs)
+
+
+def _edit_status(st: RunState, v, status: str) -> None:
+    for e in st.edits:
+        if e["v"] == v:
+            e["status"] = status
 
 
 def apply(st: RunState, r: dict) -> None:
@@ -81,9 +122,7 @@ def apply(st: RunState, r: dict) -> None:
     elif ev == "stopped":
         st.status, st.ended = "stopped", t
         # A node the stop interrupted ends with the run, not running forever.
-        for n in st.nodes.values():
-            if n.status == "running":
-                n.status, n.ended = "stopped", t
+        _stop_leaves(st, t)
         _tell(st, t, "bad", "Stopped.")
     elif ev == "finished":
         st.status, st.ended = r.get("status") or "done", t
@@ -91,9 +130,50 @@ def apply(st: RunState, r: dict) -> None:
             _tell(st, t, "ok", "The workflow is done.")
         else:
             # A failure ends the nodes still running beside it, as a stop does.
-            for n in st.nodes.values():
-                if n.status == "running":
-                    n.status, n.ended = "stopped", t
+            _stop_leaves(st, t)
+    elif ev == "replaced":
+        st.status, st.ended, st.replaced_by = "replaced", t, r.get("by")
+    elif ev == "rearmed":
+        st.status, st.ended = "armed", None
+        st.text, st.version = r.get("text") or st.text, int(r.get("v") or st.version)
+        _reset(st, r.get("reset") or [])
+        st.open, st.proposal = {}, None
+        kept = sum(n.status in ("done", "skipped") for n in st.nodes.values())
+        _tell(
+            st,
+            t,
+            "ok",
+            f"Armed again: {kept} done step{'s' if kept != 1 else ''} kept.",
+        )
+    elif ev == "note":
+        _tell(st, t, "note", r.get("text") or "")
+    elif ev == "answered":
+        q, text = r.get("q"), r.get("text") or ""
+        st.open.pop(q, None)
+        _tell(st, t, "ok", f"Answered {q}: {text}".strip())
+    elif ev == "woke":
+        o = st.open.get(r.get("to"))
+        if o is not None:
+            o["told"] = True
+            if o.get("kind") == "edit":
+                del st.open[r["to"]]
+    elif ev == "edit_proposed":
+        if st.proposal is not None:
+            _edit_status(st, st.proposal["v"], "replaced")
+        st.proposal = {
+            k: r.get(k) for k in ("v", "text", "diff", "touched", "commands")
+        }
+        st.edits.append(
+            {"v": r.get("v"), "diff": r.get("diff") or [], "status": "proposed", "t": t}
+        )
+    elif ev in ("edit_applied", "edit_rejected"):
+        v, outcome = r.get("v"), "applied" if ev == "edit_applied" else "rejected"
+        if ev == "edit_applied" and st.proposal is not None and st.proposal["v"] == v:
+            st.text, st.version = st.proposal.get("text") or st.text, int(v)
+        if st.proposal is not None and st.proposal["v"] == v:
+            st.proposal = None
+        _edit_status(st, v, outcome)
+        st.open[f"v{v}"] = {"kind": "edit", "outcome": outcome, "told": False}
     if "node" not in r:
         return
     node = st.nodes.setdefault(r["node"], NodeState())
@@ -101,6 +181,7 @@ def apply(st: RunState, r: dict) -> None:
         node.status, node.log_id, node.started = "running", r.get("log_id"), t
         node.say = r.get("say") or ""
         node.cmd, node.until = r.get("cmd") or "", r.get("until")
+        node.main = bool(r.get("main"))
     elif ev == "result":
         node.result, node.summary = r.get("value"), r.get("summary") or ""
     elif ev == "nudged":
@@ -123,6 +204,65 @@ def apply(st: RunState, r: dict) -> None:
         _tell(st, t, "bad", text.strip())
         if r.get("retrying"):
             _retry(st, r["node"])
+        else:
+            # It waits on the main agent; what failed inside it waits no more.
+            for k in r.get("closes") or []:
+                st.open.pop(k, None)
+            st.open[r["node"]] = {
+                "kind": "failed",
+                "node": r["node"],
+                "error": node.error,
+                "told": r.get("by") == "main",
+            }
+    elif ev == "retried":
+        st.open.pop(r["node"], None)
+        say, text = node.say, r.get("text") or ""
+        _reset(st, r.get("reset") or [r["node"]])
+        _tell(st, t, "ok", f"Retrying {say}" + (f" {text}" if text else ""))
+    elif ev == "skipped":
+        st.open.pop(r["node"], None)
+        node.status, node.ended = "skipped", t
+        node.result, node.summary = r.get("value"), r.get("summary") or ""
+        _tell(st, t, "ok", f"{node.say} Skipped: {node.summary}".strip())
+    elif ev == "gate_opened":
+        node.status, node.started = "running", t
+        node.say = r.get("say") or node.say
+        node.gate = {k: r.get(k) for k in ("by", "ask", "shown")}
+        st.open[r["node"]] = {
+            "kind": "gate",
+            "node": r["node"],
+            "by": r.get("by"),
+            "told": r.get("by") == "person",
+        }
+        who = "the person" if r.get("by") == "person" else "the main agent"
+        _tell(st, t, "ask", f"{node.say} Asks {who}: {r.get('ask') or ''}".strip())
+    elif ev == "gate_answered":
+        st.open.pop(r["node"], None)
+        text = r.get("text") or ""
+        if r.get("go"):
+            node.status, node.ended = "done", t
+            node.result = {"value": r.get("value"), "by": r.get("by")}
+            who = "the person" if r.get("by") == "person" else "the main agent"
+            node.summary = f"Continued by {who}" + (f": {text}" if text else ".")
+            _tell(st, t, "ok", f"{node.say} {node.summary}")
+        else:
+            node.status, node.ended = "stopped", t
+            _tell(
+                st,
+                t,
+                "bad",
+                f"{node.say} Stopped there" + (f": {text}" if text else "."),
+            )
+    elif ev == "asked":
+        st.asks += 1
+        st.open[r["q"]] = {
+            "kind": "ask",
+            "node": r["node"],
+            "question": r.get("question") or "",
+            "told": False,
+        }
+        q = r.get("question") or ""
+        _tell(st, t, "ask", f"{node.say} Asks the main agent ({r['q']}): {q}".strip())
     elif ev == "pid":
         node.pid, node.pstart = r.get("pid"), r.get("start")
     elif ev == "judge_started":
@@ -180,6 +320,7 @@ def fold(records: list[dict]) -> RunState | None:
                 r.get("args") or {},
                 created=float(r.get("t") or 0),
                 cwd=r.get("cwd") or "",
+                version=int(r.get("v") or 1),
             )
         elif st is not None:
             apply(st, r)
