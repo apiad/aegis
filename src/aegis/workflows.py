@@ -379,6 +379,8 @@ class Workflows:
         prefix = inst[: -len(node.id)]
         each = row.get("each", False)
         row["state"] = "pending" if each else self._state(st, node, inst)
+        if not each and (st.nodes.get(inst) or NodeState()).status == "skipped":
+            row["state"] = "skipped"  # done for the engine, drawn as skipped
         took = (st.nodes.get(row.get("if", "")) or NodeState()).took
         if row.get("branch") and took is not None and took != row["branch"]:
             row["state"] = "skipped"
@@ -432,6 +434,8 @@ class Workflows:
         or stopped. A leaf's comes from the log (queued from the last
         pass's room check); a seq's, par's and map's from their children's."""
         s = st.nodes.get(inst)
+        if s is not None and s.status == "skipped":
+            return "done"  # the main agent went on without it
         if node.kind in LEAVES:
             if s is None or s.status == "pending":
                 # An ended run queues nothing.
@@ -771,8 +775,11 @@ class Workflows:
 
     async def _move(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
         """One instance's move. A node not begun checks its after on every
-        pass; once begun it is not checked again."""
+        pass; once begun it is not checked again. A skipped one is done."""
         inst = prefix + node.id
+        mine = st.nodes.get(inst)
+        if mine is not None and mine.status == "skipped":
+            return "done"
         if node.after and self._state(st, node, inst) in ("pending", "queued"):
             for a in node.after:
                 met = self._met(st, wf, node, prefix, a)
@@ -1777,7 +1784,33 @@ class Workflows:
                     f"nothing in run {run} waits on {to}; workflow_status lists what does",
                 )
             text = (text or "").strip()
-            if o["kind"] == "failed" and choice == "fail":
+            wf = self.defs[run]
+            if o["kind"] == "failed" and choice == "retry":
+                reset = self._reset_list(st, wf, to)
+                self._log(
+                    st.run, {"ev": "retried", "node": to, "reset": reset, "text": text}
+                )
+                self.changed()
+            elif o["kind"] == "failed" and choice == "skip":
+                node = self._template(wf, to)
+                schema = node.body.get("result") if node.kind == "agent" else None
+                if (
+                    value is not None
+                    and schema
+                    and (problems := check_value(value, schema))
+                ):
+                    raise OpError(
+                        "bad_result",
+                        "the value does not match the step's result schema: "
+                        + "; ".join(problems),
+                    )
+                summary = text or "Skipped by the main agent."
+                self._log(
+                    st.run,
+                    {"ev": "skipped", "node": to, "value": value, "summary": summary},
+                )
+                self.changed()
+            elif o["kind"] == "failed" and choice == "fail":
                 n = st.nodes[to]
                 why = f"{n.say} failed: {n.error}" + (
                     f" You ended the run: {text}" if text else " You ended the run."
@@ -1788,6 +1821,32 @@ class Workflows:
                 raise OpError(
                     "bad_choice", f"{to} is a {o['kind']} item: it takes choice {takes}"
                 )
+
+    def _reset_list(self, st: RunState, wf: Workflow, inst: str) -> list[str]:
+        """What a retry sends back to pending: every logged instance inside
+        the node, itself included, so a group runs again whole."""
+        return [k for k, _ in self._under(st, self._template(wf, inst), inst)]
+
+    async def stop_node(self, run: str, inst: str) -> None:
+        """Stop one running leaf: interrupt it and fail it as told, so the
+        main agent edits, retries or skips it. The run goes on."""
+        async with self._lock:
+            st = self._get(run)
+            wf = self.defs.get(run)
+            n = st.nodes.get(inst)
+            tpl = wf.by_key.get(template_key(inst)) if wf else None
+            if (
+                st.status != "running"
+                or n is None
+                or n.status != "running"
+                or tpl is None
+                or tpl.kind not in LEAVES
+            ):
+                raise OpError(
+                    "not_running", f"{inst} is not a running step of run {run}"
+                )
+            await self._halt(st, inst, n)
+            self._fail(st, inst, "stopped by the main agent", retry=False, by="main")
 
     async def _tell_owner(self, st: RunState, outcome: str, body: str) -> None:
         owner = self.owner(st)
@@ -1801,13 +1860,22 @@ class Workflows:
             log.exception("aegis: could not tell %s how run %s ended", st.owner, st.run)
 
     def _fail(
-        self, st: RunState, node: str, why: str, say: str = "", retry: bool = True
+        self,
+        st: RunState,
+        node: str,
+        why: str,
+        say: str = "",
+        retry: bool = True,
+        by: str = "",
     ) -> None:
         """Fail one node, or send it back to pending while it has retries
         left. ``retry`` False marks a failure a retry would only repeat (a
-        reference with no value, a cut command)."""
-        rec = {"ev": "failed", "node": node, "error": why} | (
-            {"say": say} if say else {}
+        reference with no value, a cut command). ``by`` main marks a failure
+        the main agent caused itself, so it is not told of it."""
+        rec = (
+            {"ev": "failed", "node": node, "error": why}
+            | ({"say": say} if say else {})
+            | ({"by": by} if by else {})
         )
         wf = self.defs.get(st.run)
         tpl = wf.by_key.get(template_key(node)) if wf else None
