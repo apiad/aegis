@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -169,7 +170,9 @@ class Clock:
         self._since.pop(log_id, None)
 
 
-EVERY_S = 30.0
+# The environment variable is for the browser tests only, whose server runs as
+# a separate process and cannot patch this module.
+EVERY_S = float(os.environ.get("AEGIS_PARK_EVERY_S", "30"))
 
 
 class Watchers:

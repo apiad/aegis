@@ -606,6 +606,8 @@ body{background:#000}
 .a2 .card.quiet{opacity:.55;border-style:dashed}
 .a2 .card.quiet:hover,.a2 .card.quiet:focus-within,.a2 .card.quiet.sel{opacity:1}
 .a2 .card .hd .zz{font-family:var(--font-chrome);font-size:10.5px;color:var(--muted);border:1px solid var(--rule);border-radius:999px;padding:0 6px}
+.a2 .card .hd .zz.pk{color:var(--comms);border-color:var(--comms)}
+.a2 .parked-count{font-family:var(--font-chrome);font-size:11px;color:var(--comms)}
 .a2 .card.finished{opacity:.5}
 .a2 .card.finished:hover,.a2 .card.finished:focus-within,.a2 .card.finished.sel{opacity:1}
 .a2 .card.stopped.at-error{opacity:1}
