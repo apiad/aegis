@@ -191,6 +191,7 @@ async def handed_off(world, main):
     return reg.sessions[new["log_id"]]
 
 
+@pytest.mark.slow
 async def test_a_run_follows_its_main_agent_through_a_handoff(world):
     main = await world.spawn()
     wf = world.app.workflows

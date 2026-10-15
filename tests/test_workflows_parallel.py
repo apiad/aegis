@@ -54,6 +54,7 @@ def overlap(a: list, b: list) -> bool:
     return any(s1 < e2 and s2 < e1 for s1, e1 in a for s2, e2 in b)
 
 
+@pytest.mark.slow
 async def test_a_map_with_cap_one_runs_its_items_in_turn(world):
     wf_text = f"""
 id: turns
@@ -109,6 +110,7 @@ root:
     await until(lambda: slow.status != "working", timeout=5)  # interrupted
 
 
+@pytest.mark.slow
 async def test_a_restart_mid_map_keeps_its_items_and_its_cap(world):
     wf_text = f"""
 id: again
@@ -158,6 +160,7 @@ root:
 """
 
 
+@pytest.mark.slow
 async def test_two_maps_never_have_more_than_max_agents_sessions_live(world):
     """Spec §12. The pool is max_agents: 2 (the fixture's .aegis.yaml); six
     items want six sessions at once. Every spawn is counted the moment it
@@ -219,6 +222,7 @@ def peaks(world) -> dict:
     return peak
 
 
+@pytest.mark.slow
 async def test_the_server_bounds_one_alias_while_another_runs_beside_it(world):
     (world.root / ".aegis.yaml").write_text(
         TWO + "workflows: {max_agents: {total: 4, opus: 1}}\n"
@@ -245,6 +249,7 @@ root:
     assert overlap(spans(st, "o1"), spans(st, "h1"))
 
 
+@pytest.mark.slow
 async def test_limits_bound_a_run_in_all_and_per_alias(world):
     (world.root / ".aegis.yaml").write_text(TWO + "workflows: {max_agents: 4}\n")
     peak = peaks(world)
@@ -298,6 +303,7 @@ root:
     assert base.ended <= mk.started < svc.ended
 
 
+@pytest.mark.slow
 async def test_a_node_starts_on_an_early_output_and_reads_it(world):
     (world.root / ".aegis.yaml").write_text(CONFIG + "workflows: {max_agents: 4}\n")
     probe = script(

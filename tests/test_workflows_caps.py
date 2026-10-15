@@ -2,6 +2,7 @@
 and fake agents: a branch blocked between two nodes on an after still holds
 its slot."""
 
+import pytest
 from .conftest import until
 from .test_agents import CONFIG
 from . import test_workflows_parallel
@@ -10,6 +11,7 @@ from .test_workflows_parallel import arm, leaf, overlap, report, script, spans
 world = test_workflows_parallel.world  # the fixture, shared
 
 
+@pytest.mark.slow
 async def test_a_branch_waiting_between_nodes_holds_its_slot(world):
     (world.root / ".aegis.yaml").write_text(CONFIG + "workflows: {max_agents: 4}\n")
     give = script(

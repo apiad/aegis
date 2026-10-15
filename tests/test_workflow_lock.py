@@ -131,6 +131,7 @@ async def test_the_fleet_does_not_nudge_a_node(world, monkeypatch):
     assert not inbox(node)
 
 
+@pytest.mark.slow
 async def test_a_nodes_own_monitor_still_wakes_it(world, tmp_path):
     node = await world.spawn()
     flag = tmp_path / "flag"

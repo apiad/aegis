@@ -3,6 +3,8 @@ worked example (RFC 8291, Appendix A) and by decrypting as a browser would."""
 
 import json
 
+import pytest
+
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
@@ -95,6 +97,7 @@ def test_the_key_is_made_once_and_kept_private(tmp_path):
     assert path.stat().st_mode & 0o777 == 0o600
 
 
+@pytest.mark.slow
 def test_the_server_loads_cryptography_only_when_it_pushes():
     # cryptography's bindings cost the server about 7 MB of resident memory
     # (#345), and a server nobody subscribed to never signs or encrypts.
