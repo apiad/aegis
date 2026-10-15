@@ -880,7 +880,7 @@ def test_a_gate_takes_no_retries():
 </div>
 </details>
 
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">Gates in the engine: the main agent's and the person's</span><span class="files">workflows.py · workflow_ops.py · transcript/entries.py · tests/test_workflows_gates.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1910,6 +1910,7 @@ In <code>fillWorkflow</code>: a <code>replaced</code> run draws its bar and one 
   <li>Task 2: <code>stopped</code> and <code>finished</code> clear <code>RunState.open</code> in the fold (an ended run waits on nothing), and a failed or stopped ending's reason is logged as <code>finished.why</code> and becomes the story's last line, so the main agent's <code>fail</code> text reaches the story. The fold already read <code>why</code>; <code>_end</code> now passes its body for every ending but done.</li>
   <li>Task 2: <code>test_the_runs_deadline_ends_it_without_asking</code> is marked slow: it waits on a 2 s deadline and runs close to the 3 s bound under <code>-n auto</code>.</li>
   <li>Task 3: the planned break-it (<code>_state</code> returns skipped) cannot fail the skip test: <code>_move</code>'s own skipped check returns done, so a seq moves on whatever <code>_state</code> says. The break-it that fails it drops the check in <code>_move</code> (the row then reads done, because <code>_agent</code> settles the skipped node's session as done). <code>_state</code>'s check stays: <code>after</code> and par/map folding read it. <code>stop_node</code> fails the node through <code>_fail</code>, which gained a <code>by</code> argument.</li>
+  <li>Task 5: the decision entry's id is <code>wfd-&lt;run&gt;-&lt;what&gt;-&lt;key&gt;</code>, as the plan's step writes it (its interface line says <code>wfd-&lt;run&gt;-&lt;key&gt;</code>). <code>answer</code> holds the lock, so it calls an unlocked <code>_answer_gate</code>; the person's <code>answer_gate</code> takes the lock and calls the same. A gate's row also carries <code>ask</code> and <code>shown</code> as opened, for the card in task 11.</li>
   <li>Task 2: the plan named <code>give_up</code> for <code>ended()</code> and the tests that waited on <code>status == "failed"</code>; <code>test_a_running_sh_with_no_task_is_cut_and_not_retried</code> also needed it, and now asserts the cut sh is an open failure before giving up.</li>
 </ul>
 </main>

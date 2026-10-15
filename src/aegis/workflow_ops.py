@@ -3,6 +3,7 @@
 Approving and rejecting are a person's: neither is marked for agents, so no
 MCP tool reaches them (ops.Registry.call refuses ``not_for_agents``). That is
 the whole of "an agent never starts a workflow without a person's click".
+Answering a person's gate is the same: ``workflow.gate`` is not for agents.
 """
 
 from __future__ import annotations
@@ -81,6 +82,13 @@ class Answer(_Strict):
     )
 
 
+class GateAnswer(_Strict):
+    run: str
+    node: str
+    go: bool
+    answer: str = ""
+
+
 def register_workflow_ops(app: App) -> None:
     r, wf, reg = app.registry, app.workflows, app.sessions
 
@@ -154,6 +162,13 @@ def register_workflow_ops(app: App) -> None:
         names what to answer."""
         owned(p.run, caller)
         await wf.answer(me(caller), p.run, p.to, p.choice, p.value, p.text)
+        return wf.wire(p.run)
+
+    # Not marked for agents: only a person answers a by: person gate.
+    @r.op("workflow.gate", GateAnswer)
+    async def workflow_gate(p: GateAnswer, caller):
+        owned(p.run, caller)
+        await wf.answer_gate(p.run, p.node, p.go, p.answer, by="person")
         return wf.wire(p.run)
 
     @r.op("workflow.status", RunName, agent=True, read=True)
