@@ -12,9 +12,9 @@ A map's items are recorded once, when it starts, so a restart never renders
 its ``over`` again; an if's branch, a loop's max and each round's until are
 recorded the same way, so a restart never asks a probe again once its answer
 is logged. Seq, par and map have no state of their own here: the engine
-derives it from their leaves. A ``retry`` record sends a leaf back to pending
-with one more attempt, keeping its early outputs: a step may have started on
-them.
+derives it from their leaves. A failure that says ``retrying`` sends its leaf
+back to pending with one more attempt, keeping its early outputs (a step may
+have started on them), in that one record, so no crash lands between the two.
 """
 
 from __future__ import annotations
@@ -121,6 +121,8 @@ def apply(st: RunState, r: dict) -> None:
         if r.get("retrying"):
             text += f" Retrying, attempt {r['retrying']} of {r.get('of')}."
         _tell(st, t, "bad", text.strip())
+        if r.get("retrying"):
+            _retry(st, r["node"])
     elif ev == "pid":
         node.pid, node.pstart = r.get("pid"), r.get("start")
     elif ev == "judge_started":
@@ -140,7 +142,9 @@ def apply(st: RunState, r: dict) -> None:
         why = f": {r['why']}" if r.get("why") else "."
         _tell(st, t, "ok", f"{node.say} Took {node.took}{why}".strip())
     elif ev == "loop_started":
-        node.max, node.round, node.started = r.get("max"), 0, t
+        # Round 1 begins with the loop, so a crash after this record still
+        # runs round 1, not a round 0. Older logs follow with a round record.
+        node.max, node.round, node.started = r.get("max"), int(r.get("round") or 1), t
         node.status, node.say = "running", r.get("say") or ""
     elif ev == "round":
         node.round = int(r.get("n") or 0)
@@ -155,9 +159,14 @@ def apply(st: RunState, r: dict) -> None:
                 f"{node.say} Round {n}" + (f": {r['why']}" if r.get("why") else ".")
             ).strip(),
         )
-    elif ev == "retry":
-        attempts, outputs, say = node.attempts + 1, node.outputs, node.say
-        st.nodes[r["node"]] = NodeState(attempts=attempts, outputs=outputs, say=say)
+    elif ev == "retry" and node.status == "failed":
+        _retry(st, r["node"])  # older logs: the failure did not retry itself
+
+
+def _retry(st: RunState, inst: str) -> None:
+    """Back to pending with one more attempt, keeping its early outputs."""
+    n = st.nodes[inst]
+    st.nodes[inst] = NodeState(attempts=n.attempts + 1, outputs=n.outputs, say=n.say)
 
 
 def fold(records: list[dict]) -> RunState | None:

@@ -843,10 +843,8 @@ class Workflows:
                 why = f"max is {mx!r}, not a whole number from 1 to {MAX_ROUNDS}"
                 self._fail(st, inst, why, say, retry=False)
                 return "failed"
-            self._log(
-                st.run, {"ev": "loop_started", "node": inst, "max": mx, "say": say}
-            )
-            self._log(st.run, {"ev": "round", "node": inst, "n": 1})
+            rec = {"ev": "loop_started", "node": inst, "max": mx, "round": 1}
+            self._log(st.run, rec | {"say": say})
             n = st.nodes[inst]
         k, do = n.round, node.children[0]
         mx = n.max or 0
@@ -1669,8 +1667,8 @@ class Workflows:
         tpl = wf.by_key.get(template_key(node)) if wf else None
         tried = (st.nodes.get(node) or NodeState()).attempts
         if retry and tpl is not None and tried < tpl.retries:
+            # One record fails it and sends it back to pending (workflow_log).
             self._log(st.run, rec | {"retrying": tried + 2, "of": tpl.retries + 1})
-            self._log(st.run, {"ev": "retry", "node": node})
             self.changed()
             return
         self._log(st.run, rec)
