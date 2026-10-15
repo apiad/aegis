@@ -531,3 +531,19 @@ async def test_a_nul_byte_in_a_value_fails_its_command(world, node):
     s = st.nodes["s"]
     assert st.status == "failed" and s.attempts == 0
     assert s.error == "the command holds a NUL byte, which bash cannot take"
+
+
+# The member holds no pipe of the leader's, so nothing waits on it.
+MEMBER = "(trap '' TERM; exec sleep 30) >/dev/null 2>&1 & echo $! > member && sleep 30"
+
+
+async def test_a_deadline_kills_a_member_that_ignores_sigterm(world):
+    from aegis import restarts
+
+    run_id = await run(
+        world, flow(f"{{sh: {json.dumps(MEMBER)}, id: s, deadline: 2s, say: Stub.}}")
+    )
+    st = await ended(world, run_id, timeout=15)
+    assert st.status == "failed"
+    pid = int((world.root / "member").read_text())
+    await until(lambda: restarts.started_at(pid) is None, timeout=5)

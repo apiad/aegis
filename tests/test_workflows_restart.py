@@ -256,3 +256,26 @@ async def test_a_crash_between_a_failure_and_its_retry_still_retries(world):  # 
     st = await ended(world, run_id, timeout=20)
     assert st.status == "done", st.nodes["s"].error
     assert st.nodes["s"].attempts == 1
+
+
+async def test_boot_ends_a_group_whose_leader_is_gone(world, monkeypatch):  # noqa: F811
+    import os
+    import signal
+
+    from .test_workflows_steps import MEMBER
+
+    run_id = await run(world, flow(f"{{sh: {json.dumps(MEMBER)}, id: s, say: Stub.}}"))
+    await running(world, run_id, "s", lambda n: n.pid)
+    await until(lambda: (world.root / "member").exists(), timeout=5)
+    leader = world.app.workflows.runs[run_id].nodes["s"].pid
+    member = int((world.root / "member").read_text())
+    monkeypatch.setattr("os.killpg", lambda *a: None)  # a crash: nothing ends it
+    await world.stop()
+    monkeypatch.undo()
+    os.kill(leader, signal.SIGKILL)  # the leader went; its member lives on
+    await until(lambda: restarts.started_at(leader) is None, timeout=5)
+    assert restarts.started_at(member) is not None
+    await world.start()
+    await until(lambda: restarts.started_at(member) is None, timeout=5)
+    st = await ended(world, run_id)
+    assert st.nodes["s"].error.startswith("cut by restart")

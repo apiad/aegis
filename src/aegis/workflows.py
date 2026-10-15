@@ -98,7 +98,9 @@ async def _tail(stream) -> str:
 async def run_sh(cmd: str, cwd: str, on_pid) -> tuple[int, str, str]:
     """An sh node's command under bash in its own process group, so a
     deadline, a stop or a shutdown ends everything it started: cancelling
-    the task ends the group, SIGTERM first and SIGKILL 2 s later."""
+    the task ends the group, SIGTERM first and SIGKILL 2 s later, or as
+    soon as the group is empty. The SIGKILL goes even when bash has
+    exited, since a member may ignore SIGTERM and outlive it."""
     proc = await asyncio.create_subprocess_exec(
         "bash",
         "-c",
@@ -113,12 +115,15 @@ async def run_sh(cmd: str, cwd: str, on_pid) -> tuple[int, str, str]:
         out, err = await asyncio.gather(_tail(proc.stdout), _tail(proc.stderr))
         await proc.wait()
     except asyncio.CancelledError:
-        for sig in (signal.SIGTERM, signal.SIGKILL):
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(proc.pid, sig)
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(asyncio.shield(proc.wait()), 2)
-                break
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGTERM)
+        end = time.monotonic() + 2
+        while time.monotonic() < end and restarts.group_alive(proc.pid):
+            await asyncio.sleep(0.05)
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(asyncio.shield(proc.wait()), 2)
         raise
     return proc.returncode or 0, out, err
 
@@ -202,7 +207,7 @@ class Workflows:
                 # any pass, so a cut sh is never still running (spec §05).
                 for n in st.nodes.values():
                     if n.status == "running" and n.pid:
-                        restarts.end_leftover(n.pid, n.pstart)
+                        restarts.end_group(n.pid, n.pstart)
                 wf, errors = parse(st.text, self._agents())
                 if wf is None:
                     why = f"its definition no longer lints: {errors[0].message}"

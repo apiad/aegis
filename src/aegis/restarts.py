@@ -164,6 +164,40 @@ def end_leftover(pid: int | None, started: int | None, wait_s: float = 3.0) -> b
     return True
 
 
+def group_alive(pgid: int) -> bool:
+    """Whether any process is left in group ``pgid``."""
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def end_group(pid: int | None, started: int | None, wait_s: float = 3.0) -> bool:
+    """End the process group a crashed server's command led, its members
+    too, even when the leader has exited: a member may ignore SIGTERM or
+    outlive bash. A leader still alive must be the same process (same
+    start time), or the pid was reused and nothing is signalled; a group
+    with members left keeps its id, which no new process can take. SIGKILL
+    follows SIGTERM after ``wait_s``, or once the group is empty. True when
+    a group was signalled."""
+    if not pid or started is None:
+        return False
+    now = started_at(pid)
+    if now is not None and now != started:
+        return False
+    if not group_alive(pid):
+        return False
+    _signal(pid, True, signal.SIGTERM)
+    end = time.monotonic() + wait_s
+    while time.monotonic() < end and group_alive(pid):
+        time.sleep(0.05)
+    _signal(pid, True, signal.SIGKILL)
+    return True
+
+
 def _leads_group(pid: int) -> bool:
     try:
         return os.getpgid(pid) == pid
