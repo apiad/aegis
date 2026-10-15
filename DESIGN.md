@@ -285,7 +285,8 @@ the errors in a row from it (`schedule_log.py`), so nothing is stored twice. A
 run ends on `Registry.finished`, the test a queue's task ends on, which also
 waits for the run's working children. A run with `spawn: false` is refused the
 operations that start work in `ops.Registry.call`, so the rule holds for every
-harness.
+harness. The view, `js/schedules.js`, draws what the `schedules` channel sends
+and edits through the same operations agents use.
 
 **Agents change only what they created.** An agent reads and messages any session
 it can see (and, through `peer_read`, the archived session it continues), and changes only its own monitors, its own session's names and the
