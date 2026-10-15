@@ -370,7 +370,7 @@ ACROSS = (
 # What an agent here may learn of a linked server, all of it composed here from
 # values checked here: the far server may be hostile, so none of its text is
 # passed on (DESIGN.md, "A link is a client").
-FAR_STATES = frozenset({"idle", "working", "stopped", "error"})
+FAR_STATES = frozenset({"idle", "working", "stopped", "error", "parked"})
 FAR_ERRORS = {
     "no_session": "no open session {handle}@{server}",
     "archived": "{handle}@{server} is archived",

@@ -360,6 +360,7 @@ class Registry(Host):
             created_at=meta.get("created_at"),
             last_activity=meta.get("last_activity"),
             last_status=meta.get("last_status") or "stopped",
+            parked_rss=meta.get("parked_rss") or 0,
             cost_usd=meta.get("cost_usd"),
             context_tokens=meta.get("context_tokens"),
             context_window=meta.get("context_window"),
