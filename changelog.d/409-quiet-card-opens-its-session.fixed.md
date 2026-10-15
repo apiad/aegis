@@ -1,0 +1,1 @@
+- **A click on a quiet session's card opens that session.** While the session was working, the click could open the tab next to it instead: an update to the card that crossed the click left the page believing the session was still quiet.

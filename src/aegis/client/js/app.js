@@ -852,10 +852,13 @@ function leaveIfQuieted(r) {
 
 // A click on a quiet card brings the session back to the tab bar, then opens it.
 async function openCard(key) {
-  const m = sessions.get(key);
-  if (m?.quiet) {
+  if (sessions.get(key)?.quiet) {
     try {
-      Object.assign(m, await callFor(key, "session.unquiet"), { quiet: false });
+      const back = await callFor(key, "session.unquiet");
+      // Read again: a patch the server sent before the unquiet may have
+      // replaced the meta meanwhile, still quiet, and the page would leave it.
+      const m = sessions.get(key);
+      if (m) Object.assign(m, back, { quiet: false });
     } catch (e) {
       toast(e.message, { kind: "error" });
       return;
