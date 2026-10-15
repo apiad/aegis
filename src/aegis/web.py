@@ -487,6 +487,7 @@ def build_web(
         write_task = asyncio.create_task(writer())
         subs: dict[str, Sub] = {}
         forwarded: dict[str, tuple] = {}  # sid -> (link, server, channel)
+        watched_far: set[str] = set()  # servers told this socket watches there
         calls: set[asyncio.Task] = set()
 
         def restamp(server: str, channel: str):
@@ -561,6 +562,24 @@ def build_web(
                                 "error": {"code": e.code, "message": e.message},
                             }
                         )
+                elif t == "watch":
+                    # Which session this page shows while it is visible (park.py).
+                    sess = msg.get("session")
+                    log_id = (
+                        sess if isinstance(sess, str) and msg.get("visible") else None
+                    )
+                    server = msg.get("server")
+                    try:
+                        link = far(server)
+                    except OpError:
+                        continue
+                    if link is not None:
+                        link.watch(f"{bid}:{server}", log_id)
+                        watched_far.add(server)
+                    elif caller.link and isinstance(msg.get("sid"), str):
+                        app.watchers.watch(f"{bid}:{msg['sid']}", log_id)
+                    else:
+                        app.watchers.watch(bid, log_id)
         except (WebSocketDisconnect, ValueError, RuntimeError):
             pass
         finally:
@@ -568,6 +587,14 @@ def build_web(
                 app.channels.unsubscribe(sub)
             for sid, (link, _, _) in forwarded.items():
                 link.unsub(sid)
+            app.watchers.drop(bid)
+            for server in watched_far:
+                try:
+                    link = far(server)
+                except OpError:
+                    continue
+                if link is not None:
+                    link.watch(f"{bid}:{server}", None)
             write_task.cancel()
 
     @contextlib.asynccontextmanager

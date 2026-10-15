@@ -1351,6 +1351,14 @@ class App:
         async def stop(p: LogParams, caller):
             await reg.open(p.log_id).stop()
 
+        @r.op("session.warm", LogParams, owned="log_id")
+        async def warm(p: LogParams, caller):
+            # Someone started typing to a parked session: start its harness while
+            # they write (park.py). A closed quota gate starts nothing.
+            s = reg.open(p.log_id)
+            if s.status == "parked" and not reg.quota_hold(s):
+                await s.ensure_running()
+
         @r.op("session.unquiet", LogParams, owned="log_id")
         async def unquiet(p: LogParams, caller):
             return reg.set_quiet(p.log_id, False)
