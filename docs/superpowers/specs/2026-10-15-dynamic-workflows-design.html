@@ -231,7 +231,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <li>a lint that refuses a broken workflow before anyone is asked to approve it;</li>
   <li>an approval card in the transcript, which only a person can press;</li>
   <li>an engine in the server that runs the tree, survives restarts, and keeps its state in a log it folds at boot;</li>
-  <li>a live view that says what is happening now, what went well and what failed, and that docks as the session's main view;</li>
+  <li>a live view that says what is happening now, what went well and what failed, which is a new kind of canvas item: it opens full screen, docks and moves between windows exactly as files and artifacts do;</li>
   <li>saved workflows run with <code>/workflow &lt;id&gt; &lt;text&gt;</code>, including from schedules, and <code>/loop</code> shipped as a built-in workflow;</li>
   <li>schedules an agent creates are born paused until a person approves them.</li>
 </ul>
@@ -256,6 +256,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
     <tr><td>Leads</td><td>The engine replaces them; <code>session:</code> reuses a session when context must carry over</td><td class="why">Most of a lead's work in the transcripts was relaying, which the engine absorbs.</td></tr>
     <tr><td>Results</td><td>A <code>workflow_result</code> call checked against the node's schema, with a one-line summary</td><td class="why">A worker's last message was twice not its report. The summary feeds the live story without any extra model call.</td></tr>
     <tr><td>An <code>sh</code> cut by a restart</td><td>Not run again; the main agent decides</td><td class="why">A merge run twice must not happen silently. Probes have no side effects and are simply rerun.</td></tr>
+    <tr><td>Showing the run</td><td>A new kind of canvas item, docked and opened full screen by the mechanism files and artifacts already use <span class="who">maintainer</span></td><td class="why">Nothing special for workflows: one way to dock anything, which people already know.</td></tr>
     <tr><td>Changing a running node</td><td>Stop it and retry with the new prompt</td><td class="why">Edits touch only nodes not yet started, so nothing ever writes into a locked session.</td></tr>
   </tbody>
 </table>
@@ -423,7 +424,7 @@ workflow_arm(id, args, token). Schema: {…}  Text: "issue 197, the slices in th
   <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
   <tbody>
     <tr><td>workflow_lint</td><td>Returns the errors with their YAML paths. Starts nothing.</td></tr>
-    <tr><td>workflow_arm</td><td>Takes a definition or a saved id, the args and an optional token. Lints, creates the run, shows the card or starts it. With <code>run=</code> it arms a stopped run again, replaying its finished nodes from the log, and needs a new click.</td></tr>
+    <tr><td>workflow_arm</td><td>Takes a definition or a saved id, the args, an optional token and an optional <code>dock</code>. Lints, creates the run, shows the card or starts it. With <code>run=</code> it arms a stopped run again, replaying its finished nodes from the log, and needs a new click.</td></tr>
     <tr><td>workflow_save</td><td>Writes <code>.aegis/workflows/&lt;id&gt;.yaml</code>. No approval: running always needs one.</td></tr>
     <tr><td>workflow_status</td><td>The tree with each node's state, session, times, outputs and summaries.</td></tr>
     <tr><td>workflow_answer</td><td>Answers a <code>by: main</code> gate or a worker's question.</td></tr>
@@ -448,7 +449,7 @@ workflow_arm(id, args, token). Schema: {…}  Text: "issue 197, the slices in th
 <p>Before approval, the person asks for changes in the chat; the main agent arms a new version and the old card collapses to "replaced by v2". During a run, <code>workflow_edit</code> sends the whole definition back with the same ids. The lint adds two rules: no node that has started is changed or removed, and every new reference resolves. The person approves a diff written in the nodes' <code>say</code> lines, not in YAML. Until then the run continues; a node the edit touches that becomes ready in the meantime waits for the answer. Changing the brief of a node already running is not an edit: it is stop that node and retry it with the new prompt.</p>
 
 <h2 id="view"><span class="n">07</span>What the person sees</h2>
-<p>The same card lives in three places. Under the <code>workflow_arm</code> call it is the plan to approve. Once approved it stays live where it is, and it docks as the session's main view, with the transcript beside it; the person can undock it. Its parts:</p>
+<p>A workflow is a new kind of canvas item, beside files and artifacts, and it follows their rules with nothing added: its card sits in the transcript under the <code>workflow_arm</code> call, and from there it opens full screen, docks beside the transcript or moves to another window through the mechanism of the canvas docking spec (<code>2026-10-12-canvas-docking-design.html</code>). <code>workflow_arm</code> takes the same <code>dock</code> argument as <code>artifact_send</code> and <code>file_send</code>. Before approval the card is the plan to approve; once approved the same card turns live, wherever it is shown. Its parts:</p>
 <ul>
   <li>A header with the title, the run time and counts of done, failed and open questions, and a progress bar.</li>
   <li><b>Now</b>: which nodes are working, on what, for how long, and what comes next.</li>
@@ -526,7 +527,7 @@ root:
     <tr><td>2</td><td><code>par</code>, <code>map</code>, caps and the server pool, <code>after</code>, <code>workflow_output</code>.</td></tr>
     <tr><td>3</td><td><code>check</code>, <code>sh</code>, <code>wait</code>, <code>if</code>, <code>loop</code>, <code>expr</code>, deadlines, <code>retries</code>, restart behaviour.</td></tr>
     <tr><td>4</td><td>Gates, <code>workflow_ask</code>, <code>workflow_answer</code>, <code>workflow_note</code>, live edits with their diff, stop and arm again.</td></tr>
-    <tr><td>5</td><td>The docked main view, folded maps, tabless locked sessions, <code>see</code>.</td></tr>
+    <tr><td>5</td><td>The workflow as a canvas item (full screen, dock, windows, the <code>dock</code> argument), folded maps, tabless locked sessions, <code>see</code>.</td></tr>
     <tr><td>6</td><td>Saving, <code>/workflow &lt;id&gt; &lt;text&gt;</code> with its token, schedules that fire workflows, built-in <code>/loop</code>.</td></tr>
     <tr><td>7</td><td>Settings import and export, the help page with recipes, the system-prompt line.</td></tr>
   </tbody>
@@ -537,7 +538,7 @@ root:
   <li><code>tests/fake_claude.py</code> learns the <code>workflow_*</code> tools, and the engine is tested against a real <code>aegis serve</code>.</li>
   <li>A restart test stops the server during each kind of node and checks the table in section 05.</li>
   <li>A catalogue of lint errors, each asserting its YAML path.</li>
-  <li>Browser tests for the card, the dock, the edit diff and the person gate.</li>
+  <li>Browser tests for the card, the edit diff and the person gate, and that a workflow docks and opens full screen through the same canvas paths as an artifact.</li>
   <li>The person-only operations are tested by breaking them on purpose: an MCP call to approve, unpause or apply an edit must be refused, and the test must fail if that refusal is removed.</li>
   <li>A run with two <code>map</code>s over more items than the pool allows checks that no more than <code>max_agents</code> sessions are ever live.</li>
 </ul>
@@ -553,7 +554,7 @@ root:
 </ul>
 <h3>Open</h3>
 <ul>
-  <li>Whether a session may own more than one live run. This spec says one, because the run is the session's main view.</li>
+  <li>Whether a session may own more than one live run. This spec says one, so every gate, question and stop the main agent sees names the only run it has.</li>
   <li>Whether a <code>judge</code> probe's agent counts against the pool. This spec says yes.</li>
   <li>A per-run spending cap beyond the quota gate.</li>
   <li>The fold threshold for a <code>map</code>, set at six items.</li>
