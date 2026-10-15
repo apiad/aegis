@@ -733,7 +733,8 @@ class Workflows:
                 met = self._met(st, wf, node, prefix, a)
                 if isinstance(met, str):
                     why = f"it waits on {a}, which can never come: {met}"
-                    self._fail(st, inst, why, self._say(st, wf, node, prefix))
+                    say = self._say(st, wf, node, prefix)
+                    self._fail(st, inst, why, say, retry=False)
                     return "failed"
                 if not met:
                     return "pending"
@@ -1033,7 +1034,9 @@ class Workflows:
                 started = await self._start_agent(st, wf, node, prefix)
             except Exception as e:
                 log.exception("aegis: node %s of %s did not start", inst, st.run)
-                self._fail(st, inst, f"it did not start: {getattr(e, 'message', e)}")
+                why = f"it did not start: {getattr(e, 'message', e)}"
+                say = self._say(st, wf, node, prefix)
+                self._fail(st, inst, why, say, retry=False)
                 return "failed"
             if (st.nodes.get(inst) or NodeState()).status == "failed":
                 return "failed"
@@ -1534,7 +1537,8 @@ class Workflows:
             prompt, say = render(node.body["prompt"], scope), render(node.say, scope)
             cwd = render(node.body["cwd"], scope) if node.body.get("cwd") else None
         except RENDER_ERRORS as e:
-            self._fail(st, inst, f"a reference has no value: {e}")
+            why = f"a reference has no value: {e}"
+            self._fail(st, inst, why, self._say(st, wf, node, prefix), retry=False)
             return False
         tag: dict = {"run": st.run, "node": inst}
         if (tried := (st.nodes.get(inst) or NodeState()).attempts) > 0:
