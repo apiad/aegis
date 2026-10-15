@@ -38,7 +38,7 @@ KINDS = (
     "gate",
     "ref",
 )
-RUNS = frozenset({"seq", "par", "map", "agent"})  # the kinds this version runs
+RUNS = frozenset({"seq", "par", "map", "agent", "ref"})  # the kinds this version runs
 COMMON = frozenset({"id", "say", "after", "deadline", "retries", "see", "cap"})
 MAP_FIELDS = frozenset({"over", "as", "cap", "do"})
 TYPES = frozenset({"object", "array", "string", "integer", "number", "boolean"})
@@ -80,9 +80,31 @@ class Node:
     body: dict = field(default_factory=dict)
     children: list["Node"] = field(default_factory=list)
     after: list[str] = field(default_factory=list)
-    maps: tuple[str, ...] = ()  # the maps whose do holds this node, outermost first
+    # The maps and loops whose do holds this node, outermost first.
+    maps: tuple[str, ...] = ()
     deadline: float | None = None  # seconds from its start
     retries: int = 0
+    use: str = ""  # the YAML path of the ref that put this node here
+
+    @property
+    def key(self) -> str:
+        """Unique in the workflow: an id is unique only in its scope (the top
+        level, a map's item, a loop's round), so the enclosing ids come first."""
+        return "/".join((*self.maps, self.id))
+
+
+def template_key(inst: str) -> str:
+    """An instance path's template key: ``images.base.impl`` is node impl
+    in item base of map images, so every other segment is a node id."""
+    return "/".join(inst.split(".")[0::2])
+
+
+def find(by_key: dict[str, Node], name: str, maps: tuple[str, ...]) -> Node | None:
+    """The node ``name`` means from inside ``maps``: the innermost scope first."""
+    for depth in range(len(maps), -1, -1):
+        if (n := by_key.get("/".join((*maps[:depth], name)))) is not None:
+            return n
+    return None
 
 
 @dataclass
@@ -95,8 +117,10 @@ class Workflow:
     text: str
     limits: dict = field(default_factory=dict)
     deadline: float | None = None  # seconds from approval
-    # Agent id -> the early outputs some after waits on, for its preamble.
+    # Agent key -> the early outputs some after waits on, for its preamble.
     waited: dict[str, list[str]] = field(default_factory=dict)
+    by_key: dict[str, Node] = field(default_factory=dict)
+    defs: dict = field(default_factory=dict)
 
 
 # A {{...}} holds one expression; WHOLE is a string that is exactly one.
@@ -398,7 +422,7 @@ def rows(wf: Workflow, items=lambda path: None) -> list[dict]:
         path = prefix + n.id
         row: dict = {
             "id": path,
-            "node": n.id,
+            "node": n.key,
             "kind": n.kind,
             "say": n.say,
             "depth": depth,
@@ -434,9 +458,15 @@ class _Parser:
     def __init__(self, agents: set[str]) -> None:
         self.agents = agents
         self.errors: list[LintError] = []
-        self.seen: dict[str, str] = {}  # id -> path
+        # (scope, id) -> path: an id is unique in its scope, the enclosing
+        # maps' and loops' ids.
+        self.seen: dict[tuple[tuple[str, ...], str], str] = {}
         self.n = 0
-        self.maps: list[str] = []  # the maps whose do is being parsed
+        self.maps: list[str] = []  # the maps and loops whose do is being parsed
+        self.blocks: dict = {}
+        self.defs: dict = {}
+        self.used: set[str] = set()  # the blocks some ref uses
+        self.using: list[tuple[str, str]] = []  # (block, ref path) being expanded
         self.caps: list[tuple[str, int]] = []  # each cap, for limits.agents
 
     def err(self, path: str, message: str) -> None:
@@ -459,26 +489,43 @@ class _Parser:
         if kind not in RUNS:
             self.err(path, f"{kind} is not in this version yet")
             return None
+        if kind == "ref":
+            return self.ref(raw, path)
         say = raw.get("say")
         if not isinstance(say, str) or not say.strip():
             self.err(path, "every node needs say: one sentence for the person")
             say = ""
         nid = raw.get("id")
+        scope = tuple(self.maps)
         if nid is None:
             # Only nodes without an id are numbered, so n1, n2… read in order.
             self.n += 1
             nid = f"n{self.n}"
-            while nid in self.seen:
+            while (scope, nid) in self.seen:
                 self.n += 1
                 nid = f"n{self.n}"
         elif not isinstance(nid, str) or not ID.match(nid):
             self.err(f"{path}.id", "an id is lowercase letters, digits, - and _")
         elif nid == "args":
             self.err(f"{path}.id", "args is reserved for the workflow's arguments")
-        elif nid in self.seen:
-            self.err(path, f"id {nid} is already used at {self.seen[nid]}")
-        self.seen.setdefault(str(nid), path)
-        node = Node(str(nid), kind, say, path, maps=tuple(self.maps))
+        elif (scope, nid) in self.seen:
+            where = (
+                f" (block {self.using[-1][0]}, used at {self.using[-1][1]})"
+                if self.using
+                else ""
+            )
+            self.err(
+                path, f"id {nid} is already used at {self.seen[(scope, nid)]}{where}"
+            )
+        self.seen.setdefault((scope, str(nid)), path)
+        node = Node(
+            str(nid),
+            kind,
+            say,
+            path,
+            maps=scope,
+            use=self.using[-1][1] if self.using else "",
+        )
         if "deadline" in raw:
             node.deadline = duration(raw["deadline"])
             if node.deadline is None:
@@ -534,6 +581,30 @@ class _Parser:
             node.body = self.agent(body, f"{path}.agent")
         return node
 
+    def ref(self, raw: dict, path: str) -> Node | None:
+        """A use of a block: a copy of its root, with the ref's common
+        fields over the root's. Its ids live in the scope it is used in."""
+        name = raw["ref"]
+        if not isinstance(name, str) or name not in self.blocks:
+            self.err(f"{path}.ref", f"no block {name} in blocks")
+            return None
+        if any(u == name for u, _ in self.using):
+            self.err(f"{path}.ref", f"block {name} uses itself")
+            return None
+        block = self.blocks[name]
+        if not isinstance(block, dict):
+            return None  # refused at $.blocks.<name>
+        merged = {k: v for k, v in block.items()}
+        for k in ("id", "say", "after", "deadline", "retries", "see"):
+            if k in raw:
+                merged[k] = raw[k]
+        self.used.add(name)
+        self.using.append((name, path))
+        try:
+            return self.node(merged, f"$.blocks.{name}")
+        finally:
+            self.using.pop()
+
     def cap(self, v, path: str) -> bool:
         if isinstance(v, bool) or not isinstance(v, int) or v < 1:
             self.err(path, "cap is a positive integer")
@@ -583,14 +654,34 @@ class _Parser:
             self.err(f"{path}.prompt", "an agent node needs a prompt")
         if body.get("agent") not in self.agents:
             self.err(path, f"no agent {body.get('agent')} in .aegis.yaml")
+        out = dict(body)
         if "result" in body:
-            self.schema(body["result"], f"{path}.result")
-        return dict(body)
+            out["result"] = self.schema(body["result"], f"{path}.result")
+        return out
 
-    def schema(self, s, path: str) -> None:
+    def schema(self, s, path: str, seen: tuple[str, ...] = ()) -> dict:
+        """The schema with every ``$ref`` to a def resolved; errors at
+        their paths, and an empty schema where one is refused."""
+        if isinstance(s, dict) and "$ref" in s:
+            ref = s["$ref"]
+            if len(s) != 1 or not isinstance(ref, str) or not ref.startswith("#/defs/"):
+                self.err(
+                    f"{path}.$ref",
+                    '$ref is alone in its mapping and reads "#/defs/<name>"',
+                )
+                return {}
+            name = ref.removeprefix("#/defs/")
+            if name not in self.defs:
+                self.err(f"{path}.$ref", f"no def {name} in defs")
+                return {}
+            if name in seen:
+                self.err(f"{path}.$ref", f"def {name} refers to itself")
+                return {}
+            return self.schema(self.defs[name], f"$.defs.{name}", (*seen, name))
         if not isinstance(s, dict):
             self.err(path, "a result schema is a mapping")
-            return
+            return {}
+        out = dict(s)
         for k, v in s.items():
             if k not in SCHEMA_KEYS:
                 self.err(
@@ -605,10 +696,13 @@ class _Parser:
             elif k in ("required", "enum") and not isinstance(v, list):
                 self.err(f"{path}.{k}", f"{k} is a list")
             elif k == "properties" and isinstance(v, dict):
-                for name, sub in v.items():
-                    self.schema(sub, f"{path}.properties.{name}")
+                out[k] = {
+                    name: self.schema(sub, f"{path}.properties.{name}", seen)
+                    for name, sub in v.items()
+                }
             elif k == "items":
-                self.schema(v, f"{path}.items")
+                out[k] = self.schema(v, f"{path}.items", seen)
+        return out
 
     def order(self, root: Node) -> dict[str, list[str]]:
         """What can happen before what. Each node has a start S and a finish
@@ -620,8 +714,8 @@ class _Parser:
         reaches its target closes one, and the run could never finish. A
         reference is sound when its node's finish reaches this node's start,
         or when after names it. Returns the outputs some after waits on."""
-        nodes = {n.id: n for n in walk(root)}
-        parent = {c.id: n for n in nodes.values() for c in n.children}
+        nodes = {n.key: n for n in walk(root)}
+        parent = {c.key: n for n in nodes.values() for c in n.children}
         edges: dict[tuple[str, str], set[tuple[str, str]]] = {}
 
         def edge(a: tuple[str, str], b: tuple[str, str]) -> None:
@@ -641,41 +735,43 @@ class _Parser:
 
         def ancestors(n: Node) -> list[Node]:
             out = []
-            while n.id in parent:
-                n = parent[n.id]
+            while n.key in parent:
+                n = parent[n.key]
                 out.append(n)
             return out
 
-        def visible(t: Node, n: Node) -> bool:
-            return n.maps[: len(t.maps)] == t.maps
+        def hidden(name: str) -> str:
+            """Why ``name`` is not seen from a node that cannot find it: the
+            map it is inside, or nothing when no node has that id."""
+            inside = next((x for x in nodes.values() if x.id == name), None)
+            return inside.maps[-1] if inside is not None and inside.maps else ""
 
         for n in nodes.values():
-            edge(("S", n.id), ("F", n.id))
+            edge(("S", n.key), ("F", n.key))
             for c in n.children:
-                edge(("S", n.id), ("S", c.id))
-                edge(("F", c.id), ("F", n.id))
+                edge(("S", n.key), ("S", c.key))
+                edge(("F", c.key), ("F", n.key))
             if n.kind == "seq":
                 for a, b in zip(n.children, n.children[1:]):
-                    edge(("F", a.id), ("S", b.id))
+                    edge(("F", a.key), ("S", b.key))
         waited: dict[str, list[str]] = {}
         for n in nodes.values():
             for i, a in enumerate(n.after):
                 path = f"{n.path}.after[{i}]"
                 target, _, sub = a.partition(".")
-                t = nodes.get(target)
-                if t is None:
-                    self.err(path, f"{target} is not a node")
-                    continue
-                if t.id == n.id or t.id in {x.id for x in ancestors(n)}:
-                    self.err(
-                        path, f"{target} contains this node, so it cannot finish first"
-                    )
-                    continue
-                if not visible(t, n):
-                    m = t.maps[-1]
+                t = find(nodes, target, n.maps)
+                if t is None and (m := hidden(target)):
                     self.err(
                         path,
                         f"{target} is inside map {m}; wait on {m} or one of its items",
+                    )
+                    continue
+                if t is None:
+                    self.err(path, f"{target} is not a node")
+                    continue
+                if t.key == n.key or t.key in {x.key for x in ancestors(n)}:
+                    self.err(
+                        path, f"{target} contains this node, so it cannot finish first"
                     )
                     continue
                 if sub and t.kind not in ("map", "agent"):
@@ -688,12 +784,12 @@ class _Parser:
                 if sub and t.kind == "map" and not t.children:
                     continue  # its do was refused, with its own error
                 if sub and t.kind == "agent":
-                    point = ("S", t.id)
+                    point = ("S", t.key)
                 elif sub:
-                    point = ("F", t.children[0].id)
+                    point = ("F", t.children[0].key)
                 else:
-                    point = ("F", t.id)
-                if reach(("S", n.id), point):
+                    point = ("F", t.key)
+                if reach(("S", n.key), point):
                     self.err(
                         path,
                         f"waiting on {target} closes a cycle: "
@@ -711,20 +807,25 @@ class _Parser:
                         "or raise the cap",
                     )
                     continue
-                edge(point, ("S", n.id))
+                edge(point, ("S", n.key))
                 if sub and t.kind == "agent":
-                    wanted = waited.setdefault(t.id, [])
+                    wanted = waited.setdefault(t.key, [])
                     if sub not in wanted:
                         wanted.append(sub)
+        ids = {x.id for x in nodes.values()}
         for m in nodes.values():
-            if m.kind == "map" and m.body.get("as") in nodes:
+            if m.kind == "map" and m.body.get("as") in ids:
                 self.err(
                     f"{m.path}.map.as",
                     f"{m.body['as']} is a node id; name the item otherwise",
                 )
         for n in nodes.values():
             afters = {a for x in [n, *ancestors(n)] for a in x.after}
-            items = {nodes[mid].body.get("as") for mid in n.maps}  # enclosing maps
+            # The enclosing maps' items.
+            items = {
+                nodes["/".join(n.maps[: i + 1])].body.get("as")
+                for i in range(len(n.maps))
+            }
             for path, tree in self._exprs(n):
                 for r in refs(tree):
                     name, first = r.name, (r.parts or ("",))[0]
@@ -732,17 +833,16 @@ class _Parser:
                         continue
                     if name in items:
                         continue  # an enclosing map's item; the innermost wins
-                    t = nodes.get(name)
-                    if t is None:
-                        self.err(path, f"{name} is not an earlier node or args")
-                    elif not visible(t, n):
-                        m = t.maps[-1]
+                    t = find(nodes, name, n.maps)
+                    if t is None and (m := hidden(name)):
                         self.err(
                             path,
                             f"{name} is inside map {m}; wait on {m} or one of its items",
                         )
+                    elif t is None:
+                        self.err(path, f"{name} is not an earlier node or args")
                     elif not (
-                        reach(("F", t.id), ("S", n.id)) or f"{name}.{first}" in afters
+                        reach(("F", t.key), ("S", n.key)) or f"{name}.{first}" in afters
                     ):
                         self.err(
                             path,
@@ -772,15 +872,15 @@ class _Parser:
         nothing. A map's items cannot wait on each other: the map contains
         them."""
         up = [n, *ancestors(n)]
-        t_up = {x.id for x in [t, *ancestors(t)]}
+        t_up = {x.key for x in [t, *ancestors(t)]}
         for i, p in enumerate(up[1:], 1):
             branch = up[i - 1]
             if (
                 p.kind == "par"
                 and p.body.get("cap", len(p.children)) < len(p.children)
                 and branch is not n
-                and branch.id not in t_up
-                and p.id in t_up
+                and branch.key not in t_up
+                and p.key in t_up
             ):
                 return p, branch
         return None
@@ -840,11 +940,32 @@ def parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError]
             "limits",
             "deadline",
             "blocks",
+            "defs",
             "root",
         ):
             p.err(f"$.{k}", f"{k} is not a workflow field")
-    if "blocks" in raw:
-        p.err("$.blocks", "blocks is not in this version yet")
+    # Blocks are expanded where a ref uses them, so they are read first.
+    blocks = raw.get("blocks") or {}
+    if not isinstance(blocks, dict):
+        p.err("$.blocks", "blocks maps a name to a node")
+        blocks = {}
+    for name, b in blocks.items():
+        if not isinstance(name, str) or not ID.match(name):
+            p.err(
+                f"$.blocks.{name}",
+                "a block's name is lowercase letters, digits, - and _",
+            )
+        elif not isinstance(b, dict):
+            p.err(f"$.blocks.{name}", "a block is a node: a mapping with one kind key")
+    p.blocks = blocks
+    defs = raw.get("defs") or {}
+    if not isinstance(defs, dict):
+        p.err("$.defs", "defs maps a name to a result schema")
+        defs = {}
+    p.defs = defs
+    resolved = {
+        name: p.schema(d, f"$.defs.{name}", (name,)) for name, d in defs.items()
+    }
     deadline = None
     if "deadline" in raw:
         deadline = duration(raw["deadline"])
@@ -881,14 +1002,19 @@ def parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError]
     root = p.node(raw.get("root"), "$.root") if "root" in raw else None
     if root is None and not any(e.path.startswith("$.root") for e in p.errors):
         p.err("$.root", "a workflow needs a root node")
+    for name in blocks:
+        if name not in p.used and isinstance(blocks[name], dict):
+            p.err(f"$.blocks.{name}", f"block {name} is never used")
     waited: dict[str, list[str]] = {}
     if root is not None:
         waited = p.order(root)
     for path, v in p.caps:
         if "total" in limits and v > limits["total"]:
             p.err(path, f"cap {v} is above limits.total {limits['total']}")
-    if p.errors or root is None:
-        return None, p.errors
+    # A block's error reads once, not once per use.
+    errors = list(dict.fromkeys(p.errors))
+    if errors or root is None:
+        return None, errors
     return (
         Workflow(
             wid,
@@ -900,6 +1026,8 @@ def parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError]
             limits=limits,
             waited=waited,
             deadline=deadline,
+            by_key={n.key: n for n in walk(root)},
+            defs=resolved,
         ),
         [],
     )

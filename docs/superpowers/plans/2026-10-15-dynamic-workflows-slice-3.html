@@ -729,7 +729,7 @@ In <code>parse</code>, drop <code>deadline</code> from the "not in this version 
 </div>
 </details>
 
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="num">3</span><span><span class="ttl">Scoped ids, blocks, ref and defs</span><span class="files">workflow_lang.py · workflows.py · tests/test_workflow_lang.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -2460,6 +2460,10 @@ item, loop round or top level. `defs: {pr: schema}` names a result schema;
 <p>Workers and reviewers add a line for each place the real code forced a change.</p>
 <ul>
   <li>Task 2: a fourth slice 1 test, <code>test_node_fields_the_engine_does_not_run_yet_are_refused</code>, asserted that <code>retries</code> and <code>deadline</code> are refused. It became <code>test_an_agent_takes_retries_and_a_deadline</code>. <code>test_what_slice_2_does_not_run_is_still_named</code> had no deadline or retries lines to lose.</li>
+  <li>Task 3: <code>_row</code> finds its template from <code>row["node"]</code> (the key), not from <code>row["id"]</code>: a row drawn once for a map not started has no item in its id (<code>one</code>, not <code>m.k.one</code>), so <code>template_key</code> of it misses and every arm raised <code>KeyError</code>.</li>
+  <li>Task 3: <code>test_a_name_reads_the_innermost_scope_that_has_it</code> as written passed with <code>find</code> broken to read the outermost scope first. It now asserts no error at all and the three <code>impl</code> keys, and fails under that break.</li>
+  <li>Task 3: <code>test_rows_draw_a_map_once_before_it_starts_and_per_item_after</code> expects <code>"node": "images/img"</code>; <code>test_what_slice_2_does_not_run_is_still_named</code> lost its <code>blocks</code> case; the spec-example test gained <code>DEFS</code> already in task 3, since <code>ref</code> runs from here.</li>
+  <li>Task 3: the lint keeps checking a map's <code>as</code> against every node id in the file, whatever its scope. <code>_value</code> of a map reads the nodes whose <code>maps</code> are exactly the map's plus its id, rather than those whose last map has its id.</li>
 </ul>
 </main>
 <script>

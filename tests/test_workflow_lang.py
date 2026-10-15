@@ -7,6 +7,7 @@ from aegis.workflow_lang import (
     parse,
     render,
     rows,
+    template_key,
     value_of,
 )
 
@@ -199,7 +200,7 @@ def test_rows_draw_a_map_once_before_it_starts_and_per_item_after():
         "images.base.img",
         "images.api.img",
     ]
-    assert after[2]["node"] == "img" and after[2]["depth"] == 2
+    assert after[2]["node"] == "images/img" and after[2]["depth"] == 2
 
 
 def test_map_fields_are_checked_at_their_paths():
@@ -344,11 +345,6 @@ def test_what_slice_2_does_not_run_is_still_named():
             '"Build {{s.id}}.", session: main}',
             "$.root.par[0].map.do.agent.session: session is not in this version yet",
         ),
-        (
-            "limits:",
-            "blocks: {}\nlimits:",
-            "$.blocks: blocks is not in this version yet",
-        ),
     ):
         _, errors = errs(TEAMS.replace(old, new, 1))
         assert msg in errors, (new, errors)
@@ -415,6 +411,13 @@ root:
         )
 
 
+# The spec's example names two defs it never defines; slice 3 adds them.
+DEFS = """defs:
+  pr: {type: object, properties: {pr: {type: integer}}, required: [pr]}
+  verdict: {type: object, properties: {approved: {type: boolean}}, required: [approved]}
+"""
+
+
 def test_the_specs_example_trips_only_on_what_this_version_does_not_run():
     """The example in spec §04, read from the spec itself: every error is a
     kind or field a later slice runs, and the lint does not crash on an
@@ -427,10 +430,13 @@ def test_the_specs_example_trips_only_on_what_this_version_does_not_run():
         "docs/superpowers/specs/2026-10-15-dynamic-workflows-design.html"
     )
     pre = re.search(r'<h3 id="example">.*?<pre>(.*?)</pre>', spec.read_text(), re.S)
-    wf, got = errs(html.unescape(pre.group(1)))
+    example = html.unescape(pre.group(1)).replace(
+        "deadline: 8h\n", "deadline: 8h\n" + DEFS
+    )
+    wf, got = errs(example)
     assert wf is None and got
     assert all(e.endswith("is not in this version yet") for e in got), got
-    assert "$.root.seq[0].par[1].map.do: ref is not in this version yet" in got
+    assert "$.root.seq[2]: gate is not in this version yet" in got
 
 
 def test_a_reference_reaches_positional_keys_and_dashed_names():
@@ -590,3 +596,109 @@ def test_retries_go_on_leaves_only():
         "$.root.retries: retries go on agent, sh and check; repeat a group with loop"
         in errors
     )
+
+
+LAND = """
+id: release
+title: Release
+say: Three teams.
+args: {type: object, properties: {a: {type: array}, b: {type: array}}}
+defs:
+  pr: {type: object, properties: {pr: {type: integer}}, required: [pr]}
+root:
+  par:
+    - map: {over: "{{args.a}}", as: s, do: {ref: land}}
+      id: ingest
+      say: Ingest.
+    - map: {over: "{{args.b}}", as: s, do: {ref: land}}
+      id: images
+      say: Images.
+  say: Both teams.
+blocks:
+  land:
+    seq:
+      - agent: {agent: sonnet, prompt: "Implement {{s.id}}.", result: {$ref: "#/defs/pr"}}
+        id: impl
+        say: "Implement {{s.id}}."
+      - agent: {agent: opus, prompt: "Review PR {{impl.pr}}."}
+        id: review
+        say: Review it.
+    say: "{{s.id}}: implement, review."
+"""
+
+
+def test_a_block_used_in_two_maps_has_its_ids_in_each():
+    wf, errors = errs(LAND)
+    assert errors == []
+    assert sorted(k for k in wf.by_key if k.endswith(("impl", "review"))) == [
+        "images/impl",
+        "images/review",
+        "ingest/impl",
+        "ingest/review",
+    ]
+    assert wf.by_key["ingest/impl"].body["result"] == {
+        "type": "object",
+        "properties": {"pr": {"type": "integer"}},
+        "required": ["pr"],
+    }
+    assert template_key("images.base.impl") == "images/impl"
+    assert template_key("outer.k.inner.j.leaf") == "outer/inner/leaf"
+
+
+def test_a_ref_without_say_takes_the_blocks():
+    wf, _ = errs(LAND)
+    assert wf.by_key["ingest"].children[0].say == "{{s.id}}: implement, review."
+
+
+def test_a_block_used_twice_in_one_scope_is_refused():
+    text = LAND.replace(
+        "root:\n  par:\n",
+        "root:\n  par:\n    - {ref: land, say: Once.}\n    - {ref: land, say: Twice.}\n",
+    )
+    _, errors = errs(text)
+    assert any("id impl is already used" in e and "block land" in e for e in errors)
+
+
+def test_a_ref_to_nothing_a_block_that_uses_itself_and_a_block_nobody_uses():
+    _, errors = errs(
+        LAND.replace(
+            "do: {ref: land}}\n      id: ingest", "do: {ref: lnd}}\n      id: ingest"
+        )
+    )
+    assert any(e.endswith("ref: no block lnd in blocks") for e in errors)
+    _, errors = errs(LAND + "  spare: {agent: {agent: opus, prompt: x}, say: x}\n")
+    assert "$.blocks.spare: block spare is never used" in errors
+    loop = LAND.replace(
+        "        say: Review it.\n", "        say: Review it.\n      - {ref: land}\n"
+    )
+    _, errors = errs(loop)
+    assert any("block land uses itself" in e for e in errors)
+
+
+def test_defs_resolve_and_refuse_what_they_cannot():
+    _, errors = errs(LAND.replace("#/defs/pr", "#/defs/nope"))
+    assert any("no def nope in defs" in e for e in errors)
+    _, errors = errs(
+        LAND.replace('{$ref: "#/defs/pr"}', '{$ref: "#/defs/pr", type: object}')
+    )
+    assert any(
+        '$ref is alone in its mapping and reads "#/defs/<name>"' in e for e in errors
+    )
+    looped = LAND.replace(
+        "  pr: {type: object", '  pr: {$ref: "#/defs/pr"}\n  pr2: {type: object'
+    )
+    _, errors = errs(looped)
+    assert any("def pr refers to itself" in e for e in errors)
+
+
+def test_a_name_reads_the_innermost_scope_that_has_it():
+    text = LAND.replace(
+        "root:\n  par:\n",
+        "root:\n  par:\n    - {agent: {agent: opus, prompt: top}, id: impl, say: Top.}\n",
+    )
+    wf, errors = errs(text)
+    # impl at the top and impl inside each map do not clash: different scopes.
+    # review's {{impl.pr}} reads its own item's impl, not the top one beside
+    # the maps in the par, which may not have finished.
+    assert errors == []
+    assert {"impl", "ingest/impl", "images/impl"} <= set(wf.by_key)

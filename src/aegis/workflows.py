@@ -40,10 +40,12 @@ from .workflow_lang import (
     Node,
     Workflow,
     check_value,
+    find,
     item_keys,
     parse,
     render,
     rows,
+    template_key,
     value_of,
     walk,
 )
@@ -201,7 +203,8 @@ class Workflows:
         }
 
     def _row(self, st: RunState, wf: Workflow, row: dict) -> dict:
-        node, inst = self._template(wf, row["node"]), row["id"]
+        # By key: a row drawn once for a map not started has no item in its id.
+        node, inst = wf.by_key[row["node"]], row["id"]
         prefix = inst[: -len(node.id)]
         each = row.get("each", False)
         row["state"] = "pending" if each else self._state(st, node, inst)
@@ -224,7 +227,10 @@ class Workflows:
             }
         if node.after:
             row["after"] = [
-                {"name": a, "met": not each and self._met(st, wf, prefix, a) is True}
+                {
+                    "name": a,
+                    "met": not each and self._met(st, wf, node, prefix, a) is True,
+                }
                 for a in node.after
             ]
         if node.kind == "map" and n is not None and n.items is not None:
@@ -237,9 +243,8 @@ class Workflows:
         return row
 
     def _template(self, wf: Workflow, inst: str) -> Node:
-        """An instance's node: ids have no dots, so the last segment is its id."""
-        nid = inst.rsplit(".", 1)[-1]
-        return next(n for n in walk(wf.root) if n.id == nid)
+        """An instance's node, by its template key."""
+        return wf.by_key[template_key(inst)]
 
     def _state(self, st: RunState, node: Node, inst: str) -> str:
         """Where an instance stands: pending, queued, running, done, failed
@@ -272,12 +277,13 @@ class Workflows:
         scope: dict = {"args": st.args}
         parts = prefix.split(".")[:-1]  # "m.k.j.l." -> m, k, j, l
         for i in range(0, len(parts), 2):
-            m = self._template(wf, parts[i])
+            m = self._template(wf, ".".join(parts[: i + 1]))
             items = st.nodes[".".join(parts[: i + 1])].items or []
             scope[m.body["as"]] = dict((k, v) for k, v in items)[parts[i + 1]]
         depth = len(parts) // 2
         early: dict = {}
-        for n in walk(wf.root):
+        # Inner scopes last, so a name reads the innermost node that has it.
+        for n in sorted(walk(wf.root), key=lambda n: len(n.maps)):
             if (
                 n.kind in ("agent", "map")
                 and len(n.maps) <= depth
@@ -321,7 +327,7 @@ class Workflows:
         inside = [
             c
             for c in walk(n.children[0])
-            if c.maps[-1:] == (n.id,) and c.kind in ("agent", "map")
+            if c.maps == (*n.maps, n.id) and c.kind in ("agent", "map")
         ]
         out = {}
         for key, _ in s.items:
@@ -492,7 +498,7 @@ class Workflows:
         inst = prefix + node.id
         if node.after and self._state(st, node, inst) in ("pending", "queued"):
             for a in node.after:
-                met = self._met(st, wf, prefix, a)
+                met = self._met(st, wf, node, prefix, a)
                 if isinstance(met, str):
                     why = f"it waits on {a}, which can never come: {met}"
                     self._fail(st, inst, why, self._say(st, wf, node, prefix))
@@ -525,12 +531,15 @@ class Workflows:
             return await self._agent(st, wf, node, prefix)
         raise OpError("kind", f"{node.kind} is not in this version yet")
 
-    def _met(self, st: RunState, wf: Workflow, prefix: str, a: str) -> bool | str:
-        """Whether one ``after`` entry holds for a node under ``prefix``:
+    def _met(
+        self, st: RunState, wf: Workflow, node: Node, prefix: str, a: str
+    ) -> bool | str:
+        """Whether one ``after`` entry of ``node`` holds under ``prefix``:
         a node done, a map's item done, an agent's early output given. A
-        string says why it never will."""
+        string says why it never will. The lint found the target."""
         target, _, sub = a.partition(".")
-        t = self._template(wf, target)
+        t = find(wf.by_key, target, node.maps)
+        assert t is not None
         inst = self._resolve(t, prefix)
         if not sub:
             return self._state(st, t, inst) == "done"
@@ -739,7 +748,7 @@ class Workflows:
                 schema=schema,
             )
         )
-        wanted = wf.waited.get(node.id)
+        wanted = wf.waited.get(node.key)
         if wanted:
             text += (
                 f"\nOther steps wait on your early output{'s' if len(wanted) > 1 else ''} "
