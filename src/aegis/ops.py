@@ -66,6 +66,11 @@ class Caller:
 
 USER = Caller("user")
 
+# What a schedule's run with spawn: false may not call: each starts other work
+# (schedules.py). schedule.create is here so a run cannot start agents through
+# a schedule of its own.
+NO_SPAWN = ("session.spawn", "queue.enqueue", "schedule.create")
+
 Handler = Callable[[Any, Caller], Awaitable[Any]]
 
 
@@ -103,6 +108,8 @@ class Registry:
             c.principal or Principal("", "admin")
         )
         self.owner_of: Callable[[str], str | None] = lambda log_id: None
+        # A session's schedule meta by log id (session.py); set by the app.
+        self.schedule_of: Callable[[str], dict | None] = lambda log_id: None
 
     def op(
         self,
@@ -155,6 +162,14 @@ class Registry:
                 "it can call "
                 + ", ".join(o.tool_name for o in self.agent_ops() if o.read),
             )
+        if caller.is_agent and name in NO_SPAWN:
+            run = self.schedule_of(caller.log_id or "")
+            if run is not None and not run.get("spawn"):
+                raise OpError(
+                    "spawn_off",
+                    f"run {run['run']} of {run['name']} may not start other work "
+                    "(spawn: false)",
+                )
         try:
             params = op.params.model_validate(raw if raw is not None else {})
         except ValidationError as e:

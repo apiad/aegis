@@ -1,0 +1,2 @@
+- **The getting-started tutorial now runs from one session to a queue of workers.** It is five levels, with an artifact docked beside the transcript on the way; the old eight steps stopped before artifacts, docking and queues. Four extra tutorials cover layouts and the canvas, linked servers, the phone, and running a server for other people. A tutorial's guide opens with a welcome and what the page covers, answers questions on the way, and returns to the step it was on.
+help: getting-started

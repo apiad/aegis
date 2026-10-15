@@ -53,7 +53,16 @@ async def replied(app, log_id) -> str:
 def test_the_prompt_names_the_page_and_what_the_guide_must_do():
     text = tutorial_prompt("monitors")
     assert "`monitors`" in text
-    for words in ("help_read", "turn_end", "spends quota", "next tutorial"):
+    for words in (
+        "help_read",
+        "turn_end",
+        "spends quota",
+        "next tutorial",
+        "Welcome to the aegis tutorial",
+        "what the page covers",
+        "bring me back to the step",
+        "under Next",
+    ):
         assert words in text
 
 

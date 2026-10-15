@@ -81,6 +81,7 @@ class Registry(Host):
         self.monitors = None
         self.side_notes = None
         self.queues = None
+        self.schedules = None
         self.quota = None
         # The live config's context block (config.py); the app points it at
         # Config.current().
@@ -125,6 +126,8 @@ class Registry(Host):
             self.quota.turn_ended()
         self._retire_predecessor(session)
         self._maybe_unquiet(session)
+        if self.schedules is not None:
+            self.schedules.changed()
 
     def _retire_predecessor(self, new: Session) -> None:
         """After a handoff, archive the old session once the new one has
@@ -289,6 +292,25 @@ class Registry(Host):
         parent = session.spec.spawned_by
         if parent and parent in self.sessions:
             self.refresh_card(parent)
+        if self.schedules is not None:
+            self.schedules.changed()
+
+    def finished(self, s: Session) -> bool:
+        """Done working, which a turn ending is not: not busy (held messages
+        included), not paused by the quota gate, no live monitor, no open
+        Claude task, and no child session still working or waiting. A queue's
+        task and a schedule's run both end on it."""
+        return (
+            not s.busy
+            and not s.quota_paused
+            and not (self.monitors is not None and self.monitors.of(s.log_id))
+            and not s.open_tasks
+            and not any(
+                o.spec.spawned_by == s.log_id
+                and self._attention(o)["attention"] in ("working", "waiting")
+                for o in self.sessions.values()
+            )
+        )
 
     def catalog_ready(self, session: Session, catalog) -> None:
         if self.catalogs is not None:
@@ -347,6 +369,7 @@ class Registry(Host):
             host=self,
             held=meta.get("held"),
             worker=meta.get("worker"),
+            schedule=meta.get("schedule"),
             standing=meta.get("standing"),
             unread=meta.get("unread"),
             last_read_at=meta.get("last_read_at"),
@@ -532,6 +555,7 @@ class Registry(Host):
         worker: dict | None = None,
         title: str = "",
         quiet: bool = False,
+        schedule: dict | None = None,
     ) -> Session:
         log_id = mint_log_id()
         s = self._session(
@@ -542,6 +566,7 @@ class Registry(Host):
                 "worker": worker,
                 "title": title,
                 "quiet": quiet,
+                "schedule": schedule,
             }
         )
         self.sessions[log_id] = s
@@ -573,6 +598,8 @@ class Registry(Host):
         self.metas.write(meta)
         self.archived[log_id] = meta
         self._publish("sessions", [{"remove": log_id}])
+        if self.schedules is not None:
+            self.schedules.changed()
 
     def reopen(self, log_id: str) -> Session:
         if log_id in self.sessions:
