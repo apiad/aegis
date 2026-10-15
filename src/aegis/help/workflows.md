@@ -59,4 +59,4 @@ when the run ends. `workflow_status` shows the tree at any time, and
 
 If your first message is headed `> from workflow:`, you are a node. Do the
 task, call `workflow_result` once, and end your turn. Nobody answers
-questions here, and you cannot arm a workflow of your own.
+questions here, and neither you nor a session you spawn can arm a workflow.
