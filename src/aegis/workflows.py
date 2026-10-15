@@ -76,6 +76,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 PASS_S = 30.0  # a pass at least this often, as the schedules' clock does
 CUT = "cut by restart: it may have run in part; rerun or skip?"
+NUL = "the command holds a NUL byte, which bash cannot take"
 SH_LIMIT_S = 1800.0  # an sh with no deadline over it
 CHECK_LIMIT_S = 3600.0  # a check with no deadline over it, a monitor's default
 TAIL = 4000  # the end of an sh's stdout and of its stderr kept as its value
@@ -1128,6 +1129,8 @@ class Workflows:
 
         try:
             code, out, err = await run_sh(cmd, self._cwd(st), pid)
+        except ValueError:  # a NUL byte, from a value: every attempt fails so
+            code, out, err = None, "", NUL
         except OSError as e:
             code, out, err = None, "", str(e)
         finally:
@@ -1135,7 +1138,9 @@ class Workflows:
         n = st.nodes.get(inst)
         if st.status != "running" or n is None or n.status != "running":
             return  # stopped, or ended by a deadline, while it ran
-        if code == 0:
+        if err == NUL and code is None:
+            self._fail(st, inst, NUL, retry=False)
+        elif code == 0:
             last = out.strip().splitlines()[-1:]
             self._done(
                 st,
@@ -1212,6 +1217,10 @@ class Workflows:
                         self._say(st, wf, node, prefix),
                         retry=False,
                     )
+                    return "failed"
+                if "\0" in cmd:
+                    say = self._say(st, wf, node, prefix)
+                    self._fail(st, inst, NUL, say, retry=False)
                     return "failed"
             n = self._begin(st, wf, node, prefix, cmd=cmd)
         if "expr" in probe:
@@ -1393,6 +1402,9 @@ class Workflows:
             except RENDER_ERRORS as e:
                 why = f"a reference has no value: {e}"
                 self._fail(st, inst, why, self._say(st, wf, node, prefix), retry=False)
+                return "failed"
+            if "\0" in cmd:
+                self._fail(st, inst, NUL, self._say(st, wf, node, prefix), retry=False)
                 return "failed"
             self._tasks[key] = asyncio.create_task(self._probe_once(st, inst, rnd, cmd))
         return "running"

@@ -514,3 +514,20 @@ async def test_a_judge_gives_one_verdict_and_no_early_output(world):
         wf.result(s, {"pass": False, "why": "No."}, "No.")
     assert e.value.code == "verdict_given"
     assert wf.runs[run_id].nodes["c"].judges[""]["pass"] is True
+
+
+@pytest.mark.parametrize(
+    "node",
+    [
+        '{sh: "echo {{args.t}}", id: s, retries: 2, say: Echo.}',
+        '{check: {sh: "test -n {{args.t}}"}, id: s, retries: 2, say: Echo.}',
+        '{if: {when: {sh: "test -n {{args.t}}"}, then: {wait: 1s, say: T.}}, id: s, say: Echo.}',
+    ],
+)
+async def test_a_nul_byte_in_a_value_fails_its_command(world, node):
+    args = "args: {type: object, properties: {t: {type: string}}}\n"
+    run_id = await run(world, flow(node, args=args), {"t": "a\x00b"})
+    st = await ended(world, run_id, timeout=10)
+    s = st.nodes["s"]
+    assert st.status == "failed" and s.attempts == 0
+    assert s.error == "the command holds a NUL byte, which bash cannot take"
