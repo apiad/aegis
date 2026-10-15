@@ -124,7 +124,7 @@ def server(tmp_path: Path, fake_claude: str, fake_opencode: str):
     s.stop()
 
 
-def open_view(page, server) -> None:
+def open_view(page, server) -> None:  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     page.click("#schedules-btn")
@@ -132,7 +132,8 @@ def open_view(page, server) -> None:
 
 
 def test_the_button_counts_schedules_and_is_red_while_one_is_paused_by_errors(
-    server, page
+    server,
+    page,  # noqa: F811
 ):
     page.goto(server.url)
     page.wait_for_selector("#schedules-n.err >> text=2")
@@ -144,7 +145,7 @@ def test_the_button_counts_schedules_and_is_red_while_one_is_paused_by_errors(
     assert page.text_content("#schedules-n") == "2" and not page.errors
 
 
-def test_a_schedule_shows_its_layers_and_its_runs_with_quiet_ticks_folded(server, page):
+def test_a_schedule_shows_its_layers_and_its_runs_with_quiet_ticks_folded(server, page):  # noqa: F811
     open_view(page, server)
     page.click(".sch-row[data-name=pr-triage]")
     page.wait_for_selector(".sch-dhead h3 >> text=pr-triage")
@@ -160,7 +161,7 @@ def test_a_schedule_shows_its_layers_and_its_runs_with_quiet_ticks_folded(server
     assert not page.errors
 
 
-def test_the_editor_checks_the_clock_tests_a_check_and_saves(server, page):
+def test_the_editor_checks_the_clock_tests_a_check_and_saves(server, page):  # noqa: F811
     open_view(page, server)
     page.click(".sch-new")
     page.wait_for_selector("#sch-save:disabled")
@@ -183,7 +184,7 @@ def test_the_editor_checks_the_clock_tests_a_check_and_saves(server, page):
     assert page.text_content("#schedules-n") == "3" and not page.errors
 
 
-def test_the_view_fits_a_phone(server, browser):
+def test_the_view_fits_a_phone(server, browser):  # noqa: F811
     errors: list = []
     pg = browser.new_page(viewport={"width": 390, "height": 844})
     pg.on("pageerror", lambda e: errors.append(str(e)))
@@ -209,7 +210,7 @@ def stored(server, name: str) -> dict:
     raise AssertionError(f"{name} was never saved")
 
 
-def test_the_editor_sets_quota_lines_per_pool_or_none(server, page):
+def test_the_editor_sets_quota_lines_per_pool_or_none(server, page):  # noqa: F811
     open_view(page, server)
     page.click(".sch-new")
     page.fill("#sch-name", "quota-check")
