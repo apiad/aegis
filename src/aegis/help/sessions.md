@@ -90,11 +90,14 @@ Two calls keep the person informed without reading the transcript:
   done. It shows in the session panel, with the time each item took, and on
   the session's card in the Fleet.
 - `turn_end` labels the turn the agent hands back: needs_you when the
-  message asks something, review when it gives something to read, done when
-  it reports finished work, with a one-line summary and up to three replies
+  message asks something, review when it gives something to read or reports
+  a step while work remains, done only when the whole task is over, with a
+  one-line summary and up to three replies
   the person can click to answer. Past 300k tokens of context its answer
   names the size, and at a break the agent calls it again with `handoff`: a
-  brief that lets a fresh session continue the work.
+  brief that lets a fresh session continue the work. A done card offers an
+  Archive button, so aegis refuses done while the plan has items not done:
+  the agent finishes or trims the plan first, or passes review.
 
 The mark on the tab and the card comes from `turn_end`, except working,
 waiting and error, which aegis sees for itself; a turn with no `turn_end`

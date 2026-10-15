@@ -1495,3 +1495,97 @@ def test_a_submit_or_a_close_takes_the_page_off_the_canvas():
     live, _ = run(r)
     assert [c["w"] for c in live.standing["layout"]["windows"][0]["columns"]] == [1.0]
     assert fold_records(r.records).standing == live.standing
+
+
+def btw_rows(f):
+    return [e for e in f.entries() if e["kind"] == "btw"]
+
+
+def test_a_question_and_its_answer_fold_into_one_btw_entry():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.echo("go")
+    rec.text("done it")
+    rec.result()
+    rec.own("btw", id="b1", question="why?")
+    f, _ = run(rec)
+    (e,) = btw_rows(f)
+    assert e["status"] == "running" and e["summary"] == "why?" and e["fold"] == 0
+    ops = f.apply(
+        rec.own(
+            "btw_answer",
+            id="b1",
+            status="ok",
+            answer="because",
+            needs_more=False,
+            header="all 1 turn",
+            model="m",
+            cost_usd=0.01,
+            duration_ms=900,
+        )
+    )
+    assert [op["upsert"]["id"] for op in ops] == [e["id"]]
+    (e,) = btw_rows(f)
+    assert e["status"] == "ok" and e["detail"]["answer"] == "because"
+    assert e["detail"]["folded"] is False and e["detail"]["cost_usd"] == 0.01
+
+
+def test_a_side_note_moves_no_content_index_so_a_recap_stays_fresh():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.echo("go")
+    rec.text("done it")
+    rec.result()
+    f, _ = run(rec)
+    before = f.content_index
+    f.apply(rec.own("btw", id="b1", question="q"))
+    f.apply(rec.own("btw_answer", id="b1", status="ok", answer="a"))
+    assert f.content_index == before
+
+
+def test_an_answer_after_a_send_lands_in_its_own_block():
+    rec = Rec()
+    rec.own("send", text="go")
+    rec.own("btw", id="b1", question="q")
+    rec.own("send", text="next")
+    rec.own("btw_answer", id="b1", status="ok", answer="a")
+    f, _ = run(rec)
+    (e,) = btw_rows(f)
+    assert e["status"] == "ok" and e["detail"]["answer"] == "a"
+    kinds = [x["kind"] for x in f.entries()]
+    assert kinds.index("btw") < len(kinds) - 1  # still where it was asked
+
+
+def test_an_answer_with_no_question_is_dropped():
+    rec = Rec()
+    rec.own("btw_answer", id="nope", status="ok", answer="a")
+    f, _ = run(rec)
+    assert btw_rows(f) == []
+
+
+def test_a_new_question_folds_earlier_notes_and_fails_a_dangling_one():
+    rec = Rec()
+    rec.own("btw", id="b1", question="one")
+    rec.own("btw_answer", id="b1", status="ok", answer="a")
+    rec.own("btw", id="b2", question="two")  # its answer never came
+    rec.own("btw", id="b3", question="three")
+    f, _ = run(rec)
+    one, two, three = btw_rows(f)
+    assert one["detail"]["folded"] and two["detail"]["folded"]
+    assert two["status"] == "failed" and two["detail"]["why"]
+    assert three["status"] == "running" and not three["detail"]["folded"]
+    g, _ = run(rec)
+    assert g.entries() == f.entries()
+
+
+def test_a_cancelled_note_folds_and_server_stopped_fails_a_running_one():
+    rec = Rec()
+    rec.own("btw", id="b1", question="one")
+    rec.own("btw_answer", id="b1", status="cancelled")
+    rec.own("btw", id="b2", question="two")
+    rec.own("send", text="go")
+    rec.own("server_stopped")
+    f, _ = run(rec)
+    one, two = btw_rows(f)
+    assert one["status"] == "cancelled" and one["detail"]["folded"]
+    assert two["status"] == "failed" and not two["detail"]["folded"]

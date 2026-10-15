@@ -171,6 +171,14 @@ def recap_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
     s.stop()
 
 
+@pytest.fixture
+def btw_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG + "btw: {agent: opus}\n")
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
+    yield s
+    s.stop()
+
+
 def seed_quota() -> None:
     """A Claude reading fresh enough that the server adopts it without asking,
     and an OpenCode Go reading 14 minutes old behind a live 429 backoff. The
@@ -7972,3 +7980,84 @@ def test_the_handoff_chip_opens_the_brief_and_continues_fresh(server, page):
         arg=old,
         timeout=8000,
     )
+
+
+def test_btw_mid_turn_answers_in_a_block_that_folds_locally(btw_server, page):
+    page.goto(btw_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "first")
+    turns_done(page, 1)
+    page.fill("#input", "/sleep 2")
+    page.press("#input", "Enter")
+    page.fill("#input", "/btw what did I ask first?")
+    page.press("#input", "Enter")
+    page.wait_for_selector(
+        ".row.btw .ans >> text=btw of: what did I ask first?", timeout=8000
+    )
+    assert page.locator(".row.btw .hd .q").inner_text() == "what did I ask first?"
+    assert page.locator(".row.btw .ft").inner_text().count("$") == 1
+    # A click on the header folds it here, and the fold survives the next upsert.
+    page.click(".row.btw .hd")
+    page.wait_for_selector(".row.btw.folded .sum >> text=what did I ask first?")
+    turns_done(page, 2)
+    assert page.locator(".row.btw.folded").count() == 1
+    # A second question folds the first and opens its own.
+    page.fill("#input", "/btw and then?")
+    page.press("#input", "Enter")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.row.btw').length === 2", timeout=8000
+    )
+    page.wait_for_selector(".row.btw:not(.folded) .ans >> text=btw of: and then?")
+    assert page.locator(".row.btw:not(.folded)").count() == 1
+    assert page.errors == []
+
+
+def test_btw_keeps_the_reply_pills_and_cancel_folds_the_block(
+    tmp_path, fake_claude, fake_opencode, page
+):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG + "btw: {agent: opus}\n")
+    s = Server(tmp_path, fake_claude, fake_opencode)
+    s.env["FAKE_CLAUDE_ONESHOT"] = "slow"
+    s.start()
+    try:
+        page.goto(s.url)
+        page.wait_for_selector("#a2[data-view=fleet]")
+        spawn(page, "hello")
+        report(
+            page,
+            attention="needs_you",
+            line="Rebase or merge?",
+            replies=["rebase onto main", "merge main into it"],
+        )
+        turns_done(page, 2)
+        page.wait_for_selector("#replies:not([hidden]) .rp >> text=merge main into it")
+        page.fill("#input", "/btw what are the options?")
+        page.press("#input", "Enter")
+        page.wait_for_selector(".row.btw .ans.wait", timeout=8000)
+        assert page.locator("#replies:not([hidden])").count() == 1
+        page.click(".row.btw [data-btw-cancel]")
+        page.wait_for_selector(".row.btw.folded .sum >> text=cancelled", timeout=8000)
+        assert page.locator("#replies:not([hidden])").count() == 1
+        assert page.errors == []
+    finally:
+        s.stop()
+
+
+def test_folding_a_side_note_leaves_another_sessions_alone(btw_server, page):
+    page.goto(btw_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    ids = []
+    for _ in range(2):
+        spawn(page, "same start")
+        ids.append(page.evaluate("location.hash.slice(3)"))
+        turns_done(page, 1)
+        page.fill("#input", "/btw same question")
+        page.press("#input", "Enter")
+        page.wait_for_selector(".row.btw .ans:not(.wait)", timeout=8000)
+    rows = page.eval_on_selector(".row.btw", "r => r.dataset.id")
+    page.click(".row.btw .hd")  # fold it in the second session
+    page.wait_for_selector(".row.btw.folded")
+    page.click(f".tab[data-id='{ids[0]}']")
+    page.wait_for_selector(f".row.btw[data-id='{rows}']")
+    assert page.locator(".row.btw:not(.folded)").count() == 1
+    assert page.errors == []
