@@ -413,6 +413,16 @@ class Link:
             msg["since"] = since
         self._out.put_nowait(msg)
 
+    def watch(self, sid: str, log_id: str | None) -> None:
+        """Tell the far server whether a browser here shows one of its sessions
+        in a visible page. Lost while the link is down: the session may park,
+        and the browser's first keystroke wakes it."""
+        if self.state != "linked":
+            return
+        self._out.put_nowait(
+            {"t": "watch", "sid": sid, "session": log_id, "visible": log_id is not None}
+        )
+
     def unsub(self, sid: str) -> None:
         if self._subs.pop(sid, None) is not None and self.state == "linked":
             self._out.put_nowait({"t": "unsub", "sid": sid})
