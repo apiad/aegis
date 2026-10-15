@@ -178,6 +178,7 @@ async def test_a_deadline_that_passed_while_down_fires_at_boot(world):  # noqa: 
     assert st.status == "failed" and "deadline" in st.nodes["w"].error
 
 
+@pytest.mark.slow
 async def test_a_retry_count_survives_a_restart(world):  # noqa: F811
     run_id = await run(
         world,
@@ -231,6 +232,7 @@ def _log_path(w, run_id: str):
     return w.app.roots.state_root / "workflow-runs" / f"{run_id}.jsonl"
 
 
+@pytest.mark.slow
 async def test_a_crash_right_after_a_loop_starts_keeps_round_one(world):  # noqa: F811
     run_id = await run(
         world,
