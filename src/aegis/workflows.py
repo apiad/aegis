@@ -154,6 +154,9 @@ When your task is done, call workflow_result with `value` matching this JSON Sch
 {schema}
 If you cannot go on without an answer, call workflow_ask with your question and end your turn: it reaches the main agent, never a person, and the answer arrives as your next message. No person reads this session while the workflow runs."""
 
+MAIN_PREAMBLE = """---
+This is step `{node}` of your workflow, and it is yours to do. When it is done, call workflow_result with `value` matching {schema} and a one-sentence `summary`."""
+
 JUDGE_SCHEMA = {
     "type": "object",
     "properties": {"pass": {"type": "boolean"}, "why": {"type": "string"}},
@@ -574,7 +577,8 @@ class Workflows:
             raise OpError("lint", "\n".join(f"{e.path}: {e.message}" for e in errors))
         for n in walk(wf.root):
             probe = n.body.get("probe") or {}
-            if n.kind == "agent":
+            main = n.body.get("session") == "main"  # the owner runs it, as it is
+            if n.kind == "agent" and not main:
                 self._check_permission(owner, n.body["agent"], n.path)
             if "judge" in probe:
                 self._check_permission(owner, probe["judge"]["agent"], n.path)
@@ -585,7 +589,7 @@ class Workflows:
                     f"asking, so only a session with full permission arms one; yours "
                     f"has {owner.spec.permission}",
                 )
-            if n.kind == "agent":
+            if n.kind == "agent" and not main:
                 cwd = n.body.get("cwd")
                 if isinstance(cwd, str) and "{{" not in cwd:
                     # Refused before a person approves, not when the node starts.
@@ -639,8 +643,15 @@ class Workflows:
 
     def _reporting(self, s: Session, tool: str) -> tuple[RunState, str]:
         """The run and instance a node session reports for; refused to any
-        other session, and once its run has ended."""
+        other session, and once its run has ended. The main agent reports
+        for its run's running session: main step."""
         wf_ref = s.workflow or {}
+        if not wf_ref:
+            mine = self.of_owner(s.log_id)
+            if mine is not None and mine.status == "running":
+                for k, n in mine.nodes.items():
+                    if n.main and n.status == "running":
+                        return mine, k
         st = self.runs.get(wf_ref.get("run", ""))
         if st is None or st.status != "running":
             raise OpError("not_a_node", f"only a running workflow node calls {tool}")
@@ -1163,6 +1174,8 @@ class Workflows:
         return True
 
     async def _agent(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
+        if node.body.get("session") == "main":
+            return await self._main_step(st, wf, node, prefix)
         inst = prefix + node.id
         n = st.nodes.get(inst)
         if n is None or n.status == "pending":
@@ -1203,6 +1216,47 @@ class Workflows:
         elif got == "failed":
             self._fail(st, inst, "its turn ended twice with no workflow_result")
         return got
+
+    async def _main_step(
+        self, st: RunState, wf: Workflow, node: Node, prefix: str
+    ) -> str:
+        """A step the main agent runs in its own session, one at a time per
+        run, outside the pool. Its prompt is an inbox turn; it ends when the
+        main agent's workflow_result is accepted. The main agent's turns are
+        also the person's, so no turn end nudges or fails it: only its
+        deadline bounds it. It logs no log_id, so nothing that ends a run
+        interrupts or unquiets the main agent."""
+        inst = prefix + node.id
+        n = st.nodes.get(inst)
+        if n is not None and n.status in ("done", "failed"):
+            return n.status
+        if n is not None and n.status == "running":
+            if n.result is not None or n.summary:
+                self._log(st.run, {"ev": "node_done", "node": inst})
+                return "done"
+            return "running"
+        if any(x.main and x.status == "running" for x in st.nodes.values()):
+            self._queuing.add(inst)
+            return "queued"
+        owner = self.owner(st)
+        say = self._say(st, wf, node, prefix)
+        if owner is None:
+            self._fail(st, inst, "the main agent's session is closed", say, retry=False)
+            return "failed"
+        try:
+            prompt = render(node.body["prompt"], self._scope(st, wf, prefix))
+        except RENDER_ERRORS as e:
+            self._fail(st, inst, f"a reference has no value: {e}", say, retry=False)
+            return "failed"
+        self._log(
+            st.run, {"ev": "node_started", "node": inst, "say": say, "main": True}
+        )
+        schema = json.dumps(node.body.get("result") or {"type": "object"})
+        await owner.deliver(
+            f"> from workflow:{self._wid(st)} · step {inst} · {iso_now()}",
+            f"{prompt}\n\n" + MAIN_PREAMBLE.format(node=inst, schema=schema),
+        )
+        return "running"
 
     def _cwd(self, st: RunState) -> str:
         if st.cwd:

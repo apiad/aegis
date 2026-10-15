@@ -1,6 +1,8 @@
 """What the main agent decides when a step fails: the run waits on it,
 other branches go on, and the run ends only on its answer."""
 
+import asyncio
+
 import pytest
 
 from aegis.ops import Caller
@@ -226,3 +228,50 @@ async def test_only_a_node_asks_and_only_the_main_agent_notes(world):
         "mcp error"
     )
     assert world.app.workflows.runs[run].story[-1]["mark"] == "note"
+
+
+MAIN = (
+    "id: m\ntitle: M\nsay: M.\nroot:\n  seq:\n"
+    '    - {agent: {session: main, prompt: "Check the deploy.", result: {type: object, properties: {done: {type: boolean}}, required: [done]}}, id: tick, say: Ask the main agent.}\n'
+    '    - {sh: "test {{tick.done}} = true", id: after, say: After.}\n'
+    "  say: Two.\n"
+)
+
+
+async def test_a_session_main_step_is_the_main_agents_and_spawns_nothing(world):
+    open_before = set(world.app.sessions.sessions)
+    main, run = await armed(world, MAIN)
+    open_before.add(main.log_id)
+    wf_ = world.app.workflows
+    await until(
+        lambda: any(" · step tick · " in (e.get("md") or "") for e in main.entries()),
+        timeout=20,
+    )
+    await until(lambda: main.status == "idle", timeout=10)
+    said = await turn(
+        main,
+        mcp("workflow_result", value={"done": True}, summary="The deploy is green."),
+    )
+    assert said.startswith("mcp ok"), said
+    await until(lambda: wf_.runs[run].status == "done", timeout=20)
+    assert set(world.app.sessions.sessions) <= open_before  # nothing was spawned
+    tick = wf_.runs[run].nodes["tick"]
+    assert tick.main and tick.log_id is None
+
+
+async def test_stopping_a_run_never_interrupts_the_main_agent_at_its_step(world):
+    long = MAIN.replace('prompt: "Check the deploy."', 'prompt: "/sleep 4"')
+    main, run = await armed(world, long)
+    wf_ = world.app.workflows
+    await until(
+        lambda: (
+            (n := wf_.runs[run].nodes.get("tick")) is not None
+            and n.status == "running"
+            and main.status == "working"
+        ),
+        timeout=20,
+    )
+    await world.app.registry.call("workflow.stop", {"run": run})
+    await asyncio.sleep(0.5)
+    assert main.status == "working"  # still at its step: the stop is the run's
+    assert not [e for e in main.entries() if e["kind"] == "interrupt"]

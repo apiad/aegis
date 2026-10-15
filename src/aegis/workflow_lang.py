@@ -693,6 +693,8 @@ def rows(wf: Workflow, items=lambda path: None) -> list[dict]:
                 "agent": n.body.get("agent"),
                 "prompt": n.body.get("prompt", ""),
             }
+            if n.body.get("session") == "main":
+                row["main"] = True  # the main agent runs it, in its own session
         if n.kind in ("map", "par") and n.body.get("cap"):
             row["cap"] = n.body["cap"]
         if n.kind == "map":
@@ -1083,11 +1085,23 @@ class _Parser:
         for k in body:
             if k not in AGENT_FIELDS:
                 self.err(f"{path}.{k}", f"{k} is not an agent field")
-        if "session" in body:
-            self.err(f"{path}.session", "session is not in this version yet")
+        sess = body.get("session")
+        if sess is not None and sess != "main":
+            self.err(
+                f"{path}.session",
+                f"session: {sess} is not in this version yet; session: main runs "
+                "the step in the main agent's session",
+            )
         if not isinstance(body.get("prompt"), str) or not body["prompt"].strip():
             self.err(f"{path}.prompt", "an agent node needs a prompt")
-        if body.get("agent") not in self.agents:
+        if sess == "main":
+            for k in ("agent", "cwd"):
+                if k in body:
+                    self.err(
+                        f"{path}.{k}",
+                        f"{k} does not go with session: main: the main agent runs it",
+                    )
+        elif body.get("agent") not in self.agents:
             self.err(path, f"no agent {body.get('agent')} in .aegis.yaml")
         out = dict(body)
         if "result" in body:
