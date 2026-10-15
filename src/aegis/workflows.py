@@ -212,8 +212,11 @@ class Workflows:
 
     # -- what people and agents do ------------------------------------------
     def arm(self, owner: Session, text: str, args: dict) -> RunState:
-        if owner.workflow:
-            raise OpError("nested", "a workflow's node cannot arm a workflow")
+        if self._in_a_node(owner):
+            raise OpError(
+                "nested",
+                "a workflow's node, or a session it spawned, cannot arm a workflow",
+            )
         if (cur := self.of_owner(owner.log_id)) is not None:
             raise OpError(
                 "one_run",
@@ -500,6 +503,24 @@ class Workflows:
             st.run,
             {"ev": "finished", "status": status, **({"why": why} if why else {})},
         )
+
+    def _in_a_node(self, s: Session) -> bool:
+        """Whether ``s`` or any session up its spawned_by line is a node,
+        archived ones read from their meta."""
+        lid: str | None = s.log_id
+        seen: set[str] = set()
+        while lid and lid not in seen:
+            seen.add(lid)
+            o = self._reg.sessions.get(lid)
+            meta = (
+                {"workflow": o.workflow, "spawned_by": o.spec.spawned_by}
+                if o is not None
+                else self._reg.archived.get(lid) or {}
+            )
+            if meta.get("workflow"):
+                return True
+            lid = meta.get("spawned_by")
+        return False
 
     def _check_permission(self, owner: Session, n: Node) -> None:
         agents, default = self._app._agents()

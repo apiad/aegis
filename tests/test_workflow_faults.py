@@ -266,3 +266,27 @@ async def test_a_node_session_spawned_before_a_crash_is_adopted_not_doubled(worl
         if (s.workflow or {}).get("node") == "one"
     ]
     assert tagged == [orphan.log_id], tagged
+
+
+async def test_a_session_a_node_spawned_cannot_arm_a_workflow(world):
+    node = await world.spawn()
+    node.workflow = {"run": "r1", "node": "x"}  # r1 is not live: the node talks
+    reg = world.app.sessions
+    said = await turn(node, mcp("session_spawn", agent="opus", prompt="hi"))
+    await until(
+        lambda: any(s.spec.spawned_by == node.log_id for s in reg.sessions.values()),
+        timeout=10,
+    )
+    child = next(s for s in reg.sessions.values() if s.spec.spawned_by == node.log_id)
+    await until(lambda: child.status != "working", timeout=10)
+    said = await turn(
+        child, mcp("workflow_arm", definition=flow(RESULT, RESULT), args={})
+    )
+    assert said.startswith("mcp error") and "nested" in said, said
+    # Still so once the node is archived: its meta names it.
+    await reg.close(node.log_id)
+    said = await turn(
+        child, mcp("workflow_arm", definition=flow(RESULT, RESULT), args={})
+    )
+    assert said.startswith("mcp error") and "nested" in said, said
+    assert world.app.workflows.of_owner(child.log_id) is None
