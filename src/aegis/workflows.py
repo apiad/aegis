@@ -638,12 +638,18 @@ class Workflows:
         return [self.wire(r) for r in sorted(self.runs)]
 
     # -- what people and agents do ------------------------------------------
-    def arm(self, owner: Session, text: str, args: dict) -> RunState:
+    def arm(
+        self, owner: Session, text: str | None, args: dict, run: str | None = None
+    ) -> RunState:
         if self._in_a_node(owner):
             raise OpError(
                 "nested",
                 "a workflow's node, or a session it spawned, cannot arm a workflow",
             )
+        if run is not None:
+            return self._arm_again(owner, run, text, args)
+        if text is None:
+            raise OpError("lint", "arming needs a definition, or a run to arm again")
         cur = self.of_owner(owner.log_id)
         if cur is not None and cur.status != "armed":
             raise OpError(
@@ -682,6 +688,60 @@ class Workflows:
             self._log(cur.run, {"ev": "replaced", "by": run})
         owner.record_card({"kind": "workflow", "run": run})
         self._publish(run)
+        return st
+
+    def _arm_again(
+        self, owner: Session, run: str, text: str | None, args: dict
+    ) -> RunState:
+        """Arm a stopped or failed run again, for a new approval: what
+        finished keeps its result, every leaf that did not runs again, and
+        a definition given with it changes only what an edit may."""
+        st = self._get(run)
+        if st.status not in ("stopped", "failed"):
+            raise OpError("not_stopped", f"{run} is {st.status}")
+        if not self.owns(owner.log_id, st):
+            raise OpError(
+                "not_yours", "only the session that armed a run arms it again"
+            )
+        if (cur := self.of_owner(owner.log_id)) is not None:
+            raise OpError(
+                "one_run",
+                f"this session already has workflow run {cur.run}; stop it first",
+            )
+        if args and args != st.args:
+            raise OpError("bad_args", "a run armed again keeps its args")
+        text = text or st.text
+        old = self.defs.get(run) or parse(st.text, self._agents())[0]
+        wf, errors = parse(text, self._agents())
+        if wf is None or old is None:
+            raise OpError("lint", "\n".join(f"{e.path}: {e.message}" for e in errors))
+        if text != st.text:
+            errors = edit_errors(old, wf, self._seen(st, old))
+            if errors:
+                raise OpError(
+                    "edit", "\n".join(f"{e.path}: {e.message}" for e in errors)
+                )
+        self._check_arm(owner, wf, list(walk(wf.root)))  # the owner may have changed
+        reset: set[str] = set()
+        for k, n in st.nodes.items():
+            node = self._template(old, k)
+            if node.kind in LEAVES and n.status not in ("done", "skipped"):
+                reset.add(k)  # a leaf that did not finish runs again
+            elif node.kind not in LEAVES and n.status == "failed":
+                reset |= {
+                    x for x, _ in self._under(st, node, k)
+                }  # a failed group, whole
+        v = st.version + (text != st.text)
+        self._log(run, {"ev": "rearmed", "v": v, "text": text, "reset": sorted(reset)})
+        self.defs[run] = wf
+        owner.record_card(
+            {
+                "kind": "workflow_decision",
+                "run": run,
+                "what": "again",
+                "key": str(len(st.story)),
+            }
+        )
         return st
 
     def _check_arm(self, owner: Session, wf: Workflow, nodes: list[Node]) -> None:

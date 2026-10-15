@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .ops import Caller, OpError
 
@@ -28,10 +28,23 @@ class Definition(_Strict):
     definition: str = Field(min_length=1, description="The workflow as YAML.")
 
 
-class Arm(Definition):
+class Arm(_Strict):
+    definition: str | None = Field(
+        default=None, min_length=1, description="The workflow as YAML."
+    )
     args: dict[str, Any] = Field(
         default_factory=dict, description="Values for the workflow's args schema."
     )
+    run: str | None = Field(
+        default=None,
+        description="A stopped or failed run of yours to arm again; it keeps its args.",
+    )
+
+    @model_validator(mode="after")
+    def _one(self):
+        if self.definition is None and self.run is None:
+            raise ValueError("give definition, or run to arm a run again")
+        return self
 
 
 class RunName(_Strict):
@@ -152,8 +165,13 @@ def register_workflow_ops(app: App) -> None:
         for the person, what it does. It is linted, drawn as a card under this
         call, and runs only when a person approves it there. Use it for work
         that needs coordination (many agents, checks, gates); a linear
-        plan_update is for work you do yourself."""
-        st = wf.arm(me(caller), p.definition, p.args)
+        plan_update is for work you do yourself. With run, arms a stopped
+        or failed run of yours again: what finished keeps its result, the
+        rest runs after a new approval; a definition given with it may
+        change only what an edit may."""
+        if p.run is not None:
+            owned(p.run, caller)
+        st = wf.arm(me(caller), p.definition, p.args, run=p.run)
         return {"run": st.run, "status": st.status}
 
     @r.op("workflow.approve", RunName)

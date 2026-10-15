@@ -173,3 +173,80 @@ async def test_arming_again_before_approval_replaces_the_card(world):
     assert wf.runs[first].status == "replaced" and wf.runs[first].replaced_by == second
     assert wf.runs[second].status == "armed" and wf.runs[second].version == 2
     assert wf.wire(first)["replaced_by"] == second
+
+
+COUNTED = (
+    "id: again\ntitle: Again\nsay: Again.\nroot:\n  seq:\n"
+    '    - {sh: "echo x >> ran", id: once, say: Once.}\n'
+    '    - {sh: "sleep 30", id: long, say: Long.}\n'
+    "  say: Two.\n"
+)
+
+
+async def test_arming_a_stopped_run_again_keeps_what_ran(world):
+    r = await world.app.registry.call("session.spawn", {"agent": "opus"})
+    main = world.app.sessions.sessions[r["log_id"]]
+    run = ok(await turn(main, mcp("workflow_arm", definition=COUNTED, args={})))["run"]
+    await world.app.registry.call("workflow.approve", {"run": run})
+    wf = world.app.workflows
+    await until(
+        lambda: (
+            (wf.runs[run].nodes.get("long") or 0)
+            and wf.runs[run].nodes["long"].status == "running"
+        ),
+        timeout=20,
+    )
+    await world.app.registry.call("workflow.stop", {"run": run})
+    await until(
+        lambda: woke(main, " · stopped · ") and main.status == "idle", timeout=10
+    )
+    quick = COUNTED.replace("sleep 30", "true")
+    out = ok(await turn(main, mcp("workflow_arm", run=run, definition=quick)))
+    assert out["run"] == run and wf.runs[run].status == "armed"
+    assert wf.runs[run].version == 2
+    assert [
+        e["detail"]["what"] for e in main.entries() if e["kind"] == "workflow_decision"
+    ] == ["again"]
+    await world.app.registry.call("workflow.approve", {"run": run})
+    await until(lambda: wf.runs[run].status == "done", timeout=20)
+    assert (world.root / "ran").read_text() == "x\n"  # once ran once
+
+
+async def test_arming_again_may_not_change_what_ran(world):
+    main = await world.spawn()
+    run = ok(await turn(main, mcp("workflow_arm", definition=COUNTED, args={})))["run"]
+    await world.app.registry.call("workflow.approve", {"run": run})
+    wf = world.app.workflows
+    await until(
+        lambda: (
+            (wf.runs[run].nodes.get("long") or 0)
+            and wf.runs[run].nodes["long"].status == "running"
+        ),
+        timeout=20,
+    )
+    await world.app.registry.call("workflow.stop", {"run": run})
+    await until(
+        lambda: woke(main, " · stopped · ") and main.status == "idle", timeout=10
+    )
+    said = await turn(
+        main,
+        mcp("workflow_arm", run=run, definition=COUNTED.replace("echo x", "echo y")),
+    )
+    assert said.startswith("mcp error") and "has run and keeps its result" in said
+    said = await turn(main, mcp("workflow_arm", run=run, args={"k": 1}))
+    assert said.startswith("mcp error") and "keeps its args" in said
+    assert wf.runs[run].status == "stopped"
+
+
+async def test_only_a_stopped_or_failed_run_of_ones_own_is_armed_again(world):
+    r = await world.app.registry.call("session.spawn", {"agent": "opus"})
+    main = world.app.sessions.sessions[r["log_id"]]
+    run = ok(await turn(main, mcp("workflow_arm", definition=COUNTED, args={})))["run"]
+    said = await turn(main, mcp("workflow_arm", run=run))
+    assert said.startswith("mcp error") and "is armed" in said
+    other = await world.spawn()
+    await world.app.registry.call("workflow.reject", {"run": run})
+    said = await turn(other, mcp("workflow_arm", run=run))
+    assert said.startswith("mcp error")
+    said = await turn(main, mcp("workflow_arm"))
+    assert said.startswith("mcp error")
