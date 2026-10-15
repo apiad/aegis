@@ -303,7 +303,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 
 <h2 id="tasks">Tasks</h2>
 
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="num">1</span><span><span class="ttl">The canvas item on the server: dock on workflow_arm, the layout, replaced runs</span><span class="files">workflow_ops.py · workflows.py · layout.py · layout_ops.py · session.py · tests/test_workflows_canvas.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1729,6 +1729,7 @@ Only one step runs in a session at a time (the lint and the queue above), so <co
 <h2 id="code-departs">Where the code departs from this plan</h2>
 <p>Workers and reviewers add a line for each place the real code forced a change.</p>
 <ul class="rules">
+  <li>Task 1: the registry has no <code>Caller("person")</code>; <code>registry.call</code>'s default caller is the person, so <code>test_a_person_docks_a_finished_run</code> passes none. <code>test_a_bad_dock_arms_nothing</code> passed before the change too, since pydantic's extra-field error quotes the input; it pins the order now. <code>described</code> and <code>dockable</code> read <code>workflows</code> with <code>getattr</code>, because a registry built without the app has <code>workflows = None</code>.</li>
 </ul>
 </main>
 <script>

@@ -834,10 +834,14 @@ class Session:
     def dockable(self, pane: str) -> bool:
         """Whether ``pane`` can sit in this session's canvas: a live page of
         this session, a file it sent (by key), or a workflow it armed (by its
-        card's entry id, ``wf-<run>``)."""
+        card's entry id, ``wf-<run>``) and has not armed again over."""
         if pane.startswith("wf-"):
             e = self.fold().entry(pane)
-            return e is not None and e["kind"] == "workflow"
+            if e is None or e["kind"] != "workflow":
+                return False
+            wfs = getattr(self._host, "workflows", None)
+            st = wfs.runs.get(pane[3:]) if wfs is not None else None
+            return st is None or st.status != "replaced"
         if pane.startswith("art-"):
             try:
                 return self.artifacts.get(pane).status == "live"

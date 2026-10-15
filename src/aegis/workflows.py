@@ -42,6 +42,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from . import layout as canvas
 from . import restarts
 from .agents import PERMISSION_ORDER, resolve
 from .monitors import CONDITION_LIMIT_S
@@ -709,6 +710,13 @@ class Workflows:
         if cur is not None:
             self._log(cur.run, {"ev": "replaced", "by": run})
         owner.record_card({"kind": "workflow", "run": run})
+        if cur is not None:
+            # The new card takes the old one's pane. The standing layout, not
+            # owner.layout: that already trims the replaced run.
+            old = f"wf-{cur.run}"
+            lay = owner.standing.get("layout") or canvas.DEFAULT
+            if old in canvas.ids(lay):
+                owner.set_layout(canvas.rename(lay, old, f"wf-{run}"), "agent")
         self._publish(run)
         return st
 

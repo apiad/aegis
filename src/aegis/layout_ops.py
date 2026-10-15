@@ -4,7 +4,7 @@ and set of its own canvas.
 A person's operation names what they did (dock this there, undock that, these
 widths) and the server applies it to the layout as it stands, so a drop never
 overwrites what the agent docked while the pointer was moving. An agent sets
-the whole layout, or docks as it sends (file.send, artifact.send).
+the whole layout, or docks as it sends (file.send, artifact.send, workflow.arm).
 """
 
 from __future__ import annotations
@@ -65,10 +65,19 @@ def described(s) -> dict:
             kind, title = "transcript", "transcript"
         elif pid in fold.file_keys:
             kind, title = "file", fold.file_keys[pid]["name"]
+        elif pid.startswith("wf-"):
+            # Titled as the person sees it: the definition's title, not the run.
+            wfs = getattr(s._host, "workflows", None)
+            d = wfs.defs.get(pid[3:]) if wfs is not None else None
+            return {
+                **p,
+                "kind": "workflow",
+                "run": pid[3:],
+                "title": d.title if d else pid,
+            }
         else:
             e = fold.entry(pid)
-            kind = "workflow" if pid.startswith("wf-") else "artifact"
-            title = e["title"] if e else pid
+            kind, title = "artifact", (e["title"] if e else pid)
         return {**p, "kind": kind, "title": title}
 
     return {
@@ -101,8 +110,8 @@ def register_layout_ops(app: App) -> None:
         if p.pane != canvas.TRANSCRIPT and not s.dockable(p.pane):
             raise OpError(
                 "bad_params",
-                f"no pane {p.pane} to dock: it is not a live page or a file "
-                "sent in this session",
+                f"no pane {p.pane} to dock: it is not a live page, a file "
+                "or a workflow of this session",
             )
         try:
             new = canvas.place(s.layout, p.pane, p.where, s.dockable)
@@ -133,7 +142,8 @@ def register_layout_ops(app: App) -> None:
     async def read(p, caller):
         """Your canvas as it stands: the windows the person sees, each a list of
         columns with their width shares, each column a stack of panes with
-        their id, height share, kind (transcript, artifact or file) and title.
+        their id, height share, kind (transcript, artifact, file or workflow)
+        and title; a workflow's pane also names its run.
         Window 1 holds the transcript; other windows are browser tabs the person
         opens. Wakes nobody."""
         return described(own(caller))
@@ -142,11 +152,12 @@ def register_layout_ops(app: App) -> None:
     async def set_(p: LayoutSet, caller):
         """Replace your canvas: which pages and files sit beside the transcript,
         where, and in which window. Pass every window, as layout_read answers;
-        a pane is a live page's id or a sent file's key. Limits: 4 windows, 4
-        columns in a window, 3 panes in a column; the transcript stays in
-        window 1. You cannot open a window's browser tab: the person's card
-        offers it. To place one item as you send it, use dock= on
-        artifact_send or file_send instead."""
+        a pane is a live page's id, a sent file's key or a workflow's
+        wf-<run>. Limits: 4 windows, 4 columns in a window, 3 panes in a
+        column; the transcript stays in window 1. You cannot open a window's
+        browser tab: the person's card offers it. To place one item as you
+        send it, use dock= on artifact_send, file_send or workflow_arm
+        instead."""
         s = own(caller)
         try:
             new = canvas.normalise({"windows": p.windows}, s.dockable)

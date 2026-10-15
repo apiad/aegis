@@ -131,8 +131,8 @@ def normalise(layout: dict, dockable: Callable[[str], bool]) -> dict:
                     raise LayoutError("the transcript stays in window 1")
                 if pid != TRANSCRIPT and not dockable(pid):
                     raise LayoutError(
-                        f"no pane {pid} to dock: it is not a live page or a file "
-                        "sent in this session"
+                        f"no pane {pid} to dock: it is not a live page, a file "
+                        "or a workflow of this session"
                     )
                 seen.add(pid)
                 panes.append({"id": pid, "h": p.get("h")})
@@ -222,6 +222,29 @@ def place(
                 pi if m["side"] == "above" else pi + 1, {"id": pane, "h": 0}
             )
     return normalise(lay, lambda i: i == pane or dockable(i))
+
+
+def rename(layout: dict, old: str, new: str) -> dict:
+    """``layout`` with pane ``old`` now called ``new``, in place: a workflow
+    armed again before approval keeps its predecessor's spot."""
+    return {
+        "windows": [
+            {
+                **w,
+                "columns": [
+                    {
+                        **c,
+                        "panes": [
+                            {**p, "id": new} if p["id"] == old else p
+                            for p in c["panes"]
+                        ],
+                    }
+                    for c in w["columns"]
+                ],
+            }
+            for w in layout["windows"]
+        ]
+    }
 
 
 def trim(layout: dict, gone: str) -> dict:
