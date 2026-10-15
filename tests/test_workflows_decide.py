@@ -298,3 +298,30 @@ async def test_a_wake_that_could_not_be_delivered_is_tried_again_soon(world):
     await until(lambda: st.open["bad"].get("told"), timeout=8)
     await until(lambda: inbox(main, "failed"), timeout=5)
     assert len(calls) == 2
+
+
+async def test_an_answered_node_is_not_nudged_before_its_next_turn(world):
+    main, run = await armed(
+        world, wf(f"  seq:\n    - {leaf('w', 'Work.', ASKS)}\n  say: One.")
+    )
+    wf_ = world.app.workflows
+    await until(lambda: wf_.runs[run].open.get("q1", {}).get("told"), timeout=20)
+    s = world.app.sessions.sessions[wf_.runs[run].nodes["w"].log_id]
+    await until(lambda: s.status != "working", timeout=10)
+    got = []
+
+    async def deliver(header, body, **_):
+        got.append(body)  # as a session still resuming: no turn yet
+
+    s.deliver = deliver
+    await world.app.registry.call(
+        "workflow.answer",
+        {"run": run, "to": "q1", "text": "Use main."},
+        Caller("agent", main.log_id),
+    )
+    assert got == ["Use main."]
+    await wf_.step()
+    assert not wf_.runs[run].nodes["w"].nudged  # its answer's turn has not run
+    world.app.sessions.turn_ended(s)  # that turn ends, still without a result
+    await wf_.step()
+    assert wf_.runs[run].nodes["w"].nudged

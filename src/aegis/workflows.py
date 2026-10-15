@@ -212,6 +212,10 @@ class Workflows:
         # Failed deliveries to each run's main agent in a row, for the
         # backoff before the next try.
         self._tell_fails: dict[str, int] = {}
+        # The (run, instance) of each node answered whose next turn has not
+        # ended: its last turn ended before the answer, so it is not
+        # settled yet. A restart forgets it, as it forgets a probe's task.
+        self._answered: set[tuple[str, str]] = set()
 
     # -- life -----------------------------------------------------------------
     def boot(self) -> None:
@@ -270,6 +274,13 @@ class Workflows:
 
     def changed(self) -> None:
         self._wake.set()
+
+    def turn_ended(self, s: Session) -> None:
+        """A session's turn ended: a node answered has now had its turn."""
+        w = s.workflow or {}
+        if w.get("probe") != "judge":
+            self._answered.discard((w.get("run", ""), w.get("node", "")))
+        self.changed()
 
     def _due_at(self, t: float) -> None:
         """Ask for a pass at wall time ``t``, sooner if another asked."""
@@ -1465,6 +1476,8 @@ class Workflows:
         asking = any(o["kind"] == "ask" and o["node"] == inst for o in st.open.values())
         if asking and not reported:
             return "running"  # it waits for the main agent's answer, not nudged
+        if (st.run, inst) in self._answered and not reported:
+            return "running"  # the answer's turn has not ended yet
         got = await self._settle(
             st,
             inst,
@@ -2275,6 +2288,7 @@ class Workflows:
                 node_s = self._reg.sessions.get(n.log_id or "")
                 if node_s is None or n.status != "running":
                     return  # the node has moved on; the question is closed
+                self._answered.add((st.run, o["node"]))
                 await node_s.deliver(
                     f"> from workflow:{self._wid(st)} · answer {to} · {iso_now()}",
                     text,
