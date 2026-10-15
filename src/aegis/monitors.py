@@ -392,8 +392,11 @@ class Monitors:
         if session is None:
             return
         try:
+            # The session's own monitor: it reaches a workflow node too.
             await session.deliver(
-                f"> from monitor:{m.id} · {outcome} · {iso_now()}", "\n".join(lines)
+                f"> from monitor:{m.id} · {outcome} · {iso_now()}",
+                "\n".join(lines),
+                through_lock=True,
             )
         except Exception:
             log.exception("aegis: could not deliver the wake of %s", m.id)

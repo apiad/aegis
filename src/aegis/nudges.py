@@ -138,8 +138,8 @@ class Nudges:
                 and not s.held,
                 now=now,
             )
-            if kind is None:
-                continue
+            if kind is None or self._registry.workflow_lock(s) is not None:
+                continue  # a workflow's node is the engine's to nudge
             log.info("aegis: nudging %s (%s)", s.handle, kind)
             try:
                 await s.deliver(

@@ -200,6 +200,17 @@ class Registry(Host):
             return c
         return self.sessions.get(c) if c else None
 
+    def workflow_lock(self, session: Session) -> str | None:
+        """A node's session is the workflow's while its run is live: nobody
+        types into it, interrupts it or hands it off but the engine (spec §05)."""
+        wf = session.workflow
+        if wf and self.workflows is not None and self.workflows.live(wf["run"]):
+            return (
+                f"{session.handle} is node {wf['node']} of workflow {wf['run']}; "
+                "stop the workflow to talk to it"
+            )
+        return None
+
     def quota_hold(self, session: Session) -> str | None:
         """A paused session waits for its gate to open; any other may start a
         turn unless its owner is stopped, or closed and the harness would

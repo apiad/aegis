@@ -310,8 +310,10 @@ and edits through the same operations agents use.
 arms a YAML tree in which every node says what it does (`workflow_lang.py`);
 approving it is an operation not marked for agents, so no tool reaches it. The
 engine (`workflows.py`) runs each node with what aegis has (an agent node is a
-quiet session spawned under the main agent, locked to people and peers while
-the run lives) and appends every event to `<state>/workflow-runs/<run>.jsonl`,
+quiet session spawned under the main agent, locked while the run lives: its
+`deliver`, `send` and `interrupt` refuse every caller that does not pass
+`through_lock`, which only the engine, the node's own monitors and queue
+tasks, and the quota pause do) and appends every event to `<state>/workflow-runs/<run>.jsonl`,
 which boot folds back (`workflow_log.py`), as the schedules do. Like their
 clock, the engine is level-triggered: each pass looks at every live run, and
 a missed hook only delays a step. A node's result is a `workflow_result` call

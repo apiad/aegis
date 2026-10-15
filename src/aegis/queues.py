@@ -445,8 +445,11 @@ class Queues:
         if s is None:
             return
         try:
+            # The enqueuer's own task: it reaches a workflow node too.
             await s.deliver(
-                f"> from queue:{t.queue} · task#{t.id} · {outcome} · {iso_now()}", body
+                f"> from queue:{t.queue} · task#{t.id} · {outcome} · {iso_now()}",
+                body,
+                through_lock=True,
             )
         except Exception:
             log.exception("aegis: could not deliver the callback of %s", t.id)

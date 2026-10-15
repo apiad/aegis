@@ -502,7 +502,7 @@ class App:
         s.report({"kind": "quota_paused", "why": g.why})
         s.quota_paused = g.why
         self.sessions.metas.write(s.meta())
-        await s.interrupt()
+        await s.interrupt(through_lock=True)  # the gate holds a node too
         s._publish_now()
 
     async def _continue(self, s) -> None:
@@ -544,17 +544,6 @@ class App:
 
     def _live(self, s) -> bool:
         return not s.archived and self.sessions.sessions.get(s.log_id) is s
-
-    def workflow_lock(self, s) -> None:
-        """A node's session is the workflow's while its run is live: nobody
-        types into it or interrupts it but the engine (spec §05)."""
-        wf = getattr(s, "workflow", None)
-        if wf and self.workflows is not None and self.workflows.live(wf["run"]):
-            raise OpError(
-                "in_workflow",
-                f"{s.handle} is node {wf['node']} of workflow {wf['run']}; "
-                "stop the workflow to talk to it",
-            )
 
     def owner_of(self, log_id: str) -> str | None:
         """A session's owner by log id, None for no such session. One from
@@ -1117,7 +1106,7 @@ class App:
 
         async def deliver(p: SendParams, caller):
             s = reg.open(p.log_id)
-            self.workflow_lock(s)
+            s.check_lock()  # before a / command or an upload acts on it
             # A message written offline carries the transcript's revision as the
             # writer saw it: if anything a person reads has happened since, it
             # goes back to ask instead of answering a question no longer asked.
@@ -1179,6 +1168,7 @@ class App:
             model and effort, opened with its handoff brief and last turns. The
             old session is archived when the new one finishes its first turn."""
             old = reg.open(p.log_id)
+            old.check_lock()
             if old.worker:
                 raise OpError(
                     "worker", f"{old.handle} is a queue worker; its task owns it"
@@ -1366,7 +1356,6 @@ class App:
         @r.op("session.interrupt", LogParams, owned="log_id")
         async def interrupt(p: LogParams, caller):
             s = reg.open(p.log_id)
-            self.workflow_lock(s)
             try:
                 await s.interrupt()
             except (BrokenPipeError, ConnectionResetError) as e:
