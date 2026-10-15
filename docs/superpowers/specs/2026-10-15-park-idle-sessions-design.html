@@ -167,7 +167,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · parking idle sessions</span>
-  <span class="st"><span class="pill acc">approved · not started</span><span class="pill">2026-10-15</span><span class="pill">#415</span></span>
+  <span class="st"><span class="pill acc">built · branch park-idle-sessions</span><span class="pill">2026-10-15</span><span class="pill">#415</span></span>
 </div>
 
 <div class="wrap">
@@ -189,11 +189,12 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <a href="#delivery">Delivery</a>
   <a href="#testing">Testing</a>
   <a href="#nongoals">Non-goals and open questions</a>
+  <a href="#departs">Where the build departs</a>
 </nav>
 
 <main>
 <h1>Parking idle sessions: end the harness when nothing needs it, resume it on the next message</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-15-park-idle-sessions-design.html</span><span>·</span><span>not started</span><span>·</span><a href="https://github.com/apiad/aegis/issues/415">#415</a></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-15-park-idle-sessions-design.html</span><span>·</span><span>built on branch park-idle-sessions, PR #416</span><span>·</span><a href="https://github.com/apiad/aegis/issues/415">#415</a></div>
 <p class="lede">Every open session keeps its harness process alive between turns, about 300 MB each, however long it sits idle. This spec lets an admin turn on parking per harness: after a set idle time, aegis ends the process of a session that is safe to end and resumes it with the next message. A session someone is looking at is never parked, and a parked one wakes when they start typing, so the resume is mostly over by the time they press send.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -204,7 +205,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   </div>
   <div class="card">
     <h4>A safety rule</h4>
-    <p>A session parks only when ending its process kills nothing: no turn running, no background task, no other process in its cgroup, no message held, no visible tab on its transcript, and either a finished turn or a wait on something the server owns.</p>
+    <p>A session parks only when ending its process kills nothing: no turn running, no background task, no harness timer, no process it left running, no message held, no visible tab on its transcript, and either a finished turn or a wait on something the server owns.</p>
   </div>
   <div class="card">
     <h4>A parked state</h4>
@@ -231,10 +232,10 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>Opening a parked transcript</td><td>Does not wake it. The first keystroke in its composer does</td><td class="why"><span class="who">maintainer</span> Skimming a session should cost nothing. Typing means a message is coming, and a prompt takes longer to write than the 2.7 s a harness takes to start.</td></tr>
 <tr><td>Which turns may park</td><td>An idle session whose last turn ended with <code>turn_end</code> (done, needs you, review), or one waiting on a monitor, a queue task or <code>monitor_sessions</code></td><td class="why"><span class="who">maintainer</span> Those are the states where the next thing to happen comes from outside the harness. A turn that ended with neither is left to the idle nudge.</td></tr>
 <tr><td>A parked session's state</td><td>Its own state, <code>parked</code>, not <code>stopped</code></td><td class="why"><span class="who">maintainer</span> Stopped means a person stopped it: it is dimmed, drops out of the live counts and gets no nudges. A parked session is live work that happens to have no process.</td></tr>
-<tr><td>How a session parks</td><td>The same process end as Stop: SIGTERM, a 5 s grace, then the cgroup is killed</td><td class="why"><span class="who">maintainer</span> The safety rule has already shown the cgroup holds only the harness, so the kill finds nothing else. Reusing Stop's path means one way a process ends on purpose.</td></tr>
+<tr><td>How a session parks</td><td>The same process end as Stop: SIGTERM, a 5 s grace, then the cgroup is killed</td><td class="why"><span class="who">maintainer</span> The safety rule has already shown that nothing besides the harness and the servers it keeps would die, so the kill finds nothing that matters. Reusing Stop's path means one way a process ends on purpose.</td></tr>
 <tr><td>Codex and OpenCode</td><td>Allowed when the admin names them. <code>aegis doctor</code> warns that their resume is unmeasured</td><td class="why"><span class="who">maintainer</span> Both drivers already resume (<code>codex/process.py:183</code>, <code>opencode/process.py:105</code>). The warning goes once a probe like #415's has run on them.</td></tr>
 <tr><td>Queue workers</td><td>Never parked</td><td class="why"><span class="who">maintainer</span> A worker is closed when its task ends (<code>queues.py:376</code>), so there is no idle stretch to save, and a Stop bypasses the exit that settles its task.</td></tr>
-<tr><td>Timers inside the harness</td><td>A session that has used ScheduleWakeup, CronCreate or the Monitor tool is never parked until each is shown to emit a task event</td><td class="why"><span class="who">maintainer</span> They live in the harness's memory with no child process, so the cgroup check cannot see them, and parking would cancel them without a trace. See <a href="#timers">section 05</a>.</td></tr>
+<tr><td>Timers inside the harness</td><td>A process that has called ScheduleWakeup or CronCreate is never parked. The Monitor tool and a background Agent are covered by the background-task rule</td><td class="why"><span class="who">maintainer</span> The first two live in the harness's memory with no child process and no task event, so no other check can see them, and parking would cancel them without a trace. The probe on #415 showed Monitor and a background Agent emit task events. See <a href="#timers">section 05</a>.</td></tr>
 </tbody>
 </table>
 
@@ -293,19 +294,20 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tbody>
 <tr><td>Its harness is in <code>park:</code></td><td>the config snapshot</td><td class="why">The opt-in.</td></tr>
 <tr><td>It has a process and is <code>idle</code></td><td><code>s.running</code>, <code>s.status</code></td><td class="why">A working turn, an unanswered interrupt (<code>error</code>) or a starting process is never ended.</td></tr>
-<tr><td>Its last turn ended with <code>turn_end</code>, or it waits on the server</td><td><code>attention</code>; its live monitors, pending queue tasks and <code>monitor_sessions</code></td><td class="why">These are the waits whose wake comes from outside the harness. A turn that ended with neither gets the idle nudge first, and the nudge's answer usually sets <code>attention</code>.</td></tr>
+<tr><td>Its last turn ended with <code>turn_end</code>, or it waits on the server</td><td>how the last turn ended; <code>attention</code> <code>waiting</code> for its live monitors, pending queue tasks and <code>monitor_sessions</code></td><td class="why">These are the waits whose wake comes from outside the harness. A turn that ended silently, a person's slash command and a session with no turn yet do not count, even though the card reads them as done. A silent turn gets the idle nudge first, and the nudge's answer usually ends with <code>turn_end</code>.</td></tr>
 <tr><td>No open background task</td><td><code>open_tasks</code> (<code>session.py:931</code>)</td><td class="why">A background Bash call wakes the session itself when it ends (#127). Anything else that emits <code>task_started</code> counts the same.</td></tr>
-<tr><td>Nothing in its cgroup but the harness</td><td><code>cgroup.procs</code> of the session's cgroup</td><td class="why">Catches what no event announces: a <code>nohup … &amp;</code>, a dev server, a stray child. Without cgroup delegation the check reads the process tree under the harness pid instead.</td></tr>
+<tr><td>No process it left running</td><td><code>cgroup.procs</code> of the session's cgroup; without delegation, every process whose environment carries <code>AEGIS_SESSION=&lt;log_id&gt;</code></td><td class="why">Catches what no event announces: a <code>nohup … &amp;</code>, a dev server, a stray child. Each harness starts with that variable, and its children inherit it, so a child that its shell left behind is found even after it was re-parented out of the harness's tree.</td></tr>
+<tr><td>Its own servers do not count</td><td>the direct children of the harness pid and their names</td><td class="why">A stdio MCP server or a plugin's helper is a direct child of the harness that is not a shell, and ends and starts again with it. Anything under a shell (the Bash tool's <code>bash -c</code>) counts, so an MCP server started through <code>sh -c</code> blocks parking. Only Claude Code gets the exemption: for Codex and OpenCode every child counts until their tool spawning is measured, so a session of theirs with any MCP server never parks.</td></tr>
 <tr><td>No held message, not flushing</td><td><code>s.held</code>, <code>s._flushing</code></td><td class="why">A held message is about to be sent to this process.</td></tr>
 <tr><td>Not a queue worker</td><td><code>s.worker</code></td><td class="why">See the decisions.</td></tr>
 <tr><td>No visible watcher</td><td>the watcher count, <a href="#watch">section 06</a></td><td class="why">Someone looking at it is about to answer.</td></tr>
-<tr><td>No harness-internal timer</td><td>the session's tool calls</td><td class="why">The next part.</td></tr>
+<tr><td>No harness-internal timer</td><td>the tool calls of the current process</td><td class="why">The next part.</td></tr>
 </tbody>
 </table>
 
 <h3 id="timers">Timers inside the harness</h3>
-<p>Claude Code can arrange its own wake without any child process: <code>ScheduleWakeup</code>, <code>CronCreate</code> and the <code>Monitor</code> tool keep a timer in the harness's memory. Ending the process cancels it, and nothing in the cgroup shows it was there. Until a probe shows which of them emit <code>task_started</code> and <code>task_notification</code>, the rule is conservative: a session whose transcript has a call to any of them is not parked, and a <code>CronCreate</code> keeps it unparked until a matching <code>CronDelete</code>. aegis's own prompt already sends agents to <code>monitor_start</code>, which lives in the server, so in practice few sessions trip this.</p>
-<p>A tool that the probe shows emits task events moves off this list and is covered by the <code>open_tasks</code> rule.</p>
+<p>Claude Code can arrange its own wake without any child process: <code>ScheduleWakeup</code> and <code>CronCreate</code> keep a timer in the harness's memory. Ending the process cancels it, and nothing in the cgroup shows it was there. The probe on #415 ran each in a real session: their fires arrived as unprompted turns with no <code>task_started</code> or <code>task_notification</code>, while the <code>Monitor</code> tool and a background Agent emitted both. So Monitor and a background Agent are covered by the <code>open_tasks</code> rule, and only the first two are timers.</p>
+<p>The timers are remembered per process, not per transcript. A call to either keeps the session up until its process ends for another reason (Stop, a restart, a crash), even after the wakeup fired or the cron job was deleted: <code>CronDelete</code> names no id the stream lets us match. A new process has no timers, so the set clears when a process starts. aegis's own prompt already sends agents to <code>monitor_start</code>, which lives in the server, so in practice few sessions trip this.</p>
 
 <h3 id="tester">Try the rules</h3>
 <p><span class="try">try it</span>Tick the state of one sample session and move its idle time. The verdict is computed by the rules above, with <code>park: claude-code: 1200</code>.</p>
@@ -316,7 +318,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
     <label><input type="checkbox" id="c-te" checked> last turn ended with turn_end</label>
     <label><input type="checkbox" id="c-mon"> waits on a monitor or queue task</label>
     <label><input type="checkbox" id="c-task"> has an open background task</label>
-    <label><input type="checkbox" id="c-cg"> has another process in its cgroup</label>
+    <label><input type="checkbox" id="c-cg"> left a process running</label>
     <label><input type="checkbox" id="c-held"> has a held message</label>
     <label><input type="checkbox" id="c-wk"> is a queue worker</label>
     <label><input type="checkbox" id="c-vis"> its transcript is open in a visible tab</label>
@@ -337,22 +339,22 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <ul>
 <li>The client sends <code>{"t": "watch", "session": &lt;log_id&gt;, "visible": true|false}</code> on its socket when the transcript it shows changes, and on every <code>visibilitychange</code>.</li>
 <li>The server keeps, per socket, the session it reports visible, and drops it when the socket closes. A session's watcher count is the number of sockets reporting it visible.</li>
-<li>A transcript shown in a pane beside another counts as watched while the window is visible. The Fleet view watches nothing: a card is not a transcript.</li>
-<li>A linked server forwards the watch over its link socket, so a person on a laptop that links in counts the same as one in a local tab.</li>
+<li>Only the transcript in the main session view counts. A transcript docked in a pane beside another does not keep its session up, though typing to it still warms it. The Fleet view watches nothing: a card is not a transcript.</li>
+<li>A linked server forwards the watch over its link socket, so a person on a laptop that links in counts the same as one in a local tab. The link keeps the watches it forwarded and sends them again when it reconnects, so a far session shown in a visible page stays up across a dropped link.</li>
 </ul>
 
 <h3 id="warm">Warm on the first keystroke</h3>
-<p>On the first <code>input</code> event in the composer of a parked session, the client sends <code>{"t": "warm", "session": &lt;log_id&gt;}</code>, once per parked stretch. The server checks the sender may write to that session (the same check as a prompt; a member warms only its own) and calls <code>ensure_running()</code>. The harness starts while the person types. If they never send, the session is idle with a process again, and because their tab is visible it stays so until they look away, then parks after the idle time as before.</p>
+<p>On the first <code>input</code> event in the composer of a parked session, the client calls the op <code>session.warm</code> with the session's <code>log_id</code>, once per parked stretch. As an op it gets the owner check every op has (a member warms only its own) and the link relay, and the quota gate holds it as it holds a prompt. The server calls <code>ensure_running()</code>. <code>watch</code> stays a socket message because it lives as long as the socket. The harness starts while the person types. If they never send, the session is idle with a process again, and because their tab is visible it stays so until they look away, then parks after the idle time as before.</p>
 <p>A warm never sends anything to the model and never counts as activity for the idle nudge.</p>
 
 <h2 id="ui"><span class="n">07</span>What people and agents see</h2>
 <ul>
-<li>The card and the tab look like an idle session's, not dimmed, with a <code>parked</code> chip in the header (the same pill as the quiet session's <code>zz</code>). The card's line, mark and plan are unchanged.</li>
-<li>The composer's hint reads "Parked to free memory. Typing wakes it." While waking it reads "Waking · resuming the harness" until the process's <code>init</code>.</li>
+<li>The card and the tab look like an idle session's, not dimmed, with a <code>parked</code> chip in the card's header (the same pill as the quiet session's <code>zz</code>). The card's line, mark and plan are unchanged.</li>
+<li>The composer's hint reads "Parked to free memory. Typing wakes it." From the first keystroke until the session leaves <code>parked</code>, a "Waking · resuming the harness" row shows in the transcript, in the spot that shows a turn in progress.</li>
 <li>The transcript gets a quiet row, "parked after 20 min idle", in the style of the stopped row (<code>transcript/entries.py:657</code>).</li>
-<li>Parked sessions stay in the Fleet's live count and its context average. A new counter in the Fleet header says how many are parked and roughly what they freed: <code>3 parked · ~0.9 GB</code>, from the last RSS each had.</li>
+<li>Parked sessions stay in the Fleet's live count and its context average. A new counter in the Fleet header says how many are parked and roughly what they freed: <code>3 parked · ~0.9 GB</code>. It sums the harness's own RSS when each parked (<code>VmRSS</code> of its pid, saved as <code>parked_rss</code>), not its whole process tree.</li>
 <li><code>session_list</code> reports <code>"state": "parked"</code>. <code>monitor_sessions</code> reads only <code>attention</code>, so a parked session finishes and blocks a monitor exactly as an idle one does.</li>
-<li>Nudges treat a parked session as live: the condition at <code>nudges.py:137</code> becomes <code>s.running or s.parked</code>. A nudge is a message, so it wakes the session. That is intended: the nudge exists to get a report, and parking should not silence it.</li>
+<li>Nudges treat a parked session as live: the condition at <code>nudges.py:137</code> counts a <code>parked</code> status as idle. A nudge is a message, so it wakes the session. That is intended: the nudge exists to get a report, and parking should not silence it.</li>
 </ul>
 
 <h3 id="try-ui">Try it</h3>
@@ -388,16 +390,16 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <h2 id="delivery"><span class="n">09</span>Delivery</h2>
 <div class="steps">
-  <div class="step"><div class="n"></div><div><h4>Probe the harness timers</h4><p>Before code: run ScheduleWakeup, CronCreate, the Monitor tool and a background subagent in a real Claude Code session under aegis, and record which emit <code>task_started</code> and <code>task_notification</code>. The result fixes the timer list in section 05. Same probe for resumes after 20, 40 and 60 minutes.</p></div></div>
-  <div class="step"><div class="n"></div><div><h4>Server: config, rules, park</h4><p><code>park:</code> in <code>config.py</code> with doctor errors; a pure <code>park_eligible(session, snapshot, now)</code> beside <code>nudges.py</code>; the loop; <code>Session.park()</code> and the <code>parked</code> status in the meta, <code>session_list</code> and nudges.</p></div></div>
-  <div class="step"><div class="n"></div><div><h4>Watchers and warm</h4><p>The <code>watch</code> and <code>warm</code> socket messages in <code>web.py</code>, forwarded over links; the client sends them from the transcript view and the composer.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>Probe the harness timers</h4><p>Before code: run ScheduleWakeup, CronCreate, the Monitor tool and a background subagent in a real Claude Code session under aegis, and record which emit <code>task_started</code> and <code>task_notification</code>. The result fixes the timer list in section 05: Monitor and a background Agent do, ScheduleWakeup and CronCreate do not. Same probe for resumes after 20, 40 and 60 minutes, still pending.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>Server: config, rules, park</h4><p><code>park:</code> in <code>config.py</code> with doctor errors; the pure <code>blockers(Facts)</code> in a new <code>park.py</code>; the loop; <code>Session.park()</code> and the <code>parked</code> status in the meta, <code>session_list</code> and nudges.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>Watchers and warm</h4><p>The <code>watch</code> socket message in <code>web.py</code> and the <code>session.warm</code> op, both forwarded over links; the client sends them from the transcript view and the composer.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>Client: the parked look</h4><p>The chip, the composer hint, the transcript row and the Fleet counter. The Settings page gains the <code>park:</code> numbers for admins.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>Docs</h4><p>A help page section on parking (what it does, what blocks it, what a wake costs and how hooks change that), a <code>changelog.d/</code> fragment, and DESIGN.md's process model updated: a process now ends on shutdown, Stop, Close or a park.</p></div></div>
 </div>
 
 <h2 id="testing"><span class="n">10</span>Testing</h2>
 <ul class="checks">
-<li><code>park_eligible</code> as a table test: each rule failing alone keeps the session, all holding for less than the configured time keeps it, all holding past it parks it.<span class="b">fast</span></li>
+<li><code>blockers</code> as a table test: each rule failing alone keeps the session, all holding for less than the configured time keeps it, all holding past it parks it.<span class="b">fast</span></li>
 <li>With the fake claude and <code>park: claude-code: 1</code>: an idle session after <code>turn_end</code> parks, its process is gone, its state is <code>parked</code>, and a prompt resumes it into the same store with the same fold.<span class="b">fast</span></li>
 <li>A fake claude with an open <code>task_started</code>, and one with a child process in its cgroup: neither parks.<span class="b">fast</span></li>
 <li>A monitor's wake, a queue callback and a <code>peer_handoff</code> to a parked session each resume it and land.<span class="b">fast</span></li>
@@ -419,11 +421,28 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </ul>
 <h3>Open questions</h3>
 <ul>
-<li>Which harness timers emit task events. The first delivery step answers it.</li>
-<li>Whether a resume after 20 to 60 minutes hits the cache as often as one after seconds. The probe's gaps were seconds; #354's 266 of 266 hits after 5 to 60 minutes were measured on turns, not on resumed processes.</li>
+<li>Whether a resume after 20 to 60 minutes hits the cache as often as one after seconds. The probe's gaps were seconds; #354's 266 of 266 hits after 5 to 60 minutes were measured on turns, not on resumed processes. The long-gap and warm-start probes are pending on #415.</li>
 <li>Why one cold resume in 25 read only 14.5k tokens from the cache. If cold resumes miss at a real rate, each miss rewrites the context at about 20 times the cost of a read, and a default under an hour would cost more than it looks.</li>
 <li>Whether the Fleet's freed-memory counter is worth its space, or the chip says enough.</li>
 </ul>
+<p>Answered: which harness timers emit task events. The probe on #415 found that Monitor and a background Agent do, and ScheduleWakeup and CronCreate do not (<a href="#timers">section 05</a>).</p>
+
+<h2 id="departs"><span class="n">12</span>Where the build departs</h2>
+<p>The build on branch <code>park-idle-sessions</code> (PR #416) follows this spec except where these rows say. The sections above already read as built.</p>
+<table class="tbl">
+<thead><tr><th>The spec said</th><th>The build does</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Without delegation, read the process tree under the harness pid</td><td>Each harness starts with <code>AEGIS_SESSION=&lt;log_id&gt;</code>, and the check scans <code>/proc/*/environ</code> for it. With delegation it reads <code>cgroup.procs</code></td><td class="why">A <code>nohup cmd &amp;</code> from a Bash call is re-parented when its shell exits, so it leaves the tree.</td></tr>
+<tr><td>Nothing but the harness</td><td>A direct child that is not a shell does not count, for Claude Code only</td><td class="why">A stdio MCP server or a plugin helper lives as long as the harness. Counting it would keep every session with such a plugin awake. Codex and OpenCode count every child until measured.</td></tr>
+<tr><td>Timers per transcript, cleared by a matching <code>CronDelete</code></td><td>Timers per process, cleared when a process starts</td><td class="why"><code>CronDelete</code> names no id the stream lets us match. A new process has no timers.</td></tr>
+<tr><td>ScheduleWakeup, CronCreate and Monitor are timers</td><td>Only ScheduleWakeup and CronCreate</td><td class="why">The probe showed Monitor and a background Agent emit task events.</td></tr>
+<tr><td>Which turns may park: by <code>attention</code></td><td>The last turn must have ended with <code>turn_end</code>, or the session waits on the server</td><td class="why">The card reads a silent turn, a slash command and no turn as done, which the decision did not mean to include.</td></tr>
+<tr><td>A <code>warm</code> socket message</td><td>The op <code>session.warm</code></td><td class="why">An op gets the owner check and the link relay for free.</td></tr>
+<tr><td>A docked transcript counts as watched</td><td>Only the main session view counts</td><td class="why">The page reports one session, the one it shows.</td></tr>
+<tr><td>Freed memory from the last RSS each had</td><td>The harness's own RSS at park time, not its tree</td><td class="why">One <code>VmRSS</code> read at park time, stored in the meta as <code>parked_rss</code>.</td></tr>
+<tr><td>The waking text in the composer's hint</td><td>A "Waking · resuming the harness" row in the transcript</td><td class="why">A placeholder is hidden as soon as the person types, which is when the wake starts.</td></tr>
+</tbody>
+</table>
 </main>
 </div>
 
@@ -441,9 +460,9 @@ const $ = (id) => document.getElementById(id);
     const keep = [];
     if (!c("c-on")) keep.push("claude-code is not in park:");
     if (!c("c-idle")) keep.push("it is not idle with a process");
-    if (!c("c-te") && !c("c-mon")) keep.push("its last turn neither called turn_end nor waits on the server; the idle nudge comes first");
+    if (!c("c-te") && !c("c-mon")) keep.push("its last turn did not call turn_end and it waits on nothing the server runs");
     if (c("c-task")) keep.push("an open background task would die");
-    if (c("c-cg")) keep.push("another process in its cgroup would die");
+    if (c("c-cg")) keep.push("a process it left running would die");
     if (c("c-held")) keep.push("a held message is about to be sent");
     if (c("c-wk")) keep.push("queue workers never park");
     if (c("c-vis")) keep.push("someone is looking at it");
