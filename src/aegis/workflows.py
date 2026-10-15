@@ -289,6 +289,13 @@ class Workflows:
         scope[""] = early  # read first by lookup, so {{a.o}} is the output
         return scope
 
+    def _say(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
+        """A node's say with its references read, as the card draws it; the
+        template itself while a reference has no value."""
+        with contextlib.suppress(KeyError, TypeError, IndexError):
+            return render(node.say, self._scope(st, wf, prefix))
+        return node.say
+
     def _resolve(self, n: Node, prefix: str) -> str:
         """The instance of ``n`` seen from a node under ``prefix``: the same
         item of every map the two share."""
@@ -485,7 +492,7 @@ class Workflows:
                 met = self._met(st, wf, prefix, a)
                 if isinstance(met, str):
                     why = f"it waits on {a}, which can never come: {met}"
-                    self._fail(st, inst, why, node.say)
+                    self._fail(st, inst, why, self._say(st, wf, node, prefix))
                     return "failed"
                 if not met:
                     return "pending"
@@ -564,15 +571,17 @@ class Workflows:
         try:
             items = value_of(node.body["over"], self._scope(st, wf, prefix))
         except (KeyError, TypeError, IndexError) as e:
-            self._fail(st, inst, f"over has no value: {e}", node.say)
+            self._fail(
+                st, inst, f"over has no value: {e}", self._say(st, wf, node, prefix)
+            )
             return False
         if not isinstance(items, list):
             why = f"over is a {type(items).__name__}, not a list"
-            self._fail(st, inst, why, node.say)
+            self._fail(st, inst, why, self._say(st, wf, node, prefix))
             return False
         keys = item_keys(items)
         if isinstance(keys, str):
-            self._fail(st, inst, keys, node.say)
+            self._fail(st, inst, keys, self._say(st, wf, node, prefix))
             return False
         self._log(
             st.run,

@@ -74,3 +74,40 @@ root:
     st = wf.runs[run]
     assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
     assert st.nodes["b"].say == "Use 3."
+
+
+async def test_a_failure_story_line_reads_the_rendered_say(world):
+    """A map whose over is no list, and a node whose after can never come,
+    fail with their say rendered, not as templates."""
+    bad_over = f"""
+id: overs
+title: Overs
+say: A map over a number.
+args: {{type: object}}
+root:
+  map: {{over: "{{{{args.n}}}}", as: x, do: {leaf("one", "One.", report())}}}
+  id: items
+  say: "Each of {{{{args.kind}}}}."
+"""
+    never = f"""
+id: nevers
+title: Nevers
+say: A wait on an item that is not there.
+args: {{type: object}}
+root:
+  par:
+    - map: {{over: [{{id: a}}], as: y, do: {leaf("two", "Two.", report(wait=0.1))}}}
+      id: others
+      say: Others.
+    - {leaf("late", "Late for {{args.kind}}.", report(wait=0.1))}
+  say: All.
+""".replace("    - {id: late,", "    - {after: [others.zz], id: late,")
+    wf = world.app.workflows
+    texts = []
+    for text in (bad_over, never):
+        run = await arm(world, text, {"n": 3, "kind": "cats"})
+        await until(lambda: wf.runs[run].status != "running", timeout=40)
+        texts += [s["text"] for s in wf.runs[run].story]
+    assert any(t.startswith("Each of cats. Failed: over is a int") for t in texts), texts
+    assert any(t.startswith("Late for cats. Failed: it waits on") for t in texts), texts
+    assert not any("{{" in t for t in texts), texts
