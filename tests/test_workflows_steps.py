@@ -1,6 +1,8 @@
 """Steps that are not agents against a real server: sh, wait and check, the
 quoting of values in a command, and who may arm a command at all."""
 
+import asyncio
+import json
 import time
 
 import pytest
@@ -10,6 +12,7 @@ from aegis.ops import Caller, OpError
 from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
 from .test_workflows_e2e import ok
+from .test_workflows_parallel import script
 
 WRITER = (
     "  writer: {harness: claude-code, model: opus, effort: high, permission: write}\n"
@@ -31,6 +34,14 @@ async def world(tmp_path, fake_claude):
 def flow(*steps: str, args: str = "", extra: str = "") -> str:
     body = "\n".join(f"    - {s}" for s in steps)
     return f"id: steps\ntitle: Steps\nsay: Steps.\n{args}{extra}root:\n  seq:\n{body}\n  say: All of it.\n"
+
+
+def verdict(yes: bool, wait: float = 0.5) -> str:
+    why = "It holds." if yes else "It does not hold."
+    return script(
+        ["sleep", wait],
+        ["workflow_result", {"value": {"pass": yes, "why": why}, "summary": why}],
+    )
 
 
 async def run(
@@ -151,3 +162,67 @@ async def test_an_expr_check_passes_on_known_values(world):
         ),
     )
     assert st.status == "done"
+
+
+async def test_a_judge_that_says_yes_passes_its_check_and_is_archived(world):
+    j = json.dumps(verdict(True))
+    st = await ended(
+        world,
+        await run(
+            world,
+            flow(
+                f"{{check: {{judge: {{agent: opus, prompt: {j}, inputs: []}}}}, id: ok, say: Ask a judge.}}"
+            ),
+        ),
+    )
+    assert st.status == "done"
+    lid = st.nodes["ok"].judges[""]["log_id"]
+    assert lid not in world.app.sessions.sessions  # archived once it judged
+    assert any(s["text"] == "Judge: It holds." for s in st.story)
+
+
+async def test_a_judge_that_says_no_fails_its_check_with_its_reason(world):
+    j = json.dumps(verdict(False))
+    st = await ended(
+        world,
+        await run(
+            world,
+            flow(
+                f"{{check: {{judge: {{agent: opus, prompt: {j}}}}}, id: no, say: Ask a judge.}}"
+            ),
+        ),
+    )
+    assert st.status == "failed"
+    assert st.nodes["no"].error == "the judge said no: It does not hold."
+
+
+async def test_judges_count_in_the_pool(world):
+    """max_agents is 2: an agent and two judges side by side never hold
+    three sessions open. The agent comes first, so only the judges' own
+    room check keeps the third out."""
+    j = json.dumps(verdict(True, wait=2))
+    a = json.dumps(
+        script(["sleep", 2], ["workflow_result", {"value": {}, "summary": "Done."}])
+    )
+    peak = [0]
+
+    async def watch():
+        while True:
+            n = sum(1 for s in world.app.sessions.sessions.values() if s.workflow)
+            peak[0] = max(peak[0], n)
+            await asyncio.sleep(0.05)
+
+    w = asyncio.create_task(watch())
+    text = f"""id: three
+title: Three
+say: Two judges and an agent.
+root:
+  par:
+    - {{agent: {{agent: opus, prompt: {a}}}, say: Work.}}
+    - {{check: {{judge: {{agent: opus, prompt: {j}}}}}, say: Judge one.}}
+    - {{check: {{judge: {{agent: opus, prompt: {j}}}}}, say: Judge two.}}
+  say: All three.
+"""
+    st = await ended(world, await run(world, text), timeout=40)
+    w.cancel()
+    assert st.status == "done" and peak[0] == 2

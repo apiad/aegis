@@ -74,6 +74,7 @@ CUT = "cut by restart: it may have run in part; rerun or skip?"
 SH_LIMIT_S = 1800.0  # an sh with no deadline over it
 CHECK_LIMIT_S = 3600.0  # a check with no deadline over it, a monitor's default
 TAIL = 4000  # the end of an sh's stdout and of its stderr kept as its value
+LEAVES = frozenset({"agent", "sh", "wait", "check"})  # logged; the rest derived
 
 
 async def _tail(stream) -> str:
@@ -135,6 +136,19 @@ When your task is done, call workflow_result with `value` matching this JSON Sch
 {schema}
 Nobody answers questions here and no person reads this session while the workflow runs: do the task with what you have, and say in the summary what you could not do."""
 
+JUDGE_SCHEMA = {
+    "type": "object",
+    "properties": {"pass": {"type": "boolean"}, "why": {"type": "string"}},
+    "required": ["pass", "why"],
+}
+JUDGE_PREAMBLE = """---
+You judge step `{node}` of the workflow `{wid}` ("{title}"), which {owner} armed and a person approved. Decide from what you are given, change nothing, and call workflow_result with `value` {{"pass": true or false, "why": "one sentence"}} and `summary`, the same sentence for the person. Nobody answers questions here."""
+
+
+def _lids(n: NodeState) -> list[str]:
+    """Every session a node instance holds: its agent's and its judges'."""
+    return [x for x in [n.log_id, *(j.get("log_id") for j in n.judges.values())] if x]
+
 
 class Workflows:
     def __init__(self, app: App) -> None:
@@ -159,6 +173,9 @@ class Workflows:
         self._tasks: dict[tuple[str, str], asyncio.Task] = {}
         # A probe's last reading, for the card; never logged.
         self._readings: dict[tuple[str, str], str] = {}
+        # An if's or an until's sh probe outcome, by (run, instance, round),
+        # until a pass reads it; a restart loses it and the probe runs again.
+        self._probed: dict[tuple[str, str, str], dict] = {}
         # The nearest wall time a pass must look again (a wait's end).
         self._next_due = math.inf
 
@@ -326,10 +343,10 @@ class Workflows:
 
     def _state(self, st: RunState, node: Node, inst: str) -> str:
         """Where an instance stands: pending, queued, running, done, failed
-        or stopped. An agent's comes from the log (queued from the last
+        or stopped. A leaf's comes from the log (queued from the last
         pass's room check); a seq's, par's and map's from their children's."""
         s = st.nodes.get(inst)
-        if node.kind == "agent":
+        if node.kind in LEAVES:
             if s is None or s.status == "pending":
                 # An ended run queues nothing.
                 q = self._queued.get(st.run, ()) if st.status == "running" else ()
@@ -523,6 +540,27 @@ class Workflows:
 
     def result(self, s: Session, value, summary: str) -> dict:
         st, inst = self._reporting(s, "workflow_result")
+        wf_ref = s.workflow or {}
+        if wf_ref.get("probe") == "judge":
+            problems = check_value(value, JUDGE_SCHEMA)
+            if problems:
+                raise OpError(
+                    "bad_result",
+                    "a judge's value is {pass, why}: " + "; ".join(problems),
+                )
+            self._log(
+                st.run,
+                {
+                    "ev": "verdict",
+                    "node": inst,
+                    "round": wf_ref.get("round", ""),
+                    "pass": value["pass"],
+                    "why": value["why"],
+                    "summary": summary.strip(),
+                },
+            )
+            self.changed()
+            return {"accepted": True}
         node = self._template(self.defs[st.run], inst)
         problems = check_value(value, node.body.get("result") or {})
         if problems:
@@ -550,6 +588,12 @@ class Workflows:
         if st is None or st.status != "running" or code in restarts.SIGTERM_CODES:
             return
         n = st.nodes.get(wf_ref["node"])
+        if wf_ref.get("probe") == "judge":
+            j = n.judges.get(wf_ref.get("round", ""), {}) if n is not None else {}
+            if j.get("log_id") == s.log_id and "pass" not in j:
+                why = f"its judge's session exited with code {code}"
+                self._fail(st, wf_ref["node"], why)
+            return
         if n is not None and n.status == "running" and n.log_id == s.log_id:
             self._fail(st, wf_ref["node"], f"its session exited with code {code}")
 
@@ -728,23 +772,19 @@ class Workflows:
         if s is None:
             self._fail(st, inst, "its session is gone")
             return "failed"
-        if not self._reg.finished(s):
-            return "running"
-        if n.result is not None or n.summary:
+        got = await self._settle(
+            st,
+            inst,
+            s,
+            reported=n.result is not None or bool(n.summary),
+            nudged=n.nudged,
+            nudge_rec={"ev": "nudged", "node": inst},
+        )
+        if got == "done":
             self._log(st.run, {"ev": "node_done", "node": inst})
-            with contextlib.suppress(Exception):
-                await self._reg.close(s.log_id)
-            return "done"
-        if not n.nudged:
-            self._log(st.run, {"ev": "nudged", "node": inst})
-            await s.deliver(
-                f"> from workflow:{self._wid(st)} · nudge · {iso_now()}",
-                "Your turn ended without workflow_result. Call it now with your result and a one-sentence summary, or the workflow fails.",
-                through_lock=True,
-            )
-            return "running"
-        self._fail(st, inst, "its turn ended twice with no workflow_result")
-        return "failed"
+        elif got == "failed":
+            self._fail(st, inst, "its turn ended twice with no workflow_result")
+        return got
 
     def _cwd(self, st: RunState) -> str:
         if st.cwd:
@@ -927,9 +967,145 @@ class Workflows:
     async def _check_judge(
         self, st: RunState, wf: Workflow, node: Node, prefix: str
     ) -> str:
-        """A judge probe; agents that judge come with the pool's rules."""
-        self._fail(st, prefix + node.id, "a judge probe is not in this version yet")
+        """A check whose probe is a judge, asked once: a yes is done, a no
+        fails the check (and its retries ask again)."""
+        inst = prefix + node.id
+        v = await self._judge(
+            st, wf, node, prefix, inst, "", node.body["probe"]["judge"]
+        )
+        if isinstance(v, str):
+            return v
+        if v["pass"]:
+            return self._done(st, inst, {"pass": True, "why": v["why"]}, v["why"])
+        self._fail(st, inst, "the judge said no: " + v["why"])
         return "failed"
+
+    async def _judge(
+        self,
+        st: RunState,
+        wf: Workflow,
+        node: Node,
+        prefix: str,
+        inst: str,
+        rnd: str,
+        j: dict,
+    ) -> dict | str:
+        """A judge's verdict for one evaluation, or running, queued or failed
+        while there is none. ``inst`` is the check, if or loop it judges for;
+        ``prefix`` is the scope its prompt reads (a loop's round); ``rnd``
+        names the evaluation: "" for a check or an if, the round for until.
+        A judge is a quiet session in the pool, as an agent node is."""
+        n = st.nodes.get(inst) or NodeState()
+        rec = n.judges.get(rnd) or {}
+        if not rec.get("log_id"):
+            owner = self.owner(st)
+            if owner is None:
+                self._fail(st, inst, "the main agent's session is closed")
+                return "failed"
+            tag: dict = {"run": st.run, "node": inst, "probe": "judge", "round": rnd}
+            if n.attempts:
+                tag["attempt"] = n.attempts
+            scope = self._scope(st, wf, prefix)
+            try:
+                prompt = render(j["prompt"], scope)
+                inputs = {k: evaluate(compile_expr(k), scope) for k in j["inputs"]}
+            except RENDER_ERRORS as e:
+                self._fail(st, inst, f"a reference has no value: {e}", retry=False)
+                return "failed"
+            say = self._say(st, wf, node, prefix)
+            s = await self._spawn_node(st, wf, j["agent"], tag, f"Judge: {say}")
+            if s is None:
+                self._queuing.add(inst)
+                return "queued"
+            if st.status != "running":  # stopped while it spawned
+                with contextlib.suppress(Exception):
+                    await self._reg.close(s.log_id)
+                return "running"
+            self._log(
+                st.run,
+                {"ev": "judge_started", "node": inst, "round": rnd, "log_id": s.log_id},
+            )
+            text = (
+                f"> from workflow:{self._wid(st)} · judge {inst} · {iso_now()}\n{prompt}\n\n"
+                + "".join(
+                    f"{k}:\n```json\n{json.dumps(v, indent=2)}\n```\n"
+                    for k, v in inputs.items()
+                )
+                + JUDGE_PREAMBLE.format(
+                    node=inst, wid=self._wid(st), title=wf.title, owner=owner.handle
+                )
+            )
+            await s.send(text, through_lock=True)
+            return "running"
+        s = self._reg.sessions.get(rec["log_id"])
+        if s is None:
+            if "pass" in rec:
+                return rec  # judged, and its session closed
+            self._fail(st, inst, "its judge's session is gone")
+            return "failed"
+        got = await self._settle(
+            st,
+            inst,
+            s,
+            reported="pass" in rec,
+            nudged=bool(rec.get("nudged")),
+            nudge_rec={"ev": "judge_nudged", "node": inst, "round": rnd},
+        )
+        if got == "done":
+            return rec
+        if got == "failed":
+            self._fail(st, inst, "its judge's turn ended twice with no verdict")
+        return got
+
+    async def _probe(
+        self, st: RunState, wf: Workflow, node: Node, prefix: str, inst: str, rnd: str
+    ) -> dict | str:
+        """An if's or an until's probe, evaluated once: ``{pass, why}``, or
+        running, queued or failed while there is no answer. An expr answers
+        at once; an sh runs once as a task; a judge goes through _judge."""
+        probe = node.body["probe"]
+        if "judge" in probe:
+            return await self._judge(st, wf, node, prefix, inst, rnd, probe["judge"])
+        scope = self._scope(st, wf, prefix)
+        if "expr" in probe:
+            try:
+                return {
+                    "pass": bool(evaluate(compile_expr(probe["expr"]), scope)),
+                    "why": "",
+                }
+            except RENDER_ERRORS as e:
+                self._fail(
+                    st, inst, str(e), self._say(st, wf, node, prefix), retry=False
+                )
+                return "failed"
+        got = self._probed.pop((st.run, inst, rnd), None)
+        if got is not None:
+            return got
+        key = (st.run, inst)
+        if key not in self._tasks:
+            try:
+                cmd = render(probe["sh"], scope, quote=shlex.quote)
+            except RENDER_ERRORS as e:
+                why = f"a reference has no value: {e}"
+                self._fail(st, inst, why, self._say(st, wf, node, prefix), retry=False)
+                return "failed"
+            self._tasks[key] = asyncio.create_task(self._probe_once(st, inst, rnd, cmd))
+        return "running"
+
+    async def _probe_once(self, st: RunState, inst: str, rnd: str, cmd: str) -> None:
+        try:
+            rc, out, err = await run_bash(cmd, self._cwd(st))
+            self._readings[(st.run, inst)] = (
+                f"exit {rc if rc is not None else '?'} at {iso_now()[11:16]}"
+            )
+            last = (err.strip().splitlines() or out.strip().splitlines() or [""])[-1]
+            why = f"exit {rc if rc is not None else '?'}" + (
+                f": {last[:160]}" if last else ""
+            )
+            self._probed[(st.run, inst, rnd)] = {"pass": rc == 0, "why": why}
+        finally:
+            self._tasks.pop((st.run, inst), None)
+        self.changed()
 
     def _room(self, st: RunState, wf: Workflow, alias: str) -> bool:
         """Whether one more session of agent ``alias`` fits in every counter
@@ -974,6 +1150,73 @@ class Workflows:
                 "in this session",
             )
 
+    async def _spawn_node(
+        self,
+        st: RunState,
+        wf: Workflow,
+        alias: str,
+        tag: dict,
+        title: str,
+        cwd: str | None = None,
+    ) -> Session | None:
+        """The quiet session an agent node or a judge runs in, spawned with
+        the main agent as its parent; None while the pool, the run's limits
+        or the quota gate have no room for it (the caller queues)."""
+        owner = self.owner(st)
+        assert owner is not None  # the caller failed the node already
+        # A crash between a spawn and its record leaves the session behind:
+        # it is this node's, so it is adopted rather than doubled.
+        s = next((x for x in self._reg.sessions.values() if x.workflow == tag), None)
+        if s is not None:
+            return s
+        if not self._room(st, wf, alias):
+            return None  # a session closing wakes a pass (Registry.archive -> changed)
+        agents, default = self._app._agents()
+        spec = resolve(
+            agents,
+            default,
+            alias,
+            {},
+            self._app._resolve_cwd(cwd, owner.spec.cwd),
+            spawned_by=owner.log_id,
+            owner=owner.spec.owner,
+        )
+        g = self._app.gate(spec.owner, spec.harness, spec.model)
+        if not g.may_start:
+            return (
+                None  # the gate's next reading wakes a pass (app.on_quota -> changed)
+            )
+        return await self._reg.spawn(spec, title=title, quiet=True, workflow=tag)
+
+    async def _settle(
+        self,
+        st: RunState,
+        inst: str,
+        s: Session,
+        reported: bool,
+        nudged: bool,
+        nudge_rec: dict,
+    ) -> str:
+        """Where a node's or a judge's session stands once it has been
+        prompted: running while it works; done, and closed, once it has
+        reported and finished; nudged once when a turn ends with no report;
+        failed when the second does."""
+        if not self._reg.finished(s):
+            return "running"
+        if reported:
+            with contextlib.suppress(Exception):
+                await self._reg.close(s.log_id)
+            return "done"
+        if not nudged:
+            self._log(st.run, nudge_rec)
+            await s.deliver(
+                f"> from workflow:{self._wid(st)} · nudge · {iso_now()}",
+                "Your turn ended without workflow_result. Call it now with your result and a one-sentence summary, or the workflow fails.",
+                through_lock=True,
+            )
+            return "running"
+        return "failed"
+
     async def _start_agent(
         self, st: RunState, wf: Workflow, node: Node, prefix: str
     ) -> bool:
@@ -991,27 +1234,10 @@ class Workflows:
         except RENDER_ERRORS as e:
             self._fail(st, inst, f"a reference has no value: {e}")
             return False
-        agents, default = self._app._agents()
-        spec = resolve(
-            agents,
-            default,
-            node.body["agent"],
-            {},
-            self._app._resolve_cwd(cwd, owner.spec.cwd),
-            spawned_by=owner.log_id,
-            owner=owner.spec.owner,
-        )
         tag = {"run": st.run, "node": inst}
-        # A crash between a spawn and its record leaves the session behind:
-        # it is this node's, so it is adopted rather than doubled.
-        s = next((x for x in self._reg.sessions.values() if x.workflow == tag), None)
+        s = await self._spawn_node(st, wf, node.body["agent"], tag, say, cwd)
         if s is None:
-            if not self._room(st, wf, node.body["agent"]):
-                return False  # a session closing wakes a pass (Registry.archive -> changed)
-            g = self._app.gate(spec.owner, spec.harness, spec.model)
-            if not g.may_start:
-                return False  # the gate's next reading wakes a pass (app.on_quota -> changed)
-            s = await self._reg.spawn(spec, title=say, quiet=True, workflow=tag)
+            return False
         if st.status != "running":  # stopped while it spawned: never prompted
             with contextlib.suppress(Exception):
                 await self._reg.close(s.log_id)
@@ -1065,16 +1291,21 @@ class Workflows:
             return
         # Read before the record, which folds them to stopped: a failure
         # stops the nodes running beside it, as a stop does.
-        running = [n for n in st.nodes.values() if n.status == "running"]
+        running = [
+            n
+            for n in st.nodes.values()
+            if n.status == "running" or any("pass" not in j for j in n.judges.values())
+        ]
         if outcome == "stopped":
             self._log(st.run, {"ev": "stopped"})
         else:
             self._finish(st, outcome)
         for n in running:
-            s = self._reg.sessions.get(n.log_id or "")
-            if s is not None and s.status == "working":
-                with contextlib.suppress(Exception):
-                    await s.interrupt(through_lock=True)
+            for lid in _lids(n):
+                s = self._reg.sessions.get(lid)
+                if s is not None and s.status == "working":
+                    with contextlib.suppress(Exception):
+                        await s.interrupt(through_lock=True)
         # Its commands and probes end too; each task ends its own process
         # group, so nothing here waits on one.
         for (run, _), task in list(self._tasks.items()):
@@ -1092,8 +1323,9 @@ class Workflows:
         """The node sessions still open get their tabs: the run no longer
         holds them, and the person reads them now."""
         for n in st.nodes.values():
-            if n.log_id in self._reg.sessions:
-                self._reg.set_quiet(n.log_id, False)
+            for lid in _lids(n):
+                if lid in self._reg.sessions:
+                    self._reg.set_quiet(lid, False)
 
     async def _tell_owner(self, st: RunState, outcome: str, body: str) -> None:
         owner = self.owner(st)
@@ -1116,8 +1348,9 @@ class Workflows:
         # A failed node's session keeps its card and gets a tab, as a failed
         # queue worker does (spec §05).
         n = st.nodes.get(node)
-        if n is not None and n.log_id in self._reg.sessions:
-            self._reg.set_quiet(n.log_id, False)
+        for lid in _lids(n) if n is not None else []:
+            if lid in self._reg.sessions:
+                self._reg.set_quiet(lid, False)
         self.changed()
 
     def _finish(self, st: RunState, status: str, why: str = "") -> None:
