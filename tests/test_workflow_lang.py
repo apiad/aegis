@@ -403,7 +403,9 @@ root:
 """
     got = errs(text)[1]
     for i in (0, 1):
-        assert f"$.root.par[{i}].map.as: two is a node id; name the item otherwise" in got
+        assert (
+            f"$.root.par[{i}].map.as: two is a node id; name the item otherwise" in got
+        )
 
 
 def test_the_specs_example_trips_only_on_what_this_version_does_not_run():

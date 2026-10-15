@@ -4,10 +4,14 @@ queued behind it starts on the next pass, not the next timed one."""
 
 import time
 
+from aegis import workflows as engine
+
 from .conftest import until
 from .test_agents import CONFIG
-from .test_workflows_parallel import arm, leaf, report, script, world  # noqa: F401
-from aegis import workflows as engine
+from . import test_workflows_parallel
+from .test_workflows_parallel import arm, leaf, report, script
+
+world = test_workflows_parallel.world  # the fixture, shared
 
 QUEUES = f"""
 id: q
@@ -60,12 +64,15 @@ async def test_a_queued_node_starts_on_the_pass_a_stop_wakes(world):
     first = await arm(world, QUEUES.replace("id: q\n", "id: first\n"))
     wf = world.app.workflows
     await until(lambda: queued(wf, first), timeout=20)  # a holds the only slot
-    second = await arm(world, f"""
+    second = await arm(
+        world,
+        f"""
 id: second
 title: Second
 say: One node behind the first run.
 root: {leaf("c", "C.", report(wait=0.1))}
-""")
+""",
+    )
     await until(lambda: queued(wf, second) == ["c"], timeout=20)
     assert engine.PASS_S >= 30
     world.app.sessions.workflows = _Deaf(wf)

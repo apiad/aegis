@@ -4,7 +4,10 @@ its slot."""
 
 from .conftest import until
 from .test_agents import CONFIG
-from .test_workflows_parallel import arm, leaf, overlap, report, script, spans, world  # noqa: F401
+from . import test_workflows_parallel
+from .test_workflows_parallel import arm, leaf, overlap, report, script, spans
+
+world = test_workflows_parallel.world  # the fixture, shared
 
 
 async def test_a_branch_waiting_between_nodes_holds_its_slot(world):

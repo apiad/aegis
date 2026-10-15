@@ -6,7 +6,10 @@ from aegis.ops import Caller, OpError
 
 from .conftest import until
 from .test_agents import CONFIG
-from .test_workflows_parallel import arm, leaf, script, world  # noqa: F401
+from . import test_workflows_parallel
+from .test_workflows_parallel import arm, leaf, script
+
+world = test_workflows_parallel.world  # the fixture, shared
 
 
 def spawner(agent: str = "opus") -> str:
@@ -34,7 +37,9 @@ root: {leaf("n", "Spawn two.", spawner(agent))}
     st = wf.runs[run]
     assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
     node = st.nodes["n"].log_id
-    return [s for s in world.app.sessions.sessions.values() if s.spec.spawned_by == node]
+    return [
+        s for s in world.app.sessions.sessions.values() if s.spec.spawned_by == node
+    ]
 
 
 async def test_a_node_cannot_spawn_past_the_servers_total(world):
@@ -69,7 +74,10 @@ root: {leaf("n", "Spawn two.", script(["sleep", 20]))}
     )
     await until(lambda: "n" in wf.runs[run].nodes, timeout=20)
     node = world.app.sessions.sessions[wf.runs[run].nodes["n"].log_id]
-    me, ask = Caller("agent", log_id=node.log_id), {"agent": "opus", "prompt": "/sleep 3"}
+    me, ask = (
+        Caller("agent", log_id=node.log_id),
+        {"agent": "opus", "prompt": "/sleep 3"},
+    )
     assert (await world.app.registry.call("session.spawn", ask, me))["log_id"]
     try:
         await world.app.registry.call("session.spawn", ask, me)

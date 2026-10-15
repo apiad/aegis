@@ -247,8 +247,9 @@ class Workflows:
         s = st.nodes.get(inst)
         if node.kind == "agent":
             if s is None or s.status == "pending":
-                waiting = st.status == "running" and inst in self._queued.get(st.run, ())
-                return "queued" if waiting else "pending"
+                # An ended run queues nothing.
+                q = self._queued.get(st.run, ()) if st.status == "running" else ()
+                return "queued" if inst in q else "pending"
             return s.status
         if s is not None and s.status in ("failed", "stopped"):
             return s.status  # a map whose items could not be read
