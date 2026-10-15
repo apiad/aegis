@@ -1281,7 +1281,8 @@ class Workflows:
         self, st: RunState, wf: Workflow, node: Node, inst: str
     ) -> tuple[float, float] | None:
         """When this instance must have finished, and the span that says so:
-        its own deadline from its start (its first logged instance's); at
+        its own deadline from its start (its first logged instance's, or
+        the run's latest approval when that is later, as after arming again); at
         the root, also the run's from approval; for an sh or a check with no
         deadline over it, their defaults. An ancestor's deadline is enforced
         at the ancestor, which every pass reaches first."""
@@ -1291,6 +1292,10 @@ class Workflows:
             return None  # nothing to scan for: most nodes, on most passes
         times = [n.started for _, n in self._under(st, node, inst) if n.started]
         began = min(times) if times else None
+        if began and st.started:
+            # Arming again approves the run again: what ran before it does
+            # not count against the deadline of a group that runs again.
+            began = max(began, st.started)
         if node.deadline and began:
             ends.append((began + node.deadline, node.deadline))
         if node is wf.root and wf.deadline and st.started:

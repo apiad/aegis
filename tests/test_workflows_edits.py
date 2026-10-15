@@ -1,6 +1,8 @@
 """Live edits against a real server: the diff waits for a person, nodes
 it touches wait with it, and no agent applies its own edit."""
 
+import time
+
 import pytest
 
 from aegis.ops import Caller, OpError
@@ -250,3 +252,26 @@ async def test_only_a_stopped_or_failed_run_of_ones_own_is_armed_again(world):
     assert said.startswith("mcp error")
     said = await turn(main, mcp("workflow_arm"))
     assert said.startswith("mcp error")
+
+
+@pytest.mark.slow
+async def test_arming_again_starts_a_groups_deadline_afresh(world):
+    grp = (
+        '    - {seq: [{sh: "true", id: x, say: X.}, {sh: "exit 3", id: y, say: Y.}],'
+        " id: grp, say: Grp., deadline: 2s}\n"
+    )
+    definition = "id: dl\ntitle: Dl\nsay: Dl.\nroot:\n  seq:\n" + grp + "  say: One.\n"
+    main, run = await armed(world, definition=definition)
+    wf, me = world.app.workflows, Caller("agent", main.log_id)
+    await until(lambda: "y" in wf.runs[run].open, timeout=10)
+    await world.app.registry.call(
+        "workflow.answer", {"run": run, "to": "y", "choice": "fail"}, me
+    )
+    await until(lambda: wf.runs[run].status == "failed", timeout=10)
+    # Past the group's deadline counted from its first start.
+    await until(lambda: time.time() > wf.runs[run].nodes["x"].started + 2.5, 10)
+    await world.app.registry.call("workflow.arm", {"run": run, "args": {}}, me)
+    await world.app.registry.call("workflow.approve", {"run": run})
+    await until(lambda: {"y", "grp"} & set(wf.runs[run].open), timeout=10)
+    assert "grp" not in wf.runs[run].open, wf.runs[run].open
+    assert wf.runs[run].nodes["y"].error.startswith("exit 3")
