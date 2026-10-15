@@ -53,6 +53,9 @@ class NodeState:
     pstart: int | None = None  # its start in clock ticks, so a reused pid is spared
     until: float | None = None  # a wait's end, wall time
     attempts: int = 0  # retries so far
+    # Its attempts when the run was last armed again: automatic retries
+    # count from here, so arming again gives a step its retries back.
+    armed_at: int = 0
     took: str | None = None  # an if's branch: then, else or none
     round: int = 0  # a loop's current round
     max: int | None = None  # a loop's max, read once when it starts
@@ -98,13 +101,17 @@ def _stop_leaves(st: RunState, t: float) -> None:
             n.status, n.ended = "stopped", t
 
 
-def _reset(st: RunState, insts: list[str]) -> None:
+def _reset(st: RunState, insts: list[str], again: bool = False) -> None:
     """Each instance back to pending with one attempt more, keeping its early
-    outputs: a retry by the main agent, or arming the run again."""
+    outputs: a retry by the main agent, or arming the run again, which
+    also starts its automatic retries afresh."""
     for k in insts:
         n = st.nodes.get(k)
         if n is not None:
-            st.nodes[k] = NodeState(attempts=n.attempts + 1, outputs=n.outputs)
+            at = n.attempts + 1
+            st.nodes[k] = NodeState(
+                attempts=at, outputs=n.outputs, armed_at=at if again else n.armed_at
+            )
 
 
 def _edit_status(st: RunState, v, status: str) -> None:
@@ -140,7 +147,7 @@ def apply(st: RunState, r: dict) -> None:
     elif ev == "rearmed":
         st.status, st.ended = "armed", None
         st.text, st.version = r.get("text") or st.text, int(r.get("v") or st.version)
-        _reset(st, r.get("reset") or [])
+        _reset(st, r.get("reset") or [], again=True)
         st.open, st.proposal = {}, None
         kept = sum(n.status in ("done", "skipped") for n in st.nodes.values())
         # A new definition's diff rides on the line, for the again card.
@@ -314,7 +321,9 @@ def apply(st: RunState, r: dict) -> None:
 def _retry(st: RunState, inst: str) -> None:
     """Back to pending with one more attempt, keeping its early outputs."""
     n = st.nodes[inst]
-    st.nodes[inst] = NodeState(attempts=n.attempts + 1, outputs=n.outputs, say=n.say)
+    st.nodes[inst] = NodeState(
+        attempts=n.attempts + 1, outputs=n.outputs, say=n.say, armed_at=n.armed_at
+    )
 
 
 def fold(records: list[dict]) -> RunState | None:
