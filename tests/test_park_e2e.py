@@ -207,6 +207,8 @@ async def test_a_monitor_wakes_a_parked_session(parking, tmp_path):
     )
 
 
+# Slow: a park, a config edit and a 1.3 s wait run near the 3 s fast-lane limit.
+@pytest.mark.slow
 async def test_removing_the_harness_from_park_stops_new_parks_and_keeps_parked_ones(
     parking,
 ):
