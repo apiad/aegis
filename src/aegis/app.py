@@ -86,6 +86,7 @@ from .journal.service import Journal
 from .layout_ops import register_layout_ops
 from .schedule_ops import register_schedule_ops
 from .schedules import Schedules
+from .workflows import Workflows
 from .quota import Quota
 from .quota_gate import (
     POOLS,
@@ -387,7 +388,8 @@ class App:
         reg.journal = self.journal
         self.schedules = Schedules(self)
         reg.schedules = self.schedules
-        self.workflows = None  # the engine (workflows.py), set below
+        self.workflows = Workflows(self)
+        reg.workflows = self.workflows
         self.catalogs = commands.Catalogs(
             roots.state_root / "stderr" / "catalog-probe.log"
         )
@@ -479,6 +481,7 @@ class App:
             elif g.state == "open" and (s.quota_paused or holding):
                 self._quota_task(s, self._continue(s))
         self.schedules.quota_opened()
+        self.workflows.changed()
         if any(t.status == "pending" for t in self.queues.tasks.values()):
             t = asyncio.create_task(self.queues.dispatch())
             self._background.add(t)
@@ -605,6 +608,8 @@ class App:
         # After the sessions and their continues, so a live run is found live.
         self.schedules.boot()
         self.schedules.start()
+        self.workflows.boot()
+        self.workflows.start()
         self.quota.start()
         self.host.start()
         self.net.start()
@@ -619,6 +624,7 @@ class App:
         stopping_at = restarts.stopping(self.roots.state_root)
         await self.push.sender.stop()
         await self.schedules.stop()
+        await self.workflows.stop()
         self.queues.shutdown()
         if self._config_task is not None:
             self._config_task.cancel()
@@ -714,6 +720,8 @@ class App:
             return self.links.wire
         if name == "schedules":
             return self.schedules.wire_all
+        if name == "workflows":
+            return self.workflows.wire_all
         if name == "toasts":
             # Always empty: a browser that subscribes later never replays a toast.
             return lambda: []

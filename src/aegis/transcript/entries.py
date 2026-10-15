@@ -728,6 +728,22 @@ class Fold:
                     detail=det,
                 )
             )
+        if kind == "workflow":
+            # A workflow this session armed (workflows.py): one card per run,
+            # never folded, that the browser draws from the workflows channel.
+            run = str(rec.get("run"))
+            return self._upsert(
+                _entry(
+                    f"wf-{run}",
+                    "workflow",
+                    "ok",
+                    ts,
+                    d.SYSTEM_GLYPH,
+                    title=run,
+                    summary="workflow",
+                    detail={"run": run},
+                )
+            )
         if kind == "file":
             # One record per file_send; a record from before sets is one file.
             # A file sent again from one source path is a new version of one
