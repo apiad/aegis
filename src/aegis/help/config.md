@@ -118,6 +118,17 @@ systemd service with `Delegate=yes`. Anywhere else, every session shares the
 server's cgroup, as before, and the key has no effect. A value that is not a
 size leaves the default in force, and `aegis doctor` names the mistake.
 
+## Terminals
+
+`terminals:` maps a profile's name to `cmd:` and `cwd:`, with `restart:` and
+`env:` when you need them. The + view offers each profile beside the built-in
+shell. A profile with a mistake is offered with it and cannot be opened; the
+others still can, and `aegis doctor` names the mistake. See the terminals page.
+
+`terminal_memory_max:` caps the memory of each terminal's processes, as
+`session_memory_max:` caps a session's, and takes the same values. Its default
+is the session cap's, 40%.
+
 ## Editing it
 
 The file is the configuration. A running server notices a change within a

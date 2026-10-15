@@ -60,10 +60,12 @@ function tab(m, focusId, { onFocus, onMove, onClose }) {
   const mark = markNode(m);
   const name = document.createElement("span");
   name.className = "tname";
-  name.textContent = m.title || m.handle;
+  // A terminal is named by its name; its command is in the title.
+  const term = m.kind === "term";
+  name.textContent = term ? `▸_ ${m.name}` : m.title || m.handle;
   const handle = document.createElement("span");
   handle.className = "srv";
-  handle.textContent = m.title ? m.handle : "";
+  handle.textContent = m.title && !term ? m.handle : "";
   t.append(mark, name, handle);
   // Whose it is, when it is not this browser's (tokens.py).
   const owner = shownOwner(m);

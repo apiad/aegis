@@ -10,6 +10,7 @@
 <link rel="icon" id="favicon" href="data:,">
 <link rel="stylesheet" href="/static/css/fonts.css">
 <link rel="stylesheet" href="/static/css/base.css">
+<link rel="stylesheet" href="/static/vendor/xterm/xterm.css">
 <link rel="stylesheet" href="/static/themes/ink.css">
 <link rel="stylesheet" href="/static/themes/logbook.css">
 <link rel="stylesheet" href="/static/themes/electric.css">
@@ -69,12 +70,18 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
         <button data-order="attention">Needs you first</button>
         <button data-order="tabs">Tab order</button>
       </div>
+      <div class="seg kinds" role="radiogroup" aria-label="Show">
+        <button type="button" role="radio" data-kind="all">All</button>
+        <button type="button" role="radio" data-kind="agents">Agents</button>
+        <button type="button" role="radio" data-kind="terminals">Terminals</button>
+      </div>
     </div>
     <section class="cards" id="cards" tabindex="-1"></section>
     <div id="remotes"></div>
     <section class="archive">
       <div class="archive-head"><h3>Archive</h3><input id="arch-q" placeholder="Filter by title, handle or directory" spellcheck="false"><div class="arch-servers" id="arch-servers" hidden></div><button class="arch-workers" id="arch-workers" type="button" aria-pressed="false" title="Queue workers: their results went to whoever enqueued them" hidden>Queue workers<b></b></button></div>
       <div id="arch-list"></div>
+      <section id="arch-terms" class="arch-terms" hidden><h4>Closed terminals</h4><div class="arch-term-list"></div></section>
       <div class="arch-more" id="arch-more" hidden><span id="arch-count"></span><button class="btn" id="arch-next" type="button">Show 50 more</button></div>
     </section>
   </main>
@@ -82,6 +89,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
   <main class="view v-spawn">
     <form class="spawn" id="spawn">
       <div class="mark" id="sp-mark"><span>ægis</span></div>
+      <h3 class="sp-head">Agents</h3>
       <div class="cwdline"><pick-chip class="srvpick" id="sp-server" name="server" aria-label="Server" title="The server the session starts on" hidden></pick-chip><span class="srvsep" id="sp-sep" hidden>:</span><input class="cwd" id="sp-cwd" spellcheck="false" aria-label="Working directory" title="Working directory: click to change"></div>
       <div class="atts" id="sp-atts" hidden></div>
       <div class="box">
@@ -106,6 +114,10 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
         <div class="hint" id="hint-whats-new" hidden><button class="go" id="hint-whats-new-go" type="button">Run <code>/whats-new</code> to learn what's new in <span id="hint-whats-new-v"></span>.</button><button class="x" id="hint-whats-new-x" type="button" title="Dismiss" aria-label="Dismiss"></button></div>
       </div>
       <p class="err-text" id="sp-error"></p>
+      <section id="sp-terms" class="sp-terms" aria-label="Terminals">
+        <h3>Terminals</h3>
+        <div class="sp-term-list"></div>
+      </section>
     </form>
   </main>
 
@@ -233,6 +245,35 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
             <div class="kv"><span>latest</span><span id="ver-latest"></span></div>
           </div></div>
         </div>
+      </div>
+    </aside>
+  </main>
+
+  <main class="view v-term" id="v-term" aria-label="terminal">
+    <section class="term-pane">
+      <header class="term-hd">
+        <span class="term-name"></span><span class="term-state"></span>
+        <span class="term-mode">line mode</span>
+      </header>
+      <div id="term-host" class="term-host"></div>
+      <div id="term-keys" class="term-keys" hidden>
+        <button type="button" data-key="esc">Esc</button>
+        <button type="button" data-key="tab">Tab</button>
+        <button type="button" data-key="ctrl">Ctrl</button>
+        <button type="button" data-key="ctrl-c">Ctrl-C</button>
+        <button type="button" data-key="up">↑</button>
+        <button type="button" data-key="down">↓</button>
+        <button type="button" data-key="done">done</button>
+      </div>
+      <form id="term-box" class="box term-box">
+        <textarea id="term-input" rows="1" placeholder="a line to the terminal" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+      </form>
+    </section>
+    <aside id="term-side" class="term-side">
+      <dl class="term-proc"></dl>
+      <div class="term-act">
+        <button class="btn" type="button" id="term-restart" hidden>Restart</button>
+        <button class="btn" type="button" id="term-close">Close</button>
       </div>
     </aside>
   </main>

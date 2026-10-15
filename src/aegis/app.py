@@ -102,6 +102,8 @@ from .registry import Registry
 from .roots import Roots
 from .transcript.entries import _sent_file
 from .session import PUBLISH_EVERY_S
+from .term_ops import register_term_ops
+from .terminals import Terminals
 from .version import Versions
 
 log = logging.getLogger("aegis.app")
@@ -339,6 +341,14 @@ class App:
             opencode_bin=opencode_bin,
             codex_bin=codex_bin,
         )
+        self.terminal_cgroups = None
+        self.terminals = Terminals(
+            roots.state_root,
+            roots.config_root,
+            lambda: self.config.current().terminals,
+            self.publish,
+            lambda: self.terminal_cgroups,
+        )
         self.tokens = Tokens()
         self.monitors = Monitors(self.sessions, roots.state_root / "monitors.json")
         self.config = Config(roots.config_root, self._on_config)
@@ -403,6 +413,7 @@ class App:
         register_config_ops(self)
         register_artifact_ops(self)
         register_layout_ops(self)
+        register_term_ops(self)
         self.push = register_push_ops(self)
         register_journal_ops(self)
         register_help_ops(self)
@@ -526,6 +537,8 @@ class App:
     def owner_of(self, log_id: str) -> str | None:
         """A session's owner by log id, None for no such session. One from
         before owners existed is the admin's."""
+        if log_id.startswith("t-"):
+            return self.terminals.owner_of(log_id)
         s = self.sessions.sessions.get(log_id)
         meta = s.meta() if s is not None else self.sessions.archived.get(log_id)
         if meta is None:
@@ -543,10 +556,15 @@ class App:
         self.sessions.cgroups = SessionCgroups.setup(
             lambda: self.config.current().session_memory_max
         )
+        if self.sessions.cgroups is not None:
+            self.terminal_cgroups = self.sessions.cgroups.sibling(
+                "terminals", lambda: self.config.current().terminal_memory_max
+            )
         # Before sessions.boot(), which records server_stopped for every session
         # whose turn the last run's end cut: the journal must see those records.
         self.journal.start()
         self.sessions.boot(restarts.started(self.roots.state_root))
+        await self.terminals.boot()
         # No browser's upload survives a restart (attachments.py).
         att.clear_staged(self.roots.state_root)
         self.monitors.boot()
@@ -582,6 +600,7 @@ class App:
         await self.host.stop()
         await self.monitors.shutdown()
         await self.recaps.shutdown()
+        await self.terminals.shutdown()
         await self.side_notes.shutdown()
         await self.sessions.shutdown()
         await asyncio.to_thread(self.journal.stop)
@@ -643,7 +662,12 @@ class App:
 
     def _resolve(self, name: str, since: int | None = None):
         if name == "sessions":
-            return lambda: [s.wire() for s in self.sessions.open_sessions()]
+            return lambda: (
+                [s.wire() for s in self.sessions.open_sessions()]
+                + self.terminals.cards()
+            )
+        if name.startswith("term:"):
+            return self.terminals.channel(name.removeprefix("term:"), since)
         if name.startswith("transcript:"):
             return self.sessions.transcript(name.removeprefix("transcript:"), since)
         if name == "quota":

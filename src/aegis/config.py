@@ -38,12 +38,14 @@ from .cgroups import DEFAULT_MEMORY_MAX, parse_size
 from .ops import OpError
 from .queues import queues_from
 from .roots import CONFIG_FILE
+from .term_profiles import terminals_from
 
 log = logging.getLogger("aegis.config")
 
 WATCH_EVERY_S = 1.0
 TOP_KEYS = (
-    "agents", "queues", "default_agent", "recap", "context", "session_memory_max"
+    "agents", "queues", "default_agent", "recap", "context", "session_memory_max",
+    "terminals", "terminal_memory_max",
 )  # fmt: skip
 AGENT_KEYS = ("harness", "provider", "model", "effort", "permission", "priming")
 QUEUE_KEYS = ("agent", "max_parallel", "quiet")
@@ -81,15 +83,18 @@ def context_from(raw: object) -> dict:
     return out
 
 
-def session_memory_max_from(raw: object) -> tuple[object, str | None]:
-    """The per-session memory cap (cgroups.py) and, for a value that is not a
-    size, why; a wrong one keeps the default, as the context block does."""
+def session_memory_max_from(
+    raw: object, key: str = "session_memory_max"
+) -> tuple[object, str | None]:
+    """A memory cap for one child's cgroup (cgroups.py) and, for a value that
+    is not a size, why; a wrong one keeps the default, as the context block
+    does. Sessions and terminals each have one."""
     if raw is None:
         return DEFAULT_MEMORY_MAX, None
     try:
         parse_size(raw, 1)
     except ValueError as e:
-        return DEFAULT_MEMORY_MAX, f"session_memory_max: {e}"
+        return DEFAULT_MEMORY_MAX, f"{key}: {e}"
     return raw, None
 
 
@@ -213,6 +218,10 @@ class Snapshot:
     context: dict = field(default_factory=lambda: dict(CONTEXT_DEFAULTS))
     session_memory_max: object = DEFAULT_MEMORY_MAX
     session_memory_error: str | None = None
+    terminals: dict[str, dict] = field(default_factory=dict)
+    terminals_error: str | None = None
+    terminal_memory_max: object = DEFAULT_MEMORY_MAX
+    terminal_memory_error: str | None = None
     # Why the file on disk is not the one in force, when it does not parse.
     error: str | None = None
 
@@ -220,6 +229,10 @@ class Snapshot:
     def parse(cls, path: Path, stamp: Stamp | None, data: dict) -> Snapshot:
         d = data.get("default_agent")
         mem, mem_error = session_memory_max_from(data.get("session_memory_max"))
+        terms, terms_error = terminals_from(data.get("terminals"))
+        tmem, tmem_error = session_memory_max_from(
+            data.get("terminal_memory_max"), "terminal_memory_max"
+        )
         return cls(
             path=path,
             exists=True,
@@ -232,6 +245,10 @@ class Snapshot:
             context=context_from(data.get("context")),
             session_memory_max=mem,
             session_memory_error=mem_error,
+            terminals=terms,
+            terminals_error=terms_error,
+            terminal_memory_max=tmem,
+            terminal_memory_error=tmem_error,
         )
 
     def wire(self) -> dict:

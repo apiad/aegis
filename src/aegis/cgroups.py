@@ -229,6 +229,25 @@ class SessionCgroups:
         log.info("aegis: one cgroup per session under %s", self.sessions)
         return self
 
+    def sibling(
+        self, name: str, memory_max: Callable[[], object]
+    ) -> SessionCgroups | None:
+        """Cgroups for another kind of child beside ``sessions/``, such as
+        terminals: the same unit and controllers, their own memory cap."""
+        other = SessionCgroups(self.unit, memory_max)
+        other.sessions = self.unit / name
+        try:
+            enabled = (self.sessions / "cgroup.subtree_control").read_text().split()
+            other.sessions.mkdir(exist_ok=True)
+            (other.sessions / "cgroup.subtree_control").write_text(
+                " ".join(f"+{c}" for c in enabled)
+            )
+        except OSError as e:
+            log.warning("aegis: no cgroup per %s: %s", name.rstrip("s"), e)
+            return None
+        other.sweep()
+        return other
+
     def sweep(self) -> None:
         """Remove the session cgroups a crash left with nothing in them."""
         for d in self.sessions.iterdir() if self.sessions.is_dir() else ():

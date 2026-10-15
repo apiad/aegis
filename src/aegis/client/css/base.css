@@ -1552,3 +1552,80 @@ body{background:#000}
 #a2 .arch-workers.on{background:var(--accent-soft);color:var(--strong)}
 #a2 .arch-workers b{margin-left:6px;color:var(--faint);font-weight:500}
 @media (pointer:coarse){#a2 .schedules .seg button{padding:10px 14px}#a2 .schedules .sch-row{padding:11px 12px}#a2 .schedules .sch-dhead .btn{min-height:44px}}
+
+/* Terminals (#362): xterm.js reads these through js/terminal.js. */
+#a2 {
+  --term-bg: var(--surface);
+  --term-fg: var(--ink);
+  --term-cursor: var(--accent);
+  --term-cursor-text: var(--surface);
+  --term-selection: var(--accent-soft);
+  --term-selection-inactive: var(--accent-soft);
+  --ansi-black: var(--chrome);
+  --ansi-red: var(--err);
+  --ansi-green: var(--ok);
+  --ansi-yellow: var(--warn);
+  --ansi-blue: var(--accent);
+  --ansi-magenta: var(--comms);
+  --ansi-cyan: color-mix(in oklab, var(--accent) 50%, var(--ok));
+  --ansi-white: var(--ink);
+  --ansi-bright-black: var(--muted);
+  --ansi-bright-red: color-mix(in oklab, var(--ansi-red) 75%, var(--strong));
+  --ansi-bright-green: color-mix(in oklab, var(--ansi-green) 75%, var(--strong));
+  --ansi-bright-yellow: color-mix(in oklab, var(--ansi-yellow) 75%, var(--strong));
+  --ansi-bright-blue: color-mix(in oklab, var(--ansi-blue) 75%, var(--strong));
+  --ansi-bright-magenta: color-mix(in oklab, var(--ansi-magenta) 75%, var(--strong));
+  --ansi-bright-cyan: color-mix(in oklab, var(--ansi-cyan) 75%, var(--strong));
+  --ansi-bright-white: var(--strong);
+  --term-font: var(--font-mono);
+}
+#a2 .term-host { flex: 1; min-height: 0; overflow-x: auto; background: var(--term-bg); padding: 6px 8px; border-radius: var(--r); cursor: text; }
+#a2 .term-host.direct { outline: 1px solid var(--accent); }
+/* A terminal's tab: the pane, and the 300 px panel beside it; a column on a phone. */
+#a2[data-view=term] .v-term{display:grid;grid-template-columns:minmax(0,1fr) 300px;min-height:0}
+#a2 .term-pane{display:flex;flex-direction:column;min-width:0;min-height:0;padding:10px 22px 16px;gap:8px}
+#a2 .term-hd{display:flex;gap:10px;align-items:baseline;font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+#a2 .term-hd .term-name{color:var(--strong);font-weight:600}
+#a2 .term-hd .term-mode{margin-left:auto}
+#a2 .term-host .xterm{height:auto}
+#a2 .term-box{display:flex;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg)}
+#a2 .term-box:focus-within{border-color:var(--accent)}
+#a2 .term-box textarea{flex:1;min-width:0;resize:none;padding:10px 14px;font-size:13px;line-height:1.45;background:none;border:none;color:var(--strong);font-family:var(--font-mono);outline:none}
+#a2 .term-box textarea::placeholder{color:var(--faint);opacity:1}
+#a2 .term-keys{display:flex;gap:6px;overflow-x:auto}
+#a2 .term-keys[hidden]{display:none}
+#a2 .term-keys button{flex:1 0 auto;background:var(--surface);color:var(--ink);border:1px solid var(--rule);border-radius:var(--r);font-family:var(--font-mono);font-size:13px;padding:4px 8px}
+#a2 .term-side{border-left:1px solid var(--rule);padding:16px;overflow:auto;display:flex;flex-direction:column;gap:14px}
+#a2 .term-proc{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:0;font-size:12.5px}
+#a2 .term-proc dt{color:var(--muted)}
+#a2 .term-proc dd{margin:0;font-family:var(--font-mono);overflow-wrap:anywhere;color:var(--ink)}
+#a2 .term-act{display:flex;gap:8px}
+#a2 .term-act [hidden]{display:none}
+@media (pointer:coarse){#a2 .term-keys button{min-height:44px;min-width:44px}}
+@media (max-width:760px){
+  #a2[data-view=term] .v-term{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;overflow:auto}
+  #a2 .term-pane{padding:6px 8px max(8px,env(safe-area-inset-bottom))}
+  #a2 .term-side{border-left:none;border-top:1px solid var(--rule);padding:10px 12px}
+}
+/* The + view's two groups, agents and terminals, and the Fleet's kind filter. */
+#a2 .spawn .sp-head,#a2 .sp-terms h3{justify-self:start;margin:6px 0 0;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
+#a2 .sp-terms{width:100%;display:grid;gap:8px}
+#a2 .sp-terms[hidden]{display:none}
+/* Typing a first message is choosing an agent: the box takes the room the
+   two groups and their headings held (#384). */
+#a2 .spawn:has(#sp-text:not(:placeholder-shown)) :is(.sp-terms,.sp-head){display:none}
+#a2 .sp-term-list{display:flex;flex-wrap:wrap;gap:6px}
+#a2 .sp-term-list button{display:flex;gap:8px;align-items:baseline;min-width:0;max-width:100%;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 10px;color:var(--muted);font-family:var(--font-mono);font-size:12.5px;cursor:pointer;text-align:left}
+#a2 .sp-term-list button b{color:var(--strong);font-weight:600}
+#a2 .sp-term-list button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2 .sp-term-list button:hover:not(:disabled){border-color:var(--accent)}
+#a2 .sp-term-list button:disabled{cursor:not-allowed;opacity:.7}
+#a2 .sp-term-list button:disabled span{color:var(--err)}
+#a2 .order{gap:10px;flex-wrap:wrap}
+#a2 .order h3{flex:1}
+#a2 .seg button[aria-checked=true]{background:var(--accent-soft);color:var(--strong)}
+#a2 .arch-terms{margin-top:16px}
+#a2 .arch-terms[hidden]{display:none}
+#a2 .arch-terms h4{margin:0 0 8px;font-family:var(--font-head);font-weight:500;font-size:13.5px;color:var(--strong)}
+#a2 .card.term .ln{font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (pointer:coarse){#a2 .sp-term-list button,#a2 .kinds button{min-height:44px}}

@@ -36,6 +36,7 @@ import { Dictation } from "./dictation.js";
 import { Attachments } from "./attach.js";
 import { dur, planTimes } from "./plantime.js";
 import { setToastOpener, toast } from "./toast.js";
+import { closeTerm, drawCard, openTerm } from "./termview.js";
 import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
 import { closeInstallDialog, startInstall } from "./install.js";
 import { checkRotation, closePushPanel, openPushPanel, pushSupported, setupPush } from "./pushpanel.js";
@@ -318,6 +319,22 @@ function markOrder() {
   for (const b of document.querySelectorAll("#fleet-order button")) b.classList.toggle("on", b.dataset.order === fleetOrder);
 }
 markOrder();
+// Which kinds the Fleet and the archive show: all, agents or terminals. This
+// browser's choice, like the order.
+let fleetKind = localStorage.getItem("aegis.kind") || "all";
+const kindShown = (m) => fleetKind === "all" || (fleetKind === "terminals") === (m.kind === "term");
+function markKind() {
+  for (const b of document.querySelectorAll(".kinds button")) b.setAttribute("aria-checked", String(b.dataset.kind === fleetKind));
+}
+markKind();
+for (const b of document.querySelectorAll(".kinds button"))
+  b.addEventListener("click", () => {
+    fleetKind = b.dataset.kind;
+    localStorage.setItem("aegis.kind", fleetKind);
+    markKind();
+    render();
+    loadArchive();
+  });
 for (const b of document.querySelectorAll("#fleet-order button"))
   b.addEventListener("click", () => {
     fleetOrder = b.dataset.order;
@@ -326,7 +343,7 @@ for (const b of document.querySelectorAll("#fleet-order button"))
     render();
   });
 
-// -- routing: #fleet, #new, #settings, #journal, #schedules, #help[=<page>], #s=<key>, #read=<key>, #w=<n>:<key> --
+// -- routing: #fleet, #new, #settings, #journal, #schedules, #help[=<page>], #s=<key>, #t=<key>, #read=<key>, #w=<n>:<key> --
 // A help ref is URI-encoded; a hand-typed malformed one is a page name nobody has.
 const unhash = (s) => {
   try {
@@ -338,6 +355,7 @@ const unhash = (s) => {
 function route() {
   const h = location.hash.slice(1);
   if (h.startsWith("s=")) return { view: "session", id: h.slice(2) };
+  if (h.startsWith("t=")) return { view: "term", id: h.slice(2) };
   if (h.startsWith("read=")) return { view: "read", id: h.slice(5) };
   // Window n of a session's canvas, a browser tab of its own (js/canvas.js).
   const w = /^w=(\d+):(.+)$/.exec(h);
@@ -775,22 +793,25 @@ function flushSessions() {
     return;
   }
   const r = route();
-  for (const id of ids) if (sessions.has(id)) patchTab($("tablist"), sessions.get(id), r.view === "session" ? r.id : null, tabActions);
+  for (const id of ids) if (sessions.has(id)) patchTab($("tablist"), sessions.get(id), tabFocus(r), tabActions);
   if (r.view === "fleet") {
     const home = [...ids].filter((id) => !sessions.get(id)?.server);
     const regroup = home.some((id) => !patchCard($("cards"), sessions.get(id), openCard, fleetOrder, closeById));
-    if (regroup) renderCards($("cards"), local(), openCard, fleetOrder, closeById);
+    if (regroup) renderCards($("cards"), local().filter(kindShown), openCard, fleetOrder, closeById);
     if (home.length < ids.size) renderRemotes();
     fleetMark(false);
     drawBand();
     markNeedsNet(); // the cards' Archive buttons
   } else if (r.view === "session" && ids.has(r.id)) renderMeta(sessions.get(r.id));
+  else if (r.view === "term" && ids.has(r.id)) drawCard(termCard(r.id));
   else if (r.view === "window" && ids.has(r.id)) drawWindow(r);
   drawNav(); // the needs count
 }
 
 function onSessions() {
-  const ids = order.arrange([...sessions.values()].sort((a, b) => a.created_at - b.created_at).map((m) => m.key));
+  // A terminal's card has no created_at; it starts when it started.
+  const since = (m) => m.created_at ?? m.started_at ?? 0;
+  const ids = order.arrange([...sessions.values()].sort((a, b) => since(a) - since(b)).map((m) => m.key));
   ordered = ids.map((id) => sessions.get(id));
   render();
   drawNav(); // the needs count
@@ -803,13 +824,21 @@ function onSessions() {
 // the page was closed would ping on every cold start.
 let homeLive = false;
 function ping() {
-  if (homeLive) updatePing([...sessions.values()].filter((m) => !m.stale), { onOpen: openSession });
+  if (homeLive) updatePing([...sessions.values()].filter((m) => !m.stale && m.kind !== "term"), { onOpen: openSession });
 }
 
 // -- rendering -----------------------------------------------------------------
 // A window tab draws one window of a session's canvas and never becomes
 // another view: window 1's pages would run in it a second time.
-const openSession = (id) => route().view === "window" || go(`#s=${id}`);
+const openSession = (id) => route().view === "window" || go(hashOf(id));
+// A tab's hash: a terminal's view, or a session's.
+const hashOf = (key) => (sessions.get(key)?.kind === "term" ? `#t=${key}` : `#s=${key}`);
+const tabFocus = (r) => (r.view === "session" || r.view === "term" ? r.id : null);
+// The open terminal's card, with the log id and server it is reached by.
+function termCard(key) {
+  const m = sessions.get(key);
+  return m && { ...m, id: forKey(key).log_id };
+}
 // The service worker (sw.js): it keeps this build for offline use and raises
 // notifications. A new build downloads beside this one; reloading takes it.
 startWorker({
@@ -891,8 +920,30 @@ function render() {
   if (!booted) return;
   tellView(); // the view may have changed with the same session shown
   const r = route();
+  if (r.view !== "term") closeTerm();
   if (leaveIfQuieted(r)) return;
-  if (r.view === "session" && !sessions.has(r.id)) {
+  // A session's link to a terminal, or the reverse, opens the right view.
+  if ((r.view === "session" || r.view === "term") && sessions.has(r.id) && `#${r.view[0]}=${r.id}` !== hashOf(r.id)) {
+    history.replaceState(null, "", hashOf(r.id));
+    return render();
+  }
+  // A reload into a closed terminal: its row comes from term.closed.
+  if (r.view === "term" && !sessions.has(r.id) && !closedTerms.has(r.id) && homeLive && !closedTermsLoaded) {
+    loadClosedTerms().then(render);
+    return;
+  }
+  if (r.view === "term" && !sessions.has(r.id) && closedTerms.has(r.id)) {
+    const card = { ...closedTerms.get(r.id), state: "ended", reason: "closed", archived: true };
+    renderTabs($("tablist"), tabbed(), null, tabActions);
+    $("tab-fleet").classList.remove("on");
+    watchHost(null);
+    follow(null);
+    show("term");
+    openTerm(card.id, card, { conn }).catch((e) => toast(e.message, { kind: "error" }));
+    setTitle(`${card.name} · aegis`);
+    return;
+  }
+  if ((r.view === "session" || r.view === "term") && !sessions.has(r.id)) {
     const far = forKey(r.id).server;
     // A far session whose server's list has not arrived yet: wait for it.
     if (far && (!linksLoaded || (linkOf(far) && !remote.get(far)?.loaded))) return;
@@ -902,7 +953,7 @@ function render() {
     go("#fleet"); // closed here or elsewhere
     return;
   }
-  renderTabs($("tablist"), tabbed(), r.view === "session" ? r.id : null, tabActions);
+  renderTabs($("tablist"), tabbed(), tabFocus(r), tabActions);
   $("tablist").querySelector(".tab.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   $("tab-fleet").classList.toggle("on", r.view === "fleet");
   $("tab-add").classList.toggle("on", r.view === "spawn");
@@ -920,7 +971,7 @@ function render() {
   if (r.view === "fleet") {
     follow(null);
     show("fleet");
-    renderCards($("cards"), local(), openCard, fleetOrder, closeById);
+    renderCards($("cards"), local().filter(kindShown), openCard, fleetOrder, closeById);
     renderRemotes();
     fleetMark(false);
     watchHost("all");
@@ -970,6 +1021,13 @@ function render() {
       drawQuota();
       drawSideHost();
     }
+  } else if (r.view === "term") {
+    watchHost(null);
+    follow(null);
+    show("term");
+    const card = termCard(r.id);
+    openTerm(card.id, card, { conn, server: card.server ?? null }).catch((e) => toast(e.message, { kind: "error" }));
+    setTitle(`${card.name} · aegis`);
   } else if (r.view === "window") {
     // The session's card and transcript, as the session view has them (the
     // panes need the entries), with only window n drawn.
@@ -1092,7 +1150,7 @@ function renderRemotes() {
       if (r) renderBandQuota(band, { ...farQuota(r.quota), now: nowS() });
     }
     host.append(box); // keep the links' order
-    const metas = on(l.name);
+    const metas = on(l.name).filter(kindShown);
     if (metas.length) renderCards(box.querySelector(".cards"), metas, openCard, fleetOrder, closeById);
     else box.querySelector(".cards").replaceChildren();
   }
@@ -1222,7 +1280,7 @@ function drawSideHost() {
   }
   $("s-host-tiles").replaceChildren(...tiles);
   $("s-host-rows").replaceChildren(...rows);
-  const live = (s.server ? on(s.server) : local()).filter((m) => m.state !== "stopped");
+  const live = (s.server ? on(s.server) : local()).filter((m) => m.state !== "stopped" && m.kind !== "term");
   const sized = live.filter((m) => m.context_window && m.context_tokens);
   $("s-host-live").textContent = String(live.length);
   $("s-host-ctx").textContent = sized.length
@@ -1619,7 +1677,7 @@ setInterval(() => {
   if (root.dataset.view === "fleet" && local().some((m) => m.stale)) drawBand();
   if (root.dataset.view === "fleet") for (const c of document.querySelectorAll(".card")) {
     const m = sessions.get(c.dataset.id);
-    if (m) {
+    if (m && m.kind !== "term") {
       c.querySelector(".when").textContent = ago(m.last_activity);
       tickPlan(c, m);
     }
@@ -1835,7 +1893,8 @@ async function loadArchive(more = false) {
     // Offline, or failed: the next render reads it again.
     if (!more) [archived, archiveCursor, archiveTotal, archiveLoaded] = [[], null, 0, false];
   }
-  renderArchive($("arch-list"), archived, {
+  if (!more) loadClosedTerms();
+  renderArchive($("arch-list"), archived.filter(kindShown), {
     onReopen: reopen,
     onRead: (id) => go(`#read=${id}`),
   });
@@ -1845,6 +1904,37 @@ async function loadArchive(more = false) {
   drawArchiveServers();
   drawArchiveWorkers();
   fleetMark(false);
+}
+
+// Closed terminals on this server (term.closed), in a section of their own
+// after the archive's list. Read opens one read-only, from closedTerms.
+const closedTerms = new Map(); // id -> its row
+let closedTermsLoaded = false;
+async function loadClosedTerms() {
+  let rows = [];
+  try {
+    rows = await conn.call("term.closed");
+    closedTermsLoaded = true;
+  } catch {
+    // Offline, or a server without terminals: the section stays empty.
+  }
+  closedTerms.clear();
+  for (const t of rows) closedTerms.set(t.id, t);
+  const shownRows = fleetKind === "agents" ? [] : rows;
+  $("arch-terms").hidden = !shownRows.length;
+  const t = document.createElement("table");
+  t.className = "tbl";
+  for (const row of shownRows) {
+    const tr = t.insertRow();
+    tr.dataset.id = row.id;
+    for (const [cls, text] of [[null, row.name], ["m", row.title], ["m", ago(row.closed_at)], ["m", row.code == null ? "-" : `exit ${row.code}`]])
+      Object.assign(tr.insertCell(), { textContent: text ?? "" }, cls ? { className: cls } : {});
+    const read = Object.assign(document.createElement("button"), { type: "button", className: "btn", textContent: "Read" });
+    read.title = "Replay what it printed";
+    read.addEventListener("click", () => go(`#t=${row.id}`));
+    tr.insertCell().append(read);
+  }
+  document.querySelector("#arch-terms .arch-term-list").replaceChildren(t);
 }
 
 // Queue workers are left out of the archive unless this chip is on (#331): a
@@ -1920,7 +2010,7 @@ function fleetMove(delta) {
 
 function fleetOpen() {
   const n = fleetItems().find((x) => x.dataset.id === fleetSel);
-  if (n) go(n.classList.contains("card") ? `#s=${fleetSel}` : `#read=${fleetSel}`);
+  if (n) go(n.classList.contains("card") ? hashOf(fleetSel) : `#read=${fleetSel}`);
 }
 
 $("arch-q").addEventListener("input", () => {
@@ -1990,7 +2080,39 @@ $("sp-server").addEventListener("change", () => setSpServer($("sp-server").value
 const LAST_AGENT = "aegis.lastAgent";
 const PICKS = ["harness", "model", "effort", "permission"];
 
+// The + view's Terminals group: one button per profile on the picked server,
+// the built-in shell first.
+function drawProfiles(list, server) {
+  $("sp-terms").hidden = !list.length;
+  const host = document.querySelector("#sp-terms .sp-term-list");
+  host.replaceChildren(
+    ...list.map((p) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.profile = p.name;
+      b.disabled = Boolean(p.error);
+      b.title = p.error || p.cmd || "your login shell";
+      const name = document.createElement("b");
+      name.textContent = p.name;
+      const what = document.createElement("span");
+      what.textContent = p.error || p.cmd || "login shell";
+      b.append(name, " ", what);
+      b.addEventListener("click", () =>
+        conn.call("term.spawn", { profile: p.name }, server).then(
+          (card) => go(`#t=${keyOf(server, card.id)}`),
+          (e) => toast(e.message, { kind: "error" }),
+        ),
+      );
+      return b;
+    }),
+  );
+}
+
 async function loadAgents() {
+  conn.call("term.profiles", {}, spServer).then(
+    (list) => drawProfiles(list, spServer),
+    () => drawProfiles([], spServer), // a server without terminals
+  );
   // The picked agent as the chips last knew it, to tell the person's overrides
   // from values an edit to .aegis.yaml has since changed.
   const was = current();
@@ -2334,7 +2456,7 @@ installKeys(
     tab(ev) {
       const n = Number(ev.altKey ? ev.code.slice(5) : ev.key);
       if (n === 0) go("#fleet");
-      else if (tabbed()[n - 1]) go(`#s=${tabbed()[n - 1].key}`);
+      else if (tabbed()[n - 1]) go(hashOf(tabbed()[n - 1].key));
     },
     commands() {
       if (route().view !== "session") return;
@@ -2361,7 +2483,7 @@ installKeys(
 
 // Alt+[ and Alt+]: the Fleet, then the tabs, round.
 function cycle(d) {
-  const all = ["#fleet", ...tabbed().map((m) => `#s=${m.key}`)];
+  const all = ["#fleet", ...tabbed().map((m) => hashOf(m.key))];
   const i = all.indexOf(location.hash || "#fleet");
   go(all[i < 0 ? (d > 0 ? 0 : all.length - 1) : (i + d + all.length) % all.length]);
 }
@@ -2663,6 +2785,10 @@ const confirmClose = async (s) => s.attention === "done" || (await askClose(s));
 
 async function closeSession(s) {
   if (offline() || !(await confirmClose(s))) return;
+  if (s.kind === "term") {
+    const { server, log_id } = forKey(s.key);
+    return conn.call("term.close", { id: log_id }, server).catch((e) => toast(e.message, { kind: "error" }));
+  }
   try {
     await callFor(s.key, "session.close");
   } catch (e) {

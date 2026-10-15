@@ -98,13 +98,37 @@ export function patchCard(box, m, onOpen, order = "attention", onClose = () => {
   return true;
 }
 
+// A terminal's mark: running, a non-zero exit, or ended.
+const TERM_DOT = { running: "ready", failed: "err", ended: "ghost" };
+
 // A session's mark: its attention, or the plain idle dot once a done or review is read.
 export function markNode(m) {
+  if (m.kind === "term") return el("span", `dot ${TERM_DOT[m.mark] || "ghost"}`);
   if (m.mark === "idle") return el("span", "dot ready");
   return glyph(m.mark || m.attention);
 }
 
+// A terminal's card: its command, its state and the last line it printed.
+function termCard(m, onOpen, onClose) {
+  const c = el("div", `card term${m.off ? " off" : ""}`);
+  c.dataset.id = m.key;
+  c.dataset.group = group(m);
+  c.dataset.rank = rank(m);
+  const hd = el("div", "hd");
+  hd.append(markNode(m), el("span", "h", `▸_ ${m.name}`));
+  const owner = shownOwner(m);
+  if (owner) hd.append(el("span", "who", owner));
+  const state = m.state === "exited" ? `exited (${m.code})` : m.state === "ended" ? `ended: ${m.reason}` : "running";
+  c.append(hd, el("div", "ttl", m.title), el("div", "ask", state), el("div", "ln", m.last_line || ""));
+  c.addEventListener("click", (ev) => {
+    if (!ev.target.closest("button")) onOpen(m.key);
+  });
+  closeOnMiddle(c, () => onClose(m.key));
+  return c;
+}
+
 function card(m, onOpen, onClose) {
+  if (m.kind === "term") return termCard(m, onOpen, onClose);
   const c = el("div", `card ${m.state} at-${m.attention}${m.off ? " off" : ""}${finished(m) ? " finished" : ""}${m.quiet ? " quiet" : ""}`);
   c.dataset.id = m.key;
   c.dataset.group = group(m);

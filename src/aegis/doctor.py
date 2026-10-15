@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import shlex
 import shutil
 import tempfile
 from asyncio.subprocess import PIPE, STDOUT
@@ -318,6 +319,23 @@ def _session_memory(snap: Snapshot) -> Finding:
     )
 
 
+def _terminal(name: str, p: dict, root: Path) -> Finding:
+    where = f"terminal.{name}"
+    if "error" in p:
+        return Finding("error", where, p["error"])
+    try:
+        word = shlex.split(p["cmd"])[0]
+    except (ValueError, IndexError):
+        return Finding("error", where, f"cmd {p['cmd']!r} is not a command line")
+    cwd = (root / p["cwd"]).resolve()
+    if not cwd.is_dir():
+        return Finding("error", where, f"cwd {p['cwd']} is not a directory")
+    if shutil.which(word) is None:
+        return Finding("warn", where, f"{word} is not on PATH; sh -c may still run it")
+    restart = "" if p["restart"] == "no" else f", restart {p['restart']}"
+    return Finding("ok", where, f"{p['cmd']} in {cwd}{restart}")
+
+
 def _state(roots: Roots) -> Finding:
     sr = roots.state_root
     if found := legacy_state(sr):
@@ -371,6 +389,11 @@ async def doctor(
         out += _agent(a, found.get(a.harness))
     out.append(_default(snap.default_agent, by_name))
     out += [_queue(name, q, by_name) for name, q in snap.queues.items()]
+    if snap.terminals_error:
+        out.append(Finding("error", "terminals", snap.terminals_error))
+    out += [_terminal(n, p, roots.config_root) for n, p in snap.terminals.items()]
+    if snap.terminal_memory_error:
+        out.append(Finding("error", "terminal_memory_max", snap.terminal_memory_error))
     out += _recap(roots)
     out.append(_context(snap.context))
     out.append(_session_memory(snap))
