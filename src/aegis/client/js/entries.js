@@ -255,6 +255,123 @@ function fillApproval(card) {
   card.replaceChildren(...kids);
 }
 
+// A workflow's card: the plan before approval, the live run after (spec §07).
+// Every node shows its sentence; an agent's prompt folds under it. The run
+// comes from the workflows channel; refreshWorkflows redraws every card, in
+// the transcript and in a canvas pane, on change. The card docks as a file
+// or a page does, by its entry id; while docked, its transcript card is one
+// line, as a docked file's is.
+let workflows = { get: () => null, call: async () => {} };
+const openPrompts = new Set(); // "run/node" whose prompt a person opened
+export function setWorkflows(w) {
+  workflows = w;
+}
+export const workflowTitle = (run) => workflows.get(run)?.title;
+export function refreshWorkflows() {
+  for (const c of document.querySelectorAll(".wfcard")) fillWorkflow(c);
+}
+
+function since(a, b) {
+  if (!a) return "";
+  const s = Math.max(0, Math.round((b || Date.now() / 1000) - a));
+  return s >= 3600 ? `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}` : `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}`;
+}
+
+const WF_WORDS = { armed: "waits for your go", done: "done", failed: "failed", stopped: "stopped", rejected: "rejected" };
+
+// A workflow's status line, for the card's bar and a pane's.
+export function workflowStatus(w) {
+  return w.status === "running" ? `running ${since(w.started)}` : WF_WORDS[w.status] || w.status;
+}
+
+export function fillWorkflow(card) {
+  const w = workflows.get(card.dataset.run);
+  const id = `wf-${card.dataset.run}`;
+  const pane = card.closest(`.pane[data-pane="${id}"]`); // docked, or in the transcript
+  if (!w) {
+    card.replaceChildren(el("div", "fbar", "workflow not found"));
+    return;
+  }
+  card.dataset.status = w.status;
+  const title = [entryIcon("pip"), el("span", "fn", w.title), el("span", "fs", workflowStatus(w))];
+  const kids = [];
+  if (pane) {
+    // A pane's bar is the canvas's (canvas.js draw): the title goes before
+    // its buttons, and the card has no bar of its own.
+    const bar = pane.querySelector(".pbar");
+    bar?.replaceChildren(...title, ...[...(bar?.querySelectorAll(".acts") || [])]);
+  } else {
+    const head = el("div", "fbar");
+    head.append(...title, dockButton(id));
+    const at = docker.docked(id);
+    if (at) {
+      card.replaceChildren(head, heldLine(id, at === true ? DOCKED : inWindow(at)));
+      return;
+    }
+    kids.push(head);
+  }
+  kids.push(el("div", "wflede", w.say));
+  if (w.story.length) {
+    const story = el("div", "story");
+    for (const s of w.story) {
+      const line = el("div", "line");
+      line.dataset.mark = s.mark;
+      line.append(el("span", "tm", hhmm(s.t)), el("span", "mk", s.mark === "ok" ? "✓" : s.mark === "bad" ? "✗" : "?"), el("span", null, s.text));
+      story.append(line);
+    }
+    kids.push(story);
+  }
+  const tree = el("div", "wftree");
+  for (const r of w.tree) {
+    const row = el("div", "wfrow");
+    row.dataset.node = r.id;
+    row.dataset.state = r.state;
+    row.style.paddingLeft = `${12 + r.depth * 16}px`;
+    const main = el("div", "wfb");
+    main.append(el("div", "say", r.say));
+    const tags = el("div", "tags");
+    tags.append(el("span", "kind", r.kind === "agent" ? `agent · ${r.agent}` : r.kind));
+    if (r.handle) tags.append(el("span", "who", r.handle));
+    const key = `${w.run}/${r.id}`;
+    if (r.prompt) {
+      const tog = el("button", "tog", openPrompts.has(key) ? "▾ prompt" : "▸ prompt");
+      tog.type = "button";
+      tog.onclick = () => {
+        openPrompts.has(key) ? openPrompts.delete(key) : openPrompts.add(key);
+        refreshWorkflows();
+      };
+      tags.append(tog);
+    }
+    main.append(tags);
+    if (r.prompt && openPrompts.has(key)) main.append(el("pre", null, r.prompt));
+    if (r.summary || r.error) main.append(el("div", `out ${r.error ? "bad" : ""}`, r.error || r.summary));
+    row.append(el("span", `dot ${r.state}`), main, el("span", "dur", r.state === "pending" ? "" : since(r.started, r.ended)));
+    tree.append(row);
+  }
+  kids.push(tree);
+  const foot = el("div", "apbar");
+  const act = (label, op, cls = "") => {
+    const b = el("button", `btn ${cls}`.trim(), label);
+    b.type = "button";
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        await workflows.call(op, { run: w.run });
+      } catch (err) {
+        b.disabled = false;
+        b.title = String(err?.message || err);
+      }
+    };
+    foot.append(b);
+  };
+  if (w.status === "armed") {
+    act("Approve and run", "workflow.approve", "primary");
+    act("Reject", "workflow.reject");
+  } else if (w.status === "running") act("Stop", "workflow.stop", "danger");
+  if (foot.children.length) kids.push(foot);
+  card.replaceChildren(...kids);
+}
+
 // What Dock does, on a card and on the viewer's bar: app.js hands it the
 // canvas (js/canvas.js), so this module does not import it. can(id) says
 // whether the button shows: not while the item is docked, not for a file
@@ -652,6 +769,17 @@ const RENDERERS = {
     fillApproval(card);
     body.append(card);
     return row(e, "approval", body);
+  },
+
+  workflow(e) {
+    // A workflow this session armed (fillWorkflow). Never folded.
+    const body = el("div", "body");
+    const card = el("div", "fcard wfcard");
+    card.dataset.run = e.detail?.run || "";
+    card._sync = () => fillWorkflow(card);
+    fillWorkflow(card);
+    body.append(card);
+    return row(e, "workflow", body);
   },
 
   artifact(e) {

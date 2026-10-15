@@ -122,6 +122,7 @@ class Workflows:
         st = self.runs[run]
         wf = self.defs.get(run) or parse(st.text, self._agents())[0]
         tree = rows(wf) if wf else []
+        states = self._states(st, wf.root) if wf else {}
         for row in tree:
             n = st.nodes.get(row["id"])
             if n is not None:
@@ -137,7 +138,7 @@ class Workflows:
                     "error": n.error,
                 }
             else:
-                row["state"] = "pending"
+                row["state"] = states.get(row["id"], "pending")
         return {
             "run": run,
             "id": wf.id if wf else "",
@@ -151,6 +152,32 @@ class Workflows:
             "tree": tree,
             "story": st.story,
         }
+
+    def _states(self, st: RunState, node: Node) -> dict[str, str]:
+        """Each node's state for the card: an agent's from the log, a seq's
+        from its children (failed if one failed, done when all are, running
+        once one has started)."""
+        out: dict[str, str] = {}
+
+        def go(n: Node) -> str:
+            if not n.children:
+                s = st.nodes.get(n.id)
+                out[n.id] = s.status if s is not None else "pending"
+            else:
+                kids = [go(c) for c in n.children]
+                out[n.id] = (
+                    "failed"
+                    if "failed" in kids
+                    else "done"
+                    if all(k == "done" for k in kids)
+                    else "pending"
+                    if all(k == "pending" for k in kids)
+                    else "running"
+                )
+            return out[n.id]
+
+        go(node)
+        return out
 
     def wire_all(self) -> list[dict]:
         return [self.wire(r) for r in sorted(self.runs)]

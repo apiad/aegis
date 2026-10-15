@@ -67,7 +67,8 @@ def described(s) -> dict:
             kind, title = "file", fold.file_keys[pid]["name"]
         else:
             e = fold.entry(pid)
-            kind, title = "artifact", (e["title"] if e else pid)
+            kind = "workflow" if pid.startswith("wf-") else "artifact"
+            title = e["title"] if e else pid
         return {**p, "kind": kind, "title": title}
 
     return {
