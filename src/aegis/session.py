@@ -239,6 +239,7 @@ class Session:
         held: list[dict] | None = None,
         worker: dict | None = None,
         schedule: dict | None = None,
+        workflow: dict | None = None,
         opencode_bin: str = "opencode",
         codex_bin: str = "codex",
         title_set: bool = False,
@@ -310,6 +311,9 @@ class Session:
         # A schedule's run: {"name", "run", "spawn"}, inherited by its children
         # (schedules.py); None for any other session.
         self.schedule = schedule
+        # A workflow node's session: {"run", "node"} (workflows.py); None for
+        # any other session.
+        self.workflow = workflow
         # The fold's view of the agent's plan and last report; persisted so a
         # card at boot needs no store (DESIGN.md, boot reads meta files).
         self.standing: dict = standing or EMPTY_STANDING
@@ -374,6 +378,7 @@ class Session:
             "held": self.held,
             "worker": self.worker,
             "schedule": self.schedule,
+            "workflow": self.workflow,
             "standing": self.standing,
             "unread": sorted(self.unread),
             "last_read_at": self.last_read_at,
