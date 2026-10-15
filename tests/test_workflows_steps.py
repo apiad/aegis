@@ -407,3 +407,21 @@ async def test_a_deadline_retry_runs_the_next_attempt_and_ends_it(world):
     pids = [r["pid"] for r in lines(world, run_id) if r.get("ev") == "pid"]
     assert len(pids) == 2
     await until(lambda: all(restarts.started_at(p) is None for p in pids), timeout=5)
+
+
+@pytest.mark.parametrize("kind", ["check", "if"])
+async def test_a_stop_ends_a_probe_and_everything_it_started(world, kind):
+    marker = world.root / "probed"
+    probe = f'{{sh: "sleep 2 && touch {marker} && false", every: 5s}}'
+    node = (
+        f"{{check: {probe}, id: c, say: Probe.}}"
+        if kind == "check"
+        else f"{{if: {{when: {probe}, then: {{wait: 1s, say: Then.}}}}, id: c, say: Probe.}}"
+    )
+    run_id = await run(world, flow(node))
+    wf = world.app.workflows
+    await until(lambda: (run_id, "c") in wf._tasks, timeout=10)
+    await asyncio.sleep(0.5)
+    await wf.stop_run(run_id)
+    await asyncio.sleep(3)
+    assert not marker.exists()
