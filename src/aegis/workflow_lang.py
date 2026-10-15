@@ -222,9 +222,17 @@ def _tokens(text: str) -> list[tuple[str, str]]:
     return out
 
 
+MAX_DEPTH = 64  # parentheses and nots inside one another
+
+
 class _Expr:
     def __init__(self, toks: list[tuple[str, str]]) -> None:
-        self.t, self.i = toks, 0
+        self.t, self.i, self.depth = toks, 0, 0
+
+    def deeper(self) -> None:
+        self.depth += 1
+        if self.depth > MAX_DEPTH:
+            raise ExprError(f"nested more than {MAX_DEPTH} deep")
 
     def peek(self) -> tuple[str, str]:
         return self.t[self.i] if self.i < len(self.t) else ("end", "")
@@ -251,7 +259,10 @@ class _Expr:
     def neg(self):
         if self.peek() == ("word", "not"):
             self.take()
-            return Op("not", (self.neg(),))
+            self.deeper()
+            node = Op("not", (self.neg(),))
+            self.depth -= 1
+            return node
         return self.cmp()
 
     def cmp(self):
@@ -277,9 +288,11 @@ class _Expr:
             name, *parts = val.split(".")
             return Ref(name, tuple(parts))
         if (kind, val) == ("op", "("):
+            self.deeper()
             node = self.expr()
             if self.take() != ("op", ")"):
                 raise ExprError("a ( with no )")
+            self.depth -= 1
             return node
         raise ExprError(f"expected a value, found {val or 'the end'}")
 
@@ -290,7 +303,10 @@ def compile_expr(text: str):
     p = _Expr(_tokens(text))
     if not p.t:
         raise ExprError("an empty expression")
-    tree = p.expr()
+    try:
+        tree = p.expr()
+    except RecursionError:  # MAX_DEPTH stops it first; never crash a lint
+        raise ExprError("nested too deep") from None
     if p.i < len(p.t):
         raise ExprError(f"unexpected {p.peek()[1]!r}")
     return tree
@@ -1223,6 +1239,13 @@ class _Parser:
 
 
 def parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError]]:
+    try:
+        return _parse(text, agents)
+    except RecursionError:  # an agent's text never crashes the lint
+        return None, [LintError("$", "the workflow is nested too deep")]
+
+
+def _parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError]]:
     try:
         raw = YAML(typ="safe").load(io.StringIO(text))
     except YAMLError as e:
