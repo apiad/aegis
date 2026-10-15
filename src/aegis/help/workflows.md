@@ -128,7 +128,8 @@ runs `max` rounds. Round 2's `fix` is `review.2.fix`, and after the loop
 A `{{...}}` and an `expr` probe hold one expression: references
 (`impl.pr`, `args.issue`, `m.0.one`), numbers, 'strings', true, false, null,
 `== != < > <= >=`, `and`, `or`, `not` and parentheses. `or` gives its first
-true value, so `{{args.every or '20m'}}` is a default. Nothing else: no
+true value, so `{{args.every or '20m'}}` is a default. It replaces any false
+value, not only a missing one: 0, "", false, [] and null all give way to it. Nothing else: no
 arithmetic, no calls. A value that is not a string is written as JSON.
 
 ## Deadlines and retries
