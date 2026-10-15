@@ -2131,8 +2131,9 @@ class Workflows:
         if o["kind"] == "edit":
             if o.get("outcome") == "applied":
                 return (
-                    f"The person applied your change {to}: the run follows it now, "
-                    "and a failed step it changed runs again. Nothing to answer."
+                    f"The person applied your change {to}: the run follows it now. "
+                    "A failed step it changed runs again; the story says which. "
+                    "Nothing to answer."
                 )
             return (
                 f"The person kept the plan: your change {to} was not applied, and "
