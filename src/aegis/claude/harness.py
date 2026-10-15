@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..cgroups import wrap
-from ..harness import Launch
+from ..harness import Launch, session_env
 from . import control
 from .control import Catalog
 from .process import ClaudeProcess, build_argv
@@ -50,6 +50,7 @@ class ClaudeSession:
             launch.stderr_path,
             launch.on_line,
             launch.on_exit,
+            env=session_env(launch),
         )
 
     @property

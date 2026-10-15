@@ -547,6 +547,7 @@ class Session:
                 on_error=self._on_error,
                 read_dirs=(inbox,),
                 cgroup=self._host.cgroup(self),
+                log_id=self.log_id,
             )
         )
         # Before the start: a harness can speak while it starts (OpenCode's

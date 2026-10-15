@@ -32,7 +32,7 @@ import httpx
 
 from ..claude.control import Catalog
 from ..cgroups import wrap
-from ..harness import Launch, raise_oom_score
+from ..harness import Launch, raise_oom_score, session_env
 from .config import (
     SANDBOX_MODE,
     SANDBOX_POLICY,
@@ -144,7 +144,7 @@ class CodexProcess:
                 argv(self._bin, mcp[0] if mcp else None, person_excludes()),
             ),
             cwd=self._launch.cwd,
-            env=child_env(os.environ, mcp),
+            env=session_env(self._launch, child_env(os.environ, mcp)),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

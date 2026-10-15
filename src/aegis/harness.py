@@ -14,7 +14,8 @@ uses it, because how a token reaches the CLI is the harness's business
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import os
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
@@ -71,6 +72,23 @@ class Launch:
     # The session's cgroup the child joins before it execs (cgroups.py), or
     # None when the server's unit is not delegated.
     cgroup: Path | None = None
+    # The session's log id, exported to the child as AEGIS_SESSION so park.strays
+    # can find its descendants after they leave its process tree.
+    log_id: str | None = None
+
+
+SESSION_VAR = "AEGIS_SESSION"
+
+
+def session_env(
+    launch: "Launch", base: Mapping[str, str] | None = None
+) -> dict[str, str] | None:
+    """The child's environment: ``base`` (the server's own when None) with
+    AEGIS_SESSION naming the session. Without a log id, ``base`` unchanged, and
+    None (inherit) when there is no base either."""
+    if launch.log_id is None:
+        return None if base is None else dict(base)
+    return {**(os.environ if base is None else base), SESSION_VAR: launch.log_id}
 
 
 class Process(Protocol):
