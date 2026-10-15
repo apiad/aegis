@@ -422,3 +422,35 @@ def test_the_specs_example_trips_only_on_what_this_version_does_not_run():
     assert wf is None and got
     assert all(e.endswith("is not in this version yet") for e in got), got
     assert "$.root.seq[0].par[1].map.do: ref is not in this version yet" in got
+
+
+def test_a_reference_reaches_positional_keys_and_dashed_names():
+    assert render("{{m.0.one}}", {"m": {"0": {"one": 5}}}) == "5"
+    assert render("{{impl-a.pr-url}}", {"impl-a": {"pr-url": "u"}}) == "u"
+    assert value_of("{{m.0}}", {"m": {"0": [1]}}) == [1]
+    text = """
+id: refs
+title: Refs
+say: Read an item by position, then a dashed name.
+root:
+  seq:
+    - map: {over: [1, 2], as: x, do: {agent: {agent: opus, prompt: "x"}, id: one, say: x}}
+      id: m
+      say: Each.
+    - agent: {agent: opus, prompt: "Read {{m.0.one}} and {{impl-a.x}}."}
+      say: "Read {{nothere.x-y}}."
+  say: All.
+"""
+    got = errs(text)[1]
+    assert "$.root.seq[1].say: nothere is not an earlier node or args" in got
+    assert "$.root.seq[1].agent.prompt: impl-a is not an earlier node or args" in got
+    assert not any("m " in e or "m is" in e for e in got), got
+
+
+def test_a_brace_pair_that_is_not_a_reference_is_refused():
+    text = GOOD.replace("Check {{write.path}}.", "Check {{write path}} and {{ }}.")
+    assert errs(text)[1] == [
+        f"$.root.seq[1].agent.prompt: {bad} is not a reference: "
+        "a name, then .key or .0 parts"
+        for bad in ("{{write path}}", "{{ }}")
+    ]
