@@ -341,7 +341,7 @@ function runsLine(w) {
     return el("span", "runs", `Runs ${counts(g).join(" and ")}${g.per ? ` ${g.per}` : ""} in ${w.cwd}, without asking.`);
   }
   const parts = all.map((g) => counts(g).join(" and ") + (g.per ? ` ${g.per}` : ""));
-  const list = `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`;
+  const list = parts.length === 2 ? parts.join(" and ") : `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`;
   return el("span", "runs", `Runs ${list}, in ${w.cwd}, without asking.`);
 }
 

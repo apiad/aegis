@@ -131,6 +131,23 @@ async def test_values_reach_commands_and_probes_through_the_environment(world):
     assert not any("AEGIS_V" in (r.get("cmd") or "") for r in card["tree"])
 
 
+async def test_the_approval_counts_an_until_probe_each_round(world):
+    definition = flow(
+        '{loop: {max: 5, until: {sh: "test -f done"}, do: {sh: "touch done", say: S.}}, say: L.}',
+        '{map: {over: [a], as: it, do: {sh: "echo {{it}}", say: E.}}, say: Each.}',
+        '{loop: {max: 1, do: {sh: "true", say: T.}}, say: Once.}',
+    )
+    r = await world.app.registry.call("session.spawn", {"agent": "opus"})
+    main = world.app.sessions.sessions[r["log_id"]]
+    armed = ok(await turn(main, mcp("workflow_arm", definition=definition)))
+    got = world.app.workflows.wire(armed["run"])["commands"]
+    assert got["groups"] == [
+        {"per": "each round, up to 5 rounds", "sh": 1, "probes": 1},
+        {"per": "for each of 1 item", "sh": 1, "probes": 0},
+        {"per": "each round, up to 1 round", "sh": 1, "probes": 0},
+    ], got
+
+
 async def test_a_failing_sh_fails_its_node_with_the_code_and_stderr(world):
     st = await ended(
         world,
