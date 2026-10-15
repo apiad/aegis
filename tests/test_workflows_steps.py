@@ -425,3 +425,49 @@ async def test_a_stop_ends_a_probe_and_everything_it_started(world, kind):
     await wf.stop_run(run_id)
     await asyncio.sleep(3)
     assert not marker.exists()
+
+
+async def test_an_agent_whose_prompt_has_no_value_is_not_retried(world):
+    args = "args: {type: object, properties: {x: {type: string}}}\n"
+    run_id = await run(
+        world,
+        flow(
+            '{agent: {agent: opus, prompt: "do {{args.x}}"}, id: a, retries: 2, say: Work.}',
+            args=args,
+        ),
+    )
+    st = await ended(world, run_id, timeout=20)
+    assert st.status == "failed" and st.nodes["a"].attempts == 0
+    assert st.nodes["a"].error.startswith("a reference has no value")
+    assert not any("Retrying" in s["text"] for s in st.story)
+
+
+async def test_a_wait_that_can_never_come_is_not_retried(world):
+    text = """id: never
+title: Never
+say: Never.
+root:
+  par:
+    - {map: {over: [{id: a}], as: it, do: {sh: "true", id: one, say: One.}}, id: m, say: Each.}
+    - {sh: "true", id: late, after: [m.b], retries: 2, say: Late.}
+  say: All.
+"""
+    st = await ended(world, await run(world, text), timeout=20)
+    late = st.nodes["late"]
+    assert st.status == "failed" and late.attempts == 0, late.error
+    assert "can never come" in late.error and late.say == "Late."
+
+
+async def test_an_agent_that_cannot_start_is_not_retried(world, monkeypatch):
+    async def boom(*a, **k):
+        raise RuntimeError("no harness")
+
+    monkeypatch.setattr(world.app.workflows, "_spawn_node", boom)
+    run_id = await run(
+        world,
+        flow('{agent: {agent: opus, prompt: "go"}, id: a, retries: 2, say: Work.}'),
+    )
+    st = await ended(world, run_id, timeout=20)
+    a = st.nodes["a"]
+    assert a.attempts == 0 and a.error == "it did not start: no harness"
+    assert a.say == "Work."
