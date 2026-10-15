@@ -25,6 +25,10 @@ stdout. The text of a prompt picks a script:
     /argv          text "argv: <JSON of the process's argv after the binary>".
     /mcp T JSON    call tool T of the aegis MCP server named in --mcp-config with
                    arguments JSON, as a tool call and its result, then a result.
+    /script JSON   a list of steps in one turn: ["sleep", N] waits N seconds
+                   (an interrupt ends the turn, as /sleep's does); [T, {args}]
+                   calls aegis tool T as /mcp does. Then text naming each
+                   call's outcome, and a result.
     /bgtask N      start a background task (task_started) and end the turn; N
                    seconds later the task is notified and the fake wakes itself
                    with a second turn, as Claude does.
@@ -692,6 +696,30 @@ def run(text: str) -> None:
         ok, text = mcp_call(tool, args)
         tool_output(tid, text, is_error=not ok)
         assistant({"type": "text", "text": f"mcp {'ok' if ok else 'error'}: {text}"})
+        result()
+    elif word == "/script":
+        said = []
+        for step in json.loads(arg):
+            if step[0] == "sleep":
+                if wait(float(step[1])):
+                    interrupted.clear()
+                    result(is_error=True, subtype="error_during_execution")
+                    return
+                continue
+            tool, args = step
+            tid = tool_id()
+            assistant(
+                {
+                    "type": "tool_use",
+                    "id": tid,
+                    "name": f"mcp__aegis__{tool}",
+                    "input": args,
+                }
+            )
+            ok, text = mcp_call(tool, args)
+            tool_output(tid, text, is_error=not ok)
+            said.append(f"{tool} {'ok' if ok else 'error: ' + text}")
+        assistant({"type": "text", "text": "script: " + "; ".join(said)})
         result()
     elif word == "/bgtask":
         task_id = f"bg{state['tool']}"
