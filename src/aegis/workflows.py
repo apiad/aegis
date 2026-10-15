@@ -1215,9 +1215,12 @@ class Workflows:
             except ExprError as e:
                 self._fail(st, inst, str(e), retry=False)
                 return "failed"
-            return (
-                self._done(st, inst, None, "The check passed.") if passed else "running"
-            )
+            if passed:
+                return self._done(st, inst, None, "The check passed.")
+            # The values it reads never change once given: asking again
+            # would only spin until the check's limit.
+            self._fail(st, inst, f"{probe['expr']} is false", retry=False)
+            return "failed"
         if "sh" in probe:
             # A restart lost the task: the probe simply runs again (spec §05).
             if key not in self._tasks:
