@@ -185,6 +185,7 @@ async def test_a_reopened_person_gate_asks_on_a_new_card(world):
     gate = '{gate: {by: person, ask: "ok?", show: []}, id: g, say: Ask., deadline: 1s}'
     main, run = await failed_gate(world, person_gate(gate), "g")
     wf = world.app.workflows
+    before = [e["id"] for e in main.entries()]
     await world.app.registry.call(
         "workflow.answer",
         {"run": run, "to": "g", "choice": "retry"},
@@ -193,4 +194,8 @@ async def test_a_reopened_person_gate_asks_on_a_new_card(world):
     await until(lambda: wf.runs[run].open.get("g", {}).get("kind") == "gate", 10)
     cards = [e for e in main.entries() if e["kind"] == "workflow_decision"]
     assert [c["detail"]["key"] for c in cards] == ["g@0", "g@1"]
-    assert main.entries()[-1]["id"] == cards[-1]["id"]  # the new one is last
+    # The new card sits below every entry the transcript held at the retry
+    # (one held then may be gone), not at the old card's place.
+    ids = [e["id"] for e in main.entries()]
+    new = ids.index(cards[1]["id"])
+    assert all(ids.index(x) < new for x in before if x in ids)
