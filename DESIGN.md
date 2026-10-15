@@ -31,7 +31,8 @@ gives.
 
 **A session outlives its process.** A session is live (a harness child, `claude`,
 `opencode serve` or `codex app-server`, is running), parked (aegis ended an idle
-one), stopped (someone ended it), or archived (closed: no process, no tab). A prompt to a stopped session starts the harness again on the same
+one), stopped (Stop ended it, the harness exited on its own, or the server
+restarted under it), or archived (closed: no process, no tab). A prompt to a stopped session starts the harness again on the same
 conversation (`claude --resume`, `opencode serve` and the same session id, or
 `thread/resume` on the same Codex thread),
 which prints nothing old, so the store and the fold simply continue. Shutdown, Stop, Close and a park end a process.
