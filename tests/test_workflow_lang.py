@@ -357,3 +357,68 @@ def test_value_of_and_item_keys():
         item_keys([{"id": "a b"}])
         == "item 0's id 'a b' is not letters, digits, - and _"
     )
+
+
+def test_two_maps_may_name_their_item_alike():
+    """The spec's example names every map's item s: each reference reads
+    the item of its own enclosing map, innermost first."""
+    text = """
+id: alike
+title: Alike
+say: Two maps, both as s.
+args: {type: object, properties: {a: {type: array}, b: {type: array}}}
+root:
+  par:
+    - map: {over: "{{args.a}}", as: s, do: {agent: {agent: opus, prompt: "A {{s.id}}."}, id: one, say: "A {{s.id}}."}}
+      id: first
+      say: The first map.
+    - map:
+        over: "{{args.b}}"
+        as: s
+        do:
+          map: {over: "{{s.parts}}", as: s, do: {agent: {agent: opus, prompt: "B {{s}}."}, id: two, say: "B {{s}}."}}
+          id: inner
+          say: "Parts of {{s.id}}."
+      id: second
+      say: The second map.
+  say: Both.
+"""
+    assert errs(text)[1] == []
+
+
+def test_every_maps_as_is_checked_against_node_ids():
+    text = """
+id: clash
+title: Clash
+say: Both maps name their item after a node.
+root:
+  par:
+    - map: {over: [1], as: two, do: {agent: {agent: opus, prompt: "x"}, id: one, say: x}}
+      id: first
+      say: First.
+    - map: {over: [1], as: two, do: {agent: {agent: opus, prompt: "y"}, id: two, say: y}}
+      id: second
+      say: Second.
+  say: Both.
+"""
+    got = errs(text)[1]
+    for i in (0, 1):
+        assert f"$.root.par[{i}].map.as: two is a node id; name the item otherwise" in got
+
+
+def test_the_specs_example_trips_only_on_what_this_version_does_not_run():
+    """The example in spec §04, read from the spec itself: every error is a
+    kind or field a later slice runs, and the lint does not crash on an
+    after naming an item of a map whose do it refused."""
+    import html
+    import re
+    from pathlib import Path
+
+    spec = Path(__file__).parents[1] / (
+        "docs/superpowers/specs/2026-10-15-dynamic-workflows-design.html"
+    )
+    pre = re.search(r'<h3 id="example">.*?<pre>(.*?)</pre>', spec.read_text(), re.S)
+    wf, got = errs(html.unescape(pre.group(1)))
+    assert wf is None and got
+    assert all(e.endswith("is not in this version yet") for e in got), got
+    assert "$.root.seq[0].par[1].map.do: ref is not in this version yet" in got
