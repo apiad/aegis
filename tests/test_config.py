@@ -143,3 +143,28 @@ def test_a_bad_context_keeps_the_defaults_and_says_why():
         c = context_from(raw)
         assert word in c["error"]
         assert {k: c[k] for k in CONTEXT_DEFAULTS} == CONTEXT_DEFAULTS
+
+
+def test_the_workflows_block_sets_the_pool_and_rides_the_snapshot(tmp_path):
+    from aegis.config import WORKFLOWS_DEFAULTS, workflows_from
+
+    assert workflows_from(None) == WORKFLOWS_DEFAULTS == {"max_agents": 4}
+    snap = Snapshot.parse(tmp_path, None, {"workflows": {"max_agents": 2}})
+    assert snap.workflows == {"max_agents": 2} and snap.unknown_keys == ()
+
+
+def test_a_bad_workflows_block_keeps_the_default_and_says_why():
+    from aegis.config import WORKFLOWS_DEFAULTS, workflows_from
+    from aegis.doctor import _workflows
+
+    for raw, word in (
+        ({"max_agent": 2}, "max_agent"),
+        ({"max_agents": 0}, "max_agents"),
+        ({"max_agents": True}, "max_agents"),
+        ("many", "mapping"),
+    ):
+        w = workflows_from(raw)
+        assert word in w["error"]
+        assert w["max_agents"] == WORKFLOWS_DEFAULTS["max_agents"]
+        assert _workflows(w).level == "error"
+    assert _workflows(workflows_from({"max_agents": 3})).level == "ok"

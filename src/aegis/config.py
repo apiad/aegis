@@ -46,7 +46,7 @@ log = logging.getLogger("aegis.config")
 WATCH_EVERY_S = 1.0
 TOP_KEYS = (
     "agents", "queues", "default_agent", "recap", "context", "session_memory_max",
-    "terminals", "terminal_memory_max", "park", "network",
+    "terminals", "terminal_memory_max", "park", "network", "workflows",
 )  # fmt: skip
 AGENT_KEYS = ("harness", "provider", "model", "effort", "permission", "priming")
 QUEUE_KEYS = ("agent", "max_parallel", "quiet")
@@ -79,6 +79,34 @@ def context_from(raw: object) -> dict:
             kind = "positive" if positive else "non-negative"
             return dict(CONTEXT_DEFAULTS) | {
                 "error": f"context.{k} {v!r} is not a {kind} integer"
+            }
+        out[k] = v
+    return out
+
+
+# How many workflow node sessions may be open at once on this server, every
+# run together (workflows.py). Both out-of-memory kills the workflows design
+# measured came from too many sessions at once.
+WORKFLOWS_DEFAULTS = {"max_agents": 4}
+
+
+def workflows_from(raw: object) -> dict:
+    """The ``workflows:`` block over its defaults. A wrong block keeps the
+    default in force and carries ``error`` for aegis doctor, as the context
+    block does."""
+    out: dict = dict(WORKFLOWS_DEFAULTS)
+    if raw is None:
+        return out
+    if not isinstance(raw, dict):
+        return out | {"error": "workflows must be a mapping with max_agents"}
+    for k, v in raw.items():
+        if k not in WORKFLOWS_DEFAULTS:
+            return dict(WORKFLOWS_DEFAULTS) | {
+                "error": f"workflows has no key {k!r}; it takes max_agents"
+            }
+        if isinstance(v, bool) or not isinstance(v, int) or v < 1:
+            return dict(WORKFLOWS_DEFAULTS) | {
+                "error": f"workflows.{k} {v!r} is not a positive integer"
             }
         out[k] = v
     return out
@@ -249,6 +277,7 @@ class Snapshot:
     unknown_keys: tuple[str, ...] = ()
     doc: ConfigDoc = field(default_factory=ConfigDoc)
     context: dict = field(default_factory=lambda: dict(CONTEXT_DEFAULTS))
+    workflows: dict = field(default_factory=lambda: dict(WORKFLOWS_DEFAULTS))
     park: dict = field(default_factory=dict)
     session_memory_max: object = DEFAULT_MEMORY_MAX
     session_memory_error: str | None = None
@@ -280,6 +309,7 @@ class Snapshot:
             unknown_keys=tuple(str(k) for k in data if k not in TOP_KEYS),
             doc=doc_from(data),
             context=context_from(data.get("context")),
+            workflows=workflows_from(data.get("workflows")),
             park=park_from(data.get("park")),
             session_memory_max=mem,
             session_memory_error=mem_error,

@@ -344,6 +344,14 @@ def _network(snap: Snapshot) -> Finding:
     )
 
 
+def _workflows(w: dict) -> Finding:
+    if "error" in w:
+        return Finding("error", "workflows", w["error"])
+    return Finding(
+        "ok", "workflows", f"at most {w['max_agents']} workflow node sessions at once"
+    )
+
+
 def _session_memory(snap: Snapshot) -> Finding:
     if snap.session_memory_error:
         return Finding("error", "session_memory_max", snap.session_memory_error)
@@ -436,6 +444,7 @@ async def doctor(
     out.append(_context(snap.context))
     out.append(_park(snap.park))
     out.append(_network(snap))
+    out.append(_workflows(snap.workflows))
     out.append(_session_memory(snap))
     out.append(_state(roots))
     return out
