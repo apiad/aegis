@@ -2,12 +2,15 @@
 table in §05, completed in the slice 3 plan."""
 
 import asyncio
+import contextlib
 import json
 import time
 
 import pytest
 
 from aegis import restarts
+from aegis.workflow_log import RunLog, fold
+from aegis.workflows import CUT
 
 from .conftest import until
 from .test_workflows_parallel import report
@@ -66,6 +69,26 @@ async def test_a_judge_continues_after_a_restart(world):  # noqa: F811
     st = await ended(world, run_id, timeout=40)
     assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
     assert sum(r.get("ev") == "judge_started" for r in lines(world, run_id)) == 1
+
+
+async def test_a_running_sh_with_no_task_is_cut_and_not_retried(world):  # noqa: F811
+    # The rule of the slow test below, without a restart: fold the log as
+    # boot does, with the sh running and no task in this process.
+    wf = world.app.workflows
+    run_id = await run(world, flow('{sh: "sleep 30", id: s, retries: 2, say: Slow.}'))
+    await running(world, run_id, "s", lambda n: n.pid)
+    async with wf._lock:
+        task = wf._tasks[(run_id, "s")]
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        wf.runs[run_id] = fold(RunLog(wf.dir / f"{run_id}.jsonl").read())
+    assert wf.runs[run_id].nodes["s"].status == "running"
+    await wf.step()
+    st = wf.runs[run_id]
+    assert st.status == "failed" and st.nodes["s"].error == CUT, st.nodes["s"]
+    assert st.nodes["s"].attempts == 0
+    assert sum(r.get("ev") == "node_started" for r in lines(world, run_id)) == 1
 
 
 @pytest.mark.slow
