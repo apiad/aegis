@@ -52,6 +52,7 @@ AEGIS: dict[str, Command] = {
         Command("rename", "<handle>", "Rename this session's handle"),
         Command("title", "<text>", "Set this session's title"),
         Command("stop", "", "Stop the process and keep the session"),
+        Command("btw", "<question>", "Ask a side question; the agent never sees it"),
         Command(
             "spawn",
             "<agent>[@server] [prompt]",
