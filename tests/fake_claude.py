@@ -445,9 +445,11 @@ def run(text: str) -> None:
                 "claude_code_version": "0.0-fake",
             }
         )
-    # A scheduled prompt's command is the line under its header; the check's
-    # stdout below that is not part of it. The echo keeps the whole prompt.
-    cmd = text.splitlines()[1] if text.startswith("> from schedule:") else text
+    # A scheduled prompt's or a workflow node's command is the line under its
+    # header; what follows (a check's stdout, the node's preamble) is not part
+    # of it. The echo keeps the whole prompt.
+    headed = text.startswith(("> from schedule:", "> from workflow:"))
+    cmd = text.splitlines()[1] if headed else text
     word, _, arg = cmd.partition(" ")
     if word in ("/context", "/model", "/effort", "/rename"):
         emit(

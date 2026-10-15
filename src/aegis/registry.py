@@ -82,6 +82,7 @@ class Registry(Host):
         self.side_notes = None
         self.queues = None
         self.schedules = None
+        self.workflows = None
         self.quota = None
         # The live config's context block (config.py); the app points it at
         # Config.current().
@@ -132,6 +133,8 @@ class Registry(Host):
         self._maybe_unquiet(session)
         if self.schedules is not None:
             self.schedules.changed()
+        if self.workflows is not None:
+            self.workflows.changed()
 
     def _retire_predecessor(self, new: Session) -> None:
         """After a handoff, archive the old session once the new one has
@@ -185,6 +188,8 @@ class Registry(Host):
         # own stop under systemd, and the next boot continues the session.
         if session.quiet and code not in restarts.SIGTERM_CODES:
             self.set_quiet(session.log_id, False)
+        if self.workflows is not None:
+            self.workflows.exited(session, code)
 
     def successor(self, old: Session) -> Session | str | None:
         """The live session continuing ``old`` after a handoff: "starting"
@@ -245,7 +250,8 @@ class Registry(Host):
         # the enqueuer, and a tab would only flash while it stops.
         if s.worker and self.queues is not None and self.queues.finished(s):
             return
-        if kind == "error" or (not s.worker and kind in self.BACK):
+        # A workflow node is the engine's until its run ends (workflows.py).
+        if kind == "error" or (not s.worker and not s.workflow and kind in self.BACK):
             self.set_quiet(s.log_id, False)
 
     def _attention(self, s: Session) -> dict:
@@ -298,6 +304,8 @@ class Registry(Host):
             self.refresh_card(parent)
         if self.schedules is not None:
             self.schedules.changed()
+        if self.workflows is not None:
+            self.workflows.changed()
 
     def finished(self, s: Session) -> bool:
         """Done working, which a turn ending is not: not busy (held messages
@@ -608,6 +616,8 @@ class Registry(Host):
         self._publish("sessions", [{"remove": log_id}])
         if self.schedules is not None:
             self.schedules.changed()
+        if self.workflows is not None:
+            self.workflows.changed()
 
     def reopen(self, log_id: str) -> Session:
         if log_id in self.sessions:
