@@ -438,6 +438,8 @@ class _Parser:
                         "and only an agent has outputs",
                     )
                     continue
+                if sub and t.kind == "map" and not t.children:
+                    continue  # its do was refused, with its own error
                 if sub and t.kind == "agent":
                     point = ("S", t.id)
                 elif sub:
@@ -456,21 +458,22 @@ class _Parser:
                     wanted = waited.setdefault(t.id, [])
                     if sub not in wanted:
                         wanted.append(sub)
-        names = {n.body.get("as"): n for n in nodes.values() if n.kind == "map"}
-        for name, m in names.items():
-            if name in nodes:
+        for m in nodes.values():
+            if m.kind == "map" and m.body.get("as") in nodes:
                 self.err(
-                    f"{m.path}.map.as", f"{name} is a node id; name the item otherwise"
+                    f"{m.path}.map.as",
+                    f"{m.body['as']} is a node id; name the item otherwise",
                 )
         for n in nodes.values():
             afters = {a for x in [n, *ancestors(n)] for a in x.after}
+            items = {nodes[mid].body.get("as") for mid in n.maps}  # enclosing maps
             for path, text in self._strings(n):
                 for m in REF.finditer(text):
                     name, first = m.group(1), (m.group(2).split(".") + ["", ""])[1]
                     if name == "args":
                         continue
-                    if name in names and names[name].id in n.maps:
-                        continue  # an enclosing map's item
+                    if name in items:
+                        continue  # an enclosing map's item; the innermost wins
                     t = nodes.get(name)
                     if t is None:
                         self.err(path, f"{name} is not an earlier node or args")
