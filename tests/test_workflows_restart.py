@@ -13,6 +13,7 @@ from aegis.workflow_log import RunLog, fold
 from aegis.workflows import CUT
 
 from .conftest import until
+from .test_workflows_e2e import give_up
 from .test_workflows_parallel import report
 from .test_workflows_steps import ended, flow, run, verdict, world  # noqa: F401
 
@@ -86,6 +87,8 @@ async def test_a_running_sh_with_no_task_is_cut_and_not_retried(world):  # noqa:
     assert wf.runs[run_id].nodes["s"].status == "running"
     await wf.step()
     st = wf.runs[run_id]
+    assert st.open["s"]["kind"] == "failed"  # it waits on the main agent
+    st = await give_up(world, run_id)
     assert st.status == "failed" and st.nodes["s"].error == CUT, st.nodes["s"]
     assert st.nodes["s"].attempts == 0
     assert sum(r.get("ev") == "node_started" for r in lines(world, run_id)) == 1

@@ -11,7 +11,7 @@ from aegis.workflow_log import RunLog
 
 from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
-from .test_workflows_e2e import RESULT, flow, ok
+from .test_workflows_e2e import RESULT, flow, give_up, ok
 
 
 @pytest.fixture
@@ -91,7 +91,7 @@ async def test_a_run_whose_node_cannot_start_fails_and_the_next_run_goes_on(worl
     reg.spawn = spawn
     rb = await armed(world, b, flow(RESULT, RESULT))
     await world.app.registry.call("workflow.approve", {"run": ra})
-    await until(lambda: wf.runs[ra].status == "failed", timeout=10)
+    assert (await give_up(world, ra, 10)).status == "failed"
     assert "no harness today" in wf.runs[ra].nodes["one"].error
     await until(lambda: told(a, "failed"), timeout=10)
     await until(lambda: wf.runs[rb].status == "done", timeout=20)

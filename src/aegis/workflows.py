@@ -753,13 +753,9 @@ class Workflows:
             self._publish(run)
         if state == "done":
             await self._end(st, "done", self._summary(st))
-        elif state == "failed":
-            bad = next((n for n in st.nodes.values() if n.status == "failed"), None)
-            await self._end(
-                st,
-                "failed",
-                f"{bad.say} failed: {bad.error}" if bad else "A node failed.",
-            )
+        # A failure waits on the main agent: it ends the run only by its
+        # answer, a person's stop or a limit (spec §05, slice 4).
+        await self._tell_open(st)
 
     async def _advance(
         self, st: RunState, wf: Workflow, node: Node, prefix: str
@@ -793,6 +789,14 @@ class Workflows:
         end = self._end_at(st, wf, node, inst)
         if end is not None:
             if time.time() >= end[0]:
+                if node is wf.root:
+                    # The run's own limit: nobody is asked (spec §05, slice 4).
+                    await self._end(
+                        st,
+                        "failed",
+                        f"The workflow ran past its deadline of {fmt_duration(end[1])}.",
+                    )
+                    return "failed"
                 await self._expire(st, node, inst, end[1])
                 return "failed"
             self._due_at(end[0])
@@ -1030,18 +1034,19 @@ class Workflows:
     ) -> str:
         """Branches side by side, at most ``cap`` begun and not finished. A
         branch is begun when its derived state is running or queued, so a
-        restart counts the same branches again from the fold."""
+        restart counts the same branches again from the fold. A failed
+        branch keeps its slot until the main agent retries or skips it, and
+        the others go on beside it."""
         now = [self._state(st, n, p + n.id) for n, p in kids]
-        flight = sum(s in ("running", "queued") for s in now)
+        busy = ("running", "queued", "failed")
+        flight = sum(s in busy for s in now)
         out = []
         for (n, p), s in zip(kids, now):
             if s == "pending" and cap is not None and flight >= cap:
                 out.append(s)
                 continue
-            s2 = s if s == "done" else await self._advance(st, wf, n, p)
-            if s2 == "failed":
-                return "failed"
-            flight += (s2 in ("running", "queued")) - (s in ("running", "queued"))
+            s2 = s if s in ("done", "failed") else await self._advance(st, wf, n, p)
+            flight += (s2 in busy) - (s in busy)
             out.append(s2)
         return _fold(out) if out else "done"
 
@@ -1682,7 +1687,8 @@ class Workflows:
         if outcome == "stopped":
             self._log(st.run, {"ev": "stopped"})
         else:
-            self._finish(st, outcome)
+            # A failed ending's reason is the story's last line.
+            self._finish(st, outcome, body if outcome != "done" else "")
         for n in running:
             for lid in _lids(n):
                 s = self._reg.sessions.get(lid)
@@ -1709,6 +1715,79 @@ class Workflows:
             for lid in _lids(n):
                 if lid in self._reg.sessions:
                     self._reg.set_quiet(lid, False)
+
+    async def _tell_open(self, st: RunState) -> None:
+        """Tell the main agent each open item it has not been told, once:
+        the woke record follows the delivery, so a crash between the two
+        tells it again and never loses it. With no main agent left, the
+        run fails: nobody can decide."""
+        untold = [(to, o) for to, o in st.open.items() if not o.get("told")]
+        if not untold or st.status not in LIVE:
+            return
+        owner = self.owner(st)
+        if owner is None:
+            await self._end(
+                st,
+                "failed",
+                "The main agent's session is closed, so nobody can decide.",
+            )
+            return
+        for to, o in untold:
+            header = (
+                f"> from workflow:{self._wid(st)} · {o['kind']} · {to} · {iso_now()}"
+            )
+            try:
+                await owner.deliver(header, self._wake_text(st, to, o))
+            except Exception:
+                log.exception("aegis: could not tell %s about %s", st.owner, to)
+                return
+            self._log(st.run, {"ev": "woke", "to": to})
+
+    def _wake_text(self, st: RunState, to: str, o: dict) -> str:
+        """What the main agent reads about one open item, ending with the
+        exact call that answers it."""
+        n = st.nodes.get(to) or NodeState()
+        call = f'workflow_answer(run="{st.run}", to="{to}"'
+        lines = [f'Step "{n.say}" failed: {o.get("error") or n.error}']
+        if n.attempts:
+            lines[0] += f" (attempt {n.attempts + 1})"
+        h = self._reg.sessions.get(n.log_id or "")
+        if h is not None:
+            lines.append(f"Its session is {h.handle}; read it with peer_read.")
+        lines += [
+            f"Decide with {call}, choice=...):",
+            '- "retry" runs it again (change it first with workflow_edit if it needs a new brief);',
+            '- "skip" goes on without it; give value matching its result schema if later steps read it;',
+            '- "fail" ends the run.',
+            "Other branches keep running meanwhile.",
+        ]
+        return "\n".join(lines)
+
+    async def answer(
+        self, s: Session, run: str, to: str, choice: str | None, value, text: str
+    ) -> None:
+        """The main agent's answer to an open item. It can end the run, so
+        it takes the lock a pass holds and never lands mid-pass."""
+        async with self._lock:
+            st = self._get(run)
+            o = st.open.get(to)
+            if o is None or st.status != "running":
+                raise OpError(
+                    "not_open",
+                    f"nothing in run {run} waits on {to}; workflow_status lists what does",
+                )
+            text = (text or "").strip()
+            if o["kind"] == "failed" and choice == "fail":
+                n = st.nodes[to]
+                why = f"{n.say} failed: {n.error}" + (
+                    f" You ended the run: {text}" if text else " You ended the run."
+                )
+                await self._end(st, "failed", why)
+            else:
+                takes = {"failed": "retry, skip or fail"}.get(o["kind"], "")
+                raise OpError(
+                    "bad_choice", f"{to} is a {o['kind']} item: it takes choice {takes}"
+                )
 
     async def _tell_owner(self, st: RunState, outcome: str, body: str) -> None:
         owner = self.owner(st)
@@ -1738,7 +1817,14 @@ class Workflows:
             self._log(st.run, rec | {"retrying": tried + 2, "of": tpl.retries + 1})
             self.changed()
             return
-        self._log(st.run, rec)
+        # It waits on the main agent now; what waited inside it no longer does.
+        under = node + "."
+        closes = [k for k in st.open if k.startswith(under)] + [
+            k
+            for k, o in st.open.items()
+            if o["kind"] == "ask" and str(o.get("node", "")).startswith(under)
+        ]
+        self._log(st.run, rec | ({"closes": closes} if closes else {}))
         # A failed node's session keeps its card and gets a tab, as a failed
         # queue worker does (spec §05).
         n = st.nodes.get(node)
