@@ -57,6 +57,7 @@ from .claude.stream import (
 from .harness import Launch, Process, harness_for
 from .meta import MetaStore
 from .names import default_title
+from .park import TIMER_TOOLS
 from .transcript.entries import EMPTY_STANDING, Fold, fold_records
 from .transcript.store import Store, read_store
 from .transcript.wire import wire, wire_ops
@@ -301,6 +302,7 @@ class Session:
         self._generation = 0
         # Claude's own tasks started and not yet notified (Bash, background).
         self.open_tasks: set[str] = set()
+        self.timers: set[str] = set()  # TIMER_TOOLS this process called (park.py)
         self.worker = worker
         # No tab until its turn ends (#386); a card in the Fleet meanwhile.
         self.quiet = quiet
@@ -559,6 +561,7 @@ class Session:
         self.last_exit = None
         self.catalog_task = asyncio.create_task(self._fetch_catalog(proc))
         self.open_tasks.clear()
+        self.timers.clear()
         if resume:
             self._record({"kind": "resume", "resume_id": resume})
         sid = proc.session_id
@@ -916,6 +919,8 @@ class Session:
             if isinstance(ev, ToolCall) and ev.parent is None:
                 tools += 1
                 changes["tool_calls"] = tools
+            if isinstance(ev, ToolCall) and ev.name in TIMER_TOOLS:
+                self.timers.add(ev.name)
             if isinstance(ev, Compact):
                 compactions += 1
                 changes["compactions"] = compactions

@@ -19,6 +19,7 @@ is found by the AEGIS_SESSION its harness passed down (harness.session_env)."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from .cgroups import _ppid, _procs
@@ -79,3 +80,74 @@ def strays(
             continue
         out.append(pid)
     return sorted(out)
+
+
+# Claude Code tools that keep a timer in the harness's memory: ending the
+# process cancels it, no child process shows it was there, and its fires
+# arrive only as unprompted turns, with no task event to count. Monitor and a
+# background Agent emit task events, so open_tasks already holds them.
+TIMER_TOOLS = frozenset({"ScheduleWakeup", "CronCreate"})
+# Attentions whose next event comes from outside the harness: a person, or a
+# monitor, queue task or session the server runs (registry._waits).
+PARKABLE = frozenset({"done", "needs_you", "review", "waiting"})
+
+
+@dataclass(frozen=True)
+class Facts:
+    after: (
+        int | None
+    )  # the park: seconds for its harness; None when the harness never parks
+    running: bool
+    status: str
+    attention: str
+    worker: bool
+    held: bool  # a held message, or a flush of them under way
+    open_tasks: int
+    timers: frozenset[str]
+    strays: tuple[int, ...]
+    watchers: int
+
+
+def blockers(f: Facts) -> list[str]:
+    """Why the session must keep its process, one plain reason per rule;
+    empty when it may park."""
+    out = []
+    if f.after is None:
+        out.append("its harness does not park")
+    if not f.running or f.status != "idle":
+        out.append("it is not idle with a process")
+    if f.attention not in PARKABLE:
+        out.append(f"its attention is {f.attention}")
+    if f.worker:
+        out.append("it is a queue worker")
+    if f.held:
+        out.append("it holds a message")
+    if f.open_tasks:
+        out.append(f"{f.open_tasks} background task(s) would die")
+    if f.timers:
+        out.append(f"{', '.join(sorted(f.timers))} would be cancelled")
+    if f.strays:
+        out.append(f"{len(f.strays)} other process(es) would die")
+    if f.watchers:
+        out.append("someone is looking at it")
+    return out
+
+
+class Clock:
+    """Since when each session has had no blockers. A blocker, a reset or a
+    harness that does not park starts it again."""
+
+    def __init__(self) -> None:
+        self._since: dict[str, float] = {}
+
+    def due(self, log_id: str, clear: bool, after: int | None, now: float) -> bool:
+        if not clear or after is None:
+            self._since.pop(log_id, None)
+            return False
+        return now - self._since.setdefault(log_id, now) >= after
+
+    def idle_for(self, log_id: str, now: float) -> float:
+        return now - self._since.get(log_id, now)
+
+    def reset(self, log_id: str) -> None:
+        self._since.pop(log_id, None)

@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,7 @@ import pytest
 from aegis.config import park_after, park_from
 from aegis.doctor import _park
 from aegis.harness import SESSION_VAR
-from aegis.park import strays
+from aegis.park import Clock, Facts, blockers, strays
 
 
 def test_the_block_maps_each_harness_to_its_seconds():
@@ -136,3 +137,58 @@ def test_a_shell_the_harness_runs_is_a_stray():
             os.kill(_pid_of(["sleep", "42"]), 9)
         except AssertionError:
             pass
+
+
+SAFE = Facts(
+    after=60,
+    running=True,
+    status="idle",
+    attention="done",
+    worker=False,
+    held=False,
+    open_tasks=0,
+    timers=frozenset(),
+    strays=(),
+    watchers=0,
+)
+
+
+def test_a_session_nothing_needs_has_no_blockers():
+    assert blockers(SAFE) == []
+    for a in ("needs_you", "review", "waiting"):
+        assert blockers(replace(SAFE, attention=a)) == []
+
+
+@pytest.mark.parametrize(
+    "change, says",
+    [
+        ({"after": None}, "does not park"),
+        ({"running": False}, "not idle"),
+        ({"status": "working"}, "not idle"),
+        ({"status": "error"}, "not idle"),
+        ({"attention": "said"}, "attention"),
+        ({"worker": True}, "queue worker"),
+        ({"held": True}, "holds a message"),
+        ({"open_tasks": 1}, "background task"),
+        ({"timers": frozenset({"ScheduleWakeup"})}, "ScheduleWakeup"),
+        ({"strays": (4242,)}, "other process"),
+        ({"watchers": 1}, "looking at it"),
+    ],
+)
+def test_each_rule_alone_keeps_the_process(change, says):
+    (why,) = blockers(replace(SAFE, **change))
+    assert says in why
+
+
+def test_the_clock_parks_only_after_an_unbroken_stretch():
+    c = Clock()
+    assert not c.due("a", True, 60, now=0)
+    assert not c.due("a", True, 60, now=59)
+    assert c.due("a", True, 60, now=60)
+    assert c.idle_for("a", now=75) == 75
+    c.reset("a")
+    assert not c.due("a", True, 60, now=100)
+    assert not c.due("a", False, 60, now=130)  # a blocker restarts it
+    assert not c.due("a", True, 60, now=140)
+    assert c.due("a", True, 60, now=200)
+    assert not c.due("b", True, None, now=0)
