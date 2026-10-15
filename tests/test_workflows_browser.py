@@ -98,6 +98,30 @@ def test_the_approval_line_counts_commands_per_item_and_round(server, page):  # 
     assert not page.errors
 
 
+TWO_FLOW = """id: two
+title: Two
+say: Two groups.
+root:
+  seq:
+    - {sh: "printf hi", say: Say hi.}
+    - {loop: {max: 1, until: {sh: "true"}, do: {sh: "true", say: Try.}}, say: Once.}
+  say: Both.
+"""
+
+
+def test_the_approval_line_joins_two_groups_with_and(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_arm " + json.dumps({"definition": TWO_FLOW}))
+    runs = page.wait_for_selector(".wfcard[data-status=armed] .apbar .runs")
+    text = runs.inner_text()
+    assert text.startswith(
+        "Runs 1 shell command and 1 shell command and 1 probe each round, "
+        "up to 1 round, in "
+    ), text
+    assert not page.errors
+
+
 def test_the_card_fits_a_phone(server, browser):  # noqa: F811
     from .test_browser import new_page
 

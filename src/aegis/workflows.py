@@ -337,7 +337,8 @@ class Workflows:
     def _commands(self, st: RunState, wf: Workflow) -> dict:
         """The shell commands and sh probes a person approves, in all and
         grouped by how often each runs: once, for each of a map's items, or
-        each round of a loop, counted from the definition and the args."""
+        each round of a loop, counted from the definition and the args. A
+        loop's own until probe runs each of its rounds."""
         groups: dict[str, dict] = {}
         for n in walk(wf.root):
             sh, probe = n.kind == "sh", "sh" in (n.body.get("probe") or {})
@@ -353,7 +354,7 @@ class Workflows:
     def _per(self, st: RunState, wf: Workflow, node: Node) -> str:
         """How often a node runs, from the maps and loops around it: "for
         each of 3 items", "each round, up to 4 rounds", or "" for once."""
-        bits, x = [], wf.parent.get(node.key)
+        bits, x = [], node if node.kind == "loop" else wf.parent.get(node.key)
         scope = {"args": st.args}
         while x is not None:
             if x.kind in ("map", "loop"):
@@ -363,12 +364,12 @@ class Workflows:
                     v = None  # read from a step's value, known only when it runs
                 if x.kind == "map":
                     k = len(v) if isinstance(v, list) else None
-                    bits.append(f"for each of {k} items" if k else "for each item")
+                    many = f"for each of {k} item{'s' if k != 1 else ''}"
+                    bits.append(many if k else "for each item")
                 else:
                     known = isinstance(v, int) and not isinstance(v, bool)
-                    bits.append(
-                        f"each round, up to {v} rounds" if known else "each round"
-                    )
+                    up = f"each round, up to {v} round{'s' if v != 1 else ''}"
+                    bits.append(up if known else "each round")
             x = wf.parent.get(x.key)
         return ", ".join(bits)
 
