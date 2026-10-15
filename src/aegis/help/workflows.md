@@ -32,7 +32,7 @@ root:
 
 Every node needs `say`. A `{{name.field}}` in a prompt or a `say` reads
 `args` or the result of a node that finished before this one. This version
-runs `seq`, `par`, `map` and `agent`; the others in the spec come next.
+runs every kind in the spec but `gate`.
 
 ## Run things at once
 
@@ -69,6 +69,116 @@ holds, so the lint refuses a result schema with a property of an awaited
 output's name. A `{{name}}` must name a node
 that finishes before this one: earlier in a `seq`, or named in `after`.
 The lint refuses an `after` that could never be met.
+
+## Commands, checks and pauses
+
+```yaml
+- sh: "gh pr merge {{impl.pr}} --squash"
+  id: merge
+  say: "Merge PR {{impl.pr}}."
+- check: {sh: "test -f build/done", every: 1m}
+  deadline: 2h
+  say: Wait for the build to leave its marker.
+- wait: 20m
+  say: Give the deploy twenty minutes.
+```
+
+`sh: "gh pr merge {{impl.pr}} --squash"` runs a command once, under bash, in
+the directory you armed the workflow from. Exit 0 is done; anything else
+fails the step with its code and the last line it printed to stderr. Its
+value is `{code, out, err}` (the last 4000 characters of each), so a later
+step reads `{{merge.out}}`. Each `{{...}}` in a command is shell-quoted for
+you: write `{{impl.pr}}`, not `'{{impl.pr}}'`. Only a session with full
+permission can arm a workflow with a command, and the card shows every
+command in full before the person approves.
+
+`check:` waits until a probe passes: `{sh: cmd, every: 1m}` passes on exit 0
+and runs again every `every` (30s by default, at least 5s); `{expr: "..."}`
+passes when the expression is true; `{judge: {agent, prompt, inputs}}` asks
+an agent once for a yes or a no, with each of `inputs` (references such as
+`impl` or `review.verdict`) given to it as JSON. A judge counts in the same
+limits as an agent node. Without a deadline above it, a check gives up after
+an hour and a command after 30 minutes. `wait: 20m` pauses on wall time.
+
+## Branch and repeat
+
+```yaml
+- if: {when: {expr: "review.approved"},
+       then: {sh: "gh pr merge {{impl.pr}}", say: Merge it.},
+       else: {agent: {agent: sonnet, prompt: "Fix what the review found."}, say: Fix it.}}
+  say: Merge if the review approved, else fix.
+- loop: {max: 5, until: {judge: {agent: opus, prompt: "Is the fix right?", inputs: [fix]}},
+         do: {agent: {agent: sonnet, prompt: "Fix the next problem."}, id: fix, say: Fix one problem.}}
+  id: review
+  say: Fix until a judge agrees, at most five times.
+```
+
+`if: {when: probe, then: node, else: node}` takes one branch; `else` is
+optional, and a step outside a branch cannot read a step inside it. `loop:
+{do: node, max: 5, until: probe}` runs `do` up to `max` rounds and stops
+when `until` passes; running out of rounds fails it. Without `until` it
+runs `max` rounds. Round 2's `fix` is `review.2.fix`, and after the loop
+`{{review.fix.pr}}` reads the last round's.
+
+## Expressions
+
+A `{{...}}` and an `expr` probe hold one expression: references
+(`impl.pr`, `args.issue`, `m.0.one`), numbers, 'strings', true, false, null,
+`== != < > <= >=`, `and`, `or`, `not` and parentheses. `or` gives its first
+true value, so `{{args.every or '20m'}}` is a default. Nothing else: no
+arithmetic, no calls. A value that is not a string is written as JSON.
+
+## Deadlines and retries
+
+```yaml
+root:
+  seq:
+    - {sh: "make test", retries: 2, say: "Run the tests, up to three times."}
+  deadline: 1h
+  say: Test it within the hour.
+```
+
+`deadline: 2h` on any step, and on the workflow, bounds it: past it, its
+running agents are interrupted and kept for you to read, its commands are
+killed, and the step fails. A deadline on a group bounds everything in it.
+`retries: 2` on an agent, sh or check runs it again when it fails, with a
+fresh session for an agent. A reference with no value is never retried,
+and a command cut by a server restart is never run again on its own.
+
+## Blocks
+
+```yaml
+blocks:
+  land:
+    seq:
+      - agent: {agent: sonnet, prompt: "Implement {{x.title}}.", result: {$ref: "#/defs/pr"}}
+        id: impl
+        say: "Implement {{x.title}}."
+      - sh: "gh pr merge {{impl.pr}} --squash"
+        say: "Merge PR {{impl.pr}}."
+    say: Implement and merge.
+defs:
+  pr: {type: object, properties: {pr: {type: integer}}, required: [pr]}
+```
+
+`blocks: {land: node}` names a sub-tree; `ref: land` uses it, and its ids
+belong to the map item, loop round or top level it is used in, so a block
+is used at most once in each. `id`, `say`, `after`, `deadline` and
+`retries` on the `ref` override the block's own. `defs: {pr: schema}` names
+a result schema; `result: {$ref: "#/defs/pr"}` uses it.
+
+## After a restart
+
+When the server stops and starts again during a run:
+
+- an agent or a judge goes on in its session, and the step ends when it reports;
+- a command is not run again: the step fails with "cut by restart", and the run fails with it;
+- a check's command probe runs again, and its deadline still counts from its first start;
+- an `expr` probe is evaluated again;
+- a wait ends at the time it was going to end;
+- an if or a loop never asks a probe again once its answer is logged, and a loop keeps its round;
+- a deadline that passed while the server was down fires at once;
+- a retried step keeps its count of attempts.
 
 ## How many at once
 
@@ -109,7 +219,9 @@ beside it. `workflow_status` shows the tree at any time, and
 ## Inside a workflow
 
 If your first message is headed `> from workflow:`, you are a node. Do the
-task, call `workflow_result` once, and end your turn. If your first
+task, call `workflow_result` once, and end your turn. If it is headed
+`> from workflow:… · judge`, you are a judge: call `workflow_result` with
+`{pass, why}` and change nothing. If your first
 message names outputs other steps wait on, call `workflow_output` with each
 one as soon as it is ready, then go on. Nobody answers
 questions here, and neither you nor a session you spawn can arm a workflow.

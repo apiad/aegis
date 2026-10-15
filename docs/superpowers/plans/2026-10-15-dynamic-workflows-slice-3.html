@@ -2349,7 +2349,7 @@ tells you when it ends. A workflow's own nodes cannot arm one.
 </div>
 </details>
 
-<details class="task" id="task-13" data-state="pending">
+<details class="task" id="task-13" data-state="doing">
 <summary><span class="num">13</span><span><span class="ttl">Docs, gates, the PR and the release</span><span class="files">help/workflows.md · changelog.d · DESIGN.md · the spec</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -2477,6 +2477,8 @@ item, loop round or top level. `defs: {pr: schema}` names a result schema;
   <li>Task 9: <code>_begun_at</code> became <code>_under</code>: a seq's or par's children are not prefixed by its id, so a group's start is the earliest logged instance of its subtree under the same map item, not of <code>inst + "."</code>. <code>_end_at</code> returns the end and the span that set it (the message names the deadline that fired) and skips that scan for a node with nothing to bound. <code>_expire</code> halts every instance inside that has not finished, so a judge deciding an <code>if</code> is interrupted too. <code>_advance</code> returns <code>failed</code> at once for an instance already failed, so a deadline is logged once. The stale-attempt refusal sits in <code>_reporting</code>, so it covers <code>result</code>, <code>output</code> and judges alike.</li>
   <li>Task 10: every row passed with no engine fix; the tests changed instead. The fake harness does not take a <code>/script</code> up again after a restart, so the agent and judge rows report for the continued session through <code>wf.result</code>, as slice 2's mid-map restart test does. The crash row's command sleeps 10 s, not 4: with <code>os.killpg</code> patched, a cancelled task waits 2 s + 2 s on its group, so a 4 s command had finished before boot could end it. The retry row waits for attempt 2 to be running with a pid, not only for the retry, or the restart could land before attempt 2 started. <code>lines</code> and <code>running</code> take <code>w</code>, so ruff does not read them as redefining the imported fixture. The break-it run fails on the status (the rerun sh ends done) before it reaches the marker.</li>
   <li>Task 11: a loop's round count is <code>row["rounds"]</code>, not <code>row["count"]</code>, which stays a map's count by state. The phone test arms <code>STEPS_FLOW</code> with a long command so it must wrap. The story read "Took then:" and "Round 1:" with a bare colon when the probe gave no reason (an expr); <code>workflow_log.apply</code> now ends those lines with a period. <code>site/client.css</code> is rebuilt.</li>
+  <li>Task 12: no live test covers the primer's workflow paragraph, and the hand check with a fresh agent in <code>bin/aegis-dev</code> is left to the smoke test.</li>
+  <li>Task 13: <code>test_the_specs_example_trips_only_on_what_this_version_does_not_run</code> no longer injects its own <code>DEFS</code>, since the spec's example now carries them; it also lints the example with its gate removed and asserts no error. The help page's examples were each linted as a whole workflow; one needed its <code>say</code> quoted for a comma. Task 13 is split: the docs, help, changelog, DESIGN.md and spec landed here; the full gates, the PR, the smoke test and the release are the enqueuer's, so the task stays <code>doing</code>.</li>
 </ul>
 </main>
 <script>
