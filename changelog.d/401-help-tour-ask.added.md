@@ -1,2 +1,0 @@
-- **Any help page can become a guided tour, and a question typed in Help can go to an agent.** Every page in the Help tab has a Guided tour button that starts a guide based on that page; a tutorial page still gets its tutorial, and a tour of another page leaves the tutorial hint on offer. Typing in the Help tab's search box adds an Ask an agent row that starts a session in a new tab with the question and the page it was asked from; Enter still opens the best hit.
-help: sessions#from-the-help-tab

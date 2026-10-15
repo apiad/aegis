@@ -5,6 +5,91 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-10-15
+
+### Added
+
+- **Terminals: a shell or a command on the server, in a tab.** Press + and
+  pick a shell, or a profile from the new `terminals:` block of `.aegis.yaml`.
+  It keeps running when the browser closes, a browser that opens it again
+  replays what it printed, and a profile with `restart:` starts again with
+  aegis. Agents get terminals in a later release.
+  help: terminals
+
+- **Quiet sessions keep background work out of the tab bar.** A session that is working or waiting can be quieted from the session panel, by an agent with `session_quiet`, or from the start with `session_spawn(quiet=true)` and `/spawn --quiet`. It loses its tab, keeps a dimmed card in the last group of the Fleet, and gets its tab back when its turn ends or someone clicks its card. Queue workers start quiet, so only a failed one shows.
+  help: sessions#quiet-sessions
+
+- **Schedules fire a prompt on a clock.** A schedule sends its prompt every
+  few minutes, on a cron line or once at a set time, into a new session from
+  an agent or into an open session's inbox. An optional bash check fires a
+  tick only when its output changed, and hands that output to the agent. The
+  overlap rule waits for a run still working, skips the tick or runs beside
+  it, and a new run is archived when its last `turn_end` said done. A fire
+  waits while the quota is over the schedule's own launch lines, by default
+  while the weekly window is off pace. Agents get nine `schedule_*` tools
+  (#390).
+  help: schedules
+
+- **A view for schedules.** The Schedules button in the top bar, or Alt+K,
+  lists every schedule with its next tick, shows each one's layers and recent
+  runs with the quiet ticks folded, and edits it in a form laid out as the
+  same layers, with a button that tries the check before saving and a quota
+  line per pool and window, or no limit (#390).
+  help: schedules#the-view
+
+- **A reply's references say what they are before a click.** A path in backticks shows a file icon, a folder icon, or a struck-out name when nothing is there; `owner/repo` and `owner/repo#n` link to GitHub unless a local path has the name; a bare URL carries its site's icon (GitHub, PyPI, arXiv, npm, or a globe) and a short label. A new read-only op, `path.stat`, answers once per reply as it nears the view.
+  help: transcript#paths-in-replies
+
+- **`/btw <question>` asks a side question without spending a turn.** It works
+  in any session, while the agent is mid-turn too: aegis reads the transcript
+  and answers with the agent that `btw: {agent: <name>}` names in
+  `.aegis.yaml`, in one call with no tools. The answer appears as a block in
+  the transcript that every browser sees and that folds with a click, and
+  later side notes see the earlier ones, so a follow-up works. The agent never
+  receives the question or the answer.
+  help: commands
+
+- **Any help page can become a guided tour, and a question typed in Help can go to an agent.** Every page in the Help tab has a Guided tour button that starts a guide based on that page; a tutorial page still gets its tutorial, and a tour of another page leaves the tutorial hint on offer. Typing in the Help tab's search box adds an Ask an agent row that starts a session in a new tab with the question and the page it was asked from; Enter still opens the best hit.
+  help: sessions#from-the-help-tab
+
+- **The session panel says where a session runs and whether it is a queue worker.** The handle reads `handle@server` under the title, where the server used to show only in the hover card, and a worker carries the same `worker · <queue>` badge as its Fleet card.
+  help: sessions#rename-it
+
+### Changed
+
+- **Agents are told to prefer aegis's tools over their harness's.** The primer now says to wait with `monitor_start`, plan with `plan_update`, and send subagent-sized work to a queue instead of a harness subagent, since only aegis's versions show on the person's screen. It also asks for documents meant for the person as one self-contained HTML page sent with `file_send`.
+  help: sessions#aegis-tools-first
+
+- **The getting-started tutorial now runs from one session to a queue of workers.** It is five levels, with an artifact docked beside the transcript on the way; the old eight steps stopped before artifacts, docking and queues. Four extra tutorials cover layouts and the canvas, linked servers, the phone, and running a server for other people. A tutorial's guide opens with a welcome and what the page covers, answers questions on the way, and returns to the step it was on.
+  help: getting-started
+
+- **`turn_end` done now means the whole task is over.** Agents passed done on
+  turns that only finished a step, and a done card offers an Archive button,
+  so the person had to read the message to learn the work went on. The primer
+  and the tool schema now say a step passes review, and `turn_end` refuses
+  done while the plan has items not done.
+  help: sessions#what-the-agent-reports
+
+### Fixed
+
+- **The new tab's message box grows with what you type.** It stayed three lines tall and scrolled from the fourth line on, with the view mostly empty around it. It now grows until the form fills the view, and only then scrolls.
+
+- **A full disk no longer freezes sessions until a restart.** When a write failed, the task reading the agent's output died without a word: the transcript stopped where it was, the agent blocked once its output pipe filled, and only restarting `aegis serve` brought it back. Now a line that cannot be stored is logged and dropped, and the session shows new events as soon as the disk has room again.
+
+- **A tool error with a long message no longer stalls the server.** The MCP library's log handler wrapped the message in time growing with its length squared, on the loop every session shares: a page's 4,000-character error held it for seconds on a busy host. Its log is plain text now.
+
+- **A click on a quiet session's card opens that session.** While the session was working, the click could open the tab next to it instead: an update to the card that crossed the click left the page believing the session was still quiet.
+
+### Performance
+
+- **The server starts about 7 MB smaller, and a reload into a session asks for
+  it sooner.** The Web Push code imported `cryptography` with the server, so
+  every server carried its bindings whether or not any device had turned push
+  on; it is now imported the first time a message is signed. A reload into a
+  session read this device's copy of it only after the Fleet's snapshot had
+  arrived, and the subscription waited for that read; the copy is now read
+  while the socket connects, so the transcript is asked for about 30 ms sooner.
+
 ## [2.9.0] - 2026-10-14
 
 ### Added
