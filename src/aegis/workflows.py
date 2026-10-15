@@ -498,10 +498,12 @@ class Workflows:
                 if not met:
                     return "pending"
         if node.kind == "seq":
-            for c in node.children:
+            for i, c in enumerate(node.children):
                 s = await self._advance(st, wf, c, prefix)
                 if s != "done":
-                    return s
+                    # Begun once a child is done, as _state folds it: a seq
+                    # waiting between two nodes still holds a cap's slot.
+                    return "running" if i and s == "pending" else s
             return "done"
         if node.kind == "par":
             kids = [(c, prefix) for c in node.children]

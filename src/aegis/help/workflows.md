@@ -41,7 +41,10 @@ once per item of `over`, which is a list or one `{{reference}}` to a list,
 with the item named by `as`; each item goes through all its steps on its
 own. Inside the map, `say` reads the item, so each item reads as its own
 sentence. A `cap` bounds how many branches run at a time: inside `map:`
-for a map, beside `par:` for a par.
+for a map, beside `par:` for a par. A branch that has begun keeps its slot
+until it finishes, even while a node inside it waits on an `after`, so the
+lint refuses an `after` from inside one branch of a capped `par` to another
+of its branches; put the `after` on the branch itself.
 
 ```yaml
 root:

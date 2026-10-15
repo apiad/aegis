@@ -476,3 +476,62 @@ root:
         "$.root.par[0].agent.result.properties.timers: timers is an early output "
         "an after waits on; name the result's property otherwise"
     ]
+
+
+CAPPED = """
+id: capx
+title: Cap
+say: A cap of one.
+root:
+  par:
+    - seq:
+        - {id: a1, say: First., agent: {agent: opus, prompt: x}}
+        - {id: a2, after: [AFTER], say: Second., agent: {agent: opus, prompt: x}}
+      id: left
+      say: Left.
+    - {id: b, say: Bee., agent: {agent: opus, prompt: x}}
+  cap: CAP
+  say: Both.
+"""
+
+
+def test_an_after_across_branches_of_a_capped_par_is_refused():
+    """The branch that waits holds its slot, so with cap 1 the branch it
+    waits on never starts."""
+    for after in ("b", "b.o"):
+        wf, got = errs(CAPPED.replace("AFTER", after).replace("CAP", "1"))
+        assert got == [
+            f"$.root.par[0].seq[1].after[0]: {after.split('.')[0]} is in another "
+            "branch of the par at $.root, whose cap 1 is below its 2 branches: "
+            "this branch holds its slot while it waits, so that one may never "
+            "start. Put the after on left, or raise the cap"
+        ], got
+
+
+def test_an_after_across_branches_is_fine_when_every_branch_fits():
+    assert errs(CAPPED.replace("AFTER", "b").replace("CAP", "2"))[1] == []
+    no_cap = CAPPED.replace("AFTER", "b").replace("  cap: CAP\n", "")
+    assert errs(no_cap)[1] == []
+
+
+def test_a_branch_whose_head_waits_on_a_sibling_holds_no_slot():
+    text = CAPPED.replace("AFTER", "b").replace("CAP", "1")
+    text = text.replace("      id: left\n", "      id: left\n      after: [b]\n")
+    text = text.replace("{id: a2, after: [b], ", "{id: a2, ")
+    assert errs(text)[1] == []
+
+
+def test_an_item_never_waits_on_an_item_of_its_own_map():
+    text = """
+id: own
+title: Own
+say: An item waits on another.
+root:
+  map: {over: [{id: a}, {id: b}], as: x, cap: 1, do: {seq: [
+          {id: one, say: One., agent: {agent: opus, prompt: x}},
+          {id: two, after: [m.a], say: Two., agent: {agent: opus, prompt: x}}],
+        say: Each.}}
+  id: m
+  say: The map.
+"""
+    assert "m contains this node, so it cannot finish first" in "".join(errs(text)[1])

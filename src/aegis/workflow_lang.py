@@ -464,6 +464,17 @@ class _Parser:
                         f"{target} cannot finish before this node starts",
                     )
                     continue
+                if (held := self._held(n, t, ancestors)) is not None:
+                    p, branch = held
+                    self.err(
+                        path,
+                        f"{target} is in another branch of the par at {p.path}, "
+                        f"whose cap {p.body['cap']} is below its {len(p.children)} "
+                        "branches: this branch holds its slot while it waits, so "
+                        f"that one may never start. Put the after on {branch.id}, "
+                        "or raise the cap",
+                    )
+                    continue
                 edge(point, ("S", n.id))
                 if sub and t.kind == "agent":
                     wanted = waited.setdefault(t.id, [])
@@ -520,6 +531,28 @@ class _Parser:
                         "name the result's property otherwise",
                     )
         return waited
+
+    @staticmethod
+    def _held(n: Node, t: Node, ancestors) -> tuple[Node, Node] | None:
+        """The capped par and the branch, if any, where ``n`` waits inside
+        that branch on ``t`` in another. A begun branch holds its slot until
+        it finishes (workflows._many), so with fewer slots than branches the
+        one it waits on may never begin. A branch that waits itself has begun
+        nothing. A map's items cannot wait on each other: the map contains
+        them."""
+        up = [n, *ancestors(n)]
+        t_up = {x.id for x in [t, *ancestors(t)]}
+        for i, p in enumerate(up[1:], 1):
+            branch = up[i - 1]
+            if (
+                p.kind == "par"
+                and p.body.get("cap", len(p.children)) < len(p.children)
+                and branch is not n
+                and branch.id not in t_up
+                and p.id in t_up
+            ):
+                return p, branch
+        return None
 
     @staticmethod
     def _strings(n: Node) -> list[tuple[str, str]]:
