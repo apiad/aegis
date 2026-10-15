@@ -7,6 +7,7 @@ import pytest
 
 from .test_browser import CONFIG, Server, browser, page, spawn  # noqa: F401
 from .test_workflows_e2e import RESULT, flow
+from .test_workflows_parallel import leaf, report
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
@@ -125,3 +126,56 @@ def test_a_stopped_run_shows_its_running_node_and_seq_stopped(server, page):  # 
     )
     assert states == ["stopped", "stopped", "pending"]
     assert not page.errors
+
+
+TEAMS = f"""
+id: teams
+title: Teams
+say: The mock team starts once the base image is built.
+root:
+  par:
+    - map: {{over: [{{id: base}}, {{id: svc}}], as: s, cap: 1, do: {leaf("img", "Build {{s.id}}.", report(wait=0.5))}}}
+      id: images
+      say: Images, one at a time.
+    - map: {{over: [{{id: m1}}], as: m, do: {leaf("mk", "Mock {{m.id}}.", report(wait=0.5))}}}
+      id: mock
+      after: [images.base]
+      say: Mocks, after the base.
+  say: Both teams.
+"""
+
+
+def test_a_person_sees_each_item_of_a_map_run(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_arm " + json.dumps({"definition": TEAMS, "args": {}}))
+    card = ".wfcard[data-status=armed]"
+    page.wait_for_selector(f"{card} .wfrow.each[data-node=img]")
+    page.wait_for_selector(
+        f"{card} .wfrow[data-node=images] >> text=for each s · 1 at a time"
+    )
+    page.wait_for_selector(
+        f"{card} .wfrow[data-node=mock] .after >> text=after images.base"
+    )
+    page.click(f"{card} button >> text=Approve and run")
+    done = ".wfcard[data-status=done]"
+    page.wait_for_selector(done, timeout=30000)
+    page.wait_for_selector(
+        f'{done} .wfrow[data-node="images.svc.img"][data-state=done] >> text=Build svc.'
+    )
+    page.wait_for_selector(f"{done} .wfrow[data-node=images] >> text=2 done")
+    page.wait_for_selector(f"{done} .wfrow[data-node=mock] .after.met")
+    assert not page.errors
+
+
+def test_the_map_card_fits_a_phone(server, browser):  # noqa: F811
+    from .test_browser import new_page
+
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.set_viewport_size({"width": 390, "height": 800})
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg, "/mcp workflow_arm " + json.dumps({"definition": TEAMS, "args": {}}))
+    pg.wait_for_selector(".wfcard .wfrow.each")
+    assert pg.evaluate("document.documentElement.scrollWidth") <= 390 and not errors

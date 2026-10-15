@@ -1742,7 +1742,7 @@ class Output(_Strict):
 </div>
 </details>
 
-<details class="task" id="task-8" data-state="pending">
+<details class="task" id="task-8" data-state="done">
 <summary><span class="num">8</span><span><span class="ttl">The card draws par, map, items, queued and after</span><span class="files">entries.js · base.css · tests/test_workflows_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <p>Every item is drawn expanded. Folding a map of more than six items into one line is slice 5's.</p>
@@ -1818,7 +1818,7 @@ and, beside <code>since</code>:
 // spreads. A map's do, drawn once before its items are known, says so.
 function kindTag(r) {
   const cap = r.cap ? ` · ${r.cap} at a time` : "";
-  if (r.kind === "agent") return `agent · ${r.agent}${r.class ? ` · ${r.class}` : ""}`;
+  if (r.kind === "agent") return `agent · ${r.agent}`;
   if (r.kind === "map") return `for each ${r.as}${cap}`;
   if (r.kind === "par") return `at once${cap}`;
   return r.kind;
