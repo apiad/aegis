@@ -197,7 +197,9 @@ class Toast(_Strict):
 class TurnEnd(_Strict):
     attention: Literal["needs_you", "review", "done"] = Field(
         description="needs_you: your message asks the person something. review: it "
-        "presents something for them to read. done: it reports finished work."
+        "presents something for them to read, or reports a step while work or waiting "
+        "remains. done: the whole task they gave you is over; it puts an archive "
+        "button on the card, and is refused while your plan has unfinished items."
     )
     line: str = Field(
         min_length=1,
@@ -261,8 +263,9 @@ def _render(e: dict, tools: bool) -> str | None:
             return None
         result = e["detail"].get("result") or e["status"]
         return f"tool {e['title']} {e['summary']} -> {result}"
-    if kind in ("thinking", "recap"):
-        # A recap is aegis talking to the person; another agent never reads it.
+    if kind in ("thinking", "recap", "btw"):
+        # A recap is aegis talking to the person, and a side note is the
+        # person's own aside; another agent never reads either.
         return None
     if kind == "file":
         return "\n".join(
@@ -1075,6 +1078,15 @@ def register_agent_ops(app: App) -> None:
         person, and not when you end a turn to wait on a monitor or a queue task.
         It sets the mark on your tab and the line on your card."""
         s = own(caller)
+        left = [i for i in s.standing.get("plan") or [] if i["state"] != "done"]
+        if p.attention == "done" and left:
+            raise OpError(
+                "plan_unfinished",
+                f"done means the task is over, and your plan has {len(left)} "
+                "unfinished items. If it is over, mark them done or drop them with "
+                "plan_update, then call turn_end again; if not, call turn_end with "
+                "review, or needs_you when you ask something.",
+            )
         rec = {
             "kind": "turn_end",
             "attention": p.attention,

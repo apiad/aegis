@@ -1,7 +1,7 @@
 ---
 title: Configuration
 kind: concept
-when: adding or changing agents, the default agent, queues, recaps or the per-session memory cap in .aegis.yaml, or picking a theme
+when: adding or changing agents, the default agent, queues, recaps, side notes or the per-session memory cap in .aegis.yaml, or picking a theme
 ---
 
 aegis reads one file, `.aegis.yaml`, at the root it serves: `--root` when
@@ -24,6 +24,7 @@ agents:
 queues:
   general: {agent: opus, max_parallel: 3}
 recap: {agent: quick}
+btw: {agent: opus}
 context: {handoff_at: 300000, cold_after: 3600, cold_min: 100000}
 ```
 
@@ -70,6 +71,13 @@ tasks run.
 `recap:` with `agent:` names a Claude Code agent that writes a short recap
 when a person returns to a tab with a long unread stretch. Without it, recaps
 are off. A cheap, fast agent is enough.
+
+## Side notes
+
+`btw:` with `agent:` names a Claude Code agent that answers `/btw` side
+questions. It reads up to the last ten turns of the session, about 32,000
+tokens, and the side notes asked before. Without it, `/btw` says which line to
+add. A side note may need more model than a recap, so the two keys are separate.
 
 ## Context size and the cache
 

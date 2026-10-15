@@ -2,24 +2,18 @@
 
 The browser asks when it opens a tab; the server decides whether the unread
 stretch is long enough (``needed``), builds the window the model reads
-(``window``), and runs one cheap ``claude -p`` (``argv``, ``parse``). Every flag
-in the argv was measured in the legacy driver (legacy/aegis/drivers/claude.py,
-``_oneshot_argv``): ``--tools ""`` and ``--system-prompt`` stop the call going
-agentic, ``--setting-sources ""`` and an empty cwd shed the project's
-instructions (21,445 -> 7,749 input tokens), and thinking off saves seconds a
-two-sentence answer does not need. The recap is aegis talking to the person;
-nothing here reaches the agent.
+(``window``), and runs one cheap ``claude -p`` (``argv``, ``parse``) through the
+one-shot path it shares with /btw (oneshot.py, where the flags are explained).
+The recap is aegis talking to the person; nothing here reaches the agent.
 """
 
 from __future__ import annotations
 
-import json
-import re
 from pathlib import Path
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
-from .agents import ConfigError, load_agents, read_config
+from . import oneshot
 
 MIN_UNREAD = 2
 LONG_WORDS = 300
@@ -118,89 +112,15 @@ def window(entries: list[dict], unread: set[str], standing: dict) -> str:
 
 
 def argv(claude_bin: str, model: str, prompt: str) -> list[str]:
-    return [
-        claude_bin,
-        "-p",
-        "--model",
-        model,
-        "--output-format",
-        "json",
-        "--json-schema",
-        json.dumps(RecapOut.model_json_schema()),
-        "--system-prompt",
-        SYSTEM,
-        "--tools",
-        "",
-        "--setting-sources",
-        "",
-        "--mcp-config",
-        json.dumps({"mcpServers": {}}),
-        "--strict-mcp-config",
-        # Last and after --: the window opens on "---", which the CLI would
-        # otherwise reject as an unknown option.
-        "--",
-        prompt,
-    ]
-
-
-_OBJ = re.compile(r"\{.*\}", re.S)
-
-
-def _number(value, kind: type[float] | type[int]) -> float | int:
-    """A bad cost or duration reads as 0, so the recap still lands."""
-    try:
-        return kind(value or 0)
-    except (TypeError, ValueError, OverflowError):
-        return kind(0)
+    return oneshot.argv(claude_bin, model, RecapOut, SYSTEM, prompt)
 
 
 def parse(stdout: str) -> tuple[RecapOut | None, float, int]:
     """The envelope's structured answer, cost and time. Never raises."""
-    try:
-        env = json.loads(stdout)
-    except (ValueError, TypeError):
-        return None, 0.0, 0
-    if not isinstance(env, dict):
-        return None, 0.0, 0
-    cost = _number(env.get("total_cost_usd"), float)
-    ms = int(_number(env.get("duration_ms"), int))
-    candidates = []
-    if isinstance(env.get("structured_output"), dict):
-        candidates.append(env["structured_output"])
-    text = str(env.get("result") or "")
-    for raw in (text, *(_OBJ.findall(text))):
-        try:
-            candidates.append(json.loads(raw))
-        except (ValueError, TypeError):
-            pass
-    for c in candidates:
-        if isinstance(c, dict):
-            try:
-                return RecapOut.model_validate(c), cost, ms
-            except ValidationError:
-                continue
-    return None, cost, ms
+    return oneshot.parse(stdout, RecapOut)
 
 
 def load_recap(config_root: Path) -> dict | None:
     """``recap: {agent: <name>}``: None when absent, else the agent or why not.
     Nothing defaults (agents.py)."""
-    try:
-        raw = read_config(config_root).get("recap")
-    except ConfigError as e:
-        return {"error": str(e)}
-    if raw is None:
-        return None
-    name = raw.get("agent") if isinstance(raw, dict) else None
-    if not name:
-        return {"error": "recap: needs an agent: recap: {agent: <name>}"}
-    agent = next((a for a in load_agents(config_root) if a.name == name), None)
-    if agent is None:
-        return {"error": f"recap: names agent {name!r}, which agents: does not define"}
-    if agent.harness != "claude-code":
-        return {
-            "error": f"recap: agent {name!r} runs {agent.harness}; a recap needs a claude-code agent"
-        }
-    if agent.error:
-        return {"error": f"recap: agent {name!r}: {agent.error}"}
-    return {"agent": name, "model": agent.model}
+    return oneshot.load_generator(config_root, "recap")

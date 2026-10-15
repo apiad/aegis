@@ -65,6 +65,9 @@ from the prompt; ``FAKE_CLAUDE_ONESHOT=fail|garbage|empty|slow`` makes it exit
 (``FAKE_CLAUDE_ONESHOT_SLEEP`` seconds, when set) before answering. Each one-shot appends a line to
 ``$FAKE_CLAUDE_HOME/oneshot.log`` and writes its pid to
 ``$FAKE_CLAUDE_HOME/oneshot.pid``, so a test can count calls and find the child.
+A ``--json-schema`` with an ``answer`` property is a side note: it gets
+``{"answer": "btw of: <question>"}``, and ``needs_more`` when the question
+carries ``[[more]]``.
 
 With ``FAKE_CLAUDE_REPLAY=<store file>``, the first prompt instead replays the
 Claude lines of an aegis store, ``FAKE_CLAUDE_PACE`` seconds apart (default
@@ -789,9 +792,22 @@ def oneshot() -> None:
         return
     if mode == "slow":
         time.sleep(float(os.environ.get("FAKE_CLAUDE_ONESHOT_SLEEP", "120")))
-    lines = [ln for ln in prompt.splitlines() if ln.startswith("user: ")]
-    last = lines[-1].removeprefix("user: ") if lines else "nothing"
-    out = {"context": f"recap of: {last}", "ask": "answer it" if "?" in prompt else ""}
+    schema = json.loads(sys.argv[sys.argv.index("--json-schema") + 1])
+    if "answer" in schema.get("properties", {}):
+        asked = [
+            ln.removeprefix("The person's side question: ")
+            for ln in prompt.splitlines()
+            if ln.startswith("The person's side question: ")
+        ]
+        q = asked[-1] if asked else ""
+        out = {"answer": f"btw of: {q}", "needs_more": "[[more]]" in q}
+    else:
+        lines = [ln for ln in prompt.splitlines() if ln.startswith("user: ")]
+        last = lines[-1].removeprefix("user: ") if lines else "nothing"
+        out = {
+            "context": f"recap of: {last}",
+            "ask": "answer it" if "?" in prompt else "",
+        }
     print(
         json.dumps(
             {

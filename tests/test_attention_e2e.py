@@ -301,3 +301,48 @@ async def test_session_list_shows_another_sessions_card_and_plan(world):
     assert (seen["plan_now"], seen["plan_done"], seen["plan_total"]) == ("fix", 1, 2)
     for left_out in ("replies", "mark", "blink", "monitors", "unread"):
         assert left_out not in seen
+
+
+UNFINISHED = [{"text": "read", "state": "done"}, {"text": "fix", "state": "doing"}]
+
+
+async def test_done_with_an_unfinished_plan_is_refused_and_records_nothing(world):
+    """#405: done puts an archive button on the card, so it is for a task that
+    is over, and a plan with items left says it is not."""
+    from aegis.ops import Caller
+
+    a = await world.spawn()
+    me = Caller("agent", a.log_id)
+    await world.app.registry.call("plan.update", {"items": UNFINISHED}, me)
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call(
+            "turn.end", {"attention": "done", "line": "did it"}, me
+        )
+    assert "plan_update" in e.value.message and "review" in e.value.message
+    assert a.standing.get("report") is None
+    assert a.wire()["attention_line"] == ""
+
+
+async def test_done_passes_once_every_plan_item_is_done(world):
+    a = await world.spawn()
+    items = [{"text": "read", "state": "done"}, {"text": "fix", "state": "done"}]
+    await turn(a, mcp("plan_update", items=items))
+    said = await turn(a, mcp("turn_end", attention="done", line="Fixed."))
+    assert not said.startswith("mcp error"), said
+    assert a.standing["report"]["attention"] == "done"
+
+
+async def test_done_passes_without_a_plan(world):
+    a = await world.spawn()
+    said = await turn(a, mcp("turn_end", attention="done", line="Answered."))
+    assert not said.startswith("mcp error"), said
+    assert a.standing["report"]["attention"] == "done"
+
+
+@pytest.mark.parametrize("attention", ["review", "needs_you"])
+async def test_review_and_needs_you_pass_with_an_unfinished_plan(world, attention):
+    a = await world.spawn()
+    await turn(a, mcp("plan_update", items=UNFINISHED))
+    said = await turn(a, mcp("turn_end", attention=attention, line="Step one."))
+    assert not said.startswith("mcp error"), said
+    assert a.wire()["attention"] == attention

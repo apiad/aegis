@@ -53,6 +53,7 @@ FILE_GLYPH = "file"
 ARTIFACT_GLYPH = "artifact"
 COMMAND_GLYPH = "slash"
 RECAP_GLYPH = "sparkle"
+BTW_GLYPH = "btw"
 
 # How much of a result the one-line verdict may carry.
 DIGEST_MAX = 200

@@ -142,7 +142,10 @@ fold's last failure, live monitors, background tasks, held messages, queue tasks
 and child sessions that are working or waiting themselves, so a wait is
 transitive and a change in a child's card re-derives its parent's. Whether a finished turn asked the person something, showed
 them something to read, or just finished, only the agent knows, and it says so
-with `turn_end`; its plan comes from `plan_update`. Both are aegis records in the
+with `turn_end`; its plan comes from `plan_update`. `turn_end` refuses done
+while the plan has an item not done, because a done card offers to archive the
+session and the person should not have to read it to learn the task goes on.
+Both are aegis records in the
 store, so the fold derives a session's `standing` and a refold gives the same
 card; the meta keeps it, so boot still reads no store. `attention.py` holds the
 precedence. No model reads a transcript to guess what a turn meant. Past the
@@ -181,7 +184,11 @@ in it is lazy on the wire, and the send that folds it gives it that send's `rev`
 so a tab returning with an older revision gets the folded row. One call
 runs per session at a time and a point in the transcript is never paid for twice
 unless a person forces it; the call kills its process when cancelled. Nothing in a
-recap is sent to the agent.
+recap is sent to the agent. `/btw` is the same one-shot path's second caller
+(`oneshot.py`): the agent `btw:` names answers a side question from a window onto
+the fold (`btw.py`), while a turn runs too, and the question and answer are two
+records, `btw` and `btw_answer`, that fold into one entry and never reach the
+agent.
 
 **One registry, every caller.** Every action is one registered operation with a
 pydantic params model. A websocket `call` is one projection of the registry, MCP
