@@ -150,8 +150,8 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <table class="tbl">
   <thead><tr><th>Question</th><th>Decision</th><th>Why</th></tr></thead>
   <tbody>
-    <tr><td>The server pool</td><td><code>workflows: {max_agents: N}</code> in <code>.aegis.yaml</code>, default 4. A wrong block keeps the default and <code>aegis doctor</code> names it, as <code>context:</code> does. It counts open sessions tagged with a node of a live run, from the registry, every run together.</td><td>The spec's name. Counting the registry rather than the fold includes a session whose node is done but whose close has not returned yet, so the bound holds for processes, which is what ran out of memory.</td></tr>
-    <tr><td>The run's limits</td><td><code>limits: {agents: N, heavy: M}</code>, both optional positive integers, <code>heavy &le; agents</code>. <code>agents</code> counts the run's open node sessions; <code>heavy</code> counts those whose node has <code>class: heavy</code>. Without <code>limits</code>, only the pool bounds the run.</td><td>The spec's example. <code>class</code> accepts only <code>heavy</code>, the one class a limit names: any other value would be limited by nothing.</td></tr>
+    <tr><td>The server pool</td><td><code>workflows: {max_agents: {total: 10, opus: 5}}</code> in <code>.aegis.yaml</code>, default <code>{total: 4}</code>; a bare number is read as the total. <code>total</code> bounds all agents together; any other key is an agent alias and bounds that alias alone. An alias with no number of its own is bound only by the totals. A wrong block keeps the default and <code>aegis doctor</code> names it, an alias that is not an agent included. It counts open sessions tagged with a node of a live run, from the registry, every run together.</td><td>Revised by the maintainer during execution: limits per agent alias replace <code>heavy</code>. Counting the registry rather than the fold includes a session whose node is done but whose close has not returned yet, so the bound holds for processes, which is what ran out of memory.</td></tr>
+    <tr><td>The run's limits</td><td><code>limits: {total: 4, opus: 2}</code>, the same shape as the server block, each value a positive integer. <code>total</code> counts the run's open node sessions; an alias key counts those whose agent is that alias, and must name an agent in <code>.aegis.yaml</code>. An alias above <code>total</code> is refused. Without <code>limits</code>, only the pool bounds the run. There is no <code>class</code> field: the lint refuses it as unknown.</td><td>Revised by the maintainer during execution, replacing <code>{agents, heavy}</code> and <code>class: heavy</code>: the alias already says which model, and so how heavy, a node is.</td></tr>
     <tr><td>Where a par's cap goes</td><td>Beside the kind key: <code>par: [...]</code> with <code>cap: 2</code> as a sibling field, valid only on a par node. A map's cap stays inside <code>map:</code>, as the spec's example writes it.</td><td>A par's body is a list, which cannot hold a field. Wrapping it in a mapping would make par read unlike seq.</td></tr>
     <tr><td>What a cap counts</td><td>Branches begun and not finished: a par's children, a map's items. A branch is begun when its derived state is <code>running</code> or <code>queued</code>. A branch waiting on <code>after</code> is not begun.</td><td>"Two at a time" in the spec's example means items, not sessions. The pool and limits count sessions.</td></tr>
     <tr><td>Queued</td><td>A node whose turn to start has come but which has no room (pool, limits or quota gate) is <code>queued</code>. The state is not logged: each pass rebuilds the set and the card reads it.</td><td>The spec names the state. It is derivable each pass, and the log keeps nothing it can derive.</td></tr>
@@ -176,7 +176,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 
 <h2 id="constraints">Global constraints</h2>
 <ul>
-  <li>Never more than <code>max_agents</code> open node sessions of live runs on the server, nor more than a run's <code>limits.agents</code> (and <code>limits.heavy</code> for heavy nodes) of its own. The quota gate is asked after both.</li>
+  <li>A node starts only when there is room in every counter that applies: the server's <code>max_agents.total</code>, the server's number for its alias, the run's <code>limits.total</code>, the run's number for its alias. The quota gate is asked after them.</li>
   <li>The log keeps only what cannot be derived: leaves (<code>node_started</code>, <code>result</code>, <code>output</code>, <code>nudged</code>, <code>node_done</code>, <code>failed</code>) and a map's items. Seq, par and map states are folded from them on every pass, so a restart rebuilds them by folding.</li>
   <li>The lint still refuses, by name, every kind and field slice 2 does not run: <code>loop</code>, <code>if</code>, <code>sh</code>, <code>check</code>, <code>wait</code>, <code>gate</code>, <code>ref</code>, <code>deadline</code>, <code>retries</code>, an agent's <code>session</code>, and the workflow's <code>deadline</code> and <code>blocks</code>.</li>
   <li>Only a node session reports for its node. <code>workflow_output</code>, like <code>workflow_result</code>, answers <code>not_a_node</code> to anyone else.</li>
@@ -223,16 +223,23 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><span class="op">modify</span>tests/test_config.py</li>
 </ul>
 <h4>interfaces</h4>
-<div class="iface"><b>produces</b> config.WORKFLOWS_DEFAULTS = {"max_agents": 4}; config.workflows_from(raw) -&gt; dict; Snapshot.workflows: dict</div>
+<div class="iface"><b>produces</b> config.WORKFLOWS_DEFAULTS = {"max_agents": {"total": 4}}; config.workflows_from(raw) -&gt; dict; Snapshot.workflows: dict; doctor._workflows(w, agents)</div>
+<p>Revised during execution: the pool is per agent alias, <code>max_agents: {total: N, &lt;agent&gt;: M}</code>, with a bare N read as the total. The first commit wrote a single integer; a follow-up commit gave it this shape.</p>
 <ol class="steps">
 <li>Write the failing tests in <code>tests/test_config.py</code>, after the context tests:
 <script type="text/plain" data-lang="python">
 def test_the_workflows_block_sets_the_pool_and_rides_the_snapshot(tmp_path):
     from aegis.config import WORKFLOWS_DEFAULTS, workflows_from
 
-    assert workflows_from(None) == WORKFLOWS_DEFAULTS == {"max_agents": 4}
-    snap = Snapshot.parse(tmp_path, None, {"workflows": {"max_agents": 2}})
-    assert snap.workflows == {"max_agents": 2} and snap.unknown_keys == ()
+    assert workflows_from(None) == WORKFLOWS_DEFAULTS == {"max_agents": {"total": 4}}
+    assert workflows_from({"max_agents": 2}) == {"max_agents": {"total": 2}}
+    assert workflows_from({"max_agents": {"opus": 1}}) == {
+        "max_agents": {"total": 4, "opus": 1}
+    }
+    raw = {"workflows": {"max_agents": {"total": 10, "opus": 5}}}
+    snap = Snapshot.parse(tmp_path, None, raw)
+    assert snap.workflows == {"max_agents": {"total": 10, "opus": 5}}
+    assert snap.unknown_keys == ()
 
 
 def test_a_bad_workflows_block_keeps_the_default_and_says_why():
@@ -243,52 +250,80 @@ def test_a_bad_workflows_block_keeps_the_default_and_says_why():
         ({"max_agent": 2}, "max_agent"),
         ({"max_agents": 0}, "max_agents"),
         ({"max_agents": True}, "max_agents"),
+        ({"max_agents": {"total": 2, "opus": 0}}, "max_agents.opus"),
         ("many", "mapping"),
     ):
         w = workflows_from(raw)
         assert word in w["error"]
         assert w["max_agents"] == WORKFLOWS_DEFAULTS["max_agents"]
         assert _workflows(w).level == "error"
-    assert _workflows(workflows_from({"max_agents": 3})).level == "ok"
+    w = workflows_from({"max_agents": {"total": 3, "opus": 1}})
+    assert _workflows(w, ("opus",)).level == "ok"
+    bad = _workflows(workflows_from({"max_agents": {"opsu": 1}}), ("opus",))
+    assert bad.level == "error" and "opsu" in bad.message
 </script></li>
 <li>Run them and see them fail on the import: <code>uv run pytest tests/test_config.py -k workflows -q</code>.</li>
 <li>In <code>src/aegis/config.py</code>, add <code>"workflows"</code> to <code>TOP_KEYS</code>, and after <code>context_from</code>:
 <script type="text/plain" data-lang="python">
 # How many workflow node sessions may be open at once on this server, every
-# run together (workflows.py). Both out-of-memory kills the workflows design
-# measured came from too many sessions at once.
-WORKFLOWS_DEFAULTS = {"max_agents": 4}
+# run together (workflows.py): ``total`` for all agents, and a number per
+# agent alias for that alias alone. Both out-of-memory kills the workflows
+# design measured came from too many sessions at once.
+WORKFLOWS_DEFAULTS = {"max_agents": {"total": 4}}
+
+
+def _positive(v: object) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and v >= 1
 
 
 def workflows_from(raw: object) -> dict:
-    """The ``workflows:`` block over its defaults. A wrong block keeps the
-    default in force and carries ``error`` for aegis doctor, as the context
-    block does."""
-    out: dict = dict(WORKFLOWS_DEFAULTS)
+    """The ``workflows:`` block over its defaults. ``max_agents`` is
+    ``{total: N, <agent>: M, ...}``, or a bare N for ``{total: N}``; a
+    mapping without ``total`` keeps the default total. A wrong block keeps
+    the default in force and carries ``error`` for aegis doctor, as the
+    context block does. Whether each alias names an agent is the doctor's
+    to say, since the agents are another block."""
+    default = {"max_agents": dict(WORKFLOWS_DEFAULTS["max_agents"])}
     if raw is None:
-        return out
+        return default
     if not isinstance(raw, dict):
-        return out | {"error": "workflows must be a mapping with max_agents"}
-    for k, v in raw.items():
-        if k not in WORKFLOWS_DEFAULTS:
-            return dict(WORKFLOWS_DEFAULTS) | {
+        return default | {"error": "workflows must be a mapping with max_agents"}
+    for k in raw:
+        if k != "max_agents":
+            return default | {
                 "error": f"workflows has no key {k!r}; it takes max_agents"
             }
-        if isinstance(v, bool) or not isinstance(v, int) or v < 1:
-            return dict(WORKFLOWS_DEFAULTS) | {
-                "error": f"workflows.{k} {v!r} is not a positive integer"
+    m = raw.get("max_agents", default["max_agents"])
+    if _positive(m):
+        return {"max_agents": {"total": m}}
+    if not isinstance(m, dict):
+        return default | {
+            "error": f"workflows.max_agents {m!r} is not {{total: N, <agent>: M}}"
+        }
+    for k, v in m.items():
+        if not _positive(v):
+            return default | {
+                "error": f"workflows.max_agents.{k} {v!r} is not a positive integer"
             }
-        out[k] = v
-    return out
+    return {"max_agents": default["max_agents"] | {str(k): v for k, v in m.items()}}
 </script>
 In <code>Snapshot</code>, beside <code>context</code>: <code>workflows: dict = field(default_factory=lambda: dict(WORKFLOWS_DEFAULTS))</code>, and in <code>Snapshot.parse</code>: <code>workflows=workflows_from(data.get("workflows")),</code>.</li>
-<li>In <code>src/aegis/doctor.py</code>, after <code>_park</code>, and <code>out.append(_workflows(snap.workflows))</code> after <code>out.append(_park(snap.park))</code>:
+<li>In <code>src/aegis/doctor.py</code>, after <code>_park</code>, and <code>out.append(_workflows(snap.workflows, tuple(a.name for a in snap.agents)))</code> after <code>out.append(_park(snap.park))</code>:
 <script type="text/plain" data-lang="python">
-def _workflows(w: dict) -> Finding:
+def _workflows(w: dict, agents: tuple[str, ...] = ()) -> Finding:
     if "error" in w:
         return Finding("error", "workflows", w["error"])
+    m = w["max_agents"]
+    unknown = [k for k in m if k != "total" and k not in agents]
+    if unknown:
+        return Finding(
+            "error",
+            "workflows",
+            f"max_agents names {', '.join(unknown)}, not an agent in agents:",
+        )
+    each = "".join(f", {n} {k}" for k, n in m.items() if k != "total")
     return Finding(
-        "ok", "workflows", f"at most {w['max_agents']} workflow node sessions at once"
+        "ok", "workflows", f"at most {m['total']} workflow node sessions at once{each}"
     )
 </script></li>
 <li>In <code>src/aegis/help/config.md</code>, a section after "Parking idle sessions":
@@ -296,21 +331,26 @@ def _workflows(w: dict) -> Finding:
 ## Workflows
 
 `workflows:` bounds the node sessions every workflow on this server may have
-open at once. `max_agents:` is that number, 4 when the block is absent. A
-workflow's own `limits` can only lower it for that run.
+open at once. `max_agents:` holds `total`, the bound for all agents together,
+and a number for any agent alias that needs a bound of its own. An alias with
+no number of its own is bound only by `total`. Without the block the bound is
+`{total: 4}`, and a bare number is read as the total.
 
 ```yaml
 workflows:
-  max_agents: 6
+  max_agents: {total: 10, opus: 5, haiku: 2}
 ```
 
-Each session's memory is still capped by `session_memory_max:`, so the most
-memory workflows can take is about the two multiplied. A wrong block keeps 4,
-and `aegis doctor` names the mistake.
+A workflow's own `limits`, of the same shape, can only lower these for that
+run. Each session's memory is still capped by `session_memory_max:`, so the
+most memory workflows can take is about `total` times that. A wrong block
+keeps `{total: 4}`, and `aegis doctor` names the mistake, an alias that is not
+an agent included.
+
 </script></li>
 </ol>
 <h4>verify</h4>
-<div class="verify"><code>uv run pytest tests/test_config.py tests/test_doctor.py tests/test_help_pages.py -q</code> passes. Break it: change <code>v &lt; 1</code> to <code>v &lt; 0</code> and the <code>max_agents: 0</code> case fails; put it back.</div>
+<div class="verify"><code>uv run pytest tests/test_config.py tests/test_doctor.py tests/test_help_pages.py -q</code> passes. Break it: change <code>v &gt;= 1</code> in <code>_positive</code> to <code>v &gt;= 0</code> and the <code>max_agents: 0</code> case fails; put it back.</div>
 <h4>commit</h4>
 <div class="verify"><code>git commit -m "feat(config): a server-wide pool for workflow node sessions" -- src/aegis/config.py src/aegis/doctor.py src/aegis/help/config.md tests/test_config.py</code></div>
 </div>
@@ -1257,7 +1297,7 @@ Check <code>Session.interrupt</code>: slice 1 put the node lock in it. The stop 
 </div>
 </details>
 
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="doing">
 <summary><span class="num">6</span><span><span class="ttl">Room: the pool, the run's limits and the quota gate</span><span class="files">workflows.py · tests/test_workflows_parallel.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <p>The spec's section 12 test lives here: two maps over more items than the pool allows, and the peak of open node sessions never above <code>max_agents</code>.</p>
