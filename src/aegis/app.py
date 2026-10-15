@@ -387,6 +387,7 @@ class App:
         reg.journal = self.journal
         self.schedules = Schedules(self)
         reg.schedules = self.schedules
+        self.workflows = None  # the engine (workflows.py), set below
         self.catalogs = commands.Catalogs(
             roots.state_root / "stderr" / "catalog-probe.log"
         )
@@ -549,6 +550,17 @@ class App:
 
     def _live(self, s) -> bool:
         return not s.archived and self.sessions.sessions.get(s.log_id) is s
+
+    def workflow_lock(self, s) -> None:
+        """A node's session is the workflow's while its run is live: nobody
+        types into it or interrupts it but the engine (spec §05)."""
+        wf = getattr(s, "workflow", None)
+        if wf and self.workflows is not None and self.workflows.live(wf["run"]):
+            raise OpError(
+                "in_workflow",
+                f"{s.handle} is node {wf['node']} of workflow {wf['run']}; "
+                "stop the workflow to talk to it",
+            )
 
     def owner_of(self, log_id: str) -> str | None:
         """A session's owner by log id, None for no such session. One from
@@ -1108,6 +1120,7 @@ class App:
 
         async def deliver(p: SendParams, caller):
             s = reg.open(p.log_id)
+            self.workflow_lock(s)
             # A message written offline carries the transcript's revision as the
             # writer saw it: if anything a person reads has happened since, it
             # goes back to ask instead of answering a question no longer asked.
@@ -1355,8 +1368,10 @@ class App:
 
         @r.op("session.interrupt", LogParams, owned="log_id")
         async def interrupt(p: LogParams, caller):
+            s = reg.open(p.log_id)
+            self.workflow_lock(s)
             try:
-                await reg.open(p.log_id).interrupt()
+                await s.interrupt()
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e
 

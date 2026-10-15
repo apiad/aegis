@@ -738,6 +738,7 @@ def register_agent_ops(app: App) -> None:
                 )
             return await far_handoff(handle, server, p, caller)
         to = target(p.target)
+        app.workflow_lock(to)
         # A prompt or an interrupt changes the session: a member's reaches only
         # its own (tokens.py).
         owner = app.owner_of(to.log_id)
