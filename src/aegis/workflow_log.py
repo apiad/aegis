@@ -20,7 +20,7 @@ LIVE = frozenset({"armed", "running"})
 
 @dataclass
 class NodeState:
-    status: str = "pending"  # pending | running | done | failed
+    status: str = "pending"  # pending | running | done | failed | stopped
     log_id: str | None = None
     started: float | None = None
     ended: float | None = None
@@ -57,6 +57,10 @@ def apply(st: RunState, r: dict) -> None:
         st.status, st.ended = "rejected", t
     elif ev == "stopped":
         st.status, st.ended = "stopped", t
+        # A node the stop interrupted ends with the run, not running forever.
+        for n in st.nodes.values():
+            if n.status == "running":
+                n.status, n.ended = "stopped", t
         _tell(st, t, "bad", "Stopped.")
     elif ev == "finished":
         st.status, st.ended = r.get("status") or "done", t

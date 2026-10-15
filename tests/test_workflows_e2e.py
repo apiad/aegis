@@ -4,6 +4,8 @@ import json
 
 import pytest
 
+from aegis.ops import Caller, OpError
+
 from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
 
@@ -152,3 +154,37 @@ async def test_a_node_whose_agent_runs_with_read_permission_reports_its_result(w
     one = wf.runs[armed["run"]].nodes["one"]
     assert (wf.runs[armed["run"]].status, one.error) == ("done", "")
     assert one.result == {"n": 7}
+
+
+async def test_a_stop_mid_node_shows_the_node_and_its_seq_stopped(world):
+    main = await world.spawn()
+    armed = ok(
+        await turn(
+            main, mcp("workflow_arm", definition=flow("/sleep 10", RESULT), args={})
+        )
+    )
+    run = armed["run"]
+    await world.app.registry.call("workflow.approve", {"run": run})
+    wf = world.app.workflows
+    await until(lambda: run in wf.runs and wf.runs[run].nodes.get("one"), timeout=10)
+    one = world.app.sessions.sessions[wf.runs[run].nodes["one"].log_id]
+    await until(lambda: one.status == "working", timeout=10)
+    stopped = await world.app.registry.call("workflow.stop", {"run": run})
+
+    def states(w: dict) -> list:
+        return [(r["kind"], r["state"]) for r in w["tree"]]
+
+    want = [("seq", "stopped"), ("agent", "stopped"), ("agent", "pending")]
+    assert stopped["status"] == "stopped"
+    assert states(stopped) == want
+    assert wf.runs[run].nodes["one"].ended is not None
+    await until(lambda: one.status != "working", timeout=5)  # interrupted
+    with pytest.raises(OpError) as late:  # a result after the stop is refused
+        await world.app.registry.call(
+            "workflow.result",
+            {"value": {"n": 7}, "summary": "Too late."},
+            Caller("agent", one.log_id),
+        )
+    assert late.value.code == "not_a_node"
+    await world.restart()
+    assert states(world.app.workflows.wire(run)) == want

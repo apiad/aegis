@@ -106,3 +106,22 @@ def test_the_running_card_counts_up_without_redrawing(server, page):  # noqa: F8
     )
     assert same, "the tick redrew the card"
     assert not page.errors
+
+
+def test_a_stopped_run_shows_its_running_node_and_seq_stopped(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    arm = {"definition": flow("/sleep 10", RESULT), "args": {}}
+    spawn(page, "/mcp workflow_arm " + json.dumps(arm))
+    page.click(".wfcard[data-status=armed] button >> text=Approve and run")
+    page.wait_for_selector(
+        ".wfcard[data-status=running] .wfrow[data-node=one][data-state=running]"
+    )
+    page.click(".wfcard[data-status=running] button >> text=Stop")
+    card = ".wfcard[data-status=stopped]"
+    page.wait_for_selector(f"{card} .wfrow[data-node=one][data-state=stopped]")
+    states = page.eval_on_selector_all(
+        f"{card} .wfrow", "rows => rows.map(r => r.dataset.state)"
+    )
+    assert states == ["stopped", "stopped", "pending"]
+    assert not page.errors
