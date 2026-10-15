@@ -102,6 +102,7 @@ const withKey = (m, server = null) => ({ ...m, server, key: keyOf(server, m.log_
 const order = new TabOrder();
 let ordered = []; // metas in this browser's tab order
 let shown = null; // the key of the session whose transcript is subscribed
+let warmed = null; // the parked session whose first keystroke asked for session.warm
 let landUnread = null; // the tab Alt+J opened, whose transcript lands on its first unread
 let unsubTranscript = null;
 let workingSince = null;
@@ -1283,7 +1284,7 @@ function drawSideHost() {
   }
   $("s-host-tiles").replaceChildren(...tiles);
   $("s-host-rows").replaceChildren(...rows);
-  const live = (s.server ? on(s.server) : local()).filter((m) => m.state !== "stopped" && m.kind !== "term");
+  const live = (s.server ? on(s.server) : local()).filter((m) => !["stopped", "parked"].includes(m.state) && m.kind !== "term");
   const sized = live.filter((m) => m.context_window && m.context_tokens);
   $("s-host-live").textContent = String(live.length);
   $("s-host-ctx").textContent = sized.length
@@ -1336,7 +1337,25 @@ function tellView() {
     visible: !document.hidden && document.hasFocus(),
     window: win,
   });
+  tellWatch();
 }
+// Which session this page shows while it is visible, for parking (park.py): a
+// session someone looks at keeps its harness. A hidden page counts as away.
+let watchedServer = null;
+function tellWatch() {
+  const key = route().view === "session" ? shown || "" : ""; // the Fleet and other views watch nothing
+  const { server, log_id } = key ? forKey(key) : { server: null, log_id: null };
+  if (watchedServer !== null && watchedServer !== (server || "")) {
+    const off = { t: "watch", session: null, visible: false };
+    if (watchedServer) off.server = watchedServer;
+    conn.post(off);
+  }
+  watchedServer = server || "";
+  const msg = { t: "watch", session: log_id, visible: !!log_id && !document.hidden };
+  if (server) msg.server = server;
+  conn.post(msg);
+}
+window.addEventListener("hashchange", tellWatch);
 for (const ev of ["focus", "blur"]) window.addEventListener(ev, tellView);
 document.addEventListener("visibilitychange", tellView);
 // A worker that took this page over, on a first visit or after an update, has
@@ -1655,6 +1674,16 @@ function renderMeta(s) {
   const down = s.off ? linkOf(s.server) : null;
   input.disabled = $("attach").disabled = !!down || theirs;
   drawSending(!!down || theirs);
+  if (s.state !== "parked" && warmed === shown) warmed = null;
+  drawComposerHint(s);
+  setTitle(`${s.title || s.handle} · aegis`);
+}
+
+// The composer's placeholder: whose session, whether its server is reachable,
+// and whether a message resumes it.
+function drawComposerHint(s) {
+  const theirs = !mine(s);
+  const down = s.off ? linkOf(s.server) : null;
   // Chrome counts a placeholder in scrollHeight: measure again when it changes.
   const placeholder = theirs
     ? s.server
@@ -1662,7 +1691,11 @@ function renderMeta(s) {
       : `${ownerOf(s)}'s session. You can read it; only ${ownerOf(s)} can write to it.`
     : down
     ? `${s.server} is ${down.state} since ${new Date(down.since * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}; nothing can be sent until it is back.`
-    : s.state === "stopped"
+    : s.state === "parked"
+      ? warmed === shown
+        ? "Waking · resuming the harness"
+        : "Parked to free memory. Typing wakes it."
+      : s.state === "stopped"
       ? "Stopped; your next message resumes it."
       : touch.matches
         ? "Message the agent"
@@ -1671,7 +1704,6 @@ function renderMeta(s) {
     input.placeholder = placeholder;
     autosize();
   }
-  setTitle(`${s.title || s.handle} · aegis`);
 }
 
 setInterval(() => {
@@ -3020,7 +3052,17 @@ async function interrupt() {
   }
 }
 
+// The first keystroke to a parked session starts its harness while the person
+// types (session.warm); once per parked stretch (warmed, above).
+function warmIfParked() {
+  const s = shown && sessions.get(shown);
+  if (!s || s.state !== "parked" || warmed === shown || !mine(s)) return;
+  warmed = shown;
+  callFor(shown, "session.warm", { log_id: forKey(shown).log_id }).catch(() => (warmed = null));
+  drawComposerHint(s);
+}
 input.addEventListener("input", async () => {
+  warmIfParked();
   autosize();
   if (shown) localStorage.setItem(`aegis.draft.${shown}`, input.value);
   const v = input.value;

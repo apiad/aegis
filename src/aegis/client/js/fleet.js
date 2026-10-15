@@ -139,6 +139,7 @@ function card(m, onOpen, onClose) {
   if (owner) hd.append(el("span", "who", owner));
   if (m.worker) hd.append(el("span", "badge", `worker · ${m.worker.queue}`));
   if (m.quiet) hd.append(el("span", "zz", "zz"));
+  if (m.state === "parked") hd.append(el("span", "zz pk", "parked"));
   const label = m.attention === "waiting" && m.waiting_on ? `waiting · ${m.waiting_on}` : LABEL[m.attention] || m.state;
   hd.append(el("span", `s at-${m.attention}`, label));
   if (m.attention === "done") hd.append(archiveButton(m, onClose));
@@ -306,10 +307,16 @@ export function renderBand(band, { metas, host, server, link = "", off = false }
     meters.push(hostRow("RAM", host.ram.pct, `${host.ram.used_gb} / ${host.ram.total_gb} GB`));
     if (host.disk) meters.push(hostRow("Disk", host.disk.pct, `${host.disk.used_gb} / ${host.disk.total_gb} GB`));
   }
-  const live = metas.filter((m) => m.state !== "stopped" && m.context_window && m.context_tokens);
+  const live = metas.filter((m) => !["stopped", "parked"].includes(m.state) && m.context_window && m.context_tokens);
   if (live.length) {
     const avg = Math.round(live.reduce((a, m) => a + Math.min(100, (100 * m.context_tokens) / m.context_window), 0) / live.length);
     meters.push(hostRow("Context", avg, `avg of ${live.length} live`));
+  }
+  // What parking freed: the harnesses' own memory when each was parked (park.py).
+  const parked = metas.filter((m) => m.state === "parked");
+  if (parked.length) {
+    const gb = parked.reduce((n, m) => n + (m.parked_rss || 0), 0) / 2 ** 30;
+    meters.push(el("span", "parked-count", `${parked.length} parked · ~${gb.toFixed(1)} GB`));
   }
   band.querySelector(".band-host").replaceChildren(...meters);
 }

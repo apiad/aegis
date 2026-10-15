@@ -28,6 +28,7 @@ export class Connection {
     this.nextId = 0;
     this.pending = new Map(); // call id -> {resolve, reject}
     this.subs = new Map(); // key -> {channel, server, seq, onSnapshot, onPatch, onError, since}
+    this.watches = new Map(); // server -> the last watch message sent to it
     this.backoff = 500;
     this.stopped = false;
     this.retryTimer = null;
@@ -57,6 +58,7 @@ export class Connection {
         this.owner = msg.owner || "";
         this.onState("open", msg.server);
         for (const key of this.subs.keys()) this._sendSub(key);
+        for (const w of this.watches.values()) this.ws.send(JSON.stringify(w));
         break;
       case "reply": {
         const p = this.pending.get(msg.id);
@@ -129,6 +131,13 @@ export class Connection {
       if (server) msg.server = server;
       this.ws.send(JSON.stringify(msg));
     });
+  }
+
+  // A message that is neither a call nor a subscription. A watch is state, not
+  // an event: the last one per server is sent again after every welcome.
+  post(msg) {
+    if (msg.t === "watch") this.watches.set(msg.server || "", msg);
+    if (this.open) this.ws.send(JSON.stringify(msg));
   }
 
   // since: optional () => the revision this subscriber holds, or null. A
