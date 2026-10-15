@@ -801,7 +801,11 @@ class Session:
     # -- the canvas (layout.py) ---------------------------------------------
     def dockable(self, pane: str) -> bool:
         """Whether ``pane`` can sit in this session's canvas: a live page of
-        this session, or a file it sent (by key)."""
+        this session, a file it sent (by key), or a workflow it armed (by its
+        card's entry id, ``wf-<run>``)."""
+        if pane.startswith("wf-"):
+            e = self.fold().entry(pane)
+            return e is not None and e["kind"] == "workflow"
         if pane.startswith("art-"):
             try:
                 return self.artifacts.get(pane).status == "live"

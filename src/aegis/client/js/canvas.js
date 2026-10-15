@@ -45,7 +45,7 @@
 // all after an await (Safari).
 
 import { drawArtifact, drawFile } from "./viewer.js";
-import { DOCKED, fileUrl, hold, inWindow, popButton } from "./entries.js";
+import { DOCKED, fileUrl, fillWorkflow, hold, inWindow, popButton, workflowTitle } from "./entries.js";
 import { icon } from "./glyphs.js";
 
 const TRANSCRIPT = "transcript";
@@ -361,6 +361,7 @@ export class Canvas {
   label(id) {
     if (id === TRANSCRIPT) return "transcript";
     if (id.startsWith("art-")) return this.entryOf(id)?.title || "page";
+    if (id.startsWith("wf-")) return workflowTitle(id.slice(3)) || "workflow";
     return this.latestFile(id)?.name || "file";
   }
 
@@ -532,6 +533,16 @@ export class Canvas {
       // lands it shows read-only, and its card keeps its own line.
       if (entry.status === "live") hold(id, (next) => this.onEntry(next), entry, DOCKED);
       else hold(id, null, entry);
+    } else if (id.startsWith("wf-")) {
+      // A workflow (entries.js fillWorkflow), which redraws itself from the
+      // workflows channel: the pane only holds it.
+      const card = el("div", "wfcard");
+      card.dataset.run = id.slice(3);
+      body.append(card);
+      acts.append(this.moveButton(id), this.undockButton(id));
+      bar.append(acts);
+      fillWorkflow(card);
+      return;
     } else {
       const f = e || this.latestFile(id);
       if (!f) return this.loading(node, bar, acts, "Loading the file…");

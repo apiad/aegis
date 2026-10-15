@@ -8,7 +8,7 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, setApprovals, setDocker, setFileBase, setOpener, syncDock } from "./entries.js";
+import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setWorkflows, syncDock } from "./entries.js";
 import { setScroller } from "./highlight.js";
 import { Viewer } from "./viewer.js";
 import { Canvas } from "./canvas.js";
@@ -590,6 +590,30 @@ conn.subscribe(
     refreshApprovals();
   },
 );
+
+// The workflow runs (workflows.py), for their cards in the transcript and
+// their canvas panes. A running card counts its times up once a second.
+const wfRuns = new Map();
+setWorkflows({ get: (run) => wfRuns.get(run) || null, call: (op, params) => conn.call(op, params) });
+const wfChanged = () => {
+  refreshWorkflows();
+  canvas.syncStrip(); // a docked run's tab takes its title
+};
+conn.subscribe(
+  "workflows",
+  (list) => {
+    wfRuns.clear();
+    for (const w of list || []) wfRuns.set(w.run, w);
+    wfChanged();
+  },
+  (ops) => {
+    for (const op of ops) if (op.upsert) wfRuns.set(op.upsert.run, op.upsert);
+    wfChanged();
+  },
+);
+setInterval(() => {
+  if ([...wfRuns.values()].some((w) => w.status === "running")) refreshWorkflows();
+}, 1000);
 
 // Each server's `sessions` channel: a snapshot replaces that server's metas,
 // patches upsert and remove them.

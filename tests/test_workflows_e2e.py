@@ -57,6 +57,7 @@ async def test_a_workflow_runs_after_a_person_approves_it(world):
     await until(lambda: wf.runs[run].status == "done", timeout=20)
     st = wf.runs[run]
     assert st.nodes["one"].result == {"n": 7}
+    assert [r["state"] for r in wf.wire(run)["tree"]] == ["done", "done", "done"]
     assert [s["mark"] for s in st.story] == ["ok", "ok", "ok"]
     for n in st.nodes.values():
         assert n.log_id not in world.app.sessions.sessions  # archived
