@@ -774,9 +774,13 @@ def test_quiet_hides_the_tab_and_a_click_on_its_card_brings_it_back(server, page
 
 
 def test_quiet_is_disabled_on_an_idle_session(server, page):
+    # The panel draws a session's change on the next frame, the transcript's
+    # "done in" at once: slow frames make the test wait for the panel.
+    page.add_init_script(SLOW_FRAMES)
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page, "hello")
+    page.wait_for_selector("#s-status.at-done")
     assert page.is_disabled("#quiet-session")
 
 
