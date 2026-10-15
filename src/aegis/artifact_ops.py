@@ -320,6 +320,7 @@ def register_artifact_ops(app: App) -> None:
     @r.op("artifact.emit", PageEmit, owned="log_id")
     async def emit(p: PageEmit, caller):
         s = page(p)
+        s.check_lock()  # a person does not steer a workflow's node
         _sized(p.data, "data")
         try:
             s.artifacts.event(p.artifact_id, p.name, p.data)
@@ -331,6 +332,7 @@ def register_artifact_ops(app: App) -> None:
     @r.op("artifact.submit", PageSubmit, owned="log_id")
     async def submit(p: PageSubmit, caller):
         s = page(p)
+        s.check_lock()  # a person does not steer a workflow's node
         _sized(p.data, "data")
         try:
             s.artifacts.submit(p.artifact_id, p.data, p.label)
@@ -344,6 +346,7 @@ def register_artifact_ops(app: App) -> None:
     @r.op("artifact.error", PageError, owned="log_id")
     async def error(p: PageError, caller):
         s = page(p)
+        s.check_lock()  # a person does not steer a workflow's node
         if not s.artifacts.error_wakes(p.artifact_id):
             return "dropped"
         await s.deliver(

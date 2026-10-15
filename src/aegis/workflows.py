@@ -376,6 +376,7 @@ class Workflows:
             await s.deliver(
                 f"> from workflow:{self._wid(st)} · nudge · {iso_now()}",
                 "Your turn ended without workflow_result. Call it now with your result and a one-sentence summary, or the workflow fails.",
+                through_lock=True,
             )
             return "running"
         self._fail(st, node.id, "its turn ended twice with no workflow_result")
@@ -433,7 +434,7 @@ class Workflows:
                 schema=schema,
             )
         )
-        await s.send(text)
+        await s.send(text, through_lock=True)
 
     # -- helpers ----------------------------------------------------------------
     def _summary(self, st: RunState) -> str:

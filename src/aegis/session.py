@@ -57,6 +57,7 @@ from .claude.stream import (
 from .harness import Launch, Process, harness_for
 from .meta import MetaStore
 from .names import default_title
+from .ops import OpError
 from .park import TIMER_TOOLS
 from .transcript.entries import EMPTY_STANDING, Fold, fold_records
 from .transcript.store import Store, read_store
@@ -127,6 +128,11 @@ class Host:
     def quota_hold(self, session: "Session") -> str | None:
         """Why the session's owner may not start a turn now (quota_gate.py),
         or None when it may."""
+        return None
+
+    def workflow_lock(self, session: "Session") -> str | None:
+        """Why nobody but the engine may prompt or interrupt the session (a
+        node of a live workflow run, workflows.py), or None."""
         return None
 
 
@@ -653,7 +659,17 @@ class Session:
                 self._publish_now()
                 self._metas.write(self.meta())
 
-    async def deliver(self, header: str, body: str) -> None:
+    def check_lock(self) -> None:
+        """Refuse what would steer a live workflow's node. Every way in goes
+        through deliver, send and interrupt, which call this unless the caller
+        passes ``through_lock``: the engine, and what the node itself started
+        (its monitors, its queue tasks) or the server's own quota pause."""
+        if (why := self._host.workflow_lock(self)) is not None:
+            raise OpError("in_workflow", why)
+
+    async def deliver(
+        self, header: str, body: str, *, through_lock: bool = False
+    ) -> None:
         """An inbox message. Idle or stopped: sent now (a stopped session is
         resumed to receive it). Mid-turn: held, and sent with any others when
         the turn ends, because a prompt written mid-turn would be injected at
@@ -662,6 +678,8 @@ class Session:
         (app.on_quota)."""
         if self.archived:
             raise Archived(self.log_id)
+        if not through_lock:
+            self.check_lock()
         msg = {"header": header, "body": body, "ts": time.time()}
         if self.status == "working" or self._flushing:
             self._hold(msg)
@@ -669,7 +687,7 @@ class Session:
         if self._host.quota_hold(self) is not None:
             self._hold(msg | {"held_for": "quota"})
             return
-        await self.send(_inbox_text([msg]))
+        await self._send(_inbox_text([msg]))
 
     def _hold(self, msg: dict) -> None:
         self.held.append(msg)
@@ -682,7 +700,7 @@ class Session:
         try:
             batch, self.held = self.held, []
             if batch:
-                await self.send(_inbox_text(batch))
+                await self._send(_inbox_text(batch))
         finally:
             self._flushing = False
 
@@ -692,11 +710,23 @@ class Session:
         return attachments.inbox(self.state_root, self.log_id)
 
     async def send(
-        self, text: str, typed: str | None = None, attached: list[dict] | None = None
+        self,
+        text: str,
+        typed: str | None = None,
+        attached: list[dict] | None = None,
+        *,
+        through_lock: bool = False,
     ) -> None:
         """Send ``text`` to the harness. With files ``attached``, ``text`` is
         the typed text plus their paths, and ``typed`` what the person wrote,
         which their row shows (transcript/entries.py)."""
+        if not through_lock:
+            self.check_lock()
+        await self._send(text, typed, attached)
+
+    async def _send(
+        self, text: str, typed: str | None = None, attached: list[dict] | None = None
+    ) -> None:
         await self.ensure_running()
         assert self._proc is not None
         if not self.title and not text.startswith("/"):
@@ -715,7 +745,9 @@ class Session:
             self._on_error(f"the message did not reach the agent: {e}", True, text)
             raise
 
-    async def interrupt(self) -> None:
+    async def interrupt(self, *, through_lock: bool = False) -> None:
+        if not through_lock:
+            self.check_lock()
         if self.status != "working" or self._proc is None:
             return
         self._record({"kind": "interrupt"})
