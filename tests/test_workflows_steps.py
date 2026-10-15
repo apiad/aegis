@@ -97,6 +97,40 @@ async def test_a_value_with_shell_syntax_stays_one_argument(world):
     assert not any((world.root / f).exists() for f in ("pwned", "sub", "tick"))
 
 
+async def test_values_reach_commands_and_probes_through_the_environment(world):
+    # Quoted, in a here-string, in a probe of each kind: the exact value,
+    # and nothing in it runs. The card shows the command as written.
+    value = "x \"q\" 'q' \\ $HOME $(touch sub) `touch tick` ';touch pwned;' a[$(touch ar)]\nz"
+    args = "args: {type: object, properties: {t: {type: string}}}\n"
+    j = json.dumps
+    definition = flow(
+        f"{{sh: {j('printf %s "{{args.t}}" > said')}, id: a, say: Write.}}",
+        f"{{check: {{sh: {j('test "$(cat said)" = {{args.t}}')}}}, say: Same.}}",
+        f"{{if: {{when: {{sh: {j('cat <<< {{args.t}} | head -c -1 | cmp -s - said')}}}, "
+        'then: {sh: "touch same", say: T.}}, say: If.}',
+        f"{{loop: {{max: 2, until: {{sh: {j('test -e same && test "${X:-{{args.t}}}" = "$(cat said)"')}}}, "
+        "do: {wait: 1s, say: W.}}, say: Loop.}",
+        args=args,
+    )
+    r = await world.app.registry.call("session.spawn", {"agent": "opus"})
+    main = world.app.sessions.sessions[r["log_id"]]
+    armed = ok(
+        await turn(main, mcp("workflow_arm", definition=definition, args={"t": value}))
+    )
+    card = world.app.workflows.wire(armed["run"])
+    assert [r["cmd"] for r in card["tree"] if r.get("cmd")][
+        0
+    ] == 'printf %s "{{args.t}}" > said'
+    await world.app.registry.call("workflow.approve", {"run": armed["run"]})
+    st = await ended(world, armed["run"])
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+    assert (world.root / "said").read_text() == value
+    assert (world.root / "same").exists()
+    assert not any((world.root / f).exists() for f in ("pwned", "sub", "tick", "ar"))
+    card = world.app.workflows.wire(armed["run"])
+    assert not any("AEGIS_V" in (r.get("cmd") or "") for r in card["tree"])
+
+
 async def test_a_failing_sh_fails_its_node_with_the_code_and_stderr(world):
     st = await ended(
         world,

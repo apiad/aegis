@@ -322,6 +322,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <li><code>workflow_ask(question)</code>. Returns at once; the answer arrives in the agent's inbox.</li>
 </ul>
 <p><code>{{…}}</code> in strings and <code>expr</code> probes share one small evaluator, with no <code>eval</code>: references (<code>impl.pr</code>, <code>item.title</code>, <code>args.issue</code>, <code>gate.value</code>), literals, <code>== != &lt; &gt; &lt;= &gt;=</code>, <code>and or not</code>, and <code>or</code> as a default.</p>
+<p>A value reaches a command or an <code>sh</code> probe through its environment, never through its text: each <code>{{…}}</code> becomes a reference to a variable that holds the value, so nothing in it runs. Never use a value in arithmetic, where bash runs a <code>$(…)</code> it finds in a variable; the lint refuses the direct forms.</p>
 
 <h3 id="example">An example</h3>
 <p>Three teams build service images; the mock team starts only once the base image is merged. The landing steps are one block, used by every slice.</p>

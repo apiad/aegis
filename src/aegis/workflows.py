@@ -37,7 +37,6 @@ import logging
 import math
 import os
 import secrets
-import shlex
 import signal
 import time
 from pathlib import Path
@@ -63,6 +62,7 @@ from .workflow_lang import (
     parse,
     render,
     rows,
+    shell_command,
     template_key,
     value_of,
     walk,
@@ -95,8 +95,11 @@ async def _tail(stream) -> str:
     return buf.decode("utf-8", "replace")[-TAIL:]
 
 
-async def run_sh(cmd: str, cwd: str, on_pid) -> tuple[int, str, str]:
-    """An sh node's command under bash in its own process group, so a
+async def run_sh(
+    cmd: str, cwd: str, on_pid, env: dict[str, str] | None = None
+) -> tuple[int, str, str]:
+    """An sh node's command under bash, with ``env`` (its values, see
+    shell_command) added to the server's, in its own process group, so a
     deadline, a stop or a shutdown ends everything it started: cancelling
     the task ends the group, SIGTERM first and SIGKILL 2 s later, or as
     soon as the group is empty. The SIGKILL goes even when bash has
@@ -106,6 +109,7 @@ async def run_sh(cmd: str, cwd: str, on_pid) -> tuple[int, str, str]:
         "-c",
         cmd,
         cwd=cwd,
+        env={**os.environ, **(env or {})},
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         start_new_session=True,
@@ -396,7 +400,7 @@ class Workflows:
                 "attempts": n.attempts,
             }
             if n.cmd and (node.kind == "sh" or "sh" in (node.body.get("probe") or {})):
-                row["cmd"] = n.cmd  # the command as it ran, rendered
+                row["cmd"] = n.cmd  # with its values, to read; they ran as env
             if node.kind == "loop" and n.max is not None:
                 row["rounds"] = {"round": n.round, "max": n.max}
         if (reading := self._readings.get((st.run, inst))) is not None:
@@ -1133,10 +1137,10 @@ class Workflows:
         if n is not None and n.status in ("done", "failed"):
             return n.status
         if n is None or n.status == "pending":
+            scope = self._scope(st, wf, prefix)
             try:
-                cmd = render(
-                    node.body["sh"], self._scope(st, wf, prefix), quote=shlex.quote
-                )
+                cmd, env = shell_command(node.body["sh"], scope)
+                shown = render(node.body["sh"], scope)
             except RENDER_ERRORS as e:
                 self._fail(
                     st,
@@ -1146,8 +1150,8 @@ class Workflows:
                     retry=False,
                 )
                 return "failed"
-            self._begin(st, wf, node, prefix, cmd=cmd)
-            self._tasks[key] = asyncio.create_task(self._run_sh(st, inst, cmd))
+            self._begin(st, wf, node, prefix, cmd=shown)
+            self._tasks[key] = asyncio.create_task(self._run_sh(st, inst, cmd, env))
             return "running"
         if key not in self._tasks:
             # Running in the log with no task in this process: the server
@@ -1156,7 +1160,9 @@ class Workflows:
             return "failed"
         return "running"
 
-    async def _run_sh(self, st: RunState, inst: str, cmd: str) -> None:
+    async def _run_sh(
+        self, st: RunState, inst: str, cmd: str, env: dict[str, str]
+    ) -> None:
         def pid(p: int) -> None:
             self._log(
                 st.run,
@@ -1164,7 +1170,9 @@ class Workflows:
             )
 
         try:
-            code, out, err = await run_sh(cmd, self._cwd(st), pid)
+            if any("\0" in v for v in env.values()):
+                raise ValueError(NUL)
+            code, out, err = await run_sh(cmd, self._cwd(st), pid, env)
         except ValueError:  # a NUL byte, from a value: every attempt fails so
             code, out, err = None, "", NUL
         except OSError as e:
@@ -1244,7 +1252,7 @@ class Workflows:
             cmd = ""
             if "sh" in probe:
                 try:
-                    cmd = render(probe["sh"], scope, quote=shlex.quote)
+                    cmd = render(probe["sh"], scope)  # shown, never run
                 except RENDER_ERRORS as e:
                     self._fail(
                         st,
@@ -1274,29 +1282,34 @@ class Workflows:
         if "sh" in probe:
             # A restart lost the task: the probe simply runs again (spec §05).
             if key not in self._tasks:
+                cmd, env = shell_command(probe["sh"], scope)
                 self._tasks[key] = asyncio.create_task(
-                    self._poll(st, inst, n.cmd, probe["every"])
+                    self._poll(st, inst, cmd, env, probe["every"])
                 )
             return "running"
         return await self._check_judge(st, wf, node, prefix)  # task 7
 
-    async def _probe_sh(self, cmd: str, cwd: str) -> tuple[int | None, str, str]:
+    async def _probe_sh(
+        self, cmd: str, cwd: str, env: dict[str, str]
+    ) -> tuple[int | None, str, str]:
         """An sh probe's exit code, stdout and stderr, run as an sh node is
         (its own process group, ended when its task is cancelled); the code
         is None when bash did not start or the probe ran too long."""
         try:
             return await asyncio.wait_for(
-                run_sh(cmd, cwd, lambda _: None), CONDITION_LIMIT_S
+                run_sh(cmd, cwd, lambda _: None, env), CONDITION_LIMIT_S
             )
         except TimeoutError:
             return None, "", f"took over {CONDITION_LIMIT_S:g}s"
         except OSError as e:
             return None, "", str(e)
 
-    async def _poll(self, st: RunState, inst: str, cmd: str, every: float) -> None:
+    async def _poll(
+        self, st: RunState, inst: str, cmd: str, env: dict[str, str], every: float
+    ) -> None:
         try:
             while True:
-                rc, out, err = await self._probe_sh(cmd, self._cwd(st))
+                rc, out, err = await self._probe_sh(cmd, self._cwd(st), env)
                 self._readings[(st.run, inst)] = (
                     f"exit {rc if rc is not None else '?'} at {iso_now()[11:16]}"
                 )
@@ -1434,20 +1447,24 @@ class Workflows:
         key = (st.run, inst)
         if key not in self._tasks:
             try:
-                cmd = render(probe["sh"], scope, quote=shlex.quote)
+                cmd, env = shell_command(probe["sh"], scope)
             except RENDER_ERRORS as e:
                 why = f"a reference has no value: {e}"
                 self._fail(st, inst, why, self._say(st, wf, node, prefix), retry=False)
                 return "failed"
-            if "\0" in cmd:
+            if any("\0" in v for v in env.values()):
                 self._fail(st, inst, NUL, self._say(st, wf, node, prefix), retry=False)
                 return "failed"
-            self._tasks[key] = asyncio.create_task(self._probe_once(st, inst, rnd, cmd))
+            self._tasks[key] = asyncio.create_task(
+                self._probe_once(st, inst, rnd, cmd, env)
+            )
         return "running"
 
-    async def _probe_once(self, st: RunState, inst: str, rnd: str, cmd: str) -> None:
+    async def _probe_once(
+        self, st: RunState, inst: str, rnd: str, cmd: str, env: dict[str, str]
+    ) -> None:
         try:
-            rc, out, err = await self._probe_sh(cmd, self._cwd(st))
+            rc, out, err = await self._probe_sh(cmd, self._cwd(st), env)
             self._readings[(st.run, inst)] = (
                 f"exit {rc if rc is not None else '?'} at {iso_now()[11:16]}"
             )

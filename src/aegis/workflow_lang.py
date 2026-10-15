@@ -368,38 +368,77 @@ def evaluate(tree, scope: dict):
     return {"<": a < b, ">": a > b, "<=": a <= b, ">=": a >= b}[op]
 
 
-def render(template: str, scope: dict, quote=None) -> str:
-    """Each ``{{expr}}`` replaced by its value: a string as it is, anything
-    else as JSON, then through ``quote`` (shlex.quote for a command). One
-    that comes to null raises KeyError."""
-
-    def one(m: re.Match) -> str:
-        v = evaluate(compile_expr(m.group(1)), scope)
-        if v is None:
-            raise KeyError(
-                f"{{{{{m.group(1).strip()}}}}} has no value; give a default with or"
-            )
-        text = v if isinstance(v, str) else json.dumps(v)
-        return quote(text) if quote else text
-
-    return TEMPLATE.sub(one, template)
+def _value(expr: str, scope: dict) -> str:
+    """A template's value as text: a string as it is, anything else as
+    JSON. One that comes to null raises KeyError."""
+    v = evaluate(compile_expr(expr), scope)
+    if v is None:
+        raise KeyError(f"{{{{{expr.strip()}}}}} has no value; give a default with or")
+    return v if isinstance(v, str) else json.dumps(v)
 
 
-def quoted_templates(cmd: str) -> list[tuple[str, str]]:
-    """Each ``{{...}}`` in a command that sits inside shell quoting, with
-    where: single or double quotes, backticks, a ``$(...)`` or an unquoted
-    heredoc. render quotes a value for a bare word; inside quotes its quotes
-    close them instead, and a ``$(...)`` in the value runs."""
-    out: list[tuple[str, str]] = []
-    stack: list[str] = []  # ' " ` $( and ( (a plain subshell, harmless)
+def render(template: str, scope: dict) -> str:
+    """Each ``{{expr}}`` replaced by its value (see _value). Never for a
+    command: shell_command passes values through the environment."""
+    return TEMPLATE.sub(lambda m: _value(m.group(1), scope), template)
+
+
+WORD, QUOTED = "word", "quoted"  # how a template in a command is written
+INT_CMD = re.compile(
+    r"(?:^|[;&|(){}\n`]|\$\(|\b(?:then|do|else)\b)\s*(?:(let)\s|(?:declare|typeset|local|readonly|export)"
+    r"((?:\s+[-+][A-Za-z]+)+))"
+)
+NAME_ARG = re.compile(
+    r"(?:(?:^|\s)-v\s+|^\s*(?:read|mapfile|readarray|unset|declare|typeset|local"
+    r"|readonly|export)\b[^<>]*\s)$"
+)
+ARITH = ("((", "$((", "$[")
+
+
+def shell_spots(cmd: str) -> dict[int, tuple[str, str]]:
+    """Where each ``{{...}}`` in a command sits, by its offset: WORD (a bare
+    word, or inside $(...) or backticks), QUOTED (double quotes or an
+    unquoted heredoc), or the place that refuses it. shell_command writes
+    a WORD as "$AEGIS_Vn" and a QUOTED as ${AEGIS_Vn}, so a value is never
+    command text: a misread place gives a wrong literal at worst. Refused
+    are the places that keep it literal (single quotes, $'...', a quoted
+    heredoc) and those where bash runs a $(...) inside a variable's value
+    (arithmetic, [[ ]], a subscript, a variable's name)."""
+    spots: dict[int, tuple[str, str]] = {}
+    m = INT_CMD.search(cmd)
+    integer = bool(m and (m.group(1) or set("in") & set(m.group(2))))
+    stack: list[str] = []  # ' $' " ` $( ( (( $(( $[ [[ [ ${ ${w
     heredocs: list[tuple[str, bool, bool]] = []  # delimiter, expands, strips tabs
-    names = {"'": "single quotes", '"': "double quotes", "`": "backticks"}
     i, n = 0, len(cmd)
+
+    def where(start: int) -> str:
+        if integer:
+            return "a let or declare -i command"
+        if any(s in ARITH for s in stack):
+            return "arithmetic"
+        if "[[" in stack:
+            return "a [[ ... ]] test"
+        if "${" in stack:
+            return "a ${...} expansion"
+        if "[" in stack:
+            return "an array subscript"
+        quoting = [s for s in stack if s in ("'", "$'", '"', "`", "$(")]
+        top = quoting[-1] if quoting else None
+        if top == "'":
+            return "single quotes"
+        if top == "$'":
+            return "a $'...' string"
+        if top == '"':
+            return QUOTED
+        seg = re.split(r"[;&|\n(`]", cmd[:start])[-1]
+        return "a variable's name" if NAME_ARG.search(seg) else WORD
+
+    def word_start(j: int) -> bool:
+        return j == 0 or cmd[j - 1] in " \t\n;&|()<>"
+
     while i < n:
         if cmd.startswith("{{", i) and (m := TEMPLATE.match(cmd, i)):
-            where = next((s for s in reversed(stack) if s != "("), None)
-            if where is not None:
-                out.append((m.group(0), names.get(where, "a $(...)")))
+            spots[i] = (m.group(0), where(i))
             i = m.end()
             continue
         c = cmd[i]
@@ -409,42 +448,123 @@ def quoted_templates(cmd: str) -> list[tuple[str, str]]:
                 stack.pop()
             i += 1
             continue
+        if top == "$'":
+            if c == "\\":
+                i += 2
+                continue
+            if c == "'":
+                stack.pop()
+            i += 1
+            continue
         if c == "\\":
             i += 2
             continue
-        if top in ('"', "`"):
-            if c == top:
+        if top == '"':
+            if c == '"':
                 stack.pop()
+            elif cmd.startswith("$((", i):
+                stack.append("$((")
+                i += 2
             elif cmd.startswith("$(", i):
                 stack.append("$(")
+                i += 1
+            elif cmd.startswith("${", i):
+                stack.append("${")
+                i += 1
+            elif cmd.startswith("$[", i):
+                stack.append("$[")
                 i += 1
             elif c == "`":
                 stack.append("`")
             i += 1
             continue
-        # A bare word, or inside a $(...) or a subshell.
-        if c in "'\"`":
+        if top == "${":
+            if op := re.match(r":?[-=+?]", cmd[i:]):
+                stack[-1] = "${w"  # the word after the operator
+                i += op.end()
+                continue
+            if c == "}":
+                stack.pop()
+            elif c == "[":
+                stack.append("[")
+            i += 1
+            continue
+        if top in ("((", "$((") and cmd.startswith("))", i):
+            stack.pop()
+            i += 2
+            continue
+        if top == "${w" and c == "}":
+            stack.pop()
+            i += 1
+            continue
+        if top == "$[" and c == "]":
+            stack.pop()
+            i += 1
+            continue
+        if top == "[" and c == "]":
+            stack.pop()
+            i += 1
+            continue
+        if top == "[[" and cmd.startswith("]]", i) and word_start(i):
+            stack.pop()
+            i += 2
+            continue
+        if top == "`" and c == "`":
+            stack.pop()
+            i += 1
+            continue
+        # A bare word, or inside a $(...), a subshell or an arithmetic.
+        if c == "'" or c == '"':
             stack.append(c)
+        elif cmd.startswith("$'", i):
+            stack.append("$'")
+            i += 1
+        elif c == "`":
+            stack.append("`")
+        elif cmd.startswith("$((", i):
+            stack.append("$((")
+            i += 2
         elif cmd.startswith("$(", i):
             stack.append("$(")
+            i += 1
+        elif cmd.startswith("${", i):
+            stack.append("${")
+            i += 1
+        elif cmd.startswith("$[", i):
+            stack.append("$[")
+            i += 1
+        elif cmd.startswith("((", i):
+            stack.append("((")
             i += 1
         elif c == "(":
             stack.append("(")
         elif c == ")" and stack:
             stack.pop()
-        elif c == "#" and (i == 0 or cmd[i - 1] in " \t\n;&|("):
-            i = cmd.find("\n", i)
-            i = n if i < 0 else i
+        elif cmd.startswith("[[", i) and word_start(i):
+            stack.append("[[")
+            i += 1
+        elif c == "[" and i and (cmd[i - 1].isalnum() or cmd[i - 1] == "_"):
+            stack.append("[")
+        elif c == "#" and word_start(i) and top in (None, "(", "$(", "`"):
+            end = cmd.find("\n", i)
+            end = n if end < 0 else end
+            for t in TEMPLATE.finditer(cmd, i, end):
+                spots[t.start()] = (t.group(0), WORD)  # a comment, never read
+            i = end
             continue
-        elif cmd.startswith("<<", i) and not cmd.startswith("<<<", i):
-            m = re.match(r"<<(-?)[ \t]*((?:[^\s;&|<>()]|\\.)+)", cmd[i:])
-            if m:
-                word = m.group(2)
+        elif (
+            cmd.startswith("<<", i)
+            and not cmd.startswith("<<<", i)
+            and not any(s in ARITH or s == "[[" for s in stack)
+        ):
+            hd = re.match(r"<<(-?)[ \t]*((?:[^\s;&|<>()]|\\.)+)", cmd[i:])
+            if hd:
+                word = hd.group(2)
                 expands = not any(q in word for q in "'\"\\")
                 heredocs.append(
-                    (re.sub(r"['\"\\]", "", word), expands, bool(m.group(1)))
+                    (re.sub(r"['\"\\]", "", word), expands, bool(hd.group(1)))
                 )
-                i += m.end()
+                i += hd.end()
                 continue
         elif c == "\n" and heredocs:
             i += 1
@@ -453,18 +573,40 @@ def quoted_templates(cmd: str) -> list[tuple[str, str]]:
                     end = cmd.find("\n", i)
                     end = n if end < 0 else end
                     line = cmd[i:end]
+                    for t in TEMPLATE.finditer(cmd, i, end):
+                        w = "a let or declare -i command" if integer else QUOTED
+                        spots[t.start()] = (
+                            t.group(0),
+                            w if expands else "a quoted heredoc",
+                        )
                     i = end + 1
                     if (line.lstrip("\t") if tabs else line) == delim:
                         break
-                    if expands:
-                        out += [
-                            (m.group(0), "an unquoted heredoc")
-                            for m in TEMPLATE.finditer(line)
-                        ]
             heredocs = []
             continue
         i += 1
-    return out
+    return spots
+
+
+def shell_command(template: str, scope: dict) -> tuple[str, dict[str, str]]:
+    """A command to run and the environment it needs: the ``n``-th
+    ``{{expr}}`` becomes "$AEGIS_Vn" as a word, ${AEGIS_Vn} inside double
+    quotes or a heredoc, and its value (see _value) is AEGIS_Vn."""
+    spots, env = shell_spots(template), {}
+
+    def one(m: re.Match) -> str:
+        name = f"AEGIS_V{len(env) + 1}"
+        env[name] = _value(m.group(1), scope)
+        quoted = spots.get(m.start(), ("", WORD))[1] == QUOTED
+        return f"${{{name}}}" if quoted else f'"${name}"'
+
+    return TEMPLATE.sub(one, template), env
+
+
+def refused_templates(cmd: str) -> list[tuple[str, str]]:
+    """Each ``{{...}}`` the lint refuses in a command, with where it sits."""
+    spots = shell_spots(cmd)
+    return [spots[at] for at in sorted(spots) if spots[at][1] not in (WORD, QUOTED)]
 
 
 def value_of(raw, scope: dict):
@@ -759,13 +901,16 @@ class _Parser:
             self.using.pop()
 
     def command(self, cmd: str, path: str) -> None:
-        """A command's templates are bare words: render quotes each value."""
-        for tpl, where in quoted_templates(cmd):
-            self.err(
-                path,
-                f"{tpl} sits inside {where}; write it bare, since every value "
-                "in a command is shell-quoted already",
+        """A command's values arrive through its environment (shell_command):
+        refused where that value would stay literal or be run as code."""
+        for tpl, where in refused_templates(cmd):
+            why = (
+                "where it stays literal; write it bare or inside double quotes"
+                if where in ("single quotes", "a $'...' string", "a quoted heredoc")
+                else "where bash would run a $(...) in its value; never use a "
+                "value there"
             )
+            self.err(path, f"{tpl} sits inside {where}, {why}")
 
     def probe(self, raw, path: str) -> dict:
         """One of three probes (spec §04): sh passes on exit 0, expr on a
