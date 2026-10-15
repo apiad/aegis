@@ -71,6 +71,16 @@ def duration(text) -> float | None:
     return float(total) if total > 0 else None
 
 
+def fmt_duration(secs: float) -> str:
+    """Seconds written back as a duration: ``2s``, ``20m``, ``1h30m``."""
+    rest, out = int(secs), ""
+    for unit, size in (("d", 86400), ("h", 3600), ("m", 60), ("s", 1)):
+        if rest >= size:
+            out += f"{rest // size}{unit}"
+            rest %= size
+    return out or "0s"
+
+
 @dataclass(frozen=True)
 class LintError:
     path: str
@@ -128,6 +138,8 @@ class Workflow:
     waited: dict[str, list[str]] = field(default_factory=dict)
     by_key: dict[str, Node] = field(default_factory=dict)
     defs: dict = field(default_factory=dict)
+    # A node's key -> the node that holds it, for the deadlines above it.
+    parent: dict[str, Node] = field(default_factory=dict)
 
 
 # A {{...}} holds one expression; WHOLE is a string that is exactly one.
@@ -1223,6 +1235,7 @@ def parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError]
             deadline=deadline,
             by_key={n.key: n for n in walk(root)},
             defs=resolved,
+            parent={c.key: n for n in walk(root) for c in n.children},
         ),
         [],
     )

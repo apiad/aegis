@@ -309,3 +309,75 @@ async def test_a_loop_without_until_runs_max_rounds(world):
         ),
     )
     assert st.status == "done" and (world.root / "twice").read_text() == "x\nx\n"
+
+
+async def test_a_leaf_past_its_deadline_fails(world):
+    st = await ended(
+        world,
+        await run(
+            world, flow('{sh: "sleep 30", id: slow, deadline: 2s, say: Too slow.}')
+        ),
+    )
+    assert st.status == "failed"
+    assert st.nodes["slow"].error == "ran past its deadline of 2s"
+
+
+async def test_a_group_past_its_deadline_stops_the_agent_inside_it(world):
+    slow = json.dumps("/sleep 30")
+    text = f"""id: group
+title: Group
+say: A group with a deadline.
+root:
+  seq:
+    - {{agent: {{agent: opus, prompt: {slow}}}, id: work, say: Work slowly.}}
+  deadline: 3s
+  say: The group.
+"""
+    st = await ended(world, await run(world, text))
+    assert st.status == "failed"
+    lid = st.nodes["work"].log_id
+    s = world.app.sessions.sessions[lid]  # kept for inspection, with a tab
+    await until(lambda: s.status != "working", timeout=10)
+    assert not s.quiet
+
+
+async def test_the_runs_deadline_bounds_everything(world):
+    st = await ended(
+        world,
+        await run(
+            world, flow("{wait: 1h, say: Wait an hour.}", extra="deadline: 2s\n")
+        ),
+    )
+    assert st.status == "failed"
+
+
+async def test_an_sh_retries_and_succeeds(world):
+    st = await ended(
+        world,
+        await run(
+            world,
+            flow(
+                '{sh: "echo x >> tries && test $(wc -l < tries) -ge 2", id: flaky, retries: 2, say: Try again.}'
+            ),
+        ),
+    )
+    assert st.status == "done" and st.nodes["flaky"].attempts == 1
+    assert any("Retrying, attempt 2 of 3." in s["text"] for s in st.story)
+
+
+async def test_a_retried_agent_leaves_one_open_session(world):
+    first = json.dumps("no result here")  # nudged, then fails: retried
+    st_id = await run(
+        world,
+        flow(
+            f"{{agent: {{agent: opus, prompt: {first}}}, id: w, retries: 1, say: Work.}}"
+        ),
+    )
+    st = await ended(world, st_id, timeout=40)
+    assert st.status == "failed" and st.nodes["w"].attempts == 1
+    open_ = [
+        s
+        for s in world.app.sessions.sessions.values()
+        if (s.workflow or {}).get("node") == "w"
+    ]
+    assert len(open_) == 1  # the first attempt's session was archived
