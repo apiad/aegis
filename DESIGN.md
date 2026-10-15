@@ -339,7 +339,9 @@ the delivery, so a crash between the two tells it again and never loses it.
 Answers are records too, and a failed branch keeps its cap slot until it is
 retried or skipped. The answers only a person gives (a `by: person` gate,
 applying or rejecting an edit, approving) are operations not marked for
-agents. A live edit is linted against the progress derived from the log by a
+agents, and no agent answer stands in for one: a failed person's gate, or a
+group around one, is retried or fails the run, never skipped, and
+`workflow_stop` refuses a gate. A live edit is linted against the progress derived from the log by a
 pure function (`edit_errors`), then waits for a person's approval of its
 diff. A pass, a stop and an answer hold one lock, so a run's ending is
 written once. The main agent is the session that armed the run or
