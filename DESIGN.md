@@ -308,6 +308,21 @@ operations that start work in `ops.Registry.call`, so the rule holds for every
 harness. The view, `js/schedules.js`, draws what the `schedules` channel sends
 and edits through the same operations agents use.
 
+**A workflow is a plan the server runs, and only a person starts it.** An agent
+arms a YAML tree in which every node says what it does (`workflow_lang.py`);
+approving it is an operation not marked for agents, so no tool reaches it. The
+engine (`workflows.py`) runs each node with what aegis has (an agent node is a
+quiet session spawned under the main agent, locked to people and peers while
+the run lives) and appends every event to `<state>/workflow-runs/<run>.jsonl`,
+which boot folds back (`workflow_log.py`), as the schedules do. Like their
+clock, the engine is level-triggered: each pass looks at every live run, and
+a missed hook only delays a step. A node's result is a `workflow_result` call
+checked against its schema, never its last message, and the main agent is
+woken once, when the run ends. The card under `workflow_arm` is a `workflow`
+entry the browser fills from the `workflows` channel; it docks by its entry
+id, `wf-<run>`, like a page or a file
+(`docs/superpowers/specs/2026-10-15-dynamic-workflows-design.html`).
+
 **Agents change only what they created.** An agent reads and messages any session
 it can see (and, through `peer_read`, the archived session it continues), and changes only its own monitors, its own session's names and the
 tasks it enqueued. A session an agent spawns runs with at most the agent's own
@@ -771,7 +786,7 @@ page would each take the person's answer and only one would get the agent's
 state.
 
 **The canvas is a record, and a docked page still runs in one place.** A
-session's docked pages and files (`layout.py`) are a `layout` record that the
+session's docked pages, files and workflows (`layout.py`) are a `layout` record that the
 fold keeps as standing state and the session's card carries to every browser.
 The person's moves and the agent's tools go through one placement rule, and a
 person's operation names the move (`layout.dock`, `undock`, `resize`), not the
