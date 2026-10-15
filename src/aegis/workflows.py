@@ -919,7 +919,19 @@ class Workflows:
 
     async def _expire(self, st: RunState, node: Node, inst: str, span: float) -> None:
         """A deadline passed: end every running leaf inside, then fail the
-        instance it bounds."""
+        instance it bounds. An sh running with no task in this process
+        was cut by a restart first: it fails as cut, never retried, since a
+        retry would run it again (spec §05)."""
+        wf = self.defs[st.run]
+        for k, n in self._under(st, node, inst):
+            if (
+                n.status == "running"
+                and self._template(wf, k).kind == "sh"
+                and (st.run, k) not in self._tasks
+            ):
+                self._fail(st, k, CUT, retry=False)
+                if k == inst:
+                    return
         for k, n in self._under(st, node, inst):
             if n.status not in ("done", "failed", "stopped"):
                 await self._halt(st, k, n)
