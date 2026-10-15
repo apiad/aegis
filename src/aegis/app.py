@@ -77,6 +77,7 @@ from . import refs
 from .monitors import Monitors, iso_now
 from .names import valid_handle
 from .nudges import Nudges
+from .park import Parker, Watchers
 from .push import register_push_ops
 from .queues import Queues
 from .journal.ops import register_journal_ops
@@ -388,6 +389,10 @@ class App:
         self.side_notes = SideNotes(self)
         self.sessions.side_notes = self.side_notes
         self.nudges = Nudges(self.sessions)
+        self.watchers = Watchers()
+        self.parker = Parker(
+            self.sessions, lambda: self.config.current().park, self.watchers
+        )
         # Who the people on this server are, as a link tells the far side. One
         # user per server for now: whoever started it (links.py).
         self.user = user or getpass.getuser()
@@ -580,6 +585,7 @@ class App:
         self.quota.start()
         self.host.start()
         self.nudges.start()
+        self.parker.start()
         self.links.boot()
         # Last: its first snapshot must hold every session the boot loaded,
         # so none of them reads as a transition (push.py).
@@ -595,6 +601,7 @@ class App:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._config_task
         await self.links.shutdown()
+        await self.parker.stop()
         await self.nudges.stop()
         await self.quota.stop()
         await self.host.stop()

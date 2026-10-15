@@ -19,11 +19,22 @@ is found by the AEGIS_SESSION its harness passed down (harness.session_env)."""
 
 from __future__ import annotations
 
+import asyncio
+import logging
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .cgroups import _ppid, _procs
 from .harness import SESSION_VAR
+
+if TYPE_CHECKING:
+    from .registry import Registry
+    from .session import Session
+
+log = logging.getLogger("aegis.park")
 
 SHELLS = frozenset({"bash", "sh", "dash", "zsh", "fish", "ksh"})
 
@@ -106,6 +117,9 @@ class Facts:
     timers: frozenset[str]
     strays: tuple[int, ...]
     watchers: int
+    # Its last turn ended with turn_end, or it waits on the server. The card
+    # reads a turn that ended with neither as done; the idle nudge asks first.
+    reported: bool = True
 
 
 def blockers(f: Facts) -> list[str]:
@@ -118,6 +132,8 @@ def blockers(f: Facts) -> list[str]:
         out.append("it is not idle with a process")
     if f.attention not in PARKABLE:
         out.append(f"its attention is {f.attention}")
+    if not f.reported:
+        out.append("its last turn did not call turn_end")
     if f.worker:
         out.append("it is a queue worker")
     if f.held:
@@ -151,3 +167,103 @@ class Clock:
 
     def reset(self, log_id: str) -> None:
         self._since.pop(log_id, None)
+
+
+EVERY_S = 30.0
+
+
+class Watchers:
+    """Which session each browser shows in a visible page: one entry per socket,
+    or per browser behind a link (web.py fills it from ``watch`` messages)."""
+
+    def __init__(self) -> None:
+        self._at: dict[str, str] = {}
+        self.on_visible: Callable[[str], None] = lambda log_id: None
+
+    def watch(self, key: str, log_id: str | None) -> None:
+        if log_id is None:
+            self._at.pop(key, None)
+            return
+        self._at[key] = log_id
+        self.on_visible(log_id)
+
+    def drop(self, prefix: str) -> None:
+        """Forget a socket, and every browser behind it when it is a link's."""
+        for k in [k for k in self._at if k == prefix or k.startswith(prefix + ":")]:
+            del self._at[k]
+
+    def count(self, log_id: str) -> int:
+        return sum(1 for v in self._at.values() if v == log_id)
+
+
+class Parker:
+    """Every EVERY_S, parks each session that has had no blockers for its
+    harness's ``park:`` seconds. Beside Nudges, and as cheap: the /proc scan in
+    ``strays`` runs only for a session nothing else blocks."""
+
+    def __init__(
+        self, registry: Registry, park: Callable[[], dict], watchers: Watchers
+    ) -> None:
+        self._registry, self._park, self._watchers = registry, park, watchers
+        self.clock = Clock()
+        self._task: asyncio.Task | None = None
+        watchers.on_visible = self.clock.reset
+
+    def start(self) -> None:
+        if self._task is None:
+            self._task = asyncio.create_task(self._loop())
+
+    async def stop(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            self._task = None
+
+    async def _loop(self) -> None:
+        while True:
+            try:
+                await self.tick()
+            except Exception:  # a tick must never end the loop
+                log.exception("aegis: park tick failed")
+            await asyncio.sleep(EVERY_S)
+
+    def facts(self, s: Session, deep: bool) -> Facts:
+        # Here, not at the top: config imports session, which imports this module.
+        from .config import park_after
+
+        reg = self._registry
+        found = ()
+        if deep and s.pid:
+            keep = s.spec.harness == "claude-code"
+            found = tuple(strays(s.pid, s.log_id, reg.cgroup_dir(s), keep_servers=keep))
+        attention = reg.card(s)["attention"]
+        ended = s.standing.get("ended") or {}
+        return Facts(
+            after=park_after(self._park(), s.spec.harness),
+            running=s.running,
+            status=s.status,
+            attention=attention,
+            worker=bool(s.worker),
+            held=bool(s.held) or s._flushing,
+            open_tasks=len(s.open_tasks),
+            timers=frozenset(s.timers),
+            strays=found,
+            watchers=self._watchers.count(s.log_id),
+            reported=attention == "waiting" or ended.get("how") == "reported",
+        )
+
+    async def tick(self, now: float | None = None) -> None:
+        now = time.time() if now is None else now
+        for s in list(self._registry.sessions.values()):
+            f = self.facts(s, deep=False)
+            # The second facts call scans /proc only when the first is clear.
+            clear = not blockers(f) and not blockers(self.facts(s, deep=True))
+            if not self.clock.due(s.log_id, clear, f.after, now):
+                continue
+            idle = self.clock.idle_for(s.log_id, now)
+            self.clock.reset(s.log_id)
+            if await s.park(idle):
+                log.info("aegis: parked %s after %.0f s idle", s.handle, idle)

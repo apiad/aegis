@@ -3,13 +3,14 @@ the loop that parks them further down (task 5)."""
 
 import asyncio
 import os
+import signal
 
 import pytest
 
-from aegis import nudges
+from aegis import nudges, park
 
 from .conftest import until
-from .test_agents import CONFIG, World, turn
+from .test_agents import CONFIG, World, inbox, mcp, turn
 
 
 @pytest.fixture
@@ -106,3 +107,126 @@ async def test_a_parked_session_is_listed_as_parked_and_still_nudged(
     assert next(r for r in rows if r["handle"] == a.handle)["state"] == "parked"
     await world.app.nudges.tick()
     await until(lambda: a.running, timeout=5, what="the nudge waking it")
+
+
+# -- the loop ----------------------------------------------------------------------
+@pytest.fixture
+def fast(monkeypatch):
+    """Before `parking`: the loop reads EVERY_S as it goes to sleep."""
+    monkeypatch.setattr(park, "EVERY_S", 0.05)
+
+
+@pytest.fixture
+async def parking(tmp_path, fake_claude, fast):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG + "park: {claude-code: 1}\n")
+    w = await World(tmp_path, fake_claude).start()
+    yield w
+    await w.stop()
+
+
+async def done(s):
+    await turn(s, mcp("turn_end", attention="done", line="finished"))
+
+
+async def leave_a_sleep(s, seconds: str, pidfile) -> int:
+    """A `nohup sleep &` from a Bash call: its shell exits, so it leaves the
+    harness's tree. Returns its pid, to kill by pid when the test ends."""
+    await turn(s, f"/sh nohup sleep {seconds} >/dev/null 2>&1 & echo $! > {pidfile}")
+    return int(pidfile.read_text())
+
+
+def kill(pid: int) -> None:
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+async def test_an_idle_session_that_said_done_parks(parking):
+    a = await parking.spawn()
+    await done(a)
+    await until(lambda: a.status == "parked", timeout=5, what="the park")
+
+
+async def test_a_turn_that_did_not_end_with_turn_end_does_not_park(parking):
+    a = await parking.spawn()
+    await turn(a, "/hello ana")
+    await asyncio.sleep(1.5)
+    assert a.status == "idle" and a.running
+
+
+async def test_a_background_task_keeps_it_up(parking):
+    a = await parking.spawn()
+    await a.send("/bgtask 2")
+    await until(lambda: a.open_tasks, what="the background task")
+    await asyncio.sleep(1.5)
+    assert a.running
+
+
+async def test_a_process_it_left_behind_keeps_it_up(parking, tmp_path):
+    a = await parking.spawn()
+    pid = await leave_a_sleep(a, "20.37", tmp_path / "pid")
+    try:
+        await done(a)
+        await asyncio.sleep(1.5)
+        assert a.running
+    finally:
+        kill(pid)
+
+
+async def test_the_left_behind_test_can_fail(parking, monkeypatch, tmp_path):
+    monkeypatch.setattr(park, "strays", lambda *a, **k: [])
+    a = await parking.spawn()
+    pid = await leave_a_sleep(a, "21.37", tmp_path / "pid")
+    try:
+        await done(a)
+        await until(lambda: a.status == "parked", timeout=5, what="the park")
+    finally:
+        kill(pid)
+
+
+async def test_a_monitor_wakes_a_parked_session(parking, tmp_path):
+    a = await parking.spawn()
+    flag = tmp_path / "flag"
+    await turn(
+        a,
+        mcp(
+            "monitor_start",
+            description="the flag",
+            done=f"test -e {flag}",
+            progress=None,
+            interval_s=1,
+        ),
+    )
+    await until(lambda: a.status == "parked", timeout=5, what="the park while it waits")
+    flag.touch()
+    await until(
+        lambda: any(e["title"].startswith("monitor:") for e in inbox(a)),
+        timeout=8,
+        what="the monitor's wake",
+    )
+
+
+async def test_removing_the_harness_from_park_stops_new_parks_and_keeps_parked_ones(
+    parking,
+):
+    # b has not ended a turn yet, so it cannot park before the edit.
+    a, b = await parking.spawn(), await parking.spawn()
+    await done(a)
+    await until(lambda: a.status == "parked", timeout=5, what="the park")
+    (parking.root / ".aegis.yaml").write_text(CONFIG)
+    await done(b)
+    await asyncio.sleep(1.3)  # b would have parked after 1 s
+    assert b.running and a.status == "parked"
+
+
+async def test_a_wrong_park_block_parks_nothing(tmp_path, fake_claude, fast):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG + "park: {claude-code: 0}\n")
+    w = await World(tmp_path, fake_claude).start()
+    try:
+        a = await w.spawn()
+        await done(a)
+        await asyncio.sleep(1.5)
+        assert a.running
+    finally:
+        await w.stop()

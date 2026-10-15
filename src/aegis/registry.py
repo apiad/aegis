@@ -119,6 +119,10 @@ class Registry(Host):
         if self.cgroups is not None:
             self.cgroups.release(session.log_id)
 
+    def cgroup_dir(self, session: Session) -> Path | None:
+        """The session's cgroup, or None when the unit is not delegated."""
+        return self.cgroups.path(session.log_id) if self.cgroups is not None else None
+
     def turn_ended(self, session: Session) -> None:
         if self.queues is not None:
             self.queues.turn_ended(session)
