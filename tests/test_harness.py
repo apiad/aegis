@@ -105,5 +105,13 @@ def test_the_primer_says_when_to_reach_for_a_workflow():
     from aegis.mcp import PRIMER
 
     para = next(p for p in PRIMER.split("\n\n") if "workflow_arm" in p)
-    for word in ("plan_update", "workflow_arm", "help_read", "approves", "many agents"):
+    for word in (
+        "plan_update",
+        "workflow_arm",
+        "help_read",
+        "approves",
+        "many agents",
+        "the workflow is the plan",
+        "full permission",
+    ):
         assert word in para
