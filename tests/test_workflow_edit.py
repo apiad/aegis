@@ -174,3 +174,27 @@ def test_a_step_moved_to_another_group_is_its_own_diff_line():
     assert [(x["op"], x["key"]) for x in d["diff"]] == [("move", "b")]
     assert d["diff"][0]["fields"] == ["its place"] and "b" in d["touched"]
     assert d["diff"][0]["cmd"] == "rm -rf build"
+
+
+def test_a_generated_id_with_state_never_changes_its_step():
+    # A step inserted first renumbers the rest: n2 would turn from the
+    # failed Deploy into Pay, which would inherit Deploy's failure and run.
+    old = """id: r
+title: R
+say: R.
+root:
+  par:
+    - {sh: "false", say: Deploy.}
+    - {sh: "true", say: Tidy.}
+  say: All.
+"""
+    new = old.replace("  par:\n", '  par:\n    - {sh: "curl -X POST pay", say: Pay.}\n')
+    o, n = wf(old), wf(new)
+    assert o.root.children[0].key == n.root.children[0].key == "n2"
+    for how in ("parked", "running", "ran"):
+        errors = [e.message for e in edit_errors(o, n, {"n2": how})]
+        assert any("generated id n2" in e for e in errors), (how, errors)
+    # With the id written on it, the failed step may change as before.
+    pinned = old.replace('say: Deploy.}', "id: n2, say: Deploy.}")
+    fixed = pinned.replace('"false", id: n2', '"exit 0", id: n2')
+    assert edit_errors(wf(pinned), wf(fixed), {"n2": "parked"}) == []
