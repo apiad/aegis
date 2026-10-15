@@ -101,6 +101,7 @@ class Node:
     retries: int = 0
     use: str = ""  # the YAML path of the ref that put this node here
     branch: str = ""  # then or else, for the root of an if's branch
+    generated: bool = False  # its id was numbered, not written
 
     @property
     def key(self) -> str:
@@ -813,6 +814,7 @@ class _Parser:
             path,
             maps=scope,
             use=self.using[-1][1] if self.using else "",
+            generated="id" not in raw,
         )
         if "deadline" in raw:
             node.deadline = duration(raw["deadline"])
@@ -1633,6 +1635,17 @@ def edit_errors(old: Workflow, new: Workflow, seen: dict[str, str]) -> list[Lint
                     o.path,
                     f"{o.say!r} has started, so it stays; skip it with "
                     f"workflow_answer instead{hint}",
+                )
+            )
+            continue
+        if o.generated and n.generated and _fields(n) != _fields(o):
+            # A step inserted before it renumbers the rest: the same id
+            # may now name another step, which would take this one's state.
+            out.append(
+                LintError(
+                    n.path,
+                    f"{o.say!r} has started and its id {o.id} was generated, so "
+                    f"an edit may not change what that id names{hint}",
                 )
             )
             continue
