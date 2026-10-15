@@ -387,3 +387,23 @@ async def test_a_retried_agent_leaves_one_open_session(world):
         if (s.workflow or {}).get("node") == "w"
     ]
     assert len(open_) == 1  # the first attempt's session was archived
+
+
+async def test_a_deadline_retry_runs_the_next_attempt_and_ends_it(world):
+    from aegis import restarts
+
+    from .test_workflows_restart import lines
+
+    run_id = await run(
+        world,
+        flow(
+            '{sh: "echo x >> tries && sleep 30", id: s, deadline: 2s, retries: 1, say: Slow.}'
+        ),
+    )
+    st = await ended(world, run_id, timeout=20)
+    s = st.nodes["s"]
+    assert s.attempts == 1 and s.error == "ran past its deadline of 2s", s.error
+    assert (world.root / "tries").read_text().count("x") == 2
+    pids = [r["pid"] for r in lines(world, run_id) if r.get("ev") == "pid"]
+    assert len(pids) == 2
+    await until(lambda: all(restarts.started_at(p) is None for p in pids), timeout=5)
