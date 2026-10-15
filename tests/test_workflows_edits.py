@@ -318,3 +318,29 @@ async def test_a_change_is_not_rejected_once_the_run_ended(world):
             await world.app.registry.call(op, {"run": run, "v": out["proposed"]})
         assert e.value.code == "not_proposed", op
     assert wf.runs[run].edits[-1]["status"] == "proposed"
+
+
+async def test_arming_again_gives_a_step_its_retries_back(world):
+    once = (
+        "id: rt\ntitle: Rt\nsay: Rt.\nroot:\n  seq:\n"
+        '    - {sh: "exit 3", id: bad, retries: 1, say: Fail.}\n'
+        "  say: One.\n"
+    )
+    main, run = await armed(world, definition=once)
+    wf, me = world.app.workflows, Caller("agent", main.log_id)
+
+    def retrying() -> list[str]:
+        return [
+            s["text"] for s in wf.runs[run].story if "Retrying, attempt" in s["text"]
+        ]
+
+    await until(lambda: "bad" in wf.runs[run].open, timeout=10)
+    await world.app.registry.call(
+        "workflow.answer", {"run": run, "to": "bad", "choice": "fail"}, me
+    )
+    await until(lambda: wf.runs[run].status == "failed", timeout=10)
+    assert len(retrying()) == 1
+    await world.app.registry.call("workflow.arm", {"run": run, "args": {}}, me)
+    await world.app.registry.call("workflow.approve", {"run": run})
+    await until(lambda: "bad" in wf.runs[run].open, timeout=10)
+    assert retrying() == ["Fail. Failed: exit 3 Retrying, attempt 2 of 2."] * 2

@@ -2439,7 +2439,8 @@ class Workflows:
         )
         wf = self.defs.get(st.run)
         tpl = wf.by_key.get(template_key(node)) if wf else None
-        tried = (st.nodes.get(node) or NodeState()).attempts
+        cur = st.nodes.get(node) or NodeState()
+        tried = cur.attempts - cur.armed_at  # since it was last armed
         if retry and tpl is not None and tried < tpl.retries:
             # One record fails it and sends it back to pending (workflow_log).
             self._log(st.run, rec | {"retrying": tried + 2, "of": tpl.retries + 1})
