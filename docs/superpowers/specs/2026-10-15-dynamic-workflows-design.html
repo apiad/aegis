@@ -175,7 +175,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · dynamic workflows</span>
-  <span class="st"><span class="pill acc">slices 0 to 2 built</span><span class="pill">2026-10-15</span><span class="pill">#418</span></span>
+  <span class="st"><span class="pill acc">slices 0 to 3 built</span><span class="pill">2026-10-15</span><span class="pill">#418</span></span>
 </div>
 
 <div class="wrap">
@@ -331,6 +331,9 @@ say: Build one image per service in three teams, then put a release candidate up
 args: {type: object, properties: {issue: {type: integer}, slices: {type: object}}, required: [issue, slices]}
 limits: {total: 4, opus: 1}
 deadline: 8h
+defs:
+  pr: {type: object, properties: {pr: {type: integer}}, required: [pr]}
+  verdict: {type: object, properties: {approved: {type: boolean}}, required: [approved]}
 root:
   seq:
     - par:
@@ -558,7 +561,7 @@ root:
 <h3>Open</h3>
 <ul>
   <li>Whether a session may own more than one live run. This spec says one, so every gate, question and stop the main agent sees names the only run it has.</li>
-  <li>Whether a <code>judge</code> probe's agent counts against the pool. This spec says yes.</li>
+  <li>Whether a <code>judge</code> probe's agent counts against the pool. Decided in slice 3: yes.</li>
   <li>A per-run spending cap beyond the quota gate.</li>
   <li>The fold threshold for a <code>map</code>, set at six items.</li>
 </ul>

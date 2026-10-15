@@ -411,13 +411,6 @@ root:
         )
 
 
-# The spec's example names two defs it never defines; slice 3 adds them.
-DEFS = """defs:
-  pr: {type: object, properties: {pr: {type: integer}}, required: [pr]}
-  verdict: {type: object, properties: {approved: {type: boolean}}, required: [approved]}
-"""
-
-
 def test_the_specs_example_trips_only_on_what_this_version_does_not_run():
     """The example in spec §04, read from the spec itself: every error is a
     kind or field a later slice runs, and the lint does not crash on an
@@ -430,12 +423,15 @@ def test_the_specs_example_trips_only_on_what_this_version_does_not_run():
         "docs/superpowers/specs/2026-10-15-dynamic-workflows-design.html"
     )
     pre = re.search(r'<h3 id="example">.*?<pre>(.*?)</pre>', spec.read_text(), re.S)
-    example = html.unescape(pre.group(1)).replace(
-        "deadline: 8h\n", "deadline: 8h\n" + DEFS
-    )
+    example = html.unescape(pre.group(1))
     wf, got = errs(example)
     assert wf is None and got
     assert got == ["$.root.seq[2]: gate is not in this version yet"]
+    # With its gate left out, the example lints with no error at all.
+    lines = example.splitlines(keepends=True)
+    at = next(i for i, ln in enumerate(lines) if ln.lstrip().startswith("- gate:"))
+    wf, got = errs("".join(lines[:at] + lines[at + 2 :]))
+    assert wf is not None and got == []
 
 
 def test_a_reference_reaches_positional_keys_and_dashed_names():

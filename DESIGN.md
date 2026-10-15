@@ -324,7 +324,14 @@ inside a map item is named by its instance path (`images.base.impl`). A node
 starts only when it has room under the run's `limits` and the server's
 `workflows: {max_agents}`, in total and for its agent alias, counted from the
 registry's open node sessions and every session spawned under one (a spawn
-past the bound is refused), so the bound holds for processes. A node's result is a `workflow_result` call
+past the bound is refused), so the bound holds for processes; a judge probe
+is such a session too. Commands (`sh`) and polling probes are asyncio tasks
+the engine owns, never awaited by a pass, each in its own process group; a
+command running in the log with no task after a boot was cut by the restart
+and is never run again (a crash's leftover is ended by pid and start time
+first). An if's branch, a loop's rounds and each until are logged once, so a
+restart never asks a probe again. Ids are scoped per map item, loop round and
+top level, and a block (`ref`) is expanded at parse. A node's result is a `workflow_result` call
 checked against its schema, never its last message, and the main agent is
 woken once, when the run ends: a pass and a stop hold one lock, so a run's
 ending is written once. The main agent is the session that armed the run or
