@@ -226,3 +226,86 @@ root:
     st = await ended(world, await run(world, text), timeout=40)
     w.cancel()
     assert st.status == "done" and peak[0] == 2
+
+
+async def test_an_if_takes_one_branch_and_skips_the_other(world):
+    st = await ended(
+        world,
+        await run(
+            world,
+            flow(
+                '{sh: "printf 7", id: a, say: Print seven.}',
+                """{if: {when: {expr: "a.out == '7'"},
+                 then: {sh: "touch went-then", id: yes, say: Go then.},
+                 else: {sh: "touch went-else", id: no, say: Go else.}},
+            id: pick, say: Pick a way.}""",
+            ),
+        ),
+    )
+    assert st.status == "done" and st.nodes["pick"].took == "then"
+    assert (world.root / "went-then").exists()
+    assert not (world.root / "went-else").exists()
+    rows = {r["id"]: r["state"] for r in world.app.workflows.wire(st.run)["tree"]}
+    assert rows["no"] == "skipped"
+
+
+async def test_an_if_with_no_else_and_a_false_probe_is_done(world):
+    st = await ended(
+        world,
+        await run(
+            world,
+            flow(
+                '{if: {when: {sh: "false"}, then: {sh: "touch never", say: Never.}}, say: Maybe.}',
+            ),
+        ),
+    )
+    assert st.status == "done" and not (world.root / "never").exists()
+
+
+async def test_a_loop_repeats_until_its_probe_passes(world):
+    st = await ended(
+        world,
+        await run(
+            world,
+            flow(
+                """{loop: {max: 5, until: {expr: "bump.out == '3'"},
+                   do: {sh: "echo x >> n && wc -l < n | tr -d ' \\\\n'", id: bump, say: Count up.}},
+            id: count, say: Count to three.}""",
+                '{sh: "test {{count.bump.out}} = 3", say: Read the last round.}',
+            ),
+        ),
+    )
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+    assert st.nodes["count"].round == 3
+    assert sorted(k for k in st.nodes if k.startswith("count.")) == [
+        "count.1.bump",
+        "count.2.bump",
+        "count.3.bump",
+    ]
+
+
+async def test_a_loop_that_runs_out_of_rounds_fails(world):
+    st = await ended(
+        world,
+        await run(
+            world,
+            flow(
+                '{loop: {max: 2, until: {expr: "false"}, do: {wait: 1s, say: Pause.}}, id: never, say: Never done.}',
+            ),
+        ),
+    )
+    assert st.status == "failed"
+    assert st.nodes["never"].error == "until did not pass in 2 rounds"
+
+
+async def test_a_loop_without_until_runs_max_rounds(world):
+    st = await ended(
+        world,
+        await run(
+            world,
+            flow(
+                '{loop: {max: 2, do: {sh: "echo x >> twice", say: Once more.}}, say: Twice.}'
+            ),
+        ),
+    )
+    assert st.status == "done" and (world.root / "twice").read_text() == "x\nx\n"

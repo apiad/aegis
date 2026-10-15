@@ -45,6 +45,7 @@ from .agents import PERMISSION_ORDER, resolve
 from .monitors import run_bash
 from .ops import OpError
 from .workflow_lang import (
+    MAX_ROUNDS,
     RENDER_ERRORS,
     ExprError,
     Node,
@@ -280,9 +281,25 @@ class Workflows:
         wf = self.defs.get(run) or parse(st.text, self._agents())[0]
 
         def items(path: str):
-            return st.nodes[path].items if path in st.nodes else None
+            n = st.nodes.get(path)
+            if n is None or wf is None:
+                return None
+            if self._template(wf, path).kind == "loop":
+                return (
+                    None
+                    if n.max is None
+                    else [[str(k), None] for k in range(1, n.round + 1)]
+                )
+            return n.items
 
         tree = [self._row(st, wf, r) for r in rows(wf, items)] if wf else []
+        # Under a branch an if did not take, every row is skipped too.
+        under: int | None = None
+        for r in tree:
+            if under is not None and r["depth"] > under:
+                r["state"] = "skipped"
+                continue
+            under = r["depth"] if r["state"] == "skipped" else None
         return {
             "run": run,
             "id": wf.id if wf else "",
@@ -303,6 +320,9 @@ class Workflows:
         prefix = inst[: -len(node.id)]
         each = row.get("each", False)
         row["state"] = "pending" if each else self._state(st, node, inst)
+        took = (st.nodes.get(row.get("if", "")) or NodeState()).took
+        if row.get("branch") and took is not None and took != row["branch"]:
+            row["state"] = "skipped"
         n = st.nodes.get(inst)
         if n is not None and n.say:
             row["say"] = n.say
@@ -353,7 +373,30 @@ class Workflows:
                 return "queued" if inst in q else "pending"
             return s.status
         if s is not None and s.status in ("failed", "stopped"):
-            return s.status  # a map whose items could not be read
+            return s.status  # a logged failure wins for every composite
+        if node.kind == "if":
+            if s is None or s.took is None:
+                if (s is not None and s.judges) or (st.run, inst) in self._tasks:
+                    return "running"  # its probe is deciding
+                q = self._queued.get(st.run, ()) if st.status == "running" else ()
+                return "queued" if inst in q else "pending"
+            if s.took == "none":
+                return "done"
+            prefix = inst[: -len(node.id)]
+            c = next(c for c in node.children if c.branch == s.took)
+            return self._state(st, c, prefix + c.id)
+        if node.kind == "loop":
+            if s is None or s.max is None:
+                return "pending"
+            do = node.children[0]
+            last = self._state(st, do, f"{inst}.{s.round}.{do.id}")
+            if last != "done":
+                return _fold([last, "running"])
+            if "probe" in node.body:
+                return (
+                    "done" if (s.untils.get(s.round) or {}).get("pass") else "running"
+                )
+            return "done" if s.round >= s.max else "running"
         if node.kind == "map":
             if s is None or s.items is None:
                 return "pending"
@@ -373,6 +416,8 @@ class Workflows:
         parts = prefix.split(".")[:-1]  # "m.k.j.l." -> m, k, j, l
         for i in range(0, len(parts), 2):
             m = self._template(wf, ".".join(parts[: i + 1]))
+            if m.kind == "loop":
+                continue  # a round has no item, only its own nodes
             items = st.nodes[".".join(parts[: i + 1])].items or []
             scope[m.body["as"]] = dict((k, v) for k, v in items)[parts[i + 1]]
         depth = len(parts) // 2
@@ -417,8 +462,14 @@ class Workflows:
             if s.result is None or isinstance(s.result, dict):
                 return {**(s.result or {}), **s.outputs} or None
             return s.result
-        if s.items is None:
+        if n.kind == "loop":
+            if not s.round:
+                return None
+            keys = [str(s.round)]  # the last round's, as one map item's
+        elif s.items is None:
             return None
+        else:
+            keys = [k for k, _ in s.items]
         inside = [
             c
             for c in walk(n.children[0])
@@ -426,10 +477,10 @@ class Workflows:
             and c.kind in ("agent", "map", "sh", "check", "loop")
         ]
         out = {}
-        for key, _ in s.items:
+        for key in keys:
             item = {c.id: self._value(st, c, f"{inst}.{key}.{c.id}") for c in inside}
             out[key] = {k: v for k, v in item.items() if v is not None}
-        return out
+        return out[keys[0]] if n.kind == "loop" else out
 
     def wire_all(self) -> list[dict]:
         return [self.wire(r) for r in sorted(self.runs)]
@@ -672,7 +723,102 @@ class Workflows:
             return self._wait(st, wf, node, prefix)
         if node.kind == "check":
             return await self._check(st, wf, node, prefix)
+        if node.kind == "if":
+            return await self._if(st, wf, node, prefix)
+        if node.kind == "loop":
+            return await self._repeat(st, wf, node, prefix)
         raise OpError("kind", f"{node.kind} is not in this version yet")
+
+    async def _if(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
+        """Ask the probe once, log the branch taken, then run that branch; a
+        restart never asks again once the branch is logged."""
+        inst = prefix + node.id
+        n = st.nodes.get(inst)
+        if n is not None and n.status == "failed":
+            return "failed"
+        if n is None or n.took is None:
+            v = await self._probe(st, wf, node, prefix, inst, "")
+            if isinstance(v, str):
+                return v
+            took = (
+                "then" if v["pass"] else ("else" if len(node.children) > 1 else "none")
+            )
+            self._log(
+                st.run,
+                {
+                    "ev": "branch",
+                    "node": inst,
+                    "took": took,
+                    "why": v.get("why", ""),
+                    "say": self._say(st, wf, node, prefix),
+                },
+            )
+            n = st.nodes[inst]
+        if n.took == "none":
+            return "done"
+        child = next(c for c in node.children if c.branch == n.took)
+        return await self._advance(st, wf, child, prefix)
+
+    async def _repeat(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
+        """Run do once per round, each round its own scope (``l.2.fix``);
+        after each, ask until once and log it. Out of rounds with an until
+        that never passed fails; without until, max rounds is done."""
+        inst = prefix + node.id
+        n = st.nodes.get(inst)
+        if n is not None and n.status == "failed":
+            return "failed"
+        if n is None or n.max is None:
+            say = self._say(st, wf, node, prefix)
+            try:
+                mx = value_of(node.body["max"], self._scope(st, wf, prefix))
+            except RENDER_ERRORS as e:
+                self._fail(st, inst, f"max has no value: {e}", say, retry=False)
+                return "failed"
+            if (
+                isinstance(mx, bool)
+                or not isinstance(mx, int)
+                or not 1 <= mx <= MAX_ROUNDS
+            ):
+                why = f"max is {mx!r}, not a whole number from 1 to {MAX_ROUNDS}"
+                self._fail(st, inst, why, say, retry=False)
+                return "failed"
+            self._log(
+                st.run, {"ev": "loop_started", "node": inst, "max": mx, "say": say}
+            )
+            self._log(st.run, {"ev": "round", "node": inst, "n": 1})
+            n = st.nodes[inst]
+        k, do = n.round, node.children[0]
+        mx = n.max or 0
+        got = await self._advance(st, wf, do, f"{inst}.{k}.")
+        if got != "done":
+            return "running" if got in ("pending", "queued") else got
+        if "probe" in node.body:
+            u = n.untils.get(k)
+            if u is None:
+                v = await self._probe(st, wf, node, f"{inst}.{k}.", inst, str(k))
+                if isinstance(v, str):
+                    return "running" if v == "queued" else v
+                self._log(
+                    st.run,
+                    {
+                        "ev": "until",
+                        "node": inst,
+                        "n": k,
+                        "pass": v["pass"],
+                        "why": v.get("why", ""),
+                    },
+                )
+                u = st.nodes[inst].untils[k]
+            if u["pass"]:
+                return "done"
+            if k >= mx:
+                self._fail(st, inst, f"until did not pass in {mx} rounds", retry=False)
+                return "failed"
+        elif k >= mx:
+            return "done"
+        self._log(st.run, {"ev": "round", "node": inst, "n": k + 1})
+        self.changed()
+        return "running"
 
     def _met(
         self, st: RunState, wf: Workflow, node: Node, prefix: str, a: str
