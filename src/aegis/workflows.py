@@ -84,7 +84,14 @@ CHECK_LIMIT_S = 3600.0  # a check with no deadline over it, a monitor's default
 TAIL = 4000  # the end of an sh's stdout and of its stderr kept as its value
 LEAVES = frozenset({"agent", "sh", "wait", "check", "gate"})  # logged; the rest derived
 STARTS = frozenset(
-    {"node_started", "judge_started", "map_items", "loop_started", "branch"}
+    {
+        "node_started",
+        "judge_started",
+        "map_items",
+        "loop_started",
+        "branch",
+        "gate_opened",
+    }
 )
 
 
@@ -2166,13 +2173,27 @@ class Workflows:
         h = self._reg.sessions.get(n.log_id or "")
         if h is not None:
             lines.append(f"Its session is {h.handle}; read it with peer_read.")
+        wf = self.defs.get(st.run)
+        gated = wf is not None and self._person_gated(st, wf, to)
         lines += [
             f"Decide with {call}, choice=...):",
-            '- "retry" runs it again (change it first with workflow_edit if it needs a new brief);',
-            '- "skip" goes on without it; give value matching its result schema if later steps read it;',
+            '- "retry" runs it again (change it first with workflow_edit if it needs a new brief);'
+            if not gated
+            else '- "retry" runs it again and asks the person at its gate again;',
+            *(
+                []
+                if gated
+                else [
+                    '- "skip" goes on without it; give value matching its result schema if later steps read it;'
+                ]
+            ),
             '- "fail" ends the run.',
             "Other branches keep running meanwhile.",
         ]
+        if gated:
+            lines.insert(
+                -1, "It holds a gate only the person passes, so it is never skipped."
+            )
         return "\n".join(lines)
 
     async def answer(
@@ -2196,6 +2217,16 @@ class Workflows:
                     st.run, {"ev": "retried", "node": to, "reset": reset, "text": text}
                 )
                 self.changed()
+            elif (
+                o["kind"] == "failed"
+                and choice == "skip"
+                and self._person_gated(st, wf, to)
+            ):
+                raise OpError(
+                    "bad_choice",
+                    f"{to} holds a gate only the person passes: retry it to ask "
+                    "the person again, or fail the run",
+                )
             elif o["kind"] == "failed" and choice == "skip":
                 node = self._template(wf, to)
                 schema = node.body.get("result") if node.kind == "agent" else None
@@ -2293,6 +2324,27 @@ class Workflows:
         the node, itself included, so a group runs again whole."""
         return [k for k, _ in self._under(st, self._template(wf, inst), inst)]
 
+    def _person_gated(self, st: RunState, wf: Workflow, inst: str) -> bool:
+        """Whether an instance holds a person's gate the person has not
+        passed: only the person makes one count as passed, so the main
+        agent never skips it, whether it failed itself (a deadline, a
+        render) or a group around it did."""
+        node = self._template(wf, inst)
+        gates = {
+            g.key
+            for g in walk(node)
+            if g.kind == "gate" and g.body.get("by") == "person"
+        }
+        if not gates:
+            return False
+        prefix = inst[: -len(node.id)]
+        return any(
+            r["node"] in gates
+            and r["id"].startswith(prefix)
+            and (r.get("each") or r["state"] not in ("done", "skipped"))
+            for r in self._rows(st, wf)
+        )
+
     async def stop_node(self, run: str, inst: str) -> None:
         """Stop one running leaf: interrupt it and fail it as told, so the
         main agent edits, retries or skips it. The run goes on."""
@@ -2310,6 +2362,13 @@ class Workflows:
             ):
                 raise OpError(
                     "not_running", f"{inst} is not a running step of run {run}"
+                )
+            if tpl.kind == "gate":
+                who = "the person" if tpl.body.get("by") == "person" else "you"
+                raise OpError(
+                    "not_running",
+                    f"{inst} is a gate: {who} answer{'s' if who != 'you' else ''} it; "
+                    "it is never stopped",
                 )
             await self._halt(st, inst, n)
             self._fail(st, inst, "stopped by the main agent", retry=False, by="main")

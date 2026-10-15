@@ -286,6 +286,12 @@ with `workflow_answer`: choice "continue" with an optional `value`, or
 the answer as `{{ok.value}}`. A no, the person's Stop or your "abort", stops
 the run at the gate.
 
+Only the person makes a person's gate count as passed. `workflow_stop` does
+not take a gate, and when a person's gate fails (its deadline, a deadline
+around it, a question that did not render) the step, or the group around
+it, takes only "retry", which asks the person again, or "fail": never
+"skip".
+
 ## Questions and notes
 
 A node that cannot go on without an answer calls `workflow_ask` and ends its
