@@ -2602,11 +2602,13 @@ function cycle(d) {
 // -- composer ---------------------------------------------------------------
 const input = $("input");
 
-// A composer send gets an answer within SEND_VERDICT_MS or the box is the
-// person's again (#350). Until then the box and the button are locked.
-const SEND_VERDICT_MS = 3000;
+// A composer send gets an answer within SEND_VERDICT_MS (#350). Until then the
+// box and the button are locked. Plain text with no answer by then becomes the
+// session's queued draft and the socket is dropped as stalled (#429); a command
+// or files go back in the box, since only text waits on the device.
+const SEND_VERDICT_MS = 5000;
 const LATE = new Error("no answer yet");
-const NOT_CONFIRMED = "No answer in 3 s. Send again: it will not arrive twice.";
+const NOT_CONFIRMED = "No answer in 5 s. Send again: it will not arrive twice.";
 const answered = (call) =>
   Promise.race([call, new Promise((_, reject) => setTimeout(() => reject(LATE), SEND_VERDICT_MS))]);
 const sending = new Set(); // sessions whose composer send waits on its answer
@@ -2850,7 +2852,13 @@ function drawQueued() {
 }
 onDrafts(drawQueued);
 loadDrafts();
-setSender((key, params) => callFor(key, "session.send", params));
+// A queued draft's send gets the composer's deadline: with no answer the socket
+// is dropped, which settles the send as unreached and the draft waits again.
+setSender((key, params) => {
+  const call = callFor(key, "session.send", params);
+  const late = setTimeout(() => conn.drop(), SEND_VERDICT_MS);
+  return call.finally(() => clearTimeout(late));
+});
 $("queued").addEventListener("click", (ev) => {
   const act = ev.target.closest("[data-act]")?.dataset.act;
   const key = shown;
@@ -2938,8 +2946,9 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
   if (text === "/close" && !(await confirmClose(s))) return;
   // With no way to the session's server, plain text waits as its draft on this
   // device (outbox.js); a command or files still need the connection.
-  if ((!conn.open || s.off) && !text.startsWith("/") && !attachments.length) {
-    await queue(s.key, text, shown === s.key ? transcript.rev : -1);
+  const rev = shown === s.key ? transcript.rev : -1;
+  const waitAsDraft = async (nonce) => {
+    await queue(s.key, text, rev, nonce);
     if (fromComposer) localStorage.removeItem(`aegis.draft.${s.key}`);
     if (fromComposer && shown === s.key) {
       input.value = "";
@@ -2948,8 +2957,8 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
       $("composer").classList.remove("bad");
     }
     if (shown === s.key) transcript.toBottom();
-    return;
-  }
+  };
+  if ((!conn.open || s.off) && !text.startsWith("/") && !attachments.length) return waitAsDraft();
   const box = $("replies");
   const was = box.hidden;
   const aside = /^\/btw(\s|$)/.test(text);
@@ -2994,8 +3003,18 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
       toast(e.message, { kind: "error" });
       return;
     }
-    // No answer yet: the box is the person's again, with the text, and says so.
-    // An answer that comes later still settles it, unless they rewrote it.
+    // No answer yet. Plain text waits as the session's draft under the same
+    // nonce, and the stalled socket is dropped so the page reconnects; the
+    // draft goes out on the reconnect and arrives once.
+    if (!text.startsWith("/") && !attachments.length) {
+      call.catch(() => {}); // the drop rejects it; the draft carries on
+      unconfirmed.delete(s.key);
+      await waitAsDraft(params.nonce);
+      conn.drop();
+      return;
+    }
+    // A command or files: the box is the person's again, with the text, and
+    // says so. An answer that comes later still settles it, unless they rewrote it.
     if (shown === s.key) $("send-error").textContent = NOT_CONFIRMED;
     const still = () => (shown === s.key ? input.value.trim() : localStorage.getItem(`aegis.draft.${s.key}`)?.trim()) === text;
     call.then(

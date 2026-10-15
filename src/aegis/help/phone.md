@@ -60,10 +60,13 @@ connection.
 
 A connection can also stall without dropping, which a phone on a weak signal
 does often. While a message is on its way the box is locked and the send
-button spins. If the server has not answered within 3 seconds, the box unlocks
-with the text still in it and says the send was not confirmed. Sending it again
-is safe: the server recognizes the same message and delivers it once, and if
-the first attempt arrives late the box clears by itself.
+button spins. If the server has not answered within 5 seconds, the message
+becomes the session's queued draft, the box clears, and aegis treats the
+connection as lost and reconnects. The draft then goes out by itself as above,
+and if the first attempt did arrive the server recognizes the same message and
+delivers it once. A slash command or a message with files cannot wait: after
+5 seconds the box unlocks with the text still in it and says the send was not
+confirmed, and sending it again is safe for the same reason.
 
 ## Push notifications
 

@@ -7656,7 +7656,10 @@ def held_sends(pg):
     return gate
 
 
-def test_a_stalled_send_locks_the_box_answers_in_seconds_and_lands_once(server, page):
+def test_a_stalled_send_is_queued_in_seconds_and_lands_once(server, page):
+    # A weak connection stalls without closing (#350): with no answer in 5 s
+    # the message becomes the session's queued draft, the socket is dropped,
+    # and the draft goes out under the same nonce, arriving once (#429).
     gate = held_sends(page)
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -7671,22 +7674,23 @@ def test_a_stalled_send_locks_the_box_answers_in_seconds_and_lands_once(server, 
     page.press("#input", "Enter")  # a second press while it is out does nothing
     page.wait_for_timeout(300)
     assert len(gate["held"]) == 1
-    # No answer within seconds: unlocked, the text still there, and why.
-    page.wait_for_selector("#composer:not(.sending)", timeout=5000)
-    assert page.input_value("#input") == "only once"
-    assert "No answer in 3 s" in page.text_content("#send-error")
-    # Sent again: the same message under the same nonce.
-    page.click("#send")
-    page.wait_for_timeout(300)
-    assert len(gate["held"]) == 2
-    nonces = {json.loads(m)["params"].get("nonce") for m in gate["held"]}
-    assert len(nonces) == 1 and None not in nonces
-    # The connection recovers and both copies arrive: one message, box cleared.
-    gate["release"]()
-    turns_done(page, 1)
-    page.wait_for_function("document.getElementById('input').value === ''")
+    # No answer within seconds: queued, the box empty and free.
+    page.wait_for_selector("#queued", state="visible", timeout=8000)
+    assert "only once" in page.text_content("#queued")
+    assert page.input_value("#input") == ""
     page.wait_for_selector("#composer:not(.sending)")
     assert page.text_content("#send-error") == ""
+    # The page reconnects and the draft tries again, under the same nonce.
+    deadline = time.monotonic() + 15
+    while len(gate["held"]) < 2 and time.monotonic() < deadline:
+        page.wait_for_timeout(200)
+    assert len(gate["held"]) >= 2
+    nonces = {json.loads(m)["params"].get("nonce") for m in gate["held"]}
+    assert len(nonces) == 1 and None not in nonces
+    # The connection recovers and every copy arrives: one message, no draft.
+    gate["release"]()
+    turns_done(page, 1)
+    page.wait_for_selector("#queued", state="hidden", timeout=20000)
     page.wait_for_timeout(500)
     assert page.locator(".row.user").count() == 1
     store = server.root / ".aegis" / "state" / "transcripts" / f"{lid}.jsonl"
@@ -7696,6 +7700,30 @@ def test_a_stalled_send_locks_the_box_answers_in_seconds_and_lands_once(server, 
         if r.get("kind") == "send" and r.get("text") == "only once"
     ]
     assert len(sends) == 1
+    assert drafts(page) == {}
+    assert page.errors == []
+
+
+def test_a_stalled_command_goes_back_in_the_box(server, page):
+    # Only plain text waits on the device: a / line with no answer in 5 s is
+    # the person's again, and sending it again reuses its nonce (#350).
+    gate = held_sends(page)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    gate["shut"] = True
+    page.fill("#input", "/foo bar")
+    page.click("#send")
+    page.wait_for_selector("#composer.sending")
+    page.wait_for_selector("#composer:not(.sending)", timeout=8000)
+    assert page.input_value("#input") == "/foo bar"
+    assert "No answer in 5 s" in page.text_content("#send-error")
+    assert page.is_hidden("#queued")
+    page.click("#send")
+    page.wait_for_timeout(300)
+    assert len(gate["held"]) == 2
+    nonces = {json.loads(m)["params"].get("nonce") for m in gate["held"]}
+    assert len(nonces) == 1 and None not in nonces
     assert page.errors == []
 
 

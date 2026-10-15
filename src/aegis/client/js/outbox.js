@@ -53,9 +53,11 @@ export async function loadDrafts() {
 }
 
 // `rev` is the transcript revision the page held for the session, or -1 when
-// it held none: then any content at all makes the draft ask.
-export async function queue(key, text, rev) {
-  await outboxAppend(key, text, rev);
+// it held none: then any content at all makes the draft ask. `nonce` is that
+// of a send of this text that got no answer: the draft goes out under it, so
+// if that send did arrive the server answers without delivering it twice.
+export async function queue(key, text, rev, nonce) {
+  await outboxAppend(key, text, rev, nonce);
   await loadDrafts();
 }
 
@@ -96,7 +98,7 @@ export async function flush(only = () => true) {
     const mine = await outboxClaim(key, (x) => x.state === "queued" || stuck(x));
     if (!mine) continue; // another tab took it
     await loadDrafts();
-    const got = await deliver(key, mine, { text: mine.text, expect_rev: mine.rev });
+    const got = await deliver(key, mine, { text: mine.text, expect_rev: mine.rev, ...(mine.nonce && { nonce: mine.nonce }) });
     if (got === "unreached") break;
     out[got]++;
   }
@@ -127,7 +129,7 @@ export async function sendAnyway(key) {
   const mine = await outboxClaim(key, (d) => ["stale", "error", "queued"].includes(d.state));
   if (!mine) return;
   await loadDrafts();
-  const got = await deliver(key, mine, { text: mine.text });
+  const got = await deliver(key, mine, { text: mine.text, ...(mine.nonce && { nonce: mine.nonce }) });
   await loadDrafts();
   if (got === "unreached") toast("Not sent: the connection went", { kind: "error" });
 }
