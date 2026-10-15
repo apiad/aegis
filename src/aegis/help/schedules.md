@@ -54,6 +54,15 @@ shows as finished, with its runs, for seven days.
 `schedule_test` tries a clock and a check without saving anything. It answers
 with the next three ticks and whether the check would fire now, and why.
 
+## An agent's schedule waits for you
+
+A schedule an agent creates is born paused, and an agent's edit pauses it
+again. Under the agent's call, the transcript shows a card with the schedule
+in full: its clock, overlap, check, where it fires and the prompt. Unpause on
+that card, or Resume in the Schedules view, starts it. An agent cannot
+unpause or fire a schedule that is waiting for you. A schedule you create
+yourself starts at once.
+
 ## The check
 
 The check runs on each tick that passes the overlap rule, in the directory
