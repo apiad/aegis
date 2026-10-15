@@ -127,12 +127,14 @@ class ClaudeProcess:
         stderr_path: Path,
         on_line: Callable[[str], None],
         on_exit: Callable[[int, list[str]], None],
+        env: dict[str, str] | None = None,
     ) -> None:
         self.argv = argv
         self.cwd = cwd
         self.stderr_path = stderr_path
         self._on_line = on_line
         self._on_exit = on_exit
+        self.env = env
         self._proc: asyncio.subprocess.Process | None = None
         self._tasks: list[asyncio.Task] = []
         self._stderr_tail: deque[str] = deque(maxlen=STDERR_TAIL)
@@ -152,6 +154,7 @@ class ClaudeProcess:
         self._proc = await asyncio.create_subprocess_exec(
             *self.argv,
             cwd=str(self.cwd),
+            env=self.env,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

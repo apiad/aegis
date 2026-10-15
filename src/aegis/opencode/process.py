@@ -40,7 +40,7 @@ import httpx
 
 from ..claude.control import Catalog
 from ..cgroups import wrap
-from ..harness import Launch, raise_oom_score
+from ..harness import Launch, raise_oom_score, session_env
 from .config import catalog_from, child_config, split_model
 from .stream import DELTAS, STORED, TURN_ENDS, _dict
 
@@ -188,7 +188,7 @@ class OpenCodeProcess:
             *wrap(self._launch.cgroup, [
                 self._bin, "serve", "--hostname", "127.0.0.1", "--port", "0",
             ]),
-            cwd=self._launch.cwd, env=env,
+            cwd=self._launch.cwd, env=session_env(self._launch, env),
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
