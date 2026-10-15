@@ -85,6 +85,7 @@ from .journal.service import Journal
 from .layout_ops import register_layout_ops
 from .schedule_ops import register_schedule_ops
 from .schedules import Schedules
+from .workflow_ops import register_workflow_ops
 from .workflows import Workflows
 from .quota import Quota
 from .quota_gate import (
@@ -426,6 +427,7 @@ class App:
         register_journal_ops(self)
         register_help_ops(self)
         register_schedule_ops(self)
+        register_workflow_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
 
     def who(self, caller: Caller) -> Principal:
