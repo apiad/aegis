@@ -14,7 +14,7 @@ from aegis.workflows import CUT
 
 from .conftest import until
 from .test_workflows_e2e import give_up
-from .test_workflows_parallel import report
+from .test_workflows_parallel import report, script
 from .test_workflows_steps import ended, flow, run, verdict, world  # noqa: F401
 
 
@@ -319,3 +319,205 @@ async def test_boot_ends_a_group_whose_leader_is_gone(world, monkeypatch):  # no
     await until(lambda: restarts.started_at(member) is None, timeout=5)
     st = await ended(world, run_id)
     assert st.nodes["s"].error.startswith("cut by restart")
+
+
+# -- decisions through a restart (slice 4) -------------------------------------
+def told(w, run_id: str, kind: str, to: str) -> int:
+    """How many times the main agent was woken for one open item."""
+    wf = w.app.workflows
+    owner = wf.owner(wf.runs[run_id])
+    head = f" · {kind} · {to} · "
+    return sum(
+        e["kind"] == "inbox" and head in (e.get("md") or "") for e in owner.entries()
+    )
+
+
+async def answer(w, run_id: str, **params):
+    from aegis.ops import Caller
+
+    owner = w.app.workflows.owner(w.app.workflows.runs[run_id])
+    await w.app.registry.call(
+        "workflow.answer", {"run": run_id, **params}, Caller("agent", owner.log_id)
+    )
+
+
+async def finished(w, run_id: str, timeout: float = 30):
+    wf = w.app.workflows
+    await until(
+        lambda: wf.runs[run_id].status not in ("armed", "running"), timeout=timeout
+    )
+    return wf.runs[run_id]
+
+
+@pytest.mark.slow
+async def test_a_told_failure_stays_open_and_is_not_told_again(world):  # noqa: F811
+    once = "test -e flag || { touch flag; exit 3; }"
+    run_id = await run(world, flow(f'{{sh: "{once}", id: s, say: Fail once.}}'))
+    wf = world.app.workflows
+    await until(lambda: (wf.runs[run_id].open.get("s") or {}).get("told"), timeout=15)
+    await until(lambda: told(world, run_id, "failed", "s") == 1, timeout=10)
+    await world.restart()
+    wf = world.app.workflows
+    assert wf.runs[run_id].open["s"]["told"]
+    await wf.step()
+    await asyncio.sleep(0.5)
+    assert told(world, run_id, "failed", "s") == 1
+    await answer(world, run_id, to="s", choice="retry")
+    st = await finished(world, run_id)
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+
+
+@pytest.mark.slow
+async def test_a_failure_never_told_is_told_once_after_boot(world):  # noqa: F811
+    run_id = await run(world, flow('{sh: "sleep 30", id: s, say: Slow.}'))
+    await running(world, run_id, "s", lambda n: n.pid)
+    await world.stop()
+    # A crash between the failure's record and its telling.
+    RunLog(_log_path(world, run_id)).append(
+        {"t": time.time(), "ev": "failed", "node": "s", "error": "it broke"}
+    )
+    await world.start()
+    wf = world.app.workflows
+    await until(lambda: told(world, run_id, "failed", "s") == 1, timeout=10)
+    await wf.step()
+    await asyncio.sleep(0.5)
+    assert told(world, run_id, "failed", "s") == 1
+    assert sum(r.get("ev") == "woke" for r in lines(world, run_id)) == 1
+
+
+GATE = '{gate: {by: BY, ask: "Go on?", show: []}, id: g, say: Ask.}'
+
+
+@pytest.mark.slow
+async def test_a_person_gate_still_waits_after_a_restart(world):  # noqa: F811
+    run_id = await run(
+        world, flow(GATE.replace("BY", "person"), '{sh: "true", id: t, say: Then.}')
+    )
+    wf = world.app.workflows
+    await until(lambda: "g" in wf.runs[run_id].open, timeout=15)
+    await world.restart()
+    wf = world.app.workflows
+    row = {r["id"]: r for r in wf.wire(run_id)["tree"]}["g"]
+    # What the card's gate panel needs to offer Continue.
+    assert row["state"] == "running" and row["by"] == "person"
+    assert wf.wire(run_id)["open"] == [
+        {"to": "g", "kind": "gate", "node": "g", "by": "person", "text": "Go on?"}
+    ]
+    await world.app.registry.call(
+        "workflow.gate", {"run": run_id, "node": "g", "go": True, "answer": "yes"}
+    )
+    st = await finished(world, run_id)
+    assert st.status == "done" and st.nodes["g"].result["value"] == "yes"
+
+
+@pytest.mark.slow
+async def test_a_main_gate_told_is_not_told_again(world):  # noqa: F811
+    run_id = await run(
+        world, flow(GATE.replace("BY", "main"), '{sh: "true", id: t, say: Then.}')
+    )
+    await until(lambda: told(world, run_id, "gate", "g") == 1, timeout=15)
+    await world.restart()
+    await world.app.workflows.step()
+    await asyncio.sleep(0.5)
+    assert told(world, run_id, "gate", "g") == 1
+    await answer(world, run_id, to="g", choice="continue", value=3)
+    st = await finished(world, run_id)
+    assert st.status == "done" and st.nodes["g"].result["value"] == 3
+
+
+@pytest.mark.slow
+async def test_a_question_survives_a_restart_and_its_answer_reaches_the_node(world):  # noqa: F811
+    asks = script(["workflow_ask", {"question": "Which branch?"}])
+    run_id = await run(
+        world,
+        flow(
+            f"{{agent: {{agent: opus, prompt: {json.dumps(asks)}}}, id: w, say: Work.}}"
+        ),
+    )
+    wf = world.app.workflows
+    await until(lambda: (wf.runs[run_id].open.get("q1") or {}).get("told"), timeout=20)
+    await world.restart()
+    wf = world.app.workflows
+    assert wf.runs[run_id].open["q1"]["kind"] == "ask"
+    done = script(["workflow_result", {"value": {}, "summary": "Used main."}])
+    await answer(world, run_id, to="q1", text=done)
+    st = await finished(world, run_id)
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+    assert st.nodes["w"].summary == "Used main."
+
+
+@pytest.mark.slow
+async def test_a_proposed_edit_stays_proposed_and_held_after_a_restart(world):  # noqa: F811
+    from aegis.ops import Caller
+
+    base = flow(
+        "{wait: 3s, id: build, say: Build.}", '{sh: "true", id: ship, say: Ship.}'
+    )
+    run_id = await run(world, base)
+    wf = world.app.workflows
+    await running(world, run_id, "build")
+    owner = wf.owner(wf.runs[run_id])
+    changed = base.replace('sh: "true"', 'sh: "true && true"')
+    await world.app.registry.call(
+        "workflow.edit",
+        {"run": run_id, "definition": changed},
+        Caller("agent", owner.log_id),
+    )
+    await world.restart()
+    wf = world.app.workflows
+    assert wf.runs[run_id].proposal["v"] == 2
+    await until(lambda: wf.runs[run_id].nodes["build"].status == "done", timeout=15)
+    await wf.step()
+    assert {r["id"]: r for r in wf.wire(run_id)["tree"]}["ship"].get("held")
+    assert "ship" not in wf.runs[run_id].nodes
+    await world.app.registry.call("workflow.apply_edit", {"run": run_id, "v": 2})
+    st = await finished(world, run_id)
+    assert st.status == "done" and st.version == 2
+    assert st.nodes["ship"].cmd == "true && true"
+
+
+@pytest.mark.slow
+async def test_a_session_main_step_still_runs_after_a_restart(world):  # noqa: F811
+    from aegis.ops import Caller
+
+    run_id = await run(
+        world,
+        flow(
+            '{agent: {session: main, prompt: "Check the deploy."}, id: tick, say: Mine.}',
+            '{sh: "true", id: t, say: Then.}',
+        ),
+    )
+    wf = world.app.workflows
+    await running(world, run_id, "tick")
+    await world.restart()
+    wf = world.app.workflows
+    n = wf.runs[run_id].nodes["tick"]
+    assert n.status == "running" and n.main
+    owner = wf.owner(wf.runs[run_id])
+    await world.app.registry.call(
+        "workflow.result",
+        {"value": {}, "summary": "Checked it."},
+        Caller("agent", owner.log_id),
+    )
+    st = await finished(world, run_id)
+    assert st.status == "done" and st.nodes["tick"].summary == "Checked it."
+
+
+@pytest.mark.slow
+async def test_an_sh_cut_by_a_restart_asks_once_and_a_retry_runs_it_once(world):  # noqa: F811
+    marker = world.root / "ran"
+    run_id = await run(
+        world, flow(f'{{sh: "echo x >> {marker} && sleep 3", id: s, say: Slow.}}')
+    )
+    await running(world, run_id, "s", lambda n: n.pid)
+    await world.restart()
+    wf = world.app.workflows
+    await until(lambda: (wf.runs[run_id].open.get("s") or {}).get("told"), timeout=15)
+    assert wf.runs[run_id].nodes["s"].error == CUT
+    await until(lambda: told(world, run_id, "failed", "s") == 1, timeout=10)
+    assert "rerun or skip?" in wf.runs[run_id].open["s"]["error"]
+    await answer(world, run_id, to="s", choice="retry")
+    st = await finished(world, run_id)
+    assert st.status == "done"
+    assert marker.read_text() == "x\nx\n"  # once before the cut, once on the retry
+    assert told(world, run_id, "failed", "s") == 1
