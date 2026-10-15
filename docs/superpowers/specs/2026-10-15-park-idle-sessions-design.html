@@ -346,6 +346,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <h3 id="warm">Warm on the first keystroke</h3>
 <p>On the first <code>input</code> event in the composer of a parked session, the client calls the op <code>session.warm</code> with the session's <code>log_id</code>, once per parked stretch. As an op it gets the owner check every op has (a member warms only its own) and the link relay, and the quota gate holds it as it holds a prompt. The server calls <code>ensure_running()</code>. <code>watch</code> stays a socket message because it lives as long as the socket. The harness starts while the person types. If they never send, the session is idle with a process again, and because their tab is visible it stays so until they look away, then parks after the idle time as before.</p>
 <p>A warm never sends anything to the model and never counts as activity for the idle nudge.</p>
+<p>The probe on <a href="https://github.com/apiad/aegis/issues/415#issuecomment-6187737857">#415</a> measured what the warm saves: from prompt to first token, a cold resume took 3.88 s at the median and a resume whose process had been up for 10 s took 1.66 s, five runs each. The SessionStart hooks run before the first message arrives, so a warm harness has finished them by the time the person sends.</p>
 
 <h2 id="ui"><span class="n">07</span>What people and agents see</h2>
 <ul>
@@ -386,7 +387,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </tbody>
 </table>
 <p>The start cost is mostly the harness's own: Node, plugins and the SessionStart hooks of the checkout. One hook that ran <code>git pull</code> cost 2 s by itself; removing it moved <code>init</code> from about 4.9 s to 2.7 s. So the admin's hooks set most of a wake's latency, and the help page says so.</p>
-<p>The prompt cache lives with the provider and is keyed by the prompt's prefix, not by the process. A resumed harness with the same system prompt and tools reads the same cache, and the one-hour lifetime measured in #354 applies with or without a process. That is why a default under an hour makes sense: a session parked at 20 minutes and woken at 50 still hits. The single miss in the probe is not explained, and each probe gap was seconds, not tens of minutes; both are open questions.</p>
+<p>The prompt cache lives with the provider and is keyed by the prompt's prefix, not by the process. A resumed harness with the same system prompt and tools reads the same cache, and the one-hour lifetime measured in #354 applies with or without a process. That is why a default under an hour makes sense: a session parked at 20 minutes and woken at 50 still hits. The long-gap probe on #415 confirmed it on resumed processes: resumes of a 279k-token session after 20 and 40 minutes read about 281k tokens from the cache, and one after 60 minutes wrote the whole 271k context again, which a live process would have paid as well. The single miss in the first probe is still not explained.</p>
 
 <h2 id="delivery"><span class="n">09</span>Delivery</h2>
 <div class="steps">
@@ -421,11 +422,10 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </ul>
 <h3>Open questions</h3>
 <ul>
-<li>Whether a resume after 20 to 60 minutes hits the cache as often as one after seconds. The probe's gaps were seconds; #354's 266 of 266 hits after 5 to 60 minutes were measured on turns, not on resumed processes. The long-gap and warm-start probes are pending on #415.</li>
 <li>Why one cold resume in 25 read only 14.5k tokens from the cache. If cold resumes miss at a real rate, each miss rewrites the context at about 20 times the cost of a read, and a default under an hour would cost more than it looks.</li>
 <li>Whether the Fleet's freed-memory counter is worth its space, or the chip says enough.</li>
 </ul>
-<p>Answered: which harness timers emit task events. The probe on #415 found that Monitor and a background Agent do, and ScheduleWakeup and CronCreate do not (<a href="#timers">section 05</a>).</p>
+<p>Answered: which harness timers emit task events. The probe on #415 found that Monitor and a background Agent do, and ScheduleWakeup and CronCreate do not (<a href="#timers">section 05</a>). Also answered: whether a resume after tens of minutes hits the cache. Resumes after 20 and 40 minutes hit, and one after 60 minutes missed, as the one-hour lifetime predicts (<a href="#costs">section 08</a>).</p>
 
 <h2 id="departs"><span class="n">12</span>Where the build departs</h2>
 <p>The build on branch <code>park-idle-sessions</code> (PR #416) follows this spec except where these rows say. The sections above already read as built.</p>
