@@ -43,6 +43,18 @@ function input(value, placeholder, oninput, tag = "input") {
   return i;
 }
 
+// One choice of many: the client's <pick-chip> (js/pick.js), never a native
+// select (tests/test_client_rules.py).
+function chip(id, label, options, value, onchange) {
+  const c = el("pick-chip", "sch-in");
+  c.id = id;
+  c.setAttribute("aria-label", label);
+  c.options = options;
+  c.value = value || "";
+  c.addEventListener("change", () => onchange(c.value));
+  return c;
+}
+
 // One choice of a few, as the Settings view's segmented buttons.
 function seg(options, on, pick, off = []) {
   const s = el("div", "seg");
@@ -503,31 +515,15 @@ export class Schedules {
       this.draw();
     })];
     if (ex) {
-      const sel = el("select", "sch-in");
-      sel.id = "sch-session";
-      sel.append(el("option", null, "pick a session"));
-      sel.firstChild.value = "";
-      for (const m of this.sessions()) {
-        const o = el("option", null, m.handle);
-        o.value = m.log_id;
-        o.selected = m.log_id === E.session || m.handle === E.session;
-        sel.append(o);
-      }
-      sel.onchange = () => {
-        E.session = sel.value;
+      const open = this.sessions();
+      const now = open.find((m) => m.log_id === E.session || m.handle === E.session);
+      const sel = chip("sch-session", "Session", open.map((m) => ({ value: m.log_id, label: m.handle })), now?.log_id, (v) => {
+        E.session = v;
         this.validate();
-      };
+      });
       fire.push(el("label", null, `Session (its inbox gets > from schedule:${E.name || "…"})`), sel);
     } else {
-      const sel = el("select", "sch-in");
-      sel.id = "sch-agent";
-      for (const a of this.agents) {
-        const o = el("option", null, a);
-        o.value = a;
-        o.selected = a === E.agent;
-        sel.append(o);
-      }
-      sel.onchange = () => (E.agent = sel.value);
+      const sel = chip("sch-agent", "Agent", this.agents.map((a) => ({ value: a, label: a })), E.agent, (v) => (E.agent = v));
       const sp = el("label", "inl");
       const scb = el("input");
       scb.type = "checkbox";
