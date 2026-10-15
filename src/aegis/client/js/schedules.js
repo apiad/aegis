@@ -370,7 +370,7 @@ export class Schedules {
       arrow("↓"),
       bash,
       arrow("↓"),
-      layer("Quota", el("span", null, quotaText(s.quota, this.pools)), el("div", "cnote", "a fire waits while the pool it draws on is over a line")),
+      layer("Quota", el("span", null, quotaText(s.quota, this.pools)), Object.keys(s.quota || {}).length ? el("div", "cnote", "a fire waits while the pool it draws on is over a line") : ""),
       arrow("↓ fire"),
       layer("Fire", el("span", null, fire), el("pre", null, s.prompt + (s.check ? "\n\n+ the check's stdout" : ""))),
     );

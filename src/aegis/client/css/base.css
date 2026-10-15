@@ -1147,7 +1147,7 @@ body{background:#000}
 #a2 .schedules table.runs td.t{font-family:var(--font-mono);color:var(--muted);white-space:nowrap}
 #a2 .schedules table.runs td.r{text-align:right;font-family:var(--font-mono);color:var(--muted);white-space:nowrap}
 #a2 .schedules table.runs tr.k-quiet td{color:var(--muted)}
-#a2 .schedules a.sess{font-family:var(--font-mono)}
+#a2 .schedules a.sess{font-family:var(--font-mono);color:var(--accent);text-underline-offset:2px}
 #a2 .schedules .why{color:var(--muted);font-size:11.5px;overflow-wrap:anywhere}
 #a2 .schedules .seg{margin-bottom:6px}
 #a2 .schedules .seg button:disabled{opacity:.35;cursor:not-allowed}
