@@ -7,6 +7,10 @@ all folded from these records (the schedules' rule, schedule_log.py).
 
 The story is one line per event a person reads as news, each built from the
 node's own ``say`` and the worker's ``summary``: no model writes it.
+
+A map's items are recorded once, when it starts, so a restart never renders
+its ``over`` again. Seq, par and map have no state of their own here: the
+engine derives it from their leaves.
 """
 
 from __future__ import annotations
@@ -20,7 +24,8 @@ LIVE = frozenset({"armed", "running"})
 
 @dataclass
 class NodeState:
-    status: str = "pending"  # pending | running | done | failed | stopped
+    # pending | running | done | failed | stopped; queued is never stored.
+    status: str = "pending"
     log_id: str | None = None
     started: float | None = None
     ended: float | None = None
@@ -29,6 +34,8 @@ class NodeState:
     summary: str = ""
     error: str = ""
     nudged: bool = False
+    outputs: dict = field(default_factory=dict)  # early outputs, by name
+    items: list | None = None  # a map's [[key, value], ...], once it starts
 
 
 @dataclass
@@ -66,6 +73,11 @@ def apply(st: RunState, r: dict) -> None:
         st.status, st.ended = r.get("status") or "done", t
         if st.status == "done":
             _tell(st, t, "ok", "The workflow is done.")
+        else:
+            # A failure ends the nodes still running beside it, as a stop does.
+            for n in st.nodes.values():
+                if n.status == "running":
+                    n.status, n.ended = "stopped", t
     if "node" not in r:
         return
     node = st.nodes.setdefault(r["node"], NodeState())
@@ -79,8 +91,15 @@ def apply(st: RunState, r: dict) -> None:
     elif ev == "node_done":
         node.status, node.ended = "done", t
         _tell(st, t, "ok", f"{node.say} {node.summary}".strip())
+    elif ev == "output":
+        node.outputs[r["name"]] = r.get("value")
+        text = f"{node.say} Early output {r['name']}: {r.get('summary') or ''}"
+        _tell(st, t, "ok", text.strip())
+    elif ev == "map_items":
+        node.items, node.started = r.get("items") or [], t
     elif ev == "failed":
         node.status, node.ended, node.error = "failed", t, r.get("error") or ""
+        node.say = node.say or r.get("say") or ""
         _tell(st, t, "bad", f"{node.say} Failed: {node.error}".strip())
 
 
