@@ -180,7 +180,7 @@ a result schema; `result: {$ref: "#/defs/pr"}` uses it.
 When the server stops and starts again during a run:
 
 - an agent or a judge goes on in its session, and the step ends when it reports;
-- a command is not run again: the step fails with "cut by restart", and the run fails with it;
+- a command is not run again: the step fails with "cut by restart", and you decide whether to rerun or skip it;
 - a check's command probe runs again, and its deadline still counts from its first start;
 - an `expr` probe is evaluated again;
 - a wait ends at the time it was going to end;
@@ -218,11 +218,18 @@ lives: a person's message or interrupt, a peer's handoff, a schedule, a page's
 submit and a session handoff are all refused with an error
 naming the run. Its own monitors and queue tasks still reach it. It ends by calling `workflow_result` with a value matching the node's
 `result` schema and a one-sentence `summary`; a turn that ends without one
-is nudged once, then fails the run. You are not woken for each node: you get
-one message, headed `> from workflow:<id> · done`, `failed` or `stopped`,
-when the run ends. A failure ends the run and stops the nodes still running
-beside it. `workflow_status` shows the tree at any time, and
-`workflow_stop` stops the run and unlocks its sessions.
+is nudged once, then fails. A failed step does not end the run: its branch
+waits, the others go on, and you get a message headed
+`> from workflow:<id> · failed · <step>` that names the step and ends with
+the `workflow_answer` call that answers it, with choice retry, skip (with an
+optional value for later steps) or fail, which ends the run. A gate with
+`by: main` and a worker's question wake you the same way; answer a question
+with `workflow_answer` and text. `workflow_note` writes one line into the
+run's story, saying why you decided as you did. You also get one message
+when the run ends, headed `done`, `failed` or `stopped`. The header's
+`deadline` ends the run without asking. `workflow_status` shows the tree at
+any time; `workflow_stop` stops the run and unlocks its sessions, or, with a
+node, stops only that step, which then waits for your answer.
 
 ## Inside a workflow
 
@@ -231,5 +238,7 @@ task, call `workflow_result` once, and end your turn. If it is headed
 `> from workflow:… · judge`, you are a judge: call `workflow_result` with
 `{pass, why}` and change nothing. If your first
 message names outputs other steps wait on, call `workflow_output` with each
-one as soon as it is ready, then go on. Nobody answers
-questions here, and neither you nor a session you spawn can arm a workflow.
+one as soon as it is ready, then go on. If you cannot go on without an
+answer, call `workflow_ask` with your question and end your turn: it reaches
+the main agent, never a person, and the answer arrives as your next message.
+Neither you nor a session you spawn can arm a workflow.
