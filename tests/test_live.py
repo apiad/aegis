@@ -1435,3 +1435,114 @@ async def test_real_btw_answers_mid_turn_and_the_agent_never_receives_it(
         assert s.wire()["btw_cost_usd"] > 0
     finally:
         await w.stop()
+
+
+def _pids_running(argv: list[str]) -> list[int]:
+    """The pids whose command line is exactly ``argv``, read from /proc; the
+    test kills what it started by pid."""
+    want = "\0".join(argv).encode() + b"\0"
+    out = []
+    for d in Path("/proc").iterdir():
+        try:
+            if d.name.isdigit() and (d / "cmdline").read_bytes() == want:
+                out.append(int(d.name))
+        except OSError:
+            pass
+    return out
+
+
+async def test_real_claude_parks_when_idle_and_not_while_a_background_bash_runs(
+    tmp_path: Path, monkeypatch
+):
+    """#415 with a real Claude Code: a session that leaves a background Bash
+    running keeps its process; one that only says done parks within seconds,
+    and the next message resumes it with its context. The park clock is
+    shortened to 5 s and the loop to 1 s."""
+    import asyncio
+    import os
+    import signal
+
+    import uvicorn
+
+    from aegis import park
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    monkeypatch.setattr(park, "EVERY_S", 1.0)
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+        "park: {claude-code: 5}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    sleep = ["sleep", "60.4137"]  # an unusual value, to find it by its argv
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        a = app.sessions.sessions[r["log_id"]]
+        await a.send(
+            "This is a test of aegis itself. Run exactly this bash command with "
+            f"run_in_background set to true: {' '.join(sleep)}. Do not wait for it. "
+            "Then call turn_end with attention done and nothing else."
+        )
+        await until(
+            lambda: a.status == "idle" and a.standing.get("report"),
+            timeout=120,
+            what="the background turn",
+        )
+        assert _pids_running(sleep), "the background sleep is not running"
+        await asyncio.sleep(15)
+        why = park.blockers(app.parker.facts(a, deep=True))
+        assert a.status != "parked" and a.running, why
+        assert any("background task" in w or "process" in w for w in why), why
+
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        b = app.sessions.sessions[r["log_id"]]
+        await b.send(
+            "This is a test of aegis itself. Remember the word PELICAN. Call "
+            "turn_end with attention done and do nothing else."
+        )
+        await until(
+            lambda: b.status == "idle" and b.standing.get("report"),
+            timeout=120,
+            what="the done turn",
+        )
+        await until(lambda: b.status == "parked", timeout=15, what="the park")
+        assert not b.running and b.parked_rss > 0
+
+        def prose():
+            return [e["md"] for e in b.entries() if e["kind"] == "prose"]
+
+        before = len(prose())
+        await b.send("Say the word you were given. Reply with just the word.")
+        await until(
+            lambda: b.status == "idle" and len(prose()) > before,
+            timeout=120,
+            what="the resumed turn",
+        )
+        assert b.running
+        said = prose()
+        assert "PELICAN" in said[-1].upper(), said[-3:]
+    finally:
+        for pid in _pids_running(sleep):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
