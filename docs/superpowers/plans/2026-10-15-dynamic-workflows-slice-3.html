@@ -1618,7 +1618,7 @@ and the three handlers:
 </div>
 </details>
 
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="done">
 <summary><span class="num">7</span><span><span class="ttl">Judges: a probe that is an agent, inside the pool</span><span class="files">workflows.py · workflow_ops.py · tests/test_workflows_steps.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -2469,6 +2469,9 @@ item, loop round or top level. `defs: {pr: schema}` names a result schema;
   <li>Task 6: <code>_end</code> also cancels the run's own tasks, so a stop or a failure ends its commands and probes, not only a server shutdown. <code>NodeState.pstart</code> is an <code>int</code> (clock ticks, what <code>restarts.started_at</code> returns).</li>
   <li>Task 6: <code>SH_LIMIT_S</code> and <code>CHECK_LIMIT_S</code> are defined and not yet enforced: the plan's handlers never read them. Task 9, which ends a node past its deadline, should apply them as the default bound when no deadline sits above a sh or a check.</li>
   <li>Task 6: a map item's value and <code>_scope</code> read <code>sh</code>, <code>check</code> and <code>loop</code> nodes beside agents and maps. The test file drops an unused <code>import json</code>.</li>
+  <li>Task 7: <code>_state</code> read only an agent's state from the log, so an <code>sh</code>, <code>wait</code> or <code>check</code> with no children folded to done: a <code>par</code> or <code>map</code> skipped them and finished without running them. Every leaf (<code>LEAVES</code>) now reads the log.</li>
+  <li>Task 7: <code>test_judges_count_in_the_pool</code> as written passed with the judges' room check removed: the judges came first, so the agent's own check kept the third session out. The agent now comes first, and the break fails the test with a peak of 3.</li>
+  <li>Task 7: <code>_spawn_node</code> also takes the agent node's rendered <code>cwd</code>. A judge's session is closed through <code>_settle</code> once its verdict is logged and its turn has finished, not mid-turn. <code>_end</code>, <code>_release</code> and <code>_fail</code> act on a node's judges' sessions as on its agent's (<code>_lids</code>), and <code>_end</code> also interrupts a judge still deciding an <code>if</code>, whose node is not marked running. An if's or until's sh probe keeps its outcome in <code>_probed</code> until a pass reads it.</li>
 </ul>
 </main>
 <script>

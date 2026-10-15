@@ -127,7 +127,7 @@ def register_workflow_ops(app: App) -> None:
     async def workflow_result(p: Result, caller):
         """Report your node's result, as a workflow node: a value matching the
         node's schema and a one-sentence summary for the person. Your turn
-        should end right after."""
+        should end right after. As a judge, value is {pass, why}."""
         return wf.result(me(caller), p.value, p.summary)
 
     # Open to read permission, as workflow_result is.
