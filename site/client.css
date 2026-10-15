@@ -830,6 +830,11 @@ body{background:#000}
 .a2 .mon .kv .r{white-space:nowrap;color:var(--muted)}
 .a2 .mon .kv .r .eta{color:var(--faint)}
 .a2 .mon.bad .kv .r{color:var(--err)}
+/* a session this one waits on (app.js drawWaiting): a click opens it */
+.a2 .kv.wait>span:first-child{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a2 .kv.wait .r{white-space:nowrap}
+.a2 .kv.wait.go{margin:0 -8px;padding:3px 8px;border-radius:var(--r);cursor:pointer;outline:none}
+.a2 .kv.wait.go:hover,.a2 .kv.wait.go:focus-visible{background:var(--raised)}
 .a2 .mon.late .kv .r .eta{color:var(--warn)}
 .a2 .mon.bad .bar i{background:var(--err)}
 

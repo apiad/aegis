@@ -215,6 +215,7 @@ class Registry(Host):
             if self.monitors is not None
             else [],
             **self._attention(session),
+            "waiting_for": self._waiting_for(session),
             **self._worker(session),
             "layout": session.standing.get("layout"),
             "cache_cold": cache.cold_policy(session.spec.harness, self.context()),
@@ -258,44 +259,64 @@ class Registry(Host):
             last_unread=bool(last) and last in s.unread,
         )
 
-    def _waits(self, s: Session) -> list[str]:
-        """What a session waits on that is not a person, one phrase each."""
-        n_mon = len(self.monitors.of(s.log_id)) if self.monitors is not None else 0
-        n_task = (
-            sum(
-                1
-                for t in self.queues.tasks.values()
-                if t.enqueuer == s.log_id
-                and t.callback
-                and t.status in ("pending", "running")
-            )
-            if self.queues is not None
-            else 0
-        )
-        quota = s.quota_paused or (
-            any(m.get("held_for") == "quota" for m in s.held) and self.quota_hold(s)
-        )
-        n_kid = sum(
-            1
+    def _waiting_for(self, s: Session) -> list[dict]:
+        """The sessions ``s`` waits on, by name: the worker of each callback
+        task it enqueued (none yet while the task is pending), and each child
+        it spawned that is still working or waiting."""
+        tasks = [
+            {
+                "kind": "task",
+                "task_id": t.id,
+                "queue": t.queue,
+                "status": t.status,
+                "key": t.worker if t.worker in self.sessions else None,
+                "handle": self.sessions[t.worker].handle
+                if t.worker in self.sessions
+                else None,
+            }
+            for t in (self.queues.tasks.values() if self.queues is not None else ())
+            if t.enqueuer == s.log_id
+            and t.callback
+            and t.status in ("pending", "running")
+        ]
+        kids = [
+            {"kind": "session", "key": o.log_id, "handle": o.handle, "status": a}
             for o in self.sessions.values()
             # transitive: a child waiting on its own monitor, task or child counts
             if o.spec.spawned_by == s.log_id
-            and self._attention(o)["attention"] in ("working", "waiting")
+            and (a := self._attention(o)["attention"]) in ("working", "waiting")
+        ]
+        return tasks + kids
+
+    def _waits(self, s: Session) -> list[str]:
+        """What a session waits on that is not a person, one phrase each. The
+        sessions it waits on go by handle, the first two and then a count."""
+        n_mon = len(self.monitors.of(s.log_id)) if self.monitors is not None else 0
+        quota = s.quota_paused or (
+            any(m.get("held_for") == "quota" for m in s.held) and self.quota_hold(s)
         )
+        whom = self._waiting_for(s)
+        names = [w["handle"] for w in whom if w["handle"]]
+        if len(names) > 2:
+            names = [*names[:2], f"+{len(names) - 2}"]
+        n_pending = sum(1 for w in whom if not w["handle"])
         counts = (
             (n_mon, "monitor"),
             (len(s.open_tasks), "background task"),
             (len(s.held), "held message"),
-            (n_task, "queue task"),
-            (n_kid, "session"),
+            (n_pending, "pending queue task"),
         )
         waits = [f"{n} {noun}{'' if n == 1 else 's'}" for n, noun in counts if n]
-        return waits + ([f"quota ({quota})"] if quota else [])
+        return names + waits + ([f"quota ({quota})"] if quota else [])
 
     def status_changed(self, session: Session) -> None:
         parent = session.spec.spawned_by
         if parent and parent in self.sessions:
             self.refresh_card(parent)
+        # The enqueuer's card names its worker (_waiting_for).
+        t = self.queues.task_of_worker(session.log_id) if self.queues else None
+        if t is not None and t.enqueuer in self.sessions:
+            self.refresh_card(t.enqueuer)
         if self.schedules is not None:
             self.schedules.changed()
 
@@ -657,6 +678,7 @@ class Registry(Host):
             s._set(**changes)
             if renamed:
                 s.report({"kind": "name", "handle": s.handle, "title": s.title})
+                self.status_changed(s)  # the cards that name it by handle
             self.metas.write(s.meta())
             return s.wire()
         meta = self.archived[log_id]

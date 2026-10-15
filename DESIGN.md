@@ -158,7 +158,9 @@ and one usage repeated across the lines of one call counts once (`cache.py`).
 reports.** Working, error and waiting are facts the server holds: the turn, the
 fold's last failure, live monitors, background tasks, held messages, queue tasks
 and child sessions that are working or waiting themselves, so a wait is
-transitive and a change in a child's card re-derives its parent's. Whether a finished turn asked the person something, showed
+transitive and a change in a child's card re-derives its parent's. The sessions
+waited on go out by handle (`waiting_for`), so a change in a worker's card
+re-derives its enqueuer's the same way. Whether a finished turn asked the person something, showed
 them something to read, or just finished, only the agent knows, and it says so
 with `turn_end`; its plan comes from `plan_update`. `turn_end` refuses done
 while the plan has an item not done, because a done card offers to archive the

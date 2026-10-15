@@ -2591,6 +2591,30 @@ def enqueue(pg, payload: str) -> None:
     pg.press("#input", "Enter")
 
 
+def test_a_session_waiting_on_a_worker_names_it_and_opens_it(queue_server, page):
+    """#420: a session waiting on its queue task read a bare "waiting"."""
+    page.goto(queue_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    boss = spawn(page)
+    args = {"queue": "q", "payload": "/sleep 20"}
+    page.fill("#input", f"/mcp queue_enqueue {json.dumps(args)}")
+    page.press("#input", "Enter")
+    row = page.wait_for_selector("#s-wait-sec:not([hidden]) .kv.wait.go")
+    handle = row.query_selector("span").text_content()
+    assert row.query_selector(".r").text_content() == "queue q · running"
+    page.click("#tab-fleet")
+    page.wait_for_selector(
+        f"#cards .card[data-id='{boss}'] .s >> text=waiting · {handle}"
+    )
+    page.click(f"#cards .card[data-id='{boss}']")
+    page.click("#s-waiting .kv.wait.go")
+    page.wait_for_function(
+        "h => document.getElementById('s-handle').textContent === h", arg=handle
+    )
+    assert page.locator("#s-worker >> text=worker · q").count() == 1
+    assert page.errors == []
+
+
 def card_ids(pg) -> list[str]:
     return pg.eval_on_selector_all("#cards .card", "cs => cs.map(c => c.dataset.id)")
 
