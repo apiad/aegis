@@ -6,7 +6,11 @@ appended to the run's log (workflow_log.py), which boot folds back. Like the
 schedules' clock, the engine is level-triggered: each pass looks at every
 live run, so a missed hook only changes how soon a node moves.
 
-This version runs ``seq`` and ``agent``. An agent node is a quiet session the
+This version runs ``seq``, ``par``, ``map`` and ``agent``. Every node
+instance has a path (``images.base.impl`` inside item ``base`` of map
+``images``); only leaves and a map's items are logged, and every other state
+is derived from them on each pass (``_state``), so a restart rebuilds them by
+folding. An agent node is a quiet session the
 engine spawns with the main agent as its parent, so the main card waits on it
 through the registry's own rule. The node is done when the worker has called
 workflow_result and Registry.finished says it is done; a turn that ends
@@ -30,8 +34,18 @@ from typing import TYPE_CHECKING
 from . import restarts
 from .agents import PERMISSION_ORDER, resolve
 from .ops import OpError
-from .workflow_lang import Node, Workflow, check_value, parse, render, rows, walk
-from .workflow_log import LIVE, RunLog, RunState, apply, fold
+from .workflow_lang import (
+    Node,
+    Workflow,
+    check_value,
+    item_keys,
+    parse,
+    render,
+    rows,
+    value_of,
+    walk,
+)
+from .workflow_log import LIVE, NodeState, RunLog, RunState, apply, fold
 
 if TYPE_CHECKING:
     from .app import App
@@ -43,6 +57,18 @@ PASS_S = 30.0  # a pass at least this often, as the schedules' clock does
 
 def iso_now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _fold(kids: list[str]) -> str:
+    """A composite node's state from its children's."""
+    for s in ("failed", "stopped"):
+        if s in kids:
+            return s
+    if all(k == "done" for k in kids):
+        return "done"
+    if "running" in kids or "done" in kids:
+        return "running"
+    return "queued" if "queued" in kids else "pending"
 
 
 PREAMBLE = """---
@@ -65,6 +91,10 @@ class Workflows:
         # node's spawn and its record, and a run ends once.
         self._lock = asyncio.Lock()
         self._boot_failed: list[tuple[RunState, str]] = []
+        # The agent instances each run's last pass found no room for, and the
+        # ones this pass finds: the card shows them queued.
+        self._queued: dict[str, set[str]] = {}
+        self._queuing: set[str] = set()
 
     # -- life -----------------------------------------------------------------
     def boot(self) -> None:
@@ -149,24 +179,11 @@ class Workflows:
     def wire(self, run: str) -> dict:
         st = self.runs[run]
         wf = self.defs.get(run) or parse(st.text, self._agents())[0]
-        tree = rows(wf) if wf else []
-        states = self._states(st, wf.root) if wf else {}
-        for row in tree:
-            n = st.nodes.get(row["id"])
-            if n is not None:
-                h = self._reg.sessions.get(n.log_id or "")
-                row |= {
-                    "state": n.status,
-                    "log_id": n.log_id,
-                    "handle": h.handle if h else None,
-                    "started": n.started,
-                    "ended": n.ended,
-                    "say": n.say or row["say"],
-                    "summary": n.summary,
-                    "error": n.error,
-                }
-            else:
-                row["state"] = states.get(row["id"], "pending")
+
+        def items(path: str):
+            return st.nodes[path].items if path in st.nodes else None
+
+        tree = [self._row(st, wf, r) for r in rows(wf, items)] if wf else []
         return {
             "run": run,
             "id": wf.id if wf else "",
@@ -181,32 +198,113 @@ class Workflows:
             "story": st.story,
         }
 
-    def _states(self, st: RunState, node: Node) -> dict[str, str]:
-        """Each node's state for the card: an agent's from the log, a seq's
-        from its children (failed if one failed, stopped if one was, done
-        when all are, running once one has started)."""
-        out: dict[str, str] = {}
+    def _row(self, st: RunState, wf: Workflow, row: dict) -> dict:
+        node, inst = self._template(wf, row["node"]), row["id"]
+        prefix = inst[: -len(node.id)]
+        each = row.get("each", False)
+        row["state"] = "pending" if each else self._state(st, node, inst)
+        n = st.nodes.get(inst)
+        if n is not None and n.say:
+            row["say"] = n.say
+        elif not each:
+            with contextlib.suppress(KeyError, TypeError, IndexError):
+                row["say"] = render(row["say"], self._scope(st, wf, prefix))
+        if n is not None:
+            h = self._reg.sessions.get(n.log_id or "")
+            row |= {
+                "log_id": n.log_id,
+                "handle": h.handle if h else None,
+                "started": n.started,
+                "ended": n.ended,
+                "summary": n.summary,
+                "error": n.error,
+                "outputs": sorted(n.outputs),
+            }
+        if node.kind == "map" and n is not None and n.items is not None:
+            do = node.children[0]
+            count: dict[str, int] = {}
+            for k, _ in n.items:
+                s = self._state(st, do, f"{inst}.{k}.{do.id}")
+                count[s] = count.get(s, 0) + 1
+            row["count"] = count
+        return row
 
-        def go(n: Node) -> str:
-            if not n.children:
-                s = st.nodes.get(n.id)
-                out[n.id] = s.status if s is not None else "pending"
-            else:
-                kids = [go(c) for c in n.children]
-                out[n.id] = (
-                    "failed"
-                    if "failed" in kids
-                    else "stopped"
-                    if "stopped" in kids
-                    else "done"
-                    if all(k == "done" for k in kids)
-                    else "pending"
-                    if all(k == "pending" for k in kids)
-                    else "running"
-                )
-            return out[n.id]
+    def _template(self, wf: Workflow, inst: str) -> Node:
+        """An instance's node: ids have no dots, so the last segment is its id."""
+        nid = inst.rsplit(".", 1)[-1]
+        return next(n for n in walk(wf.root) if n.id == nid)
 
-        go(node)
+    def _state(self, st: RunState, node: Node, inst: str) -> str:
+        """Where an instance stands: pending, queued, running, done, failed
+        or stopped. An agent's comes from the log (queued from the last
+        pass's room check); a seq's, par's and map's from their children's."""
+        s = st.nodes.get(inst)
+        if node.kind == "agent":
+            if s is None or s.status == "pending":
+                return "queued" if inst in self._queued.get(st.run, ()) else "pending"
+            return s.status
+        if s is not None and s.status in ("failed", "stopped"):
+            return s.status  # a map whose items could not be read
+        if node.kind == "map":
+            if s is None or s.items is None:
+                return "pending"
+            do = node.children[0]
+            kids = [self._state(st, do, f"{inst}.{k}.{do.id}") for k, _ in s.items]
+        else:
+            prefix = inst[: -len(node.id)]
+            kids = [self._state(st, c, prefix + c.id) for c in node.children]
+        return _fold(kids)
+
+    def _scope(self, st: RunState, wf: Workflow, prefix: str) -> dict:
+        """What ``{{...}}`` reads at an instance under ``prefix``: args, each
+        enclosing map's item under its ``as``, and every agent and map seen
+        from here by its id. The lint has already refused a name that may
+        not have a value yet."""
+        scope: dict = {"args": st.args}
+        parts = prefix.split(".")[:-1]  # "m.k.j.l." -> m, k, j, l
+        for i in range(0, len(parts), 2):
+            m = self._template(wf, parts[i])
+            items = st.nodes[".".join(parts[: i + 1])].items or []
+            scope[m.body["as"]] = dict((k, v) for k, v in items)[parts[i + 1]]
+        depth = len(parts) // 2
+        for n in walk(wf.root):
+            if (
+                n.kind in ("agent", "map")
+                and len(n.maps) <= depth
+                and n.maps == tuple(parts[0 : 2 * len(n.maps) : 2])
+            ):
+                v = self._value(st, n, self._resolve(n, prefix))
+                if v is not None:
+                    scope[n.id] = v
+        return scope
+
+    def _resolve(self, n: Node, prefix: str) -> str:
+        """The instance of ``n`` seen from a node under ``prefix``: the same
+        item of every map the two share."""
+        parts = prefix.split(".")[:-1]
+        return "".join(f"{p}." for p in parts[: 2 * len(n.maps)]) + n.id
+
+    def _value(self, st: RunState, n: Node, inst: str):
+        """An agent's result over its early outputs; a map's
+        ``{key: {node id: value}}`` over the agents and maps in each item."""
+        s = st.nodes.get(inst)
+        if s is None:
+            return None
+        if n.kind == "agent":
+            if s.result is None or isinstance(s.result, dict):
+                return {**s.outputs, **(s.result or {})} or None
+            return s.result
+        if s.items is None:
+            return None
+        inside = [
+            c
+            for c in walk(n.children[0])
+            if c.maps[-1:] == (n.id,) and c.kind in ("agent", "map")
+        ]
+        out = {}
+        for key, _ in s.items:
+            item = {c.id: self._value(st, c, f"{inst}.{key}.{c.id}") for c in inside}
+            out[key] = {k: v for k, v in item.items() if v is not None}
         return out
 
     def wire_all(self) -> list[dict]:
@@ -286,7 +384,8 @@ class Workflows:
             raise OpError(
                 "not_a_node", "only a running workflow node calls workflow_result"
             )
-        node = self._node(st.run, wf_ref["node"])
+        inst = wf_ref["node"]
+        node = self._template(self.defs[st.run], inst)
         problems = check_value(value, node.body.get("result") or {})
         if problems:
             raise OpError(
@@ -299,7 +398,7 @@ class Workflows:
             st.run,
             {
                 "ev": "result",
-                "node": node.id,
+                "node": inst,
                 "value": value,
                 "summary": summary.strip(),
             },
@@ -330,7 +429,11 @@ class Workflows:
         st, wf = self.runs[run], self.defs.get(run)
         if wf is None:
             return
-        state = await self._advance(st, wf.root)
+        self._queuing = set()
+        state = await self._advance(st, wf, wf.root, "")
+        if self._queuing != self._queued.get(run, set()):
+            self._queued[run] = self._queuing
+            self._publish(run)
         if state == "done":
             await self._end(st, "done", self._summary(st))
         elif state == "failed":
@@ -341,105 +444,179 @@ class Workflows:
                 f"{bad.say} failed: {bad.error}" if bad else "A node failed.",
             )
 
-    async def _advance(self, st: RunState, node: Node) -> str:
-        """Move ``node`` on and say where it stands: pending, running, done or failed."""
+    async def _advance(
+        self, st: RunState, wf: Workflow, node: Node, prefix: str
+    ) -> str:
+        """Move one instance on and say where it stands."""
+        inst = prefix + node.id
         if node.kind == "seq":
             for c in node.children:
-                s = await self._advance(st, c)
+                s = await self._advance(st, wf, c, prefix)
                 if s != "done":
                     return s
             return "done"
+        if node.kind == "par":
+            kids = [(c, prefix) for c in node.children]
+            return await self._many(st, wf, kids, node.body.get("cap"))
+        if node.kind == "map":
+            m = st.nodes.get(inst)
+            if m is not None and m.status == "failed":
+                return "failed"
+            if m is None or m.items is None:
+                if not self._start_map(st, wf, node, prefix):
+                    return "failed"
+                m = st.nodes[inst]
+            do = node.children[0]
+            kids = [(do, f"{inst}.{k}.") for k, _ in m.items or []]
+            return await self._many(st, wf, kids, node.body.get("cap"))
         if node.kind == "agent":
-            return await self._agent(st, node)
+            return await self._agent(st, wf, node, prefix)
         raise OpError("kind", f"{node.kind} is not in this version yet")
 
-    async def _agent(self, st: RunState, node: Node) -> str:
-        n = st.nodes.get(node.id)
+    async def _many(
+        self, st: RunState, wf: Workflow, kids: list[tuple[Node, str]], cap: int | None
+    ) -> str:
+        """Branches side by side, at most ``cap`` begun and not finished. A
+        branch is begun when its derived state is running or queued, so a
+        restart counts the same branches again from the fold."""
+        now = [self._state(st, n, p + n.id) for n, p in kids]
+        flight = sum(s in ("running", "queued") for s in now)
+        out = []
+        for (n, p), s in zip(kids, now):
+            if s == "pending" and cap is not None and flight >= cap:
+                out.append(s)
+                continue
+            s2 = s if s == "done" else await self._advance(st, wf, n, p)
+            if s2 == "failed":
+                return "failed"
+            flight += (s2 in ("running", "queued")) - (s in ("running", "queued"))
+            out.append(s2)
+        return _fold(out) if out else "done"
+
+    def _start_map(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> bool:
+        """Read the items once and record them; a restart reads the record."""
+        inst = prefix + node.id
+        try:
+            items = value_of(node.body["over"], self._scope(st, wf, prefix))
+        except (KeyError, TypeError, IndexError) as e:
+            self._fail(st, inst, f"over has no value: {e}", node.say)
+            return False
+        if not isinstance(items, list):
+            why = f"over is a {type(items).__name__}, not a list"
+            self._fail(st, inst, why, node.say)
+            return False
+        keys = item_keys(items)
+        if isinstance(keys, str):
+            self._fail(st, inst, keys, node.say)
+            return False
+        self._log(
+            st.run,
+            {
+                "ev": "map_items",
+                "node": inst,
+                "items": [[k, v] for k, v in zip(keys, items)],
+            },
+        )
+        return True
+
+    async def _agent(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
+        inst = prefix + node.id
+        n = st.nodes.get(inst)
         if n is None or n.status == "pending":
             try:
-                await self._start_agent(st, node)
+                started = await self._start_agent(st, wf, node, prefix)
             except Exception as e:
-                log.exception("aegis: node %s of %s did not start", node.id, st.run)
-                self._fail(st, node.id, f"it did not start: {getattr(e, 'message', e)}")
+                log.exception("aegis: node %s of %s did not start", inst, st.run)
+                self._fail(st, inst, f"it did not start: {getattr(e, 'message', e)}")
                 return "failed"
+            if (st.nodes.get(inst) or NodeState()).status == "failed":
+                return "failed"
+            if not started:
+                self._queuing.add(inst)
+                return "queued"
             return "running"
         if n.status in ("done", "failed"):
             return n.status
         s = self._reg.sessions.get(n.log_id or "")
         if s is None:
-            self._fail(st, node.id, "its session is gone")
+            self._fail(st, inst, "its session is gone")
             return "failed"
         if not self._reg.finished(s):
             return "running"
         if n.result is not None or n.summary:
-            self._log(st.run, {"ev": "node_done", "node": node.id})
+            self._log(st.run, {"ev": "node_done", "node": inst})
             with contextlib.suppress(Exception):
                 await self._reg.close(s.log_id)
             return "done"
         if not n.nudged:
-            self._log(st.run, {"ev": "nudged", "node": node.id})
+            self._log(st.run, {"ev": "nudged", "node": inst})
             await s.deliver(
                 f"> from workflow:{self._wid(st)} · nudge · {iso_now()}",
                 "Your turn ended without workflow_result. Call it now with your result and a one-sentence summary, or the workflow fails.",
                 through_lock=True,
             )
             return "running"
-        self._fail(st, node.id, "its turn ended twice with no workflow_result")
+        self._fail(st, inst, "its turn ended twice with no workflow_result")
         return "failed"
 
-    async def _start_agent(self, st: RunState, node: Node) -> None:
+    async def _start_agent(
+        self, st: RunState, wf: Workflow, node: Node, prefix: str
+    ) -> bool:
+        """Spawn and prompt one agent instance; False when it did not start
+        (no room, a failure already logged, or the run ended meanwhile)."""
+        inst = prefix + node.id
         owner = self.owner(st)
         if owner is None:
-            self._fail(st, node.id, "the main agent's session is closed")
-            return
-        scope = {"args": st.args} | {
-            k: v.result for k, v in st.nodes.items() if v.result is not None
-        }
+            self._fail(st, inst, "the main agent's session is closed")
+            return False
+        scope = self._scope(st, wf, prefix)
         try:
             prompt, say = render(node.body["prompt"], scope), render(node.say, scope)
-        except (KeyError, TypeError) as e:
-            self._fail(st, node.id, f"a reference has no value: {e}")
-            return
+            cwd = render(node.body["cwd"], scope) if node.body.get("cwd") else None
+        except (KeyError, TypeError, IndexError) as e:
+            self._fail(st, inst, f"a reference has no value: {e}")
+            return False
         agents, default = self._app._agents()
         spec = resolve(
             agents,
             default,
             node.body["agent"],
             {},
-            self._app._resolve_cwd(node.body.get("cwd"), owner.spec.cwd),
+            self._app._resolve_cwd(cwd, owner.spec.cwd),
             spawned_by=owner.log_id,
             owner=owner.spec.owner,
         )
-        tag = {"run": st.run, "node": node.id}
+        tag = {"run": st.run, "node": inst}
         # A crash between a spawn and its record leaves the session behind:
         # it is this node's, so it is adopted rather than doubled.
         s = next((x for x in self._reg.sessions.values() if x.workflow == tag), None)
         if s is None:
             g = self._app.gate(spec.owner, spec.harness, spec.model)
             if not g.may_start:
-                return  # the gate's next reading wakes a pass (app.on_quota -> changed)
+                return False  # the gate's next reading wakes a pass (app.on_quota -> changed)
             s = await self._reg.spawn(spec, title=say, quiet=True, workflow=tag)
         if st.status != "running":  # stopped while it spawned: never prompted
             with contextlib.suppress(Exception):
                 await self._reg.close(s.log_id)
-            return
+            return False
         self._log(
             st.run,
-            {"ev": "node_started", "node": node.id, "log_id": s.log_id, "say": say},
+            {"ev": "node_started", "node": inst, "log_id": s.log_id, "say": say},
         )
         schema = json.dumps(node.body.get("result") or {"type": "object"})
         handle = owner.handle
         text = (
-            f"> from workflow:{self._wid(st)} · node {node.id} · {iso_now()}\n{prompt}\n\n"
+            f"> from workflow:{self._wid(st)} · node {inst} · {iso_now()}\n{prompt}\n\n"
             + PREAMBLE.format(
-                node=node.id,
+                node=inst,
                 wid=self._wid(st),
-                title=self.defs[st.run].title,
+                title=wf.title,
                 owner=handle,
                 schema=schema,
             )
         )
         await s.send(text, through_lock=True)
+        return True
 
     # -- helpers ----------------------------------------------------------------
     def _summary(self, st: RunState) -> str:
@@ -461,17 +638,18 @@ class Workflows:
         one inbox turn its main agent gets."""
         if st.status not in LIVE:
             return
+        # Read before the record, which folds them to stopped: a failure
+        # stops the nodes running beside it, as a stop does.
+        running = [n for n in st.nodes.values() if n.status == "running"]
         if outcome == "stopped":
-            # Read before the record, which folds them to stopped.
-            running = [n for n in st.nodes.values() if n.status == "running"]
             self._log(st.run, {"ev": "stopped"})
-            for n in running:
-                s = self._reg.sessions.get(n.log_id or "")
-                if s is not None and s.status == "working":
-                    with contextlib.suppress(Exception):
-                        await s.interrupt()
         else:
             self._finish(st, outcome)
+        for n in running:
+            s = self._reg.sessions.get(n.log_id or "")
+            if s is not None and s.status == "working":
+                with contextlib.suppress(Exception):
+                    await s.interrupt(through_lock=True)
         self._release(st)
         await self._tell_owner(st, outcome, body)
 
@@ -493,8 +671,9 @@ class Workflows:
         except Exception:
             log.exception("aegis: could not tell %s how run %s ended", st.owner, st.run)
 
-    def _fail(self, st: RunState, node: str, why: str) -> None:
-        self._log(st.run, {"ev": "failed", "node": node, "error": why})
+    def _fail(self, st: RunState, node: str, why: str, say: str = "") -> None:
+        rec = {"ev": "failed", "node": node, "error": why}
+        self._log(st.run, rec | ({"say": say} if say else {}))
         # A failed node's session keeps its card and gets a tab, as a failed
         # queue worker does (spec §05).
         n = st.nodes.get(node)
@@ -543,9 +722,6 @@ class Workflows:
                 "not_allowed",
                 f"{n.path}: agent {n.body['agent']} runs with {spec.permission}, above your {owner.spec.permission}",
             )
-
-    def _node(self, run: str, node_id: str) -> Node:
-        return next(n for n in walk(self.defs[run].root) if n.id == node_id)
 
     def _wid(self, st: RunState) -> str:
         wf = self.defs.get(st.run)
