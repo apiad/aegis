@@ -14,8 +14,8 @@ Bash tool's ``bash -c``), or that has left the tree (``nohup cmd &``), is.
 That exemption is trusted only for Claude Code, whose shells stay in the
 tree. For the other harnesses every child counts (``keep_servers=False``)
 until their resume and tool spawning are measured, so a session with any
-child process never parks. Without a cgroup per session, a re-parented child is found by the
-AEGIS_SESSION its harness passed down (harness.session_env)."""
+child process never parks. Without a cgroup per session, a re-parented child
+is found by the AEGIS_SESSION its harness passed down (harness.session_env)."""
 
 from __future__ import annotations
 
