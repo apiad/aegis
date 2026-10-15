@@ -1,6 +1,14 @@
 """The workflow language: what parses, what the lint refuses and where."""
 
-from aegis.workflow_lang import check_value, item_keys, parse, render, rows, value_of
+from aegis.workflow_lang import (
+    check_value,
+    duration,
+    item_keys,
+    parse,
+    render,
+    rows,
+    value_of,
+)
 
 AGENTS = {"opus", "sonnet"}
 
@@ -98,11 +106,10 @@ root:
 {extra}"""
 
 
-def test_node_fields_the_engine_does_not_run_yet_are_refused():
+def test_an_agent_takes_retries_and_a_deadline():
     for field, value in (("retries", "3"), ("deadline", "5m")):
         wf, errors = errs(one_agent(f"  {field}: {value}\n"))
-        assert wf is None
-        assert f"$.root.{field}: {field} is not in this version yet" in errors
+        assert errors == [] and wf is not None
 
 
 def test_see_is_a_pointer_and_stays_allowed():
@@ -536,3 +543,50 @@ root:
   say: The map.
 """
     assert "m contains this node, so it cannot finish first" in "".join(errs(text)[1])
+
+
+def test_a_duration_is_days_hours_minutes_seconds_in_order():
+    assert duration("20m") == 1200
+    assert duration("1h30m") == 5400
+    assert duration("2d") == 172800
+    assert duration("45s") == 45
+    for bad in ("", "0m", "30", "1m1h", "1.5h", "soon", None, 30):
+        assert duration(bad) is None
+
+
+def test_deadline_and_retries_parse_on_nodes_and_the_header():
+    text = GOOD.replace("say: The whole job.", "say: The whole job.\n  deadline: 2h")
+    text += "deadline: 8h\n"
+    text = text.replace(
+        "      id: write\n", "      id: write\n      deadline: 20m\n      retries: 2\n"
+    )
+    wf, errors = errs(text)
+    assert errors == []
+    assert wf.deadline == 8 * 3600
+    write = wf.root.children[0]
+    assert (write.deadline, write.retries) == (1200, 2)
+    assert wf.root.deadline == 7200
+
+
+def test_a_bad_deadline_and_retries_are_refused_at_their_path():
+    text = GOOD.replace(
+        "      id: write\n",
+        "      id: write\n      deadline: soon\n      retries: 11\n",
+    )
+    _, errors = errs(text)
+    assert (
+        "$.root.seq[0].deadline: a deadline is a duration such as 20m or 1h30m"
+        in errors
+    )
+    assert "$.root.seq[0].retries: retries is a whole number from 0 to 10" in errors
+
+
+def test_retries_go_on_leaves_only():
+    text = GOOD.replace(
+        "  say: The whole job.\n", "  say: The whole job.\n  retries: 1\n"
+    )
+    _, errors = errs(text)
+    assert (
+        "$.root.retries: retries go on agent, sh and check; repeat a group with loop"
+        in errors
+    )
