@@ -130,3 +130,17 @@ def test_no_pid_or_no_process_ends_nothing():
 def test_the_headers_name_aegis_as_the_sender():
     assert restarts.header(False).startswith("> from aegis:restart · ")
     assert restarts.header(True).startswith("> from aegis:crash · ")
+
+
+def test_end_group_spares_a_reused_pid_and_ends_a_live_group():
+    r = restarts
+    p = subprocess.Popen(["sleep", "30"], start_new_session=True)
+    try:
+        start = r.started_at(p.pid)
+        assert start is not None
+        assert r.end_group(p.pid, start + 1) is False  # another process's start
+        assert r.started_at(p.pid) == start
+        assert r.end_group(p.pid, start, wait_s=1) is True
+        p.wait(timeout=5)
+    finally:
+        p.kill()
