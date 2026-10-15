@@ -11,7 +11,10 @@ The harness keeps some children for its whole life: a stdio MCP server, a
 plugin's helper. Those are direct children that are not shells, and they end
 and start again with it, so they are not strays. Anything under a shell (the
 Bash tool's ``bash -c``), or that has left the tree (``nohup cmd &``), is.
-Without a cgroup per session, a re-parented child is found by the
+That exemption is trusted only for Claude Code, whose shells stay in the
+tree. For the other harnesses every child counts (``keep_servers=False``)
+until their resume and tool spawning are measured, so a session with any
+child process never parks. Without a cgroup per session, a re-parented child is found by the
 AEGIS_SESSION its harness passed down (harness.session_env)."""
 
 from __future__ import annotations
@@ -58,16 +61,20 @@ def _below(proc: Path, pid: int, top: int) -> int | None:
 
 
 def strays(
-    harness_pid: int, log_id: str, cgroup: Path | None, proc: Path = Path("/proc")
+    harness_pid: int,
+    log_id: str,
+    cgroup: Path | None,
+    proc: Path = Path("/proc"),
+    keep_servers: bool = True,
 ) -> list[int]:
     """Processes that ending this session's harness would kill, other than the
-    harness and the servers it keeps."""
+    harness and, with ``keep_servers``, the servers it keeps."""
     pids = _procs(cgroup) if cgroup is not None else _marked(proc, log_id)
     out = []
     for pid in pids:
         if pid == harness_pid:
             continue
-        child = _below(proc, pid, harness_pid)
+        child = _below(proc, pid, harness_pid) if keep_servers else None
         if child is not None and _comm(proc, child) not in SHELLS:
             continue
         out.append(pid)
