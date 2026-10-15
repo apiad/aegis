@@ -115,6 +115,17 @@ export class Connection {
     this.backoff = Math.min(this.backoff * 2, 5000);
   }
 
+  // Give up on a socket that stalls without closing: closed now, every
+  // pending call rejected as offline, and a reconnect scheduled. A dead
+  // socket's own close event can take minutes, so it is not waited for.
+  drop() {
+    const ws = this.ws;
+    if (!this.open || !ws) return;
+    ws.onmessage = ws.onclose = null;
+    ws.close();
+    this._closed(1006);
+  }
+
   // Try now instead of at the end of the backoff: the network or the app
   // came back, or the person asked.
   retryNow() {

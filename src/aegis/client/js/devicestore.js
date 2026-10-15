@@ -105,12 +105,15 @@ const outboxChange = (key, fn) =>
 
 // A message written offline. Appended to the session's draft; while that draft
 // is being sent, kept aside in `more` (with the revision its writer saw) to
-// become the next draft once the send settles.
-export const outboxAppend = (key, text, rev) =>
+// become the next draft once the send settles. `nonce` is that of a send that
+// went out and got no answer: kept only while the draft is that text alone,
+// since the server answers a nonce it has seen with its first delivery.
+export const outboxAppend = (key, text, rev, nonce) =>
   outboxChange(key, (d) => {
-    if (!d) return { text, rev, written_at: Date.now(), state: "queued" };
+    if (!d) return { text, rev, written_at: Date.now(), state: "queued", ...(nonce && { nonce }) };
     if (d.state === "sending") return { ...d, more: d.more ? `${d.more}\n\n${text}` : text, moreRev: d.moreRev ?? rev };
-    return { ...d, text: `${d.text}\n\n${text}` };
+    const { nonce: _, ...rest } = d;
+    return { ...rest, text: `${d.text}\n\n${text}` };
   });
 
 // Mark a draft as being sent if `ok(draft)` holds, judged inside the same
@@ -134,9 +137,9 @@ export const outboxSettle = (key, state, error = "") =>
     if (!d) return undefined;
     if (state === "sent")
       return d.more ? { text: d.more, rev: d.moreRev ?? -1, written_at: Date.now(), state: "queued" } : null;
-    const { more, moreRev, ...rest } = d;
+    const { more, moreRev, nonce, ...rest } = d;
     const text = more ? `${d.text}\n\n${more}` : d.text;
-    return { ...rest, text, state, ...(error && { error }) };
+    return { ...rest, text, state, ...(error && { error }), ...(!more && nonce && { nonce }) };
   });
 
 export async function outboxAll() {
