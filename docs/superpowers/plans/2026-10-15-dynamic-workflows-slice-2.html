@@ -892,7 +892,7 @@ The docstring gains: "A map's items are recorded once, when it starts, so a rest
 </div>
 </details>
 
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">The engine runs par and map by instance</span><span class="files">workflows.py · tests/test_workflows_parallel.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <p>Slice 1 keys every state by the template id and derives a seq's state from its children in <code>_states</code>. This task gives every node an instance path, derives every composite state from the leaves on each pass (<code>_state</code>), and adds par and map. A map's cap counts here; the pool and limits come in task 6, <code>after</code> in task 7.</p>
