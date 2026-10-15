@@ -10,8 +10,8 @@ starts and whether it spends quota. Every step says what to do and what you
 should see. The examples use whatever project your session runs in.
 
 You can take it with a guide: run `/tutorial` in any session, click the hint
-under the new tab's chips, or press Start this tutorial at the top of this
-page in the Help tab. The guide opens in its own tab, asks before any step that starts
+under the new tab's chips, or press the button at the top of this page in
+the Help tab. The guide opens in its own tab, asks before any step that starts
 agents or spends quota, and answers questions on the way.
 
 ## Level 1. Talk to one agent
@@ -68,7 +68,7 @@ This level spends quota in the same session.
    Esc returns.
 2. Ask "Use an artifact to ask me which of three titles I prefer for the new
    README section." You should see a small page in the transcript. Pick a
-   title: the agent wakes on a row headed from artifact: with your choice.
+   title: the agent wakes on a row headed artifact: with your choice.
 3. Ask "Send the same page again, docked on the right." You should see the
    page stay beside the transcript while the transcript scrolls. Drag the
    line between them to resize it, and press × on the pane's bar to undock
@@ -92,7 +92,7 @@ This level starts a second agent and spends quota.
    wrote.
 3. Hand it a note. Ask "Use peer_handoff to ask the helper which file here is
    the longest." You should see a message in the helper's tab headed
-   from agent: with the first session's handle, and the helper answer it.
+   agent: with the first session's handle, and the helper answer it.
 4. Close and reopen. Type `/close` in the helper's box and confirm if it
    asks. Its tab goes away. In the Fleet, scroll to the archive under the
    cards and filter it by the helper's handle. You should see it there: Read
@@ -111,7 +111,7 @@ This level starts up to three workers and spends quota.
    such queue, this server has none configured: whoever runs it adds one as
    the configuration page shows, and you run this step again.
 2. Wait for the results. You should see the first session wake once per task
-   on a row headed from queue:general with the task's id and ok. The workers
+   on a row headed queue:general with the task's id and ok. The workers
    are archived as they finish; the archive's Queue workers chip shows them.
 3. Check a task. Ask "Show me the status of the first task with
    task_status." You should see its status and its result.

@@ -34,7 +34,7 @@ This step starts an agent here, spends quota and reaches another server.
 
 In a session here, ask "List the sessions with session_list, then use
 peer_handoff to ask the one on the other server to list its directory." You
-should see the far session receive a message headed from agent: with this
+should see the far session receive a message headed agent: with this
 session's handle and this server's name.
 
 ## 4. When the link is down

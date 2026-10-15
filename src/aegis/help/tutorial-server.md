@@ -19,7 +19,7 @@ channel; `aegis token list` shows tokens by name and role, never their value.
 In Settings, find the member's token and press Customize: it copies the
 default policy into the token. For Claude, choose lines. Untick 5 hours, tick
 week, drag its launch handle to 60% and its stop handle to 80%, and press Save
-changes. You should see the two lines on the gauge. Over the launch line the
+changes. You should see the two lines on the gauge. At or over the launch line the
 member's new sessions are refused with the reason; at the stop line its
 running turns are interrupted and continued later.
 
@@ -35,7 +35,7 @@ you can read it and only its owner can write to it.
 Stop the aegis you started by hand, then run `aegis service install` in the
 directory it serves. It asks a few questions, writes a systemd unit and prints
 the sudo commands that install and start it; it never runs sudo itself. Run
-those commands, then restart the unit with `sudo systemctl restart`. You
+those commands, then restart the unit with `sudo systemctl restart aegis`. You
 should see aegis come back after the restart, with the turns it cut
 continued.
 

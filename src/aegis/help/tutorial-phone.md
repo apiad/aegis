@@ -18,8 +18,9 @@ should see aegis on the home screen, opening without the browser's bars.
 
 ## 2. Turn on push
 
-Press the bell and choose what this device hears about: needs you, errors,
-something to read, finished work, toasts. Press Send a test. You should see a
+Press the bell, and Turn on if push is still off. Choose what this device
+hears about: needs you, errors, agents' toasts, something to read, finished
+work. Press Send a test. You should see a
 notification arrive. Tapping it opens aegis.
 
 ## 3. Write while offline
