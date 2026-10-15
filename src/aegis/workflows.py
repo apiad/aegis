@@ -873,7 +873,7 @@ class Workflows:
         """A person keeps the plan: the proposal closes, and what it held
         goes on as it was."""
         st = self._get(run)
-        if st.proposal is None or st.proposal["v"] != v:
+        if st.proposal is None or st.proposal["v"] != v or st.status != "running":
             raise OpError("not_proposed", f"change v{v} of {run} is not waiting")
         self._log(run, {"ev": "edit_rejected", "v": v})
         self.changed()
