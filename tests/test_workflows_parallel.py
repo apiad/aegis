@@ -21,8 +21,8 @@ def report(n: int = 7, wait: float = 1.0) -> str:
     )
 
 
-def leaf(id_: str, say: str, prompt: str, extra: str = "") -> str:
-    return f"{{id: {id_}, say: {json.dumps(say)}, agent: {{agent: opus, prompt: {json.dumps(prompt)}{extra}}}}}"
+def leaf(id_: str, say: str, prompt: str, extra: str = "", agent: str = "opus") -> str:
+    return f"{{id: {id_}, say: {json.dumps(say)}, agent: {{agent: {agent}, prompt: {json.dumps(prompt)}{extra}}}}}"
 
 
 @pytest.fixture
@@ -139,3 +139,132 @@ root:
     assert sum('"map_items"' in ln for ln in lines) == 1
     s = spans(st, "items.")
     assert len(s) == 3 and all(e1 <= s2 for (_, e1), (s2, _) in zip(s, s[1:]))
+
+
+def two_maps(a: int, b: int) -> str:
+    return f"""
+id: wide
+title: Two maps
+say: Two maps over more items than the pool holds.
+root:
+  par:
+    - map: {{over: {json.dumps(list(range(a)))}, as: x, do: {leaf("one", "Left {{x}}.", report())}}}
+      id: left
+      say: Left.
+    - map: {{over: {json.dumps(list(range(b)))}, as: y, do: {leaf("two", "Right {{y}}.", report())}}}
+      id: right
+      say: Right.
+  say: Both maps.
+"""
+
+
+async def test_two_maps_never_have_more_than_max_agents_sessions_live(world):
+    """Spec §12. The pool is max_agents: 2 (the fixture's .aegis.yaml); six
+    items want six sessions at once. Every spawn is counted the moment it
+    returns, so a peak above two cannot slip between two samples."""
+    reg = world.app.sessions
+    peak, real = 0, reg.spawn
+
+    async def counting(*a, **k):
+        nonlocal peak
+        s = await real(*a, **k)
+        peak = max(peak, sum(1 for x in reg.sessions.values() if x.workflow))
+        return s
+
+    reg.spawn = counting
+    run = await arm(world, two_maps(3, 3))
+    wf = world.app.workflows
+    seen_queued = False
+
+    def settled():
+        nonlocal seen_queued
+        seen_queued |= any(r["state"] == "queued" for r in wf.wire(run)["tree"])
+        return wf.runs[run].status != "running"
+
+    await until(settled, timeout=60)
+    st = wf.runs[run]
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+    assert sum(k.endswith((".one", ".two")) for k in st.nodes) == 6
+    assert peak == 2, peak
+    assert seen_queued
+
+
+# The fixture's agents plus haiku, so a run mixes two aliases.
+TWO = CONFIG.replace(
+    "agents:\n",
+    "agents:\n  haiku: {harness: claude-code, model: haiku, effort: low, permission: full}\n",
+    1,
+)
+
+
+def peaks(world) -> dict:
+    """Wrap the registry's spawn so each node spawn records how many node
+    sessions are open, in all and per alias, the moment it returns."""
+    reg, real = world.app.sessions, world.app.sessions.spawn
+    peak: dict = {}
+
+    async def counting(*a, **k):
+        s = await real(*a, **k)
+        nodes = [x for x in reg.sessions.values() if x.workflow]
+        for key in ("total", *{x.spec.agent for x in nodes}):
+            n = (
+                len(nodes)
+                if key == "total"
+                else sum(x.spec.agent == key for x in nodes)
+            )
+            peak[key] = max(peak.get(key, 0), n)
+        return s
+
+    reg.spawn = counting
+    return peak
+
+
+async def test_the_server_bounds_one_alias_while_another_runs_beside_it(world):
+    (world.root / ".aegis.yaml").write_text(
+        TWO + "workflows: {max_agents: {total: 4, opus: 1}}\n"
+    )
+    peak = peaks(world)
+    wf_text = f"""
+id: aliases
+title: Aliases
+say: Two opus steps and one haiku step.
+root:
+  par:
+    - {leaf("o1", "Opus one.", report())}
+    - {leaf("o2", "Opus two.", report())}
+    - {leaf("h1", "Haiku one.", report(wait=3), agent="haiku")}
+  say: All three.
+"""
+    run = await arm(world, wf_text)
+    wf = world.app.workflows
+    await until(lambda: wf.runs[run].status != "running", timeout=40)
+    st = wf.runs[run]
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+    assert peak["opus"] == 1 and peak["total"] == 2, peak
+    assert not overlap(spans(st, "o1"), spans(st, "o2"))
+    assert overlap(spans(st, "o1"), spans(st, "h1"))
+
+
+async def test_limits_bound_a_run_in_all_and_per_alias(world):
+    (world.root / ".aegis.yaml").write_text(TWO + "workflows: {max_agents: 4}\n")
+    peak = peaks(world)
+    wf_text = f"""
+id: limited
+title: Limited
+say: Two haiku steps and two opus steps, two at a time.
+limits: {{total: 2, haiku: 1}}
+root:
+  par:
+    - {leaf("h1", "Haiku one.", report(), agent="haiku")}
+    - {leaf("h2", "Haiku two.", report(), agent="haiku")}
+    - {leaf("o1", "Opus one.", report())}
+    - {leaf("o2", "Opus two.", report())}
+  say: All four.
+"""
+    run = await arm(world, wf_text)
+    wf = world.app.workflows
+    await until(lambda: wf.runs[run].status != "running", timeout=60)
+    st = wf.runs[run]
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+    assert peak["total"] == 2 and peak["haiku"] == 1, peak
+    assert not overlap(spans(st, "h1"), spans(st, "h2"))

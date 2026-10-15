@@ -26,6 +26,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import math
 import secrets
 import time
 from pathlib import Path
@@ -559,6 +560,32 @@ class Workflows:
         self._fail(st, inst, "its turn ended twice with no workflow_result")
         return "failed"
 
+    def _room(self, st: RunState, wf: Workflow, node: Node) -> bool:
+        """Whether one more node session fits in every counter that applies:
+        the server's max_agents total and its number for this node's agent
+        alias, counting every live run's open node sessions in the registry
+        (a session whose node is done but not yet closed still holds
+        memory), then the run's limits total and its number for the alias.
+        An alias without a number of its own is bound only by the totals.
+        The quota gate is asked after this."""
+        alias = node.body["agent"]
+        live = [
+            s
+            for s in self._reg.sessions.values()
+            if s.workflow and self.live(s.workflow["run"])
+        ]
+        mine = [s for s in live if s.workflow["run"] == st.run]
+        pool = self._app.config.current().workflows["max_agents"]
+        for bound, among in ((pool, live), (wf.limits, mine)):
+            if len(among) >= bound.get("total", math.inf):
+                return False
+            if (
+                alias in bound
+                and sum(s.spec.agent == alias for s in among) >= bound[alias]
+            ):
+                return False
+        return True
+
     async def _start_agent(
         self, st: RunState, wf: Workflow, node: Node, prefix: str
     ) -> bool:
@@ -591,6 +618,8 @@ class Workflows:
         # it is this node's, so it is adopted rather than doubled.
         s = next((x for x in self._reg.sessions.values() if x.workflow == tag), None)
         if s is None:
+            if not self._room(st, wf, node):
+                return False  # a session closing wakes a pass (Registry.archive -> changed)
             g = self._app.gate(spec.owner, spec.harness, spec.model)
             if not g.may_start:
                 return False  # the gate's next reading wakes a pass (app.on_quota -> changed)

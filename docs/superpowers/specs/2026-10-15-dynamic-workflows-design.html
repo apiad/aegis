@@ -408,7 +408,7 @@ blocks:
 </table>
 
 <h3 id="pool">How many at once</h3>
-<p>A node waits as <code>queued</code> until it has room under all of: the run's <code>limits</code>; a server-wide <code>workflows: {max_agents: N}</code> in <code>.aegis.yaml</code>, because both out-of-memory kills came from too many sessions at once; and the quota gate, the same one schedules wait under. Each session's memory is already capped by <code>session_memory_max</code>.</p>
+<p>A node waits as <code>queued</code> until it has room in every counter that applies: a server-wide <code>workflows: {max_agents: {total: N, &lt;agent&gt;: M}}</code> in <code>.aegis.yaml</code>, because both out-of-memory kills came from too many sessions at once, both its <code>total</code> and the number for the node's agent alias; then the run's <code>limits</code>, the same shape, both its <code>total</code> and the number for the alias; and last the quota gate, the same one schedules wait under. <code>total</code> always counts every agent together; an alias without a number of its own is bound only by the totals. Each session's memory is already capped by <code>session_memory_max</code>.</p>
 <p>When the root finishes or the run is stopped, the engine archives the finished node sessions, leaves the failed ones open, and sends the main agent one inbox turn headed <code>&gt; from workflow:&lt;id&gt; · done|failed|stopped · …</code> with the results.</p>
 
 <h2 id="main"><span class="n">06</span>The main agent</h2>
