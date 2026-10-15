@@ -4,6 +4,7 @@ other branches go on, and the run ends only on its answer."""
 import pytest
 
 from aegis.ops import Caller
+from aegis.workflow_log import NodeState
 
 from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
@@ -106,3 +107,77 @@ async def test_a_wake_is_told_again_only_when_it_was_never_told(world):
     await wf_._tell_open(st)  # nothing untold: no second message
     await until(lambda: inbox(main, "failed"), timeout=5)
     assert len(inbox(main, "failed")) == 1
+
+
+async def test_retry_runs_the_failed_step_again_and_the_run_finishes(world, tmp_path):
+    marker = tmp_path / "second"
+    sh = f'{{sh: "test -e {marker} || {{ touch {marker}; exit 1; }}", id: flaky, say: Flaky.}}'
+    main, run = await armed(
+        world,
+        wf(
+            f'  seq:\n    - {sh}\n    - {{sh: "true", id: after, say: After.}}\n  say: Two.'
+        ),
+    )
+    wf_ = world.app.workflows
+    await until(lambda: "flaky" in wf_.runs[run].open, timeout=20)
+    await world.app.registry.call(
+        "workflow.answer",
+        {"run": run, "to": "flaky", "choice": "retry", "text": "It was a flake."},
+        Caller("agent", main.log_id),
+    )
+    await until(lambda: wf_.runs[run].status == "done", timeout=20)
+    assert wf_.runs[run].nodes["flaky"].attempts == 1
+
+
+async def test_skip_gives_later_steps_its_value(world):
+    bad = leaf(
+        "impl",
+        "Implement.",
+        "/exit 3",
+        extra=", result: {type: object, properties: {pr: {type: integer}}, required: [pr]}",
+    )
+    use = '{sh: "test {{impl.pr}} = 9", id: use, say: Use it.}'
+    main, run = await armed(world, wf(f"  seq:\n    - {bad}\n    - {use}\n  say: Two."))
+    wf_ = world.app.workflows
+    await until(lambda: "impl" in wf_.runs[run].open, timeout=20)
+    owner = Caller("agent", main.log_id)
+    with pytest.raises(Exception, match="schema"):
+        await world.app.registry.call(
+            "workflow.answer",
+            {"run": run, "to": "impl", "choice": "skip", "value": {"pr": "nine"}},
+            owner,
+        )
+    await world.app.registry.call(
+        "workflow.answer",
+        {
+            "run": run,
+            "to": "impl",
+            "choice": "skip",
+            "value": {"pr": 9},
+            "text": "Merged by hand.",
+        },
+        owner,
+    )
+    await until(lambda: wf_.runs[run].status == "done", timeout=20)
+    rows = {r["id"]: r["state"] for r in wf_.wire(run)["tree"]}
+    assert rows["impl"] == "skipped" and rows["use"] == "done"
+
+
+async def test_the_main_agent_stops_one_node_and_the_run_waits(world):
+    body = f"  par:\n    - {leaf('long', 'Work long.', '/sleep 30')}\n    - {leaf('ok', 'Finish.', report(wait=1))}\n  say: Both."
+    main, run = await armed(world, wf(body))
+    wf_ = world.app.workflows
+    await until(
+        lambda: (wf_.runs[run].nodes.get("long") or NodeState()).status == "running",
+        timeout=20,
+    )
+    said = await turn(main, mcp("workflow_stop", run=run, node="long"))
+    assert said.startswith("mcp ok")
+    st = wf_.runs[run]
+    assert st.status == "running" and st.nodes["long"].status == "failed"
+    assert (
+        st.open["long"]["told"] is True
+        and "stopped by the main agent" in st.nodes["long"].error
+    )
+    s = world.app.sessions.sessions[st.nodes["long"].log_id]
+    await until(lambda: s.status != "working", timeout=10)

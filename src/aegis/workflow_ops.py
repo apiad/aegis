@@ -35,6 +35,13 @@ class RunName(_Strict):
     run: str
 
 
+class Stop(RunName):
+    node: str | None = Field(
+        default=None,
+        description="One running step to stop, by its id; the run goes on and waits for your answer about it.",
+    )
+
+
 class Result(_Strict):
     value: Any = Field(description="Your result, matching the node's result schema.")
     summary: str = Field(
@@ -126,12 +133,17 @@ def register_workflow_ops(app: App) -> None:
         wf.reject(p.run)
         return wf.wire(p.run)
 
-    @r.op("workflow.stop", RunName, agent=True)
-    async def workflow_stop(p: RunName, caller):
+    @r.op("workflow.stop", Stop, agent=True)
+    async def workflow_stop(p: Stop, caller):
         """Stop a workflow you armed. Its running nodes are interrupted and
-        their sessions unlocked, so they can be read and talked to."""
+        their sessions unlocked, so they can be read and talked to. With
+        node, stop only that running step: it fails, the run goes on, and
+        you retry, skip or change it with workflow_answer or workflow_edit."""
         owned(p.run, caller)
-        await wf.stop_run(p.run)
+        if p.node:
+            await wf.stop_node(p.run, p.node)
+        else:
+            await wf.stop_run(p.run)
         return wf.wire(p.run)
 
     @r.op("workflow.answer", Answer, agent=True)
