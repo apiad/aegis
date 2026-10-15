@@ -8,7 +8,7 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setWorkflows, syncDock } from "./entries.js";
+import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setWorkflows, syncDock, tickWorkflows } from "./entries.js";
 import { setScroller } from "./highlight.js";
 import { Viewer } from "./viewer.js";
 import { Canvas } from "./canvas.js";
@@ -612,7 +612,7 @@ conn.subscribe(
   },
 );
 setInterval(() => {
-  if ([...wfRuns.values()].some((w) => w.status === "running")) refreshWorkflows();
+  if ([...wfRuns.values()].some((w) => w.status === "running")) tickWorkflows();
 }, 1000);
 
 // Each server's `sessions` channel: a snapshot replaces that server's metas,
