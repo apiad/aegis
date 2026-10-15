@@ -36,6 +36,7 @@ from . import restarts
 from .agents import PERMISSION_ORDER, resolve
 from .ops import OpError
 from .workflow_lang import (
+    RENDER_ERRORS,
     Node,
     Workflow,
     check_value,
@@ -208,7 +209,7 @@ class Workflows:
         if n is not None and n.say:
             row["say"] = n.say
         elif not each:
-            with contextlib.suppress(KeyError, TypeError, IndexError):
+            with contextlib.suppress(*RENDER_ERRORS):
                 row["say"] = render(row["say"], self._scope(st, wf, prefix))
         if n is not None:
             h = self._reg.sessions.get(n.log_id or "")
@@ -294,7 +295,7 @@ class Workflows:
     def _say(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
         """A node's say with its references read, as the card draws it; the
         template itself while a reference has no value."""
-        with contextlib.suppress(KeyError, TypeError, IndexError):
+        with contextlib.suppress(*RENDER_ERRORS):
             return render(node.say, self._scope(st, wf, prefix))
         return node.say
 
@@ -574,7 +575,7 @@ class Workflows:
         inst = prefix + node.id
         try:
             items = value_of(node.body["over"], self._scope(st, wf, prefix))
-        except (KeyError, TypeError, IndexError) as e:
+        except RENDER_ERRORS as e:
             self._fail(
                 st, inst, f"over has no value: {e}", self._say(st, wf, node, prefix)
             )
@@ -694,7 +695,7 @@ class Workflows:
         try:
             prompt, say = render(node.body["prompt"], scope), render(node.say, scope)
             cwd = render(node.body["cwd"], scope) if node.body.get("cwd") else None
-        except (KeyError, TypeError, IndexError) as e:
+        except RENDER_ERRORS as e:
             self._fail(st, inst, f"a reference has no value: {e}")
             return False
         agents, default = self._app._agents()
