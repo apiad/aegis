@@ -209,7 +209,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   </div>
   <div class="card">
     <h4>A parked state</h4>
-    <p>A parked session is not a stopped one. It keeps its look, its nudges and its place in the live counts, and carries a <code>parked</code> chip. Any message wakes it, and so does the first keystroke in its composer.</p>
+    <p>A parked session is not a stopped one. It keeps its look, its nudges and its place in the attention counts, and carries a <code>parked</code> chip. Any message wakes it, and so does the first keystroke in its composer.</p>
   </div>
 </div>
 <div class="stats">
@@ -231,7 +231,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>A hidden tab</td><td>Does not block parking</td><td class="why"><span class="who">maintainer</span> A tab left open in the background overnight would otherwise hold every session it shows. Only a visible document counts, by the Page Visibility API.</td></tr>
 <tr><td>Opening a parked transcript</td><td>Does not wake it. The first keystroke in its composer does</td><td class="why"><span class="who">maintainer</span> Skimming a session should cost nothing. Typing means a message is coming, and a prompt takes longer to write than the 2.7 s a harness takes to start.</td></tr>
 <tr><td>Which turns may park</td><td>An idle session whose last turn ended with <code>turn_end</code> (done, needs you, review), or one waiting on a monitor, a queue task or <code>monitor_sessions</code></td><td class="why"><span class="who">maintainer</span> Those are the states where the next thing to happen comes from outside the harness. A turn that ended with neither is left to the idle nudge.</td></tr>
-<tr><td>A parked session's state</td><td>Its own state, <code>parked</code>, not <code>stopped</code></td><td class="why"><span class="who">maintainer</span> Stopped means a person stopped it: it is dimmed, drops out of the live counts and gets no nudges. A parked session is live work that happens to have no process.</td></tr>
+<tr><td>A parked session's state</td><td>Its own state, <code>parked</code>, not <code>stopped</code></td><td class="why"><span class="who">maintainer</span> Stopped means a Stop, a harness exit or a server restart ended the process: it is dimmed and gets no nudges. A parked session is live work that happens to have no process.</td></tr>
 <tr><td>How a session parks</td><td>The same process end as Stop: SIGTERM, a 5 s grace, then the cgroup is killed</td><td class="why"><span class="who">maintainer</span> The safety rule has already shown that nothing besides the harness and the servers it keeps would die, so the kill finds nothing that matters. Reusing Stop's path means one way a process ends on purpose.</td></tr>
 <tr><td>Codex and OpenCode</td><td>Allowed when the admin names them. <code>aegis doctor</code> warns that their resume is unmeasured</td><td class="why"><span class="who">maintainer</span> Both drivers already resume (<code>codex/process.py:183</code>, <code>opencode/process.py:105</code>). The warning goes once a probe like #415's has run on them.</td></tr>
 <tr><td>Queue workers</td><td>Never parked</td><td class="why"><span class="who">maintainer</span> A worker is closed when its task ends (<code>queues.py:376</code>), so there is no idle stretch to save, and a Stop bypasses the exit that settles its task.</td></tr>
@@ -351,8 +351,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <ul>
 <li>The card and the tab look like an idle session's, not dimmed, with a <code>parked</code> chip in the card's header (the same pill as the quiet session's <code>zz</code>). The card's line, mark and plan are unchanged.</li>
 <li>The composer's hint reads "Parked to free memory. Typing wakes it." From the first keystroke until the session leaves <code>parked</code>, a "Waking · resuming the harness" row shows in the transcript, in the spot that shows a turn in progress.</li>
-<li>The transcript gets a quiet row, "parked after 20 min idle", in the style of the stopped row (<code>transcript/entries.py:657</code>).</li>
-<li>Parked sessions stay in the Fleet's live count and its context average. A new counter in the Fleet header says how many are parked and roughly what they freed: <code>3 parked · ~0.9 GB</code>. It sums the harness's own RSS when each parked (<code>VmRSS</code> of its pid, saved as <code>parked_rss</code>), not its whole process tree.</li>
+<li>The transcript gets a quiet row, "parked after 20 min idle", in the style of the stopped row (<code>transcript/entries.py:657</code>; the stopped row is at <code>:669</code>).</li>
+<li>Parked sessions stay in the Fleet's attention counts and leave its live count and its context average, as the sidebar's host card does too: neither has a process or a fresh context reading. A new counter in the Fleet header says how many are parked and roughly what they freed: <code>3 parked · ~0.9 GB</code>. It sums the harness's own RSS when each parked (<code>VmRSS</code> of its pid, saved as <code>parked_rss</code>), not its whole process tree.</li>
 <li><code>session_list</code> reports <code>"state": "parked"</code>. <code>monitor_sessions</code> reads only <code>attention</code>, so a parked session finishes and blocks a monitor exactly as an idle one does.</li>
 <li>Nudges treat a parked session as live: the condition at <code>nudges.py:137</code> counts a <code>parked</code> status as idle. A nudge is a message, so it wakes the session. That is intended: the nudge exists to get a report, and parking should not silence it.</li>
 </ul>
@@ -440,6 +440,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>A <code>warm</code> socket message</td><td>The op <code>session.warm</code></td><td class="why">An op gets the owner check and the link relay for free.</td></tr>
 <tr><td>A docked transcript counts as watched</td><td>Only the main session view counts</td><td class="why">The page reports one session, the one it shows.</td></tr>
 <tr><td>Freed memory from the last RSS each had</td><td>The harness's own RSS at park time, not its tree</td><td class="why">One <code>VmRSS</code> read at park time, stored in the meta as <code>parked_rss</code>.</td></tr>
+<tr><td>Parked sessions stay in the Fleet's live count and its context average</td><td>They stay in the attention counts and leave the live count and the context average, in the Fleet band and in the sidebar's host card</td><td class="why">Live there means a session with a process. The parked counter beside it shows the parked ones.</td></tr>
 <tr><td>The waking text in the composer's hint</td><td>A "Waking · resuming the harness" row in the transcript</td><td class="why">A placeholder is hidden as soon as the person types, which is when the wake starts.</td></tr>
 </tbody>
 </table>

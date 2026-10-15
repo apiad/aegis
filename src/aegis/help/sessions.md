@@ -155,19 +155,19 @@ A Claude Code harness holds about 300 MB while it waits for the next
 message. When an admin turns parking on for a harness (the configuration page
 says how), aegis ends the process of an idle session of that harness that
 nothing needs, and the next message resumes it with its context. aegis checks
-every 30 seconds, and a session parks once all of these have held for the
-harness's idle time without a break:
+every 30 seconds. A session parks once all of these have held for the
+harness's idle time without a break, and none of the cases in the next list
+applies:
 
 - its harness is idle, with a process;
 - its last turn ended with `turn_end` (done, needs_you or review), or it
-  waits on a monitor, a queue task or a session;
+  waits on a monitor, a queue task or a session. A turn that ended without
+  `turn_end`, a person's slash command and no turn yet do not qualify;
 - it holds no message for the harness.
 
-Some sessions never park, because ending the process would kill something:
+These sessions do not park:
 
 - a queue worker;
-- a session whose last turn ended without `turn_end`, ran a person's slash
-  command, or has no turn yet;
 - a session whose transcript is open in a visible page, in this browser or
   in one on a linked server. A hidden tab, a transcript docked beside
   another, and the Fleet do not count;
@@ -183,7 +183,8 @@ Some sessions never park, because ending the process would kill something:
   through `sh -c` does count. For Codex and OpenCode every child process
   counts, so a session of theirs with any MCP server never parks.
 
-A parked session keeps its tab, its mark and its place in the live counts.
+A parked session keeps its tab, its mark and its place in the attention
+counts, and leaves the live count and the context average.
 Its Fleet card carries a `parked` chip, its composer reads "Parked to free
 memory. Typing wakes it.", and its transcript gets a row such as "parked
 after 20 min idle". The Fleet's header counts them, as in
