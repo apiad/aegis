@@ -1732,7 +1732,8 @@ def edit_diff(old: Workflow, new: Workflow) -> dict:
     by its sentence (a step moved to another group unchanged is a move), in
     the new tree's order and then the removed ones at
     their old depth; the keys it touches, with everything under them; and
-    the shell commands and sh probes it adds or changes."""
+    the shell commands and sh probes it adds or changes. Each line shows its
+    step's command or sh probe."""
     diff: list[dict] = []
     header = [f"its {k}" for k in HEADER if getattr(old, k) != getattr(new, k)]
     if header:
@@ -1781,11 +1782,15 @@ def edit_diff(old: Workflow, new: Workflow) -> dict:
             d["fields"] = _parts(o, n) + (["its place"] if moved else [])
             if o.say != n.say:
                 d["was"] = o.say
+        # Every command on a line is shown; one is counted only when its
+        # text is new or changed, since the person approved the rest.
+        was = o.body if o is not None and o.kind == n.kind else {}
         if n.kind == "sh":
             d["cmd"] = n.body.get("sh", "")
-            commands["sh"] += 1
-        if "sh" in (n.body.get("probe") or {}):
-            commands["probes"] += 1
+            commands["sh"] += d["cmd"] != was.get("sh")
+        if "sh" in (probe := n.body.get("probe") or {}):
+            d["cmd"] = probe["sh"]
+            commands["probes"] += probe["sh"] != (was.get("probe") or {}).get("sh")
         diff.append(d)
         touched += [x.key for x in walk(n) if x.key not in touched]
     for o in walk(old.root):
