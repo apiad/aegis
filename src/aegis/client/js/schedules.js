@@ -67,6 +67,20 @@ function layer(name, ...body) {
 
 const arrow = (t) => el("div", "arrow", t);
 const clockText = (c) => Object.entries(c || {}).map(([k, v]) => `${k} ${v}`)[0] || "";
+const clone = (q) => JSON.parse(JSON.stringify(q || {}));
+const PERCENT = /^\d{1,2}$/;
+
+// A schedule's quota lines in words: "claude week on pace · opencode-go week
+// below 80%", with the window labels schedule.pools gave when it answered.
+function quotaText(q, pools) {
+  const lines = Object.entries(q || {}).flatMap(([pool, ws]) =>
+    Object.entries(ws).map(([kind, v]) => {
+      const w = pools?.find((p) => p.name === pool)?.windows.find((x) => x.kind === kind);
+      return `${pool} ${w?.label || kind} ${v === "pace" ? "on pace" : `below ${v}%`}`;
+    }),
+  );
+  return lines.length ? lines.join(" · ") : "no limit: fires whatever the quota";
+}
 
 // A server time as the view shows it: the time alone today, else the date too.
 export function short(iso) {
@@ -81,7 +95,7 @@ function duration(s) {
 
 function why(r) {
   if (r.kind === "quiet") return r.rc === 1 ? "exit 1: not yet" : "the same stdout as the last fire";
-  if (r.kind === "held") return r.why === "quota" ? "held: the quota gate is closed" : "held: a run is live";
+  if (r.kind === "held") return r.why === "quota" ? `held: ${r.line || "the quota gate is closed"}` : "held: a run is live";
   if (r.kind === "skipped") return "dropped: a run was live";
   if (r.kind === "error") return [r.rc != null ? `exit ${r.rc}` : "", r.err || ""].filter(Boolean).join(" · ");
   if (r.kind === "missed") return `${r.n} ticks missed while aegis was down or the machine slept; they fire once`;
@@ -89,12 +103,12 @@ function why(r) {
   return r.kind;
 }
 
-function blank(agents) {
+function blank(agents, quota) {
   return {
     isNew: true, name: "", clock: "every", every: "30m", cron: "0 6 * * 1-5", at: "",
     overlap: "wait", check: false, bash: "", timeout: 30, target: "new", session: "",
     agent: agents[0] || "", close: "done", spawn: false, cwd: null, prompt: "",
-    preview: null, tested: null, err: "",
+    quota: clone(quota), noLimit: false, preview: null, tested: null, err: "",
   };
 }
 
@@ -105,6 +119,7 @@ function fromSchedule(s, agents) {
     check: !!s.check, bash: s.check?.bash || "", timeout: s.check?.timeout_s || 30,
     target: s.fire.target, session: s.fire.session || "", agent: s.fire.agent || "",
     close: s.fire.close || "done", spawn: !!s.fire.spawn, cwd: s.fire.cwd || null, prompt: s.prompt,
+    quota: clone(s.quota), noLimit: !Object.keys(s.quota || {}).length,
   };
 }
 
@@ -120,7 +135,20 @@ function definition(E) {
     ...(E.check ? { check: { bash: E.bash, timeout_s: Number(E.timeout) || 30 } } : {}),
     fire,
     prompt: E.prompt,
+    // Always sent: a definition without quota gets the server's default lines.
+    quota: E.noLimit ? {} : launchLines(E.quota),
   };
+}
+
+// The editor's lines as the server takes them: a percent typed as text becomes
+// a number, and a pool left with no window is dropped.
+function launchLines(q) {
+  const out = {};
+  for (const [pool, ws] of Object.entries(q)) {
+    const lines = Object.fromEntries(Object.entries(ws).map(([k, v]) => [k, v === "pace" ? v : Number(v)]));
+    if (Object.keys(lines).length) out[pool] = lines;
+  }
+  return out;
 }
 
 export class Schedules {
@@ -137,6 +165,8 @@ export class Schedules {
     this.visible = false;
     this.err = "";
     this._preview = null;
+    this.pools = null; // schedule.pools: the pools and windows a line may name
+    this.quotaDefault = {};
   }
 
   onSnapshot(list) {
@@ -174,6 +204,13 @@ export class Schedules {
       this.agents = (await this.conn.call("agents.list", {})).agents.map((a) => a.name);
     } catch {
       this.agents = [];
+    }
+    try {
+      const r = await this.conn.call("schedule.pools", {});
+      this.pools = r.pools;
+      this.quotaDefault = r.default;
+    } catch {
+      this.pools = null;
     }
     if (!this.cur || !this.items.has(this.cur)) this.cur = [...this.items.keys()].sort()[0] || null;
     if (this.cur) await this.loadRuns();
@@ -221,7 +258,7 @@ export class Schedules {
     for (const n of names) list.append(this.row(this.items.get(n)));
     if (!names.length) list.append(el("p", "cnote", "No schedules yet."));
     const add = button("+ New schedule", () => {
-      this.form = blank(this.agents);
+      this.form = blank(this.agents, this.quotaDefault);
       this.draw();
     }, "sch-new");
     side.append(list, add);
@@ -320,6 +357,8 @@ export class Schedules {
       layer("Overlap", el("code", null, s.overlap), el("span", "cnote", ` ${OVERLAP[s.overlap]}`)),
       arrow("↓"),
       bash,
+      arrow("↓"),
+      layer("Quota", el("span", null, quotaText(s.quota, this.pools)), el("div", "cnote", "a fire waits while the pool it draws on is over a line")),
       arrow("↓ fire"),
       layer("Fire", el("span", null, fire), el("pre", null, s.prompt + (s.check ? "\n\n+ the check's stdout" : ""))),
     );
@@ -456,7 +495,7 @@ export class Schedules {
     }
     const bl = layer("Bash", ...bash);
     if (!E.check) bl.classList.add("off");
-    L.append(bl, arrow("↓ fire"));
+    L.append(bl, arrow("↓"), this.quotaLayer(E), arrow("↓ fire"));
 
     const fire = [seg(["new", "existing"], E.target, (v) => {
       E.target = v;
@@ -539,6 +578,64 @@ export class Schedules {
     return f;
   }
 
+  // Per pool, each window it reads may carry a launch line: on pace, or a
+  // percent the window must be under for a fire to go. "no limit" sends {}.
+  quotaLayer(E) {
+    const body = [seg(["lines", "no limit"], E.noLimit ? "no limit" : "lines", (v) => {
+      E.noLimit = v === "no limit";
+      this.draw();
+    })];
+    body[0].id = "sch-quota";
+    if (E.noLimit) body.push(el("div", "hint", "every tick that passes the layers above fires, whatever the quota"));
+    else if (!this.pools) body.push(el("div", "hint", "the pools could not be read; the lines are kept as they are"));
+    else {
+      for (const pool of this.pools) {
+        const ws = (E.quota[pool.name] ||= {});
+        const box = el("div", "sch-pool");
+        box.append(el("div", "pl", pool.label));
+        for (const w of pool.windows) box.append(this.quotaRow(E, ws, w, pool.name));
+        body.push(box);
+      }
+      body.push(el("div", "hint", "a fire waits while the pool it draws on is over a line; a pool aegis has never read sets none"));
+    }
+    const ql = layer("Quota", ...body);
+    if (E.noLimit) ql.classList.add("off");
+    return ql;
+  }
+
+  quotaRow(E, ws, w, pool) {
+    const row = el("div", "inl sch-q");
+    Object.assign(row.dataset, { pool, win: w.kind });
+    const lab = el("label");
+    const cb = el("input");
+    cb.type = "checkbox";
+    cb.checked = w.kind in ws;
+    cb.onchange = () => {
+      if (cb.checked) ws[w.kind] = w.pace ? "pace" : "50";
+      else delete ws[w.kind];
+      this.draw();
+    };
+    lab.append(cb, document.createTextNode(` ${w.label}`));
+    row.append(lab);
+    if (w.kind in ws) {
+      const v = ws[w.kind];
+      row.append(seg(["pace", "percent"], v === "pace" ? "pace" : "percent", (o) => {
+        ws[w.kind] = o === "pace" ? "pace" : "50";
+        this.draw();
+      }, w.pace ? [] : ["pace"]));
+      if (v !== "pace") {
+        const n = input(String(v), "50", (x) => {
+          ws[w.kind] = x.trim();
+          this.validate();
+        });
+        n.classList.add("sch-pct");
+        n.inputMode = "numeric";
+        row.append(n, el("span", "cnote", "% or under"));
+      }
+    }
+    return row;
+  }
+
   // The clock is checked by the server (schedule.test), a quarter second after
   // the last keystroke, so the editor never parses cron itself.
   preview() {
@@ -578,7 +675,8 @@ export class Schedules {
       ch.classList.toggle("bad", !!E.preview?.error);
     }
     const save = document.getElementById("sch-save");
-    if (save) save.disabled = !(nameOk && clockOk && fireOk && E.prompt.trim());
+    const quotaOk = E.noLimit || Object.values(E.quota).every((ws) => Object.values(ws).every((v) => v === "pace" || PERCENT.test(String(v))));
+    if (save) save.disabled = !(nameOk && clockOk && fireOk && quotaOk && E.prompt.trim());
   }
 
   async test() {

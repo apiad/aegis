@@ -28,19 +28,34 @@ def seed(root: Path) -> None:
     now = int(time.time())
     anchor = now - 960  # ticks at now-660, now-360, now-60; the next in 4 minutes
     owner = {"kind": "user", "principal": "ana"}
-    fire = {"target": "new", "agent": "opus", "cwd": str(root), "close": "done", "spawn": False}
+    fire = {
+        "target": "new",
+        "agent": "opus",
+        "cwd": str(root),
+        "close": "done",
+        "spawn": False,
+    }
     defs = {
         "pr-triage": {
-            "owner": owner, "created_at": anchor, "edited_at": anchor, "paused": None,
-            "clock": {"every": "5m"}, "overlap": "wait",
-            "check": {"bash": "echo hi", "timeout_s": 30}, "fire": fire,
+            "owner": owner,
+            "created_at": anchor,
+            "edited_at": anchor,
+            "paused": None,
+            "clock": {"every": "5m"},
+            "overlap": "wait",
+            "check": {"bash": "echo hi", "timeout_s": 30},
+            "fire": fire,
             "prompt": "Triage the new pull requests.",
         },
         "main-red": {
-            "owner": owner, "created_at": anchor, "edited_at": anchor,
+            "owner": owner,
+            "created_at": anchor,
+            "edited_at": anchor,
             "paused": {"by": "errors", "at": iso(now - 60)},
-            "clock": {"every": "10m"}, "overlap": "wait",
-            "check": {"bash": "exit 4", "timeout_s": 30}, "fire": fire,
+            "clock": {"every": "10m"},
+            "overlap": "wait",
+            "check": {"bash": "exit 4", "timeout_s": 30},
+            "fire": fire,
             "prompt": "main went red.",
         },
     }
@@ -48,17 +63,56 @@ def seed(root: Path) -> None:
     t1, t2, t3 = anchor + 300, anchor + 600, anchor + 900
     recs = [
         {"t": iso(anchor), "s": "pr-triage", "ev": "created", "tick": anchor},
-        {"t": iso(t1), "s": "pr-triage", "ev": "tick", "tick": t1, "out": "fired", "sha": "a"},
-        {"t": iso(t1), "s": "pr-triage", "ev": "fired", "run": 1, "log_id": RUN,
-         "target": "new", "tick": t1, "stdout": "#241 Schedules view\n"},
-        {"t": iso(t1 + 58), "s": "pr-triage", "ev": "finished", "run": 1,
-         "attention": "done", "closed": True, "secs": 58, "cost_usd": 0.21},
-        {"t": iso(t2), "s": "pr-triage", "ev": "tick", "tick": t2, "out": "quiet", "rc": 0},
-        {"t": iso(t3), "s": "pr-triage", "ev": "tick", "tick": t3, "out": "quiet", "rc": 1},
+        {
+            "t": iso(t1),
+            "s": "pr-triage",
+            "ev": "tick",
+            "tick": t1,
+            "out": "fired",
+            "sha": "a",
+        },
+        {
+            "t": iso(t1),
+            "s": "pr-triage",
+            "ev": "fired",
+            "run": 1,
+            "log_id": RUN,
+            "target": "new",
+            "tick": t1,
+            "stdout": "#241 Schedules view\n",
+        },
+        {
+            "t": iso(t1 + 58),
+            "s": "pr-triage",
+            "ev": "finished",
+            "run": 1,
+            "attention": "done",
+            "closed": True,
+            "secs": 58,
+            "cost_usd": 0.21,
+        },
+        {
+            "t": iso(t2),
+            "s": "pr-triage",
+            "ev": "tick",
+            "tick": t2,
+            "out": "quiet",
+            "rc": 0,
+        },
+        {
+            "t": iso(t3),
+            "s": "pr-triage",
+            "ev": "tick",
+            "tick": t3,
+            "out": "quiet",
+            "rc": 1,
+        },
         {"t": iso(anchor), "s": "main-red", "ev": "created", "tick": anchor},
         {"t": iso(now - 60), "s": "main-red", "ev": "paused", "by": "errors"},
     ]
-    (state / "schedule-runs.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs))
+    (state / "schedule-runs.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in recs)
+    )
 
 
 @pytest.fixture
@@ -77,7 +131,9 @@ def open_view(page, server) -> None:
     page.wait_for_selector("#a2[data-view=schedules] .sch-row")
 
 
-def test_the_button_counts_schedules_and_is_red_while_one_is_paused_by_errors(server, page):
+def test_the_button_counts_schedules_and_is_red_while_one_is_paused_by_errors(
+    server, page
+):
     page.goto(server.url)
     page.wait_for_selector("#schedules-n.err >> text=2")
     open_view(page, server)
@@ -139,3 +195,49 @@ def test_the_view_fits_a_phone(server, browser):
     pg.wait_for_selector("#sch-name")
     assert pg.evaluate("document.documentElement.scrollWidth") <= 390
     assert not errors
+
+
+def stored(server, name: str) -> dict:
+    """A schedule's definition as the server saved it."""
+    path = server.root / ".aegis" / "state" / "schedules.json"
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        defs = json.loads(path.read_text())
+        if name in defs:
+            return defs[name]
+        time.sleep(0.1)
+    raise AssertionError(f"{name} was never saved")
+
+
+def test_the_editor_sets_quota_lines_per_pool_or_none(server, page):
+    open_view(page, server)
+    page.click(".sch-new")
+    page.fill("#sch-name", "quota-check")
+    page.fill("#sch-clock", "1h")
+    page.fill("#sch-prompt", "Check the quota.")
+    week = ".sch-q[data-pool=claude][data-win=weekly_all]"
+    five = ".sch-q[data-pool=claude][data-win=session]"
+    page.wait_for_selector(f"{week} .seg button.on[data-v=pace]")
+    page.click(f"{five} input[type=checkbox]")
+    page.click(f"{five} .seg button[data-v=percent]")
+    page.fill(f"{five} .sch-pct", "8x")
+    page.wait_for_selector("#sch-save:disabled")
+    page.fill(f"{five} .sch-pct", "80")
+    page.wait_for_selector("#sch-save:enabled")
+    page.click("#sch-save")
+    page.wait_for_selector(".sch-dhead h3 >> text=quota-check")
+    layers = page.text_content(".sch-layers")
+    assert "claude week on pace" in layers and "claude 5 hours below 80%" in layers
+    assert stored(server, "quota-check")["quota"] == {
+        "claude": {"weekly_all": "pace", "session": 80},
+        "opencode-go": {"weekly": "pace"},
+    }
+    page.click(".sch-dhead button >> text=Edit")
+    page.click("#sch-quota button[data-v='no limit']")
+    page.wait_for_selector(f"{week}", state="detached")
+    page.click("#sch-save")
+    page.wait_for_selector(".sch-layers >> text=no limit")
+    deadline = time.monotonic() + 5
+    while stored(server, "quota-check")["quota"] and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert stored(server, "quota-check")["quota"] == {} and not page.errors

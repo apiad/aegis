@@ -1163,6 +1163,10 @@ body{background:#000}
 #a2 .schedules .hint.bad{color:var(--err)}
 #a2 .schedules .sch-tested{margin:6px 0 0;background:var(--raised);border-radius:4px;padding:6px 8px;font-family:var(--font-mono);font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}
 #a2 .schedules .sch-foot{display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap}
+#a2 .schedules .sch-pool{margin:6px 0}
+#a2 .schedules .sch-pool .pl{color:var(--strong);font-size:12.5px}
+#a2 .schedules .sch-q .seg{margin-bottom:0}
+#a2 .schedules .sch-form .sch-pct{width:56px}
 /* A day: its pill sticks under the top while its entries scroll. */
 #a2 .jday-h{position:sticky;top:0;z-index:2;background:var(--bg);padding:14px 0 8px;font-family:var(--font-mono);font-size:11px;color:var(--faint)}
 #a2 .jday-h span{display:inline-block;border:1px solid var(--rule);border-radius:999px;padding:2px 10px}
