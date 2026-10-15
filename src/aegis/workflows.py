@@ -1174,7 +1174,8 @@ class Workflows:
             if any("\0" in v for v in env.values()):
                 raise ValueError(NUL)
             code, out, err = await run_sh(cmd, self._cwd(st), pid, env)
-        except ValueError:  # a NUL byte, from a value: every attempt fails so
+        except ValueError:  # a NUL byte, from a value: every attempt would
+            # fail the same way, so it fails once, never retried (below)
             code, out, err = None, "", NUL
         except OSError as e:
             code, out, err = None, "", str(e)

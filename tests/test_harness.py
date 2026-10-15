@@ -113,5 +113,6 @@ def test_the_primer_says_when_to_reach_for_a_workflow():
         "many agents",
         "the workflow is the plan",
         "full permission",
+        "commands (sh steps or probes)",
     ):
         assert word in para
