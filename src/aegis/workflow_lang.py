@@ -40,7 +40,6 @@ KINDS = (
 )
 RUNS = frozenset({"seq", "par", "map", "agent"})  # the kinds this version runs
 COMMON = frozenset({"id", "say", "after", "deadline", "retries", "see", "cap"})
-LATER = ("deadline", "retries")  # common fields no engine honours yet
 MAP_FIELDS = frozenset({"over", "as", "cap", "do"})
 TYPES = frozenset({"object", "array", "string", "integer", "number", "boolean"})
 AGENT_FIELDS = frozenset({"prompt", "agent", "cwd", "result", "session"})
@@ -50,6 +49,20 @@ SCHEMA_KEYS = frozenset(
 ID = re.compile(r"^[a-z][a-z0-9_-]{0,39}$")
 KEY = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 AFTER = re.compile(r"^[a-z][a-z0-9_-]{0,39}(\.[A-Za-z0-9_-]{1,40})?$")
+
+DURATION = re.compile(r"^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$")
+RETRYABLE = frozenset({"agent", "sh", "check"})
+MAX_RETRIES = 10
+
+
+def duration(text) -> float | None:
+    """Seconds in ``1h30m``: days, hours, minutes, seconds, each optional,
+    in that order. None for anything else, and for zero."""
+    if not isinstance(text, str) or not (m := DURATION.match(text.strip())):
+        return None
+    d, h, mi, s = (int(x or 0) for x in m.groups())
+    total = ((d * 24 + h) * 60 + mi) * 60 + s
+    return float(total) if total > 0 else None
 
 
 @dataclass(frozen=True)
@@ -68,6 +81,8 @@ class Node:
     children: list["Node"] = field(default_factory=list)
     after: list[str] = field(default_factory=list)
     maps: tuple[str, ...] = ()  # the maps whose do holds this node, outermost first
+    deadline: float | None = None  # seconds from its start
+    retries: int = 0
 
 
 @dataclass
@@ -79,6 +94,7 @@ class Workflow:
     root: Node
     text: str
     limits: dict = field(default_factory=dict)
+    deadline: float | None = None  # seconds from approval
     # Agent id -> the early outputs some after waits on, for its preamble.
     waited: dict[str, list[str]] = field(default_factory=dict)
 
@@ -440,9 +456,6 @@ class _Parser:
             )
             return None
         kind = kinds[0]
-        for k in LATER:
-            if k in raw:
-                self.err(f"{path}.{k}", f"{k} is not in this version yet")
         if kind not in RUNS:
             self.err(path, f"{kind} is not in this version yet")
             return None
@@ -466,6 +479,30 @@ class _Parser:
             self.err(path, f"id {nid} is already used at {self.seen[nid]}")
         self.seen.setdefault(str(nid), path)
         node = Node(str(nid), kind, say, path, maps=tuple(self.maps))
+        if "deadline" in raw:
+            node.deadline = duration(raw["deadline"])
+            if node.deadline is None:
+                self.err(
+                    f"{path}.deadline", "a deadline is a duration such as 20m or 1h30m"
+                )
+        if "retries" in raw:
+            r = raw["retries"]
+            if (
+                isinstance(r, bool)
+                or not isinstance(r, int)
+                or not 0 <= r <= MAX_RETRIES
+            ):
+                self.err(
+                    f"{path}.retries",
+                    f"retries is a whole number from 0 to {MAX_RETRIES}",
+                )
+            elif kind not in RETRYABLE:
+                self.err(
+                    path + ".retries",
+                    "retries go on agent, sh and check; repeat a group with loop",
+                )
+            else:
+                node.retries = r
         body = raw[kind]
         after = raw.get("after", [])
         if not isinstance(after, list) or not all(
@@ -806,9 +843,13 @@ def parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError]
             "root",
         ):
             p.err(f"$.{k}", f"{k} is not a workflow field")
-    for k in ("deadline", "blocks"):
-        if k in raw:
-            p.err(f"$.{k}", f"{k} is not in this version yet")
+    if "blocks" in raw:
+        p.err("$.blocks", "blocks is not in this version yet")
+    deadline = None
+    if "deadline" in raw:
+        deadline = duration(raw["deadline"])
+        if deadline is None:
+            p.err("$.deadline", "a deadline is a duration such as 20m or 1h30m")
     wid = raw.get("id")
     if not isinstance(wid, str) or not ID.match(wid):
         p.err("$.id", "a workflow needs an id: lowercase letters, digits, - and _")
@@ -858,6 +899,7 @@ def parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError]
             text,
             limits=limits,
             waited=waited,
+            deadline=deadline,
         ),
         [],
     )
