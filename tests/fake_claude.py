@@ -131,6 +131,7 @@ SCRIPTS = (
     "edit",
     "many",
     "ctx",
+    "script",
 )
 COMMANDS = (
     [
