@@ -152,7 +152,7 @@ PREAMBLE = """---
 You are node `{node}` of the workflow `{wid}` ("{title}"), which {owner} armed and a person approved.
 When your task is done, call workflow_result with `value` matching this JSON Schema and `summary`, one plain sentence telling the person what you did:
 {schema}
-Nobody answers questions here and no person reads this session while the workflow runs: do the task with what you have, and say in the summary what you could not do."""
+If you cannot go on without an answer, call workflow_ask with your question and end your turn: it reaches the main agent, never a person, and the answer arrives as your next message. No person reads this session while the workflow runs."""
 
 JUDGE_SCHEMA = {
     "type": "object",
@@ -722,6 +722,38 @@ class Workflows:
         self.changed()
         return {"accepted": True}
 
+    def ask(self, s: Session, question: str) -> dict:
+        """A node's question for the main agent. The node ends its turn; the
+        answer is its next message, and until then its silence is not a
+        turn without a result."""
+        if not s.workflow:
+            raise OpError(
+                "main_agent", "you are the main agent: ask the person in your own words"
+            )
+        st, inst = self._reporting(s, "workflow_ask")
+        if s.workflow.get("probe") == "judge":
+            raise OpError(
+                "judge", "a judge decides from what it is given and asks nothing"
+            )
+        q = f"q{st.asks + 1}"
+        self._log(
+            st.run, {"ev": "asked", "node": inst, "q": q, "question": question.strip()}
+        )
+        self.changed()  # the pass tells the main agent
+        return {
+            "asked": q,
+            "note": "End your turn; the answer arrives as your next message.",
+        }
+
+    def note(self, run: str, text: str) -> None:
+        """A line the main agent adds to the story: why it decided as it did."""
+        st = self._get(run)
+        if st.status not in LIVE:
+            raise OpError("not_live", f"{run} is {st.status}")
+        if not text.strip():
+            raise OpError("bad_note", "a note is one plain sentence for the person")
+        self._log(run, {"ev": "note", "text": text.strip()})
+
     def exited(self, s: Session, code: int) -> None:
         wf_ref = s.workflow or {}
         st = self.runs.get(wf_ref.get("run", ""))
@@ -1154,11 +1186,15 @@ class Workflows:
         if s is None:
             self._fail(st, inst, "its session is gone")
             return "failed"
+        reported = n.result is not None or bool(n.summary)
+        asking = any(o["kind"] == "ask" and o["node"] == inst for o in st.open.values())
+        if asking and not reported:
+            return "running"  # it waits for the main agent's answer, not nudged
         got = await self._settle(
             st,
             inst,
             s,
-            reported=n.result is not None or bool(n.summary),
+            reported=reported,
             nudged=n.nudged,
             nudge_rec={"ev": "nudged", "node": inst},
         )
@@ -1814,6 +1850,13 @@ class Workflows:
                 f'Stop the run there with {call}, choice="abort").\n'
                 "You may ask the person first, or propose a change with workflow_edit."
             )
+        if o["kind"] == "ask":
+            asker = st.nodes.get(o["node"]) or NodeState()
+            return (
+                f'Step "{asker.say}" asks you ({to}): {o.get("question") or ""}\n'
+                f"Answer with {call}, text=...): the text reaches that step as its "
+                "next message. It waits meanwhile; other steps go on."
+            )
         lines = [f'Step "{n.say}" failed: {o.get("error") or n.error}']
         if n.attempts:
             lines[0] += f" (attempt {n.attempts + 1})"
@@ -1869,6 +1912,19 @@ class Workflows:
                     {"ev": "skipped", "node": to, "value": value, "summary": summary},
                 )
                 self.changed()
+            elif o["kind"] == "ask" and choice is None:
+                if not text:
+                    raise OpError("bad_answer", "a question's answer is text")
+                self._log(st.run, {"ev": "answered", "q": to, "text": text})
+                n = st.nodes.get(o["node"]) or NodeState()
+                node_s = self._reg.sessions.get(n.log_id or "")
+                if node_s is None or n.status != "running":
+                    return  # the node has moved on; the question is closed
+                await node_s.deliver(
+                    f"> from workflow:{self._wid(st)} · answer {to} · {iso_now()}",
+                    text,
+                    through_lock=True,
+                )
             elif o["kind"] == "gate" and choice in ("continue", "abort"):
                 await self._answer_gate(
                     st, to, choice == "continue", text, "main", value
@@ -1883,6 +1939,7 @@ class Workflows:
                 takes = {
                     "failed": "retry, skip or fail",
                     "gate": "continue or abort",
+                    "ask": "none: answer it with text",
                 }.get(o["kind"], "")
                 raise OpError(
                     "bad_choice", f"{to} is a {o['kind']} item: it takes choice {takes}"
@@ -1996,7 +2053,8 @@ class Workflows:
         closes = [k for k in st.open if k.startswith(under)] + [
             k
             for k, o in st.open.items()
-            if o["kind"] == "ask" and str(o.get("node", "")).startswith(under)
+            if o["kind"] == "ask"
+            and (o.get("node") == node or str(o.get("node", "")).startswith(under))
         ]
         self._log(st.run, rec | ({"closes": closes} if closes else {}))
         # A failed node's session keeps its card and gets a tab, as a failed
