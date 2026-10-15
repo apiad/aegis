@@ -119,7 +119,7 @@ class Schedule:
     created_at: int
     edited_at: int  # an every counts from here
     d: Definition
-    paused: dict | None = None  # {"by": "user"|"errors", "at": iso}
+    paused: dict | None = None  # {"by": "user"|"errors"|"approval", "at": iso}
     finished_at: int | None = None  # an at whose tick went through the layers
 
     def dump(self) -> dict:

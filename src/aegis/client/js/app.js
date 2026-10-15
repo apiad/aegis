@@ -8,7 +8,7 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, btwFolds, fadeTables, fileUrl, setDocker, setFileBase, setOpener, syncDock } from "./entries.js";
+import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, setApprovals, setDocker, setFileBase, setOpener, syncDock } from "./entries.js";
 import { setScroller } from "./highlight.js";
 import { Viewer } from "./viewer.js";
 import { Canvas } from "./canvas.js";
@@ -575,10 +575,20 @@ const schedules = new Schedules(conn, $("schedules"), {
     $("schedules-n").classList.toggle("err", red);
   },
 });
+setApprovals({
+  schedule: (name) => schedules.items.get(name) || null,
+  call: (op, params) => conn.call(op, params),
+});
 conn.subscribe(
   "schedules",
-  (list) => schedules.onSnapshot(list),
-  (ops) => schedules.onPatch(ops),
+  (list) => {
+    schedules.onSnapshot(list);
+    refreshApprovals();
+  },
+  (ops) => {
+    schedules.onPatch(ops);
+    refreshApprovals();
+  },
 );
 
 // Each server's `sessions` channel: a snapshot replaces that server's metas,

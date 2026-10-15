@@ -106,6 +106,18 @@ def register_schedule_ops(app: App) -> None:
                 "it, from the card under the call that made it",
             )
 
+    def card(caller: Caller, name: str, action: str) -> None:
+        # The approval card under the agent's call (entries.py, entries.js).
+        if (s := me(caller)) is not None:
+            s.record_card(
+                {
+                    "kind": "approval",
+                    "object": "schedule",
+                    "name": name,
+                    "action": action,
+                }
+            )
+
     def definition(p: ScheduleDef) -> Definition:
         return Definition.model_validate(p.model_dump(exclude={"name"}))
 
@@ -141,6 +153,7 @@ def register_schedule_ops(app: App) -> None:
         from the card under your call."""
         d = definition(p)
         s = sch.create(p.name, d, owner(caller), cwd(d.fire.cwd, caller))
+        card(caller, p.name, "created")
         return sch.wire(s.name)
 
     @r.op("schedule.update", ScheduleDef, agent=True)
@@ -150,6 +163,7 @@ def register_schedule_ops(app: App) -> None:
         mine(p.name, caller)
         d = definition(p)
         sch.update(p.name, d, cwd(d.fire.cwd, caller), by_agent=caller.is_agent)
+        card(caller, p.name, "updated")
         return sch.wire(p.name)
 
     @r.op("schedule.delete", ScheduleName, agent=True)

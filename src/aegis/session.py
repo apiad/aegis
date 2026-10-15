@@ -788,6 +788,11 @@ class Session:
         """A record from the session's artifacts board (artifacts.py)."""
         self._record(record)
 
+    def record_card(self, record: dict) -> None:
+        """A card asking a person to approve what this session's agent made:
+        a schedule now, a workflow next (schedule_ops, workflow_ops)."""
+        self._record(record)
+
     # -- the canvas (layout.py) ---------------------------------------------
     def dockable(self, pane: str) -> bool:
         """Whether ``pane`` can sit in this session's canvas: a live page of

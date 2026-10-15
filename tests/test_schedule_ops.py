@@ -199,3 +199,10 @@ async def test_an_agents_edit_pauses_an_approved_schedule_again(world):
 async def test_a_persons_schedule_is_born_running(world):
     await world.app.registry.call("schedule.create", {"name": "by-hand", **NEW})
     assert world.app.schedules.items["by-hand"].paused is None
+
+
+async def test_creating_a_schedule_puts_an_approval_card_under_the_call(world):
+    a = await world.spawn()
+    ok(await turn(a, mcp("schedule_create", name="nightly-tests", **NEW)))
+    cards = [e for e in a.entries() if e["kind"] == "approval"]
+    assert [c["detail"]["name"] for c in cards] == ["nightly-tests"]
