@@ -565,7 +565,7 @@ function gatePanel(w, r) {
 
 // An edit's panel: the diff in the steps' sentences, the commands it adds,
 // and Apply change and Keep the plan while it is the open proposal.
-const DIFF_OP = { add: "+", remove: "−", change: "~" };
+const DIFF_OP = { add: "+", remove: "−", change: "~", move: "→" };
 function editPanel(w, e) {
   const box = el("div", "edit");
   for (const d of e.diff) {
