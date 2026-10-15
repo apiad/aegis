@@ -65,6 +65,37 @@ def classify(attention: str) -> str:
     return "running"
 
 
+async def run_bash(
+    cmd: str, cwd: str, timeout: float = CONDITION_LIMIT_S
+) -> tuple[int | None, str, str]:
+    """Run ``cmd`` under bash in ``cwd``: its exit code, stdout and stderr. The
+    code is None when bash could not start or the command took over
+    ``timeout`` seconds, and stderr then says which. A monitor's conditions
+    and a schedule's check both run through here."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "bash",
+            "-c",
+            cmd,
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as e:
+        return None, "", str(e)
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), timeout)
+    except TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return None, "", f"took over {timeout:g}s"
+    return (
+        proc.returncode,
+        out.decode("utf-8", "replace"),
+        err.decode("utf-8", "replace"),
+    )
+
+
 def iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -229,28 +260,7 @@ class Monitors:
         self._tasks[m.id] = asyncio.get_running_loop().create_task(self._watch(m))
 
     async def _run(self, cmd: str, cwd: str) -> tuple[int | None, str, str]:
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "bash",
-                "-c",
-                cmd,
-                cwd=cwd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-        except OSError as e:
-            return None, "", str(e)
-        try:
-            out, err = await asyncio.wait_for(proc.communicate(), CONDITION_LIMIT_S)
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
-            return None, "", f"took over {CONDITION_LIMIT_S:g}s"
-        return (
-            proc.returncode,
-            out.decode("utf-8", "replace"),
-            err.decode("utf-8", "replace"),
-        )
+        return await run_bash(cmd, cwd)
 
     async def _check(self, m: Monitor, kind: str) -> tuple[int | None, str, bool]:
         rc, out, err = await self._run(getattr(m, kind), m.cwd)
