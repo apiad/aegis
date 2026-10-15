@@ -1670,6 +1670,7 @@ function renderMeta(s) {
   const p = sideProvider(s);
   if (`${s.server || ""}:${p ? p.name : ""}` !== sideQuotaKey) drawSideQuota(s);
   drawSideUsage(s);
+  drawWaiting(s);
   const mons = s.monitors || [];
   $("s-mon-sec").hidden = !mons.length;
   renderMonitors($("s-monitors"), mons);
@@ -1692,6 +1693,30 @@ function renderMeta(s) {
   if (s.state !== "parked" && warmed === shown) warmed = null;
   drawComposerHint(s);
   setTitle(`${s.title || s.handle} · aegis`);
+}
+
+// The sessions this one waits on (registry._waiting_for): a queue task's
+// worker or a spawned child, a row each; a click opens it. A task still
+// pending has no worker yet, so its row names the queue and opens nothing.
+function drawWaiting(s) {
+  const list = s.waiting_for || [];
+  $("s-wait-sec").hidden = !list.length;
+  $("s-waiting").replaceChildren(
+    ...list.map((w) => {
+      const key = w.key && keyOf(s.server, w.key);
+      const row = document.createElement("div");
+      row.className = `kv wait${key ? " go" : ""}`;
+      const where = w.kind === "task" ? `queue ${w.queue} · ${w.status}` : w.status;
+      row.append(span("", w.handle || "no worker yet"), span("r", where));
+      if (key) {
+        row.tabIndex = 0;
+        row.title = `Open ${w.handle}`;
+        row.addEventListener("click", () => openSession(key));
+        row.addEventListener("keydown", (ev) => ev.key === "Enter" && openSession(key));
+      }
+      return row;
+    }),
+  );
 }
 
 // The composer's placeholder: whose session, whether its server is reachable,

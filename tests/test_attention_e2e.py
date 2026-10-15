@@ -108,7 +108,7 @@ async def test_a_parent_waits_on_a_working_child(world, published):
     said = await turn(a, mcp("session_spawn", agent="opus", prompt="/sleep 1"))
     child = world.session(json.loads(said.removeprefix("mcp ok: "))["log_id"])
     await until(lambda: child.status == "working", timeout=8, what="the child working")
-    assert a.wire()["attention"] == "waiting" and a.wire()["waiting_on"] == "1 session"
+    assert a.wire()["attention"] == "waiting" and a.wire()["waiting_on"] == child.handle
     await until(lambda: child.status == "idle", timeout=10, what="the child done")
     assert a.wire()["attention"] == "done"
     await until(
@@ -130,7 +130,7 @@ async def test_a_parent_waits_on_a_child_that_waits(world, published):
         what="the child idle on its monitor",
     )
     assert child.wire()["attention"] == "waiting"
-    assert a.wire()["attention"] == "waiting" and a.wire()["waiting_on"] == "1 session"
+    assert a.wire()["attention"] == "waiting" and a.wire()["waiting_on"] == child.handle
     await until(
         lambda: published(a.log_id)["attention"] == "waiting",
         what="the parent's published card waiting",
@@ -153,7 +153,7 @@ async def test_a_cancelled_queue_task_leaves_the_published_card(world, published
     held = json.loads(said.removeprefix("mcp ok: "))["task_id"]
     assert world.app.queues.tasks[held].status == "pending"
     await until(
-        lambda: published(a.log_id)["waiting_on"] == "1 queue task",
+        lambda: published(a.log_id)["waiting_on"] == "1 pending queue task",
         what="the pending callback task on the published card",
     )
     await world.app.registry.call("task.cancel", {"task_id": held})
@@ -165,6 +165,57 @@ async def test_a_cancelled_queue_task_leaves_the_published_card(world, published
         what="the cancelled task gone from the published card",
     )
     await world.app.registry.call("task.cancel", {"task_id": busy})
+
+
+async def test_the_card_names_the_worker_it_waits_on(world, published):
+    a = await world.spawn()
+    said = await turn(a, mcp("queue_enqueue", queue="solo", payload="/sleep 30"))
+    task = world.app.queues.tasks[json.loads(said.removeprefix("mcp ok: "))["task_id"]]
+    await until(lambda: task.worker in world.app.sessions.sessions, what="the worker")
+    worker = world.session(task.worker)
+    await until(
+        lambda: published(a.log_id)["waiting_on"] == worker.handle,
+        what="the worker's handle on the published card",
+    )
+    (w,) = published(a.log_id)["waiting_for"]
+    assert w == {
+        "kind": "task",
+        "task_id": task.id,
+        "queue": "solo",
+        "status": "running",
+        "key": worker.log_id,
+        "handle": worker.handle,
+    }
+    world.app.sessions.rename(worker.log_id, "busy-worker", None)
+    await until(
+        lambda: published(a.log_id)["waiting_for"][0]["handle"] == "busy-worker",
+        what="the worker's new handle on the published card",
+    )
+    await world.app.registry.call("task.cancel", {"task_id": task.id})
+    await until(
+        lambda: published(a.log_id)["waiting_for"] == [],
+        what="the cancelled task gone from the published card",
+    )
+
+
+async def test_waiting_on_names_two_sessions_then_counts(world):
+    a = await world.spawn()
+    for _ in range(3):
+        await turn(a, mcp("session_spawn", agent="opus", prompt="/sleep 30"))
+    kids = [
+        s for s in world.app.sessions.sessions.values() if s.spec.spawned_by == a.log_id
+    ]
+    await until(
+        lambda: all(k.status == "working" for k in kids),
+        timeout=8,
+        what="the children working",
+    )
+    c = a.wire()
+    assert [w["kind"] for w in c["waiting_for"]] == ["session"] * 3
+    first, second = (w["handle"] for w in c["waiting_for"][:2])
+    assert c["waiting_on"] == f"{first}, {second}, +1"
+    for k in kids:
+        await world.app.sessions.close(k.log_id)
 
 
 async def test_a_change_of_attention_alone_goes_out_at_once(world):

@@ -313,6 +313,8 @@ class Queues:
             return
         t.status, t.worker = "running", s.log_id
         self._log(t, "dispatched")
+        if t.enqueuer:
+            self._registry.refresh_card(t.enqueuer)  # it names the worker now
         await s.send(t.payload)
 
     async def cancel(self, t: Task) -> None:

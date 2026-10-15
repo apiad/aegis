@@ -50,6 +50,18 @@ result, the worker is archived, and, with a callback, you are woken with:
 A worker whose process exits on its own fails its task and gets its tab, and
 the wake says `error` with the exit code and the last ten lines of its stderr.
 
+## While you wait
+
+Between your turns, a session with a callback task still pending or running
+reads waiting, and says on whom. Its Fleet card says `waiting · <handle>`,
+naming the first two workers and counting the rest (`+2`); a task still
+waiting for a slot has no worker yet and counts as `1 pending queue task`.
+The session panel has a Waiting on section with a row per task: the worker's
+handle, the queue and the task's status. A click on a row opens the worker,
+whose tab a quiet worker otherwise lacks. A session started with
+`session_spawn` that is still working or waiting shows there the same way.
+`session_list` gives an agent the same names in each card's waiting line.
+
 ## Check, cancel and resume
 
 - `task_status` with `task_id=<id>`: the task's status (pending, running,
