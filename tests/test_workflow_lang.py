@@ -814,3 +814,49 @@ def test_gate_is_still_not_in_this_version():
         )
     )
     assert "$.root.seq[4]: gate is not in this version yet" in errors
+
+
+def _one_sh(cmd: str, probe: bool = False) -> list[str]:
+    import json
+
+    c = json.dumps(cmd)
+    node = (
+        f"{{check: {{sh: {c}}}, say: Probe.}}" if probe else f"{{sh: {c}, say: Run.}}"
+    )
+    text = f"id: q\ntitle: Q\nsay: Q.\nargs: {{type: object}}\nroot: {node}\n"
+    return errs(text)[1]
+
+
+def test_a_template_inside_shell_quoting_is_refused():
+    # A quoted value inside quotes is unquoted again: $(...) in it would run.
+    for where, cmd in [
+        ("single quotes", "echo '{{args.t}}'"),
+        ("double quotes", 'echo "{{args.t}}"'),
+        ("double quotes", 'echo "a $b {{args.t}} c"'),
+        ("backticks", "echo `echo {{args.t}}`"),
+        ("a $(...)", "echo $(echo {{args.t}})"),
+        ("a $(...)", 'x="$(cat {{args.t}})"'),
+        ("an unquoted heredoc", "cat <<EOF\n{{args.t}}\nEOF"),
+        ("an unquoted heredoc", "cat <<-END >f\n\tx {{args.t}}\n\tEND"),
+    ]:
+        for probe in (False, True):
+            got = _one_sh(cmd, probe)
+            assert len(got) == 1, (cmd, got)
+            path = "$.root.check.sh" if probe else "$.root.sh"
+            assert got[0].startswith(f"{path}: {{{{args.t}}}} sits inside {where}"), got
+            assert "write it bare" in got[0], got
+
+
+def test_a_bare_template_beside_quoting_lints_clean():
+    for cmd in [
+        "echo {{args.t}}",
+        "echo 'it''s' {{args.t}} \"done\"",
+        "echo $(date) {{args.t}} `true`",
+        "( cd x && echo {{args.t}} )",
+        "echo {{args.t}} # don't quote it",
+        "cat <<'EOF'\n{{args.t}}\nEOF\necho {{args.t}}",
+        "cat <<EOF\nplain\nEOF\necho {{args.t}}",
+        "test {{args.t or 'a b'}} = x",
+        "echo \\' {{args.t}}",
+    ]:
+        assert _one_sh(cmd) == [], cmd

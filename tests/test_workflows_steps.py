@@ -88,12 +88,13 @@ async def test_a_value_with_shell_syntax_stays_one_argument(world):
             flow(
                 '{sh: "echo {{args.title}} > said", say: Write the title.}', args=args
             ),
-            {"title": "x; touch pwned"},
+            {"title": "x; touch pwned $(touch sub) `touch tick` 'q'"},
         ),
     )
     assert st.status == "done"
-    assert (world.root / "said").read_text() == "x; touch pwned\n"
-    assert not (world.root / "pwned").exists()
+    said = "x; touch pwned $(touch sub) `touch tick` 'q'\n"
+    assert (world.root / "said").read_text() == said
+    assert not any((world.root / f).exists() for f in ("pwned", "sub", "tick"))
 
 
 async def test_a_failing_sh_fails_its_node_with_the_code_and_stderr(world):

@@ -88,7 +88,9 @@ the directory you armed the workflow from. Exit 0 is done; anything else
 fails the step with its code and the last line it printed to stderr. Its
 value is `{code, out, err}` (the last 4000 characters of each), so a later
 step reads `{{merge.out}}`. Each `{{...}}` in a command is shell-quoted for
-you: write `{{impl.pr}}`, not `'{{impl.pr}}'`. Only a session with full
+you, so write it bare: `{{impl.pr}}`, never `'{{impl.pr}}'`. The lint refuses
+one inside quotes, backticks, a `$(...)` or an unquoted heredoc, where its
+quoting would come undone. Only a session with full
 permission can arm a workflow with a command, and the card shows every
 command in full before the person approves.
 
