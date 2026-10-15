@@ -200,6 +200,7 @@ class ConfigDoc(BaseModel):
     agents: list[AgentDoc] = Field(default_factory=list)
     default_agent: str | None = None
     queues: list[QueueDoc] = Field(default_factory=list)
+    park: dict[str, int] = Field(default_factory=dict)
 
 
 def doc_from(data: dict) -> ConfigDoc:
@@ -228,7 +229,12 @@ def doc_from(data: dict) -> ConfigDoc:
             )
         )
     d = data.get("default_agent")
-    return ConfigDoc(agents=agents, default_agent=str(d) if d else None, queues=queues)
+    return ConfigDoc(
+        agents=agents,
+        default_agent=str(d) if d else None,
+        queues=queues,
+        park={k: v for k, v in park_from(data.get("park")).items() if k != "error"},
+    )
 
 
 @dataclass(frozen=True)
@@ -372,6 +378,8 @@ def validate(doc: ConfigDoc) -> list[Finding]:
             err(row, f"{row}.max_parallel", "max_parallel is not a positive integer")
     if doc.default_agent and doc.default_agent not in names:
         err("default_agent", "default_agent", f"no agent named {doc.default_agent!r}")
+    if "error" in (p := park_from(doc.park or None)):
+        out.append(Finding("error", "park", p["error"]))
     return out
 
 
@@ -438,6 +446,15 @@ def _apply(data: CommentedMap, doc: ConfigDoc) -> None:
             _put(queues[q.name], "max_parallel", q.max_parallel)
     else:
         data.pop("queues", None)
+    if doc.park:
+        park = _section(data, "park")
+        for h in list(park):
+            if h not in doc.park:
+                del park[h]
+        for h, s in doc.park.items():
+            _put(park, h, s)
+    else:
+        data.pop("park", None)
 
 
 def write(path: Path, doc: ConfigDoc, expected: Stamp | None) -> list[Finding]:

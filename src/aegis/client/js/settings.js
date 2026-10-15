@@ -212,7 +212,7 @@ export class Settings {
         h(
           "div",
           { className: "set-page" },
-          h("p", { className: "notice", id: "set-member", textContent: "Server settings (agents, queues, servers, tokens) are edited by an admin." }),
+          h("p", { className: "notice", id: "set-member", textContent: "Server settings (agents, queues, parking, servers, tokens) are edited by an admin." }),
           this.browser(),
           this.checks(),
         ),
@@ -239,6 +239,7 @@ export class Settings {
       this.checks(),
       this.agents(),
       this.queues(),
+      this.park(),
     );
     this.box.replaceChildren(full, this.bar());
     this.mark();
@@ -916,6 +917,30 @@ export class Settings {
       ? h("div", { className: "set-queues", id: "set-queues" }, ...rows)
       : h("p", { className: "set-none", id: "set-queues", textContent: "No queues. A queue hands tasks to fresh worker sessions of one agent." });
     return h("section", {}, head, body);
+  }
+
+  // One number per harness: the minutes a session of it must be safe to end
+  // before aegis ends its process (park.py). Blank is off.
+  park() {
+    const harnesses = this.wire.vocab?.harnesses || ["claude-code", "opencode", "codex"];
+    this.doc.park ||= {};
+    const rows = harnesses.map((name) => {
+      const mins = this.doc.park[name] ? Math.round(this.doc.park[name] / 60) : "";
+      const input = h("input", { name, type: "number", min: 1, value: mins, className: "pick set-limit", placeholder: "off" });
+      input.setAttribute("aria-label", `Park ${name} sessions after minutes`);
+      input.addEventListener("input", () => {
+        if (input.value === "") delete this.doc.park[name];
+        else this.doc.park[name] = Math.round(Math.max(1, Number(input.value)) * 60);
+        this.touch();
+      });
+      const row = h("div", { className: "set-queue" });
+      row.dataset.row = `park.${name}`;
+      row.append(h("div", { className: "set-queue-line" }, h("span", { className: "set-name", textContent: name }), h("span", { textContent: "parks after" }), input, h("span", { textContent: "min idle" })));
+      return row;
+    });
+    const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Parking" }));
+    const note = h("p", { className: "set-none", textContent: "An idle session that nothing needs gives its harness's memory back, and the next message resumes it. Blank keeps every session of that harness running." });
+    return h("section", {}, head, note, h("div", { className: "set-queues", id: "set-park" }, ...rows));
   }
 
   bar() {

@@ -87,3 +87,30 @@ async def test_the_stamp_survives_a_browser_round_trip(app, tmp_path):
     )
     r = await app.registry.call("config.write", {"doc": w["doc"], "stamp": w["stamp"]})
     assert r["saved"]
+
+
+def test_settings_writes_the_park_block_and_keeps_comments(tmp_path):
+    from aegis.config import doc_from, load, stamp_of, write
+
+    path = tmp_path / ".aegis.yaml"
+    path.write_text(
+        "# ours\nagents:\n  opus: {harness: claude-code, model: opus, effort: high, permission: auto}\n"
+    )
+    doc = doc_from(load(path)[0])
+    assert doc.park == {}
+    doc.park = {"claude-code": 1200}
+    assert write(path, doc, stamp_of(path)) == []
+    text = path.read_text()
+    assert "# ours" in text and "claude-code: 1200" in text
+    doc = doc_from(load(path)[0])
+    assert doc.park == {"claude-code": 1200}
+    doc.park = {}
+    write(path, doc, stamp_of(path))
+    assert "park" not in path.read_text()
+
+
+def test_a_bad_park_value_is_refused_by_validate():
+    from aegis.config import ConfigDoc, validate
+
+    problems = validate(ConfigDoc(park={"claude-code": 0}))
+    assert any(p.where.startswith("park") for p in problems)
