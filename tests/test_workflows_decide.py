@@ -9,7 +9,7 @@ from aegis.workflow_log import NodeState
 from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
 from .test_workflows_e2e import ok
-from .test_workflows_parallel import leaf, report
+from .test_workflows_parallel import leaf, report, script
 
 
 @pytest.fixture
@@ -181,3 +181,48 @@ async def test_the_main_agent_stops_one_node_and_the_run_waits(world):
     )
     s = world.app.sessions.sessions[st.nodes["long"].log_id]
     await until(lambda: s.status != "working", timeout=10)
+
+
+ASKS = script(
+    ["workflow_ask", {"question": "Which branch, main or next?"}],
+)
+
+
+async def test_a_worker_asks_ends_its_turn_and_finishes_after_the_answer(world):
+    main, run = await armed(
+        world, wf(f"  seq:\n    - {leaf('w', 'Work.', ASKS)}\n  say: One.")
+    )
+    wf_ = world.app.workflows
+    await until(
+        lambda: "q1" in wf_.runs[run].open and wf_.runs[run].open["q1"]["told"],
+        timeout=20,
+    )
+    s = world.app.sessions.sessions[wf_.runs[run].nodes["w"].log_id]
+    await until(lambda: s.status != "working", timeout=10)
+    assert not wf_.runs[run].nodes["w"].nudged  # an open question is not a silent turn
+    # The fake reads the answer's first line as its next command.
+    answer = script(["workflow_result", {"value": {}, "summary": "Used main."}])
+    await world.app.registry.call(
+        "workflow.answer",
+        {"run": run, "to": "q1", "text": answer},
+        Caller("agent", main.log_id),
+    )
+    await until(lambda: wf_.runs[run].status == "done", timeout=20)
+    assert any(x["mark"] == "ask" for x in wf_.runs[run].story)
+
+
+async def test_only_a_node_asks_and_only_the_main_agent_notes(world):
+    main, run = await armed(
+        world, wf(f"  seq:\n    - {leaf('w', 'Work.', report(wait=5))}\n  say: One.")
+    )
+    said = await turn(main, mcp("workflow_ask", question="?"))
+    assert said.startswith("mcp error") and "ask the person" in said
+    said = await turn(
+        main, mcp("workflow_note", run=run, text="Chose main because the plan says so.")
+    )
+    assert said.startswith("mcp ok")
+    other = await world.spawn()
+    assert (await turn(other, mcp("workflow_note", run=run, text="x"))).startswith(
+        "mcp error"
+    )
+    assert world.app.workflows.runs[run].story[-1]["mark"] == "note"

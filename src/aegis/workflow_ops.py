@@ -89,6 +89,19 @@ class GateAnswer(_Strict):
     answer: str = ""
 
 
+class Ask(_Strict):
+    question: str = Field(
+        min_length=1, description="What you cannot go on without, in one message."
+    )
+
+
+class Note(_Strict):
+    run: str
+    text: str = Field(
+        min_length=1, description="One plain sentence for the run's story."
+    )
+
+
 def register_workflow_ops(app: App) -> None:
     r, wf, reg = app.registry, app.workflows, app.sessions
 
@@ -163,6 +176,22 @@ def register_workflow_ops(app: App) -> None:
         owned(p.run, caller)
         await wf.answer(me(caller), p.run, p.to, p.choice, p.value, p.text)
         return wf.wire(p.run)
+
+    # Open to read permission, as workflow_result is: any node may ask.
+    @r.op("workflow.ask", Ask, agent=True, read=True)
+    async def workflow_ask(p: Ask, caller):
+        """As a workflow node, ask the main agent a question you cannot go on
+        without, then end your turn: the answer arrives as your next
+        message. It never reaches a person."""
+        return wf.ask(me(caller), p.question)
+
+    @r.op("workflow.note", Note, agent=True)
+    async def workflow_note(p: Note, caller):
+        """Write one line into your workflow's story, the card the person
+        reads: why you answered or decided as you did."""
+        owned(p.run, caller)
+        wf.note(p.run, p.text)
+        return {"noted": True}
 
     # Not marked for agents: only a person answers a by: person gate.
     @r.op("workflow.gate", GateAnswer)
