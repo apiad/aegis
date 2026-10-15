@@ -36,6 +36,8 @@ KINDS = (
 )
 RUNS = frozenset({"seq", "agent"})  # the kinds this version runs
 COMMON = frozenset({"id", "say", "after", "deadline", "retries", "see"})
+LATER = ("after", "deadline", "retries")  # common fields no engine honours yet
+TYPES = frozenset({"object", "array", "string", "integer", "number", "boolean"})
 AGENT_FIELDS = frozenset({"prompt", "agent", "cwd", "result", "class", "session"})
 SCHEMA_KEYS = frozenset(
     {"type", "properties", "required", "items", "enum", "description"}
@@ -160,6 +162,9 @@ class _Parser:
             )
             return None
         kind = kinds[0]
+        for k in LATER:
+            if k in raw:
+                self.err(f"{path}.{k}", f"{k} is not in this version yet")
         if kind not in RUNS:
             self.err(path, f"{kind} is not in this version yet")
             return None
@@ -177,6 +182,8 @@ class _Parser:
                 nid = f"n{self.n}"
         elif not isinstance(nid, str) or not ID.match(nid):
             self.err(f"{path}.id", "an id is lowercase letters, digits, - and _")
+        elif nid == "args":
+            self.err(f"{path}.id", "args is reserved for the workflow's arguments")
         elif nid in self.seen:
             self.err(path, f"id {nid} is already used at {self.seen[nid]}")
         self.seen.setdefault(str(nid), path)
@@ -222,6 +229,13 @@ class _Parser:
                     f"{path}.{k}",
                     f"{k} is not in the schema subset ({', '.join(sorted(SCHEMA_KEYS))})",
                 )
+            elif k == "type" and v not in TYPES:
+                self.err(
+                    f"{path}.type",
+                    f"{v} is not a type, one of {', '.join(sorted(TYPES))}",
+                )
+            elif k in ("required", "enum") and not isinstance(v, list):
+                self.err(f"{path}.{k}", f"{k} is a list")
             elif k == "properties" and isinstance(v, dict):
                 for name, sub in v.items():
                     self.schema(sub, f"{path}.properties.{name}")
