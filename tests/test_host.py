@@ -75,3 +75,25 @@ def test_a_change_in_a_whole_percent_publishes_and_nothing_else_does(tmp_path):
     h.check()
     assert len(sent) == 2
     assert sent[-1][1] == [{"set": h.snapshot()}]
+
+
+def test_a_change_in_the_network_reading_alone_publishes(tmp_path):
+    p = proc(tmp_path)
+    net = {"ok": True, "rtt_ms": 24}
+    sent = []
+    h = HostSampler(
+        lambda channel, ops: sent.append((channel, ops)),
+        lambda channel: 1,
+        tmp_path,
+        proc=p,
+        net=lambda: dict(net),
+    )
+    h.check()
+    assert sent[-1][1][0]["set"]["net"] == {"ok": True, "rtt_ms": 24}
+    h.check()  # the CPU share moves from since-boot to since-last-sample
+    n = len(sent)
+    h.check()
+    assert len(sent) == n
+    net["ok"] = False
+    h.check()
+    assert len(sent) == n + 1 and sent[-1][1][0]["set"]["net"]["ok"] is False

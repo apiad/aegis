@@ -442,6 +442,14 @@ that changed. Mounting a long transcript whole and rebuilding every tab per patc
 made typing cost grow with the transcript's length and the number of sessions
 (#157, #158).
 
+**A sampler runs only while someone watches.** The host meters (`host.py`)
+and the network readings (`net/service.py`) read nothing while no browser
+subscribes to `host`; the network loop polls for a watcher once a second and
+refreshes the moment one arrives. The network readings reach the internet and
+the speed test downloads a megabyte, so a server nobody looks at must not pay
+for them. Both ride the one `host` snapshot, so a linked server's band shows
+its own.
+
 **A toast is an event, never a state.** `App.toast` publishes on the `toasts`
 channel, whose snapshot is always empty, so a browser that connects later never
 replays one; it skips the throttle, because a toast must neither wait nor merge.

@@ -18,7 +18,7 @@ import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { linesOf, mine, ownerOf, setWho } from "./me.js";
 import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan } from "./fleet.js";
-import { age, countdown, elapsed, hostRow, hostSeverity, providerFor, quotaSideRow, quotaTile, tile } from "./gauges.js";
+import { age, countdown, elapsed, hostRow, hostSeverity, mbps, netRows, providerFor, quotaSideRow, quotaTile, tile } from "./gauges.js";
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
 import { installKeys, renderKeys } from "./keys.js";
 import { Palette } from "./palette.js";
@@ -1105,7 +1105,7 @@ function drawBand() {
   if (root.dataset.view !== "fleet") return;
   // Saved cards say how old they are.
   const stale = local().some((m) => m.stale);
-  renderBand($("band"), { metas: local(), host, server: conn.server || localStorage.getItem("aegis.server") || "", link: stale ? seenText() : links.length ? "this server" : "", off: stale });
+  renderBand($("band"), { metas: local(), host, server: conn.server || localStorage.getItem("aegis.server") || "", link: stale ? seenText() : links.length ? "this server" : "", off: stale, measure: () => measureNet(null) });
   for (const l of links) {
     const box = $("remotes").querySelector(`[data-server="${CSS.escape(l.name)}"]`);
     if (!box) continue;
@@ -1116,8 +1116,15 @@ function drawBand() {
       server: l.name,
       link: linkLine(l),
       off: l.state !== "linked",
+      measure: () => measureNet(l.name),
     });
   }
+}
+
+// A speed reading now, on the server the row belongs to; the host channel
+// brings the result, "measuring…" first.
+function measureNet(server) {
+  conn.call("net.measure", {}, server).catch((e) => toast(e.message, { kind: "error" }));
 }
 
 // The line beside a linked server's name in its band.
@@ -1283,6 +1290,13 @@ function drawSideHost() {
     tiles.push(meter("disk", h.disk.pct));
     rows.push(hostRow("Disk", h.disk.pct, `${h.disk.used_gb} / ${h.disk.total_gb} GB`));
   }
+  const net = h.net;
+  if (net) {
+    const sp = net.speed;
+    tiles.push(tile("net", net.ok ? `${net.rtt_ms} ms` : "down", { severity: net.ok ? "normal" : "critical" }));
+    if (sp?.complete) tiles.push(tile("speed", mbps(sp.bps), { small: " Mbps" }));
+  }
+  rows.push(...netRows(net, Date.now() / 1000, () => measureNet(server || null)));
   $("s-host-tiles").replaceChildren(...tiles);
   $("s-host-rows").replaceChildren(...rows);
   const live = (s.server ? on(s.server) : local()).filter((m) => !["stopped", "parked"].includes(m.state) && m.kind !== "term");
