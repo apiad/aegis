@@ -71,6 +71,7 @@ from .config_ops import register_config_ops
 from .confirm import Confirmations
 from .help_ops import register_help_ops
 from .host import HostSampler
+from .net.service import NetService
 from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from . import refs
@@ -361,7 +362,17 @@ class App:
         self.confirmations = Confirmations()
         self.quota = Quota(self.publish)
         self.host = HostSampler(
-            self.publish, self.channels.subscribers, roots.config_root
+            self.publish,
+            self.channels.subscribers,
+            roots.config_root,
+            net=lambda: (
+                self.net.wire() if self.config.current().network.enabled else None
+            ),
+        )
+        self.net = NetService(
+            lambda: self.config.current().network,
+            watched=lambda: self.channels.subscribers("host") > 0,
+            on_change=self.host.check,
         )
         reg = self.sessions
         reg.tokens, reg.monitors, reg.queues, reg.server_name = (
@@ -584,6 +595,7 @@ class App:
         self.schedules.start()
         self.quota.start()
         self.host.start()
+        self.net.start()
         self.nudges.start()
         self.parker.start()
         self.links.boot()
@@ -605,6 +617,7 @@ class App:
         await self.nudges.stop()
         await self.quota.stop()
         await self.host.stop()
+        await self.net.stop()
         await self.monitors.shutdown()
         await self.recaps.shutdown()
         await self.terminals.shutdown()
@@ -1565,6 +1578,15 @@ class App:
         @r.op("server.version")
         async def server_version(_, caller):
             return await self.versions.wire()
+
+        @r.op("net.measure")
+        async def net_measure(_, caller):
+            """A speed reading now, whatever its cadence says; the host channel
+            carries the result, and so does the return value."""
+            if not self.config.current().network.enabled:
+                raise OpError("disabled", "network readings are off in network:")
+            await self.net.measure()
+            return self.net.wire()
 
         @r.op("quota.read", agent=True, read=True)
         async def quota_read(_, caller):

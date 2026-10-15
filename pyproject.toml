@@ -96,4 +96,5 @@ dev = [
     "playwright>=1.63.0",
     "httpx>=0.28",
     "psutil>=6.0",
+    "pytest-httpx>=0.35",
 ]

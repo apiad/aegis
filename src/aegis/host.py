@@ -1,6 +1,7 @@
 """Host meters for the Fleet band: CPU, RAM, and the disk that holds aegis.
 
-Read from /proc and ``os.statvfs``, stdlib only. Sampled every ``INTERVAL_S``
+Read from /proc and ``os.statvfs``, stdlib only; the ``net`` field is the
+last network reading (net/service.py), which calls ``check`` when it changes. Sampled every ``INTERVAL_S``
 and only while someone subscribes to the ``host`` channel, so a server nobody
 watches reads nothing. Published when a whole-percent value changes. Where
 /proc is missing (macOS) the snapshot is None and the client hides the meters.
@@ -73,7 +74,13 @@ def _key(snap: dict | None) -> tuple | None:
     if snap is None:
         return None
     d = snap["disk"]
-    return snap["cpu"], snap["ram"]["pct"], None if d is None else d["pct"]
+    net = snap.get("net")
+    return (
+        snap["cpu"],
+        snap["ram"]["pct"],
+        None if d is None else d["pct"],
+        None if net is None else repr(sorted(net.items())),
+    )
 
 
 class HostSampler:
@@ -85,12 +92,14 @@ class HostSampler:
         *,
         proc: Path = Path("/proc"),
         interval: float = INTERVAL_S,
+        net: Callable[[], dict | None] = lambda: None,
     ) -> None:
         self._publish = publish
         self._subscribers = subscribers
         self._disk_path = disk_path
         self._proc = proc
         self._interval = interval
+        self._net = net
         self._prev_cpu: tuple[int, int] | None = None
         self._last: dict | None = None
         self._task: asyncio.Task | None = None
@@ -112,6 +121,7 @@ class HostSampler:
             "cpu": round(100 * busy / total) if total > 0 else 0,
             "ram": mem,
             "disk": disk(self._disk_path),
+            "net": self._net(),
         }
 
     def snapshot(self) -> dict | None:

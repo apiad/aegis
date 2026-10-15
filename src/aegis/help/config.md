@@ -1,7 +1,7 @@
 ---
 title: Configuration
 kind: concept
-when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap or parking idle sessions in .aegis.yaml, or picking a theme
+when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap, parking idle sessions or the network readings in .aegis.yaml, or picking a theme
 ---
 
 aegis reads one file, `.aegis.yaml`, at the root it serves: `--root` when
@@ -138,6 +138,39 @@ of the Settings page, which takes minutes and which members do not see.
 
 Only Claude Code's resume has been measured. Codex and OpenCode sessions park
 when named, and `aegis doctor` warns that how they resume is unmeasured.
+
+## Network readings
+
+Under CPU, RAM and disk, the Host rows of the Fleet band and of a session's
+sidebar show three readings of the server's network:
+
+- **Net**: the time a TCP handshake to 1.1.1.1 or 8.8.8.8 on port 443 takes,
+  or `no internet` when neither answers.
+- **Exit**: the address the server's traffic leaves from, with the Cloudflare
+  location and country it reaches, from `cloudflare.com/cdn-cgi/trace`.
+- **Speed**: the rate of a timed 1 MB download from `speed.cloudflare.com`, in
+  megabits a second. Hover it for MB/s and the bytes it was measured on; click
+  it to measure now.
+
+They run only while a browser shows the server, and each linked server shows
+its own. A reading that may no longer hold keeps its value, greyed, with its
+age: the exit address after a failed lookup, everything after egress drops.
+`network:` changes what they reach and how often, and every key is optional:
+
+```yaml
+network:
+  enabled: true          # false: no readings and no rows
+  interval: 20           # seconds between egress checks
+  trace_interval: 300    # seconds between exit-address lookups
+  speed_interval: 900    # seconds between speed tests; 0 turns them off
+  speed_bytes: 1000000   # bytes each speed test downloads
+  timeout: 3             # seconds for a handshake or a lookup
+  speed_timeout: 30      # seconds for the whole download
+  anchors: ["1.1.1.1:443", "8.8.8.8:443"]   # an IPv6 one as "[host]:port"
+```
+
+A block with an unknown key, or a value out of range, keeps every default,
+and `aegis doctor` names the mistake.
 
 ## Terminals
 

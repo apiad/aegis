@@ -35,6 +35,7 @@ from ruamel.yaml.scalarstring import LiteralScalarString
 
 from .agents import EFFORTS, HARNESSES, PERMISSION_ORDER, Agent, agents_from
 from .cgroups import DEFAULT_MEMORY_MAX, parse_size
+from .net.config import NetConfig, network_from
 from .ops import OpError
 from .queues import queues_from
 from .roots import CONFIG_FILE
@@ -45,7 +46,7 @@ log = logging.getLogger("aegis.config")
 WATCH_EVERY_S = 1.0
 TOP_KEYS = (
     "agents", "queues", "default_agent", "recap", "context", "session_memory_max",
-    "terminals", "terminal_memory_max", "park",
+    "terminals", "terminal_memory_max", "park", "network",
 )  # fmt: skip
 AGENT_KEYS = ("harness", "provider", "model", "effort", "permission", "priming")
 QUEUE_KEYS = ("agent", "max_parallel", "quiet")
@@ -255,6 +256,8 @@ class Snapshot:
     terminals_error: str | None = None
     terminal_memory_max: object = DEFAULT_MEMORY_MAX
     terminal_memory_error: str | None = None
+    network: NetConfig = field(default_factory=NetConfig)
+    network_error: str | None = None
     # Why the file on disk is not the one in force, when it does not parse.
     error: str | None = None
 
@@ -266,6 +269,7 @@ class Snapshot:
         tmem, tmem_error = session_memory_max_from(
             data.get("terminal_memory_max"), "terminal_memory_max"
         )
+        network, network_error = network_from(data.get("network"))
         return cls(
             path=path,
             exists=True,
@@ -283,6 +287,8 @@ class Snapshot:
             terminals_error=terms_error,
             terminal_memory_max=tmem,
             terminal_memory_error=tmem_error,
+            network=network,
+            network_error=network_error,
         )
 
     def wire(self) -> dict:

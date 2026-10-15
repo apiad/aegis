@@ -112,6 +112,9 @@ def _no_real_quota(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("OPENCODE_AUTH", str(off / "opencode-auth.json"))
     monkeypatch.setenv("AEGIS_QUOTA_CACHE", str(off / "cache"))
     monkeypatch.setenv("AEGIS_DICTATION_DIR", str(off / "dictation"))
+    # The network probes need no credentials, so only a switch keeps a test's
+    # `aegis serve` off the network (net/service.py).
+    monkeypatch.setenv("AEGIS_NET_PROBES", "offline")
 
 
 # -- run options, carried over from the legacy tree's conftest --------------------

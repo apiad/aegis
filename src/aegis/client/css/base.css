@@ -912,6 +912,11 @@ body{background:#000}
 #a2 .gauge .val b{font-weight:500;color:var(--ink)}
 #a2 .gauge .val .rst{color:var(--faint)}
 #a2 .gauge .note{grid-column:2/-1;color:var(--warn)}
+/* the network rows: a value with no bar, across the bar's column and the value's */
+#a2 .gauge.net .val{grid-column:2/-1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+#a2 .gauge.net.stale .val b{color:var(--muted)}
+#a2 .gauge.net.measure{cursor:pointer}
+#a2 .gauge.net.measure:hover .val b{color:var(--strong);text-decoration:underline dotted}
 #a2 .bar.q i{background:var(--ok)}
 #a2 .bar.h i{background:var(--muted)}
 #a2 .bar.warning i{background:var(--warn)}

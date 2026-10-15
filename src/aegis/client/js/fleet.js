@@ -2,7 +2,7 @@
 // Every field comes from the session's meta; nothing here computes activity.
 
 import { glyph, icon, LABEL } from "./glyphs.js";
-import { hostRow, noteRow, providerLine, quotaHeading, quotaRow } from "./gauges.js";
+import { hostRow, netRows, noteRow, providerLine, quotaHeading, quotaRow } from "./gauges.js";
 import { shownOwner } from "./me.js";
 import { dur, planTimes } from "./plantime.js";
 
@@ -288,7 +288,8 @@ const ATTENTION_ORDER = ["needs_you", "error", "review", "working", "waiting", "
 // Counts and the average context come from the sessions the client already
 // holds; the host meters from the host channel.
 // `link` is the line beside a linked server's name: its host, its state.
-export function renderBand(band, { metas, host, server, link = "", off = false }) {
+// `measure` takes a speed reading on this band's server.
+export function renderBand(band, { metas, host, server, link = "", off = false, measure = null }) {
   band.querySelector(".band-server").textContent = server || "server";
   band.querySelector(".band-link").textContent = link;
   band.classList.toggle("off", off);
@@ -306,6 +307,7 @@ export function renderBand(band, { metas, host, server, link = "", off = false }
     meters.push(hostRow("CPU", host.cpu, ""));
     meters.push(hostRow("RAM", host.ram.pct, `${host.ram.used_gb} / ${host.ram.total_gb} GB`));
     if (host.disk) meters.push(hostRow("Disk", host.disk.pct, `${host.disk.used_gb} / ${host.disk.total_gb} GB`));
+    meters.push(...netRows(host.net, Date.now() / 1000, off ? null : measure));
   }
   const live = metas.filter((m) => !["stopped", "parked"].includes(m.state) && m.context_window && m.context_tokens);
   if (live.length) {

@@ -1165,6 +1165,43 @@ def test_the_fleet_band_and_the_sidebar_show_quota_and_the_host(quota_server, pa
     assert page.errors == []
 
 
+def test_the_host_column_shows_the_network_and_measures_speed_on_a_click(
+    tmp_path: Path, fake_claude: str, fake_opencode: str, page
+):
+    """Sample readings (net/service.py), so nothing leaves the machine. The
+    speed cadence is off here, so the only speed reading is the click's."""
+    (tmp_path / ".aegis.yaml").write_text(CONFIG + "network: {speed_interval: 0}\n")
+    s = Server(tmp_path, fake_claude, fake_opencode)
+    s.env["AEGIS_NET_PROBES"] = "sample"
+    s.start()
+    try:
+        page.goto(s.url)
+        rows = page.locator("#band-host .gauge.net")
+        rows.nth(2).wait_for()
+        assert rows.nth(0).inner_text().split() == ["Net", "24", "ms", "1.1.1.1"]
+        assert "203.0.113.7" in rows.nth(1).inner_text()
+        assert "MIA · US" in rows.nth(1).inner_text()
+        speed = rows.nth(2)
+        assert "not measured" in speed.inner_text()
+        speed.click()
+        page.wait_for_function(
+            "document.querySelector('#band-host').innerText.includes('measuring')"
+        )
+        page.wait_for_function(
+            "document.querySelector('#band-host').innerText.includes('8.3 Mbps')"
+        )
+        assert "1 MB in 0.96 s" in rows.nth(2).get_attribute("title")
+
+        spawn(page)
+        page.wait_for_selector("#s-host-sec:not([hidden]) #s-host-tiles .tile")
+        tiles = page.inner_text("#s-host-tiles")
+        assert "24 ms" in tiles and "8.3" in tiles
+        assert page.locator("#s-host-rows .gauge.net").count() == 3
+        assert page.errors == []
+    finally:
+        s.stop()
+
+
 def test_quota_rows_survive_session_updates_so_their_tooltip_stays(
     quota_server, browser, page
 ):

@@ -138,6 +138,69 @@ export function hostRow(label, pct, tail) {
   return g;
 }
 
+// "8.3", "84": megabits a second from bytes a second.
+export function mbps(bps) {
+  const m = (bps * 8) / 1e6;
+  return m < 10 ? m.toFixed(1) : String(Math.round(m));
+}
+
+function bytes(n) {
+  return n < 1e6 ? `${Math.round(n / 1e3)} KB` : `${(n / 1e6).toFixed(1).replace(/\.0$/, "")} MB`;
+}
+
+function textRow(label, value, tail, cls, title) {
+  const g = el("div", `gauge net${cls ? ` ${cls}` : ""}`);
+  if (title) g.title = title;
+  const val = el("span", "val");
+  val.append(el("b", null, value));
+  if (tail) val.append(el("span", "rst", tail));
+  g.append(el("span", null, label), val);
+  return g;
+}
+
+// The network rows under the host meters (net/service.py). No bar: none of
+// the three is a share of anything. A reading that may no longer hold (the
+// link is down, the lookup failing, the transfer cut short) keeps its value,
+// muted, with its age: it still says which network you were last on.
+// `measure`, when given, runs on a click on the Speed row.
+export function netRows(net, now, measure = null) {
+  if (!net) return [];
+  const where = (anchor) => anchor.replace(/^\[/, "").replace(/\]?:\d+$/, "");
+  const rows = [
+    net.ok
+      ? textRow("Net", `${net.rtt_ms} ms`, where(net.anchor), "", `TCP handshake to ${net.anchor}, ${age(now - net.at)} ago.`)
+      : textRow("Net", "no internet", net.error === "unreachable" ? "anchors refused" : net.error, "critical", `No anchor accepted a connection ${age(now - net.at)} ago.`),
+  ];
+  if (net.ip) {
+    const old = !net.ok || !!net.ip_error;
+    const tail = [net.colo, net.loc].filter(Boolean).join(" · ");
+    const aged = old && net.ip_at != null ? `${age(now - net.ip_at)} old` : "";
+    let title = `Exit address ${net.ip}`;
+    if (net.colo) title += `, Cloudflare ${net.colo}, ${net.loc}`;
+    if (net.ip_at != null) title += `, looked up ${age(now - net.ip_at)} ago`;
+    if (net.ip_error) title += `; the last lookup failed: ${net.ip_error}`;
+    rows.push(textRow("Exit", net.ip, [tail, aged].filter(Boolean).join(" · "), old ? "stale" : "", `${title}.`));
+  }
+  const sp = net.speed;
+  let speed;
+  if (net.measuring) speed = textRow("Speed", "measuring…", "", "", "Downloading a test file.");
+  else if (!sp) speed = textRow("Speed", "not measured", measure && net.ok ? "click to measure" : "", "stale", "");
+  else if (sp.complete) {
+    const title = `${(sp.bps / 1e6).toFixed(2)} MB/s: ${bytes(sp.received)} in ${sp.elapsed_s} s, ${age(now - sp.at)} ago.`;
+    speed = textRow("Speed", `${mbps(sp.bps)} Mbps`, `${age(now - sp.at)} ago`, net.ok ? "" : "stale", title);
+  } else {
+    const title = `The transfer did not complete: ${bytes(sp.received)} of ${bytes(sp.asked)} in ${sp.elapsed_s} s, ${age(now - sp.at)} ago.`;
+    speed = textRow("Speed", "unmeasured", `${sp.error || "cut short"} · ${bytes(sp.received)} of ${bytes(sp.asked)}`, "stale", title);
+  }
+  if (measure && net.ok && !net.measuring) {
+    speed.classList.add("measure");
+    speed.title = `${speed.title} Click to measure now.`.trim();
+    speed.addEventListener("click", measure);
+  }
+  rows.push(speed);
+  return rows;
+}
+
 // One number of the sidebar's at-a-glance rows: a label, the value, and a thin
 // bar when the value is a share. `small` follows the value, as a projection.
 export function tile(label, value, { pct = null, kind = "", severity = "normal", tick = null, small = "", title = "" } = {}) {

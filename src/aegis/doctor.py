@@ -325,6 +325,25 @@ def _park(park: dict) -> Finding:
     return Finding("ok", "park", text)
 
 
+def _network(snap: Snapshot) -> Finding:
+    if snap.network_error:
+        return Finding("error", "network", snap.network_error)
+    n = snap.network
+    if not n.enabled:
+        return Finding("ok", "network", "no network readings")
+    speed = (
+        "no speed test"
+        if not n.speed_interval
+        else f"a {n.speed_bytes / 1e6:g} MB speed test every {n.speed_interval / 60:g} min"
+    )
+    return Finding(
+        "ok",
+        "network",
+        f"egress every {n.interval:g} s, exit IP every {n.trace_interval / 60:g} min, "
+        f"{speed}, while a browser watches",
+    )
+
+
 def _session_memory(snap: Snapshot) -> Finding:
     if snap.session_memory_error:
         return Finding("error", "session_memory_max", snap.session_memory_error)
@@ -416,6 +435,7 @@ async def doctor(
     out += _recap(roots)
     out.append(_context(snap.context))
     out.append(_park(snap.park))
+    out.append(_network(snap))
     out.append(_session_memory(snap))
     out.append(_state(roots))
     return out
