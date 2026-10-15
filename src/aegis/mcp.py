@@ -31,8 +31,12 @@ from .ops import Caller, Operation, OpError, Registry
 # fastmcp logs every ToolError with its traceback, and every refused op is one
 # (a no_session is an answer, not a crash). Its own handler renders that
 # traceback rich, which held the event loop, and every session on it, for
-# about 0.5 s per refusal (#366). Plain text costs a few milliseconds.
-configure_logging(level=fastmcp.settings.log_level, enable_rich_tracebacks=False)
+# about 0.5 s per refusal (#366). Plain text costs a few milliseconds. Rich
+# also wraps the message itself, in time growing with its length squared: a
+# page's 4,000-character error, logged twice through its chained exception,
+# held the loop for seconds on a busy host (#409). So no rich handler at all.
+fastmcp.settings.enable_rich_logging = False
+configure_logging(level=fastmcp.settings.log_level)
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -774,9 +774,13 @@ def test_quiet_hides_the_tab_and_a_click_on_its_card_brings_it_back(server, page
 
 
 def test_quiet_is_disabled_on_an_idle_session(server, page):
+    # The panel draws a session's change on the next frame, the transcript's
+    # "done in" at once: slow frames make the test wait for the panel.
+    page.add_init_script(SLOW_FRAMES)
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page, "hello")
+    page.wait_for_selector("#s-status.at-done")
     assert page.is_disabled("#quiet-session")
 
 
@@ -2669,13 +2673,60 @@ def test_the_session_panel_names_the_server_and_marks_a_queue_worker(
     assert server
     page.wait_for_selector(f"#s-at >> text=@{server}")
     assert page.is_hidden("#s-worker")
-    enqueue(page, "/sleep 4")
+    # A worker that outlives the test: one done with its task is archived and
+    # its open panel goes back to the Fleet, which a slow runner reached
+    # before the badge was checked when the task took 4 s.
+    enqueue(page, "/sleep 60")
     page.click("#tab-fleet")
     page.wait_for_selector("#cards .card .badge >> text=worker · q")
     page.click("#cards .card:has(.badge)")
     page.wait_for_selector("#a2[data-view=session]")
     page.wait_for_selector("#s-worker:visible >> text=worker · q")
     assert page.text_content("#s-at") == f"@{server}"
+    assert page.errors == []
+
+
+def test_a_click_on_a_quiet_card_opens_it_when_a_patch_overtakes_the_unquiet(
+    queue_server, page
+):
+    """A working session's card patch that the server sent before it took the
+    click's unquiet replaced the session the click had read, so the reply
+    unquieted a copy and the page, seeing the session still quiet, left it
+    for the next tab: the session panel test's CI failure."""
+    gate = {"worker": None, "held": None}
+
+    def route(ws):
+        far = ws.connect_to_server()
+
+        def from_page(msg):
+            if gate["worker"] and '"session.unquiet"' in msg:
+                gate["held"] = msg
+            else:
+                far.send(msg)
+
+        def from_server(msg):
+            ws.send(msg)
+            # The unquiet goes out behind a patch of the still-quiet worker.
+            if gate["held"] and gate["worker"] in msg and '"quiet": true' in msg:
+                far.send(gate.pop("held"))
+                gate["held"] = None
+
+        ws.on_message(from_page)
+        far.on_message(from_server)
+
+    page.route_web_socket(re.compile(r"/ws"), route)
+    page.goto(queue_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    enqueue(page, "/stream 400")  # a card patch every few hundred ms
+    page.click("#tab-fleet")
+    page.wait_for_selector("#cards .card.quiet .badge >> text=worker · q")
+    worker = page.get_attribute("#cards .card:has(.badge)", "data-id")
+    gate["worker"] = worker
+    page.click(f"#cards .card[data-id='{worker}']")
+    page.wait_for_selector(f"#tablist .tab[data-id='{worker}']")
+    page.wait_for_selector("#s-worker:visible >> text=worker · q")
+    assert page.evaluate("location.hash.slice(3)") == worker
     assert page.errors == []
 
 

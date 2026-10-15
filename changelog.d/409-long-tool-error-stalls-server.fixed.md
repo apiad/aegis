@@ -1,0 +1,1 @@
+- **A tool error with a long message no longer stalls the server.** The MCP library's log handler wrapped the message in time growing with its length squared, on the loop every session shares: a page's 4,000-character error held it for seconds on a busy host. Its log is plain text now.
