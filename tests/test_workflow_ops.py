@@ -62,3 +62,18 @@ async def test_status_returns_the_tree(world):
     assert [r["id"] for r in st["tree"]] == ["n1", "one", "two"] or [
         r["say"] for r in st["tree"]
     ][1:] == ["Do the first thing.", "Do the second thing."]
+
+
+async def test_a_session_that_is_not_a_node_cannot_give_an_output(world):
+    from aegis.ops import Caller, OpError
+
+    a = await world.spawn()
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call(
+            "workflow.output",
+            {"name": "timers", "value": [1], "summary": "Two timers."},
+            Caller("agent", a.log_id),
+        )
+    assert e.value.code == "not_a_node"
+    said = await turn(a, mcp("workflow_output", name="x", value=1, summary="S."))
+    assert said.startswith("mcp error")

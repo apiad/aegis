@@ -221,6 +221,11 @@ class Workflows:
                 "error": n.error,
                 "outputs": sorted(n.outputs),
             }
+        if node.after:
+            row["after"] = [
+                {"name": a, "met": not each and self._met(st, wf, prefix, a) is True}
+                for a in node.after
+            ]
         if node.kind == "map" and n is not None and n.items is not None:
             do = node.children[0]
             count: dict[str, int] = {}
@@ -378,14 +383,32 @@ class Workflows:
                 "The workflow was stopped. Its node sessions are open and unlocked.",
             )
 
-    def result(self, s: Session, value, summary: str) -> dict:
+    def _reporting(self, s: Session, tool: str) -> tuple[RunState, str]:
+        """The run and instance a node session reports for; refused to any
+        other session, and once its run has ended."""
         wf_ref = s.workflow or {}
         st = self.runs.get(wf_ref.get("run", ""))
         if st is None or st.status != "running":
+            raise OpError("not_a_node", f"only a running workflow node calls {tool}")
+        return st, wf_ref["node"]
+
+    def output(self, s: Session, name: str, value, summary: str) -> dict:
+        st, inst = self._reporting(s, "workflow_output")
+        n = st.nodes.get(inst)
+        if n is not None and name in n.outputs:
             raise OpError(
-                "not_a_node", "only a running workflow node calls workflow_result"
+                "output_given",
+                f"output {name} was given already; a step may have started on it",
             )
-        inst = wf_ref["node"]
+        if not summary.strip():
+            raise OpError("bad_output", "summary is one plain sentence for the person")
+        rec = {"ev": "output", "node": inst, "name": name, "value": value}
+        self._log(st.run, rec | {"summary": summary.strip()})
+        self.changed()
+        return {"accepted": True}
+
+    def result(self, s: Session, value, summary: str) -> dict:
+        st, inst = self._reporting(s, "workflow_result")
         node = self._template(self.defs[st.run], inst)
         problems = check_value(value, node.body.get("result") or {})
         if problems:
@@ -448,8 +471,18 @@ class Workflows:
     async def _advance(
         self, st: RunState, wf: Workflow, node: Node, prefix: str
     ) -> str:
-        """Move one instance on and say where it stands."""
+        """Move one instance on and say where it stands. A node not begun
+        checks its after on every pass; once begun it is not checked again."""
         inst = prefix + node.id
+        if node.after and self._state(st, node, inst) in ("pending", "queued"):
+            for a in node.after:
+                met = self._met(st, wf, prefix, a)
+                if isinstance(met, str):
+                    why = f"it waits on {a}, which can never come: {met}"
+                    self._fail(st, inst, why, node.say)
+                    return "failed"
+                if not met:
+                    return "pending"
         if node.kind == "seq":
             for c in node.children:
                 s = await self._advance(st, wf, c, prefix)
@@ -473,6 +506,29 @@ class Workflows:
         if node.kind == "agent":
             return await self._agent(st, wf, node, prefix)
         raise OpError("kind", f"{node.kind} is not in this version yet")
+
+    def _met(self, st: RunState, wf: Workflow, prefix: str, a: str) -> bool | str:
+        """Whether one ``after`` entry holds for a node under ``prefix``:
+        a node done, a map's item done, an agent's early output given. A
+        string says why it never will."""
+        target, _, sub = a.partition(".")
+        t = self._template(wf, target)
+        inst = self._resolve(t, prefix)
+        if not sub:
+            return self._state(st, t, inst) == "done"
+        s = st.nodes.get(inst)
+        if t.kind == "map":
+            if s is None or s.items is None:
+                return False
+            if sub not in {k for k, _ in s.items}:
+                return f"map {target} has no item {sub}"
+            do = t.children[0]
+            return self._state(st, do, f"{inst}.{sub}.{do.id}") == "done"
+        if s is not None and sub in s.outputs:
+            return True
+        if s is not None and s.status == "done":
+            return f"{target} finished without its output {sub}"
+        return False
 
     async def _many(
         self, st: RunState, wf: Workflow, kids: list[tuple[Node, str]], cap: int | None
@@ -644,6 +700,14 @@ class Workflows:
                 schema=schema,
             )
         )
+        wanted = wf.waited.get(node.id)
+        if wanted:
+            text += (
+                f"\nOther steps wait on your early output{'s' if len(wanted) > 1 else ''} "
+                + ", ".join(f"`{w}`" for w in wanted)
+                + ": as soon as one is ready, call workflow_output with its name, "
+                "its value and a one-sentence summary, then go on."
+            )
         await s.send(text, through_lock=True)
         return True
 
