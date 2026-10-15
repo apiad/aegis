@@ -1,7 +1,7 @@
 ---
 title: Configuration
 kind: concept
-when: adding or changing agents, the default agent, queues, recaps, side notes or the per-session memory cap in .aegis.yaml, or picking a theme
+when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap or parking idle sessions in .aegis.yaml, or picking a theme
 ---
 
 aegis reads one file, `.aegis.yaml`, at the root it serves: `--root` when
@@ -26,6 +26,7 @@ queues:
 recap: {agent: quick}
 btw: {agent: opus}
 context: {handoff_at: 300000, cold_after: 3600, cold_min: 100000}
+park: {claude-code: 1200}
 ```
 
 ## Add an agent
@@ -117,6 +118,26 @@ The cap needs a cgroup per session, which aegis makes only when it runs as a
 systemd service with `Delegate=yes`. Anywhere else, every session shares the
 server's cgroup, as before, and the key has no effect. A value that is not a
 size leaves the default in force, and `aegis doctor` names the mistake.
+
+## Parking idle sessions
+
+`park:` maps a harness to the seconds an idle session of it must be safe to
+end before aegis ends its process to free its memory. The next message
+resumes it. The sessions page says what makes a session safe to end.
+
+```yaml
+park:
+  claude-code: 1200   # 20 minutes
+```
+
+A harness the block does not name never parks, and without the block nothing
+does. A block with a harness aegis does not know, or a value that is not a
+positive whole number of seconds, parks nothing, and `aegis doctor` names the
+mistake. Only an admin can change it, in the file or in the Parking section
+of the Settings page, which takes minutes and which members do not see.
+
+Only Claude Code's resume has been measured. Codex and OpenCode sessions park
+when named, and `aegis doctor` warns that how they resume is unmeasured.
 
 ## Terminals
 

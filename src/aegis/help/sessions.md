@@ -1,14 +1,14 @@
 ---
 title: Sessions
 kind: concept
-when: starting, steering, renaming, stopping, closing and reopening agent sessions
+when: starting, steering, renaming, stopping, parking, closing and reopening agent sessions
 ---
 
 A session is one agent's conversation, run by its harness (Claude Code,
 OpenCode or Codex) on this server, with a tab in every browser. It outlives
-its process: a session is live while its harness runs, stopped when it does
-not, and archived once closed. Closing the browser leaves every session
-running.
+its process: a session is live while its harness runs, parked when aegis
+ended an idle harness to free its memory, stopped when someone stopped it,
+and archived once closed. Closing the browser leaves every session running.
 
 ## Start a session
 
@@ -148,6 +148,57 @@ until it is quieted again; a queue worker comes back only on an error.
   in the archive's header says how many, and a click adds them to the list.
 - On a phone, a session marked done ends its transcript with an Archive
   button that closes it in one tap. It stays in the archive.
+
+## Parked sessions
+
+A Claude Code harness holds about 300 MB while it waits for the next
+message. When an admin turns parking on for a harness (the configuration page
+says how), aegis ends the process of an idle session of that harness that
+nothing needs, and the next message resumes it with its context. aegis checks
+every 30 seconds, and a session parks once all of these have held for the
+harness's idle time without a break:
+
+- its harness is idle, with a process;
+- its last turn ended with `turn_end` (done, needs_you or review), or it
+  waits on a monitor, a queue task or a session;
+- it holds no message for the harness.
+
+Some sessions never park, because ending the process would kill something:
+
+- a queue worker;
+- a session whose last turn ended without `turn_end`, ran a person's slash
+  command, or has no turn yet;
+- a session whose transcript is open in a visible page, in this browser or
+  in one on a linked server. A hidden tab, a transcript docked beside
+  another, and the Fleet do not count;
+- a session with an open background task, such as a background Bash call, a
+  Monitor or a background subagent, which wakes the session when it ends;
+- a session whose harness has called ScheduleWakeup or CronCreate. Those
+  timers live inside the harness, so the call keeps the session up until its
+  process ends for another reason, even after the timer fired or was deleted;
+- a session with a process left running, such as a `nohup` command or a dev
+  server. For Claude Code, a process the harness started directly that is
+  not a shell, such as a stdio MCP server or a plugin's helper, does not
+  count: it ends and starts again with the harness. An MCP server started
+  through `sh -c` does count. For Codex and OpenCode every child process
+  counts, so a session of theirs with any MCP server never parks.
+
+A parked session keeps its tab, its mark and its place in the live counts.
+Its Fleet card carries a `parked` chip, its composer reads "Parked to free
+memory. Typing wakes it.", and its transcript gets a row such as "parked
+after 20 min idle". The Fleet's header counts them, as in
+`3 parked · ~0.9 GB`: the memory each harness held when it parked, without
+the processes it had started.
+
+Any message wakes a parked session: one you send, a monitor's or queue's
+callback, a handoff from another session, or one of aegis's nudges. Opening
+its transcript does not. The first keystroke in its composer starts the
+harness while you type, and a "Waking · resuming the harness" row shows in
+the transcript until it is back. A wake costs one harness start, about 3 s
+for Claude Code; slow SessionStart hooks in the checkout add their own time.
+
+Stop on a parked session makes it a stopped one, which stays stopped until
+someone sends it a message.
 
 ## When the server restarts
 
