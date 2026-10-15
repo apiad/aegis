@@ -2083,8 +2083,22 @@ message, and the main agent is woken once, when the run ends
 <h2 id="departs">Where this plan departs from the spec</h2>
 <ul>
   <li>Slice 1 tells the main agent only the end of a run, and a failed node fails the whole run. Waking the main agent to retry, skip or edit is slice 4's.</li>
-  <li>The card shows the tree, the story and the times; the "Now" section, folded maps and docking through the canvas are slice 5's.</li>
+  <li>The card shows the tree, the story and the times; the "Now" section and folded maps are slice 5's. Docking landed in slice 1: the card docks through the canvas as a <code>wf-&lt;run&gt;</code> pane, like a file card.</li>
   <li>Templates support plain references only (<code>{{a.b}}</code>); the <code>expr</code> evaluator with comparisons and <code>or</code> is slice 3's.</li>
+  <li>Node fields <code>after</code>, <code>deadline</code> and <code>retries</code> are refused by the lint as "not in this version yet"; <code>see</code> is accepted.</li>
+  <li>Rejecting a run does not message the main agent (the spec lists done, failed and stopped only).</li>
+</ul>
+
+<h2 id="departs-code">Where the code departs from this plan</h2>
+<p>What the workers and the review found while executing it.</p>
+<ul>
+  <li><b>Slice 0.</b> The changelog anchor is <code>schedules#an-agent-s-schedule-waits-for-you</code>, as <code>helppages.slug()</code> computes it. The approval card draws the entry's <code>pip</code> glyph (there is no <code>system</code> sprite). Transcript CSS is scoped under <code>#a2</code>. <code>schedule_create</code> and <code>schedule_update</code> share one <code>card()</code> helper.</li>
+  <li><b>Card.</b> The transcript is itself a <code>.pane</code>, so a card is docked only inside <code>.pane[data-pane="wf-&lt;run&gt;"]</code>. A <code>seq</code>'s state is derived from its children. Story lines use class <code>line</code> to escape the global <code>.st</code> tint. The 1 s tick updates only status text and durations; a full redraw happens on upserts and on a docking change.</li>
+  <li><b>Quiet.</b> Node sessions stay tabless at turn end while their run is live; every failure, stop and boot-time failure gives open node sessions their tab back.</li>
+  <li><b>Lock.</b> The node lock lives in <code>Session.deliver</code>, <code>send</code> and <code>interrupt</code> (rule in <code>Registry.workflow_lock</code>), refusing by default with <code>in_workflow</code>. Through the lock: the engine's prompt and nudge, the node's own monitors and queue results, and the quota pause. Fleet nudges skip node sessions. <code>session.handoff</code> and artifact submit, emit and error are refused for a node.</li>
+  <li><b>Engine.</b> One <code>asyncio.Lock</code> serialises the pass and <code>stop_run</code>; a run's terminal status is written once. Any error starting a node fails that node, and each run in a pass has its own <code>try</code>. A bad <code>cwd</code> is refused at arm. A node session spawned before a crash is adopted at the next pass, not spawned again. The owner is followed through handoffs (<code>Workflows.owner()</code>). Arm walks <code>spawned_by</code> and refuses a descendant of a node.</li>
+  <li><b>Lint.</b> Result schemas accept only known <code>type</code> values, with <code>required</code> and <code>enum</code> as lists. <code>args</code> is a reserved node id.</li>
+  <li><b>Left for later.</b> <code>wire_all</code> re-parses every finished run on subscribe. The workflow-level <code>args</code> schema is not checked by <code>schema()</code>.</li>
 </ul>
 </main>
 
