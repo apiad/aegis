@@ -289,6 +289,23 @@ export function tickWorkflows() {
   }
 }
 
+// A row's kind as the card names it: who runs an agent, how a par or a map
+// spreads. A map's do, drawn once before its items are known, says so.
+function kindTag(r) {
+  const cap = r.cap ? ` · ${r.cap} at a time` : "";
+  if (r.kind === "agent") return `agent · ${r.agent}`;
+  if (r.kind === "map") return `for each ${r.as}${cap}`;
+  if (r.kind === "par") return `at once${cap}`;
+  return r.kind;
+}
+
+const COUNT_ORDER = ["done", "running", "queued", "pending", "failed", "stopped"];
+function countLine(count) {
+  return COUNT_ORDER.filter((k) => count[k])
+    .map((k) => `${count[k]} ${k === "pending" ? "waiting" : k}`)
+    .join(" · ");
+}
+
 function since(a, b) {
   if (!a) return "";
   const s = Math.max(0, Math.round((b || Date.now() / 1000) - a));
@@ -352,11 +369,13 @@ export function fillWorkflow(card) {
     row.dataset.node = r.id;
     row.dataset.state = r.state;
     row.style.paddingLeft = `${12 + r.depth * 16}px`;
+    if (r.each) row.classList.add("each");
     const main = el("div", "wfb");
     main.append(el("div", "say", r.say));
     const tags = el("div", "tags");
-    tags.append(el("span", "kind", r.kind === "agent" ? `agent · ${r.agent}` : r.kind));
+    tags.append(el("span", "kind", kindTag(r)));
     if (r.handle) tags.append(el("span", "who", r.handle));
+    for (const a of r.after || []) tags.append(el("span", `after${a.met ? " met" : ""}`, `after ${a.name}`));
     const key = `${w.run}/${r.id}`;
     if (r.prompt) {
       const tog = el("button", "tog", openPrompts.has(key) ? "▾ prompt" : "▸ prompt");
@@ -369,8 +388,10 @@ export function fillWorkflow(card) {
     }
     main.append(tags);
     if (r.prompt && openPrompts.has(key)) main.append(el("pre", null, r.prompt));
+    if (r.count) main.append(el("div", "out", countLine(r.count)));
     if (r.summary || r.error) main.append(el("div", `out ${r.error ? "bad" : ""}`, r.error || r.summary));
-    row.append(el("span", `dot ${r.state}`), main, el("span", "dur", r.state === "pending" ? "" : since(r.started, r.ended)));
+    const waiting = r.state === "pending" || r.state === "queued";
+    row.append(el("span", `dot ${r.state}`), main, el("span", "dur", waiting ? "" : since(r.started, r.ended)));
     tree.append(row);
   }
   kids.push(tree);
