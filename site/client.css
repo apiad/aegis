@@ -698,6 +698,7 @@ body{background:#000}
 .a2 .wfcard .wfrow[data-state=done] .dot{background:var(--ok);border-color:var(--ok)}
 .a2 .wfcard .wfrow[data-state=running] .dot{background:var(--accent);border-color:var(--accent)}
 .a2 .wfcard .wfrow[data-state=failed] .dot{background:var(--err);border-color:var(--err)}
+.a2 .wfcard .wfrow[data-state=stopped] .dot{border-color:var(--err)}
 .a2 .wfcard .wfb{flex:1;min-width:0}
 .a2 .wfcard .say{font-size:13.5px}
 .a2 .wfcard .tags{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-family:var(--font-mono);font-size:10.5px;color:var(--faint)}

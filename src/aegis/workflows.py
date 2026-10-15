@@ -183,8 +183,8 @@ class Workflows:
 
     def _states(self, st: RunState, node: Node) -> dict[str, str]:
         """Each node's state for the card: an agent's from the log, a seq's
-        from its children (failed if one failed, done when all are, running
-        once one has started)."""
+        from its children (failed if one failed, stopped if one was, done
+        when all are, running once one has started)."""
         out: dict[str, str] = {}
 
         def go(n: Node) -> str:
@@ -196,6 +196,8 @@ class Workflows:
                 out[n.id] = (
                     "failed"
                     if "failed" in kids
+                    else "stopped"
+                    if "stopped" in kids
                     else "done"
                     if all(k == "done" for k in kids)
                     else "pending"
@@ -460,10 +462,12 @@ class Workflows:
         if st.status not in LIVE:
             return
         if outcome == "stopped":
+            # Read before the record, which folds them to stopped.
+            running = [n for n in st.nodes.values() if n.status == "running"]
             self._log(st.run, {"ev": "stopped"})
-            for n in st.nodes.values():
+            for n in running:
                 s = self._reg.sessions.get(n.log_id or "")
-                if n.status == "running" and s is not None and s.status == "working":
+                if s is not None and s.status == "working":
                     with contextlib.suppress(Exception):
                         await s.interrupt()
         else:
