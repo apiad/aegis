@@ -860,3 +860,22 @@ def test_a_bare_template_beside_quoting_lints_clean():
         "echo \\' {{args.t}}",
     ]:
         assert _one_sh(cmd) == [], cmd
+
+
+def test_an_expression_nested_too_deep_is_a_lint_error():
+    for expr in ["(" * 400 + "args.x" + ")" * 400, "not " * 2000 + "args.x"]:
+        text = f'id: d\ntitle: D\nsay: D.\nroot: {{check: {{expr: "{expr}"}}, say: Deep.}}\n'
+        wf, got = errs(text)
+        assert wf is None and len(got) == 1, got[:2]
+        assert got[0].startswith("$.root.check.expr: ") and "nested" in got[0], got
+    ok_ = "(" * 60 + "args.x" + ")" * 60
+    text = f'id: d\ntitle: D\nsay: D.\nroot: {{check: {{expr: "{ok_}"}}, say: Deep.}}\n'
+    assert errs(text)[1] == []
+
+
+def test_a_workflow_nested_too_deep_is_a_lint_error():
+    node = '{sh: "true", say: Leaf.}'
+    for _ in range(600):
+        node = f"{{seq: [{node}], say: Group.}}"
+    wf, got = errs(f"id: d\ntitle: D\nsay: D.\nroot: {node}\n")
+    assert wf is None and got and "too deep" in got[0], got[:1]
