@@ -270,3 +270,80 @@ def test_the_map_card_fits_a_phone(server, browser):  # noqa: F811
     spawn(pg, "/mcp workflow_arm " + json.dumps({"definition": TEAMS, "args": {}}))
     pg.wait_for_selector(".wfcard .wfrow.each")
     assert pg.evaluate("document.documentElement.scrollWidth") <= 390 and not errors
+
+
+GATED = """id: gated
+title: Gated
+say: Ask before shipping.
+root:
+  seq:
+    - {sh: "printf 41", id: a, say: Count.}
+    - {gate: {by: person, ask: "Ship it with {{a.out}}?", show: [a.out]}, id: g, say: Ask the person.}
+    - {sh: "true", id: ship, say: Ship.}
+  say: Three.
+"""
+
+
+def send(pg, text: str) -> None:
+    """Type a prompt into the open session and send it."""
+    pg.fill("#input", text)
+    pg.press("#input", "Enter")
+
+
+def test_a_person_gate_card_asks_and_continue_finishes_the_run(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_arm " + json.dumps({"definition": GATED, "args": {}}))
+    page.click(".wfcard[data-status=armed] button >> text=Approve and run")
+    card = ".wfdcard[data-what=gate]"
+    page.wait_for_selector(f"{card} >> text=Ship it with 41?")
+    page.wait_for_selector(f'{card} pre >> text=a.out: "41"')
+    page.wait_for_selector(".wfcard .wfopen >> text=waits on you: Ask the person.")
+    page.fill(f"{card} textarea", "go")
+    page.click(f"{card} button >> text=Continue")
+    page.wait_for_selector(".wfcard[data-status=done]", timeout=20000)
+    page.wait_for_selector(f"{card} >> text=Continued by you: go")
+    assert not page.errors
+
+
+def test_an_edit_card_shows_the_diff_and_apply_changes_the_plan(server, page):  # noqa: F811
+    slow = GATED.replace(
+        '{gate: {by: person, ask: "Ship it with {{a.out}}?", show: [a.out]}, id: g, say: Ask the person.}',
+        '{sh: "sleep 3", id: g, say: Wait.}',
+    )
+    noted = slow.replace(
+        '    - {sh: "true", id: ship',
+        '    - {sh: "touch notes", id: notes, say: Write notes.}\n    - {sh: "true", id: ship',
+    )
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_arm " + json.dumps({"definition": slow, "args": {}}))
+    page.click(".wfcard[data-status=armed] button >> text=Approve and run")
+    page.wait_for_selector(".wfcard[data-status=running]")
+    run = page.eval_on_selector(".wfcard", "c => c.dataset.run")
+    send(page, "/mcp workflow_edit " + json.dumps({"run": run, "definition": noted}))
+    card = ".wfdcard[data-what=edit]"
+    page.wait_for_selector(f"{card} .d.add >> text=Write notes.")
+    page.wait_for_selector(f"{card} >> text=Adds 1 shell command")
+    page.wait_for_selector(".wfcard .wfrow[data-node=ship] .held")
+    page.click(f"{card} button >> text=Apply change")
+    page.wait_for_selector(
+        ".wfcard[data-status=done] .wfrow[data-node=notes][data-state=done]",
+        timeout=20000,
+    )
+    page.wait_for_selector(f"{card} >> text=applied")
+    assert not page.errors
+
+
+def test_the_gate_card_fits_a_phone(server, browser):  # noqa: F811
+    from .test_browser import new_page
+
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.set_viewport_size({"width": 390, "height": 800})
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg, "/mcp workflow_arm " + json.dumps({"definition": GATED, "args": {}}))
+    pg.click(".wfcard[data-status=armed] button >> text=Approve and run")
+    pg.wait_for_selector(".wfdcard[data-what=gate] textarea")
+    assert pg.evaluate("document.documentElement.scrollWidth") <= 390 and not errors
