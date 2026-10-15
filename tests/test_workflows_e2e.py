@@ -129,4 +129,12 @@ async def test_a_restart_mid_run_finishes_the_run(world):
     )
     await world.restart()
     wf = world.app.workflows
-    assert wf.runs[armed["run"]].status == "running"
+    run = armed["run"]
+    assert wf.runs[run].status == "running"
+    one = world.app.sessions.sessions[wf.runs[run].nodes["one"].log_id]
+    wf.result(one, {"n": 7}, "Did it after the restart.")
+    wf.changed()
+    await until(lambda: wf.runs[run].status != "running", timeout=30)
+    assert wf.runs[run].status == "done", {
+        k: (v.status, v.error) for k, v in wf.runs[run].nodes.items()
+    }
