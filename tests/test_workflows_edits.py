@@ -301,3 +301,20 @@ async def test_arming_again_with_a_command_needs_full_permission(world):
     assert [(d["op"], d["key"]) for d in line["diff"]] == [("change", "build")]
     card = [e for e in main.entries() if e["kind"] == "workflow_decision"][-1]
     assert wf.runs[run].story[int(card["detail"]["key"])] is line
+
+
+async def test_a_change_is_not_rejected_once_the_run_ended(world):
+    main, run = await armed(world)
+    wf = world.app.workflows
+    await until(lambda: "build" in wf.runs[run].nodes, timeout=10)
+    out = await world.app.registry.call(
+        "workflow.edit",
+        {"run": run, "definition": WITH_NOTES},
+        Caller("agent", main.log_id),
+    )
+    await world.app.registry.call("workflow.stop", {"run": run})
+    for op in ("workflow.edit.reject", "workflow.edit.apply"):
+        with pytest.raises(OpError) as e:
+            await world.app.registry.call(op, {"run": run, "v": out["proposed"]})
+        assert e.value.code == "not_proposed", op
+    assert wf.runs[run].edits[-1]["status"] == "proposed"
