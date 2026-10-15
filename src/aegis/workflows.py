@@ -512,7 +512,7 @@ class Workflows:
         while lid and lid not in seen:
             seen.add(lid)
             o = self._reg.sessions.get(lid)
-            meta = (
+            meta: dict = (
                 {"workflow": o.workflow, "spawned_by": o.spec.spawned_by}
                 if o is not None
                 else self._reg.archived.get(lid) or {}
