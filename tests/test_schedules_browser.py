@@ -265,3 +265,25 @@ def test_an_agents_schedule_shows_a_card_a_person_unpauses(server, page):  # noq
     page.click(".apcard[data-state=waiting] button >> text=Unpause")
     page.wait_for_selector(".apcard[data-name=nightly-tests][data-state=running]")
     assert not page.errors
+
+
+def test_the_card_waits_when_the_session_was_open_before_the_call(server, page):  # noqa: F811
+    """The browser is on the session before its agent calls schedule_create,
+    as a person watching it is: the card shows the schedule waiting, not
+    deleted, with no reload."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    spec = {
+        "name": "watched-tests",
+        "clock": {"every": "1h"},
+        "fire": {"agent": "opus"},
+        "prompt": "run the watched tests",
+    }
+    page.fill("#input", "/mcp schedule_create " + json.dumps(spec))
+    page.press("#input", "Enter")
+    page.wait_for_selector(".apcard[data-name=watched-tests]")
+    page.wait_for_selector(
+        ".apcard[data-name=watched-tests][data-state=waiting]", timeout=3000
+    )
+    assert not page.errors
