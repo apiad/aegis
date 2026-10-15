@@ -327,13 +327,22 @@ function commandOf(r) {
   return null;
 }
 
-// The commands a person approves, counted for the line above Approve.
+// The commands a person approves, counted for the line above Approve, with
+// how often each group runs: once, for each item of a map, each round.
 function runsLine(w) {
-  const { sh = 0, probes = 0 } = w.commands || {};
+  const { sh = 0, probes = 0, groups } = w.commands || {};
   if (!sh && !probes) return null;
   const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
-  const parts = [sh && n(sh, "shell command", "shell commands"), probes && n(probes, "probe", "probes")].filter(Boolean);
-  return el("span", "runs", `Runs ${parts.join(" and ")} in ${w.cwd}, without asking.`);
+  const counts = (g) =>
+    [g.sh && n(g.sh, "shell command", "shell commands"), g.probes && n(g.probes, "probe", "probes")].filter(Boolean);
+  const all = groups || [{ sh, probes, per: "" }];
+  if (all.length === 1) {
+    const g = all[0];
+    return el("span", "runs", `Runs ${counts(g).join(" and ")}${g.per ? ` ${g.per}` : ""} in ${w.cwd}, without asking.`);
+  }
+  const parts = all.map((g) => counts(g).join(" and ") + (g.per ? ` ${g.per}` : ""));
+  const list = `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`;
+  return el("span", "runs", `Runs ${list}, in ${w.cwd}, without asking.`);
 }
 
 const COUNT_ORDER = ["done", "running", "queued", "pending", "failed", "stopped"];

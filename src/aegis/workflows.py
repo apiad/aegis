@@ -327,15 +327,46 @@ class Workflows:
             "story": st.story,
             # What the person approves to run without asking, and where.
             "cwd": st.cwd,
-            "commands": {
-                "sh": sum(n.kind == "sh" for n in walk(wf.root)) if wf else 0,
-                "probes": sum(
-                    "sh" in (n.body.get("probe") or {}) for n in walk(wf.root)
-                )
-                if wf
-                else 0,
-            },
+            "commands": self._commands(st, wf) if wf else {"sh": 0, "probes": 0},
         }
+
+    def _commands(self, st: RunState, wf: Workflow) -> dict:
+        """The shell commands and sh probes a person approves, in all and
+        grouped by how often each runs: once, for each of a map's items, or
+        each round of a loop, counted from the definition and the args."""
+        groups: dict[str, dict] = {}
+        for n in walk(wf.root):
+            sh, probe = n.kind == "sh", "sh" in (n.body.get("probe") or {})
+            if sh or probe:
+                g = groups.setdefault(self._per(st, wf, n), {"sh": 0, "probes": 0})
+                g["sh" if sh else "probes"] += 1
+        return {
+            "sh": sum(g["sh"] for g in groups.values()),
+            "probes": sum(g["probes"] for g in groups.values()),
+            "groups": [{"per": per, **g} for per, g in groups.items()],
+        }
+
+    def _per(self, st: RunState, wf: Workflow, node: Node) -> str:
+        """How often a node runs, from the maps and loops around it: "for
+        each of 3 items", "each round, up to 4 rounds", or "" for once."""
+        bits, x = [], wf.parent.get(node.key)
+        scope = {"args": st.args}
+        while x is not None:
+            if x.kind in ("map", "loop"):
+                try:
+                    v = value_of(x.body["over" if x.kind == "map" else "max"], scope)
+                except RENDER_ERRORS:
+                    v = None  # read from a step's value, known only when it runs
+                if x.kind == "map":
+                    k = len(v) if isinstance(v, list) else None
+                    bits.append(f"for each of {k} items" if k else "for each item")
+                else:
+                    known = isinstance(v, int) and not isinstance(v, bool)
+                    bits.append(
+                        f"each round, up to {v} rounds" if known else "each round"
+                    )
+            x = wf.parent.get(x.key)
+        return ", ".join(bits)
 
     def _row(self, st: RunState, wf: Workflow, row: dict) -> dict:
         # By key: a row drawn once for a map not started has no item in its id.

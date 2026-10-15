@@ -69,6 +69,35 @@ def test_the_card_shows_every_command_before_approval(server, page):  # noqa: F8
     assert not page.errors
 
 
+REPEATS_FLOW = """id: repeats
+title: Repeats
+say: Commands that run more than once.
+args: {type: object, properties: {xs: {type: array}}}
+root:
+  seq:
+    - {sh: "printf hi", id: hi, say: Say hi.}
+    - {map: {over: [a, b, c], as: it, do: {sh: "echo {{it}}", id: e, say: Echo.}}, id: m, say: Each.}
+    - {map: {over: "{{args.xs}}", as: x, do: {sh: "echo {{x}}", id: f, say: Echo.}}, id: n, say: Each.}
+    - {loop: {max: 4, do: {sh: "true", id: t, say: Try.}}, id: l, say: Rounds.}
+  say: All of it.
+"""
+
+
+def test_the_approval_line_counts_commands_per_item_and_round(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    arm = {"definition": REPEATS_FLOW, "args": {"xs": [1, 2]}}
+    spawn(page, "/mcp workflow_arm " + json.dumps(arm))
+    runs = page.wait_for_selector(".wfcard[data-status=armed] .apbar .runs")
+    text = runs.inner_text()
+    assert text.startswith(
+        "Runs 1 shell command, 1 shell command for each of 3 items, "
+        "1 shell command for each of 2 items, "
+        "and 1 shell command each round, up to 4 rounds, in "
+    ), text
+    assert not page.errors
+
+
 def test_the_card_fits_a_phone(server, browser):  # noqa: F811
     from .test_browser import new_page
 
