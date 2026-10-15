@@ -88,7 +88,14 @@ class Workflow:
 
 
 def lookup(scope: dict, name: str, parts: list[str]):
-    v = scope[name]
+    """``scope[name]`` down ``parts``. An agent's early outputs sit apart
+    under ``scope[""]`` (no name is empty) and win for ``{{a.o}}``, whatever
+    its result holds."""
+    early = scope.get("", {}).get(name, {})
+    if parts and parts[0] in early:
+        v, parts = early[parts[0]], parts[1:]
+    else:
+        v = scope[name]
     for part in parts:
         v = v[part]
     return v
@@ -500,6 +507,18 @@ class _Parser:
                             f"{name} may not have finished before this node starts: "
                             "put it earlier in a seq or name it in after",
                         )
+        for aid, wanted in waited.items():
+            # {{a.o}} reads the output, so a result property of that name
+            # would never be read.
+            result = nodes[aid].body.get("result")
+            props = result.get("properties") if isinstance(result, dict) else None
+            for o in wanted:
+                if isinstance(props, dict) and o in props:
+                    self.err(
+                        f"{nodes[aid].path}.agent.result.properties.{o}",
+                        f"{o} is an early output an after waits on; "
+                        "name the result's property otherwise",
+                    )
         return waited
 
     @staticmethod

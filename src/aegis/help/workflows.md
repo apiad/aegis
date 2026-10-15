@@ -60,7 +60,10 @@ An item's key is its `id` when it has one, else its position, so the
 second node above waits on the item `base` with `after: [images.base]` and
 reads its result as `images.base.build`. `after` also takes a node's id (it
 is done) or `node.name`, an early output that node gives with
-`workflow_output` while it keeps working. A `{{name}}` must name a node
+`workflow_output` while it keeps working; a key of that name in its result
+meets it too. `{{node.name}}` reads the early output whatever the result
+holds, so the lint refuses a result schema with a property of an awaited
+output's name. A `{{name}}` must name a node
 that finishes before this one: earlier in a `seq`, or named in `after`.
 The lint refuses an `after` that could never be met.
 
