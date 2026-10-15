@@ -7,11 +7,13 @@ sentence for the person, what it does: the workflow is the plan they approve.
 
 ``parse`` reads, lints and assigns an id to every node without one, in one
 pass, and returns every error with its YAML path, so an agent fixes the file
-in one round. This version runs ``seq``, ``par``, ``map`` and ``agent``,
-with ``after``, caps and limits; the lint knows every kind the spec names and
-refuses the others by name, so a later slice adds a kind here as one branch.
-An ``after`` and every ``{{reference}}`` are checked on one graph of start and
-finish points (``_Parser.order``).
+in one round. This version reads every kind but ``gate``, with ``after``,
+caps, limits, deadlines, retries, blocks and ``defs``; the lint knows every
+kind the spec names and refuses the others by name, so a later slice adds a
+kind here as one branch. An ``after`` and every ``{{expression}}`` are
+checked on one graph of start and finish points (``_Parser.order``). An id is
+unique in its scope (the top level, a map's item, a loop's round) and a node's
+``key`` names it in the whole file; a ``ref`` is expanded here, at parse.
 """
 
 from __future__ import annotations
@@ -38,7 +40,7 @@ KINDS = (
     "gate",
     "ref",
 )
-RUNS = frozenset({"seq", "par", "map", "agent", "ref"})  # the kinds this version runs
+RUNS = frozenset(KINDS) - {"gate"}  # the kinds this version runs
 COMMON = frozenset({"id", "say", "after", "deadline", "retries", "see", "cap"})
 MAP_FIELDS = frozenset({"over", "as", "cap", "do"})
 TYPES = frozenset({"object", "array", "string", "integer", "number", "boolean"})
@@ -53,6 +55,10 @@ AFTER = re.compile(r"^[a-z][a-z0-9_-]{0,39}(\.[A-Za-z0-9_-]{1,40})?$")
 DURATION = re.compile(r"^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$")
 RETRYABLE = frozenset({"agent", "sh", "check"})
 MAX_RETRIES = 10
+MAX_ROUNDS = 1000
+PROBE_EVERY_S = 30.0
+MIN_EVERY_S = 5.0
+JUDGE_FIELDS = frozenset({"agent", "prompt", "inputs"})
 
 
 def duration(text) -> float | None:
@@ -85,6 +91,7 @@ class Node:
     deadline: float | None = None  # seconds from its start
     retries: int = 0
     use: str = ""  # the YAML path of the ref that put this node here
+    branch: str = ""  # then or else, for the root of an if's branch
 
     @property
     def key(self) -> str:
@@ -413,12 +420,13 @@ def walk(node: Node) -> Iterator[Node]:
 
 def rows(wf: Workflow, items=lambda path: None) -> list[dict]:
     """The tree as the card draws it: depth-first, one row per node
-    instance. ``items(path)`` is a started map's ``[[key, value], ...]``;
-    each item's nodes then appear once per item under ``<map>.<key>.``. A
-    map not started shows its do once, each row marked ``each``."""
+    instance. ``items(path)`` is a started map's ``[[key, value], ...]``,
+    or a started loop's ``[[round, None], ...]``; each item's or round's
+    nodes then appear once per item under ``<map>.<key>.``. A map or loop
+    not started shows its do once, each row marked ``each``."""
     out: list[dict] = []
 
-    def go(n: Node, depth: int, prefix: str, each: bool) -> None:
+    def go(n: Node, depth: int, prefix: str, each: bool, under: str = "") -> None:
         path = prefix + n.id
         row: dict = {
             "id": path,
@@ -438,8 +446,22 @@ def rows(wf: Workflow, items=lambda path: None) -> list[dict]:
             row["cap"] = n.body["cap"]
         if n.kind == "map":
             row["as"] = n.body.get("as")
+        if n.kind == "sh":
+            row["cmd"] = n.body.get("sh", "")
+        if n.body.get("probe"):
+            row["probe"] = n.body["probe"]
+        if n.kind == "wait":
+            row["wait"] = n.body.get("wait")
+        if n.kind == "loop":
+            row["max"] = n.body.get("max")
+        if n.branch:
+            row |= {"branch": n.branch, "if": under}
+        if n.deadline is not None:
+            row["deadline"] = n.deadline
+        if n.retries:
+            row["retries"] = n.retries
         out.append(row)
-        if n.kind == "map":
+        if n.kind in ("map", "loop"):
             got = None if each else items(path)
             if got is None:
                 go(n.children[0], depth + 1, prefix, True)
@@ -448,7 +470,7 @@ def rows(wf: Workflow, items=lambda path: None) -> list[dict]:
                     go(n.children[0], depth + 1, f"{path}.{key}.", False)
         else:
             for c in n.children:
-                go(c, depth + 1, prefix, each)
+                go(c, depth + 1, prefix, each, path)
 
     go(wf.root, 0, "", False)
     return out
@@ -579,6 +601,25 @@ class _Parser:
             node.body = self.map(body, f"{path}.map", node)
         elif kind == "agent":
             node.body = self.agent(body, f"{path}.agent")
+        elif kind == "sh":
+            if not isinstance(body, str) or not body.strip():
+                self.err(f"{path}.sh", "sh holds the command, as one string")
+            node.body = {"sh": body}
+        elif kind == "check":
+            node.body = {"probe": self.probe(body, f"{path}.check")}
+        elif kind == "wait":
+            if duration(body) is None and not (
+                isinstance(body, str) and WHOLE.match(body)
+            ):
+                self.err(
+                    f"{path}.wait",
+                    "wait is a duration such as 20m, or one {{expression}}",
+                )
+            node.body = {"wait": body}
+        elif kind == "if":
+            self.branch_if(body, f"{path}.if", node)
+        elif kind == "loop":
+            self.loop(body, f"{path}.loop", node)
         return node
 
     def ref(self, raw: dict, path: str) -> Node | None:
@@ -604,6 +645,97 @@ class _Parser:
             return self.node(merged, f"$.blocks.{name}")
         finally:
             self.using.pop()
+
+    def probe(self, raw, path: str) -> dict:
+        """One of three probes (spec §04): sh passes on exit 0, expr on a
+        truthy value, judge on an agent's yes."""
+        kinds = [
+            k for k in ("sh", "expr", "judge") if isinstance(raw, dict) and k in raw
+        ]
+        if len(kinds) != 1:
+            self.err(path, "a probe is one of sh, expr and judge")
+            return {}
+        kind = kinds[0]
+        for k in raw:
+            if k not in (kind, "every") or (k == "every" and kind != "sh"):
+                self.err(f"{path}.{k}", f"{k} is not a field of a {kind} probe")
+        if kind in ("sh", "expr"):
+            if not isinstance(raw[kind], str) or not raw[kind].strip():
+                self.err(f"{path}.{kind}", f"{kind} is a non-empty string")
+                return {}
+            out: dict = {kind: raw[kind]}
+            if kind == "sh":
+                every = duration(raw["every"]) if "every" in raw else PROBE_EVERY_S
+                if every is None or every < MIN_EVERY_S:
+                    self.err(f"{path}.every", "every is a duration of at least 5s")
+                    every = PROBE_EVERY_S
+                out["every"] = every
+            return out
+        j = raw["judge"]
+        if not isinstance(j, dict):
+            self.err(f"{path}.judge", "judge holds agent, prompt and inputs")
+            return {}
+        for k in j:
+            if k not in JUDGE_FIELDS:
+                self.err(f"{path}.judge.{k}", f"{k} is not a judge field")
+        if j.get("agent") not in self.agents:
+            self.err(f"{path}.judge", f"no agent {j.get('agent')} in .aegis.yaml")
+        if not isinstance(j.get("prompt"), str) or not j["prompt"].strip():
+            self.err(f"{path}.judge.prompt", "a judge needs a prompt")
+        inputs = j.get("inputs", [])
+        if not isinstance(inputs, list) or not all(isinstance(i, str) for i in inputs):
+            self.err(
+                f"{path}.judge.inputs",
+                "inputs is a list of references, such as impl or review.verdict",
+            )
+            inputs = []
+        return {
+            "judge": {
+                "agent": j.get("agent"),
+                "prompt": j.get("prompt", ""),
+                "inputs": inputs,
+            }
+        }
+
+    def branch_if(self, body, path: str, node: Node) -> None:
+        if not isinstance(body, dict) or "when" not in body or "then" not in body:
+            self.err(path, "if holds when, then and an optional else")
+            return
+        for k in body:
+            if k not in ("when", "then", "else"):
+                self.err(f"{path}.{k}", f"{k} is not an if field")
+        node.body = {"probe": self.probe(body["when"], f"{path}.when")}
+        for b in ("then", "else"):
+            if b in body and (c := self.node(body[b], f"{path}.{b}")) is not None:
+                c.branch = b
+                node.children.append(c)
+
+    def loop(self, body, path: str, node: Node) -> None:
+        if not isinstance(body, dict) or "do" not in body:
+            self.err(path, "loop holds do, max and an optional until")
+            return
+        for k in body:
+            if k not in ("do", "max", "until"):
+                self.err(f"{path}.{k}", f"{k} is not a loop field")
+        mx = body.get("max")
+        whole = isinstance(mx, str) and WHOLE.match(mx)
+        if not whole and (
+            isinstance(mx, bool) or not isinstance(mx, int) or not 1 <= mx <= MAX_ROUNDS
+        ):
+            self.err(
+                f"{path}.max",
+                f"a loop needs max: a whole number from 1 to {MAX_ROUNDS}, or one {{{{expression}}}}",
+            )
+        node.body = {"max": mx}
+        # A round is a scope, as a map's item is: its nodes are l.<n>.<id>,
+        # and until reads the round it follows.
+        self.maps.append(node.id)
+        if "until" in body:
+            node.body["probe"] = self.probe(body["until"], f"{path}.until")
+        c = self.node(body["do"], f"{path}.do")
+        self.maps.pop()
+        if c is not None:
+            node.children.append(c)
 
     def cap(self, v, path: str) -> bool:
         if isinstance(v, bool) or not isinstance(v, int) or v < 1:
@@ -740,11 +872,38 @@ class _Parser:
                 out.append(n)
             return out
 
-        def hidden(name: str) -> str:
+        def hidden(name: str, waiting: bool) -> str:
             """Why ``name`` is not seen from a node that cannot find it: the
-            map it is inside, or nothing when no node has that id."""
+            map or loop it is inside, or "" when no node has that id."""
             inside = next((x for x in nodes.values() if x.id == name), None)
-            return inside.maps[-1] if inside is not None and inside.maps else ""
+            if inside is None or not inside.maps:
+                return ""
+            m = inside.maps[-1]
+            if nodes["/".join(inside.maps)].kind == "loop":
+                if waiting:
+                    return f"{name} is inside loop {m}; wait on {m}"
+                return f"{name} is inside loop {m}; read {m}.{name}"
+            return f"{name} is inside map {m}; wait on {m} or one of its items"
+
+        def branch_of(t: Node) -> tuple[Node, Node] | None:
+            """The innermost if whose branch holds t, and that branch."""
+            x = t
+            while x.key in parent:
+                p = parent[x.key]
+                if p.kind == "if":
+                    return p, x
+                x = p
+            return None
+
+        def unreachable(t: Node, n: Node) -> str | None:
+            """Why n may not read t: t sits in a branch that n is not inside."""
+            got = branch_of(t)
+            while got is not None:
+                i, b = got
+                if b.key not in {x.key for x in [n, *ancestors(n)]}:
+                    return f"{t.id} is inside the {b.branch} branch of if {i.id}, which may not run: read it inside that branch"
+                got = branch_of(i)
+            return None
 
         for n in nodes.values():
             edge(("S", n.key), ("F", n.key))
@@ -760,14 +919,14 @@ class _Parser:
                 path = f"{n.path}.after[{i}]"
                 target, _, sub = a.partition(".")
                 t = find(nodes, target, n.maps)
-                if t is None and (m := hidden(target)):
-                    self.err(
-                        path,
-                        f"{target} is inside map {m}; wait on {m} or one of its items",
-                    )
+                if t is None and (why := hidden(target, True)):
+                    self.err(path, why)
                     continue
                 if t is None:
                     self.err(path, f"{target} is not a node")
+                    continue
+                if (why := unreachable(t, n)) is not None:
+                    self.err(path, why)
                     continue
                 if t.key == n.key or t.key in {x.key for x in ancestors(n)}:
                     self.err(
@@ -819,14 +978,22 @@ class _Parser:
                     f"{m.path}.map.as",
                     f"{m.body['as']} is a node id; name the item otherwise",
                 )
-        for n in nodes.values():
-            afters = {a for x in [n, *ancestors(n)] for a in x.after}
-            # The enclosing maps' items.
-            items = {
-                nodes["/".join(n.maps[: i + 1])].body.get("as")
-                for i in range(len(n.maps))
-            }
-            for path, tree in self._exprs(n):
+        for x in nodes.values():
+            for path, tree in self._exprs(x):
+                # A loop's until is read once its do finishes: by the do,
+                # which may read anything inside itself.
+                n, done = x, set()
+                if x.kind == "loop" and path.startswith(x.path + ".loop.until"):
+                    if not x.children:
+                        continue  # its do was refused, with its own error
+                    n = x.children[0]
+                    done = {d.key for d in walk(n)}
+                afters = {a for y in [n, *ancestors(n)] for a in y.after}
+                # The enclosing maps' items.
+                items = {
+                    nodes["/".join(n.maps[: i + 1])].body.get("as")
+                    for i in range(len(n.maps))
+                }
                 for r in refs(tree):
                     name, first = r.name, (r.parts or ("",))[0]
                     if name == "args":
@@ -834,13 +1001,14 @@ class _Parser:
                     if name in items:
                         continue  # an enclosing map's item; the innermost wins
                     t = find(nodes, name, n.maps)
-                    if t is None and (m := hidden(name)):
-                        self.err(
-                            path,
-                            f"{name} is inside map {m}; wait on {m} or one of its items",
-                        )
+                    if t is None and (why := hidden(name, False)):
+                        self.err(path, why)
                     elif t is None:
                         self.err(path, f"{name} is not an earlier node or args")
+                    elif (why := unreachable(t, n)) is not None:
+                        self.err(path, why)
+                    elif t.key in done:
+                        continue
                     elif not (
                         reach(("F", t.key), ("S", n.key)) or f"{name}.{first}" in afters
                     ):
@@ -907,8 +1075,24 @@ class _Parser:
         return out
 
     @staticmethod
+    def _probe_path(n: Node) -> str | None:
+        """The YAML path of a node's probe, when it has one."""
+        if not n.body.get("probe"):
+            return None
+        return (
+            n.path
+            + {"check": ".check", "if": ".if.when", "loop": ".loop.until"}[n.kind]
+        )
+
+    @staticmethod
     def _bare(n: Node) -> list[tuple[str, str]]:
-        return []  # task 4 adds expr probes and judge inputs
+        """The bare expressions a node holds: an expr probe, a judge's inputs."""
+        probe, at = n.body.get("probe") or {}, _Parser._probe_path(n)
+        if "expr" in probe:
+            return [(f"{at}.expr", probe["expr"])]
+        if "judge" in probe:
+            return [(f"{at}.judge.inputs", i) for i in probe["judge"]["inputs"]]
+        return []
 
     @staticmethod
     def _strings(n: Node) -> list[tuple[str, str]]:
@@ -918,6 +1102,17 @@ class _Parser:
                 out.append((f"{n.path}.agent.{k}", n.body[k]))
         if n.kind == "map" and isinstance(n.body.get("over"), str):
             out.append((n.path + ".map.over", n.body["over"]))
+        if n.kind == "sh" and isinstance(n.body.get("sh"), str):
+            out.append((n.path + ".sh", n.body["sh"]))
+        if n.kind == "wait" and isinstance(n.body.get("wait"), str):
+            out.append((n.path + ".wait", n.body["wait"]))
+        if n.kind == "loop" and isinstance(n.body.get("max"), str):
+            out.append((n.path + ".loop.max", n.body["max"]))
+        probe, at = n.body.get("probe") or {}, _Parser._probe_path(n)
+        if "sh" in probe:
+            out.append((f"{at}.sh", probe["sh"]))
+        if "judge" in probe and isinstance(probe["judge"]["prompt"], str):
+            out.append((f"{at}.judge.prompt", probe["judge"]["prompt"]))
         return out
 
 

@@ -940,7 +940,7 @@ In <code>node()</code>, before the say check: <code>if kind == "ref": return sel
 </div>
 </details>
 
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">sh, check, wait, if and loop in the language</span><span class="files">workflow_lang.py · tests/test_workflow_lang.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -2464,6 +2464,7 @@ item, loop round or top level. `defs: {pr: schema}` names a result schema;
   <li>Task 3: <code>test_a_name_reads_the_innermost_scope_that_has_it</code> as written passed with <code>find</code> broken to read the outermost scope first. It now asserts no error at all and the three <code>impl</code> keys, and fails under that break.</li>
   <li>Task 3: <code>test_rows_draw_a_map_once_before_it_starts_and_per_item_after</code> expects <code>"node": "images/img"</code>; <code>test_what_slice_2_does_not_run_is_still_named</code> lost its <code>blocks</code> case; the spec-example test gained <code>DEFS</code> already in task 3, since <code>ref</code> runs from here.</li>
   <li>Task 3: the lint keeps checking a map's <code>as</code> against every node id in the file, whatever its scope. <code>_value</code> of a map reads the nodes whose <code>maps</code> are exactly the map's plus its id, rather than those whose last map has its id.</li>
+  <li>Task 4: a fifth slice 1 test, <code>test_a_kind_from_a_later_slice_is_named</code>, used <code>loop</code> as the later kind; it now uses <code>gate</code>. An <code>after</code> on a node inside a loop reads "fix is inside loop review; wait on review", the reference form "read review.fix". The until's reader is the do: a target anywhere inside the do is accepted, the branch rule still applies. The spec-example test now asserts the gate error is the only one.</li>
 </ul>
 </main>
 <script>

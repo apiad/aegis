@@ -74,8 +74,8 @@ def test_an_unknown_agent_is_refused():
 
 
 def test_a_kind_from_a_later_slice_is_named():
-    _, errors = errs(GOOD.replace("seq:", "loop:"))
-    assert "$.root: loop is not in this version yet" in errors
+    _, errors = errs(GOOD.replace("seq:", "gate:"))
+    assert "$.root: gate is not in this version yet" in errors
 
 
 def test_render_and_check_value():
@@ -339,7 +339,7 @@ root:
 
 def test_what_slice_2_does_not_run_is_still_named():
     for old, new, msg in (
-        ("par:", "loop:", "$.root: loop is not in this version yet"),
+        ("par:", "gate:", "$.root: gate is not in this version yet"),
         (
             '"Build {{s.id}}."}',
             '"Build {{s.id}}.", session: main}',
@@ -435,8 +435,7 @@ def test_the_specs_example_trips_only_on_what_this_version_does_not_run():
     )
     wf, got = errs(example)
     assert wf is None and got
-    assert all(e.endswith("is not in this version yet") for e in got), got
-    assert "$.root.seq[2]: gate is not in this version yet" in got
+    assert got == ["$.root.seq[2]: gate is not in this version yet"]
 
 
 def test_a_reference_reaches_positional_keys_and_dashed_names():
@@ -702,3 +701,120 @@ def test_a_name_reads_the_innermost_scope_that_has_it():
     # the maps in the par, which may not have finished.
     assert errors == []
     assert {"impl", "ingest/impl", "images/impl"} <= set(wf.by_key)
+
+
+STEPS = """
+id: steps
+title: Steps
+say: Every kind of step.
+root:
+  seq:
+    - agent: {agent: opus, prompt: "Open a PR.",
+              result: {type: object, properties: {pr: {type: integer}}, required: [pr]}}
+      id: impl
+      say: Open a PR.
+    - check: {sh: "gh pr checks {{impl.pr}}", every: 1m}
+      deadline: 2h
+      retries: 1
+      say: Wait for CI.
+    - if:
+        when: {expr: "impl.pr > 100"}
+        then: {sh: "echo big {{impl.pr}}", id: big, say: Say it is big.}
+        else: {wait: 1m, say: Pause.}
+      id: size
+      say: Branch on the PR number.
+    - loop:
+        max: 3
+        until: {judge: {agent: opus, prompt: "Is it approved?", inputs: [fix, impl]}}
+        do: {agent: {agent: opus, prompt: "Fix PR {{impl.pr}}."}, id: fix, say: Fix it.}
+      id: review
+      say: Fix until a judge approves.
+    - sh: "gh pr merge {{impl.pr}} --squash"
+      say: Merge it.
+  say: The whole thing.
+"""
+
+
+def test_every_new_kind_parses():
+    wf, errors = errs(STEPS)
+    assert errors == []
+    kinds = [r["kind"] for r in rows(wf)]
+    assert kinds == ["seq", "agent", "check", "if", "sh", "wait", "loop", "agent", "sh"]
+    check = wf.root.children[1]
+    assert check.body["probe"] == {"sh": "gh pr checks {{impl.pr}}", "every": 60.0}
+    assert [c.branch for c in wf.root.children[2].children] == ["then", "else"]
+    assert wf.by_key["review/fix"].maps == ("review",)
+
+
+def test_a_loop_without_max_is_refused():
+    _, errors = errs(STEPS.replace("        max: 3\n", ""))
+    assert (
+        "$.root.seq[3].loop.max: a loop needs max: a whole number from 1 to 1000, or one {{expression}}"
+        in errors
+    )
+
+
+def test_a_probe_is_exactly_one_of_sh_expr_and_judge():
+    _, errors = errs(
+        STEPS.replace('check: {sh: "gh pr checks {{impl.pr}}", every: 1m}', "check: {}")
+    )
+    assert "$.root.seq[1].check: a probe is one of sh, expr and judge" in errors
+    _, errors = errs(STEPS.replace("every: 1m", "every: 1s"))
+    assert "$.root.seq[1].check.every: every is a duration of at least 5s" in errors
+
+
+def test_an_expr_probe_is_checked_like_a_template():
+    _, errors = errs(STEPS.replace('"impl.pr > 100"', '"impl.pr > 100 >"'))
+    assert any(e.startswith("$.root.seq[2].if.when.expr:") for e in errors)
+    _, errors = errs(STEPS.replace('"impl.pr > 100"', '"later.x"'))
+    assert any("later is not an earlier node or args" in e for e in errors)
+
+
+def test_a_reference_into_a_branch_from_outside_it_is_refused():
+    text = STEPS.replace('"gh pr merge {{impl.pr}} --squash"', '"echo {{big.code}}"')
+    _, errors = errs(text)
+    assert any(
+        "big is inside the then branch of if size, which may not run" in e
+        for e in errors
+    )
+
+
+def test_a_loops_round_is_read_from_outside_through_the_loop():
+    _, errors = errs(
+        STEPS.replace('"gh pr merge {{impl.pr}} --squash"', '"echo {{fix}}"')
+    )
+    assert any("fix is inside loop review; read review.fix" in e for e in errors)
+    _, errors = errs(
+        STEPS.replace('"gh pr merge {{impl.pr}} --squash"', '"echo {{review.fix}}"')
+    )
+    assert errors == []
+
+
+def test_a_judge_names_an_agent_and_sound_inputs():
+    _, errors = errs(STEPS.replace("{judge: {agent: opus,", "{judge: {agent: nobody,"))
+    assert any("no agent nobody in .aegis.yaml" in e for e in errors)
+    _, errors = errs(STEPS.replace("inputs: [fix, impl]", "inputs: [merge]"))
+    assert any("merge is not an earlier node or args" in e for e in errors)
+
+
+def test_a_wait_is_a_duration_or_one_expression():
+    _, errors = errs(
+        STEPS.replace("{wait: 1m, say: Pause.}", "{wait: soon, say: Pause.}")
+    )
+    assert (
+        "$.root.seq[2].if.else.wait: wait is a duration such as 20m, or one {{expression}}"
+        in errors
+    )
+    assert errs(STEPS.replace("{wait: 1m,", '{wait: "{{impl.pr}}s",'))[
+        1
+    ]  # not one whole expression
+
+
+def test_gate_is_still_not_in_this_version():
+    _, errors = errs(
+        STEPS.replace(
+            '    - sh: "gh pr merge',
+            '    - gate: {by: person, ask: Go?}\n      say: Ask.\n    - sh: "gh pr merge',
+        )
+    )
+    assert "$.root.seq[4]: gate is not in this version yet" in errors
