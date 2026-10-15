@@ -85,3 +85,59 @@ def test_render_and_check_value():
     assert check_value({"pr": 7}, schema) == []
     assert check_value({"pr": "7"}, schema) == ["$.pr: expected integer"]
     assert check_value({}, schema) == ["$: missing pr"]
+
+
+def one_agent(extra: str = "", result: str = "") -> str:
+    return f"""
+id: w
+title: T
+say: S
+root:
+  agent: {{agent: opus, prompt: hi{result}}}
+  say: Do it.
+{extra}"""
+
+
+def test_node_fields_the_engine_does_not_run_yet_are_refused():
+    for field, value in (("retries", "3"), ("deadline", "5m"), ("after", "[x]")):
+        wf, errors = errs(one_agent(f"  {field}: {value}\n"))
+        assert wf is None
+        assert f"$.root.{field}: {field} is not in this version yet" in errors
+
+
+def test_see_is_a_pointer_and_stays_allowed():
+    wf, errors = errs(one_agent("  see: plan.html#a\n"))
+    assert errors == [] and wf is not None
+
+
+def test_a_result_schema_names_only_known_types_and_lists():
+    for result, msg in (
+        ("{type: strnig}", "$.root.agent.result.type: strnig is not a type"),
+        (
+            "{type: object, required: n}",
+            "$.root.agent.result.required: required is a list",
+        ),
+        ("{type: string, enum: a}", "$.root.agent.result.enum: enum is a list"),
+        (
+            "{type: object, properties: {n: {type: intger}}}",
+            "$.root.agent.result.properties.n.type: intger is not a type",
+        ),
+    ):
+        wf, errors = errs(one_agent(result=f", result: {result}"))
+        assert wf is None and any(e.startswith(msg) for e in errors), (result, errors)
+
+
+def test_args_is_not_a_node_id():
+    wf, errors = errs(
+        """
+id: w
+title: T
+say: S
+root:
+  say: r
+  seq:
+    - {id: args, say: a, agent: {agent: opus, prompt: hi}}
+"""
+    )
+    assert wf is None
+    assert "$.root.seq[0].id: args is reserved for the workflow's arguments" in errors
