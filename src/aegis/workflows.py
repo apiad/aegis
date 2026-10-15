@@ -45,7 +45,7 @@ from typing import TYPE_CHECKING
 
 from . import restarts
 from .agents import PERMISSION_ORDER, resolve
-from .monitors import run_bash
+from .monitors import CONDITION_LIMIT_S
 from .ops import OpError
 from .workflow_lang import (
     MAX_ROUNDS,
@@ -1224,10 +1224,23 @@ class Workflows:
             return "running"
         return await self._check_judge(st, wf, node, prefix)  # task 7
 
+    async def _probe_sh(self, cmd: str, cwd: str) -> tuple[int | None, str, str]:
+        """An sh probe's exit code, stdout and stderr, run as an sh node is
+        (its own process group, ended when its task is cancelled); the code
+        is None when bash did not start or the probe ran too long."""
+        try:
+            return await asyncio.wait_for(
+                run_sh(cmd, cwd, lambda _: None), CONDITION_LIMIT_S
+            )
+        except TimeoutError:
+            return None, "", f"took over {CONDITION_LIMIT_S:g}s"
+        except OSError as e:
+            return None, "", str(e)
+
     async def _poll(self, st: RunState, inst: str, cmd: str, every: float) -> None:
         try:
             while True:
-                rc, out, err = await run_bash(cmd, self._cwd(st))
+                rc, out, err = await self._probe_sh(cmd, self._cwd(st))
                 self._readings[(st.run, inst)] = (
                     f"exit {rc if rc is not None else '?'} at {iso_now()[11:16]}"
                 )
@@ -1375,7 +1388,7 @@ class Workflows:
 
     async def _probe_once(self, st: RunState, inst: str, rnd: str, cmd: str) -> None:
         try:
-            rc, out, err = await run_bash(cmd, self._cwd(st))
+            rc, out, err = await self._probe_sh(cmd, self._cwd(st))
             self._readings[(st.run, inst)] = (
                 f"exit {rc if rc is not None else '?'} at {iso_now()[11:16]}"
             )
