@@ -147,11 +147,11 @@ TEAMS = """
 id: teams
 title: Teams
 say: Two teams at once.
-limits: {agents: 3, heavy: 1}
+limits: {total: 3, opus: 1}
 root:
   par:
     - map: {over: "{{args.images}}", as: s, cap: 1,
-            do: {agent: {agent: opus, prompt: "Build {{s.id}}.", class: heavy}, id: img, say: "Build {{s.id}}."}}
+            do: {agent: {agent: opus, prompt: "Build {{s.id}}."}, id: img, say: "Build {{s.id}}."}}
       id: images
       say: Images, one at a time.
     - map: {over: [a, b], as: m, do: {agent: {agent: sonnet, prompt: "Mock {{m}} on {{images.base.img}}."}, id: mk, say: "Mock {{m}}."}}
@@ -166,7 +166,7 @@ root:
 def test_par_map_after_and_limits_parse():
     wf, errors = errs(TEAMS)
     assert errors == []
-    assert wf.limits == {"agents": 3, "heavy": 1}
+    assert wf.limits == {"total": 3, "opus": 1}
     images, mock = wf.root.children
     assert (images.kind, images.body["cap"], images.children[0].maps) == (
         "map",
@@ -209,7 +209,7 @@ def test_map_fields_are_checked_at_their_paths():
         ),
         ("as: s,", "as: Bad,", "$.root.par[0].map.as: as names the item"),
         ("cap: 1,", "cap: 0,", "$.root.par[0].map.cap: cap is a positive integer"),
-        ("cap: 1,", "cap: 5,", "$.root.par[0].map.cap: cap 5 is above limits.agents 3"),
+        ("cap: 1,", "cap: 5,", "$.root.par[0].map.cap: cap 5 is above limits.total 3"),
         (
             "as: s, cap: 1,",
             "as: img, cap: 1,",
@@ -220,25 +220,34 @@ def test_map_fields_are_checked_at_their_paths():
         assert wf is None and any(e.startswith(msg) for e in errors), (new, errors)
 
 
-def test_cap_sits_only_beside_par_and_class_is_heavy():
+def test_cap_sits_only_beside_par_and_class_is_gone():
     _, errors = errs(
         TEAMS.replace("      id: images\n", "      id: images\n      cap: 2\n")
     )
     assert (
         "$.root.par[0].cap: cap sits beside par; a map's cap goes inside map" in errors
     )
-    _, errors = errs(TEAMS.replace("class: heavy", "class: huge"))
-    assert "$.root.par[0].map.do.agent.class: class is heavy or absent" in errors
+    _, errors = errs(
+        TEAMS.replace('"Build {{s.id}}."}', '"Build {{s.id}}.", class: heavy}')
+    )
+    assert "$.root.par[0].map.do.agent.class: class is not an agent field" in errors
 
 
-def test_limits_are_positive_and_heavy_fits_in_agents():
+def test_limits_are_positive_and_name_a_total_and_agents():
     for limits, msg in (
-        ("{agents: 0}", "$.limits: limits is {agents: N, heavy: M}"),
-        ("{agent: 3}", "$.limits: limits is {agents: N, heavy: M}"),
-        ("{agents: 2, heavy: 3}", "$.limits.heavy: heavy is at most agents"),
+        ("{total: 0}", "$.limits: limits is {total: N, <agent>: M}"),
+        ("{total: 3, opus: x}", "$.limits: limits is {total: N, <agent>: M}"),
+        ("{agents: 3}", "$.limits.agents: agents is not an agent in .aegis.yaml"),
+        (
+            "{total: 3, heavy: 1}",
+            "$.limits.heavy: heavy is not an agent in .aegis.yaml",
+        ),
+        ("{total: 3, opus: 4}", "$.limits.opus: opus 4 is above total 3"),
     ):
-        _, errors = errs(TEAMS.replace("{agents: 3, heavy: 1}", limits))
+        _, errors = errs(TEAMS.replace("{total: 3, opus: 1}", limits))
         assert any(e.startswith(msg) for e in errors), (limits, errors)
+    wf, errors = errs(TEAMS.replace("{total: 3, opus: 1}", "{sonnet: 1}"))
+    assert errors == [] and wf.limits == {"sonnet": 1}
 
 
 def test_an_after_that_can_never_be_met_is_refused():
@@ -324,8 +333,8 @@ def test_what_slice_2_does_not_run_is_still_named():
     for old, new, msg in (
         ("par:", "loop:", "$.root: loop is not in this version yet"),
         (
-            "class: heavy",
-            "session: main",
+            '"Build {{s.id}}."}',
+            '"Build {{s.id}}.", session: main}',
             "$.root.par[0].map.do.agent.session: session is not in this version yet",
         ),
         (
