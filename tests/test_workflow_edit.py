@@ -195,7 +195,7 @@ root:
         errors = [e.message for e in edit_errors(o, n, {"n2": how})]
         assert any("generated id n2" in e for e in errors), (how, errors)
     # With the id written on it, the failed step may change as before.
-    pinned = old.replace('say: Deploy.}', "id: n2, say: Deploy.}")
+    pinned = old.replace("say: Deploy.}", "id: n2, say: Deploy.}")
     fixed = pinned.replace('"false", id: n2', '"exit 0", id: n2')
     assert edit_errors(wf(pinned), wf(fixed), {"n2": "parked"}) == []
 
