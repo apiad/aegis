@@ -36,6 +36,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
     <div class="tab add needs-net" id="tab-add" title="New session (Alt+N)">+</div>
     <div class="gap"></div>
     <div class="servers"><span class="dot ghost" id="conn-dot"></span><span id="conn-text">connecting</span><span class="ver-top" id="ver-top" hidden></span></div>
+    <button class="keys-btn set-btn sch-btn" id="schedules-btn" title="Schedules (Alt+K)" aria-label="Schedules"><span class="lbl">Schedules</span><span class="n" id="schedules-n"></span></button>
     <button class="keys-btn set-btn" id="settings-btn" title="Settings (Alt+S)" aria-label="Settings"><span class="lbl">Settings</span></button>
     <button class="jr-btn" id="journal-btn" title="Journal (Alt+L)" aria-label="Journal"></button>
     <button class="keys-btn bell" id="bell" title="Turn on desktop notifications"></button>
@@ -122,6 +123,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
 
   <main class="view v-settings"><section class="settings" id="settings"></section></main>
   <main class="view v-journal"><section class="journal" id="journal"></section></main>
+  <main class="view v-schedules"><section class="schedules" id="schedules"></section></main>
   <main class="view v-help"><section class="helpv" id="help"></section></main>
 
   <main class="view v-session">

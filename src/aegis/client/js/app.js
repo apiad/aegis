@@ -27,6 +27,7 @@ import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
+import { Schedules } from "./schedules.js";
 import { Help } from "./help.js";
 import { installBell, listenForOpen, pingToast, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk } from "./dialog.js";
@@ -240,6 +241,7 @@ $("jump").append(icon("latest"));
 $("bell").append(icon("bell"));
 $("settings-btn").prepend(icon("gear"));
 $("journal-btn").append(icon("book"));
+$("schedules-btn").prepend(icon("clock"));
 $("send").append(icon("send"));
 $("sp-go").append(icon("send"));
 $("hint-tutorial-x").append(icon("close"));
@@ -341,7 +343,7 @@ for (const b of document.querySelectorAll("#fleet-order button"))
     render();
   });
 
-// -- routing: #fleet, #new, #settings, #journal, #help[=<page>], #s=<key>, #t=<key>, #read=<key>, #w=<n>:<key> --
+// -- routing: #fleet, #new, #settings, #journal, #schedules, #help[=<page>], #s=<key>, #t=<key>, #read=<key>, #w=<n>:<key> --
 // A help ref is URI-encoded; a hand-typed malformed one is a page name nobody has.
 const unhash = (s) => {
   try {
@@ -361,6 +363,7 @@ function route() {
   if (h === "new") return { view: "spawn" };
   if (h === "settings") return { view: "settings" };
   if (h === "journal") return { view: "journal" };
+  if (h === "schedules") return { view: "schedules" };
   if (h === "help" || h.startsWith("help=")) return { view: "help", id: unhash(h.slice(5)) };
   return { view: "fleet" };
 }
@@ -557,6 +560,21 @@ const sideJournalChanged = () => {
   sideJournalTimer = setTimeout(() => drawSideJournal(sideJournalFor, true), 300);
 };
 conn.subscribe("journal", sideJournalChanged, sideJournalChanged);
+// The Schedules view (schedules.js); its button counts them, red while one is
+// paused by errors.
+const schedules = new Schedules(conn, $("schedules"), {
+  go,
+  sessions: () => local(),
+  onCount: (n, red) => {
+    $("schedules-n").textContent = n ? String(n) : "";
+    $("schedules-n").classList.toggle("err", red);
+  },
+});
+conn.subscribe(
+  "schedules",
+  (list) => schedules.onSnapshot(list),
+  (ops) => schedules.onPatch(ops),
+);
 
 // Each server's `sessions` channel: a snapshot replaces that server's metas,
 // patches upsert and remove them.
@@ -938,6 +956,8 @@ function render() {
   $("tab-add").classList.toggle("on", r.view === "spawn");
   $("settings-btn").classList.toggle("on", r.view === "settings");
   $("journal-btn").classList.toggle("on", r.view === "journal");
+  $("schedules-btn").classList.toggle("on", r.view === "schedules");
+  if (r.view !== "schedules") schedules.close();
   $("help-btn").classList.toggle("on", r.view === "help");
   root.dataset.mode = r.view === "read" ? "read" : "live";
   // Quota rows redraw on a quota patch, the timer, or a change of view; never
@@ -976,6 +996,12 @@ function render() {
     show("journal");
     if (newView) journal.open();
     setTitle("Journal · aegis");
+  } else if (r.view === "schedules") {
+    watchHost(null);
+    follow(null);
+    show("schedules");
+    if (newView) schedules.open();
+    setTitle("Schedules · aegis");
   } else if (r.view === "help") {
     watchHost(null);
     follow(null);
@@ -2346,6 +2372,7 @@ const help = (open = keymap.hidden) => (keymap.hidden = !open);
 $("help-btn").addEventListener("click", () => go("#help"));
 $("settings-btn").addEventListener("click", () => go("#settings"));
 $("journal-btn").addEventListener("click", () => go("#journal"));
+$("schedules-btn").addEventListener("click", () => go("#schedules"));
 keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));
 const palette = new Palette($("palette"), () => route().view);
 
@@ -2420,6 +2447,7 @@ installKeys(
     spawn: () => offline() || go("#new"), // a new session needs the server
     settings: () => go("#settings"),
     journal: () => go("#journal"),
+    schedules: () => go("#schedules"),
     tab(ev) {
       const n = Number(ev.altKey ? ev.code.slice(5) : ev.key);
       if (n === 0) go("#fleet");

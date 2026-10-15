@@ -13,14 +13,19 @@ and ``artifact.create``, ``artifact.send``, ``artifact.read``,
 ``artifact.submit``, ``artifact.error`` and ``artifact.probed``
 (``artifact_ops.py``),
 and ``journal.search``, ``journal.note`` and ``journal.rows`` (``journal/ops.py``),
-and ``help.search``, ``help.read`` and ``help.pages`` (``help_ops.py``).
+and ``help.search``, ``help.read`` and ``help.pages`` (``help_ops.py``),
+and ``schedule.list``, ``schedule.runs``, ``schedule.create``,
+``schedule.update``, ``schedule.delete``, ``schedule.pause``,
+``schedule.resume``, ``schedule.fire`` and ``schedule.test``
+(``schedule_ops.py``).
 Channels: ``sessions`` (every open session's meta; patches ``upsert`` and
 ``remove``), ``transcript:<log_id>`` (any session, archived included; a
 subscribe ``since`` a revision gets what changed after it), ``quota`` (each
 provider's windows; patches ``set``), ``host`` (CPU, RAM and disk while someone
 watches; patches ``set``), ``journal`` (when its rows last changed; patches
-``set``) and ``config`` (``.aegis.yaml`` as aegis holds it;
-patches ``set``).
+``set``), ``schedules`` (every schedule's state; patches ``upsert`` and
+``remove``, ``schedules.py``) and ``config`` (``.aegis.yaml`` as aegis holds
+it; patches ``set``).
 """
 
 from __future__ import annotations
@@ -77,6 +82,8 @@ from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .layout_ops import register_layout_ops
+from .schedule_ops import register_schedule_ops
+from .schedules import Schedules
 from .quota import Quota
 from .quota_gate import (
     POOLS,
@@ -366,6 +373,8 @@ class App:
         reg.quota = self.quota
         self.journal = Journal(roots.state_root, self.publish)
         reg.journal = self.journal
+        self.schedules = Schedules(self)
+        reg.schedules = self.schedules
         self.catalogs = commands.Catalogs(
             roots.state_root / "stderr" / "catalog-probe.log"
         )
@@ -396,6 +405,9 @@ class App:
         self.registry.permission_of = lambda log_id: (
             s.spec.permission if (s := self.sessions.sessions.get(log_id)) else None
         )
+        self.registry.schedule_of = lambda log_id: (
+            s.schedule if (s := self.sessions.sessions.get(log_id)) else None
+        )
         self._register()
         register_agent_ops(self)
         register_config_ops(self)
@@ -405,6 +417,7 @@ class App:
         self.push = register_push_ops(self)
         register_journal_ops(self)
         register_help_ops(self)
+        register_schedule_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
 
     def who(self, caller: Caller) -> Principal:
@@ -448,6 +461,7 @@ class App:
                 self._quota_task(s, self._pause(s, g))
             elif g.state == "open" and (s.quota_paused or holding):
                 self._quota_task(s, self._continue(s))
+        self.schedules.quota_opened()
         if any(t.status == "pending" for t in self.queues.tasks.values()):
             t = asyncio.create_task(self.queues.dispatch())
             self._background.add(t)
@@ -560,6 +574,9 @@ class App:
         await self.sessions.continue_after_boot()
         self.monitors.arm_all()
         await self.queues.resume_after_boot(self.queues.boot())
+        # After the sessions and their continues, so a live run is found live.
+        self.schedules.boot()
+        self.schedules.start()
         self.quota.start()
         self.host.start()
         self.nudges.start()
@@ -571,6 +588,7 @@ class App:
     async def shutdown(self) -> None:
         stopping_at = restarts.stopping(self.roots.state_root)
         await self.push.sender.stop()
+        await self.schedules.stop()
         self.queues.shutdown()
         if self._config_task is not None:
             self._config_task.cancel()
@@ -662,6 +680,8 @@ class App:
             return lambda: self.config.current().wire()
         if name == "links":
             return self.links.wire
+        if name == "schedules":
+            return self.schedules.wire_all
         if name == "toasts":
             # Always empty: a browser that subscribes later never replays a toast.
             return lambda: []
@@ -1040,7 +1060,13 @@ class App:
             if not g.may_start:
                 raise OpError("quota_closed", refusal(spec.owner or self.user, g))
             try:
-                s = await reg.spawn(spec, quiet=p.quiet)
+                # A run's child carries its schedule, so spawn: false holds for
+                # grandchildren too (ops.NO_SPAWN).
+                s = await reg.spawn(
+                    spec,
+                    quiet=p.quiet,
+                    schedule=parent.schedule if parent else None,
+                )
             except FileNotFoundError as e:
                 raise OpError(
                     "harness_not_found", f"cannot run {self._bin(spec.harness)!r}: {e}"

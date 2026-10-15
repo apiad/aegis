@@ -284,8 +284,24 @@ never earns another and nothing loops.
 **A turn ending is not completion.** Ending a turn is how an agent waits, so a
 queue worker is finished only when its turn has ended with no live monitor, no
 held message and no Claude task still open (`task_started` without its
-`task_notification`). Reading the turn boundary alone as done closed a worker
-mid-wait in the legacy tree.
+`task_notification`), and no session it spawned still working. Reading the
+turn boundary alone as done closed a worker mid-wait in the legacy tree. The
+test is `Registry.finished`, and a schedule's run ends on it too.
+
+**A schedule's tick passes four layers, and its state is folded from a log.**
+`schedules.py` runs one clock task in the server. It wakes at the next tick or
+after a minute and compares wall time, because asyncio's sleep stops while a
+machine is suspended. A tick goes through the overlap rule, the bash check and
+the fire. The fire waits under the schedule's own quota lines, the weekly window
+on pace by default, judged by `quota_gate.decide` like a token's policy: an
+admin has no policy, and a forgotten schedule must not spend the week. Definitions are `<state>/schedules.json`; everything that happens is
+`<state>/schedule-runs.jsonl`, and boot folds the live runs, the held tick and
+the errors in a row from it (`schedule_log.py`), so nothing is stored twice. A
+run ends on `Registry.finished`, the test a queue's task ends on, which also
+waits for the run's working children. A run with `spawn: false` is refused the
+operations that start work in `ops.Registry.call`, so the rule holds for every
+harness. The view, `js/schedules.js`, draws what the `schedules` channel sends
+and edits through the same operations agents use.
 
 **Agents change only what they created.** An agent reads and messages any session
 it can see (and, through `peer_read`, the archived session it continues), and changes only its own monitors, its own session's names and the

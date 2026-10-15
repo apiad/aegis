@@ -68,10 +68,17 @@ def tutorial_prompt(page_id: str) -> str:
     sessions"). Built here so a test can read it."""
     return (
         f"Read the help page `{page_id}` with help_read and guide me through it "
-        "step by step so I learn aegis. Talk to me in my language, one step per "
-        "turn, and end each turn with turn_end. Ask me before any step that "
-        "spawns agents, spends quota or reaches another server. When the page "
-        "ends, suggest the next tutorial."
+        "step by step so I learn aegis. Talk to me in my language.\n\n"
+        'Open your first turn with a welcome, "Welcome to the aegis tutorial" in '
+        "my language, and say in a few lines what the page covers: its levels or "
+        "its steps, one line each. Tell me I can ask anything on the way, and that "
+        "you will answer and then bring me back to the step we were on. Then start "
+        "the first step.\n\n"
+        "Go one step per turn and end each turn with turn_end. Ask me before any "
+        "step that spawns agents, spends quota or reaches another server. When I "
+        "ask about something else, answer it, then return to the step we were on "
+        "and say which one it is. When the page ends, offer the tutorials it lists "
+        "under Next, or suggest the next tutorial."
     )
 
 

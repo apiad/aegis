@@ -366,13 +366,7 @@ class Queues:
 
     # -- completion ----------------------------------------------------------------
     def finished(self, s: Session) -> bool:
-        # A worker the quota gate paused has more to do once it opens.
-        return (
-            not s.busy
-            and not s.quota_paused
-            and not self._monitors.of(s.log_id)
-            and not s.open_tasks
-        )
+        return self._registry.finished(s)
 
     def turn_ended(self, s: Session) -> None:
         t = self.task_of_worker(s.log_id)
