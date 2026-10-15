@@ -167,7 +167,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · parking idle sessions</span>
-  <span class="st"><span class="pill acc">not started</span><span class="pill">2026-10-15</span><span class="pill">#415</span></span>
+  <span class="st"><span class="pill acc">approved · not started</span><span class="pill">2026-10-15</span><span class="pill">#415</span></span>
 </div>
 
 <div class="wrap">
@@ -230,11 +230,11 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>A hidden tab</td><td>Does not block parking</td><td class="why"><span class="who">maintainer</span> A tab left open in the background overnight would otherwise hold every session it shows. Only a visible document counts, by the Page Visibility API.</td></tr>
 <tr><td>Opening a parked transcript</td><td>Does not wake it. The first keystroke in its composer does</td><td class="why"><span class="who">maintainer</span> Skimming a session should cost nothing. Typing means a message is coming, and a prompt takes longer to write than the 2.7 s a harness takes to start.</td></tr>
 <tr><td>Which turns may park</td><td>An idle session whose last turn ended with <code>turn_end</code> (done, needs you, review), or one waiting on a monitor, a queue task or <code>monitor_sessions</code></td><td class="why"><span class="who">maintainer</span> Those are the states where the next thing to happen comes from outside the harness. A turn that ended with neither is left to the idle nudge.</td></tr>
-<tr><td>A parked session's state</td><td>Its own state, <code>parked</code>, not <code>stopped</code></td><td class="why"><span class="who q">proposed</span> Stopped means a person stopped it: it is dimmed, drops out of the live counts and gets no nudges. A parked session is live work that happens to have no process.</td></tr>
-<tr><td>How a session parks</td><td>The same process end as Stop: SIGTERM, a 5 s grace, then the cgroup is killed</td><td class="why"><span class="who q">proposed</span> The safety rule has already shown the cgroup holds only the harness, so the kill finds nothing else. Reusing Stop's path means one way a process ends on purpose.</td></tr>
-<tr><td>Codex and OpenCode</td><td>Allowed when the admin names them. <code>aegis doctor</code> warns that their resume is unmeasured</td><td class="why"><span class="who q">proposed</span> Both drivers already resume (<code>codex/process.py:183</code>, <code>opencode/process.py:105</code>). The warning goes once a probe like #415's has run on them.</td></tr>
-<tr><td>Queue workers</td><td>Never parked</td><td class="why"><span class="who q">proposed</span> A worker is closed when its task ends (<code>queues.py:376</code>), so there is no idle stretch to save, and a Stop bypasses the exit that settles its task.</td></tr>
-<tr><td>Timers inside the harness</td><td>A session that has used ScheduleWakeup, CronCreate or the Monitor tool is never parked until each is shown to emit a task event</td><td class="why"><span class="who q">proposed</span> They live in the harness's memory with no child process, so the cgroup check cannot see them, and parking would cancel them without a trace. See <a href="#timers">section 05</a>.</td></tr>
+<tr><td>A parked session's state</td><td>Its own state, <code>parked</code>, not <code>stopped</code></td><td class="why"><span class="who">maintainer</span> Stopped means a person stopped it: it is dimmed, drops out of the live counts and gets no nudges. A parked session is live work that happens to have no process.</td></tr>
+<tr><td>How a session parks</td><td>The same process end as Stop: SIGTERM, a 5 s grace, then the cgroup is killed</td><td class="why"><span class="who">maintainer</span> The safety rule has already shown the cgroup holds only the harness, so the kill finds nothing else. Reusing Stop's path means one way a process ends on purpose.</td></tr>
+<tr><td>Codex and OpenCode</td><td>Allowed when the admin names them. <code>aegis doctor</code> warns that their resume is unmeasured</td><td class="why"><span class="who">maintainer</span> Both drivers already resume (<code>codex/process.py:183</code>, <code>opencode/process.py:105</code>). The warning goes once a probe like #415's has run on them.</td></tr>
+<tr><td>Queue workers</td><td>Never parked</td><td class="why"><span class="who">maintainer</span> A worker is closed when its task ends (<code>queues.py:376</code>), so there is no idle stretch to save, and a Stop bypasses the exit that settles its task.</td></tr>
+<tr><td>Timers inside the harness</td><td>A session that has used ScheduleWakeup, CronCreate or the Monitor tool is never parked until each is shown to emit a task event</td><td class="why"><span class="who">maintainer</span> They live in the harness's memory with no child process, so the cgroup check cannot see them, and parking would cancel them without a trace. See <a href="#timers">section 05</a>.</td></tr>
 </tbody>
 </table>
 
