@@ -80,6 +80,9 @@ SH_LIMIT_S = 1800.0  # an sh with no deadline over it
 CHECK_LIMIT_S = 3600.0  # a check with no deadline over it, a monitor's default
 TAIL = 4000  # the end of an sh's stdout and of its stderr kept as its value
 LEAVES = frozenset({"agent", "sh", "wait", "check"})  # logged; the rest derived
+STARTS = frozenset(
+    {"node_started", "judge_started", "map_items", "loop_started", "branch"}
+)
 
 
 async def _tail(stream) -> str:
@@ -1699,6 +1702,10 @@ class Workflows:
         RunLog(self.dir / f"{run}.jsonl").append(rec)
         if fold_in:
             apply(self.runs[run], rec)
+        if rec["ev"] in STARTS:
+            # A start sets the begin of every deadline over it: the next
+            # pass reads it and asks for a pass at the earliest end.
+            self.changed()
         self._publish(run)
 
     def _publish(self, run: str) -> None:

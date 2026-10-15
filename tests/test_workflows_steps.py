@@ -320,7 +320,10 @@ async def test_a_leaf_past_its_deadline_fails(world):
         ),
     )
     assert st.status == "failed"
-    assert st.nodes["slow"].error == "ran past its deadline of 2s"
+    slow = st.nodes["slow"]
+    assert slow.error == "ran past its deadline of 2s"
+    # The start asks for a pass at the deadline, not the 30 s heartbeat.
+    assert slow.ended - slow.started < 2 + 4
 
 
 async def test_a_group_past_its_deadline_stops_the_agent_inside_it(world):
@@ -334,8 +337,10 @@ root:
   deadline: 3s
   say: The group.
 """
+    t0 = time.time()
     st = await ended(world, await run(world, text))
     assert st.status == "failed"
+    assert st.ended - t0 < 3 + 5
     lid = st.nodes["work"].log_id
     s = world.app.sessions.sessions[lid]  # kept for inspection, with a tab
     await until(lambda: s.status != "working", timeout=10)
