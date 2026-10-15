@@ -227,6 +227,7 @@ class Link:
         self._ids = itertools.count(1)
         self._pending: dict[int, asyncio.Future] = {}
         self._subs: dict[str, Send] = {}
+        self._watches: dict[str, str] = {}
         self._out: asyncio.Queue[dict] = asyncio.Queue()
         self._dropped: set[str] = set()
 
@@ -273,6 +274,10 @@ class Link:
             self._ws, self.remote, self.rtt_ms = ws, welcome, round(rtt)
             backoff = BACKOFF_MIN_S
             self._set("linked")
+            for sid, log_id in self._watches.items():
+                self._out.put_nowait(
+                    {"t": "watch", "sid": sid, "session": log_id, "visible": True}
+                )
             writer = asyncio.get_running_loop().create_task(self._write(ws))
             try:
                 async for raw in ws:
@@ -415,8 +420,12 @@ class Link:
 
     def watch(self, sid: str, log_id: str | None) -> None:
         """Tell the far server whether a browser here shows one of its sessions
-        in a visible page. Lost while the link is down: the session may park,
-        and the browser's first keystroke wakes it."""
+        in a visible page. The link keeps every watch and sends them again when
+        it comes back, because the far server forgot them when the socket went."""
+        if log_id is None:
+            self._watches.pop(sid, None)
+        else:
+            self._watches[sid] = log_id
         if self.state != "linked":
             return
         self._out.put_nowait(

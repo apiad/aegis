@@ -43,6 +43,20 @@ async def test_a_watch_on_a_linked_server_counts_there(pair):  # noqa: F811
     await until(lambda: beta.app.watchers.count(s.log_id) == 0, what="the drop")
 
 
+async def test_a_link_sends_its_watches_again_after_a_reconnect(pair):  # noqa: F811
+    alpha, beta = pair
+    s = await beta.spawn()
+    link = alpha.app.links.get("beta")
+    async with Browser(alpha) as b:
+        await b.send(t="watch", server="beta", session=s.log_id, visible=True)
+        await until(lambda: beta.app.watchers.count(s.log_id) == 1, what="the watch")
+        # The link drops: beta forgets every browser behind it.
+        await link._ws.close()
+        await until(lambda: beta.app.watchers.count(s.log_id) == 0, what="the drop")
+        await until(lambda: link.state == "linked", timeout=10, what="linked again")
+        await until(lambda: beta.app.watchers.count(s.log_id) == 1, what="the resend")
+
+
 async def test_warm_starts_a_parked_session_and_nothing_else(world):  # noqa: F811
     a = await world.spawn()
     await turn(a, "hello ana")
@@ -51,3 +65,13 @@ async def test_warm_starts_a_parked_session_and_nothing_else(world):  # noqa: F8
     await a.park(60)
     await world.app.registry.call("session.warm", {"log_id": a.log_id})
     assert a.running and a.status == "idle"
+
+
+async def test_warm_starts_nothing_while_the_quota_gate_holds(world, monkeypatch):  # noqa: F811
+    a = await world.spawn()
+    await turn(a, "hello ana")
+    await a.park(60)
+    reg = world.app.sessions
+    monkeypatch.setattr(reg, "quota_hold", lambda s: "the weekly window is spent")
+    await world.app.registry.call("session.warm", {"log_id": a.log_id})
+    assert not a.running and a.status == "parked"
