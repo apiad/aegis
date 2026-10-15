@@ -44,6 +44,32 @@ def ok(said: str):
     return json.loads(said.removeprefix("mcp ok: "))
 
 
+async def give_up(world, run: str, timeout: float = 30):
+    """End a run the way slices 1-3 ended it on a failure: wait until it
+    ends or waits on a failure, and answer each failure with fail as its
+    main agent would. Returns the ended run."""
+    from aegis.ops import Caller
+
+    wf = world.app.workflows
+
+    def failing():
+        st = wf.runs[run]
+        return [k for k, o in st.open.items() if o["kind"] == "failed"]
+
+    await until(
+        lambda: wf.runs[run].status not in ("armed", "running") or failing(),
+        timeout=timeout,
+    )
+    if wf.runs[run].status == "running":
+        owner = wf.owner(wf.runs[run])
+        await world.app.registry.call(
+            "workflow.answer",
+            {"run": run, "to": failing()[0], "choice": "fail"},
+            Caller("agent", owner.log_id),
+        )
+    return wf.runs[run]
+
+
 async def test_a_workflow_runs_after_a_person_approves_it(world):
     main = await world.spawn()
     armed = ok(
@@ -83,7 +109,8 @@ async def test_a_node_that_ends_without_a_result_is_nudged_then_fails_the_run(wo
     )
     await world.app.registry.call("workflow.approve", {"run": armed["run"]})
     wf = world.app.workflows
-    await until(lambda: wf.runs[armed["run"]].status == "failed", timeout=20)
+    await give_up(world, armed["run"], 20)
+    assert wf.runs[armed["run"]].status == "failed"
     one = wf.runs[armed["run"]].nodes["one"]
     assert one.nudged and "no workflow_result" in one.error
     assert (

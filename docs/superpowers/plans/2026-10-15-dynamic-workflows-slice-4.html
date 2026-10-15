@@ -480,7 +480,7 @@ Then, in <code>apply</code>: the <code>stopped</code> and failed <code>finished<
 </div>
 </details>
 
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">A failure wakes the main agent instead of failing the run</span><span class="files">workflows.py · workflow_ops.py · tests/test_workflows_decide.py · slice 1-3 failure tests</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1907,7 +1907,9 @@ In <code>fillWorkflow</code>: a <code>replaced</code> run draws its bar and one 
 <h2 id="code-departs">Where the code departs from this plan</h2>
 <p class="note">Workers and reviewers add a line for each place the real code forced a change.</p>
 <ul class="rules">
-  <li>(none yet)</li>
+  <li>Task 2: <code>stopped</code> and <code>finished</code> clear <code>RunState.open</code> in the fold (an ended run waits on nothing), and a failed or stopped ending's reason is logged as <code>finished.why</code> and becomes the story's last line, so the main agent's <code>fail</code> text reaches the story. The fold already read <code>why</code>; <code>_end</code> now passes its body for every ending but done.</li>
+  <li>Task 2: <code>test_the_runs_deadline_ends_it_without_asking</code> is marked slow: it waits on a 2 s deadline and runs close to the 3 s bound under <code>-n auto</code>.</li>
+  <li>Task 2: the plan named <code>give_up</code> for <code>ended()</code> and the tests that waited on <code>status == "failed"</code>; <code>test_a_running_sh_with_no_task_is_cut_and_not_retried</code> also needed it, and now asserts the cut sh is an open failure before giving up.</li>
 </ul>
 </main>
 <script>

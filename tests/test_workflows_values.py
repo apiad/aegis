@@ -4,6 +4,7 @@ result can meet an after on an output."""
 
 from .conftest import until
 from . import test_workflows_parallel
+from .test_workflows_e2e import give_up
 from .test_workflows_parallel import arm, leaf, report, script
 
 world = test_workflows_parallel.world  # the fixture, shared
@@ -109,7 +110,7 @@ root:
     texts = []
     for text in (bad_over, never):
         run = await arm(world, text, {"n": 3, "kind": "cats"})
-        await until(lambda: wf.runs[run].status != "running", timeout=40)
+        await give_up(world, run, 40)
         texts += [s["text"] for s in wf.runs[run].story]
     assert any(t.startswith("Each of cats. Failed: over is a int") for t in texts), (
         texts

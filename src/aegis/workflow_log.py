@@ -123,14 +123,18 @@ def apply(st: RunState, r: dict) -> None:
         st.status, st.ended = "stopped", t
         # A node the stop interrupted ends with the run, not running forever.
         _stop_leaves(st, t)
+        st.open = {}  # an ended run waits on nothing
         _tell(st, t, "bad", "Stopped.")
     elif ev == "finished":
         st.status, st.ended = r.get("status") or "done", t
+        st.open = {}
         if st.status == "done":
             _tell(st, t, "ok", "The workflow is done.")
         else:
             # A failure ends the nodes still running beside it, as a stop does.
             _stop_leaves(st, t)
+            if r.get("why"):
+                _tell(st, t, "bad", r["why"])
     elif ev == "replaced":
         st.status, st.ended, st.replaced_by = "replaced", t, r.get("by")
     elif ev == "rearmed":

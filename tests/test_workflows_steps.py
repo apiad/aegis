@@ -11,7 +11,7 @@ from aegis.ops import Caller, OpError
 
 from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
-from .test_workflows_e2e import ok
+from .test_workflows_e2e import give_up, ok
 from .test_workflows_parallel import script
 
 WRITER = (
@@ -57,9 +57,7 @@ async def run(
 
 
 async def ended(world, run: str, timeout: float = 30):
-    wf = world.app.workflows
-    await until(lambda: wf.runs[run].status != "running", timeout=timeout)
-    return wf.runs[run]
+    return await give_up(world, run, timeout)
 
 
 async def test_an_sh_runs_in_the_runs_cwd_and_its_output_is_a_value(world):

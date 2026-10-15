@@ -7,7 +7,7 @@ import pytest
 
 from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
-from .test_workflows_e2e import ok
+from .test_workflows_e2e import give_up, ok
 
 
 def script(*steps) -> str:
@@ -89,25 +89,29 @@ root:
     assert tree[0]["count"] == {"done": 3}
 
 
-async def test_a_failure_beside_a_running_branch_stops_it(world):
+async def test_a_failure_beside_a_running_branch_lets_it_finish(world):
     wf_text = f"""
 id: sides
 title: Sides
 say: Two branches; one fails.
 root:
   par:
-    - {leaf("slow", "Take long.", script(["sleep", 30]))}
+    - {leaf("slow", "Take a while.", report(wait=3))}
     - {leaf("bad", "Fail.", script(["sleep", 1]))}
   say: Both.
 """
     run = await arm(world, wf_text)
     wf = world.app.workflows
-    await until(lambda: wf.runs[run].status != "running", timeout=40)
+
+    def slow_done():
+        n = wf.runs[run].nodes.get("slow")
+        return n is not None and n.status == "done"
+
+    await until(slow_done, timeout=40)
     st = wf.runs[run]
+    assert st.status == "running" and st.nodes["bad"].status == "failed"
+    st = await give_up(world, run)
     assert st.status == "failed"
-    assert (st.nodes["bad"].status, st.nodes["slow"].status) == ("failed", "stopped")
-    slow = world.app.sessions.sessions[st.nodes["slow"].log_id]
-    await until(lambda: slow.status != "working", timeout=5)  # interrupted
 
 
 @pytest.mark.slow
@@ -355,8 +359,6 @@ root:
   say: Both.
 """.replace("    - {id: late,", "    - {after: [items.zz], id: late,")
     run = await arm(world, wf_text)
-    wf = world.app.workflows
-    await until(lambda: wf.runs[run].status != "running", timeout=30)
-    st = wf.runs[run]
+    st = await give_up(world, run, 30)
     assert st.status == "failed"
     assert "map items has no item zz" in st.nodes["late"].error

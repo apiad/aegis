@@ -7,7 +7,7 @@ the whole of "an agent never starts a workflow without a person's click".
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -51,6 +51,26 @@ class Output(_Strict):
     summary: str = Field(
         min_length=1,
         description="One plain sentence for the person: what this output is.",
+    )
+
+
+class Answer(_Strict):
+    run: str
+    to: str = Field(
+        min_length=1,
+        description="What you answer: the id in the message's header (a node path, or q<n> for a question).",
+    )
+    choice: Literal["continue", "abort", "retry", "skip", "fail"] | None = Field(
+        default=None,
+        description="A gate: continue or abort. A failure: retry, skip or fail. A question takes text instead.",
+    )
+    value: Any = Field(
+        default=None,
+        description="A gate's value for later steps, or a skipped step's result.",
+    )
+    text: str = Field(
+        default="",
+        description="The answer to a question, or one sentence for the story saying why.",
     )
 
 
@@ -112,6 +132,16 @@ def register_workflow_ops(app: App) -> None:
         their sessions unlocked, so they can be read and talked to."""
         owned(p.run, caller)
         await wf.stop_run(p.run)
+        return wf.wire(p.run)
+
+    @r.op("workflow.answer", Answer, agent=True)
+    async def workflow_answer(p: Answer, caller):
+        """Answer what your workflow woke you for: a gate by: main
+        (continue or abort, with an optional value), a worker's question
+        (text), or a failed step (retry, skip or fail). The message's header
+        names what to answer."""
+        owned(p.run, caller)
+        await wf.answer(me(caller), p.run, p.to, p.choice, p.value, p.text)
         return wf.wire(p.run)
 
     @r.op("workflow.status", RunName, agent=True, read=True)
