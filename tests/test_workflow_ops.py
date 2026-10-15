@@ -30,7 +30,7 @@ async def test_lint_names_every_error_and_arms_nothing(world):
     assert world.app.workflows.runs == {}
 
 
-async def test_an_agent_cannot_approve_reject_or_arm_twice(world):
+async def test_an_agent_cannot_approve_reject_or_arm_beside_a_running_run(world):
     a = await world.spawn()
     run = ok(
         await turn(a, mcp("workflow_arm", definition=flow(RESULT, RESULT), args={}))
@@ -38,6 +38,9 @@ async def test_an_agent_cannot_approve_reject_or_arm_twice(world):
     assert (await turn(a, mcp("workflow_approve", run=run))).startswith("mcp error")
     assert (await turn(a, mcp("workflow_reject", run=run))).startswith("mcp error")
     assert world.app.workflows.runs[run].status == "armed"
+    # Armed and not approved, a new arm replaces it (test_workflows_edits.py);
+    # once it runs, a second one is refused.
+    await world.app.registry.call("workflow.approve", {"run": run})
     assert "already has workflow run" in await turn(
         a, mcp("workflow_arm", definition=flow(RESULT, RESULT), args={})
     )

@@ -55,6 +55,8 @@ from .workflow_lang import (
     check_value,
     compile_expr,
     duration,
+    edit_diff,
+    edit_errors,
     evaluate,
     find,
     fmt_duration,
@@ -299,27 +301,7 @@ class Workflows:
     def wire(self, run: str) -> dict:
         st = self.runs[run]
         wf = self.defs.get(run) or parse(st.text, self._agents())[0]
-
-        def items(path: str):
-            n = st.nodes.get(path)
-            if n is None or wf is None:
-                return None
-            if self._template(wf, path).kind == "loop":
-                return (
-                    None
-                    if n.max is None
-                    else [[str(k), None] for k in range(1, n.round + 1)]
-                )
-            return n.items
-
-        tree = [self._row(st, wf, r) for r in rows(wf, items)] if wf else []
-        # Under a branch an if did not take, every row is skipped too.
-        under: int | None = None
-        for r in tree:
-            if under is not None and r["depth"] > under:
-                r["state"] = "skipped"
-                continue
-            under = r["depth"] if r["state"] == "skipped" else None
+        tree = self._rows(st, wf) if wf else []
         return {
             "run": run,
             "id": wf.id if wf else "",
@@ -335,7 +317,91 @@ class Workflows:
             # What the person approves to run without asking, and where.
             "cwd": st.cwd,
             "commands": self._commands(st, wf) if wf else {"sh": 0, "probes": 0},
+            "version": st.version,
+            "replaced_by": st.replaced_by,
+            # The edit waiting for the person, without its text.
+            "proposal": (
+                {k: v for k, v in st.proposal.items() if k != "text"}
+                if st.proposal
+                else None
+            ),
+            "edits": st.edits,
+            "open": [
+                {
+                    "to": to,
+                    "kind": o["kind"],
+                    "node": o.get("node"),
+                    "by": o.get("by"),
+                    "text": self._open_text(st, to, o),
+                }
+                for to, o in st.open.items()
+            ],
         }
+
+    def _open_text(self, st: RunState, to: str, o: dict) -> str:
+        n = st.nodes.get(o.get("node") or "") or NodeState()
+        if o["kind"] == "ask":
+            return o.get("question") or ""
+        if o["kind"] == "gate":
+            return (n.gate or {}).get("ask") or n.say
+        if o["kind"] == "failed":
+            return o.get("error") or n.error
+        return o.get("outcome") or ""
+
+    def _rows(self, st: RunState, wf: Workflow) -> list[dict]:
+        """The card's rows, each with its state, as the wire carries them."""
+
+        def items(path: str):
+            n = st.nodes.get(path)
+            if n is None or wf is None:
+                return None
+            if self._template(wf, path).kind == "loop":
+                return (
+                    None
+                    if n.max is None
+                    else [[str(k), None] for k in range(1, n.round + 1)]
+                )
+            return n.items
+
+        tree = [self._row(st, wf, r) for r in rows(wf, items)]
+        # Under a branch an if did not take, every row is skipped too.
+        under: int | None = None
+        for r in tree:
+            if under is not None and r["depth"] > under:
+                r["state"] = "skipped"
+                continue
+            under = r["depth"] if r["state"] == "skipped" else None
+        return tree
+
+    def _seen(self, st: RunState, wf: Workflow) -> dict[str, str]:
+        """What has started, by template key, as edit_errors reads it: a
+        leaf is running if an instance runs, parked if one failed or
+        stopped, ran once one finished; a group is finished when every
+        instance is done, begun once one has moved. Keys nothing started
+        are left out."""
+        by: dict[str, list[str]] = {}
+        for r in self._rows(st, wf):
+            if r.get("each"):
+                continue
+            if wf.by_key[r["node"]].kind in LEAVES:
+                s = (st.nodes.get(r["id"]) or NodeState()).status
+            else:
+                s = r["state"]
+            by.setdefault(r["node"], []).append(s)
+        out: dict[str, str] = {}
+        for key, states in by.items():
+            if wf.by_key[key].kind in LEAVES:
+                if "running" in states:
+                    out[key] = "running"
+                elif "failed" in states or "stopped" in states:
+                    out[key] = "parked"
+                elif "done" in states or "skipped" in states:
+                    out[key] = "ran"
+            elif all(s == "done" for s in states):
+                out[key] = "finished"
+            elif any(s not in ("pending", "queued", "skipped") for s in states):
+                out[key] = "begun"
+        return out
 
     def _commands(self, st: RunState, wf: Workflow) -> dict:
         """The shell commands and sh probes a person approves, in all and
@@ -382,6 +448,8 @@ class Workflows:
         prefix = inst[: -len(node.id)]
         each = row.get("each", False)
         row["state"] = "pending" if each else self._state(st, node, inst)
+        if not each and self._held(st, inst, row["state"]):
+            row["held"] = True
         if not each and (st.nodes.get(inst) or NodeState()).status == "skipped":
             row["state"] = "skipped"  # done for the engine, drawn as skipped
         took = (st.nodes.get(row.get("if", "")) or NodeState()).took
@@ -429,6 +497,15 @@ class Workflows:
                 count[s] = count.get(s, 0) + 1
             row["count"] = count
         return row
+
+    def _held(self, st: RunState, inst: str, state: str) -> bool:
+        """Whether an instance not begun waits for the person's answer to
+        the proposal that touches it."""
+        return (
+            st.proposal is not None
+            and template_key(inst) in (st.proposal.get("touched") or ())
+            and state in ("pending", "queued")
+        )
 
     def _template(self, wf: Workflow, inst: str) -> Node:
         """An instance's node, by its template key."""
@@ -567,7 +644,8 @@ class Workflows:
                 "nested",
                 "a workflow's node, or a session it spawned, cannot arm a workflow",
             )
-        if (cur := self.of_owner(owner.log_id)) is not None:
+        cur = self.of_owner(owner.log_id)
+        if cur is not None and cur.status != "armed":
             raise OpError(
                 "one_run",
                 f"this session already has workflow run {cur.run}; stop it first",
@@ -575,7 +653,42 @@ class Workflows:
         wf, errors = parse(text, self._agents())
         if wf is None:
             raise OpError("lint", "\n".join(f"{e.path}: {e.message}" for e in errors))
-        for n in walk(wf.root):
+        self._check_arm(owner, wf, list(walk(wf.root)))
+        problems = check_value(args, wf.args, "$.args") if wf.args else []
+        if problems:
+            raise OpError("bad_args", "\n".join(problems))
+        run = f"{wf.id}-{secrets.token_hex(3)}"
+        cwd = str(owner.spec.cwd)
+        # Armed again before approval: the new card replaces the old one.
+        v = cur.version + 1 if cur is not None else 1
+        st = RunState(
+            run, owner.log_id, text, args, created=time.time(), cwd=cwd, version=v
+        )
+        self.runs[run], self.defs[run] = st, wf
+        self._log(
+            run,
+            {
+                "ev": "armed",
+                "run": run,
+                "owner": owner.log_id,
+                "text": text,
+                "args": args,
+                "cwd": cwd,
+                **({"v": v} if v > 1 else {}),
+            },
+            fold_in=False,
+        )
+        if cur is not None:
+            self._log(cur.run, {"ev": "replaced", "by": run})
+        owner.record_card({"kind": "workflow", "run": run})
+        self._publish(run)
+        return st
+
+    def _check_arm(self, owner: Session, wf: Workflow, nodes: list[Node]) -> None:
+        """What arming and an edit refuse before a person sees a card: a
+        node's agent above the owner's permission, a shell command from a
+        session without full permission, a cwd that does not resolve."""
+        for n in nodes:
             probe = n.body.get("probe") or {}
             main = n.body.get("session") == "main"  # the owner runs it, as it is
             if n.kind == "agent" and not main:
@@ -594,28 +707,88 @@ class Workflows:
                 if isinstance(cwd, str) and "{{" not in cwd:
                     # Refused before a person approves, not when the node starts.
                     self._app._resolve_cwd(cwd, Path(owner.spec.cwd))
-        problems = check_value(args, wf.args, "$.args") if wf.args else []
-        if problems:
-            raise OpError("bad_args", "\n".join(problems))
-        run = f"{wf.id}-{secrets.token_hex(3)}"
-        cwd = str(owner.spec.cwd)
-        st = RunState(run, owner.log_id, text, args, created=time.time(), cwd=cwd)
-        self.runs[run], self.defs[run] = st, wf
-        self._log(
-            run,
-            {
-                "ev": "armed",
-                "run": run,
-                "owner": owner.log_id,
-                "text": text,
-                "args": args,
-                "cwd": cwd,
-            },
-            fold_in=False,
+
+    def propose_edit(self, owner: Session, run: str, text: str) -> RunState:
+        """The main agent's change to its running workflow, linted against
+        what has run, as a diff the person applies or keeps on a card. The
+        run goes on; what the change touches waits for the answer."""
+        st = self._get(run)
+        if st.status != "running":
+            raise OpError(
+                "not_running", f"{run} is {st.status}: arm it again to change it"
+            )
+        new, errors = parse(text, self._agents())
+        if new is None:
+            raise OpError("lint", "\n".join(f"{e.path}: {e.message}" for e in errors))
+        old = self.defs[run]
+        errors = edit_errors(old, new, self._seen(st, old))
+        if errors:
+            raise OpError("edit", "\n".join(f"{e.path}: {e.message}" for e in errors))
+        d = edit_diff(old, new)
+        if not d["diff"]:
+            raise OpError("no_change", "the definition is the one running")
+        changed = [
+            new.by_key[x["key"]]
+            for x in d["diff"]
+            if x["op"] in ("add", "change") and x["key"] != "$"
+        ]
+        self._check_arm(owner, new, changed)
+        # A step added to a seq holds the step after it too: run now, that
+        # step would go before the new one and the change would go stale.
+        for x in d["diff"]:
+            p = new.parent.get(x["key"]) if x["op"] == "add" else None
+            if p is not None and p.kind == "seq":
+                keys = [c.key for c in p.children]
+                nxt = [k for k in keys[keys.index(x["key"]) + 1 :] if k in old.by_key]
+                if nxt and nxt[0] not in d["touched"]:
+                    d["touched"].append(nxt[0])
+        v = max([st.version, *(e["v"] for e in st.edits)]) + 1
+        self._log(run, {"ev": "edit_proposed", "v": v, "text": text, **d})
+        owner.record_card(
+            {"kind": "workflow_decision", "run": run, "what": "edit", "key": str(v)}
         )
-        owner.record_card({"kind": "workflow", "run": run})
-        self._publish(run)
         return st
+
+    async def apply_edit(self, run: str, v: int) -> None:
+        """A person applies the open proposal: linted again against what
+        has run since, then the run follows it, and a failed step it
+        touches runs again. Takes the lock, as an answer does."""
+        async with self._lock:
+            st = self._get(run)
+            p = st.proposal
+            if p is None or p["v"] != v or st.status != "running":
+                raise OpError("not_proposed", f"change v{v} of {run} is not waiting")
+            new, errors = parse(p["text"], self._agents())
+            if new is None:
+                raise OpError(
+                    "stale", "\n".join(f"{e.path}: {e.message}" for e in errors)
+                )
+            old = self.defs[run]
+            errors = edit_errors(old, new, self._seen(st, old))
+            if errors:
+                raise OpError(
+                    "stale",
+                    "the run has moved since the change was proposed: "
+                    + "; ".join(f"{e.path}: {e.message}" for e in errors),
+                )
+            touched = set(p.get("touched") or [])
+            self._log(run, {"ev": "edit_applied", "v": v})
+            self.defs[run] = new
+            for k, o in list(st.open.items()):
+                if o["kind"] == "failed" and template_key(k) in touched:
+                    reset = self._reset_list(st, new, k)
+                    rec = {"ev": "retried", "node": k, "reset": reset}
+                    self._log(run, rec | {"text": f"after change v{v}."})
+            self.changed()
+
+    def reject_edit(self, run: str, v: int) -> None:
+        """A person keeps the plan: the proposal closes, and what it held
+        goes on as it was."""
+        st = self._get(run)
+        if st.proposal is None or st.proposal["v"] != v:
+            raise OpError("not_proposed", f"change v{v} of {run} is not waiting")
+        self._log(run, {"ev": "edit_rejected", "v": v})
+        self.changed()
 
     def approve(self, run: str) -> None:
         st = self._get(run)
@@ -800,7 +973,8 @@ class Workflows:
         if self._queuing != self._queued.get(run, set()):
             self._queued[run] = self._queuing
             self._publish(run)
-        if state == "done":
+        if state == "done" and st.proposal is None:
+            # A run with a change waiting ends once the person answers it.
             await self._end(st, "done", self._summary(st))
         # A failure waits on the main agent: it ends the run only by its
         # answer, a person's stop or a limit (spec §05, slice 4).
@@ -835,6 +1009,10 @@ class Workflows:
                     return "failed"
                 if not met:
                     return "pending"
+        if st.proposal is not None and self._held(
+            st, inst, self._state(st, node, inst)
+        ):
+            return "pending"  # the edit touches it: it waits for the answer
         mine = st.nodes.get(inst)
         if mine is not None and mine.status == "failed":
             return "failed"
@@ -1890,6 +2068,16 @@ class Workflows:
         exact call that answers it."""
         n = st.nodes.get(to) or NodeState()
         call = f'workflow_answer(run="{st.run}", to="{to}"'
+        if o["kind"] == "edit":
+            if o.get("outcome") == "applied":
+                return (
+                    f"The person applied your change {to}: the run follows it now, "
+                    "and a failed step it changed runs again. Nothing to answer."
+                )
+            return (
+                f"The person kept the plan: your change {to} was not applied, and "
+                "the run goes on as it was. Nothing to answer."
+            )
         if o["kind"] == "gate":
             g = n.gate or {}
             shown = "".join(
