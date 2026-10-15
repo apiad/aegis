@@ -271,6 +271,24 @@ export function refreshWorkflows() {
   for (const c of document.querySelectorAll(".wfcard")) fillWorkflow(c);
 }
 
+// The once-a-second count of a running card: only its times change, so only
+// their text is written. A redraw would drop a selection or a focus, and give
+// back a Stop already pressed.
+export function tickWorkflows() {
+  for (const c of document.querySelectorAll(".wfcard")) {
+    const w = workflows.get(c.dataset.run);
+    if (!w || w.status !== "running") continue;
+    const pane = c.closest(`.pane[data-pane="wf-${w.run}"]`);
+    const fs = (pane?.querySelector(".pbar") || c).querySelector(".fs");
+    if (fs) fs.textContent = workflowStatus(w);
+    for (const r of w.tree) {
+      if (r.state !== "running") continue;
+      const dur = c.querySelector(`.wfrow[data-node="${CSS.escape(r.id)}"] .dur`);
+      if (dur) dur.textContent = since(r.started, r.ended);
+    }
+  }
+}
+
 function since(a, b) {
   if (!a) return "";
   const s = Math.max(0, Math.round((b || Date.now() / 1000) - a));
@@ -278,6 +296,12 @@ function since(a, b) {
 }
 
 const WF_WORDS = { armed: "waits for your go", done: "done", failed: "failed", stopped: "stopped", rejected: "rejected" };
+
+// Where a run's card is held: "docked", "in window <n>" or "".
+function docked(id) {
+  const at = docker.docked(id);
+  return at === true ? "docked" : at ? inWindow(at) : "";
+}
 
 // A workflow's status line, for the card's bar and a pane's.
 export function workflowStatus(w) {
@@ -293,6 +317,7 @@ export function fillWorkflow(card) {
     return;
   }
   card.dataset.status = w.status;
+  card.dataset.held = docked(id);
   const title = [entryIcon("pip"), el("span", "fn", w.title), el("span", "fs", workflowStatus(w))];
   const kids = [];
   if (pane) {
@@ -776,7 +801,11 @@ const RENDERERS = {
     const body = el("div", "body");
     const card = el("div", "fcard wfcard");
     card.dataset.run = e.detail?.run || "";
-    card._sync = () => fillWorkflow(card);
+    // Redrawn by syncDock only when its docking changed, as a file card is:
+    // syncDock runs on every update of the shown session's card.
+    card._sync = () => {
+      if (docked(`wf-${card.dataset.run}`) !== card.dataset.held) fillWorkflow(card);
+    };
     fillWorkflow(card);
     body.append(card);
     return row(e, "workflow", body);

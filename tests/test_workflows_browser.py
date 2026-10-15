@@ -70,3 +70,39 @@ def test_the_card_docks_beside_the_transcript_as_a_file_does(server, page):  # n
         ".pane[data-pane^=wf-] .wfcard[data-status=done]", timeout=20000
     )
     assert not page.errors
+
+
+def test_the_running_card_counts_up_without_redrawing(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    arm = {"definition": flow("/sleep 6", RESULT), "args": {}}
+    spawn(page, "/mcp workflow_arm " + json.dumps(arm))
+    page.click(".wfcard[data-status=armed] button >> text=Approve and run")
+    card = ".wfcard[data-status=running]"
+    page.wait_for_selector(f"{card} .wfrow[data-node=one][data-state=running]")
+    page.evaluate(
+        """(card) => {
+          const c = document.querySelector(card);
+          window.__row = c.querySelector('.wfrow[data-node=one]');
+          window.__stop = [...c.querySelectorAll('button')].find(b => b.textContent === 'Stop');
+          window.__stop.disabled = true;  // as a click does while the call is out
+          window.__dur = window.__row.querySelector('.dur').textContent;
+        }""",
+        card,
+    )
+    page.wait_for_function(
+        """(card) => document.querySelector(card + ' .wfrow[data-node=one] .dur')
+             .textContent !== window.__dur""",
+        arg=card,
+        timeout=5000,
+    )
+    same = page.evaluate(
+        """(card) => {
+          const c = document.querySelector(card);
+          return c.querySelector('.wfrow[data-node=one]') === window.__row
+            && window.__stop.isConnected && window.__stop.disabled;
+        }""",
+        card,
+    )
+    assert same, "the tick redrew the card"
+    assert not page.errors
