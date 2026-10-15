@@ -251,6 +251,7 @@ $("interrupt").append(icon("stop"));
 $("replies-g").append(icon("prompt"));
 $("queued-g").append(icon("prompt"));
 $("working-g").append(icon("think"));
+$("waking-g").append(icon("think"));
 $("coldnote-g").append(icon("wait"));
 $("closing-g").append(glyph("done"));
 $("sp-mark").prepend(gorgoneion());
@@ -1680,8 +1681,10 @@ function renderMeta(s) {
 }
 
 // The composer's placeholder: whose session, whether its server is reachable,
-// and whether a message resumes it.
+// and whether a message resumes it. While a parked session's harness resumes
+// after the first keystroke, the waking row says so in the transcript instead.
 function drawComposerHint(s) {
+  $("waking").hidden = !(s.state === "parked" && warmed === shown);
   const theirs = !mine(s);
   const down = s.off ? linkOf(s.server) : null;
   // Chrome counts a placeholder in scrollHeight: measure again when it changes.
@@ -1692,9 +1695,7 @@ function drawComposerHint(s) {
     : down
     ? `${s.server} is ${down.state} since ${new Date(down.since * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}; nothing can be sent until it is back.`
     : s.state === "parked"
-      ? warmed === shown
-        ? "Waking · resuming the harness"
-        : "Parked to free memory. Typing wakes it."
+      ? "Parked to free memory. Typing wakes it."
       : s.state === "stopped"
       ? "Stopped; your next message resumes it."
       : touch.matches
@@ -3058,7 +3059,12 @@ function warmIfParked() {
   const s = shown && sessions.get(shown);
   if (!s || s.state !== "parked" || warmed === shown || !mine(s)) return;
   warmed = shown;
-  callFor(shown, "session.warm", { log_id: forKey(shown).log_id }).catch(() => (warmed = null));
+  const key = shown;
+  callFor(key, "session.warm", { log_id: forKey(key).log_id }).catch(() => {
+    if (warmed !== key) return;
+    warmed = null;
+    if (shown === key) drawComposerHint(sessions.get(key));
+  });
   drawComposerHint(s);
 }
 input.addEventListener("input", async () => {
