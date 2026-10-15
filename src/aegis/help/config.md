@@ -170,6 +170,20 @@ network:
 ```
 
 A block with an unknown key, or a value out of range, keeps every default,
+
+## Workflows
+
+`workflows:` bounds the node sessions every workflow on this server may have
+open at once. `max_agents:` is that number, 4 when the block is absent. A
+workflow's own `limits` can only lower it for that run.
+
+```yaml
+workflows:
+  max_agents: 6
+```
+
+Each session's memory is still capped by `session_memory_max:`, so the most
+memory workflows can take is about the two multiplied. A wrong block keeps 4,
 and `aegis doctor` names the mistake.
 
 ## Terminals
