@@ -471,3 +471,20 @@ async def test_an_agent_that_cannot_start_is_not_retried(world, monkeypatch):
     a = st.nodes["a"]
     assert a.attempts == 0 and a.error == "it did not start: no harness"
     assert a.say == "Work."
+
+
+async def test_a_false_expr_check_fails_at_once(world):
+    st = await ended(
+        world,
+        await run(
+            world,
+            flow(
+                '{sh: "printf 6", id: a, say: Print six.}',
+                "{check: {expr: \"a.out == '7'\"}, id: c, retries: 2, say: Seven.}",
+            ),
+        ),
+        timeout=10,
+    )
+    c = st.nodes["c"]
+    assert st.status == "failed" and c.attempts == 0
+    assert c.error == "a.out == '7' is false"

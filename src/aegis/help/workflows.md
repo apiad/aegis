@@ -96,7 +96,8 @@ command in full before the person approves.
 
 `check:` waits until a probe passes: `{sh: cmd, every: 1m}` passes on exit 0
 and runs again every `every` (30s by default, at least 5s); `{expr: "..."}`
-passes when the expression is true; `{judge: {agent, prompt, inputs}}` asks
+is read once and passes when the expression is true, or fails the check, since
+the values it reads never change; `{judge: {agent, prompt, inputs}}` asks
 an agent once for a yes or a no, with each of `inputs` (references such as
 `impl` or `review.verdict`) given to it as JSON. A judge counts in the same
 limits as an agent node. Without a deadline above it, a check gives up after
