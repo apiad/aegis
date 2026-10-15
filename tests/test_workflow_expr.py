@@ -92,13 +92,6 @@ def test_a_whole_template_that_comes_to_null_has_no_value():
         render("wait {{args.every}}", SCOPE)
 
 
-def test_render_quotes_each_value_for_a_shell():
-    import shlex
-
-    out = render("echo {{args.title}}", SCOPE, quote=shlex.quote)
-    assert out == "echo 'a; touch pwned'"
-
-
 def test_value_of_reads_one_whole_expression_raw():
     assert value_of("{{xs.list}}", SCOPE) == [10, 20]
     assert value_of("{{args.every or 20}}", SCOPE) == 20

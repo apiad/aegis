@@ -87,10 +87,14 @@ The lint refuses an `after` that could never be met.
 the directory you armed the workflow from. Exit 0 is done; anything else
 fails the step with its code and the last line it printed to stderr. Its
 value is `{code, out, err}` (the last 4000 characters of each), so a later
-step reads `{{merge.out}}`. Each `{{...}}` in a command is shell-quoted for
-you, so write it bare: `{{impl.pr}}`, never `'{{impl.pr}}'`. The lint refuses
-one inside quotes, backticks, a `$(...)` or an unquoted heredoc, where its
-quoting would come undone. Only a session with full
+step reads `{{merge.out}}`. A value reaches a command, or an sh probe,
+through its environment, never through its text: each `{{...}}` becomes a
+variable, so `{{impl.pr}}` and `"PR {{impl.pr}}"` both get the exact value and
+nothing in it runs. The lint refuses one inside single quotes or a quoted
+heredoc, where it would stay literal, and one in arithmetic (`((...))`,
+`$((...))`, `[[ ]]`, `let`, a subscript) or where bash reads a variable's name,
+since bash runs a `$(...)` found there; never use a value in arithmetic, even
+copied into a variable first. Only a session with full
 permission can arm a workflow with a command, and the card shows every
 command in full before the person approves.
 

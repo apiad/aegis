@@ -828,23 +828,18 @@ def _one_sh(cmd: str, probe: bool = False) -> list[str]:
 
 
 def test_a_template_inside_shell_quoting_is_refused():
-    # A quoted value inside quotes is unquoted again: $(...) in it would run.
+    # Values arrive through the environment: inside single quotes or a
+    # quoted heredoc the reference would stay literal.
     for where, cmd in [
         ("single quotes", "echo '{{args.t}}'"),
-        ("double quotes", 'echo "{{args.t}}"'),
-        ("double quotes", 'echo "a $b {{args.t}} c"'),
-        ("backticks", "echo `echo {{args.t}}`"),
-        ("a $(...)", "echo $(echo {{args.t}})"),
-        ("a $(...)", 'x="$(cat {{args.t}})"'),
-        ("an unquoted heredoc", "cat <<EOF\n{{args.t}}\nEOF"),
-        ("an unquoted heredoc", "cat <<-END >f\n\tx {{args.t}}\n\tEND"),
+        ("a quoted heredoc", "cat <<'EOF'\n{{args.t}}\nEOF"),
     ]:
         for probe in (False, True):
             got = _one_sh(cmd, probe)
             assert len(got) == 1, (cmd, got)
             path = "$.root.check.sh" if probe else "$.root.sh"
             assert got[0].startswith(f"{path}: {{{{args.t}}}} sits inside {where}"), got
-            assert "write it bare" in got[0], got
+            assert "stays literal" in got[0], got
 
 
 def test_a_bare_template_beside_quoting_lints_clean():
@@ -854,7 +849,9 @@ def test_a_bare_template_beside_quoting_lints_clean():
         "echo $(date) {{args.t}} `true`",
         "( cd x && echo {{args.t}} )",
         "echo {{args.t}} # don't quote it",
-        "cat <<'EOF'\n{{args.t}}\nEOF\necho {{args.t}}",
+        "cat <<'EOF'\nplain\nEOF\necho {{args.t}}",
+        'echo "a $b {{args.t}} c" `echo {{args.t}}` $(cat {{args.t}})',
+        "cat <<EOF\n{{args.t}}\nEOF",
         "cat <<EOF\nplain\nEOF\necho {{args.t}}",
         "test {{args.t or 'a b'}} = x",
         "echo \\' {{args.t}}",
