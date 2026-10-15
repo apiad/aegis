@@ -1565,3 +1565,208 @@ def _parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError
         ),
         [],
     )
+
+
+# -- live edits (spec §06) ------------------------------------------------------
+def _fields(n: Node) -> dict:
+    """What a node does, apart from its children: what an edit compares."""
+    return {
+        "kind": n.kind,
+        "say": n.say,
+        "body": n.body,
+        "after": n.after,
+        "deadline": n.deadline,
+        "retries": n.retries,
+        "branch": n.branch,
+    }
+
+
+GROUP_FIXED = {"map": ("over", "as"), "loop": ("max", "probe"), "if": ("probe",)}
+# How the diff card names a changed part of a node's body.
+PART = {
+    "prompt": "its prompt",
+    "sh": "its command",
+    "result": "its schema",
+    "ask": "its question",
+    "agent": "its agent",
+    "over": "its items",
+    "probe": "its probe",
+    "max": "its rounds",
+    "wait": "its wait",
+    "show": "what it shows",
+    "by": "who decides",
+}
+HEADER = ("title", "say", "limits", "deadline", "defs")
+
+
+def edit_errors(old: Workflow, new: Workflow, seen: dict[str, str]) -> list[LintError]:
+    """The rules a live edit adds to the lint (spec §06): nothing that has
+    started is removed, moved or changed, except a failed or stopped leaf;
+    a begun seq takes new steps only after its started ones; a group that
+    finished takes none. ``seen`` maps a template key to running, ran,
+    parked (a failed or stopped leaf), begun or finished (a group)."""
+    out: list[LintError] = []
+    if new.id != old.id:
+        out.append(LintError("$.id", f"a live edit keeps the workflow's id, {old.id}"))
+    if new.args != old.args:
+        out.append(
+            LintError(
+                "$.args",
+                "a live edit keeps args: they were given when the run was armed",
+            )
+        )
+    for key, how in seen.items():
+        o = old.by_key.get(key)
+        if o is None:
+            continue
+        n = new.by_key.get(key)
+        hint = (
+            f" (it has the generated id {o.id}: write id: {o.id} on it, and give "
+            "new steps ids of their own)"
+            if re.fullmatch(r"n\d+", o.id)
+            else ""
+        )
+        if n is None:
+            out.append(
+                LintError(
+                    o.path,
+                    f"{o.say!r} has started, so it stays; skip it with "
+                    f"workflow_answer instead{hint}",
+                )
+            )
+            continue
+        if n.kind != o.kind:
+            out.append(
+                LintError(
+                    n.path, f"{o.say!r} has started as a {o.kind}; it stays one{hint}"
+                )
+            )
+            continue
+        op, np_ = old.parent.get(key), new.parent.get(key)
+        if (op.key if op else None) != (np_.key if np_ else None):
+            out.append(
+                LintError(
+                    n.path, f"{o.say!r} has started, so it stays where it is{hint}"
+                )
+            )
+        if not o.children:
+            if _fields(n) != _fields(o):
+                if how == "running":
+                    out.append(
+                        LintError(
+                            n.path,
+                            f"{o.say!r} is running: stop it with workflow_stop and "
+                            "its node, then change it",
+                        )
+                    )
+                elif how == "ran":
+                    out.append(
+                        LintError(
+                            n.path,
+                            f"{o.say!r} has run and keeps its result; add a new "
+                            "step instead",
+                        )
+                    )
+            continue
+        for f in GROUP_FIXED.get(o.kind, ()):
+            if n.body.get(f) != o.body.get(f):
+                word = {"loop": "until", "if": "when"}[o.kind] if f == "probe" else f
+                out.append(LintError(n.path, f"a started {o.kind} keeps its {word}"))
+        kids_o, kids_n = [c.key for c in o.children], [c.key for c in n.children]
+        added = [k for k in kids_n if k not in kids_o]
+        if how == "finished" and added:
+            out.append(
+                LintError(n.path, f"{o.id} has finished; put the new step after it")
+            )
+        elif o.kind == "seq" and added:
+            started = [k for k in kids_n if k in seen]
+            last = max((kids_n.index(k) for k in started), default=-1)
+            for k in added:
+                if kids_n.index(k) < last:
+                    out.append(
+                        LintError(
+                            new.by_key[k].path,
+                            f"a new step cannot go before "
+                            f"{new.by_key[started[-1]].id}, which has started",
+                        )
+                    )
+    return out
+
+
+def _parts(o: Node, n: Node) -> list[str]:
+    """The parts of a node an edit changed, as the diff card names them."""
+    keys = sorted(set(o.body) | set(n.body))
+    out = ["its kind"] if o.kind != n.kind else []
+    out += [PART.get(k, f"its {k}") for k in keys if o.body.get(k) != n.body.get(k)]
+    fs = ("after", "deadline", "retries")
+    return out + [f for f in fs if getattr(o, f) != getattr(n, f)]
+
+
+def edit_diff(old: Workflow, new: Workflow) -> dict:
+    """An edit as the person reads it: each step added, changed or removed,
+    by its sentence, in the new tree's order and then the removed ones at
+    their old depth; the keys it touches, with everything under them; and
+    the shell commands and sh probes it adds or changes."""
+    diff: list[dict] = []
+    header = [f"its {k}" for k in HEADER if getattr(old, k) != getattr(new, k)]
+    if header:
+        diff.append(
+            {
+                "op": "change",
+                "key": "$",
+                "say": new.say,
+                "fields": header,
+                "kind": "",
+                "depth": 0,
+            }
+        )
+
+    def depths(root: Node) -> dict[str, int]:
+        out: dict[str, int] = {}
+
+        def go(n: Node, d: int) -> None:
+            out[n.key] = d
+            for c in n.children:
+                go(c, d + 1)
+
+        go(root, 0)
+        return out
+
+    dn, do_ = depths(new.root), depths(old.root)
+    touched: list[str] = []
+    commands = {"sh": 0, "probes": 0}
+    for n in walk(new.root):
+        o = old.by_key.get(n.key)
+        if o is not None and _fields(o) == _fields(n):
+            continue
+        d: dict = {
+            "op": "add" if o is None else "change",
+            "key": n.key,
+            "say": n.say,
+            "kind": n.kind,
+            "depth": dn[n.key],
+        }
+        if o is not None:
+            d["fields"] = _parts(o, n)
+            if o.say != n.say:
+                d["was"] = o.say
+        if n.kind == "sh":
+            d["cmd"] = n.body.get("sh", "")
+            commands["sh"] += 1
+        if "sh" in (n.body.get("probe") or {}):
+            commands["probes"] += 1
+        diff.append(d)
+        touched += [x.key for x in walk(n) if x.key not in touched]
+    for o in walk(old.root):
+        if o.key not in new.by_key:
+            diff.append(
+                {
+                    "op": "remove",
+                    "key": o.key,
+                    "say": o.say,
+                    "kind": o.kind,
+                    "depth": do_[o.key],
+                }
+            )
+            touched += [o.key] if o.key not in touched else []
+    return {"diff": diff, "touched": touched, "commands": commands}
