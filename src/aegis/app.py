@@ -1081,6 +1081,9 @@ class App:
                     f"you spawn can have at most {parent.spec.permission} "
                     f"(this one would have {spec.permission}); pass permission",
                 )
+            if parent is not None:
+                # A node's helpers count in the workflow pool (workflows._room).
+                self.workflows.admit(parent, spec.agent)
             if p.quiet and not p.prompt:
                 raise OpError(
                     "quiet_needs_prompt",
