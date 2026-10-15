@@ -81,6 +81,7 @@ CUT = "cut by restart: it may have run in part; rerun or skip?"
 NUL = "the command holds a NUL byte, which bash cannot take"
 SH_LIMIT_S = 1800.0  # an sh with no deadline over it
 CHECK_LIMIT_S = 3600.0  # a check with no deadline over it, a monitor's default
+TELL_RETRY_S = 1.0  # a failed wake is tried again after this, doubling to 30 s
 TAIL = 4000  # the end of an sh's stdout and of its stderr kept as its value
 LEAVES = frozenset({"agent", "sh", "wait", "check", "gate"})  # logged; the rest derived
 STARTS = frozenset(
@@ -208,6 +209,9 @@ class Workflows:
         self._probed: dict[tuple[str, str, str], dict] = {}
         # The nearest wall time a pass must look again (a wait's end).
         self._next_due = math.inf
+        # Failed deliveries to each run's main agent in a row, for the
+        # backoff before the next try.
+        self._tell_fails: dict[str, int] = {}
 
     # -- life -----------------------------------------------------------------
     def boot(self) -> None:
@@ -2140,7 +2144,11 @@ class Workflows:
                 await owner.deliver(header, self._wake_text(st, to, o))
             except Exception:
                 log.exception("aegis: could not tell %s about %s", st.owner, to)
+                # Tried again soon, not only at the next 30 s pass.
+                n = self._tell_fails[st.run] = self._tell_fails.get(st.run, 0) + 1
+                self._due_at(time.time() + min(TELL_RETRY_S * 2 ** (n - 1), 30.0))
                 return
+            self._tell_fails.pop(st.run, None)
             self._log(st.run, {"ev": "woke", "to": to})
 
     def _wake_text(self, st: RunState, to: str, o: dict) -> str:

@@ -275,3 +275,26 @@ async def test_stopping_a_run_never_interrupts_the_main_agent_at_its_step(world)
     await asyncio.sleep(0.5)
     assert main.status == "working"  # still at its step: the stop is the run's
     assert not [e for e in main.entries() if e["kind"] == "interrupt"]
+
+
+async def test_a_wake_that_could_not_be_delivered_is_tried_again_soon(world):
+    main = await world.spawn()
+    real, calls = main.deliver, []
+
+    async def deliver(*a, **k):
+        calls.append(a)
+        if len(calls) == 1:
+            raise RuntimeError("the inbox is busy")
+        return await real(*a, **k)
+
+    main.deliver = deliver
+    once = wf('  seq:\n    - {sh: "exit 3", id: bad, say: Fail.}\n  say: One.')
+    run = ok(await turn(main, mcp("workflow_arm", definition=once, args={})))["run"]
+    await world.app.registry.call("workflow.approve", {"run": run})
+    st = world.app.workflows.runs[run]
+    await until(lambda: calls, timeout=10)
+    # Nothing else moves in this run: only the retry the failure asked for
+    # tells it, well before the 30 s pass.
+    await until(lambda: st.open["bad"].get("told"), timeout=8)
+    await until(lambda: inbox(main, "failed"), timeout=5)
+    assert len(calls) == 2
