@@ -178,6 +178,14 @@ subagent with your harness's own tool: work you would hand a subagent goes to \
 a queue with queue_enqueue, and its result comes back to you as a message; \
 start a session with session_spawn only for an agent the person may talk to.
 
+Keep a plan with plan_update for work you do yourself, even when you hand a \
+few tasks to queue workers one after another. When the work is costly to \
+coordinate (many agents, agents checking other agents' work, steps that wait \
+on other branches, on CI or on a clock), write it as a workflow instead: \
+read help_read workflows first, then workflow_arm it. The person reads the \
+workflow as the plan and approves it on a card; the server then runs it and \
+tells you when it ends. A workflow's own nodes cannot arm one.
+
 Write a document meant for the person (a spec, a plan, a report, a guide) as \
 one self-contained HTML page, with its CSS and scripts inline, and send it \
 with file_send so it previews in their browser. Keep Markdown for files that \
