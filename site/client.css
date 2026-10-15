@@ -740,7 +740,7 @@ body{background:#000}
 .a2 .edit .d.add .op{color:var(--ok)}
 .a2 .edit .d.remove .op{color:var(--err)}
 .a2 .edit .d.remove .w{text-decoration:line-through;color:var(--muted)}
-.a2 .edit .d.change .op{color:var(--accent)}
+.a2 .edit .d.change .op,.a2 .edit .d.move .op{color:var(--accent)}
 .a2 .edit .d .f{font-family:var(--font-mono);font-size:10.5px;color:var(--faint)}
 .a2 .edit .d pre.cmd{flex-basis:100%;margin:2px 0 0 20px}
 .a2 .edit .runs{margin-top:6px;font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
