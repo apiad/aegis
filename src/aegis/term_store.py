@@ -163,11 +163,13 @@ class CastStore:
         line = json.dumps(
             [round(time.time() - self._t0, 6), code, data], ensure_ascii=False
         )
-        self._f.write(line + "\n")
+        f = self._f
+        assert f is not None, "open() comes before the first event"
+        f.write(line + "\n")
         self._size += len(line.encode()) + 1
         self._remember((self.rev, code, data))
         if self._size >= self._segment_bytes:
-            self._f.close()
+            f.close()
             os.replace(self.path, self.older)
             self._start_segment()
         return self.rev

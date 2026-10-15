@@ -28,11 +28,15 @@ import secrets
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .ops import OpError
 from .term_profiles import argv, login_shell, with_shell
 from .term_store import CastStore
 from .terminal import Terminal
+
+if TYPE_CHECKING:
+    from .cgroups import SessionCgroups
 
 log = logging.getLogger("aegis.terminals")
 
@@ -55,7 +59,7 @@ class Terminals:
         config_root: Path,
         profiles: Callable[[], dict[str, dict]],
         publish: Callable[[str, list[dict]], None],
-        cgroups: Callable[[], object | None] = lambda: None,
+        cgroups: Callable[[], SessionCgroups | None] = lambda: None,
     ) -> None:
         self.dir = state_root / "terminals"
         self.config_root = config_root

@@ -39,7 +39,8 @@ def terminals_from(raw: object) -> tuple[dict[str, dict], str | None]:
 def _profile(entry: object) -> dict:
     if not isinstance(entry, dict):
         return {"error": "a profile is a mapping with cmd and cwd"}
-    if unknown := [str(k) for k in entry if k not in PROFILE_KEYS]:
+    entry = {str(k): v for k, v in entry.items()}
+    if unknown := [k for k in entry if k not in PROFILE_KEYS]:
         return {
             "error": f"{', '.join(unknown)}: not a profile key; "
             f"it takes {', '.join(PROFILE_KEYS)}"

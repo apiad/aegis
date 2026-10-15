@@ -193,8 +193,9 @@ class Terminal:
     def _signal(self, groups: set[int], sig: int) -> None:
         for pgid in groups:
             _killpg(pgid, sig)
-        with contextlib.suppress(ProcessLookupError):
-            self.proc.send_signal(sig)
+        if self.proc is not None:
+            with contextlib.suppress(ProcessLookupError):
+                self.proc.send_signal(sig)
 
     def last_line(self) -> str:
         """The newest line of output that is not blank, as plain text, with a
@@ -226,7 +227,7 @@ class Terminal:
         self._take(data)
         self._budget -= len(data)
         if self._budget <= 0:
-            asyncio.get_running_loop().remove_reader(self.fd)
+            asyncio.get_running_loop().remove_reader(fd)
             self._paused = True
         self._schedule()
 
@@ -255,34 +256,40 @@ class Terminal:
             self._on_output(self, ops)
 
     def _stop_reading(self) -> None:
-        if not self._paused:
+        if not self._paused and self.fd is not None:
             asyncio.get_running_loop().remove_reader(self.fd)
         self._paused = False
         self._eof = True
 
     def _write(self) -> None:
         loop = asyncio.get_running_loop()
-        while self._out and self.fd is not None:
+        fd = self.fd
+        while self._out and fd is not None:
             try:
-                n = os.write(self.fd, self._out)
+                n = os.write(fd, self._out)
             except BlockingIOError:
                 break
             except OSError:  # the child is gone; _wait ends the terminal
                 self._out.clear()
                 break
             del self._out[:n]
-        want = bool(self._out) and self.fd is not None
+        if fd is None:
+            self._writing = False
+            return
+        want = bool(self._out)
         if want and not self._writing:
-            loop.add_writer(self.fd, self._write)
+            loop.add_writer(fd, self._write)
         elif not want and self._writing:
-            loop.remove_writer(self.fd)
+            loop.remove_writer(fd)
         self._writing = want
 
     async def _wait(self) -> None:
-        code = await self.proc.wait()
+        proc, fd = self.proc, self.fd
+        assert proc is not None and fd is not None, "start() set both"
+        code = await proc.wait()
         for _ in range(DRAIN_READS):
             try:
-                data = os.read(self.fd, READ_MAX)
+                data = os.read(fd, READ_MAX)
             except OSError:  # nothing left, or EIO
                 break
             if not data:
@@ -290,12 +297,12 @@ class Terminal:
             self._take(data)
         loop = asyncio.get_running_loop()
         if not self._eof and not self._paused:
-            loop.remove_reader(self.fd)
+            loop.remove_reader(fd)
         if self._writing:
-            loop.remove_writer(self.fd)
+            loop.remove_writer(fd)
             self._writing = False
         self._out.clear()
-        os.close(self.fd)
+        os.close(fd)
         self.fd = None
         if self._tick is not None:
             self._tick.cancel()
