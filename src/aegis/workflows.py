@@ -273,15 +273,20 @@ class Workflows:
             items = st.nodes[".".join(parts[: i + 1])].items or []
             scope[m.body["as"]] = dict((k, v) for k, v in items)[parts[i + 1]]
         depth = len(parts) // 2
+        early: dict = {}
         for n in walk(wf.root):
             if (
                 n.kind in ("agent", "map")
                 and len(n.maps) <= depth
                 and n.maps == tuple(parts[0 : 2 * len(n.maps) : 2])
             ):
-                v = self._value(st, n, self._resolve(n, prefix))
+                inst = self._resolve(n, prefix)
+                v = self._value(st, n, inst)
                 if v is not None:
                     scope[n.id] = v
+                if n.kind == "agent" and (s := st.nodes.get(inst)) and s.outputs:
+                    early[n.id] = s.outputs
+        scope[""] = early  # read first by lookup, so {{a.o}} is the output
         return scope
 
     def _resolve(self, n: Node, prefix: str) -> str:
@@ -291,14 +296,15 @@ class Workflows:
         return "".join(f"{p}." for p in parts[: 2 * len(n.maps)]) + n.id
 
     def _value(self, st: RunState, n: Node, inst: str):
-        """An agent's result over its early outputs; a map's
+        """An agent's early outputs over its object result (an output wins
+        a key both hold), or its other result as it is; a map's
         ``{key: {node id: value}}`` over the agents and maps in each item."""
         s = st.nodes.get(inst)
         if s is None:
             return None
         if n.kind == "agent":
             if s.result is None or isinstance(s.result, dict):
-                return {**s.outputs, **(s.result or {})} or None
+                return {**(s.result or {}), **s.outputs} or None
             return s.result
         if s.items is None:
             return None
@@ -526,6 +532,8 @@ class Workflows:
             return self._state(st, do, f"{inst}.{sub}.{do.id}") == "done"
         if s is not None and sub in s.outputs:
             return True
+        if s is not None and isinstance(s.result, dict) and sub in s.result:
+            return True  # given in the result rather than as an early output
         if s is not None and s.status == "done":
             return f"{target} finished without its output {sub}"
         return False

@@ -454,3 +454,25 @@ def test_a_brace_pair_that_is_not_a_reference_is_refused():
         "a name, then .key or .0 parts"
         for bad in ("{{write path}}", "{{ }}")
     ]
+
+
+def test_a_result_property_may_not_take_an_awaited_outputs_name():
+    text = """
+id: shadow
+title: Shadow
+say: The result declares the output's name.
+root:
+  par:
+    - agent: {agent: opus, prompt: "Probe.",
+              result: {type: object, properties: {timers: {type: array}, n: {type: integer}}}}
+      id: probe
+      say: Probe.
+    - agent: {agent: opus, prompt: "Use {{probe.timers}}."}
+      after: [probe.timers]
+      say: Use them.
+  say: Both.
+"""
+    assert errs(text)[1] == [
+        "$.root.par[0].agent.result.properties.timers: timers is an early output "
+        "an after waits on; name the result's property otherwise"
+    ]
