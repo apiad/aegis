@@ -45,9 +45,13 @@ AGENT_FIELDS = frozenset({"prompt", "agent", "cwd", "result", "session"})
 SCHEMA_KEYS = frozenset(
     {"type", "properties", "required", "items", "enum", "description"}
 )
-REF = re.compile(r"\{\{\s*([A-Za-z_][\w]*)((?:\.[A-Za-z_][\w]*)*)\s*\}\}")
+# A name (a node id may hold a dash), then .key parts: an item's key may be
+# its position (m.0) and a result's keys may hold dashes.
+_REF = r"\{\{\s*([A-Za-z_][\w-]*)((?:\.[A-Za-z0-9_-]+)*)\s*\}\}"
+REF = re.compile(_REF)
+BRACES = re.compile(r"\{\{.*?(?:\}\}|$)")  # what is left after REF is a typo
 ID = re.compile(r"^[a-z][a-z0-9_-]{0,39}$")
-WHOLE = re.compile(r"^\{\{\s*([A-Za-z_][\w]*)((?:\.[A-Za-z_][\w]*)*)\s*\}\}$")
+WHOLE = re.compile(f"^{_REF}$")
 KEY = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 AFTER = re.compile(r"^[a-z][a-z0-9_-]{0,39}(\.[A-Za-z0-9_-]{1,40})?$")
 
@@ -468,6 +472,11 @@ class _Parser:
             afters = {a for x in [n, *ancestors(n)] for a in x.after}
             items = {nodes[mid].body.get("as") for mid in n.maps}  # enclosing maps
             for path, text in self._strings(n):
+                for bad in BRACES.findall(REF.sub("", text)):
+                    self.err(
+                        path,
+                        f"{bad} is not a reference: a name, then .key or .0 parts",
+                    )
                 for m in REF.finditer(text):
                     name, first = m.group(1), (m.group(2).split(".") + ["", ""])[1]
                     if name == "args":
