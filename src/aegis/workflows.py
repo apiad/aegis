@@ -1111,7 +1111,7 @@ class Workflows:
         except OSError as e:
             code, out, err = None, "", str(e)
         finally:
-            self._tasks.pop((st.run, inst), None)
+            self._drop((st.run, inst))
         n = st.nodes.get(inst)
         if st.status != "running" or n is None or n.status != "running":
             return  # stopped, or ended by a deadline, while it ran
@@ -1130,6 +1130,12 @@ class Workflows:
             head = f"exit {code}" if code is not None else "bash did not start"
             self._fail(st, inst, head + (f": {why}" if why else ""))
         self.changed()
+
+    def _drop(self, key: tuple[str, str]) -> None:
+        """Forget an ending task, unless a retry has already put the next
+        attempt's task in its place."""
+        if self._tasks.get(key) is asyncio.current_task():
+            del self._tasks[key]
 
     def _wait(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
         inst = prefix + node.id
@@ -1225,7 +1231,7 @@ class Workflows:
                     return
                 await asyncio.sleep(every)
         finally:
-            self._tasks.pop((st.run, inst), None)
+            self._drop((st.run, inst))
 
     async def _check_judge(
         self, st: RunState, wf: Workflow, node: Node, prefix: str
@@ -1367,7 +1373,7 @@ class Workflows:
             )
             self._probed[(st.run, inst, rnd)] = {"pass": rc == 0, "why": why}
         finally:
-            self._tasks.pop((st.run, inst), None)
+            self._drop((st.run, inst))
         self.changed()
 
     def _room(self, st: RunState, wf: Workflow, alias: str) -> bool:
