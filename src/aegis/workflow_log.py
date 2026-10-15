@@ -137,7 +137,8 @@ def apply(st: RunState, r: dict) -> None:
         node.took, node.say = r.get("took"), node.say or r.get("say") or ""
         node.status = "done" if node.took == "none" else "running"
         node.started = node.started or t
-        _tell(st, t, "ok", f"{node.say} Took {node.took}: {r.get('why') or ''}".strip())
+        why = f": {r['why']}" if r.get("why") else "."
+        _tell(st, t, "ok", f"{node.say} Took {node.took}{why}".strip())
     elif ev == "loop_started":
         node.max, node.round, node.started = r.get("max"), 0, t
         node.status, node.say = "running", r.get("say") or ""
@@ -150,7 +151,9 @@ def apply(st: RunState, r: dict) -> None:
             st,
             t,
             "ok" if r.get("pass") else "bad",
-            f"{node.say} Round {n}: {r.get('why') or ''}".strip(),
+            (
+                f"{node.say} Round {n}" + (f": {r['why']}" if r.get("why") else ".")
+            ).strip(),
         )
     elif ev == "retry":
         attempts, outputs, say = node.attempts + 1, node.outputs, node.say

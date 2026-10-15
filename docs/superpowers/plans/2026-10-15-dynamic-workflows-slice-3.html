@@ -2205,7 +2205,7 @@ async def test_a_retry_count_survives_a_restart(world):  # noqa: F811
 </div>
 </details>
 
-<details class="task" id="task-11" data-state="pending">
+<details class="task" id="task-11" data-state="done">
 <summary><span class="num">11</span><span><span class="ttl">The card draws the new kinds and every command</span><span class="files">workflows.py · entries.js · base.css · tests/test_workflows_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -2476,6 +2476,7 @@ item, loop round or top level. `defs: {pr: schema}` names a result schema;
   <li>Task 9: a leaf that failed inside a pass with retries left (an agent's second empty turn, a judge's no, a deadline) logged its <code>retry</code> and still returned <code>failed</code>, which ended the run before the next attempt. <code>_advance</code> now wraps <code>_move</code> and reports such a leaf as running. <code>test_a_retried_agent_leaves_one_open_session</code> had passed only because the run ended after the first attempt; with the fix the break fails it with two sessions.</li>
   <li>Task 9: <code>_begun_at</code> became <code>_under</code>: a seq's or par's children are not prefixed by its id, so a group's start is the earliest logged instance of its subtree under the same map item, not of <code>inst + "."</code>. <code>_end_at</code> returns the end and the span that set it (the message names the deadline that fired) and skips that scan for a node with nothing to bound. <code>_expire</code> halts every instance inside that has not finished, so a judge deciding an <code>if</code> is interrupted too. <code>_advance</code> returns <code>failed</code> at once for an instance already failed, so a deadline is logged once. The stale-attempt refusal sits in <code>_reporting</code>, so it covers <code>result</code>, <code>output</code> and judges alike.</li>
   <li>Task 10: every row passed with no engine fix; the tests changed instead. The fake harness does not take a <code>/script</code> up again after a restart, so the agent and judge rows report for the continued session through <code>wf.result</code>, as slice 2's mid-map restart test does. The crash row's command sleeps 10 s, not 4: with <code>os.killpg</code> patched, a cancelled task waits 2 s + 2 s on its group, so a 4 s command had finished before boot could end it. The retry row waits for attempt 2 to be running with a pid, not only for the retry, or the restart could land before attempt 2 started. <code>lines</code> and <code>running</code> take <code>w</code>, so ruff does not read them as redefining the imported fixture. The break-it run fails on the status (the rerun sh ends done) before it reaches the marker.</li>
+  <li>Task 11: a loop's round count is <code>row["rounds"]</code>, not <code>row["count"]</code>, which stays a map's count by state. The phone test arms <code>STEPS_FLOW</code> with a long command so it must wrap. The story read "Took then:" and "Round 1:" with a bare colon when the probe gave no reason (an expr); <code>workflow_log.apply</code> now ends those lines with a period. <code>site/client.css</code> is rebuilt.</li>
 </ul>
 </main>
 <script>
