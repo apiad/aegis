@@ -627,10 +627,18 @@ function fillDecision(card) {
   let panel = null;
   let state = "";
   if (what === "gate") {
-    const r = w.tree.find((x) => x.id === key);
-    if (r) panel = gatePanel(w, r);
-    const open = r && r.state === "running" && r.by === "person" && w.status === "running";
-    state = open ? "waits for you" : r?.state === "done" ? "continued" : r?.state === "stopped" ? "stopped" : WF_WORDS[w.status] || w.status;
+    // key is <instance>@<attempt>: a card of an earlier attempt is history.
+    const [id, at] = key.split("@");
+    const r = w.tree.find((x) => x.id === id);
+    if (r && Number(at || 0) !== (r.attempts || 0)) {
+      panel = el("div", "gate");
+      panel.append(el("div", "q", r.ask || r.say), el("div", "out", "Asked again below."));
+      state = "asked again";
+    } else {
+      if (r) panel = gatePanel(w, r);
+      const open = r && r.state === "running" && r.by === "person" && w.status === "running";
+      state = open ? "waits for you" : r?.state === "done" ? "continued" : r?.state === "stopped" ? "stopped" : WF_WORDS[w.status] || w.status;
+    }
   } else if (what === "edit") {
     const e = (w.edits || []).find((x) => String(x.v) === key);
     if (e) panel = editPanel(w, e);

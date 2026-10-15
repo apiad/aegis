@@ -1261,12 +1261,14 @@ class Workflows:
             },
         )
         if by == "person" and (owner := self.owner(st)) is not None:
+            # Keyed by attempt: a gate asked again gets a new card at the
+            # bottom, and the old one stays where it was.
             owner.record_card(
                 {
                     "kind": "workflow_decision",
                     "run": st.run,
                     "what": "gate",
-                    "key": inst,
+                    "key": f"{inst}@{st.nodes[inst].attempts}",
                 }
             )
         return "running"

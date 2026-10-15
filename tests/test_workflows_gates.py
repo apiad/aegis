@@ -60,7 +60,7 @@ async def test_a_person_gate_shows_a_card_and_never_wakes_the_main_agent(world):
     main, run = await armed(world, "person")
     wf = world.app.workflows
     cards = [e for e in main.entries() if e["kind"] == "workflow_decision"]
-    assert [c["detail"] for c in cards] == [{"run": run, "what": "gate", "key": "g"}]
+    assert [c["detail"] for c in cards] == [{"run": run, "what": "gate", "key": "g@0"}]
     assert not [
         e
         for e in main.entries()
@@ -179,3 +179,18 @@ async def test_a_person_gate_that_did_not_render_is_never_skipped(world):
     gate = '{gate: {by: person, ask: "Go on with {{a.nope}}?", show: []}, id: g, say: Ask.}'
     main, run = await failed_gate(world, person_gate(gate), "g")
     await refused_skip(world, main, run, "g")
+
+
+async def test_a_reopened_person_gate_asks_on_a_new_card(world):
+    gate = '{gate: {by: person, ask: "ok?", show: []}, id: g, say: Ask., deadline: 1s}'
+    main, run = await failed_gate(world, person_gate(gate), "g")
+    wf = world.app.workflows
+    await world.app.registry.call(
+        "workflow.answer",
+        {"run": run, "to": "g", "choice": "retry"},
+        Caller("agent", main.log_id),
+    )
+    await until(lambda: wf.runs[run].open.get("g", {}).get("kind") == "gate", 10)
+    cards = [e for e in main.entries() if e["kind"] == "workflow_decision"]
+    assert [c["detail"]["key"] for c in cards] == ["g@0", "g@1"]
+    assert main.entries()[-1]["id"] == cards[-1]["id"]  # the new one is last
