@@ -105,3 +105,87 @@ def test_outputs_items_and_a_failed_run_fold(tmp_path):
         "Build base. Early output tag: Tagged v1.",
         "Mocks. Failed: over is a str, not a list",
     ]
+
+
+def test_the_steps_records_fold(tmp_path):
+    log = RunLog(tmp_path / "r2.jsonl")
+    for rec in (
+        {
+            "t": 1,
+            "ev": "armed",
+            "run": "r2",
+            "owner": "L1",
+            "text": "x",
+            "args": {},
+            "cwd": "/w",
+        },
+        {"t": 2, "ev": "approved"},
+        {
+            "t": 3,
+            "ev": "node_started",
+            "node": "merge",
+            "say": "Merge it.",
+            "cmd": "gh pr merge 12",
+        },
+        {"t": 3.1, "ev": "pid", "node": "merge", "pid": 4242, "start": 99},
+        {
+            "t": 4,
+            "ev": "failed",
+            "node": "merge",
+            "error": "exit 1: no",
+            "retrying": 2,
+            "of": 3,
+        },
+        {"t": 4, "ev": "retry", "node": "merge"},
+        {"t": 5, "ev": "node_started", "node": "pause", "say": "Pause.", "until": 65},
+        {
+            "t": 6,
+            "ev": "loop_started",
+            "node": "review",
+            "max": 3,
+            "say": "Fix until approved.",
+        },
+        {"t": 6, "ev": "round", "node": "review", "n": 1},
+        {"t": 7, "ev": "judge_started", "node": "review", "round": "1", "log_id": "J1"},
+        {
+            "t": 8,
+            "ev": "verdict",
+            "node": "review",
+            "round": "1",
+            "pass": False,
+            "why": "Tests fail.",
+            "summary": "No.",
+        },
+        {
+            "t": 8,
+            "ev": "until",
+            "node": "review",
+            "n": 1,
+            "pass": False,
+            "why": "Tests fail.",
+        },
+        {
+            "t": 9,
+            "ev": "branch",
+            "node": "size",
+            "took": "none",
+            "why": "exit 1",
+            "say": "Branch.",
+        },
+    ):
+        log.append(rec)
+    st = fold(log.read())
+    assert st.cwd == "/w"
+    merge = st.nodes["merge"]
+    assert (merge.status, merge.attempts, merge.pid, merge.cmd) == (
+        "pending",
+        1,
+        None,
+        "",
+    )
+    assert st.nodes["pause"].until == 65
+    review = st.nodes["review"]
+    assert (review.max, review.round, review.untils[1]["pass"]) == (3, 1, False)
+    assert review.judges["1"] == {"log_id": "J1", "pass": False, "why": "Tests fail."}
+    assert st.nodes["size"].took == "none" and st.nodes["size"].status == "done"
+    assert any("Retrying, attempt 2 of 3." in s["text"] for s in st.story)
