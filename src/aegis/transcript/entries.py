@@ -654,6 +654,18 @@ class Fold:
                     )
                 )
             )
+        if kind == "park":
+            mins = max(1, round((rec.get("idle_s") or 0) / 60))
+            return self._upsert(
+                _entry(
+                    f"e{i}",
+                    "system",
+                    "ok",
+                    ts,
+                    d.SYSTEM_GLYPH,
+                    summary=f"parked after {mins} min idle",
+                )
+            )
         if kind in ("stop", "server_stopped"):
             if kind == "stop":
                 line = "stopped"

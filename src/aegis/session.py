@@ -251,6 +251,7 @@ class Session:
         restart_continues: int = 0,
         quota_paused: str | None = None,
         tool_calls: int = 0,
+        parked_rss: int = 0,
         cache_recent: list[list] | None = None,
         compactions: int = 0,
         continued_by: str | None = None,
@@ -274,7 +275,7 @@ class Session:
         self.context_window = context_window
         self.activity = activity
         self.model_id = model_id
-        self.status = "stopped"
+        self.status = "parked" if last_status == "parked" else "stopped"
         self._stderr_path = stderr_path
         self.harness = harness_for(spec.harness, claude_bin, opencode_bin, codex_bin)
         self._publish = publish
@@ -333,6 +334,7 @@ class Session:
         # thread, and the last calls' [cache_read, total_input, at]. In the meta,
         # so the counters survive a restart.
         self.tool_calls = tool_calls
+        self.parked_rss = parked_rss
         self.cache_recent: list[list] = list(cache_recent or [])
         self.compactions = compactions
         # The last usage counted: one call written as several lines repeats it.
@@ -362,7 +364,9 @@ class Session:
             "archived": self.archived,
             "created_at": self.created_at,
             "last_activity": self.last_activity,
-            "last_status": self.status if self._proc else self.last_status,
+            "last_status": self.status
+            if self._proc or self.status == "parked"
+            else self.last_status,
             "cost_usd": self.cost_usd,
             "context_tokens": self.context_tokens,
             "context_window": self.context_window,
@@ -381,6 +385,7 @@ class Session:
             "restart_continues": self.restart_continues,
             "quota_paused": self.quota_paused,
             "tool_calls": self.tool_calls,
+            "parked_rss": self.parked_rss,
             "cache_recent": self.cache_recent,
             "compactions": self.compactions,
             "continued_by": self.continued_by,
@@ -575,6 +580,7 @@ class Session:
             )
         if sid:
             self._set(resume_id=sid)
+        self._set(parked_rss=0)
         self._set(status="idle")
 
     async def _fetch_catalog(self, proc: Process) -> Catalog | None:
@@ -717,11 +723,28 @@ class Session:
     async def stop(self) -> None:
         """End the process and keep the session."""
         if self._proc is None:
+            if self.status == "parked":  # a person's Stop outranks a park
+                self._record({"kind": "stop"})
+                self._set(status="stopped")
             return
         await self._end_process()
         self._record({"kind": "stop"})
         self._set(status="stopped")
         self._metas.write(self.meta())
+
+    async def park(self, idle_s: float) -> bool:
+        """End the process of a session nothing needs (park.py); the next
+        message resumes it. Under the start lock, so a send waits for the park
+        to finish and then starts the process again. False when a turn, a held
+        message or a flush got there first."""
+        async with self._starting:
+            if not self.running or self.status != "idle" or self.held or self._flushing:
+                return False
+            rss = _rss(self.pid)
+            await self._end_process()
+            self._record({"kind": "park", "idle_s": round(idle_s), "rss": rss})
+            self._set(status="parked", parked_rss=rss)
+            return True
 
     async def shutdown(self) -> None:
         """The server is stopping: end the process, record nothing, and keep the
@@ -820,11 +843,13 @@ class Session:
             "layout",
             "btw",
             "btw_answer",
+            "park",
         ):
             # aegis talking to the person, not the session doing anything; nor
             # a person acting on a page, so the needs-you order holds still
             # while they drag a slider; nor a rename; nor arranging the canvas;
-            # nor a side note, which the person asked and the agent never sees.
+            # nor a side note, which the person asked and the agent never sees;
+            # nor a park, which the Fleet would otherwise order as activity.
             self.last_activity = stored["ts"]
         ops = fold.apply(stored, events)
         new = [
@@ -868,7 +893,7 @@ class Session:
                 self._publish_timer = loop.call_later(
                     PUBLISH_EVERY_S, self._publish_now
                 )
-        if changes.get("status") in ("idle", "stopped", "error"):
+        if changes.get("status") in ("idle", "stopped", "error", "parked"):
             self._metas.write(self.meta())
         else:
             self._metas.write_soon(self.log_id, self.meta)
@@ -996,3 +1021,14 @@ class Session:
 def _inbox_text(batch: list[dict]) -> str:
     """Held messages as one prompt, in arrival order, each under its header."""
     return "\n\n".join(f"{m['header']}\n{m['body']}".rstrip() for m in batch)
+
+
+def _rss(pid: int | None) -> int:
+    """Resident bytes of ``pid``, 0 when it cannot be read."""
+    try:
+        for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+            if line.startswith("VmRSS:"):
+                return int(line.split()[1]) * 1024
+    except (OSError, ValueError):
+        pass
+    return 0

@@ -16,7 +16,7 @@ the person owns the next move, or a fact explains the silence. So does a turn
 the person interrupted, one that failed, and one that ran the person's own
 slash command. Queue workers get neither: one whose turn ended with nothing
 pending is finished and its result delivered, and a nudge would reopen it.
-Only a live idle session is nudged; a stopped one was stopped by someone.
+Only a live idle session is nudged, parked or not; a stopped one was stopped by someone.
 
 Neither can loop. The fold keeps which nudges were sent (``nudged`` in the
 standing): a send that carries no nudge re-arms ``idle``, and only a plan
@@ -134,7 +134,8 @@ class Nudges:
                 s.standing,
                 attention=self._registry.card(s)["attention"],
                 worker=bool(s.worker),
-                idle=s.status == "idle" and s.running and not s.held,
+                idle=(s.status == "idle" and s.running or s.status == "parked")
+                and not s.held,
                 now=now,
             )
             if kind is None:
