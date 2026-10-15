@@ -329,7 +329,9 @@ stays as it is: one that ran keeps its result, one that is running must be
 stopped first with `workflow_stop` and its node, and a started map, loop or
 if keeps its items, rounds and probe. A failed or stopped step may change,
 and applying the change runs it again. A new step goes after the steps of
-its seq that started.
+its seq that started, and a seq that has begun keeps the order of the steps
+it had. A step that has not started may move to another group; the card
+shows the move as its own line.
 
 The person gets a card with the change in the steps' sentences and every
 command it adds, with Apply change and Keep the plan; no agent can apply it.

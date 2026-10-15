@@ -133,3 +133,44 @@ def test_the_diff_names_a_change_a_removal_and_the_header():
     assert last["depth"] == 1 and "cmd" not in last
     assert d["touched"] == ["build", "each/one", "last"]
     assert d["commands"] == {"sh": 1, "probes": 0}
+
+
+ABC = """id: r
+title: R
+say: R.
+root:
+  seq:
+    - {sh: "sleep 100", id: a, say: A.}
+    - {sh: "rm -rf build", id: b, say: B.}
+    - {sh: "true", id: c, say: C.}
+  say: All.
+"""
+
+
+def test_a_begun_seq_keeps_the_order_of_its_steps():
+    # b would start beside the running a, and the diff showed only c's change.
+    new = ABC.replace(
+        '    - {sh: "sleep 100", id: a, say: A.}\n    - {sh: "rm -rf build", id: b, say: B.}\n',
+        '    - {sh: "rm -rf build", id: b, say: B.}\n    - {sh: "sleep 100", id: a, say: A.}\n',
+    ).replace("say: C.", "say: C two.")
+    old = wf(ABC)
+    errors = edit_errors(old, wf(new), {"a": "running", old.root.key: "begun"})
+    assert any("keeps the order of its steps" in e.message for e in errors), errors
+    # Not begun, its order is the author's to change.
+    assert edit_errors(old, wf(new), {}) == []
+
+
+def test_a_step_moved_to_another_group_is_its_own_diff_line():
+    old = ABC.replace(
+        '    - {sh: "true", id: c, say: C.}\n',
+        '    - {seq: [{sh: "true", id: x, say: X.}], id: grp, say: Grp.}\n'
+        '    - {sh: "true", id: c, say: C.}\n',
+    )
+    new = old.replace(
+        '[{sh: "true", id: x, say: X.}]',
+        '[{sh: "true", id: x, say: X.}, {sh: "rm -rf build", id: b, say: B.}]',
+    ).replace('    - {sh: "rm -rf build", id: b, say: B.}\n', "")
+    d = edit_diff(wf(old), wf(new))
+    assert [(x["op"], x["key"]) for x in d["diff"]] == [("move", "b")]
+    assert d["diff"][0]["fields"] == ["its place"] and "b" in d["touched"]
+    assert d["diff"][0]["cmd"] == "rm -rf build"

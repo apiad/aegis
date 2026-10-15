@@ -1604,7 +1604,8 @@ def edit_errors(old: Workflow, new: Workflow, seen: dict[str, str]) -> list[Lint
     started is removed, moved or changed, except a failed or stopped leaf;
     a begun seq takes new steps only after its started ones; a group that
     finished takes none. ``seen`` maps a template key to running, ran,
-    parked (a failed or stopped leaf), begun or finished (a group)."""
+    parked (a failed or stopped leaf), begun or finished (a group). A begun
+    seq also keeps the order of the steps it had."""
     out: list[LintError] = []
     if new.id != old.id:
         out.append(LintError("$.id", f"a live edit keeps the workflow's id, {old.id}"))
@@ -1674,6 +1675,17 @@ def edit_errors(old: Workflow, new: Workflow, seen: dict[str, str]) -> list[Lint
                 out.append(LintError(n.path, f"a started {o.kind} keeps its {word}"))
         kids_o, kids_n = [c.key for c in o.children], [c.key for c in n.children]
         added = [k for k in kids_n if k not in kids_o]
+        if o.kind == "seq" and [k for k in kids_o if k in kids_n] != [
+            k for k in kids_n if k in kids_o
+        ]:
+            # A step moved before one that started would start beside it.
+            out.append(
+                LintError(
+                    n.path,
+                    f"{o.id} has begun, so it keeps the order of its steps; "
+                    "add new steps instead of moving these",
+                )
+            )
         if how == "finished" and added:
             out.append(
                 LintError(n.path, f"{o.id} has finished; put the new step after it")
@@ -1704,7 +1716,8 @@ def _parts(o: Node, n: Node) -> list[str]:
 
 def edit_diff(old: Workflow, new: Workflow) -> dict:
     """An edit as the person reads it: each step added, changed or removed,
-    by its sentence, in the new tree's order and then the removed ones at
+    by its sentence (a step moved to another group unchanged is a move), in
+    the new tree's order and then the removed ones at
     their old depth; the keys it touches, with everything under them; and
     the shell commands and sh probes it adds or changes."""
     diff: list[dict] = []
@@ -1737,17 +1750,22 @@ def edit_diff(old: Workflow, new: Workflow) -> dict:
     commands = {"sh": 0, "probes": 0}
     for n in walk(new.root):
         o = old.by_key.get(n.key)
-        if o is not None and _fields(o) == _fields(n):
+        op_, np_ = old.parent.get(n.key), new.parent.get(n.key)
+        moved = o is not None and (op_.key if op_ else None) != (
+            np_.key if np_ else None
+        )
+        same = o is not None and _fields(o) == _fields(n)
+        if same and not moved:
             continue
         d: dict = {
-            "op": "add" if o is None else "change",
+            "op": "add" if o is None else "move" if same else "change",
             "key": n.key,
             "say": n.say,
             "kind": n.kind,
             "depth": dn[n.key],
         }
         if o is not None:
-            d["fields"] = _parts(o, n)
+            d["fields"] = _parts(o, n) + (["its place"] if moved else [])
             if o.say != n.say:
                 d["was"] = o.say
         if n.kind == "sh":
