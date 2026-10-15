@@ -6,7 +6,7 @@ appended to the run's log (workflow_log.py), which boot folds back. Like the
 schedules' clock, the engine is level-triggered: each pass looks at every
 live run, so a missed hook only changes how soon a node moves.
 
-This version runs every kind but ``gate``. An sh and an sh probe are
+This version runs every kind. An sh and an sh probe are
 asyncio tasks the engine holds (``_tasks``), never awaited by a pass: each
 logs its outcome, or keeps it in memory for the card, and wakes one. An sh
 running in the log with no task after a boot was cut by the restart and
@@ -80,7 +80,7 @@ NUL = "the command holds a NUL byte, which bash cannot take"
 SH_LIMIT_S = 1800.0  # an sh with no deadline over it
 CHECK_LIMIT_S = 3600.0  # a check with no deadline over it, a monitor's default
 TAIL = 4000  # the end of an sh's stdout and of its stderr kept as its value
-LEAVES = frozenset({"agent", "sh", "wait", "check"})  # logged; the rest derived
+LEAVES = frozenset({"agent", "sh", "wait", "check", "gate"})  # logged; the rest derived
 STARTS = frozenset(
     {"node_started", "judge_started", "map_items", "loop_started", "branch"}
 )
@@ -406,6 +406,8 @@ class Workflows:
                 row["cmd"] = n.cmd  # with its values, to read; they ran as env
             if node.kind == "loop" and n.max is not None:
                 row["rounds"] = {"round": n.round, "max": n.max}
+            if n.gate is not None:
+                row |= {"ask": n.gate.get("ask"), "shown": n.gate.get("shown") or {}}
         if (reading := self._readings.get((st.run, inst))) is not None:
             row["reading"] = reading
         if node.after:
@@ -495,7 +497,7 @@ class Workflows:
         # Inner scopes last, so a name reads the innermost node that has it.
         for n in sorted(walk(wf.root), key=lambda n: len(n.maps)):
             if (
-                n.kind in ("agent", "map", "sh", "check", "loop")
+                n.kind in ("agent", "map", "sh", "check", "loop", "gate")
                 and len(n.maps) <= depth
                 and n.maps == tuple(parts[0 : 2 * len(n.maps) : 2])
             ):
@@ -528,7 +530,7 @@ class Workflows:
         s = st.nodes.get(inst)
         if s is None:
             return None
-        if n.kind in ("agent", "sh", "check"):
+        if n.kind in ("agent", "sh", "check", "gate"):
             if s.result is None or isinstance(s.result, dict):
                 return {**(s.result or {}), **s.outputs} or None
             return s.result
@@ -544,7 +546,7 @@ class Workflows:
             c
             for c in walk(n.children[0])
             if c.maps == (*n.maps, n.id)
-            and c.kind in ("agent", "map", "sh", "check", "loop")
+            and c.kind in ("agent", "map", "sh", "check", "loop", "gate")
         ]
         out = {}
         for key in keys:
@@ -841,6 +843,8 @@ class Workflows:
             return await self._if(st, wf, node, prefix)
         if node.kind == "loop":
             return await self._repeat(st, wf, node, prefix)
+        if node.kind == "gate":
+            return self._gate(st, wf, node, prefix)
         raise OpError("kind", f"{node.kind} is not in this version yet")
 
     async def _if(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
@@ -930,6 +934,47 @@ class Workflows:
             return "done"
         self._log(st.run, {"ev": "round", "node": inst, "n": k + 1})
         self.changed()
+        return "running"
+
+    def _gate(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
+        """Open once, log what the decider sees, then wait for the answer.
+        A person's gate is a card under nothing in the main transcript; a
+        main gate is told to the main agent by _tell_open."""
+        inst = prefix + node.id
+        n = st.nodes.get(inst)
+        if n is not None and n.status in ("done", "failed"):
+            return n.status
+        if n is not None and n.status == "running":
+            return "running"
+        scope = self._scope(st, wf, prefix)
+        say = self._say(st, wf, node, prefix)
+        try:
+            ask = render(node.body["ask"], scope)
+            shown = {k: evaluate(compile_expr(k), scope) for k in node.body["show"]}
+        except RENDER_ERRORS as e:
+            self._fail(st, inst, f"a reference has no value: {e}", say, retry=False)
+            return "failed"
+        by = node.body["by"]
+        self._log(
+            st.run,
+            {
+                "ev": "gate_opened",
+                "node": inst,
+                "by": by,
+                "ask": ask,
+                "shown": shown,
+                "say": say,
+            },
+        )
+        if by == "person" and (owner := self.owner(st)) is not None:
+            owner.record_card(
+                {
+                    "kind": "workflow_decision",
+                    "run": st.run,
+                    "what": "gate",
+                    "key": inst,
+                }
+            )
         return "running"
 
     def _under(
@@ -1755,6 +1800,20 @@ class Workflows:
         exact call that answers it."""
         n = st.nodes.get(to) or NodeState()
         call = f'workflow_answer(run="{st.run}", to="{to}"'
+        if o["kind"] == "gate":
+            g = n.gate or {}
+            shown = "".join(
+                f"{k}:\n```json\n{json.dumps(v, indent=2)}\n```\n"
+                for k, v in (g.get("shown") or {}).items()
+            )
+            return (
+                f'Step "{n.say}" asks you: {g.get("ask") or ""}\n'
+                + shown
+                + f'Go on with {call}, choice="continue", value=...): value is '
+                f"optional, and later steps read it as {{{{{template_key(to).split('/')[-1]}.value}}}}.\n"
+                f'Stop the run there with {call}, choice="abort").\n'
+                "You may ask the person first, or propose a change with workflow_edit."
+            )
         lines = [f'Step "{n.say}" failed: {o.get("error") or n.error}']
         if n.attempts:
             lines[0] += f" (attempt {n.attempts + 1})"
@@ -1810,6 +1869,10 @@ class Workflows:
                     {"ev": "skipped", "node": to, "value": value, "summary": summary},
                 )
                 self.changed()
+            elif o["kind"] == "gate" and choice in ("continue", "abort"):
+                await self._answer_gate(
+                    st, to, choice == "continue", text, "main", value
+                )
             elif o["kind"] == "failed" and choice == "fail":
                 n = st.nodes[to]
                 why = f"{n.say} failed: {n.error}" + (
@@ -1817,10 +1880,53 @@ class Workflows:
                 )
                 await self._end(st, "failed", why)
             else:
-                takes = {"failed": "retry, skip or fail"}.get(o["kind"], "")
+                takes = {
+                    "failed": "retry, skip or fail",
+                    "gate": "continue or abort",
+                }.get(o["kind"], "")
                 raise OpError(
                     "bad_choice", f"{to} is a {o['kind']} item: it takes choice {takes}"
                 )
+
+    async def answer_gate(
+        self, run: str, inst: str, go: bool, text: str, by: str
+    ) -> None:
+        """A person's answer at a gate: go on, or stop the run there. The
+        typed answer is the gate's value. Takes the lock, as a stop does."""
+        async with self._lock:
+            st = self._get(run)
+            await self._answer_gate(st, inst, go, text, by, text)
+
+    async def _answer_gate(
+        self, st: RunState, inst: str, go: bool, text: str, by: str, value
+    ) -> None:
+        o = st.open.get(inst)
+        if o is None or o["kind"] != "gate" or st.status != "running":
+            raise OpError(
+                "not_open", f"no gate {inst} waits for an answer in run {st.run}"
+            )
+        if o.get("by") != by:
+            who = "the person" if o.get("by") == "person" else "the main agent"
+            raise OpError("not_yours_to_answer", f"this gate is answered by {who}")
+        text = (text or "").strip()
+        self._log(
+            st.run,
+            {
+                "ev": "gate_answered",
+                "node": inst,
+                "by": by,
+                "go": go,
+                "value": value,
+                "text": text,
+            },
+        )
+        if go:
+            self.changed()
+            return
+        say = st.nodes[inst].say
+        await self._end(
+            st, "stopped", f"Stopped at {say}" + (f": {text}" if text else ".")
+        )
 
     def _reset_list(self, st: RunState, wf: Workflow, inst: str) -> list[str]:
         """What a retry sends back to pending: every logged instance inside

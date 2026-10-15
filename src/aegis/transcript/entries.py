@@ -744,6 +744,24 @@ class Fold:
                     detail={"run": run},
                 )
             )
+        if kind == "workflow_decision":
+            # Something a run waits on a person for (workflows.py): a gate,
+            # an edit or arming again. Never folded; the browser draws it from
+            # the workflows channel.
+            run, what = str(rec.get("run")), str(rec.get("what"))
+            key = str(rec.get("key"))
+            return self._upsert(
+                _entry(
+                    f"wfd-{run}-{what}-{key}",
+                    "workflow_decision",
+                    "ok",
+                    ts,
+                    d.SYSTEM_GLYPH,
+                    title=run,
+                    summary=f"workflow {what}",
+                    detail={"run": run, "what": what, "key": key},
+                )
+            )
         if kind == "file":
             # One record per file_send; a record from before sets is one file.
             # A file sent again from one source path is a new version of one
