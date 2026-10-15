@@ -138,3 +138,17 @@ async def test_a_restart_mid_run_finishes_the_run(world):
     assert wf.runs[run].status == "done", {
         k: (v.status, v.error) for k, v in wf.runs[run].nodes.items()
     }
+
+
+async def test_a_node_whose_agent_runs_with_read_permission_reports_its_result(world):
+    """Reporting a node's result is like turn_end: a read-permission agent
+    calls it too, or a review node could never finish."""
+    main = await world.spawn()
+    definition = flow(RESULT, RESULT).replace("agent: opus", "agent: reviewer", 1)
+    armed = ok(await turn(main, mcp("workflow_arm", definition=definition, args={})))
+    await world.app.registry.call("workflow.approve", {"run": armed["run"]})
+    wf = world.app.workflows
+    await until(lambda: wf.runs[armed["run"]].status != "running", timeout=20)
+    one = wf.runs[armed["run"]].nodes["one"]
+    assert (wf.runs[armed["run"]].status, one.error) == ("done", "")
+    assert one.result == {"n": 7}
