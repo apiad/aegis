@@ -77,3 +77,19 @@ async def test_a_session_that_is_not_a_node_cannot_give_an_output(world):
     assert e.value.code == "not_a_node"
     said = await turn(a, mcp("workflow_output", name="x", value=1, summary="S."))
     assert said.startswith("mcp error")
+
+
+def nested(levels: int) -> str:
+    node = '{sh: "true", say: Leaf.}'
+    for _ in range(levels - 1):
+        node = f"{{seq: [{node}], say: Group.}}"
+    return f"id: d\ntitle: D\nsay: D.\nroot: {node}\n"
+
+
+async def test_nodes_nest_at_most_64_levels_whatever_the_stack(world):
+    a = await world.spawn()
+    out = ok(await turn(a, mcp("workflow_lint", definition=nested(64))))
+    assert out["errors"] == [], out
+    out = ok(await turn(a, mcp("workflow_lint", definition=nested(65))))
+    assert len(out["errors"]) == 1, out
+    assert out["errors"][0].endswith(": nodes nest at most 64 levels deep"), out
