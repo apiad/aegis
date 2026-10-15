@@ -51,12 +51,21 @@ def _tell(st: RunState, t: float, mark: str, text: str) -> None:
 
 def apply(st: RunState, r: dict) -> None:
     ev, t = r.get("ev"), float(r.get("t") or 0)
-    node = st.nodes.setdefault(r["node"], NodeState()) if "node" in r else None
     if ev == "approved":
         st.status, st.started = "running", t
     elif ev == "rejected":
         st.status, st.ended = "rejected", t
-    elif ev == "node_started":
+    elif ev == "stopped":
+        st.status, st.ended = "stopped", t
+        _tell(st, t, "bad", "Stopped.")
+    elif ev == "finished":
+        st.status, st.ended = r.get("status") or "done", t
+        if st.status == "done":
+            _tell(st, t, "ok", "The workflow is done.")
+    if "node" not in r:
+        return
+    node = st.nodes.setdefault(r["node"], NodeState())
+    if ev == "node_started":
         node.status, node.log_id, node.started = "running", r.get("log_id"), t
         node.say = r.get("say") or ""
     elif ev == "result":
@@ -69,13 +78,6 @@ def apply(st: RunState, r: dict) -> None:
     elif ev == "failed":
         node.status, node.ended, node.error = "failed", t, r.get("error") or ""
         _tell(st, t, "bad", f"{node.say} Failed: {node.error}".strip())
-    elif ev == "stopped":
-        st.status, st.ended = "stopped", t
-        _tell(st, t, "bad", "Stopped.")
-    elif ev == "finished":
-        st.status, st.ended = r.get("status") or "done", t
-        if st.status == "done":
-            _tell(st, t, "ok", "The workflow is done.")
 
 
 def fold(records: list[dict]) -> RunState | None:

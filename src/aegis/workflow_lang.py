@@ -125,7 +125,7 @@ def rows(wf: Workflow) -> list[dict]:
     out: list[dict] = []
 
     def go(n: Node, depth: int) -> None:
-        row = {"id": n.id, "kind": n.kind, "say": n.say, "depth": depth}
+        row: dict = {"id": n.id, "kind": n.kind, "say": n.say, "depth": depth}
         if n.kind == "agent":
             row |= {"agent": n.body.get("agent"), "prompt": n.body.get("prompt", "")}
         out.append(row)
