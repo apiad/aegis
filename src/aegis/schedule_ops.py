@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 
 from .clock import ClockError, clock_from
 from .ops import Caller, NoParams, OpError
-from .schedule_log import Check, Definition
+from .quota_gate import pools_wire
+from .schedule_log import DEFAULT_QUOTA, Check, Definition
 
 if TYPE_CHECKING:
     from .app import App
@@ -111,6 +112,15 @@ def register_schedule_ops(app: App) -> None:
         """One schedule's fires and ticks, newest first, a page at a time. The
         ticks that changed nothing are left out unless you pass quiet."""
         return sch.runs(p.name, p.offset, p.limit, p.quiet)
+
+    @r.op("schedule.pools", NoParams, read=True)
+    async def schedule_pools(_, caller):
+        """The pools a schedule's quota lines may name, with their windows, and
+        the lines a schedule gets when it names none: for the view's editor."""
+        return {
+            "pools": [p for p in pools_wire() if p["windows"]],
+            "default": DEFAULT_QUOTA,
+        }
 
     @r.op("schedule.create", ScheduleDef, agent=True)
     async def schedule_create(p: ScheduleDef, caller):

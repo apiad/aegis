@@ -115,7 +115,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 -->
 <div class="chrome">
   <div class="bar"><span>aegis</span><span class="tab">plan · schedules</span>
-    <span class="st"><span class="pill acc">approved spec · not started</span><span class="pill">#390</span><span class="pill">2026-10-14</span></span></div>
+    <span class="st"><span class="pill acc">executed</span><span class="pill">#390</span><span class="pill">2026-10-14</span></span></div>
   <div class="progress"><span id="pcount">0 of 0 done</span><div class="track" id="ptrack"></div></div>
 </div>
 <main>
@@ -173,6 +173,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>The view's key is Alt+K</b>, the first Alt chord free in <code>keys.js</code>. The spec names none.</li>
   <li><b>Delete asks for a second click</b> instead of a dialog, as the client's rule against <code>confirm</code> requires.</li>
   <li><b>The engine's code lands whole in task 5.</b> Its layers share one pass, so splitting it by layer would leave half a pass untestable; task 5's tests pin every behaviour the spec lists for the engine.</li>
+  <li><b>The editor has a Quota layer</b> between the check and the fire, added with the quota lines after approval: per pool, each window takes a line on pace or under a percent, the server's default preselected, and "no limit" sends <code>{}</code>. Its pools and windows come from <code>schedule.pools</code>, a read operation for people only (no tool), because the only other source, <code>token.list</code>, is for admins.</li>
 </ul>
 
 <h3>Slice 1 · foundations (branch schedules-engine)</h3>
@@ -2863,7 +2864,7 @@ help: schedules</script></li>
 
 <h3>Slice 4 · the view · PR 2 (branch schedules-view, after PR 1 merges)</h3>
 
-<details class="task" id="task-8" data-state="pending">
+<details class="task" id="task-8" data-state="done">
 <summary><span class="num">8</span><span><span class="ttl">The #schedules view, its button and its editor</span><span class="files">client/js/schedules.js · app.js · index.html · keys.js · glyphs.js · css/base.css · tests/test_schedules_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The mockup in the spec's section 07, built with <code>el()</code> nodes instead of <code>innerHTML</code>, fed by the <code>schedules</code> channel, <code>schedule.runs</code> and <code>schedule.test</code>.</p>
@@ -3763,7 +3764,7 @@ and at the end of the file,
 </div>
 </details>
 
-<details class="task" id="task-9" data-state="pending">
+<details class="task" id="task-9" data-state="done">
 <summary><span class="num">9</span><span><span class="ttl">The view's docs and PR 2</span><span class="files">help/schedules.md · DESIGN.md · changelog.d/ · the spec's status</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>steps</h4>

@@ -10,6 +10,23 @@ clock, the overlap rule, an optional bash check, and the fire itself.
 Schedules live in the server's state, not in `.aegis.yaml`, and people and
 agents make them the same way.
 
+## The view
+
+The Schedules button in the top bar, or Alt+K, opens the view. The button
+counts the schedules, in red while one is paused by errors. The list is on
+the left; on the right are the selected schedule's four layers and its recent
+runs, with each stretch of quiet ticks folded into one row until "show quiet
+ticks" is checked. A fire's row links to its session and shows how its last
+turn ended, the stdout that fired it, how long it took and what it cost.
+
+Edit and + New schedule open the editor in the same panel, laid out as the
+same four layers, with the quota lines between the check and the fire: per
+pool, each window can hold a line on pace or under a percent, and "no limit"
+sets none. It checks the clock as you type and shows the next ticks, Test
+check runs the check once without saving, and Save stays off until the name,
+the clock, the prompt and every percent are valid. Clocks read the server's
+zone, and the view names it.
+
 ## Create a schedule
 
 Call `schedule_create` with:
