@@ -257,6 +257,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
     <tr><td>Results</td><td>A <code>workflow_result</code> call checked against the node's schema, with a one-line summary</td><td class="why">A worker's last message was twice not its report. The summary feeds the live story without any extra model call.</td></tr>
     <tr><td>An <code>sh</code> cut by a restart</td><td>Not run again; the main agent decides</td><td class="why">A merge run twice must not happen silently. Probes have no side effects and are simply rerun.</td></tr>
     <tr><td>Showing the run</td><td>A new kind of canvas item, docked and opened full screen by the mechanism files and artifacts already use <span class="who">maintainer</span></td><td class="why">Nothing special for workflows: one way to dock anything, which people already know.</td></tr>
+    <tr><td>How many at once</td><td>Limits per agent alias, the same shape on the server and in a workflow: <code>{total: N, &lt;agent&gt;: M}</code>. No node classes <span class="who">maintainer</span></td><td class="why">The alias already says which model, and so how heavy, a node is. <code>total</code> always means every agent together; an alias without a number of its own is bound only by the totals.</td></tr>
     <tr><td>Changing a running node</td><td>Stop it and retry with the new prompt</td><td class="why">Edits touch only nodes not yet started, so nothing ever writes into a locked session.</td></tr>
   </tbody>
 </table>
@@ -287,7 +288,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </figure>
 
 <h2 id="language"><span class="n">04</span>The language</h2>
-<p>A workflow is one YAML file. Its header holds an <code>id</code>, a <code>title</code>, <code>args</code> (a JSON Schema for its parameters), <code>limits</code> (how many agents at once, and how many of class <code>heavy</code>), a default <code>deadline</code>, an optional <code>blocks</code> map of named sub-trees, and the <code>root</code> node.</p>
+<p>A workflow is one YAML file. Its header holds an <code>id</code>, a <code>title</code>, <code>args</code> (a JSON Schema for its parameters), <code>limits</code> (how many agents at once: <code>total</code> for all of them, and a number per agent alias for that alias alone), a default <code>deadline</code>, an optional <code>blocks</code> map of named sub-trees, and the <code>root</code> node.</p>
 
 <h3 id="nodes">Nodes</h3>
 <p>A node has exactly one key that names its kind. Beside it, every node may carry <code>id</code> (required if anything refers to it), <code>say</code> (required, see below), <code>after: [ids]</code> (start only once those succeeded), <code>deadline</code> (inherited when absent), <code>retries</code>, and <code>see</code> (a link into a plan file, drawn as a chip).</p>
@@ -299,7 +300,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
     <tr><td>map</td><td><code>over</code>, <code>as</code>, <code>cap</code>, <code>do</code></td><td>Runs <code>do</code> once per item. Each item runs through all its steps on its own; only the end of the map waits for every item.</td></tr>
     <tr><td>loop</td><td><code>do</code>, <code>until</code>, <code>max</code></td><td>Repeats until a probe passes. <code>max</code> is required.</td></tr>
     <tr><td>if</td><td><code>when</code>, <code>then</code>, <code>else</code></td><td>Branches on a probe.</td></tr>
-    <tr><td>agent</td><td><code>prompt</code>, <code>agent</code>, <code>cwd</code>, <code>class</code>, <code>result</code>, <code>session</code></td><td>One agent's turn. <code>agent</code> names an agent in <code>.aegis.yaml</code>; <code>result</code> is a JSON Schema. By default it spawns a fresh locked session; <code>session: main</code> sends the prompt to the main agent, and <code>session: &lt;node id&gt;</code> reuses the session an earlier node spawned.</td></tr>
+    <tr><td>agent</td><td><code>prompt</code>, <code>agent</code>, <code>cwd</code>, <code>result</code>, <code>session</code></td><td>One agent's turn. <code>agent</code> names an agent in <code>.aegis.yaml</code>; <code>result</code> is a JSON Schema. By default it spawns a fresh locked session; <code>session: main</code> sends the prompt to the main agent, and <code>session: &lt;node id&gt;</code> reuses the session an earlier node spawned.</td></tr>
     <tr><td>sh</td><td>a command</td><td>Runs it once, in the run's working directory.</td></tr>
     <tr><td>check</td><td>a probe</td><td>Waits until the probe passes, or fails at its deadline.</td></tr>
     <tr><td>wait</td><td>a duration</td><td>Pauses, on wall time.</td></tr>
@@ -328,7 +329,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 title: One Docker image per service
 say: Build one image per service in three teams, then put a release candidate up for a smoke test.
 args: {type: object, properties: {issue: {type: integer}, slices: {type: object}}, required: [issue, slices]}
-limits: {agents: 4, heavy: 1}
+limits: {total: 4, opus: 1}
 deadline: 8h
 root:
   seq:
@@ -376,7 +377,7 @@ blocks:
   <li>a reference to a node that does not exist, or that may not have finished when it is read: it must come earlier in a <code>seq</code>, or be named in <code>after</code></li>
   <li>a cycle in the <code>after</code> edges, or an <code>after</code> that names the node's own ancestor</li>
   <li>an <code>agent</code> name not in <code>.aegis.yaml</code></li>
-  <li>a <code>loop</code> without <code>max</code>, or a <code>cap</code> above the workflow's <code>limits</code></li>
+  <li>a <code>loop</code> without <code>max</code>, a <code>cap</code> above the workflow's <code>limits.total</code>, or a limit naming an agent not in <code>.aegis.yaml</code></li>
   <li>a <code>session: &lt;id&gt;</code> naming a node that is not an earlier agent node</li>
   <li>a <code>workflow_*</code> arm from a session that is itself a workflow node (no nesting)</li>
 </ul>

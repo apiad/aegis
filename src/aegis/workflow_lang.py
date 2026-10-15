@@ -40,9 +40,8 @@ RUNS = frozenset({"seq", "par", "map", "agent"})  # the kinds this version runs
 COMMON = frozenset({"id", "say", "after", "deadline", "retries", "see", "cap"})
 LATER = ("deadline", "retries")  # common fields no engine honours yet
 MAP_FIELDS = frozenset({"over", "as", "cap", "do"})
-CLASSES = frozenset({"heavy"})  # the classes a limit names
 TYPES = frozenset({"object", "array", "string", "integer", "number", "boolean"})
-AGENT_FIELDS = frozenset({"prompt", "agent", "cwd", "result", "class", "session"})
+AGENT_FIELDS = frozenset({"prompt", "agent", "cwd", "result", "session"})
 SCHEMA_KEYS = frozenset(
     {"type", "properties", "required", "items", "enum", "description"}
 )
@@ -184,7 +183,6 @@ def rows(wf: Workflow, items=lambda path: None) -> list[dict]:
             row |= {
                 "agent": n.body.get("agent"),
                 "prompt": n.body.get("prompt", ""),
-                "class": n.body.get("class"),
             }
         if n.kind in ("map", "par") and n.body.get("cap"):
             row["cap"] = n.body["cap"]
@@ -334,8 +332,6 @@ class _Parser:
                 self.err(f"{path}.{k}", f"{k} is not an agent field")
         if "session" in body:
             self.err(f"{path}.session", "session is not in this version yet")
-        if "class" in body and body["class"] not in CLASSES:
-            self.err(f"{path}.class", "class is heavy or absent")
         if not isinstance(body.get("prompt"), str) or not body["prompt"].strip():
             self.err(f"{path}.prompt", "an agent node needs a prompt")
         if body.get("agent") not in self.agents:
@@ -540,18 +536,24 @@ def parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError]
     if not isinstance(args, dict):
         p.err("$.args", "args is a JSON Schema mapping")
         args = {}
+    # The server's max_agents shape: total for every agent together, and a
+    # number per agent alias for that alias alone.
     limits = raw.get("limits") or {}
     if not isinstance(limits, dict) or any(
-        k not in ("agents", "heavy")
-        or isinstance(v, bool)
-        or not isinstance(v, int)
-        or v < 1
-        for k, v in limits.items()
+        isinstance(v, bool) or not isinstance(v, int) or v < 1 for v in limits.values()
     ):
-        p.err("$.limits", "limits is {agents: N, heavy: M}, each a positive integer")
+        p.err("$.limits", "limits is {total: N, <agent>: M}, each a positive integer")
         limits = {}
-    elif "agents" in limits and limits.get("heavy", 0) > limits["agents"]:
-        p.err("$.limits.heavy", "heavy is at most agents")
+    for k, v in limits.items():
+        if k == "total":
+            continue
+        if k not in agents:
+            p.err(
+                f"$.limits.{k}",
+                f"{k} is not an agent in .aegis.yaml; limits takes total and agent names",
+            )
+        elif "total" in limits and v > limits["total"]:
+            p.err(f"$.limits.{k}", f"{k} {v} is above total {limits['total']}")
     root = p.node(raw.get("root"), "$.root") if "root" in raw else None
     if root is None and not any(e.path.startswith("$.root") for e in p.errors):
         p.err("$.root", "a workflow needs a root node")
@@ -559,8 +561,8 @@ def parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError]
     if root is not None:
         waited = p.order(root)
     for path, v in p.caps:
-        if "agents" in limits and v > limits["agents"]:
-            p.err(path, f"cap {v} is above limits.agents {limits['agents']}")
+        if "total" in limits and v > limits["total"]:
+            p.err(path, f"cap {v} is above limits.total {limits['total']}")
     if p.errors or root is None:
         return None, p.errors
     return (

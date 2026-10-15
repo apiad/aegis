@@ -199,7 +199,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <thead><tr><th>File</th><th>Responsibility</th></tr></thead>
   <tbody>
     <tr><td>src/aegis/config.py, doctor.py</td><td><code>workflows:</code> block, <code>workflows_from</code>, the snapshot field, the doctor finding.</td></tr>
-    <tr><td>src/aegis/workflow_lang.py</td><td><code>par</code>, <code>map</code>, <code>after</code>, <code>cap</code>, <code>class</code>, <code>limits</code>; the order graph; <code>value_of</code>, <code>item_keys</code>; <code>rows</code> expands map items.</td></tr>
+    <tr><td>src/aegis/workflow_lang.py</td><td><code>par</code>, <code>map</code>, <code>after</code>, <code>cap</code>, <code>limits</code>; the order graph; <code>value_of</code>, <code>item_keys</code>; <code>rows</code> expands map items.</td></tr>
     <tr><td>src/aegis/workflow_log.py</td><td><code>NodeState.outputs</code> and <code>items</code>; the <code>output</code> and <code>map_items</code> records; a failed run folds its running nodes to stopped.</td></tr>
     <tr><td>src/aegis/workflows.py</td><td>Instance paths, derived states, par and map, caps, the room check, <code>after</code>, scopes, <code>output()</code>, the card's rows.</td></tr>
     <tr><td>src/aegis/workflow_ops.py</td><td>The <code>workflow.output</code> operation.</td></tr>
@@ -365,7 +365,7 @@ an agent included.
   <li><span class="op">modify</span>tests/test_workflow_lang.py (two slice-1 tests change, a catalogue is added)</li>
 </ul>
 <h4>interfaces</h4>
-<div class="iface"><b>produces</b> RUNS adds par, map; Node.after: list[str]; Node.maps: tuple[str, ...] (enclosing map ids, outermost first); Workflow.limits: dict; Workflow.waited: dict[str, list[str]] (agent id to the output names some after waits on); value_of(raw, scope); item_keys(items) -&gt; list[str] | str; rows(wf, items=...) with instance ids; lookup(scope, name, parts)</div>
+<div class="iface"><b>produces</b> RUNS adds par, map; Node.after: list[str]; Node.maps: tuple[str, ...] (enclosing map ids, outermost first); Workflow.limits: dict ({total, &lt;agent&gt;: n}); Workflow.waited: dict[str, list[str]] (agent id to the output names some after waits on); value_of(raw, scope); item_keys(items) -&gt; list[str] | str; rows(wf, items=...) with instance ids; lookup(scope, name, parts)</div>
 <ol class="steps">
 <li>Change the two slice-1 tests that name what slice 2 now runs. In <code>test_a_kind_from_a_later_slice_is_named</code>, replace <code>par</code> with <code>loop</code> (the body still parses as a kind key, and the message is <code>"$.root: loop is not in this version yet"</code>). In <code>test_node_fields_the_engine_does_not_run_yet_are_refused</code>, drop <code>("after", "[x]")</code> from the tuple.</li>
 <li>Write the catalogue in <code>tests/test_workflow_lang.py</code>:
@@ -376,11 +376,11 @@ TEAMS = """
 id: teams
 title: Teams
 say: Two teams at once.
-limits: {agents: 3, heavy: 1}
+limits: {total: 3, opus: 1}
 root:
   par:
     - map: {over: "{{args.images}}", as: s, cap: 1,
-            do: {agent: {agent: opus, prompt: "Build {{s.id}}.", class: heavy}, id: img, say: "Build {{s.id}}."}}
+            do: {agent: {agent: opus, prompt: "Build {{s.id}}."}, id: img, say: "Build {{s.id}}."}}
       id: images
       say: Images, one at a time.
     - map: {over: [a, b], as: m, do: {agent: {agent: sonnet, prompt: "Mock {{m}} on {{images.base.img}}."}, id: mk, say: "Mock {{m}}."}}
@@ -395,9 +395,13 @@ root:
 def test_par_map_after_and_limits_parse():
     wf, errors = errs(TEAMS)
     assert errors == []
-    assert wf.limits == {"agents": 3, "heavy": 1}
+    assert wf.limits == {"total": 3, "opus": 1}
     images, mock = wf.root.children
-    assert (images.kind, images.body["cap"], images.children[0].maps) == ("map", 1, ("images",))
+    assert (images.kind, images.body["cap"], images.children[0].maps) == (
+        "map",
+        1,
+        ("images",),
+    )
     assert mock.after == ["images.base"] and wf.root.body == {"cap": 2}
 
 
@@ -405,41 +409,74 @@ def test_rows_draw_a_map_once_before_it_starts_and_per_item_after():
     wf, _ = errs(TEAMS)
     before = rows(wf)
     assert [(r["id"], r.get("each", False)) for r in before][:3] == [
-        ("n1", False), ("images", False), ("img", True)]
+        ("n1", False),
+        ("images", False),
+        ("img", True),
+    ]
     items = {"images": [["base", {"id": "base"}], ["api", {"id": "api"}]]}
     after = rows(wf, lambda path: items.get(path))
-    assert [r["id"] for r in after][:4] == ["n1", "images", "images.base.img", "images.api.img"]
+    assert [r["id"] for r in after][:4] == [
+        "n1",
+        "images",
+        "images.base.img",
+        "images.api.img",
+    ]
     assert after[2]["node"] == "img" and after[2]["depth"] == 2
 
 
 def test_map_fields_are_checked_at_their_paths():
     for old, new, msg in (
-        ('over: "{{args.images}}"', "over: 3", "$.root.par[0].map.over: over is a list, or one {{reference}} to a list"),
-        ('over: "{{args.images}}"', 'over: "x {{args.images}}"', "$.root.par[0].map.over: over is a list"),
+        (
+            'over: "{{args.images}}"',
+            "over: 3",
+            "$.root.par[0].map.over: over is a list, or one {{reference}} to a list",
+        ),
+        (
+            'over: "{{args.images}}"',
+            'over: "x {{args.images}}"',
+            "$.root.par[0].map.over: over is a list",
+        ),
         ("as: s,", "as: Bad,", "$.root.par[0].map.as: as names the item"),
         ("cap: 1,", "cap: 0,", "$.root.par[0].map.cap: cap is a positive integer"),
-        ("cap: 1,", "cap: 5,", "$.root.par[0].map.cap: cap 5 is above limits.agents 3"),
-        ("as: s, cap: 1,", "as: img, cap: 1,", "$.root.par[0].map.as: img is a node id"),
+        ("cap: 1,", "cap: 5,", "$.root.par[0].map.cap: cap 5 is above limits.total 3"),
+        (
+            "as: s, cap: 1,",
+            "as: img, cap: 1,",
+            "$.root.par[0].map.as: img is a node id",
+        ),
     ):
         wf, errors = errs(TEAMS.replace(old, new, 1))
         assert wf is None and any(e.startswith(msg) for e in errors), (new, errors)
 
 
-def test_cap_sits_only_beside_par_and_class_is_heavy():
-    _, errors = errs(TEAMS.replace("      id: images\n", "      id: images\n      cap: 2\n"))
-    assert "$.root.par[0].cap: cap sits beside par; a map's cap goes inside map" in errors
-    _, errors = errs(TEAMS.replace("class: heavy", "class: huge"))
-    assert "$.root.par[0].map.do.agent.class: class is heavy or absent" in errors
+def test_cap_sits_only_beside_par_and_class_is_gone():
+    _, errors = errs(
+        TEAMS.replace("      id: images\n", "      id: images\n      cap: 2\n")
+    )
+    assert (
+        "$.root.par[0].cap: cap sits beside par; a map's cap goes inside map" in errors
+    )
+    _, errors = errs(
+        TEAMS.replace('"Build {{s.id}}."}', '"Build {{s.id}}.", class: heavy}')
+    )
+    assert "$.root.par[0].map.do.agent.class: class is not an agent field" in errors
 
 
-def test_limits_are_positive_and_heavy_fits_in_agents():
+def test_limits_are_positive_and_name_a_total_and_agents():
     for limits, msg in (
-        ("{agents: 0}", "$.limits: limits is {agents: N, heavy: M}"),
-        ("{agent: 3}", "$.limits: limits is {agents: N, heavy: M}"),
-        ("{agents: 2, heavy: 3}", "$.limits.heavy: heavy is at most agents"),
+        ("{total: 0}", "$.limits: limits is {total: N, <agent>: M}"),
+        ("{total: 3, opus: x}", "$.limits: limits is {total: N, <agent>: M}"),
+        ("{agents: 3}", "$.limits.agents: agents is not an agent in .aegis.yaml"),
+        (
+            "{total: 3, heavy: 1}",
+            "$.limits.heavy: heavy is not an agent in .aegis.yaml",
+        ),
+        ("{total: 3, opus: 4}", "$.limits.opus: opus 4 is above total 3"),
     ):
-        _, errors = errs(TEAMS.replace("{agents: 3, heavy: 1}", limits))
+        _, errors = errs(TEAMS.replace("{total: 3, opus: 1}", limits))
         assert any(e.startswith(msg) for e in errors), (limits, errors)
+    wf, errors = errs(TEAMS.replace("{total: 3, opus: 1}", "{sonnet: 1}"))
+    assert errors == [] and wf.limits == {"sonnet": 1}
 
 
 def test_an_after_that_can_never_be_met_is_refused():
@@ -454,11 +491,24 @@ root:
   say: R
 """
     _, errors = errs(seq)
-    assert "$.root.seq[0].after[0]: waiting on b closes a cycle: b cannot finish before this node starts" in errors
-    _, errors = errs(seq.replace("seq:", "par:").replace("{id: b, say: B,", "{id: b, say: B, after: [a],"))
-    assert any(e.endswith("closes a cycle: a cannot finish before this node starts") for e in errors)
+    assert (
+        "$.root.seq[0].after[0]: waiting on b closes a cycle: b cannot finish before this node starts"
+        in errors
+    )
+    _, errors = errs(
+        seq.replace("seq:", "par:").replace(
+            "{id: b, say: B,", "{id: b, say: B, after: [a],"
+        )
+    )
+    assert any(
+        e.endswith("closes a cycle: a cannot finish before this node starts")
+        for e in errors
+    )
     _, errors = errs(seq.replace("after: [b]", "after: [n1]"))
-    assert "$.root.seq[0].after[0]: n1 contains this node, so it cannot finish first" in errors
+    assert (
+        "$.root.seq[0].after[0]: n1 contains this node, so it cannot finish first"
+        in errors
+    )
     _, errors = errs(seq.replace("after: [b]", "after: [nope]"))
     assert "$.root.seq[0].after[0]: nope is not a node" in errors
     _, errors = errs("""
@@ -471,15 +521,25 @@ root:
     - {id: c, say: C, after: [s1.x], agent: {agent: opus, prompt: hi}}
   say: R
 """)
-    assert "$.root.seq[1].after[0]: s1 is a seq: only a map has items and only an agent has outputs" in errors
+    assert (
+        "$.root.seq[1].after[0]: s1 is a seq: only a map has items and only an agent has outputs"
+        in errors
+    )
     _, errors = errs(TEAMS.replace("after: [images.base]", "after: [img]"))
-    assert "$.root.par[1].after[0]: img is inside map images; wait on images or one of its items" in errors
+    assert (
+        "$.root.par[1].after[0]: img is inside map images; wait on images or one of its items"
+        in errors
+    )
 
 
 def test_a_reference_to_a_branch_beside_needs_after():
     _, errors = errs(TEAMS.replace("after: [images.base]", "after: []"))
-    assert any("images may not have finished before this node starts" in e for e in errors)
-    _, errors = errs(TEAMS.replace("Mock {{m}} on {{images.base.img}}.", "Mock on {{img.x}}."))
+    assert any(
+        "images may not have finished before this node starts" in e for e in errors
+    )
+    _, errors = errs(
+        TEAMS.replace("Mock {{m}} on {{images.base.img}}.", "Mock on {{img.x}}.")
+    )
     assert any("img is inside map images" in e for e in errors)
     assert errs(TEAMS)[1] == []  # the after makes the same reference sound
 
@@ -501,8 +561,16 @@ root:
 def test_what_slice_2_does_not_run_is_still_named():
     for old, new, msg in (
         ("par:", "loop:", "$.root: loop is not in this version yet"),
-        ("class: heavy", "session: main", "$.root.par[0].map.do.agent.session: session is not in this version yet"),
-        ("limits:", "blocks: {}\nlimits:", "$.blocks: blocks is not in this version yet"),
+        (
+            '"Build {{s.id}}."}',
+            '"Build {{s.id}}.", session: main}',
+            "$.root.par[0].map.do.agent.session: session is not in this version yet",
+        ),
+        (
+            "limits:",
+            "blocks: {}\nlimits:",
+            "$.blocks: blocks is not in this version yet",
+        ),
     ):
         _, errors = errs(TEAMS.replace(old, new, 1))
         assert msg in errors, (new, errors)
@@ -514,7 +582,10 @@ def test_value_of_and_item_keys():
     assert value_of([3], scope) == [3]
     assert item_keys([{"id": "base"}, "x", {"id": "api"}]) == ["base", "1", "api"]
     assert item_keys([{"id": "a"}, {"id": "a"}]) == "two items have the key a"
-    assert item_keys([{"id": "a b"}]) == "item 0's id 'a b' is not letters, digits, - and _"
+    assert (
+        item_keys([{"id": "a b"}])
+        == "item 0's id 'a b' is not letters, digits, - and _"
+    )
 </script></li>
 <li>Run: <code>uv run pytest tests/test_workflow_lang.py -q</code>. The new tests fail.</li>
 <li>In <code>src/aegis/workflow_lang.py</code>, the constants and the module docstring's last paragraph:
@@ -523,7 +594,6 @@ RUNS = frozenset({"seq", "par", "map", "agent"})  # the kinds this version runs
 COMMON = frozenset({"id", "say", "after", "deadline", "retries", "see", "cap"})
 LATER = ("deadline", "retries")  # common fields no engine honours yet
 MAP_FIELDS = frozenset({"over", "as", "cap", "do"})
-CLASSES = frozenset({"heavy"})  # the classes a limit names
 WHOLE = re.compile(r"^\{\{\s*([A-Za-z_][\w]*)((?:\.[A-Za-z_][\w]*)*)\s*\}\}$")
 KEY = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 AFTER = re.compile(r"^[a-z][a-z0-9_-]{0,39}(\.[A-Za-z0-9_-]{1,40})?$")
@@ -610,7 +680,6 @@ def rows(wf: Workflow, items=lambda path: None) -> list[dict]:
             row |= {
                 "agent": n.body.get("agent"),
                 "prompt": n.body.get("prompt", ""),
-                "class": n.body.get("class"),
             }
         if n.kind in ("map", "par") and n.body.get("cap"):
             row["cap"] = n.body["cap"]
@@ -694,7 +763,7 @@ The kind branches become:
                 node.children.append(c)
         return {k: body[k] for k in ("over", "as", "cap") if k in body}
 </script>
-In <code>agent</code>, refuse only <code>session</code> as not in this version, and check <code>class</code>: <code>if "class" in body and body["class"] not in CLASSES: self.err(f"{path}.class", "class is heavy or absent")</code>.</li>
+In <code>agent</code>, refuse only <code>session</code> as not in this version, and drop <code>class</code> from <code>AGENT_FIELDS</code>, so the lint refuses it as an unknown field. <code>rows</code> carries no <code>class</code>.</li>
 <li>Replace <code>references</code> with <code>order</code>, the graph of start and finish points:
 <script type="text/plain" data-lang="python">
     def order(self, root: Node) -> dict[str, list[str]]:
@@ -809,19 +878,28 @@ In <code>agent</code>, refuse only <code>session</code> as not in this version, 
         return out
 </script>
 A map's own <code>say</code> and <code>over</code> do not see its own <code>as</code> (<code>n.maps</code> of a map node holds only the maps around it), which is what the spec means by "say takes the item's values" inside the map.</li>
-<li>In <code>parse</code>: drop <code>"limits"</code> from the refused workflow fields (keep <code>deadline</code> and <code>blocks</code>), and before <code>references</code> was called:
+<li>Revised during execution: <code>limits</code> has the server block's shape, <code>{total: N, &lt;agent&gt;: M}</code>, and <code>class</code> is gone; a follow-up commit changed the first version, written for <code>{agents, heavy}</code>. In <code>parse</code>: drop <code>"limits"</code> from the refused workflow fields (keep <code>deadline</code> and <code>blocks</code>), and before <code>references</code> was called:
 <script type="text/plain" data-lang="python">
+    # The server's max_agents shape: total for every agent together, and a
+    # number per agent alias for that alias alone.
     limits = raw.get("limits") or {}
     if not isinstance(limits, dict) or any(
-        k not in ("agents", "heavy") or isinstance(v, bool) or not isinstance(v, int) or v < 1
-        for k, v in limits.items()
+        isinstance(v, bool) or not isinstance(v, int) or v < 1 for v in limits.values()
     ):
-        p.err("$.limits", "limits is {agents: N, heavy: M}, each a positive integer")
+        p.err("$.limits", "limits is {total: N, <agent>: M}, each a positive integer")
         limits = {}
-    elif "agents" in limits and limits.get("heavy", 0) > limits["agents"]:
-        p.err("$.limits.heavy", "heavy is at most agents")
+    for k, v in limits.items():
+        if k == "total":
+            continue
+        if k not in agents:
+            p.err(
+                f"$.limits.{k}",
+                f"{k} is not an agent in .aegis.yaml; limits takes total and agent names",
+            )
+        elif "total" in limits and v > limits["total"]:
+            p.err(f"$.limits.{k}", f"{k} {v} is above total {limits['total']}")
 </script>
-After the root is parsed: <code>waited = p.order(root)</code>, then for each <code>(path, v)</code> in <code>p.caps</code> with <code>"agents" in limits and v &gt; limits["agents"]</code>: <code>p.err(path, f"cap {v} is above limits.agents {limits['agents']}")</code>. Return <code>Workflow(..., limits=limits, waited=waited)</code>.</li>
+After the root is parsed: <code>waited = p.order(root)</code>, then for each <code>(path, v)</code> in <code>p.caps</code> with <code>"total" in limits and v &gt; limits["total"]</code>: <code>p.err(path, f"cap {v} is above limits.total {limits['total']}")</code>. Return <code>Workflow(..., limits=limits, waited=waited)</code>.</li>
 </ol>
 <h4>verify</h4>
 <div class="verify"><code>uv run pytest tests/test_workflow_lang.py -q</code> passes, and so do <code>tests/test_workflows_e2e.py</code> and <code>tests/test_workflow_ops.py</code>, which only use seq. Break it: delete the <code>reach(("S", n.id), point)</code> check and the seq-cycle case fails; put it back.</div>
@@ -1768,7 +1846,7 @@ Check the anchor with <code>helppages.slug()</code> as slice 0 did.</li>
   <li>Maps are drawn with every item expanded. The spec's fold above six items is slice 5's.</li>
   <li>Ids are unique across the whole file. The spec scopes ids per use of a block, which needs <code>ref</code>; this slice does not run <code>ref</code> or <code>blocks</code>, so the spec's example still does not lint as written: its maps would each need their own copy of the <code>land</code> steps with their own ids.</li>
   <li>A par's <code>cap</code> is a sibling field of <code>par</code>. The spec lists <code>cap</code> among par's fields without saying where it sits.</li>
-  <li><code>class</code> accepts only <code>heavy</code>.</li>
+  <li>Limits are per agent alias, <code>{total, &lt;agent&gt;: n}</code> on the server and in a workflow, and there is no <code>class</code> field: the maintainer changed this during execution.</li>
 </ul>
 
 <h2 id="open">Open questions</h2>
