@@ -89,6 +89,7 @@ root:
     assert tree[0]["count"] == {"done": 3}
 
 
+@pytest.mark.slow
 async def test_a_failure_beside_a_running_branch_lets_it_finish(world):
     wf_text = f"""
 id: sides

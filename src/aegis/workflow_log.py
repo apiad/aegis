@@ -152,15 +152,16 @@ def apply(st: RunState, r: dict) -> None:
     elif ev == "note":
         _tell(st, t, "note", r.get("text") or "")
     elif ev == "answered":
-        q, text = r.get("q"), r.get("text") or ""
+        q, text = str(r.get("q")), r.get("text") or ""
         st.open.pop(q, None)
         _tell(st, t, "ok", f"Answered {q}: {text}".strip())
     elif ev == "woke":
-        o = st.open.get(r.get("to"))
+        to = str(r.get("to"))
+        o = st.open.get(to)
         if o is not None:
             o["told"] = True
             if o.get("kind") == "edit":
-                del st.open[r["to"]]
+                del st.open[to]
     elif ev == "edit_proposed":
         if st.proposal is not None:
             _edit_status(st, st.proposal["v"], "replaced")
@@ -173,7 +174,7 @@ def apply(st: RunState, r: dict) -> None:
     elif ev in ("edit_applied", "edit_rejected"):
         v, outcome = r.get("v"), "applied" if ev == "edit_applied" else "rejected"
         if ev == "edit_applied" and st.proposal is not None and st.proposal["v"] == v:
-            st.text, st.version = st.proposal.get("text") or st.text, int(v)
+            st.text, st.version = st.proposal.get("text") or st.text, int(v or 0)
         if st.proposal is not None and st.proposal["v"] == v:
             st.proposal = None
         _edit_status(st, v, outcome)
