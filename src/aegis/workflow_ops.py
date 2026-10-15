@@ -109,7 +109,9 @@ def register_workflow_ops(app: App) -> None:
             raise OpError("no_run", f"no workflow run {p.run!r}")
         return wf.wire(p.run)
 
-    @r.op("workflow.result", Result, agent=True)
+    # Open to read permission, like turn_end: a node reports what it did
+    # whatever it may change, or a review node could never finish.
+    @r.op("workflow.result", Result, agent=True, read=True)
     async def workflow_result(p: Result, caller):
         """Report your node's result, as a workflow node: a value matching the
         node's schema and a one-sentence summary for the person. Your turn
