@@ -316,7 +316,9 @@ which boot folds back (`workflow_log.py`), as the schedules do. Like their
 clock, the engine is level-triggered: each pass looks at every live run, and
 a missed hook only delays a step. A node's result is a `workflow_result` call
 checked against its schema, never its last message, and the main agent is
-woken once, when the run ends. The card under `workflow_arm` is a `workflow`
+woken once, when the run ends: a pass and a stop hold one lock, so a run's
+ending is written once. The main agent is the session that armed the run or
+whichever session a handoff continued it in. The card under `workflow_arm` is a `workflow`
 entry the browser fills from the `workflows` channel; it docks by its entry
 id, `wf-<run>`, like a page or a file
 (`docs/superpowers/specs/2026-10-15-dynamic-workflows-design.html`).

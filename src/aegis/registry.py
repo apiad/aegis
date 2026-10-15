@@ -251,7 +251,10 @@ class Registry(Host):
         if s.worker and self.queues is not None and self.queues.finished(s):
             return
         # A workflow node is the engine's until its run ends (workflows.py).
-        if kind == "error" or (not s.worker and not s.workflow and kind in self.BACK):
+        held = bool(s.workflow) and (
+            self.workflows is not None and self.workflows.live(s.workflow["run"])
+        )
+        if kind == "error" or (not s.worker and not held and kind in self.BACK):
             self.set_quiet(s.log_id, False)
 
     def _attention(self, s: Session) -> dict:

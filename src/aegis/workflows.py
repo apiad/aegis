@@ -11,7 +11,9 @@ engine spawns with the main agent as its parent, so the main card waits on it
 through the registry's own rule. The node is done when the worker has called
 workflow_result and Registry.finished says it is done; a turn that ends
 without a result is nudged once and then fails the run. The main agent hears
-only the end, as one inbox turn. Later slices add branches to ``_advance``.
+only the end, as one inbox turn: a pass and a stop share one lock, so a stop
+never lands between a node's spawn and its record, and ``_end`` writes a run's
+ending once. One run's exception fails that node and never stalls the others. Later slices add branches to ``_advance``.
 """
 
 from __future__ import annotations
@@ -59,7 +61,10 @@ class Workflows:
         self.defs: dict[str, Workflow] = {}
         self._wake = asyncio.Event()
         self._task: asyncio.Task | None = None
-        self._busy = False
+        # One pass or one stop at a time, so a stop never lands between a
+        # node's spawn and its record, and a run ends once.
+        self._lock = asyncio.Lock()
+        self._boot_failed: list[tuple[RunState, str]] = []
 
     # -- life -----------------------------------------------------------------
     def boot(self) -> None:
@@ -73,11 +78,10 @@ class Workflows:
             if st.status in LIVE:
                 wf, errors = parse(st.text, self._agents())
                 if wf is None:
-                    self._finish(
-                        st,
-                        "failed",
-                        f"its definition no longer lints: {errors[0].message}",
-                    )
+                    why = f"its definition no longer lints: {errors[0].message}"
+                    self._finish(st, "failed", why)
+                    self._release(st)
+                    self._boot_failed.append((st, why))  # told once the loop runs
                 else:
                     self.defs[st.run] = wf
 
@@ -91,12 +95,17 @@ class Workflows:
                 await self._task
 
     async def _loop(self) -> None:
+        for st, why in self._boot_failed:
+            await self._tell_owner(st, "failed", f"The workflow failed: {why}.")
+        self._boot_failed.clear()
         while True:
+            # Cleared before the pass: a wake that arrives during it is
+            # another pass, not lost.
+            self._wake.clear()
             try:
                 await self.step()
             except Exception:
                 log.exception("aegis: a workflow pass failed")
-            self._wake.clear()
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._wake.wait(), PASS_S)
 
@@ -113,10 +122,29 @@ class Workflows:
             (
                 st
                 for st in self.runs.values()
-                if st.owner == log_id and st.status in LIVE
+                if st.status in LIVE and self.owns(log_id, st)
             ),
             None,
         )
+
+    def owner(self, st: RunState) -> Session | None:
+        """The run's main agent now: the session that armed it, or the open
+        session a handoff continued it in (registry.successor), followed
+        through archived predecessors by their meta."""
+        lid, last, seen = st.owner, None, set()
+        while lid and lid not in seen:
+            seen.add(lid)
+            s = self._reg.sessions.get(lid)
+            if s is not None:
+                last, nxt = s, s.continued_by
+            else:
+                nxt = (self._reg.archived.get(lid) or {}).get("continued_by")
+            lid = nxt if nxt != "starting" else None
+        return last
+
+    def owns(self, log_id: str | None, st: RunState) -> bool:
+        o = self.owner(st)
+        return log_id == (o.log_id if o is not None else st.owner)
 
     def wire(self, run: str) -> dict:
         st = self.runs[run]
@@ -197,6 +225,10 @@ class Workflows:
         for n in walk(wf.root):
             if n.kind == "agent":
                 self._check_permission(owner, n)
+                cwd = n.body.get("cwd")
+                if isinstance(cwd, str) and "{{" not in cwd:
+                    # Refused before a person approves, not when the node starts.
+                    self._app._resolve_cwd(cwd, Path(owner.spec.cwd))
         problems = check_value(args, wf.args, "$.args") if wf.args else []
         if problems:
             raise OpError("bad_args", "\n".join(problems))
@@ -232,20 +264,15 @@ class Workflows:
         self._log(run, {"ev": "rejected"})
 
     async def stop_run(self, run: str) -> None:
-        st = self._get(run)
-        if st.status not in LIVE:
-            raise OpError("not_live", f"{run} is {st.status}")
-        self._log(run, {"ev": "stopped"})
-        for n in st.nodes.values():
-            s = self._reg.sessions.get(n.log_id or "")
-            if n.status == "running" and s is not None and s.status == "working":
-                with contextlib.suppress(Exception):
-                    await s.interrupt()
-        await self._tell_owner(
-            st,
-            "stopped",
-            "The workflow was stopped. Its node sessions are open and unlocked.",
-        )
+        async with self._lock:
+            st = self._get(run)
+            if st.status not in LIVE:
+                raise OpError("not_live", f"{run} is {st.status}")
+            await self._end(
+                st,
+                "stopped",
+                "The workflow was stopped. Its node sessions are open and unlocked.",
+            )
 
     def result(self, s: Session, value, summary: str) -> dict:
         wf_ref = s.workflow or {}
@@ -286,14 +313,13 @@ class Workflows:
 
     # -- the pass ---------------------------------------------------------------
     async def step(self) -> None:
-        if self._busy:
-            return
-        self._busy = True
-        try:
+        async with self._lock:
             for run in [r for r, st in self.runs.items() if st.status == "running"]:
-                await self._advance_run(run)
-        finally:
-            self._busy = False
+                # One run's fault is that run's: the others still move.
+                try:
+                    await self._advance_run(run)
+                except Exception:
+                    log.exception("aegis: workflow run %s could not move", run)
 
     async def _advance_run(self, run: str) -> None:
         st, wf = self.runs[run], self.defs.get(run)
@@ -301,12 +327,10 @@ class Workflows:
             return
         state = await self._advance(st, wf.root)
         if state == "done":
-            self._finish(st, "done")
-            await self._tell_owner(st, "done", self._summary(st))
+            await self._end(st, "done", self._summary(st))
         elif state == "failed":
-            self._finish(st, "failed")
             bad = next((n for n in st.nodes.values() if n.status == "failed"), None)
-            await self._tell_owner(
+            await self._end(
                 st,
                 "failed",
                 f"{bad.say} failed: {bad.error}" if bad else "A node failed.",
@@ -327,7 +351,12 @@ class Workflows:
     async def _agent(self, st: RunState, node: Node) -> str:
         n = st.nodes.get(node.id)
         if n is None or n.status == "pending":
-            await self._start_agent(st, node)
+            try:
+                await self._start_agent(st, node)
+            except Exception as e:
+                log.exception("aegis: node %s of %s did not start", node.id, st.run)
+                self._fail(st, node.id, f"it did not start: {getattr(e, 'message', e)}")
+                return "failed"
             return "running"
         if n.status in ("done", "failed"):
             return n.status
@@ -353,7 +382,7 @@ class Workflows:
         return "failed"
 
     async def _start_agent(self, st: RunState, node: Node) -> None:
-        owner = self._reg.sessions.get(st.owner)
+        owner = self.owner(st)
         if owner is None:
             self._fail(st, node.id, "the main agent's session is closed")
             return
@@ -375,12 +404,19 @@ class Workflows:
             spawned_by=owner.log_id,
             owner=owner.spec.owner,
         )
-        g = self._app.gate(spec.owner, spec.harness, spec.model)
-        if not g.may_start:
-            return  # the gate's next reading wakes a pass (app.on_quota -> changed)
-        s = await self._reg.spawn(
-            spec, title=say, quiet=True, workflow={"run": st.run, "node": node.id}
-        )
+        tag = {"run": st.run, "node": node.id}
+        # A crash between a spawn and its record leaves the session behind:
+        # it is this node's, so it is adopted rather than doubled.
+        s = next((x for x in self._reg.sessions.values() if x.workflow == tag), None)
+        if s is None:
+            g = self._app.gate(spec.owner, spec.harness, spec.model)
+            if not g.may_start:
+                return  # the gate's next reading wakes a pass (app.on_quota -> changed)
+            s = await self._reg.spawn(spec, title=say, quiet=True, workflow=tag)
+        if st.status != "running":  # stopped while it spawned: never prompted
+            with contextlib.suppress(Exception):
+                await self._reg.close(s.log_id)
+            return
         self._log(
             st.run,
             {"ev": "node_started", "node": node.id, "log_id": s.log_id, "say": say},
@@ -414,8 +450,32 @@ class Workflows:
             + json.dumps(results, indent=2)
         )
 
+    async def _end(self, st: RunState, outcome: str, body: str) -> None:
+        """End a live run once: its record, its node sessions' tabs, and the
+        one inbox turn its main agent gets."""
+        if st.status not in LIVE:
+            return
+        if outcome == "stopped":
+            self._log(st.run, {"ev": "stopped"})
+            for n in st.nodes.values():
+                s = self._reg.sessions.get(n.log_id or "")
+                if n.status == "running" and s is not None and s.status == "working":
+                    with contextlib.suppress(Exception):
+                        await s.interrupt()
+        else:
+            self._finish(st, outcome)
+        self._release(st)
+        await self._tell_owner(st, outcome, body)
+
+    def _release(self, st: RunState) -> None:
+        """The node sessions still open get their tabs: the run no longer
+        holds them, and the person reads them now."""
+        for n in st.nodes.values():
+            if n.log_id in self._reg.sessions:
+                self._reg.set_quiet(n.log_id, False)
+
     async def _tell_owner(self, st: RunState, outcome: str, body: str) -> None:
-        owner = self._reg.sessions.get(st.owner)
+        owner = self.owner(st)
         if owner is None:
             return
         try:

@@ -58,7 +58,7 @@ def register_workflow_ops(app: App) -> None:
         who = app.who(caller)
         if not who.is_admin and app.owner_of(st.owner) != who.name:
             raise OpError("not_owner", f"{run} belongs to {app.owner_of(st.owner)}")
-        if caller.is_agent and caller.log_id != st.owner:
+        if caller.is_agent and not wf.owns(caller.log_id, st):
             raise OpError(
                 "not_yours", "only the session that armed a workflow can stop it"
             )
