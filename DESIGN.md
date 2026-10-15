@@ -318,7 +318,12 @@ quiet session spawned under the main agent, locked while the run lives: its
 tasks, and the quota pause do) and appends every event to `<state>/workflow-runs/<run>.jsonl`,
 which boot folds back (`workflow_log.py`), as the schedules do. Like their
 clock, the engine is level-triggered: each pass looks at every live run, and
-a missed hook only delays a step. A node's result is a `workflow_result` call
+a missed hook only delays a step. Only leaves and a map's items are logged;
+every seq, par and map state is derived from them on each pass, and a node
+inside a map item is named by its instance path (`images.base.impl`). A node
+starts only when it has room under the run's `limits` and the server's
+`workflows: {max_agents}`, in total and for its agent alias, counted from the
+registry's open node sessions, so the bound holds for processes. A node's result is a `workflow_result` call
 checked against its schema, never its last message, and the main agent is
 woken once, when the run ends: a pass and a stop hold one lock, so a run's
 ending is written once. The main agent is the session that armed the run or

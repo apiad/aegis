@@ -283,17 +283,18 @@ def workflows_from(raw: object) -> dict:
     the default in force and carries ``error`` for aegis doctor, as the
     context block does. Whether each alias names an agent is the doctor's
     to say, since the agents are another block."""
-    default = {"max_agents": dict(WORKFLOWS_DEFAULTS["max_agents"])}
+    default: dict = {"max_agents": dict(WORKFLOWS_DEFAULTS["max_agents"])}
     if raw is None:
         return default
     if not isinstance(raw, dict):
         return default | {"error": "workflows must be a mapping with max_agents"}
-    for k in raw:
+    m: object = default["max_agents"]
+    for k, v in raw.items():
         if k != "max_agents":
             return default | {
                 "error": f"workflows has no key {k!r}; it takes max_agents"
             }
-    m = raw.get("max_agents", default["max_agents"])
+        m = v
     if _positive(m):
         return {"max_agents": {"total": m}}
     if not isinstance(m, dict):
@@ -1529,7 +1530,7 @@ root:
             for s in self._reg.sessions.values()
             if s.workflow and self.live(s.workflow["run"])
         ]
-        mine = [s for s in live if s.workflow["run"] == st.run]
+        mine = [s for s in live if (s.workflow or {}).get("run") == st.run]
         pool = self._app.config.current().workflows["max_agents"]
         for bound, among in ((pool, live), (wf.limits, mine)):
             if len(among) >= bound.get("total", math.inf):
@@ -1845,7 +1846,7 @@ The prompt toggle's key stays <code>${w.run}/${r.id}</code>; with instance ids e
 </div>
 </details>
 
-<details class="task" id="task-9" data-state="pending">
+<details class="task" id="task-9" data-state="done">
 <summary><span class="num">9</span><span><span class="ttl">Slice 2 docs and the full gates</span><span class="files">help/workflows.md · changelog.d · DESIGN.md · the spec's status</span></span><span class="state">pending</span></summary>
 <div class="body">
 <ol class="steps">
@@ -1883,21 +1884,24 @@ The lint refuses an `after` that could never be met.
 
 ## How many at once
 
-A node waits, shown as queued, until it has room under three bounds: the
-workflow's `limits` (`{agents: N, heavy: M}`, where `heavy` counts the
-agent nodes with `class: heavy`), the server's `workflows: {max_agents: N}`
-in `.aegis.yaml` (4 by default, every workflow together), and the
-quota the server keeps for its owner.
+A node waits, shown as queued, until it has room in every bound that
+applies. The workflow's `limits`, such as `{total: 4, opus: 2}`, bound this
+run: `total` counts all its agents together, and a number under an agent's
+name counts that agent alone. The server's `workflows: {max_agents: ...}` in
+`.aegis.yaml` has the same shape and bounds every workflow together, 4 in
+total by default. Last comes the quota the server keeps for its owner. An
+agent without a number of its own is bound only by the totals, and a `cap`
+above `limits.total` is refused.
 </script>
 In "Inside a workflow", after the sentence about <code>workflow_result</code>: "If your first message names outputs other steps wait on, call <code>workflow_output</code> with each one as soon as it is ready, then go on." In "While it runs": "A failure ends the run and stops the nodes still running beside it."</li>
-<li>The changelog. If <code>changelog.d/418-workflows.added.md</code> is still there (slice 1 not yet released), replace its last sentence with "It runs steps in sequence or side by side, maps a step over a list, and keeps the server under a pool of agents (<code>workflows: {max_agents}</code>)." Otherwise create <code>changelog.d/418-workflows-parallel.added.md</code>:
+<li>The changelog. If <code>changelog.d/418-workflows.added.md</code> is still there (slice 1 not yet released), replace its last sentence with "It runs steps in sequence or side by side, maps a step over a list, and keeps the server under a pool of agents (<code>workflows: {max_agents}</code>), in total and per agent." Otherwise create <code>changelog.d/418-workflows-parallel.added.md</code>:
 <script type="text/plain" data-lang="markdown">
 - **Workflows run steps side by side.** A workflow can run branches at once (`par`) and a step once per item of a list (`map`), cap each, make one branch wait for another's item or early output (`after`, `workflow_output`), and never have more agents open than `workflows: {max_agents}` in `.aegis.yaml` allows. The card shows every item as it queues, runs and ends.
 
 help: workflows#run-things-at-once
 </script>
 Check the anchor with <code>helppages.slug()</code> as slice 0 did.</li>
-<li>In <code>DESIGN.md</code>, in the workflow paragraph, after "a missed hook only delays a step.": "Only leaves and a map's items are logged; every seq, par and map state is derived from them on each pass, and a node inside a map item is named by its instance path (<code>images.base.impl</code>). A node starts only when it has room under the run's limits and the server's <code>workflows: {max_agents}</code>, counted from the registry's open node sessions, so the bound holds for processes."</li>
+<li>In <code>DESIGN.md</code>, in the workflow paragraph, after "a missed hook only delays a step.": "Only leaves and a map's items are logged; every seq, par and map state is derived from them on each pass, and a node inside a map item is named by its instance path (<code>images.base.impl</code>). A node starts only when it has room under the run's limits and the server's <code>workflows: {max_agents}</code>, in total and for its agent alias, counted from the registry's open node sessions, so the bound holds for processes."</li>
 <li>In the spec's chrome, change the status pill to "slices 0 to 2 built", and its meta line to name this branch.</li>
 <li>Rebase on <code>origin/main</code> if the slice 0-1 PR has merged. Run <code>make check</code>, <code>make test-slow</code>, <code>make lint-docs</code> and <code>make bench</code>. Fix what fails. Run <code>rift check</code>.</li>
 <li>Commit: <code>git commit -m "docs(workflows): par, map, after and the pool in help, changelog and DESIGN.md" -- src/aegis/help/workflows.md changelog.d/&lt;the fragment&gt; DESIGN.md docs/superpowers/specs/2026-10-15-dynamic-workflows-design.html</code>. Push and open the PR with <code>Refs #418</code>; the body carries the bench table and the <code>AEGIS_REF=418-workflows-slice-2 aegis-dev</code> line for the maintainer's smoke test.</li>
@@ -1926,7 +1930,15 @@ Check the anchor with <code>helppages.slug()</code> as slice 0 did.</li>
 </ul>
 
 <h2 id="departs-code">Where the code departs from this plan</h2>
-<p>Empty until the plan is executed. Workers and reviewers add a line for each place the real code forced a change.</p>
+<p>Workers and reviewers add a line for each place the real code forced a change.</p>
+<ul>
+  <li>Limits are per agent alias, by the maintainer's decision during execution: <code>workflows: {max_agents: {total: N, &lt;agent&gt;: M}}</code> (a bare N read as the total) and a workflow's <code>limits: {total: N, &lt;agent&gt;: M}</code>. <code>class</code> and <code>heavy</code> are gone; the lint refuses <code>class</code> as an unknown agent field and <code>heavy</code> as an unknown agent in <code>limits</code>. Tasks 1 and 2 shipped the first shape and were changed in follow-up commits; task 6's heavy test became two alias tests, and <code>leaf</code> takes an <code>agent</code>.</li>
+  <li><code>_reporting</code> takes the tool's name, so <code>not_a_node</code> keeps slice 1's message for <code>workflow_result</code> and names <code>workflow_output</code> for the new tool.</li>
+  <li><code>_end</code> interrupts the running nodes with <code>through_lock=True</code> rather than relying on the run no longer being live after the record.</li>
+  <li><code>_start_agent</code> catches <code>IndexError</code> beside <code>KeyError</code> and <code>TypeError</code> when it renders, as <code>_row</code> and <code>_start_map</code> do.</li>
+  <li>The changelog entry extends slice 1's <code>changelog.d/418-workflows.added.md</code>, which is still unreleased, so it keeps <code>help: workflows</code>.</li>
+  <li>The executor of tasks 1 to 9 did not run <code>make check</code>, <code>make test-slow</code> or <code>make bench</code>, nor open the PR: the session that enqueued it runs the full gates.</li>
+</ul>
 </main>
 
 <script>

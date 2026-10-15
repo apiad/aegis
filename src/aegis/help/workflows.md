@@ -32,7 +32,48 @@ root:
 
 Every node needs `say`. A `{{name.field}}` in a prompt or a `say` reads
 `args` or the result of a node that finished before this one. This version
-runs `seq` and `agent`; the others in the spec come next.
+runs `seq`, `par`, `map` and `agent`; the others in the spec come next.
+
+## Run things at once
+
+`par` runs its nodes at once and ends when all have. `map` runs its `do`
+once per item of `over`, which is a list or one `{{reference}}` to a list,
+with the item named by `as`; each item goes through all its steps on its
+own. Inside the map, `say` reads the item, so each item reads as its own
+sentence. A `cap` bounds how many branches run at a time: inside `map:`
+for a map, beside `par:` for a par.
+
+```yaml
+root:
+  par:
+    - map: {over: "{{args.services}}", as: s, cap: 2,
+            do: {agent: {agent: sonnet, prompt: "Build {{s.id}}."}, id: build, say: "Build {{s.id}}."}}
+      id: images
+      say: Build one image per service, two at a time.
+    - agent: {agent: sonnet, prompt: "Write the mock against {{images.base.build.tag}}."}
+      after: [images.base]
+      say: Write the mock once the base image is built.
+  say: Images and the mock.
+```
+
+An item's key is its `id` when it has one, else its position, so the
+second node above waits on the item `base` with `after: [images.base]` and
+reads its result as `images.base.build`. `after` also takes a node's id (it
+is done) or `node.name`, an early output that node gives with
+`workflow_output` while it keeps working. A `{{name}}` must name a node
+that finishes before this one: earlier in a `seq`, or named in `after`.
+The lint refuses an `after` that could never be met.
+
+## How many at once
+
+A node waits, shown as queued, until it has room in every bound that
+applies. The workflow's `limits`, such as `{total: 4, opus: 2}`, bound this
+run: `total` counts all its agents together, and a number under an agent's
+name counts that agent alone. The server's `workflows: {max_agents: ...}` in
+`.aegis.yaml` has the same shape and bounds every workflow together, 4 in
+total by default. Last comes the quota the server keeps for its owner. An
+agent without a number of its own is bound only by the totals, and a `cap`
+above `limits.total` is refused.
 
 ## Arm it
 
@@ -52,11 +93,14 @@ naming the run. Its own monitors and queue tasks still reach it. It ends by call
 `result` schema and a one-sentence `summary`; a turn that ends without one
 is nudged once, then fails the run. You are not woken for each node: you get
 one message, headed `> from workflow:<id> · done`, `failed` or `stopped`,
-when the run ends. `workflow_status` shows the tree at any time, and
+when the run ends. A failure ends the run and stops the nodes still running
+beside it. `workflow_status` shows the tree at any time, and
 `workflow_stop` stops the run and unlocks its sessions.
 
 ## Inside a workflow
 
 If your first message is headed `> from workflow:`, you are a node. Do the
-task, call `workflow_result` once, and end your turn. Nobody answers
+task, call `workflow_result` once, and end your turn. If your first
+message names outputs other steps wait on, call `workflow_output` with each
+one as soon as it is ready, then go on. Nobody answers
 questions here, and neither you nor a session you spawn can arm a workflow.
