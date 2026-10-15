@@ -1375,9 +1375,10 @@ Check <code>Session.interrupt</code>: slice 1 put the node lock in it. The stop 
 </div>
 </details>
 
-<details class="task" id="task-6" data-state="doing">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">Room: the pool, the run's limits and the quota gate</span><span class="files">workflows.py · tests/test_workflows_parallel.py</span></span><span class="state">pending</span></summary>
 <div class="body">
+<p>Revised during execution: room is counted per agent alias, in the server's <code>max_agents</code> and in the run's <code>limits</code>, both <code>{total, &lt;agent&gt;: n}</code>; the heavy-class test became two alias tests, and <code>leaf</code> takes an <code>agent</code>.</p>
 <p>The spec's section 12 test lives here: two maps over more items than the pool allows, and the peak of open node sessions never above <code>max_agents</code>.</p>
 <ol class="steps">
 <li>Add the tests:
@@ -1430,47 +1431,113 @@ async def test_two_maps_never_have_more_than_max_agents_sessions_live(world):
     assert seen_queued
 
 
-async def test_limits_bound_a_run_and_its_heavy_nodes(world):
-    (world.root / ".aegis.yaml").write_text(CONFIG + "workflows: {max_agents: 4}\n")
+# The fixture's agents plus haiku, so a run mixes two aliases.
+TWO = CONFIG.replace(
+    "agents:\n",
+    "agents:\n  haiku: {harness: claude-code, model: haiku, effort: low, permission: full}\n",
+    1,
+)
+
+
+def peaks(world) -> dict:
+    """Wrap the registry's spawn so each node spawn records how many node
+    sessions are open, in all and per alias, the moment it returns."""
+    reg, real = world.app.sessions, world.app.sessions.spawn
+    peak: dict = {}
+
+    async def counting(*a, **k):
+        s = await real(*a, **k)
+        nodes = [x for x in reg.sessions.values() if x.workflow]
+        for key in ("total", *{x.spec.agent for x in nodes}):
+            n = (
+                len(nodes)
+                if key == "total"
+                else sum(x.spec.agent == key for x in nodes)
+            )
+            peak[key] = max(peak.get(key, 0), n)
+        return s
+
+    reg.spawn = counting
+    return peak
+
+
+async def test_the_server_bounds_one_alias_while_another_runs_beside_it(world):
+    (world.root / ".aegis.yaml").write_text(
+        TWO + "workflows: {max_agents: {total: 4, opus: 1}}\n"
+    )
+    peak = peaks(world)
     wf_text = f"""
-id: heavy
-title: Heavy
-say: Two heavy builds and one light one.
-limits: {{agents: 2, heavy: 1}}
+id: aliases
+title: Aliases
+say: Two opus steps and one haiku step.
 root:
   par:
-    - {leaf("h1", "Heavy one.", report(), ", class: heavy")}
-    - {leaf("h2", "Heavy two.", report(), ", class: heavy")}
-    - {leaf("l1", "Light one.", report())}
+    - {leaf("o1", "Opus one.", report())}
+    - {leaf("o2", "Opus two.", report())}
+    - {leaf("h1", "Haiku one.", report(wait=3), agent="haiku")}
   say: All three.
 """
     run = await arm(world, wf_text)
     wf = world.app.workflows
     await until(lambda: wf.runs[run].status != "running", timeout=40)
     st = wf.runs[run]
-    assert st.status == "done"
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+    assert peak["opus"] == 1 and peak["total"] == 2, peak
+    assert not overlap(spans(st, "o1"), spans(st, "o2"))
+    assert overlap(spans(st, "o1"), spans(st, "h1"))
+
+
+async def test_limits_bound_a_run_in_all_and_per_alias(world):
+    (world.root / ".aegis.yaml").write_text(TWO + "workflows: {max_agents: 4}\n")
+    peak = peaks(world)
+    wf_text = f"""
+id: limited
+title: Limited
+say: Two haiku steps and two opus steps, two at a time.
+limits: {{total: 2, haiku: 1}}
+root:
+  par:
+    - {leaf("h1", "Haiku one.", report(), agent="haiku")}
+    - {leaf("h2", "Haiku two.", report(), agent="haiku")}
+    - {leaf("o1", "Opus one.", report())}
+    - {leaf("o2", "Opus two.", report())}
+  say: All four.
+"""
+    run = await arm(world, wf_text)
+    wf = world.app.workflows
+    await until(lambda: wf.runs[run].status != "running", timeout=60)
+    st = wf.runs[run]
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+    assert peak["total"] == 2 and peak["haiku"] == 1, peak
     assert not overlap(spans(st, "h1"), spans(st, "h2"))
-    assert overlap(spans(st, "h1"), spans(st, "l1"))
 </script>
 <code>World</code> keeps its root as <code>self.root</code>; the config is read on every <code>current()</code>, so the rewrite before arming is in force.</li>
-<li>Run them; the pool test fails with a peak of 6 and the heavy one with an overlap.</li>
+<li>Run them; the pool test fails with a peak of 6 and the alias tests with peaks above their bounds.</li>
 <li>In <code>workflows.py</code>, import <code>math</code>, and add:
 <script type="text/plain" data-lang="python">
     def _room(self, st: RunState, wf: Workflow, node: Node) -> bool:
-        """Whether one more node session fits: under the server's
-        max_agents, counting every live run's open node sessions in the
-        registry (a session whose node is done but not yet closed still
-        holds memory), under the run's limits.agents, and for a heavy node
-        under limits.heavy. The quota gate is asked after this."""
-        live = [s for s in self._reg.sessions.values() if s.workflow and self.live(s.workflow["run"])]
-        if len(live) >= self._app.config.current().workflows["max_agents"]:
-            return False
+        """Whether one more node session fits in every counter that applies:
+        the server's max_agents total and its number for this node's agent
+        alias, counting every live run's open node sessions in the registry
+        (a session whose node is done but not yet closed still holds
+        memory), then the run's limits total and its number for the alias.
+        An alias without a number of its own is bound only by the totals.
+        The quota gate is asked after this."""
+        alias = node.body["agent"]
+        live = [
+            s
+            for s in self._reg.sessions.values()
+            if s.workflow and self.live(s.workflow["run"])
+        ]
         mine = [s for s in live if s.workflow["run"] == st.run]
-        if len(mine) >= wf.limits.get("agents", math.inf):
-            return False
-        if node.body.get("class") == "heavy":
-            heavy = [s for s in mine if self._template(wf, s.workflow["node"]).body.get("class") == "heavy"]
-            if len(heavy) >= wf.limits.get("heavy", math.inf):
+        pool = self._app.config.current().workflows["max_agents"]
+        for bound, among in ((pool, live), (wf.limits, mine)):
+            if len(among) >= bound.get("total", math.inf):
+                return False
+            if (
+                alias in bound
+                and sum(s.spec.agent == alias for s in among) >= bound[alias]
+            ):
                 return False
         return True
 </script>
@@ -1487,7 +1554,7 @@ In <code>_start_agent</code>, where no session was adopted, ask it before the ga
 An adopted session is already open and is not counted twice.</li>
 </ol>
 <h4>verify</h4>
-<div class="verify"><code>uv run pytest tests/test_workflows_parallel.py -q</code> passes. Break it, as section 12 asks: make <code>_room</code> return <code>True</code> on its first line; the pool test fails with <code>assert peak == 2</code> showing 6, and the heavy test fails on the overlap. Put it back and rerun.</div>
+<div class="verify"><code>uv run pytest tests/test_workflows_parallel.py -q</code> passes. Break it, as section 12 asks: make <code>_room</code> return <code>True</code> on its first line; the pool test fails with <code>assert peak == 2</code> showing 6, and both alias tests fail on their peaks. Put it back and rerun.</div>
 <h4>commit</h4>
 <div class="verify"><code>git commit -m "feat(workflows): node sessions wait for room under the pool and the run's limits" -- src/aegis/workflows.py tests/test_workflows_parallel.py</code></div>
 </div>
