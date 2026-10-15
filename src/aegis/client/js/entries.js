@@ -203,6 +203,58 @@ export function setOpener(fn) {
   opener = fn;
 }
 
+// What an approval card needs from outside: the schedule as the schedules
+// channel has it now, and a way to call an operation (app.js sets both).
+let approvals = { schedule: () => null, call: async () => {} };
+export function setApprovals(a) {
+  approvals = a;
+}
+
+// Redraw every approval card from the current state, after the schedules
+// channel changed. A card is the object as it is now, not as it was made.
+export function refreshApprovals() {
+  for (const c of document.querySelectorAll(".apcard")) fillApproval(c);
+}
+
+function fillApproval(card) {
+  const s = approvals.schedule(card.dataset.name);
+  const bar = el("div", "fbar");
+  bar.append(entryIcon(card.dataset.glyph), el("span", "fn", card.dataset.name));
+  if (!s) {
+    card.dataset.state = "gone";
+    bar.append(el("span", "fs", "deleted"));
+    card.replaceChildren(bar);
+    return;
+  }
+  const waiting = s.paused?.by === "approval";
+  card.dataset.state = waiting ? "waiting" : s.paused ? "paused" : "running";
+  bar.append(el("span", "fs", waiting ? "waits for your go" : s.paused ? "paused" : s.next ? `next ${s.next.slice(11, 16)}` : "finished"));
+  const kv = el("dl", "apkv");
+  const clock = Object.entries(s.clock).map(([k, v]) => `${k} ${v}`).join(" ");
+  const fire = s.fire.target === "existing" ? `into ${s.fire.session}` : `a new ${s.fire.agent || "default"} session in ${s.fire.cwd || "."}`;
+  for (const [k, v] of [["clock", clock], ["overlap", s.overlap], ["check", s.check?.bash || "none"], ["fires", fire], ["prompt", s.prompt]]) {
+    kv.append(el("dt", null, k), el("dd", k === "prompt" || k === "check" ? "pre" : null, v));
+  }
+  const kids = [bar, kv];
+  if (waiting) {
+    const go = el("button", "btn primary", "Unpause");
+    go.type = "button";
+    go.onclick = async () => {
+      go.disabled = true;
+      try {
+        await approvals.call("schedule.resume", { name: card.dataset.name });
+      } catch (err) {
+        go.disabled = false;
+        go.title = String(err?.message || err);
+      }
+    };
+    const foot = el("div", "apbar");
+    foot.append(go);
+    kids.push(foot);
+  }
+  card.replaceChildren(...kids);
+}
+
 // What Dock does, on a card and on the viewer's bar: app.js hands it the
 // canvas (js/canvas.js), so this module does not import it. can(id) says
 // whether the button shows: not while the item is docked, not for a file
@@ -587,6 +639,19 @@ const RENDERERS = {
     }
     body.append(fileCard(sent, e.glyph));
     return row(e, "file", body);
+  },
+
+  approval(e) {
+    // An agent's schedule waiting for a person: the schedule in full and the
+    // one button that approves it (fillApproval). Never folded.
+    const body = el("div", "body");
+    const card = el("div", "fcard apcard");
+    card.dataset.object = e.detail?.object || "";
+    card.dataset.name = e.detail?.name || "";
+    card.dataset.glyph = e.glyph || "";
+    fillApproval(card);
+    body.append(card);
+    return row(e, "approval", body);
   },
 
   artifact(e) {

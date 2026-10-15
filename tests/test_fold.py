@@ -1589,3 +1589,16 @@ def test_a_cancelled_note_folds_and_server_stopped_fails_a_running_one():
     one, two = btw_rows(f)
     assert one["status"] == "cancelled" and one["detail"]["folded"]
     assert two["status"] == "failed" and not two["detail"]["folded"]
+
+
+def test_an_approval_record_is_a_card_that_never_folds():
+    r = Rec()
+    r.own("approval", object="schedule", name="nightly-tests", action="created")
+    f, _ = run(r)
+    (e,) = [e for e in f.entries() if e["kind"] == "approval"]
+    assert e["fold"] == 0
+    assert e["detail"] == {
+        "object": "schedule",
+        "name": "nightly-tests",
+        "action": "created",
+    }

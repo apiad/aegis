@@ -8,7 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from .test_browser import CONFIG, Server, browser, new_page, page  # noqa: F401
+from .test_browser import (  # noqa: F401
+    CONFIG,
+    Server,
+    browser,
+    new_page,
+    page,
+    spawn,
+)
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
@@ -242,3 +249,19 @@ def test_the_editor_sets_quota_lines_per_pool_or_none(server, page):  # noqa: F8
     while stored(server, "quota-check")["quota"] and time.monotonic() < deadline:
         time.sleep(0.1)
     assert stored(server, "quota-check")["quota"] == {} and not page.errors
+
+
+def test_an_agents_schedule_shows_a_card_a_person_unpauses(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spec = {
+        "name": "nightly-tests",
+        "clock": {"every": "1h"},
+        "fire": {"agent": "opus"},
+        "prompt": "run the tests",
+    }
+    spawn(page, "/mcp schedule_create " + json.dumps(spec))
+    page.wait_for_selector(".apcard[data-state=waiting] >> text=run the tests")
+    page.click(".apcard[data-state=waiting] button >> text=Unpause")
+    page.wait_for_selector(".apcard[data-name=nightly-tests][data-state=running]")
+    assert not page.errors

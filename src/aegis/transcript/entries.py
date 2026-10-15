@@ -707,6 +707,27 @@ class Fold:
             return self._upsert(
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary="closed")
             )
+        if kind == "approval":
+            # Something an agent made waits for a person (schedule_ops): a
+            # card, never folded, that the browser fills from the object's
+            # own channel, so it shows the object as it is now.
+            det = {
+                "object": str(rec.get("object")),
+                "name": str(rec.get("name")),
+                "action": str(rec.get("action")),
+            }
+            return self._upsert(
+                _entry(
+                    f"e{i}",
+                    "approval",
+                    "ok",
+                    ts,
+                    d.SYSTEM_GLYPH,
+                    title=det["name"],
+                    summary=f"{det['object']} {det['action']}",
+                    detail=det,
+                )
+            )
         if kind == "file":
             # One record per file_send; a record from before sets is one file.
             # A file sent again from one source path is a new version of one
