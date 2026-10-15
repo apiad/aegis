@@ -6,7 +6,12 @@ appended to the run's log (workflow_log.py), which boot folds back. Like the
 schedules' clock, the engine is level-triggered: each pass looks at every
 live run, so a missed hook only changes how soon a node moves.
 
-This version runs ``seq``, ``par``, ``map`` and ``agent``. Every node
+This version runs ``seq``, ``par``, ``map``, ``agent``, ``sh``, ``wait``
+and ``check``. An sh and a check's sh probe are asyncio tasks the engine
+holds (``_tasks``), never awaited by a pass: each logs its outcome and wakes
+one. An sh running in the log with no task after a boot was cut by the
+restart and fails, never run again; a wait resumes on its logged end. Every
+node
 instance has a path (``images.base.impl`` inside item ``base`` of map
 ``images``); only leaves and a map's items are logged, and every other state
 is derived from them on each pass (``_state``), so a restart rebuilds them by
@@ -27,19 +32,27 @@ import contextlib
 import json
 import logging
 import math
+import os
 import secrets
+import shlex
+import signal
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from . import restarts
 from .agents import PERMISSION_ORDER, resolve
+from .monitors import run_bash
 from .ops import OpError
 from .workflow_lang import (
     RENDER_ERRORS,
+    ExprError,
     Node,
     Workflow,
     check_value,
+    compile_expr,
+    duration,
+    evaluate,
     find,
     item_keys,
     parse,
@@ -57,6 +70,47 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 PASS_S = 30.0  # a pass at least this often, as the schedules' clock does
+CUT = "cut by restart: it may have run in part; rerun or skip?"
+SH_LIMIT_S = 1800.0  # an sh with no deadline over it
+CHECK_LIMIT_S = 3600.0  # a check with no deadline over it, a monitor's default
+TAIL = 4000  # the end of an sh's stdout and of its stderr kept as its value
+
+
+async def _tail(stream) -> str:
+    """A stream's last TAIL characters, read in chunks so a chatty command
+    never holds more than a few of them."""
+    buf = b""
+    while chunk := await stream.read(65536):
+        buf = (buf + chunk)[-TAIL * 4 :]
+    return buf.decode("utf-8", "replace")[-TAIL:]
+
+
+async def run_sh(cmd: str, cwd: str, on_pid) -> tuple[int, str, str]:
+    """An sh node's command under bash in its own process group, so a
+    deadline, a stop or a shutdown ends everything it started: cancelling
+    the task ends the group, SIGTERM first and SIGKILL 2 s later."""
+    proc = await asyncio.create_subprocess_exec(
+        "bash",
+        "-c",
+        cmd,
+        cwd=cwd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
+    )
+    on_pid(proc.pid)
+    try:
+        out, err = await asyncio.gather(_tail(proc.stdout), _tail(proc.stderr))
+        await proc.wait()
+    except asyncio.CancelledError:
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, sig)
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(asyncio.shield(proc.wait()), 2)
+                break
+        raise
+    return proc.returncode or 0, out, err
 
 
 def iso_now() -> str:
@@ -99,6 +153,14 @@ class Workflows:
         # ones this pass finds: the card shows them queued.
         self._queued: dict[str, set[str]] = {}
         self._queuing: set[str] = set()
+        # The commands and polling probes running now, by (run, instance):
+        # no pass ever awaits one. A running sh with no task here was cut
+        # by a restart.
+        self._tasks: dict[tuple[str, str], asyncio.Task] = {}
+        # A probe's last reading, for the card; never logged.
+        self._readings: dict[tuple[str, str], str] = {}
+        # The nearest wall time a pass must look again (a wait's end).
+        self._next_due = math.inf
 
     # -- life -----------------------------------------------------------------
     def boot(self) -> None:
@@ -110,6 +172,11 @@ class Workflows:
                 continue
             self.runs[st.run] = st
             if st.status in LIVE:
+                # A crash left this run's commands running: end them before
+                # any pass, so a cut sh is never still running (spec §05).
+                for n in st.nodes.values():
+                    if n.status == "running" and n.pid:
+                        restarts.end_leftover(n.pid, n.pstart)
                 wf, errors = parse(st.text, self._agents())
                 if wf is None:
                     why = f"its definition no longer lints: {errors[0].message}"
@@ -127,6 +194,11 @@ class Workflows:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
+        # No command outlives a clean stop: each task ends its process group.
+        tasks = list(self._tasks.values())
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _loop(self) -> None:
         for st, why in self._boot_failed:
@@ -140,11 +212,17 @@ class Workflows:
                 await self.step()
             except Exception:
                 log.exception("aegis: a workflow pass failed")
+            # Woken by a record, or at the nearest end a pass asked for.
+            wait = max(0.05, min(PASS_S, self._next_due - time.time()))
             with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(self._wake.wait(), PASS_S)
+                await asyncio.wait_for(self._wake.wait(), wait)
 
     def changed(self) -> None:
         self._wake.set()
+
+    def _due_at(self, t: float) -> None:
+        """Ask for a pass at wall time ``t``, sooner if another asked."""
+        self._next_due = min(self._next_due, t)
 
     # -- reading --------------------------------------------------------------
     def live(self, run: str) -> bool:
@@ -285,7 +363,7 @@ class Workflows:
         # Inner scopes last, so a name reads the innermost node that has it.
         for n in sorted(walk(wf.root), key=lambda n: len(n.maps)):
             if (
-                n.kind in ("agent", "map")
+                n.kind in ("agent", "map", "sh", "check", "loop")
                 and len(n.maps) <= depth
                 and n.maps == tuple(parts[0 : 2 * len(n.maps) : 2])
             ):
@@ -318,7 +396,7 @@ class Workflows:
         s = st.nodes.get(inst)
         if s is None:
             return None
-        if n.kind == "agent":
+        if n.kind in ("agent", "sh", "check"):
             if s.result is None or isinstance(s.result, dict):
                 return {**(s.result or {}), **s.outputs} or None
             return s.result
@@ -327,7 +405,8 @@ class Workflows:
         inside = [
             c
             for c in walk(n.children[0])
-            if c.maps == (*n.maps, n.id) and c.kind in ("agent", "map")
+            if c.maps == (*n.maps, n.id)
+            and c.kind in ("agent", "map", "sh", "check", "loop")
         ]
         out = {}
         for key, _ in s.items:
@@ -354,8 +433,19 @@ class Workflows:
         if wf is None:
             raise OpError("lint", "\n".join(f"{e.path}: {e.message}" for e in errors))
         for n in walk(wf.root):
+            probe = n.body.get("probe") or {}
             if n.kind == "agent":
-                self._check_permission(owner, n)
+                self._check_permission(owner, n.body["agent"], n.path)
+            if "judge" in probe:
+                self._check_permission(owner, probe["judge"]["agent"], n.path)
+            if (n.kind == "sh" or "sh" in probe) and owner.spec.permission != "full":
+                raise OpError(
+                    "not_allowed",
+                    f"{n.path}: a workflow's shell commands run on the server without "
+                    f"asking, so only a session with full permission arms one; yours "
+                    f"has {owner.spec.permission}",
+                )
+            if n.kind == "agent":
                 cwd = n.body.get("cwd")
                 if isinstance(cwd, str) and "{{" not in cwd:
                     # Refused before a person approves, not when the node starts.
@@ -364,7 +454,8 @@ class Workflows:
         if problems:
             raise OpError("bad_args", "\n".join(problems))
         run = f"{wf.id}-{secrets.token_hex(3)}"
-        st = RunState(run, owner.log_id, text, args, created=time.time())
+        cwd = str(owner.spec.cwd)
+        st = RunState(run, owner.log_id, text, args, created=time.time(), cwd=cwd)
         self.runs[run], self.defs[run] = st, wf
         self._log(
             run,
@@ -374,6 +465,7 @@ class Workflows:
                 "owner": owner.log_id,
                 "text": text,
                 "args": args,
+                "cwd": cwd,
             },
             fold_in=False,
         )
@@ -464,6 +556,7 @@ class Workflows:
     # -- the pass ---------------------------------------------------------------
     async def step(self) -> None:
         async with self._lock:
+            self._next_due = math.inf
             for run in [r for r, st in self.runs.items() if st.status == "running"]:
                 # One run's fault is that run's: the others still move.
                 try:
@@ -529,6 +622,12 @@ class Workflows:
             return await self._many(st, wf, kids, node.body.get("cap"))
         if node.kind == "agent":
             return await self._agent(st, wf, node, prefix)
+        if node.kind == "sh":
+            return await self._sh(st, wf, node, prefix)
+        if node.kind == "wait":
+            return self._wait(st, wf, node, prefix)
+        if node.kind == "check":
+            return await self._check(st, wf, node, prefix)
         raise OpError("kind", f"{node.kind} is not in this version yet")
 
     def _met(
@@ -645,6 +744,191 @@ class Workflows:
             )
             return "running"
         self._fail(st, inst, "its turn ended twice with no workflow_result")
+        return "failed"
+
+    def _cwd(self, st: RunState) -> str:
+        if st.cwd:
+            return st.cwd
+        o = self.owner(st)
+        return str(o.spec.cwd) if o is not None else str(self._app.roots.harness_cwd)
+
+    def _begin(
+        self, st: RunState, wf: Workflow, node: Node, prefix: str, **extra
+    ) -> NodeState:
+        inst = prefix + node.id
+        say = self._say(st, wf, node, prefix)
+        self._log(st.run, {"ev": "node_started", "node": inst, "say": say, **extra})
+        return st.nodes[inst]
+
+    def _done(self, st: RunState, inst: str, value, summary: str) -> str:
+        self._log(
+            st.run, {"ev": "result", "node": inst, "value": value, "summary": summary}
+        )
+        self._log(st.run, {"ev": "node_done", "node": inst})
+        return "done"
+
+    async def _sh(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
+        inst, key = prefix + node.id, (st.run, prefix + node.id)
+        n = st.nodes.get(inst)
+        if n is not None and n.status in ("done", "failed"):
+            return n.status
+        if n is None or n.status == "pending":
+            try:
+                cmd = render(
+                    node.body["sh"], self._scope(st, wf, prefix), quote=shlex.quote
+                )
+            except RENDER_ERRORS as e:
+                self._fail(
+                    st,
+                    inst,
+                    f"a reference has no value: {e}",
+                    self._say(st, wf, node, prefix),
+                    retry=False,
+                )
+                return "failed"
+            self._begin(st, wf, node, prefix, cmd=cmd)
+            self._tasks[key] = asyncio.create_task(self._run_sh(st, inst, cmd))
+            return "running"
+        if key not in self._tasks:
+            # Running in the log with no task in this process: the server
+            # stopped under it. Never run again (spec §05).
+            self._fail(st, inst, CUT, retry=False)
+            return "failed"
+        return "running"
+
+    async def _run_sh(self, st: RunState, inst: str, cmd: str) -> None:
+        def pid(p: int) -> None:
+            self._log(
+                st.run,
+                {"ev": "pid", "node": inst, "pid": p, "start": restarts.started_at(p)},
+            )
+
+        try:
+            code, out, err = await run_sh(cmd, self._cwd(st), pid)
+        except OSError as e:
+            code, out, err = None, "", str(e)
+        finally:
+            self._tasks.pop((st.run, inst), None)
+        n = st.nodes.get(inst)
+        if st.status != "running" or n is None or n.status != "running":
+            return  # stopped, or ended by a deadline, while it ran
+        if code == 0:
+            last = out.strip().splitlines()[-1:]
+            self._done(
+                st,
+                inst,
+                {"code": 0, "out": out, "err": err},
+                "exit 0" + (f": {last[0][:160]}" if last else ""),
+            )
+        else:
+            why = (err.strip().splitlines() or out.strip().splitlines() or [""])[-1][
+                :200
+            ]
+            head = f"exit {code}" if code is not None else "bash did not start"
+            self._fail(st, inst, head + (f": {why}" if why else ""))
+        self.changed()
+
+    def _wait(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
+        inst = prefix + node.id
+        n = st.nodes.get(inst)
+        if n is not None and n.status in ("done", "failed"):
+            return n.status
+        if n is None or n.status == "pending":
+            try:
+                raw = value_of(node.body["wait"], self._scope(st, wf, prefix))
+            except RENDER_ERRORS as e:
+                self._fail(
+                    st,
+                    inst,
+                    f"a reference has no value: {e}",
+                    self._say(st, wf, node, prefix),
+                    retry=False,
+                )
+                return "failed"
+            secs = duration(raw)
+            if secs is None:
+                self._fail(
+                    st,
+                    inst,
+                    f"{raw!r} is not a duration",
+                    self._say(st, wf, node, prefix),
+                    retry=False,
+                )
+                return "failed"
+            n = self._begin(
+                st, wf, node, prefix, until=time.time() + secs, cmd=str(raw)
+            )
+        if time.time() >= (n.until or 0):
+            return self._done(st, inst, None, f"Waited {n.cmd}.")
+        self._due_at(n.until or 0)
+        return "running"
+
+    async def _check(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
+        inst, key = prefix + node.id, (st.run, prefix + node.id)
+        n = st.nodes.get(inst)
+        if n is not None and n.status in ("done", "failed"):
+            return n.status
+        probe = node.body["probe"]
+        scope = self._scope(st, wf, prefix)
+        if n is None or n.status == "pending":
+            cmd = ""
+            if "sh" in probe:
+                try:
+                    cmd = render(probe["sh"], scope, quote=shlex.quote)
+                except RENDER_ERRORS as e:
+                    self._fail(
+                        st,
+                        inst,
+                        f"a reference has no value: {e}",
+                        self._say(st, wf, node, prefix),
+                        retry=False,
+                    )
+                    return "failed"
+            n = self._begin(st, wf, node, prefix, cmd=cmd)
+        if "expr" in probe:
+            try:
+                passed = evaluate(compile_expr(probe["expr"]), scope)
+            except ExprError as e:
+                self._fail(st, inst, str(e), retry=False)
+                return "failed"
+            return (
+                self._done(st, inst, None, "The check passed.") if passed else "running"
+            )
+        if "sh" in probe:
+            # A restart lost the task: the probe simply runs again (spec §05).
+            if key not in self._tasks:
+                self._tasks[key] = asyncio.create_task(
+                    self._poll(st, inst, n.cmd, probe["every"])
+                )
+            return "running"
+        return await self._check_judge(st, wf, node, prefix)  # task 7
+
+    async def _poll(self, st: RunState, inst: str, cmd: str, every: float) -> None:
+        try:
+            while True:
+                rc, out, err = await run_bash(cmd, self._cwd(st))
+                self._readings[(st.run, inst)] = (
+                    f"exit {rc if rc is not None else '?'} at {iso_now()[11:16]}"
+                )
+                self._publish(st.run)
+                n = st.nodes.get(inst)
+                if st.status != "running" or n is None or n.status != "running":
+                    return
+                if rc == 0:
+                    self._done(
+                        st, inst, {"code": 0, "out": out[-TAIL:]}, "The check passed."
+                    )
+                    self.changed()
+                    return
+                await asyncio.sleep(every)
+        finally:
+            self._tasks.pop((st.run, inst), None)
+
+    async def _check_judge(
+        self, st: RunState, wf: Workflow, node: Node, prefix: str
+    ) -> str:
+        """A judge probe; agents that judge come with the pool's rules."""
+        self._fail(st, prefix + node.id, "a judge probe is not in this version yet")
         return "failed"
 
     def _room(self, st: RunState, wf: Workflow, alias: str) -> bool:
@@ -791,6 +1075,11 @@ class Workflows:
             if s is not None and s.status == "working":
                 with contextlib.suppress(Exception):
                     await s.interrupt(through_lock=True)
+        # Its commands and probes end too; each task ends its own process
+        # group, so nothing here waits on one.
+        for (run, _), task in list(self._tasks.items()):
+            if run == st.run:
+                task.cancel()
         self._release(st)
         # Nothing of an ended run waits for room, and the room it held is
         # free now: a queued node of another run starts on this wake.
@@ -817,7 +1106,11 @@ class Workflows:
         except Exception:
             log.exception("aegis: could not tell %s how run %s ended", st.owner, st.run)
 
-    def _fail(self, st: RunState, node: str, why: str, say: str = "") -> None:
+    def _fail(
+        self, st: RunState, node: str, why: str, say: str = "", retry: bool = True
+    ) -> None:
+        """Fail one node. ``retry`` False marks a failure a retry would only
+        repeat (a reference with no value, a cut command)."""
         rec = {"ev": "failed", "node": node, "error": why}
         self._log(st.run, rec | ({"say": say} if say else {}))
         # A failed node's session keeps its card and gets a tab, as a failed
@@ -854,12 +1147,13 @@ class Workflows:
             lid = meta.get("spawned_by")
         return None
 
-    def _check_permission(self, owner: Session, n: Node) -> None:
+    def _check_permission(self, owner: Session, alias: str, path: str) -> None:
+        """An agent a node or a judge runs never above the arming session."""
         agents, default = self._app._agents()
         spec = resolve(
             agents,
             default,
-            n.body["agent"],
+            alias,
             {},
             Path(owner.spec.cwd),
             owner=owner.spec.owner,
@@ -869,7 +1163,7 @@ class Workflows:
         ):
             raise OpError(
                 "not_allowed",
-                f"{n.path}: agent {n.body['agent']} runs with {spec.permission}, above your {owner.spec.permission}",
+                f"{path}: agent {alias} runs with {spec.permission}, above your {owner.spec.permission}",
             )
 
     def _wid(self, st: RunState) -> str:
