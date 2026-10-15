@@ -452,9 +452,8 @@ root:
 def test_a_brace_pair_that_is_not_a_reference_is_refused():
     text = GOOD.replace("Check {{write.path}}.", "Check {{write path}} and {{ }}.")
     assert errs(text)[1] == [
-        f"$.root.seq[1].agent.prompt: {bad} is not a reference: "
-        "a name, then .key or .0 parts"
-        for bad in ("{{write path}}", "{{ }}")
+        "$.root.seq[1].agent.prompt: {{write path}}: unexpected 'path'",
+        "$.root.seq[1].agent.prompt: {{}}: an empty expression",
     ]
 
 

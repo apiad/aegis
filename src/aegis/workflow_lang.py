@@ -16,7 +16,9 @@ finish points (``_Parser.order``).
 
 from __future__ import annotations
 
+import functools
 import io
+import json
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -45,13 +47,7 @@ AGENT_FIELDS = frozenset({"prompt", "agent", "cwd", "result", "session"})
 SCHEMA_KEYS = frozenset(
     {"type", "properties", "required", "items", "enum", "description"}
 )
-# A name (a node id may hold a dash), then .key parts: an item's key may be
-# its position (m.0) and a result's keys may hold dashes.
-_REF = r"\{\{\s*([A-Za-z_][\w-]*)((?:\.[A-Za-z0-9_-]+)*)\s*\}\}"
-REF = re.compile(_REF)
-BRACES = re.compile(r"\{\{.*?(?:\}\}|$)")  # what is left after REF is a typo
 ID = re.compile(r"^[a-z][a-z0-9_-]{0,39}$")
-WHOLE = re.compile(f"^{_REF}$")
 KEY = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 AFTER = re.compile(r"^[a-z][a-z0-9_-]{0,39}(\.[A-Za-z0-9_-]{1,40})?$")
 
@@ -87,35 +83,238 @@ class Workflow:
     waited: dict[str, list[str]] = field(default_factory=dict)
 
 
+# A {{...}} holds one expression; WHOLE is a string that is exactly one.
+TEMPLATE = re.compile(r"\{\{(.*?)\}\}", re.S)
+WHOLE = re.compile(r"^\{\{((?:(?!\}\}).)*)\}\}$", re.S)
+
+
 def lookup(scope: dict, name: str, parts: list[str]):
     """``scope[name]`` down ``parts``. An agent's early outputs sit apart
     under ``scope[""]`` (no name is empty) and win for ``{{a.o}}``, whatever
-    its result holds."""
+    its result holds. A digit part indexes a list."""
     early = scope.get("", {}).get(name, {})
     if parts and parts[0] in early:
         v, parts = early[parts[0]], parts[1:]
     else:
         v = scope[name]
     for part in parts:
-        v = v[part]
+        v = v[int(part)] if isinstance(v, list) and part.isdigit() else v[part]
     return v
 
 
-def render(template: str, scope: dict) -> str:
-    """``{{a.b}}`` replaced by ``scope["a"]["b"]``; a missing name raises KeyError."""
-    return REF.sub(
-        lambda m: str(
-            lookup(scope, m.group(1), list(filter(None, m.group(2).split("."))))
-        ),
-        template,
-    )
+# -- expressions ---------------------------------------------------------------
+# One evaluator for every {{...}} and every expr probe (spec §04):
+#   expr := and ("or" and)*
+#   and  := not ("and" not)*
+#   not  := "not" not | cmp
+#   cmp  := atom (("==" | "!=" | "<" | ">" | "<=" | ">=") atom)?
+#   atom := ref | number | string | true | false | null | "(" expr ")"
+#   ref  := name ("." key)*
+# A tokenizer and a recursive descent build a tree of Ref, Lit and Op. Nothing
+# reaches eval, an attribute or a call, so a definition an agent wrote can
+# compare values and never run code.
+
+
+class ExprError(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class Ref:
+    name: str
+    parts: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Lit:
+    value: object
+
+
+@dataclass(frozen=True)
+class Op:
+    op: str
+    args: tuple
+
+
+CMP = ("==", "!=", "<=", ">=", "<", ">")
+WORDS = {"and", "or", "not", "true", "false", "null"}
+_TOKEN = re.compile(
+    r"""\s*(?:
+      (?P<num>-?\d+(?:\.\d+)?(?![\w.]))
+    | (?P<str>'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")
+    | (?P<op>==|!=|<=|>=|<|>|\(|\))
+    | (?P<ref>[A-Za-z_][\w-]*(?:\.[A-Za-z0-9_-]+)*)
+    )""",
+    re.X,
+)
+RENDER_ERRORS = (KeyError, TypeError, IndexError, ExprError)
+
+
+def _tokens(text: str) -> list[tuple[str, str]]:
+    out, i = [], 0
+    while text[i:].strip():
+        m = _TOKEN.match(text, i)
+        if m is None:
+            raise ExprError(f"cannot read {text[i:].strip()[:24]!r}")
+        kind = m.lastgroup or ""
+        val = m.group(kind)
+        out.append(("word" if kind == "ref" and val in WORDS else kind, val))
+        i = m.end()
+    return out
+
+
+class _Expr:
+    def __init__(self, toks: list[tuple[str, str]]) -> None:
+        self.t, self.i = toks, 0
+
+    def peek(self) -> tuple[str, str]:
+        return self.t[self.i] if self.i < len(self.t) else ("end", "")
+
+    def take(self) -> tuple[str, str]:
+        tok = self.peek()
+        self.i += 1
+        return tok
+
+    def expr(self):
+        node = self.conj()
+        while self.peek() == ("word", "or"):
+            self.take()
+            node = Op("or", (node, self.conj()))
+        return node
+
+    def conj(self):
+        node = self.neg()
+        while self.peek() == ("word", "and"):
+            self.take()
+            node = Op("and", (node, self.neg()))
+        return node
+
+    def neg(self):
+        if self.peek() == ("word", "not"):
+            self.take()
+            return Op("not", (self.neg(),))
+        return self.cmp()
+
+    def cmp(self):
+        left = self.atom()
+        kind, val = self.peek()
+        if kind == "op" and val in CMP:
+            self.take()
+            node = Op(val, (left, self.atom()))
+            if self.peek()[0] == "op" and self.peek()[1] in CMP:
+                raise ExprError("comparisons do not chain: join them with and")
+            return node
+        return left
+
+    def atom(self):
+        kind, val = self.take()
+        if kind == "num":
+            return Lit(float(val) if "." in val else int(val))
+        if kind == "str":
+            return Lit(re.sub(r"\\(.)", r"\1", val[1:-1]))
+        if kind == "word" and val in ("true", "false", "null"):
+            return Lit({"true": True, "false": False, "null": None}[val])
+        if kind == "ref":
+            name, *parts = val.split(".")
+            return Ref(name, tuple(parts))
+        if (kind, val) == ("op", "("):
+            node = self.expr()
+            if self.take() != ("op", ")"):
+                raise ExprError("a ( with no )")
+            return node
+        raise ExprError(f"expected a value, found {val or 'the end'}")
+
+
+@functools.cache
+def compile_expr(text: str):
+    """The tree of one expression; ExprError says what is wrong with it."""
+    p = _Expr(_tokens(text))
+    if not p.t:
+        raise ExprError("an empty expression")
+    tree = p.expr()
+    if p.i < len(p.t):
+        raise ExprError(f"unexpected {p.peek()[1]!r}")
+    return tree
+
+
+def refs(tree) -> list[Ref]:
+    if isinstance(tree, Ref):
+        return [tree]
+    if isinstance(tree, Op):
+        out: list[Ref] = []
+        for a in tree.args:
+            out += [r for r in refs(a) if r not in out]
+        return out
+    return []
+
+
+def _same(a, b) -> bool:
+    num = (int, float)
+    if isinstance(a, bool) or isinstance(b, bool):
+        return type(a) is type(b) and a == b
+    if isinstance(a, num) and isinstance(b, num):
+        return a == b
+    return type(a) is type(b) and a == b
+
+
+def _kind(v) -> str:
+    return "null" if v is None else type(v).__name__
+
+
+def evaluate(tree, scope: dict):
+    """A tree's value. A name or field with no value is None (null), so
+    ``or`` gives a default."""
+    if isinstance(tree, Lit):
+        return tree.value
+    if isinstance(tree, Ref):
+        try:
+            return lookup(scope, tree.name, list(tree.parts))
+        except (KeyError, IndexError, TypeError, ValueError):
+            return None
+    op, args = tree.op, tree.args
+    if op == "or":
+        a = evaluate(args[0], scope)
+        return a if a else evaluate(args[1], scope)
+    if op == "and":
+        a = evaluate(args[0], scope)
+        return evaluate(args[1], scope) if a else a
+    if op == "not":
+        return not evaluate(args[0], scope)
+    a, b = evaluate(args[0], scope), evaluate(args[1], scope)
+    if op == "==":
+        return _same(a, b)
+    if op == "!=":
+        return not _same(a, b)
+    nums = all(isinstance(x, int | float) and not isinstance(x, bool) for x in (a, b))
+    if not nums and not (isinstance(a, str) and isinstance(b, str)):
+        raise ExprError(
+            f"{op} compares two numbers or two strings, not {_kind(a)} and {_kind(b)}"
+        )
+    return {"<": a < b, ">": a > b, "<=": a <= b, ">=": a >= b}[op]
+
+
+def render(template: str, scope: dict, quote=None) -> str:
+    """Each ``{{expr}}`` replaced by its value: a string as it is, anything
+    else as JSON, then through ``quote`` (shlex.quote for a command). One
+    that comes to null raises KeyError."""
+
+    def one(m: re.Match) -> str:
+        v = evaluate(compile_expr(m.group(1)), scope)
+        if v is None:
+            raise KeyError(
+                f"{{{{{m.group(1).strip()}}}}} has no value; give a default with or"
+            )
+        text = v if isinstance(v, str) else json.dumps(v)
+        return quote(text) if quote else text
+
+    return TEMPLATE.sub(one, template)
 
 
 def value_of(raw, scope: dict):
-    """A map's ``over``: a literal list as it is, or the value of a string
-    that is one reference, not rendered to text."""
+    """A string that is one ``{{expr}}`` gives the expression's value, not
+    its text (a map's over, a loop's max, a wait); anything else is itself."""
     if isinstance(raw, str) and (m := WHOLE.match(raw)):
-        return lookup(scope, m.group(1), list(filter(None, m.group(2).split("."))))
+        return evaluate(compile_expr(m.group(1)), scope)
     return raw
 
 
@@ -489,14 +688,9 @@ class _Parser:
         for n in nodes.values():
             afters = {a for x in [n, *ancestors(n)] for a in x.after}
             items = {nodes[mid].body.get("as") for mid in n.maps}  # enclosing maps
-            for path, text in self._strings(n):
-                for bad in BRACES.findall(REF.sub("", text)):
-                    self.err(
-                        path,
-                        f"{bad} is not a reference: a name, then .key or .0 parts",
-                    )
-                for m in REF.finditer(text):
-                    name, first = m.group(1), (m.group(2).split(".") + ["", ""])[1]
+            for path, tree in self._exprs(n):
+                for r in refs(tree):
+                    name, first = r.name, (r.parts or ("",))[0]
                     if name == "args":
                         continue
                     if name in items:
@@ -553,6 +747,31 @@ class _Parser:
             ):
                 return p, branch
         return None
+
+    def _exprs(self, n: Node) -> list[tuple[str, object]]:
+        """Every expression a node holds, with the YAML path of its string:
+        each {{...}} in a template string, and an expr probe whole. A string
+        that does not compile is an error here and yields nothing."""
+        out = []
+        for path, text in self._strings(n):
+            rest = TEMPLATE.sub("", text)
+            if "{{" in rest:
+                self.err(path, "a {{ with no }}")
+            for m in TEMPLATE.finditer(text):
+                try:
+                    out.append((path, compile_expr(m.group(1))))
+                except ExprError as e:
+                    self.err(path, f"{{{{{m.group(1).strip()}}}}}: {e}")
+        for path, text in self._bare(n):
+            try:
+                out.append((path, compile_expr(text)))
+            except ExprError as e:
+                self.err(path, f"{text}: {e}")
+        return out
+
+    @staticmethod
+    def _bare(n: Node) -> list[tuple[str, str]]:
+        return []  # task 4 adds expr probes and judge inputs
 
     @staticmethod
     def _strings(n: Node) -> list[tuple[str, str]]:
