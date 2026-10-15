@@ -3,6 +3,8 @@ reading a page or a section. The last two tests are the ranking table:
 questions an agent would ask, and the page or section each must find first, or,
 where two pages both answer it, in its first three results."""
 
+import re
+
 import pytest
 
 from aegis.helppages import Index, load, parse, slug
@@ -166,11 +168,19 @@ FIRST = [
     ("rename my session", "sessions#rename-it"),
     ("run aegis in the background", "commands"),
     ("first time using aegis", "getting-started"),
+    ("learn aegis from my first session to a queue of workers", "getting-started"),
     ("update a help page after changing a tool", "writing-help-pages"),
 ]
 
 # Questions two pages answer: one of them must be in the first three.
 EITHER = [
+    ("step by step tutorial for linked servers", {"tutorial-links", "links"}),
+    (
+        "learn the canvas and docked panes step by step",
+        {"tutorial-layouts", "transcript"},
+    ),
+    ("try aegis on my phone step by step", {"tutorial-phone", "phone"}),
+    ("tutorial for running a server for other people", {"tutorial-server", "tokens"}),
     ("send work to another server", {"handoffs", "links"}),
     ("make the agent run on haiku", {"sessions", "config"}),
     ("reopen an archived session", {"sessions", "getting-started"}),
@@ -190,3 +200,12 @@ def test_a_question_two_pages_answer_finds_one_in_the_first_three(question, page
     hits = Index(load()).search(question, limit=3)
     found = [h.ref.split("#")[0] for h in hits]
     assert pages & set(found), f"{question!r} found {[h.ref for h in hits]}"
+
+
+def test_getting_started_comes_first_and_its_next_names_every_other_tutorial():
+    index = Index(load())
+    tutorials = [p["id"] for p in index.listing() if p["kind"] == "tutorial"]
+    assert tutorials[0] == "getting-started"
+    nxt = next(s for s in index.pages["getting-started"].sections if s.slug == "next")
+    linked = re.findall(r"\]\(([a-z0-9-]+)\)", nxt.text)
+    assert sorted(linked) == sorted(tutorials[1:])
