@@ -85,31 +85,46 @@ def context_from(raw: object) -> dict:
 
 
 # How many workflow node sessions may be open at once on this server, every
-# run together (workflows.py). Both out-of-memory kills the workflows design
-# measured came from too many sessions at once.
-WORKFLOWS_DEFAULTS = {"max_agents": 4}
+# run together (workflows.py): ``total`` for all agents, and a number per
+# agent alias for that alias alone. Both out-of-memory kills the workflows
+# design measured came from too many sessions at once.
+WORKFLOWS_DEFAULTS = {"max_agents": {"total": 4}}
+
+
+def _positive(v: object) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and v >= 1
 
 
 def workflows_from(raw: object) -> dict:
-    """The ``workflows:`` block over its defaults. A wrong block keeps the
-    default in force and carries ``error`` for aegis doctor, as the context
-    block does."""
-    out: dict = dict(WORKFLOWS_DEFAULTS)
+    """The ``workflows:`` block over its defaults. ``max_agents`` is
+    ``{total: N, <agent>: M, ...}``, or a bare N for ``{total: N}``; a
+    mapping without ``total`` keeps the default total. A wrong block keeps
+    the default in force and carries ``error`` for aegis doctor, as the
+    context block does. Whether each alias names an agent is the doctor's
+    to say, since the agents are another block."""
+    default = {"max_agents": dict(WORKFLOWS_DEFAULTS["max_agents"])}
     if raw is None:
-        return out
+        return default
     if not isinstance(raw, dict):
-        return out | {"error": "workflows must be a mapping with max_agents"}
-    for k, v in raw.items():
-        if k not in WORKFLOWS_DEFAULTS:
-            return dict(WORKFLOWS_DEFAULTS) | {
+        return default | {"error": "workflows must be a mapping with max_agents"}
+    for k in raw:
+        if k != "max_agents":
+            return default | {
                 "error": f"workflows has no key {k!r}; it takes max_agents"
             }
-        if isinstance(v, bool) or not isinstance(v, int) or v < 1:
-            return dict(WORKFLOWS_DEFAULTS) | {
-                "error": f"workflows.{k} {v!r} is not a positive integer"
+    m = raw.get("max_agents", default["max_agents"])
+    if _positive(m):
+        return {"max_agents": {"total": m}}
+    if not isinstance(m, dict):
+        return default | {
+            "error": f"workflows.max_agents {m!r} is not {{total: N, <agent>: M}}"
+        }
+    for k, v in m.items():
+        if not _positive(v):
+            return default | {
+                "error": f"workflows.max_agents.{k} {v!r} is not a positive integer"
             }
-        out[k] = v
-    return out
+    return {"max_agents": default["max_agents"] | {str(k): v for k, v in m.items()}}
 
 
 def park_from(raw: object) -> dict:

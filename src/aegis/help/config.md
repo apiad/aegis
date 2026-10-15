@@ -174,17 +174,21 @@ A block with an unknown key, or a value out of range, keeps every default,
 ## Workflows
 
 `workflows:` bounds the node sessions every workflow on this server may have
-open at once. `max_agents:` is that number, 4 when the block is absent. A
-workflow's own `limits` can only lower it for that run.
+open at once. `max_agents:` holds `total`, the bound for all agents together,
+and a number for any agent alias that needs a bound of its own. An alias with
+no number of its own is bound only by `total`. Without the block the bound is
+`{total: 4}`, and a bare number is read as the total.
 
 ```yaml
 workflows:
-  max_agents: 6
+  max_agents: {total: 10, opus: 5, haiku: 2}
 ```
 
-Each session's memory is still capped by `session_memory_max:`, so the most
-memory workflows can take is about the two multiplied. A wrong block keeps 4,
-and `aegis doctor` names the mistake.
+A workflow's own `limits`, of the same shape, can only lower these for that
+run. Each session's memory is still capped by `session_memory_max:`, so the
+most memory workflows can take is about `total` times that. A wrong block
+keeps `{total: 4}`, and `aegis doctor` names the mistake, an alias that is not
+an agent included.
 
 ## Terminals
 

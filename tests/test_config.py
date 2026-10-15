@@ -148,9 +148,15 @@ def test_a_bad_context_keeps_the_defaults_and_says_why():
 def test_the_workflows_block_sets_the_pool_and_rides_the_snapshot(tmp_path):
     from aegis.config import WORKFLOWS_DEFAULTS, workflows_from
 
-    assert workflows_from(None) == WORKFLOWS_DEFAULTS == {"max_agents": 4}
-    snap = Snapshot.parse(tmp_path, None, {"workflows": {"max_agents": 2}})
-    assert snap.workflows == {"max_agents": 2} and snap.unknown_keys == ()
+    assert workflows_from(None) == WORKFLOWS_DEFAULTS == {"max_agents": {"total": 4}}
+    assert workflows_from({"max_agents": 2}) == {"max_agents": {"total": 2}}
+    assert workflows_from({"max_agents": {"opus": 1}}) == {
+        "max_agents": {"total": 4, "opus": 1}
+    }
+    raw = {"workflows": {"max_agents": {"total": 10, "opus": 5}}}
+    snap = Snapshot.parse(tmp_path, None, raw)
+    assert snap.workflows == {"max_agents": {"total": 10, "opus": 5}}
+    assert snap.unknown_keys == ()
 
 
 def test_a_bad_workflows_block_keeps_the_default_and_says_why():
@@ -161,10 +167,14 @@ def test_a_bad_workflows_block_keeps_the_default_and_says_why():
         ({"max_agent": 2}, "max_agent"),
         ({"max_agents": 0}, "max_agents"),
         ({"max_agents": True}, "max_agents"),
+        ({"max_agents": {"total": 2, "opus": 0}}, "max_agents.opus"),
         ("many", "mapping"),
     ):
         w = workflows_from(raw)
         assert word in w["error"]
         assert w["max_agents"] == WORKFLOWS_DEFAULTS["max_agents"]
         assert _workflows(w).level == "error"
-    assert _workflows(workflows_from({"max_agents": 3})).level == "ok"
+    w = workflows_from({"max_agents": {"total": 3, "opus": 1}})
+    assert _workflows(w, ("opus",)).level == "ok"
+    bad = _workflows(workflows_from({"max_agents": {"opsu": 1}}), ("opus",))
+    assert bad.level == "error" and "opsu" in bad.message

@@ -344,11 +344,20 @@ def _network(snap: Snapshot) -> Finding:
     )
 
 
-def _workflows(w: dict) -> Finding:
+def _workflows(w: dict, agents: tuple[str, ...] = ()) -> Finding:
     if "error" in w:
         return Finding("error", "workflows", w["error"])
+    m = w["max_agents"]
+    unknown = [k for k in m if k != "total" and k not in agents]
+    if unknown:
+        return Finding(
+            "error",
+            "workflows",
+            f"max_agents names {', '.join(unknown)}, not an agent in agents:",
+        )
+    each = "".join(f", {n} {k}" for k, n in m.items() if k != "total")
     return Finding(
-        "ok", "workflows", f"at most {w['max_agents']} workflow node sessions at once"
+        "ok", "workflows", f"at most {m['total']} workflow node sessions at once{each}"
     )
 
 
@@ -444,7 +453,7 @@ async def doctor(
     out.append(_context(snap.context))
     out.append(_park(snap.park))
     out.append(_network(snap))
-    out.append(_workflows(snap.workflows))
+    out.append(_workflows(snap.workflows, tuple(a.name for a in snap.agents)))
     out.append(_session_memory(snap))
     out.append(_state(roots))
     return out
