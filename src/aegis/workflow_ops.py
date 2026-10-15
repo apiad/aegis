@@ -3,7 +3,9 @@
 Approving and rejecting are a person's: neither is marked for agents, so no
 MCP tool reaches them (ops.Registry.call refuses ``not_for_agents``). That is
 the whole of "an agent never starts a workflow without a person's click".
-Answering a person's gate is the same: ``workflow.gate`` is not for agents.
+Answering a person's gate is the same: ``workflow.gate`` is not for agents,
+nor are ``workflow.apply_edit`` and ``workflow.reject_edit``: an agent
+proposes a change, and only a person lets it run.
 """
 
 from __future__ import annotations
@@ -80,6 +82,18 @@ class Answer(_Strict):
         default="",
         description="The answer to a question, or one sentence for the story saying why.",
     )
+
+
+class EditDef(_Strict):
+    run: str
+    definition: str = Field(
+        min_length=1, description="The whole workflow as YAML, with the same ids."
+    )
+
+
+class EditName(_Strict):
+    run: str
+    v: int
 
 
 class GateAnswer(_Strict):
@@ -198,6 +212,31 @@ def register_workflow_ops(app: App) -> None:
     async def workflow_gate(p: GateAnswer, caller):
         owned(p.run, caller)
         await wf.answer_gate(p.run, p.node, p.go, p.answer, by="person")
+        return wf.wire(p.run)
+
+    @r.op("workflow.edit", EditDef, agent=True)
+    async def workflow_edit(p: EditDef, caller):
+        """Change your running workflow: send the whole definition with the
+        same ids. Steps that started stay as they are, except a failed or
+        stopped one, which the change retries. The person approves a diff of
+        the steps' sentences on a card under this call; until then the run
+        goes on, and steps the change touches wait for the answer."""
+        owned(p.run, caller)
+        st = wf.propose_edit(me(caller), p.run, p.definition)
+        assert st.proposal is not None
+        return {"run": p.run, "proposed": st.proposal["v"], "diff": st.proposal["diff"]}
+
+    # Not marked for agents: only a person applies or rejects an edit.
+    @r.op("workflow.apply_edit", EditName)
+    async def workflow_apply_edit(p: EditName, caller):
+        owned(p.run, caller)
+        await wf.apply_edit(p.run, p.v)
+        return wf.wire(p.run)
+
+    @r.op("workflow.reject_edit", EditName)
+    async def workflow_reject_edit(p: EditName, caller):
+        owned(p.run, caller)
+        wf.reject_edit(p.run, p.v)
         return wf.wire(p.run)
 
     @r.op("workflow.status", RunName, agent=True, read=True)
