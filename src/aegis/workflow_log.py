@@ -86,8 +86,8 @@ class RunState:
     edits: list[dict] = field(default_factory=list)  # {v, diff, status, t}
 
 
-def _tell(st: RunState, t: float, mark: str, text: str) -> None:
-    st.story.append({"t": t, "mark": mark, "text": text})
+def _tell(st: RunState, t: float, mark: str, text: str, **extra) -> None:
+    st.story.append({"t": t, "mark": mark, "text": text, **extra})
 
 
 def _stop_leaves(st: RunState, t: float) -> None:
@@ -143,11 +143,14 @@ def apply(st: RunState, r: dict) -> None:
         _reset(st, r.get("reset") or [])
         st.open, st.proposal = {}, None
         kept = sum(n.status in ("done", "skipped") for n in st.nodes.values())
+        # A new definition's diff rides on the line, for the again card.
+        change = {k: r[k] for k in ("diff", "commands") if r.get(k)}
         _tell(
             st,
             t,
             "ok",
             f"Armed again: {kept} done step{'s' if kept != 1 else ''} kept.",
+            **change,
         )
     elif ev == "note":
         _tell(st, t, "note", r.get("text") or "")

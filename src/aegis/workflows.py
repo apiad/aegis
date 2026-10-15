@@ -739,14 +739,20 @@ class Workflows:
                     x for x, _ in self._under(st, node, k)
                 }  # a failed group, whole
         v = st.version + (text != st.text)
-        self._log(run, {"ev": "rearmed", "v": v, "text": text, "reset": sorted(reset)})
+        rec = {"ev": "rearmed", "v": v, "text": text, "reset": sorted(reset)}
+        if text != st.text:
+            # The again card shows the change, as an edit's card does.
+            d = edit_diff(old, wf)
+            rec |= {"diff": d["diff"], "commands": d["commands"]}
+        self._log(run, rec)
         self.defs[run] = wf
         owner.record_card(
             {
                 "kind": "workflow_decision",
                 "run": run,
                 "what": "again",
-                "key": str(len(st.story)),
+                # The index of its "Armed again" line, which the card reads.
+                "key": str(len(st.story) - 1),
             }
         )
         return st

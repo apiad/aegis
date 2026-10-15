@@ -347,3 +347,26 @@ def test_the_gate_card_fits_a_phone(server, browser):  # noqa: F811
     pg.click(".wfcard[data-status=armed] button >> text=Approve and run")
     pg.wait_for_selector(".wfdcard[data-what=gate] textarea")
     assert pg.evaluate("document.documentElement.scrollWidth") <= 390 and not errors
+
+
+def test_arming_again_with_a_new_definition_shows_its_diff(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_arm " + json.dumps({"definition": GATED, "args": {}}))
+    page.click(".wfcard[data-status=armed] button >> text=Approve and run")
+    gate = ".wfdcard[data-what=gate]"
+    page.click(f"{gate} button >> text=Stop")
+    page.wait_for_selector(".wfcard[data-status=stopped]")
+    run = page.eval_on_selector(".wfcard", "c => c.dataset.run")
+    changed = GATED.replace("by: person", "by: main").replace(
+        '{sh: "true", id: ship', '{sh: "curl -X POST deploy", id: ship'
+    )
+    send(page, "/mcp workflow_arm " + json.dumps({"run": run, "definition": changed}))
+    card = ".wfdcard[data-what=again]"
+    page.wait_for_selector(f"{card} >> text=Run again")
+    page.wait_for_selector(f"{card} .d.change >> text=Ask the person.")
+    page.wait_for_selector(f"{card} .d.change .f >> text=who decides")
+    page.wait_for_selector(f"{card} pre.cmd >> text=$ curl -X POST deploy")
+    page.wait_for_selector(f"{card} >> text=Adds 1 shell command")
+    page.wait_for_selector(f"{card} button >> text=Approve and run")
+    assert not page.errors
