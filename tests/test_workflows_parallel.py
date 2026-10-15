@@ -268,3 +268,89 @@ root:
     assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
     assert peak["total"] == 2 and peak["haiku"] == 1, peak
     assert not overlap(spans(st, "h1"), spans(st, "h2"))
+
+
+async def test_a_map_waits_on_one_item_of_another(world):
+    (world.root / ".aegis.yaml").write_text(CONFIG + "workflows: {max_agents: 4}\n")
+    wf_text = f"""
+id: teams
+title: Teams
+say: The mock team starts once the base image is built.
+root:
+  par:
+    - map: {{over: [{{id: base}}, {{id: svc}}], as: s, cap: 1, do: {leaf("img", "Build {{s.id}}.", report())}}}
+      id: images
+      say: Images, one at a time.
+    - map: {{over: [{{id: m1}}], as: m, do: {leaf("mk", "Mock {{m.id}}.", report())}}}
+      id: mock
+      after: [images.base]
+      say: Mocks, after the base.
+  say: Both teams.
+"""
+    run = await arm(world, wf_text)
+    wf = world.app.workflows
+    await until(lambda: wf.runs[run].status != "running", timeout=40)
+    st = wf.runs[run]
+    assert st.status == "done"
+    base, svc, mk = (
+        st.nodes[k] for k in ("images.base.img", "images.svc.img", "mock.m1.mk")
+    )
+    assert base.ended <= mk.started < svc.ended
+
+
+async def test_a_node_starts_on_an_early_output_and_reads_it(world):
+    (world.root / ".aegis.yaml").write_text(CONFIG + "workflows: {max_agents: 4}\n")
+    probe = script(
+        [
+            "workflow_output",
+            {"name": "timers", "value": [3, 5], "summary": "Found two timers."},
+        ],
+        ["workflow_output", {"name": "timers", "value": [], "summary": "Again."}],
+        ["sleep", 3],
+        ["workflow_result", {"value": {"n": 1}, "summary": "Probed."}],
+    )
+    wf_text = f"""
+id: early
+title: Early
+say: A probe and a step that needs only part of it.
+root:
+  par:
+    - {leaf("probe", "Probe the timers.", probe)}
+    - {leaf("use", "Use timers {{probe.timers}}.", report(wait=0.1), "")}
+  say: Both.
+""".replace("    - {id: use,", "    - {after: [probe.timers], id: use,")
+    run = await arm(world, wf_text)
+    wf = world.app.workflows
+    await until(lambda: wf.runs[run].status != "running", timeout=40)
+    st = wf.runs[run]
+    assert st.status == "done"
+    assert st.nodes["probe"].outputs == {
+        "timers": [3, 5]
+    }  # the second call was refused
+    assert st.nodes["use"].started < st.nodes["probe"].ended
+    assert st.nodes["use"].say == "Use timers [3, 5]."
+    assert any(
+        s["text"] == "Probe the timers. Early output timers: Found two timers."
+        for s in st.story
+    )
+
+
+async def test_an_after_that_can_never_come_fails_the_waiting_node(world):
+    wf_text = f"""
+id: never
+title: Never
+say: A wait on an item that is not there.
+root:
+  par:
+    - map: {{over: [{{id: a}}], as: x, do: {leaf("one", "Item {{x.id}}.", report(wait=0.1))}}}
+      id: items
+      say: Items.
+    - {leaf("late", "After a missing item.", report(wait=0.1))}
+  say: Both.
+""".replace("    - {id: late,", "    - {after: [items.zz], id: late,")
+    run = await arm(world, wf_text)
+    wf = world.app.workflows
+    await until(lambda: wf.runs[run].status != "running", timeout=30)
+    st = wf.runs[run]
+    assert st.status == "failed"
+    assert "map items has no item zz" in st.nodes["late"].error

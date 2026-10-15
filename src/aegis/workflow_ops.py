@@ -42,6 +42,18 @@ class Result(_Strict):
     )
 
 
+class Output(_Strict):
+    name: str = Field(
+        pattern=r"^[A-Za-z0-9_-]{1,40}$",
+        description="The output's name, as later steps wait on it (your-node.name).",
+    )
+    value: Any = Field(description="The output's value.")
+    summary: str = Field(
+        min_length=1,
+        description="One plain sentence for the person: what this output is.",
+    )
+
+
 def register_workflow_ops(app: App) -> None:
     r, wf, reg = app.registry, app.workflows, app.sessions
 
@@ -117,3 +129,11 @@ def register_workflow_ops(app: App) -> None:
         node's schema and a one-sentence summary for the person. Your turn
         should end right after."""
         return wf.result(me(caller), p.value, p.summary)
+
+    # Open to read permission, as workflow_result is.
+    @r.op("workflow.output", Output, agent=True, read=True)
+    async def workflow_output(p: Output, caller):
+        """Give an early output while your node keeps working, as a workflow
+        node: a step waiting on it starts now. Each name once. Your first
+        message names the outputs other steps wait on."""
+        return wf.output(me(caller), p.name, p.value, p.summary)
