@@ -521,12 +521,15 @@ const journal = new Journal(conn, $("journal"), {
 });
 // The Help tab (help.js), one per window like Settings. Its code blocks copy
 // as the transcript's do.
-// Start this tutorial: what /tutorial <page> does, on default_agent. A failure
-// shows as an error toast, since the Help tab belongs to no session.
+// Guided tour: what /tutorial <page> does, on default_agent, for any page. A
+// failure shows as an error toast, since the Help tab belongs to no session.
 const helpTab = new Help(conn, $("help"), {
   go,
   onKeys: () => help(true),
-  onStart: (id) => startGuide({ page: id }).catch((e) => toast(e.message, { kind: "error" })),
+  onStart: (id, tutorial) =>
+    startGuide({ page: id }, "tutorial", tutorial).catch((e) => toast(e.message, { kind: "error" })),
+  onAsk: (question, page) =>
+    startGuide({ question, page }, "ask", false).catch((e) => toast(e.message, { kind: "error" })),
 });
 installCopy($("help"), copyDeps);
 let sideJournalTimer = null;
@@ -2195,9 +2198,11 @@ function ranHint(kind) {
 
 // A guide session (help.guide), and its tab, as a spawn from the new tab
 // opens one. `params` are spawn fields; none at all means default_agent.
-async function startGuide(params, kind = "tutorial") {
+// `marks`: whether the server records this as the tutorial taken (a tutorial
+// page) so the hint hides; a tour of another page or a question marks nothing.
+async function startGuide(params, kind = "tutorial", marks = true) {
   const r = await conn.call("help.guide", { kind, ...params });
-  ranHint(kind);
+  if (marks) ranHint(kind);
   drawHints();
   go(`#s=${r.log_id}`);
   return r;

@@ -12,9 +12,11 @@ They read and write the caller's record in helpstate.py, deciding it before a
 guide spawns so the guide's own session cannot make a new person look like a
 returning one. help.guide spawns through session.spawn, the path /spawn takes,
 so the quota gate and ownership apply to a guide as to any session. The
-tutorial counts as taken once the guide runs: a spawn that fails marks
-nothing, and a title that cannot be set leaves the guide untitled rather than
-failing a call whose session already exists.
+tutorial counts as taken once the guide of a tutorial page runs: a spawn
+that fails marks nothing, and neither does a tour of another page or a
+question asked in the Help tab, so the new tab keeps offering the tutorial. A
+title that cannot be set leaves the guide untitled rather than failing a call
+whose session already exists.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ from pydantic import BaseModel, Field
 from .changelog_read import changelog_text, sections_between
 from .helppages import Index, load
 from .helpstate import HelpState, installed, newer
+from .names import TITLE_MAX
 from .ops import OpError
 
 if TYPE_CHECKING:
@@ -82,6 +85,47 @@ def tutorial_prompt(page_id: str) -> str:
     )
 
 
+def tour_prompt(page_id: str, title: str) -> str:
+    """The first message of a guided tour of a page that is not a tutorial:
+    the guide turns its sections into steps the person tries."""
+    return (
+        f"Read the help page `{page_id}` with help_read and give me a guided tour "
+        "of it, so I learn to use it by trying it. Talk to me in my language. "
+        f'Open with "Welcome to a guided tour of {title}" in my language and say '
+        "in a few lines what we will try. Turn the page's sections into steps I "
+        "do, one per turn, each saying what to do and what I should see, and end "
+        "each turn with turn_end. Ask me before any step that spawns agents, "
+        "spends quota or reaches another server. When I ask about something else, "
+        "answer it, then return to the step we were on. When the page is done, "
+        "suggest the tutorial or page to read next."
+    )
+
+
+def ask_prompt(question: str, page_id: str | None) -> str:
+    """The first message of a question asked in the Help tab, with the page
+    the person was reading, or none from the list."""
+    where = (
+        f"while reading the page `{page_id}`"
+        if page_id
+        else "while on the list of help pages"
+    )
+    quoted = "\n".join(f"  {line}" for line in question.strip().splitlines())
+    return (
+        f"I asked this in aegis's Help, {where}:\n\n{quoted}\n\n"
+        "Answer it. Find the answer in the help pages with help_search and "
+        "help_read before anything else, and say which page it came from. If "
+        "showing me would help, offer to, and ask before anything that spawns "
+        "agents or spends quota. Talk to me in my language and end each turn "
+        "with turn_end."
+    )
+
+
+def ask_title(question: str) -> str:
+    """'Help: ' and the question on one line, cut to fit a session title."""
+    title = "Help: " + " ".join(question.split())
+    return title if len(title) <= TITLE_MAX else title[: TITLE_MAX - 1] + "…"
+
+
 WHATS_NEW = """\
 aegis was upgraded. Below are the release notes since my last tour. Guide me
 through them, simplest first, one change per turn, and end each turn with
@@ -125,8 +169,10 @@ class DismissParams(BaseModel):
 
 class GuideParams(BaseModel):
     model_config = {"extra": "forbid"}
-    kind: Literal["tutorial", "whats_new"]
+    kind: Literal["tutorial", "whats_new", "ask"]
     page: str | None = None
+    # An ask's question, as the person typed it in the Help tab.
+    question: str | None = Field(None, min_length=1, max_length=4000)
     # The fields session.spawn takes. None leaves each to the agent, and no
     # agent means default_agent; session.spawn validates them.
     agent: str | None = None
@@ -210,18 +256,21 @@ def register_help_ops(app: App) -> None:
 
     @r.op("help.guide", GuideParams)
     async def help_guide(p: GuideParams, caller):
-        """Start a guide session: a tutorial on a help page, or a tour of the
-        release notes since the person's last one. Spawn with the prompt built
-        here, record what the person did, title it. Any page can be toured; the
-        client offers tutorial pages. Returns the new session's log id and
-        handle so the client can open its tab."""
+        """Start a guide session: a tutorial or a guided tour of a help page,
+        a question asked in the Help tab, or a tour of the release notes since
+        the person's last one. Spawn with the prompt built here, record what
+        the person did, title it. A page's own kind picks the prompt: a
+        tutorial page gets the tutorial's, any other page a tour. Returns the
+        new session's log id and handle so the client can open its tab."""
         if p.kind == "whats_new":
             # Decided before the spawn, as for a tutorial; a missing release
             # refuses here, before anything starts or is recorded.
             name, rec = record(caller)
             version = installed()
             title, prompt = whats_new_guide(changelog_text(), version, rec["toured"])
-            fields = p.model_dump(exclude={"kind", "page"}, exclude_none=True)
+            fields = p.model_dump(
+                exclude={"kind", "page", "question"}, exclude_none=True
+            )
             started = await r.call("session.spawn", fields | {"prompt": prompt}, caller)
             state.mark_toured(name, version)
             try:
@@ -229,23 +278,51 @@ def register_help_ops(app: App) -> None:
             except OpError as e:
                 log.warning("aegis: guide %s left untitled: %s", started["log_id"], e)
             return {"log_id": started["log_id"], "handle": started["handle"]}
-        page_id = p.page or TUTORIAL_DEFAULT
-        try:
-            index.read(page_id)
-        except KeyError as e:
-            raise OpError("unknown_page", e.args[0]) from None
-        # Before the spawn: the guide's own session must not make a new person
-        # look like one who was here before.
-        name, _ = record(caller)
-        fields = p.model_dump(exclude={"kind", "page"}, exclude_none=True)
-        started = await r.call(
-            "session.spawn", fields | {"prompt": tutorial_prompt(page_id)}, caller
-        )
-        state.mark_tutorial(name)
-        try:
-            app.sessions.rename(
-                started["log_id"], None, f"Tutorial: {index.pages[page_id].title}"
+        if p.kind == "ask":
+            if not p.question:
+                raise OpError("bad_params", "an ask needs a question")
+            if p.page:
+                try:
+                    index.read(p.page)
+                except KeyError as e:
+                    raise OpError("unknown_page", e.args[0]) from None
+            # Before the spawn, as for a tutorial: the asker's own session
+            # must not make a new person look like one who was here before.
+            record(caller)
+            fields = p.model_dump(
+                exclude={"kind", "page", "question"}, exclude_none=True
             )
+            started = await r.call(
+                "session.spawn",
+                fields | {"prompt": ask_prompt(p.question, p.page)},
+                caller,
+            )
+            title = ask_title(p.question)
+        else:
+            page_id = p.page or TUTORIAL_DEFAULT
+            try:
+                index.read(page_id)
+            except KeyError as e:
+                raise OpError("unknown_page", e.args[0]) from None
+            page = index.pages[page_id]
+            tutorial = page.kind == "tutorial"
+            name, _ = record(caller)
+            fields = p.model_dump(
+                exclude={"kind", "page", "question"}, exclude_none=True
+            )
+            prompt = (
+                tutorial_prompt(page_id)
+                if tutorial
+                else tour_prompt(page_id, page.title)
+            )
+            started = await r.call("session.spawn", fields | {"prompt": prompt}, caller)
+            # Only a tutorial counts as the tutorial taken: a tour of a how-to
+            # page leaves the new-tab hint on offer.
+            if tutorial:
+                state.mark_tutorial(name)
+            title = f"{'Tutorial' if tutorial else 'Tour'}: {page.title}"
+        try:
+            app.sessions.rename(started["log_id"], None, title)
         except OpError as e:
             log.warning("aegis: guide %s left untitled: %s", started["log_id"], e)
         return {"log_id": started["log_id"], "handle": started["handle"]}

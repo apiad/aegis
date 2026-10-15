@@ -117,7 +117,7 @@ def test_the_hint_hides_while_the_composer_points_at_a_linked_server(
     assert page.errors == []
 
 
-def test_start_this_tutorial_in_the_help_tab_starts_the_guide(
+def test_guided_tour_in_the_help_tab_starts_a_tutorial_or_a_tour(
     server,  # noqa: F811
     page,  # noqa: F811
 ):
@@ -126,18 +126,27 @@ def test_start_this_tutorial_in_the_help_tab_starts_the_guide(
     page.click("#help-btn")
     page.click('.helpv .hrow[data-ref="monitors"]')
     page.wait_for_function(titled, arg=TITLE["monitors"])
-    assert page.locator("button", has_text="Start this tutorial").is_hidden()
+    page.click("button:has-text('Guided tour')")
+    page.wait_for_selector("#a2[data-view=session]")
+    tour = page.evaluate("location.hash.slice(3)")
+    page.wait_for_function(ENTRIES_NAME, arg="monitors", timeout=8000)
+    assert meta(server, tour)["title"] == f"Tour: {TITLE['monitors']}"
+    page.click("#help-btn")
     page.click('.helpv .hrow[data-ref="getting-started"]')
     page.wait_for_function(titled, arg=TITLE["getting-started"])
-    page.click("button:has-text('Start this tutorial')")
-    page.wait_for_selector("#a2[data-view=session]")
+    page.click("button:has-text('Guided tour')")
+    # The help rows set #help=…; wait for the second guide's own #s= hash.
+    page.wait_for_function(
+        "t => location.hash.startsWith('#s=') && location.hash.slice(3) !== t",
+        arg=tour,
+    )
     log_id = page.evaluate("location.hash.slice(3)")
     page.wait_for_function(ENTRIES_NAME, arg="getting-started", timeout=8000)
     assert meta(server, log_id)["agent"] == "opus"  # default_agent
     assert page.errors == []
 
 
-def test_a_double_click_on_start_this_tutorial_starts_one_guide(
+def test_a_double_click_on_guided_tour_starts_one_guide(
     server,  # noqa: F811
     page,  # noqa: F811
 ):
@@ -146,7 +155,7 @@ def test_a_double_click_on_start_this_tutorial_starts_one_guide(
     page.click("#help-btn")
     page.click('.helpv .hrow[data-ref="getting-started"]')
     page.wait_for_function(titled, arg=TITLE["getting-started"])
-    page.dblclick("button:has-text('Start this tutorial')")
+    page.dblclick("button:has-text('Guided tour')")
     page.wait_for_selector("#a2[data-view=session]")
     page.wait_for_function(ENTRIES_NAME, arg="getting-started", timeout=8000)
     time.sleep(0.5)  # a second guide, had one started, has its tab by now
@@ -196,4 +205,30 @@ def test_enter_on_a_bare_command_with_an_argument_does_what_it_did(
         assert (page.input_value("#input"), name) == (line, name)
         assert page.is_visible("#cmd-menu"), name
     assert page.evaluate(sent) == before, "none of them reached the agent"
+    assert page.errors == []
+
+
+def test_a_question_typed_in_help_goes_to_an_agent_and_enter_still_searches(
+    server,  # noqa: F811
+    page,  # noqa: F811
+):
+    titled = "t => document.querySelector('.helpv .htitle')?.textContent === t"
+    q = "can two queues share a worker"
+    page.goto(server.url)
+    page.click("#help-btn")
+    page.click('.helpv .hrow[data-ref="queues"]')
+    page.wait_for_function(titled, arg=TITLE["queues"])
+    assert page.locator(".helpv .hask").is_hidden()
+    page.fill(".helpv .jq", q)
+    page.wait_for_selector(".helpv .hask:not([hidden])")
+    page.press(".helpv .jq", "Enter")
+    page.wait_for_function("() => location.hash.startsWith('#help=')")
+    assert page.locator("#tablist .tab").count() == 0
+    page.dblclick(".helpv .hask")
+    page.wait_for_selector("#a2[data-view=session]")
+    log_id = page.evaluate("location.hash.slice(3)")
+    page.wait_for_function(ENTRIES_NAME, arg=q, timeout=8000)
+    assert meta(server, log_id)["title"] == f"Help: {q}"
+    time.sleep(0.5)  # a second session, had the double click started one
+    assert page.locator("#tablist .tab").count() == 1
     assert page.errors == []

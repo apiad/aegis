@@ -31,6 +31,16 @@ with the paperclip go out with the first message.
 An agent starts a session with `session_spawn`, and a person can type
 `/spawn <agent> <prompt>` in any session's box (see the commands page).
 
+## From the Help tab
+
+Every help page has a Guided tour button. On a tutorial it starts the
+tutorial's guide; on any other page it starts a guide that turns the page into
+steps you try. To ask an agent a question about aegis, type the question in
+the Help tab's search box: an Ask an agent row appears above the results, and
+it starts a session whose first message is your question and, when a page
+is open, the page you were reading. Both open a new tab from the default agent and
+spend quota; Enter in the box still opens the best result.
+
 ## Permission
 
 Permission says what the agent may do, from least to most. aegis has no

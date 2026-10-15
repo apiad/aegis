@@ -144,6 +144,8 @@ def test_the_listing_is_by_kind_then_title():
 # first hit. A ranking change, or a page edit, that pushes it down fails here:
 # an agent reads the first hit, so second is already a wrong answer.
 FIRST = [
+    ("ask an agent a question from the help tab", "sessions#from-the-help-tab"),
+    ("give me a guided tour of a help page", "sessions#from-the-help-tab"),
     ("wait for CI without polling", "monitors#wait-on-ci"),
     ("how do I wait until a GitHub Actions run finishes", "monitors#wait-on-ci"),
     ("wait until other sessions finish", "monitors#wait-on-other-sessions"),
