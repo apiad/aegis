@@ -80,11 +80,19 @@ own token, so no tool asks who is calling.
   `session_close` closes one. A session the agent spawned, or a worker whose task
   it enqueued, closes at once when it is done. Any other close is refused first,
   with what that session is doing and who started it, and goes through only on a
-  second call with the one-time token the refusal carries.
+  second call with the one-time token the refusal carries. A session spawned
+  with `quiet=true`, or quieted with `session_quiet`, works without a tab, as a
+  dimmed card at the end of the Fleet, and gets its tab back when its turn ends.
 - `queue_enqueue` hands a task to a queue: a pool of worker sessions with one
   agent and a limit on how many run at once. The result comes back as a turn in
   the session that asked, headed `> from queue:<name> · task#<id>`.
-  `task_status`, `task_cancel` and `task_resume` follow it.
+  `task_status`, `task_cancel` and `task_resume` follow it. Workers start
+  quiet, so only a failed one takes a tab.
+- `schedule_create` sends a prompt on a clock: every few minutes, on a cron
+  line, or once at a set time, into a new session from an agent or into an open
+  session's inbox. An optional bash check fires a tick only when its output
+  changed, and a fire waits while the quota is over the schedule's own lines.
+  The Schedules view (Alt+K) edits the same schedules and lists their runs.
 - `monitor_start` watches a long process with shell commands for `done`, `fail`
   and `progress`, and wakes the agent when one of them passes or the timeout
   does. The agent ends its turn instead of polling, and the monitor sits in its
@@ -95,7 +103,8 @@ own token, so no tool asks who is calling.
   polling either.
 - `plan_update` and `turn_end` tell you what the agent is doing and how each turn
   ended: a question for you, something to read, or finished work, with up to
-  three replies you send with one tap.
+  three replies you send with one tap. A turn cannot end as finished while its
+  plan still has open items.
 - `toast` shows you one line mid-turn, in every open browser, as a card in the
   corner that names the session, and as a desktop notification while the page is
   hidden; a click opens its tab.
@@ -207,6 +216,20 @@ it sends it, and a file sent again from the same path updates its card.
   answered. A large session idle past the cache's one-hour lifetime says that
   its next message rewrites the whole context, and the Usage card counts tool
   calls, the cache hit rate and compactions.
+- **Terminals.** + opens a shell, or a command from the `terminals:` block of
+  `.aegis.yaml`, in a tab: direct mode for full-screen programs, a line box with
+  history, and a key row on a phone. It keeps running when the browser closes,
+  and a browser that opens it again replays what it printed.
+- **Side questions.** `/btw` asks a running session something without stopping
+  its turn. The agent that `btw:` names in the config answers from the
+  transcript, in a block that folds, and the session's own agent never sees it.
+- **References that say what they are.** A path in a reply shows a file or
+  folder icon, or is struck out when nothing is there; `owner/repo#n` links to
+  GitHub, and a URL carries its site's icon.
+- **Help that teaches.** `/tutorial` starts a guide for the five-level
+  getting-started tutorial or any of four others. Every help page has a Guided
+  tour button, and the Help search box asks an agent when the pages are not
+  enough.
 - **Ten themes.** Ink, Logbook, Electric, Phosphor, Blueprint, Amphora, Riso, Solari, Aizome and Poster.
 
 ## Configure
