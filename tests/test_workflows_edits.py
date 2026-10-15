@@ -79,7 +79,7 @@ async def test_an_edit_waits_for_the_person_and_then_runs_the_new_step(world):
     # The new step goes before ship, so ship waits for the answer too.
     await until(lambda: tree(wf, run)["ship"].get("held"), timeout=10)
     assert "ship" not in wf.runs[run].nodes
-    await world.app.registry.call("workflow.apply_edit", {"run": run, "v": 2})
+    await world.app.registry.call("workflow.edit.apply", {"run": run, "v": 2})
     await until(lambda: wf.runs[run].status == "done", timeout=20)
     assert (world.root / "notes").exists() and wf.runs[run].version == 2
     await until(lambda: woke(main, " · edit · v2 · "), timeout=10)
@@ -90,9 +90,9 @@ async def test_no_agent_applies_or_rejects_an_edit(world):
     # Spec §12: this must fail if either op is marked for agents.
     main, run = await armed(world)
     ok(await turn(main, mcp("workflow_edit", run=run, definition=WITH_NOTES)))
-    for tool in ("workflow_apply_edit", "workflow_reject_edit"):
+    for tool in ("workflow_edit_apply", "workflow_edit_reject"):
         assert (await turn(main, mcp(tool, run=run, v=2))).startswith("mcp error")
-    for op in ("workflow.apply_edit", "workflow.reject_edit"):
+    for op in ("workflow.edit.apply", "workflow.edit.reject"):
         with pytest.raises(OpError):
             await world.app.registry.call(
                 op, {"run": run, "v": 2}, Caller("agent", main.log_id)
@@ -155,7 +155,7 @@ async def test_a_touched_node_waits_for_the_answer(world):
     await world.app.workflows.step()  # a pass after build, which would start ship
     assert tree(wf, run)["ship"].get("held")
     assert "ship" not in wf.runs[run].nodes  # not started while the edit waits
-    await world.app.registry.call("workflow.reject_edit", {"run": run, "v": 2})
+    await world.app.registry.call("workflow.edit.reject", {"run": run, "v": 2})
     await until(lambda: wf.runs[run].status == "done", timeout=20)
     await until(lambda: woke(main, " · edit · v2 · "), timeout=10)
     assert "kept the plan" in woke(main, " · edit · v2 · ")[0]

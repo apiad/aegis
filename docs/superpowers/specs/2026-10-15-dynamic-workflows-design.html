@@ -175,7 +175,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · dynamic workflows</span>
-  <span class="st"><span class="pill acc">slices 0 to 3 built</span><span class="pill">2026-10-15</span><span class="pill">#418</span></span>
+  <span class="st"><span class="pill acc">slices 0 to 4 built</span><span class="pill">2026-10-15</span><span class="pill">#418</span></span>
 </div>
 
 <div class="wrap">
@@ -213,7 +213,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <main>
 <h1>Dynamic workflows: agent-designed, person-approved, server-driven</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-15-dynamic-workflows-design.html</span><span>·</span><span>slices 0 and 1 on branch 418-dynamic-workflows, slice 2 on 418-workflows-slice-2</span><span>·</span><span>issue #418</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-15-dynamic-workflows-design.html</span><span>·</span><span>slices 0 and 1 on branch 418-dynamic-workflows, slice 2 on 418-workflows-slice-2, slice 4 on 418-workflows-slice-4</span><span>·</span><span>issue #418</span></div>
 <p class="lede">An agent asked to do a large piece of work writes it as a workflow: a tree of steps in which every node says, in plain language, what it does. The person reads that tree as the plan and approves it with one click. From then on the aegis server runs it, spawning and closing agents, waiting on checks, and waking the main agent only when a decision is due.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -434,10 +434,10 @@ workflow_arm(id, args, token). Schema: {…}  Text: "issue 197, the slices in th
     <tr><td>workflow_arm</td><td>Takes a definition or a saved id, the args, an optional token and an optional <code>dock</code>. Lints, creates the run, shows the card or starts it. With <code>run=</code> it arms a stopped run again, replaying its finished nodes from the log, and needs a new click.</td></tr>
     <tr><td>workflow_save</td><td>Writes <code>.aegis/workflows/&lt;id&gt;.yaml</code>. No approval: running always needs one.</td></tr>
     <tr><td>workflow_status</td><td>The tree with each node's state, session, times, outputs and summaries.</td></tr>
-    <tr><td>workflow_answer</td><td>Answers a <code>by: main</code> gate or a worker's question.</td></tr>
+    <tr><td>workflow_answer</td><td>Answers a <code>by: main</code> gate, a worker's question, or a failed step (retry, skip or fail).</td></tr>
     <tr><td>workflow_note</td><td>Adds a line to the run's story, for example why it answered a question as it did.</td></tr>
     <tr><td>workflow_edit</td><td>Proposes a new definition with the same ids; shows a plain-language diff card for the person.</td></tr>
-    <tr><td>workflow_stop</td><td>Stops the run; its live sessions are interrupted and unlocked.</td></tr>
+    <tr><td>workflow_stop</td><td>Stops the run; its live sessions are interrupted and unlocked. With a node, stops only that step, which then waits for an answer.</td></tr>
   </tbody>
 </table>
 <p>The approve, apply-edit and person-gate answers are operations not marked for agents, so no MCP tool reaches them.</p>

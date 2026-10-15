@@ -280,6 +280,7 @@ root:
     assert not overlap(spans(st, "h1"), spans(st, "h2"))
 
 
+@pytest.mark.slow  # two agent rounds one after the other: about 3 s of wall time
 async def test_a_map_waits_on_one_item_of_another(world):
     (world.root / ".aegis.yaml").write_text(CONFIG + "workflows: {max_agents: 4}\n")
     wf_text = f"""

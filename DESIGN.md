@@ -332,9 +332,17 @@ and is never run again (a crash's leftover is ended by pid and start time
 first). An if's branch, a loop's rounds and each until are logged once, so a
 restart never asks a probe again. Ids are scoped per map item, loop round and
 top level, and a block (`ref`) is expanded at parse. A node's result is a `workflow_result` call
-checked against its schema, never its last message, and the main agent is
-woken once, when the run ends: a pass and a stop hold one lock, so a run's
-ending is written once. The main agent is the session that armed the run or
+checked against its schema, never its last message. What a run waits on (a
+failed step, a gate, a worker's question, the outcome of an edit) is folded
+into its open items and told to the main agent once: a `woke` record follows
+the delivery, so a crash between the two tells it again and never loses it.
+Answers are records too, and a failed branch keeps its cap slot until it is
+retried or skipped. The answers only a person gives (a `by: person` gate,
+applying or rejecting an edit, approving) are operations not marked for
+agents. A live edit is linted against the progress derived from the log by a
+pure function (`edit_errors`), then waits for a person's approval of its
+diff. A pass, a stop and an answer hold one lock, so a run's ending is
+written once. The main agent is the session that armed the run or
 whichever session a handoff continued it in. The card under `workflow_arm` is a `workflow`
 entry the browser fills from the `workflows` channel; it docks by its entry
 id, `wf-<run>`, like a page or a file

@@ -32,7 +32,7 @@ root:
 
 Every node needs `say`. A `{{name.field}}` in a prompt or a `say` reads
 `args` or the result of a node that finished before this one. This version
-runs every kind in the spec but `gate`.
+runs every kind in the spec.
 
 ## Run things at once
 
@@ -186,7 +186,9 @@ When the server stops and starts again during a run:
 - a wait ends at the time it was going to end;
 - an if or a loop never asks a probe again once its answer is logged, and a loop keeps its round;
 - a deadline that passed while the server was down fires at once;
-- a retried step keeps its count of attempts.
+- a retried step keeps its count of attempts;
+- a failure, a gate, a question or a proposed change stays open, and you are told of it again only if you never were;
+- a `session: main` step stays yours until you report it.
 
 ## How many at once
 
@@ -218,18 +220,154 @@ lives: a person's message or interrupt, a peer's handoff, a schedule, a page's
 submit and a session handoff are all refused with an error
 naming the run. Its own monitors and queue tasks still reach it. It ends by calling `workflow_result` with a value matching the node's
 `result` schema and a one-sentence `summary`; a turn that ends without one
-is nudged once, then fails. A failed step does not end the run: its branch
-waits, the others go on, and you get a message headed
-`> from workflow:<id> · failed · <step>` that names the step and ends with
-the `workflow_answer` call that answers it, with choice retry, skip (with an
-optional value for later steps) or fail, which ends the run. A gate with
-`by: main` and a worker's question wake you the same way; answer a question
-with `workflow_answer` and text. `workflow_note` writes one line into the
-run's story, saying why you decided as you did. You also get one message
-when the run ends, headed `done`, `failed` or `stopped`. The header's
-`deadline` ends the run without asking. `workflow_status` shows the tree at
-any time; `workflow_stop` stops the run and unlocks its sessions, or, with a
-node, stops only that step, which then waits for your answer.
+is nudged once, then fails.
+
+You are woken by a message headed `> from workflow:<id>` for each thing the
+run waits on you for: a failed step, a gate with `by: main`, a worker's
+question, and the person's answer to a change you proposed. Each one is told
+once, also across a restart. You get one more message when the run ends,
+headed `done`, `failed` or `stopped`. `workflow_status` shows the tree, the
+story and what the run waits on at any time; `workflow_stop` stops the run
+and unlocks its sessions, or, with a node, stops only that step, which then
+waits for your answer.
+
+## When a step fails
+
+```yaml
+id: deploy
+title: Deploy
+say: Build, then deploy.
+deadline: 1h
+root:
+  par:
+    - {sh: "make build", id: build, retries: 1, say: Build it.}
+    - {sh: "make docs", id: docs, say: Build the docs.}
+  say: Build the code and the docs.
+```
+
+A step that fails once its `retries` are spent does not end the run. Its
+branch waits, the other branches go on, and a failed branch keeps its slot
+of a `cap`. You get a message headed `> from workflow:<id> · failed · <step>`
+naming the step, its error, its attempt and, for an agent, its session to
+read with `peer_read`. It ends with the `workflow_answer` call that answers
+it, whose choice is one of three:
+
+- "retry" runs the step again; a group runs again whole;
+- "skip" goes on without it, and `value`, checked against its result schema, stands in for its result where later steps read it;
+- "fail" ends the run, with `text` as the reason the story keeps.
+
+Change a step before retrying it with `workflow_edit`, below. The workflow's
+own `deadline` ends the run without asking, and so does a run whose main
+agent's session has closed.
+
+## Gates
+
+```yaml
+id: release
+title: Release
+say: Build the packages, ask, then publish them.
+root:
+  seq:
+    - {sh: "make dist && ls dist", id: dist, say: Build the packages.}
+    - gate: {by: person, ask: "Publish these packages?", show: [dist.out]}
+      id: ok
+      say: Ask the person before publishing.
+    - agent: {agent: sonnet, prompt: "Publish dist/. The person said: {{ok.value}}"}
+      say: Publish the packages.
+  say: Release.
+```
+
+`gate: {by, ask, show}` holds its branch until someone answers `ask`. With
+`by: person`, a card in your transcript shows the question and each value in
+`show` as JSON, with an answer box, Continue and Stop; no agent can answer
+it, you included. With `by: main` the question comes to you, and you answer
+with `workflow_answer`: choice "continue" with an optional `value`, or
+"abort". You may ask the person first, in your own words. Later steps read
+the answer as `{{ok.value}}`. A no, the person's Stop or your "abort", stops
+the run at the gate.
+
+## Questions and notes
+
+A node that cannot go on without an answer calls `workflow_ask` and ends its
+turn. The question comes to you, the main agent, headed `ask · q1`, and never
+to a person. Answer it with `workflow_answer` and `text`; the text is the
+node's next message, and the node waits meanwhile without being nudged.
+
+```text
+workflow_answer(run="deploy-3f2a1c", to="q1", text="Use the staging database.")
+workflow_note(run="deploy-3f2a1c", text="Skipped the docs: they did not change.")
+```
+
+`workflow_note` writes one line into the run's story, the part of the card
+the person reads as news. Say there why you retried, skipped or changed
+something.
+
+## Change a running workflow
+
+```yaml
+id: deploy
+title: Deploy
+say: Build, then deploy.
+deadline: 1h
+root:
+  seq:
+    - {sh: "make build", id: build, retries: 1, say: Build it.}
+    - {sh: "make smoke", id: smoke, say: Smoke-test the build.}
+    - {sh: "make deploy", id: ship, say: Deploy it.}
+  say: Build, smoke-test and deploy.
+```
+
+`workflow_edit` with the run and the whole definition, with the same ids,
+proposes a change, here a smoke test before the deploy. A step that started
+stays as it is: one that ran keeps its result, one that is running must be
+stopped first with `workflow_stop` and its node, and a started map, loop or
+if keeps its items, rounds and probe. A failed or stopped step may change,
+and applying the change runs it again. A new step goes after the steps of
+its seq that started.
+
+The person gets a card with the change in the steps' sentences and every
+command it adds, with Apply change and Keep the plan; no agent can apply it.
+The run goes on meanwhile, but the steps the change touches wait, and so
+does the step right after one it adds, and a run whose steps are all done
+waits for the answer before it ends. You get a message headed `edit · v2`
+saying which the person chose. Give every step of a workflow you may change
+an `id`: a generated id moves when a step is added before it, and the edit
+is then refused.
+
+## Arm it again
+
+After a stop or a failure, `workflow_arm` with `run` arms the same run
+again, after a new approval on a new card. What finished keeps its result;
+every step that did not runs again. It keeps its args. A definition given
+with `run` may change only what `workflow_edit` may.
+
+## A step you run yourself
+
+```yaml
+id: rollout
+title: Roll out
+say: Deploy, let me look at the dashboard, then announce it.
+root:
+  seq:
+    - {sh: "make deploy", id: ship, say: Deploy it.}
+    - agent:
+        session: main
+        prompt: "Look at the deploy dashboard and say whether it is green."
+        result: {type: object, properties: {green: {type: boolean}}, required: [green]}
+      id: look
+      deadline: 30m
+      say: Check the dashboard myself.
+    - agent: {agent: sonnet, prompt: "Announce the deploy. Green: {{look.green}}."}
+      say: Announce the deploy.
+  say: Deploy, check, announce.
+```
+
+`session: main` on an agent node gives the step to you: its prompt arrives
+as a message headed `step <id>`, and you end it with `workflow_result`, as a
+node does. It takes no `agent` and no `cwd`. Your turns are also the
+person's, so nothing nudges you or fails you for a turn without a result;
+give the step a `deadline`. Steps like it run one at a time in a run, and
+stopping the run never interrupts you.
 
 ## Inside a workflow
 

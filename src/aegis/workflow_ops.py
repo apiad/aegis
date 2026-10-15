@@ -4,7 +4,7 @@ Approving and rejecting are a person's: neither is marked for agents, so no
 MCP tool reaches them (ops.Registry.call refuses ``not_for_agents``). That is
 the whole of "an agent never starts a workflow without a person's click".
 Answering a person's gate is the same: ``workflow.gate`` is not for agents,
-nor are ``workflow.apply_edit`` and ``workflow.reject_edit``: an agent
+nor are ``workflow.edit.apply`` and ``workflow.edit.reject``: an agent
 proposes a change, and only a person lets it run.
 """
 
@@ -245,13 +245,13 @@ def register_workflow_ops(app: App) -> None:
         return {"run": p.run, "proposed": st.proposal["v"], "diff": st.proposal["diff"]}
 
     # Not marked for agents: only a person applies or rejects an edit.
-    @r.op("workflow.apply_edit", EditName)
+    @r.op("workflow.edit.apply", EditName)
     async def workflow_apply_edit(p: EditName, caller):
         owned(p.run, caller)
         await wf.apply_edit(p.run, p.v)
         return wf.wire(p.run)
 
-    @r.op("workflow.reject_edit", EditName)
+    @r.op("workflow.edit.reject", EditName)
     async def workflow_reject_edit(p: EditName, caller):
         owned(p.run, caller)
         wf.reject_edit(p.run, p.v)
