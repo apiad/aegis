@@ -6595,6 +6595,37 @@ def test_a_far_file_card_links_only_through_via(linked, browser, page):
     assert not page.errors
 
 
+def test_a_kept_tab_draws_its_cards_with_its_own_servers_file_base(
+    linked, browser, page
+):
+    """Back to a tab kept from earlier, its rows are drawn again at once: with
+    its own server's file base, not the tab just left's (#425)."""
+    far = linked.beta.root / "far.html"
+    far.write_text("<h1>from beta</h1>")
+    blid = beta_session(
+        linked, browser, f"/mcp file_send {json.dumps({'paths': [str(far)]})}"
+    )
+    near = linked.alpha.root / "near.html"
+    near.write_text("<h1>from alpha</h1>")
+    page.goto(linked.alpha.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    alid = spawn(page, f"/mcp file_send {json.dumps({'paths': [str(near)]})}")
+
+    def href(name):
+        sel = f".fcard:has(.fn:text-is('{name}')) .open"
+        page.wait_for_selector(sel)
+        return page.get_attribute(sel, "href")
+
+    assert href("near.html").startswith("/files/")
+    page.click(f"#tablist .tab[data-id='beta/{blid}']")
+    assert href("far.html").startswith("/via/beta/files/")
+    page.click(f"#tablist .tab[data-id='{alid}']")  # kept: restored, not fetched
+    assert href("near.html").startswith("/files/")
+    page.click(f"#tablist .tab[data-id='beta/{blid}']")
+    assert href("far.html").startswith("/via/beta/files/")
+    assert not page.errors
+
+
 def test_the_archive_filters_by_server_and_names_one_that_is_down(
     linked, browser, page
 ):

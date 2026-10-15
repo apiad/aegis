@@ -1436,6 +1436,10 @@ function follow(id) {
     canvas.clear();
     return viewer.show(null);
   }
+  // The base before any row is drawn: a kept tab's rows mount at once, and
+  // would take the last tab's server's base (#425).
+  const where = forKey(id);
+  setFileBase(where.server ? `/via/${where.server}` : "");
   const saved = kept.get(id);
   if (saved) {
     kept.delete(id);
@@ -1444,8 +1448,6 @@ function follow(id) {
   // The divider is placed by the first snapshot or delta after this switch,
   // and kept across a resubscribe of the same session.
   let placed = false;
-  const where = forKey(id);
-  setFileBase(where.server ? `/via/${where.server}` : "");
   viewer.show(id); // after the base: a far artifact's frame is built from it
   if (sessions.get(id)) showCanvas(sessions.get(id));
   else canvas.clear();
