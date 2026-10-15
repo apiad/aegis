@@ -306,6 +306,25 @@ def _context(context: dict) -> Finding:
     )
 
 
+def _park(park: dict) -> Finding:
+    if "error" in park:
+        return Finding("error", "park", park["error"])
+    if not park:
+        return Finding("ok", "park", "no harness parks its idle sessions")
+    text = ", ".join(
+        f"{h} after {s // 60} min" if s >= 60 else f"{h} after {s} s"
+        for h, s in park.items()
+    )
+    unmeasured = [h for h in park if h != "claude-code"]
+    if unmeasured:
+        return Finding(
+            "warn",
+            "park",
+            f"{text}; how {', '.join(unmeasured)} resumes has not been measured",
+        )
+    return Finding("ok", "park", text)
+
+
 def _session_memory(snap: Snapshot) -> Finding:
     if snap.session_memory_error:
         return Finding("error", "session_memory_max", snap.session_memory_error)
@@ -396,6 +415,7 @@ async def doctor(
         out.append(Finding("error", "terminal_memory_max", snap.terminal_memory_error))
     out += _recap(roots)
     out.append(_context(snap.context))
+    out.append(_park(snap.park))
     out.append(_session_memory(snap))
     out.append(_state(roots))
     return out

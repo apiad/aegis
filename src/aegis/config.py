@@ -45,7 +45,7 @@ log = logging.getLogger("aegis.config")
 WATCH_EVERY_S = 1.0
 TOP_KEYS = (
     "agents", "queues", "default_agent", "recap", "context", "session_memory_max",
-    "terminals", "terminal_memory_max",
+    "terminals", "terminal_memory_max", "park",
 )  # fmt: skip
 AGENT_KEYS = ("harness", "provider", "model", "effort", "permission", "priming")
 QUEUE_KEYS = ("agent", "max_parallel", "quiet")
@@ -81,6 +81,32 @@ def context_from(raw: object) -> dict:
             }
         out[k] = v
     return out
+
+
+def park_from(raw: object) -> dict:
+    """The ``park:`` block: each harness named in it, and the seconds one of its
+    sessions must be safe to end before aegis ends its process (park.py). A
+    harness it does not name never parks. A wrong block parks nothing and
+    carries ``error`` for aegis doctor."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        return {"error": "park must be a mapping of harness to seconds"}
+    out: dict = {}
+    for k, v in raw.items():
+        if k not in HARNESSES:
+            return {
+                "error": f"park has no harness {k!r}; it takes {', '.join(HARNESSES)}"
+            }
+        if isinstance(v, bool) or not isinstance(v, int) or v < 1:
+            return {"error": f"park.{k} {v!r} is not a positive number of seconds"}
+        out[k] = v
+    return out
+
+
+def park_after(park: dict, harness: str) -> int | None:
+    """The seconds before a session of ``harness`` parks; None when it never does."""
+    return None if "error" in park else park.get(harness)
 
 
 def session_memory_max_from(
@@ -216,6 +242,7 @@ class Snapshot:
     unknown_keys: tuple[str, ...] = ()
     doc: ConfigDoc = field(default_factory=ConfigDoc)
     context: dict = field(default_factory=lambda: dict(CONTEXT_DEFAULTS))
+    park: dict = field(default_factory=dict)
     session_memory_max: object = DEFAULT_MEMORY_MAX
     session_memory_error: str | None = None
     terminals: dict[str, dict] = field(default_factory=dict)
@@ -243,6 +270,7 @@ class Snapshot:
             unknown_keys=tuple(str(k) for k in data if k not in TOP_KEYS),
             doc=doc_from(data),
             context=context_from(data.get("context")),
+            park=park_from(data.get("park")),
             session_memory_max=mem,
             session_memory_error=mem_error,
             terminals=terms,
