@@ -98,3 +98,12 @@ def test_the_primer_names_the_root_paths_are_quoted_from(tmp_path):
     assert (
         f"Quote a file as a path relative to {tmp_path}, or as an absolute path" in text
     )
+
+
+def test_the_primer_says_when_to_reach_for_a_workflow():
+    """Spec §10: agents choose a workflow without being told."""
+    from aegis.mcp import PRIMER
+
+    para = next(p for p in PRIMER.split("\n\n") if "workflow_arm" in p)
+    for word in ("plan_update", "workflow_arm", "help_read", "approves", "many agents"):
+        assert word in para
