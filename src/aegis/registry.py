@@ -134,7 +134,7 @@ class Registry(Host):
         if self.schedules is not None:
             self.schedules.changed()
         if self.workflows is not None:
-            self.workflows.changed()
+            self.workflows.turn_ended(session)
 
     def _retire_predecessor(self, new: Session) -> None:
         """After a handoff, archive the old session once the new one has
