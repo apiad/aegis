@@ -3,7 +3,10 @@ fake agents: an output stays readable whatever the result holds, and a
 result can meet an after on an output."""
 
 from .conftest import until
-from .test_workflows_parallel import arm, leaf, report, script, world  # noqa: F401
+from . import test_workflows_parallel
+from .test_workflows_parallel import arm, leaf, report, script
+
+world = test_workflows_parallel.world  # the fixture, shared
 
 
 async def test_an_early_output_outlives_a_result_that_is_not_an_object(world):
@@ -108,6 +111,8 @@ root:
         run = await arm(world, text, {"n": 3, "kind": "cats"})
         await until(lambda: wf.runs[run].status != "running", timeout=40)
         texts += [s["text"] for s in wf.runs[run].story]
-    assert any(t.startswith("Each of cats. Failed: over is a int") for t in texts), texts
+    assert any(t.startswith("Each of cats. Failed: over is a int") for t in texts), (
+        texts
+    )
     assert any(t.startswith("Late for cats. Failed: it waits on") for t in texts), texts
     assert not any("{{" in t for t in texts), texts
