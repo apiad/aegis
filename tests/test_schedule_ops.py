@@ -75,7 +75,7 @@ async def test_an_agent_cannot_change_another_agents_schedule(world):
     ok(await turn(a, mcp("schedule_create", name="a-owns", **NEW)))
     said = await turn(b, mcp("schedule_pause", name="a-owns"))
     assert "agents can change only the schedules they created" in said
-    assert world.app.schedules.items["a-owns"].paused is None
+    assert world.app.schedules.items["a-owns"].paused["by"] == "approval"
 
 
 async def test_a_member_cannot_change_another_members_schedule(world):
@@ -165,3 +165,37 @@ async def test_a_schedule_deleted_mid_run_leaves_its_run_alone(world):
     s = world.session(fired["log_id"])
     await until(lambda: s.status == "idle", 10, "the run's turn")
     assert fired["log_id"] in world.app.sessions.sessions
+
+
+async def test_an_agents_schedule_is_born_paused_until_a_person_unpauses_it(world):
+    a = await world.spawn()
+    ok(await turn(a, mcp("schedule_create", name="nightly-tests", **NEW)))
+    s = world.app.schedules.items["nightly-tests"]
+    assert s.paused["by"] == "approval"
+    said = await turn(a, mcp("schedule_resume", name="nightly-tests"))
+    assert "waits for a person's approval" in said
+    said = await turn(a, mcp("schedule_fire", name="nightly-tests"))
+    assert "waits for a person's approval" in said
+    assert world.app.schedules.items["nightly-tests"].paused["by"] == "approval"
+    await world.app.registry.call("schedule.resume", {"name": "nightly-tests"})
+    assert world.app.schedules.items["nightly-tests"].paused is None
+
+
+async def test_an_agents_edit_pauses_an_approved_schedule_again(world):
+    a = await world.spawn()
+    ok(await turn(a, mcp("schedule_create", name="nightly-tests", **NEW)))
+    await world.app.registry.call("schedule.resume", {"name": "nightly-tests"})
+    ok(
+        await turn(
+            a,
+            mcp(
+                "schedule_update", name="nightly-tests", **(NEW | {"prompt": "rm -rf"})
+            ),
+        )
+    )
+    assert world.app.schedules.items["nightly-tests"].paused["by"] == "approval"
+
+
+async def test_a_persons_schedule_is_born_running(world):
+    await world.app.registry.call("schedule.create", {"name": "by-hand", **NEW})
+    assert world.app.schedules.items["by-hand"].paused is None

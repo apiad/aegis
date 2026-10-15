@@ -71,6 +71,9 @@ ERRORS_TO_PAUSE = 3
 FINISHED_KEEP_S = 7 * 86400
 WAKE_MAX_S = 60.0
 NAME_HINT = "two or three lowercase words joined by hyphens, like a session handle"
+# The pause an agent's schedule is born with, and gets again when an agent
+# edits it: only a person's resume lifts it (schedule_ops, spec 2026-10-15 §09).
+APPROVAL = "approval"
 # A fire that fails this way fails on every tick until a person acts.
 FATAL = (
     "archived",
@@ -551,26 +554,40 @@ class Schedules:
         s = Schedule(name, owner, now, now, self._settle(d, cwd))
         if s.d.fire.target == "new":
             self._spec(s)  # an unknown agent, or one above the ceiling, is refused now
+        if owner.get("kind") == "agent":
+            s.paused = {"by": APPROVAL, "at": iso(self.now())}
         self.items[name] = s
         self.state[name] = State()
         self._save()
         self._event(name, "created", tick=now)
+        if s.paused:
+            self._event(name, "paused", by=APPROVAL)
         self._wake.set()
         return s
 
-    def update(self, name: str, d: Definition, cwd: Path) -> Schedule:
+    def update(
+        self, name: str, d: Definition, cwd: Path, by_agent: bool = False
+    ) -> Schedule:
         old = self._get(name)
         now = int(self.now())
-        s = Schedule(
-            name, old.owner, old.created_at, now, self._settle(d, cwd), old.paused
-        )
+        paused = old.paused
+        if by_agent:
+            paused = {"by": APPROVAL, "at": iso(self.now())}
+        s = Schedule(name, old.owner, old.created_at, now, self._settle(d, cwd), paused)
         if s.d.fire.target == "new":
             self._spec(s)
         self.items[name] = s
         self._save()
         self._event(name, "edited", tick=now)
+        if by_agent and (old.paused or {}).get("by") != APPROVAL:
+            self._event(name, "paused", by=APPROVAL)
         self._wake.set()
         return s
+
+    def awaiting(self, name: str) -> bool:
+        """Whether a person has yet to approve ``name``."""
+        p = self._get(name).paused
+        return bool(p and p.get("by") == APPROVAL)
 
     def delete(self, name: str) -> None:
         """A live run keeps going, and its sessions are left as they are."""

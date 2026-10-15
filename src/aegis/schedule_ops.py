@@ -98,6 +98,14 @@ def register_schedule_ops(app: App) -> None:
             )
         return s
 
+    def person_only(name: str, caller: Caller, what: str) -> None:
+        if caller.is_agent and sch.awaiting(name):
+            raise OpError(
+                "needs_person",
+                f"{name} waits for a person's approval; only a person can {what} "
+                "it, from the card under the call that made it",
+            )
+
     def definition(p: ScheduleDef) -> Definition:
         return Definition.model_validate(p.model_dump(exclude={"name"}))
 
@@ -128,7 +136,9 @@ def register_schedule_ops(app: App) -> None:
         into a new session from an agent or into an existing session's inbox.
         With a bash check, a tick fires only when the check exits 0 with a
         stdout different from the last fire's, and that stdout is appended to
-        the prompt. You own what you create; schedule_delete removes it."""
+        the prompt. You own what you create; schedule_delete removes it. A
+        schedule you create or change waits, paused, until a person approves it
+        from the card under your call."""
         d = definition(p)
         s = sch.create(p.name, d, owner(caller), cwd(d.fire.cwd, caller))
         return sch.wire(s.name)
@@ -139,7 +149,7 @@ def register_schedule_ops(app: App) -> None:
         next tick; a live run is not touched."""
         mine(p.name, caller)
         d = definition(p)
-        sch.update(p.name, d, cwd(d.fire.cwd, caller))
+        sch.update(p.name, d, cwd(d.fire.cwd, caller), by_agent=caller.is_agent)
         return sch.wire(p.name)
 
     @r.op("schedule.delete", ScheduleName, agent=True)
@@ -161,6 +171,7 @@ def register_schedule_ops(app: App) -> None:
         """Start a paused schedule again from now, its error count cleared. The
         ticks that fell during the pause do not fire."""
         mine(p.name, caller)
+        person_only(p.name, caller, "unpause")
         sch.resume(p.name)
         return sch.wire(p.name)
 
@@ -169,6 +180,7 @@ def register_schedule_ops(app: App) -> None:
         """Fire a schedule you own now, skipping its clock and its check. The
         overlap rule still holds: with a live run, wait holds it and skip drops it."""
         mine(p.name, caller)
+        person_only(p.name, caller, "fire")
         return {"outcome": await sch.fire_now(p.name), **sch.wire(p.name)}
 
     @r.op("schedule.test", ScheduleTest, agent=True)
