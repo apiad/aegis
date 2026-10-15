@@ -198,3 +198,22 @@ root:
     pinned = old.replace('say: Deploy.}', "id: n2, say: Deploy.}")
     fixed = pinned.replace('"false", id: n2', '"exit 0", id: n2')
     assert edit_errors(wf(pinned), wf(fixed), {"n2": "parked"}) == []
+
+
+def test_the_diff_shows_probe_commands_and_counts_only_new_ones():
+    old = ABC.replace(
+        '    - {sh: "true", id: c, say: C.}\n',
+        '    - {check: {sh: "test -f ok", every: 5s}, id: c, say: C.}\n'
+        '    - {if: {when: {sh: "test -f x"}, then: {wait: 1s, id: w, say: W.}}, id: i, say: I.}\n',
+    )
+    new = (
+        old.replace('"test -f ok"', '"curl -X POST ok"')
+        .replace("id: i, say: I.", "id: i, say: I renamed.")
+        .replace("say: B.", "say: B renamed.")
+    )
+    d = edit_diff(wf(old), wf(new))
+    by = {x["key"]: x for x in d["diff"]}
+    assert by["c"]["cmd"] == "curl -X POST ok" and by["i"]["cmd"] == "test -f x"
+    assert by["b"]["cmd"] == "rm -rf build"
+    # Only the check's probe changed its command; b and i changed their say.
+    assert d["commands"] == {"sh": 0, "probes": 1}
