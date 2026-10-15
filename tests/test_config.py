@@ -178,3 +178,14 @@ def test_a_bad_workflows_block_keeps_the_default_and_says_why():
     assert _workflows(w, ("opus",)).level == "ok"
     bad = _workflows(workflows_from({"max_agents": {"opsu": 1}}), ("opus",))
     assert bad.level == "error" and "opsu" in bad.message
+
+
+def test_the_doctor_flags_an_agents_number_above_the_total():
+    """As the lint does a workflow's limits: the number could never bind."""
+    from aegis.config import workflows_from
+    from aegis.doctor import _workflows
+
+    for raw in ({"total": 2, "opus": 3}, {"opus": 5}):  # 4 is the default total
+        bad = _workflows(workflows_from({"max_agents": raw}), ("opus",))
+        assert bad.level == "error", bad
+        assert f"opus {raw['opus']} is above total" in bad.message, bad.message

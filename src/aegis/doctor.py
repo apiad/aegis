@@ -355,6 +355,13 @@ def _workflows(w: dict, agents: tuple[str, ...] = ()) -> Finding:
             "workflows",
             f"max_agents names {', '.join(unknown)}, not an agent in agents:",
         )
+    above = [f"{k} {n}" for k, n in m.items() if k != "total" and n > m["total"]]
+    if above:
+        return Finding(
+            "error",
+            "workflows",
+            f"max_agents {', '.join(above)} is above total {m['total']}",
+        )
     each = "".join(f", {n} {k}" for k, n in m.items() if k != "total")
     return Finding(
         "ok", "workflows", f"at most {m['total']} workflow node sessions at once{each}"
