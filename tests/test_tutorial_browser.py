@@ -135,7 +135,11 @@ def test_guided_tour_in_the_help_tab_starts_a_tutorial_or_a_tour(
     page.click('.helpv .hrow[data-ref="getting-started"]')
     page.wait_for_function(titled, arg=TITLE["getting-started"])
     page.click("button:has-text('Guided tour')")
-    page.wait_for_function("t => location.hash.slice(3) !== t", arg=tour)
+    # The help rows set #help=…; wait for the second guide's own #s= hash.
+    page.wait_for_function(
+        "t => location.hash.startsWith('#s=') && location.hash.slice(3) !== t",
+        arg=tour,
+    )
     log_id = page.evaluate("location.hash.slice(3)")
     page.wait_for_function(ENTRIES_NAME, arg="getting-started", timeout=8000)
     assert meta(server, log_id)["agent"] == "opus"  # default_agent
