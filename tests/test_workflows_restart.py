@@ -182,3 +182,35 @@ async def test_a_retry_count_survives_a_restart(world):  # noqa: F811
     assert st.nodes["f"].attempts >= 1 and st.nodes["f"].error.startswith(
         "cut by restart"
     )
+
+
+async def test_a_cut_sh_whose_deadline_passed_while_down_is_not_run_again(world):  # noqa: F811
+    run_id = await run(
+        world,
+        flow(
+            '{sh: "echo x >> tries && sleep 30", id: s, deadline: 3s, retries: 1, say: Slow.}'
+        ),
+    )
+    await running(world, run_id, "s", lambda n: n.pid)
+    await world.stop()
+    await asyncio.sleep(3.5)
+    await world.start()
+    st = await ended(world, run_id, timeout=10)
+    assert st.status == "failed" and st.nodes["s"].error.startswith("cut by restart")
+    assert sum(r.get("ev") == "node_started" for r in lines(world, run_id)) == 1
+    assert (world.root / "tries").read_text().count("x") == 1
+
+
+async def test_a_cut_sh_past_the_default_limit_is_not_run_again(world, monkeypatch):  # noqa: F811
+    monkeypatch.setattr("aegis.workflows.SH_LIMIT_S", 3.0)
+    run_id = await run(
+        world,
+        flow('{sh: "echo x >> tries && sleep 30", id: s, retries: 1, say: Slow.}'),
+    )
+    await running(world, run_id, "s", lambda n: n.pid)
+    await world.stop()
+    await asyncio.sleep(3.5)
+    await world.start()
+    st = await ended(world, run_id, timeout=10)
+    assert st.status == "failed" and st.nodes["s"].error.startswith("cut by restart")
+    assert (world.root / "tries").read_text().count("x") == 1
