@@ -1104,6 +1104,65 @@ body{background:#000}
 #a2 .jcount:empty{display:none}
 #a2 .journal .empty{padding:36px 2px;text-align:center}
 #a2 .journal .jmore{display:block;margin:16px auto 0}
+/* The Schedules view (js/schedules.js): the list, a schedule's four layers and
+   its runs, and the editor laid out as the same layers. */
+#a2[data-view=schedules] .v-schedules{display:flex;flex-direction:column;overflow:auto}
+#a2 .schedules{max-width:1100px;width:100%;margin:0 auto;padding:22px 28px 32px;font-size:13px}
+#a2 .sch-btn .n{margin-left:5px;color:var(--muted)}
+#a2 .sch-btn .n:empty{display:none}
+#a2 .sch-btn .n.err{color:var(--err)}
+#a2 .schedules .sch-top{display:flex;align-items:baseline;gap:12px;margin-bottom:14px}
+#a2 .schedules .sch-top h2{margin:0;font-family:var(--font-mono);font-weight:500;font-size:15px;color:var(--strong)}
+#a2 .schedules .sch-grid{display:grid;grid-template-columns:280px minmax(0,1fr);gap:16px;align-items:start}
+#a2 .schedules .sch-row{border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;margin-bottom:6px;cursor:pointer;background:var(--surface)}
+#a2 .schedules .sch-row.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+#a2 .schedules .sch-row:focus-visible{outline:1px solid var(--accent)}
+#a2 .schedules .nm{display:flex;align-items:center;gap:6px;color:var(--strong);font-weight:500}
+#a2 .schedules .nm .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2 .schedules .sp{flex:1}
+#a2 .schedules .sch-row .m{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
+#a2 .schedules .sch-new{width:100%}
+#a2 .schedules .dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none;background:var(--muted);margin-right:4px}
+#a2 .schedules .s-ok,#a2 .schedules .s-done{background:var(--ok)}
+#a2 .schedules .s-work,#a2 .schedules .s-working,#a2 .schedules .s-needs_you,#a2 .schedules .s-review{background:var(--accent)}
+#a2 .schedules .s-err,#a2 .schedules .s-error{background:var(--err)}
+#a2 .schedules .chip{white-space:nowrap}
+#a2 .schedules .chip.a{color:var(--accent);border-color:var(--accent)}
+#a2 .schedules .chip.e{color:var(--err);border-color:var(--err)}
+#a2 .schedules .sch-dhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+#a2 .schedules .sch-dhead h3{margin:0;font-family:var(--font-mono);font-weight:500;font-size:15px;color:var(--strong)}
+#a2 .schedules .cnote{color:var(--muted);font-size:12.5px;margin:4px 0 10px}
+#a2 .schedules .cnote.err{color:var(--err)}
+#a2 .schedules .layer{border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;background:var(--surface);display:grid;grid-template-columns:78px minmax(0,1fr);gap:8px;align-items:start}
+#a2 .schedules .layer .k{font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);padding-top:3px}
+#a2 .schedules .layer .b{min-width:0}
+#a2 .schedules .layer.off{opacity:.5}
+#a2 .schedules .layer pre{margin:4px 0 0;background:var(--raised);padding:6px 8px;border-radius:4px;white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--font-mono);font-size:12px}
+#a2 .schedules .layer .cnote{margin:0}
+#a2 .schedules .arrow{text-align:center;color:var(--muted);font-size:12px;line-height:16px}
+#a2 .schedules h4{margin:16px 0 6px;font-size:13px;display:flex;align-items:center;gap:10px;color:var(--strong);font-weight:500}
+#a2 .schedules .sch-quiet{font-weight:400;color:var(--muted);display:flex;gap:4px;align-items:center}
+#a2 .schedules table.runs{width:100%;border-collapse:collapse;font-size:12.5px}
+#a2 .schedules table.runs td{padding:5px 6px;border-top:1px solid var(--rule);vertical-align:top}
+#a2 .schedules table.runs td.t{font-family:var(--font-mono);color:var(--muted);white-space:nowrap}
+#a2 .schedules table.runs td.r{text-align:right;font-family:var(--font-mono);color:var(--muted);white-space:nowrap}
+#a2 .schedules table.runs tr.k-quiet td{color:var(--muted)}
+#a2 .schedules a.sess{font-family:var(--font-mono)}
+#a2 .schedules .why{color:var(--muted);font-size:11.5px;overflow-wrap:anywhere}
+#a2 .schedules .seg{margin-bottom:6px}
+#a2 .schedules .seg button:disabled{opacity:.35;cursor:not-allowed}
+#a2 .schedules .sch-form label{display:block;margin:8px 0 3px;color:var(--muted);font-size:12.5px}
+#a2 .schedules .sch-form .inl{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:4px 0}
+#a2 .schedules .sch-form .inl label{margin:0;display:flex;gap:4px;align-items:center;color:var(--ink)}
+#a2 .schedules .sch-in{width:100%;font-family:var(--font-mono);font-size:12.5px;color:var(--ink);background:var(--bg);border:1px solid var(--rule);border-radius:var(--r);padding:6px 8px}
+#a2 .schedules .sch-in:focus{border-color:var(--accent);outline:none}
+#a2 .schedules textarea.sch-in{min-height:58px;resize:vertical}
+#a2 .schedules #sch-timeout{width:64px}
+#a2 .schedules .hint{color:var(--muted);font-size:11.5px;margin-top:3px}
+#a2 .schedules .hint:empty{display:none}
+#a2 .schedules .hint.bad{color:var(--err)}
+#a2 .schedules .sch-tested{margin:6px 0 0;background:var(--raised);border-radius:4px;padding:6px 8px;font-family:var(--font-mono);font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+#a2 .schedules .sch-foot{display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap}
 /* A day: its pill sticks under the top while its entries scroll. */
 #a2 .jday-h{position:sticky;top:0;z-index:2;background:var(--bg);padding:14px 0 8px;font-family:var(--font-mono);font-size:11px;color:var(--faint)}
 #a2 .jday-h span{display:inline-block;border:1px solid var(--rule);border-radius:999px;padding:2px 10px}
@@ -1249,6 +1308,14 @@ body{background:#000}
   #a2 .set-btn .lbl{display:none}
   #a2 .set-btn .ic{display:inline-block}
   #a2 .journal{padding:12px 12px 24px}
+  #a2 .schedules{padding:12px 12px 24px}
+  #a2 .schedules .sch-grid{grid-template-columns:1fr}
+  #a2 .schedules .layer{grid-template-columns:1fr;gap:2px}
+  #a2 .schedules table.runs tr{display:grid;grid-template-columns:auto 1fr auto;gap:2px 8px;border-top:1px solid var(--rule);padding:5px 0}
+  #a2 .schedules table.runs td{border:0;padding:0}
+  #a2 .schedules table.runs td.what{grid-column:1/-1}
+  #a2 .schedules .sch-dhead .btn{flex:1}
+  #a2 .schedules .sch-in{font-size:16px}
   /* 16 px: iOS Safari does not zoom the page when the box takes focus. */
   #a2 .jsearch .jq{font-size:16px;padding:6px 0}
   /* the kind chips: one row that scrolls sideways, edge to edge */
@@ -1475,3 +1542,4 @@ body{background:#000}
 #a2 .arch-workers:hover{border-color:var(--faint)}
 #a2 .arch-workers.on{background:var(--accent-soft);color:var(--strong)}
 #a2 .arch-workers b{margin-left:6px;color:var(--faint);font-weight:500}
+@media (pointer:coarse){#a2 .schedules .seg button{padding:10px 14px}#a2 .schedules .sch-row{padding:11px 12px}#a2 .schedules .sch-dhead .btn{min-height:44px}}
