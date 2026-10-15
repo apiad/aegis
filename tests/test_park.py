@@ -95,6 +95,26 @@ def test_strays_are_what_a_park_would_kill_and_not_what_the_harness_keeps():
                 pass
 
 
+def test_without_keep_servers_every_child_is_a_stray():
+    env = {**os.environ, SESSION_VAR: "s-all"}
+    h = subprocess.Popen(
+        [sys.executable, "-c", STAND_IN], env=env, stdout=subprocess.PIPE, text=True
+    )
+    try:
+        assert h.stdout.readline().strip() == "ready"
+        kept = _pid_of(["sleep", "40"])
+        orphan = _pid_of(["sleep", "41"])
+        found = strays(h.pid, "s-all", None, keep_servers=False)
+        assert kept in found and orphan in found and h.pid not in found
+    finally:
+        h.kill()
+        for argv in (["sleep", "41"], ["sleep", "40"]):
+            try:
+                os.kill(_pid_of(argv), 9)
+            except AssertionError:
+                pass
+
+
 def test_a_shell_the_harness_runs_is_a_stray():
     env = {**os.environ, SESSION_VAR: "s-shell"}
     h = subprocess.Popen(
