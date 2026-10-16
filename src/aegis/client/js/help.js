@@ -169,7 +169,8 @@ export class Help {
     this.draw();
     this.box.dataset.screen = ref ? "page" : "list";
     // Where the focus was as the list opened: a click made while the page
-    // list loads (Every key) keeps its focus (#433).
+    // list loads (Every key) keeps its focus (#433). Focus that fell to the
+    // body (the composer hid, a hash route) is no one's, and the box takes it.
     const was = document.activeElement;
     if (!this.pages) {
       try {
@@ -181,7 +182,8 @@ export class Help {
       this.drawList();
     }
     // A phone's keyboard would cover the list it opens over.
-    if (!ref && document.activeElement === was && matchMedia("(pointer: fine)").matches) this.q.focus({ preventScroll: true });
+    const kept = document.activeElement === was || document.activeElement === document.body;
+    if (!ref && kept && matchMedia("(pointer: fine)").matches) this.q.focus({ preventScroll: true });
     const [page, section = ""] = (ref || this.first()).split("#");
     if (page) await this.read(page, section);
   }
