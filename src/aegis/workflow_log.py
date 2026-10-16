@@ -120,6 +120,14 @@ def _edit_status(st: RunState, v, status: str) -> None:
             e["status"] = status
 
 
+def _drop_proposal(st: RunState) -> None:
+    """A change still waiting when the run stops, ends or is armed again
+    is dropped: arming again brings no live buttons back for it."""
+    if st.proposal is not None:
+        _edit_status(st, st.proposal["v"], "dropped")
+        st.proposal = None
+
+
 def apply(st: RunState, r: dict) -> None:
     ev, t = r.get("ev"), float(r.get("t") or 0)
     if ev == "approved":
@@ -131,10 +139,12 @@ def apply(st: RunState, r: dict) -> None:
         # A node the stop interrupted ends with the run, not running forever.
         _stop_leaves(st, t)
         st.open = {}  # an ended run waits on nothing
+        _drop_proposal(st)
         _tell(st, t, "bad", "Stopped.")
     elif ev == "finished":
         st.status, st.ended = r.get("status") or "done", t
         st.open = {}
+        _drop_proposal(st)
         if st.status == "done":
             _tell(st, t, "ok", "The workflow is done.")
         else:
@@ -148,7 +158,8 @@ def apply(st: RunState, r: dict) -> None:
         st.status, st.ended = "armed", None
         st.text, st.version = r.get("text") or st.text, int(r.get("v") or st.version)
         _reset(st, r.get("reset") or [], again=True)
-        st.open, st.proposal = {}, None
+        _drop_proposal(st)
+        st.open = {}
         kept = sum(n.status in ("done", "skipped") for n in st.nodes.values())
         # A new definition's diff rides on the line, for the again card.
         change = {k: r[k] for k in ("diff", "commands") if r.get(k)}
