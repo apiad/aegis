@@ -246,6 +246,9 @@ class ConfigDoc(BaseModel):
     default_agent: str | None = None
     queues: list[QueueDoc] = Field(default_factory=list)
     park: dict[str, int] = Field(default_factory=dict)
+    # The workflows: block's max_agents: total and a bound per agent alias;
+    # empty when the file has no block, or one the reader refuses.
+    max_agents: dict[str, int] = Field(default_factory=dict)
 
 
 def doc_from(data: dict) -> ConfigDoc:
@@ -274,11 +277,14 @@ def doc_from(data: dict) -> ConfigDoc:
             )
         )
     d = data.get("default_agent")
+    w = data.get("workflows")
+    pool = workflows_from(w)
     return ConfigDoc(
         agents=agents,
         default_agent=str(d) if d else None,
         queues=queues,
         park={k: v for k, v in park_from(data.get("park")).items() if k != "error"},
+        max_agents={} if w is None or "error" in pool else pool["max_agents"],
     )
 
 
@@ -432,6 +438,21 @@ def validate(doc: ConfigDoc) -> list[Finding]:
         err("default_agent", "default_agent", f"no agent named {doc.default_agent!r}")
     if "error" in (p := park_from(doc.park or None)):
         out.append(Finding("error", "park", p["error"]))
+    if doc.max_agents:
+        # The rules aegis doctor applies to the block, each on its row.
+        pool = workflows_from({"max_agents": doc.max_agents})
+        if "error" in pool:
+            err("workflows", "workflows", pool["error"])
+        else:
+            m = pool["max_agents"]
+            for k, n in m.items():
+                if k == "total":
+                    continue
+                where = f"workflows.max_agents.{k}"
+                if k not in names:
+                    err(f"workflows.{k}", where, f"no agent named {k!r}")
+                elif n > m["total"]:
+                    err(f"workflows.{k}", where, f"{k} {n} is above total {m['total']}")
     return out
 
 
@@ -507,6 +528,14 @@ def _apply(data: CommentedMap, doc: ConfigDoc) -> None:
             _put(park, h, s)
     else:
         data.pop("park", None)
+    block = data.get("workflows")
+    if doc.max_agents:
+        want = workflows_from({"max_agents": doc.max_agents})["max_agents"]
+        # An untouched block compares equal and keeps its style and comments.
+        if workflows_from(block).get("max_agents") != want:
+            _section(data, "workflows")["max_agents"] = dict(doc.max_agents)
+    elif block is not None and "error" not in workflows_from(block):
+        del data["workflows"]  # every bound back to its default
 
 
 def write(path: Path, doc: ConfigDoc, expected: Stamp | None) -> list[Finding]:

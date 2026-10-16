@@ -222,3 +222,42 @@ def test_a_write_over_a_file_the_server_cannot_read_is_refused(tmp_path, text):
         write(p, ConfigDoc(), stamp_of(p))
     assert e.value.code == "bad_config"
     assert p.read_text() == text
+
+
+POOL = WORKSPACE + "# the pool\nworkflows:\n  max_agents: {total: 6, opus: 2}\n"
+
+
+def test_the_workflow_pool_reads_writes_and_clears(tmp_path):
+    p, doc = setup(tmp_path, POOL)
+    assert doc.max_agents == {"total": 6, "opus": 2}
+    doc.max_agents = {"total": 8, "opus": 2, "haiku": 1}
+    assert write(p, doc, stamp_of(p)) == []
+    assert safe(p)["workflows"] == {"max_agents": {"total": 8, "opus": 2, "haiku": 1}}
+    assert "# the pool" in p.read_text()
+    doc.max_agents = {}
+    assert write(p, doc, stamp_of(p)) == []
+    assert "workflows" not in safe(p)
+
+
+def test_an_untouched_pool_is_written_as_it_was(tmp_path):
+    p, doc = setup(tmp_path, WORKSPACE + "workflows: {max_agents: 6}\n")
+    assert doc.max_agents == {"total": 6}
+    assert write(p, doc, stamp_of(p)) == []
+    assert "workflows: {max_agents: 6}" in p.read_text()
+
+
+def test_the_pool_names_agents_and_stays_under_its_total(tmp_path):
+    _, doc = setup(tmp_path, WORKSPACE)
+    doc.max_agents = {"total": 2, "gpt": 1, "opus": 3}
+    assert {f.row: f.message for f in validate(doc)} == {
+        "workflows.gpt": "no agent named 'gpt'",
+        "workflows.opus": "opus 3 is above total 2",
+    }
+
+
+def test_a_broken_pool_is_kept_through_a_write(tmp_path):
+    p, doc = setup(tmp_path, WORKSPACE + "workflows: {max_agents: lots}\n")
+    assert doc.max_agents == {}
+    doc.default_agent = "haiku"
+    assert write(p, doc, stamp_of(p)) == []
+    assert "max_agents: lots" in p.read_text()
