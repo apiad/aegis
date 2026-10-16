@@ -1050,3 +1050,21 @@ root:
     wf, errors = errs(text)
     assert errors == [] and wf.session_of["rounds/fix"] == "impl"
     assert wf.users["impl"] == ["review", "rounds/fix"]
+
+
+def test_two_users_in_the_two_branches_of_an_if_never_overlap():
+    text = """id: r
+title: R
+say: S.
+root:
+  seq:
+    - {id: impl, say: W., agent: {agent: opus, prompt: w}}
+    - if:
+        when: {expr: "true"}
+        then: {id: a, say: A., agent: {session: impl, prompt: a}}
+        else: {id: b, say: B., agent: {session: impl, prompt: b}}
+      say: One or the other.
+  say: All.
+"""
+    wf, errors = errs(text)
+    assert errors == [] and wf.users["impl"] == ["a", "b"], errors
