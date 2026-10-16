@@ -303,7 +303,9 @@ admin has no policy, and a forgotten schedule must not spend the week. Definitio
 `<state>/schedule-runs.jsonl`, and boot folds the live runs, the held tick and
 the errors in a row from it (`schedule_log.py`), so nothing is stored twice. A
 run ends on `Registry.finished`, the test a queue's task ends on, which also
-waits for the run's working children. A run with `spawn: false` is refused the
+waits for the run's working children, and while its session owns a live
+workflow run it stays live too: a workflow's waits leave its main agent idle,
+and the close rule must not archive it. A run with `spawn: false` is refused the
 operations that start work in `ops.Registry.call`, so the rule holds for every
 harness. The view, `js/schedules.js`, draws what the `schedules` channel sends
 and edits through the same operations agents use.
@@ -361,7 +363,21 @@ is prompted again in an earlier step's session, through the lock and with no
 new slot, and is tagged with that session while it runs. The session stays
 open while a user may still run in it (a loop its owner is not in counts
 until its last round), and a sweep after each pass and at the run's end
-closes it once every user is done, skipped or in a branch not taken
+closes it once every user is done, skipped or in a branch not taken.
+Saved workflows are files, read from two folders on every call
+(`workflow_store.py`): the built-ins in the package, whose ids are reserved,
+and the project's in `.aegis/workflows/` beside the config, with every save
+appended to a history that keeps each version's text. A person's
+`/workflow` or `/loop` line starts a saved one with no click through a launch
+token (`workflows.Launches`). It is minted only inside `session.send`, which
+no agent can call, and by the fire of a schedule a person approved; it is
+bound to one session, one workflow and its text at that moment, checked
+before it is spent so a refused arm can try again, spent by the arm that
+creates the run, and kept in memory only, so a restart voids it. An agent
+receives it in the launch turn and can choose only the args, checked closed
+against the saved schema. A schedule that fires a workflow pins its version
+and pauses for a person's approval when the file changes; the fire checks
+the version again, so a hand edit is caught too
 (`docs/superpowers/specs/2026-10-15-dynamic-workflows-design.html`).
 
 **Agents change only what they created.** An agent reads and messages any session

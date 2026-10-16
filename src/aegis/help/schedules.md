@@ -63,6 +63,13 @@ that card, or Resume in the Schedules view, starts it. An agent cannot
 unpause or fire a schedule that is waiting for you. A schedule you create
 yourself starts at once.
 
+## Fire a workflow
+
+A schedule whose prompt is a /workflow or /loop line runs that saved
+workflow at each fire, with no click, at the version a person approved. When
+the workflow changes, the schedule pauses and its card shows the change until
+you unpause it. See [Fire one from a schedule](workflows#fire-one-from-a-schedule).
+
 ## The check
 
 The check runs on each tick that passes the overlap rule, in the directory
