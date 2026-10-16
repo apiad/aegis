@@ -154,3 +154,19 @@ async def test_a_skipped_user_closes_the_session_it_kept(world):
     st = wf.runs[run]
     assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
     assert st.nodes["impl"].log_id not in world.app.sessions.sessions
+
+
+async def test_a_reused_session_names_the_step_running_in_it(world):
+    wf = world.app.workflows
+    run = await run_it(world, reuse(report(1, 0.2), report(2, 1.5)))
+    await until(
+        lambda: (
+            (n := wf.runs[run].nodes.get("fix")) is not None and n.status == "running"
+        ),
+        timeout=20,
+    )
+    s = world.app.sessions.sessions[wf.runs[run].nodes["impl"].log_id]
+    assert s.workflow["node"] == "fix" and s.wire()["workflow"]["node"] == "fix"
+    await until(lambda: settled(wf, run), timeout=20)
+    st = wf.runs[run]
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}

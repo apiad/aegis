@@ -1655,6 +1655,10 @@ class Workflows:
         self._log(
             st.run, {"ev": "node_started", "node": inst, "log_id": s.log_id, "say": say}
         )
+        # The Fleet's card, the placeholder and the lock name the step
+        # running in it now, not the one it was spawned for.
+        s._set(workflow={"run": st.run, "node": inst})
+        self._reg.metas.write(s.meta())
         schema = json.dumps(node.body.get("result") or {"type": "object"})
         await s.send(
             f"> from workflow:{self._wid(st)} · node {inst} · {iso_now()}\n{prompt}\n\n"
