@@ -81,9 +81,17 @@ root:
   seq:
     - loop:
         max: 3
-        until: {sh: "gh pr checks {{args.pr}} --json bucket -q 'length > 0 and all(.[]; .bucket == \"pass\")' | grep -qx true"}
+        until: {sh: "gh pr checks {{args.pr}} --json bucket -q 'length > 0 and all(.[]; .bucket == \"pass\" or .bucket == \"skipping\")' | grep -qx true"}
         do:
           seq:
+            - if:
+                when: {sh: "gh pr checks {{args.pr}} --json bucket -q 'any(.[]; .bucket == \"fail\" or .bucket == \"cancel\")' | grep -qx true"}
+                then:
+                  agent: {agent: sonnet, prompt: "CI failed on PR {{args.pr}}. Read the failed logs, fix the cause and push."}
+                  id: fix
+                  say: Fix what made CI fail and push.
+              id: if-red
+              say: If a check failed, fix it.
             - wait: 1m
               id: settle
               say: Give CI a moment to start on the latest push.
@@ -92,14 +100,6 @@ root:
               deadline: 1h
               retries: 1
               say: Wait until every CI check has finished, and at least one ran.
-            - if:
-                when: {sh: "gh pr checks {{args.pr}} --json bucket -q 'any(.[]; .bucket == \"fail\")' | grep -qx true"}
-                then:
-                  agent: {agent: sonnet, prompt: "CI failed on PR {{args.pr}}. Read the failed logs, fix the cause and push."}
-                  id: fix
-                  say: Fix what made CI fail and push.
-              id: if-red
-              say: If a check failed, fix it.
           id: round
           say: One CI run.
       id: ci
@@ -115,8 +115,11 @@ root:
 ```
 
 `length > 0` makes "green" mean at least one check ran: a PR whose checks
-have not started yet is not green. The wait at the start of each round keeps
-a fix's push from being judged by the run before it.
+have not started yet is not green. A skipped check counts as passing; a
+cancelled one counts as failed, so a fix is tried. Each round fixes first,
+then waits for CI to finish on the latest push before `until` reads it, so
+the third fix is checked too, and the wait keeps a fix's push from being
+judged by the run before it.
 
 ## One step per item, a few at a time
 
@@ -191,7 +194,7 @@ root:
               prompt: "On a new branch, update the lockfiles, run the tests, and open a PR. Report its number."}
       id: update
       say: Update the lockfiles and open a PR.
-    - check: {sh: "gh pr checks {{update.pr}} --json bucket -q 'length > 0 and all(.[]; .bucket == \"pass\")' | grep -qx true", every: 5m}
+    - check: {sh: "gh pr checks {{update.pr}} --json bucket -q 'length > 0 and all(.[]; .bucket == \"pass\" or .bucket == \"skipping\")' | grep -qx true", every: 5m}
       id: green
       deadline: 2h
       say: Wait until every CI check on the PR passes.
@@ -204,6 +207,9 @@ root:
   id: all
   say: Tonight's dependency update.
 ```
+
+A skipped check counts as passing. A failed or cancelled one never turns
+it green, so the check runs to its deadline and the failure comes to you.
 
 Save it, then give it a clock:
 
