@@ -102,6 +102,7 @@ class Node:
     use: str = ""  # the YAML path of the ref that put this node here
     branch: str = ""  # then or else, for the root of an if's branch
     generated: bool = False  # its id was numbered, not written
+    see: str = ""  # a path into the plan, filled like say
 
     @property
     def key(self) -> str:
@@ -716,6 +717,8 @@ def rows(wf: Workflow, items=lambda path: None) -> list[dict]:
             row["deadline"] = n.deadline
         if n.retries:
             row["retries"] = n.retries
+        if n.see:
+            row["see"] = n.see
         out.append(row)
         if n.kind in ("map", "loop"):
             got = None if each else items(path)
@@ -822,6 +825,20 @@ class _Parser:
                 self.err(
                     f"{path}.deadline", "a deadline is a duration such as 20m or 1h30m"
                 )
+        if "see" in raw:
+            see = raw["see"]
+            if not isinstance(see, str) or not see.strip():
+                self.err(
+                    f"{path}.see",
+                    "see is a path to a file, with an optional #fragment or :line",
+                )
+            elif re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", see):
+                self.err(
+                    f"{path}.see",
+                    "see is a path to a file in the run's folder, not a URL",
+                )
+            else:
+                node.see = see
         if "retries" in raw:
             r = raw["retries"]
             if (
@@ -1418,6 +1435,8 @@ class _Parser:
     @staticmethod
     def _strings(n: Node) -> list[tuple[str, str]]:
         out = [(n.path + ".say", n.say)]
+        if n.see:
+            out.append((n.path + ".see", n.see))
         for k in ("prompt", "cwd"):
             if n.kind == "agent" and isinstance(n.body.get(k), str):
                 out.append((f"{n.path}.agent.{k}", n.body[k]))
@@ -1580,6 +1599,7 @@ def _fields(n: Node) -> dict:
         "deadline": n.deadline,
         "retries": n.retries,
         "branch": n.branch,
+        "see": n.see,
     }
 
 
@@ -1730,7 +1750,7 @@ def _parts(o: Node, n: Node) -> list[str]:
         for k in keys
         if o.body.get(k) != n.body.get(k)
     ]
-    fs = ("after", "deadline", "retries")
+    fs = ("after", "deadline", "retries", "see")
     return out + [f for f in fs if getattr(o, f) != getattr(n, f)]
 
 
