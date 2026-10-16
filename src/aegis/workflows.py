@@ -178,6 +178,10 @@ If you cannot go on without an answer, call workflow_ask with your question and 
 MAIN_PREAMBLE = """---
 This is step `{node}` of your workflow, and it is yours to do. When it is done, call workflow_result with `value` matching {schema} and a one-sentence `summary`."""
 
+REUSED = """---
+This is step `{node}` of the same workflow, in the session you already have. When it is done, call workflow_result with `value` matching this JSON Schema and `summary`, one plain sentence telling the person what you did:
+{schema}"""
+
 JUDGE_SCHEMA = {
     "type": "object",
     "properties": {"pass": {"type": "boolean"}, "why": {"type": "string"}},
@@ -295,7 +299,13 @@ class Workflows:
         """A session's turn ended: a node answered has now had its turn."""
         w = s.workflow or {}
         if w.get("probe") != "judge":
-            self._answered.discard((w.get("run", ""), w.get("node", "")))
+            run = w.get("run", "")
+            self._answered.discard((run, w.get("node", "")))
+            # A reused session's turn is the step running in it now.
+            st = self.runs.get(run)
+            for k, n in st.nodes.items() if st else ():
+                if n.log_id == s.log_id:
+                    self._answered.discard((run, k))
         self.changed()
 
     def _due_at(self, t: float) -> None:
@@ -837,7 +847,9 @@ class Workflows:
         session without full permission, a cwd that does not resolve."""
         for n in nodes:
             probe = n.body.get("probe") or {}
-            main = n.body.get("session") == "main"  # the owner runs it, as it is
+            # The owner runs a main step, and an earlier step's session runs
+            # a reused one, each as it is: neither spawns an agent.
+            main = n.body.get("session") is not None
             if n.kind == "agent" and not main:
                 self._check_permission(owner, n.body["agent"], n.path)
             if "judge" in probe:
@@ -979,6 +991,16 @@ class Workflows:
         if wf_ref.get("probe") == "judge":
             cur = (n.judges.get(wf_ref.get("round", "")) or {}).get("log_id")
         else:
+            # A reused session reports for the step running in it now, not
+            # the step it was spawned for; the lint and _reuse keep that to
+            # one step at a time.
+            now = [
+                k
+                for k, x in st.nodes.items()
+                if x.log_id == s.log_id and x.status == "running" and not x.main
+            ]
+            if now:
+                return st, now[0]
             cur = n.log_id
         if cur != s.log_id:
             raise OpError(
@@ -1510,6 +1532,8 @@ class Workflows:
             return await self._main_step(st, wf, node, prefix)
         inst = prefix + node.id
         n = st.nodes.get(inst)
+        if (n is None or n.status == "pending") and node.key in wf.session_of:
+            return await self._reuse(st, wf, node, prefix)
         if n is None or n.status == "pending":
             try:
                 started = await self._start_agent(st, wf, node, prefix)
@@ -1544,12 +1568,56 @@ class Workflows:
             reported=reported,
             nudged=n.nudged,
             nudge_rec={"ev": "nudged", "node": inst},
+            keep=self._keep(st, wf, node, prefix),
         )
         if got == "done":
             self._log(st.run, {"ev": "node_done", "node": inst})
         elif got == "failed":
             self._fail(st, inst, "its turn ended twice with no workflow_result")
         return got
+
+    def _keep(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> bool:
+        """Whether this step's session stays open after it: a step that runs
+        in it, in the same map item and loop round, has not finished."""
+        root = wf.session_of.get(node.key, node.key)
+        for k in wf.users.get(root, []):
+            if k == node.key:
+                continue
+            u = wf.by_key[k]
+            if self._state(st, u, self._resolve(u, prefix)) not in ("done", "skipped"):
+                return True
+        return False
+
+    async def _reuse(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
+        """Start a step in an earlier step's session: no spawn and no slot,
+        since the session holds its slot while it is open. It waits while
+        that session is still in a turn."""
+        inst = prefix + node.id
+        say = self._say(st, wf, node, prefix)
+        root = wf.by_key[wf.session_of[node.key]]
+        src = st.nodes.get(self._resolve(root, prefix)) or NodeState()
+        s = self._reg.sessions.get(src.log_id or "")
+        if s is None:
+            self._fail(st, inst, "the session it continues is gone", say, retry=False)
+            return "failed"
+        if not self._reg.finished(s):
+            self._queuing.add(inst)
+            return "queued"
+        try:
+            prompt = render(node.body["prompt"], self._scope(st, wf, prefix))
+        except RENDER_ERRORS as e:
+            self._fail(st, inst, f"a reference has no value: {e}", say, retry=False)
+            return "failed"
+        self._log(
+            st.run, {"ev": "node_started", "node": inst, "log_id": s.log_id, "say": say}
+        )
+        schema = json.dumps(node.body.get("result") or {"type": "object"})
+        await s.send(
+            f"> from workflow:{self._wid(st)} · node {inst} · {iso_now()}\n{prompt}\n\n"
+            + REUSED.format(node=inst, schema=schema),
+            through_lock=True,
+        )
+        return "running"
 
     async def _main_step(
         self, st: RunState, wf: Workflow, node: Node, prefix: str
@@ -2057,16 +2125,18 @@ class Workflows:
         reported: bool,
         nudged: bool,
         nudge_rec: dict,
+        keep: bool = False,
     ) -> str:
         """Where a node's or a judge's session stands once it has been
-        prompted: running while it works; done, and closed, once it has
-        reported and finished; nudged once when a turn ends with no report;
-        failed when the second does."""
+        prompted: running while it works; done, and closed unless ``keep``
+        (a later step runs in it), once it has reported and finished; nudged
+        once when a turn ends with no report; failed when the second does."""
         if not self._reg.finished(s):
             return "running"
         if reported:
-            with contextlib.suppress(Exception):
-                await self._reg.close(s.log_id)
+            if not keep:
+                with contextlib.suppress(Exception):
+                    await self._reg.close(s.log_id)
             return "done"
         if not nudged:
             self._log(st.run, nudge_rec)
