@@ -365,10 +365,15 @@ def test_arming_again_with_a_new_definition_shows_its_diff(server, page):  # noq
     card = ".wfdcard[data-what=again]"
     page.wait_for_selector(f"{card} >> text=Run again")
     page.wait_for_selector(f"{card} .d.change >> text=Ask the person.")
-    page.wait_for_selector(f"{card} .d.change .f >> text=who decides")
+    page.wait_for_selector(f"{card} .d.change .f >> text=who decides: main")
     page.wait_for_selector(f"{card} pre.cmd >> text=$ curl -X POST deploy")
     page.wait_for_selector(f"{card} >> text=Adds 1 shell command")
     page.wait_for_selector(f"{card} button >> text=Approve and run")
+    # The run's own card approves too, so it shows the same diff above its
+    # button: approving there must not skip what changed.
+    runcard = ".wfcard[data-status=armed]"
+    page.wait_for_selector(f"{runcard} .edit .d.change .f >> text=who decides: main")
+    page.wait_for_selector(f"{runcard} .edit pre.cmd >> text=$ curl -X POST deploy")
     assert not page.errors
 
 
