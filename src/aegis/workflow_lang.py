@@ -24,6 +24,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from ruamel.yaml import YAML, YAMLError
+from ruamel.yaml.util import load_yaml_guess_indent
 
 KINDS = (
     "seq",
@@ -1593,6 +1594,62 @@ def parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError]
         return _parse(text, agents)
     except RecursionError:  # an agent's text never crashes the lint
         return None, [LintError("$", "the workflow is nested too deep")]
+
+
+_SEG = re.compile(r"\.([A-Za-z_]+)|\[(\d+)\]")
+
+
+def _at(doc, path: str):
+    """The mapping at a node's YAML path ("$.root.seq[1].map.do")."""
+    cur = doc
+    for name, idx in _SEG.findall(path[1:]):
+        cur = cur[name] if name else cur[int(idx)]
+    return cur
+
+
+def with_ids(text: str, wf: Workflow) -> str:
+    """``text`` with every generated id under the root written in, next to
+    its node's kind key, so a saved workflow keeps its ids when it is edited
+    (edit_errors refuses a started step whose generated id moved). A round
+    trip, so comments and key order survive. A step in a block keeps its
+    generated id: one block may be used twice in one scope, where a written
+    id would clash. A block's own root takes its id at the ref that uses it,
+    as a ref's id may be written: the ids written before it no longer count
+    towards the numbering, so left generated it would be numbered anew."""
+    todo = [
+        (n.path, n)
+        for n in walk(wf.root)
+        if n.generated and n.path.startswith("$.root")
+    ] + [
+        (n.use, n)
+        for n in walk(wf.root)
+        if n.generated
+        and n.use.startswith("$.root")
+        and re.fullmatch(r"\$\.blocks\.[^.\[]+", n.path)
+    ]
+    if not todo:
+        return text
+    # A round trip in the file's own indentation, quotes and line lengths.
+    _, ind, seq_ind = load_yaml_guess_indent(text)
+    nested = [
+        len(x) - len(x.lstrip(" "))
+        for x in text.splitlines()
+        if x.startswith(" ") and x.strip() and x.lstrip()[0] not in "-#"
+    ]
+    rt = YAML()
+    rt.indent(mapping=min(nested, default=2), sequence=ind or 2, offset=seq_ind or 0)
+    rt.preserve_quotes = True
+    rt.width = 4096
+    doc = rt.load(io.StringIO(text))
+    for path, n in todo:
+        m = _at(doc, path)
+        keys = list(m.keys())
+        kind = "ref" if path != n.path else n.kind
+        at = keys.index(kind) + 1 if kind in keys else len(keys)
+        m.insert(at, "id", n.id)
+    out = io.StringIO()
+    rt.dump(doc, out)
+    return out.getvalue()
 
 
 def _parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError]]:
