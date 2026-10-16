@@ -45,6 +45,25 @@ async def answer_round(main, n: int, done: bool, next_: str | None = None):
     assert said.startswith("mcp ok"), said
 
 
+async def waiting(world, run: str, inst: str):
+    wf_ = world.app.workflows
+    await until(
+        lambda: (n := wf_.runs[run].nodes.get(inst)) and n.status == "running",
+        timeout=10,
+    )
+    return wf_.runs[run].nodes[inst]
+
+
+async def hurry(world, run: str, inst: str) -> str:
+    """End a started wait now, as if its time had passed; returns what it
+    said it would wait."""
+    n = await waiting(world, run, inst)
+    n.until = 0
+    world.app.workflows._due_at(0)
+    world.app.workflows.changed()
+    return n.cmd
+
+
 @pytest.mark.slow
 async def test_loop_runs_its_rounds_and_ends_done_when_they_run_out(world):
     main, run = await start(
@@ -54,6 +73,8 @@ async def test_loop_runs_its_rounds_and_ends_done_when_they_run_out(world):
     )
     for n in (1, 2, 3):
         await answer_round(main, n, done=False)
+        # Even the person's own interval waits at least a minute.
+        assert await hurry(world, run, f"rounds.{n}.interval") == "1m (1s asked)"
     wf_ = world.app.workflows
     # Running out of rounds ends it done; a failure would wait with an open item.
     await until(
@@ -98,6 +119,20 @@ async def test_without_every_the_agent_paces_itself_within_an_hour(world):
     )
     n = wf_.runs[run].nodes["rounds.1.pause"]
     assert n.until - n.started <= 3600 + 5
+    await world.app.registry.call("workflow.stop", {"run": run})
+
+
+@pytest.mark.slow
+async def test_every_is_clamped_into_a_minute_to_a_day(world):
+    # The agent fills every from the line, so it is bounded as next is.
+    main, run = await start(
+        world,
+        "/loop check the deploy every 30d",
+        {"prompt": "check the deploy", "every": "30d"},
+    )
+    await answer_round(main, 1, done=False)
+    n = await waiting(world, run, "rounds.1.interval")
+    assert n.cmd == "1d (30d asked)" and n.until - n.started <= 86400 + 5
     await world.app.registry.call("workflow.stop", {"run": run})
 
 

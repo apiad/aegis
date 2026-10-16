@@ -245,7 +245,9 @@ async def test_loop_refuses_a_thousand_rounds_and_clamps_the_agents_wait(world):
         )
     assert e.value.code == "bad_args" and "at most 100" in e.value.message
     wf, _ = parse(world.app.saved.get("loop").text, world.app.workflows._agents())
-    (picked,) = [
-        n for n in wf.by_key.values() if n.kind == "wait" and "between" in n.body
-    ]
-    assert picked.body["between"] == [60.0, 3600.0]
+    bounds = {
+        n.id: n.body["between"]
+        for n in wf.by_key.values()
+        if n.kind == "wait" and "between" in n.body
+    }
+    assert bounds == {"pause": [60.0, 3600.0], "interval": [60.0, 86400.0]}

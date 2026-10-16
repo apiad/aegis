@@ -499,6 +499,7 @@ root:
                   say: Wait as the agent asked, 1m to 1h.
                 else:
                   wait: "{{args.every}}"
+                  between: [1m, 1d]
                   id: interval
                   say: "Wait {{args.every}}."
               id: how-long
@@ -513,7 +514,7 @@ root:
 
 From the launch turn, put the work in `prompt` without the interval, and
 the interval in `every` when the person gave one, such as `5m` for
-"check the deploy every 5m"; `max` is the most rounds, 20 unless they said
+"check the deploy every 5m", from 1m to 1d; `max` is the most rounds, 20 unless they said
 otherwise, and at most 100. Each round arrives as a step in your inbox: do the work, then call
 `workflow_result` with `done: true` when nothing is left to do, which ends
 the loop at once. Without `every`, give `next`, the wait before the next
@@ -521,8 +522,7 @@ round, from 1m to 1h (a `next` outside that is clamped into it); without
 either it waits 20 minutes. The loop ends done
 when a round says so or the rounds run out, and stops when the person
 presses Stop on the card or asks you to stop, which you do with
-`workflow_stop`. A round you leave unanswered for two hours fails, and the
-failure comes to you as any step's does.
+`workflow_stop`. A round left unanswered for two hours fails like any step.
 
 ## Fire one from a schedule
 
