@@ -258,3 +258,20 @@ async def test_a_wire_that_raises_drops_no_other_runs_publish(world, monkeypatch
     assert broke == [bad] and sent == [good]
     # The run whose wire raised goes out on the next flush.
     await until(lambda: bad in sent, timeout=2)
+
+
+async def test_an_ended_runs_pane_keeps_its_title_after_a_boot(world):
+    a = await world.spawn()
+    run = ok(
+        await turn(
+            a,
+            mcp("workflow_arm", definition=flow(RESULT, RESULT), args={}, dock="right"),
+        )
+    )["run"]
+    await world.app.registry.call("workflow.reject", {"run": run})
+    wf = world.app.workflows
+    assert wf.runs[run].status not in ("armed", "running")
+    wf.defs.pop(run, None)  # as boot leaves an ended run: not parsed yet
+    lay = ok(await turn(a, mcp("layout_read")))
+    (p,) = [p for p in panes(lay) if p.get("kind") == "workflow"]
+    assert p["title"] == "Two steps", p

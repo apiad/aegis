@@ -68,7 +68,7 @@ def described(s) -> dict:
         elif pid.startswith("wf-"):
             # Titled as the person sees it: the definition's title, not the run.
             wfs = getattr(s._host, "workflows", None)
-            d = wfs.defs.get(pid[3:]) if wfs is not None else None
+            d = wfs.definition(pid[3:]) if wfs is not None else None
             return {
                 **p,
                 "kind": "workflow",
