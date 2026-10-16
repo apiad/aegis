@@ -160,6 +160,11 @@ class Schedules:
         for name, s in self.items.items():
             st = self.state.setdefault(name, State())
             st.last_tick = st.last_tick or s.edited_at
+            if self.workflow_of(s.d.prompt) and not s.pin and not self.awaiting(name):
+                # Saved before pins existed: no version was approved, so only
+                # a person's unpause may pin one.
+                s.paused = {"by": APPROVAL, "at": iso(now)}
+                self._event(name, "paused", by=APPROVAL)
             for run in list(st.live.values()):
                 if run.log_id not in self._reg.sessions:
                     self._event(

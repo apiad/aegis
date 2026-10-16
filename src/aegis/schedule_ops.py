@@ -191,8 +191,14 @@ def register_schedule_ops(app: App) -> None:
     async def schedule_resume(p: ScheduleResume, caller):
         """Start a paused schedule again from now, its error count cleared. The
         ticks that fell during the pause do not fire."""
-        mine(p.name, caller)
+        s = mine(p.name, caller)
         person_only(p.name, caller, "unpause")
+        if caller.is_agent and sch.workflow_of(s.d.prompt) and not s.pin:
+            raise OpError(
+                "needs_person",
+                f"{p.name} fires a workflow no person has approved a version of; "
+                "only a person can unpause it",
+            )
         sch.resume(p.name, p.workflow)
         return sch.wire(p.name)
 

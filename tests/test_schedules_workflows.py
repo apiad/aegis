@@ -393,3 +393,43 @@ async def test_the_pinned_text_outlives_later_saves(world):
     await save(world, NAP.replace("Nap a while.", "Nap three."))
     w = world.app.schedules.wire("nightly-nap")["workflow"]
     assert w["changed"] and w["diff"]  # drawn from the pinned version's text
+
+
+async def unpinned_agent_nap(world):
+    """An agent's workflow schedule as a server from before pins saved it:
+    approved and running, with no pin."""
+    main = await world.spawn()
+    await agent_nap(world, main)
+    s = world.app.schedules.items["agent-nap"]
+    s.pin, s.paused = None, None
+    world.app.schedules._save()
+    return main
+
+
+async def agent_pins_new_text(world, main) -> str:
+    """The reviewer's scenario: the agent saves new text and resumes the
+    schedule with its sha, then the clock comes round."""
+    await save(world, NAP.replace("Nap a while.", "Not what was approved."))
+    sha = world.app.saved.get("nap").sha
+    said = await turn(main, mcp("schedule_resume", name="agent-nap", workflow=sha))
+    await tick(world, frozen(world), 86400)
+    return said
+
+
+async def test_a_schedule_loaded_without_a_pin_waits_for_a_person(world):
+    main = await unpinned_agent_nap(world)
+    await world.restart()
+    main = world.app.sessions.sessions[main.log_id]
+    assert world.app.schedules.awaiting("agent-nap")
+    said = await agent_pins_new_text(world, main)
+    assert said.startswith("mcp error")
+    assert world.app.schedules.items["agent-nap"].pin is None
+    assert runs(world, "agent-nap", "fired") == []
+
+
+async def test_an_agent_cannot_pin_a_schedule_that_has_no_pin(world):
+    main = await unpinned_agent_nap(world)
+    said = await agent_pins_new_text(world, main)
+    assert said.startswith("mcp error") and "person" in said
+    assert world.app.schedules.items["agent-nap"].pin is None
+    assert runs(world, "agent-nap", "fired") == []
