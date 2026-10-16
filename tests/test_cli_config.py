@@ -113,8 +113,10 @@ def test_init_with_no_harness_writes_nothing(tmp_path):
 
 
 def test_doctor_exits_1_on_an_error_and_0_when_healthy(
-    tmp_path, fake_claude, fake_opencode
+    tmp_path, fake_claude, fake_opencode, monkeypatch
 ):
+    # The host's own aegis unit would add its warnings.
+    monkeypatch.setattr("aegis.service.UNIT_DIRS", [])
     r = invoke("doctor", "--root", str(tmp_path), *fakes(fake_claude, fake_opencode))
     assert r.exit_code == 1 and "aegis init" in r.output
     (tmp_path / ".aegis.yaml").write_text(
