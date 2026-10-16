@@ -360,3 +360,28 @@ async def test_a_schedules_card_lists_the_commands_its_workflow_runs(world):
     assert w["commands"]["sh"] == 1 and w["commands"]["probes"] == 1
     assert w["cmds"] == ["$ git clean -n", "$ test -f done"]
     assert w["cwd"] == str(world.root)
+
+
+async def test_an_unapproved_arm_does_not_keep_a_schedules_run_live(world):
+    # Only a running workflow is work in progress: one armed and waiting for
+    # a click nobody may give must not hold the schedule's overlap forever.
+    raw = {
+        "clock": {"every": "5m"},
+        "fire": {"agent": "opus"},
+        "prompt": "hello [[slow]]",
+    }
+    world.app.schedules.create(
+        "say-hello",
+        Definition.model_validate(raw),
+        {"kind": "user", "principal": world.app.user},
+        world.root,
+    )
+    t = frozen(world)
+    await tick(world, t)
+    ses = fired(world, "say-hello")
+    await until(lambda: ses.status == "working", timeout=10)
+    st = world.app.workflows.arm(ses, NAP, {"secs": "1s"})
+    assert st.status == "armed"
+    await until(lambda: ses.status == "idle", timeout=10)
+    await world.app.schedules.step()
+    await until(lambda: not world.app.schedules.state["say-hello"].live, timeout=10)
