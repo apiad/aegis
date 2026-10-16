@@ -183,6 +183,9 @@ def _apply(st: RunState, r: dict) -> None:
         st.status, st.ended = "armed", None
         st.text, st.version = r.get("text") or st.text, int(r.get("v") or st.version)
         _reset(st, r.get("reset") or [], again=True)
+        for n in st.nodes.values():
+            # A judge the stop cut off never answers: arming again asks anew.
+            n.judges = {k: j for k, j in n.judges.items() if "pass" in j}
         _drop_proposal(st)
         st.open = {}
         kept = sum(n.status in ("done", "skipped") for n in st.nodes.values())

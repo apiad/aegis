@@ -1004,10 +1004,9 @@ class Workflows:
             node = self._template(old, k)
             if node.kind in LEAVES and n.status not in ("done", "skipped"):
                 reset.add(k)  # a leaf that did not finish runs again
-            elif node.kind not in LEAVES and n.status == "failed":
-                reset |= {
-                    x for x, _ in self._under(st, node, k)
-                }  # a failed group, whole
+            elif node.kind not in LEAVES and n.status in ("failed", "stopped"):
+                # A failed group, whole; or an if stopped while its probe ran.
+                reset |= {x for x, _ in self._under(st, node, k)}
         v = st.version + (text != st.text)
         rec = {"ev": "rearmed", "v": v, "text": text, "reset": sorted(reset)}
         if text != st.text:
@@ -2503,10 +2502,10 @@ class Workflows:
                     with contextlib.suppress(Exception):
                         await s.interrupt(through_lock=True)
         # Its commands and probes end too; each task ends its own process
-        # group, so nothing here waits on one.
-        for (run, _), task in list(self._tasks.items()):
-            if run == st.run:
-                task.cancel()
+        # group, so nothing here waits on one. Each leaves the table now, so
+        # a run armed again at once starts its own, not waits on this one.
+        for key in [k for k in self._tasks if k[0] == st.run]:
+            self._tasks.pop(key).cancel()
         if (wf := self.defs.get(st.run)) is not None:
             # A session kept for a step that will not run is archived, not
             # given a tab. One kept for a step not run yet keeps its tab:
