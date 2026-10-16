@@ -1,0 +1,48 @@
+id: loop
+title: Repeat a prompt until it says done
+say: Run the prompt round after round, until the agent says it is done or the rounds run out.
+args:
+  type: object
+  properties:
+    prompt:
+      type: string
+      description: What to do each round, in the person's words without the interval.
+    every:
+      type: string
+      description: A fixed wait between rounds, such as 5m or 1h30m, when the person gave one. Without it the agent picks each wait.
+    max:
+      type: integer
+      default: 20
+      description: The most rounds.
+  required: [prompt]
+root:
+  loop:
+    max: "{{args.max}}"
+    until: {expr: "tick.done"}
+    at_max: done
+    do:
+      seq:
+        - agent:
+            session: main
+            prompt: "{{args.prompt}}\n\nReport done: true when there is nothing left to do. Without a fixed interval, give next: how long to wait before the next round, from 1m to 1h."
+            result:
+              type: object
+              properties:
+                done: {type: boolean}
+                next: {type: string}
+              required: [done]
+          id: tick
+          say: "Do it: {{args.prompt}}"
+          deadline: 2h
+        - if:
+            when: {expr: "not tick.done"}
+            then:
+              wait: "{{args.every or tick.next or '20m'}}"
+              id: pause
+              say: Wait before the next round.
+          id: unless-done
+          say: Unless it is done, wait.
+      id: round
+      say: One round.
+  id: rounds
+  say: "Up to {{args.max}} rounds."

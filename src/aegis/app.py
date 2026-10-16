@@ -47,6 +47,7 @@ from pydantic import BaseModel, Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 from . import archive, attachments as att, commands, dictation, files, restarts
+from . import workflow_store
 from .agent_ops import (
     far_error,
     handoff_opening,
@@ -390,6 +391,7 @@ class App:
         self.schedules = Schedules(self)
         reg.schedules = self.schedules
         self.workflows = Workflows(self)
+        self.saved = workflow_store.Store(roots.config_root, roots.state_root)
         reg.workflows = self.workflows
         self.catalogs = commands.Catalogs(
             roots.state_root / "stderr" / "catalog-probe.log"

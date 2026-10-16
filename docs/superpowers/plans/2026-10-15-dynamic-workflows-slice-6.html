@@ -598,7 +598,7 @@ Check the path shapes against <code>_Parser</code>: a seq child is <code>{path}.
 </div>
 </details>
 
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">The store: built-in and project workflows, versions, history, and the built-in loop</span><span class="files">workflow_store.py · builtin_workflows/loop.yaml · app.py · tests/test_workflow_store.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1917,6 +1917,7 @@ Use the real fixture and helper names of those modules (<code>open_session</code
   <li>Task 1: the test loop carries <code>id: lp</code>, since <code>edit_errors</code> refuses any change to a started node with a generated id before it reaches the group rules; and its third argument marks the loop <code>begun</code>, the word slice 4's tests use for a group. The edit lint's word map needed no new case: a fixed field other than <code>probe</code> is named by its own key.</li>
   <li>Task 2: the closed check's messages follow the code, and the test was changed to it: an object's properties are checked first, nested ones included, so <code>$.args.opts.x</code> comes before <code>$.args.shell</code>.</li>
   <li>Task 3: <code>with_ids</code> also writes a block root's generated id at the <code>ref</code> that uses it (a ref may carry <code>id</code>). Written ids no longer advance the numbering, so the plan's version renumbered the ref (<code>n4</code> became <code>n3</code>) and its own key-set assertion failed; task 4's fallback would have kept every workflow with a ref unwritten. Steps nested inside a block still keep generated ids, and a block with unnamed inner steps may still renumber, which task 4's key check catches by keeping the text as given. The round trip keeps the file's own style: the mapping and sequence indents are guessed from the text, quotes are preserved, and lines are not rewrapped, so the diff is the id lines alone.</li>
+  <li>Task 4: <code>check_named(saved, agents)</code> takes the saved file, not a listing row; it and the listing share one <code>_named</code> that says what is wrong with a file. The wheel already ships <code>builtin_workflows/loop.yaml</code> (hatch packages all of <code>src/aegis</code>), so <code>pyproject.toml</code> is unchanged. This commit also carries <code>ruff format</code> over the task 1 to 3 lines of <code>workflow_lang.py</code> and its tests.</li>
 </ul>
 </main>
 <script>

@@ -1068,7 +1068,9 @@ class _Parser:
 
     def loop(self, body, path: str, node: Node) -> None:
         if not isinstance(body, dict) or "do" not in body:
-            self.err(path, "loop holds do, max, an optional until and an optional at_max")
+            self.err(
+                path, "loop holds do, max, an optional until and an optional at_max"
+            )
             return
         for k in body:
             if k not in ("do", "max", "until", "at_max"):
@@ -1792,7 +1794,11 @@ def _fields(n: Node) -> dict:
     }
 
 
-GROUP_FIXED = {"map": ("over", "as"), "loop": ("max", "probe", "at_max"), "if": ("probe",)}
+GROUP_FIXED = {
+    "map": ("over", "as"),
+    "loop": ("max", "probe", "at_max"),
+    "if": ("probe",),
+}
 # How the diff card names a changed part of a node's body.
 PART = {
     "prompt": "its prompt",
