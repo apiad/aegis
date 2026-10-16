@@ -454,3 +454,34 @@ async def test_an_if_stopped_while_probing_probes_again_when_armed_again(world, 
     await until(lambda: wf.runs[run].status in ("done", "failed"), timeout=20)
     assert wf.runs[run].status == "done"
     assert (world.root / "took").read_text() == "y\n"
+
+
+async def test_a_run_rejected_when_armed_again_keeps_its_steps_and_arms_again(world):
+    main = await world.spawn()
+    run = ok(await turn(main, mcp("workflow_arm", definition=COUNTED, args={})))["run"]
+    await world.app.registry.call("workflow.approve", {"run": run})
+    wf = world.app.workflows
+    await until(
+        lambda: (
+            (wf.runs[run].nodes.get("long") or 0)
+            and wf.runs[run].nodes["long"].status == "running"
+        ),
+        timeout=20,
+    )
+    await world.app.registry.call("workflow.stop", {"run": run})
+    await until(
+        lambda: woke(main, " · stopped · ") and main.status == "idle", timeout=10
+    )
+    quick = COUNTED.replace("sleep 30", "true")
+    ok(await turn(main, mcp("workflow_arm", run=run, definition=quick)))
+    await world.app.registry.call("workflow.reject", {"run": run})
+    await until(
+        lambda: woke(main, " · rejected · ") and main.status == "idle", timeout=10
+    )
+    (md,) = woke(main, " · rejected · ")
+    assert "steps it finished are kept" in md and f'run="{run}"' in md
+    assert "nothing ran" not in md
+    ok(await turn(main, mcp("workflow_arm", run=run, definition=quick)))
+    await world.app.registry.call("workflow.approve", {"run": run})
+    await until(lambda: wf.runs[run].status == "done", timeout=20)
+    assert (world.root / "ran").read_text() == "x\n"  # once ran once
