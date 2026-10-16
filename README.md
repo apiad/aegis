@@ -120,6 +120,32 @@ never reach the one that linked it, so a shared server cannot touch your laptop.
 Both servers need aegis 2.4.0 or newer; an older far server refuses the link
 with an HTTP 403, and `aegis link add` says so.
 
+## Work that runs as a plan
+
+An agent can write a larger piece of work as a workflow: a tree of steps in
+which every node says what it does. `workflow_arm` puts it in the transcript as
+a card that reads like a plan and counts the shell commands it will run, and
+nothing runs until you approve it. The server then runs each step, as a locked
+session or a shell command, and the card tells the story as it goes.
+
+- Steps run in sequence, side by side, or once per item of a list, under a pool
+  of agents (`workflows: {max_agents}`) that keeps the server from filling up.
+- Shell steps, checks that wait on a command or a judging agent, pauses,
+  branches and loops, with deadlines and retries. A restart never runs a
+  command twice.
+- A failed step wakes the main agent, which retries it, skips it or changes it.
+  Gates stop for the main agent or for you, and a running workflow changes only
+  through a diff you approve on its card.
+- The card docks, opens full screen or moves to another window, and its steps
+  open read-only without adding tabs.
+- `workflow_save` keeps a workflow in the project. `/workflow <id> <text>` runs
+  it with no second click, `/loop` repeats a prompt until the agent says it is
+  done, and a schedule can fire a saved workflow, pausing for you when it
+  changes. Settings → Workflows holds the pool and the saved list.
+
+A schedule that an agent creates also waits for you: it is born paused, with a
+card that shows it whole and unpauses it.
+
 ## Agents that write their own interface
 
 An agent that needs more than a reply in prose writes a page. `artifact_create`
@@ -170,8 +196,9 @@ it sends it, and a file sent again from the same path updates its card.
   pending until the agent reads it.
 - **The session panel.** One compact row per section, with the details in a card
   that opens on hover: the session, the plan, the monitors, usage and quota, and
-  the host's CPU, RAM and disk. Alt+B collapses the panel, and you drag its edge
-  to resize it.
+  the host's CPU, RAM, disk and network (whether packets leave, the exit address
+  and the link's speed). A session waiting on queue workers names them. Alt+B
+  collapses the panel, and you drag its edge to resize it.
 - **Files from agents.** `file_send` hands you one file, or a set of up to
   twenty as one card that pages with ‹ ›, with a preview (images, PDF, HTML,
   Markdown, text, audio, video), Open and Download. A Read, Write or Edit row
@@ -186,7 +213,9 @@ it sends it, and a file sent again from the same path updates its card.
   check that cannot run shows red instead of looking like one still waiting.
 - **Lazy resume.** A restart brings sessions back stopped, and the next prompt
   resumes each one. Close archives a session for every browser, and the archive
-  in the Fleet brings it back.
+  in the Fleet brings it back. With a `park:` block, a session nobody is
+  watching ends its process after a while and resumes with its context on the
+  next message, giving back the roughly 300 MB a Claude Code process holds.
 - **On a phone.** Below 760 px the tabs get their own row, the panel becomes a
   drawer, and touch targets are 44 px. Chrome installs aegis as an app. On
   Android it builds that app through Google Play, so where Play is out of
