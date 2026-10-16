@@ -2153,6 +2153,7 @@ class Workflows:
         # Nothing of an ended run waits for room, and the room it held is
         # free now: a queued node of another run starts on this wake.
         self._queued.pop(st.run, None)
+        self._answered = {k for k in self._answered if k[0] != st.run}
         self._publish(st.run)
         self.changed()
         await self._tell_owner(st, outcome, body)
@@ -2320,12 +2321,14 @@ class Workflows:
                 node_s = self._reg.sessions.get(n.log_id or "")
                 if node_s is None or n.status != "running":
                     return  # the node has moved on; the question is closed
-                self._answered.add((st.run, o["node"]))
                 await node_s.deliver(
                     f"> from workflow:{self._wid(st)} · answer {to} · {iso_now()}",
                     text,
                     through_lock=True,
                 )
+                # Marked once delivered: a delivery that failed brings no
+                # turn, and the mark would hold the step running forever.
+                self._answered.add((st.run, o["node"]))
             elif o["kind"] == "gate" and choice in ("continue", "abort"):
                 await self._answer_gate(
                     st, to, choice == "continue", text, "main", value

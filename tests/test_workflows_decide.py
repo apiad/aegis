@@ -333,3 +333,32 @@ def test_the_wake_backoff_doubles_to_thirty_seconds_and_never_overflows():
     assert [tell_backoff(n) for n in (1, 2, 3, 6)] == [1.0, 2.0, 4.0, 30.0]
     # 2 ** 1024 times a float overflows; a main agent down for hours gets there.
     assert tell_backoff(1025) == tell_backoff(10**6) == 30.0
+
+
+async def test_an_answer_marks_its_step_only_once_delivered(world):
+    main, run = await armed(
+        world, wf(f"  seq:\n    - {leaf('w', 'Work.', ASKS)}\n  say: One.")
+    )
+    wf_ = world.app.workflows
+    await until(
+        lambda: "q1" in wf_.runs[run].open and wf_.runs[run].open["q1"]["told"],
+        timeout=20,
+    )
+    s = world.app.sessions.sessions[wf_.runs[run].nodes["w"].log_id]
+    await until(lambda: s.status != "working", timeout=10)
+    me = Caller("agent", main.log_id)
+
+    async def broken(*a, **k):
+        raise RuntimeError("the pipe broke")
+
+    s.deliver = broken
+    with pytest.raises(RuntimeError):
+        await world.app.registry.call(
+            "workflow.answer", {"run": run, "to": "q1", "text": "main"}, me
+        )
+    # Marked, it would wait forever for a turn that never comes.
+    assert (run, "w") not in wf_._answered
+    wf_._answered.add((run, "w"))  # as a delivered answer leaves it
+    await world.app.registry.call("workflow.stop", {"run": run}, me)
+    await until(lambda: wf_.runs[run].status == "stopped", timeout=10)
+    assert not [k for k in wf_._answered if k[0] == run]  # an ended run's go
