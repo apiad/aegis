@@ -615,6 +615,10 @@ export function fillWorkflow(card) {
     foot.append(b);
   };
   if (w.status === "armed") {
+    // Armed again with a new definition: this card approves too, so it shows
+    // the diff the again card shows, never an approval past what changed.
+    const again = w.story.findLast((s) => s.text.startsWith("Armed again"));
+    if (again?.diff?.length) kids.push(diffPanel(w, again.diff, again.commands));
     const runs = runsLine(w);
     if (runs) foot.append(runs);
     act("Approve and run", "workflow.approve", "primary");

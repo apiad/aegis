@@ -1722,7 +1722,14 @@ def _parts(o: Node, n: Node) -> list[str]:
     """The parts of a node an edit changed, as the diff card names them."""
     keys = sorted(set(o.body) | set(n.body))
     out = ["its kind"] if o.kind != n.kind else []
-    out += [PART.get(k, f"its {k}") for k in keys if o.body.get(k) != n.body.get(k)]
+    out += [
+        # A gate's decider is named: "who decides" alone hides who now does.
+        f"who decides: {n.body[k]}"
+        if k == "by" and n.body.get(k)
+        else PART.get(k, f"its {k}")
+        for k in keys
+        if o.body.get(k) != n.body.get(k)
+    ]
     fs = ("after", "deadline", "retries")
     return out + [f for f in fs if getattr(o, f) != getattr(n, f)]
 
