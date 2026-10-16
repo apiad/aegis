@@ -168,6 +168,9 @@ export class Help {
   async show(ref) {
     this.draw();
     this.box.dataset.screen = ref ? "page" : "list";
+    // Where the focus was as the list opened: a click made while the page
+    // list loads (Every key) keeps its focus (#433).
+    const was = document.activeElement;
     if (!this.pages) {
       try {
         this.pages = await this.conn.call("help.pages");
@@ -178,7 +181,7 @@ export class Help {
       this.drawList();
     }
     // A phone's keyboard would cover the list it opens over.
-    if (!ref && matchMedia("(pointer: fine)").matches) this.q.focus({ preventScroll: true });
+    if (!ref && document.activeElement === was && matchMedia("(pointer: fine)").matches) this.q.focus({ preventScroll: true });
     const [page, section = ""] = (ref || this.first()).split("#");
     if (page) await this.read(page, section);
   }

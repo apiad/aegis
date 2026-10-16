@@ -2291,6 +2291,38 @@ def test_question_mark_lists_every_key_and_escape_closes_it(server, page):
     assert page.errors == []
 
 
+def test_the_help_list_arriving_late_leaves_the_focus_where_it_went(server, page):
+    """#433: Help focused its search box once the page list arrived, so a
+    click made before then (Every key, under CI load) lost its focus to the
+    box, and the ? that should close the list was typed into the search."""
+    held = []
+
+    def route(ws):
+        far = ws.connect_to_server()
+
+        def from_page(msg):
+            if '"help.pages"' in msg and not held:
+                held.append(lambda: far.send(msg))
+            else:
+                far.send(msg)
+
+        ws.on_message(from_page)
+
+    page.route_web_socket(re.compile(r"/ws"), route)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.click("#help-btn")
+    page.click(".helpv .hkeys")
+    page.wait_for_selector("#keymap", state="visible")
+    assert held, "the page list was not asked for"
+    held[0]()  # the list arrives now, after the click
+    page.wait_for_selector(".helpv .hrows > *")
+    page.keyboard.press("?")
+    page.wait_for_selector("#keymap", state="hidden", timeout=5000)
+    assert page.input_value(".helpv input") == ""
+    assert page.errors == []
+
+
 def palette_rows(pg) -> list[str]:
     return pg.eval_on_selector_all(
         "#palette-rows [role=option]", "rs => rs.map(r => r.dataset.action)"
