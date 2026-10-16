@@ -175,7 +175,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · dynamic workflows</span>
-  <span class="st"><span class="pill acc">slices 0 to 5 built</span><span class="pill">2026-10-15</span><span class="pill">#418</span></span>
+  <span class="st"><span class="pill acc">slices 0 to 6 built</span><span class="pill">2026-10-15</span><span class="pill">#418</span></span>
 </div>
 
 <div class="wrap">
@@ -213,7 +213,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <main>
 <h1>Dynamic workflows: agent-designed, person-approved, server-driven</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-15-dynamic-workflows-design.html</span><span>·</span><span>slices 0 and 1 on branch 418-dynamic-workflows, slice 2 on 418-workflows-slice-2, slice 4 on 418-workflows-slice-4, slice 5 on 418-workflows-slice-5</span><span>·</span><span>issue #418</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-15-dynamic-workflows-design.html</span><span>·</span><span>slices 0 and 1 on branch 418-dynamic-workflows, slice 2 on 418-workflows-slice-2, slice 4 on 418-workflows-slice-4, slice 5 on 418-workflows-slice-5, slice 6 on 418-workflows-slice-6</span><span>·</span><span>issue #418</span></div>
 <p class="lede">An agent asked to do a large piece of work writes it as a workflow: a tree of steps in which every node says, in plain language, what it does. The person reads that tree as the plan and approves it with one click. From then on the aegis server runs it, spawning and closing agents, waiting on checks, and waking the main agent only when a decision is due.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -420,7 +420,7 @@ blocks:
 <h2 id="main"><span class="n">06</span>The main agent</h2>
 
 <h3 id="launch">Launching</h3>
-<p>Without a token, <code>workflow_arm</code> shows the approval card and waits. A person's <code>/workflow &lt;id&gt; &lt;text&gt;</code> mints a one-time launch token bound to the workflow's id and content hash, the same mechanism <code>confirm.py</code> gives <code>session_close</code>, and hands the main agent this turn:</p>
+<p>Without a token, <code>workflow_arm</code> shows the approval card and waits. A person's <code>/workflow &lt;id&gt; &lt;text&gt;</code> mints a one-time launch token bound to the session, the workflow's id and its text at that moment, and hands the main agent this turn. Unlike <code>confirm.py</code>'s confirmations, it pins the definition's text, lasts 24 hours, lives in memory only (a restart voids it), and is checked before it is spent, so an arm refused for its args can be tried again:</p>
 <pre>&gt; from workflow:service-images-release · launch · …
 Make args matching this schema from the text and what you know, then call
 workflow_arm(id, args, token). Schema: {…}  Text: "issue 197, the slices in the plan"</pre>
@@ -475,7 +475,7 @@ workflow_arm(id, args, token). Schema: {…}  Text: "issue 197, the slices in th
 <h2 id="saved"><span class="n">08</span>Saved workflows</h2>
 <p>Workflows come from four places in one format and are listed together:</p>
 <ul>
-  <li>built in, shipped in <code>src/aegis/workflows/*.yaml</code>, with reserved ids;</li>
+  <li>built in, shipped in <code>src/aegis/builtin_workflows/*.yaml</code>, with reserved ids;</li>
   <li>the project, in <code>.aegis/workflows/&lt;id&gt;.yaml</code> next to <code>.aegis.yaml</code>, so they live in git like the rest of the configuration;</li>
   <li>plugins, later, each registering a folder;</li>
   <li>Settings → Workflows, which lists them drawn as the approval card draws them, exports a YAML file, and imports one through the lint into the project.</li>
@@ -486,32 +486,57 @@ workflow_arm(id, args, token). Schema: {…}  Text: "issue 197, the slices in th
 <p><code>/loop</code> is the built-in workflow <code>loop</code>, and aegis resolves it before the harness's own <code>/loop</code>:</p>
 <pre>id: loop
 title: Repeat a prompt until it says done
-say: Run the prompt again and again, until the agent says it is done or the rounds run out.
+say: Run the prompt round after round, until the agent says it is done or the rounds run out.
 args:
   type: object
-  properties: {prompt: {type: string}, every: {type: string}, max: {type: integer, default: 20}}
+  properties:
+    prompt:
+      type: string
+      description: What to do each round, in the person's words without the interval.
+    every:
+      type: string
+      description: A fixed wait between rounds, such as 5m or 1h30m, when the person gave one. Without it the agent picks each wait.
+    max:
+      type: integer
+      default: 20
+      description: The most rounds.
   required: [prompt]
 root:
   loop:
     max: "{{args.max}}"
     until: {expr: "tick.done"}
+    at_max: done
     do:
       seq:
         - agent:
             session: main
-            prompt: "{{args.prompt}}"
-            result: {type: object, properties: {done: {type: boolean}, next: {type: string}}, required: [done]}
+            prompt: "{{args.prompt}}\n\nReport done: true when there is nothing left to do. Without a fixed interval, give next: how long to wait before the next round, from 1m to 1h."
+            result:
+              type: object
+              properties:
+                done: {type: boolean}
+                next: {type: string}
+              required: [done]
           id: tick
-          say: "Ask the main agent: {{args.prompt}}"
-        - wait: "{{args.every or tick.next or '20m'}}"
-          say: Wait before the next round.
+          say: "Do it: {{args.prompt}}."
+          deadline: 2h
+        - if:
+            when: {expr: "not tick.done"}
+            then:
+              wait: "{{args.every or tick.next or '20m'}}"
+              id: pause
+              say: Wait before the next round.
+          id: unless-done
+          say: Unless it is done, wait.
+      id: round
       say: One round.
+  id: rounds
   say: "Up to {{args.max}} rounds."</pre>
-<p>With <code>every</code> the loop runs on a fixed interval; without it the agent paces itself through <code>next</code>. The wait is a server timer, so a restart or a suspended machine loses nothing. <code>/loop check the deploy every 5m</code> becomes <code>{prompt: "check the deploy", every: "5m"}</code> in the main agent's hands.</p>
+<p>The wait sits in an <code>if</code>, so a round that reports done ends the loop at once, and <code>at_max: done</code> makes running out of rounds an ending, not a failure. With <code>every</code> the loop runs on a fixed interval; without it the agent paces itself through <code>next</code>. The wait is a server timer, so a restart or a suspended machine loses nothing. <code>/loop check the deploy every 5m</code> becomes <code>{prompt: "check the deploy", every: "5m"}</code> in the main agent's hands.</p>
 
 <h2 id="schedules"><span class="n">09</span>Schedules are born paused</h2>
 <p>This lands first and does not depend on workflows. A schedule an agent creates with <code>schedule_create</code> is born paused, and so is one an agent changes with <code>schedule_update</code>. Under the call, the transcript shows a card, never folded, with the schedule in full: name, clock, overlap, check, where it fires and the prompt. Its one button, Unpause, is an operation not marked for agents. A schedule a person creates or edits in the UI is active at once.</p>
-<p>The card is the same component as the workflow's approval card: a rendered object, a person-only operation, never folded. A schedule whose prompt starts with <code>/workflow</code> mints a launch token on each fire, which is safe because a person unpaused it.</p>
+<p>The card is the same component as the workflow's approval card: a rendered object, a person-only operation, never folded. A schedule whose prompt starts with <code>/workflow</code> or <code>/loop</code> mints a launch token on each fire, which is safe because a person unpaused it. It pins the version of the workflow it fires: when the saved file changes, the schedule pauses for approval and its card shows the diff, a fire checks the version again so a hand edit is caught, and Unpause carries the version its card showed.</p>
 
 <h2 id="prompting"><span class="n">10</span>When agents reach for one</h2>
 <p>One line in the system prompt and a help page, <code>workflows</code>, say when. A linear plan with <code>plan_update</code> is for work an agent does itself, even when it hands a few tasks to queue workers in sequence. A workflow is for work that is costly to coordinate: many agents, gates, agents checking other agents, dependencies across branches, long waits. The help page carries recipes an agent copies and adapts:</p>

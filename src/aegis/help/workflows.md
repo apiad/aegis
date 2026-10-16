@@ -115,6 +115,7 @@ an hour and a command after 30 minutes. `wait: 20m` pauses on wall time.
        else: {agent: {agent: sonnet, prompt: "Fix what the review found."}, say: Fix it.}}
   say: Merge if the review approved, else fix.
 - loop: {max: 5, until: {judge: {agent: opus, prompt: "Is the fix right?", inputs: [fix]}},
+         at_max: done,
          do: {agent: {agent: sonnet, prompt: "Fix the next problem."}, id: fix, say: Fix one problem.}}
   id: review
   say: Fix until a judge agrees, at most five times.
@@ -123,8 +124,8 @@ an hour and a command after 30 minutes. `wait: 20m` pauses on wall time.
 `if: {when: probe, then: node, else: node}` takes one branch; `else` is
 optional, and a step outside a branch cannot read a step inside it. `loop:
 {do: node, max: 5, until: probe}` runs `do` up to `max` rounds and stops
-when `until` passes; running out of rounds fails it. Without `until` it
-runs `max` rounds. Round 2's `fix` is `review.2.fix`, and after the loop
+when `until` passes; running out of rounds fails it, unless its at_max is
+done, as here, and then it ends done. Without `until` it runs `max` rounds. Round 2's `fix` is `review.2.fix`, and after the loop
 `{{review.fix.pr}}` reads the last round's.
 
 ## Expressions
@@ -402,18 +403,129 @@ with `run` may change only what `workflow_edit` may.
 `workflow_save` keeps a workflow in the project, as a file named after its
 id in the .aegis/workflows folder beside the server's .aegis.yaml, so it lives
 in git with the rest of the configuration. It writes the ids aegis generated
-for the steps into the file, so a later edit of a run keeps them. Saving
-again with the same id replaces the file. Saving needs no approval, because
+for the steps into the file, so a later edit of a run keeps them. A second
+save with the same id replaces the file. Saving needs no approval, because
 running a saved workflow does.
 
-`workflow_list` lists the saved workflows, the built-in ones included, each
+`workflow_list` lists the project's workflows and the built-in ones, each
 with its title, args schema, version, who saved it and when, and what is
 wrong with it when it does not lint. `workflow_delete` removes one from the
-project. The built-in ids are reserved: no saved workflow takes one, and
+project. The built-in ids are reserved: no project workflow takes one, and
 none is deleted.
 
 `workflow_arm` with `id` in place of `definition` arms a saved workflow,
 with your args, and the person approves it on its card as any other.
+
+## Run a saved workflow
+
+To run a saved workflow, a person types `/workflow <id> <text>` in your
+session, or `/workflow` alone to pick one from the menu. You then get one
+inbox turn, headed `> from workflow:<id> · launch`, that quotes their line,
+names the saved workflow and its args schema, and gives you a token. Make
+the args from their text and from what you know, and call `workflow_arm`
+with `id`, `token` and `args`, nothing else. The run starts at once, with no
+card to approve: their line was the approval. The args must match the
+schema, and a key it does not name is refused at any depth; a default is
+filled in for a key you leave out. If a required value cannot be made from
+the text, ask the person instead.
+
+The token works once, only in your session, and only for that saved
+workflow as it was when the line was typed: a save in between changes
+nothing. An arm refused for its args or its lint keeps the token, so fix the
+args and arm again. A token lasts 24 hours, and a server restart voids it;
+then ask the person to type the line again. A session runs one workflow at a
+time: while one runs, the line is refused before you hear of it, and the
+person stops the run from its card first.
+
+## Repeat a prompt with /loop
+
+`/loop <prompt>` repeats a prompt every few minutes, or at your own pace,
+until you say it is done. It is `/workflow loop <prompt>`: it runs the
+built-in workflow `loop`, which repeats the person's prompt in your own
+session, round after round, on a server timer that survives a restart. It takes the
+place of the harness's own /loop. Its definition:
+
+```yaml
+id: loop
+title: Repeat a prompt until it says done
+say: Run the prompt round after round, until the agent says it is done or the rounds run out.
+args:
+  type: object
+  properties:
+    prompt:
+      type: string
+      description: What to do each round, in the person's words without the interval.
+    every:
+      type: string
+      description: A fixed wait between rounds, such as 5m or 1h30m, when the person gave one. Without it the agent picks each wait.
+    max:
+      type: integer
+      default: 20
+      description: The most rounds.
+  required: [prompt]
+root:
+  loop:
+    max: "{{args.max}}"
+    until: {expr: "tick.done"}
+    at_max: done
+    do:
+      seq:
+        - agent:
+            session: main
+            prompt: "{{args.prompt}}\n\nReport done: true when there is nothing left to do. Without a fixed interval, give next: how long to wait before the next round, from 1m to 1h."
+            result:
+              type: object
+              properties:
+                done: {type: boolean}
+                next: {type: string}
+              required: [done]
+          id: tick
+          say: "Do it: {{args.prompt}}."
+          deadline: 2h
+        - if:
+            when: {expr: "not tick.done"}
+            then:
+              wait: "{{args.every or tick.next or '20m'}}"
+              id: pause
+              say: Wait before the next round.
+          id: unless-done
+          say: Unless it is done, wait.
+      id: round
+      say: One round.
+  id: rounds
+  say: "Up to {{args.max}} rounds."
+```
+
+From the launch turn, put the work in `prompt` without the interval, and
+the interval in `every` when the person gave one, such as `5m` for
+"check the deploy every 5m"; `max` is the most rounds, 20 unless they said
+otherwise. Each round arrives as a step in your inbox: do the work, then call
+`workflow_result` with `done: true` when nothing is left to do, which ends
+the loop at once. Without `every`, give `next`, the wait before the next
+round, from 1m to 1h; without either it waits 20 minutes. The loop ends done
+when a round says so or the rounds run out, and stops when the person
+presses Stop on the card or asks you to stop, which you do with
+`workflow_stop`. A round you leave unanswered for two hours fails, and the
+failure comes to you as any step's does.
+
+## Fire one from a schedule
+
+A schedule whose prompt is a `/workflow <id> <text>` or `/loop <text>`
+line fires that saved workflow. At each fire, the session it reaches gets
+the same launch turn under the schedule's header, with its own token, and
+the run starts with no click: the person's approval of the schedule covers
+its runs. Nobody may be watching, so when a required value cannot be made
+from the text, end your turn with `turn_end` asking the person, and the
+schedule fires again at its next tick.
+
+A schedule pins the version of the workflow it fires when it is created or
+changed. When the workflow changes, by a save, a delete or an edit of its
+file, the schedule pauses for the person's approval, and its card shows what
+changed in the steps since the version they approved. Unpause on that card
+sends the version it showed; if the workflow changed again while they read,
+the server refuses and the card shows the newer one. The schedule's run stays
+live while its workflow runs, so the overlap rule waits for the workflow, and
+a fire into a session already running a workflow waits until that run ends.
 
 ## A step you run yourself
 
