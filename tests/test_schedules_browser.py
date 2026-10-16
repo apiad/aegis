@@ -371,3 +371,29 @@ def test_the_schedules_view_shows_a_changed_workflow_before_resume_pins_it(
         assert time.monotonic() < deadline, "the pin never moved to the new version"
         time.sleep(0.1)
     assert not page.errors
+
+
+def test_a_workflow_schedules_card_shows_the_commands_it_runs(
+    server,
+    page,  # noqa: F811
+):
+    from .test_schedules_workflows import SHELL
+    from .test_workflows_browser import send
+
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_save " + json.dumps({"definition": SHELL}))
+    spec = {
+        "name": "tidy-up",
+        "clock": {"every": "1h"},
+        "fire": {"agent": "opus"},
+        "prompt": "/workflow tidy now",
+    }
+    send(page, "/mcp schedule_create " + json.dumps(spec))
+    card = ".apcard[data-name=tidy-up][data-state=waiting]"
+    page.wait_for_selector(f"{card} .runs >> text=without asking")
+    page.wait_for_selector(f"{card} .apcmds >> text=$ git clean -n")
+    page.click("#schedules-btn")
+    page.click("#a2[data-view=schedules] .sch-row[data-name=tidy-up]")
+    page.wait_for_selector(".sch-detail .sch-wf .apcmds >> text=$ test -f done")
+    assert not page.errors
