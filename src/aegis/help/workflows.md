@@ -456,8 +456,10 @@ finishes (put it later in a seq, or name it in `after`); two steps in one
 session that may run at the same time; and a step inside a map that the
 session's step is not inside, since every item would use it at once. A
 loop may reuse a session, one round after another. The session takes no new
-place in the pool, and it stays open until the last step that uses it has
-finished, then closes. A step that fails in it gets its tab, and a retry
+place in the pool. It stays open while a step may still run in it, every
+round of a loop included, and closes once each step that uses it is done,
+skipped or in a branch of an `if` not taken. Two steps in the `then` and
+`else` branches of one `if` may both use it, since only one runs. A step that fails in it gets its tab, and a retry
 prompts the same session again.
 
 ## Inside a workflow
