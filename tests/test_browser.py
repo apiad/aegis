@@ -2937,6 +2937,67 @@ def test_settings_parks_a_harness_after_minutes_written_as_seconds(
     assert page.errors == []
 
 
+NAP_YAML = (
+    "id: nap\ntitle: Nap\nsay: Nap a while.\nroot:\n  seq:\n"
+    "    - {wait: 1s, id: rest, say: Rest a second.}\n  id: all\n  say: Rest.\n"
+)
+
+
+def test_settings_imports_lists_and_exports_saved_workflows(
+    settings_server, page, tmp_path
+):
+    open_settings(page, settings_server.url)
+    page.wait_for_selector('#set-wf-list .set-wf[data-wf="loop"]')
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("id: bad\ntitle: Bad\nsay: Bad.\nroot: {seq: [{wait: 1s}]}\n")
+    page.set_input_files("#set-wf-import", str(bad))
+    page.wait_for_selector("#set-wf-status >> text=does not lint")
+    assert not (settings_server.root / ".aegis/workflows/bad.yaml").exists()
+    good = tmp_path / "nap.yaml"
+    good.write_text(NAP_YAML)
+    page.set_input_files("#set-wf-import", str(good))
+    page.wait_for_selector('#set-wf-list .set-wf[data-wf="nap"]')
+    saved = settings_server.root / ".aegis/workflows/nap.yaml"
+    assert saved.read_text() == NAP_YAML
+    # The person's own save: the history names them, not an agent or a hand edit.
+    page.wait_for_selector('.set-wf[data-wf="nap"] >> text=saved by')
+    assert "saved by hand" not in page.inner_text('.set-wf[data-wf="nap"]')
+    page.click('.set-wf[data-wf="nap"] button >> text=Steps')
+    page.wait_for_selector(
+        '.set-wf[data-wf="nap"] .set-wf-steps >> text=Rest a second.'
+    )
+    with page.expect_download() as dl:
+        page.click('.set-wf[data-wf="nap"] button >> text=Export')
+    assert dl.value.suggested_filename == "nap.yaml"
+    assert Path(dl.value.path()).read_text() == NAP_YAML
+    # The same id again asks before replacing the project's file.
+    again = tmp_path / "again" / "nap.yaml"
+    again.parent.mkdir()
+    again.write_text(NAP_YAML.replace("Nap a while.", "Nap longer."))
+    page.set_input_files("#set-wf-import", str(again))
+    page.wait_for_selector(
+        "#dialog:not([hidden]) >> text=Replace the saved workflow nap?"
+    )
+    page.click("#dialog .ok")
+    page.wait_for_selector("#set-wf-status >> text=Imported nap.")
+    assert "Nap longer." in saved.read_text()
+    page.set_viewport_size({"width": 390, "height": 800})
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+    assert page.errors == []
+
+
+def test_settings_sets_the_workflow_pool(settings_server, page):
+    open_settings(page, settings_server.url)
+    page.fill('#set-wf-pool [data-row="workflows.total"] input', "6")
+    page.click("#set-save")
+    page.wait_for_function(
+        "document.querySelector('#set-status').textContent === 'Saved'"
+    )
+    text = (settings_server.root / ".aegis.yaml").read_text()
+    assert "# kept across a save" in text and "total: 6" in text
+    assert page.errors == []
+
+
 def frame_with(pg, frames: list[str], text: str) -> None:
     """Wait until the page has received a websocket frame carrying `text`."""
     deadline = time.monotonic() + 10
@@ -7839,6 +7900,7 @@ def test_a_members_settings_hold_only_this_browser(server, browser):
     assert pg.locator("#set-servers").count() == 0
     assert pg.locator("#set-tokens").count() == 0
     assert pg.locator("#set-park").count() == 0
+    assert pg.locator("#set-workflows").count() == 0
 
 
 def test_an_admin_adds_and_revokes_a_token_in_settings(server, page):
