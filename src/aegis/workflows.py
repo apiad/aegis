@@ -313,6 +313,8 @@ class Workflows:
         # will send them (_publish).
         self._dirty: set[str] = set()
         self._flush_at: asyncio.TimerHandle | None = None
+        # The runs whose wire raised and has not gone out since: logged once.
+        self._unpublishable: set[str] = set()
 
     # -- life -----------------------------------------------------------------
     def boot(self) -> None:
@@ -2939,8 +2941,10 @@ class Workflows:
         self._flush_publish()
 
     def _flush_publish(self) -> None:
-        """One run's wire that raises is logged and marked changed again, so
-        it goes out on a later flush and the others go out now."""
+        """One run's wire that raises is logged, once until it goes out, and
+        stays changed: it rides the next flush another publish arms, and the
+        others go out now. It never arms a flush itself, or a wire that fails
+        on its run's state would be retried, and logged, every PUBLISH_S."""
         self._flush_at = None
         runs, self._dirty = self._dirty, set()
         ops, failed = [], []
@@ -2950,13 +2954,12 @@ class Workflows:
             try:
                 ops.append({"upsert": self.wire(r)})
             except Exception:
-                log.exception("aegis: workflow run %s could not be published", r)
+                if r not in self._unpublishable:
+                    log.exception("aegis: workflow run %s could not be published", r)
+                    self._unpublishable.add(r)
                 failed.append(r)
+            else:
+                self._unpublishable.discard(r)
         if ops:
             self._app.publish("workflows", ops)
         self._dirty.update(failed)
-        if failed and self._flush_at is None:
-            # Not through _publish: with no loop it would flush, and raise, again.
-            with contextlib.suppress(RuntimeError):
-                loop = asyncio.get_running_loop()
-                self._flush_at = loop.call_later(PUBLISH_S, self._flush_publish)
