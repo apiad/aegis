@@ -72,7 +72,16 @@ Publish = Callable[[str, list[dict]], None]
 # each message, activity with each call), so they wait up to PUBLISH_EVERY_S
 # and go out together. Publishing them per line doubled the server's cost per
 # line in the bench (issue #127).
-_NOW = ("status", "handle", "title", "model_id", "standing", "continued_by", "quiet")
+_NOW = (
+    "status",
+    "handle",
+    "title",
+    "model_id",
+    "standing",
+    "continued_by",
+    "quiet",
+    "workflow",
+)
 _SOON = (
     "activity",
     "cost_usd",
