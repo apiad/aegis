@@ -138,6 +138,7 @@ async def test_a_stop_during_a_nodes_spawn_leaves_no_node_working(world):
     assert len(terminal(main)) == 1 and "· stopped ·" in terminal(main)[0]
 
 
+@pytest.mark.slow
 async def test_a_stop_during_the_last_close_is_the_runs_one_ending(world):
     main = await world.spawn()
     wf, reg = world.app.workflows, world.app.sessions
