@@ -339,3 +339,24 @@ async def test_a_loop_schedule_from_before_pins_can_be_approved_and_fires(world)
     assert sch.items["old-loop"].pin == {"id": "loop", "sha": sha}
     await tick(world, t)
     assert runs(world, "old-loop", "fired")
+
+
+SHELL = """id: tidy
+title: Tidy
+say: Tidy the tree.
+root:
+  seq:
+    - {sh: "git clean -n", id: look, say: Look at what is untracked.}
+    - {check: {sh: "test -f done", every: 5s}, id: wait-done, say: Wait for done.}
+  say: Tidy.
+"""
+
+
+async def test_a_schedules_card_lists_the_commands_its_workflow_runs(world):
+    # The person approves the commands as on an arm card: none is hidden.
+    world.app.saved.save(SHELL, world.app.workflows._agents(), BY)
+    person_schedule(world, name="tidy-up", prompt="/workflow tidy now")
+    w = world.app.schedules.wire("tidy-up")["workflow"]
+    assert w["commands"]["sh"] == 1 and w["commands"]["probes"] == 1
+    assert w["cmds"] == ["$ git clean -n", "$ test -f done"]
+    assert w["cwd"] == str(world.root)

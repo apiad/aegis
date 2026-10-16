@@ -456,7 +456,7 @@ class Workflows:
             "launch": st.launch,
             # What the person approves to run without asking, and where.
             "cwd": st.cwd,
-            "commands": self._commands(st, wf) if wf else {"sh": 0, "probes": 0},
+            "commands": self._commands(st.args, wf) if wf else {"sh": 0, "probes": 0},
             "version": st.version,
             "replaced_by": st.replaced_by,
             # The edit waiting for the person, without its text.
@@ -543,7 +543,7 @@ class Workflows:
                 out[key] = "begun"
         return out
 
-    def _commands(self, st: RunState, wf: Workflow) -> dict:
+    def _commands(self, args: dict, wf: Workflow) -> dict:
         """The shell commands and sh probes a person approves, in all and
         grouped by how often each runs: once, for each of a map's items, or
         each round of a loop, counted from the definition and the args. A
@@ -552,7 +552,7 @@ class Workflows:
         for n in walk(wf.root):
             sh, probe = n.kind == "sh", "sh" in (n.body.get("probe") or {})
             if sh or probe:
-                g = groups.setdefault(self._per(st, wf, n), {"sh": 0, "probes": 0})
+                g = groups.setdefault(self._per(args, wf, n), {"sh": 0, "probes": 0})
                 g["sh" if sh else "probes"] += 1
         return {
             "sh": sum(g["sh"] for g in groups.values()),
@@ -560,11 +560,11 @@ class Workflows:
             "groups": [{"per": per, **g} for per, g in groups.items()],
         }
 
-    def _per(self, st: RunState, wf: Workflow, node: Node) -> str:
+    def _per(self, args: dict, wf: Workflow, node: Node) -> str:
         """How often a node runs, from the maps and loops around it: "for
         each of 3 items", "each round, up to 4 rounds", or "" for once."""
         bits, x = [], node if node.kind == "loop" else wf.parent.get(node.key)
-        scope = {"args": st.args}
+        scope = {"args": args}
         while x is not None:
             if x.kind in ("map", "loop"):
                 try:

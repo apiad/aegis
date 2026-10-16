@@ -842,10 +842,20 @@ class Schedules:
         wf = parse(cur.text, agents)[0]
         out |= {"sha": cur.sha, "changed": cur.sha != pinned}
         if wf is not None:
+            listed = workflow_rows(wf)
             out |= {
                 "title": wf.title,
                 "say": wf.say,
-                "steps": [r["say"] for r in workflow_rows(wf)],
+                "steps": [r["say"] for r in listed],
+                # What the arm card shows of the commands, so a person
+                # approving the schedule sees every one it runs unasked.
+                "commands": self._app.workflows._commands({}, wf),
+                "cmds": [
+                    f"$ {r.get('cmd') or r['probe']['sh']}"
+                    for r in listed
+                    if r["kind"] == "sh" or "sh" in (r.get("probe") or {})
+                ],
+                "cwd": self._cwd(s),
             }
         if last := store.last_save(wid):
             out["saved_by"] = {"by": last["by"], "t": last["t"]}

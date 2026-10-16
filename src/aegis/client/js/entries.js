@@ -279,6 +279,12 @@ export function scheduleWorkflow(wf) {
     for (const say of wf.steps) list.append(el("li", null, say));
     kids.push(list);
   }
+  // Every command it runs without asking, as the arm card lists them.
+  if (wf.cmds?.length) {
+    const line = runsLine({ commands: wf.commands, cwd: wf.cwd });
+    if (line) kids.push(line);
+    kids.push(el("pre", "apcmds", wf.cmds.join("\n")));
+  }
   return kids;
 }
 
