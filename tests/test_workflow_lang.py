@@ -355,19 +355,7 @@ root:
     assert errors == [] and wf.waited == {"probe": ["timers"]}
 
 
-def test_what_slice_2_does_not_run_is_still_named():
-    for old, new, msg in (
-        (
-            '"Build {{s.id}}."}',
-            '"Build {{s.id}}.", session: impl}',
-            "$.root.par[0].map.do.agent.session: session: impl is not in this version yet; session: main runs the step in the main agent's session",
-        ),
-    ):
-        _, errors = errs(TEAMS.replace(old, new, 1))
-        assert msg in errors, (new, errors)
-
-
-def test_session_main_takes_no_agent_and_other_sessions_wait():
+def test_session_main_takes_no_agent():
     base = (
         "id: m\ntitle: M\nsay: M.\nroot: {{agent: {{{body}}}, id: tick, say: Tick.}}\n"
     )
@@ -376,11 +364,6 @@ def test_session_main_takes_no_agent_and_other_sessions_wait():
     assert (
         "$.root.agent.agent: agent does not go with session: main: the main agent runs it"
         in got
-    )
-    _, got = errs(base.format(body="session: impl, agent: opus, prompt: p"))
-    assert any(
-        e.startswith("$.root.agent.session: session: impl is not in this version yet")
-        for e in got
     )
     wf, _ = errs(base.format(body="session: main, prompt: check the deploy"))
     (row,) = rows(wf)
@@ -970,3 +953,100 @@ def test_a_gate_shows_only_what_has_finished():
     assert any(
         e.startswith("$.root.seq[0].gate.show") and "later" in e for e in errors
     ), errors
+
+
+REUSE = """id: r
+title: R
+say: Write, then fix it in the same session.
+root:
+  seq:
+    - {{id: impl, say: Write it., agent: {{agent: opus, prompt: write}}}}
+    - {{id: fix, say: Fix it., agent: {{{fix}}}}}
+  say: Both.
+"""
+
+
+def test_a_step_runs_in_an_earlier_steps_session():
+    wf, errors = errs(REUSE.format(fix="session: impl, prompt: fix"))
+    assert errors == []
+    assert wf.session_of == {"fix": "impl"} and wf.users == {"impl": ["fix"]}
+    assert [r.get("session") for r in rows(wf)] == [None, None, "impl"]
+
+
+def test_what_a_reused_session_refuses():
+    for fix, msg in (
+        (
+            "session: impl, agent: opus, prompt: fix",
+            "agent does not go with session: impl: the step runs in impl's session",
+        ),
+        ("session: nobody, prompt: fix", "session: nobody names no earlier agent step"),
+        ("session: fix, prompt: fix", "session: fix names no earlier agent step"),
+    ):
+        _, got = errs(REUSE.format(fix=fix))
+        assert any(msg in e for e in got), (fix, got)
+
+
+def test_a_session_used_before_its_step_finishes_is_refused():
+    text = """id: r
+title: R
+say: S.
+root:
+  par:
+    - {id: impl, say: W., agent: {agent: opus, prompt: w}}
+    - {id: fix, say: F., agent: {session: impl, prompt: f}}
+  say: Both at once.
+"""
+    _, got = errs(text)
+    assert any("impl may not have finished before this step starts" in e for e in got)
+
+
+def test_two_users_of_one_session_must_not_overlap():
+    text = """id: r
+title: R
+say: S.
+root:
+  seq:
+    - {id: impl, say: W., agent: {agent: opus, prompt: w}}
+    - par:
+        - {id: a, say: A., agent: {session: impl, prompt: a}}
+        - {id: b, say: B., agent: {session: impl, prompt: b}}
+      say: Both at once.
+  say: All.
+"""
+    _, got = errs(text)
+    assert any("may run at the same time as" in e for e in got), got
+
+
+def test_a_session_from_outside_a_map_is_refused_inside_it():
+    text = """id: r
+title: R
+say: S.
+root:
+  seq:
+    - {id: impl, say: W., agent: {agent: opus, prompt: w}}
+    - map: {over: [1, 2], as: x, do: {id: f, say: F., agent: {session: impl, prompt: f}}}
+      say: Each.
+  say: All.
+"""
+    _, got = errs(text)
+    assert any("every item of map" in e for e in got), got
+
+
+def test_a_chain_resolves_to_the_first_session_and_a_loop_may_reuse():
+    text = """id: r
+title: R
+say: S.
+root:
+  seq:
+    - {id: impl, say: W., agent: {agent: opus, prompt: w}}
+    - {id: review, say: R., agent: {session: impl, prompt: r}}
+    - loop:
+        max: 3
+        do: {id: fix, say: F., agent: {session: review, prompt: f}}
+      id: rounds
+      say: Up to three fixes.
+  say: All.
+"""
+    wf, errors = errs(text)
+    assert errors == [] and wf.session_of["rounds/fix"] == "impl"
+    assert wf.users["impl"] == ["review", "rounds/fix"]

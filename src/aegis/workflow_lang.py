@@ -137,6 +137,10 @@ class Workflow:
     deadline: float | None = None  # seconds from approval
     # Agent key -> the early outputs some after waits on, for its preamble.
     waited: dict[str, list[str]] = field(default_factory=dict)
+    # A step's key -> the key of the step whose session it runs in (a chain
+    # followed to its first step), and that key -> its users, in order.
+    session_of: dict[str, str] = field(default_factory=dict)
+    users: dict[str, list[str]] = field(default_factory=dict)
     by_key: dict[str, Node] = field(default_factory=dict)
     defs: dict = field(default_factory=dict)
     # A node's key -> the node that holds it, for the deadlines above it.
@@ -697,6 +701,8 @@ def rows(wf: Workflow, items=lambda path: None) -> list[dict]:
             }
             if n.body.get("session") == "main":
                 row["main"] = True  # the main agent runs it, in its own session
+            elif n.body.get("session"):
+                row["session"] = n.body["session"]  # an earlier step's session
         if n.kind in ("map", "par") and n.body.get("cap"):
             row["cap"] = n.body["cap"]
         if n.kind == "map":
@@ -748,6 +754,8 @@ class _Parser:
         self.defs: dict = {}
         self.used: set[str] = set()  # the blocks some ref uses
         self.using: list[tuple[str, str]] = []  # (block, ref path) being expanded
+        self.session_of: dict[str, str] = {}  # set by _sessions
+        self.users: dict[str, list[str]] = {}
         self.caps: list[tuple[str, int]] = []  # each cap, for limits.agents
         self.depth = 0  # the nodes being parsed, outermost first
 
@@ -1105,20 +1113,22 @@ class _Parser:
             if k not in AGENT_FIELDS:
                 self.err(f"{path}.{k}", f"{k} is not an agent field")
         sess = body.get("session")
-        if sess is not None and sess != "main":
-            self.err(
-                f"{path}.session",
-                f"session: {sess} is not in this version yet; session: main runs "
-                "the step in the main agent's session",
-            )
+        if sess is not None and (not isinstance(sess, str) or not sess):
+            self.err(f"{path}.session", "session is main or an earlier agent step's id")
         if not isinstance(body.get("prompt"), str) or not body["prompt"].strip():
             self.err(f"{path}.prompt", "an agent node needs a prompt")
-        if sess == "main":
+        if sess is not None:
+            # The step runs in a session that exists: the order pass checks
+            # which one (order), and only a fresh session needs an agent.
+            why = (
+                "the main agent runs it"
+                if sess == "main"
+                else f"the step runs in {sess}'s session"
+            )
             for k in ("agent", "cwd"):
                 if k in body:
                     self.err(
-                        f"{path}.{k}",
-                        f"{k} does not go with session: main: the main agent runs it",
+                        f"{path}.{k}", f"{k} does not go with session: {sess}: {why}"
                     )
         elif body.get("agent") not in self.agents:
             self.err(path, f"no agent {body.get('agent')} in .aegis.yaml")
@@ -1353,6 +1363,7 @@ class _Parser:
                             f"{name} may not have finished before this node starts: "
                             "put it earlier in a seq or name it in after",
                         )
+        self._sessions(nodes, reach, ancestors, unreachable)
         for aid, wanted in waited.items():
             # {{a.o}} reads the output, so a result property of that name
             # would never be read.
@@ -1366,6 +1377,78 @@ class _Parser:
                         "name the result's property otherwise",
                     )
         return waited
+
+    def _sessions(self, nodes: dict[str, Node], reach, ancestors, unreachable) -> None:
+        """Resolve each session: <node id> to the step whose session it runs
+        in, as a value reference resolves (innermost scope first), and refuse
+        what would put two turns in one session: an owner that may not have
+        finished first, two users that may overlap, and a user inside a map
+        its owner is not inside, whose items would all use it at once. A
+        loop's rounds run one after another, so a loop may reuse one."""
+        session_of: dict[str, str] = {}
+        for x in nodes.values():
+            name = x.body.get("session") if x.kind == "agent" else None
+            if not isinstance(name, str) or not name or name == "main":
+                continue
+            at = f"{x.path}.agent.session"
+            t = find(nodes, name, x.maps)
+            if (
+                t is None
+                or t.kind != "agent"
+                or t.body.get("session") == "main"
+                or t is x
+            ):
+                self.err(
+                    at,
+                    f"session: {name} names no earlier agent step with a session of its own",
+                )
+                continue
+            if (why := unreachable(t, x)) is not None:
+                self.err(at, why)
+                continue
+            afters = {a for y in [x, *ancestors(x)] for a in y.after}
+            if not (reach(("F", t.key), ("S", x.key)) or name in afters):
+                self.err(
+                    at,
+                    f"{name} may not have finished before this step starts: "
+                    "put it earlier in a seq or name it in after",
+                )
+                continue
+            outside = [
+                "/".join(x.maps[: i + 1])
+                for i in range(len(x.maps))
+                if t.maps[: i + 1] != x.maps[: i + 1]
+            ]
+            m = next((k for k in outside if nodes[k].kind == "map"), None)
+            if m is not None:
+                self.err(
+                    at,
+                    f"{name}'s session would be used by every item of map "
+                    f"{nodes[m].id} at once",
+                )
+                continue
+            session_of[x.key] = t.key
+        # A chain (review runs in impl's, fix in review's) is impl's session.
+        for k in list(session_of):
+            seen, root = {k}, session_of[k]
+            while root in session_of and root not in seen:
+                seen.add(root)
+                root = session_of[root]
+            session_of[k] = root
+        users: dict[str, list[str]] = {}
+        for k, root in session_of.items():
+            users.setdefault(root, []).append(k)
+        for root, ks in users.items():
+            for i, a in enumerate(ks):
+                for b in ks[i + 1 :]:
+                    if not (reach(("F", a), ("S", b)) or reach(("F", b), ("S", a))):
+                        self.err(
+                            nodes[b].path + ".agent.session",
+                            f"{nodes[b].id} may run at the same time as {nodes[a].id} "
+                            f"in {nodes[root].id}'s session: order them in a seq or "
+                            "with after",
+                        )
+        self.session_of, self.users = session_of, users
 
     @staticmethod
     def _held(n: Node, t: Node, ancestors) -> tuple[Node, Node] | None:
@@ -1579,6 +1662,8 @@ def _parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError
             text,
             limits=limits,
             waited=waited,
+            session_of=p.session_of,
+            users=p.users,
             deadline=deadline,
             by_key={n.key: n for n in walk(root)},
             defs=resolved,

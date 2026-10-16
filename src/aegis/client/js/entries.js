@@ -312,6 +312,7 @@ function probeTag(p) {
 // its items are known, says so.
 function kindTag(r) {
   const cap = r.cap ? ` · ${r.cap} at a time` : "";
+  if (r.kind === "agent" && r.session) return `agent · in ${r.session}'s session`;
   if (r.kind === "agent") return r.main ? "agent · main agent" : `agent · ${r.agent}`;
   if (r.kind === "gate") return r.by === "person" ? "gate · you decide" : "gate · the main agent decides";
   if (r.kind === "map") return `for each ${r.as}${cap}`;
