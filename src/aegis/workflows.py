@@ -844,10 +844,10 @@ class Workflows:
             if x["op"] in ("add", "change") and x["key"] != "$"
         ]
         self._check_arm(owner, new, changed)
-        # A step added to a seq holds the step after it too: run now, that
-        # step would go before the new one and the change would go stale.
+        # A step added or moved to a seq holds the step after it too: run
+        # now, that step would go before it and the change would go stale.
         for x in d["diff"]:
-            p = new.parent.get(x["key"]) if x["op"] == "add" else None
+            p = new.parent.get(x["key"]) if x["op"] in ("add", "move") else None
             if p is not None and p.kind == "seq":
                 keys = [c.key for c in p.children]
                 nxt = [k for k in keys[keys.index(x["key"]) + 1 :] if k in old.by_key]
