@@ -1357,6 +1357,12 @@ class App:
         async def commands_list(p: LogParams, caller):
             """What the composer's menu offers this session."""
             cat = await self.catalogs.get(reg.open(p.log_id))
+            try:
+                saved = self.saved.listing(self.workflows._agents())
+            except Exception:
+                # The menu outlives a broken workflows folder; it lists none.
+                log.exception("aegis: the saved workflows could not be listed")
+                saved = []
             return {
                 "commands": commands.aegis_wire()
                 + (cat.wire_commands(shadowed=commands.AEGIS) if cat else []),
@@ -1365,7 +1371,7 @@ class App:
                 # What /workflow completes: the saved workflows that lint.
                 "workflows": [
                     {"id": w["id"], "title": w["title"], "source": w["source"]}
-                    for w in self.saved.listing(self.workflows._agents())
+                    for w in saved
                     if "error" not in w
                 ],
                 # False: claude gave no command list, so the menu cannot tell

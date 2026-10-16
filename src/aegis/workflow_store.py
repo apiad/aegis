@@ -35,6 +35,7 @@ class Saved:
     sha: str
     source: str  # builtin | project
     path: Path
+    error: str = ""  # why the file cannot be read as a workflow at all
 
 
 def sha_of(text: str) -> str:
@@ -50,9 +51,20 @@ class Store:
         out: dict[str, Saved] = {}
         for source, d in (("builtin", BUILTIN), ("project", self.dir)):
             for p in sorted(d.glob("*.yaml")) if d.is_dir() else []:
-                if p.stem in out:
-                    continue  # a built-in's id is reserved
-                text = p.read_text()
+                if p.stem in out or not p.is_file():
+                    continue  # a built-in's id is reserved; a folder is no file
+                try:
+                    raw = p.read_bytes()
+                except OSError:
+                    continue  # gone since the glob, or unreadable
+                try:
+                    text = raw.decode()
+                except UnicodeDecodeError as e:
+                    # One bad file is a row that says so, never a menu that fails.
+                    why = f"not UTF-8 text: {e.reason} at byte {e.start}"
+                    sha = hashlib.sha256(raw).hexdigest()
+                    out[p.stem] = Saved(p.stem, "", sha, source, p, why)
+                    continue
                 out[p.stem] = Saved(p.stem, text, sha_of(text), source, p)
         return out
 
@@ -102,9 +114,19 @@ class Store:
             f.write(json.dumps({"t": time.time(), **rec}) + "\n")
 
     def _lines(self) -> list[dict]:
+        """The history's records; a torn or foreign line is skipped, so a
+        crash mid-append costs that one line."""
         if not self.history.exists():
             return []
-        return [json.loads(x) for x in self.history.read_text().splitlines() if x]
+        out = []
+        for x in self.history.read_text(errors="replace").splitlines():
+            try:
+                r = json.loads(x)
+            except ValueError:
+                continue
+            if isinstance(r, dict) and isinstance(r.get("id"), str) and "ev" in r:
+                out.append(r)
+        return out
 
     def last_save(self, wid: str) -> dict | None:
         """The save that wrote the current version, or None when the file
@@ -142,6 +164,8 @@ class Store:
 def _named(s: Saved, agents: set[str]):
     """The parsed workflow, or what is wrong with the file: it does not
     lint, or its id is not its file's name."""
+    if s.error:
+        return None, s.error
     wf, errors = parse(s.text, agents)
     if wf is None:
         return None, f"{errors[0].path}: {errors[0].message}"
