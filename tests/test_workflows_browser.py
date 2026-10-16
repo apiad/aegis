@@ -469,3 +469,69 @@ def test_the_phone_canvas_shows_the_workflow_as_a_tab(server, browser):  # noqa:
     pg.wait_for_selector(f'#canvas .pane[data-pane="wf-{run}"] .wfcard')
     pg.click(f'#canvas .pane[data-pane="wf-{run}"] .wfcard .wfrow[data-node=one] .tog')
     assert pg.evaluate("document.documentElement.scrollWidth") <= 390 and not errors
+
+
+def test_the_header_counts_steps_and_now_names_whats_working(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    arm = {"definition": flow(report(7, 6), RESULT), "args": {}}
+    spawn(page, "/mcp workflow_arm " + json.dumps(arm))
+    card = "#entries .wfcard"
+    page.wait_for_selector(f"{card} .wfhead >> text=2 steps")
+    assert page.locator(f"{card} .wfhead .bar").count() == 0
+    page.click(f"{card} button >> text=Approve and run")
+    page.wait_for_selector(f"{card} .wfhead >> text=0 of 2 done")
+    now = f"{card} .wfnow"
+    page.wait_for_selector(f"{now} .nowline[data-node=one] >> text=Do the first thing.")
+    page.wait_for_selector(f"{now} .nowline.next >> text=Do the second thing.")
+    # The Now line's time counts up with the row's, without a redraw.
+    first = page.inner_text(f"{now} .nowline[data-node=one] .dur")
+    page.wait_for_function(
+        "f => document.querySelector('#entries .wfcard .wfnow .nowline[data-node=one] .dur').textContent !== f",
+        arg=first,
+    )
+    page.wait_for_selector(
+        f"{card}[data-status=done] .wfhead >> text=2 of 2 done", timeout=20000
+    )
+    assert page.locator(now).count() == 0
+    assert page.locator(f"{card} .wfhead .bar i").get_attribute("style").endswith("100%;")
+    assert not page.errors
+
+
+FAILS = """id: fails
+title: Fails
+say: A branch not taken, then a command that fails.
+root:
+  seq:
+    - {if: {when: {expr: "false"}, then: {sh: "true", id: never, say: Never.}}, id: maybe, say: Maybe.}
+    - {sh: "true", id: fine, say: Fine.}
+    - {sh: "false", id: bad, say: Fail.}
+  say: All of it.
+"""
+
+
+def test_the_header_counts_a_failure_but_not_a_branch_not_taken(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_arm " + json.dumps({"definition": FAILS, "args": {}}))
+    card = "#entries .wfcard"
+    page.click(f"{card} button >> text=Approve and run")
+    page.wait_for_selector(f"{card} .wfrow[data-node=bad][data-state=failed]", timeout=20000)
+    # The run waits on the main agent; never is skipped and not counted.
+    page.wait_for_selector(f"{card}[data-status=running] .wfhead >> text=1 of 2 done · 1 failed")
+    assert page.locator(f"{card} .wfhead .bar i").get_attribute("style").endswith("50%;")
+    assert not page.errors
+
+
+def test_the_header_counts_an_open_question(server, page):  # noqa: F811
+    from .test_workflows_parallel import script
+
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    asks = script(["workflow_ask", {"question": "Which port?"}], ["sleep", 8])
+    arm = {"definition": flow(asks, RESULT), "args": {}}
+    spawn(page, "/mcp workflow_arm " + json.dumps(arm))
+    card = "#entries .wfcard"
+    page.click(f"{card} button >> text=Approve and run")
+    page.wait_for_selector(f"{card} .wfhead >> text=0 of 2 done · 1 question")
+    assert not page.errors

@@ -723,6 +723,18 @@ body{background:#000}
 .a2 .wfcard .story [data-mark=ask] .mk{color:var(--warn)}
 .a2 .wfcard .story [data-mark=note]{color:var(--muted)}
 .a2 .wfcard .tags .held{color:var(--warn)}
+.a2 .wfcard .wfhead{padding:6px 12px 8px;border-bottom:1px solid var(--rule);font-family:var(--font-mono);font-size:11.5px;color:var(--muted)}
+.a2 .wfcard .wfhead .bar{height:4px;background:var(--raised);border-radius:2px;margin-top:5px;overflow:hidden}
+.a2 .wfcard .wfhead .bar i{display:block;height:100%;background:var(--ok)}
+.a2 .wfcard .wfnow{padding:6px 12px;border-bottom:1px solid var(--rule)}
+.a2 .wfcard .wfnow h5{margin:0 0 4px;font:500 10.5px var(--font-mono);color:var(--faint)}
+.a2 .wfcard .nowline{display:flex;gap:8px;align-items:baseline;padding:2px 0;font-size:12.5px;min-width:0}
+.a2 .wfcard .nowline .say{flex:1;min-width:0;overflow-wrap:anywhere;font-size:12.5px}
+.a2 .wfcard .nowline .w{font-family:var(--font-mono);font-size:10.5px;color:var(--comms);overflow-wrap:anywhere;max-width:40%}
+.a2 .wfcard .nowline .dot{width:8px;height:8px;border-radius:50%;flex:none;border:1.5px solid var(--faint)}
+.a2 .wfcard .nowline .dot.running{background:var(--accent);border-color:var(--accent)}
+.a2 .wfcard .nowline .dot.queued{border-style:dashed;border-color:var(--accent)}
+.a2 .wfcard .nowline .dur{padding-top:0}
 .a2 .wfdcard[data-state=waiting]{border-color:var(--warn)}
 .a2 .wfdcard>.gate,.a2 .wfdcard>.edit,.a2 .wfdcard>.again,.a2 .wfcard>.edit{padding:8px 12px}
 .a2 .wfcard>.edit{border-top:1px solid var(--rule)}
