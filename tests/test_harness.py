@@ -114,5 +114,20 @@ def test_the_primer_says_when_to_reach_for_a_workflow():
         "the workflow is the plan",
         "full permission",
         "commands (sh steps or probes)",
+        "workflow-recipes",
+        "launch turn",
+        "rejects",
     ):
         assert word in para
+
+
+def test_every_help_page_the_primer_names_exists():
+    import re
+
+    from aegis.helppages import load
+    from aegis.mcp import PRIMER
+
+    # "then help_read the section it points to" names no page.
+    named = re.findall(r"help_read (?!the\b)([a-z][a-z0-9-]*)", PRIMER)
+    assert {"workflows", "workflow-recipes"} <= set(named)
+    assert set(named) <= {p.id for p in load()}
