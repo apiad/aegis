@@ -78,3 +78,79 @@ async def test_a_result_from_the_reused_session_finishes_the_later_step(world):
     st = wf.runs[run]
     assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
     assert st.nodes["impl"].result == {"n": 1} and st.nodes["fix"].result == {"n": 9}
+
+
+def steps(body: str) -> str:
+    return f"id: reuse\ntitle: Reuse\nsay: Reuse.\nroot:\n  seq:\n{body}\n  say: All.\n"
+
+
+IMPL = f"    - {{id: impl, say: Write it., agent: {{agent: opus, prompt: {json.dumps(report(1, 0.2))}}}}}\n"
+
+
+async def test_a_loop_reuses_an_outside_session_in_every_round(world):
+    # The first round must not close impl's session: round 2 runs in it too.
+    fix = json.dumps(report(2, 0.2))
+    text = steps(
+        IMPL
+        + "    - loop:\n"
+        + "        max: 2\n"
+        + f"        do: {{id: fix, say: Fix it., agent: {{session: impl, prompt: {fix}}}}}\n"
+        + "      id: rounds\n"
+        + "      say: Twice."
+    )
+    wf = world.app.workflows
+    run = await run_it(world, text)
+    await until(lambda: settled(wf, run), timeout=20)
+    st = wf.runs[run]
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+    lids = {st.nodes[k].log_id for k in ("impl", "rounds.1.fix", "rounds.2.fix")}
+    assert len(lids) == 1 and next(iter(lids)) not in world.app.sessions.sessions
+
+
+async def test_a_reusing_step_in_a_branch_not_taken_frees_its_slot(world):
+    # max_agents 1: impl's session, kept for a fix that never runs, would
+    # hold the only slot and later wait forever.
+    fix = json.dumps(report(2, 0.2))
+    later = json.dumps(report(3, 0.2))
+    text = steps(
+        IMPL
+        + '    - {if: {when: {expr: "false"}, then: '
+        + f"{{id: fix, say: Fix it., agent: {{session: impl, prompt: {fix}}}}}}}, "
+        + "id: maybe, say: Maybe.}\n"
+        + f"    - {{id: later, say: Then this., agent: {{agent: opus, prompt: {later}}}}}"
+    )
+    wf = world.app.workflows
+    run = await run_it(world, text)
+    await until(lambda: settled(wf, run), timeout=20)
+    st = wf.runs[run]
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+    assert st.nodes["impl"].log_id not in world.app.sessions.sessions
+
+
+async def test_a_skipped_user_closes_the_session_it_kept(world):
+    from aegis.ops import Caller
+
+    # fix ends its turns with no result, fails, and is skipped: nothing
+    # will run in impl's session again, so it closes and later gets the slot.
+    later = json.dumps(report(3, 0.2))
+    text = steps(
+        IMPL
+        + "    - {id: fix, say: Fix it., agent: {session: impl, prompt: hello}}\n"
+        + f"    - {{id: later, say: Then this., agent: {{agent: opus, prompt: {later}}}}}"
+    )
+    wf = world.app.workflows
+    a = await world.spawn()
+    run = ok(await turn(a, mcp("workflow_arm", definition=text, args={})))["run"]
+    await world.app.registry.call("workflow.approve", {"run": run})
+    await until(lambda: "fix" in wf.runs[run].open, timeout=20)
+    await world.app.registry.call(
+        "workflow.answer",
+        {"run": run, "to": "fix", "choice": "skip", "text": "Not needed."},
+        Caller("agent", a.log_id),
+    )
+    await until(
+        lambda: settled(wf, run) and wf.runs[run].status != "running", timeout=20
+    )
+    st = wf.runs[run]
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+    assert st.nodes["impl"].log_id not in world.app.sessions.sessions
