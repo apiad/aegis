@@ -5,6 +5,55 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-10-16
+
+### Added
+
+- **Idle sessions can give their memory back.** A `park:` block names the harnesses whose sessions park, and after how many seconds. A session parks only when ending its harness kills nothing and nobody is looking at it; the next message, or the first keystroke in its composer, resumes it with its context. A Claude Code harness holds about 300 MB while it waits.
+  help: sessions#parked-sessions
+
+- **Workflows.** An agent can write a piece of work as a workflow: a tree in which every node says what it does. The person approves it from a card in the transcript, the server runs each step as a locked session, and the card tells what happened. It runs steps in sequence or side by side, maps a step over a list, and keeps the server under a pool of agents (`workflows: {max_agents}`), in total and per agent. Workflows now run shell commands, checks that wait on a command, an expression or a judging agent, pauses, branches and loops, with deadlines, retries, reusable blocks and named result schemas; a server restart never runs a command twice, and agents are told when to reach for a workflow. The lint refuses a `{{...}}` written inside shell quotes, where its quoting would come undone, and the card says how often each command runs: once, for each item, or each round. A failed step no longer fails the run: it waits for the main agent, which retries it, skips it, changes it or ends the run; workflows stop at gates for the main agent or the person, workers ask the main agent questions, the main agent writes notes into the story, a running workflow changes only through a diff the person approves on a card, a stopped run can be armed again keeping what ran, and a step can run in the main agent's own session. A workflow's card is a canvas item: it opens full screen, docks, moves to another window, and `workflow_arm` places it with `dock`; its header counts done, failed and open questions over a progress bar, Now says what is working and what comes next, and a map of more than six items folds. A step's `see` opens its part of the plan, steps open read-only from the card without adding a tab, and `session: <id>` runs a step in an earlier step's session. Workflows can be saved into the project with `workflow_save` and run again: a person types `/workflow <id> <text>`, the agent turns the text into args, and the run starts with no second click. `/loop` is now aegis's own, a built-in workflow that repeats a prompt until the agent says it is done, on a server timer that survives a restart. A schedule can fire a saved workflow; it is pinned to the version a person approved, and pauses for approval when the workflow changes. Settings → Workflows sets the server's pool of workflow sessions, lists the saved workflows with their steps, exports one as a YAML file and imports one through the lint. A help page of seven workflow recipes, each linted whole by a test, covers implement and review, merge on green CI after the person agrees, one agent per item, an early output, a nightly run, polling and a judge's check, and the system prompt sends agents there. The main agent hears when a person rejects its plan; an if's deadline counts while its probe runs; a folded map's story folds with it; and the lint checks a workflow's args schema.
+  help: workflows
+
+- **The network readings are back.** The Host rows of the Fleet band and of the session sidebar show whether packets leave the server and how fast a handshake takes, the address its traffic exits from with its location, and the link's speed, measured every 15 minutes while a browser watches or on a click. Each linked server shows its own. A `network:` block changes the cadences and the anchors, or turns them off.
+  help: config#network-readings
+
+- **A waiting session names the workers it waits on.** A session that ended its turn to wait on a queue task read a bare "waiting" in its panel, and `waiting · 1 queue task` in the Fleet, so it looked idle. Its card now names each worker, and the session panel lists them in a Waiting on section, a click opening the worker. Spawned child sessions show the same way.
+  help: queues#while-you-wait
+
+- **An agent can call its aegis tools from its shell.** `aegis call <tool>
+  key=value ...` runs one tool as the session whose shell ran it, with the same
+  permissions and result, and `aegis tools` lists them. A loop over many calls
+  is one Bash call, and a result piped into `wc`, `jq` or `grep` never enters
+  the agent's context: counting the words of 22 help pages cost a Sonnet
+  session $0.18 to $0.33 this way, against $1.44 through the tools, which it
+  read every page through and then pasted into `wc -w`.
+  help: commands#tools-from-an-agent-s-shell
+
+### Changed
+
+- **A schedule an agent creates or edits waits for you.** It is born paused, with a card under the agent's call that shows the whole schedule and unpauses it. An agent can no longer start or fire a schedule nobody approved.
+  help: schedules#an-agent-s-schedule-waits-for-you
+
+- **`/loop` in a schedule's prompt now means aegis's built-in loop workflow.** A schedule saved earlier with a `/loop` prompt pauses at its next fire and shows the loop's steps on its card; unpausing it approves that version, and from then on it fires the workflow.
+  help: schedules#fire-a-workflow
+
+### Fixed
+
+- A sent file or artifact on a linked server's session, or on this server's
+  after visiting a linked one, no longer shows "Not Found" when you return to
+  its tab. A tab kept from earlier drew its cards with the previous tab's
+  server's address, so the file was asked of the wrong server (#425).
+
+- On a weak connection a message no longer hangs in the box. A plain-text
+  send with no answer within 5 seconds becomes the session's queued draft,
+  the page reconnects, and the draft goes out by itself, once. Before, the box
+  handed the text back after 3 seconds and asked to send it again (#429).
+
+- Opening Help no longer moves the focus to its search box when the page list
+  arrives after you already clicked something, such as Every key. The ? that
+  should close the key list was typed into the search instead (#433).
+
 ## [2.10.0] - 2026-10-15
 
 ### Added
