@@ -4,8 +4,11 @@ with no click. An agent can never mint, forge, carry or replay one, and
 cannot change the definition or widen the args (spec §12)."""
 
 import json
+import re
 
 import pytest
+
+from aegis.ops import Caller, OpError
 
 from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
@@ -143,3 +146,89 @@ async def test_the_token_is_kept_nowhere_but_in_memory(world):
     logs = [p.read_bytes() for p in (state / "workflow-runs").glob("*")]
     logs.append((state / "workflow-saves.jsonl").read_bytes())
     assert logs and not [b for b in logs if tok.encode() in b]
+
+
+TOKEN = re.compile(r'token="([^"]+)"')
+
+
+def launches(main) -> list[str]:
+    return [
+        e.get("md", "")
+        for e in main.entries()
+        if e["kind"] == "inbox" and " · launch · " in e.get("md", "")
+    ]
+
+
+async def say(world, s, text: str):
+    return await world.app.registry.call(
+        "session.send", {"log_id": s.log_id, "text": text}
+    )
+
+
+async def test_a_persons_workflow_line_hands_the_agent_a_launch_turn(world):
+    main = await world.spawn()
+    await say(world, main, "/workflow nap one second")
+    await until(lambda: launches(main), timeout=10)
+    turn_md = launches(main)[0]
+    assert turn_md.startswith("> from workflow:nap · launch · ")
+    assert "/workflow nap one second" in turn_md and '"secs"' in turn_md
+    tok = TOKEN.search(turn_md).group(1)
+    await until(lambda: main.status == "idle", timeout=10)
+    run = ok(
+        await turn(main, mcp("workflow_arm", id="nap", token=tok, args={"secs": "1s"}))
+    )
+    assert run["status"] == "running"
+
+
+async def test_loop_is_the_built_in_workflow_and_shadows_the_harness(world):
+    main = await world.spawn()
+    await say(world, main, "/loop check the deploy every 5m")
+    await until(lambda: launches(main), timeout=10)
+    assert launches(main)[0].startswith("> from workflow:loop · launch · ")
+    listed = await world.app.registry.call("commands.list", {"log_id": main.log_id})
+    loops = [c for c in listed["commands"] if c["name"] == "loop"]
+    assert [c["source"] for c in loops] == ["aegis"]
+    assert {"id": "nap", "title": "Nap", "source": "project"} in listed["workflows"]
+
+
+async def test_the_line_is_refused_before_any_token_when_it_cannot_run(world):
+    main = await world.spawn()
+    with pytest.raises(OpError) as e:
+        await say(world, main, "/workflow nope later")
+    assert e.value.code == "no_workflow"
+    assert await say(world, main, "/workflow") is None  # the browser opens the menu
+    with pytest.raises(OpError) as e:
+        await say(world, main, "/loop")
+    assert e.value.code == "missing_argument"
+    tok = mint(world, main)
+    ok(await turn(main, mcp("workflow_arm", id="nap", token=tok, args={"secs": "30s"})))
+    before = len(world.app.workflows.launches._grants)
+    with pytest.raises(OpError) as e:
+        await say(world, main, "/workflow nap again")
+    assert e.value.code == "one_run" and "stop it from its card" in e.value.message
+    assert len(world.app.workflows.launches._grants) == before
+
+
+async def test_no_agent_path_mints_a_token(world):
+    main, other = await world.spawn(), await world.spawn()
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call(
+            "session.send",
+            {"log_id": main.log_id, "text": "/workflow nap 1s"},
+            Caller("agent", other.log_id),
+        )
+    assert e.value.code == "not_for_agents"
+    with pytest.raises(OpError):
+        await world.app.registry.call(
+            "session.send",
+            {"log_id": main.log_id, "text": "/workflow nap 1s"},
+            Caller("agent", main.log_id),
+        )
+    # An agent's handoff that reads like the line is only text in an inbox.
+    said = await turn(
+        other, mcp("peer_handoff", target=main.handle, context="/workflow nap 1s")
+    )
+    assert said.startswith("mcp ok"), said
+    await until(lambda: main.status == "idle", timeout=10)
+    assert world.app.workflows.launches._grants == {}
+    assert launches(main) == []

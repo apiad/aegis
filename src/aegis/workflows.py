@@ -73,7 +73,7 @@ from .workflow_lang import (
     with_defaults,
 )
 from .workflow_log import LIVE, NodeState, RunLog, RunState, apply, fold
-from .workflow_store import Saved
+from .workflow_store import Saved, check_named
 
 if TYPE_CHECKING:
     from .app import App
@@ -201,6 +201,13 @@ def _lids(n: NodeState) -> list[str]:
 
 LAUNCH_TTL_S = 86400.0
 LAUNCH_KEEP_S = 3600.0  # a spent or expired token is remembered this long
+
+LAUNCH = """{who} typed: {line}
+
+That launches the saved workflow {id}, "{title}". Make its args from the text and from what you know. They must match this JSON Schema, and a key it does not name is refused:
+{schema}
+
+Then call workflow_arm with id="{id}", token="{token}" and those args. The run starts at once: {why}. The token works once, only in this session and only for this workflow. If a required value cannot be filled in, ask the person instead{alone}."""
 
 
 @dataclass
@@ -911,6 +918,41 @@ class Workflows:
         st = self.arm(owner, g.text, args, saved=saved, launch=g)
         self.launches.spend(g)
         return st
+
+    def launch(self, s: Session, wid: str, typed: str, origin: dict) -> str:
+        """The launch turn for a person's /workflow line, or for the fire of
+        a schedule a person approved: a fresh token for ``s`` and what the
+        agent needs to arm with it. Refused before any token exists when the
+        run could not start."""
+        if self._in_a_node(s):
+            raise OpError("nested", "a workflow's node cannot launch a workflow")
+        cur = self.of_owner(s.log_id)
+        if cur is not None and cur.status == "running":
+            raise OpError(
+                "one_run",
+                f"this session already runs workflow {cur.run}; "
+                "stop it from its card first",
+            )
+        saved = self._app.saved.get(wid)
+        check_named(saved, self._agents())  # it lints, and its id is its name
+        wf = parse(saved.text, self._agents())[0]
+        assert wf is not None
+        token = self.launches.issue(s.log_id, saved, typed, origin)
+        person = origin["by"] == "person"
+        return LAUNCH.format(
+            who="The person" if person else f"Schedule {origin['name']}",
+            line=origin.get("line") or f"/workflow {wid} {typed}",
+            id=wid,
+            title=wf.title,
+            schema=json.dumps(wf.args or {"type": "object", "properties": {}}),
+            token=token,
+            why="their line is the approval"
+            if person
+            else "the person approved this schedule",
+            alone=""
+            if person
+            else ", or, since nobody may be there, end your turn with needs_you",
+        )
 
     def _arm_again(
         self, owner: Session, run: str, text: str | None, args: dict

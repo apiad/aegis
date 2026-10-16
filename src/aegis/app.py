@@ -816,6 +816,22 @@ class App:
             params = {"kind": "whats_new", "cwd": str(s.spec.cwd)}
             r = await self.registry.call("help.guide", params, caller)
             return {**r, "server": self.server_name}
+        if name in ("workflow", "loop"):
+            # A person's line launches a saved workflow: the only path, beside
+            # an approved schedule's fire, that mints a launch token
+            # (workflows.Launches). session.send is not open to agents.
+            if name == "workflow" and not arg:
+                return None  # the browser opens the menu of saved workflows
+            line = ("loop " + arg) if name == "loop" else arg
+            wid, _, typed = line.partition(" ")
+            origin = {
+                "by": "person",
+                "principal": self.who(caller).name,
+                "line": f"/{name} {arg}",
+            }
+            body = self.workflows.launch(s, wid, typed.strip(), origin)
+            await s.deliver(f"> from workflow:{wid} · launch · {iso_now()}", body)
+            return {"launched": wid}
         if name == "stop":
             await s.stop()
             return s.wire()
@@ -1346,6 +1362,12 @@ class App:
                 + (cat.wire_commands(shadowed=commands.AEGIS) if cat else []),
                 "models": cat.wire_models() if cat else [],
                 "permissions": list(PERMISSION_MODE),
+                # What /workflow completes: the saved workflows that lint.
+                "workflows": [
+                    {"id": w["id"], "title": w["title"], "source": w["source"]}
+                    for w in self.saved.listing(self.workflows._agents())
+                    if "error" not in w
+                ],
                 # False: claude gave no command list, so the menu cannot tell
                 # an unknown name from one of claude's.
                 "complete": bool(cat and cat.commands),
