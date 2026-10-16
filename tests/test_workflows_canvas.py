@@ -127,7 +127,9 @@ async def test_a_large_map_builds_its_wire_a_few_times_not_per_record(
     monkeypatch.setattr(world.app, "publish", spy)
     a = await world.spawn()
     run = ok(
-        await turn(a, mcp("workflow_arm", definition=MANY, args={"xs": list(range(40))}))
+        await turn(
+            a, mcp("workflow_arm", definition=MANY, args={"xs": list(range(40))})
+        )
     )["run"]
     await world.app.registry.call("workflow.approve", {"run": run})
     await until(lambda: wf.runs[run].status == "done", timeout=20)
