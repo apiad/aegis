@@ -370,3 +370,102 @@ def test_arming_again_with_a_new_definition_shows_its_diff(server, page):  # noq
     page.wait_for_selector(f"{card} >> text=Adds 1 shell command")
     page.wait_for_selector(f"{card} button >> text=Approve and run")
     assert not page.errors
+
+
+# Slice 5: the card is a canvas item like a page or a file. These drive it
+# through the selectors the artifact tests use (test_canvas_browser.py,
+# test_viewer_browser.py).
+
+
+def arm_one(pg, extra: dict | None = None) -> str:
+    """Spawn a session whose first turn arms the two-step flow; its run id."""
+    arm = {"definition": flow(RESULT, RESULT), "args": {}, **(extra or {})}
+    spawn(pg, "/mcp workflow_arm " + json.dumps(arm))
+    pg.wait_for_selector("#entries .wfcard")
+    return pg.eval_on_selector("#entries .wfcard", "c => c.dataset.run")
+
+
+def test_open_shows_the_card_full_screen_until_closed(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    run = arm_one(page)
+    page.click("#entries .wfcard .fbar .view")
+    page.wait_for_selector("#viewer .vbar >> text=Two steps")
+    page.wait_for_selector(f'#viewer .wfcard[data-run="{run}"] >> text=Do the first thing.')
+    # Approving from the viewer runs it; the viewer's card follows.
+    page.click("#viewer .wfcard button >> text=Approve and run")
+    page.wait_for_selector("#viewer .wfcard[data-status=done]", timeout=20000)
+    page.keyboard.press("Escape")
+    assert page.locator("#viewer").is_hidden()
+    assert not page.errors
+
+
+def test_dock_from_the_viewer_moves_it_to_a_pane_and_open_then_outlines_it(server, page):  # noqa: F811
+    page.set_viewport_size({"width": 1300, "height": 900})
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    run = arm_one(page)
+    page.click("#entries .wfcard .fbar .view")
+    page.click("#viewer .vbar .dock")
+    page.wait_for_selector(f'#canvas .pane[data-pane="wf-{run}"] .wfcard')
+    assert page.locator("#viewer").is_hidden()
+    # Open on a docked card outlines its pane, as for a page, and so does Show.
+    page.click("#entries .wfcard .fbar .view")
+    page.wait_for_selector(f'#canvas .pane[data-pane="wf-{run}"].flash')
+    assert page.locator("#viewer").is_hidden()
+    page.wait_for_selector(f'#canvas .pane[data-pane="wf-{run}"]:not(.flash)')
+    page.click("#entries .wfcard .held .locate")
+    page.wait_for_selector(f'#canvas .pane[data-pane="wf-{run}"].flash')
+    assert not page.errors
+
+
+def test_an_agents_dock_draws_the_card_beside_the_transcript(server, page):  # noqa: F811
+    page.set_viewport_size({"width": 1300, "height": 900})
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    run = arm_one(page, {"dock": "right"})
+    pane = page.locator(f'#canvas .pane[data-pane="wf-{run}"]')
+    pane.locator(".wfcard >> text=Do the first thing.").wait_for()
+    tr, box = page.locator("#tr-pane").bounding_box(), pane.bounding_box()
+    assert box["x"] >= tr["x"] + tr["width"] - 1  # to its right
+    assert page.locator("#entries .wfcard .held").inner_text() == "docked · show"
+    assert not page.errors
+
+
+def test_a_workflow_moves_to_a_second_window_and_runs_live_there(server, page):  # noqa: F811
+    from .test_canvas_browser import _watch
+
+    page.set_viewport_size({"width": 1300, "height": 900})
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    run = arm_one(page, {"dock": "right"})
+    pane = f'#canvas .pane[data-pane="wf-{run}"]'
+    page.click(f"{pane} .pbar .move")
+    with page.context.expect_page() as opened:
+        page.locator("#canvas .pmenu button", has_text="New window").click()
+    two = _watch(opened.value)
+    two.locator(f"{pane} .wfcard >> text=Do the first thing.").wait_for()
+    page.locator("#entries .wfcard .held", has_text="in window 2").wait_for()
+    assert page.locator("#entries .wfcard .held").inner_text() == "in window 2 · open"
+    # The window's card approves and follows the run like window 1's.
+    two.click(f"{pane} .wfcard button >> text=Approve and run")
+    two.wait_for_selector(f"{pane} .wfcard[data-status=done]", timeout=20000)
+    assert page.errors == [] and two.errors == []
+
+
+def test_the_phone_canvas_shows_the_workflow_as_a_tab(server, browser):  # noqa: F811
+    from .test_browser import new_page
+
+    errors: list = []
+    pg = new_page(browser, errors)
+    pg.set_viewport_size({"width": 390, "height": 800})
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    run = arm_one(pg, {"dock": "right"})
+    tab = pg.locator(f'#canvas [role=tab][data-pane="wf-{run}"]')
+    tab.wait_for()
+    assert tab.inner_text() == "Two steps"
+    tab.click()
+    pg.wait_for_selector(f'#canvas .pane[data-pane="wf-{run}"] .wfcard')
+    pg.click(f'#canvas .pane[data-pane="wf-{run}"] .wfcard .wfrow[data-node=one] .tog')
+    assert pg.evaluate("document.documentElement.scrollWidth") <= 390 and not errors

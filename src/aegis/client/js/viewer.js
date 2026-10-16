@@ -9,11 +9,14 @@
 // needed. Everything else is the card's own preview at full size, so a frame
 // keeps the sandbox the card decided.
 //
+// A workflow's card is drawn whole and redraws itself from the workflows
+// channel (entries.js fillWorkflow), as it does in a canvas pane.
+//
 // An artifact's page runs in one place only. While the viewer shows a live
 // one, its card holds a line instead of a frame (entries.hold), and the
 // agent's state reaches the viewer's frame instead.
 
-import { artifactStage, dockButton, fileActions, fileUrl, hold, markdown, popButton, preview } from "./entries.js";
+import { artifactStage, dockButton, fileActions, fileUrl, fillWorkflow, hold, markdown, popButton, preview } from "./entries.js";
 import { entryIcon, icon } from "./glyphs.js";
 import { colour, langOfPath, paint } from "./highlight.js";
 
@@ -162,7 +165,7 @@ export class Viewer {
   constructor(root, { entry }) {
     this.root = root; // #viewer, inside .col
     this.entry = entry; // (id) -> the shown transcript's entry, or undefined
-    this.items = new Map(); // session key -> {files, at, remote, glyph, line?} or {artifact}
+    this.items = new Map(); // session key -> {files, at, remote, glyph, line?}, {artifact} or {workflow}
     this.key = null; // the session shown
     this.drawn = 0; // bumped by every draw, so a fetch for an older one is dropped
   }
@@ -212,6 +215,7 @@ export class Viewer {
     body.tabIndex = -1;
     this.root.replaceChildren(bar, body);
     if (item.artifact) this.drawArtifact(item, e || this.entry(item.artifact), bar, body);
+    else if (item.workflow) this.drawWorkflow(item, bar, body);
     else this.drawFile(item, bar, body, draw);
   }
 
@@ -256,6 +260,18 @@ export class Viewer {
     }
     acts.append(this.closeButton());
     bar.append(acts);
+  }
+
+  // A run's card at full size: its title goes into the bar before Dock and
+  // Close (fillWorkflow, which keeps the bar's .acts).
+  drawWorkflow(item, bar, body) {
+    const acts = el("span", "acts");
+    acts.append(dockButton(`wf-${item.workflow}`), this.closeButton());
+    bar.append(acts);
+    const card = el("div", "fcard wfcard");
+    card.dataset.run = item.workflow;
+    body.append(card);
+    fillWorkflow(card);
   }
 
   drawArtifact(item, e, bar, body) {
