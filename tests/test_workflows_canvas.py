@@ -256,8 +256,57 @@ async def test_a_wire_that_raises_drops_no_other_runs_publish(world, monkeypatch
     wf._publish(good)
     wf._publish_now()
     assert broke == [bad] and sent == [good]
-    # The run whose wire raised goes out on the next flush.
+    # The run whose wire raised goes out with the next run that changes.
+    wf._publish(good)
     await until(lambda: bad in sent, timeout=2)
+
+
+async def test_a_wire_that_always_raises_is_logged_once_and_not_retried_alone(
+    world, monkeypatch, caplog
+):
+    wf = world.app.workflows
+    runs = []
+    for _ in range(2):
+        a = await world.spawn()
+        runs.append(
+            ok(await turn(a, mcp("workflow_arm", definition=flow(RESULT, RESULT))))[
+                "run"
+            ]
+        )
+    bad, good = runs
+    real, tries = wf.wire, []
+
+    def wire(run):
+        if run == bad:
+            tries.append(run)
+            raise RuntimeError("boom")
+        return real(run)
+
+    monkeypatch.setattr(wf, "wire", wire)
+    sent: list[str] = []
+    publish = world.app.publish
+
+    def spy(channel, ops):
+        if channel == "workflows":
+            sent.extend(op["upsert"]["run"] for op in ops if "upsert" in op)
+        return publish(channel, ops)
+
+    monkeypatch.setattr(world.app, "publish", spy)
+    caplog.set_level("ERROR")
+    wf._publish(bad)
+    wf._publish_now()
+    # No flush is armed for it alone: it waits for the next real publish.
+    assert wf._flush_at is None and len(tries) == 1
+    for _ in range(3):
+        wf._publish(good)
+        wf._publish_now()
+    assert sent.count(good) >= 3 and bad not in sent
+    said = [r for r in caplog.records if bad in r.getMessage()]
+    assert len(said) == 1  # once per run, not once per flush
+    monkeypatch.setattr(wf, "wire", real)
+    wf._publish(good)
+    wf._publish_now()
+    assert bad in sent
 
 
 async def test_an_ended_runs_pane_keeps_its_title_after_a_boot(world):

@@ -1410,7 +1410,7 @@ Run <code>make bench</code> for the PR body.</li>
 <h2 id="code-departs">Where the code departs from this plan</h2>
 <p>Workers and reviewers add a line for each place the real code forced a change.</p>
 <ul>
-  <li>(none yet)</li>
+  <li>Task 0, before task 1 and not in this plan: <code>_flush_publish</code> no longer re-arms itself after a run's wire raised. The run stays changed and rides the next flush another publish arms, and its failure is logged once until a flush for it succeeds (slice 5 round-2 review, item 1).</li>
 </ul>
 </main>
 <script>
