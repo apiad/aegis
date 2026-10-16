@@ -33,7 +33,9 @@ root:
 
 Every node needs `say`. A `{{name.field}}` in a prompt or a `say` reads
 `args` or the result of a node that finished before this one. This version
-runs every kind in the spec.
+runs every kind in the spec. `args`, when you give one, is a JSON Schema of
+the same subset as a `result`, plus default for a value left out; the lint
+checks it, and each default against its own schema.
 
 ## Run things at once
 
@@ -156,7 +158,8 @@ running agents are interrupted and kept for you to read, its commands are
 killed, and the step fails. A deadline on a group bounds everything in it.
 `retries: 2` on an agent, sh or check runs it again when it fails, with a
 fresh session for an agent. A reference with no value is never retried,
-and a command cut by a server restart is never run again on its own.
+and a command cut by a server restart is never run again on its own. An
+if's deadline counts from when it starts asking its probe.
 
 ## Blocks
 
@@ -187,6 +190,7 @@ When the server stops and starts again during a run:
 - an agent or a judge goes on in its session, and the step ends when it reports;
 - a command is not run again: the step fails with "cut by restart", and you decide whether to rerun or skip it;
 - a check's command probe runs again, and its deadline still counts from its first start;
+- an if still asking its command probe asks it again, and its deadline counts from its first start;
 - an `expr` probe is evaluated again;
 - a wait ends at the time it was going to end;
 - an if or a loop never asks a probe again once its answer is logged, and a loop keeps its round;
@@ -220,7 +224,9 @@ on. Pass `dock` to place it as you arm, with the values `artifact_send`
 takes; a bad `dock` arms nothing, and one that no longer fits once the run
 exists comes back as `"docked": false` with the reason. `layout_read` lists
 the card as kind workflow, with its title and run. Arming again before
-approval keeps the spot: the new card takes the docked one's pane.
+approval keeps the spot: the new card takes the docked one's pane. If the
+person presses Reject, nothing runs and you get a message headed
+`rejected`: ask them what to change, then arm a new version.
 
 ## While it runs
 
@@ -236,7 +242,8 @@ You are woken by a message headed `> from workflow:<id>` for each thing the
 run waits on you for: a failed step, a gate with `by: main`, a worker's
 question, and the person's answer to a change you proposed. Each one is told
 once, also across a restart. You get one more message when the run ends,
-headed `done`, `failed` or `stopped`. `workflow_status` shows the tree, the
+headed `done`, `failed` or `stopped`, or `rejected` when the person rejects
+the plan before it starts. `workflow_status` shows the tree, the
 story and what the run waits on at any time; `workflow_stop` stops the run
 and unlocks its sessions, or, with a node, stops only that step, which then
 waits for your answer.
@@ -251,7 +258,8 @@ story tells what happened, and under that the plan, one row per step. A map
 of more than six items shows its count line and folds its items until the
 person opens it; an item that failed, waits for a change or holds an open
 gate for the person stays shown. A loop past six rounds shows only its
-current one.
+current one. The story's lines for those items fold into one line with the
+same toggle; a failure, a question and a note stay shown.
 
 The card opens full screen, docks and moves to another browser window as a
 page does. A step's session has no tab while the run lives: its handle on
@@ -416,6 +424,10 @@ with its title, args schema, version, who saved it and when, and what is
 wrong with it when it does not lint. `workflow_delete` removes one from the
 project. The built-in ids are reserved: no project workflow takes one, and
 none is deleted.
+
+In Settings → Workflows a person sees every saved workflow with its steps,
+exports one as a YAML file, and imports one, which is linted first and
+saved as theirs.
 
 `workflow_arm` with `id` in place of `definition` arms a saved workflow,
 with your args, and the person approves it on its card as any other.

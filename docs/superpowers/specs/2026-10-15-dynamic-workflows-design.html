@@ -175,7 +175,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · dynamic workflows</span>
-  <span class="st"><span class="pill acc">slices 0 to 6 built</span><span class="pill">2026-10-15</span><span class="pill">#418</span></span>
+  <span class="st"><span class="pill acc">built</span><span class="pill">2026-10-15</span><span class="pill">#418</span></span>
 </div>
 
 <div class="wrap">
@@ -213,7 +213,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <main>
 <h1>Dynamic workflows: agent-designed, person-approved, server-driven</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-15-dynamic-workflows-design.html</span><span>·</span><span>slices 0 and 1 on branch 418-dynamic-workflows, slice 2 on 418-workflows-slice-2, slice 4 on 418-workflows-slice-4, slice 5 on 418-workflows-slice-5, slice 6 on 418-workflows-slice-6</span><span>·</span><span>issue #418</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-15-dynamic-workflows-design.html</span><span>·</span><span>slices 0 and 1 on branch 418-dynamic-workflows, slice 2 on 418-workflows-slice-2, slice 4 on 418-workflows-slice-4, slice 5 on 418-workflows-slice-5, slice 6 on 418-workflows-slice-6, slice 7 on 418-workflows-slice-7</span><span>·</span><span>issue #418</span></div>
 <p class="lede">An agent asked to do a large piece of work writes it as a workflow: a tree of steps in which every node says, in plain language, what it does. The person reads that tree as the plan and approves it with one click. From then on the aegis server runs it, spawning and closing agents, waiting on checks, and waking the main agent only when a decision is due.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -443,7 +443,7 @@ workflow_arm(id, args, token). Schema: {…}  Text: "issue 197, the slices in th
 <p>The approve, apply-edit and person-gate answers are operations not marked for agents, so no MCP tool reaches them.</p>
 
 <h3 id="wakes">When it is woken</h3>
-<p>Only for <code>by: main</code> gates, workers' questions, failures and the end of the run, as inbox turns headed <code>&gt; from workflow:&lt;id&gt; · gate|ask|failed|done · …</code>, held while it works and delivered when it is idle like any inbox message. Starts, results and outputs go to the log and the view, never to the agent. Between those turns the main agent is free: it is the session the person talks to.</p>
+<p>Only for <code>by: main</code> gates, workers' questions, failures, the person's rejection of the plan and the end of the run, as inbox turns headed <code>&gt; from workflow:&lt;id&gt; · gate|ask|failed|rejected|done · …</code>, held while it works and delivered when it is idle like any inbox message. Starts, results and outputs go to the log and the view, never to the agent. Between those turns the main agent is free: it is the session the person talks to.</p>
 
 <h3 id="gates">Gates and questions</h3>
 <ul>
@@ -461,7 +461,7 @@ workflow_arm(id, args, token). Schema: {…}  Text: "issue 197, the slices in th
   <li>A header with the title, the run time and counts of done, failed and open questions, and a progress bar.</li>
   <li><b>Now</b>: which nodes are working, on what, for how long, and what comes next.</li>
   <li><b>What happened</b>: one line per event, marked ✓, ✗ or ?, each joining a node's <code>say</code> with its <code>summary</code>, a check's exit, or a note. No model call writes it.</li>
-  <li><b>The plan</b>: the tree, every node's sentence with its outcome beneath, its agent, its time, <code>after</code> edges as dashed badges, the prompt folded, and the <code>see</code> chip. A <code>map</code> of more than six items folds to "6 done · 2 working · 14 queued" until opened.</li>
+  <li><b>The plan</b>: the tree, every node's sentence with its outcome beneath, its agent, its time, <code>after</code> edges as dashed badges, the prompt folded, and the <code>see</code> chip. A <code>map</code> of more than six items folds to "6 done · 2 working · 14 queued" until opened, and the story's lines for its hidden items fold with it into one line, with the same toggle; a failure, a question and a note stay shown.</li>
 </ul>
 <p>Workflow sessions keep no tab; they are reached from the card and from the Fleet, where their cards carry the run's name.</p>
 
@@ -478,7 +478,7 @@ workflow_arm(id, args, token). Schema: {…}  Text: "issue 197, the slices in th
   <li>built in, shipped in <code>src/aegis/builtin_workflows/*.yaml</code>, with reserved ids;</li>
   <li>the project, in <code>.aegis/workflows/&lt;id&gt;.yaml</code> next to <code>.aegis.yaml</code>, so they live in git like the rest of the configuration;</li>
   <li>plugins, later, each registering a folder;</li>
-  <li>Settings → Workflows, which lists them drawn as the approval card draws them, exports a YAML file, and imports one through the lint into the project.</li>
+  <li>Settings → Workflows, which lists them drawn as the approval card draws them, exports a YAML file, and imports one through the lint into the project. It also sets the server's pool, <code>workflows: {max_agents}</code>.</li>
 </ul>
 <p>The agent gives a workflow its id when it first writes it. <code>/workflow</code> with no id lists them, and the command palette shows them.</p>
 
@@ -552,14 +552,15 @@ root:
 <p>The card is the same component as the workflow's approval card: a rendered object, a person-only operation, never folded. A schedule whose prompt starts with <code>/workflow</code> or <code>/loop</code> mints a launch token on each fire, which is safe because a person unpaused it. It pins the version of the workflow it fires: when the saved file changes, the schedule pauses for approval and its card shows the diff, a fire checks the version again so a hand edit is caught and launches the very version it checked, and Unpause carries the version its card showed. An edit of the schedule keeps its pin unless the prompt names another workflow. No agent fires such a schedule on demand: the person approved a clock.</p>
 
 <h2 id="prompting"><span class="n">10</span>When agents reach for one</h2>
-<p>One line in the system prompt and a help page, <code>workflows</code>, say when. A linear plan with <code>plan_update</code> is for work an agent does itself, even when it hands a few tasks to queue workers in sequence. A workflow is for work that is costly to coordinate: many agents, gates, agents checking other agents, dependencies across branches, long waits. The help page carries recipes an agent copies and adapts:</p>
+<p>One line in the system prompt and two help pages, <code>workflows</code> and <code>workflow-recipes</code>, say when. A linear plan with <code>plan_update</code> is for work an agent does itself, even when it hands a few tasks to queue workers in sequence. A workflow is for work that is costly to coordinate: many agents, gates, agents checking other agents, dependencies across branches, long waits. The recipes page, <code>workflow-recipes</code>, carries seven whole workflows an agent copies and adapts, each linted by a test:</p>
 <ul>
-  <li>merge on green, with the check that every CI check passed and at least one exists;</li>
-  <li>implement, review, fix until approved;</li>
-  <li>waves with a cap;</li>
-  <li>fan out, then verify each result;</li>
+  <li>implement, review and fix until approved;</li>
+  <li>merge on green CI, after the person agrees, with the check that every CI check passed and at least one exists;</li>
+  <li>one step per item, a few at a time, each result judged (waves with a cap, and fan out then verify);</li>
   <li>wait for another branch's early output;</li>
-  <li>a loop.</li>
+  <li>a saved workflow every night, from a schedule;</li>
+  <li>poll until something is true;</li>
+  <li>let a judge decide before going on.</li>
 </ul>
 
 <h2 id="delivery"><span class="n">11</span>Delivery</h2>

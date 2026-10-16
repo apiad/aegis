@@ -339,6 +339,7 @@ checked against its schema, never its last message. What a run waits on (a
 failed step, a gate, a worker's question, the outcome of an edit) is folded
 into its open items and told to the main agent once: a `woke` record follows
 the delivery, so a crash between the two tells it again and never loses it.
+A person's rejection of the plan wakes the main agent as an ending does.
 Answers are records too, and a failed branch keeps its cap slot until it is
 retried or skipped. The answers only a person gives (a `by: person` gate,
 applying or rejecting an edit, approving) are operations not marked for
@@ -350,7 +351,11 @@ diff. A pass, a stop and an answer hold one lock, so a run's ending is
 written once. The main agent is the session that armed the run or
 whichever session a handoff continued it in. The card under `workflow_arm` is a `workflow`
 entry the browser fills from the `workflows` channel, at most once every
-250 ms per run, redrawing only the runs a patch carries. It is one more
+250 ms per run, redrawing only the runs a patch carries; a run whose wire
+raises is logged once and goes out with the next flush another run arms, so
+a broken state is never retried on a timer of its own. Each story line a
+record about a node tells carries that node's instance, so the card folds a
+long map's lines with its rows. It is one more
 canvas pane kind, `wf-<run>`: it docks through `layout.place`, opens in the
 viewer and moves windows through the paths pages and files use, and a run
 armed again before approval takes its predecessor's pane. A node's session
@@ -368,7 +373,11 @@ closes it once every user is done, skipped or in a branch not taken.
 Saved workflows are files, read from two folders on every call
 (`workflow_store.py`): the built-ins in the package, whose ids are reserved,
 and the project's in `.aegis/workflows/` beside the config, with every save
-appended to a history that keeps each version's text. A person's
+appended to a history that keeps each version's text. Settings → Workflows
+reads a saved file through `workflow.read`, an operation not marked for
+agents, and imports one through `workflow.save` called by the person, so an
+import is a save like any other: linted on the server, recorded as theirs,
+and pausing the schedules pinned to that id. A person's
 `/workflow` or `/loop` line starts a saved one with no click through a launch
 token (`workflows.Launches`). It is minted only inside `session.send`, which
 no agent can call, and by the fire of a schedule a person approved; it is

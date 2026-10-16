@@ -190,6 +190,9 @@ most memory workflows can take is about `total` times that. A wrong block
 keeps `{total: 4}`, and `aegis doctor` names the mistake, an alias that is not
 an agent included.
 
+Settings → Workflows edits it: a row for the total and one per agent; blank
+keeps the default.
+
 ## Terminals
 
 `terminals:` maps a profile's name to `cmd:` and `cwd:`, with `restart:` and
