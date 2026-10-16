@@ -1000,11 +1000,15 @@ class Workflows:
         if args and args != st.args:
             raise OpError("bad_args", "a run armed again keeps its args")
         text = text or st.text
-        old = self.defs.get(run) or parse(st.text, self._agents())[0]
+        # What the person last approved, not a change they since rejected.
+        base = st.approved or {"text": st.text, "v": st.version}
+        old = (self.defs.get(run) if st.text == base["text"] else None) or parse(
+            base["text"], self._agents()
+        )[0]
         wf, errors = parse(text, self._agents())
         if wf is None or old is None:
             raise OpError("lint", "\n".join(f"{e.path}: {e.message}" for e in errors))
-        if text != st.text:
+        if text != base["text"]:
             errors = edit_errors(old, wf, self._seen(st, old))
             if errors:
                 raise OpError(
@@ -1019,9 +1023,9 @@ class Workflows:
             elif node.kind not in LEAVES and n.status in ("failed", "stopped"):
                 # A failed group, whole; or an if stopped while its probe ran.
                 reset |= {x for x, _ in self._under(st, node, k)}
-        v = st.version + (text != st.text)
+        v = base["v"] + (text != base["text"])
         rec = {"ev": "rearmed", "v": v, "text": text, "reset": sorted(reset)}
-        if text != st.text:
+        if text != base["text"]:
             # The again card shows the change, as an edit's card does.
             d = edit_diff(old, wf)
             rec |= {"diff": d["diff"], "commands": d["commands"]}

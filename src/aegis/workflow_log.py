@@ -93,6 +93,9 @@ class RunState:
     launch: dict | None = None
     # A rejection logged and not yet told to the main agent.
     reject_untold: bool = False
+    # The text and version a person last approved: arming again compares
+    # with these, so a rejected change shows again when it is armed again.
+    approved: dict | None = None
 
 
 def _tell(st: RunState, t: float, mark: str, text: str, **extra) -> None:
@@ -157,6 +160,7 @@ def _apply(st: RunState, r: dict) -> None:
     ev, t = r.get("ev"), float(r.get("t") or 0)
     if ev == "approved":
         st.status, st.started = "running", t
+        st.approved = {"text": st.text, "v": st.version}
         if r.get("by") and st.launch:
             _tell(st, t, "ok", _started_by(st.launch))
     elif ev == "rejected":
@@ -229,6 +233,7 @@ def _apply(st: RunState, r: dict) -> None:
         v, outcome = r.get("v"), "applied" if ev == "edit_applied" else "rejected"
         if ev == "edit_applied" and st.proposal is not None and st.proposal["v"] == v:
             st.text, st.version = st.proposal.get("text") or st.text, int(v or 0)
+            st.approved = {"text": st.text, "v": st.version}
         if st.proposal is not None and st.proposal["v"] == v:
             st.proposal = None
         _edit_status(st, v, outcome)
