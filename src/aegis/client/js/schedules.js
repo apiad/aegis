@@ -5,6 +5,8 @@
 // asks and sends. A prompt, a check and its stdout are people's and agents'
 // text: they are set as text, never as markup.
 
+import { scheduleWorkflow } from "./entries.js";
+
 const CLOCKS = ["every", "cron", "at"];
 const HINTS = { every: "5m", cron: "0 6 * * 1-5", at: "2026-10-15 09:00" };
 const OVERLAP = {
@@ -356,6 +358,13 @@ export class Schedules {
     else sub = `Next tick ${short(s.next)}.${s.held ? ` One tick is held (${s.held}).` : ""} A tick fires only if it passes every layer.`;
     box.append(head, el("p", "cnote", sub));
     if (this.err) box.append(el("p", "cnote err", this.err));
+    // The workflow it fires, drawn as its approval card draws it: Resume
+    // pins the version shown here, so it is never one the person did not see.
+    if (s.workflow) {
+      const wf = el("div", "sch-wf");
+      wf.append(...scheduleWorkflow(s.workflow));
+      box.append(wf);
+    }
     box.append(this.layers(s), this.table());
     return box;
   }

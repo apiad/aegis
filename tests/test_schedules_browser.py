@@ -330,3 +330,44 @@ def test_an_agents_workflow_schedule_card_lists_the_steps_and_pins_on_unpause(
         assert time.monotonic() < deadline, "the pin never moved to the new version"
         time.sleep(0.1)
     assert not page.errors
+
+
+def test_the_schedules_view_shows_a_changed_workflow_before_resume_pins_it(
+    server,
+    page,  # noqa: F811
+):
+    # Resume in the view pins the version it sends, so the view draws what
+    # changed first, as the approval card does.
+    from aegis.workflow_store import sha_of
+
+    from .test_workflow_store import NAP
+    from .test_workflows_browser import send
+
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_save " + json.dumps({"definition": NAP}))
+    spec = {
+        "name": "agent-nap",
+        "clock": {"every": "1h"},
+        "fire": {"agent": "opus"},
+        "prompt": "/workflow nap a second",
+    }
+    send(page, "/mcp schedule_create " + json.dumps(spec))
+    card = ".apcard[data-name=agent-nap]"
+    page.click(f"{card} button >> text=Unpause")
+    page.wait_for_selector(f"{card}[data-state=running]")
+    longer = NAP.replace("Nap a while.", "Nap longer.")
+    send(page, "/mcp workflow_save " + json.dumps({"definition": longer}))
+    page.wait_for_selector(f"{card}[data-state=waiting] .apchanged")
+    page.click("#schedules-btn")
+    page.click("#a2[data-view=schedules] .sch-row[data-name=agent-nap]")
+    detail = "#a2[data-view=schedules] .sch-detail"
+    page.wait_for_selector(f"{detail} .sch-wf .apchanged")
+    page.wait_for_selector(f"{detail} .sch-wf .edit .d.change")
+    page.click(f"{detail} button >> text=Resume")
+    saved = server.root / ".aegis" / "workflows" / "nap.yaml"
+    deadline = time.monotonic() + 5
+    while stored(server, "agent-nap")["pin"]["sha"] != sha_of(saved.read_text()):
+        assert time.monotonic() < deadline, "the pin never moved to the new version"
+        time.sleep(0.1)
+    assert not page.errors
