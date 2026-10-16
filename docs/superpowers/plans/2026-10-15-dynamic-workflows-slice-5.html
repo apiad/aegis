@@ -1217,7 +1217,7 @@ def test_see_must_be_a_path_and_its_references_are_checked():
 </div>
 </details>
 
-<details class="task" id="task-8" data-state="pending">
+<details class="task" id="task-8" data-state="done">
 <summary><span class="num">8</span><span><span class="ttl">The see chip and workflow.see, a person's operation</span><span class="files">workflow_ops.py · workflows.py · entries.js · app.js · tests/test_workflows_canvas.py · tests/test_workflows_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1737,6 +1737,7 @@ Only one step runs in a session at a time (the lint and the queue above), so <co
   <li>Split point: <code>test_dock_from_the_viewer_moves_it_to_a_pane_and_open_then_outlines_it</code> is named <code>test_dock_from_the_viewer_then_open_outlines_the_pane</code>; <code>ruff format</code> wrapped the long signature, which moved its <code># noqa: F811</code> off the <code>def</code> line.</li>
   <li>Task 6: the tab bar is <code>#tablist .tab</code>, not <code>#tabs [role=tab]</code>. The browser test waits for the composer's placeholder rather than the session view, and also checks Now's line links the handle. The tree's tag draws <code>stepLink</code> whenever the row has a <code>log_id</code>, so a closed session links to its archive copy; before, it drew a handle only while the session was open. <code>workflowTitle</code> already existed in entries.js. The second break-it (openCard unquiets regardless) fails the browser test on the session view, not on the tab count: the server refuses the unquiet, and <code>openCard</code> returns on that error after a toast, so the client's <code>locked</code> check is the second of two guards.</li>
   <li>Task 7: <code>_fields</code> holds <code>see</code>, and <code>_parts</code> names it in a diff ("see"), so a changed <code>see</code> on a started step is refused and an edit's card says what changed. A wire test in <code>tests/test_workflows_values.py</code> pins the rendering: a map's step drawn once before the map starts (row id <code>t</code>, marked <code>each</code>) has no <code>see</code>, and each item's row renders its own (<code>plan.html#slice-a</code>, <code>#slice-b</code>).</li>
+  <li>Task 8: <code>see_file</code> finds the row in <code>wire(run)["tree"]</code>, which already parses an ended run's definition once, rather than calling <code>_rows</code> and <code>parse</code> itself. <code>refs.LINE</code> is <code>:\d+$</code>, so the line is <code>int(m.group(0)[1:])</code>. The person's calls pass no caller (the registry's default is the person). The browser's hook is <code>view(files, line)</code>, and the chip is a function, <code>seeChip</code>, beside <code>stepLink</code>. One server test more than the plan's: <code>notes.md:2</code> opens at line 2 with no fragment. The agent test passed before the op existed (there was no such tool); the break-it, marking the op <code>agent=True</code>, made it fail with the file's record in the reply.</li>
 </ul>
 <h3>Slice 4 round-2 fixes</h3>
 <p>Six defects a review of slice 4 found, fixed on this branch before task 6, each with a test that failed first.</p>

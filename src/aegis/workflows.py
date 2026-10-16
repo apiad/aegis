@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from . import layout as canvas
-from . import restarts
+from . import refs, restarts
 from .agents import PERMISSION_ORDER, resolve
 from .monitors import CONDITION_LIMIT_S
 from .ops import OpError
@@ -684,6 +684,26 @@ class Workflows:
             item = {c.id: self._value(st, c, f"{inst}.{key}.{c.id}") for c in inside}
             out[key] = {k: v for k, v in item.items() if v is not None}
         return out[keys[0]] if n.kind == "loop" else out
+
+    def see_file(self, run: str, node: str) -> tuple[Path, str | None, int | None]:
+        """The file a step's see names, as its row renders it now: relative
+        to the run's folder unless absolute, with its #fragment or :line.
+        The caller gives a run and a step, never a path (as file.peek)."""
+        st = self._get(run)
+        row = next((r for r in self.wire(run)["tree"] if r["id"] == node), None)
+        see = (row or {}).get("see")
+        if not see:
+            raise OpError("no_see", f"step {node} has no see to open yet")
+        raw, _, fragment = see.partition("#")
+        line = None
+        if m := refs.LINE.search(raw):
+            line, raw = int(m.group(0)[1:]), raw[: m.start()]
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            path = Path(self._cwd(st)) / path
+        if not path.is_file():
+            raise OpError("no_file", f"no file {raw} in {self._cwd(st)}")
+        return path, fragment or None, line
 
     def wire_all(self) -> list[dict]:
         return [self.wire(r) for r in sorted(self.runs)]

@@ -736,6 +736,9 @@ body{background:#000}
 .a2 .wfcard .nowline .dot.queued{border-style:dashed;border-color:var(--accent)}
 .a2 .wfcard .nowline .dur{padding-top:0}
 .a2 .wfcard a.who{color:var(--comms);text-decoration:underline}
+.a2 .wfcard .tags .see{background:none;border:1px solid var(--accent-soft);border-radius:3px;padding:0 4px;font:inherit;color:var(--accent);cursor:pointer;overflow-wrap:anywhere;text-align:left}
+.a2 .wfcard .tags .see.bad{color:var(--err)}
+@media (pointer:coarse){.a2 .wfcard .tags .see{min-height:44px}}
 @media (pointer:coarse){.a2 .wfcard a.who{min-height:44px;display:inline-flex;align-items:center}}
 .a2 .wfcard .fold{background:none;border:0;padding:0;font:11px var(--font-mono);color:var(--accent);cursor:pointer}
 @media (pointer:coarse){.a2 .wfcard .fold{min-height:44px}}

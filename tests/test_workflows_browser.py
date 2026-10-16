@@ -654,3 +654,18 @@ def test_a_working_step_opens_read_only_from_the_card_with_no_tab(server, page):
     assert page.locator("#tablist .tab").count() == tabs
     assert page.is_disabled("#input")
     assert not page.errors
+
+
+def test_a_steps_see_chip_opens_its_part_of_the_plan(server, page, tmp_path):  # noqa: F811
+    from .test_workflows_canvas import SEEN
+
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "plan.html").write_text("<h2 id=slice-1>One</h2>")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_arm " + json.dumps({"definition": SEEN, "args": {}}))
+    chip = ".wfcard .wfrow[data-node=one] .see"
+    page.wait_for_selector(f"{chip} >> text=see docs/plan.html#slice-1")
+    page.click(chip)
+    page.wait_for_selector('#viewer iframe[src$="#slice-1"]')
+    assert not page.errors
