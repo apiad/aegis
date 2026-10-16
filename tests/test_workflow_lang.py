@@ -123,14 +123,16 @@ def test_see_is_a_file_path_kept_on_the_node_and_its_row():
     assert row["see"] == "docs/plan.html#slice-1"
 
 
-def test_see_must_be_a_path_and_its_references_are_checked():
+def test_see_must_be_a_fixed_path():
     for value, msg in (
         ("[a, b]", "see is a path to a file, with an optional #fragment or :line"),
         (
             '"https://example.com/plan"',
-            "see is a path to a file in the run's folder, not a URL",
+            "see is a path to a file, relative to the run's folder or absolute, not a URL",
         ),
-        ('"plan.html#{{nobody.id}}"', "nobody is not an earlier node or args"),
+        # Fixed when approved: no step's result may choose the file later.
+        ('"plan.html#{{args.slice}}"', "see is a fixed path, with no {{...}} in it"),
+        ('"{{impl.path}}"', "see is a fixed path, with no {{...}} in it"),
     ):
         _, got = errs(one_agent(f"  see: {value}\n"))
         assert any(msg in e and e.startswith("$.root") for e in got), (value, got)

@@ -515,13 +515,6 @@ class Workflows:
         elif not each:
             with contextlib.suppress(*RENDER_ERRORS):
                 row["say"] = render(row["say"], self._scope(st, wf, prefix))
-        if row.get("see"):
-            # Shown only once it renders: a path with a value still to come,
-            # or a map's step drawn once before it starts, opens nothing.
-            tpl = row.pop("see")
-            if not each:
-                with contextlib.suppress(*RENDER_ERRORS):
-                    row["see"] = render(tpl, self._scope(st, wf, prefix))
         if n is not None:
             h = self._reg.sessions.get(n.log_id or "")
             row |= {
@@ -696,7 +689,7 @@ class Workflows:
         return out[keys[0]] if n.kind == "loop" else out
 
     def see_file(self, run: str, node: str) -> tuple[Path, str | None, int | None]:
-        """The file a step's see names, as its row renders it now: relative
+        """The file a step's see names, as its row carries it: relative
         to the run's folder unless absolute, with its #fragment or :line.
         The caller gives a run and a step, never a path (as file.peek)."""
         st = self._get(run)

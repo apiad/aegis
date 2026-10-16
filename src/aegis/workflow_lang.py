@@ -102,7 +102,7 @@ class Node:
     use: str = ""  # the YAML path of the ref that put this node here
     branch: str = ""  # then or else, for the root of an if's branch
     generated: bool = False  # its id was numbered, not written
-    see: str = ""  # a path into the plan, filled like say
+    see: str = ""  # a fixed path into the plan
 
     @property
     def key(self) -> str:
@@ -843,8 +843,13 @@ class _Parser:
             elif re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", see):
                 self.err(
                     f"{path}.see",
-                    "see is a path to a file in the run's folder, not a URL",
+                    "see is a path to a file, relative to the run's folder or "
+                    "absolute, not a URL",
                 )
+            elif "{{" in see:
+                # The person approves the file it opens: a value filled in
+                # later, a step's result above all, could choose another.
+                self.err(f"{path}.see", "see is a fixed path, with no {{...}} in it")
             else:
                 node.see = see
         if "retries" in raw:
@@ -1529,8 +1534,6 @@ class _Parser:
     @staticmethod
     def _strings(n: Node) -> list[tuple[str, str]]:
         out = [(n.path + ".say", n.say)]
-        if n.see:
-            out.append((n.path + ".see", n.see))
         for k in ("prompt", "cwd"):
             if n.kind == "agent" and isinstance(n.body.get(k), str):
                 out.append((f"{n.path}.agent.{k}", n.body[k]))

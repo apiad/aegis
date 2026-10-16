@@ -119,15 +119,15 @@ root:
     assert not any("{{" in t for t in texts), texts
 
 
-async def test_a_steps_see_renders_per_item_and_hides_until_it_can(world):
+async def test_a_steps_see_is_the_same_fixed_path_on_every_row(world):
     wf_text = """
 id: seen
 title: Seen
-say: Each slice, with its part of the plan.
+say: Each slice, with the plan.
 root:
   seq:
     - {sh: "sleep 0.5", id: first, say: First.}
-    - map: {over: [a, b], as: s, do: {sh: "true", id: t, say: "Do {{s}}.", see: "plan.html#slice-{{s}}"}}
+    - map: {over: [a, b], as: s, do: {sh: "true", id: t, say: "Do {{s}}.", see: "plan.html#slices"}}
       id: m
       say: Each.
   say: Both.
@@ -135,10 +135,7 @@ root:
     run = await arm(world, wf_text)
     wf = world.app.workflows
     rows = {r["id"]: r for r in wf.wire(run)["tree"]}
-    assert rows["t"]["each"] and "see" not in rows["t"]  # once, before the map
+    assert rows["t"]["each"] and rows["t"]["see"] == "plan.html#slices"
     await until(lambda: wf.runs[run].status != "running", timeout=20)
     rows = {r["id"]: r for r in wf.wire(run)["tree"]}
-    assert [rows[f"m.{i}.t"]["see"] for i in (0, 1)] == [
-        "plan.html#slice-a",
-        "plan.html#slice-b",
-    ]
+    assert [rows[f"m.{i}.t"]["see"] for i in (0, 1)] == ["plan.html#slices"] * 2
