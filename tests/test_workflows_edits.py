@@ -1,6 +1,8 @@
 """Live edits against a real server: the diff waits for a person, nodes
 it touches wait with it, and no agent applies its own edit."""
 
+import asyncio
+import json
 import time
 
 import pytest
@@ -10,6 +12,7 @@ from aegis.ops import Caller, OpError
 from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
 from .test_workflows_e2e import ok
+from .test_workflows_steps import verdict
 
 WRITER = (
     "  writer: {harness: claude-code, model: opus, effort: high, permission: write}\n"
@@ -410,3 +413,44 @@ async def test_a_step_moved_into_a_begun_seq_holds_the_step_after_it(world):
     assert [d["op"] for d in st.proposal["diff"] if d["key"] == "notes"] == ["move"]
     # Run now, ship would go before the step moved in ahead of it.
     assert "ship" in st.proposal["touched"]
+
+
+def probed(when: str) -> str:
+    return (
+        "id: probed\ntitle: Probed\nsay: Probed.\nroot:\n  seq:\n"
+        f'    - {{if: {{when: {when}, then: {{sh: "echo y >> took", id: "yes", say: Yes.}}}}, id: c, say: Probe.}}\n'
+        "  say: One.\n"
+    )
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("probe", ["sh", "judge"])
+async def test_an_if_stopped_while_probing_probes_again_when_armed_again(world, probe):
+    j = json.dumps(verdict(True, wait=3))
+    when = (
+        '{sh: "sleep 3 && true"}'
+        if probe == "sh"
+        else f"{{judge: {{agent: opus, prompt: {j}}}}}"
+    )
+    main = await world.spawn()
+    d = probed(when)
+    run = ok(await turn(main, mcp("workflow_arm", definition=d, args={})))["run"]
+    await world.app.registry.call("workflow.approve", {"run": run})
+    wf = world.app.workflows
+
+    def asking():
+        n = wf.runs[run].nodes.get("c")
+        return (run, "c") in wf._tasks or (n and n.judges.get("", {}).get("log_id"))
+
+    await until(asking, timeout=10)
+    await asyncio.sleep(0.3)  # the probe is in flight
+    await world.app.registry.call("workflow.stop", {"run": run})
+    await until(
+        lambda: woke(main, " · stopped · ") and main.status == "idle", timeout=10
+    )
+    ok(await turn(main, mcp("workflow_arm", run=run)))
+    assert wf.runs[run].nodes["c"].status != "stopped"
+    await world.app.registry.call("workflow.approve", {"run": run})
+    await until(lambda: wf.runs[run].status in ("done", "failed"), timeout=20)
+    assert wf.runs[run].status == "done"
+    assert (world.root / "took").read_text() == "y\n"
