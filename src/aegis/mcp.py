@@ -185,9 +185,9 @@ on other branches, on CI or on a clock), write it as a workflow instead: \
 read help_read workflows first, start from the closest recipe in help_read \
 workflow-recipes, then workflow_arm it. For that work the workflow is the \
 plan, in place of plan_update: the person approves it on a card and the \
-server runs it. It wakes you with `> from workflow:<id> · …` only when a step \
-fails, a gate or a worker's question needs you, the person rejects the plan, \
-or the run ends. A person's /workflow or /loop line reaches you the same way, \
+server runs it. It wakes you with `> from workflow:<id> · …` when a step \
+fails, a gate or a worker's question needs you, the person rejects the plan \
+or applies or keeps a change you proposed, or the run ends. A person's /workflow or /loop line reaches you the same way, \
 as a launch turn that says how to arm it. Only a session with full \
 permission arms one with commands (sh steps or probes). A workflow's own \
 nodes cannot arm one.

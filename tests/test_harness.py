@@ -117,8 +117,10 @@ def test_the_primer_says_when_to_reach_for_a_workflow():
         "workflow-recipes",
         "launch turn",
         "rejects",
+        "applies or keeps",
     ):
         assert word in para
+    assert "only when" not in para  # it also tells what needs no answer
 
 
 def test_every_help_page_the_primer_names_exists():
