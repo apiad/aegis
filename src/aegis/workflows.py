@@ -2025,9 +2025,13 @@ class Workflows:
                     retry=False,
                 )
                 return "failed"
-            n = self._begin(
-                st, wf, node, prefix, until=time.time() + secs, cmd=str(raw)
-            )
+            cmd = str(raw)
+            if bounds := node.body.get("between"):
+                # A value an agent gave never waits past what was approved.
+                clamped = min(max(secs, bounds[0]), bounds[1])
+                if clamped != secs:
+                    secs, cmd = clamped, f"{fmt_duration(clamped)} ({raw} asked)"
+            n = self._begin(st, wf, node, prefix, until=time.time() + secs, cmd=cmd)
         if time.time() >= (n.until or 0):
             return self._done(st, inst, None, f"Waited {n.cmd}.")
         self._due_at(n.until or 0)

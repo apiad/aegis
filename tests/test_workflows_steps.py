@@ -616,3 +616,14 @@ async def test_a_deadline_kills_a_member_that_ignores_sigterm(world):
     assert st.status == "failed"
     pid = int((world.root / "member").read_text())
     await until(lambda: restarts.started_at(pid) is None, timeout=5)
+
+
+async def test_a_wait_with_bounds_is_clamped_into_them(world):
+    t0 = time.time()
+    text = flow(
+        "{wait: '{{args.secs}}', between: [1s, 2s], id: pause, say: Pause.}",
+        args="args: {type: object, properties: {secs: {type: string}}}\n",
+    )
+    st = await ended(world, await run(world, text, {"secs": "30d"}))
+    assert st.status == "done" and st.nodes["pause"].until - t0 < 10
+    assert "2s" in st.nodes["pause"].summary
