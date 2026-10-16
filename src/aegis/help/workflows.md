@@ -451,7 +451,7 @@ filled in for a key you leave out. If a required value cannot be made from
 the text, ask the person instead.
 
 The token works once, only in your session, and only for that saved
-workflow as it was when the line was typed: a save in between changes
+workflow as it was when the line was typed: saving it again in between changes
 nothing. An arm refused for its args or its lint keeps the token, so fix the
 args and arm again. A token lasts 24 hours, and a server restart voids it;
 then ask the person to type the line again. A session runs one workflow at a
