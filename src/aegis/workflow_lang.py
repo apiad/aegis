@@ -637,10 +637,25 @@ def item_keys(items: list) -> list[str] | str:
     return keys
 
 
-def check_value(value, schema: dict, path: str = "$") -> list[str]:
+def with_defaults(args: dict, schema: dict) -> dict:
+    """``args`` with each top-level property's ``default`` from ``schema``
+    where ``args`` has none: a workflow reads ``{{args.max}}`` whether or not
+    the one who armed it gave max."""
+    out = dict(args)
+    for k, sub in (schema.get("properties") or {}).items():
+        if k not in out and isinstance(sub, dict) and "default" in sub:
+            out[k] = sub["default"]
+    return out
+
+
+def check_value(
+    value, schema: dict, path: str = "$", closed: bool = False
+) -> list[str]:
     """The subset of JSON Schema a result may declare: type, properties,
     required, items, enum. Enough to hold a worker to its report's shape
-    without a dependency."""
+    without a dependency. ``closed`` refuses every object key the schema's
+    properties do not name, at any depth: a launched run's args stay inside
+    the saved schema (workflows.Launches)."""
     out: list[str] = []
     t = schema.get("type")
     ok = {
@@ -662,10 +677,13 @@ def check_value(value, schema: dict, path: str = "$") -> list[str]:
                 out.append(f"{path}: missing {k}")
         for k, sub in (schema.get("properties") or {}).items():
             if k in value:
-                out += check_value(value[k], sub, f"{path}.{k}")
+                out += check_value(value[k], sub, f"{path}.{k}", closed)
+        if closed:
+            named = schema.get("properties") or {}
+            out += [f"{path}.{k}: not in the schema" for k in value if k not in named]
     if t == "array" and "items" in schema:
         for i, v in enumerate(value):
-            out += check_value(v, schema["items"], f"{path}[{i}]")
+            out += check_value(v, schema["items"], f"{path}[{i}]", closed)
     return out
 
 

@@ -411,7 +411,7 @@ It waits two seconds on wall time: mark it <code>@pytest.mark.slow</code> if <co
 </div>
 </details>
 
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">Args: defaults filled at arm, and a closed check</span><span class="files">workflow_lang.py · workflows.py · tests/test_workflow_lang.py · tests/test_workflow_ops.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1915,6 +1915,7 @@ Use the real fixture and helper names of those modules (<code>open_session</code
 <p>Workers and reviewers add a line for each place the real code forced a change.</p>
 <ul>
   <li>Task 1: the test loop carries <code>id: lp</code>, since <code>edit_errors</code> refuses any change to a started node with a generated id before it reaches the group rules; and its third argument marks the loop <code>begun</code>, the word slice 4's tests use for a group. The edit lint's word map needed no new case: a fixed field other than <code>probe</code> is named by its own key.</li>
+  <li>Task 2: the closed check's messages follow the code, and the test was changed to it: an object's properties are checked first, nested ones included, so <code>$.args.opts.x</code> comes before <code>$.args.shell</code>.</li>
 </ul>
 </main>
 <script>
