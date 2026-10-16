@@ -672,3 +672,31 @@ async def test_a_probe_answer_left_by_an_attempt_past_its_deadline_is_not_reused
     )
     await until(lambda: st.nodes["c"].attempts == 1 and "c" in st.open, timeout=10)
     assert st.nodes["c"].took is None and not (world.root / "took").exists()
+
+
+@pytest.mark.slow
+async def test_a_probe_answer_inside_a_group_past_its_deadline_is_not_reused(world):
+    """The same inside a seq: a step's instance carries no group prefix, so
+    the answers dropped are those of every instance the group holds."""
+    run_id = await run(
+        world,
+        flow(
+            '{seq: [{if: {when: {sh: "sleep 30"}, then: {sh: "echo y >> took", id: "yes", say: Yes.}}, id: c, say: Probe.}], id: g, deadline: 2s, say: Group.}'
+        ),
+    )
+    wf = world.app.workflows
+    st = wf.runs[run_id]
+    await until(lambda: (run_id, "c") in wf._tasks, timeout=10)
+    wf._probed[(run_id, "c", "")] = {"pass": True, "why": "exit 0"}  # too late
+    await until(lambda: "g" in st.open, timeout=10)
+    assert (run_id, "c", "") not in wf._probed
+    owner = wf.owner(st)
+    await world.app.registry.call(
+        "workflow.answer",
+        {"run": run_id, "to": "g", "choice": "retry", "text": "Again."},
+        Caller("agent", owner.log_id),
+    )
+    await until(lambda: st.nodes["g"].attempts == 1, timeout=10)
+    await until(lambda: (run_id, "c") in wf._tasks, timeout=10)
+    await asyncio.sleep(1)
+    assert st.nodes["c"].took is None and not (world.root / "took").exists()

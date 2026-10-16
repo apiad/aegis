@@ -2044,10 +2044,19 @@ class Workflows:
     def _forget_probes(self, run: str, inst: str = "") -> None:
         """Drop the probe answers kept for an instance and those inside it,
         or for the whole run: an attempt that failed, passed its deadline
-        or was armed again asks its probes anew."""
+        or was armed again asks its probes anew. A seq's or a par's steps
+        carry no prefix of theirs, so the instances inside are matched as
+        ``_under`` matches them: by template key, under the same map items."""
+        wf = self.defs.get(run)
+        node = wf.by_key.get(template_key(inst)) if wf and inst else None
+        prefix = inst[: -len(node.id)] if node else inst
+        keys = {c.key for c in walk(node)} if node else set()
         for k in list(self._probed):
             if k[0] == run and (
-                not inst or k[1] == inst or k[1].startswith(inst + ".")
+                not inst
+                or k[1] == inst
+                or k[1].startswith(inst + ".")
+                or (k[1].startswith(prefix) and template_key(k[1]) in keys)
             ):
                 del self._probed[k]
 
