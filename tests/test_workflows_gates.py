@@ -199,3 +199,24 @@ async def test_a_reopened_person_gate_asks_on_a_new_card(world):
     ids = [e["id"] for e in main.entries()]
     new = ids.index(cards[1]["id"])
     assert all(ids.index(x) < new for x in before if x in ids)
+
+
+GROUPED = (
+    "id: pm\ntitle: Pm\nsay: Pm.\nroot:\n  seq:\n"
+    "    - map:\n        over: [1, 2]\n        as: it\n        do:\n"
+    '          {seq: [{gate: {by: person, ask: "ok?", show: []}, id: g, say: Ask.}], id: grp, say: Grp., deadline: 1s}\n'
+    "      id: m\n      say: Each.\n"
+    "  say: One.\n"
+)
+
+
+@pytest.mark.slow
+async def test_a_gate_inside_a_failed_group_no_longer_waits(world):
+    # A seq adds no segment to its children's ids: the gate of item 0 is
+    # m.0.g, not m.0.grp.g, so a prefix match missed it.
+    main = await world.spawn()
+    run = ok(await turn(main, mcp("workflow_arm", definition=GROUPED, args={})))["run"]
+    await world.app.registry.call("workflow.approve", {"run": run})
+    wf = world.app.workflows
+    await until(lambda: {"m.0.grp", "m.1.grp"} <= set(wf.runs[run].open), timeout=20)
+    assert set(wf.runs[run].open) == {"m.0.grp", "m.1.grp"}

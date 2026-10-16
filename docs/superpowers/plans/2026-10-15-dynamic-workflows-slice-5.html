@@ -1736,6 +1736,11 @@ Only one step runs in a session at a time (the lint and the queue above), so <co
   <li>Task 5: a map item's key is its position unless the item is a mapping with an id (<code>item_keys</code>), so the third item of a list of letters is <code>m.2.t</code>, not <code>m.c.t</code>. The toggle sits inside the count line (or the loop's "round n of max" line), after " · ". The loop case is its own test: a loop of eight rounds of <code>sh: true</code> with no until, which runs all eight and ends done. The story above the tree still has one line per item; folding does not touch it.</li>
   <li>Split point: <code>test_dock_from_the_viewer_moves_it_to_a_pane_and_open_then_outlines_it</code> is named <code>test_dock_from_the_viewer_then_open_outlines_the_pane</code>; <code>ruff format</code> wrapped the long signature, which moved its <code># noqa: F811</code> off the <code>def</code> line.</li>
 </ul>
+<h3>Slice 4 round-2 fixes</h3>
+<p>Six defects a review of slice 4 found, fixed on this branch before task 6, each with a test that failed first.</p>
+<ul class="rules">
+  <li>A gate or question inside a failed seq or par stayed open: <code>_fail</code> closed open items by the id prefix <code>node + "."</code>, and only a map or a loop adds a segment (the gate of a map item's group is <code>m.0.g</code>, not <code>m.0.grp.g</code>). It closes the instances <code>_under</code> finds now. The test (<code>test_a_gate_inside_a_failed_group_no_longer_waits</code>) waits on a 1 s deadline, so it is marked slow.</li>
+</ul>
 </main>
 <script>
 // The try-it card: three moments and a fold, with sample data.

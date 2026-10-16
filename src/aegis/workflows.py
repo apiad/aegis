@@ -2470,12 +2470,13 @@ class Workflows:
             self.changed()
             return
         # It waits on the main agent now; what waited inside it no longer does.
-        under = node + "."
-        closes = [k for k in st.open if k.startswith(under)] + [
+        # Only a map or a loop adds a segment to an id, so the instances
+        # under a seq or a par are found by their template, not a prefix.
+        under = {k for k, _ in self._under(st, tpl, node)} if tpl else {node}
+        closes = [k for k in st.open if k in under and k != node] + [
             k
             for k, o in st.open.items()
-            if o["kind"] == "ask"
-            and (o.get("node") == node or str(o.get("node", "")).startswith(under))
+            if o["kind"] == "ask" and o.get("node") in under
         ]
         self._log(st.run, rec | ({"closes": closes} if closes else {}))
         # A failed node's session keeps its card and gets a tab, as a failed
