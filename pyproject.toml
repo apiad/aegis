@@ -69,6 +69,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "live: drives real agent CLIs, models or remote hosts; skipped unless `--run-live` (`make test-live`)",
+    "canary: drives the published harnesses against a fake model; skipped unless `--run-canary` (`make canary`)",
     "browser: drives headless Chromium through Playwright; needs `playwright install chromium`",
     "slow: 1.5s or more serially, setup and teardown included; `make test` deselects it, `make test-slow` and `make test-all` run it",
 ]

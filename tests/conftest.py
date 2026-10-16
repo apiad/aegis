@@ -126,6 +126,12 @@ def pytest_addoption(parser):
         help="run tests marked live (real agent CLIs and models; spends quota)",
     )
     parser.addoption(
+        "--run-canary",
+        action="store_true",
+        default=False,
+        help="run tests marked canary (the real harnesses against a fake model)",
+    )
+    parser.addoption(
         "--max-unmarked-duration",
         type=float,
         default=None,
@@ -137,12 +143,16 @@ def pytest_addoption(parser):
 def pytest_collection_modifyitems(config, items):
     """Live tests are opt-in: on a dev machine every CLI is installed, and a bare
     `pytest` would spend real quota."""
-    if config.getoption("--run-live"):
-        return
-    skip = pytest.mark.skip(reason="live: pass --run-live (make test-live)")
-    for item in items:
-        if item.get_closest_marker("live"):
-            item.add_marker(skip)
+    skips = {
+        "live": pytest.mark.skip(reason="live: pass --run-live (make test-live)"),
+        "canary": pytest.mark.skip(reason="canary: pass --run-canary (make canary)"),
+    }
+    for marker, skip in skips.items():
+        if config.getoption(f"--run-{marker}"):
+            continue
+        for item in items:
+            if item.get_closest_marker(marker):
+                item.add_marker(skip)
 
 
 _durations: dict[str, float] = {}
