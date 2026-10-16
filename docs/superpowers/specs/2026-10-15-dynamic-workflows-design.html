@@ -534,6 +534,7 @@ root:
                   say: Wait as the agent asked, 1m to 1h.
                 else:
                   wait: "{{args.every}}"
+                  between: [1m, 1d]
                   id: interval
                   say: "Wait {{args.every}}."
               id: how-long
@@ -544,7 +545,7 @@ root:
       say: One round.
   id: rounds
   say: "Up to {{args.max}} rounds."</pre>
-<p>The wait sits in an <code>if</code>, so a round that reports done ends the loop at once, and <code>at_max: done</code> makes running out of rounds an ending, not a failure. With <code>every</code> the loop runs on a fixed interval; without it the agent paces itself through <code>next</code>, which <code>between: [1m, 1h]</code> clamps, so a value an agent gives never waits longer than an hour. <code>max</code> is at most 100: the args schema says so and the arm enforces it. The wait is a server timer, so a restart or a suspended machine loses nothing. <code>/loop check the deploy every 5m</code> becomes <code>{prompt: "check the deploy", every: "5m"}</code> in the main agent's hands.</p>
+<p>The wait sits in an <code>if</code>, so a round that reports done ends the loop at once, and <code>at_max: done</code> makes running out of rounds an ending, not a failure. With <code>every</code> the loop runs on a fixed interval; without it the agent paces itself through <code>next</code>, which <code>between: [1m, 1h]</code> clamps, so a value an agent gives never waits longer than an hour. The agent also fills <code>every</code> from the line, so that wait carries <code>between: [1m, 1d]</code>. <code>max</code> is at most 100: the args schema says so and the arm enforces it. The wait is a server timer, so a restart or a suspended machine loses nothing. <code>/loop check the deploy every 5m</code> becomes <code>{prompt: "check the deploy", every: "5m"}</code> in the main agent's hands.</p>
 
 <h2 id="schedules"><span class="n">09</span>Schedules are born paused</h2>
 <p>This lands first and does not depend on workflows. A schedule an agent creates with <code>schedule_create</code> is born paused, and so is one an agent changes with <code>schedule_update</code>. Under the call, the transcript shows a card, never folded, with the schedule in full: name, clock, overlap, check, where it fires and the prompt. Its one button, Unpause, is an operation not marked for agents. A schedule a person creates or edits in the UI is active at once.</p>

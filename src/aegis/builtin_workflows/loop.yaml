@@ -48,6 +48,7 @@ root:
                   say: Wait as the agent asked, 1m to 1h.
                 else:
                   wait: "{{args.every}}"
+                  between: [1m, 1d]
                   id: interval
                   say: "Wait {{args.every}}."
               id: how-long
