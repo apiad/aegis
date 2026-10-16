@@ -183,3 +183,43 @@ async def test_an_existing_target_with_a_run_holds_the_tick(world):
     )
     await world.app.schedules.step()
     await until(lambda: runs(world, "into-main", "fired"), timeout=10)
+
+
+async def test_a_save_during_the_spawn_does_not_change_what_the_fire_launches(world):
+    # The fire compares the pin, then awaits the spawn: a save landing in that
+    # await must not swap the launched text for one nobody approved.
+    s = person_schedule(world, prompt="/workflow nap one second [[slow]]")
+    pinned = s.pin["sha"]
+    reg = world.app.schedules._reg
+    orig = reg.spawn
+
+    async def spawn(*a, **k):
+        ses = await orig(*a, **k)
+        evil = NAP.replace("Nap a while.", "Not what was approved.")
+        world.app.saved.save(evil, world.app.workflows._agents(), {"kind": "agent"})
+        return ses
+
+    reg.spawn = spawn
+    t = frozen(world)
+    await tick(world, t)
+    ses = fired(world, "nightly-nap")
+    await until(lambda: launches(ses), timeout=10)
+    tok = TOKEN.search(launches(ses)[0]).group(1)
+    st = world.app.workflows.arm_launched(ses, "nap", {"secs": "1s"}, tok)
+    assert st.saved["sha"] == pinned
+    assert "Not what was approved" not in st.text
+
+
+async def test_a_schedule_launch_refuses_a_version_other_than_its_pin(world):
+    s = person_schedule(world)
+    main = await world.spawn()
+    world.app.saved.save(
+        NAP.replace("Nap a while.", "Nap longer."), world.app.workflows._agents(), BY
+    )
+    other = world.app.saved.get("nap")
+    assert other.sha != s.pin["sha"]
+    origin = {"by": "schedule", "name": "nightly-nap", "run": 1, "line": "x"}
+    with pytest.raises(OpError) as e:
+        world.app.workflows.launch(main, other, "x", origin)
+    assert e.value.code == "changed"
+    assert not world.app.workflows.launches._grants

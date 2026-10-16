@@ -919,11 +919,22 @@ class Workflows:
         self.launches.spend(g)
         return st
 
-    def launch(self, s: Session, wid: str, typed: str, origin: dict) -> str:
+    def launch(self, s: Session, saved: Saved, typed: str, origin: dict) -> str:
         """The launch turn for a person's /workflow line, or for the fire of
-        a schedule a person approved: a fresh token for ``s`` and what the
-        agent needs to arm with it. Refused before any token exists when the
-        run could not start."""
+        a schedule a person approved: a fresh token for ``s``, bound to the
+        version ``saved`` the caller checked, and what the agent needs to arm
+        with it. A schedule's fire mints only for the version it pins, so a
+        save between its check and here cannot change what runs. Refused
+        before any token exists when the run could not start."""
+        wid = saved.id
+        if origin["by"] == "schedule":
+            sch = self._app.schedules.items.get(origin["name"])
+            if sch is None or not sch.pin or sch.pin["sha"] != saved.sha:
+                raise OpError(
+                    "changed",
+                    f"workflow {wid} is not the version schedule "
+                    f"{origin['name']} was approved for",
+                )
         if self._in_a_node(s):
             raise OpError("nested", "a workflow's node cannot launch a workflow")
         cur = self.of_owner(s.log_id)
@@ -933,7 +944,6 @@ class Workflows:
                 f"this session already runs workflow {cur.run}; "
                 "stop it from its card first",
             )
-        saved = self._app.saved.get(wid)
         check_named(saved, self._agents())  # it lints, and its id is its name
         wf = parse(saved.text, self._agents())[0]
         assert wf is not None

@@ -829,7 +829,9 @@ class App:
                 "principal": self.who(caller).name,
                 "line": f"/{name} {arg}",
             }
-            body = self.workflows.launch(s, wid, typed.strip(), origin)
+            body = self.workflows.launch(
+                s, self.saved.get(wid), typed.strip(), origin
+            )
             await s.deliver(f"> from workflow:{wid} · launch · {iso_now()}", body)
             return {"launched": wid}
         if name == "stop":

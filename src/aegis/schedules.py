@@ -353,7 +353,7 @@ class Schedules:
                     schedule={"name": name, "run": run, "spawn": s.d.fire.spawn},
                 )
                 if w is not None:
-                    body = self._app.workflows.launch(ses, w[0], w[1], origin)
+                    body = self._app.workflows.launch(ses, cur, w[1], origin)
                     text = message(body, stdout)
                 await ses.send(f"{head}\n{text}")
             else:
@@ -365,7 +365,7 @@ class Schedules:
                 if w is not None:
                     if self._runs_workflow(ses.log_id):
                         return self._tick(name, tick, "held", why="workflow", **extra)
-                    body = self._app.workflows.launch(ses, w[0], w[1], origin)
+                    body = self._app.workflows.launch(ses, cur, w[1], origin)
                     text = message(body, stdout)
                 await ses.deliver(head, text)
         except OpError as e:
