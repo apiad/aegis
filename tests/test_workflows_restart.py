@@ -55,6 +55,29 @@ async def test_an_agent_continues_after_a_restart(world):  # noqa: F811
     assert sum(r.get("ev") == "node_started" for r in lines(world, run_id)) == 1
 
 
+@pytest.mark.slow
+async def test_a_reused_session_continues_its_later_step_after_a_restart(world):  # noqa: F811
+    run_id = await run(
+        world,
+        flow(
+            f"{{agent: {{agent: opus, prompt: {json.dumps(report(1, 0.2))}}}, id: impl, say: Write it.}}",
+            f"{{agent: {{session: impl, prompt: {json.dumps(report(wait=3))}}}, id: fix, say: Fix it.}}",
+        ),
+    )
+    await running(world, run_id, "fix")
+    await world.restart()
+    # The session kept for fix is impl's; its result after the boot is fix's.
+    wf = world.app.workflows
+    st = wf.runs[run_id]
+    assert st.nodes["fix"].log_id == st.nodes["impl"].log_id
+    s = world.app.sessions.sessions[st.nodes["fix"].log_id]
+    wf.result(s, {"n": 9}, "Fixed it after the restart.")
+    wf.changed()
+    st = await ended(world, run_id, timeout=40)
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+    assert st.nodes["fix"].result == {"n": 9} and st.nodes["impl"].result == {"n": 1}
+
+
 async def test_a_judge_continues_after_a_restart(world):  # noqa: F811
     j = json.dumps(verdict(True, wait=3))
     run_id = await run(
