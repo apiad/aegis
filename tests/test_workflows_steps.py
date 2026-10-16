@@ -645,3 +645,30 @@ async def test_a_wait_with_bounds_is_clamped_into_them(world):
     st = await ended(world, await run(world, text, {"secs": "30d"}))
     assert st.status == "done" and st.nodes["pause"].until - t0 < 10
     assert "2s" in st.nodes["pause"].summary
+
+
+@pytest.mark.slow
+async def test_a_probe_answer_left_by_an_attempt_past_its_deadline_is_not_reused(
+    world,
+):
+    """A probe that answered in the pass its deadline passed leaves its answer
+    behind; the retry asks again, never reads the old attempt's."""
+    run_id = await run(
+        world,
+        flow(
+            '{if: {when: {sh: "sleep 30"}, then: {sh: "echo y >> took", id: "yes", say: Yes.}}, id: c, deadline: 2s, say: Probe.}'
+        ),
+    )
+    wf = world.app.workflows
+    st = wf.runs[run_id]
+    await until(lambda: (run_id, "c") in wf._tasks, timeout=10)
+    wf._probed[(run_id, "c", "")] = {"pass": True, "why": "exit 0"}  # too late
+    await until(lambda: "c" in st.open, timeout=10)
+    owner = wf.owner(st)
+    await world.app.registry.call(
+        "workflow.answer",
+        {"run": run_id, "to": "c", "choice": "retry", "text": "Again."},
+        Caller("agent", owner.log_id),
+    )
+    await until(lambda: st.nodes["c"].attempts == 1 and "c" in st.open, timeout=10)
+    assert st.nodes["c"].took is None and not (world.root / "took").exists()
