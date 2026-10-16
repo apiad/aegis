@@ -303,9 +303,10 @@ admin has no policy, and a forgotten schedule must not spend the week. Definitio
 `<state>/schedule-runs.jsonl`, and boot folds the live runs, the held tick and
 the errors in a row from it (`schedule_log.py`), so nothing is stored twice. A
 run ends on `Registry.finished`, the test a queue's task ends on, which also
-waits for the run's working children, and while its session owns a live
+waits for the run's working children, and while its session owns a running
 workflow run it stays live too: a workflow's waits leave its main agent idle,
-and the close rule must not archive it. A run with `spawn: false` is refused the
+and the close rule must not archive it. A workflow armed and waiting for a
+click does not hold it, since nobody may be there to give the click. A run with `spawn: false` is refused the
 operations that start work in `ops.Registry.call`, so the rule holds for every
 harness. The view, `js/schedules.js`, draws what the `schedules` channel sends
 and edits through the same operations agents use.
