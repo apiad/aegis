@@ -316,6 +316,11 @@ def apply(st: RunState, r: dict) -> None:
         j |= {"pass": bool(r.get("pass")), "why": r.get("why") or ""}
         j.pop("nudged", None)
         _tell(st, t, "ok" if j["pass"] else "bad", f"Judge: {j['why']}".strip())
+    elif ev == "probe_started":
+        # An if asking its command probe is running, and its deadline counts
+        # from here; the branch record tells the story once it answers.
+        node.status, node.started = "running", node.started or t
+        node.say = node.say or r.get("say") or ""
     elif ev == "branch":
         node.took, node.say = r.get("took"), node.say or r.get("say") or ""
         node.status = "done" if node.took == "none" else "running"
