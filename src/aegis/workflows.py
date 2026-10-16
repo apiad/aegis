@@ -1139,6 +1139,7 @@ class Workflows:
             return
         self._queuing = set()
         state = await self._advance(st, wf, wf.root, "")
+        await self._close_spent(st, wf)
         if self._queuing != self._queued.get(run, set()):
             self._queued[run] = self._queuing
             self._publish(run)
@@ -1577,16 +1578,66 @@ class Workflows:
         return got
 
     def _keep(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> bool:
-        """Whether this step's session stays open after it: a step that runs
-        in it, in the same map item and loop round, has not finished."""
-        root = wf.session_of.get(node.key, node.key)
-        for k in wf.users.get(root, []):
-            if k == node.key:
-                continue
-            u = wf.by_key[k]
-            if self._state(st, u, self._resolve(u, prefix)) not in ("done", "skipped"):
-                return True
-        return False
+        """Whether this step's session stays open after it: a step may still
+        run in it. _close_spent closes it once none may."""
+        owner = wf.by_key[wf.session_of.get(node.key, node.key)]
+        return any(
+            self._may_run(st, wf, owner, wf.by_key[k], prefix, node)
+            for k in wf.users.get(owner.key, [])
+        )
+
+    def _may_run(
+        self,
+        st: RunState,
+        wf: Workflow,
+        owner: Node,
+        user: Node,
+        prefix: str,
+        now: Node | None = None,
+    ) -> bool:
+        """Whether ``user`` may still run in ``owner``'s session, seen from
+        an instance under ``prefix``. Inside a loop the owner is not in,
+        every round runs it again, so the outermost such loop must finish;
+        otherwise the user itself. Done or skipped, under a skipped group
+        or in a branch not taken, it will not. ``now`` is the step settling,
+        which is not waited on. The lint keeps a user out of a map its
+        owner is not in, so every scope above that unit is the owner's."""
+        unit = x = user
+        while (p := wf.parent.get(x.key)) is not None:
+            if p.kind == "loop" and owner.maps[: len(p.maps) + 1] != (*p.maps, p.id):
+                unit = p
+            x = p
+        if unit is now:
+            return False
+        if self._state(st, unit, self._resolve(unit, prefix)) == "done":
+            return False
+        x = unit
+        while (p := wf.parent.get(x.key)) is not None:
+            s = st.nodes.get(self._resolve(p, prefix))
+            if s is not None and s.status == "skipped":
+                return False
+            if p.kind == "if" and s is not None and s.took not in (None, x.branch):
+                return False  # in a branch not taken
+            x = p
+        return True
+
+    async def _close_spent(self, st: RunState, wf: Workflow) -> None:
+        """Close each kept session nothing more will run in: its owner is
+        done or skipped, its turn is over, and no user may still run."""
+        for key, users in wf.users.items():
+            owner = wf.by_key[key]
+            for inst, n in list(st.nodes.items()):
+                if template_key(inst) != key or n.status not in ("done", "skipped"):
+                    continue
+                s = self._reg.sessions.get(n.log_id or "")
+                if s is None or not self._reg.finished(s):
+                    continue
+                prefix = inst[: -len(owner.id)]
+                if not any(
+                    self._may_run(st, wf, owner, wf.by_key[k], prefix) for k in users
+                ):
+                    with contextlib.suppress(Exception):
+                        await self._reg.close(s.log_id)
 
     async def _reuse(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
         """Start a step in an earlier step's session: no spawn and no slot,
@@ -2246,6 +2297,11 @@ class Workflows:
         for (run, _), task in list(self._tasks.items()):
             if run == st.run:
                 task.cancel()
+        if (wf := self.defs.get(st.run)) is not None:
+            # A session kept for a step that will not run is archived, not
+            # given a tab. One kept for a step not run yet keeps its tab:
+            # arming the run again continues it.
+            await self._close_spent(st, wf)
         self._release(st)
         # Nothing of an ended run waits for room, and the room it held is
         # free now: a queued node of another run starts on this wake.
