@@ -1167,7 +1167,9 @@ def test_with_ids_writes_the_generated_ids_and_keeps_the_rest():
     assert got == []
     assert {n.key for n in walk(again.root)} == {n.key for n in walk(wf.root)}
     assert "# build first" in text  # comments survive the round trip
-    assert not [n for n in walk(again.root) if n.generated and n.path.startswith("$.root")]
+    assert not [
+        n for n in walk(again.root) if n.generated and n.path.startswith("$.root")
+    ]
     assert "    - sh: make build\n      id: n2\n      say: Build it.\n" in text
     assert 'do: {sh: "echo {{x}}", id: n3, say: Echo it.}}' in text  # quotes kept
     # A block's root takes its id where it is used, where its number held.
