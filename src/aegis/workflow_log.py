@@ -91,6 +91,8 @@ class RunState:
     # Who launched it, with no click: {typed, by: person, principal, line}
     # or {typed, by: schedule, name, run, line}. Never the token.
     launch: dict | None = None
+    # A rejection logged and not yet told to the main agent.
+    reject_untold: bool = False
 
 
 def _tell(st: RunState, t: float, mark: str, text: str, **extra) -> None:
@@ -159,6 +161,9 @@ def _apply(st: RunState, r: dict) -> None:
             _tell(st, t, "ok", _started_by(st.launch))
     elif ev == "rejected":
         st.status, st.ended = "rejected", t
+        st.reject_untold = bool(r.get("tell"))
+    elif ev == "rejected_told":
+        st.reject_untold = False
     elif ev == "stopped":
         st.status, st.ended = "stopped", t
         # A node the stop interrupted ends with the run, not running forever.
