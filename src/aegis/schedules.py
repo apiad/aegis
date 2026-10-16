@@ -454,17 +454,20 @@ class Schedules:
 
     def workflow_changed(self, wid: str) -> None:
         """A save or delete changed ``wid``: every schedule pinned to another
-        version waits for a person again, with the reason on its card."""
+        version waits for a person again, with the reason on its card. Each
+        card is published, paused now or before: one already waiting must
+        show the version an Unpause would now approve."""
         cur = self._app.saved.all().get(wid)
-        for name, s in self.items.items():
-            if (
-                s.pin
-                and s.pin["id"] == wid
-                and (cur is None or cur.sha != s.pin["sha"])
-            ):
+        for name, s in list(self.items.items()):
+            # One saved before pins has none, waits already and shows wid.
+            fires = s.pin["id"] if s.pin else (self.workflow_of(s.d.prompt) or ("",))[0]
+            if fires != wid:
+                continue
+            if s.pin and (cur is None or cur.sha != s.pin["sha"]):
                 self._pause(
                     name, APPROVAL, f"workflow {wid} changed since it was approved"
                 )
+            self._publish(name)
 
     # -- runs ------------------------------------------------------------------------
     def changed(self) -> None:
@@ -709,6 +712,7 @@ class Schedules:
                 )
             cur = self._app.saved.get(wid)
             if cur.sha != workflow:
+                self._publish(name)  # the card redraws with what it would approve
                 raise OpError(
                     "changed",
                     f"workflow {wid} changed while you were reading; "

@@ -397,3 +397,48 @@ def test_a_workflow_schedules_card_shows_the_commands_it_runs(
     page.click("#a2[data-view=schedules] .sch-row[data-name=tidy-up]")
     page.wait_for_selector(".sch-detail .sch-wf .apcmds >> text=$ test -f done")
     assert not page.errors
+
+
+def test_a_waiting_card_redraws_on_every_save_and_after_a_refused_unpause(
+    server,
+    page,  # noqa: F811
+):
+    # Unpause pins the version the card shows, so the card must show each
+    # save made while it waits, and a hand edit an Unpause was refused for.
+    from aegis.workflow_store import sha_of
+
+    from .test_workflow_store import NAP
+    from .test_workflows_browser import send
+
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_save " + json.dumps({"definition": NAP}))
+    spec = {
+        "name": "agent-nap",
+        "clock": {"every": "1h"},
+        "fire": {"agent": "opus"},
+        "prompt": "/workflow nap a second",
+    }
+    send(page, "/mcp schedule_create " + json.dumps(spec))
+    card = ".apcard[data-name=agent-nap]"
+    page.wait_for_selector(f"{card}[data-state=waiting] >> text=Nap a while.")
+    for say in ("Nap two.", "Nap three."):
+        text = NAP.replace("Nap a while.", say)
+        send(page, "/mcp workflow_save " + json.dumps({"definition": text}))
+        page.wait_for_selector(f"{card}[data-state=waiting] >> text={say}")
+    # A hand edit no save sees: the Unpause is refused and the card redraws.
+    saved = server.root / ".aegis" / "workflows" / "nap.yaml"
+    saved.write_text(saved.read_text().replace("Nap three.", "Nap by hand."))
+    page.click(f"{card} button >> text=Unpause")
+    page.wait_for_selector(f"{card}[data-state=waiting] >> text=Nap by hand.")
+    # The Schedules view draws the same version.
+    page.click("#schedules-btn")
+    page.click("#a2[data-view=schedules] .sch-row[data-name=agent-nap]")
+    detail = "#a2[data-view=schedules] .sch-detail"
+    page.wait_for_selector(f"{detail} .sch-wf >> text=Nap by hand.")
+    page.click(f"{detail} button >> text=Resume")
+    deadline = time.monotonic() + 5
+    while stored(server, "agent-nap")["pin"]["sha"] != sha_of(saved.read_text()):
+        assert time.monotonic() < deadline, "the pin never moved to the new version"
+        time.sleep(0.1)
+    assert not page.errors
