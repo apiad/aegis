@@ -186,3 +186,18 @@ async def test_a_rejection_is_told_once_across_a_restart(world, tmp_path):
     a = world.app.sessions.sessions[a.log_id]
     await asyncio.sleep(0.5)
     assert len(rejected(a)) == 2
+
+
+async def test_reading_a_saved_workflow_is_an_admins(world):
+    from aegis.ops import Caller, OpError
+    from aegis.ops import Principal
+
+    await world.app.registry.call("workflow.save", {"definition": NAP})
+    world.app.principals.add("ben", "member")
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call(
+            "workflow.read",
+            {"id": "nap"},
+            Caller("user", principal=Principal("ben", "member")),
+        )
+    assert e.value.code == "not_for_members"
