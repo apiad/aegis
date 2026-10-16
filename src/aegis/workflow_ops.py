@@ -219,7 +219,7 @@ def register_workflow_ops(app: App) -> None:
                 canvas.place(s.layout, "wf-new", p.dock, s.dockable)
             except canvas.LayoutError as e:
                 raise OpError("bad_params", str(e)) from e
-        if p.token is not None:
+        if p.id is not None and p.token is not None:
             st = wf.arm_launched(s, p.id, p.args, p.token)
         elif p.id is not None:
             saved = app.saved.get(p.id)
