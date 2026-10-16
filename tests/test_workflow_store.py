@@ -218,3 +218,13 @@ def test_a_file_whose_args_are_the_wrong_shape_is_an_error_row(store, tmp_path):
         "$.args.properties: properties maps a name to a schema"
     )
     assert "loop" in rows
+
+
+def test_a_file_whose_arg_type_is_a_list_is_an_error_row(store, tmp_path):
+    folder = tmp_path / ".aegis" / "workflows"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "nap.yaml").write_text(
+        NAP.replace("{secs: {type: string}}", "{secs: {type: [string, integer]}}")
+    )
+    rows = {r["id"]: r for r in store.listing(AGENTS)}
+    assert "loop" in rows and "type names one type" in rows["nap"]["error"]

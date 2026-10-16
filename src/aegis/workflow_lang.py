@@ -1258,6 +1258,11 @@ class _Parser:
                     f"{path}.{k}",
                     f"{k} is not in the schema subset ({', '.join(sorted(keys))})",
                 )
+            elif k == "type" and not isinstance(v, str):
+                self.err(
+                    f"{path}.type",
+                    f"type names one type, one of {', '.join(sorted(TYPES))}",
+                )
             elif k == "type" and v not in TYPES:
                 self.err(
                     f"{path}.type",
