@@ -42,12 +42,15 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
+from . import commands
 from .agents import PERMISSION_ORDER, resolve
 from .clock import Clock, clock_from
 from .monitors import run_bash
 from .names import valid_handle
 from .ops import OpError
 from .quota_gate import decide, pool_for
+from .workflow_lang import edit_diff, parse, rows as workflow_rows
+from .workflow_store import check_named
 from .schedule_log import (
     Check,
     Definition,
@@ -250,6 +253,11 @@ class Schedules:
     def _may_release(self, s: Schedule, st: State) -> bool:
         if st.held == "overlap":
             return not st.live
+        if st.held == "workflow":
+            try:
+                return not self._runs_workflow(self._target(s).log_id)
+            except OpError:
+                return True  # the fire says what is wrong
         try:
             if s.d.fire.target == "existing":
                 t = self._target(s).spec
@@ -318,7 +326,19 @@ class Schedules:
         s, st = self.items[name], self.state[name]
         run = st.runs + 1
         head, text = header(name, run, tick), message(s.d.prompt, stdout)
+        w = self.workflow_of(s.d.prompt)
+        if w is not None:
+            # Only the version a person approved fires: a save pauses the
+            # schedule at once (workflow_changed), a hand edit is caught here.
+            cur = self._app.saved.all().get(w[0])
+            if cur is None or not s.pin or cur.sha != s.pin["sha"]:
+                why = f"workflow {w[0]} changed since this schedule was approved"
+                self._pause(name, APPROVAL, why)
+                return self._tick(name, tick, "error", err=why, **extra)
+        origin = {"by": "schedule", "name": name, "run": run, "line": s.d.prompt}
         try:
+            if w is not None:
+                check_named(cur, self._app.workflows._agents())  # before a spawn
             if s.d.fire.target == "new":
                 spec = self._spec(s)
                 if not self._app.gate(spec.owner, spec.harness, spec.model).may_start:
@@ -332,6 +352,9 @@ class Schedules:
                     title=f"{name} · run {run}",
                     schedule={"name": name, "run": run, "spawn": s.d.fire.spawn},
                 )
+                if w is not None:
+                    body = self._app.workflows.launch(ses, w[0], w[1], origin)
+                    text = message(body, stdout)
                 await ses.send(f"{head}\n{text}")
             else:
                 ses = self._target(s)
@@ -339,6 +362,11 @@ class Schedules:
                     return self._tick(
                         name, tick, "held", why="quota", line=line, **extra
                     )
+                if w is not None:
+                    if self._runs_workflow(ses.log_id):
+                        return self._tick(name, tick, "held", why="workflow", **extra)
+                    body = self._app.workflows.launch(ses, w[0], w[1], origin)
+                    text = message(body, stdout)
                 await ses.deliver(head, text)
         except OpError as e:
             self._tick(name, tick, "error", err=e.message, **extra)
@@ -394,9 +422,44 @@ class Schedules:
             return str(ses.spec.cwd if ses else self._app.roots.harness_cwd)
         return s.d.fire.cwd or str(self._app.roots.harness_cwd)
 
+    @staticmethod
+    def workflow_of(prompt: str) -> tuple[str, str] | None:
+        """The saved workflow a prompt fires and the text after its id, when
+        the prompt is a /workflow or /loop line (commands.py)."""
+        cmd = commands.split(prompt.strip())
+        if cmd is None or cmd[0] not in ("workflow", "loop"):
+            return None
+        name, arg = cmd
+        wid, _, typed = ("loop " + arg if name == "loop" else arg).partition(" ")
+        return (wid, typed.strip()) if wid else None
+
+    def _pin(self, d: Definition) -> dict | None:
+        """The version a schedule fires; an unknown id is refused here."""
+        w = self.workflow_of(d.prompt)
+        if w is None:
+            return None
+        saved = self._app.saved.get(w[0])
+        return {"id": saved.id, "sha": saved.sha}
+
+    def _runs_workflow(self, log_id: str) -> bool:
+        """Whether a session's workflow run is running, which a launch into
+        it would only be refused by (one live run per session)."""
+        cur = self._app.workflows.of_owner(log_id)
+        return cur is not None and cur.status == "running"
+
     def workflow_changed(self, wid: str) -> None:
-        """A saved workflow was saved or deleted. Filled in by slice 6's
-        task 9: a schedule pinned to it pauses for a person's approval."""
+        """A save or delete changed ``wid``: every schedule pinned to another
+        version waits for a person again, with the reason on its card."""
+        cur = self._app.saved.all().get(wid)
+        for name, s in self.items.items():
+            if (
+                s.pin
+                and s.pin["id"] == wid
+                and (cur is None or cur.sha != s.pin["sha"])
+            ):
+                self._pause(
+                    name, APPROVAL, f"workflow {wid} changed since it was approved"
+                )
 
     # -- runs ------------------------------------------------------------------------
     def changed(self) -> None:
@@ -408,8 +471,15 @@ class Schedules:
                 if (name, run.run) in self._finishing:
                     continue
                 ses = self._reg.sessions.get(run.log_id)
-                if ses is None or self._reg.finished(ses):
+                if ses is None or self._done(ses):
                     self._spawn(self._finish(name, run.run))
+
+    def _done(self, ses: Session) -> bool:
+        """A run's session is done when the registry says so and it owns no
+        live workflow run: a workflow's waits leave its main agent idle."""
+        return (
+            self._reg.finished(ses) and self._app.workflows.of_owner(ses.log_id) is None
+        )
 
     async def _finish(self, name: str, k: int) -> None:
         st = self.state.get(name)
@@ -420,7 +490,7 @@ class Schedules:
         self._finishing.add(key)
         try:
             ses = self._reg.sessions.get(run.log_id)
-            if ses is not None and not self._reg.finished(ses):
+            if ses is not None and not self._done(ses):
                 return
             s = self.items.get(name)
             mark = last_mark(ses.standing) if ses is not None else "closed"
@@ -520,12 +590,14 @@ class Schedules:
 
     def _pause(self, name: str, by: str, why: str | None = None) -> None:
         s = self.items[name]
-        if s.paused:
+        # A pause for approval replaces a person's or the errors', so the
+        # card asks again; nothing replaces one for approval.
+        if s.paused and (by != APPROVAL or s.paused.get("by") == APPROVAL):
             return
         s.paused = {"by": by, "at": iso(self.now())}
         self._save()
         self._event(name, "paused", by=by, **({"why": why} if why else {}))
-        if by == "errors":
+        if by == "errors" or (by == APPROVAL and why):
             self._app.toast(f"Schedule {name} is paused: {why}", "error")
 
     def _get(self, name: str) -> Schedule:
@@ -556,6 +628,7 @@ class Schedules:
             raise OpError("name_taken", f"there is already a schedule named {name}")
         now = int(self.now())
         s = Schedule(name, owner, now, now, self._settle(d, cwd))
+        s.pin = self._pin(d)
         if s.d.fire.target == "new":
             self._spec(s)  # an unknown agent, or one above the ceiling, is refused now
         if owner.get("kind") == "agent":
@@ -578,6 +651,7 @@ class Schedules:
         if by_agent:
             paused = {"by": APPROVAL, "at": iso(self.now())}
         s = Schedule(name, old.owner, old.created_at, now, self._settle(d, cwd), paused)
+        s.pin = self._pin(d)
         if s.d.fire.target == "new":
             self._spec(s)
         self.items[name] = s
@@ -606,10 +680,28 @@ class Schedules:
         self._get(name)
         self._pause(name, "user")
 
-    def resume(self, name: str) -> None:
+    def resume(self, name: str, workflow: str | None = None) -> None:
         """Ticks that fell during the pause are not missed ticks: the clock
-        starts again from now."""
+        starts again from now. A schedule that fires a workflow and waits
+        for approval takes the version the person approves, as its card
+        showed it, and pins it."""
         s = self._get(name)
+        if s.pin and self.awaiting(name):
+            wid = s.pin["id"]
+            if workflow is None:
+                raise OpError(
+                    "needs_version",
+                    f"this schedule fires workflow {wid}: pass the version you "
+                    "approve, as its card shows it",
+                )
+            cur = self._app.saved.get(wid)
+            if cur.sha != workflow:
+                raise OpError(
+                    "changed",
+                    f"workflow {wid} changed while you were reading; "
+                    "look at the card again",
+                )
+            s.pin = {"id": wid, "sha": cur.sha}
         s.paused = None
         self._save()
         self._event(name, "resumed", tick=int(self.now()))
@@ -704,7 +796,32 @@ class Schedules:
                 for r in st.live.values()
             ],
             "tz": time.strftime("%Z"),
+            **({"workflow": w} if (w := self._wire_workflow(s)) else {}),
         }
+
+    def _wire_workflow(self, s: Schedule) -> dict | None:
+        """What the card shows of a pinned workflow: the current version's
+        steps, who saved it, and, when it changed, the diff from the pinned
+        version, the shape the workflow cards draw."""
+        if not s.pin:
+            return None
+        wid, pinned = s.pin["id"], s.pin["sha"]
+        store, agents = self._app.saved, self._app.workflows._agents()
+        cur = store.all().get(wid)
+        out: dict = {"id": wid, "pinned": pinned, "changed": True, "sha": None}
+        if cur is None:
+            return out  # deleted: nothing to fire until the prompt changes
+        wf = parse(cur.text, agents)[0]
+        out |= {"sha": cur.sha, "changed": cur.sha != pinned}
+        if wf is not None:
+            out |= {"title": wf.title, "steps": [r["say"] for r in workflow_rows(wf)]}
+        if last := store.last_save(wid):
+            out["saved_by"] = {"by": last["by"], "t": last["t"]}
+        old = store.text_of(wid, pinned) if out["changed"] else None
+        was = parse(old, agents)[0] if old else None
+        if wf is not None and was is not None:
+            out["diff"] = edit_diff(was, wf)["diff"]
+        return out
 
     def wire_all(self) -> list[dict]:
         return [self.wire(n) for n in sorted(self.items)]

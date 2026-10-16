@@ -121,6 +121,9 @@ class Schedule:
     d: Definition
     paused: dict | None = None  # {"by": "user"|"errors"|"approval", "at": iso}
     finished_at: int | None = None  # an at whose tick went through the layers
+    # The saved workflow a /workflow or /loop prompt fires, at the version a
+    # person approved: {"id", "sha"} (schedules.Schedules._pin).
+    pin: dict | None = None
 
     def dump(self) -> dict:
         return {
@@ -129,6 +132,7 @@ class Schedule:
             "edited_at": self.edited_at,
             "paused": self.paused,
             "finished_at": self.finished_at,
+            "pin": self.pin,
             **self.d.model_dump(exclude_none=True),
         }
 
@@ -143,6 +147,7 @@ class Schedule:
             d=Definition.model_validate({k: raw[k] for k in keys if k in raw}),
             paused=raw.get("paused"),
             finished_at=raw.get("finished_at"),
+            pin=raw.get("pin"),
         )
 
 
@@ -159,7 +164,7 @@ class Run:
 class State:
     last_tick: int = 0
     sha: str | None = None  # of the last fire's stdout
-    held: str | None = None  # "overlap" | "quota"
+    held: str | None = None  # "overlap" | "quota" | "workflow"
     held_tick: int | None = None
     errors: int = 0  # check or fire errors in a row
     runs: int = 0  # the highest run number so far
