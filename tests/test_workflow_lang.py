@@ -1270,3 +1270,18 @@ def test_a_result_schema_still_refuses_default():
     assert any(
         e.endswith(f"default is not in the schema subset ({SUBSET})") for e in got
     )
+
+
+def test_a_schema_of_the_wrong_shape_is_an_error_not_a_crash():
+    assert lint_args("{type: object, properties: [a, b]}") == [
+        "$.args.properties: properties maps a name to a schema"
+    ]
+    assert lint_args("{type: object, properties: {a: {type: array, items: 3}}}") == [
+        "$.args.properties.a.items: a result schema is a mapping"
+    ]
+    assert lint_args(
+        "{type: object, properties: {a: {type: string}}, required: a}"
+    ) == ["$.args.required: required is a list"]
+    assert lint_args("{type: object, properties: {a: {type: string, enum: x}}}") == [
+        "$.args.properties.a.enum: enum is a list"
+    ]

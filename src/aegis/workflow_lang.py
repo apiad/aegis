@@ -1265,11 +1265,18 @@ class _Parser:
                 )
             elif k in ("required", "enum") and not isinstance(v, list):
                 self.err(f"{path}.{k}", f"{k} is a list")
+                out[k] = []
+            elif k == "required" and not all(isinstance(x, str) for x in v):
+                self.err(f"{path}.required", "required is a list of property names")
+                out[k] = []
             elif k in ("minimum", "maximum") and (
                 isinstance(v, bool) or not isinstance(v, int | float)
             ):
                 self.err(f"{path}.{k}", f"{k} is a number")
-            elif k == "properties" and isinstance(v, dict):
+            elif k == "properties" and not isinstance(v, dict):
+                self.err(f"{path}.properties", "properties maps a name to a schema")
+                out[k] = {}
+            elif k == "properties":
                 out[k] = {
                     name: self.schema(sub, f"{path}.properties.{name}", seen, keys)
                     for name, sub in v.items()

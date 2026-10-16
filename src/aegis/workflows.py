@@ -52,6 +52,7 @@ from .workflow_lang import (
     MAX_ROUNDS,
     RENDER_ERRORS,
     ExprError,
+    LintError,
     Node,
     Workflow,
     check_value,
@@ -332,7 +333,13 @@ class Workflows:
                 for n in st.nodes.values():
                     if n.status == "running" and n.pid:
                         restarts.end_group(n.pid, n.pstart)
-                wf, errors = parse(st.text, self._agents())
+                try:
+                    wf, errors = parse(st.text, self._agents())
+                except Exception as e:  # one run's text never stops the boot
+                    log.exception(
+                        "workflow %s: its definition broke the parser", st.run
+                    )
+                    wf, errors = None, [LintError("$", f"the parser failed: {e}")]
                 if wf is None:
                     why = f"its definition no longer lints: {errors[0].message}"
                     self._finish(st, "failed", why)

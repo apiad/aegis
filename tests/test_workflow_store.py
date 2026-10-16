@@ -205,3 +205,16 @@ def test_a_save_keeps_the_text_only_of_pinned_and_current_versions(store):
     assert {r["sha"] for r in texts} == {v1, v3}
     # The history still says who saved each version.
     assert [r["sha"] for r in store._lines() if r["ev"] == "saved"] == [v1, v2, v3]
+
+
+def test_a_file_whose_args_are_the_wrong_shape_is_an_error_row(store, tmp_path):
+    folder = tmp_path / ".aegis" / "workflows"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "nap.yaml").write_text(
+        NAP.replace("properties: {secs: {type: string}}", "properties: [secs]")
+    )
+    rows = {r["id"]: r for r in store.listing(AGENTS)}
+    assert rows["nap"]["error"] == (
+        "$.args.properties: properties maps a name to a schema"
+    )
+    assert "loop" in rows

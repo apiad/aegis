@@ -291,3 +291,34 @@ async def test_a_session_a_node_spawned_cannot_arm_a_workflow(world):
     )
     assert said.startswith("mcp error") and "nested" in said, said
     assert world.app.workflows.of_owner(child.log_id) is None
+
+
+async def test_a_live_run_whose_text_breaks_the_parser_fails_at_boot(world, tmp_path):
+    main = await world.spawn()
+    run = await armed(world, main, REVIEWED)
+    await started(world, run, "n1")
+    await world.stop()
+    log = tmp_path / "state" / "workflows" / f"{run}.jsonl"
+    if not log.exists():
+        (log,) = tmp_path.rglob(f"{run}.jsonl")
+    text = log.read_text()
+    bad = "args: {type: object, properties: [a]}\\nroot:"
+    assert "\\nroot:" in text
+    log.write_text(text.replace("\\nroot:", "\\n" + bad, 1))
+    await world.start()
+    assert world.app.workflows.runs[run].status == "failed"
+
+
+async def test_a_parser_exception_at_boot_fails_that_run_only(world, monkeypatch):
+    main = await world.spawn()
+    run = await armed(world, main, REVIEWED)
+    await started(world, run, "n1")
+    await world.stop()
+
+    def broken(text, agents):
+        raise ValueError("boom")
+
+    monkeypatch.setattr("aegis.workflows.parse", broken)
+    await world.start()
+    st = world.app.workflows.runs[run]
+    assert st.status == "failed" and "the parser failed: boom" in st.story[-1]["text"]
