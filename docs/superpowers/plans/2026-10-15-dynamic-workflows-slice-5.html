@@ -1041,7 +1041,7 @@ In <code>fillWorkflow</code>'s tree loop: <code>const fs = folds(w);</code> befo
 
 <div class="split">split point: tasks 1-5 above make the card a canvas item and finish drawing it (dock, full screen, windows, publish cost, header, Now, folding). Tasks 6-11 below handle node sessions and links (tabless locked sessions, see, session: &lt;node id&gt;) and the docs.</div>
 
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">Tabless locked sessions: reached from the card and the Fleet, read-only</span><span class="files">app.py · app.js · entries.js · fleet.js · base.css · tests/test_workflows_canvas.py · tests/test_workflows_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1735,6 +1735,7 @@ Only one step runs in a session at a time (the lint and the queue above), so <co
   <li>Task 4: <code>tally</code> and Now use the module's existing <code>LEAF_KINDS</code> rather than a second <code>LEAVES</code> set. The failure count has its own test, with an <code>if</code> whose branch is not taken, so counting skipped rows fails it ("1 of 3" where "1 of 2" is right). The question test checks "0 of 2 done · 1 question". Now's agent line shows the handle as plain text with a <code>// task 6</code> note; task 6 makes it the transcript link.</li>
   <li>Task 5: a map item's key is its position unless the item is a mapping with an id (<code>item_keys</code>), so the third item of a list of letters is <code>m.2.t</code>, not <code>m.c.t</code>. The toggle sits inside the count line (or the loop's "round n of max" line), after " · ". The loop case is its own test: a loop of eight rounds of <code>sh: true</code> with no until, which runs all eight and ends done. The story above the tree still has one line per item; folding does not touch it.</li>
   <li>Split point: <code>test_dock_from_the_viewer_moves_it_to_a_pane_and_open_then_outlines_it</code> is named <code>test_dock_from_the_viewer_then_open_outlines_the_pane</code>; <code>ruff format</code> wrapped the long signature, which moved its <code># noqa: F811</code> off the <code>def</code> line.</li>
+  <li>Task 6: the tab bar is <code>#tablist .tab</code>, not <code>#tabs [role=tab]</code>. The browser test waits for the composer's placeholder rather than the session view, and also checks Now's line links the handle. The tree's tag draws <code>stepLink</code> whenever the row has a <code>log_id</code>, so a closed session links to its archive copy; before, it drew a handle only while the session was open. <code>workflowTitle</code> already existed in entries.js. The second break-it (openCard unquiets regardless) fails the browser test on the session view, not on the tab count: the server refuses the unquiet, and <code>openCard</code> returns on that error after a toast, so the client's <code>locked</code> check is the second of two guards.</li>
 </ul>
 <h3>Slice 4 round-2 fixes</h3>
 <p>Six defects a review of slice 4 found, fixed on this branch before task 6, each with a test that failed first.</p>

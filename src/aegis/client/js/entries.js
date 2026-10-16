@@ -414,6 +414,16 @@ function headLine(w) {
   return box;
 }
 
+// A step's session, as a link: its transcript while open (read-only while the
+// run holds it, with no tab added), the archive's copy once closed.
+function stepLink(r) {
+  if (!r.log_id) return el("span", "w", "");
+  const a = el("a", "who", r.handle || "transcript");
+  a.href = r.handle ? `#s=${r.log_id}` : `#read=${r.log_id}`;
+  a.title = "Open its transcript";
+  return a;
+}
+
 // Now: each working leaf with what it runs in and for how long, then up to
 // three steps that come next, queued ones first. Only while running.
 function nowSection(w) {
@@ -429,7 +439,7 @@ function nowSection(w) {
   for (const r of working) {
     const line = el("div", "nowline");
     line.dataset.node = r.id;
-    const what = r.kind === "agent" ? el("span", "w", r.handle || "") : el("span", "w", commandOf(r) || r.reading || kindTag(r)); // task 6: the handle links the transcript
+    const what = r.kind === "agent" ? stepLink(r) : el("span", "w", commandOf(r) || r.reading || kindTag(r));
     line.append(el("span", "dot running"), el("span", "say", r.say), what, el("span", "dur", since(r.started, r.ended)));
     box.append(line);
   }
@@ -564,7 +574,7 @@ export function fillWorkflow(card) {
     const tags = el("div", "tags");
     tags.append(el("span", "kind", kindTag(r)));
     if (r.branch) tags.append(el("span", "branch", r.branch));
-    if (r.handle) tags.append(el("span", "who", r.handle));
+    if (r.log_id) tags.append(stepLink(r));
     for (const a of r.after || []) tags.append(el("span", `after${a.met ? " met" : ""}`, `after ${a.name}`));
     if (r.deadline) tags.append(el("span", "deadline", `⏱ ${fmtSecs(r.deadline)}`));
     if (r.retries) tags.append(el("span", "retries", `retries ${r.retries}`));

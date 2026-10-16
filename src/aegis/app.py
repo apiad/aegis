@@ -1391,6 +1391,10 @@ class App:
 
         @r.op("session.unquiet", LogParams, owned="log_id")
         async def unquiet(p: LogParams, caller):
+            # A workflow's node has no tab while its run lives (spec §05):
+            # the person reads it from the run's card or the Fleet.
+            if (why := reg.workflow_lock(reg.open(p.log_id))) is not None:
+                raise OpError("in_workflow", f"{why}; it gets a tab when the run ends")
             return reg.set_quiet(p.log_id, False)
 
         @r.op("session.reopen", LogParams, owned="log_id")
