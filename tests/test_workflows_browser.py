@@ -644,6 +644,8 @@ def test_a_working_step_opens_read_only_from_the_card_with_no_tab(server, page):
     )
     assert page.locator("#tablist .tab").count() == tabs  # no tab added
     assert page.is_disabled("#input") and page.is_disabled("#send")
+    # It closes and stops with its run: the server refuses both, too.
+    assert page.is_disabled("#close") and page.is_disabled("#stop-session")
     # Back in the Fleet, its card names the run, and a click keeps it quiet.
     page.goto(server.url + "#fleet")
     fleet = page.locator(".card.quiet .badge", has_text="workflow · Two steps · one")

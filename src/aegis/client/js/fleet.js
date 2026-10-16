@@ -5,7 +5,7 @@ import { glyph, icon, LABEL } from "./glyphs.js";
 import { hostRow, netRows, noteRow, providerLine, quotaHeading, quotaRow } from "./gauges.js";
 import { shownOwner } from "./me.js";
 import { dur, planTimes } from "./plantime.js";
-import { workflowTitle } from "./entries.js";
+import { workflowLocked, workflowTitle } from "./entries.js";
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -199,6 +199,11 @@ function archiveButton(m, onClose) {
   const b = el("button", "btn archive needs-net", "Archive");
   b.type = "button";
   b.title = "Close this session; it stays in the archive";
+  if (workflowLocked(m)) {
+    // A live workflow's step closes with its run; the server refuses it too.
+    b.disabled = true;
+    b.title = "A step of a running workflow: it closes when the run ends";
+  }
   b.addEventListener("click", () => onClose(m.key));
   return b;
 }

@@ -931,12 +931,15 @@ def register_agent_ops(app: App) -> None:
         if not caller.is_agent:
             if p.log_id is None:
                 raise OpError("bad_params", "log_id is required")
+            if (s := reg.sessions.get(p.log_id)) is not None:
+                s.check_lock()  # a live workflow's step closes with its run
             await reg.close(p.log_id)
             return None
         me = own(caller)
         if p.handle is None:
             raise OpError("bad_params", "handle is required")
         s = target(p.handle)
+        s.check_lock()
         card = s.wire()
         yourself = s.log_id == me.log_id
         mine = not yourself and started_by(s, me)

@@ -147,3 +147,35 @@ async def test_a_nodes_own_monitor_still_wakes_it(world, tmp_path):
         timeout=15,
         what="the monitor's wake",
     )
+
+
+async def test_a_node_session_cannot_be_stopped_closed_configured_or_renamed(world):
+    node = await world.spawn()
+    lock(world, node)
+    reg = world.app.registry
+    for op, extra in (
+        ("session.stop", {}),
+        ("session.close", {}),
+        ("session.configure", {"effort": "low"}),
+        ("session.rename", {"title": "Mine now"}),
+    ):
+        with pytest.raises(OpError) as e:
+            await reg.call(op, {"log_id": node.log_id} | extra)
+        assert e.value.code == "in_workflow" and "r1" in e.value.message, op
+    assert node.log_id in world.app.sessions.sessions and not node.archived
+    assert node.title != "Mine now"
+    world.app.workflows.live = lambda run: False
+    await reg.call("session.rename", {"log_id": node.log_id, "title": "Mine now"})
+
+
+async def test_an_agent_cannot_close_or_rename_a_node_session(world):
+    main = await world.spawn()
+    node = await world.spawn()
+    lock(world, node)
+    said = await turn(main, mcp("session_close", handle=node.handle))
+    assert "workflow r1" in said and node.log_id in world.app.sessions.sessions
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call(
+            "session.rename", {"title": "Renamed"}, Caller("agent", node.log_id)
+        )
+    assert e.value.code == "in_workflow" and node.title != "Renamed"

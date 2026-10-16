@@ -222,7 +222,8 @@ approval keeps the spot: the new card takes the docked one's pane.
 Each agent node is a quiet session that nobody can type into while the run
 lives: a person's message or interrupt, a peer's handoff, a schedule, a page's
 submit and a session handoff are all refused with an error
-naming the run. Its own monitors and queue tasks still reach it. It ends by calling `workflow_result` with a value matching the node's
+naming the run, and so are stopping, closing, configuring and renaming it,
+by a person or an agent. Its own monitors and queue tasks still reach it. It ends by calling `workflow_result` with a value matching the node's
 `result` schema and a one-sentence `summary`; a turn that ends without one
 is nudged once, then fails.
 
