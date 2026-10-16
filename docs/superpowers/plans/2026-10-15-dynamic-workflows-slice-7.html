@@ -531,7 +531,7 @@ In <code>workflow_ops.py</code>, <code>workflow_reject</code> awaits it. Grep fo
 </div>
 </details>
 
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">A folded map's story lines fold with it</span><span class="files">workflow_log.py · entries.js · base.css · tests/test_workflow_log.py · tests/test_workflows_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1414,6 +1414,7 @@ Run <code>make bench</code> for the PR body.</li>
   <li>Task 1: slice 6 added <code>minimum</code> and <code>maximum</code> to <code>SCHEMA_KEYS</code> (loop.yaml bounds its max), so the tests use <code>pattern</code> as the key outside the subset, and the subset message lists nine keys, not seven.</li>
   <li>Task 2: the engine test is marked <code>@pytest.mark.slow</code>, since it waits out a 2 s deadline (the marker's threshold is 1.5 s); its then-branch id is quoted (<code>id: "yes"</code>) so no YAML reader takes it for a boolean.</li>
   <li>Task 3: four existing tests met the new rejected turn, not one: besides the ops test, <code>test_an_ended_runs_pane_keeps_its_title_after_a_boot</code> (canvas), <code>test_an_agent_saves_lists_arms_and_deletes</code> (store) and <code>test_only_a_stopped_or_failed_run_of_ones_own_is_armed_again</code> (edits) now wait for it to end before their next turn.</li>
+  <li>Task 4: the CSS is one new rule beside the card's story rules (<code>.story .line.folded</code> muted, its toggle pushed right); the tree's existing <code>#a2 .wfcard .fold</code> already styles the toggle wherever it sits. <code>make site-css</code> writes <code>site/client.css</code> at the repo root.</li>
 </ul>
 </main>
 <script>

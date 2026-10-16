@@ -404,3 +404,32 @@ def test_a_probe_start_marks_an_if_running_and_starts_its_clock():
     n = st.nodes["ask"]
     assert (n.status, n.started, n.took) == ("running", 5, None)
     assert not any("Ask." in s["text"] for s in st.story)
+
+
+def test_a_story_line_about_a_node_names_its_instance():
+    st = fold(
+        [
+            {
+                "t": 1,
+                "ev": "armed",
+                "run": "r1",
+                "owner": "L1",
+                "text": "id: x",
+                "args": {},
+            },
+            {"t": 2, "ev": "approved"},
+            {
+                "t": 3,
+                "ev": "node_started",
+                "node": "m.0.t",
+                "log_id": "L2",
+                "say": "Check a.",
+            },
+            {"t": 4, "ev": "result", "node": "m.0.t", "value": {}, "summary": "Fine."},
+            {"t": 5, "ev": "node_done", "node": "m.0.t"},
+            {"t": 9, "ev": "finished", "status": "done"},
+        ]
+    )
+    about = [s for s in st.story if "Fine." in s["text"]]
+    assert about and {s["node"] for s in about} == {"m.0.t"}
+    assert "node" not in st.story[-1]  # "The workflow is done." is the run's own

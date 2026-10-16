@@ -525,7 +525,7 @@ function folds(w) {
   const out = [];
   for (const r of w.tree) {
     if (!foldable(r) || openMaps.has(`${w.run}/${r.id}`)) continue;
-    out.push({ under: `${r.id}.`, keep: r.kind === "loop" ? `${r.id}.${r.rounds.round}.` : null });
+    out.push({ under: `${r.id}.`, keep: r.kind === "loop" ? `${r.id}.${r.rounds.round}.` : null, row: r });
   }
   return out;
 }
@@ -544,6 +544,38 @@ function foldButton(w, r) {
     refreshWorkflows();
   };
   return b;
+}
+
+// A folded map's or loop's story folds with it: the lines of the steps it
+// hides become one line, where the last of them was, with the same toggle as
+// the tree. A failure, a question and a note never fold.
+function storyLines(w, fs) {
+  const hider = (s) => s.mark === "ok" && s.node && fs.find((f) => s.node.startsWith(f.under) && !(f.keep && s.node.startsWith(f.keep)));
+  const count = new Map();
+  const last = new Map();
+  w.story.forEach((s, i) => {
+    const f = hider(s);
+    if (f) count.set(f, (count.get(f) || 0) + 1), last.set(f, i);
+  });
+  const out = [];
+  w.story.forEach((s, i) => {
+    const f = hider(s);
+    if (!f) out.push(storyLine(s.t, s.mark, MARKS[s.mark] || "?", s.text));
+    else if (last.get(f) === i) {
+      const line = storyLine(s.t, "ok", "…", `${count.get(f)} lines folded · ${f.row.say}`);
+      line.classList.add("folded");
+      line.append(foldButton(w, f.row));
+      out.push(line);
+    }
+  });
+  return out;
+}
+
+function storyLine(t, mark, mk, text) {
+  const line = el("div", "line");
+  line.dataset.mark = mark;
+  line.append(el("span", "tm", hhmm(t)), el("span", "mk", mk), el("span", null, text));
+  return line;
 }
 
 // Where a run's card is held: "docked", "in window <n>" or "".
@@ -619,18 +651,13 @@ export function fillWorkflow(card) {
   if (waits) kids.push(waits);
   const now = nowSection(w);
   if (now) kids.push(now);
+  const fs = folds(w);
   if (w.story.length) {
     const story = el("div", "story");
-    for (const s of w.story) {
-      const line = el("div", "line");
-      line.dataset.mark = s.mark;
-      line.append(el("span", "tm", hhmm(s.t)), el("span", "mk", MARKS[s.mark] || "?"), el("span", null, s.text));
-      story.append(line);
-    }
+    story.append(...storyLines(w, fs));
     kids.push(story);
   }
   const tree = el("div", "wftree");
-  const fs = folds(w);
   for (const r of w.tree) {
     if (hidden(fs, r)) continue;
     const row = el("div", "wfrow");

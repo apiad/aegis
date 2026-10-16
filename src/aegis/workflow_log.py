@@ -142,6 +142,16 @@ def _started_by(launch: dict) -> str:
 
 
 def apply(st: RunState, r: dict) -> None:
+    """Fold one record. A story line told by a record about a node carries
+    that node's instance, so the card can fold a long map's lines with it."""
+    told = len(st.story)
+    _apply(st, r)
+    if isinstance(node := r.get("node"), str):
+        for s in st.story[told:]:
+            s.setdefault("node", node)
+
+
+def _apply(st: RunState, r: dict) -> None:
     ev, t = r.get("ev"), float(r.get("t") or 0)
     if ev == "approved":
         st.status, st.started = "running", t

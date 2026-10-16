@@ -588,6 +588,25 @@ def test_a_map_of_more_than_six_items_folds_but_shows_its_failure(server, page):
     assert not page.errors
 
 
+def test_a_folded_maps_story_lines_fold_with_it(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    arm = {"definition": EIGHT, "args": {"xs": list("abcdefgh")}}
+    spawn(page, "/mcp workflow_arm " + json.dumps(arm))
+    card = "#entries .wfcard"
+    page.click(f"{card} button >> text=Approve and run")
+    page.wait_for_selector(f"{card} .wfrow[data-node=m] >> text=7 done", timeout=20000)
+    folded = page.locator(f"{card} .story .line.folded")
+    assert folded.count() == 1 and "lines folded" in folded.inner_text()
+    # The failed item's line stays in the story.
+    assert page.locator(f"{card} .story .line[data-mark=bad]").count() >= 1
+    page.click(f"{card} .wfrow[data-node=m] .fold >> text=show all 8")
+    assert folded.count() == 0
+    page.set_viewport_size({"width": 390, "height": 800})
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+    assert not page.errors
+
+
 def test_a_map_of_six_items_stays_open(server, page):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
