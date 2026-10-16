@@ -291,7 +291,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <p>A workflow is one YAML file. Its header holds an <code>id</code>, a <code>title</code>, <code>args</code> (a JSON Schema for its parameters), <code>limits</code> (how many agents at once: <code>total</code> for all of them, and a number per agent alias for that alias alone), a default <code>deadline</code>, an optional <code>blocks</code> map of named sub-trees, and the <code>root</code> node.</p>
 
 <h3 id="nodes">Nodes</h3>
-<p>A node has exactly one key that names its kind. Beside it, every node may carry <code>id</code> (required if anything refers to it), <code>say</code> (required, see below), <code>after: [ids]</code> (start only once those succeeded), <code>deadline</code> (inherited when absent), <code>retries</code>, and <code>see</code> (a link into a plan file, drawn as a chip).</p>
+<p>A node has exactly one key that names its kind. Beside it, every node may carry <code>id</code> (required if anything refers to it), <code>say</code> (required, see below), <code>after: [ids]</code> (start only once those succeeded), <code>deadline</code> (inherited when absent), <code>retries</code>, and <code>see</code> (a fixed path into a plan file, with no <code>{{…}}</code> in it, drawn as a chip).</p>
 <table class="tbl">
   <thead><tr><th>Kind</th><th>Fields</th><th>What it does</th></tr></thead>
   <tbody>
@@ -361,7 +361,7 @@ blocks:
                 prompt: "Implement slice {{s.id}} of issue {{args.issue}} as the plan says …"}
         id: impl
         say: "Implement {{s.title}}."
-        see: "docs/plans/{{args.issue}}.html#slice-{{s.id}}"
+        see: "docs/plans/release.html"
       - agent: {agent: opus, result: {$ref: "#/defs/verdict"}, prompt: "Review PR {{impl.pr}} against the spec, harshly …"}
         id: review
         say: Have a second agent review it.

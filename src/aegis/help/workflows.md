@@ -266,17 +266,18 @@ root:
     do:
       agent: {agent: sonnet, prompt: "Implement the {{s}} slice of docs/plan.html."}
       id: impl
-      see: "docs/plan.html#slice-{{s}}"
+      see: "docs/plan.html#slices"
       say: Implement the {{s}} slice.
   id: each
   say: Every slice.
 ```
 
 `see` on any step is a path to a file, relative to the run's folder or
-absolute, with an optional `#fragment` or `:line`. Its values are filled
-like `say`'s, and the lint refuses a URL. The person's card shows it as a
-chip that opens the file in the viewer: an HTML page at its fragment, a text
-file at its line. A map's step shows its chip once its item is known.
+absolute, with an optional `#fragment` or `:line`. It is fixed when the
+person approves the run: the lint refuses a `{{...}}` in it, so no value
+filled in later, such as a step's result, chooses the file, and it refuses
+a URL. The person's card shows it as a chip that opens the file in the
+viewer: an HTML page at its fragment, a text file at its line.
 
 ## When a step fails
 
