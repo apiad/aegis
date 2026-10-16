@@ -673,6 +673,16 @@ Ctrl+F outside a text field in a transcript is the find bar's, not the
 browser's, whose find misses every row not mounted and every closed detail; a
 second Ctrl+F, inside the bar, is the browser's again.
 
+**Selected reply text is acted on by a client-only toolbar.** The browser owns
+the native selection and `client/js/selection.js` only accepts non-empty ranges
+whose endpoints are in one `.row.prose .body`. It records the selected text
+before the toolbar is clicked, keeps the native range intact with a prevented
+`mousedown`, and hands an action to `app.js`, which fills the existing composer.
+It never sends a prompt or changes transcript state by itself; the `/btw`
+variant reuses the existing side-question command. A fixed-position toolbar is
+closed on scroll, resize, navigation or an unrelated pointer down so it cannot
+act on stale virtualized rows.
+
 **A theme is one CSS file over one markup.** The markup carries everything any
 theme might show, and the base stylesheet reads only CSS variables. A theme sets
 the variables and a few overrides that decide what shows. Every font a theme

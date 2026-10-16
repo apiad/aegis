@@ -386,6 +386,12 @@ body{background:#000}
 #a2 ::highlight(find){background-color:var(--accent-soft);color:var(--strong)}
 #a2 ::highlight(find-now){background-color:var(--accent);color:var(--on-accent)}
 
+/* The selection toolbar stays in the viewport while the transcript is scrolled. */
+#a2 .selection-menu{position:fixed;z-index:8;display:flex;align-items:center;gap:2px;padding:4px;background:var(--raised);border:1px solid var(--rule);border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,.28);font-family:var(--font-chrome);font-size:12px}
+#a2 .selection-menu[hidden]{display:none}
+#a2 .selection-menu button{border:0;border-radius:999px;padding:6px 10px;background:none;color:var(--strong);font:inherit;white-space:nowrap;cursor:pointer}
+#a2 .selection-menu button:hover,#a2 .selection-menu button:focus-visible{background:var(--accent-soft);color:var(--strong);outline:none}
+
 /* composer */
 #a2 .composer{padding:10px 22px 16px}
 #a2 .composer .box{display:flex;align-items:flex-end;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg)}
