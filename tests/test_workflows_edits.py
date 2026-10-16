@@ -485,3 +485,47 @@ async def test_a_run_rejected_when_armed_again_keeps_its_steps_and_arms_again(wo
     await world.app.registry.call("workflow.approve", {"run": run})
     await until(lambda: wf.runs[run].status == "done", timeout=20)
     assert (world.root / "ran").read_text() == "x\n"  # once ran once
+
+
+async def test_arming_again_after_a_reject_shows_the_rejected_change_again(world):
+    main = await world.spawn()
+    run = ok(await turn(main, mcp("workflow_arm", definition=COUNTED, args={})))["run"]
+    await world.app.registry.call("workflow.approve", {"run": run})
+    wf = world.app.workflows
+    await until(
+        lambda: (
+            (wf.runs[run].nodes.get("long") or 0)
+            and wf.runs[run].nodes["long"].status == "running"
+        ),
+        timeout=20,
+    )
+    await world.app.registry.call("workflow.stop", {"run": run})
+    await until(
+        lambda: woke(main, " · stopped · ") and main.status == "idle", timeout=10
+    )
+    quick = COUNTED.replace("sleep 30", "echo z >> other")
+    ok(await turn(main, mcp("workflow_arm", run=run, definition=quick)))
+    first = wf.runs[run].story[-1]
+    await world.app.registry.call("workflow.reject", {"run": run})
+    await until(
+        lambda: woke(main, " · rejected · ") and main.status == "idle", timeout=10
+    )
+    # Armed again as it stands, the rejected text is still a change to
+    # what the person approved, and the card says so as the first time.
+    ok(await turn(main, mcp("workflow_arm", run=run)))
+    line = wf.runs[run].story[-1]
+    assert line["text"].startswith("Armed again")
+    assert line.get("diff") and line["diff"] == first["diff"]
+    assert line.get("commands") == first["commands"]
+    assert line["commands"]["sh"] == 1
+    assert any(d.get("cmd") == "echo z >> other" for d in line["diff"])
+    assert wf.runs[run].version == 2
+    await world.app.registry.call("workflow.reject", {"run": run})
+    await until(
+        lambda: len(woke(main, " · rejected · ")) == 2 and main.status == "idle",
+        timeout=10,
+    )
+    # Armed again with what was approved, there is nothing to show.
+    ok(await turn(main, mcp("workflow_arm", run=run, definition=COUNTED)))
+    line = wf.runs[run].story[-1]
+    assert not line.get("diff") and wf.runs[run].version == 1
