@@ -58,8 +58,9 @@ class Arm(_Strict):
 
     @model_validator(mode="after")
     def _one(self):
+        # A run armed again may carry a definition: the edit it makes.
         given = [k for k in ("definition", "id", "run") if getattr(self, k) is not None]
-        if len(given) != 1:
+        if not given or (self.id is not None and len(given) > 1):
             raise ValueError(
                 "give one of definition, id (a saved workflow) or run (to arm a run again)"
             )
