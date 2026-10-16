@@ -76,6 +76,7 @@ from .workflow_log import LIVE, NodeState, RunLog, RunState, apply, fold
 if TYPE_CHECKING:
     from .app import App
     from .session import Session
+    from .workflow_store import Saved
 
 log = logging.getLogger(__name__)
 PUBLISH_S = 0.25  # a run's wire goes out at most this often
@@ -375,6 +376,7 @@ class Workflows:
             "tree": tree,
             "story": st.story,
             "args": st.args,
+            "saved": st.saved,
             # What the person approves to run without asking, and where.
             "cwd": st.cwd,
             "commands": self._commands(st, wf) if wf else {"sh": 0, "probes": 0},
@@ -720,7 +722,12 @@ class Workflows:
 
     # -- what people and agents do ------------------------------------------
     def arm(
-        self, owner: Session, text: str | None, args: dict, run: str | None = None
+        self,
+        owner: Session,
+        text: str | None,
+        args: dict,
+        run: str | None = None,
+        saved: Saved | None = None,
     ) -> RunState:
         if self._in_a_node(owner):
             raise OpError(
@@ -749,8 +756,20 @@ class Workflows:
         cwd = str(owner.spec.cwd)
         # Armed again before approval: the new card replaces the old one.
         v = cur.version + 1 if cur is not None else 1
+        kept = (
+            {"id": saved.id, "sha": saved.sha, "source": saved.source}
+            if saved
+            else None
+        )
         st = RunState(
-            run, owner.log_id, text, args, created=time.time(), cwd=cwd, version=v
+            run,
+            owner.log_id,
+            text,
+            args,
+            created=time.time(),
+            cwd=cwd,
+            version=v,
+            saved=kept,
         )
         self.runs[run], self.defs[run] = st, wf
         self._log(
@@ -763,6 +782,7 @@ class Workflows:
                 "args": args,
                 "cwd": cwd,
                 **({"v": v} if v > 1 else {}),
+                **({"saved": kept} if kept else {}),
             },
             fold_in=False,
         )

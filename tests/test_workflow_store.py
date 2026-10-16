@@ -9,6 +9,9 @@ from aegis.ops import OpError
 from aegis.workflow_lang import parse
 from aegis.workflow_store import BUILTIN, Store, sha_of
 
+from .test_agents import CONFIG, World, mcp, turn
+from .test_workflows_e2e import ok
+
 AGENTS = {"opus", "sonnet"}
 NAP = (
     "id: nap\ntitle: Nap\nsay: Nap a while.\n"
@@ -85,3 +88,56 @@ def test_the_listing_says_what_is_wrong_with_a_file(store, tmp_path):
     assert rows["nap"]["title"] == "Nap" and rows["nap"]["saved_by"] == BY
     assert rows["odd"]["error"] == "its id is nap, but its file is odd.yaml"
     assert rows["loop"]["args"]["required"] == ["prompt"]
+
+
+READER = (
+    "  reader: {harness: claude-code, model: opus, effort: high, permission: read}\n"
+)
+
+
+@pytest.fixture
+async def world(tmp_path, fake_claude):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG.replace("queues:", READER + "queues:"))
+    w = await World(tmp_path, fake_claude).start()
+    yield w
+    await w.stop()
+
+
+async def test_an_agent_saves_lists_arms_and_deletes(world):
+    main = await world.spawn()
+    saved = ok(await turn(main, mcp("workflow_save", definition=NAP)))
+    assert saved["id"] == "nap" and saved["ids_written"] == 1
+    rows = {r["id"]: r for r in ok(await turn(main, mcp("workflow_list")))}
+    assert {"nap", "loop"} <= set(rows) and rows["nap"]["saved_by"][
+        "log_id"
+    ] == main.log_id
+    run = ok(await turn(main, mcp("workflow_arm", id="nap", args={"secs": "1s"})))
+    st = world.app.workflows.runs[run["run"]]
+    assert run["status"] == "armed"  # saved, not launched: a person approves it
+    assert st.saved == {"id": "nap", "sha": saved["sha"], "source": "project"}
+    await world.app.registry.call("workflow.reject", {"run": run["run"]})
+    assert ok(await turn(main, mcp("workflow_delete", id="nap"))) == {"deleted": "nap"}
+
+
+async def test_a_read_session_lists_but_cannot_save(world):
+    r = await world.app.registry.call("session.spawn", {"agent": "reader"})
+    reader = world.app.sessions.sessions[r["log_id"]]
+    assert (await turn(reader, mcp("workflow_list"))).startswith("mcp ok")
+    said = await turn(reader, mcp("workflow_save", definition=NAP))
+    assert said.startswith("mcp error") and "read permission" in said
+
+
+async def test_arm_takes_one_of_definition_id_or_run(world):
+    main = await world.spawn()
+    said = await turn(main, mcp("workflow_arm", id="nap", definition=NAP))
+    assert said.startswith("mcp error") and "one of definition, id" in said
+
+
+async def test_arming_a_file_whose_id_is_not_its_name_is_refused(world, tmp_path):
+    main = await world.spawn()
+    d = tmp_path / ".aegis" / "workflows"
+    d.mkdir(parents=True)
+    (d / "odd.yaml").write_text(NAP)  # its id is nap
+    said = await turn(main, mcp("workflow_arm", id="odd", args={"secs": "1s"}))
+    assert said.startswith("mcp error") and "its file is odd.yaml" in said
+    assert world.app.workflows.of_owner(main.log_id) is None
