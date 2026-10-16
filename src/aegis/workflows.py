@@ -2737,8 +2737,24 @@ class Workflows:
         self._flush_publish()
 
     def _flush_publish(self) -> None:
+        """One run's wire that raises is logged and marked changed again, so
+        it goes out on a later flush and the others go out now."""
         self._flush_at = None
         runs, self._dirty = self._dirty, set()
-        ops = [{"upsert": self.wire(r)} for r in sorted(runs) if r in self.runs]
+        ops, failed = [], []
+        for r in sorted(runs):
+            if r not in self.runs:
+                continue
+            try:
+                ops.append({"upsert": self.wire(r)})
+            except Exception:
+                log.exception("aegis: workflow run %s could not be published", r)
+                failed.append(r)
         if ops:
             self._app.publish("workflows", ops)
+        self._dirty.update(failed)
+        if failed and self._flush_at is None:
+            # Not through _publish: with no loop it would flush, and raise, again.
+            with contextlib.suppress(RuntimeError):
+                loop = asyncio.get_running_loop()
+                self._flush_at = loop.call_later(PUBLISH_S, self._flush_publish)

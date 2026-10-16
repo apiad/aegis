@@ -219,3 +219,42 @@ async def test_a_missing_see_file_names_the_path(world):
     with pytest.raises(OpError) as e:
         await world.app.registry.call("workflow.see", {"run": run, "node": "one"})
     assert e.value.code == "no_file" and "docs/plan.html" in e.value.message
+
+
+async def test_a_wire_that_raises_drops_no_other_runs_publish(world, monkeypatch):
+    from .conftest import until
+
+    wf = world.app.workflows
+    runs = []
+    for _ in range(2):
+        a = await world.spawn()
+        runs.append(
+            ok(await turn(a, mcp("workflow_arm", definition=flow(RESULT, RESULT))))[
+                "run"
+            ]
+        )
+    bad, good = sorted(runs)  # the flush builds in this order
+    real, broke = wf.wire, []
+
+    def wire(run):
+        if run == bad and not broke:
+            broke.append(run)
+            raise RuntimeError("boom")
+        return real(run)
+
+    monkeypatch.setattr(wf, "wire", wire)
+    sent: list[str] = []
+    publish = world.app.publish
+
+    def spy(channel, ops):
+        if channel == "workflows":
+            sent.extend(op["upsert"]["run"] for op in ops if "upsert" in op)
+        return publish(channel, ops)
+
+    monkeypatch.setattr(world.app, "publish", spy)
+    wf._publish(bad)
+    wf._publish(good)
+    wf._publish_now()
+    assert broke == [bad] and sent == [good]
+    # The run whose wire raised goes out on the next flush.
+    await until(lambda: bad in sent, timeout=2)
