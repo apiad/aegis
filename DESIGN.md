@@ -224,6 +224,18 @@ token the request carries; the token is minted for each harness process and ride
 in the `X-Aegis-Session` header of its MCP config. No tool takes the caller's handle as an argument,
 because an argument can be wrong and the token cannot.
 
+**The same operations run from the agent's shell.** aegis exports the endpoint
+and the token to every harness process as `AEGIS_MCP_URL` and
+`AEGIS_SESSION_TOKEN` (`harness.session_env`), and `aegis call` posts one
+`tools/call` with them, so a call from a loop or a pipe is the tool call itself:
+there is no second path to keep in step with the first. Every tool's description ends
+with its shell form, because that is where a model chooses: the same advice in
+the primer alone moved Sonnet to a loop in none of nine live runs, and in the
+description in four of four. The cost is that every
+child of the agent inherits the token and can act as the agent. That is accepted:
+those children already run as the same user with the agent's files, and the
+token still dies with the harness process.
+
 **A harness is a module behind one interface.** `Session` asks a `Process`
 (`harness.py`) to start, send, interrupt, set and end, and the fold reads each
 stored line through the parser its `src` tag names. Claude Code

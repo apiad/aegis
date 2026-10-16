@@ -59,12 +59,45 @@ and no aegis command is refused before it costs a turn.
 | `aegis usage` | what the agents' work cost: `--by` month, dow or hour, `--sessions`, `--tools`, `--since` |
 | `aegis usage repo <path>` | the cost of one git repository's work |
 | `aegis usage repos <dir>` | the cost of every repository directly under a directory |
+| `aegis call <tool> [args]` | from an agent's shell, call one of its aegis tools as that agent; see below |
+| `aegis tools [tool]` | from an agent's shell, list its aegis tools, or print one tool's description and JSON schema |
 | `aegis import-legacy <dir>` | copy the sessions of aegis before 2.0 into the archive, to read |
 
 Every subcommand takes `--root` to name the root instead of finding it from
 the current directory (for `aegis init`, the directory to write into), and
 `--help` for its full list of options.
 `aegis --version` prints the version.
+
+## Tools from an agent's shell
+
+Every tool an agent has is also a shell command: `aegis call <tool>` with the
+tool's arguments as `key=value` pairs, `aegis call <tool> '<json>'` with one
+JSON object, or `aegis call <tool> -` to read that object from standard input.
+A value is read as JSON when it parses, so `limit=3` is a number and
+`paths='["a.py"]'` a list. The call acts as the session whose shell made it,
+with the same permissions and the same result as the tool, and prints that
+result; a tool's error goes to standard error with exit code 1.
+`aegis tools` lists the tools, and `aegis tools <tool>` prints one tool's
+description and JSON schema.
+
+```bash
+# Count the words of three help pages without reading them
+for p in monitors queues handoffs; do
+  echo "$p $(aegis call help_read page=$p | wc -w)"
+done
+```
+
+Use it for loops over many calls and for work on what a tool returns:
+counting, filtering, joining, piping into another command. The loop is one
+Bash call, and the results never enter the agent's context. A single call is
+as well made with the tool.
+
+aegis gives each session's process `AEGIS_MCP_URL` and `AEGIS_SESSION_TOKEN`,
+the same endpoint and token as its tools, and every command the agent runs
+inherits them. A program the agent starts, such as a test run or a build
+script, can therefore act as the agent. Outside a session neither is set, and
+`aegis call` says so and exits with code 2. The token ends with the agent's
+process: a restart mints a new one.
 
 ## Serving
 

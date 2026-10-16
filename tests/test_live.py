@@ -1546,3 +1546,61 @@ async def test_real_claude_parks_when_idle_and_not_while_a_background_bash_runs(
                 pass
         server.should_exit = True
         await asyncio.wait_for(task, 30)
+
+
+async def test_real_claude_loops_over_aegis_call_when_a_result_needs_processing(
+    tmp_path: Path,
+):
+    """`aegis call`, chosen by a real model (#436): a count over several tool
+    results is a Bash loop. The primer's paragraph alone moved Sonnet in 0 of 9
+    runs; the shell form at the end of each tool's description, where the model
+    picks a tool, moved it in 4 of 4. At low effort it may still read a page
+    through the tool as well."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "For each of the aegis help pages monitors, queues, handoffs, links, "
+            "artifacts and schedules, report how many words the text help_read "
+            "returns for it has, as `wc -w` counts them."
+        )
+        await until(lambda: s.status == "working", timeout=60, what="the turn")
+        await until(lambda: s.status == "idle", timeout=300, what="the turn's end")
+        tools = [e for e in s.entries() if e["kind"] == "tool"]
+        loops = [
+            e
+            for e in tools
+            if e["title"] == "Bash" and "aegis call" in json.dumps(e.get("detail"))
+        ]
+        assert loops, [e["title"] for e in tools]
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)

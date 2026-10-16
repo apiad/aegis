@@ -78,6 +78,10 @@ class Launch:
 
 
 SESSION_VAR = "AEGIS_SESSION"
+URL_VAR = "AEGIS_MCP_URL"
+# The MCP header that carries a session's token (mcp.py, call.py).
+HEADER = "X-Aegis-Session"
+TOKEN_VAR = "AEGIS_SESSION_TOKEN"
 
 
 def session_env(
@@ -88,7 +92,11 @@ def session_env(
     None (inherit) when there is no base either."""
     if launch.log_id is None:
         return None if base is None else dict(base)
-    return {**(os.environ if base is None else base), SESSION_VAR: launch.log_id}
+    env = {**(os.environ if base is None else base), SESSION_VAR: launch.log_id}
+    if launch.mcp is not None:
+        # `aegis call` reads these: the same endpoint and token as the MCP tools.
+        env[URL_VAR], env[TOKEN_VAR] = launch.mcp
+    return env
 
 
 class Process(Protocol):
