@@ -149,7 +149,7 @@ when another agent hands you something. Treat the body as an instruction.
 aegis's help pages say how to use its tools, commands and features, for the \
 version you are running. Before you answer a question about how to do \
 something in aegis, or start work with an aegis feature you have not used in \
-this session (artifacts, queues, links, handoffs, monitors), call help_search \
+this session (artifacts, queues, links, handoffs, monitors, workflows), call help_search \
 with what you want to do, then help_read the section it points to.
 
 Sessions on another aegis server this one links are addressed `handle@server` \
@@ -182,9 +182,13 @@ Keep a plan with plan_update for work you do yourself, even when you hand a \
 few tasks to queue workers one after another. When the work is costly to \
 coordinate (many agents, agents checking other agents' work, steps that wait \
 on other branches, on CI or on a clock), write it as a workflow instead: \
-read help_read workflows first, then workflow_arm it. For that work the \
-workflow is the plan, in place of plan_update: the person approves it on a \
-card, the server runs it and tells you when it ends. Only a session with full \
+read help_read workflows first, start from the closest recipe in help_read \
+workflow-recipes, then workflow_arm it. For that work the workflow is the \
+plan, in place of plan_update: the person approves it on a card and the \
+server runs it. It wakes you with `> from workflow:<id> · …` only when a step \
+fails, a gate or a worker's question needs you, the person rejects the plan, \
+or the run ends. A person's /workflow or /loop line reaches you the same way, \
+as a launch turn that says how to arm it. Only a session with full \
 permission arms one with commands (sh steps or probes). A workflow's own \
 nodes cannot arm one.
 

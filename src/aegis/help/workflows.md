@@ -9,7 +9,8 @@ every node says, in one sentence for the person, what it does; the person
 reads that tree as the plan and approves it; then aegis runs it and tells
 you when it ends. Use `plan_update` for work you do yourself, even when it
 hands a few tasks to a queue in order. Use a workflow when the work needs
-coordination.
+coordination. For the common shapes, copy a recipe from
+[Workflow recipes](workflow-recipes): each one lints as it stands.
 
 ## Write one
 

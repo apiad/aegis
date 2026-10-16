@@ -917,7 +917,7 @@ In the member test that asserts <code>#set-park</code> is absent (near line 7841
 </div>
 </details>
 
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="done">
 <summary><span class="num">7</span><span><span class="ttl">The recipes page, linted whole, and the system-prompt line</span><span class="files">help/workflow-recipes.md · help/workflows.md · mcp.py · tests/test_help_recipes.py · tests/test_help_index.py · tests/test_harness.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1416,6 +1416,7 @@ Run <code>make bench</code> for the PR body.</li>
   <li>Task 3: four existing tests met the new rejected turn, not one: besides the ops test, <code>test_an_ended_runs_pane_keeps_its_title_after_a_boot</code> (canvas), <code>test_an_agent_saves_lists_arms_and_deletes</code> (store) and <code>test_only_a_stopped_or_failed_run_of_ones_own_is_armed_again</code> (edits) now wait for it to end before their next turn.</li>
   <li>Task 4: the CSS is one new rule beside the card's story rules (<code>.story .line.folded</code> muted, its toggle pushed right); the tree's existing <code>#a2 .wfcard .fold</code> already styles the toggle wherever it sits. <code>make site-css</code> writes <code>site/client.css</code> at the repo root.</li>
   <li>Task 6: the section calls through the page's <code>this.call</code>, not <code>this.conn.call</code>, so the saved workflows, Steps, Export and Import follow the server picker as the pool does, and picking a server drops the cached list. <code>row.append</code> is the DOM's, not <code>h</code>, so a workflow with no error appends <code>""</code> rather than <code>undefined</code> (seen as the word "undefined" in a screenshot). A refused save shows "&lt;file&gt; was not imported:" with the server's message. The import test also replaces <code>nap</code> through the dialog and checks the row reads "saved by" a person.</li>
+  <li>Task 7: task 1's args lint refused two recipes as written: <code>{type: string, description: What to build, in the person's words.}</code> is a flow mapping, so the comma split it into a stray key. Both descriptions with a comma are quoted. The pin "repeat a prompt every few minutes" (workflows#repeat-a-prompt-with-loop) led schedules#create-a-schedule by only 0.02 on main, and the new page's sections tipped it over; "Give CI a minute" became "a moment", and the judge recipe's last line links <code>[Workflows](workflows)</code> without the <code>#branch-and-repeat</code> anchor, whose words also count. It now leads by 0.31. The primer test's regex skips "help_read the section it points to", which the primer already said.</li>
 </ul>
 </main>
 <script>
