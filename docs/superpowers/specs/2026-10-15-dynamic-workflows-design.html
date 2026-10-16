@@ -499,7 +499,9 @@ args:
     max:
       type: integer
       default: 20
-      description: The most rounds.
+      minimum: 1
+      maximum: 100
+      description: The most rounds, from 1 to 100.
   required: [prompt]
 root:
   loop:
@@ -523,20 +525,30 @@ root:
         - if:
             when: {expr: "not tick.done"}
             then:
-              wait: "{{args.every or tick.next or '20m'}}"
-              id: pause
-              say: Wait before the next round.
+              if:
+                when: {expr: "args.every == null"}
+                then:
+                  wait: "{{tick.next or '20m'}}"
+                  between: [1m, 1h]
+                  id: pause
+                  say: Wait as the agent asked, 1m to 1h.
+                else:
+                  wait: "{{args.every}}"
+                  id: interval
+                  say: "Wait {{args.every}}."
+              id: how-long
+              say: Wait.
           id: unless-done
           say: Unless it is done, wait.
       id: round
       say: One round.
   id: rounds
   say: "Up to {{args.max}} rounds."</pre>
-<p>The wait sits in an <code>if</code>, so a round that reports done ends the loop at once, and <code>at_max: done</code> makes running out of rounds an ending, not a failure. With <code>every</code> the loop runs on a fixed interval; without it the agent paces itself through <code>next</code>. The wait is a server timer, so a restart or a suspended machine loses nothing. <code>/loop check the deploy every 5m</code> becomes <code>{prompt: "check the deploy", every: "5m"}</code> in the main agent's hands.</p>
+<p>The wait sits in an <code>if</code>, so a round that reports done ends the loop at once, and <code>at_max: done</code> makes running out of rounds an ending, not a failure. With <code>every</code> the loop runs on a fixed interval; without it the agent paces itself through <code>next</code>, which <code>between: [1m, 1h]</code> clamps, so a value an agent gives never waits longer than an hour. <code>max</code> is at most 100: the args schema says so and the arm enforces it. The wait is a server timer, so a restart or a suspended machine loses nothing. <code>/loop check the deploy every 5m</code> becomes <code>{prompt: "check the deploy", every: "5m"}</code> in the main agent's hands.</p>
 
 <h2 id="schedules"><span class="n">09</span>Schedules are born paused</h2>
 <p>This lands first and does not depend on workflows. A schedule an agent creates with <code>schedule_create</code> is born paused, and so is one an agent changes with <code>schedule_update</code>. Under the call, the transcript shows a card, never folded, with the schedule in full: name, clock, overlap, check, where it fires and the prompt. Its one button, Unpause, is an operation not marked for agents. A schedule a person creates or edits in the UI is active at once.</p>
-<p>The card is the same component as the workflow's approval card: a rendered object, a person-only operation, never folded. A schedule whose prompt starts with <code>/workflow</code> or <code>/loop</code> mints a launch token on each fire, which is safe because a person unpaused it. It pins the version of the workflow it fires: when the saved file changes, the schedule pauses for approval and its card shows the diff, a fire checks the version again so a hand edit is caught, and Unpause carries the version its card showed.</p>
+<p>The card is the same component as the workflow's approval card: a rendered object, a person-only operation, never folded. A schedule whose prompt starts with <code>/workflow</code> or <code>/loop</code> mints a launch token on each fire, which is safe because a person unpaused it. It pins the version of the workflow it fires: when the saved file changes, the schedule pauses for approval and its card shows the diff, a fire checks the version again so a hand edit is caught and launches the very version it checked, and Unpause carries the version its card showed. An edit of the schedule keeps its pin unless the prompt names another workflow. No agent fires such a schedule on demand: the person approved a clock.</p>
 
 <h2 id="prompting"><span class="n">10</span>When agents reach for one</h2>
 <p>One line in the system prompt and a help page, <code>workflows</code>, say when. A linear plan with <code>plan_update</code> is for work an agent does itself, even when it hands a few tasks to queue workers in sequence. A workflow is for work that is costly to coordinate: many agents, gates, agents checking other agents, dependencies across branches, long waits. The help page carries recipes an agent copies and adapts:</p>
