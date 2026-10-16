@@ -258,8 +258,9 @@ function fillApproval(card) {
 
 // A workflow's card: the plan before approval, the live run after (spec §07).
 // Every node shows its sentence; an agent's prompt folds under it. The run
-// comes from the workflows channel; refreshWorkflows redraws every card, in
-// the transcript and in a canvas pane, on change. The card docks as a file
+// comes from the workflows channel; refreshWorkflows redraws the cards of
+// the runs that changed (every card when not told which), in the transcript,
+// the viewer and a canvas pane. The card docks as a file
 // or a page does, by its entry id; while docked, its transcript card is one
 // line, as a docked file's is.
 let workflows = { get: () => null, call: async () => {} };
@@ -268,9 +269,10 @@ export function setWorkflows(w) {
   workflows = w;
 }
 export const workflowTitle = (run) => workflows.get(run)?.title;
-export function refreshWorkflows() {
-  for (const c of document.querySelectorAll(".wfcard")) fillWorkflow(c);
-  for (const c of document.querySelectorAll(".wfdcard")) fillDecision(c);
+export function refreshWorkflows(runs) {
+  const mine = (c) => !runs || runs.has(c.dataset.run);
+  for (const c of document.querySelectorAll(".wfcard")) if (mine(c)) fillWorkflow(c);
+  for (const c of document.querySelectorAll(".wfdcard")) if (mine(c)) fillDecision(c);
 }
 
 // The once-a-second count of a running card: only its times change, so only

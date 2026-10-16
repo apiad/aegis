@@ -602,8 +602,9 @@ conn.subscribe(
 // their canvas panes. A running card counts its times up once a second.
 const wfRuns = new Map();
 setWorkflows({ get: (run) => wfRuns.get(run) || null, call: (op, params) => conn.call(op, params) });
-const wfChanged = () => {
-  refreshWorkflows();
+// A patch redraws only the cards of the runs it carries.
+const wfChanged = (runs) => {
+  refreshWorkflows(runs);
   canvas.syncStrip(); // a docked run's tab takes its title
 };
 conn.subscribe(
@@ -614,8 +615,13 @@ conn.subscribe(
     wfChanged();
   },
   (ops) => {
-    for (const op of ops) if (op.upsert) wfRuns.set(op.upsert.run, op.upsert);
-    wfChanged();
+    const runs = new Set();
+    for (const op of ops) {
+      if (!op.upsert) continue;
+      wfRuns.set(op.upsert.run, op.upsert);
+      runs.add(op.upsert.run);
+    }
+    wfChanged(runs);
   },
 );
 setInterval(() => {

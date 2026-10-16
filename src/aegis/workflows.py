@@ -77,6 +77,7 @@ if TYPE_CHECKING:
     from .session import Session
 
 log = logging.getLogger(__name__)
+PUBLISH_S = 0.25  # a run's wire goes out at most this often
 PASS_S = 30.0  # a pass at least this often, as the schedules' clock does
 CUT = "cut by restart: it may have run in part; rerun or skip?"
 NUL = "the command holds a NUL byte, which bash cannot take"
@@ -217,6 +218,10 @@ class Workflows:
         # ended: its last turn ended before the answer, so it is not
         # settled yet. A restart forgets it, as it forgets a probe's task.
         self._answered: set[tuple[str, str]] = set()
+        # The runs changed since their wire last went out, and the flush that
+        # will send them (_publish).
+        self._dirty: set[str] = set()
+        self._flush_at: asyncio.TimerHandle | None = None
 
     # -- life -----------------------------------------------------------------
     def boot(self) -> None:
@@ -255,6 +260,7 @@ class Workflows:
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        self._publish_now()
 
     async def _loop(self) -> None:
         for st, why in self._boot_failed:
@@ -323,7 +329,13 @@ class Workflows:
 
     def wire(self, run: str) -> dict:
         st = self.runs[run]
-        wf = self.defs.get(run) or parse(st.text, self._agents())[0]
+        wf = self.defs.get(run)
+        if wf is None:
+            # An ended run read back at boot: parsed once, not on every
+            # subscribe. Only a running run advances, so this moves nothing.
+            wf = parse(st.text, self._agents())[0]
+            if wf is not None:
+                self.defs[run] = wf
         tree = self._rows(st, wf) if wf else []
         return {
             "run": run,
@@ -709,6 +721,9 @@ class Workflows:
         )
         if cur is not None:
             self._log(cur.run, {"ev": "replaced", "by": run})
+        # A new run goes out at once: its card and its pane, drawn next, must
+        # never find it missing.
+        self._publish_now()
         owner.record_card({"kind": "workflow", "run": run})
         if cur is not None:
             # The new card takes the old one's pane. The standing layout, not
@@ -2543,4 +2558,28 @@ class Workflows:
         self._publish(run)
 
     def _publish(self, run: str) -> None:
-        self._app.publish("workflows", [{"upsert": self.wire(run)}])
+        """Mark the run changed; its wire goes out at the next flush, at most
+        PUBLISH_S from now. Building the wire walks the whole tree, so a map
+        of many items rebuilt it, and every browser redrew it, per record."""
+        self._dirty.add(run)
+        if self._flush_at is not None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._flush_publish()  # a sync caller with no loop: at once
+            return
+        self._flush_at = loop.call_later(PUBLISH_S, self._flush_publish)
+
+    def _publish_now(self) -> None:
+        """Send every changed run's wire now, not at the next flush."""
+        if self._flush_at is not None:
+            self._flush_at.cancel()
+        self._flush_publish()
+
+    def _flush_publish(self) -> None:
+        self._flush_at = None
+        runs, self._dirty = self._dirty, set()
+        ops = [{"upsert": self.wire(r)} for r in sorted(runs) if r in self.runs]
+        if ops:
+            self._app.publish("workflows", ops)
