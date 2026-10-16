@@ -444,6 +444,7 @@ class Schedules:
         if w is None:
             return None
         saved = self._app.saved.get(w[0])
+        self._app.saved.keep(saved)
         return {"id": saved.id, "sha": saved.sha}
 
     def _runs_workflow(self, log_id: str) -> bool:
@@ -718,6 +719,7 @@ class Schedules:
                     f"workflow {wid} changed while you were reading; "
                     "look at the card again",
                 )
+            self._app.saved.keep(cur)
             s.pin = {"id": wid, "sha": cur.sha}
         s.paused = None
         self._save()

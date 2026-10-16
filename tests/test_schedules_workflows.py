@@ -467,3 +467,20 @@ async def test_every_save_redraws_a_schedule_already_waiting(world, monkeypatch)
             "schedule.resume", {"name": "nightly-nap", "workflow": "stale"}
         )
     assert [c["workflow"]["sha"] for c in got if c["name"] == "nightly-nap"] == [sha]
+
+
+@pytest.mark.parametrize("how", ["compacted", "by hand"])
+async def test_a_pinned_version_keeps_its_text_for_a_later_diff(world, how):
+    # The file holds the version a schedule pins, but the history may not:
+    # its text was compacted while another version was current, or it was
+    # never saved through aegis. The next save must still show a diff.
+    p = world.app.saved.get("nap").path
+    if how == "compacted":
+        await save(world, NAP.replace("Nap a while.", "Nap two."))  # drops NAP's text
+        p.write_text(NAP)  # a git checkout brings it back
+    else:
+        p.write_text(NAP.replace("Nap a while.", "Nap by hand."))
+    person_schedule(world)
+    await save(world, NAP.replace("Nap a while.", "Nap three."))
+    w = world.app.schedules.wire("nightly-nap")["workflow"]
+    assert w["changed"] and w.get("diff")
