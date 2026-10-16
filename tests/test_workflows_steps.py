@@ -392,6 +392,24 @@ async def test_a_leaf_past_its_deadline_fails(world):
 
 
 @pytest.mark.slow
+async def test_an_ifs_deadline_counts_while_its_command_probe_runs(world):
+    st = await ended(
+        world,
+        await run(
+            world,
+            flow(
+                '{if: {when: {sh: "sleep 30"}, then: {sh: "true", id: "yes", say: Then.}}, '
+                "id: ask, deadline: 2s, say: Ask slowly.}"
+            ),
+        ),
+    )
+    ask = st.nodes["ask"]
+    assert ask.error == "ran past its deadline of 2s"
+    assert ask.took is None  # the probe never answered
+    assert ask.ended - ask.started < 2 + 4
+
+
+@pytest.mark.slow
 async def test_a_group_past_its_deadline_stops_the_agent_inside_it(world):
     slow = json.dumps("/sleep 30")
     text = f"""id: group

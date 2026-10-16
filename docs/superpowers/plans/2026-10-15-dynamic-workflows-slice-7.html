@@ -400,7 +400,7 @@ Give <code>_Parser.schema</code> a <code>keys: frozenset[str] = SCHEMA_KEYS</cod
 </div>
 </details>
 
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">An if's deadline counts while its command probe runs</span><span class="files">workflow_log.py · workflows.py · tests/test_workflows_steps.py · tests/test_workflow_log.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1412,6 +1412,7 @@ Run <code>make bench</code> for the PR body.</li>
 <ul>
   <li>Task 0, before task 1 and not in this plan: <code>_flush_publish</code> no longer re-arms itself after a run's wire raised. The run stays changed and rides the next flush another publish arms, and its failure is logged once until a flush for it succeeds (slice 5 round-2 review, item 1).</li>
   <li>Task 1: slice 6 added <code>minimum</code> and <code>maximum</code> to <code>SCHEMA_KEYS</code> (loop.yaml bounds its max), so the tests use <code>pattern</code> as the key outside the subset, and the subset message lists nine keys, not seven.</li>
+  <li>Task 2: the engine test is marked <code>@pytest.mark.slow</code>, since it waits out a 2 s deadline (the marker's threshold is 1.5 s); its then-branch id is quoted (<code>id: "yes"</code>) so no YAML reader takes it for a boolean.</li>
 </ul>
 </main>
 <script>

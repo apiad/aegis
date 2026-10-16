@@ -384,3 +384,23 @@ def test_a_replaced_run_names_its_successor():
         ]
     )
     assert (st.status, st.replaced_by) == ("replaced", "r2")
+
+
+def test_a_probe_start_marks_an_if_running_and_starts_its_clock():
+    st = fold(
+        [
+            {
+                "t": 1,
+                "ev": "armed",
+                "run": "r1",
+                "owner": "L1",
+                "text": "id: x",
+                "args": {},
+            },
+            {"t": 2, "ev": "approved"},
+            {"t": 5, "ev": "probe_started", "node": "ask", "say": "Ask."},
+        ]
+    )
+    n = st.nodes["ask"]
+    assert (n.status, n.started, n.took) == ("running", 5, None)
+    assert not any("Ask." in s["text"] for s in st.story)

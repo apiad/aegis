@@ -106,6 +106,7 @@ STARTS = frozenset(
         "loop_started",
         "branch",
         "gate_opened",
+        "probe_started",
     }
 )
 
@@ -1431,6 +1432,12 @@ class Workflows:
         if n is not None and n.status == "failed":
             return "failed"
         if n is None or n.took is None:
+            if "sh" in node.body["probe"] and (n is None or not n.started):
+                # The probe's time is the if's own (spec §05: a deadline
+                # bounds a step), so its clock starts before the probe does.
+                say = self._say(st, wf, node, prefix)
+                self._log(st.run, {"ev": "probe_started", "node": inst, "say": say})
+                n = st.nodes[inst]
             v = await self._probe(st, wf, node, prefix, inst, "")
             if isinstance(v, str):
                 return v
