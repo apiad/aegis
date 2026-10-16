@@ -10,7 +10,8 @@ A version is the sha256 of the file. Saving needs no approval, because
 running a saved workflow always needs one unless a person launched it
 (workflows.Launches). Every save and delete appends a line with the text to
 ``<state>/workflow-saves.jsonl``: the history, where a schedule finds the
-version it pinned to show what changed (schedules.py). A save drops the text
+version it pinned to show what changed (schedules.py), and a pin adds the
+text when the history lacks it (Store.keep). A save drops the text
 of every version that neither a schedule pins nor a file holds, and keeps the
 line that says who saved it, so the history grows by a line per save, not by
 a definition.
@@ -115,6 +116,18 @@ class Store:
             raise OpError("reserved", f"{wid} is built in; it cannot be deleted")
         s.path.unlink()
         self._note({"ev": "deleted", "id": wid, "sha": s.sha, "by": by})
+
+    def keep(self, s: Saved) -> None:
+        """A schedule pins ``s``: make sure the history holds its text, which
+        a later save's diff is drawn from. It may not, when the text was
+        compacted while another version was current or the file was never
+        saved through aegis. The line is ``kept``, not ``saved``, so it never
+        says who saved the version."""
+        if not any(
+            r["id"] == s.id and r.get("sha") == s.sha and "text" in r
+            for r in self._lines()
+        ):
+            self._note({"ev": "kept", "id": s.id, "sha": s.sha, "text": s.text})
 
     def _note(self, rec: dict) -> None:
         self.history.parent.mkdir(parents=True, exist_ok=True)
