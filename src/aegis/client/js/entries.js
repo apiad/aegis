@@ -442,6 +442,44 @@ function nowSection(w) {
   return box;
 }
 
+// Folding (spec §07): a map of more than FOLD items shows its count line
+// until a person opens it, and a loop past FOLD rounds shows only its
+// current round. A person's choice is kept per run and node.
+const FOLD = 6;
+const openMaps = new Set(); // "run/node" a person unfolded
+const itemCount = (r) => Object.values(r.count || {}).reduce((a, b) => a + b, 0);
+const foldable = (r) => (r.kind === "map" && itemCount(r) > FOLD) || (r.kind === "loop" && r.rounds?.round > FOLD);
+// What a fold never hides: a failed step, one held by a change, a gate
+// waiting for the person.
+const needsSomeone = (r) => r.state === "failed" || r.held || (r.kind === "gate" && r.by === "person" && r.state === "running");
+
+// The rows each folded map or loop hides, by instance prefix: a map's items
+// whole, a loop's rounds but the current one.
+function folds(w) {
+  const out = [];
+  for (const r of w.tree) {
+    if (!foldable(r) || openMaps.has(`${w.run}/${r.id}`)) continue;
+    out.push({ under: `${r.id}.`, keep: r.kind === "loop" ? `${r.id}.${r.rounds.round}.` : null });
+  }
+  return out;
+}
+const hidden = (fs, r) => !needsSomeone(r) && fs.some((f) => r.id.startsWith(f.under) && !(f.keep && r.id.startsWith(f.keep)));
+
+// A folded map's or loop's toggle, beside its count line.
+function foldButton(w, r) {
+  const key = `${w.run}/${r.id}`;
+  const open = openMaps.has(key);
+  const n = r.kind === "map" ? itemCount(r) : r.rounds.round - 1;
+  const label = open ? "fold" : r.kind === "map" ? `show all ${n}` : `${n} earlier round${n === 1 ? "" : "s"}`;
+  const b = el("button", "fold", label);
+  b.type = "button";
+  b.onclick = () => {
+    open ? openMaps.delete(key) : openMaps.add(key);
+    refreshWorkflows();
+  };
+  return b;
+}
+
 // Where a run's card is held: "docked", "in window <n>" or "".
 function docked(id) {
   const at = docker.docked(id);
@@ -513,7 +551,9 @@ export function fillWorkflow(card) {
     kids.push(story);
   }
   const tree = el("div", "wftree");
+  const fs = folds(w);
   for (const r of w.tree) {
+    if (hidden(fs, r)) continue;
     const row = el("div", "wfrow");
     row.dataset.node = r.id;
     row.dataset.state = r.state;
@@ -546,8 +586,11 @@ export function fillWorkflow(card) {
     if (cmd) main.append(el("pre", "cmd", cmd));
     if (prompt && openPrompts.has(key)) main.append(el("pre", null, prompt));
     if (r.reading) main.append(el("div", "out", r.reading));
-    if (r.rounds) main.append(el("div", "out", `round ${r.rounds.round} of ${r.rounds.max}`));
-    if (r.count) main.append(el("div", "out", countLine(r.count)));
+    const counted = r.rounds ? el("div", "out", `round ${r.rounds.round} of ${r.rounds.max}`) : r.count ? el("div", "out", countLine(r.count)) : null;
+    if (counted) {
+      if (foldable(r)) counted.append(" · ", foldButton(w, r));
+      main.append(counted);
+    }
     if (r.kind === "gate" && !r.each && r.state !== "pending") main.append(gatePanel(w, r));
     else if (r.summary || r.error) main.append(el("div", `out ${r.error ? "bad" : ""}`, r.error || r.summary));
     const waiting = r.state === "pending" || r.state === "queued" || r.state === "skipped";
