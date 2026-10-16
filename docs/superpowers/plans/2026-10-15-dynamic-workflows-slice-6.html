@@ -1434,7 +1434,7 @@ For a schedule, <code>origin["line"]</code> is the schedule's prompt (task 9).</
 </div>
 </details>
 
-<details class="task" id="task-8" data-state="pending">
+<details class="task" id="task-8" data-state="done">
 <summary><span class="num">8</span><span><span class="ttl">/loop end to end</span><span class="files">tests/test_workflows_loop.py · builtin_workflows/loop.yaml</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1922,6 +1922,7 @@ Use the real fixture and helper names of those modules (<code>open_session</code
   <li>Task 6: the armed record's <code>launch</code> is <code>{typed, **origin}</code>; <code>origin</code> already carries <code>by</code>. The replay in <code>test_an_agent_cannot_forge_replay_or_carry_a_token</code> first waits for the main agent's turn on the stop's inbox message, which the fake claude answers before the next prompt. Two tests were added: a token past 24 hours is refused, and the token is in no run log, no save history line and no wire. Break-its: removing each refusal in <code>Launches.check</code> (unknown, another session, used, expired, another workflow), the <code>spend</code>, <code>closed=True</code>, the pinned text and the token-goes-with-id validator each fails a test.</li>
   <li>Task 5, found by <code>make check</code>: <code>Arm</code> does not take exactly one of definition, id and run. A run armed again may carry a definition (the edit it makes), as slice 4's tests do; <code>id</code> goes alone. The validator refuses no source at all, and id beside either of the others.</li>
   <li>Task 7: <code>Workflows.launch</code> is synchronous, since nothing in it awaits; the command and the schedule's fire call it without <code>await</code>. It calls task 4's <code>check_named(saved, agents)</code>. <code>app.py</code> already imports <code>iso_now</code> from <code>monitors</code>. <code>tests/test_commands.py</code>'s menu-order test gains <code>workflow</code> and <code>loop</code> after <code>btw</code>. <code>peer_handoff</code> answers with text, not JSON, so the no-agent test checks its <code>mcp ok</code> prefix instead of <code>ok()</code>.</li>
+  <li>Task 8: an <code>if</code> adds no scope, so the wait's instance is <code>rounds.1.pause</code>, not <code>rounds.1.unless-done.pause</code>; the <code>if</code> that skips the wait took <code>none</code>. <code>loop.yaml</code>'s step says "Do it: {{args.prompt}}." with a period, so its story line reads "Do it: check the deploy. Round 1." rather than running the prompt into the summary. The first test waits for done or an open item and then asserts done, so the break-it (no <code>at_max</code>) fails at once on a running run with an open item instead of on a timeout. The card's launch line is read in a browser in task 10, where the client first draws it.</li>
 </ul>
 </main>
 <script>
