@@ -263,7 +263,7 @@ function fillApproval(card) {
 // the viewer and a canvas pane. The card docks as a file
 // or a page does, by its entry id; while docked, its transcript card is one
 // line, as a docked file's is.
-let workflows = { get: () => null, call: async () => {} };
+let workflows = { get: () => null, call: async () => {}, view: () => {} };
 const openPrompts = new Set(); // "run/node" whose prompt a person opened
 export function setWorkflows(w) {
   workflows = w;
@@ -412,6 +412,25 @@ function headLine(w) {
   bar.append(fill);
   box.append(bar);
   return box;
+}
+
+// A step's see: the server resolves the path from the run and the step, and
+// the viewer opens it at its #fragment (an HTML page's frame) or its :line.
+function seeChip(w, r) {
+  const chip = el("button", "see", `see ${r.see}`);
+  chip.type = "button";
+  chip.title = "Open it";
+  chip.onclick = async () => {
+    try {
+      const got = await workflows.call("workflow.see", { run: w.run, node: r.id });
+      const files = got.files.map((f) => (got.fragment ? { ...f, url: `${f.url}#${got.fragment}` } : f));
+      workflows.view(files, got.line);
+    } catch (err) {
+      chip.title = String(err?.message || err);
+      chip.classList.add("bad");
+    }
+  };
+  return chip;
 }
 
 // A step's session, as a link: its transcript while open (read-only while the
@@ -591,6 +610,7 @@ export function fillWorkflow(card) {
       };
       tags.append(tog);
     }
+    if (r.see) tags.append(seeChip(w, r));
     main.append(tags);
     const cmd = commandOf(r);
     if (cmd) main.append(el("pre", "cmd", cmd));

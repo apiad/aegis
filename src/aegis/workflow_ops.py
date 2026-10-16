@@ -5,17 +5,21 @@ MCP tool reaches them (ops.Registry.call refuses ``not_for_agents``). That is
 the whole of "an agent never starts a workflow without a person's click".
 Answering a person's gate is the same: ``workflow.gate`` is not for agents,
 nor are ``workflow.edit.apply`` and ``workflow.edit.reject``: an agent
-proposes a change, and only a person lets it run.
+proposes a change, and only a person lets it run. ``workflow.see`` opens a
+step's see for a person: it takes a run and a step, never a path.
 """
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from . import files
 from . import layout as canvas
 from .ops import Caller, OpError
+from .transcript.entries import _sent_file
 
 if TYPE_CHECKING:
     from .app import App
@@ -51,6 +55,11 @@ class Arm(_Strict):
 
 class RunName(_Strict):
     run: str
+
+
+class NodeRef(_Strict):
+    run: str
+    node: str
 
 
 class Stop(RunName):
@@ -252,6 +261,20 @@ def register_workflow_ops(app: App) -> None:
         owned(p.run, caller)
         await wf.answer_gate(p.run, p.node, p.go, p.answer, by="person")
         return wf.wire(p.run)
+
+    # Not marked for agents: a person opens a step's see (spec §07). The
+    # browser names a run and a step, never a path.
+    @r.op("workflow.see", NodeRef)
+    async def workflow_see(p: NodeRef, caller):
+        owned(p.run, caller)
+        path, fragment, line = wf.see_file(p.run, p.node)
+        try:
+            (rec,) = await asyncio.to_thread(
+                files.store_all, app.roots.state_root, [path]
+            )
+        except files.FileError as e:
+            raise OpError(e.code, e.message) from e
+        return {"files": [_sent_file(rec)], "fragment": fragment, "line": line}
 
     @r.op("workflow.edit", EditDef, agent=True)
     async def workflow_edit(p: EditDef, caller):

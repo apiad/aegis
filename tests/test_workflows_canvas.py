@@ -167,3 +167,55 @@ async def test_a_locked_node_cannot_be_given_a_tab(world):
     await world.app.registry.call("workflow.stop", {"run": run})
     await world.app.registry.call("session.unquiet", {"log_id": lid})
     assert not s.quiet
+
+
+SEEN = """id: seen
+title: Seen
+say: One step with a link to its plan.
+root:
+  agent: {agent: opus, prompt: hi}
+  id: one
+  see: docs/plan.html#slice-1
+  say: Do it.
+"""
+
+
+async def test_a_person_opens_a_steps_see_before_approval(world):
+    (world.root / "docs").mkdir()
+    (world.root / "docs" / "plan.html").write_text("<h2 id=slice-1>One</h2>")
+    a = await world.spawn()
+    run = ok(await turn(a, mcp("workflow_arm", definition=SEEN, args={})))["run"]
+    out = await world.app.registry.call("workflow.see", {"run": run, "node": "one"})
+    (f,) = out["files"]
+    assert f["name"] == "plan.html" and out["fragment"] == "slice-1"
+    assert out["line"] is None
+
+
+async def test_a_see_with_a_line_opens_at_it(world):
+    (world.root / "notes.md").write_text("one\ntwo\n")
+    a = await world.spawn()
+    text = SEEN.replace("docs/plan.html#slice-1", "notes.md:2")
+    run = ok(await turn(a, mcp("workflow_arm", definition=text, args={})))["run"]
+    out = await world.app.registry.call("workflow.see", {"run": run, "node": "one"})
+    assert out["files"][0]["name"] == "notes.md" and out["line"] == 2
+    assert out["fragment"] is None
+
+
+async def test_an_agent_cannot_open_a_see(world):
+    # Spec §12: this must fail if workflow.see is marked for agents.
+    (world.root / "docs").mkdir()
+    (world.root / "docs" / "plan.html").write_text("x")
+    a = await world.spawn()
+    run = ok(await turn(a, mcp("workflow_arm", definition=SEEN, args={})))["run"]
+    said = await turn(a, mcp("workflow_see", run=run, node="one"))
+    assert said.startswith("mcp error"), said
+
+
+async def test_a_missing_see_file_names_the_path(world):
+    from aegis.ops import OpError
+
+    a = await world.spawn()
+    run = ok(await turn(a, mcp("workflow_arm", definition=SEEN, args={})))["run"]
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call("workflow.see", {"run": run, "node": "one"})
+    assert e.value.code == "no_file" and "docs/plan.html" in e.value.message

@@ -601,7 +601,11 @@ conn.subscribe(
 // The workflow runs (workflows.py), for their cards in the transcript and
 // their canvas panes. A running card counts its times up once a second.
 const wfRuns = new Map();
-setWorkflows({ get: (run) => wfRuns.get(run) || null, call: (op, params) => conn.call(op, params) });
+setWorkflows({
+  get: (run) => wfRuns.get(run) || null,
+  call: (op, params) => conn.call(op, params),
+  view: (files, line) => viewer.open({ files, at: 0, remote: false, glyph: "file", line }),
+});
 // A workflow's node while its run lives: no tab, read-only (spec §05). The
 // server refuses its send, interrupt and unquiet; this only draws that.
 const locked = (m) => !!m?.workflow && ["armed", "running"].includes(wfRuns.get(m.workflow.run)?.status);
