@@ -1208,3 +1208,15 @@ def test_a_wait_takes_bounds_and_nothing_else_does():
         assert [e.path for e in errors] == ["$.root.between"], (bad, errors)
     _, errors = parse(base % "sh: 'true'\n  between: [1m, 1h]", AGENTS)
     assert [e.path for e in errors] == ["$.root.between"]
+
+
+def test_check_value_refuses_numbers_that_are_not_finite():
+    # NaN compares false with any bound, so it passed minimum and maximum.
+    schema = {"type": "number", "minimum": 1, "maximum": 100}
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        assert check_value(bad, schema) == ["$: expected a finite number"], bad
+    assert check_value({"n": float("nan")}, {"type": "object"}) == []
+    obj = {"type": "object", "properties": {"n": {"type": "number"}}}
+    assert check_value({"n": float("nan")}, obj) == ["$.n: expected a finite number"]
+    assert check_value(float("nan"), {}) == ["$: expected a finite number"]
+    assert check_value(50.5, schema) == []

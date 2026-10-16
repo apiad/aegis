@@ -19,6 +19,7 @@ from __future__ import annotations
 import functools
 import io
 import json
+import math
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -681,6 +682,9 @@ def check_value(
     }.get(t, True)
     if not ok:
         return [f"{path}: expected {t}"]
+    if isinstance(value, float) and not math.isfinite(value):
+        # NaN compares false with every bound, and JSON has no such number.
+        return [f"{path}: expected a finite number"]
     if "enum" in schema and value not in schema["enum"]:
         out.append(f"{path}: expected one of {schema['enum']}")
     if isinstance(value, int | float) and not isinstance(value, bool):
