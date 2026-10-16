@@ -318,3 +318,24 @@ async def test_a_persons_edit_naming_another_workflow_waits_for_approval(world):
     assert sch.awaiting("nightly-nap")
     edit(world, "nightly-nap", "Just say hi.")
     assert sch.items["nightly-nap"].pin is None
+
+
+async def test_a_loop_schedule_from_before_pins_can_be_approved_and_fires(world):
+    # A /loop schedule saved before schedules pinned workflows has no pin:
+    # its fire waits for a person, whose unpause pins the version shown.
+    sch = world.app.schedules
+    s = person_schedule(world, name="old-loop", prompt="/loop 5m check the build")
+    s.pin = None
+    t = frozen(world)
+    await tick(world, t)
+    assert runs(world, "old-loop", "fired") == [] and sch.awaiting("old-loop")
+    w = sch.wire("old-loop")["workflow"]
+    sha = world.app.saved.get("loop").sha
+    assert w["id"] == "loop" and w["sha"] == sha and w["changed"]
+    with pytest.raises(OpError) as e:
+        sch.resume("old-loop")
+    assert e.value.code == "needs_version"
+    sch.resume("old-loop", workflow=sha)
+    assert sch.items["old-loop"].pin == {"id": "loop", "sha": sha}
+    await tick(world, t)
+    assert runs(world, "old-loop", "fired")
