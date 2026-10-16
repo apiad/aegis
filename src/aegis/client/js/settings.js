@@ -850,9 +850,15 @@ export class Settings {
         a[el.name] = el.name === "priming" ? el.value || null : el.value;
         if (el.name === "name") {
           card.dataset.row = `agents.${el.value}`;
-          // A rename carries to the default and the queues that run it.
+          // A rename carries to the default, the queues that run it and its
+          // place in the workflow pool.
           if (this.doc.default_agent === was) this.doc.default_agent = el.value;
           for (const q of this.doc.queues) if (q.agent === was) q.agent = el.value;
+          const m = this.doc.max_agents;
+          if (m && was && was in m) {
+            m[el.value] = m[was];
+            delete m[was];
+          }
           this.refreshNames();
         }
         if (el.name === "harness") model.options = this.modelOptions(el.value);
@@ -868,6 +874,7 @@ export class Settings {
     const del = button("Remove", null, () => {
       this.doc.agents.splice(i, 1);
       if (this.doc.default_agent === a.name) this.doc.default_agent = null;
+      if (this.doc.max_agents) delete this.doc.max_agents[a.name];
       this.touch();
       this.draw();
     }, "link danger");
@@ -965,7 +972,20 @@ export class Settings {
       row.append(h("div", { className: "set-queue-line" }, h("span", { className: "set-name", textContent: key === "total" ? "all agents" : key }), h("span", { textContent: "at most" }), input, h("span", { textContent: "node sessions" })));
       return row;
     };
-    const pool = [limit("total", "Workflow node sessions at once, all agents", "4"), ...this.doc.agents.map((a) => limit(a.name, `Workflow node sessions of ${a.name} at once`, "total"))];
+    // A number for a name that is no agent (a hand edit, or a rename made
+    // elsewhere) would refuse every save: it gets a row to clear it.
+    const names = new Set(this.doc.agents.map((a) => a.name));
+    const stray = Object.keys(m).filter((k) => k !== "total" && !names.has(k)).map((k) => {
+      const row = h("div", { className: "set-queue" });
+      row.dataset.row = `workflows.${k}`;
+      row.append(h("div", { className: "set-queue-line" }, h("span", { className: "set-name", textContent: k }), h("span", { textContent: `at most ${m[k]}: not an agent` }), button("Clear", null, () => {
+        delete m[k];
+        row.remove();
+        this.touch();
+      }, "link danger")));
+      return row;
+    });
+    const pool = [limit("total", "Workflow node sessions at once, all agents", "4"), ...this.doc.agents.map((a) => limit(a.name, `Workflow node sessions of ${a.name} at once`, "total")), ...stray];
     const file = h("input", { type: "file", id: "set-wf-import", accept: ".yaml,.yml", hidden: true });
     file.addEventListener("change", () => file.files[0] && this.importWorkflow(file.files[0]).finally(() => (file.value = "")));
     const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Workflows" }), button("Import…", "set-wf-import-btn", () => file.click()), file);
