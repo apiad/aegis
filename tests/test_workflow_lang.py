@@ -1285,3 +1285,28 @@ def test_a_schema_of_the_wrong_shape_is_an_error_not_a_crash():
     assert lint_args("{type: object, properties: {a: {type: string, enum: x}}}") == [
         "$.args.properties.a.enum: enum is a list"
     ]
+
+
+def test_a_default_sits_only_on_a_top_level_arg():
+    assert lint_args(
+        "{type: object, default: {}, properties: {a: {type: string}}}"
+    ) == ["$.args.default: args has no default of its own; give each property one"]
+    nested = (
+        "{type: object, properties: {a: {type: object, "
+        "properties: {b: {type: string, default: x}}}}}"
+    )
+    assert lint_args(nested) == [
+        "$.args.properties.a.properties.b.default: "
+        "a default goes only on a property of args itself"
+    ]
+    listed = "{type: object, properties: {a: {type: array, items: {type: string, default: x}}}}"
+    assert lint_args(listed) == [
+        "$.args.properties.a.items.default: "
+        "a default goes only on a property of args itself"
+    ]
+
+
+def test_required_names_only_properties_there_are():
+    assert lint_args(
+        "{type: object, properties: {a: {type: string}}, required: [a, b]}"
+    ) == ["$.args.required: b is not one of its properties"]

@@ -35,7 +35,9 @@ Every node needs `say`. A `{{name.field}}` in a prompt or a `say` reads
 `args` or the result of a node that finished before this one. This version
 runs every kind in the spec. `args`, when you give one, is a JSON Schema of
 the same subset as a `result`, plus default for a value left out; the lint
-checks it, and each default against its own schema.
+checks it, and each default against its own schema. A default goes only on
+a property of `args` itself, never on args as a whole, on a field inside a
+property, or in a def; `required` names only properties there are.
 
 ## Run things at once
 
