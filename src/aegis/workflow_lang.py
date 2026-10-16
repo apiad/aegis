@@ -1382,7 +1382,8 @@ class _Parser:
         """Resolve each session: <node id> to the step whose session it runs
         in, as a value reference resolves (innermost scope first), and refuse
         what would put two turns in one session: an owner that may not have
-        finished first, two users that may overlap, and a user inside a map
+        finished first, two users that may overlap (two in the branches of
+        one if never do), and a user inside a map
         its owner is not inside, whose items would all use it at once. A
         loop's rounds run one after another, so a loop may reuse one."""
         session_of: dict[str, str] = {}
@@ -1438,9 +1439,19 @@ class _Parser:
         users: dict[str, list[str]] = {}
         for k, root in session_of.items():
             users.setdefault(root, []).append(k)
+
+        def apart(a: Node, b: Node) -> bool:
+            """Whether the nearest if over both puts them in different
+            branches, so only one of them ever runs."""
+            mine = {x.key for x in ancestors(b)}
+            common = next(x for x in ancestors(a) if x.key in mine)
+            return common.kind == "if"
+
         for root, ks in users.items():
             for i, a in enumerate(ks):
                 for b in ks[i + 1 :]:
+                    if apart(nodes[a], nodes[b]):
+                        continue
                     if not (reach(("F", a), ("S", b)) or reach(("F", b), ("S", a))):
                         self.err(
                             nodes[b].path + ".agent.session",
