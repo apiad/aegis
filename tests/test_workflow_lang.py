@@ -1285,6 +1285,13 @@ def test_a_schema_of_the_wrong_shape_is_an_error_not_a_crash():
     assert lint_args("{type: object, properties: {a: {type: string, enum: x}}}") == [
         "$.args.properties.a.enum: enum is a list"
     ]
+    one_of = "one of array, boolean, integer, number, object, string"
+    assert lint_args("{type: object, properties: {a: {type: [string, integer]}}}") == [
+        f"$.args.properties.a.type: type names one type, {one_of}"
+    ]
+    assert lint_args("{type: object, properties: {a: {type: {x: 1}}}}") == [
+        f"$.args.properties.a.type: type names one type, {one_of}"
+    ]
 
 
 def test_a_default_sits_only_on_a_top_level_arg():
