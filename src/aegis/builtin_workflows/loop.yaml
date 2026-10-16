@@ -45,13 +45,13 @@ root:
                   wait: "{{tick.next or '20m'}}"
                   between: [1m, 1h]
                   id: pause
-                  say: Wait as long as the agent asked, from 1m to 1h.
+                  say: Wait as the agent asked, 1m to 1h.
                 else:
                   wait: "{{args.every}}"
                   id: interval
-                  say: "Wait {{args.every}}, the interval given."
+                  say: "Wait {{args.every}}."
               id: how-long
-              say: Wait the interval given, or the agent's pick.
+              say: Wait.
           id: unless-done
           say: Unless it is done, wait.
       id: round
