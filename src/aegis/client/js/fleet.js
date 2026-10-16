@@ -5,6 +5,7 @@ import { glyph, icon, LABEL } from "./glyphs.js";
 import { hostRow, netRows, noteRow, providerLine, quotaHeading, quotaRow } from "./gauges.js";
 import { shownOwner } from "./me.js";
 import { dur, planTimes } from "./plantime.js";
+import { workflowTitle } from "./entries.js";
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -138,6 +139,7 @@ function card(m, onOpen, onClose) {
   const owner = shownOwner(m);
   if (owner) hd.append(el("span", "who", owner));
   if (m.worker) hd.append(el("span", "badge", `worker · ${m.worker.queue}`));
+  if (m.workflow) hd.append(el("span", "badge", `workflow · ${workflowTitle(m.workflow.run) || m.workflow.run} · ${m.workflow.node}`));
   if (m.quiet) hd.append(el("span", "zz", "zz"));
   if (m.state === "parked") hd.append(el("span", "zz pk", "parked"));
   const label = m.attention === "waiting" && m.waiting_on ? `waiting · ${m.waiting_on}` : LABEL[m.attention] || m.state;

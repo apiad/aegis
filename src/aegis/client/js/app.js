@@ -8,7 +8,7 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setWorkflows, syncDock, tickWorkflows } from "./entries.js";
+import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setWorkflows, syncDock, tickWorkflows, workflowTitle } from "./entries.js";
 import { setScroller } from "./highlight.js";
 import { Viewer } from "./viewer.js";
 import { Canvas } from "./canvas.js";
@@ -602,10 +602,16 @@ conn.subscribe(
 // their canvas panes. A running card counts its times up once a second.
 const wfRuns = new Map();
 setWorkflows({ get: (run) => wfRuns.get(run) || null, call: (op, params) => conn.call(op, params) });
+// A workflow's node while its run lives: no tab, read-only (spec §05). The
+// server refuses its send, interrupt and unquiet; this only draws that.
+const locked = (m) => !!m?.workflow && ["armed", "running"].includes(wfRuns.get(m.workflow.run)?.status);
 // A patch redraws only the cards of the runs it carries.
 const wfChanged = (runs) => {
   refreshWorkflows(runs);
   canvas.syncStrip(); // a docked run's tab takes its title
+  // The shown session may be a node of a run that just ended: its box unlocks.
+  const s = sessions.get(shown);
+  if (s?.workflow && (!runs || runs.has(s.workflow.run))) renderMeta(s);
 };
 conn.subscribe(
   "workflows",
@@ -951,7 +957,8 @@ function leaveIfQuieted(r) {
 
 // A click on a quiet card brings the session back to the tab bar, then opens it.
 async function openCard(key) {
-  if (sessions.get(key)?.quiet) {
+  // A locked node opens as it is, quiet: it gets its tab when the run ends.
+  if (sessions.get(key)?.quiet && !locked(sessions.get(key))) {
     try {
       const back = await callFor(key, "session.unquiet");
       // Read again: a patch the server sent before the unquiet may have
@@ -1727,18 +1734,20 @@ function renderMeta(s) {
   $("interrupt").hidden = !working;
   // A member reads another's session and changes nothing in it (tokens.py).
   const theirs = !mine(s);
-  $("restart").disabled = working || theirs;
+  // A workflow's node is the engine's while its run lives.
+  const held = locked(s);
+  $("restart").disabled = working || theirs || held;
   $("working").hidden = !working;
-  $("stop-session").disabled = s.state === "stopped" || theirs;
-  $("quiet-session").disabled = !["working", "waiting"].includes(s.attention) || theirs;
-  $("interrupt").disabled = theirs;
+  $("stop-session").disabled = s.state === "stopped" || theirs || held;
+  $("quiet-session").disabled = !["working", "waiting"].includes(s.attention) || theirs || held;
+  $("interrupt").disabled = theirs || held;
   $("close").disabled = theirs;
   if (working && workingSince == null) workingSince = Date.now();
   if (!working) workingSince = null;
   // A linked server that is down: the transcript stays readable, nothing sends.
   const down = s.off ? linkOf(s.server) : null;
-  input.disabled = $("attach").disabled = !!down || theirs;
-  drawSending(!!down || theirs);
+  input.disabled = $("attach").disabled = !!down || theirs || held;
+  drawSending(!!down || theirs || held);
   if (s.state !== "parked" && warmed === shown) warmed = null;
   drawComposerHint(s);
   setTitle(`${s.title || s.handle} · aegis`);
@@ -1776,7 +1785,9 @@ function drawComposerHint(s) {
   const theirs = !mine(s);
   const down = s.off ? linkOf(s.server) : null;
   // Chrome counts a placeholder in scrollHeight: measure again when it changes.
-  const placeholder = theirs
+  const placeholder = locked(s)
+    ? `Step ${s.workflow.node} of the workflow ${workflowTitle(s.workflow.run) || s.workflow.run}. You can read it; it takes no messages until the run stops.`
+    : theirs
     ? s.server
       ? `A session on ${s.server}. You can read it; acting through the link is for an admin here.`
       : `${ownerOf(s)}'s session. You can read it; only ${ownerOf(s)} can write to it.`

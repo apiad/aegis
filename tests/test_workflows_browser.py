@@ -625,3 +625,32 @@ def test_a_loop_past_six_rounds_shows_only_its_current_round(server, page):  # n
     page.click(f"{card} .wfrow[data-node=l] .fold >> text=7 earlier rounds")
     assert items_shown(page, card, "l.") == 8
     assert not page.errors
+
+
+def test_a_working_step_opens_read_only_from_the_card_with_no_tab(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    arm = {"definition": flow(report(7, 8), RESULT), "args": {}}
+    spawn(page, "/mcp workflow_arm " + json.dumps(arm))
+    card = "#entries .wfcard"
+    page.click(f"{card} button >> text=Approve and run")
+    link = page.locator(f"{card} .wfrow[data-node=one] a.who")
+    link.wait_for()
+    page.wait_for_selector(f"{card} .wfnow a.who")  # Now links it too
+    tabs = page.locator("#tablist .tab").count()
+    link.click()
+    page.wait_for_function(
+        "() => document.querySelector('#input').placeholder.includes('Step one of the workflow Two steps')"
+    )
+    assert page.locator("#tablist .tab").count() == tabs  # no tab added
+    assert page.is_disabled("#input") and page.is_disabled("#send")
+    # Back in the Fleet, its card names the run, and a click keeps it quiet.
+    page.goto(server.url + "#fleet")
+    fleet = page.locator(".card.quiet .badge", has_text="workflow · Two steps · one")
+    fleet.wait_for()
+    fleet.click()
+    page.wait_for_selector("#a2[data-view=session]")
+    page.wait_for_timeout(300)  # an unquiet would add the tab by now
+    assert page.locator("#tablist .tab").count() == tabs
+    assert page.is_disabled("#input")
+    assert not page.errors

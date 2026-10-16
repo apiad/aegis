@@ -139,3 +139,31 @@ async def test_a_large_map_builds_its_wire_a_few_times_not_per_record(
     assert built.count(run) < records / 4, (built.count(run), records)
     # The browser still gets the end: the last publish carries "done".
     assert [w for w in sent if w["run"] == run][-1]["status"] == "done"
+
+
+async def test_a_locked_node_cannot_be_given_a_tab(world):
+    from aegis.ops import OpError
+
+    from .conftest import until
+    from .test_workflows_parallel import report
+
+    a = await world.spawn()
+    run = ok(
+        await turn(
+            a, mcp("workflow_arm", definition=flow(report(7, 6), RESULT), args={})
+        )
+    )["run"]
+    await world.app.registry.call("workflow.approve", {"run": run})
+    wf = world.app.workflows
+    await until(
+        lambda: "one" in wf.runs[run].nodes and wf.runs[run].nodes["one"].log_id
+    )
+    lid = wf.runs[run].nodes["one"].log_id
+    s = world.app.sessions.sessions[lid]
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call("session.unquiet", {"log_id": lid})
+    assert e.value.code == "in_workflow"
+    assert s.quiet
+    await world.app.registry.call("workflow.stop", {"run": run})
+    await world.app.registry.call("session.unquiet", {"log_id": lid})
+    assert not s.quiet
