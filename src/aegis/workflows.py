@@ -346,15 +346,20 @@ class Workflows:
         o = self.owner(st)
         return log_id == (o.log_id if o is not None else st.owner)
 
-    def wire(self, run: str) -> dict:
-        st = self.runs[run]
+    def definition(self, run: str) -> Workflow | None:
+        """A run's definition. An ended run read back at boot is parsed once,
+        not on every subscribe; only a running run advances, so caching it
+        moves nothing."""
         wf = self.defs.get(run)
-        if wf is None:
-            # An ended run read back at boot: parsed once, not on every
-            # subscribe. Only a running run advances, so this moves nothing.
+        if wf is None and (st := self.runs.get(run)) is not None:
             wf = parse(st.text, self._agents())[0]
             if wf is not None:
                 self.defs[run] = wf
+        return wf
+
+    def wire(self, run: str) -> dict:
+        st = self.runs[run]
+        wf = self.definition(run)
         tree = self._rows(st, wf) if wf else []
         return {
             "run": run,
