@@ -3052,6 +3052,34 @@ def test_a_rename_or_removal_carries_to_the_workflow_pool(settings_server, page)
     assert page.errors == []
 
 
+def test_a_renamed_agents_pool_row_edits_its_new_name(settings_server, page):
+    (settings_server.root / ".aegis.yaml").write_text(
+        SETTINGS_CONFIG + "workflows: {max_agents: {total: 4, opus: 2, bad.one: 1}}\n"
+    )
+    open_settings(page, settings_server.url)
+    page.wait_for_selector('#set-wf-pool [data-row="workflows.opus"]')
+    page.fill('.set-agent[data-row="agents.opus"] input[name=name]', "big")
+    # Straight into its pool row: the click ends the rename, and the row
+    # it lands on is renamed where it stands.
+    page.fill('#set-wf-pool [data-row="workflows.opus"] input', "3")
+    page.wait_for_selector('#set-wf-pool [data-row="workflows.big"]')
+    assert not page.query_selector('#set-wf-pool [data-row="workflows.opus"]')
+    big = '#set-wf-pool [data-row="workflows.big"] input'
+    assert page.eval_on_selector(big, "n => n.value") == "3"
+    # Typed a key at a time, a name passes through "big" on its way to
+    # "big2": the pool moves on the change, so big keeps its own number.
+    name = page.query_selector('.set-agent[data-row="agents.bad.one"] input[name=name]')
+    name.fill("")
+    name.type("big2")
+    page.keyboard.press("Tab")
+    page.wait_for_selector('#set-wf-pool [data-row="workflows.big2"]')
+    saved_ok(page)
+    text = (settings_server.root / ".aegis.yaml").read_text()
+    assert "big: 3" in text and "big2: 1" in text and "total: 4" in text
+    assert "opus: 2" not in text
+    assert page.errors == []
+
+
 def test_a_pool_entry_for_no_agent_is_shown_and_cleared(settings_server, page):
     (settings_server.root / ".aegis.yaml").write_text(
         SETTINGS_CONFIG + "workflows: {max_agents: {total: 4, ghost: 2}}\n"

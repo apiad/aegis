@@ -850,21 +850,37 @@ export class Settings {
         a[el.name] = el.name === "priming" ? el.value || null : el.value;
         if (el.name === "name") {
           card.dataset.row = `agents.${el.value}`;
-          // A rename carries to the default, the queues that run it and its
-          // place in the workflow pool.
+          // A rename carries to the default and the queues that run it; its
+          // place in the workflow pool moves once the name is changed.
           if (this.doc.default_agent === was) this.doc.default_agent = el.value;
           for (const q of this.doc.queues) if (q.agent === was) q.agent = el.value;
-          const m = this.doc.max_agents;
-          if (m && was && was in m) {
-            m[el.value] = m[was];
-            delete m[was];
-          }
           this.refreshNames();
         }
         if (el.name === "harness") model.options = this.modelOptions(el.value);
         this.touch();
       });
     }
+    // Moved on change, not on every key: a name typed through "total" or
+    // another agent's name on its way would take that number over. The row
+    // is renamed where it stands, so a click into it that ends the rename
+    // still lands; a refused move redraws the rows, the old name a stray.
+    let pooled = a.name;
+    name.addEventListener("change", () => {
+      const m = (this.doc.max_agents ||= {});
+      const to = name.value;
+      if (to === pooled) return;
+      const row = this.box.querySelector(`#set-wf-pool [data-row="${CSS.escape(`workflows.${pooled}`)}"]`);
+      if (row && to && to !== "total" && !(to in m)) {
+        if (pooled in m) {
+          m[to] = m[pooled];
+          delete m[pooled];
+        }
+        row.dataset.row = `workflows.${to}`;
+        row.querySelector(".set-name").textContent = to;
+        row.querySelector("input").setAttribute("aria-label", `Workflow node sessions of ${to} at once`);
+      } else this.box.querySelector("#set-wf-pool")?.replaceChildren(...this.poolRows());
+      pooled = to;
+    });
     const star = button(isDefault ? "default" : "make default", null, () => {
       this.doc.default_agent = a.name;
       this.touch();
@@ -957,18 +973,29 @@ export class Settings {
   // .aegis.yaml as it writes the rows above, and the saved workflows, whose
   // Import and Export act on their files at once (workflow_store.py).
   workflows() {
+    const file = h("input", { type: "file", id: "set-wf-import", accept: ".yaml,.yml", hidden: true });
+    file.addEventListener("change", () => file.files[0] && this.importWorkflow(file.files[0]).finally(() => (file.value = "")));
+    const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Workflows" }), button("Import…", "set-wf-import-btn", () => file.click()), file);
+    const note = h("p", { className: "set-none", textContent: "The pool bounds the node sessions every workflow on this server has open at once; blank is the default, 4 in all, and an agent left blank is bound by the total. Saved workflows are files in .aegis/workflows beside .aegis.yaml: Import and Export act on them at once, without Save changes." });
+    if (this.savedWf === undefined) this.loadSaved();
+    return h("section", { id: "set-workflows" }, head, note, h("div", { className: "set-queues", id: "set-wf-pool" }, ...this.poolRows()), h("div", { id: "set-wf-status" }), h("div", { id: "set-wf-list" }, ...this.savedRows()));
+  }
+
+  // A row per agent, keyed by its data-row, which an agent's rename moves.
+  poolRows() {
     this.doc.max_agents ||= {};
     const m = this.doc.max_agents;
     const limit = (key, label, placeholder) => {
       const input = h("input", { name: key, type: "number", min: 1, value: m[key] ?? "", className: "pick set-limit", placeholder });
       input.setAttribute("aria-label", label);
-      input.addEventListener("input", () => {
-        if (input.value === "") delete m[key];
-        else m[key] = Math.max(1, Math.round(Number(input.value)));
-        this.touch();
-      });
       const row = h("div", { className: "set-queue" });
       row.dataset.row = `workflows.${key}`;
+      input.addEventListener("input", () => {
+        const at = row.dataset.row.slice("workflows.".length); // renamed in place
+        if (input.value === "") delete m[at];
+        else m[at] = Math.max(1, Math.round(Number(input.value)));
+        this.touch();
+      });
       row.append(h("div", { className: "set-queue-line" }, h("span", { className: "set-name", textContent: key === "total" ? "all agents" : key }), h("span", { textContent: "at most" }), input, h("span", { textContent: "node sessions" })));
       return row;
     };
@@ -985,13 +1012,7 @@ export class Settings {
       }, "link danger")));
       return row;
     });
-    const pool = [limit("total", "Workflow node sessions at once, all agents", "4"), ...this.doc.agents.map((a) => limit(a.name, `Workflow node sessions of ${a.name} at once`, "total")), ...stray];
-    const file = h("input", { type: "file", id: "set-wf-import", accept: ".yaml,.yml", hidden: true });
-    file.addEventListener("change", () => file.files[0] && this.importWorkflow(file.files[0]).finally(() => (file.value = "")));
-    const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Workflows" }), button("Import…", "set-wf-import-btn", () => file.click()), file);
-    const note = h("p", { className: "set-none", textContent: "The pool bounds the node sessions every workflow on this server has open at once; blank is the default, 4 in all, and an agent left blank is bound by the total. Saved workflows are files in .aegis/workflows beside .aegis.yaml: Import and Export act on them at once, without Save changes." });
-    if (this.savedWf === undefined) this.loadSaved();
-    return h("section", { id: "set-workflows" }, head, note, h("div", { className: "set-queues", id: "set-wf-pool" }, ...pool), h("div", { id: "set-wf-status" }), h("div", { id: "set-wf-list" }, ...this.savedRows()));
+    return [limit("total", "Workflow node sessions at once, all agents", "4"), ...this.doc.agents.map((a) => limit(a.name, `Workflow node sessions of ${a.name} at once`, "total")), ...stray];
   }
 
   async loadSaved() {
