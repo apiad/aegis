@@ -1,4 +1,4 @@
-.PHONY: check lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-slow test-live test-browser bench coverage know-how site-css
+.PHONY: check lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-slow test-live canary test-browser bench coverage know-how site-css
 
 # Every gate, on the fast lane: the tests marked slow, the browser tests among
 # them, are `test-slow`'s. The tests run before typecheck so a type error cannot
@@ -79,6 +79,13 @@ bench:
 # names contain "live", such as anything with "deliver".
 test-live:
 	uv run pytest -q --run-live -m live
+
+# The latest stable release of every harness under this aegis, against a fake
+# model: no quota. Installs the releases into ~/.cache/aegis-canary. CI runs it
+# nightly (.github/workflows/canary.yml); know-how/canary.md says what to do
+# with what it finds.
+canary:
+	scripts/canary.sh
 
 coverage:
 	uv run pytest -n auto --cov=aegis --cov-report=html

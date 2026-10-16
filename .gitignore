@@ -183,3 +183,4 @@ pyrightconfig.json
 .superpowers/
 .aegis/
 .aegis-bench.json
+.canary/
