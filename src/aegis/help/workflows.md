@@ -503,7 +503,7 @@ root:
                 next: {type: string}
               required: [done]
           id: tick
-          say: "Do it: {{args.prompt}}."
+          say: "Do it: {{args.prompt}}"
           deadline: 2h
         - if:
             when: {expr: "not tick.done"}
