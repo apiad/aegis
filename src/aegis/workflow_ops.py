@@ -274,7 +274,7 @@ def register_workflow_ops(app: App) -> None:
         version, who saved it, and what is wrong with it if it does not lint."""
         return app.saved.listing(wf._agents())
 
-    @r.op("workflow.read", WorkflowId)
+    @r.op("workflow.read", WorkflowId, admin=True)
     async def workflow_read(p: WorkflowId, caller):
         """A saved workflow for Settings → Workflows: its file's text, to
         export, and its steps as the card draws them. A person's: an agent
