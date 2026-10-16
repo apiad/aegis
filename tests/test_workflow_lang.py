@@ -7,6 +7,7 @@ from aegis.workflow_lang import (
     RUNS,
     check_value,
     duration,
+    edit_errors,
     item_keys,
     parse,
     render,
@@ -1070,3 +1071,33 @@ root:
 """
     wf, errors = errs(text)
     assert errors == [] and wf.users["impl"] == ["a", "b"], errors
+
+
+LOOP = (
+    "id: l\ntitle: L\nsay: L.\nroot:\n  loop:\n    max: 2\n{extra}"
+    "    do: {{sh: 'true', say: Once.}}\n  id: lp\n  say: Loop.\n"
+)
+
+
+def test_at_max_is_done_or_fail_and_needs_until():
+    until = "    until: {expr: 'false'}\n"
+    wf, got = errs(LOOP.format(extra=until + "    at_max: done\n"))
+    assert got == [] and wf.root.body["at_max"] == "done"
+    wf, got = errs(LOOP.format(extra=until + "    at_max: fail\n"))
+    assert got == [] and "at_max" not in wf.root.body  # fail is the default
+    assert errs(LOOP.format(extra=until + "    at_max: stop\n"))[1] == [
+        "$.root.loop.at_max: at_max is done or fail: what the loop is when its "
+        "rounds run out before until passes"
+    ]
+    assert errs(LOOP.format(extra="    at_max: done\n"))[1] == [
+        "$.root.loop.at_max: at_max goes with until; a loop without until is "
+        "done after its last round already"
+    ]
+
+
+def test_a_started_loop_keeps_its_at_max():
+    until = "    until: {expr: 'false'}\n"
+    old, _ = errs(LOOP.format(extra=until))
+    new, _ = errs(LOOP.format(extra=until + "    at_max: done\n"))
+    errors = edit_errors(old, new, {old.root.key: "begun"})
+    assert [e.message for e in errors] == ["a started loop keeps its at_max"]

@@ -350,6 +350,20 @@ async def test_a_loop_that_runs_out_of_rounds_fails(world):
     assert st.nodes["never"].error == "until did not pass in 2 rounds"
 
 
+async def test_a_loop_with_at_max_done_ends_done_when_its_rounds_run_out(world):
+    st = await ended(
+        world,
+        await run(
+            world,
+            flow(
+                '{loop: {max: 2, until: {expr: "false"}, at_max: done, do: {wait: 1s, say: Pause.}}, id: spent, say: Two rounds.}',
+            ),
+        ),
+    )
+    assert st.status == "done" and st.nodes["spent"].round == 2
+    assert st.open == {}
+
+
 async def test_a_loop_without_until_runs_max_rounds(world):
     st = await ended(
         world,

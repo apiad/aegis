@@ -1269,7 +1269,8 @@ class Workflows:
     async def _repeat(self, st: RunState, wf: Workflow, node: Node, prefix: str) -> str:
         """Run do once per round, each round its own scope (``l.2.fix``);
         after each, ask until once and log it. Out of rounds with an until
-        that never passed fails; without until, max rounds is done."""
+        that never passed fails, unless at_max is done; without until, max
+        rounds is done."""
         inst = prefix + node.id
         n = st.nodes.get(inst)
         if n is not None and n.status == "failed":
@@ -1317,6 +1318,8 @@ class Workflows:
             if u["pass"]:
                 return "done"
             if k >= mx:
+                if node.body.get("at_max") == "done":
+                    return "done"  # the rounds the person allowed are spent
                 self._fail(st, inst, f"until did not pass in {mx} rounds", retry=False)
                 return "failed"
         elif k >= mx:
