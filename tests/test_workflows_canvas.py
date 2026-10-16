@@ -94,3 +94,46 @@ async def test_a_person_docks_a_finished_run(world):
         "layout.dock", {"log_id": a.log_id, "pane": f"wf-{run}", "where": "right"}
     )
     assert f"wf-{run}" in [p["id"] for p in panes(a.layout)]
+
+
+MANY = """id: many
+title: Many
+say: Forty quick commands.
+root:
+  map: {over: "{{args.xs}}", as: x, cap: 40, do: {sh: "true", id: t, say: "Run {{x}}."}}
+  id: m
+  say: All of them.
+args: {type: object, properties: {xs: {type: array}}, required: [xs]}
+"""
+
+
+async def test_a_large_map_builds_its_wire_a_few_times_not_per_record(
+    world, monkeypatch
+):
+    from .conftest import until
+
+    wf = world.app.workflows
+    built = []
+    real = wf.wire
+    monkeypatch.setattr(wf, "wire", lambda run: built.append(run) or real(run))
+    sent: list[dict] = []
+    publish = world.app.publish
+
+    def spy(channel, ops):
+        if channel == "workflows":
+            sent.extend(op["upsert"] for op in ops if "upsert" in op)
+        return publish(channel, ops)
+
+    monkeypatch.setattr(world.app, "publish", spy)
+    a = await world.spawn()
+    run = ok(
+        await turn(a, mcp("workflow_arm", definition=MANY, args={"xs": list(range(40))}))
+    )["run"]
+    await world.app.registry.call("workflow.approve", {"run": run})
+    await until(lambda: wf.runs[run].status == "done", timeout=20)
+    await until(lambda: not wf._dirty, timeout=2)  # the last flush went out
+    records = len((wf.dir / f"{run}.jsonl").read_text().splitlines())
+    assert records > 80
+    assert built.count(run) < records / 4, (built.count(run), records)
+    # The browser still gets the end: the last publish carries "done".
+    assert [w for w in sent if w["run"] == run][-1]["status"] == "done"
