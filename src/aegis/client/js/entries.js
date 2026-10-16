@@ -237,13 +237,33 @@ function fillApproval(card) {
     kv.append(el("dt", null, k), el("dd", k === "prompt" || k === "check" ? "pre" : null, v));
   }
   const kids = [bar, kv];
+  // The workflow the schedule fires, as it is now: its steps, who saved it,
+  // and what changed since the version a person approved (schedules.py).
+  const wf = s.workflow;
+  if (wf) {
+    const who = wf.saved_by ? `saved by ${wf.saved_by.by.handle || wf.saved_by.by.principal || "?"} ${hhmm(wf.saved_by.t)}` : null;
+    const runs = el("div", "aprun");
+    runs.append("runs ", el("b", null, wf.id));
+    const parts = wf.sha ? [wf.title, `v${wf.sha.slice(0, 8)}`, who] : ["deleted"];
+    runs.append(...parts.filter(Boolean).map((p) => ` · ${p}`));
+    if (wf.changed) runs.append(" · ", el("span", "apchanged", wf.sha ? "changed since you approved it" : "nothing to approve until the prompt names another"));
+    kids.push(runs);
+    if (wf.say) kids.push(el("div", "wflede", wf.say));
+    if (wf.changed && wf.diff?.length) kids.push(diffPanel({}, wf.diff, null));
+    else if (wf.steps?.length) {
+      const list = el("ul", "apsteps");
+      for (const say of wf.steps) list.append(el("li", null, say));
+      kids.push(list);
+    }
+  }
   if (waiting) {
     const go = el("button", "btn primary", "Unpause");
     go.type = "button";
     go.onclick = async () => {
       go.disabled = true;
       try {
-        await approvals.call("schedule.resume", { name: card.dataset.name });
+        // A workflow's version goes with it: the server pins what this card showed.
+        await approvals.call("schedule.resume", { name: card.dataset.name, ...(wf?.sha ? { workflow: wf.sha } : {}) });
       } catch (err) {
         go.disabled = false;
         go.title = String(err?.message || err);
@@ -568,6 +588,19 @@ export function fillWorkflow(card) {
       return;
     }
     kids.push(head);
+  }
+  // Who launched it, and the args the agent made of their words: a launched
+  // run is running when it is first drawn, so this is what the person reads
+  // instead of an Approve.
+  if (w.launch) {
+    const how = w.launch.by === "schedule" ? `Started by schedule ${w.launch.name}, run ${w.launch.run}` : `Started by your ${(w.launch.line || "/workflow").split(" ")[0]} line`;
+    kids.push(el("div", "wfwho", w.launch.by !== "schedule" && w.launch.typed ? `${how}: ${w.launch.typed}` : how));
+  }
+  const args = Object.entries(w.args || {});
+  if (args.length) {
+    const kv = el("dl", "apkv wfargs");
+    for (const [k, v] of args) kv.append(el("dt", null, k), el("dd", null, typeof v === "string" ? v : JSON.stringify(v)));
+    kids.push(kv);
   }
   kids.push(headLine(w), el("div", "wflede", w.say));
   const waits = w.status === "running" ? openLine(w) : null;

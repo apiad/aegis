@@ -2595,6 +2595,12 @@ installKeys(
       if (n === 0) go("#fleet");
       else if (tabbed()[n - 1]) go(hashOf(tabbed()[n - 1].key));
     },
+    workflow() {
+      if (route().view !== "session") return;
+      menu.setLine("/workflow ");
+      input.focus();
+      menu.openInline();
+    },
     commands() {
       if (route().view !== "session") return;
       const v = input.value;
@@ -2949,12 +2955,14 @@ async function closeSession(s) {
 async function sendLine(text, fromComposer, attachments = [], target = focused()) {
   const s = target;
   if ((!text && !attachments.length) || !s) return;
-  if (text === "/help") {
-    // The menu is the help: it lists every command with what it does.
-    if (fromComposer) menu.setLine("/");
+  if (text === "/help" || text === "/workflow") {
+    // The menu is the help: it lists every command with what it does. And
+    // /workflow alone lists the saved workflows, which complete its id.
+    const at = text === "/help" ? "/" : "/workflow ";
+    if (fromComposer) menu.setLine(at);
     menu.close();
     if (fromComposer) menu.openInline();
-    else menu.openOverlay();
+    else menu.openOverlay(at);
     return;
   }
   // /help with words opens the Help tab searched for them (help.js).

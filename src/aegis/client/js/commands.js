@@ -61,6 +61,8 @@ export function complete(line, catalog, meta) {
     choices = catalog.models.map((m) => ({ v: m.value, doc: `${m.label}. ${m.doc}`, source: m.efforts.length ? "effort" : "" }));
   if (cmd.args === "permissions") choices = catalog.permissions.map((p) => ({ v: p, doc: "", source: "" }));
   if (cmd.args === "tutorials") choices = (catalog.tutorials || []).map((t) => ({ v: t.id, doc: t.title, source: "" }));
+  if (cmd.args === "workflows")
+    choices = (catalog.workflows || []).map((w) => ({ v: w.id, doc: w.title, source: w.source === "builtin" ? "built in" : "" }));
   if (cmd.args === "efforts") {
     const m = catalog.models.find((x) => meta && (x.value === meta.model || x.resolved === meta.model)) || null;
     choices = (m ? m.efforts : ["low", "medium", "high", "xhigh", "max"]).map((e) => ({ v: e, doc: "", source: "" }));

@@ -2,6 +2,7 @@
 the prompt folded under each node's sentence, and the run to its end."""
 
 import json
+import re
 
 import pytest
 
@@ -670,4 +671,68 @@ def test_a_steps_see_chip_opens_its_part_of_the_plan(server, page, tmp_path):  #
     page.wait_for_selector(f"{chip} >> text=see docs/plan.html#slice-1")
     page.click(chip)
     page.wait_for_selector('#viewer iframe[src$="#slice-1"]')
+    assert not page.errors
+
+
+def test_the_workflow_menu_lists_saved_ones_and_loop(server, page):  # noqa: F811
+    from .test_workflow_store import NAP
+
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_save " + json.dumps({"definition": NAP}))
+    page.click("#input")
+    page.keyboard.type("/workflow ")
+    page.wait_for_selector("#cmd-menu .cmd-row >> text=Nap")
+    page.wait_for_selector(
+        "#cmd-menu .cmd-row >> text=Repeat a prompt until it says done"
+    )
+    page.wait_for_selector("#cmd-menu .cmd-row .src >> text=built in")
+    page.keyboard.press("Escape")
+    # /workflow alone opens the same menu; nothing reaches the agent.
+    send(page, "/workflow")
+    page.wait_for_selector("#cmd-menu:not([hidden]) .cmd-row >> text=Nap")
+    assert page.input_value("#input") == "/workflow "
+    page.keyboard.press("Escape")
+    page.fill("#input", "")
+    # So does the palette's "Run a saved workflow".
+    page.keyboard.press("Control+k")
+    page.wait_for_selector("#palette", state="visible")
+    page.keyboard.type("run a saved workflow")
+    page.keyboard.press("Enter")
+    page.wait_for_selector("#cmd-menu:not([hidden]) .cmd-row >> text=Nap")
+    assert page.input_value("#input") == "/workflow "
+    assert not page.errors
+
+
+def launch_token(pg) -> str:
+    """The token of the launch turn the session's agent was handed."""
+    pg.wait_for_function(
+        "document.querySelector('#entries').textContent.includes('token=\"')"
+    )
+    text = pg.evaluate("document.querySelector('#entries').textContent")
+    return re.search(r'token="([^"]+)"', text).group(1)
+
+
+def test_a_launched_card_says_who_started_it_and_has_no_approve(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    send(page, "/loop check the deploy every 1h")
+    tok = launch_token(page)
+    args = {"prompt": "check the deploy", "every": "1h"}
+    send(
+        page,
+        "/mcp workflow_arm " + json.dumps({"id": "loop", "token": tok, "args": args}),
+    )
+    card = ".wfcard[data-status=running]"
+    page.wait_for_selector(
+        f"{card} .wfwho >> text=Started by your /loop line: check the deploy every 1h"
+    )
+    kv = page.inner_text(f"{card} .wfargs")
+    assert "every" in kv and "1h" in kv and "max" in kv and "20" in kv
+    page.wait_for_selector(f"{card} .wfrow >> text=round 1 of 20")
+    assert page.locator(f"{card} button >> text=Approve and run").count() == 0
+    page.set_viewport_size({"width": 390, "height": 800})
+    page.wait_for_selector(f"{card} .wfargs")
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
     assert not page.errors

@@ -814,7 +814,11 @@ class Schedules:
         wf = parse(cur.text, agents)[0]
         out |= {"sha": cur.sha, "changed": cur.sha != pinned}
         if wf is not None:
-            out |= {"title": wf.title, "steps": [r["say"] for r in workflow_rows(wf)]}
+            out |= {
+                "title": wf.title,
+                "say": wf.say,
+                "steps": [r["say"] for r in workflow_rows(wf)],
+            }
         if last := store.last_save(wid):
             out["saved_by"] = {"by": last["by"], "t": last["t"]}
         old = store.text_of(wid, pinned) if out["changed"] else None
