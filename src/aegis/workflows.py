@@ -1142,11 +1142,18 @@ class Workflows:
         self._log(run, {"ev": "approved"})
         self.changed()
 
-    def reject(self, run: str) -> None:
+    async def reject(self, run: str) -> None:
         st = self._get(run)
         if st.status != "armed":
             raise OpError("not_armed", f"{run} is {st.status}")
         self._log(run, {"ev": "rejected"})
+        # Otherwise the main agent waits on a run that will never start.
+        await self._tell_owner(
+            st,
+            "rejected",
+            f"The person rejected {run} on its card, so nothing ran. Ask them "
+            "what to change, then arm a new version with workflow_arm.",
+        )
 
     async def stop_run(self, run: str) -> None:
         async with self._lock:

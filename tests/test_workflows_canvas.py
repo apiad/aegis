@@ -4,6 +4,7 @@ layout exactly as a page or a file does (spec §07)."""
 import pytest
 
 from .test_agents import CONFIG, World, mcp, turn
+from .test_workflow_ops import rejected
 from .test_workflows_e2e import RESULT, flow, ok
 
 
@@ -310,6 +311,8 @@ async def test_a_wire_that_always_raises_is_logged_once_and_not_retried_alone(
 
 
 async def test_an_ended_runs_pane_keeps_its_title_after_a_boot(world):
+    from .conftest import until
+
     a = await world.spawn()
     run = ok(
         await turn(
@@ -320,6 +323,8 @@ async def test_an_ended_runs_pane_keeps_its_title_after_a_boot(world):
     await world.app.registry.call("workflow.reject", {"run": run})
     wf = world.app.workflows
     assert wf.runs[run].status not in ("armed", "running")
+    # The rejection wakes the session; its answer must not read as the next.
+    await until(lambda: rejected(a) and a.status == "idle", timeout=10)
     wf.defs.pop(run, None)  # as boot leaves an ended run: not parsed yet
     lay = ok(await turn(a, mcp("layout_read")))
     (p,) = [p for p in panes(lay) if p.get("kind") == "workflow"]

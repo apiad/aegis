@@ -1,5 +1,6 @@
 import pytest
 
+from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
 from .test_workflows_e2e import RESULT, flow, ok
 
@@ -53,7 +54,28 @@ async def test_a_person_rejects_and_the_session_can_arm_again(world):
     )["run"]
     await world.app.registry.call("workflow.reject", {"run": run})
     assert world.app.workflows.runs[run].status == "rejected"
+    # The rejection wakes the session; its answer must not read as the next.
+    await until(lambda: rejected(a) and a.status == "idle", timeout=10)
     ok(await turn(a, mcp("workflow_arm", definition=flow(RESULT, RESULT), args={})))
+
+
+def rejected(s) -> list[str]:
+    return [
+        e["md"]
+        for e in s.entries()
+        if e["kind"] == "inbox" and "· rejected ·" in (e.get("md") or "")
+    ]
+
+
+async def test_a_rejected_plan_tells_the_main_agent(world):
+    a = await world.spawn()
+    run = ok(
+        await turn(a, mcp("workflow_arm", definition=flow(RESULT, RESULT), args={}))
+    )["run"]
+    await world.app.registry.call("workflow.reject", {"run": run})
+    await until(lambda: rejected(a), timeout=5)
+    (md,) = rejected(a)
+    assert "> from workflow:" in md and run in md and "workflow_arm" in md
 
 
 async def test_status_returns_the_tree(world):

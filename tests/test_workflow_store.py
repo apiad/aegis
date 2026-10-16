@@ -9,7 +9,9 @@ from aegis.ops import OpError
 from aegis.workflow_lang import parse
 from aegis.workflow_store import BUILTIN, Store, check_named, sha_of
 
+from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
+from .test_workflow_ops import rejected
 from .test_workflows_e2e import ok
 
 AGENTS = {"opus", "sonnet"}
@@ -116,6 +118,8 @@ async def test_an_agent_saves_lists_arms_and_deletes(world):
     assert run["status"] == "armed"  # saved, not launched: a person approves it
     assert st.saved == {"id": "nap", "sha": saved["sha"], "source": "project"}
     await world.app.registry.call("workflow.reject", {"run": run["run"]})
+    # The rejection wakes the session; its answer must not read as the next.
+    await until(lambda: rejected(main) and main.status == "idle", timeout=10)
     assert ok(await turn(main, mcp("workflow_delete", id="nap"))) == {"deleted": "nap"}
 
 
