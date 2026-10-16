@@ -1274,9 +1274,10 @@ class _Parser:
             elif k == "required" and not all(isinstance(x, str) for x in v):
                 self.err(f"{path}.required", "required is a list of property names")
                 out[k] = []
-            elif k == "required" and isinstance(s.get("properties"), dict):
+            elif k == "required" and isinstance(s.get("properties", {}), dict):
+                # With no properties, every name it requires is missing.
                 for x in v:
-                    if x not in s["properties"]:
+                    if x not in s.get("properties", {}):
                         self.err(
                             f"{path}.required", f"{x} is not one of its properties"
                         )

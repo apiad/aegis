@@ -1317,3 +1317,6 @@ def test_required_names_only_properties_there_are():
     assert lint_args(
         "{type: object, properties: {a: {type: string}}, required: [a, b]}"
     ) == ["$.args.required: b is not one of its properties"]
+    assert lint_args("{type: object, required: [a]}") == [
+        "$.args.required: a is not one of its properties"
+    ]
