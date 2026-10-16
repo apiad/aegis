@@ -497,7 +497,7 @@ Order the messages as the test expects (the extra keys of an object after its pr
 </div>
 </details>
 
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="num">3</span><span><span class="ttl">with_ids: write a workflow's generated ids into its YAML</span><span class="files">workflow_lang.py · tests/test_workflow_lang.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1916,6 +1916,7 @@ Use the real fixture and helper names of those modules (<code>open_session</code
 <ul>
   <li>Task 1: the test loop carries <code>id: lp</code>, since <code>edit_errors</code> refuses any change to a started node with a generated id before it reaches the group rules; and its third argument marks the loop <code>begun</code>, the word slice 4's tests use for a group. The edit lint's word map needed no new case: a fixed field other than <code>probe</code> is named by its own key.</li>
   <li>Task 2: the closed check's messages follow the code, and the test was changed to it: an object's properties are checked first, nested ones included, so <code>$.args.opts.x</code> comes before <code>$.args.shell</code>.</li>
+  <li>Task 3: <code>with_ids</code> also writes a block root's generated id at the <code>ref</code> that uses it (a ref may carry <code>id</code>). Written ids no longer advance the numbering, so the plan's version renumbered the ref (<code>n4</code> became <code>n3</code>) and its own key-set assertion failed; task 4's fallback would have kept every workflow with a ref unwritten. Steps nested inside a block still keep generated ids, and a block with unnamed inner steps may still renumber, which task 4's key check catches by keeping the text as given. The round trip keeps the file's own style: the mapping and sequence indents are guessed from the text, quotes are preserved, and lines are not rewrapped, so the diff is the id lines alone.</li>
 </ul>
 </main>
 <script>

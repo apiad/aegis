@@ -14,7 +14,9 @@ from aegis.workflow_lang import (
     rows,
     template_key,
     value_of,
+    walk,
     with_defaults,
+    with_ids,
 )
 
 AGENTS = {"opus", "sonnet"}
@@ -1132,3 +1134,48 @@ def test_a_closed_check_refuses_a_key_the_schema_does_not_name_at_any_depth():
         "$.args.opts.x: not in the schema",
         "$.args.shell: not in the schema",
     ]
+
+
+SAVED = """\
+id: rel
+title: Release
+say: Release it.
+root:
+  seq:
+    # build first
+    - sh: make build
+      say: Build it.
+    - map: {over: "{{args.xs}}", as: x, do: {sh: "echo {{x}}", say: Echo it.}}
+      id: each
+      say: Each one.
+    - ref: land
+      say: Land it.
+  say: All of it.
+args: {type: object, properties: {xs: {type: array}}}
+blocks:
+  land:
+    sh: "true"
+    say: Land.
+"""
+
+
+def test_with_ids_writes_the_generated_ids_and_keeps_the_rest():
+    wf, got = errs(SAVED)
+    assert got == []
+    text = with_ids(SAVED, wf)
+    again, got = errs(text)
+    assert got == []
+    assert {n.key for n in walk(again.root)} == {n.key for n in walk(wf.root)}
+    assert "# build first" in text  # comments survive the round trip
+    assert not [n for n in walk(again.root) if n.generated and n.path.startswith("$.root")]
+    assert "    - sh: make build\n      id: n2\n      say: Build it.\n" in text
+    assert 'do: {sh: "echo {{x}}", id: n3, say: Echo it.}}' in text  # quotes kept
+    # A block's root takes its id where it is used, where its number held.
+    assert "    - ref: land\n      id: n4\n" in text
+    assert "say: Land.\n" in text and "id:" not in text.split("blocks:")[1]
+
+
+def test_with_ids_leaves_a_workflow_with_every_id_alone():
+    text = "id: a\ntitle: A\nsay: A.\nroot:\n  wait: 1s\n  id: w\n  say: W.\n"
+    wf, _ = errs(text)
+    assert with_ids(text, wf) == text
