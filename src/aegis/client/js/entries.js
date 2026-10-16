@@ -197,7 +197,8 @@ export function fileActions(remote) {
 }
 
 // What a card's Open does: app.js hands it the viewer (js/viewer.js), which
-// takes {files, at, remote, glyph} for a set of files or {artifact} for a page.
+// takes {files, at, remote, glyph} for a set of files, {artifact} for a page
+// or {workflow} for a run's card.
 let opener = () => {};
 export function setOpener(fn) {
   opener = fn;
@@ -279,8 +280,8 @@ export function tickWorkflows() {
   for (const c of document.querySelectorAll(".wfcard")) {
     const w = workflows.get(c.dataset.run);
     if (!w || w.status !== "running") continue;
-    const pane = c.closest(`.pane[data-pane="wf-${w.run}"]`);
-    const fs = (pane?.querySelector(".pbar") || c).querySelector(".fs");
+    const host = hostOf(c, `wf-${w.run}`);
+    const fs = (host?.querySelector(".pbar, .vbar") || c).querySelector(".fs");
     if (fs) fs.textContent = workflowStatus(w);
     for (const r of w.tree) {
       if (r.state !== "running") continue;
@@ -387,10 +388,15 @@ export function workflowStatus(w) {
   return w.status === "running" ? `running ${since(w.started)}` : WF_WORDS[w.status] || w.status;
 }
 
+// Where a card is drawn: a canvas pane, the viewer, or the transcript (null).
+function hostOf(card, id) {
+  return card.closest(`.pane[data-pane="${id}"]`) || card.closest("#viewer");
+}
+
 export function fillWorkflow(card) {
   const w = workflows.get(card.dataset.run);
   const id = `wf-${card.dataset.run}`;
-  const pane = card.closest(`.pane[data-pane="${id}"]`); // docked, or in the transcript
+  const host = hostOf(card, id);
   if (!w) {
     card.replaceChildren(el("div", "fbar", "workflow not found"));
     return;
@@ -398,7 +404,7 @@ export function fillWorkflow(card) {
   card.dataset.status = w.status;
   card.dataset.held = docked(id);
   const title = [entryIcon("pip"), el("span", "fn", w.title), el("span", "fs", workflowStatus(w))];
-  if (w.status === "replaced" && !pane) {
+  if (w.status === "replaced" && !host) {
     // Armed again before approval: the newer card under a later call is the one.
     const v = workflows.get(w.replaced_by)?.version || w.version + 1;
     const head = el("div", "fbar");
@@ -407,14 +413,18 @@ export function fillWorkflow(card) {
     return;
   }
   const kids = [];
-  if (pane) {
-    // A pane's bar is the canvas's (canvas.js draw): the title goes before
-    // its buttons, and the card has no bar of its own.
-    const bar = pane.querySelector(".pbar");
+  if (host) {
+    // A pane's bar is the canvas's (canvas.js draw), and the viewer's is the
+    // viewer's: the title goes before their buttons, and the card has no bar
+    // of its own.
+    const bar = host.querySelector(".pbar, .vbar");
     bar?.replaceChildren(...title, ...[...(bar?.querySelectorAll(".acts") || [])]);
   } else {
     const head = el("div", "fbar");
-    head.append(...title, dockButton(id));
+    const view = iconButton(el("button", "btn primary view"), "expand", "Open");
+    view.type = "button";
+    view.addEventListener("click", () => opener({ workflow: card.dataset.run }));
+    head.append(...title, view, dockButton(id));
     const at = docker.docked(id);
     if (at) {
       card.replaceChildren(head, heldLine(id, at === true ? DOCKED : inWindow(at)));

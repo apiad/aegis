@@ -140,9 +140,16 @@ const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(i
 // and a pane at once. An older version of a docked file opens in the viewer:
 // the pane shows the newest.
 // One in another browser window focuses or opens that window's tab.
-setOpener((item) => {
+// The pane id of what the viewer shows: a page's, a run's card's, or the
+// shown file's when it is the newest of its key.
+const itemId = (item) => {
+  if (item.artifact) return item.artifact;
+  if (item.workflow) return `wf-${item.workflow}`;
   const f = item.files?.[item.at];
-  const id = item.artifact || (f && !f.replaced ? f.key : null);
+  return f && !f.replaced ? f.key : null;
+};
+setOpener((item) => {
+  const id = itemId(item);
   const away = id && canvas.elsewhere(id);
   if (away) openWindow(shown, away);
   else if (!(id && canvas.flash(id))) viewer.open(item);
@@ -175,7 +182,7 @@ const canvas = new Canvas($("canvas"), {
 // The viewer lets go of what it docks or pops out.
 function leaveViewer(id) {
   const item = viewer.isOpen ? viewer.items.get(viewer.key) : null;
-  if (item && (item.artifact || item.files[item.at].key) === id) viewer.close();
+  if (item && (item.workflow ? `wf-${item.workflow}` : item.artifact || item.files[item.at].key) === id) viewer.close();
 }
 setDocker({
   dock: (id) => {
