@@ -1434,6 +1434,15 @@ Run <code>make bench</code> for the PR body.</li>
   <li>#433: the ? overlay test timed out waiting for the overlay to close after Every key. Help's <code>show()</code> focused its search box once <code>help.pages</code> answered, so under load a click made before that lost its focus and the ? was typed into the search. The client focuses the box only when the focus has not moved since <code>show()</code> began; a test holds <code>help.pages</code> on the socket to reproduce it.</li>
   <li><code>test_a_stop_during_the_last_close_is_the_runs_one_ending</code> is marked slow.</li>
 </ul>
+<h3 id="review-fixes-2">Slice 7 round-2 fixes</h3>
+<ul>
+  <li>Arming again after a reject: the run folds <code>approved</code>, the text and version of the last approval (an <code>approved</code> record, or an applied edit). <code>_arm_again</code> diffs, versions and edit-checks against it, so arming the rejected text again shows its diff and commands again, and arming the approved text shows none. Runs logged before this fall back to their current text.</li>
+  <li>Probe answers inside a group: a seq's or par's steps carry no prefix of the group, so <code>_forget_probes</code> now also drops answers whose instance sits under the same map prefix with a template key in the node's subtree, as <code>_under</code> matches them, and so covers answers whose instance was never logged.</li>
+  <li>A <code>type</code> that is not a string is a lint error, "type names one type, one of …", instead of a crash on an unhashable lookup that emptied the store listing.</li>
+  <li><code>required</code> with no <code>properties</code> is refused: each name reads "is not one of its properties".</li>
+  <li>Settings pool: the entry moves on the name's <code>change</code>, never over <code>total</code> or a name already in the pool. Redrawing the rows on that change replaced the input a click into the pool row was focusing (the click ends the rename), and the typed number went astray, so the agent's row is renamed in place and the rows redraw only when the move is refused (the old name then shows as a stray). A row's input reads its key from its <code>data-row</code>.</li>
+  <li>Help focus: the box takes the focus when it has not moved or fell to the body (the composer hid on <code>/help</code>, or the <code>#help</code> route). The #433 test, the three new open paths and the palette tests passed 20 repeats under <code>-n 4</code> (120 passed).</li>
+</ul>
 </main>
 <script>
 // The try-it cards, with sample data.
