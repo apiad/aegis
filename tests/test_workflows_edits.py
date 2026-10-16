@@ -317,7 +317,7 @@ async def test_a_change_is_not_rejected_once_the_run_ended(world):
         with pytest.raises(OpError) as e:
             await world.app.registry.call(op, {"run": run, "v": out["proposed"]})
         assert e.value.code == "not_proposed", op
-    assert wf.runs[run].edits[-1]["status"] == "proposed"
+    assert wf.runs[run].edits[-1]["status"] == "dropped"  # not "rejected"
 
 
 async def test_arming_again_gives_a_step_its_retries_back(world):
@@ -344,3 +344,33 @@ async def test_arming_again_gives_a_step_its_retries_back(world):
     await world.app.registry.call("workflow.approve", {"run": run})
     await until(lambda: "bad" in wf.runs[run].open, timeout=10)
     assert retrying() == ["Fail. Failed: exit 3 Retrying, attempt 2 of 2."] * 2
+
+
+async def test_a_change_proposed_before_a_stop_is_dropped(world):
+    waits = (
+        "id: ed\ntitle: Edit\nsay: Edit.\nroot:\n  seq:\n"
+        "    - {wait: 30s, id: build, say: Build.}\n"
+        "  say: One.\n"
+    )
+    main, run = await armed(world, definition=waits)
+    wf = world.app.workflows
+    me = Caller("agent", main.log_id)
+    await until(lambda: "build" in wf.runs[run].nodes, timeout=10)
+    more = waits.replace(
+        "  say: One.\n", "    - {wait: 1s, id: more, say: More.}\n  say: One.\n"
+    )
+    out = await world.app.registry.call(
+        "workflow.edit", {"run": run, "definition": more}, me
+    )
+    await world.app.registry.call("workflow.stop", {"run": run}, me)
+    await until(lambda: wf.runs[run].status == "stopped", timeout=10)
+    assert wf.wire(run)["edits"][-1]["status"] == "dropped"
+    await world.app.registry.call("workflow.arm", {"run": run, "args": {}}, me)
+    await world.app.registry.call("workflow.approve", {"run": run})
+    w = wf.wire(run)
+    assert w["status"] == "running" and w["proposal"] is None
+    assert w["edits"][-1]["status"] == "dropped"  # no live buttons come back
+    with pytest.raises(OpError):
+        await world.app.registry.call(
+            "workflow.edit.apply", {"run": run, "v": out["proposed"]}
+        )
