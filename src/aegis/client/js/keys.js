@@ -45,6 +45,7 @@ export const ACTIONS = [
     keys: [on("global", "Alt+.", alt("Period")), on("session", "i  /", key("i", "/"))],
   },
   { id: "commands", title: "Commands for this session", when: ["session"], keys: [on("global", "Alt+/", alt("Slash"))] },
+  { id: "workflow", title: "Run a saved workflow", when: ["session"], keys: [] },
   {
     id: "browse",
     title: "Focus the transcript, or the Fleet cards",

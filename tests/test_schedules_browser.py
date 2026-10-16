@@ -287,3 +287,46 @@ def test_the_card_waits_when_the_session_was_open_before_the_call(server, page):
         ".apcard[data-name=watched-tests][data-state=waiting]", timeout=3000
     )
     assert not page.errors
+
+
+def test_an_agents_workflow_schedule_card_lists_the_steps_and_pins_on_unpause(
+    server,
+    page,  # noqa: F811
+):
+    from aegis.workflow_store import sha_of
+
+    from .test_workflow_store import NAP
+    from .test_workflows_browser import send
+
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_save " + json.dumps({"definition": NAP}))
+    spec = {
+        "name": "agent-nap",
+        "clock": {"every": "1h"},
+        "fire": {"agent": "opus"},
+        "prompt": "/workflow nap a second",
+    }
+    send(page, "/mcp schedule_create " + json.dumps(spec))
+    card = ".apcard[data-name=agent-nap]"
+    page.wait_for_selector(f"{card}[data-state=waiting] >> text=Nap a while.")
+    page.wait_for_selector(f"{card} .apsteps >> text=Wait {{{{args.secs}}}}.")
+    page.wait_for_selector(f"{card} .aprun >> text=saved by")
+    page.click(f"{card} button >> text=Unpause")
+    page.wait_for_selector(f"{card}[data-state=running]")
+    saved = server.root / ".aegis" / "workflows" / "nap.yaml"
+    assert stored(server, "agent-nap")["pin"]["sha"] == sha_of(saved.read_text())
+    # The agent changes the workflow: the card asks again, with the diff.
+    longer = NAP.replace("Nap a while.", "Nap longer.")
+    send(page, "/mcp workflow_save " + json.dumps({"definition": longer}))
+    page.wait_for_selector(f"{card}[data-state=waiting] .apchanged")
+    page.wait_for_selector(f"{card} .edit .d.change")
+    page.set_viewport_size({"width": 390, "height": 800})
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+    page.click(f"{card} button >> text=Unpause")
+    page.wait_for_selector(f"{card}[data-state=running]")
+    deadline = time.monotonic() + 5
+    while stored(server, "agent-nap")["pin"]["sha"] != sha_of(saved.read_text()):
+        assert time.monotonic() < deadline, "the pin never moved to the new version"
+        time.sleep(0.1)
+    assert not page.errors

@@ -252,10 +252,10 @@ export class Schedules {
     this.loadRuns();
   }
 
-  async act(op, name) {
+  async act(op, name, extra = {}) {
     this.err = "";
     try {
-      await this.conn.call(op, { name });
+      await this.conn.call(op, { name, ...extra });
     } catch (e) {
       this.err = e.message;
       this.draw();
@@ -306,7 +306,11 @@ export class Schedules {
     if (s.paused) tag = el("span", "chip e", s.paused.by === "errors" ? "paused · errors" : "paused");
     else if (s.finished_at) tag = el("span", "chip", "finished");
     else tag = el("span", "chip", s.live.length ? "running" : short(s.next));
-    nm.append(el("span", `dot s-${state}`), el("span", "n", s.name), el("span", "sp"), tag);
+    nm.append(el("span", `dot s-${state}`), el("span", "n", s.name), el("span", "sp"));
+    // A schedule that fires a saved workflow names it, and says when it
+    // changed since a person approved it (its Resume then sends the version).
+    if (s.workflow) nm.append(el("span", "chip", `workflow ${s.workflow.id}${s.workflow.changed ? " · changed" : ""}`));
+    nm.append(tag);
     const fire = s.fire.target === "existing" ? "existing session" : s.fire.agent || "default agent";
     const m = el("div", "m", [clockText(s.clock), s.check ? "bash" : null, fire, this.owner(s)].filter(Boolean).join(" · "));
     r.append(nm, m);
@@ -334,7 +338,9 @@ export class Schedules {
       el("h3", null, s.name),
       el("span", "chip", this.owner(s)),
       el("span", "sp"),
-      button(s.paused ? "Resume" : "Pause", () => this.act(s.paused ? "schedule.resume" : "schedule.pause", s.name)),
+      button(s.paused ? "Resume" : "Pause", () =>
+        s.paused ? this.act("schedule.resume", s.name, s.workflow?.sha ? { workflow: s.workflow.sha } : {}) : this.act("schedule.pause", s.name),
+      ),
       button("Fire now", () => this.act("schedule.fire", s.name)),
       button("Edit", () => {
         this.form = fromSchedule(s, this.agents);
