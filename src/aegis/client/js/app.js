@@ -36,6 +36,7 @@ import { Dictation } from "./dictation.js";
 import { Attachments } from "./attach.js";
 import { dur, planTimes } from "./plantime.js";
 import { setToastOpener, toast } from "./toast.js";
+import { SelectionMenu } from "./selection.js";
 import { closeTerm, drawCard, openTerm } from "./termview.js";
 import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
 import { closeInstallDialog, startInstall } from "./install.js";
@@ -3155,6 +3156,27 @@ const menu = new CommandMenu({
     input.focus();
   },
   meta: () => focused(),
+});
+
+function addSelectionToComposer(text, prefix = "") {
+  const addition = `${prefix}${text}`;
+  const draft = input.value.trimEnd();
+  input.value = draft ? `${draft}\n\n${addition}` : addition;
+  autosize();
+  if (shown) localStorage.setItem(`aegis.draft.${shown}`, input.value);
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
+new SelectionMenu($("selection-menu"), {
+  root: $("entries"),
+  scroller: $("tr"),
+  onAction: (action, text) => {
+    menu.close();
+    if (action === "details") addSelectionToComposer(text, "Tell me more about this:\n\n");
+    else if (action === "btw") addSelectionToComposer(text, "/btw Tell me more about this:\n\n");
+    else addSelectionToComposer(text);
+  },
 });
 
 for (const [id, cmd] of [

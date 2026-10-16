@@ -50,6 +50,18 @@ Each code block and each table has a copy button, shown when you hover it or
 select its row. A table pastes as Markdown into a chat and as cells into a
 spreadsheet. The c key copies the selected reply's Markdown.
 
+## Selecting reply text
+
+Select text inside an agent's reply to open a small action menu beside it:
+
+- **Add to chat** puts the selected text at the end of the composer.
+- **More details** prepares a prompt asking the agent to explain the selection.
+- **Ask in side chat** prepares the same question with `/btw`, so the answer
+  stays out of the main transcript.
+
+The actions fill the composer and never send by themselves. The menu closes if
+you scroll the transcript or click somewhere else.
+
 ## Files and the viewer
 
 A file an agent sends with `file_send`, and a page it sends with
