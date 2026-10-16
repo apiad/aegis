@@ -1022,6 +1022,7 @@ class Workflows:
             rec |= {"diff": d["diff"], "commands": d["commands"]}
         self._log(run, rec)
         self.defs[run] = wf
+        self._forget_probes(run)
         owner.record_card(
             {
                 "kind": "workflow_decision",
@@ -1632,6 +1633,7 @@ class Workflows:
         instance it bounds. An sh running with no task in this process
         was cut by a restart first: it fails as cut, never retried, since a
         retry would run it again (spec §05)."""
+        self._forget_probes(st.run, inst)
         wf = self.defs[st.run]
         for k, n in self._under(st, node, inst):
             if (
@@ -2013,6 +2015,16 @@ class Workflows:
             head = f"exit {code}" if code is not None else "bash did not start"
             self._fail(st, inst, head + (f": {why}" if why else ""))
         self.changed()
+
+    def _forget_probes(self, run: str, inst: str = "") -> None:
+        """Drop the probe answers kept for an instance and those inside it,
+        or for the whole run: an attempt that failed, passed its deadline
+        or was armed again asks its probes anew."""
+        for k in list(self._probed):
+            if k[0] == run and (
+                not inst or k[1] == inst or k[1].startswith(inst + ".")
+            ):
+                del self._probed[k]
 
     def _drop(self, key: tuple[str, str]) -> None:
         """Forget an ending task, unless a retry has already put the next
@@ -2842,6 +2854,7 @@ class Workflows:
             | ({"say": say} if say else {})
             | ({"by": by} if by else {})
         )
+        self._forget_probes(st.run, node)
         wf = self.defs.get(st.run)
         tpl = wf.by_key.get(template_key(node)) if wf else None
         cur = st.nodes.get(node) or NodeState()
