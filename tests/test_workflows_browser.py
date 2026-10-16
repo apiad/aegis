@@ -535,3 +535,76 @@ def test_the_header_counts_an_open_question(server, page):  # noqa: F811
     page.click(f"{card} button >> text=Approve and run")
     page.wait_for_selector(f"{card} .wfhead >> text=0 of 2 done · 1 question")
     assert not page.errors
+
+
+EIGHT = """id: eight
+title: Eight
+say: Eight commands, one of them failing.
+root:
+  map: {over: "{{args.xs}}", as: x, cap: 8, do: {sh: "test {{x}} != c", id: t, say: "Check {{x}}."}}
+  id: m
+  say: All eight.
+args: {type: object, properties: {xs: {type: array}}, required: [xs]}
+"""
+
+
+def items_shown(pg, card: str, under: str) -> int:
+    return pg.locator(f"{card} .wfrow[data-node^='{under}']").count()
+
+
+def test_a_map_of_more_than_six_items_folds_but_shows_its_failure(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    arm = {"definition": EIGHT, "args": {"xs": list("abcdefgh")}}
+    spawn(page, "/mcp workflow_arm " + json.dumps(arm))
+    card = "#entries .wfcard"
+    page.click(f"{card} button >> text=Approve and run")
+    page.wait_for_selector(
+        f'{card} .wfrow[data-node="m.2.t"][data-state=failed]', timeout=20000
+    )
+    page.wait_for_selector(f"{card} .wfrow[data-node=m] >> text=7 done")
+    # Folded: the failed item shows, the seven done ones do not.
+    assert items_shown(page, card, "m.") == 1
+    page.click(f"{card} .wfrow[data-node=m] .fold >> text=show all 8")
+    assert items_shown(page, card, "m.") == 8
+    page.click(f"{card} .wfrow[data-node=m] .fold >> text=fold")
+    assert items_shown(page, card, "m.") == 1
+    assert not page.errors
+
+
+def test_a_map_of_six_items_stays_open(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    arm = {"definition": EIGHT, "args": {"xs": list("abdefg")}}
+    spawn(page, "/mcp workflow_arm " + json.dumps(arm))
+    card = "#entries .wfcard"
+    page.click(f"{card} button >> text=Approve and run")
+    page.wait_for_selector(f"{card}[data-status=done]", timeout=20000)
+    assert items_shown(page, card, "m.") == 6
+    assert page.locator(f"{card} .wfrow[data-node=m] .fold").count() == 0
+    assert not page.errors
+
+
+ROUNDS = """id: rounds
+title: Rounds
+say: Eight rounds of one command.
+root:
+  loop: {max: 8, do: {sh: "true", id: t, say: Try.}}
+  id: l
+  say: Rounds.
+"""
+
+
+def test_a_loop_past_six_rounds_shows_only_its_current_round(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_arm " + json.dumps({"definition": ROUNDS, "args": {}}))
+    card = "#entries .wfcard"
+    page.click(f"{card} button >> text=Approve and run")
+    page.wait_for_selector(f"{card} .wfrow[data-node=l] >> text=round 8 of 8", timeout=20000)
+    page.wait_for_selector(f"{card}[data-status=done]", timeout=20000)
+    assert items_shown(page, card, "l.") == 1
+    assert page.locator(f"{card} .wfrow[data-node='l.8.t']").count() == 1
+    page.click(f"{card} .wfrow[data-node=l] .fold >> text=7 earlier rounds")
+    assert items_shown(page, card, "l.") == 8
+    assert not page.errors
