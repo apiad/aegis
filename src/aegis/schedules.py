@@ -476,10 +476,10 @@ class Schedules:
 
     def _done(self, ses: Session) -> bool:
         """A run's session is done when the registry says so and it owns no
-        live workflow run: a workflow's waits leave its main agent idle."""
-        return (
-            self._reg.finished(ses) and self._app.workflows.of_owner(ses.log_id) is None
-        )
+        running workflow run: a workflow's waits leave its main agent idle.
+        One armed and waiting for a click is not work in progress, and
+        nobody may be there to give it."""
+        return self._reg.finished(ses) and not self._runs_workflow(ses.log_id)
 
     async def _finish(self, name: str, k: int) -> None:
         st = self.state.get(name)
