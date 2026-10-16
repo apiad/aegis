@@ -374,3 +374,35 @@ async def test_a_change_proposed_before_a_stop_is_dropped(world):
         await world.app.registry.call(
             "workflow.edit.apply", {"run": run, "v": out["proposed"]}
         )
+
+
+async def test_a_step_moved_into_a_begun_seq_holds_the_step_after_it(world):
+    two = (
+        "id: ed\ntitle: Edit\nsay: Edit.\nroot:\n  seq:\n"
+        "    - seq:\n"
+        "        - {wait: 30s, id: build, say: Build.}\n"
+        '        - {sh: "true", id: ship, say: Ship.}\n'
+        "      id: first\n      say: First.\n"
+        "    - seq:\n"
+        '        - {sh: "true", id: notes, say: Write notes.}\n'
+        '        - {sh: "true", id: last, say: Last.}\n'
+        "      id: later\n      say: Later.\n"
+        "  say: Two.\n"
+    )
+    moved = two.replace(
+        '        - {sh: "true", id: notes, say: Write notes.}\n', ""
+    ).replace(
+        '        - {sh: "true", id: ship, say: Ship.}\n',
+        '        - {sh: "true", id: notes, say: Write notes.}\n'
+        '        - {sh: "true", id: ship, say: Ship.}\n',
+    )
+    main, run = await armed(world, definition=two)
+    wf = world.app.workflows
+    await until(lambda: "build" in wf.runs[run].nodes, timeout=10)
+    await world.app.registry.call(
+        "workflow.edit", {"run": run, "definition": moved}, Caller("agent", main.log_id)
+    )
+    st = wf.runs[run]
+    assert [d["op"] for d in st.proposal["diff"] if d["key"] == "notes"] == ["move"]
+    # Run now, ship would go before the step moved in ahead of it.
+    assert "ship" in st.proposal["touched"]
