@@ -1220,3 +1220,53 @@ def test_check_value_refuses_numbers_that_are_not_finite():
     assert check_value({"n": float("nan")}, obj) == ["$.n: expected a finite number"]
     assert check_value(float("nan"), {}) == ["$: expected a finite number"]
     assert check_value(50.5, schema) == []
+
+
+ARGS = (
+    "id: a\ntitle: A\nsay: A.\nargs: {args}\n{extra}root: {{sh: 'true', say: Once.}}\n"
+)
+SUBSET = "description, enum, items, maximum, minimum, properties, required, type"
+
+
+def lint_args(args: str, extra: str = "") -> list[str]:
+    return errs(ARGS.format(args=args, extra=extra))[1]
+
+
+def test_the_args_schema_is_checked_like_a_result_schema():
+    assert (
+        lint_args("{type: object, properties: {n: {type: integer, default: 3}}}") == []
+    )
+    assert lint_args("{type: object, properties: {n: {type: string, pattern: x}}}") == [
+        "$.args.properties.n.pattern: pattern is not in the schema subset "
+        f"(default, {SUBSET})"
+    ]
+    assert lint_args("{type: object, properties: {n: {type: int}}}") == [
+        "$.args.properties.n.type: int is not a type, one of "
+        "array, boolean, integer, number, object, string"
+    ]
+    assert lint_args("{type: array}") == [
+        "$.args.type: args is an object schema: type: object"
+    ]
+
+
+def test_an_args_default_must_match_its_schema():
+    assert lint_args(
+        "{type: object, properties: {n: {type: integer, default: three}}}"
+    ) == ["$.args.properties.n.default: expected integer"]
+
+
+def test_the_args_schema_may_use_a_def():
+    wf, got = errs(
+        ARGS.format(
+            args='{type: object, properties: {pr: {$ref: "#/defs/pr"}}}',
+            extra="defs:\n  pr: {type: integer}\n",
+        )
+    )
+    assert got == [] and wf.args["properties"]["pr"] == {"type": "integer"}
+
+
+def test_a_result_schema_still_refuses_default():
+    _, got = errs(GOOD.replace("required: [path]}", "required: [path], default: {}}"))
+    assert any(
+        e.endswith(f"default is not in the schema subset ({SUBSET})") for e in got
+    )

@@ -59,6 +59,9 @@ SCHEMA_KEYS = frozenset(
         "maximum",
     }
 )
+ARGS_KEYS = SCHEMA_KEYS | {
+    "default"
+}  # an arg may name the value it takes when left out
 ID = re.compile(r"^[a-z][a-z0-9_-]{0,39}$")
 KEY = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 AFTER = re.compile(r"^[a-z][a-z0-9_-]{0,39}(\.[A-Za-z0-9_-]{1,40})?$")
@@ -1220,7 +1223,13 @@ class _Parser:
             return None
         return [lo, hi]
 
-    def schema(self, s, path: str, seen: tuple[str, ...] = ()) -> dict:
+    def schema(
+        self,
+        s,
+        path: str,
+        seen: tuple[str, ...] = (),
+        keys: frozenset[str] = SCHEMA_KEYS,
+    ) -> dict:
         """The schema with every ``$ref`` to a def resolved; errors at
         their paths, and an empty schema where one is refused."""
         if isinstance(s, dict) and "$ref" in s:
@@ -1238,16 +1247,16 @@ class _Parser:
             if name in seen:
                 self.err(f"{path}.$ref", f"def {name} refers to itself")
                 return {}
-            return self.schema(self.defs[name], f"$.defs.{name}", (*seen, name))
+            return self.schema(self.defs[name], f"$.defs.{name}", (*seen, name), keys)
         if not isinstance(s, dict):
             self.err(path, "a result schema is a mapping")
             return {}
         out = dict(s)
         for k, v in s.items():
-            if k not in SCHEMA_KEYS:
+            if k not in keys:
                 self.err(
                     f"{path}.{k}",
-                    f"{k} is not in the schema subset ({', '.join(sorted(SCHEMA_KEYS))})",
+                    f"{k} is not in the schema subset ({', '.join(sorted(keys))})",
                 )
             elif k == "type" and v not in TYPES:
                 self.err(
@@ -1262,11 +1271,11 @@ class _Parser:
                 self.err(f"{path}.{k}", f"{k} is a number")
             elif k == "properties" and isinstance(v, dict):
                 out[k] = {
-                    name: self.schema(sub, f"{path}.properties.{name}", seen)
+                    name: self.schema(sub, f"{path}.properties.{name}", seen, keys)
                     for name, sub in v.items()
                 }
             elif k == "items":
-                out[k] = self.schema(v, f"{path}.items", seen)
+                out[k] = self.schema(v, f"{path}.items", seen, keys)
         return out
 
     def order(self, root: Node) -> dict[str, list[str]]:
@@ -1770,6 +1779,17 @@ def _parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError
     if not isinstance(args, dict):
         p.err("$.args", "args is a JSON Schema mapping")
         args = {}
+    elif args:
+        # Checked like a result schema, so a typo such as type: int fails
+        # here rather than leaving every arm checked against nothing.
+        if args.get("type", "object") != "object":
+            p.err("$.args.type", "args is an object schema: type: object")
+        args = p.schema(args, "$.args", keys=ARGS_KEYS)
+        for k, sub in (args.get("properties") or {}).items():
+            if isinstance(sub, dict) and "default" in sub:
+                at = f"$.args.properties.{k}.default"
+                for e in check_value(sub["default"], sub, at):
+                    p.err(*e.split(": ", 1))
     # The server's max_agents shape: total for every agent together, and a
     # number per agent alias for that alias alone.
     limits = raw.get("limits") or {}
