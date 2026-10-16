@@ -2998,6 +2998,43 @@ def test_settings_sets_the_workflow_pool(settings_server, page):
     assert page.errors == []
 
 
+def saved_ok(page) -> None:
+    page.click("#set-save")
+    page.wait_for_function(
+        "document.querySelector('#set-status').textContent === 'Saved'"
+    )
+
+
+def test_a_rename_or_removal_carries_to_the_workflow_pool(settings_server, page):
+    (settings_server.root / ".aegis.yaml").write_text(
+        SETTINGS_CONFIG + "workflows: {max_agents: {total: 4, opus: 2, bad.one: 1}}\n"
+    )
+    open_settings(page, settings_server.url)
+    page.wait_for_selector('#set-wf-pool [data-row="workflows.opus"]')
+    page.fill('.set-agent[data-row="agents.opus"] input[name=name]', "big")
+    page.click('.set-agent[data-row="agents.bad.one"] button >> text=Remove')
+    saved_ok(page)
+    text = (settings_server.root / ".aegis.yaml").read_text()
+    assert "big: 2" in text and "opus: 2" not in text and "bad.one" not in text
+    page.wait_for_selector('#set-wf-pool [data-row="workflows.big"]')
+    assert page.errors == []
+
+
+def test_a_pool_entry_for_no_agent_is_shown_and_cleared(settings_server, page):
+    (settings_server.root / ".aegis.yaml").write_text(
+        SETTINGS_CONFIG + "workflows: {max_agents: {total: 4, ghost: 2}}\n"
+    )
+    open_settings(page, settings_server.url)
+    row = '#set-wf-pool [data-row="workflows.ghost"]'
+    page.wait_for_selector(row + " >> text=not an agent")
+    page.click(row + " button >> text=Clear")
+    page.wait_for_selector(row, state="detached")
+    saved_ok(page)
+    text = (settings_server.root / ".aegis.yaml").read_text()
+    assert "ghost" not in text and "total: 4" in text
+    assert page.errors == []
+
+
 def frame_with(pg, frames: list[str], text: str) -> None:
     """Wait until the page has received a websocket frame carrying `text`."""
     deadline = time.monotonic() + 10
