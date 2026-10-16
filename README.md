@@ -110,6 +110,10 @@ own token, so no tool asks who is calling.
   hidden; a click opens its tab.
 - `journal_search` asks what was done on this server, by day, words, a path or
   a session, and `journal_note` adds a decision or a blocker to it.
+- `aegis call <tool> key=value ...` runs any of these tools from the agent's
+  own shell, as its session, and `aegis tools` lists them. A loop over many
+  calls is one Bash call, and a result piped into `wc` or `jq` never enters
+  the agent's context.
 
 The same works across machines. `aegis link add vps https://dev.example` makes
 this server a client of another aegis. The far server's sessions appear in your
