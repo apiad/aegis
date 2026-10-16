@@ -1049,10 +1049,10 @@ class _Parser:
 
     def loop(self, body, path: str, node: Node) -> None:
         if not isinstance(body, dict) or "do" not in body:
-            self.err(path, "loop holds do, max and an optional until")
+            self.err(path, "loop holds do, max, an optional until and an optional at_max")
             return
         for k in body:
-            if k not in ("do", "max", "until"):
+            if k not in ("do", "max", "until", "at_max"):
                 self.err(f"{path}.{k}", f"{k} is not a loop field")
         mx = body.get("max")
         whole = isinstance(mx, str) and WHOLE.match(mx)
@@ -1064,6 +1064,21 @@ class _Parser:
                 f"a loop needs max: a whole number from 1 to {MAX_ROUNDS}, or one {{{{expression}}}}",
             )
         node.body = {"max": mx}
+        at_max = body.get("at_max", "fail")
+        if at_max not in ("done", "fail"):
+            self.err(
+                f"{path}.at_max",
+                "at_max is done or fail: what the loop is when its rounds run out "
+                "before until passes",
+            )
+        elif at_max == "done" and "until" not in body:
+            self.err(
+                f"{path}.at_max",
+                "at_max goes with until; a loop without until is done after its "
+                "last round already",
+            )
+        elif at_max == "done":
+            node.body["at_max"] = "done"
         # A round is a scope, as a map's item is: its nodes are l.<n>.<id>,
         # and until reads the round it follows.
         self.maps.append(node.id)
@@ -1702,7 +1717,7 @@ def _fields(n: Node) -> dict:
     }
 
 
-GROUP_FIXED = {"map": ("over", "as"), "loop": ("max", "probe"), "if": ("probe",)}
+GROUP_FIXED = {"map": ("over", "as"), "loop": ("max", "probe", "at_max"), "if": ("probe",)}
 # How the diff card names a changed part of a node's body.
 PART = {
     "prompt": "its prompt",
@@ -1713,6 +1728,7 @@ PART = {
     "over": "its items",
     "probe": "its probe",
     "max": "its rounds",
+    "at_max": "what it is at its last round",
     "wait": "its wait",
     "show": "what it shows",
     "by": "who decides",
