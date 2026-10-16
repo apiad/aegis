@@ -285,3 +285,36 @@ async def test_a_person_cannot_fire_a_paused_schedule_whose_file_changed_by_hand
         await sch.fire_now("nightly-nap")
     assert e.value.code == "needs_approval"
     assert runs(world, "nightly-nap", "fired") == []
+
+
+def edit(world, name, prompt, every="10m"):
+    raw = {"clock": {"every": every}, "fire": {"agent": "opus"}, "prompt": prompt}
+    return world.app.schedules.update(name, Definition.model_validate(raw), world.root)
+
+
+async def test_a_persons_unrelated_edit_keeps_the_pin(world):
+    # A version the person never approved must not ride in on a clock edit.
+    sch = world.app.schedules
+    approved = person_schedule(world).pin["sha"]
+    p = world.app.saved.get("nap").path
+    p.write_text(p.read_text().replace("Nap a while.", "Nap by hand."))
+    edit(world, "nightly-nap", "/workflow nap two seconds")
+    assert sch.items["nightly-nap"].pin["sha"] == approved
+    t = frozen(world)
+    await tick(world, t, 600)
+    assert runs(world, "nightly-nap", "fired") == []
+    assert sch.awaiting("nightly-nap")
+
+
+async def test_a_persons_edit_naming_another_workflow_waits_for_approval(world):
+    sch = world.app.schedules
+    person_schedule(world)
+    world.app.saved.save(
+        NAP.replace("id: nap", "id: doze"), world.app.workflows._agents(), BY
+    )
+    edit(world, "nightly-nap", "/workflow doze a while")
+    s = sch.items["nightly-nap"]
+    assert s.pin == {"id": "doze", "sha": world.app.saved.get("doze").sha}
+    assert sch.awaiting("nightly-nap")
+    edit(world, "nightly-nap", "Just say hi.")
+    assert sch.items["nightly-nap"].pin is None
