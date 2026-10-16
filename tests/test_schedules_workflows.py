@@ -484,3 +484,27 @@ async def test_a_pinned_version_keeps_its_text_for_a_later_diff(world, how):
     await save(world, NAP.replace("Nap a while.", "Nap three."))
     w = world.app.schedules.wire("nightly-nap")["workflow"]
     assert w["changed"] and w.get("diff")
+
+
+async def test_a_launch_refused_after_the_spawn_closes_the_new_session(world):
+    # A person approves another version while the fire awaits its spawn: the
+    # launch is refused, and the session it spawned for it must not stay
+    # open with no prompt.
+    person_schedule(world)
+    reg = world.app.schedules._reg
+    orig, spawned = reg.spawn, []
+
+    async def spawn(*a, **k):
+        ses = await orig(*a, **k)
+        spawned.append(ses)
+        await save(world, NAP.replace("Nap a while.", "Nap longer."))
+        sha = world.app.saved.get("nap").sha
+        world.app.schedules.resume("nightly-nap", workflow=sha)
+        return ses
+
+    reg.spawn = spawn
+    t = frozen(world)
+    await tick(world, t)
+    assert runs(world, "nightly-nap", "fired") == []
+    (ses,) = spawned
+    assert ses.log_id not in reg.sessions and ses.log_id in reg.archived

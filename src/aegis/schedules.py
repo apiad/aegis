@@ -358,7 +358,11 @@ class Schedules:
                     schedule={"name": name, "run": run, "spawn": s.d.fire.spawn},
                 )
                 if w is not None:
-                    body = self._app.workflows.launch(ses, cur, w[1], origin)
+                    try:
+                        body = self._app.workflows.launch(ses, cur, w[1], origin)
+                    except OpError:
+                        await self._close(ses)  # spawned for this launch alone
+                        raise
                     text = message(body, stdout)
                 await ses.send(f"{head}\n{text}")
             else:
