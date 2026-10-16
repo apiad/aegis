@@ -197,6 +197,8 @@ FIRST = [
     ("repeat a prompt every few minutes", "workflows#repeat-a-prompt-with-loop"),
     ("run a saved workflow", "workflows#run-a-saved-workflow"),
     ("make a schedule run a workflow", "schedules#fire-a-workflow"),
+    ("call aegis tools from bash in a loop", "commands#tools-from-an-agent-s-shell"),
+    ("pipe a tool result into another command", "commands#tools-from-an-agent-s-shell"),
 ]
 
 # Questions two pages answer: one of them must be in the first three.

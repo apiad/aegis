@@ -1,5 +1,5 @@
 """``aegis serve``, ``aegis init``, ``aegis doctor``, ``aegis link``, ``aegis service``, ``aegis usage``,
-``aegis journal``, and ``aegis`` alone, which is ``serve --window``.
+``aegis journal``, ``aegis call``, ``aegis tools``, and ``aegis`` alone, which is ``serve --window``.
 
 This is the only module that reads the process's working directory.
 
@@ -789,6 +789,31 @@ def token_revoke(
         typer.echo(e.message, err=True)
         raise typer.Exit(1) from e
     typer.echo(new if new else f"revoked {name}")
+
+
+@app.command("call")
+def call(
+    tool: str = typer.Argument(..., help="The tool, e.g. session_list."),
+    args: list[str] = typer.Argument(
+        None,
+        help="key=value pairs (a value is read as JSON when it parses), "
+        "or one JSON object; `-` reads the JSON object from stdin.",
+    ),
+) -> None:
+    """Call one aegis tool as this session; prints its result."""
+    from .call import call as run
+
+    run(tool, args or [])
+
+
+@app.command("tools")
+def tools(
+    name: str | None = typer.Argument(None, help="Show this tool's parameters."),
+) -> None:
+    """List the aegis tools, or one tool's description and JSON schema."""
+    from .call import tools as run
+
+    run(name)
 
 
 def main() -> None:

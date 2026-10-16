@@ -26,6 +26,7 @@ from fastmcp.tools import ToolResult
 from fastmcp.utilities.logging import configure_logging
 from pydantic import PrivateAttr
 
+from .harness import HEADER
 from .ops import Caller, Operation, OpError, Registry
 
 # fastmcp logs every ToolError with its traceback, and every refused op is one
@@ -43,7 +44,6 @@ if TYPE_CHECKING:
 
     from .session import Session
 
-HEADER = "X-Aegis-Session"
 PATH = "/mcp"
 
 
@@ -114,13 +114,19 @@ def _schema(op: Operation) -> dict:
     return schema
 
 
+# Where the model chooses a tool, so a loop of calls can become one Bash call.
+SHELL_FORM = (
+    "\n\nIn a loop, or to pipe the result into another command, run "
+    "`aegis call {name} key=value ...` in Bash instead: same result, as you."
+)
+
+
 def build_mcp(registry: Registry, tokens: Tokens):
     """The fastmcp server and its ASGI app, routed at ``/mcp``."""
     server = FastMCP("aegis")
     for op in registry.agent_ops():
-        tool = OpTool(
-            name=op.tool_name, description=op.doc or op.name, parameters=_schema(op)
-        )
+        doc = (op.doc or op.name) + SHELL_FORM.format(name=op.tool_name)
+        tool = OpTool(name=op.tool_name, description=doc, parameters=_schema(op))
         tool._op, tool._registry, tool._tokens = op, registry, tokens
         server.add_tool(tool)
     return server, server.http_app(path=PATH, stateless_http=True, json_response=True)
@@ -151,6 +157,16 @@ version you are running. Before you answer a question about how to do \
 something in aegis, or start work with an aegis feature you have not used in \
 this session (artifacts, queues, links, handoffs, monitors, workflows), call help_search \
 with what you want to do, then help_read the section it points to.
+
+Every aegis tool is also a shell command that runs as you, with the same \
+result: `aegis call <tool> key=value ...` (a value is read as JSON when it \
+parses; one JSON object, or `-` to read it from stdin, also works), and \
+`aegis tools [tool]` lists them or prints one's schema. When a task calls one \
+aegis tool more than three times, or needs a count, a filter or a join over \
+what a tool returns, do not make those calls as tools: write one Bash loop over \
+`aegis call` that pipes each result where it goes (`wc`, `jq`, `grep`, a file), \
+so results you do not need never enter your context. Make single calls, and \
+turn_end, as tools.
 
 Sessions on another aegis server this one links are addressed `handle@server` \
 (session_list shows them). You reach one with peer_handoff, and you can start \
