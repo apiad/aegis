@@ -96,3 +96,15 @@ async def test_nodes_nest_at_most_64_levels_whatever_the_stack(world):
     out = ok(await turn(a, mcp("workflow_lint", definition=nested(65))))
     assert len(out["errors"]) == 1, out
     assert out["errors"][0].endswith(": nodes nest at most 64 levels deep"), out
+
+
+async def test_arming_fills_the_args_defaults(world):
+    main = await world.spawn()
+    text = (
+        "id: d\ntitle: D\nsay: D.\n"
+        "args: {type: object, properties: {n: {type: integer, default: 3}}}\n"
+        "root:\n  wait: 1s\n  say: Wait.\n"
+    )
+    run = ok(await turn(main, mcp("workflow_arm", definition=text, args={})))["run"]
+    assert world.app.workflows.runs[run].args == {"n": 3}
+    assert world.app.workflows.wire(run)["args"] == {"n": 3}

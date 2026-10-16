@@ -69,6 +69,7 @@ from .workflow_lang import (
     template_key,
     value_of,
     walk,
+    with_defaults,
 )
 from .workflow_log import LIVE, NodeState, RunLog, RunState, apply, fold
 
@@ -373,6 +374,7 @@ class Workflows:
             "ended": st.ended,
             "tree": tree,
             "story": st.story,
+            "args": st.args,
             # What the person approves to run without asking, and where.
             "cwd": st.cwd,
             "commands": self._commands(st, wf) if wf else {"sh": 0, "probes": 0},
@@ -739,6 +741,7 @@ class Workflows:
         if wf is None:
             raise OpError("lint", "\n".join(f"{e.path}: {e.message}" for e in errors))
         self._check_arm(owner, wf, list(walk(wf.root)))
+        args = with_defaults(args, wf.args) if wf.args else args
         problems = check_value(args, wf.args, "$.args") if wf.args else []
         if problems:
             raise OpError("bad_args", "\n".join(problems))

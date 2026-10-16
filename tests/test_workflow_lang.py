@@ -14,6 +14,7 @@ from aegis.workflow_lang import (
     rows,
     template_key,
     value_of,
+    with_defaults,
 )
 
 AGENTS = {"opus", "sonnet"}
@@ -1101,3 +1102,33 @@ def test_a_started_loop_keeps_its_at_max():
     new, _ = errs(LOOP.format(extra=until + "    at_max: done\n"))
     errors = edit_errors(old, new, {old.root.key: "begun"})
     assert [e.message for e in errors] == ["a started loop keeps its at_max"]
+
+
+SCHEMA = {
+    "type": "object",
+    "properties": {
+        "prompt": {"type": "string"},
+        "max": {"type": "integer", "default": 20},
+        "opts": {"type": "object", "properties": {"fast": {"type": "boolean"}}},
+    },
+    "required": ["prompt"],
+}
+
+
+def test_defaults_fill_only_what_is_missing():
+    assert with_defaults({"prompt": "p"}, SCHEMA) == {"prompt": "p", "max": 20}
+    assert with_defaults({"prompt": "p", "max": 3}, SCHEMA)["max"] == 3
+    assert with_defaults({}, {}) == {}
+
+
+def test_a_closed_check_refuses_a_key_the_schema_does_not_name_at_any_depth():
+    good = {"prompt": "p", "opts": {"fast": True}}
+    assert check_value(good, SCHEMA, "$.args", closed=True) == []
+    extra = {"prompt": "p", "shell": "rm", "opts": {"fast": True, "x": 1}}
+    assert check_value(extra, SCHEMA, "$.args") == []  # open, as results are
+    # An object's properties are checked first, nested ones included, then
+    # the keys it should not have.
+    assert check_value(extra, SCHEMA, "$.args", closed=True) == [
+        "$.args.opts.x: not in the schema",
+        "$.args.shell: not in the schema",
+    ]
