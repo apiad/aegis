@@ -708,8 +708,24 @@ class Schedules:
         self._wake.set()
 
     async def fire_now(self, name: str) -> str:
-        """A tick that skips the clock and the check and still respects overlap."""
-        self._get(name)
+        """A tick that skips the clock and the check and still respects overlap.
+        A paused schedule that fires a workflow fires only when no approval is
+        due and its pin is the current version: fire-now is not an approval."""
+        s = self._get(name)
+        w = self.workflow_of(s.d.prompt)
+        if w is not None and s.paused:
+            cur = self._app.saved.all().get(w[0])
+            if (
+                self.awaiting(name)
+                or not s.pin
+                or cur is None
+                or cur.sha != s.pin["sha"]
+            ):
+                raise OpError(
+                    "needs_approval",
+                    f"workflow {w[0]} changed since {name} was approved; "
+                    "approve the version on its card first",
+                )
         if name in self._busy:
             raise OpError("busy", f"{name} is in the middle of a tick; try again")
         self._busy.add(name)

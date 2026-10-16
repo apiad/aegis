@@ -223,3 +223,65 @@ async def test_a_schedule_launch_refuses_a_version_other_than_its_pin(world):
         world.app.workflows.launch(main, other, "x", origin)
     assert e.value.code == "changed"
     assert not world.app.workflows.launches._grants
+
+
+async def agent_nap(world, main):
+    ok(
+        await turn(
+            main,
+            mcp(
+                "schedule_create",
+                name="agent-nap",
+                clock={"every": "1d"},
+                fire={"agent": "opus"},
+                prompt="/workflow nap a second",
+            ),
+        )
+    )
+    sha = world.app.saved.get("nap").sha
+    await world.app.registry.call(
+        "schedule.resume", {"name": "agent-nap", "workflow": sha}
+    )
+
+
+@pytest.mark.parametrize("paused", [False, True])
+async def test_an_agent_cannot_fire_a_workflow_schedule(world, paused):
+    # The person approved a clock, not on-demand runs: no agent fires it,
+    # paused or not.
+    main = await world.spawn()
+    await agent_nap(world, main)
+    if paused:
+        await world.app.registry.call("schedule.pause", {"name": "agent-nap"})
+    said = await turn(main, mcp("schedule_fire", name="agent-nap"))
+    assert said.startswith("mcp error") and "workflow" in said
+    assert runs(world, "agent-nap", "fired") == []
+    assert not world.app.workflows.launches._grants
+
+
+async def test_a_person_fires_a_paused_workflow_schedule_only_when_approved(world):
+    sch = world.app.schedules
+    person_schedule(world)
+    sch.pause("nightly-nap")
+    # Paused by the person, and the pin is the current version: it fires.
+    assert await sch.fire_now("nightly-nap") == "fired"
+    # A save asks for approval again: fire-now is refused, and nothing fires.
+    await save(world, NAP.replace("Nap a while.", "Nap longer."))
+    assert sch.awaiting("nightly-nap")
+    with pytest.raises(OpError) as e:
+        await sch.fire_now("nightly-nap")
+    assert e.value.code == "needs_approval"
+    assert len(runs(world, "nightly-nap", "fired")) == 1
+
+
+async def test_a_person_cannot_fire_a_paused_schedule_whose_file_changed_by_hand(
+    world,
+):
+    sch = world.app.schedules
+    person_schedule(world)
+    sch.pause("nightly-nap")
+    p = world.app.saved.get("nap").path
+    p.write_text(p.read_text().replace("Nap a while.", "Nap by hand."))
+    with pytest.raises(OpError) as e:
+        await sch.fire_now("nightly-nap")
+    assert e.value.code == "needs_approval"
+    assert runs(world, "nightly-nap", "fired") == []
