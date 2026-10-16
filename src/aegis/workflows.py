@@ -39,6 +39,7 @@ import os
 import secrets
 import signal
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -72,11 +73,11 @@ from .workflow_lang import (
     with_defaults,
 )
 from .workflow_log import LIVE, NodeState, RunLog, RunState, apply, fold
+from .workflow_store import Saved
 
 if TYPE_CHECKING:
     from .app import App
     from .session import Session
-    from .workflow_store import Saved
 
 log = logging.getLogger(__name__)
 PUBLISH_S = 0.25  # a run's wire goes out at most this often
@@ -198,8 +199,76 @@ def _lids(n: NodeState) -> list[str]:
     return [x for x in [n.log_id, *(j.get("log_id") for j in n.judges.values())] if x]
 
 
+LAUNCH_TTL_S = 86400.0
+LAUNCH_KEEP_S = 3600.0  # a spent or expired token is remembered this long
+
+
+@dataclass
+class Launch:
+    log_id: str  # the session it was given to
+    id: str  # the saved workflow
+    sha: str
+    text: str  # the definition as it was at the line
+    typed: str  # what followed the id
+    origin: dict  # {by: person, principal, line} | {by: schedule, name, run}
+    expires: float
+    used: bool = False
+
+
+class Launches:
+    """One-time launch tokens (spec §06). Only the server mints one, on two
+    paths a person's action reached: the composer's /workflow and /loop,
+    which run inside session.send, an operation no agent can call; and the
+    fire of a schedule that is not waiting for a person's approval. A token
+    is bound to one session, one saved workflow and its text at that
+    moment, and it is never returned by an operation: it reaches the agent
+    only in the launch turn. ``check`` never spends it, so an arm refused
+    for its args can be tried again, and another session's try leaves it
+    alone; ``spend`` is called by the arm that creates the run. Tokens live
+    in memory: a restart voids them, and the agent asks again."""
+
+    def __init__(self) -> None:
+        self.clock = time.monotonic
+        self._grants: dict[str, Launch] = {}
+
+    def issue(self, log_id: str, saved, typed: str, origin: dict) -> str:
+        now = self.clock()
+        self._grants = {
+            k: g for k, g in self._grants.items() if g.expires + LAUNCH_KEEP_S > now
+        }
+        token = secrets.token_urlsafe(16)
+        self._grants[token] = Launch(
+            log_id, saved.id, saved.sha, saved.text, typed, origin, now + LAUNCH_TTL_S
+        )
+        return token
+
+    def check(self, token: str, log_id: str, wid: str) -> Launch:
+        g = self._grants.get(token)
+        if g is None:
+            why = "aegis did not issue it, or the server restarted since"
+        elif g.log_id != log_id:
+            why = "it was given to another session"
+        elif g.used:
+            why = "it was already used: one line starts one run"
+        elif self.clock() > g.expires:
+            why = "it expired: a launch token lasts 24 hours"
+        elif g.id != wid:
+            why = f"it is for workflow {g.id}, not {wid}"
+        else:
+            return g
+        raise OpError(
+            "bad_token",
+            f"that launch token does not work: {why}. Ask the person to type the "
+            "/workflow line again; arming without a token shows them a card to approve.",
+        )
+
+    def spend(self, g: Launch) -> None:
+        g.used = True
+
+
 class Workflows:
     def __init__(self, app: App) -> None:
+        self.launches = Launches()
         self._app = app
         self._reg = app.sessions
         self.dir: Path = app.roots.state_root / "workflow-runs"
@@ -377,6 +446,7 @@ class Workflows:
             "story": st.story,
             "args": st.args,
             "saved": st.saved,
+            "launch": st.launch,
             # What the person approves to run without asking, and where.
             "cwd": st.cwd,
             "commands": self._commands(st, wf) if wf else {"sh": 0, "probes": 0},
@@ -728,6 +798,7 @@ class Workflows:
         args: dict,
         run: str | None = None,
         saved: Saved | None = None,
+        launch: Launch | None = None,
     ) -> RunState:
         if self._in_a_node(owner):
             raise OpError(
@@ -770,6 +841,7 @@ class Workflows:
             cwd=cwd,
             version=v,
             saved=kept,
+            launch=(started := self._started_by(launch)),
         )
         self.runs[run], self.defs[run] = st, wf
         self._log(
@@ -783,11 +855,17 @@ class Workflows:
                 "cwd": cwd,
                 **({"v": v} if v > 1 else {}),
                 **({"saved": kept} if kept else {}),
+                **({"launch": started} if started else {}),
             },
             fold_in=False,
         )
         if cur is not None:
             self._log(cur.run, {"ev": "replaced", "by": run})
+        if launch is not None:
+            # Approved by the launch, before its card is first drawn: the
+            # card never shows an Approve button for a run already running.
+            self._log(run, {"ev": "approved", "by": launch.origin["by"]})
+            self.changed()
         # A new run goes out at once: its card and its pane, drawn next, must
         # never find it missing.
         self._publish_now()
@@ -800,6 +878,38 @@ class Workflows:
             if old in canvas.ids(lay):
                 owner.set_layout(canvas.rename(lay, old, f"wf-{run}"), "agent")
         self._publish(run)
+        return st
+
+    @staticmethod
+    def _started_by(g: Launch | None) -> dict | None:
+        """What the card says of a launch: who, and their words. Never the
+        token, which is not kept anywhere but Launches."""
+        return {"typed": g.typed, **g.origin} if g is not None else None
+
+    def arm_launched(
+        self, owner: Session, wid: str, args: dict, token: str
+    ) -> RunState:
+        """Arm what a person launched: the token's text, the agent's args
+        checked closed against its schema, and approved at once by the
+        launch. Every check runs before the token is spent."""
+        g = self.launches.check(token, owner.log_id, wid)
+        wf, errors = parse(g.text, self._agents())
+        if wf is None:
+            raise OpError("lint", "\n".join(f"{e.path}: {e.message}" for e in errors))
+        args = with_defaults(args, wf.args) if wf.args else args
+        problems = check_value(
+            args,
+            wf.args or {"type": "object", "properties": {}},
+            "$.args",
+            closed=True,
+        )
+        if problems:
+            raise OpError("bad_args", "\n".join(problems))
+        now = self._app.saved.all().get(g.id)
+        source = now.source if now is not None else "project"
+        saved = Saved(g.id, g.text, g.sha, source, Path())
+        st = self.arm(owner, g.text, args, saved=saved, launch=g)
+        self.launches.spend(g)
         return st
 
     def _arm_again(

@@ -88,6 +88,9 @@ class RunState:
     proposal: dict | None = None  # the edit waiting for the person
     edits: list[dict] = field(default_factory=list)  # {v, diff, status, t}
     saved: dict | None = None  # {id, sha, source}: the saved workflow it runs
+    # Who launched it, with no click: {typed, by: person, principal, line}
+    # or {typed, by: schedule, name, run, line}. Never the token.
+    launch: dict | None = None
 
 
 def _tell(st: RunState, t: float, mark: str, text: str, **extra) -> None:
@@ -129,10 +132,21 @@ def _drop_proposal(st: RunState) -> None:
         st.proposal = None
 
 
+def _started_by(launch: dict) -> str:
+    """The story's first line for a launched run: "Started by your /loop
+    line: check the deploy every 5m", or "Started by schedule nightly, run 4"."""
+    if launch.get("by") == "schedule":
+        return f"Started by schedule {launch.get('name')}, run {launch.get('run')}"
+    cmd = (launch.get("line") or "/workflow").split()[0]
+    return f"Started by your {cmd} line: {launch.get('typed') or ''}".rstrip(": ")
+
+
 def apply(st: RunState, r: dict) -> None:
     ev, t = r.get("ev"), float(r.get("t") or 0)
     if ev == "approved":
         st.status, st.started = "running", t
+        if r.get("by") and st.launch:
+            _tell(st, t, "ok", _started_by(st.launch))
     elif ev == "rejected":
         st.status, st.ended = "rejected", t
     elif ev == "stopped":
@@ -351,6 +365,7 @@ def fold(records: list[dict]) -> RunState | None:
                 cwd=r.get("cwd") or "",
                 version=int(r.get("v") or 1),
                 saved=r.get("saved"),
+                launch=r.get("launch"),
             )
         elif st is not None:
             apply(st, r)
