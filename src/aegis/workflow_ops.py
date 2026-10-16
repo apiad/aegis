@@ -18,8 +18,10 @@ from pydantic import BaseModel, Field, model_validator
 
 from . import files
 from . import layout as canvas
-from .ops import Caller, OpError
+from .ops import Caller, NoParams, OpError
 from .transcript.entries import _sent_file
+from .workflow_lang import parse, walk
+from .workflow_store import check_named
 
 if TYPE_CHECKING:
     from .app import App
@@ -37,6 +39,10 @@ class Arm(_Strict):
     definition: str | None = Field(
         default=None, min_length=1, description="The workflow as YAML."
     )
+    id: str | None = Field(
+        default=None,
+        description="A saved workflow's id (workflow_list), instead of definition.",
+    )
     args: dict[str, Any] = Field(
         default_factory=dict, description="Values for the workflow's args schema."
     )
@@ -48,9 +54,22 @@ class Arm(_Strict):
 
     @model_validator(mode="after")
     def _one(self):
-        if self.definition is None and self.run is None:
-            raise ValueError("give definition, or run to arm a run again")
+        given = [k for k in ("definition", "id", "run") if getattr(self, k) is not None]
+        if len(given) != 1:
+            raise ValueError(
+                "give one of definition, id (a saved workflow) or run (to arm a run again)"
+            )
         return self
+
+
+class SaveDef(_Strict):
+    definition: str = Field(
+        min_length=1, description="The workflow as YAML; its id names the file."
+    )
+
+
+class WorkflowId(_Strict):
+    id: str
 
 
 class RunName(_Strict):
@@ -191,7 +210,12 @@ def register_workflow_ops(app: App) -> None:
                 canvas.place(s.layout, "wf-new", p.dock, s.dockable)
             except canvas.LayoutError as e:
                 raise OpError("bad_params", str(e)) from e
-        st = wf.arm(s, p.definition, p.args, run=p.run)
+        if p.id is not None:
+            saved = app.saved.get(p.id)
+            check_named(saved, wf._agents())
+            st = wf.arm(s, saved.text, p.args, saved=saved)
+        else:
+            st = wf.arm(s, p.definition, p.args, run=p.run)
         out = {"run": st.run, "status": st.status}
         if p.dock is not None:
             # The run exists now; a placement that no longer fits is
@@ -203,6 +227,48 @@ def register_workflow_ops(app: App) -> None:
             except canvas.LayoutError as e:
                 out |= {"docked": False, "reason": str(e)}
         return out
+
+    def by(caller: Caller) -> dict:
+        s = reg.sessions.get(caller.log_id or "") if caller.is_agent else None
+        if s is not None:
+            return {"kind": "agent", "log_id": s.log_id, "handle": s.handle}
+        return {"kind": "user", "principal": app.who(caller).name}
+
+    @r.op("workflow.save", SaveDef, agent=True)
+    async def workflow_save(p: SaveDef, caller):
+        """Save a workflow into the project, as .aegis/workflows/<id>.yaml, so
+        a person can run it with /workflow <id> <text> and a schedule can fire
+        it. Its generated ids are written into the file, so later edits keep
+        them. Saving needs no approval and replaces a saved one with the same
+        id; running it still does, unless a person launched it."""
+
+        def generated(text: str) -> int:
+            got, _ = parse(text, wf._agents())
+            return sum(n.generated for n in walk(got.root)) if got else 0
+
+        s = app.saved.save(p.definition, wf._agents(), by(caller))
+        app.schedules.workflow_changed(s.id)
+        return {
+            "id": s.id,
+            "sha": s.sha,
+            "path": str(s.path),
+            "ids_written": generated(p.definition) - generated(s.text),
+        }
+
+    @r.op("workflow.list", NoParams, agent=True, read=True)
+    async def workflow_list(_, caller):
+        """The saved workflows a person can run with /workflow <id> <text>:
+        built in and the project's, each with its title, args schema,
+        version, who saved it, and what is wrong with it if it does not lint."""
+        return app.saved.listing(wf._agents())
+
+    @r.op("workflow.delete", WorkflowId, agent=True)
+    async def workflow_delete(p: WorkflowId, caller):
+        """Delete a saved workflow from the project. A built-in one cannot be
+        deleted. A schedule that fires it pauses."""
+        app.saved.delete(p.id, by(caller))
+        app.schedules.workflow_changed(p.id)
+        return {"deleted": p.id}
 
     @r.op("workflow.approve", RunName)
     async def workflow_approve(p: RunName, caller):

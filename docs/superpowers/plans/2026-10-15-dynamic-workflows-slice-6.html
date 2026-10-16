@@ -907,7 +907,7 @@ class Store:
 </div>
 </details>
 
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">workflow_save, workflow_list, workflow_delete, and arming a saved workflow by id</span><span class="files">workflow_ops.py · workflows.py · workflow_log.py · tests/test_workflow_store.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1918,6 +1918,7 @@ Use the real fixture and helper names of those modules (<code>open_session</code
   <li>Task 2: the closed check's messages follow the code, and the test was changed to it: an object's properties are checked first, nested ones included, so <code>$.args.opts.x</code> comes before <code>$.args.shell</code>.</li>
   <li>Task 3: <code>with_ids</code> also writes a block root's generated id at the <code>ref</code> that uses it (a ref may carry <code>id</code>). Written ids no longer advance the numbering, so the plan's version renumbered the ref (<code>n4</code> became <code>n3</code>) and its own key-set assertion failed; task 4's fallback would have kept every workflow with a ref unwritten. Steps nested inside a block still keep generated ids, and a block with unnamed inner steps may still renumber, which task 4's key check catches by keeping the text as given. The round trip keeps the file's own style: the mapping and sequence indents are guessed from the text, quotes are preserved, and lines are not rewrapped, so the diff is the id lines alone.</li>
   <li>Task 4: <code>check_named(saved, agents)</code> takes the saved file, not a listing row; it and the listing share one <code>_named</code> that says what is wrong with a file. The wheel already ships <code>builtin_workflows/loop.yaml</code> (hatch packages all of <code>src/aegis</code>), so <code>pyproject.toml</code> is unchanged. This commit also carries <code>ruff format</code> over the task 1 to 3 lines of <code>workflow_lang.py</code> and its tests.</li>
+  <li>Task 5: <code>Arm.token</code> and its validator line wait for task 6, which uses them. <code>ids_written</code> is the number of generated ids in the definition minus those left in the saved file, so it counts a ref's id written at its use site (task 3) and is 0 when the text was kept as given. One more test arms a file whose id is not its name and is refused by <code>check_named</code> (break it: drop the call; the test fails). Task 11's "Save a workflow" section of <code>help/workflows.md</code> lands here, since rift fails <code>make check</code> while an agent tool is on no help page; task 11 adds the other three sections.</li>
 </ul>
 </main>
 <script>

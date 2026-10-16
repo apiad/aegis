@@ -397,6 +397,24 @@ again, after a new approval on a new card. What finished keeps its result;
 every step that did not runs again. It keeps its args. A definition given
 with `run` may change only what `workflow_edit` may.
 
+## Save a workflow
+
+`workflow_save` keeps a workflow in the project, as a file named after its
+id in the .aegis/workflows folder beside the server's .aegis.yaml, so it lives
+in git with the rest of the configuration. It writes the ids aegis generated
+for the steps into the file, so a later edit of a run keeps them. Saving
+again with the same id replaces the file. Saving needs no approval, because
+running a saved workflow does.
+
+`workflow_list` lists the saved workflows, the built-in ones included, each
+with its title, args schema, version, who saved it and when, and what is
+wrong with it when it does not lint. `workflow_delete` removes one from the
+project. The built-in ids are reserved: no saved workflow takes one, and
+none is deleted.
+
+`workflow_arm` with `id` in place of `definition` arms a saved workflow,
+with your args, and the person approves it on its card as any other.
+
 ## A step you run yourself
 
 ```yaml

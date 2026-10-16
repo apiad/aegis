@@ -394,6 +394,10 @@ class Schedules:
             return str(ses.spec.cwd if ses else self._app.roots.harness_cwd)
         return s.d.fire.cwd or str(self._app.roots.harness_cwd)
 
+    def workflow_changed(self, wid: str) -> None:
+        """A saved workflow was saved or deleted. Filled in by slice 6's
+        task 9: a schedule pinned to it pauses for a person's approval."""
+
     # -- runs ------------------------------------------------------------------------
     def changed(self) -> None:
         """A status changed, a turn ended or a session closed: finish each live

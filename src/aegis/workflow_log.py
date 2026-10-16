@@ -87,6 +87,7 @@ class RunState:
     open: dict[str, dict] = field(default_factory=dict)
     proposal: dict | None = None  # the edit waiting for the person
     edits: list[dict] = field(default_factory=list)  # {v, diff, status, t}
+    saved: dict | None = None  # {id, sha, source}: the saved workflow it runs
 
 
 def _tell(st: RunState, t: float, mark: str, text: str, **extra) -> None:
@@ -349,6 +350,7 @@ def fold(records: list[dict]) -> RunState | None:
                 created=float(r.get("t") or 0),
                 cwd=r.get("cwd") or "",
                 version=int(r.get("v") or 1),
+                saved=r.get("saved"),
             )
         elif st is not None:
             apply(st, r)
