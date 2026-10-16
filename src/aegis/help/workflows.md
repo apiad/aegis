@@ -226,7 +226,9 @@ exists comes back as `"docked": false` with the reason. `layout_read` lists
 the card as kind workflow, with its title and run. Arming again before
 approval keeps the spot: the new card takes the docked one's pane. If the
 person presses Reject, nothing runs and you get a message headed
-`rejected`: ask them what to change, then arm a new version.
+`rejected`: ask them what to change, then arm a new version. When they
+reject a run you armed again, the steps it finished are kept, and
+`workflow_arm` with `run` arms it again once more.
 
 ## While it runs
 
@@ -405,8 +407,9 @@ is then refused.
 
 ## Arm it again
 
-After a stop or a failure, `workflow_arm` with `run` arms the same run
-again, after a new approval on a new card. What finished keeps its result;
+After a stop or a failure, or after the person rejects arming it again,
+`workflow_arm` with `run` arms the same run again, after a new approval on
+a new card. What finished keeps its result;
 every step that did not runs again. It keeps its args. A definition given
 with `run` may change only what `workflow_edit` may.
 

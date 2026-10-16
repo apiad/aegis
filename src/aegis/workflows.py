@@ -979,9 +979,11 @@ class Workflows:
     ) -> RunState:
         """Arm a stopped or failed run again, for a new approval: what
         finished keeps its result, every leaf that did not runs again, and
-        a definition given with it changes only what an edit may."""
+        a definition given with it changes only what an edit may. A run
+        whose arming again the person rejected is armed again the same way."""
         st = self._get(run)
-        if st.status not in ("stopped", "failed"):
+        again = st.status == "rejected" and st.started is not None
+        if st.status not in ("stopped", "failed") and not again:
             raise OpError("not_stopped", f"{run} is {st.status}")
         if not self.owns(owner.log_id, st):
             raise OpError(
@@ -1155,12 +1157,19 @@ class Workflows:
             raise OpError("not_armed", f"{run} is {st.status}")
         self._log(run, {"ev": "rejected"})
         # Otherwise the main agent waits on a run that will never start.
-        await self._tell_owner(
-            st,
-            "rejected",
-            f"The person rejected {run} on its card, so nothing ran. Ask them "
-            "what to change, then arm a new version with workflow_arm.",
-        )
+        if st.started is None:
+            body = (
+                f"The person rejected {run} on its card, so nothing ran. Ask them "
+                "what to change, then arm a new version with workflow_arm."
+            )
+        else:
+            body = (
+                f"The person rejected arming {run} again, so nothing more ran; "
+                "the steps it finished are kept. Ask them what to change, then "
+                f'arm it again with workflow_arm(run="{run}") to keep those '
+                "steps, or arm a new version from the start."
+            )
+        await self._tell_owner(st, "rejected", body)
 
     async def stop_run(self, run: str) -> None:
         async with self._lock:
