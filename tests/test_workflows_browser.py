@@ -391,7 +391,9 @@ def test_open_shows_the_card_full_screen_until_closed(server, page):  # noqa: F8
     run = arm_one(page)
     page.click("#entries .wfcard .fbar .view")
     page.wait_for_selector("#viewer .vbar >> text=Two steps")
-    page.wait_for_selector(f'#viewer .wfcard[data-run="{run}"] >> text=Do the first thing.')
+    page.wait_for_selector(
+        f'#viewer .wfcard[data-run="{run}"] >> text=Do the first thing.'
+    )
     # Approving from the viewer runs it; the viewer's card follows.
     page.click("#viewer .wfcard button >> text=Approve and run")
     page.wait_for_selector("#viewer .wfcard[data-status=done]", timeout=20000)
@@ -400,7 +402,7 @@ def test_open_shows_the_card_full_screen_until_closed(server, page):  # noqa: F8
     assert not page.errors
 
 
-def test_dock_from_the_viewer_moves_it_to_a_pane_and_open_then_outlines_it(server, page):  # noqa: F811
+def test_dock_from_the_viewer_then_open_outlines_the_pane(server, page):  # noqa: F811
     page.set_viewport_size({"width": 1300, "height": 900})
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -494,7 +496,9 @@ def test_the_header_counts_steps_and_now_names_whats_working(server, page):  # n
         f"{card}[data-status=done] .wfhead >> text=2 of 2 done", timeout=20000
     )
     assert page.locator(now).count() == 0
-    assert page.locator(f"{card} .wfhead .bar i").get_attribute("style").endswith("100%;")
+    assert (
+        page.locator(f"{card} .wfhead .bar i").get_attribute("style").endswith("100%;")
+    )
     assert not page.errors
 
 
@@ -516,10 +520,16 @@ def test_the_header_counts_a_failure_but_not_a_branch_not_taken(server, page):  
     spawn(page, "/mcp workflow_arm " + json.dumps({"definition": FAILS, "args": {}}))
     card = "#entries .wfcard"
     page.click(f"{card} button >> text=Approve and run")
-    page.wait_for_selector(f"{card} .wfrow[data-node=bad][data-state=failed]", timeout=20000)
+    page.wait_for_selector(
+        f"{card} .wfrow[data-node=bad][data-state=failed]", timeout=20000
+    )
     # The run waits on the main agent; never is skipped and not counted.
-    page.wait_for_selector(f"{card}[data-status=running] .wfhead >> text=1 of 2 done · 1 failed")
-    assert page.locator(f"{card} .wfhead .bar i").get_attribute("style").endswith("50%;")
+    page.wait_for_selector(
+        f"{card}[data-status=running] .wfhead >> text=1 of 2 done · 1 failed"
+    )
+    assert (
+        page.locator(f"{card} .wfhead .bar i").get_attribute("style").endswith("50%;")
+    )
     assert not page.errors
 
 
@@ -601,7 +611,9 @@ def test_a_loop_past_six_rounds_shows_only_its_current_round(server, page):  # n
     spawn(page, "/mcp workflow_arm " + json.dumps({"definition": ROUNDS, "args": {}}))
     card = "#entries .wfcard"
     page.click(f"{card} button >> text=Approve and run")
-    page.wait_for_selector(f"{card} .wfrow[data-node=l] >> text=round 8 of 8", timeout=20000)
+    page.wait_for_selector(
+        f"{card} .wfrow[data-node=l] >> text=round 8 of 8", timeout=20000
+    )
     page.wait_for_selector(f"{card}[data-status=done]", timeout=20000)
     assert items_shown(page, card, "l.") == 1
     assert page.locator(f"{card} .wfrow[data-node='l.8.t']").count() == 1
