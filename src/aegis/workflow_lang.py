@@ -1269,6 +1269,12 @@ class _Parser:
             elif k == "required" and not all(isinstance(x, str) for x in v):
                 self.err(f"{path}.required", "required is a list of property names")
                 out[k] = []
+            elif k == "required" and isinstance(s.get("properties"), dict):
+                for x in v:
+                    if x not in s["properties"]:
+                        self.err(
+                            f"{path}.required", f"{x} is not one of its properties"
+                        )
             elif k in ("minimum", "maximum") and (
                 isinstance(v, bool) or not isinstance(v, int | float)
             ):
@@ -1653,6 +1659,23 @@ class _Parser:
         return out
 
 
+def _nested_defaults(p: "_Parser", s, path: str) -> None:
+    """A default below a top-level arg is refused: the arm fills in only
+    the args left out, never a field inside one."""
+    if not isinstance(s, dict):
+        return
+    subs = [(f"{path}.items", s.get("items"))] + [
+        (f"{path}.properties.{k}", v) for k, v in (s.get("properties") or {}).items()
+    ]
+    for at, sub in subs:
+        if isinstance(sub, dict):
+            if "default" in sub:
+                p.err(
+                    f"{at}.default", "a default goes only on a property of args itself"
+                )
+            _nested_defaults(p, sub, at)
+
+
 def parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError]]:
     try:
         return _parse(text, agents)
@@ -1792,11 +1815,17 @@ def _parse(text: str, agents: set[str]) -> tuple[Workflow | None, list[LintError
         if args.get("type", "object") != "object":
             p.err("$.args.type", "args is an object schema: type: object")
         args = p.schema(args, "$.args", keys=ARGS_KEYS)
+        if "default" in args:
+            p.err(
+                "$.args.default",
+                "args has no default of its own; give each property one",
+            )
         for k, sub in (args.get("properties") or {}).items():
             if isinstance(sub, dict) and "default" in sub:
                 at = f"$.args.properties.{k}.default"
                 for e in check_value(sub["default"], sub, at):
                     p.err(*e.split(": ", 1))
+            _nested_defaults(p, sub, f"$.args.properties.{k}")
     # The server's max_agents shape: total for every agent together, and a
     # number per agent alias for that alias alone.
     limits = raw.get("limits") or {}
