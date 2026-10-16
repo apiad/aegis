@@ -392,6 +392,10 @@ class App:
         reg.schedules = self.schedules
         self.workflows = Workflows(self)
         self.saved = workflow_store.Store(roots.config_root, roots.state_root)
+        # A pinned version's text outlives later saves: its card diffs from it.
+        self.saved.pinned = lambda: {
+            (s.pin["id"], s.pin["sha"]) for s in self.schedules.items.values() if s.pin
+        }
         reg.workflows = self.workflows
         self.catalogs = commands.Catalogs(
             roots.state_root / "stderr" / "catalog-probe.log"
