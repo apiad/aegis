@@ -120,14 +120,14 @@ root:
 
 
 async def test_a_steps_see_renders_per_item_and_hides_until_it_can(world):
-    wf_text = f"""
+    wf_text = """
 id: seen
 title: Seen
 say: Each slice, with its part of the plan.
 root:
   seq:
-    - {{sh: "sleep 0.5", id: first, say: First.}}
-    - map: {{over: [a, b], as: s, do: {{sh: "true", id: t, say: "Do {{{{s}}}}.", see: "plan.html#slice-{{{{s}}}}"}}}}
+    - {sh: "sleep 0.5", id: first, say: First.}
+    - map: {over: [a, b], as: s, do: {sh: "true", id: t, say: "Do {{s}}.", see: "plan.html#slice-{{s}}"}}
       id: m
       say: Each.
   say: Both.
