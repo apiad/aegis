@@ -325,3 +325,11 @@ async def test_an_answered_node_is_not_nudged_before_its_next_turn(world):
     world.app.sessions.turn_ended(s)  # that turn ends, still without a result
     await wf_.step()
     assert wf_.runs[run].nodes["w"].nudged
+
+
+def test_the_wake_backoff_doubles_to_thirty_seconds_and_never_overflows():
+    from aegis.workflows import tell_backoff
+
+    assert [tell_backoff(n) for n in (1, 2, 3, 6)] == [1.0, 2.0, 4.0, 30.0]
+    # 2 ** 1024 times a float overflows; a main agent down for hours gets there.
+    assert tell_backoff(1025) == tell_backoff(10**6) == 30.0

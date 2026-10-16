@@ -84,6 +84,15 @@ NUL = "the command holds a NUL byte, which bash cannot take"
 SH_LIMIT_S = 1800.0  # an sh with no deadline over it
 CHECK_LIMIT_S = 3600.0  # a check with no deadline over it, a monitor's default
 TELL_RETRY_S = 1.0  # a failed wake is tried again after this, doubling to 30 s
+
+
+def tell_backoff(fails: int) -> float:
+    """The wait before the next try at a wake that failed ``fails`` times
+    in a row. The exponent is capped: past 2 ** 1023 a float overflows,
+    and a main agent down for hours fails that often."""
+    return min(TELL_RETRY_S * 2 ** min(fails - 1, 16), 30.0)
+
+
 TAIL = 4000  # the end of an sh's stdout and of its stderr kept as its value
 LEAVES = frozenset({"agent", "sh", "wait", "check", "gate"})  # logged; the rest derived
 STARTS = frozenset(
@@ -2182,7 +2191,7 @@ class Workflows:
                 log.exception("aegis: could not tell %s about %s", st.owner, to)
                 # Tried again soon, not only at the next 30 s pass.
                 n = self._tell_fails[st.run] = self._tell_fails.get(st.run, 0) + 1
-                self._due_at(time.time() + min(TELL_RETRY_S * 2 ** (n - 1), 30.0))
+                self._due_at(time.time() + tell_backoff(n))
                 return
             self._tell_fails.pop(st.run, None)
             self._log(st.run, {"ev": "woke", "to": to})

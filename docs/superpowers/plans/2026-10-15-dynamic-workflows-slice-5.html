@@ -1743,6 +1743,7 @@ Only one step runs in a session at a time (the lint and the queue above), so <co
   <li>A change proposed before a stop came back with live Apply and Keep buttons once the run was armed again and approved: <code>rearmed</code> cleared the proposal but left its edit "proposed". A stop, a finish and arming again now mark an open proposal's edit "dropped" (<code>_drop_proposal</code> in <code>workflow_log.py</code>), and the card prints that word with no buttons. <code>test_a_change_is_not_rejected_once_the_run_ended</code> pinned "proposed" after a stop; it reads "dropped" now, which still is not "rejected".</li>
   <li>The run's own card approved a run armed again without showing what changed. It now draws the last "Armed again" line's diff above its Approve button (the same <code>diffPanel</code> the again card draws), rather than sending the person to the again card, so it also holds in a pane and in the viewer. A gate's changed decider reads "who decides: main" in every diff, the edit card's too (<code>_parts</code>).</li>
   <li>A step moved into a begun seq did not hold the step after it, so that step could start first and leave the change stale: <code>propose_edit</code> treats a move like an add there.</li>
+  <li>The backoff after failed wakes overflowed after about 1025 failures in a row (<code>2 ** 1024</code> times a float). The arithmetic moved into <code>tell_backoff(fails)</code>, which caps the exponent at 16, so a unit test can reach it without a server.</li>
 </ul>
 </main>
 <script>
