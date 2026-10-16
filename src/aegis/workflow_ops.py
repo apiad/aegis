@@ -43,6 +43,10 @@ class Arm(_Strict):
         default=None,
         description="A saved workflow's id (workflow_list), instead of definition.",
     )
+    token: str | None = Field(
+        default=None,
+        description="The launch token from a person's /workflow line, with id: the run starts at once.",
+    )
     args: dict[str, Any] = Field(
         default_factory=dict, description="Values for the workflow's args schema."
     )
@@ -58,6 +62,10 @@ class Arm(_Strict):
         if len(given) != 1:
             raise ValueError(
                 "give one of definition, id (a saved workflow) or run (to arm a run again)"
+            )
+        if self.token is not None and self.id is None:
+            raise ValueError(
+                "a launch token goes with id, the workflow the person launched"
             )
         return self
 
@@ -210,7 +218,9 @@ def register_workflow_ops(app: App) -> None:
                 canvas.place(s.layout, "wf-new", p.dock, s.dockable)
             except canvas.LayoutError as e:
                 raise OpError("bad_params", str(e)) from e
-        if p.id is not None:
+        if p.token is not None:
+            st = wf.arm_launched(s, p.id, p.args, p.token)
+        elif p.id is not None:
             saved = app.saved.get(p.id)
             check_named(saved, wf._agents())
             st = wf.arm(s, saved.text, p.args, saved=saved)
