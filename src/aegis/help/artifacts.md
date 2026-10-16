@@ -91,7 +91,7 @@ source code you edited as diffs already.
 
 A card scrolls away as the transcript grows. To keep a page or a file on
 screen beside the transcript, dock it: pass `dock` to `artifact_send` or
-`file_send`. The person can dock any card too, and move, resize and undock
+`file_send`, or to `workflow_arm` for a workflow's card. The person can dock any card too, and move, resize and undock
 what you docked. `dock` takes one of:
 
 - left or right: a new column at that edge of window 1;

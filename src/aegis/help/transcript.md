@@ -97,10 +97,13 @@ does nothing. A docked file shows its newest version: when the agent sends
 the same file again, the pane updates where it is and the older card says
 replaced by v2. A page leaves the canvas when it is answered or closed.
 
+A workflow's card is a canvas item too: it opens full screen, docks and
+moves to another window as a page and a file do.
+
 The canvas is kept with the session. It survives a reload and a restart of
 aegis, and every browser on the session shows the same one. Only someone who
-may change the session can rearrange it. The agent can dock pages and files
-and arrange the canvas too.
+may change the session can rearrange it. The agent can dock pages, files and
+workflows and arrange the canvas too.
 
 ## A canvas across browser windows
 
