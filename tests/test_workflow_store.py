@@ -7,7 +7,7 @@ import pytest
 
 from aegis.ops import OpError
 from aegis.workflow_lang import parse
-from aegis.workflow_store import BUILTIN, Store, sha_of
+from aegis.workflow_store import BUILTIN, Store, check_named, sha_of
 
 from .test_agents import CONFIG, World, mcp, turn
 from .test_workflows_e2e import ok
@@ -141,3 +141,28 @@ async def test_arming_a_file_whose_id_is_not_its_name_is_refused(world, tmp_path
     said = await turn(main, mcp("workflow_arm", id="odd", args={"secs": "1s"}))
     assert said.startswith("mcp error") and "its file is odd.yaml" in said
     assert world.app.workflows.of_owner(main.log_id) is None
+
+
+def test_a_file_that_is_not_text_is_an_error_row_and_the_rest_still_list(store):
+    store.save(NAP, AGENTS, BY)
+    (store.dir / "bad.yaml").write_bytes(b"\xff\xfe\x00bad")
+    rows = {r["id"]: r for r in store.listing(AGENTS)}
+    assert "UTF-8" in rows["bad"]["error"] and "title" in rows["nap"]
+    with pytest.raises(OpError) as e:
+        check_named(store.get("bad"), AGENTS)
+    assert e.value.code == "lint"
+
+
+def test_a_folder_named_like_a_workflow_is_skipped(store):
+    store.save(NAP, AGENTS, BY)
+    (store.dir / "dir.yaml").mkdir()
+    assert [r["id"] for r in store.listing(AGENTS)] == ["loop", "nap"]
+
+
+def test_a_torn_history_line_is_skipped(store):
+    saved = store.save(NAP, AGENTS, BY)
+    with store.history.open("a") as f:
+        f.write('{"t": 1, "id": "nap", "ev": "sa')
+    (row,) = [r for r in store.listing(AGENTS) if r["id"] == "nap"]
+    assert row["saved_by"] == BY
+    assert store.last_save("nap")["sha"] == saved.sha

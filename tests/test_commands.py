@@ -345,3 +345,12 @@ def test_spawn_tail_keeps_the_persons_lines_and_fences_backticks():
     assert "old question" not in tail
     assert all(f"user: {q}" in tail for q in ("q1", "q2 ```code```", "q3"))
     assert "a3" in tail and len(tail) <= SPAWN_TAIL_CHARS
+
+
+async def test_commands_list_survives_a_broken_workflow_store(app, monkeypatch):
+    def broken(agents):
+        raise OSError("the workflows folder cannot be read")
+
+    monkeypatch.setattr(app.saved, "listing", broken)
+    r = await app.registry.call("commands.list", {"log_id": await spawn(app)})
+    assert r["workflows"] == [] and r["commands"]
