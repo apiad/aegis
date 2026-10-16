@@ -237,25 +237,8 @@ function fillApproval(card) {
     kv.append(el("dt", null, k), el("dd", k === "prompt" || k === "check" ? "pre" : null, v));
   }
   const kids = [bar, kv];
-  // The workflow the schedule fires, as it is now: its steps, who saved it,
-  // and what changed since the version a person approved (schedules.py).
   const wf = s.workflow;
-  if (wf) {
-    const who = wf.saved_by ? `saved by ${wf.saved_by.by.handle || wf.saved_by.by.principal || "?"} ${hhmm(wf.saved_by.t)}` : null;
-    const runs = el("div", "aprun");
-    runs.append("runs ", el("b", null, wf.id));
-    const parts = wf.sha ? [wf.title, `v${wf.sha.slice(0, 8)}`, who] : ["deleted"];
-    runs.append(...parts.filter(Boolean).map((p) => ` · ${p}`));
-    if (wf.changed) runs.append(" · ", el("span", "apchanged", wf.sha ? "changed since you approved it" : "nothing to approve until the prompt names another"));
-    kids.push(runs);
-    if (wf.say) kids.push(el("div", "wflede", wf.say));
-    if (wf.changed && wf.diff?.length) kids.push(diffPanel({}, wf.diff, null));
-    else if (wf.steps?.length) {
-      const list = el("ul", "apsteps");
-      for (const say of wf.steps) list.append(el("li", null, say));
-      kids.push(list);
-    }
-  }
+  if (wf) kids.push(...scheduleWorkflow(wf));
   if (waiting) {
     const go = el("button", "btn primary", "Unpause");
     go.type = "button";
@@ -274,6 +257,29 @@ function fillApproval(card) {
     kids.push(foot);
   }
   card.replaceChildren(...kids);
+}
+
+// The workflow a schedule fires, as it is now: its steps, who saved it, and
+// what changed since the version a person approved (schedules.py). The
+// approval card and the Schedules view draw the same, so a Resume in either
+// sends only a version the person was shown.
+export function scheduleWorkflow(wf) {
+  const kids = [];
+  const who = wf.saved_by ? `saved by ${wf.saved_by.by.handle || wf.saved_by.by.principal || "?"} ${hhmm(wf.saved_by.t)}` : null;
+  const runs = el("div", "aprun");
+  runs.append("runs ", el("b", null, wf.id));
+  const parts = wf.sha ? [wf.title, `v${wf.sha.slice(0, 8)}`, who] : ["deleted"];
+  runs.append(...parts.filter(Boolean).map((p) => ` · ${p}`));
+  if (wf.changed) runs.append(" · ", el("span", "apchanged", wf.sha ? "changed since you approved it" : "nothing to approve until the prompt names another"));
+  kids.push(runs);
+  if (wf.say) kids.push(el("div", "wflede", wf.say));
+  if (wf.changed && wf.diff?.length) kids.push(diffPanel({}, wf.diff, null));
+  else if (wf.steps?.length) {
+    const list = el("ul", "apsteps");
+    for (const say of wf.steps) list.append(el("li", null, say));
+    kids.push(list);
+  }
+  return kids;
 }
 
 // A workflow's card: the plan before approval, the live run after (spec §07).
