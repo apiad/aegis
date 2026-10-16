@@ -496,13 +496,13 @@ root:
                   wait: "{{tick.next or '20m'}}"
                   between: [1m, 1h]
                   id: pause
-                  say: Wait as long as the agent asked, from 1m to 1h.
+                  say: Wait as the agent asked, 1m to 1h.
                 else:
                   wait: "{{args.every}}"
                   id: interval
-                  say: "Wait {{args.every}}, the interval given."
+                  say: "Wait {{args.every}}."
               id: how-long
-              say: Wait the interval given, or the agent's pick.
+              say: Wait.
           id: unless-done
           say: Unless it is done, wait.
       id: round
@@ -514,12 +514,11 @@ root:
 From the launch turn, put the work in `prompt` without the interval, and
 the interval in `every` when the person gave one, such as `5m` for
 "check the deploy every 5m"; `max` is the most rounds, 20 unless they said
-otherwise, and never more than 100: an arm with more is refused. Each round arrives as a step in your inbox: do the work, then call
+otherwise, and at most 100. Each round arrives as a step in your inbox: do the work, then call
 `workflow_result` with `done: true` when nothing is left to do, which ends
 the loop at once. Without `every`, give `next`, the wait before the next
-round, from 1m to 1h; without either it waits 20 minutes. A `next` outside
-those bounds is clamped into them, so `30d` waits an hour. The person's own
-`every` is waited as given. The loop ends done
+round, from 1m to 1h (a `next` outside that is clamped into it); without
+either it waits 20 minutes. The loop ends done
 when a round says so or the rounds run out, and stops when the person
 presses Stop on the card or asks you to stop, which you do with
 `workflow_stop`. A round you leave unanswered for two hours fails, and the
@@ -535,12 +534,16 @@ its runs. Nobody may be watching, so when a required value cannot be made
 from the text, end your turn with `turn_end` asking the person, and the
 schedule fires again at its next tick.
 
-A schedule pins the version of the workflow it fires when it is created or
-changed. When the workflow changes, by a save, a delete or an edit of its
+A schedule pins the version of the workflow it fires when it is created, or
+changed to fire another workflow; any other change to the schedule keeps the
+version you approved. When the workflow changes, by a save, a delete or an edit of its
 file, the schedule pauses for the person's approval, and its card shows what
 changed in the steps since the version they approved. Unpause on that card
 sends the version it showed; if the workflow changed again while they read,
-the server refuses and the card shows the newer one. The schedule's run stays
+the server refuses and the card shows the newer one. The card and the
+Schedules view show the workflow's steps, or the change, and every shell
+command and probe it runs without asking. No agent can fire such a schedule
+on demand: its clock fires it, or a person does. The schedule's run stays
 live while its workflow runs, so the overlap rule waits for the workflow, and
 a fire into a session already running a workflow waits until that run ends.
 
