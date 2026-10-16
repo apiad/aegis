@@ -269,6 +269,10 @@ export function setWorkflows(w) {
   workflows = w;
 }
 export const workflowTitle = (run) => workflows.get(run)?.title;
+// A workflow's node while its run lives: no tab, read-only (spec §05). The
+// server refuses its send, interrupt, unquiet, stop, close, configure and
+// rename; this only draws that.
+export const workflowLocked = (m) => !!m?.workflow && ["armed", "running"].includes(workflows.get(m.workflow.run)?.status);
 export function refreshWorkflows(runs) {
   const mine = (c) => !runs || runs.has(c.dataset.run);
   for (const c of document.querySelectorAll(".wfcard")) if (mine(c)) fillWorkflow(c);

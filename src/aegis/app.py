@@ -1331,9 +1331,9 @@ class App:
 
         @r.op("session.configure", ConfigureParams, owned="log_id")
         async def configure(p: ConfigureParams, caller):
-            return await self._configure(
-                reg.open(p.log_id), p.model, p.effort, p.permission
-            )
+            s = reg.open(p.log_id)
+            s.check_lock()
+            return await self._configure(s, p.model, p.effort, p.permission)
 
         @r.op("commands.list", LogParams)
         async def commands_list(p: LogParams, caller):
@@ -1379,7 +1379,9 @@ class App:
 
         @r.op("session.stop", LogParams, owned="log_id")
         async def stop(p: LogParams, caller):
-            await reg.open(p.log_id).stop()
+            s = reg.open(p.log_id)
+            s.check_lock()
+            await s.stop()
 
         @r.op("session.warm", LogParams, owned="log_id")
         async def warm(p: LogParams, caller):
@@ -1414,6 +1416,8 @@ class App:
                 log_id = caller.log_id
             if log_id is None:
                 raise OpError("bad_params", "log_id is required")
+            if (s := reg.sessions.get(log_id)) is not None:
+                s.check_lock()
             return reg.rename(log_id, p.handle, p.title)
 
         @r.op("archive.list", ArchiveParams)

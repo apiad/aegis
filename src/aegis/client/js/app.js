@@ -8,7 +8,7 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setWorkflows, syncDock, tickWorkflows, workflowTitle } from "./entries.js";
+import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setWorkflows, syncDock, tickWorkflows, workflowLocked, workflowTitle } from "./entries.js";
 import { setScroller } from "./highlight.js";
 import { Viewer } from "./viewer.js";
 import { Canvas } from "./canvas.js";
@@ -606,9 +606,7 @@ setWorkflows({
   call: (op, params) => conn.call(op, params),
   view: (files, line) => viewer.open({ files, at: 0, remote: false, glyph: "file", line }),
 });
-// A workflow's node while its run lives: no tab, read-only (spec §05). The
-// server refuses its send, interrupt and unquiet; this only draws that.
-const locked = (m) => !!m?.workflow && ["armed", "running"].includes(wfRuns.get(m.workflow.run)?.status);
+const locked = workflowLocked;
 // A patch redraws only the cards of the runs it carries.
 const wfChanged = (runs) => {
   refreshWorkflows(runs);
@@ -1745,7 +1743,7 @@ function renderMeta(s) {
   $("stop-session").disabled = s.state === "stopped" || theirs || held;
   $("quiet-session").disabled = !["working", "waiting"].includes(s.attention) || theirs || held;
   $("interrupt").disabled = theirs || held;
-  $("close").disabled = theirs;
+  $("close").disabled = theirs || held;
   if (working && workingSince == null) workingSince = Date.now();
   if (!working) workingSince = null;
   // A linked server that is down: the transcript stays readable, nothing sends.
@@ -2913,7 +2911,7 @@ $("queued").addEventListener("click", (ev) => {
 // The stylesheet shows it only in the phone layout (#333).
 function drawClosing(s) {
   const box = $("closing");
-  const hide = s.attention !== "done";
+  const hide = s.attention !== "done" || locked(s);
   if (box.hidden === hide) return;
   box.hidden = hide;
   if (transcript.following) transcript.toBottom();
@@ -2931,6 +2929,7 @@ const askClose = (s) =>
 const confirmClose = async (s) => s.attention === "done" || (await askClose(s));
 
 async function closeSession(s) {
+  if (locked(s)) return toast(`${s.handle} is a step of a running workflow; it closes when the run ends`, { kind: "error" });
   if (offline() || !(await confirmClose(s))) return;
   if (s.kind === "term") {
     const { server, log_id } = forKey(s.key);
