@@ -10,7 +10,10 @@ A version is the sha256 of the file. Saving needs no approval, because
 running a saved workflow always needs one unless a person launched it
 (workflows.Launches). Every save and delete appends a line with the text to
 ``<state>/workflow-saves.jsonl``: the history, where a schedule finds the
-version it pinned to show what changed (schedules.py).
+version it pinned to show what changed (schedules.py). A save drops the text
+of every version that neither a schedule pins nor a file holds, and keeps the
+line that says who saved it, so the history grows by a line per save, not by
+a definition.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import hashlib
 import json
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,6 +50,9 @@ class Store:
     def __init__(self, config_root: Path, state_root: Path) -> None:
         self.dir = config_root / ".aegis" / "workflows"
         self.history = state_root / "workflow-saves.jsonl"
+        # The (id, sha) a schedule pins, whose text the history keeps; the
+        # app sets it once the schedules exist.
+        self.pinned: Callable[[], set[tuple[str, str]]] = set
 
     def all(self) -> dict[str, Saved]:
         out: dict[str, Saved] = {}
@@ -99,6 +106,7 @@ class Store:
         self._note(
             {"ev": "saved", "id": wf.id, "sha": saved.sha, "by": by, "text": written}
         )
+        self._compact()
         return saved
 
     def delete(self, wid: str, by: dict) -> None:
@@ -128,14 +136,32 @@ class Store:
                 out.append(r)
         return out
 
+    def _compact(self) -> None:
+        """Drop the text of the versions nothing refers to any more."""
+        keep = self.pinned() | {(s.id, s.sha) for s in self.all().values()}
+        lines = self._lines()
+        if all("text" not in r or (r["id"], r.get("sha")) in keep for r in lines):
+            return
+        out = [
+            r
+            if "text" not in r or (r["id"], r.get("sha")) in keep
+            else {k: v for k, v in r.items() if k != "text"}
+            for r in lines
+        ]
+        tmp = self.history.with_suffix(".jsonl.tmp")
+        tmp.write_text("".join(json.dumps(r) + "\n" for r in out))
+        os.replace(tmp, self.history)
+
+    @staticmethod
+    def _saves(lines: list[dict]) -> dict[tuple, dict]:
+        """The last save of each (id, sha)."""
+        return {(r["id"], r.get("sha")): r for r in lines if r["ev"] == "saved"}
+
     def last_save(self, wid: str) -> dict | None:
         """The save that wrote the current version, or None when the file
         was written some other way (by hand, by git)."""
         cur = self.all().get(wid)
-        for r in reversed(self._lines()):
-            if r["id"] == wid and r["ev"] == "saved" and cur and r["sha"] == cur.sha:
-                return r
-        return None
+        return self._saves(self._lines()).get((wid, cur.sha)) if cur else None
 
     def text_of(self, wid: str, sha: str) -> str | None:
         cur = self.all().get(wid)
@@ -147,7 +173,7 @@ class Store:
         return None
 
     def listing(self, agents: set[str]) -> list[dict]:
-        rows = []
+        rows, saves = [], self._saves(self._lines())
         for wid, s in sorted(self.all().items()):
             wf, error = _named(s, agents)
             row = {"id": wid, "source": s.source, "sha": s.sha}
@@ -155,7 +181,7 @@ class Store:
                 row["error"] = error
             else:
                 row |= {"title": wf.title, "say": wf.say, "args": wf.args}
-            if (last := self.last_save(wid)) is not None:
+            if (last := saves.get((wid, s.sha))) is not None:
                 row |= {"saved_by": last["by"], "saved_at": last["t"]}
             rows.append(row)
         return rows

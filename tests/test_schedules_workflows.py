@@ -385,3 +385,11 @@ async def test_an_unapproved_arm_does_not_keep_a_schedules_run_live(world):
     await until(lambda: ses.status == "idle", timeout=10)
     await world.app.schedules.step()
     await until(lambda: not world.app.schedules.state["say-hello"].live, timeout=10)
+
+
+async def test_the_pinned_text_outlives_later_saves(world):
+    person_schedule(world)
+    await save(world, NAP.replace("Nap a while.", "Nap two."))
+    await save(world, NAP.replace("Nap a while.", "Nap three."))
+    w = world.app.schedules.wire("nightly-nap")["workflow"]
+    assert w["changed"] and w["diff"]  # drawn from the pinned version's text

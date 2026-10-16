@@ -166,3 +166,38 @@ def test_a_torn_history_line_is_skipped(store):
     (row,) = [r for r in store.listing(AGENTS) if r["id"] == "nap"]
     assert row["saved_by"] == BY
     assert store.last_save("nap")["sha"] == saved.sha
+
+
+def test_listing_reads_the_folders_and_the_history_once(store, monkeypatch):
+    for i in range(5):
+        store.save(NAP.replace("id: nap", f"id: nap{i}"), AGENTS, BY)
+    calls = {"all": 0, "lines": 0}
+    real_all, real_lines = store.all, store._lines
+
+    def all_():
+        calls["all"] += 1
+        return real_all()
+
+    def lines():
+        calls["lines"] += 1
+        return real_lines()
+
+    monkeypatch.setattr(store, "all", all_)
+    monkeypatch.setattr(store, "_lines", lines)
+    rows = store.listing(AGENTS)
+    assert len(rows) == 6 and all("saved_by" in r for r in rows if r["id"] != "loop")
+    assert calls == {"all": 1, "lines": 1}
+
+
+def test_a_save_keeps_the_text_only_of_pinned_and_current_versions(store):
+    v1 = store.save(NAP, AGENTS, BY).sha
+    store.pinned = lambda: {("nap", v1)}
+    v2 = store.save(NAP.replace("Nap a while.", "Nap two."), AGENTS, BY).sha
+    v3 = store.save(NAP.replace("Nap a while.", "Nap three."), AGENTS, BY).sha
+    assert store.text_of("nap", v1) is not None  # a schedule pins it
+    assert store.text_of("nap", v2) is None  # nothing refers to it any more
+    assert store.text_of("nap", v3) is not None  # the file
+    texts = [r for r in store._lines() if "text" in r]
+    assert {r["sha"] for r in texts} == {v1, v3}
+    # The history still says who saved each version.
+    assert [r["sha"] for r in store._lines() if r["ev"] == "saved"] == [v1, v2, v3]
