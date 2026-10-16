@@ -2489,6 +2489,7 @@ class Workflows:
         self._answered = {k for k in self._answered if k[0] != st.run}
         self._publish(st.run)
         self.changed()
+        self._app.schedules.changed()  # a schedule's run may have waited on it
         await self._tell_owner(st, outcome, body)
 
     def _release(self, st: RunState) -> None:

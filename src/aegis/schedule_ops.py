@@ -35,6 +35,13 @@ class ScheduleName(_Strict):
     name: str
 
 
+class ScheduleResume(ScheduleName):
+    workflow: str | None = Field(
+        None,
+        description="The version of the workflow this schedule fires, as its card shows it.",
+    )
+
+
 class ScheduleDef(Definition):
     name: str = Field(description=NAME)
 
@@ -180,13 +187,13 @@ def register_schedule_ops(app: App) -> None:
         sch.pause(p.name)
         return sch.wire(p.name)
 
-    @r.op("schedule.resume", ScheduleName, agent=True)
-    async def schedule_resume(p: ScheduleName, caller):
+    @r.op("schedule.resume", ScheduleResume, agent=True)
+    async def schedule_resume(p: ScheduleResume, caller):
         """Start a paused schedule again from now, its error count cleared. The
         ticks that fell during the pause do not fire."""
         mine(p.name, caller)
         person_only(p.name, caller, "unpause")
-        sch.resume(p.name)
+        sch.resume(p.name, p.workflow)
         return sch.wire(p.name)
 
     @r.op("schedule.fire", ScheduleName, agent=True)
