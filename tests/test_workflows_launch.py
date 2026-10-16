@@ -232,3 +232,20 @@ async def test_no_agent_path_mints_a_token(world):
     await until(lambda: main.status == "idle", timeout=10)
     assert world.app.workflows.launches._grants == {}
     assert launches(main) == []
+
+
+async def test_loop_refuses_a_thousand_rounds_and_clamps_the_agents_wait(world):
+    from aegis.workflow_lang import parse
+
+    main = await world.spawn()
+    tok = mint(world, main, "loop")
+    with pytest.raises(OpError) as e:
+        world.app.workflows.arm_launched(
+            main, "loop", {"prompt": "x", "max": 1000}, tok
+        )
+    assert e.value.code == "bad_args" and "at most 100" in e.value.message
+    wf, _ = parse(world.app.saved.get("loop").text, world.app.workflows._agents())
+    (picked,) = [
+        n for n in wf.by_key.values() if n.kind == "wait" and "between" in n.body
+    ]
+    assert picked.body["between"] == [60.0, 3600.0]

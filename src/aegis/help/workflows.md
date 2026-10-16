@@ -106,6 +106,9 @@ an agent once for a yes or a no, with each of `inputs` (references such as
 `impl` or `review.verdict`) given to it as JSON. A judge counts in the same
 limits as an agent node. Without a deadline above it, a check gives up after
 an hour and a command after 30 minutes. `wait: 20m` pauses on wall time.
+A wait whose length is filled in at run time can carry `between: [1m, 1h]`
+beside it, and the length is clamped into those bounds, so a value an agent
+gives never waits longer than the definition allows.
 
 ## Branch and repeat
 
@@ -461,7 +464,9 @@ args:
     max:
       type: integer
       default: 20
-      description: The most rounds.
+      minimum: 1
+      maximum: 100
+      description: The most rounds, from 1 to 100.
   required: [prompt]
 root:
   loop:
@@ -485,9 +490,19 @@ root:
         - if:
             when: {expr: "not tick.done"}
             then:
-              wait: "{{args.every or tick.next or '20m'}}"
-              id: pause
-              say: Wait before the next round.
+              if:
+                when: {expr: "args.every == null"}
+                then:
+                  wait: "{{tick.next or '20m'}}"
+                  between: [1m, 1h]
+                  id: pause
+                  say: Wait as long as the agent asked, from 1m to 1h.
+                else:
+                  wait: "{{args.every}}"
+                  id: interval
+                  say: "Wait {{args.every}}, the interval given."
+              id: how-long
+              say: Wait the interval given, or the agent's pick.
           id: unless-done
           say: Unless it is done, wait.
       id: round
@@ -499,10 +514,12 @@ root:
 From the launch turn, put the work in `prompt` without the interval, and
 the interval in `every` when the person gave one, such as `5m` for
 "check the deploy every 5m"; `max` is the most rounds, 20 unless they said
-otherwise. Each round arrives as a step in your inbox: do the work, then call
+otherwise, and never more than 100: an arm with more is refused. Each round arrives as a step in your inbox: do the work, then call
 `workflow_result` with `done: true` when nothing is left to do, which ends
 the loop at once. Without `every`, give `next`, the wait before the next
-round, from 1m to 1h; without either it waits 20 minutes. The loop ends done
+round, from 1m to 1h; without either it waits 20 minutes. A `next` outside
+those bounds is clamped into them, so `30d` waits an hour. The person's own
+`every` is waited as given. The loop ends done
 when a round says so or the rounds run out, and stops when the person
 presses Stop on the card or asks you to stop, which you do with
 `workflow_stop`. A round you leave unanswered for two hours fails, and the

@@ -1181,3 +1181,30 @@ def test_with_ids_leaves_a_workflow_with_every_id_alone():
     text = "id: a\ntitle: A\nsay: A.\nroot:\n  wait: 1s\n  id: w\n  say: W.\n"
     wf, _ = errs(text)
     assert with_ids(text, wf) == text
+
+
+def test_check_value_holds_numbers_to_minimum_and_maximum():
+    schema = {"type": "integer", "minimum": 1, "maximum": 100}
+    assert check_value(50, schema) == []
+    assert check_value(1000, schema) == ["$: at most 100"]
+    assert check_value(0, schema) == ["$: at least 1"]
+    assert check_value(2.5, {"type": "number", "maximum": 2}) == ["$: at most 2"]
+
+
+def test_a_result_schema_may_bound_a_number_with_numbers_only():
+    base = "id: w\ntitle: T\nsay: S.\nroot:\n  agent: {agent: opus, prompt: p, result: %s}\n  say: Ask.\n"
+    ok_, errors = parse(base % "{type: integer, minimum: 0, maximum: 9}", AGENTS)
+    assert ok_ is not None, errors
+    _, errors = parse(base % "{type: integer, maximum: lots}", AGENTS)
+    assert [e.message for e in errors] == ["maximum is a number"]
+
+
+def test_a_wait_takes_bounds_and_nothing_else_does():
+    base = "id: w\ntitle: T\nsay: S.\nroot:\n  %s\n  say: Wait.\n"
+    wf, errors = parse(base % "wait: '{{args.x}}'\n  between: [1m, 1h]", AGENTS)
+    assert wf is not None and wf.root.body["between"] == [60.0, 3600.0], errors
+    for bad in ("[1h, 1m]", "[1m]", "1m", "[1m, soon]"):
+        _, errors = parse(base % f"wait: 5m\n  between: {bad}", AGENTS)
+        assert [e.path for e in errors] == ["$.root.between"], (bad, errors)
+    _, errors = parse(base % "sh: 'true'\n  between: [1m, 1h]", AGENTS)
+    assert [e.path for e in errors] == ["$.root.between"]

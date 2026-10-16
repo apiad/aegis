@@ -82,18 +82,23 @@ async def test_a_round_that_says_done_ends_the_loop_without_waiting(world):
 
 
 @pytest.mark.slow
-async def test_without_every_the_agent_paces_itself(world):
+async def test_without_every_the_agent_paces_itself_within_an_hour(world):
+    # The agent's next is clamped into 1m..1h: a 30d pick waits 1h.
     main, run = await start(
         world, "/loop tidy the inbox", {"prompt": "tidy the inbox", "max": 2}
     )
-    await answer_round(main, 1, done=False, next_="1s")
+    await answer_round(main, 1, done=False, next_="30d")
     wf_ = world.app.workflows
     await until(
-        lambda: (n := wf_.runs[run].nodes.get("rounds.1.pause")) and n.cmd == "1s",
+        lambda: (
+            (n := wf_.runs[run].nodes.get("rounds.1.pause"))
+            and n.cmd == "1h (30d asked)"
+        ),
         timeout=10,
     )
-    await answer_round(main, 2, done=False, next_="1s")
-    await until(lambda: wf_.runs[run].status == "done", timeout=15)
+    n = wf_.runs[run].nodes["rounds.1.pause"]
+    assert n.until - n.started <= 3600 + 5
+    await world.app.registry.call("workflow.stop", {"run": run})
 
 
 async def test_stop_ends_the_loop_and_frees_the_session_for_another(world):

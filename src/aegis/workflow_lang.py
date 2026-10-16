@@ -40,12 +40,23 @@ KINDS = (
     "ref",
 )
 RUNS = frozenset(KINDS)  # the kinds this version runs
-COMMON = frozenset({"id", "say", "after", "deadline", "retries", "see", "cap"})
+COMMON = frozenset(
+    {"id", "say", "after", "deadline", "retries", "see", "cap", "between"}
+)
 MAP_FIELDS = frozenset({"over", "as", "cap", "do"})
 TYPES = frozenset({"object", "array", "string", "integer", "number", "boolean"})
 AGENT_FIELDS = frozenset({"prompt", "agent", "cwd", "result", "session"})
 SCHEMA_KEYS = frozenset(
-    {"type", "properties", "required", "items", "enum", "description"}
+    {
+        "type",
+        "properties",
+        "required",
+        "items",
+        "enum",
+        "description",
+        "minimum",
+        "maximum",
+    }
 )
 ID = re.compile(r"^[a-z][a-z0-9_-]{0,39}$")
 KEY = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
@@ -653,7 +664,7 @@ def check_value(
     value, schema: dict, path: str = "$", closed: bool = False
 ) -> list[str]:
     """The subset of JSON Schema a result may declare: type, properties,
-    required, items, enum. Enough to hold a worker to its report's shape
+    required, items, enum, minimum, maximum. Enough to hold a worker to its report's shape
     without a dependency. ``closed`` refuses every object key the schema's
     properties do not name, at any depth: a launched run's args stay inside
     the saved schema (workflows.Launches)."""
@@ -672,6 +683,11 @@ def check_value(
         return [f"{path}: expected {t}"]
     if "enum" in schema and value not in schema["enum"]:
         out.append(f"{path}: expected one of {schema['enum']}")
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        if "minimum" in schema and value < schema["minimum"]:
+            out.append(f"{path}: at least {schema['minimum']}")
+        if "maximum" in schema and value > schema["maximum"]:
+            out.append(f"{path}: at most {schema['maximum']}")
     if t == "object":
         for k in schema.get("required", []):
             if k not in value:
@@ -899,6 +915,10 @@ class _Parser:
             )
             after = []
         node.after = list(after)
+        if "between" in raw and kind != "wait":
+            self.err(
+                f"{path}.between", "between sits beside wait, as [shortest, longest]"
+            )
         if "cap" in raw:
             if kind != "par":
                 self.err(
@@ -935,6 +955,9 @@ class _Parser:
                     "wait is a duration such as 20m, or one {{expression}}",
                 )
             node.body = {"wait": body}
+            if "between" in raw:
+                if (b := self.between(raw["between"], f"{path}.between")) is not None:
+                    node.body["between"] = b
         elif kind == "gate":
             node.body = self.gate(body, f"{path}.gate")
         elif kind == "if":
@@ -1178,6 +1201,21 @@ class _Parser:
             out["result"] = self.schema(body["result"], f"{path}.result")
         return out
 
+    def between(self, raw, path: str) -> list[float] | None:
+        """A wait's bounds, ``[1m, 1h]``: whatever the wait comes to, a value
+        filled in at run time above all, is clamped into them."""
+        lo, hi = (
+            (duration(x) for x in raw)
+            if isinstance(raw, list) and len(raw) == 2
+            else (None, None)
+        )
+        if lo is None or hi is None or lo > hi:
+            self.err(
+                path, "between is [shortest, longest], two durations such as [1m, 1h]"
+            )
+            return None
+        return [lo, hi]
+
     def schema(self, s, path: str, seen: tuple[str, ...] = ()) -> dict:
         """The schema with every ``$ref`` to a def resolved; errors at
         their paths, and an empty schema where one is refused."""
@@ -1214,6 +1252,10 @@ class _Parser:
                 )
             elif k in ("required", "enum") and not isinstance(v, list):
                 self.err(f"{path}.{k}", f"{k} is a list")
+            elif k in ("minimum", "maximum") and (
+                isinstance(v, bool) or not isinstance(v, int | float)
+            ):
+                self.err(f"{path}.{k}", f"{k} is a number")
             elif k == "properties" and isinstance(v, dict):
                 out[k] = {
                     name: self.schema(sub, f"{path}.properties.{name}", seen)
@@ -1811,6 +1853,7 @@ PART = {
     "max": "its rounds",
     "at_max": "what it is at its last round",
     "wait": "its wait",
+    "between": "its bounds",
     "show": "what it shows",
     "by": "who decides",
 }
