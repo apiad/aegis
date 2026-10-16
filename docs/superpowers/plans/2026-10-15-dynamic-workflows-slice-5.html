@@ -789,7 +789,7 @@ Check that a <code>.wfdcard</code> carries <code>data-run</code>; if it holds th
 </div>
 </details>
 
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">The card's header counts, progress bar and Now</span><span class="files">entries.js · base.css · site/client.css · tests/test_workflows_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1732,6 +1732,7 @@ Only one step runs in a session at a time (the lint and the queue above), so <co
   <li>Task 1: the registry has no <code>Caller("person")</code>; <code>registry.call</code>'s default caller is the person, so <code>test_a_person_docks_a_finished_run</code> passes none. <code>test_a_bad_dock_arms_nothing</code> passed before the change too, since pydantic's extra-field error quotes the input; it pins the order now. <code>described</code> and <code>dockable</code> read <code>workflows</code> with <code>getattr</code>, because a registry built without the app has <code>workflows = None</code>.</li>
   <li>Task 2: the plan's dock test clicked the held line's Show, which calls <code>canvas.flash</code> directly and never reaches <code>setOpener</code>, so the break-it could not fail. The test clicks the docked card's Open first, then Show. <code>leaveViewer</code> keeps its old comparison for files and adds the workflow's id, rather than going through <code>itemId</code>.</li>
   <li>Task 3: <code>arm</code> sends the new run's wire at once (<code>_publish_now</code>) before it records the card. Coalesced, the layout an agent's <code>dock</code> sets reached the browser 250 ms before the run, and the phone tab read "workflow" instead of its title; before this slice the arm's own record published at once. <code>stop()</code> flushes through the same call. The large-map test also records what goes out on the channel and checks the last upsert says done, where the plan read the wire directly, which passes whether or not the last flush went out. Measured: 167 wire builds for 164 records before, 3 after. <code>make bench</code> measures the transcript path only and never arms a workflow, so it has no before/after for this task.</li>
+  <li>Task 4: <code>tally</code> and Now use the module's existing <code>LEAF_KINDS</code> rather than a second <code>LEAVES</code> set. The failure count has its own test, with an <code>if</code> whose branch is not taken, so counting skipped rows fails it ("1 of 3" where "1 of 2" is right). The question test checks "0 of 2 done · 1 question". Now's agent line shows the handle as plain text with a <code>// task 6</code> note; task 6 makes it the transcript link.</li>
 </ul>
 </main>
 <script>

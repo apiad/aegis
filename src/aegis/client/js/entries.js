@@ -287,8 +287,8 @@ export function tickWorkflows() {
     if (fs) fs.textContent = workflowStatus(w);
     for (const r of w.tree) {
       if (r.state !== "running") continue;
-      const dur = c.querySelector(`.wfrow[data-node="${CSS.escape(r.id)}"] .dur`);
-      if (dur) dur.textContent = since(r.started, r.ended);
+      // The tree's row and its Now line.
+      for (const dur of c.querySelectorAll(`[data-node="${CSS.escape(r.id)}"] .dur`)) dur.textContent = since(r.started, r.ended);
     }
   }
 }
@@ -379,6 +379,69 @@ function openLine(w) {
   return parts.length ? el("div", "wfopen", `waits on the main agent: ${parts.join(", ")}`) : null;
 }
 
+// Done, failed and open questions over every leaf the run will run: a map
+// not started counts its steps once, and a step under a branch not taken
+// does not count.
+function tally(w) {
+  const t = { done: 0, failed: 0, total: 0 };
+  for (const r of w.tree) {
+    if (!LEAF_KINDS.has(r.kind) || r.state === "skipped") continue;
+    t.total++;
+    if (r.state === "done") t.done++;
+    else if (r.state === "failed") t.failed++;
+  }
+  t.asks = (w.open || []).filter((o) => o.kind === "ask").length;
+  return t;
+}
+
+// The header under the card's bar: counts over a progress bar; before
+// approval, how many steps the plan has.
+function headLine(w) {
+  const t = tally(w);
+  const box = el("div", "wfhead");
+  if (w.status === "armed") {
+    box.append(el("span", null, `${t.total} step${t.total === 1 ? "" : "s"}`));
+    return box;
+  }
+  const n = (k, one, many) => (k ? `${k} ${k === 1 ? one : many}` : null);
+  const parts = [`${t.done} of ${t.total} done`, n(t.failed, "failed", "failed"), n(t.asks, "question", "questions")];
+  box.append(el("span", null, parts.filter(Boolean).join(" · ")));
+  const bar = el("div", "bar");
+  const fill = el("i");
+  fill.style.width = `${t.total ? Math.round((100 * t.done) / t.total) : 0}%`;
+  bar.append(fill);
+  box.append(bar);
+  return box;
+}
+
+// Now: each working leaf with what it runs in and for how long, then up to
+// three steps that come next, queued ones first. Only while running.
+function nowSection(w) {
+  if (w.status !== "running") return null;
+  const leaves = w.tree.filter((r) => !r.each && LEAF_KINDS.has(r.kind));
+  const working = leaves.filter((r) => r.state === "running");
+  const queued = leaves.filter((r) => r.state === "queued");
+  const pending = leaves.filter((r) => r.state === "pending" && !r.held);
+  const next = [...queued, ...pending].slice(0, 3);
+  if (!working.length && !next.length) return null;
+  const box = el("div", "wfnow");
+  box.append(el("h5", null, "now"));
+  for (const r of working) {
+    const line = el("div", "nowline");
+    line.dataset.node = r.id;
+    const what = r.kind === "agent" ? el("span", "w", r.handle || "") : el("span", "w", commandOf(r) || r.reading || kindTag(r)); // task 6: the handle links the transcript
+    line.append(el("span", "dot running"), el("span", "say", r.say), what, el("span", "dur", since(r.started, r.ended)));
+    box.append(line);
+  }
+  for (const r of next) {
+    const line = el("div", "nowline next");
+    line.dataset.node = r.id;
+    line.append(el("span", `dot ${r.state}`), el("span", "say", r.say), el("span", "w", r.state === "queued" ? "waits for room" : "next"));
+    box.append(line);
+  }
+  return box;
+}
+
 // Where a run's card is held: "docked", "in window <n>" or "".
 function docked(id) {
   const at = docker.docked(id);
@@ -434,9 +497,11 @@ export function fillWorkflow(card) {
     }
     kids.push(head);
   }
-  kids.push(el("div", "wflede", w.say));
+  kids.push(headLine(w), el("div", "wflede", w.say));
   const waits = w.status === "running" ? openLine(w) : null;
   if (waits) kids.push(waits);
+  const now = nowSection(w);
+  if (now) kids.push(now);
   if (w.story.length) {
     const story = el("div", "story");
     for (const s of w.story) {
