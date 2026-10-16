@@ -250,6 +250,10 @@ async def test_only_a_stopped_or_failed_run_of_ones_own_is_armed_again(world):
     await world.app.registry.call("workflow.reject", {"run": run})
     said = await turn(other, mcp("workflow_arm", run=run))
     assert said.startswith("mcp error")
+    # The rejection wakes main; its answer must not read as the next.
+    await until(
+        lambda: woke(main, " · rejected · ") and main.status == "idle", timeout=10
+    )
     said = await turn(main, mcp("workflow_arm"))
     assert said.startswith("mcp error")
 

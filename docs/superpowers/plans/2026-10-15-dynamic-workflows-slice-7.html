@@ -470,7 +470,7 @@ def test_a_probe_start_marks_an_if_running_and_starts_its_clock():
 </div>
 </details>
 
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="num">3</span><span><span class="ttl">A person's Reject tells the main agent</span><span class="files">workflows.py · workflow_ops.py · tests/test_workflow_ops.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -1413,6 +1413,7 @@ Run <code>make bench</code> for the PR body.</li>
   <li>Task 0, before task 1 and not in this plan: <code>_flush_publish</code> no longer re-arms itself after a run's wire raised. The run stays changed and rides the next flush another publish arms, and its failure is logged once until a flush for it succeeds (slice 5 round-2 review, item 1).</li>
   <li>Task 1: slice 6 added <code>minimum</code> and <code>maximum</code> to <code>SCHEMA_KEYS</code> (loop.yaml bounds its max), so the tests use <code>pattern</code> as the key outside the subset, and the subset message lists nine keys, not seven.</li>
   <li>Task 2: the engine test is marked <code>@pytest.mark.slow</code>, since it waits out a 2 s deadline (the marker's threshold is 1.5 s); its then-branch id is quoted (<code>id: "yes"</code>) so no YAML reader takes it for a boolean.</li>
+  <li>Task 3: four existing tests met the new rejected turn, not one: besides the ops test, <code>test_an_ended_runs_pane_keeps_its_title_after_a_boot</code> (canvas), <code>test_an_agent_saves_lists_arms_and_deletes</code> (store) and <code>test_only_a_stopped_or_failed_run_of_ones_own_is_armed_again</code> (edits) now wait for it to end before their next turn.</li>
 </ul>
 </main>
 <script>

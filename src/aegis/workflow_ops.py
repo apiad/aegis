@@ -290,7 +290,7 @@ def register_workflow_ops(app: App) -> None:
     @r.op("workflow.reject", RunName)
     async def workflow_reject(p: RunName, caller):
         owned(p.run, caller)
-        wf.reject(p.run)
+        await wf.reject(p.run)
         return wf.wire(p.run)
 
     @r.op("workflow.stop", Stop, agent=True)
