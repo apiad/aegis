@@ -645,19 +645,25 @@ class Schedules:
     def update(
         self, name: str, d: Definition, cwd: Path, by_agent: bool = False
     ) -> Schedule:
+        """An edit keeps the pin while the prompt names the same workflow:
+        only resume moves it, to a version a person was shown. A prompt that
+        names another workflow pins its current version and waits for a
+        person, as an agent's edit always does."""
         old = self._get(name)
         now = int(self.now())
-        paused = old.paused
-        if by_agent:
-            paused = {"by": APPROVAL, "at": iso(self.now())}
+        pin = self._pin(d)
+        if pin is not None and old.pin and pin["id"] == old.pin["id"]:
+            pin = old.pin
+        ask = by_agent or (pin is not None and pin != old.pin)
+        paused = {"by": APPROVAL, "at": iso(self.now())} if ask else old.paused
         s = Schedule(name, old.owner, old.created_at, now, self._settle(d, cwd), paused)
-        s.pin = self._pin(d)
+        s.pin = pin
         if s.d.fire.target == "new":
             self._spec(s)
         self.items[name] = s
         self._save()
         self._event(name, "edited", tick=now)
-        if by_agent and (old.paused or {}).get("by") != APPROVAL:
+        if ask and (old.paused or {}).get("by") != APPROVAL:
             self._event(name, "paused", by=APPROVAL)
         self._wake.set()
         return s
