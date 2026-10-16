@@ -32,7 +32,8 @@ class Command:
     hint: str
     doc: str
     args: str = (
-        ""  # what the menu completes: "models", "efforts", "permissions" or "tutorials"
+        ""  # what the menu completes: "models", "efforts", "permissions",
+        # "tutorials" or "workflows"
     )
 
 
@@ -53,6 +54,17 @@ AEGIS: dict[str, Command] = {
         Command("title", "<text>", "Set this session's title"),
         Command("stop", "", "Stop the process and keep the session"),
         Command("btw", "<question>", "Ask a side question; the agent never sees it"),
+        Command(
+            "workflow",
+            "[id] [text]",
+            "Run a saved workflow now, its args made from your text; alone, list them",
+            "workflows",
+        ),
+        Command(
+            "loop",
+            "<prompt>",
+            "Repeat a prompt until the agent says it is done (a built-in workflow)",
+        ),
         Command(
             "spawn",
             "<agent>[@server] [prompt]",
