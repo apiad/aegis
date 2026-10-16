@@ -20,8 +20,8 @@ from . import files
 from . import layout as canvas
 from .ops import Caller, NoParams, OpError
 from .transcript.entries import _sent_file
-from .workflow_lang import parse, walk
-from .workflow_store import check_named
+from .workflow_lang import parse, rows, walk
+from .workflow_store import _named, check_named
 
 if TYPE_CHECKING:
     from .app import App
@@ -195,8 +195,9 @@ def register_workflow_ops(app: App) -> None:
         Arming runs the same check."""
         from .workflow_lang import parse
 
-        _, errors = parse(p.definition, wf._agents())
-        return {"errors": [f"{e.path}: {e.message}" for e in errors]}
+        got, errors = parse(p.definition, wf._agents())
+        out: dict = {"errors": [f"{e.path}: {e.message}" for e in errors]}
+        return out | ({"id": got.id} if got is not None and not errors else {})
 
     @r.op("workflow.arm", Arm, agent=True)
     async def workflow_arm(p: Arm, caller):
@@ -272,6 +273,19 @@ def register_workflow_ops(app: App) -> None:
         built in and the project's, each with its title, args schema,
         version, who saved it, and what is wrong with it if it does not lint."""
         return app.saved.listing(wf._agents())
+
+    @r.op("workflow.read", WorkflowId)
+    async def workflow_read(p: WorkflowId, caller):
+        """A saved workflow for Settings → Workflows: its file's text, to
+        export, and its steps as the card draws them. A person's: an agent
+        reads the file itself."""
+        s = app.saved.get(p.id)
+        got, error = _named(s, wf._agents())
+        out = {"id": s.id, "source": s.source, "sha": s.sha, "text": s.text}
+        if got is None:
+            return out | {"error": error}
+        steps = [{"say": r["say"], "depth": r["depth"]} for r in rows(got)]
+        return out | {"steps": steps}
 
     @r.op("workflow.delete", WorkflowId, agent=True)
     async def workflow_delete(p: WorkflowId, caller):

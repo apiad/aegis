@@ -130,3 +130,26 @@ async def test_arming_fills_the_args_defaults(world):
     run = ok(await turn(main, mcp("workflow_arm", definition=text, args={})))["run"]
     assert world.app.workflows.runs[run].args == {"n": 3}
     assert world.app.workflows.wire(run)["args"] == {"n": 3}
+
+
+NAP = (
+    "id: nap\ntitle: Nap\nsay: Nap a while.\nroot:\n  seq:\n"
+    "    - {wait: 1s, id: rest, say: Rest a second.}\n  id: all\n  say: Rest.\n"
+)
+
+
+async def test_a_person_reads_a_saved_workflow_and_an_agent_cannot(world):
+    await world.app.registry.call("workflow.save", {"definition": NAP})
+    got = await world.app.registry.call("workflow.read", {"id": "nap"})
+    assert got["text"] == NAP and got["source"] == "project"
+    assert got["steps"] == [
+        {"say": "Rest.", "depth": 0},
+        {"say": "Rest a second.", "depth": 1},
+    ]
+    a = await world.spawn()
+    assert (await turn(a, mcp("workflow_read", id="nap"))).startswith("mcp error")
+
+
+async def test_lint_names_the_id_of_a_workflow_that_lints(world):
+    out = await world.app.registry.call("workflow.lint", {"definition": NAP})
+    assert out == {"errors": [], "id": "nap"}

@@ -23,6 +23,7 @@ import { deviceCopy } from "./appworker.js";
 import { installState, onInstallState, openInstallDialog } from "./install.js";
 import { onPushState, pushState, unsubscribePush } from "./pushpanel.js";
 import { markNeedsNet, offline } from "./net.js";
+import { ask } from "./dialog.js";
 
 const h = (tag, props = {}, ...kids) => {
   const el = Object.assign(document.createElement(tag), props);
@@ -121,6 +122,7 @@ export class Settings {
     this.server = server;
     this.wire = null;
     this.doc = null;
+    this.savedWf = undefined; // the saved workflows are that server's
     this.dirty = false;
     this.findings = null;
     this.found = [];
@@ -212,7 +214,7 @@ export class Settings {
         h(
           "div",
           { className: "set-page" },
-          h("p", { className: "notice", id: "set-member", textContent: "Server settings (agents, queues, parking, servers, tokens) are edited by an admin." }),
+          h("p", { className: "notice", id: "set-member", textContent: "Server settings (agents, queues, parking, workflows, servers, tokens) are edited by an admin." }),
           this.browser(),
           this.checks(),
         ),
@@ -240,6 +242,7 @@ export class Settings {
       this.agents(),
       this.queues(),
       this.park(),
+      this.workflows(),
     );
     this.box.replaceChildren(full, this.bar());
     this.mark();
@@ -941,6 +944,94 @@ export class Settings {
     const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Parking" }));
     const note = h("p", { className: "set-none", textContent: "An idle session that nothing needs gives its harness's memory back, and the next message resumes it. Blank keeps every session of that harness running." });
     return h("section", {}, head, note, h("div", { className: "set-queues", id: "set-park" }, ...rows));
+  }
+
+  // Workflows (workflows.py): the server's pool, which Save writes into
+  // .aegis.yaml as it writes the rows above, and the saved workflows, whose
+  // Import and Export act on their files at once (workflow_store.py).
+  workflows() {
+    this.doc.max_agents ||= {};
+    const m = this.doc.max_agents;
+    const limit = (key, label, placeholder) => {
+      const input = h("input", { name: key, type: "number", min: 1, value: m[key] ?? "", className: "pick set-limit", placeholder });
+      input.setAttribute("aria-label", label);
+      input.addEventListener("input", () => {
+        if (input.value === "") delete m[key];
+        else m[key] = Math.max(1, Math.round(Number(input.value)));
+        this.touch();
+      });
+      const row = h("div", { className: "set-queue" });
+      row.dataset.row = `workflows.${key}`;
+      row.append(h("div", { className: "set-queue-line" }, h("span", { className: "set-name", textContent: key === "total" ? "all agents" : key }), h("span", { textContent: "at most" }), input, h("span", { textContent: "node sessions" })));
+      return row;
+    };
+    const pool = [limit("total", "Workflow node sessions at once, all agents", "4"), ...this.doc.agents.map((a) => limit(a.name, `Workflow node sessions of ${a.name} at once`, "total"))];
+    const file = h("input", { type: "file", id: "set-wf-import", accept: ".yaml,.yml", hidden: true });
+    file.addEventListener("change", () => file.files[0] && this.importWorkflow(file.files[0]).finally(() => (file.value = "")));
+    const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Workflows" }), button("Import…", "set-wf-import-btn", () => file.click()), file);
+    const note = h("p", { className: "set-none", textContent: "The pool bounds the node sessions every workflow on this server has open at once; blank is the default, 4 in all, and an agent left blank is bound by the total. Saved workflows are files in .aegis/workflows beside .aegis.yaml: Import and Export act on them at once, without Save changes." });
+    if (this.savedWf === undefined) this.loadSaved();
+    return h("section", { id: "set-workflows" }, head, note, h("div", { className: "set-queues", id: "set-wf-pool" }, ...pool), h("div", { id: "set-wf-status" }), h("div", { id: "set-wf-list" }, ...this.savedRows()));
+  }
+
+  async loadSaved() {
+    this.savedWf = null;
+    this.savedWf = await this.call("workflow.list").catch(() => []);
+    this.drawSaved();
+  }
+
+  // Only the list: a whole-page draw would drop what is being typed.
+  drawSaved() {
+    this.box.querySelector("#set-wf-list")?.replaceChildren(...this.savedRows());
+  }
+
+  savedRows() {
+    return (this.savedWf || []).map((w) => {
+      const by = w.saved_by;
+      const who = w.source === "builtin" ? "built in" : by ? `saved by ${by.handle || by.principal} ${elapsed(w.saved_at)}` : "saved by hand";
+      const row = h("div", { className: "set-wf" });
+      row.dataset.wf = w.id;
+      const steps = h("ul", { className: "set-wf-steps", hidden: true });
+      const show = button("Steps", null, async () => {
+        if (steps.hidden && !steps.childElementCount) {
+          const r = await this.call("workflow.read", { id: w.id });
+          steps.replaceChildren(...(r.steps || []).map((s) => h("li", { textContent: s.say, style: `padding-left:${s.depth * 14}px` })));
+        }
+        steps.hidden = !steps.hidden;
+      });
+      const exp = button("Export", null, () => this.exportWorkflow(w.id));
+      row.append(
+        h("div", { className: "set-wf-line" }, h("span", { className: "set-name", textContent: w.title || w.id }), h("code", { textContent: w.id }), h("span", { className: "set-none", textContent: who }), h("span", { className: "set-wf-acts" }, show, exp)),
+        w.error ? h("p", { className: "set-why error", textContent: w.error }) : "",
+        steps,
+      );
+      return row;
+    });
+  }
+
+  async exportWorkflow(id) {
+    const r = await this.call("workflow.read", { id });
+    const a = h("a", { href: URL.createObjectURL(new Blob([r.text], { type: "application/yaml" })), download: `${id}.yaml` });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 0);
+  }
+
+  // Linted first, so a file that does not lint writes nothing and shows its
+  // errors; the save lints again on the server, as the person's own save.
+  async importWorkflow(file) {
+    const text = await file.text();
+    const status = (msg, lines = []) => this.box.querySelector("#set-wf-status")?.replaceChildren(h("p", { className: lines.length ? "set-why error" : "set-none", textContent: msg }), ...lines.map((l) => h("pre", { className: "set-wf-err", textContent: l })));
+    try {
+      const lint = await this.call("workflow.lint", { definition: text });
+      if (lint.errors.length) return status(`${file.name} does not lint, so nothing was imported:`, lint.errors);
+      const have = (this.savedWf || []).find((w) => w.id === lint.id);
+      if (have?.source === "project" && !(await ask(`Replace the saved workflow ${lint.id}?`, { ok: "Replace" }))) return;
+      await this.call("workflow.save", { definition: text });
+      status(`Imported ${lint.id}.`);
+    } catch (e) {
+      status(`${file.name} was not imported:`, [e.message || String(e)]);
+    }
+    this.loadSaved();
   }
 
   bar() {
