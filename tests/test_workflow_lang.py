@@ -116,9 +116,24 @@ def test_an_agent_takes_retries_and_a_deadline():
         assert errors == [] and wf is not None
 
 
-def test_see_is_a_pointer_and_stays_allowed():
-    wf, errors = errs(one_agent("  see: plan.html#a\n"))
-    assert errors == [] and wf is not None
+def test_see_is_a_file_path_kept_on_the_node_and_its_row():
+    wf, errors = errs(one_agent("  see: docs/plan.html#slice-1\n"))
+    assert errors == [] and wf.root.see == "docs/plan.html#slice-1"
+    (row,) = rows(wf)
+    assert row["see"] == "docs/plan.html#slice-1"
+
+
+def test_see_must_be_a_path_and_its_references_are_checked():
+    for value, msg in (
+        ("[a, b]", "see is a path to a file, with an optional #fragment or :line"),
+        (
+            '"https://example.com/plan"',
+            "see is a path to a file in the run's folder, not a URL",
+        ),
+        ('"plan.html#{{nobody.id}}"', "nobody is not an earlier node or args"),
+    ):
+        _, got = errs(one_agent(f"  see: {value}\n"))
+        assert any(msg in e and e.startswith("$.root") for e in got), (value, got)
 
 
 def test_a_result_schema_names_only_known_types_and_lists():

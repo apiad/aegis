@@ -505,6 +505,13 @@ class Workflows:
         elif not each:
             with contextlib.suppress(*RENDER_ERRORS):
                 row["say"] = render(row["say"], self._scope(st, wf, prefix))
+        if row.get("see"):
+            # Shown only once it renders: a path with a value still to come,
+            # or a map's step drawn once before it starts, opens nothing.
+            tpl = row.pop("see")
+            if not each:
+                with contextlib.suppress(*RENDER_ERRORS):
+                    row["see"] = render(tpl, self._scope(st, wf, prefix))
         if n is not None:
             h = self._reg.sessions.get(n.log_id or "")
             row |= {
