@@ -68,7 +68,9 @@ yourself starts at once.
 A schedule whose prompt is a /workflow or /loop line runs that saved
 workflow at each fire, with no click, at the version a person approved. When
 the workflow changes, the schedule pauses and its card shows the change until
-you unpause it. No agent can `schedule_fire` such a schedule, paused or not:
+you unpause it. One saved before schedules pinned a version waits for a
+person from the server's start, and no agent can unpause it. No agent can
+`schedule_fire` such a schedule, paused or not:
 the approval covers its clock, not runs on demand. A person's Fire now on a
 paused one works only when no approval is due and the workflow is still the
 approved version. See [Fire one from a schedule](workflows#fire-one-from-a-schedule).
