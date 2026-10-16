@@ -199,9 +199,16 @@ def register_schedule_ops(app: App) -> None:
     @r.op("schedule.fire", ScheduleName, agent=True)
     async def schedule_fire(p: ScheduleName, caller):
         """Fire a schedule you own now, skipping its clock and its check. The
-        overlap rule still holds: with a live run, wait holds it and skip drops it."""
-        mine(p.name, caller)
+        overlap rule still holds: with a live run, wait holds it and skip drops it.
+        A schedule that fires a workflow fires only on its clock for an agent:
+        the person approved the clock, not runs on demand."""
+        s = mine(p.name, caller)
         person_only(p.name, caller, "fire")
+        if caller.is_agent and sch.workflow_of(s.d.prompt) is not None:
+            raise OpError(
+                "needs_person",
+                f"{p.name} fires a workflow, so only its clock or a person fires it",
+            )
         return {"outcome": await sch.fire_now(p.name), **sch.wire(p.name)}
 
     @r.op("schedule.test", ScheduleTest, agent=True)
