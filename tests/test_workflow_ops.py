@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from .conftest import until
@@ -153,3 +155,34 @@ async def test_a_person_reads_a_saved_workflow_and_an_agent_cannot(world):
 async def test_lint_names_the_id_of_a_workflow_that_lints(world):
     out = await world.app.registry.call("workflow.lint", {"definition": NAP})
     assert out == {"errors": [], "id": "nap"}
+
+
+async def test_a_rejection_is_told_once_across_a_restart(world, tmp_path):
+    import json
+
+    a = await world.spawn()
+    run = ok(
+        await turn(a, mcp("workflow_arm", definition=flow(RESULT, RESULT), args={}))
+    )["run"]
+    await world.app.registry.call("workflow.reject", {"run": run})
+    await until(lambda: rejected(a) and a.status == "idle", timeout=10)
+    await world.restart()
+    a = world.app.sessions.sessions[a.log_id]
+    await asyncio.sleep(0.5)
+    assert len(rejected(a)) == 1
+    # A crash between the delivery and its record: the next boot tells it.
+    await world.stop()
+    (log,) = tmp_path.rglob(f"{run}.jsonl")
+    kept = [
+        ln
+        for ln in log.read_text().splitlines()
+        if json.loads(ln).get("ev") != "rejected_told"
+    ]
+    log.write_text("\n".join(kept) + "\n")
+    await world.start()
+    a = world.app.sessions.sessions[a.log_id]
+    await until(lambda: len(rejected(a)) == 2, timeout=10)
+    await world.restart()
+    a = world.app.sessions.sessions[a.log_id]
+    await asyncio.sleep(0.5)
+    assert len(rejected(a)) == 2

@@ -367,6 +367,9 @@ class Workflows:
         for st, why in self._boot_failed:
             await self._tell_owner(st, "failed", f"The workflow failed: {why}.")
         self._boot_failed.clear()
+        for st in list(self.runs.values()):
+            if st.status == "rejected" and st.reject_untold:
+                await self._tell_rejected(st)
         while True:
             # Cleared before the pass: a wake that arrives during it is
             # another pass, not lost.
@@ -1155,7 +1158,15 @@ class Workflows:
         st = self._get(run)
         if st.status != "armed":
             raise OpError("not_armed", f"{run} is {st.status}")
-        self._log(run, {"ev": "rejected"})
+        # "tell" marks a record whose delivery is logged after it, so a boot
+        # tells a rejection whose delivery a crash cut, and no other.
+        self._log(run, {"ev": "rejected", "tell": True})
+        await self._tell_rejected(st)
+
+    async def _tell_rejected(self, st: RunState) -> None:
+        """Tell the main agent its plan was rejected, once: the record
+        follows the delivery, as woke does for an open item."""
+        run = st.run
         # Otherwise the main agent waits on a run that will never start.
         if st.started is None:
             body = (
@@ -1169,7 +1180,8 @@ class Workflows:
                 f'arm it again with workflow_arm(run="{run}") to keep those '
                 "steps, or arm a new version from the start."
             )
-        await self._tell_owner(st, "rejected", body)
+        if await self._tell_owner(st, "rejected", body):
+            self._log(run, {"ev": "rejected_told"})
 
     async def stop_run(self, run: str) -> None:
         async with self._lock:
@@ -2834,16 +2846,19 @@ class Workflows:
             await self._halt(st, inst, n)
             self._fail(st, inst, "stopped by the main agent", retry=False, by="main")
 
-    async def _tell_owner(self, st: RunState, outcome: str, body: str) -> None:
+    async def _tell_owner(self, st: RunState, outcome: str, body: str) -> bool:
+        """Whether the main agent was told."""
         owner = self.owner(st)
         if owner is None:
-            return
+            return False
         try:
             await owner.deliver(
                 f"> from workflow:{self._wid(st)} · {outcome} · {iso_now()}", body
             )
         except Exception:
             log.exception("aegis: could not tell %s how run %s ended", st.owner, st.run)
+            return False
+        return True
 
     def _fail(
         self,
