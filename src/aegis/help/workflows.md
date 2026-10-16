@@ -211,7 +211,11 @@ above `limits.total` is refused.
 a card under your call. Nothing runs until the person presses Approve and
 run there. You cannot approve it yourself. The card docks beside the
 transcript as a sent file or a page does, and stays live while the run goes
-on.
+on. Pass `dock` to place it as you arm, with the values `artifact_send`
+takes; a bad `dock` arms nothing, and one that no longer fits once the run
+exists comes back as `"docked": false` with the reason. `layout_read` lists
+the card as kind workflow, with its title and run. Arming again before
+approval keeps the spot: the new card takes the docked one's pane.
 
 ## While it runs
 
@@ -230,6 +234,48 @@ headed `done`, `failed` or `stopped`. `workflow_status` shows the tree, the
 story and what the run waits on at any time; `workflow_stop` stops the run
 and unlocks its sessions, or, with a node, stops only that step, which then
 waits for your answer.
+
+## What the person sees
+
+The card's header counts the steps done, failed and the questions open over
+a progress bar; before approval it says how many steps there are. While the
+run goes on, Now lists each working step, with its session or its command
+and how long it has run, then up to three steps that come next. Under it the
+story tells what happened, and under that the plan, one row per step. A map
+of more than six items shows its count line and folds its items until the
+person opens it; an item that failed, waits for a change or holds an open
+gate for the person stays shown. A loop past six rounds shows only its
+current one.
+
+The card opens full screen, docks and moves to another browser window as a
+page does. A step's session has no tab while the run lives: its handle on
+the card and on the Fleet's card opens the transcript read-only, and the
+session gets its tab when the step fails or the run ends.
+
+## Link a step to the plan
+
+```yaml
+id: slices
+title: Slices
+say: Implement each slice of the plan.
+root:
+  map:
+    over: [ingest, export]
+    as: s
+    do:
+      agent: {agent: sonnet, prompt: "Implement the {{s}} slice of docs/plan.html."}
+      id: impl
+      see: "docs/plan.html#slice-{{s}}"
+      say: Implement the {{s}} slice.
+  id: each
+  say: Every slice.
+```
+
+`see` on any step is a path to a file, relative to the run's folder or
+absolute, with an optional `#fragment` or `:line`. Its values are filled
+like `say`'s, and the lint refuses a URL. The person's card shows it as a
+chip that opens the file in the viewer: an HTML page at its fragment, a text
+file at its line. A map's step shows its chip once its item is known.
 
 ## When a step fails
 
@@ -377,6 +423,41 @@ person's, so nothing nudges you or fails you for a turn without a result;
 give the step a `deadline`. Steps like it run one at a time in a run, and
 stopping the run never interrupts you.
 
+## Continue a step's session
+
+```yaml
+id: review
+title: Review
+say: Implement it, then fix what the tests say in the same session.
+root:
+  seq:
+    - agent: {agent: sonnet, prompt: "Implement the export command."}
+      id: impl
+      say: Implement it.
+    - sh: "make test"
+      id: tests
+      say: Run the tests.
+    - agent:
+        session: impl
+        prompt: "The tests said: {{tests.out}}. Fix what failed."
+      id: fix
+      say: Fix it in the same session.
+  say: Implement, test, fix.
+```
+
+`session: impl` runs the step in the session the earlier agent step `impl`
+spawned, with everything that session already read. It takes no `agent` and
+no `cwd`. A chain resolves to the first session: a step with `session: fix`
+here would run in impl's too. The lint refuses a name that is not an earlier
+agent step with a session of its own; a step that may start before that one
+finishes (put it later in a seq, or name it in `after`); two steps in one
+session that may run at the same time; and a step inside a map that the
+session's step is not inside, since every item would use it at once. A
+loop may reuse a session, one round after another. The session takes no new
+place in the pool, and it stays open until the last step that uses it has
+finished, then closes. A step that fails in it gets its tab, and a retry
+prompts the same session again.
+
 ## Inside a workflow
 
 If your first message is headed `> from workflow:`, you are a node. Do the
@@ -387,4 +468,7 @@ message names outputs other steps wait on, call `workflow_output` with each
 one as soon as it is ready, then go on. If you cannot go on without an
 answer, call `workflow_ask` with your question and end your turn: it reaches
 the main agent, never a person, and the answer arrives as your next message.
+If a later message is headed `> from workflow:… · node <id>` and says it is
+the same workflow, a later step runs in your session: do it, and report it
+with `workflow_result` as before.
 Neither you nor a session you spawn can arm a workflow.

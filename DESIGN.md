@@ -346,8 +346,18 @@ pure function (`edit_errors`), then waits for a person's approval of its
 diff. A pass, a stop and an answer hold one lock, so a run's ending is
 written once. The main agent is the session that armed the run or
 whichever session a handoff continued it in. The card under `workflow_arm` is a `workflow`
-entry the browser fills from the `workflows` channel; it docks by its entry
-id, `wf-<run>`, like a page or a file
+entry the browser fills from the `workflows` channel, at most once every
+250 ms per run, redrawing only the runs a patch carries. It is one more
+canvas pane kind, `wf-<run>`: it docks through `layout.place`, opens in the
+viewer and moves windows through the paths pages and files use, and a run
+armed again before approval takes its predecessor's pane. A node's session
+stays without a tab while its run lives: `session.unquiet` refuses it, and
+the card and the Fleet open it read-only. A step's `see` is resolved on the
+server from the run and the step by `workflow.see`, an operation not marked
+for agents, so the browser never names a path. A step with `session: <id>`
+is prompted again in an earlier step's session, through the lock and with no
+new slot, and that session stays open until its last user in the same map
+item and loop round has finished
 (`docs/superpowers/specs/2026-10-15-dynamic-workflows-design.html`).
 
 **Agents change only what they created.** An agent reads and messages any session
