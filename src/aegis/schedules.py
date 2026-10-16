@@ -692,8 +692,10 @@ class Schedules:
         for approval takes the version the person approves, as its card
         showed it, and pins it."""
         s = self._get(name)
-        if s.pin and self.awaiting(name):
-            wid = s.pin["id"]
+        w = self.workflow_of(s.d.prompt)
+        # A schedule saved before pins existed has none: it takes one here.
+        if w is not None and (not s.pin or self.awaiting(name)):
+            wid = s.pin["id"] if s.pin else w[0]
             if workflow is None:
                 raise OpError(
                     "needs_version",
@@ -825,9 +827,13 @@ class Schedules:
         """What the card shows of a pinned workflow: the current version's
         steps, who saved it, and, when it changed, the diff from the pinned
         version, the shape the workflow cards draw."""
-        if not s.pin:
+        if s.pin:
+            wid, pinned = s.pin["id"], s.pin["sha"]
+        elif w := self.workflow_of(s.d.prompt):
+            # Saved before pins existed: every version is unapproved.
+            wid, pinned = w[0], None
+        else:
             return None
-        wid, pinned = s.pin["id"], s.pin["sha"]
         store, agents = self._app.saved, self._app.workflows._agents()
         cur = store.all().get(wid)
         out: dict = {"id": wid, "pinned": pinned, "changed": True, "sha": None}
@@ -843,7 +849,7 @@ class Schedules:
             }
         if last := store.last_save(wid):
             out["saved_by"] = {"by": last["by"], "t": last["t"]}
-        old = store.text_of(wid, pinned) if out["changed"] else None
+        old = store.text_of(wid, pinned) if out["changed"] and pinned else None
         was = parse(old, agents)[0] if old else None
         if wf is not None and was is not None:
             out["diff"] = edit_diff(was, wf)["diff"]
