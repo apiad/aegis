@@ -2323,6 +2323,45 @@ def test_the_help_list_arriving_late_leaves_the_focus_where_it_went(server, page
     assert page.errors == []
 
 
+@pytest.mark.parametrize("how", ["composer", "button", "hash"])
+def test_help_opened_first_focuses_its_box_once_the_list_arrives(server, page, how):
+    """#433's other side: the composer Help hides, or a hash route, leaves
+    the focus on the page's body while the list loads. That is no click
+    of the person's, so the box still takes the focus when the list comes."""
+    held = []
+
+    def route(ws):
+        far = ws.connect_to_server()
+
+        def from_page(msg):
+            if '"help.pages"' in msg and not held:
+                held.append(lambda: far.send(msg))
+            else:
+                far.send(msg)
+
+        ws.on_message(from_page)
+
+    page.route_web_socket(re.compile(r"/ws"), route)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    page.click("#input")
+    if how == "composer":
+        page.fill("#input", "/help workflows")
+        page.keyboard.press("Enter")
+    elif how == "button":
+        page.click("#help-btn")
+    else:
+        page.evaluate("location.hash = '#help'")
+    page.wait_for_selector("#a2[data-view=help]")
+    page.wait_for_timeout(300)  # the composer, hidden, has let the focus go
+    assert held, "the page list was not asked for"
+    held[0]()
+    page.wait_for_selector(".helpv .hrows > *")
+    page.wait_for_function("document.activeElement.matches('.helpv input')")
+    assert page.errors == []
+
+
 def palette_rows(pg) -> list[str]:
     return pg.eval_on_selector_all(
         "#palette-rows [role=option]", "rs => rs.map(r => r.dataset.action)"
