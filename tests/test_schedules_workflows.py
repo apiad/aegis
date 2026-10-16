@@ -433,3 +433,37 @@ async def test_an_agent_cannot_pin_a_schedule_that_has_no_pin(world):
     assert said.startswith("mcp error") and "person" in said
     assert world.app.schedules.items["agent-nap"].pin is None
     assert runs(world, "agent-nap", "fired") == []
+
+
+def spy_schedules(world, monkeypatch) -> list[dict]:
+    """The schedule cards the server publishes, as a browser receives them."""
+    got: list[dict] = []
+    publish = world.app.publish
+
+    def spy(channel, ops):
+        if channel == "schedules":
+            got.extend(op["upsert"] for op in ops if "upsert" in op)
+        return publish(channel, ops)
+
+    monkeypatch.setattr(world.app, "publish", spy)
+    return got
+
+
+async def test_every_save_redraws_a_schedule_already_waiting(world, monkeypatch):
+    # A second save while approval is pending pauses nothing new, but the
+    # card must show the version an Unpause now approves.
+    person_schedule(world)
+    await save(world, NAP.replace("Nap a while.", "Nap two."))
+    got = spy_schedules(world, monkeypatch)
+    await save(world, NAP.replace("Nap a while.", "Nap three."))
+    sha = world.app.saved.get("nap").sha
+    assert [c["workflow"]["sha"] for c in got if c["name"] == "nightly-nap"][-1:] == [
+        sha
+    ]
+    # A refused Unpause redraws the card with the version it would approve.
+    got.clear()
+    with pytest.raises(OpError, match="changed while"):
+        await world.app.registry.call(
+            "schedule.resume", {"name": "nightly-nap", "workflow": "stale"}
+        )
+    assert [c["workflow"]["sha"] for c in got if c["name"] == "nightly-nap"] == [sha]
