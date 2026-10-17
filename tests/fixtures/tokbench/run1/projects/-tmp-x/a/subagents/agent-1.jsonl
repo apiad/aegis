@@ -1,0 +1,1 @@
+{"type": "assistant", "sessionId": "a", "requestId": "s1", "uuid": "u-s1-1-Read", "timestamp": "2026-10-17T10:00:30.000Z", "isSidechain": true, "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "t-Read", "name": "Read", "input": {}}], "usage": {"input_tokens": 0, "cache_creation_input_tokens": 5000, "cache_read_input_tokens": 0, "output_tokens": 300}}}
