@@ -1,0 +1,6 @@
+# id|priority|flags|title   flags: d = done, p = pinned
+1|3||buy milk
+2|1||call the bank about the card
+3|3|p|water the plants
+4|2|d|book the dentist
+5|5||sort the photo archive

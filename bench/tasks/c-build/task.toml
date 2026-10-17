@@ -1,0 +1,4 @@
+category = "build systems"
+expert_minutes = 30
+timeout_s = 1800
+requires = ["cc", "make"]
