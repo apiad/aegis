@@ -97,6 +97,7 @@ def test_a_copied_login_cannot_refresh(_cleanup, monkeypatch, tmp_path):
     import time
 
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN")
+    monkeypatch.setattr(r, "LOGIN_WAIT_S", 0)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     (tmp_path / ".claude").mkdir()
@@ -405,3 +406,20 @@ def test_record_release_appends_the_last_result_to_the_history(cli):
     (line,) = (cli["tokens"] / "history.jsonl").read_text().splitlines()
     rec = json.loads(line)
     assert rec["version"] == "9.9.9" and rec["tasks"] == {"tiny": pytest.approx(1.0)}
+
+
+def test_a_run_that_raises_is_a_failed_result_and_the_rest_go_on(cli, monkeypatch):
+    import json
+
+    r.main(["--refresh-stock"])
+
+    async def broken(run, model, effort, claude=None):
+        raise RuntimeError("the App did not start")
+
+    monkeypatch.setattr(r, "run_aegis", broken)
+    assert r.main(["--out", str(cli["out"])]) == 0
+    res = json.loads(cli["out"].read_text())
+    assert (
+        res["failed"] == ["tiny"]
+        and "the App did not start" in res["aegis"][0]["error"]
+    )

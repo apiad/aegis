@@ -47,6 +47,8 @@ TOKENS = ROOT / "bench" / "tokens"  # stock baselines and history.jsonl
 # Per claude process tree: the CLI, its Bash commands, a compile and an ASan run
 # fit with room to spare, and three arms at a time still leave a 7 GB host alive.
 MEMORY_MAX = "2G"
+# How long prepare() waits for the person's login to be refreshed.
+LOGIN_WAIT_S = 3600
 
 APPARMOR_PROFILE = """\
 abi <abi/4.0>,
@@ -147,7 +149,8 @@ def _login(config: Path, timeout_s: int) -> str:
     """How the clean configuration logs in: a long-lived token, an API key, or
     the person's credentials copied without their refresh token. A copy that
     refreshed would rotate the refresh token under the person's own sessions,
-    so the copy cannot refresh, and a token that would expire mid-run is refused."""
+    so the copy cannot refresh. A token that would expire mid-run is waited on
+    until the person's own sessions refresh it, then refused."""
     if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
         return "oauth-token"
     if os.environ.get("ANTHROPIC_API_KEY"):
@@ -158,16 +161,23 @@ def _login(config: Path, timeout_s: int) -> str:
             "no login for the bench: set CLAUDE_CODE_OAUTH_TOKEN (from "
             "`claude setup-token`) or ANTHROPIC_API_KEY, or log in to Claude Code"
         )
-    creds = json.loads(src.read_text())
-    oauth = creds.get("claudeAiOauth", {})
-    oauth.pop("refreshToken", None)
-    left = oauth.get("expiresAt", 0) / 1000 - time.time()
-    if left < timeout_s + 300:
-        raise RuntimeError(
-            f"the Claude Code login expires in {left / 60:.0f} min, before this "
-            f"run's {timeout_s // 60} min timeout. Use any claude once to refresh it, "
-            "or set CLAUDE_CODE_OAUTH_TOKEN"
-        )
+    waited_until = time.time() + LOGIN_WAIT_S
+    while True:
+        creds = json.loads(src.read_text())
+        oauth = creds.get("claudeAiOauth", {})
+        oauth.pop("refreshToken", None)
+        left = oauth.get("expiresAt", 0) / 1000 - time.time()
+        if left >= timeout_s + 300:
+            break
+        if time.time() >= waited_until:
+            raise RuntimeError(
+                f"the Claude Code login expires in {left / 60:.0f} min, before this "
+                f"run's {timeout_s // 60} min timeout, and was not refreshed in "
+                f"{LOGIN_WAIT_S // 60} min. Use any claude once to refresh it, "
+                "or set CLAUDE_CODE_OAUTH_TOKEN"
+            )
+        # The person's own Claude Code refreshes it as it nears expiry.
+        time.sleep(30)
     dst = config / ".credentials.json"
     dst.write_text(json.dumps(creds))
     dst.chmod(0o600)
@@ -522,8 +532,23 @@ async def _many(
     gate = asyncio.Semaphore(j)
 
     async def go(task: Path, arm: str) -> dict:
+        import bench_tokens_count as count
+
         async with gate:
-            return await one(task, arm, model, effort, claude)
+            try:
+                return await one(task, arm, model, effort, claude)
+            except Exception as e:  # one broken run is a failed run, not the end
+                print(f"  {task.name} {arm}: broke: {e!r}", flush=True)
+                return dict(
+                    task=task.name,
+                    arm=arm,
+                    model=model,
+                    effort=effort,
+                    passed=False,
+                    error=repr(e),
+                    wall=0.0,
+                    **count.summarize([]),
+                )
 
     return await asyncio.gather(*(go(t, a) for t, a in jobs))
 
