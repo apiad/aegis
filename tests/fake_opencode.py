@@ -54,9 +54,11 @@ import sys
 import tempfile
 import threading
 import time
+import tomllib
 import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import urlparse
 
 VERSION = "2.0.28"
@@ -585,10 +587,21 @@ class Handler(BaseHTTPRequestHandler):
                 subscribers.remove(q)
 
 
+def _version_line(harness: str, fmt: str) -> None:
+    """Answer --version with the tested max, or $AEGIS_FAKE_HARNESS_VERSION."""
+    v = os.environ.get("AEGIS_FAKE_HARNESS_VERSION")
+    if v is None:
+        toml = Path(__file__).parents[1] / "src/aegis/data/tested-harnesses.toml"
+        v = tomllib.loads(toml.read_text())[harness]["max"]
+    if not v:
+        sys.exit(2)
+    print(fmt.format(v))
+
+
 def main() -> None:
     args = sys.argv[1:]
     if args[:1] == ["--version"]:
-        print(f"opencode v{VERSION}")
+        _version_line("opencode", "{}")
         return
     if not args or args[0] != "serve":
         print("fake opencode: only `serve` is faked", file=sys.stderr)

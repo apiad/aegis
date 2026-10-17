@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from aegis.claude.control import Model
+from aegis.harness_versions import ranges
 from aegis.doctor import Found, detect, doctor, propose
 from aegis.roots import make_roots
 
@@ -36,7 +37,8 @@ async def test_a_healthy_config_has_no_errors_or_warnings(
     found = await run(tmp_path, GOOD, fake_claude, fake_opencode)
     assert [f for f in found if f.level != "ok"] == []
     (claude,) = at(found, "harness.claude-code")
-    assert "0.0-fake" in claude.message and "3 models" in claude.message
+    max_s = ranges()["claude-code"].max_s
+    assert max_s in claude.message and "3 models" in claude.message
     assert {f.where for f in found} >= {
         "file",
         "harness.opencode",
@@ -157,7 +159,7 @@ async def test_detect_finds_both_fakes_with_their_models(
     assert codex.error == "codex-not-installed is not on PATH"
     assert (claude.harness, claude.version, claude.error) == (
         "claude-code",
-        "0.0-fake (Claude Code)",
+        f"{ranges()['claude-code'].max_s} (Claude Code)",
         None,
     )
     assert [m.value for m in claude.models] == ["opus", "sonnet", "haiku"]
@@ -234,7 +236,7 @@ def test_propose_takes_the_first_free_opencode_model():
     assert doc.agents[0].model == "g/pro", "with nothing free, the first model"
 
 
-async def test_an_opencode_older_than_2_is_named_with_the_upgrade(
+async def test_an_opencode_older_than_the_range_warns_with_the_upgrade(
     tmp_path, fake_claude
 ):
     old = tmp_path / "old" / "opencode"
@@ -242,6 +244,7 @@ async def test_an_opencode_older_than_2_is_named_with_the_upgrade(
     old.write_text("#!/bin/sh\necho 1.19.0\n")
     old.chmod(0o755)
     found = await run(tmp_path, GOOD, fake_claude, str(old))
-    (oc,) = at(found, "harness.opencode")
-    assert oc.level == "error" and "1.19.0 is too old" in oc.message
-    assert "@opencode/cli" in oc.message
+    (oc,) = [f for f in at(found, "harness.opencode") if f.level == "warn"]
+    assert "OpenCode 1.19.0 is older than" in oc.message
+    assert f"found: {old}" in oc.message
+    assert "@opencode/cli@" in oc.message

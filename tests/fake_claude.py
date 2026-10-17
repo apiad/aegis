@@ -90,6 +90,7 @@ import sys
 import tempfile
 import threading
 import time
+import tomllib
 import urllib.request
 import uuid
 from pathlib import Path
@@ -855,9 +856,20 @@ def oneshot() -> None:
     )
 
 
+def _version_line(harness: str, fmt: str) -> None:
+    """Answer --version with the tested max, or $AEGIS_FAKE_HARNESS_VERSION."""
+    v = os.environ.get("AEGIS_FAKE_HARNESS_VERSION")
+    if v is None:
+        toml = Path(__file__).parents[1] / "src/aegis/data/tested-harnesses.toml"
+        v = tomllib.loads(toml.read_text())[harness]["max"]
+    if not v:
+        sys.exit(2)
+    print(fmt.format(v))
+
+
 def main() -> None:
     if sys.argv[1:2] == ["--version"]:
-        print("0.0-fake (Claude Code)")
+        _version_line("claude-code", "{} (Claude Code)")
         return
     if "-p" in sys.argv and _arg("--output-format") == "json":
         oneshot()

@@ -46,8 +46,10 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
 import urllib.request
 import uuid
+from pathlib import Path
 
 HOME = os.environ.get("FAKE_CODEX_HOME") or "/tmp/fake-codex-home"
 LOG = os.environ.get("FAKE_CODEX_LOG")
@@ -413,7 +415,21 @@ def handle(msg: dict) -> dict | None:
     raise ValueError(f"the fake does not know {method}")
 
 
+def _version_line(harness: str, fmt: str) -> None:
+    """Answer --version with the tested max, or $AEGIS_FAKE_HARNESS_VERSION."""
+    v = os.environ.get("AEGIS_FAKE_HARNESS_VERSION")
+    if v is None:
+        toml = Path(__file__).parents[1] / "src/aegis/data/tested-harnesses.toml"
+        v = tomllib.loads(toml.read_text())[harness]["max"]
+    if not v:
+        sys.exit(2)
+    print(fmt.format(v))
+
+
 def main() -> None:
+    if sys.argv[1:2] == ["--version"]:
+        _version_line("codex", "codex-cli {}")
+        return
     os.makedirs(HOME, exist_ok=True)
     log(f"START {os.getpid()}")
     for raw in sys.stdin:
