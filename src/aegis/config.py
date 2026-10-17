@@ -47,6 +47,7 @@ WATCH_EVERY_S = 1.0
 TOP_KEYS = (
     "agents", "queues", "default_agent", "recap", "context", "session_memory_max",
     "terminals", "terminal_memory_max", "park", "network", "workflows",
+    "harness_versions",
 )  # fmt: skip
 AGENT_KEYS = ("harness", "provider", "model", "effort", "permission", "priming")
 QUEUE_KEYS = ("agent", "max_parallel", "quiet")
@@ -154,6 +155,76 @@ def park_after(park: dict, harness: str) -> int | None:
     return None if "error" in park else park.get(harness)
 
 
+# What a launch on a harness version outside the tested range does
+# (harness_versions.py): who started it picks the policy. ``accepted`` lists,
+# per harness, versions a person allowed for good.
+HV_DEFAULTS: dict = {
+    "person": "ask",
+    "agent": "warn",
+    "startup": "warn",
+    "accepted": {},
+}
+HV_VALUES = {
+    "person": ("ask", "warn", "off"),
+    "agent": ("warn", "off"),
+    "startup": ("warn", "off"),
+}
+
+
+def _hv_defaults() -> dict:
+    return HV_DEFAULTS | {"accepted": {}}
+
+
+def harness_versions_from(raw: object) -> dict:
+    """The ``harness_versions:`` block over its defaults. A wrong block keeps
+    every default in force and carries ``error``, as the context block does:
+    a typo must not start asking, or stop asking, at every launch."""
+    out = _hv_defaults()
+    if raw is None:
+        return out
+    if not isinstance(raw, dict):
+        return out | {
+            "error": "harness_versions must be a mapping of person, agent, startup, accepted"
+        }
+    for k, v in raw.items():
+        if k == "accepted":
+            if v is None:
+                continue
+            if not isinstance(v, dict):
+                return _hv_defaults() | {
+                    "error": "harness_versions.accepted must map a harness to a list of versions"
+                }
+            for h, versions in v.items():
+                if h not in HARNESSES:
+                    return _hv_defaults() | {
+                        "error": f"harness_versions.accepted has no harness {h!r};"
+                        f" it takes {', '.join(HARNESSES)}"
+                    }
+                if not isinstance(versions, list):
+                    return _hv_defaults() | {
+                        "error": f"harness_versions.accepted.{h} is not a list of versions"
+                    }
+                out["accepted"][h] = [str(x) for x in versions]
+        elif k in HV_VALUES:
+            if k == "agent" and v == "ask":
+                return _hv_defaults() | {
+                    "error": "harness_versions.agent cannot be ask: nobody is there"
+                    " to answer when an agent starts a session; it takes warn, off"
+                }
+            if v not in HV_VALUES[k]:
+                return _hv_defaults() | {
+                    "error": f"harness_versions.{k} {v!r} is not one of"
+                    f" {', '.join(HV_VALUES[k])}"
+                }
+            out[k] = v
+        else:
+            return _hv_defaults() | {
+                "error": f"harness_versions has no key {k!r};"
+                " it takes person, agent, startup, accepted"
+            }
+    return out
+
+
 def session_memory_max_from(
     raw: object, key: str = "session_memory_max"
 ) -> tuple[object, str | None]:
@@ -238,6 +309,14 @@ class QueueDoc(BaseModel):
     max_parallel: int | None = None
 
 
+class HarnessVersionsDoc(BaseModel):
+    model_config = {"extra": "forbid"}
+    person: str = HV_DEFAULTS["person"]
+    agent: str = HV_DEFAULTS["agent"]
+    startup: str = HV_DEFAULTS["startup"]
+    accepted: dict[str, list[str]] = Field(default_factory=dict)
+
+
 class ConfigDoc(BaseModel):
     """What the Settings form edits and ``aegis init`` proposes."""
 
@@ -249,6 +328,9 @@ class ConfigDoc(BaseModel):
     # The workflows: block's max_agents: total and a bound per agent alias;
     # empty when the file has no block, or one the reader refuses.
     max_agents: dict[str, int] = Field(default_factory=dict)
+    # The harness_versions: block; the defaults when the file has none, or
+    # one the reader refuses.
+    harness_versions: HarnessVersionsDoc = Field(default_factory=HarnessVersionsDoc)
 
 
 def doc_from(data: dict) -> ConfigDoc:
@@ -279,12 +361,16 @@ def doc_from(data: dict) -> ConfigDoc:
     d = data.get("default_agent")
     w = data.get("workflows")
     pool = workflows_from(w)
+    hv = harness_versions_from(data.get("harness_versions"))
     return ConfigDoc(
         agents=agents,
         default_agent=str(d) if d else None,
         queues=queues,
         park={k: v for k, v in park_from(data.get("park")).items() if k != "error"},
         max_agents={} if w is None or "error" in pool else pool["max_agents"],
+        harness_versions=HarnessVersionsDoc(
+            **{k: v for k, v in hv.items() if k != "error"}
+        ),
     )
 
 
@@ -301,6 +387,7 @@ class Snapshot:
     context: dict = field(default_factory=lambda: dict(CONTEXT_DEFAULTS))
     workflows: dict = field(default_factory=lambda: dict(WORKFLOWS_DEFAULTS))
     park: dict = field(default_factory=dict)
+    harness_versions: dict = field(default_factory=_hv_defaults)
     session_memory_max: object = DEFAULT_MEMORY_MAX
     session_memory_error: str | None = None
     terminals: dict[str, dict] = field(default_factory=dict)
@@ -333,6 +420,7 @@ class Snapshot:
             context=context_from(data.get("context")),
             workflows=workflows_from(data.get("workflows")),
             park=park_from(data.get("park")),
+            harness_versions=harness_versions_from(data.get("harness_versions")),
             session_memory_max=mem,
             session_memory_error=mem_error,
             terminals=terms,
@@ -438,6 +526,11 @@ def validate(doc: ConfigDoc) -> list[Finding]:
         err("default_agent", "default_agent", f"no agent named {doc.default_agent!r}")
     if "error" in (p := park_from(doc.park or None)):
         out.append(Finding("error", "park", p["error"]))
+    hv = harness_versions_from(doc.harness_versions.model_dump())
+    if "error" in hv:
+        out.append(
+            Finding("error", "harness_versions", hv["error"], "harness_versions")
+        )
     if doc.max_agents:
         # The rules aegis doctor applies to the block, each on its row.
         pool = workflows_from({"max_agents": doc.max_agents})
@@ -536,6 +629,36 @@ def _apply(data: CommentedMap, doc: ConfigDoc) -> None:
             _section(data, "workflows")["max_agents"] = dict(doc.max_agents)
     elif block is not None and "error" not in workflows_from(block):
         del data["workflows"]  # every bound back to its default
+    _apply_harness_versions(data, doc.harness_versions)
+
+
+def _apply_harness_versions(data: CommentedMap, hv: HarnessVersionsDoc) -> None:
+    block = data.get("harness_versions")
+    have = harness_versions_from(block)
+    want = hv.model_dump()
+    want["accepted"] = {h: v for h, v in want["accepted"].items() if v}
+    if "error" in have and want == _hv_defaults():
+        return  # a block the reader refuses, untouched by this edit: keep it
+    if {k: v for k, v in have.items() if k != "error"} == want:
+        return  # untouched: keep its style and comments
+    if want == _hv_defaults():
+        data.pop("harness_versions", None)
+        return
+    node = _section(data, "harness_versions")
+    for k in ("person", "agent", "startup"):
+        if want[k] == HV_DEFAULTS[k]:
+            node.pop(k, None)
+        else:
+            _put(node, k, want[k])
+    if want["accepted"]:
+        acc = _section(node, "accepted")
+        for h in [h for h in acc if h not in want["accepted"]]:
+            del acc[h]
+        for h, versions in want["accepted"].items():
+            if list(acc.get(h) or []) != versions:
+                acc[h] = list(versions)
+    else:
+        node.pop("accepted", None)
 
 
 def write(path: Path, doc: ConfigDoc, expected: Stamp | None) -> list[Finding]:
@@ -570,3 +693,26 @@ def write(path: Path, doc: ConfigDoc, expected: Stamp | None) -> list[Finding]:
     tmp.write_text(buf.getvalue())
     os.replace(tmp, path)
     return []
+
+
+def accept_version(path: Path, harness: str, version: str) -> None:
+    """Add ``version`` to ``harness_versions.accepted.<harness>``: what a
+    person's "Always" does. Raises OpError("stale") when the file moves under
+    it and OpError("bad_config") when it cannot be written as it stands."""
+    stamp = stamp_of(path)
+    data: dict = {}
+    if stamp is not None:
+        loaded, error = load(path)
+        if loaded is None:
+            raise OpError("bad_config", f"{error}; fix it in an editor first")
+        data = loaded
+    hv = harness_versions_from(data.get("harness_versions"))
+    if "error" in hv:
+        raise OpError("bad_config", hv["error"])
+    doc = doc_from(data)
+    versions = doc.harness_versions.accepted.setdefault(harness, [])
+    if version in versions:
+        return
+    versions.append(version)
+    if problems := write(path, doc, stamp):
+        raise OpError("bad_config", "; ".join(f.message for f in problems))

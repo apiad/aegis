@@ -444,7 +444,11 @@ async def doctor(
     out += _unknown_keys(data)
     snap = Snapshot.parse(path, None, data)
     used = {a.harness for a in snap.agents if a.harness in HARNESSES}
-    found = {f.harness: f for f in await detect(roots.config_root, bins, used)}
+    accepted = snap.harness_versions["accepted"]
+    found = {
+        f.harness: f
+        for f in await detect(roots.config_root, bins, used, accepted=accepted)
+    }
     for name, f in found.items():
         where = f"harness.{name}"
         if f.verdict and f.verdict["state"] in OUTSIDE:
@@ -468,6 +472,8 @@ async def doctor(
     out += _recap(roots)
     out.append(_context(snap.context))
     out.append(_park(snap.park))
+    if "error" in snap.harness_versions:
+        out.append(Finding("error", "harness_versions", snap.harness_versions["error"]))
     out.append(_network(snap))
     out.append(_workflows(snap.workflows, tuple(a.name for a in snap.agents)))
     out.append(_session_memory(snap))

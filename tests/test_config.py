@@ -189,3 +189,29 @@ def test_the_doctor_flags_an_agents_number_above_the_total():
         bad = _workflows(workflows_from({"max_agents": raw}), ("opus",))
         assert bad.level == "error", bad
         assert f"opus {raw['opus']} is above total" in bad.message, bad.message
+
+
+def test_harness_versions_defaults_when_the_key_is_absent(tmp_path):
+    c, _ = config(tmp_path, A)
+    assert c.current().harness_versions == {
+        "person": "ask",
+        "agent": "warn",
+        "startup": "warn",
+        "accepted": {},
+    }
+
+
+def test_harness_versions_agent_ask_is_refused():
+    from aegis.config import harness_versions_from
+
+    got = harness_versions_from({"agent": "ask"})
+    assert got["agent"] == "warn" and "nobody is there to answer" in got["error"]
+
+
+def test_harness_versions_unknown_harness_under_accepted_is_an_error(tmp_path):
+    from aegis.config import harness_versions_from
+
+    got = harness_versions_from({"accepted": {"gemini": ["1.0"]}})
+    assert "gemini" in got["error"] and got["accepted"] == {}
+    c, _ = config(tmp_path, A + "harness_versions: {accepted: {gemini: ['1.0']}}\n")
+    assert "error" in c.current().harness_versions

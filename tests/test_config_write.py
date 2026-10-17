@@ -261,3 +261,49 @@ def test_a_broken_pool_is_kept_through_a_write(tmp_path):
     doc.default_agent = "haiku"
     assert write(p, doc, stamp_of(p)) == []
     assert "max_agents: lots" in p.read_text()
+
+
+def test_harness_versions_round_trip_keeps_comments(tmp_path):
+    text = WORKSPACE + "harness_versions:\n  person: warn  # we track betas\n"
+    p, doc = setup(tmp_path, text)
+    assert doc.harness_versions.person == "warn"
+    doc.harness_versions.accepted = {"codex": ["0.170.0"]}
+    assert write(p, doc, stamp_of(p)) == []
+    out = p.read_text()
+    assert "# we track betas" in out and "# Background research" in out
+    assert safe(p)["harness_versions"] == {
+        "person": "warn",
+        "accepted": {"codex": ["0.170.0"]},
+    }
+    doc = doc_from(safe(p))
+    doc.harness_versions.person = "ask"
+    doc.harness_versions.accepted = {}
+    assert write(p, doc, stamp_of(p)) == []
+    assert "harness_versions" not in safe(p), "every field at its default"
+
+
+def test_harness_versions_agent_ask_is_a_finding(tmp_path):
+    _, doc = setup(tmp_path, WORKSPACE)
+    doc.harness_versions.agent = "ask"
+    (f,) = validate(doc)
+    assert f.where == "harness_versions" and "nobody is there to answer" in f.message
+
+
+def test_accept_version_twice_leaves_one_entry(tmp_path):
+    from aegis.config import accept_version
+
+    p, _ = setup(tmp_path, WORKSPACE)
+    accept_version(p, "claude-code", "2.1.301")
+    accept_version(p, "claude-code", "2.1.301")
+    assert safe(p)["harness_versions"] == {"accepted": {"claude-code": ["2.1.301"]}}
+    assert "# Background research" in p.read_text()
+
+
+def test_accept_version_on_an_unparseable_file_raises(tmp_path):
+    from aegis.config import accept_version
+
+    p = tmp_path / ".aegis.yaml"
+    p.write_text("agents: [1, 2\n")
+    with pytest.raises(OpError) as e:
+        accept_version(p, "claude-code", "2.1.301")
+    assert e.value.code == "bad_config"
