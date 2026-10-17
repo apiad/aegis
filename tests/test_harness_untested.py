@@ -315,3 +315,30 @@ async def test_boot_does_not_wait_for_a_hanging_version(tmp_path, monkeypatch):
         assert time.monotonic() - t < 10
     finally:
         await w.stop()
+
+
+async def test_tutorial_line_carries_untested(world, monkeypatch):
+    from aegis.ops import OpError
+
+    s = await world.spawn()
+    untested(monkeypatch, world.fake, "99.0.0")
+    call = world.app.registry.call
+    with pytest.raises(OpError) as e:
+        await call("session.send", {"log_id": s.log_id, "text": "/tutorial"})
+    assert e.value.code == "harness_untested"
+    r = await call(
+        "session.send", {"log_id": s.log_id, "text": "/tutorial", "untested": "once"}
+    )
+    assert len(notices(world.session(r["log_id"]))) == 1
+
+
+async def test_help_guide_takes_untested(world, monkeypatch):
+    from aegis.ops import OpError
+
+    untested(monkeypatch, world.fake, "99.0.0")
+    call = world.app.registry.call
+    with pytest.raises(OpError) as e:
+        await call("help.guide", {"kind": "tutorial"})
+    assert e.value.code == "harness_untested"
+    r = await call("help.guide", {"kind": "tutorial", "untested": "once"})
+    assert len(notices(world.session(r["log_id"]))) == 1

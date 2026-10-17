@@ -126,3 +126,37 @@ def test_the_dialog_fits_a_phone(server, page):
         ".filter((e) => e.getBoundingClientRect().right > 391).length"
     )
     assert wide == 0
+
+
+def test_start_once_on_a_stopped_session_clears_the_composer(
+    tmp_path, fake_claude, fake_opencode, page
+):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
+    try:
+        page.goto(s.url)
+        page.wait_for_selector("#a2[data-view=fleet]")
+        open_spawn(page)
+        page.click("#sp-go")
+        page.wait_for_selector("#a2[data-view=session]")
+        page.fill("#input", "/stop")
+        page.keyboard.press("Enter")
+        page.wait_for_function("document.querySelector('#input').value === ''")
+        # The harness is upgraded under the stopped session.
+        script = Path(fake_claude)
+        text = script.read_text()
+        script.write_text(
+            text.replace("\nexec ", "\nexport AEGIS_FAKE_HARNESS_VERSION=99.0.0\nexec ")
+        )
+        page.fill("#input", "hello again")
+        page.keyboard.press("Enter")
+        page.wait_for_selector("#chooser:not([hidden])")
+        page.click("#chooser button[data-value=once]")
+        page.wait_for_function("document.querySelector('#input').value === ''")
+        page.wait_for_function(
+            "[...document.querySelectorAll('#entries .body')]"
+            ".some((e) => e.textContent.includes('99.0.0 is newer'))"
+        )
+        assert page.errors == []
+    finally:
+        s.stop()

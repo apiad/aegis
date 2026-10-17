@@ -2390,14 +2390,16 @@ function untestedAsk(d) {
 }
 
 // A call that starts a harness, asked again with the person's answer when the
-// server refuses it as harness_untested. Cancel rethrows nothing: null.
+// server refuses it as harness_untested. Cancel resolves CANCELLED, which no
+// answer can be: session.send answers a delivery with nothing at all.
+const CANCELLED = Symbol("cancelled");
 async function untestedRetry(call, again) {
   try {
     return await call();
   } catch (e) {
     if (e.code !== "harness_untested" || !e.data) throw e;
     const pick = await untestedAsk(e.data);
-    if (!pick) return null;
+    if (!pick) return CANCELLED;
     const r = await again(pick);
     if (r?.not_saved) toast(`Started once: ${r.not_saved}`, { kind: "error" });
     return r;
@@ -2421,7 +2423,7 @@ async function spawnFromComposer() {
       () => conn.call("session.spawn", params, spServer),
       (untested) => conn.call("session.spawn", { ...params, untested }, spServer),
     );
-    if (!r) return; // cancelled: the typed text stays
+    if (r === CANCELLED) return; // the typed text stays
     localStorage.setItem(LAST_AGENT, a.name);
     $("sp-text").value = "";
     spawnGrow();
@@ -2521,7 +2523,11 @@ function ranHint(kind) {
 // `marks`: whether the server records this as the tutorial taken (a tutorial
 // page) so the hint hides; a tour of another page or a question marks nothing.
 async function startGuide(params, kind = "tutorial", marks = true) {
-  const r = await conn.call("help.guide", { kind, ...params });
+  const r = await untestedRetry(
+    () => conn.call("help.guide", { kind, ...params }),
+    (untested) => conn.call("help.guide", { kind, ...params, untested }),
+  );
+  if (r === CANCELLED) return null;
   if (marks) ranHint(kind);
   drawHints();
   go(`#s=${r.log_id}`);
@@ -2947,14 +2953,15 @@ onDrafts(drawQueued);
 loadDrafts();
 // A queued draft's send gets the composer's deadline: with no answer the socket
 // is dropped, which settles the send as unreached and the draft waits again.
-setSender((key, params) => {
+setSender((key, params, { ask: asking = false } = {}) => {
   const call = callFor(key, "session.send", params);
   const late = setTimeout(() => conn.drop(), SEND_VERDICT_MS);
-  // A stopped session on an untested harness asks first; Cancel keeps the draft.
+  // A stopped session on an untested harness: a background flush settles the
+  // draft as an error; the person's Send anyway asks, and Cancel keeps it.
   return call
     .finally(() => clearTimeout(late))
     .catch(async (e) => {
-      if (e.code !== "harness_untested" || !e.data) throw e;
+      if (!asking || e.code !== "harness_untested" || !e.data) throw e;
       const pick = await untestedAsk(e.data);
       if (!pick) throw e;
       return callFor(key, "session.send", { ...params, untested: pick });
@@ -3114,7 +3121,7 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
           () => Promise.reject(e),
           (untested) => callFor(s.key, "session.send", { ...params, untested }),
         );
-        if (r) sent(r);
+        if (r !== CANCELLED) sent(r);
       } catch (e2) {
         toast(e2.message, { kind: "error" });
       }

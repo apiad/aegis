@@ -181,6 +181,8 @@ class GuideParams(BaseModel):
     effort: str | None = None
     permission: str | None = None
     cwd: str | None = None
+    # A person's answer to harness_untested, passed on to session.spawn.
+    untested: Literal["once", "always"] | None = None
 
 
 def register_help_ops(app: App) -> None:
