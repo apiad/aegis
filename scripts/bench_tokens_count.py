@@ -19,6 +19,7 @@ fails to build.
 """
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -134,3 +135,102 @@ def summarize(reqs: list[Request]) -> dict:
         work_cost=sum(k for _, k in work),
         tools=tools,
     )
+
+
+# Warn when the headline ratio is this much worse than the previous release's.
+WORSE = 0.05
+# Run a task once more when its ratio moved by more than this share.
+MOVED = 0.25
+
+
+@dataclass
+class Comparison:
+    rows: list[dict]
+    headline: float | None
+    failed: list[str]
+    rerun: list[str]
+    warnings: list[str]
+    prev: float | None = None
+
+
+def _mean(xs: list[float]) -> float | None:
+    return sum(xs) / len(xs) if xs else None
+
+
+def compare(
+    stock: dict[str, list[dict]],
+    aegis: dict[str, list[dict]],
+    prev: dict[str, float] | None,
+) -> Comparison:
+    """Per-task aegis/stock cost ratios and their geometric mean.
+
+    Each arm maps a task to its runs, each a summarize() dict with ``passed``
+    added. A task's cost is the mean over its passing runs; a task with no
+    passing run in either arm is listed in ``failed`` and left out of the
+    headline, because a failed run's tokens measure the failure. ``prev`` is
+    the last release's ``{"headline": r, task: r, ...}``.
+    """
+    prev = prev or {}
+    rows, failed, rerun, ratios = [], [], [], []
+    for task in sorted(stock.keys() | aegis.keys()):
+        s_runs, a_runs = stock.get(task, []), aegis.get(task, [])
+        s_ok = [r for r in s_runs if r["passed"]]
+        a_ok = [r for r in a_runs if r["passed"]]
+        s_cost = _mean([r["cost"] for r in s_ok])
+        a_cost = _mean([r["cost"] for r in a_ok])
+        ratio = a_cost / s_cost if s_cost and a_cost is not None else None
+        if ratio is None:
+            failed.append(task)
+        else:
+            ratios.append(ratio)
+            if task in prev and abs(ratio / prev[task] - 1) > MOVED:
+                rerun.append(task)
+        book = _mean([r["bookkeeping_cost"] for r in a_ok])
+        rows.append(
+            dict(
+                task=task,
+                stock=s_cost,
+                aegis=a_cost,
+                ratio=ratio,
+                stock_requests=_mean([r["requests"] for r in s_ok or s_runs]),
+                aegis_requests=_mean([r["requests"] for r in a_ok or a_runs]),
+                bookkeeping=book / a_cost if book is not None and a_cost else None,
+                stock_passed=bool(s_ok),
+                aegis_passed=bool(a_ok),
+            )
+        )
+    headline = math.prod(ratios) ** (1 / len(ratios)) if ratios else None
+    warnings = []
+    last = prev.get("headline")
+    # Rounded: 1.20 - 1.15 is 0.0499... in floating point.
+    if headline is not None and last is not None and round(headline - last, 9) >= WORSE:
+        warnings.append(
+            f"::warning title=aegis token bench::headline {last:.2f} → {headline:.2f}"
+        )
+    return Comparison(rows, headline, failed, rerun, warnings, last)
+
+
+def table(cmp: Comparison) -> str:
+    """The Markdown table for a release PR."""
+
+    def num(x: float | None, fmt: str = "{:.2f}") -> str:
+        return "—" if x is None else fmt.format(x)
+
+    def mark(ok: bool) -> str:
+        return "✓" if ok else "✗"
+
+    lines = [
+        "| task | stock $ | aegis $ | ratio | requests | bookkeeping | pass |",
+        "|---|---:|---:|---:|---:|---:|---|",
+    ]
+    for r in cmp.rows:
+        requests = f"{num(r['stock_requests'], '{:.0f}')} → {num(r['aegis_requests'], '{:.0f}')}"
+        lines.append(
+            f"| {r['task']} | {num(r['stock'])} | {num(r['aegis'])} | {num(r['ratio'])}"
+            f" | {requests} | {num(r['bookkeeping'], '{:.1%}')}"
+            f" | {mark(r['stock_passed'])} {mark(r['aegis_passed'])} |"
+        )
+    n = len(cmp.rows) - len(cmp.failed)
+    prev = f"prev {cmp.prev:.2f}" if cmp.prev is not None else ""
+    lines.append(f"| geomean ({n}) | | | {num(cmp.headline)} | | | {prev} |")
+    return "\n".join(lines)

@@ -37,3 +37,46 @@ def test_summary_splits_aegis_bookkeeping_from_aegis_work():
     s = c.summarize(c.read_requests(FIX / "run1"))
     assert s["transcripts"] == 3 and s["bookkeeping_requests"] == 1
     assert s["first_ctx"] == 20_000
+
+
+def run(cost, passed=True):
+    return {
+        "cost": cost,
+        "passed": passed,
+        "requests": 10,
+        "bookkeeping_cost": cost / 10,
+        "wall": 60,
+    }
+
+
+def test_headline_is_the_geometric_mean_over_tasks_passing_in_both():
+    cmp = c.compare(
+        {"a": [run(1.0)], "b": [run(1.0)]}, {"a": [run(1.21)], "b": [run(1.0)]}, None
+    )
+    assert cmp.headline == pytest.approx(1.1)
+
+
+def test_a_task_failing_in_either_arm_is_listed_and_left_out():
+    cmp = c.compare(
+        {"a": [run(1.0)], "b": [run(1.0)]},
+        {"a": [run(2.0)], "b": [run(9.0, passed=False)]},
+        None,
+    )
+    assert cmp.failed == ["b"] and cmp.headline == pytest.approx(2.0)
+
+
+def test_warns_when_the_headline_is_five_points_worse_than_last_release():
+    cmp = c.compare(
+        {"a": [run(1.0)]}, {"a": [run(1.20)]}, {"headline": 1.15, "a": 1.15}
+    )
+    assert cmp.warnings == ["::warning title=aegis token bench::headline 1.15 → 1.20"]
+
+
+def test_a_task_that_moved_more_than_25_percent_is_marked_for_a_rerun():
+    cmp = c.compare({"a": [run(1.0)]}, {"a": [run(1.5)]}, {"headline": 1.1, "a": 1.1})
+    assert cmp.rerun == ["a"]
+
+
+def test_the_table_has_a_row_per_task_and_the_headline_row():
+    out = c.table(c.compare({"a": [run(1.0)]}, {"a": [run(1.1)]}, None))
+    assert "| a |" in out and "geomean (1)" in out
