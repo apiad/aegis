@@ -90,6 +90,11 @@ pre .c{color:var(--faint)}
 .dlg .bar .lab{position:absolute;font:10px var(--font-mono);white-space:nowrap;transform:translateX(-50%)}
 .dlg .bar .lab.up{bottom:12px;color:var(--warn)}
 .dlg .bar .lab.dn{top:10px;color:var(--faint)}
+.dlg .pth{color:var(--strong);overflow-wrap:anywhere}
+.dlg .cmd{display:flex;gap:8px;align-items:center;background:var(--chrome);border:1px solid var(--rule);border-radius:var(--r);padding:6px 8px;margin:4px 0 8px}
+.dlg .cmd code{flex:1;min-width:0;background:none;border:0;padding:0;overflow-wrap:anywhere;font-size:11.5px}
+.dlg .nt{color:var(--muted);font-size:12px}
+.btn2{font:11px var(--font-mono);background:none;border:1px solid var(--rule);color:var(--muted);border-radius:5px;padding:2px 9px;cursor:pointer}
 .dlg .acts{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:14px}
 .btn{font-size:12px;padding:6px 12px;border-radius:var(--r);border:1px solid var(--rule);background:var(--surface);color:var(--ink);cursor:pointer;font-family:var(--font-ui)}
 .btn.primary{background:var(--accent);color:var(--on-accent);border-color:transparent;font-weight:500}
@@ -99,6 +104,7 @@ pre .c{color:var(--faint)}
 .hrow{display:grid;grid-template-columns:110px 120px minmax(0,1fr) auto;gap:6px 12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--rule);font-size:12.5px}
 .hrow .nm{font-family:var(--font-mono);color:var(--strong)}
 .hrow .v{font-family:var(--font-mono);font-size:11.5px}
+.hrow .path{grid-column:1/-1;font-family:var(--font-mono);font-size:11px;color:var(--muted);overflow-wrap:anywhere}
 .hrow .r{font-family:var(--font-mono);font-size:11px;color:var(--faint)}
 .sp{font-family:var(--font-mono);font-size:11px;border:1px solid var(--rule);border-radius:4px;padding:2px 6px;white-space:nowrap}
 .sp.ok{color:var(--ok)} .sp.warn{color:var(--warn)} .sp.acc{color:var(--comms)}
@@ -192,6 +198,8 @@ svg text{font-family:'JBM',ui-monospace,monospace}
 <tr><td>accepted list in the config</td><td>Accepted versions are written to <code>.aegis.yaml</code> under <code>harness_versions.accepted</code>, through the same writer the Settings page uses. <span class="who q">agent</span></td><td class="why">The list is then visible and editable on Settings and in the file, and nothing else needs to store it.</td></tr>
 <tr><td>the range file</td><td>The range lives in <code>src/aegis/data/tested-harnesses.toml</code>, shipped in the package, which also names each harness's npm package. <span class="who q">agent</span></td><td class="why">The release edits one small file. The canary script reads the same file to install the min or the max.</td></tr>
 <tr><td>the version is read once</td><td><code>bin --version</code> is read and cached by the binary's resolved path and mtime. <span class="who q">agent</span></td><td class="why">A spawn then pays about 0.3 s only after an upgrade, and the cache never goes stale because an upgrade changes the mtime.</td></tr>
+<tr><td>where and how</td><td>Every message names the binary aegis found, as its resolved path, and the command that installs the tested version with the installer that put it there. <span class="who">maintainer</span></td><td class="why">"Untested" alone leaves the person to find out which of several binaries aegis ran and how it got there. The path and the command make the fix one paste.</td></tr>
+<tr><td>the target is the max</td><td>The command installs the tested <code>max</code>, whether the installed version is newer or older. <span class="who q">agent</span></td><td class="why">The max is the newest version known to work, so it is the right target from either side.</td></tr>
 <tr><td>replaces the OpenCode test</td><td>The OpenCode 2 special case in <code>doctor.py</code> becomes the general check (OpenCode's <code>min</code> is 2.x). <span class="who q">agent</span></td><td class="why">One rule instead of two. OpenCode 1 still gets its install hint (<code>@opencode/cli</code>) as part of the message.</td></tr>
 <tr><td>a nightly pass above max</td><td>When the nightly canary passes on a version above <code>max</code>, it opens or updates one issue per harness saying the range can move up. <span class="who q">agent</span></td><td class="why">The canary already runs every night. Raising the top is then a one-line PR, prompted rather than remembered.</td></tr>
 </tbody>
@@ -263,6 +271,18 @@ hint = "aegis drives OpenCode 2: npm install -g @opencode/cli"</pre>
   <li><b>Judging.</b> The result is one of <code>in_range</code>, <code>accepted</code>, <code>newer</code>, <code>older</code> or <code>unknown</code>, together with the version and the range, so every message is built from the same record.</li>
   <li><b>Recording.</b> The session keeps the version it was checked at. When it relaunches on the same version, nothing is checked again. When the version changed under it, the launch is checked as unattended (a notice), whoever triggered it.</li>
 </ul>
+<h3>Where it came from, and how to update it</h3>
+<p>The same module names the installer from the binary's resolved path, and builds the command that installs the tested <code>max</code> with it. The path is shown as resolved, so a symlink on PATH shows where it really points.</p>
+<table class="tbl">
+<thead><tr><th>resolved path contains</th><th>installer</th><th>command shown</th></tr></thead>
+<tbody>
+<tr><td>/.local/share/claude/versions/</td><td>Claude Code's native installer</td><td><code>claude install 2.1.296</code>, plus a line that the native build updates itself unless <code>DISABLE_AUTOUPDATER=1</code> is set, so a pinned version does not stay pinned</td></tr>
+<tr><td>/node_modules/&lt;package&gt;/</td><td>npm (global or a prefix)</td><td><code>npm install -g @anthropic-ai/claude-code@2.1.296</code>, with the package from the range file</td></tr>
+<tr><td>/Cellar/ or /homebrew/ or /linuxbrew/</td><td>Homebrew</td><td><code>brew upgrade codex</code>, plus a line that Homebrew installs its latest, which may itself be outside the range</td></tr>
+<tr><td>anything else</td><td>unknown</td><td>the npm command, prefixed with "installed by something aegis does not recognise; with npm:"</td></tr>
+</tbody>
+</table>
+<p>The check reads the binary aegis would launch: the agent's configured binary, or the name on PATH. OpenCode 1 gets its own line on top, because its package name differs: <code>npm install -g @opencode/cli@2.0.31</code>, and the old <code>opencode-ai</code> package must be removed first or its binary shadows the new one.</p>
 <p>The harness also reports its version once it runs (the <code>Init</code> event already carries it). That number is not used for the check, because it arrives after the process has started.</p>
 
 <h2 id="person"><span class="n">06</span>A person starts a session</h2>
@@ -282,13 +302,13 @@ hint = "aegis drives OpenCode 2: npm install -g @opencode/cli"</pre>
 <div class="out" id="out"></div>
 <figcaption>Sample versions and range. Pick an installed version, then press a button: the line under the dialog says what aegis does next.</figcaption>
 </figure>
-<p>The dialog is a modal over the spawn form, or over the composer for a <code>/spawn</code> line or a send to a stopped session. "Always" writes the version into <code>.aegis.yaml</code> (section 09). A person whose role cannot write the config (a member, on a multi-user server) sees only "Start once" and "Cancel".</p>
+<p>The dialog names the binary aegis found and the command that installs the tested version (section 05), with a copy button. It is a modal over the spawn form, or over the composer for a <code>/spawn</code> line or a send to a stopped session. "Always" writes the version into <code>.aegis.yaml</code> (section 09). A person whose role cannot write the config (a member, on a multi-user server) sees only "Start once" and "Cancel".</p>
 <p>A person who starts a session on a linked server is, to that server, its link and not a person. That start is unattended there, and the notice lands in the new session's transcript.</p>
 
 <h2 id="unattended"><span class="n">07</span>Nobody is there</h2>
 <p>The session starts as it does today. Its transcript gets one notice before the first turn, rendered like aegis's other notices, and its card shows the harness version in the warning colour. The agent that spawned it gets the same line in its <code>session_spawn</code> result, so it can tell the person.</p>
-<div class="notice"><span class="lbl">untested harness</span>Claude Code 2.1.301 is newer than the versions this aegis release was tested with (2.1.290 to 2.1.296). aegis is not guaranteed to work with it. The session started anyway because nobody was there to ask.</div>
-<div class="notice"><span class="lbl">untested harness</span>OpenCode 1.19.3 is older than the versions this aegis release was tested with (2.0.0 to 2.0.31). aegis drives OpenCode 2: npm install -g @opencode/cli</div>
+<div class="notice"><span class="lbl">untested harness</span>Claude Code 2.1.301 is newer than the versions this aegis release was tested with (2.1.290 to 2.1.296). aegis is not guaranteed to work with it. The session started anyway because nobody was there to ask.<br>found: /home/ana/.local/share/claude/versions/2.1.301<br>to install the tested version: claude install 2.1.296 (and set DISABLE_AUTOUPDATER=1 to keep it)</div>
+<div class="notice"><span class="lbl">untested harness</span>OpenCode 1.19.3 is older than the versions this aegis release was tested with (2.0.0 to 2.0.31). aegis drives OpenCode 2.<br>found: /usr/lib/node_modules/opencode-ai/bin/opencode<br>to install the tested version: npm uninstall -g opencode-ai &amp;&amp; npm install -g @opencode/cli@2.0.31</div>
 <p>The notice is also written to the server log, and journaled once per harness version per day, so a person who reads the journal finds that a nightly job ran on an untested version.</p>
 
 <h2 id="startup"><span class="n">08</span>At startup</h2>
@@ -296,9 +316,9 @@ hint = "aegis drives OpenCode 2: npm install -g @opencode/cli"</pre>
 <figure>
 <div class="set">
   <h5>Harnesses</h5>
-  <div class="hrow"><span class="nm">Claude Code</span><span class="v">2.1.301</span><span class="r">tested 2.1.290 – 2.1.296</span><span class="sp warn">newer than tested</span></div>
-  <div class="hrow"><span class="nm">Codex</span><span class="v">0.163.0</span><span class="r">tested 0.160.0 – 0.163.0</span><span class="sp ok">tested</span></div>
-  <div class="hrow"><span class="nm">OpenCode</span><span class="v">2.0.33</span><span class="r">tested 2.0.0 – 2.0.31</span><span class="sp acc">accepted</span></div>
+  <div class="hrow"><span class="nm">Claude Code</span><span class="v">2.1.301</span><span class="r">tested 2.1.290 – 2.1.296</span><span class="sp warn">newer than tested</span><span class="path">~/.local/share/claude/versions/2.1.301 · <code>claude install 2.1.296</code></span></div>
+  <div class="hrow"><span class="nm">Codex</span><span class="v">0.163.0</span><span class="r">tested 0.160.0 – 0.163.0</span><span class="sp ok">tested</span><span class="path">/usr/lib/node_modules/@openai/codex/bin/codex.js</span></div>
+  <div class="hrow"><span class="nm">OpenCode</span><span class="v">2.0.33</span><span class="r">tested 2.0.0 – 2.0.31</span><span class="sp acc">accepted</span><span class="path">/usr/lib/node_modules/@opencode/cli/bin/opencode · <code>npm install -g @opencode/cli@2.0.31</code></span></div>
   <h5>Untested versions</h5>
   <div class="krow"><label>when a person starts one</label><select class="sel" id="k-person"><option>ask</option><option>warn</option><option>off</option></select></div>
   <div class="krow"><label>when an agent starts one</label><select class="sel" id="k-agent"><option>warn</option><option>off</option></select></div>
@@ -347,7 +367,7 @@ hint = "aegis drives OpenCode 2: npm install -g @opencode/cli"</pre>
 <h2 id="nongoals"><span class="n">13</span>Non-goals and open questions</h2>
 <ul>
   <li><b>Not a block.</b> Nothing in this spec stops a session from starting. Turning a warning into a refusal is a separate decision.</li>
-  <li><b>Not an installer.</b> aegis does not install or downgrade a harness. The message says which version to get.</li>
+  <li><b>Not an installer.</b> aegis does not install or downgrade a harness. The message shows the command, and the person runs it.</li>
   <li><b>Not per model provider.</b> Codex on OpenAI and Codex on OpenRouter share one range. The canary covers both setups, so a version only passes when both do.</li>
   <li><b>Open: members.</b> On a multi-user server, should a member's "Start once" be allowed at all, or should the owner's config decide alone? This spec allows it.</li>
 </ul>
@@ -361,10 +381,10 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",
 // Sample data for the dialog mockup.
 const CASES = {
   "2.1.296": {h: "Claude Code", v: "2.1.296", min: "2.1.290", max: "2.1.296", dir: "in"},
-  "2.1.301": {h: "Claude Code", v: "2.1.301", min: "2.1.290", max: "2.1.296", dir: "newer"},
-  "2.1.280": {h: "Claude Code", v: "2.1.280", min: "2.1.290", max: "2.1.296", dir: "older"},
-  "oc1": {h: "OpenCode", v: "1.19.3", min: "2.0.0", max: "2.0.31", dir: "older", hint: "aegis drives OpenCode 2: npm install -g @opencode/cli"},
-  "?": {h: "Claude Code", v: null, min: "2.1.290", max: "2.1.296", dir: "unknown"},
+  "2.1.301": {h: "Claude Code", v: "2.1.301", min: "2.1.290", max: "2.1.296", dir: "newer", path: "/home/ana/.local/share/claude/versions/2.1.301", cmd: "claude install 2.1.296", note: "The native build updates itself. Set DISABLE_AUTOUPDATER=1 to keep the tested version."},
+  "2.1.280": {h: "Claude Code", v: "2.1.280", min: "2.1.290", max: "2.1.296", dir: "older", path: "/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js", cmd: "npm install -g @anthropic-ai/claude-code@2.1.296"},
+  "oc1": {h: "OpenCode", v: "1.19.3", min: "2.0.0", max: "2.0.31", dir: "older", hint: "aegis drives OpenCode 2.", path: "/usr/lib/node_modules/opencode-ai/bin/opencode", cmd: "npm uninstall -g opencode-ai && npm install -g @opencode/cli@2.0.31"},
+  "?": {h: "Claude Code", v: null, min: "2.1.290", max: "2.1.296", dir: "unknown", path: "/opt/tools/claude", cmd: "npm install -g @anthropic-ai/claude-code@2.1.296", note: "Installed by something aegis does not recognise. The command above uses npm."},
 };
 const accepted = new Set();
 
@@ -383,6 +403,10 @@ function dialog(c) {
     <div class="rng">tested: ${esc(c.min)} to ${esc(c.max)}</div>
     ${bar}
     ${c.hint ? `<p>${esc(c.hint)}</p>` : ""}
+    <div class="rng">found: <span class="pth">${esc(c.path)}</span></div>
+    <div class="rng">to install the tested version:</div>
+    <div class="cmd"><code>${esc(c.cmd)}</code><button class="btn2" data-a="copy">copy</button></div>
+    ${c.note ? `<p class="nt">${esc(c.note)}</p>` : ""}
     <div class="acts">
       <button class="btn" data-a="cancel">Cancel</button>
       ${c.v ? `<button class="btn" data-a="always">Always allow ${esc(c.v)}</button>` : ""}
@@ -395,6 +419,7 @@ function renderDlg() {
   $("out").textContent = "";
   for (const b of $("stage").querySelectorAll("button")) b.addEventListener("click", () => {
     const a = b.dataset.a;
+    if (a === "copy") { $("out").textContent = "Copied: " + c.cmd; return; }
     if (a === "cancel") $("out").textContent = "Nothing starts. The spawn form keeps what was typed.";
     if (a === "once") $("out").textContent = "The session starts. Its transcript opens with the untested-harness notice. This session is not asked again while it runs this version.";
     if (a === "always") {
