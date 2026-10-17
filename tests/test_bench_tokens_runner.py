@@ -196,3 +196,90 @@ def test_a_stock_turn_past_the_timeout_is_a_timeout(fake_p, _cleanup, monkeypatc
     run = _prepare("ledger-fix", _cleanup)
     run.timeout_s = 1
     assert r.run_stock(run, "m", "high", fake_p).error == "timeout"
+
+
+# -- the aegis arm, on tests/fake_claude.py; each waits out a 10 s quiet window --
+
+
+def _aegis_run(roots, turns, timeout_s=120):
+    run = _prepare("ledger-fix", roots)
+    run.turns, run.timeout_s = turns, timeout_s
+    return run
+
+
+def _mcp(tool: str, **args) -> str:
+    import json
+
+    return f"/mcp {tool} {json.dumps(args)}"
+
+
+def _fakes_alive(home: Path) -> list[int]:
+    """Live processes whose environment names this test's fake-claude home."""
+    mark = f"FAKE_CLAUDE_HOME={home}".encode()
+    alive = []
+    for p in Path("/proc").iterdir():
+        try:
+            if p.name.isdigit() and mark in (p / "environ").read_bytes().split(b"\0"):
+                alive.append(int(p.name))
+        except OSError:
+            pass
+    return alive
+
+
+@pytest.fixture
+def no_cap(monkeypatch):
+    monkeypatch.setattr(r, "capped", lambda argv: argv)
+
+
+@pytest.mark.slow
+async def test_a_session_waiting_on_its_monitor_is_not_quiet(
+    no_cap, fake_claude, _cleanup, tmp_path
+):
+    import asyncio
+
+    flag = tmp_path / "flag"
+    start = _mcp(
+        "monitor_start",
+        description="w",
+        done=f"test -f {flag}",
+        progress=None,
+        interval_s=1,
+    )
+    run = _aegis_run(_cleanup, [start])
+    task = asyncio.create_task(r.run_aegis(run, "m", "high", fake_claude))
+    await asyncio.sleep(r.QUIET_S + 3)
+    assert not task.done()
+    flag.touch()
+    res = await asyncio.wait_for(task, 60)
+    assert res.error is None and res.walls[0] > r.QUIET_S
+
+
+@pytest.mark.slow
+async def test_aegis_arm_sends_every_followup_and_times_each_turn(
+    no_cap, fake_claude, _cleanup
+):
+    run = _aegis_run(_cleanup, ["/sleep 1", "/sleep 2", "hello"])
+    res = await r.run_aegis(run, "m", "high", fake_claude)
+    assert res.error is None and len(res.walls) == 3
+    assert 1 <= res.walls[0] < r.QUIET_S and 2 <= res.walls[1] < r.QUIET_S
+    assert res.walls[2] < r.QUIET_S
+
+
+@pytest.mark.slow
+async def test_a_turn_ending_on_needs_you_still_gets_the_followups(
+    no_cap, fake_claude, _cleanup
+):
+    ask = _mcp("turn_end", attention="needs_you", line="Which one?")
+    run = _aegis_run(_cleanup, [ask, "hello"])
+    res = await r.run_aegis(run, "m", "high", fake_claude)
+    assert res.error is None and len(res.walls) == 2
+
+
+@pytest.mark.slow
+async def test_a_hung_agent_is_stopped_at_the_timeout_and_the_app_shut_down(
+    no_cap, fake_claude, _cleanup, tmp_path
+):
+    run = _aegis_run(_cleanup, ["/sleep 600"], timeout_s=5)
+    res = await r.run_aegis(run, "m", "high", fake_claude)
+    assert res.error == "timeout" and res.walls == []
+    assert _fakes_alive(tmp_path / "fake-home") == []

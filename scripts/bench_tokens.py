@@ -25,10 +25,14 @@ bound, and on a small host one runaway test would take the machine down. Not
 terabytes of it they never touch.
 """
 
+import asyncio
+import contextlib
 import json
 import os
+import shlex
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -322,6 +326,140 @@ def run_stock(run: Run, model: str, effort: str, claude: str = "claude") -> ArmR
                 walls, f"claude exited {p.returncode}: {_tail(p.stderr or p.stdout)}"
             )
     return ArmResult(walls, None)
+
+
+QUIET_S = 10  # seconds in a row with nothing running before a turn counts as over
+POLL_S = 0.1
+
+
+def quiet(app) -> bool:
+    """No session on the App busy, no monitor live, no queue task waiting or running."""
+    return (
+        not any(s.busy for s in app.sessions.sessions.values())
+        and not app.monitors.items
+        and not any(
+            t.status in ("pending", "running") for t in app.queues.tasks.values()
+        )
+    )
+
+
+def _wrapper(run: Run, exe: str) -> Path:
+    """The claude the App starts: the run's environment and the memory cap. The
+    App's own children inherit the bench's process environment, which several
+    runs at a time cannot each set; this script sets the run's on every exec.
+    The App adds its own AEGIS_* variables, so those stay."""
+    env = arm_env(run)
+    lines = ["#!/bin/sh"]
+    lines += [
+        f"unset {k}"
+        for k in sorted(os.environ)
+        if k not in env and not k.startswith("AEGIS_")
+    ]
+    lines += [
+        f"export {k}={shlex.quote(env[k])}"
+        for k in ("CLAUDE_CONFIG_DIR", "PATH", "XDG_RUNTIME_DIR")
+    ]
+    lines.append(f"exec {shlex.join(capped([exe]))} " + '"$@"')
+    path = run.root / "claude"
+    path.write_text("\n".join(lines) + "\n")
+    path.chmod(0o755)
+    return path
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+async def _turn(app, s, prompt: str, ended: dict[str, float]) -> float:
+    """Send one turn and wait for quiet. The wall ends when the session last
+    ended a turn, not when the quiet window closes: a monitor's wake is part of
+    the turn, the wait for quiet is not. Turn ends are taken from the App, not
+    polled, because a short turn can start and end between two polls."""
+    t0 = time.monotonic()
+    await s.send(prompt)
+    calm_since = None
+    while True:
+        await asyncio.sleep(POLL_S)
+        now = time.monotonic()
+        if not quiet(app):
+            calm_since = None
+        elif calm_since is None:
+            calm_since = now
+        elif now - calm_since >= QUIET_S:
+            return max(ended.get(s.log_id, t0), t0) - t0
+
+
+async def run_aegis(
+    run: Run, model: str, effort: str, claude: str | None = None
+) -> ArmResult:
+    """The run as one aegis session on a throwaway App in ``run.root``: real MCP,
+    real wakes, real queue workers. Each turn is sent once the App is quiet. A
+    turn that ends on needs_you is over, since nobody answers in a bench. At
+    ``timeout_s`` every session stops and the App shuts down."""
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    exe = shutil.which(claude or "claude") or claude or "claude"
+    (run.root / ".aegis.yaml").write_text(
+        "agents:\n"
+        f"  bench: {{harness: claude-code, model: {model}, effort: {effort}, permission: auto}}\n"
+        "default_agent: bench\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(run.root, None),
+        claude_bin=str(_wrapper(run, exe)),
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "bench", {f"127.0.0.1:{port}"}),
+            host="127.0.0.1",
+            port=port,
+            log_level="warning",
+        )
+    )
+    served = asyncio.create_task(server.serve())
+    walls: list[float] = []
+    error = None
+    end = time.monotonic() + run.timeout_s
+    try:
+        while not server.started:
+            if served.done():
+                return ArmResult(walls, f"the App did not start: {served.exception()}")
+            await asyncio.sleep(0.05)
+        ended: dict[str, float] = {}
+        host_turn_ended = app.sessions.turn_ended
+
+        def turn_ended(session) -> None:
+            ended[session.log_id] = time.monotonic()
+            host_turn_ended(session)
+
+        app.sessions.turn_ended = turn_ended
+        r = await app.registry.call(
+            "session.spawn", {"agent": "bench", "cwd": str(run.work)}
+        )
+        s = app.sessions.sessions[r["log_id"]]
+        for prompt in run.turns:
+            walls.append(
+                await asyncio.wait_for(
+                    _turn(app, s, prompt, ended), end - time.monotonic()
+                )
+            )
+    except TimeoutError:
+        error = "timeout"
+    finally:
+        for s in list(app.sessions.sessions.values()):
+            with contextlib.suppress(Exception):
+                await s.stop()
+        server.should_exit = True
+        await asyncio.wait_for(served, 60)
+    return ArmResult(walls, error)
 
 
 if __name__ == "__main__":
