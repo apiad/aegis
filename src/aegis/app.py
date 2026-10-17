@@ -385,6 +385,7 @@ class App:
             server_name,
         )
         reg.context = lambda: self.config.current().context
+        reg.harness_versions = lambda: self.config.current().harness_versions
         reg.quota = self.quota
         self.journal = Journal(roots.state_root, self.publish)
         reg.journal = self.journal
@@ -1140,7 +1141,10 @@ class App:
                         f"{s.handle} ({s.log_id}) started, but its first message "
                         f"failed: {e}",
                     ) from e
-            return {"log_id": s.log_id, "handle": s.handle}
+            out = {"log_id": s.log_id, "handle": s.handle}
+            if parent is not None and s.last_notice:
+                out["untested"] = s.last_notice
+            return out
 
         async def deliver(p: SendParams, caller):
             s = reg.open(p.log_id)

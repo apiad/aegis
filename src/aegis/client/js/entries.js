@@ -1269,6 +1269,7 @@ const RENDERERS = {
     const body = el("div", "body", e.summary);
     if (e.detail?.tail || e.detail?.more) {
       const d = el("details");
+      d.open = !!e.detail.open;
       d.append(el("summary", null, "show"), e.detail.tail ? el("pre", "out", e.detail.tail) : el("div", "loading", "loading…"));
       body.append(d);
     }

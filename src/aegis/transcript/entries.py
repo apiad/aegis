@@ -939,6 +939,22 @@ class Fold:
                     summary=str(rec.get("text")),
                 )
             )
+        if kind == "untested":
+            # A harness version outside the tested range (harness_versions.py):
+            # the judgment, then where the binary is and how to install the
+            # tested one, open.
+            head, _, rest = str(rec.get("text") or "").partition("\n")
+            return self._upsert(
+                _entry(
+                    f"e{i}",
+                    "system",
+                    "ok",
+                    ts,
+                    d.SYSTEM_GLYPH,
+                    summary=head,
+                    detail={"tail": rest, "open": True, "untested": True},
+                )
+            )
         if kind == "damaged":
             n = rec.get("count", 0)
             return self._upsert(

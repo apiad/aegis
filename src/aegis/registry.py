@@ -87,6 +87,9 @@ class Registry(Host):
         # The live config's context block (config.py); the app points it at
         # Config.current().
         self.context: Callable[[], dict] = lambda: dict(CONTEXT_DEFAULTS)
+        # The live config's harness_versions block; None skips the version
+        # check (harness_versions.py), as a registry with no app does.
+        self.harness_versions: Callable[[], dict | None] = lambda: None
         # The app's quota gate: (owner, harness, model) -> quota_gate.Gate.
         self.gate = None
         self.journal = None
@@ -435,6 +438,7 @@ class Registry(Host):
             if meta.get("continued_by") == "starting"
             else meta.get("continued_by"),
             quiet=bool(meta.get("quiet")),
+            checked_version=meta.get("checked_version"),
         )
 
     def boot(self, prev: restarts.Previous = restarts.CLEAN) -> None:
@@ -606,6 +610,7 @@ class Registry(Host):
         quiet: bool = False,
         schedule: dict | None = None,
         workflow: dict | None = None,
+        launch_by: str = "agent",
     ) -> Session:
         log_id = mint_log_id()
         s = self._session(
@@ -622,6 +627,7 @@ class Registry(Host):
         )
         self.sessions[log_id] = s
         self._publish("sessions", [{"upsert": s.wire()}])
+        s.launch_by = launch_by
         try:
             await s.start()
         except (OSError, TimeoutError):
@@ -631,6 +637,8 @@ class Registry(Host):
             self.metas.path(log_id).unlink(missing_ok=True)
             self._publish("sessions", [{"remove": log_id}])
             raise
+        finally:
+            s.launch_by = "agent"
         return s
 
     async def close(self, log_id: str) -> None:
