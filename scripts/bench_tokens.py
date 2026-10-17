@@ -102,7 +102,9 @@ def _with_runtime_dir(env: dict) -> dict:
 
 def capped(argv: list[str]) -> list[str]:
     """argv run in a transient scope with the memory cap and no swap. The scope
-    execs the command, so it keeps its pid."""
+    execs the command, so it keeps its pid. At the cap the kernel kills the
+    largest process, a runaway test rather than claude; OOMPolicy=continue keeps
+    systemd from then stopping the whole scope, claude included."""
     return [
         "systemd-run",
         "--user",
@@ -112,6 +114,8 @@ def capped(argv: list[str]) -> list[str]:
         f"MemoryMax={MEMORY_MAX}",
         "-p",
         "MemorySwapMax=0",
+        "-p",
+        "OOMPolicy=continue",
         "--",
         *argv,
     ]
