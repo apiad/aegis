@@ -28,6 +28,7 @@ terabytes of it they never touch.
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -245,6 +246,82 @@ def arm_env(run: Run) -> dict:
     env["CLAUDE_CONFIG_DIR"] = str(run.config)
     env["PATH"] = agent_path()
     return _with_runtime_dir(env)
+
+
+@dataclass
+class ArmResult:
+    walls: list[float]
+    error: str | None
+
+
+def _tail(text: str, n: int = 400) -> str:
+    return text.strip()[-n:]
+
+
+def run_group(argv: list[str], cwd: Path, env: dict, timeout: float):
+    """argv in a process group of its own, killed whole at the timeout: claude
+    leaves its Bash commands running when only it is killed. None on timeout."""
+    p = subprocess.Popen(
+        argv,
+        cwd=cwd,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        out, err = p.communicate(timeout=max(1.0, timeout))
+    except subprocess.TimeoutExpired:
+        os.killpg(p.pid, signal.SIGKILL)
+        p.communicate()
+        return None
+    return subprocess.CompletedProcess(argv, p.returncode, out, err)
+
+
+def run_stock(run: Run, model: str, effort: str, claude: str = "claude") -> ArmResult:
+    """Each turn as one ``claude -p`` in the work folder, the follow-ups resuming
+    the first turn's session. A claude that fails or prints no JSON ends the run
+    as failed, with its stderr's tail; it never raises."""
+    exe = shutil.which(claude) or claude
+    env = arm_env(run)
+    end = time.monotonic() + run.timeout_s
+    walls: list[float] = []
+    sid = None
+    for prompt in run.turns:
+        argv = [
+            exe,
+            "-p",
+            prompt,
+            "--model",
+            model,
+            "--effort",
+            effort,
+            "--permission-mode",
+            "auto",
+            "--strict-mcp-config",
+            "--mcp-config",
+            '{"mcpServers":{}}',
+            "--output-format",
+            "json",
+        ]
+        if sid:
+            argv += ["--resume", sid]
+        t0 = time.monotonic()
+        p = run_group(capped(argv), run.work, env, end - t0)
+        if p is None:
+            return ArmResult(walls, "timeout")
+        walls.append(time.monotonic() - t0)
+        try:
+            sid = json.loads(p.stdout)["session_id"]
+        except (ValueError, KeyError, TypeError):
+            sid = None
+        if p.returncode != 0 or sid is None:
+            return ArmResult(
+                walls, f"claude exited {p.returncode}: {_tail(p.stderr or p.stdout)}"
+            )
+    return ArmResult(walls, None)
 
 
 if __name__ == "__main__":

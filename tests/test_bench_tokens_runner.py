@@ -133,3 +133,66 @@ def test_the_arm_env_drops_the_starting_sessions_variables(_cleanup, monkeypatch
     assert "AEGIS_SESSION_TOKEN" not in env and "CLAUDECODE" not in env
     assert env["CLAUDE_CONFIG_DIR"] == str(run.config)
     assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "test-token"
+
+
+FAKE_P = Path(__file__).resolve().parent / "fixtures" / "tokbench" / "fake_claude_p.py"
+
+
+@pytest.fixture
+def fake_p(tmp_path, monkeypatch) -> str:
+    """The fake claude -p as an executable; the scope wrapper is left out, since
+    CI has no user systemd."""
+    monkeypatch.setattr(r, "capped", lambda argv: argv)
+    return str(
+        _exe(
+            tmp_path / "claude", f'#!/bin/sh\nexec "{sys.executable}" "{FAKE_P}" "$@"\n'
+        )
+    )
+
+
+def _argvs(run) -> list[list[str]]:
+    import json
+
+    return [json.loads(x) for x in (run.config / "argv.jsonl").read_text().splitlines()]
+
+
+def test_stock_sends_each_turn_and_resumes_the_same_session(fake_p, _cleanup):
+    import bench_tokens_count as c
+
+    run = _prepare("ledger-fix", _cleanup)
+    res = r.run_stock(run, "m", "high", fake_p)
+    assert res.error is None and len(res.walls) == 3
+    reqs = c.read_requests(run.config)
+    assert len(reqs) == 3 and len({q.transcript for q in reqs}) == 1
+    argvs = _argvs(run)
+    assert "--resume" not in argvs[0] and all("--resume" in a for a in argvs[1:])
+    assert [a[1] for a in argvs] == run.turns
+
+
+def test_stock_passes_the_fence_mode_model_and_no_mcp(fake_p, _cleanup):
+    run = _prepare("ledger-fix", _cleanup)
+    r.run_stock(run, "claude-opus-5-5", "high", fake_p)
+    a = _argvs(run)[0]
+    assert a[a.index("--permission-mode") + 1] == "auto"
+    assert a[a.index("--model") + 1] == "claude-opus-5-5"
+    assert a[a.index("--effort") + 1] == "high"
+    assert (
+        "--strict-mcp-config" in a
+        and a[a.index("--mcp-config") + 1] == '{"mcpServers":{}}'
+    )
+
+
+def test_a_crashing_claude_is_a_failed_run_not_an_abort(fake_p, _cleanup, monkeypatch):
+    monkeypatch.setenv("FAKE_P_MODE", "crash")
+    res = r.run_stock(_prepare("ledger-fix", _cleanup), "m", "high", fake_p)
+    assert res.error.startswith("claude exited 2") and res.error.endswith(
+        "something broke"
+    )
+    assert len(res.walls) == 1
+
+
+def test_a_stock_turn_past_the_timeout_is_a_timeout(fake_p, _cleanup, monkeypatch):
+    monkeypatch.setenv("FAKE_P_MODE", "sleep")
+    run = _prepare("ledger-fix", _cleanup)
+    run.timeout_s = 1
+    assert r.run_stock(run, "m", "high", fake_p).error == "timeout"
