@@ -802,7 +802,8 @@ export class Settings {
     const hv = (this.doc.harness_versions ||= { person: "ask", agent: "warn", startup: "warn", accepted: {} });
     hv.accepted ||= {};
     const pickRow = (key, values, words) => {
-      const sel = select(key, values, hv[key]);
+      // Named hv-*: a bare "agent" would match the queues' agent pickers.
+      const sel = select(`hv-${key}`, values, hv[key]);
       sel.setAttribute("aria-label", `Untested versions ${words}`);
       sel.addEventListener("input", () => {
         hv[key] = sel.value;
