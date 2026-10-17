@@ -1,6 +1,7 @@
 #!/bin/bash
 # Oracle: finish the merge, then replay both discount commits from the reflog with
-# their messages, adapting them to the Line API.
+# their messages, adapting them to the Line API; then the follow-ups: the branch
+# and the tag, and the twelve-items fix with the tag moved onto it.
 set -euo pipefail
 cd "$1"
 export GIT_AUTHOR_NAME=dev GIT_AUTHOR_EMAIL=dev@example.com GIT_COMMITTER_NAME=dev GIT_COMMITTER_EMAIL=dev@example.com
@@ -37,3 +38,17 @@ PY
 }
 replay "$b1"
 replay "$b2"
+git branch discounts main
+git tag -a v1.2.0 -m "tally 1.2.0"
+sed -i 's/MIN_ITEMS = {"BULK5": 10}/MIN_ITEMS = {"BULK5": 12}/' tally/discounts.py
+python3 - <<'PY'
+import pathlib
+t = pathlib.Path("tests/test_discounts.py")
+s = t.read_text()
+s = s.replace("def test_bulk_needs_ten_items", "def test_bulk_needs_twelve_items")
+s = s.replace('Line("item", 10, D("1.00"))], code="BULK5") == D("9.50")', 'Line("item", 12, D("1.00"))], code="BULK5") == D("11.40")')
+s = s.replace('Line("item", 9, D("1.00"))], code="BULK5")', 'Line("item", 11, D("1.00"))], code="BULK5")')
+t.write_text(s)
+PY
+git commit -qam "fix: bulk discount needs twelve items"
+git tag -fa v1.2.0 -m "tally 1.2.0" >/dev/null

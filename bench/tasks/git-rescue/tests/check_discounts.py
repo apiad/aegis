@@ -19,10 +19,10 @@ def test_discount_comes_before_tax():
     assert invoice_total([Line("pad", 2, D("10.00"))], D("0.21"), code="WELCOME10") == D("21.78")
 
 
-def test_bulk_needs_ten_items():
-    assert invoice_total([Line("pen", 4, D("1.00")), Line("pad", 6, D("1.00"))], code="BULK5") == D("9.50")
+def test_bulk_needs_twelve_items():
+    assert invoice_total([Line("pen", 4, D("1.00")), Line("pad", 8, D("1.00"))], code="BULK5") == D("11.40")
     with pytest.raises(ValueError):
-        invoice_total([Line("pen", 9, D("1.00"))], code="BULK5")
+        invoice_total([Line("pen", 5, D("1.00")), Line("pad", 6, D("1.00"))], code="BULK5")
 
 
 def test_lines_still_round_with_a_code():
