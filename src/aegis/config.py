@@ -205,7 +205,7 @@ def harness_versions_from(raw: object) -> dict:
                         "error": f"harness_versions.accepted.{h} is not a list of versions"
                     }
                 out["accepted"][h] = [str(x) for x in versions]
-        elif k in HV_VALUES:
+        elif isinstance(k, str) and k in HV_VALUES:
             if k == "agent" and v == "ask":
                 return _hv_defaults() | {
                     "error": "harness_versions.agent cannot be ask: nobody is there"

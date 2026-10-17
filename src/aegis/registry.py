@@ -88,8 +88,9 @@ class Registry(Host):
         # Config.current().
         self.context: Callable[[], dict] = lambda: dict(CONTEXT_DEFAULTS)
         # The live config's harness_versions block; None skips the version
-        # check (harness_versions.py), as a registry with no app does.
-        self.harness_versions: Callable[[], dict | None] = lambda: None
+        # check (harness_versions.py), as a registry with no app does. The
+        # app points it at Config.current().
+        self.version_policy: Callable[[], dict | None] = lambda: None
         # The app's quota gate: (owner, harness, model) -> quota_gate.Gate.
         self.gate = None
         self.journal = None
@@ -361,6 +362,9 @@ class Registry(Host):
                 for o in self.sessions.values()
             )
         )
+
+    def harness_versions(self) -> dict | None:
+        return self.version_policy()
 
     def catalog_ready(self, session: Session, catalog) -> None:
         if self.catalogs is not None:

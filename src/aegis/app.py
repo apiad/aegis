@@ -396,7 +396,7 @@ class App:
             server_name,
         )
         reg.context = lambda: self.config.current().context
-        reg.harness_versions = lambda: self.config.current().harness_versions
+        reg.version_policy = lambda: self.config.current().harness_versions
         reg.quota = self.quota
         self.journal = Journal(roots.state_root, self.publish)
         reg.journal = self.journal
