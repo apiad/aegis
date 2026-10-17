@@ -46,6 +46,33 @@ child it caused is gone. A prompt whose text is ``FAIL500`` is answered 500.
 
 from __future__ import annotations
 
+import sys
+
+if sys.argv[1:2] == ["--version"]:
+    # First, before the imports below: aegis reads this before every launch
+    # on a new binary (harness_versions.py), and the whole module costs
+    # 0.15 s to import. The tested max, or $AEGIS_FAKE_HARNESS_VERSION; empty
+    # prints nothing and exits 2, as a harness with no --version does.
+    import os
+    import tomllib
+
+    _v = os.environ.get("AEGIS_FAKE_HARNESS_VERSION")
+    if _v is None:
+        _toml = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "src",
+            "aegis",
+            "data",
+            "tested-harnesses.toml",
+        )
+        with open(_toml, "rb") as _f:
+            _v = tomllib.load(_f)["opencode"]["max"]
+    if not _v:
+        sys.exit(2)
+    print("{}".format(_v))
+    sys.exit(0)
+
 import base64
 import json
 import os
@@ -54,11 +81,9 @@ import sys
 import tempfile
 import threading
 import time
-import tomllib
 import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib.parse import urlparse
 
 VERSION = "2.0.28"
@@ -587,22 +612,8 @@ class Handler(BaseHTTPRequestHandler):
                 subscribers.remove(q)
 
 
-def _version_line(harness: str, fmt: str) -> None:
-    """Answer --version with the tested max, or $AEGIS_FAKE_HARNESS_VERSION."""
-    v = os.environ.get("AEGIS_FAKE_HARNESS_VERSION")
-    if v is None:
-        toml = Path(__file__).parents[1] / "src/aegis/data/tested-harnesses.toml"
-        v = tomllib.loads(toml.read_text())[harness]["max"]
-    if not v:
-        sys.exit(2)
-    print(fmt.format(v))
-
-
 def main() -> None:
     args = sys.argv[1:]
-    if args[:1] == ["--version"]:
-        _version_line("opencode", "{}")
-        return
     if not args or args[0] != "serve":
         print("fake opencode: only `serve` is faked", file=sys.stderr)
         sys.exit(2)
