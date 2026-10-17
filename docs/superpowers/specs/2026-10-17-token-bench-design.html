@@ -132,6 +132,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 <tr><td>Inspiration <span class="who">maintainer</span></td><td>Terminal-Bench's task shape, without Harbor or Docker.</td><td class="why">The task format is good; the container machinery is cost the bench does not need.</td></tr>
 <tr><td>Where it runs <span class="who">maintainer</span></td><td>On the host, in auto permission mode, fenced to the task's folder.</td><td class="why">Simplest setup that is still safe to leave running.</td></tr>
 <tr><td>Cost per release <span class="who">maintainer</span></td><td>Must stay small.</td><td class="why">The bench runs before every release.</td></tr>
+<tr><td>Clean configuration <span class="who">maintainer</span></td><td>Both arms run with an empty Claude Code configuration directory: no user instructions, skills, plugins, hooks or MCP servers.</td><td class="why">The ratio then compares aegis with stock Claude Code, and anyone can reproduce it on their own machine.</td></tr>
 <tr><td>Stock arm kept <span class="who agent">agent</span></td><td>Measured 3 times per task once, kept in the repo, rerun only when the Claude Code version, model or effort changes.</td><td class="why">The stock arm does not change when aegis does; paying for it per release would double the cost.</td></tr>
 <tr><td>One aegis run per task <span class="who agent">agent</span></td><td>N=1 per release; a second run only for a task whose ratio moved by more than 25%.</td><td class="why">Six tasks average out much of one run's noise; reruns are spent where a change shows.</td></tr>
 <tr><td>Cache-neutral cost <span class="who agent">agent</span></td><td>Price each request as if the previous request's context were cached and the rest written.</td><td class="why">Real cache state depends on what else ran in the last hour: one spike run cost $0.027 and its twin $0.246.</td></tr>
@@ -177,6 +178,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 </figure>
 <ol>
 <li><b>Prepare.</b> The runner makes <code>$WORK</code> under a fresh temporary directory, runs the task's <code>setup.sh</code> in it, and writes the fence (<a href="#fence">05</a>) into <code>$WORK/.claude/settings.json</code>. Project settings apply to both arms, so the fence is identical.</li>
+<li><b>Clean configuration.</b> Both arms run with <code>CLAUDE_CONFIG_DIR</code> pointing at a fresh empty directory per run, so nothing from the person's user-level configuration loads. The model logs in with a long-lived token in <code>CLAUDE_CODE_OAUTH_TOKEN</code> (from <code>claude setup-token</code>) or an API key. The aegis arm's App passes the same environment to the claude processes it starts. The runner records the first request's context size in each arm, so a configuration that leaks in shows up as a jump.</li>
 <li><b>Stock arm.</b> <code>claude -p "$(cat instruction.md)" --permission-mode auto --model M --effort E</code> in <code>$WORK</code>, with no MCP servers. Each follow-up in <code>followups.md</code> is sent with <code>--resume</code> after the previous turn exits.</li>
 <li><b>Aegis arm.</b> The runner builds an <code>App</code> in a temporary state directory with one agent preset (<code>harness: claude-code</code>, model M, effort E, <code>permission: auto</code>), serves it on a free port, and spawns one session in <code>$WORK</code> through <code>app.registry.call("session.spawn", …)</code>. It sends the instruction, then each follow-up when the session is quiet.</li>
 <li><b>Quiet means finished.</b> A session is quiet when every session on that App is idle, no monitor is live and no queue task is pending, for 10 seconds in a row. A monitor the agent armed keeps the run going until it wakes the agent, as it would for a person. A turn that ends on <code>needs_you</code> counts as finished: nobody answers in a bench.</li>
@@ -286,9 +288,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 </ul>
 
 <h2 id="open"><span class="n">12</span>Open questions</h2>
-<ul>
-<li><b>Whose configuration loads.</b> Both arms load the person's user-level Claude Code configuration: global instructions, skills, plugins, hooks. On the machine the spikes ran on, that is most of a 40k-token stock prefix. Run with it, and the ratio is the overhead this person pays; run with a clean configuration, and the ratio is aegis against stock Claude Code, larger and the same on every machine.</li>
-</ul>
+<p>None for now. The builder settles the sandbox's setting names (<a href="#fence">05</a>) and how the clean configuration logs in (<a href="#run">03</a>), and records both in the plan.</p>
 </main>
 </div>
 <script>
