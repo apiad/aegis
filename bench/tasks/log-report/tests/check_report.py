@@ -1,7 +1,9 @@
 """Recompute report.json from the logs at the start tag and compare it exactly.
 
-usage: check_report.py LOGS_DIR REPORT_JSON
-Prints PASS, or FAIL: <the first field that differs>.
+usage: check_report.py LOGS_DIR REPORT_JSON [LABEL]
+Prints PASS, or FAIL: <the first field that differs>. LABEL names the report in
+the message: the check runs this once on report.json and once on what
+make_report.py writes for another server's logs.
 """
 
 import gzip
@@ -36,6 +38,8 @@ def endpoint(method: str, target: str) -> str:
 def expected(logs: Path) -> dict:
     requests = malformed = 0
     per_day: Counter = Counter()
+    per_hour: Counter = Counter()
+    classes = {"2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0}
     latencies: dict[str, list[int]] = defaultdict(list)
     errors: Counter = Counter()
     for f in sorted(logs.iterdir()):
@@ -55,9 +59,11 @@ def expected(logs: Path) -> dict:
                     continue
                 requests += 1
                 per_day[t.astimezone(timezone.utc).strftime("%Y-%m-%d")] += 1
+                per_hour[t.astimezone(timezone.utc).strftime("%Y-%m-%dT%H")] += 1
                 ms = round(Decimal(m.group(12)) * 1000)
                 latencies[endpoint(m.group(5), m.group(6))].append(ms)
                 status = int(m.group(8))
+                classes[f"{status // 100}xx"] += 1
                 if 500 <= status <= 599:
                     errors[status] += 1
     endpoints = {}
@@ -71,6 +77,8 @@ def expected(logs: Path) -> dict:
         "per_day": dict(per_day),
         "endpoints": endpoints,
         "top_5xx": [{"status": s, "count": c} for s, c in top],
+        "status_classes": classes,
+        "busiest_hour": min(per_hour, key=lambda h: (-per_hour[h], h)),
     }
 
 
@@ -90,19 +98,19 @@ def first_difference(want, got, where="report") -> str | None:
     return None
 
 
-def main(logs: Path, report: Path) -> int:
+def main(logs: Path, report: Path, label: str = "report") -> int:
     if not report.exists():
-        print("FAIL: no report.json")
+        print(f"FAIL: no {label}")
         return 1
     try:
         got = json.loads(report.read_text())
     except ValueError as e:
-        print(f"FAIL: report.json is not JSON: {e}")
+        print(f"FAIL: {label} is not JSON: {e}")
         return 1
-    diff = first_difference(expected(logs), got)
+    diff = first_difference(expected(logs), got, label)
     print(f"FAIL: {diff}" if diff else "PASS")
     return 1 if diff else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(Path(sys.argv[1]), Path(sys.argv[2])))
+    sys.exit(main(Path(sys.argv[1]), Path(sys.argv[2]), *sys.argv[3:]))

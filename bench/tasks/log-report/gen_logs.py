@@ -8,6 +8,10 @@ and access.log.4.gz are gzipped, and access.log.4.gz predates a config change:
 its timestamps are ISO 8601 instead of the common log format's. About 1% of the
 lines are malformed: truncated before the latency, junk bytes, or a latency
 written as rt=-.
+
+usage: gen_logs.py OUT_DIR other writes another server's logs instead, from
+another seed: three files, a clock at -05:00, and the ISO file uncompressed.
+The hidden check runs the agent's make_report.py on them.
 """
 
 import gzip
@@ -78,14 +82,17 @@ def write(path: Path, lines: list[str]) -> None:
         path.write_bytes(data)
 
 
-def main(out: Path) -> None:
-    rng = random.Random(SEED)
+def main(out: Path, other: bool = False) -> None:
+    rng = random.Random(SEED + 1 if other else SEED)
     out.mkdir(parents=True, exist_ok=True)
     utc = timezone.utc
     plus2 = timezone(timedelta(hours=2))
+    minus5 = timezone(timedelta(hours=-5))
     newest = datetime(2026, 10, 16, 0, 0, 0, tzinfo=utc)
     files = [("access.log", utc, False), ("access.log.1", plus2, False), ("access.log.2", utc, False),
              ("access.log.3.gz", utc, False), ("access.log.4.gz", utc, True)]
+    if other:
+        files = [("access.log", minus5, False), ("access.log.1.gz", utc, False), ("access.log.2", utc, True)]
     for age, (name, tz, iso) in enumerate(files):
         t = (newest - timedelta(days=age)).astimezone(tz)
         step = 86_400 / LINES_PER_FILE
@@ -100,4 +107,4 @@ def main(out: Path) -> None:
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]))
+    main(Path(sys.argv[1]), sys.argv[2:] == ["other"])
