@@ -95,6 +95,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 <div class="wrap">
 <nav class="toc" id="toc">
   <a href="#delivers">What this delivers</a>
+  <a href="#spike">The spike</a>
   <a href="#decisions">Decisions</a>
   <a href="#run">How a run works</a>
   <a href="#tasks">The tasks</a>
@@ -123,6 +124,26 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 <p>Those two ends bracket the number that matters and miss it: what the tax is on a task of realistic effort, 20 to 80 requests, where an agent would plan, wait on a slow suite and finish without a person. This bench measures that number at every release, so a primer paragraph or a new tool that raises it is seen before it ships.</p>
 <p>It measures cost, not success. A task that fails in either arm is listed and left out of the ratio, because a failed run's tokens measure the failure, not aegis.</p>
 
+<h3 id="spike">What a one-task spike showed</h3>
+<p>Before planning, the design was run end to end on one task: a ledger tool with two seeded bugs and two follow-up turns, Opus at high effort, one run per arm. Both arms passed the hidden checks.</p>
+<table class="tbl num">
+<thead><tr><th>measure</th><th>stock</th><th>aegis</th><th>ratio</th></tr></thead>
+<tbody>
+<tr><td>API requests</td><td>8</td><td>12</td><td>1.50</td></tr>
+<tr><td>context processed</td><td>199k</td><td>362k</td><td>1.82</td></tr>
+<tr><td>output tokens</td><td>4.7k</td><td>5.2k</td><td>1.12</td></tr>
+<tr><td>cache-neutral cost</td><td>$0.38</td><td>$0.51</td><td>1.34</td></tr>
+<tr><td>first request</td><td>16.5k</td><td>20.8k</td><td>+4.3k</td></tr>
+</tbody>
+</table>
+<p>The mechanics held: the clean configuration logged in and loaded nothing personal, the in-process App ran in auto mode under /tmp, the runner detected the end of each turn, and the counter read every transcript. The four extra requests were one ToolSearch and one turn_end per turn. Four things changed this spec:</p>
+<ul>
+<li>The task was too small. Eight stock requests is below the 20 to 80 this bench is for, and at that size the per-turn tax is most of the ratio. Tasks are calibrated against the stock arm before they join the set (<a href="#tasks">04</a>).</li>
+<li>The fence leaked until the sandbox could start, and starting it needs more than installing it (<a href="#fence">05</a>).</li>
+<li>The first hidden check failed a correct run: the follow-up asked for a test and the agent added it to the existing test file. Checks now run the original tests from the starting commit instead of forbidding edits.</li>
+<li>Waiting for quiet added about 13 seconds per turn to the aegis arm's wall time. Wall time is now measured to the end of the agent's turn, not to the end of the quiet window.</li>
+</ul>
+
 <h2 id="decisions"><span class="n">02</span>Decisions</h2>
 <table class="tbl">
 <thead><tr><th>Decision</th><th>Choice</th><th>Why</th></tr></thead>
@@ -132,7 +153,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 <tr><td>Inspiration <span class="who">maintainer</span></td><td>Terminal-Bench's task shape, without Harbor or Docker.</td><td class="why">The task format is good; the container machinery is cost the bench does not need.</td></tr>
 <tr><td>Where it runs <span class="who">maintainer</span></td><td>On the host, in auto permission mode, fenced to the task's folder.</td><td class="why">Simplest setup that is still safe to leave running.</td></tr>
 <tr><td>Cost per release <span class="who">maintainer</span></td><td>Must stay small.</td><td class="why">The bench runs before every release.</td></tr>
-<tr><td>Clean configuration <span class="who">maintainer</span></td><td>Both arms run with an empty Claude Code configuration directory: no user instructions, skills, plugins, hooks or MCP servers.</td><td class="why">The ratio then compares aegis with stock Claude Code, and anyone can reproduce it on their own machine.</td></tr>
+<tr><td>Clean configuration <span class="who">maintainer</span></td><td>Both arms run with an empty Claude Code configuration directory: no user instructions, skills, plugins, hooks or MCP servers.</td><td class="why">The ratio then compares aegis with stock Claude Code, and anyone can reproduce it on their own machine. The spike found user-level configuration adds only about 30 tokens with MCP servers off; what inflates the prefix is a working folder inside a repository, whose CLAUDE.md files load from parent directories. $WORK therefore lives under /tmp.</td></tr>
 <tr><td>Stock arm kept <span class="who agent">agent</span></td><td>Measured 3 times per task once, kept in the repo, rerun only when the Claude Code version, model or effort changes.</td><td class="why">The stock arm does not change when aegis does; paying for it per release would double the cost.</td></tr>
 <tr><td>One aegis run per task <span class="who agent">agent</span></td><td>N=1 per release; a second run only for a task whose ratio moved by more than 25%.</td><td class="why">Six tasks average out much of one run's noise; reruns are spent where a change shows.</td></tr>
 <tr><td>Cache-neutral cost <span class="who agent">agent</span></td><td>Price each request as if the previous request's context were cached and the rest written.</td><td class="why">Real cache state depends on what else ran in the last hour: one spike run cost $0.027 and its twin $0.246.</td></tr>
@@ -196,7 +217,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
   setup.sh         builds the starting state in $WORK
   tests/test.sh    exit 0 when $WORK is in the right final state
   solution/solve.sh  the oracle: run on a fresh $WORK, test.sh passes</pre>
-<p>The six tasks below are the first set. Each should take an expert 15 to 45 minutes and cost a stock Opus run between $0.50 and $2 cache-neutral. The builder calibrates them by running the stock arm and adjusts any task outside that band. The last column says which aegis feature the task tends to draw out, so the bench covers the features that cost tokens.</p>
+<p>The six tasks below are the first set. Each should take an expert 15 to 45 minutes and cost a stock Opus run between $0.50 and $2 cache-neutral. The builder calibrates them by running the stock arm and adjusts any task outside that band: the spike's ledger task took a stock run 8 requests and $0.38, so the real one needs a larger codebase and more to find. The last column says which aegis feature the task tends to draw out, so the bench covers the features that cost tokens.</p>
 <table class="tbl">
 <thead><tr><th>Task</th><th>What the agent does</th><th>Draws out</th></tr></thead>
 <tbody>
@@ -208,6 +229,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 <tr><td>c-build</td><td>A small C project that stopped building after a header change and has a use-after-free that its test catches under AddressSanitizer.</td><td class="why">build and debug loops</td></tr>
 </tbody>
 </table>
+<p>Two rules for hidden checks came out of the spike. A check accepts any correct solution: it runs the original tests from the tagged starting commit rather than forbidding edits to test files, and it reads behaviour, not file layout. And every command in a check runs under <code>timeout</code>, because a seeded bug can hang: the spike's month-rollover bug looped forever on a range that started in December.</p>
 <p>The categories follow Terminal-Bench 2.0's spread (software engineering, data processing, version control, build systems) and its time band. Terminal-Bench's own tasks are not reused: they assume a container image and a root shell.</p>
 
 <h2 id="fence"><span class="n">05</span>Keeping the agent in its folder</h2>
@@ -216,7 +238,9 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 <li><b>Bash.</b> Claude Code's sandbox, enabled in those settings, limits what shell commands can write to the working directory. Reads of <code>bench/</code> and of the person's home outside <code>$WORK</code> are denied in the same block, so <code>cat solution/solve.sh</code> fails.</li>
 <li><b>File tools.</b> A <code>PreToolUse</code> hook, <code>bench/fence.py</code>, denies Read, Edit, Write, Glob, Grep and NotebookEdit on any path that resolves outside <code>$WORK</code>, except reads under <code>/usr</code>, <code>/lib</code>, <code>/etc</code> and <code>/tmp</code>. A denied call returns a message that names the folder, so the agent turns back instead of retrying.</li>
 </ul>
-<p>The fence must be shown to fail closed, not assumed to. The bench's tests run the hook on paths inside and outside <code>$WORK</code>, and one live check gives a real session in a fenced <code>$WORK</code> the instruction to print the oracle file. It must fail to read it. The builder confirms the sandbox's exact setting names against the installed Claude Code version; this spec names the behaviour, not the keys.</p>
+<p>The sandbox needs <code>bubblewrap</code> and <code>socat</code> on the host. Without them Claude Code prints a warning and runs every command unsandboxed; in the spike a Python one-liner that built its path at runtime read a file outside <code>$WORK</code>, which deny rules alone cannot see. With them installed, the sandbox can still fail to start: Ubuntu 24.04 and later restrict unprivileged user namespaces through AppArmor (<code>kernel.apparmor_restrict_unprivileged_userns=1</code>), and bubblewrap then fails with <code>setting up uid map: Permission denied</code>. Every sandboxed Bash call then fails, which turns a cost bench into a failure bench. The host needs an AppArmor profile that grants <code>userns</code> to <code>/usr/bin/bwrap</code> alone, not the restriction turned off.</p>
+<p>So the runner preflights before any run: it runs <code>bwrap --ro-bind / / --unshare-net true</code>, and if that fails it stops and prints the reason and the fix. It never falls back to running unfenced.</p>
+<p>The fence must be shown to fail closed, not assumed to. The bench's tests run the hook on paths inside and outside <code>$WORK</code>, and one live check gives a real session in a fenced <code>$WORK</code> the instruction to read a file outside it through a Python one-liner that builds the path at runtime, and to write one the same way. Both must fail, and the file must have an innocent name: in the spike, auto mode refused a file named <code>secret.txt</code> on its name alone, which says nothing about the fence. The builder confirms the sandbox's exact setting names against the installed Claude Code version; this spec names the behaviour, not the keys.</p>
 <p>aegis's own tools stay open in the aegis arm. They act on the throwaway App, which holds nothing but the bench.</p>
 
 <h2 id="metrics"><span class="n">06</span>What is measured</h2>
@@ -226,7 +250,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 <li><b>context</b>: the sum over requests of input plus cache-read plus cache-write tokens, the tokens the model processed;</li>
 <li><b>output</b>: output tokens, thinking included;</li>
 <li><b>cost</b>: cache-neutral list-price cost. Request <i>i</i> pays cache-read price on request <i>i</i>−1's context, cache-write price on the rest, and output price on its output. That is what the run costs with an ideal cache, whatever else ran in the same hour;</li>
-<li><b>wall</b>: seconds from first prompt to quiet, reported only;</li>
+<li><b>wall</b>: seconds from each prompt to the end of the agent's turn, summed over turns and reported only. The quiet window is not counted;</li>
 <li><b>aegis share</b> (aegis arm): requests and cost whose tool calls were only aegis tools, split into bookkeeping (turn_end, plan_update, ToolSearch for aegis, journal_note, toast, session_rename) and work (monitors, queues, handoffs, files).</li>
 </ul>
 <p>The headline is the geometric mean, over tasks that passed in both arms, of aegis cost divided by stock cost. A geometric mean keeps one expensive task from deciding it. Failures are listed with their cost and left out, because the tokens of a failed run measure the failure.</p>
@@ -288,7 +312,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 </ul>
 
 <h2 id="open"><span class="n">12</span>Open questions</h2>
-<p>None for now. The builder settles the sandbox's setting names (<a href="#fence">05</a>) and how the clean configuration logs in (<a href="#run">03</a>), and records both in the plan.</p>
+<p>None for the design. The plan records how the clean configuration logs in: the spike copied the credentials file into the fresh directory, which works on one machine; a token from <code>claude setup-token</code> is the portable form.</p>
 </main>
 </div>
 <script>
