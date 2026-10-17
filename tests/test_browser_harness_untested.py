@@ -1,6 +1,8 @@
 """An untested harness version in the browser (#446): the dialog before a
 person's spawn, start once or always, and the Settings rows."""
 
+# ruff: noqa: F811  (pytest fixtures imported from test_browser)
+
 from pathlib import Path
 
 import pytest
@@ -38,8 +40,10 @@ def open_spawn(pg) -> None:
 
 
 def test_the_dialog_names_version_path_and_command_then_starts_once(
-    server, page, fake_claude
-):  # noqa: F811
+    server,
+    page,
+    fake_claude,
+):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     open_spawn(page)
@@ -60,7 +64,7 @@ def test_the_dialog_names_version_path_and_command_then_starts_once(
     assert page.errors == []
 
 
-def test_always_saves_the_version_and_stops_asking(server, page):  # noqa: F811
+def test_always_saves_the_version_and_stops_asking(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     open_spawn(page)
@@ -77,7 +81,7 @@ def test_always_saves_the_version_and_stops_asking(server, page):  # noqa: F811
     assert page.errors == []
 
 
-def test_cancel_keeps_the_typed_text(server, page):  # noqa: F811
+def test_cancel_keeps_the_typed_text(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     open_spawn(page)
@@ -91,8 +95,11 @@ def test_cancel_keeps_the_typed_text(server, page):  # noqa: F811
 
 
 def test_settings_marks_the_harness_and_lists_accepted(
-    tmp_path, fake_claude, fake_opencode, page
-):  # noqa: F811
+    tmp_path,
+    fake_claude,
+    fake_opencode,
+    page,
+):
     s = start(tmp_path, fake_claude, fake_opencode, SETTINGS_CONFIG)
     try:
         open_settings(page, s.url)
@@ -107,7 +114,7 @@ def test_settings_marks_the_harness_and_lists_accepted(
         s.stop()
 
 
-def test_the_dialog_fits_a_phone(server, page):  # noqa: F811
+def test_the_dialog_fits_a_phone(server, page):
     page.set_viewport_size({"width": 390, "height": 800})
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
