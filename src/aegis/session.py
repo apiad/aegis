@@ -631,7 +631,7 @@ class Session:
         v = await harness_versions.check(self.harness, cfg["accepted"])
         self.last_verdict, self.last_notice = v, None
         token = v.version or "?"
-        if not v.outside or token == self.checked_version:
+        if v.path is None or not v.outside or token == self.checked_version:
             return
         if cfg[self.launch_by] == "off":
             return

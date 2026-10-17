@@ -299,6 +299,14 @@ def test_accept_version_twice_leaves_one_entry(tmp_path):
     assert "# Background research" in p.read_text()
 
 
+def test_accept_version_ignores_findings_elsewhere(tmp_path):
+    from aegis.config import accept_version
+
+    p, _ = setup(tmp_path, WORKSPACE + "  broken: {agent: opus}\n")
+    accept_version(p, "codex", "0.170.0")
+    assert safe(p)["harness_versions"] == {"accepted": {"codex": ["0.170.0"]}}
+
+
 def test_accept_version_on_an_unparseable_file_raises(tmp_path):
     from aegis.config import accept_version
 

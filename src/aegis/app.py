@@ -47,6 +47,7 @@ from pydantic import BaseModel, Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 from . import archive, attachments as att, commands, dictation, files, restarts
+from . import harness_versions
 from . import workflow_store
 from .agent_ops import (
     far_error,
@@ -67,7 +68,8 @@ from .agents import (
 from .cgroups import SessionCgroups
 from .channels import Channels, Throttle
 from .claude.process import PERMISSION_MODE, ControlError
-from .config import Config, Snapshot
+from .config import Config, Snapshot, accept_version
+from .harness import harness_for
 from .config_ops import register_config_ops
 from .confirm import Confirmations
 from .help_ops import register_help_ops
@@ -158,6 +160,11 @@ class SpawnParams(_Strict):
         "appears when its turn ends. Needs a prompt.",
     )
     spawned_from: SkipJsonSchema[SpawnedFrom | None] = Field(None, exclude=True)
+    # A person's answer to harness_untested (harness_versions.py): start this
+    # once, or allow the version for good. Agents never get asked.
+    untested: SkipJsonSchema[Literal["once", "always"] | None] = Field(
+        None, exclude=True
+    )
 
 
 class SendParams(_Strict):
@@ -170,6 +177,9 @@ class SendParams(_Strict):
     # The page's id for this message: a retry with the same nonce is answered
     # without being delivered again (#350).
     nonce: str | None = Field(default=None, min_length=8, max_length=64)
+    # The answer to harness_untested, for a send that starts a stopped session
+    # or a /spawn line (SpawnParams.untested).
+    untested: Literal["once", "always"] | None = None
 
     @model_validator(mode="after")
     def _says_something(self) -> "SendParams":
@@ -781,7 +791,14 @@ class App:
             raise _dead(e) from e
         return s.wire()
 
-    async def _command(self, s, name: str, arg: str, caller: Caller = Caller("user")):
+    async def _command(
+        self,
+        s,
+        name: str,
+        arg: str,
+        caller: Caller = Caller("user"),
+        untested: str | None = None,
+    ):
         """Run an aegis command typed in the composer."""
         cmd = commands.AEGIS[name]
         if cmd.hint.startswith("<") and not arg:
@@ -841,11 +858,59 @@ class App:
             await s.stop()
             return s.wire()
         if name == "spawn":
-            return await self._spawn_line(commands.parse_spawn(arg), caller, s)
+            return await self._spawn_line(
+                commands.parse_spawn(arg), caller, s, untested
+            )
         await reg.close(s.log_id)  # close
         return None
 
-    async def _spawn_line(self, line: commands.SpawnLine, caller: Caller, s) -> dict:
+    async def _version_gate(
+        self, caller: Caller, harness: str, untested: str | None, s=None
+    ) -> str | None:
+        """A person's launch on a harness version outside the tested range:
+        refuse it once with harness_untested and what the browser shows, then
+        start on "once" or "always". Returns why "always" was not saved, or
+        None. An agent and a link are never asked (spec §06): their launches
+        write the notice instead (Session._check_version)."""
+        if caller.is_agent or caller.link is not None:
+            return None
+        cfg = self.config.current().harness_versions
+        h = (
+            s.harness
+            if s is not None
+            else harness_for(
+                harness, self.claude_bin, self.opencode_bin, self.codex_bin
+            )
+        )
+        v = await harness_versions.check(h, cfg["accepted"])
+        if v.path is None or not v.outside or cfg["person"] != "ask":
+            return None  # a missing binary fails the launch as harness_not_found
+        if s is not None and s.checked_version == (v.version or "?"):
+            return None  # started once on this version already
+        may = self.who(caller).is_admin and v.version is not None
+        if untested is None:
+            raise OpError(
+                "harness_untested", v.message(), data=v.wire() | {"may_always": may}
+            )
+        if untested != "always":
+            return None
+        if v.version is None:
+            return "a version that could not be read cannot be allowed for good"
+        if not self.who(caller).is_admin:
+            return "only an admin can allow a version for good; it started this once"
+        try:
+            accept_version(self.config.path, v.harness, v.version)
+        except OpError as e:
+            return f"{v.version} was not saved: {e.message}"
+        return None
+
+    async def _spawn_line(
+        self,
+        line: commands.SpawnLine,
+        caller: Caller,
+        s,
+        untested: str | None = None,
+    ) -> dict:
         """``/spawn``: a person starting a session, here or, with ``@server``, on
         a linked server through the link. Nobody's child: no ``spawned_by``, but
         its prompt carries the tail of tab ``s``, where it was typed."""
@@ -861,6 +926,7 @@ class App:
                 ("permission", line.permission),
                 ("cwd", line.cwd),
                 ("quiet", line.quiet or None),
+                ("untested", untested),
             )
             if v is not None
         }
@@ -1116,6 +1182,12 @@ class App:
             g = self.gate(spec.owner, spec.harness, spec.model)
             if not g.may_start:
                 raise OpError("quota_closed", refusal(spec.owner or self.user, g))
+            person = parent is None and caller.link is None and not caller.is_agent
+            not_saved = (
+                await self._version_gate(caller, spec.harness, p.untested)
+                if person
+                else None
+            )
             try:
                 # A run's child carries its schedule, so spawn: false holds for
                 # grandchildren too (ops.NO_SPAWN).
@@ -1123,6 +1195,7 @@ class App:
                     spec,
                     quiet=p.quiet,
                     schedule=parent.schedule if parent else None,
+                    launch_by="person" if person else "agent",
                 )
             except FileNotFoundError as e:
                 raise OpError(
@@ -1144,6 +1217,8 @@ class App:
             out = {"log_id": s.log_id, "handle": s.handle}
             if parent is not None and s.last_notice:
                 out["untested"] = s.last_notice
+            if not_saved:
+                out["not_saved"] = not_saved
             return out
 
         async def deliver(p: SendParams, caller):
@@ -1167,7 +1242,7 @@ class App:
                     )
                 name, arg = cmd
                 if name in commands.AEGIS:
-                    return await self._command(s, name, arg, caller)
+                    return await self._command(s, name, arg, caller, p.untested)
                 cat = await self.catalogs.get(s)
                 if cat is not None and cat.commands and not cat.has(name):
                     raise OpError(
@@ -1183,10 +1258,21 @@ class App:
                     f"{owner}'s quota gate holds this session: {why}. "
                     "It continues when the gate opens.",
                 )
+            not_saved = None
+            if not s.running and s.status != "parked":
+                # A person resuming a stopped session; a parked one wakes
+                # unattended (spec §06).
+                not_saved = await self._version_gate(
+                    caller, s.spec.harness, p.untested, s
+                )
+                s.launch_by = "agent" if caller.is_agent else "person"
             try:
                 # The harness first: a send that cannot reach the agent leaves
                 # its uploads staged, to send again.
-                await s.ensure_running()
+                try:
+                    await s.ensure_running()
+                finally:
+                    s.launch_by = "agent"
                 sent: list[dict] = []
                 if p.attachments:
                     try:
@@ -1196,6 +1282,8 @@ class App:
                     except files.FileError as e:
                         raise OpError(e.code, e.message) from e
                 await s.send(att.message(text, sent), typed=text, attached=sent)
+                if not_saved:
+                    return {"not_saved": not_saved}
             except FileNotFoundError as e:
                 raise OpError(
                     "harness_not_found",

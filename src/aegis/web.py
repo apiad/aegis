@@ -453,6 +453,8 @@ def build_web(
                     )
             except OpError as e:
                 reply["error"] = {"code": e.code, "message": e.message}
+                if e.data is not None:
+                    reply["error"]["data"] = e.data
             except Exception as e:  # an operation bug must not kill the socket
                 log.exception("call %s failed", op)
                 reply["error"] = {

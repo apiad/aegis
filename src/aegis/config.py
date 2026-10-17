@@ -697,22 +697,35 @@ def write(path: Path, doc: ConfigDoc, expected: Stamp | None) -> list[Finding]:
 
 def accept_version(path: Path, harness: str, version: str) -> None:
     """Add ``version`` to ``harness_versions.accepted.<harness>``: what a
-    person's "Always" does. Raises OpError("stale") when the file moves under
-    it and OpError("bad_config") when it cannot be written as it stands."""
+    person's "Always" does. Only that block is edited, so a finding elsewhere
+    in the file (a broken queue) does not stop it. Raises OpError("stale")
+    when the file moves under it and OpError("bad_config") when it cannot be
+    written as it stands."""
     stamp = stamp_of(path)
-    data: dict = {}
+    rt = YAML()
+    rt.preserve_quotes = True
+    data = None
     if stamp is not None:
-        loaded, error = load(path)
-        if loaded is None:
+        if error := load(path)[1]:
             raise OpError("bad_config", f"{error}; fix it in an editor first")
-        data = loaded
+        try:
+            data = rt.load(path.read_text())
+        except YAMLError as e:
+            raise OpError("bad_config", f"{path} does not parse: {e}") from e
+    if not isinstance(data, CommentedMap):
+        data = CommentedMap()
+        data.yaml_set_start_comment("aegis configuration. `aegis doctor` checks it.")
     hv = harness_versions_from(data.get("harness_versions"))
     if "error" in hv:
         raise OpError("bad_config", hv["error"])
-    doc = doc_from(data)
-    versions = doc.harness_versions.accepted.setdefault(harness, [])
-    if version in versions:
+    if version in hv["accepted"].get(harness, []):
         return
-    versions.append(version)
-    if problems := write(path, doc, stamp):
-        raise OpError("bad_config", "; ".join(f.message for f in problems))
+    hv["accepted"].setdefault(harness, []).append(version)
+    _apply_harness_versions(data, HarnessVersionsDoc(**hv))
+    buf = StringIO()
+    rt.dump(data, buf)
+    if stamp_of(path) != stamp:
+        raise OpError("stale", f"{path} changed on disk while it was edited; try again")
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(buf.getvalue())
+    os.replace(tmp, path)

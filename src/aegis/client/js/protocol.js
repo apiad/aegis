@@ -13,9 +13,10 @@
 export const PROTO = 3;
 
 export class OpError extends Error {
-  constructor(code, message) {
+  constructor(code, message, data = null) {
     super(`${code}: ${message}`);
     this.code = code;
+    this.data = data; // what the refusal carries, such as harness_untested's version
   }
 }
 
@@ -64,7 +65,7 @@ export class Connection {
         const p = this.pending.get(msg.id);
         if (!p) return;
         this.pending.delete(msg.id);
-        if (msg.error) p.reject(new OpError(msg.error.code, msg.error.message));
+        if (msg.error) p.reject(new OpError(msg.error.code, msg.error.message, msg.error.data || null));
         else p.resolve(msg.result);
         break;
       }
