@@ -30,7 +30,7 @@ import { entry, Journal, opens } from "./journal.js";
 import { Schedules } from "./schedules.js";
 import { Help } from "./help.js";
 import { installBell, listenForOpen, pingToast, redrawFavicon, setTitle, updatePing } from "./ping.js";
-import { ask, cancelAsk } from "./dialog.js";
+import { ask, cancelAsk, choose } from "./dialog.js";
 import "./pick.js";
 import { Dictation } from "./dictation.js";
 import { Attachments } from "./attach.js";
@@ -2347,6 +2347,63 @@ function markDiffs() {
   $("sp-agent").suffix = changed ? "*" : "";
 }
 
+// A harness version outside the tested range (harness_versions.py): the
+// server refused the launch once with what it found; ask the person whether to
+// start once, allow that version for good, or cancel. Resolves "once",
+// "always" or null.
+function untestedAsk(d) {
+  const p = (cls, text) => {
+    const e = document.createElement("p");
+    e.className = cls;
+    e.textContent = text;
+    return e;
+  };
+  const body = document.createElement("div");
+  body.className = "untested";
+  const range = d.min === d.max ? d.max : `${d.min} to ${d.max}`;
+  const head = d.state === "unknown" ? `${d.label}: version unknown` : `${d.label} ${d.version}`;
+  body.append(p("range", `${head} · tested with ${range}`));
+  body.append(p("text", (d.message || "").split("\n")[0]));
+  body.append(p("found", `found: ${d.path || "nothing on PATH"}`));
+  const cmd = document.createElement("div");
+  cmd.className = "cmd";
+  const code = document.createElement("code");
+  code.textContent = d.install;
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "btn copy-cmd";
+  copy.textContent = "Copy";
+  copy.addEventListener("click", () =>
+    navigator.clipboard.writeText(d.install).then(
+      () => toast("Copied"),
+      () => toast("Could not copy", { kind: "error" }),
+    ),
+  );
+  cmd.append(code, copy);
+  body.append(cmd);
+  for (const n of d.notes || []) body.append(p("note", n));
+  const buttons = [{ label: "Cancel", value: null }];
+  if (d.may_always) buttons.push({ label: `Always allow ${d.version}`, value: "always" });
+  buttons.push({ label: "Start once", value: "once", primary: true });
+  const title = d.state === "unknown" ? `${d.label}'s version is unknown` : `${d.label} ${d.version} is untested`;
+  return choose(title, body, buttons);
+}
+
+// A call that starts a harness, asked again with the person's answer when the
+// server refuses it as harness_untested. Cancel rethrows nothing: null.
+async function untestedRetry(call, again) {
+  try {
+    return await call();
+  } catch (e) {
+    if (e.code !== "harness_untested" || !e.data) throw e;
+    const pick = await untestedAsk(e.data);
+    if (!pick) return null;
+    const r = await again(pick);
+    if (r?.not_saved) toast(`Started once: ${r.not_saved}`, { kind: "error" });
+    return r;
+  }
+}
+
 async function spawnFromComposer() {
   const a = current();
   if (!a || $("sp-go").disabled || offline()) return;
@@ -2360,7 +2417,11 @@ async function spawnFromComposer() {
   const held = spAtts.list("spawn").length > 0;
   if (text && !held) params.prompt = text;
   try {
-    const r = await conn.call("session.spawn", params, spServer);
+    const r = await untestedRetry(
+      () => conn.call("session.spawn", params, spServer),
+      (untested) => conn.call("session.spawn", { ...params, untested }, spServer),
+    );
+    if (!r) return; // cancelled: the typed text stays
     localStorage.setItem(LAST_AGENT, a.name);
     $("sp-text").value = "";
     spawnGrow();
@@ -2889,7 +2950,15 @@ loadDrafts();
 setSender((key, params) => {
   const call = callFor(key, "session.send", params);
   const late = setTimeout(() => conn.drop(), SEND_VERDICT_MS);
-  return call.finally(() => clearTimeout(late));
+  // A stopped session on an untested harness asks first; Cancel keeps the draft.
+  return call
+    .finally(() => clearTimeout(late))
+    .catch(async (e) => {
+      if (e.code !== "harness_untested" || !e.data) throw e;
+      const pick = await untestedAsk(e.data);
+      if (!pick) throw e;
+      return callFor(key, "session.send", { ...params, untested: pick });
+    });
 });
 $("queued").addEventListener("click", (ev) => {
   const act = ev.target.closest("[data-act]")?.dataset.act;
@@ -3034,6 +3103,23 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
     sent(await (fromComposer ? answered(call) : call));
   } catch (e) {
     box.hidden = was;
+    if (e?.code === "harness_untested" && e.data) {
+      // A stopped session, or a /spawn line, on an untested harness version.
+      if (fromComposer) {
+        sending.delete(s.key);
+        drawSending();
+      }
+      try {
+        const r = await untestedRetry(
+          () => Promise.reject(e),
+          (untested) => callFor(s.key, "session.send", { ...params, untested }),
+        );
+        if (r) sent(r);
+      } catch (e2) {
+        toast(e2.message, { kind: "error" });
+      }
+      return;
+    }
     if (e !== LATE) {
       toast(e.message, { kind: "error" });
       return;

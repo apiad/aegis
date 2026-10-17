@@ -242,6 +242,7 @@ export class Settings {
       this.agents(),
       this.queues(),
       this.park(),
+      this.untested(),
       this.workflows(),
     );
     this.box.replaceChildren(full, this.bar());
@@ -765,6 +766,7 @@ export class Settings {
           h("b", { textContent: f.label }),
           " ",
           f.bin ? (f.error ? "cannot run" : `${f.version.replace(/\s*\(.*\)$/, "")}, ${plural(f.models.length, "model")}`) : "not installed",
+          this.versionTag(f),
         ),
       ),
     );
@@ -774,6 +776,68 @@ export class Settings {
       h("div", {}, h("h2", { textContent: "Settings" }), h("code", { id: "set-path", textContent: this.wire.path })),
       harnesses,
     );
+  }
+
+  // A harness outside the versions this release was tested with
+  // (harness_versions.py): a tag in the warning colour, or "accepted" when the
+  // form's accepted list has it; opening it shows the binary and the command.
+  versionTag(f) {
+    const v = f.verdict;
+    if (!v || v.state === "in_range") return null;
+    const ok = v.version && (this.doc.harness_versions?.accepted?.[v.harness] || []).includes(v.version);
+    const word = ok ? "accepted" : { newer: "newer than tested", older: "older than tested", unknown: "version unknown" }[v.state] || "accepted";
+    const range = v.min === v.max ? v.max : `${v.min} – ${v.max}`;
+    const d = h("details", { className: ok ? "set-vtag" : "set-vtag warn" });
+    d.dataset.harness = v.harness;
+    d.append(
+      h("summary", { textContent: word, title: `tested ${range}` }),
+      h("div", { className: "set-vline" }, h("code", { textContent: v.path || "" }), " · ", h("code", { textContent: v.install })),
+    );
+    return d;
+  }
+
+  // What a launch on an untested harness version does (harness_versions:),
+  // and the versions a person allowed for good.
+  untested() {
+    const hv = (this.doc.harness_versions ||= { person: "ask", agent: "warn", startup: "warn", accepted: {} });
+    hv.accepted ||= {};
+    const pickRow = (key, values, words) => {
+      const sel = select(key, values, hv[key]);
+      sel.setAttribute("aria-label", `Untested versions ${words}`);
+      sel.addEventListener("input", () => {
+        hv[key] = sel.value;
+        this.touch();
+      });
+      return h("div", { className: "set-queue-line" }, h("span", { className: "set-name", textContent: words }), sel);
+    };
+    const rows = [
+      pickRow("person", ["ask", "warn", "off"], "when a person starts one"),
+      pickRow("agent", ["warn", "off"], "when an agent starts one"),
+      pickRow("startup", ["warn", "off"], "at startup"),
+    ];
+    const accepted = Object.entries(hv.accepted).flatMap(([harness, versions]) =>
+      versions.map((v) =>
+        h(
+          "div",
+          { className: "set-queue-line set-accepted" },
+          h("span", { className: "set-name", textContent: `${harness} ${v}` }),
+          button("Remove", null, () => {
+            hv.accepted[harness] = hv.accepted[harness].filter((x) => x !== v);
+            if (!hv.accepted[harness].length) delete hv.accepted[harness];
+            this.touch();
+            this.draw();
+          }, "link danger"),
+        ),
+      ),
+    );
+    const box = h("div", { className: "set-queue" }, ...rows);
+    box.dataset.row = "harness_versions";
+    const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Untested versions" }));
+    const note = h("p", { className: "set-none", textContent: "A harness version outside the ones this aegis release was tested with: ask asks the person first, warn starts it with a notice in the transcript, off says nothing." });
+    const list = accepted.length
+      ? h("div", { className: "set-queues", id: "set-accepted" }, h("p", { className: "set-none", textContent: "Accepted for good:" }), ...accepted)
+      : h("p", { className: "set-none", id: "set-accepted", textContent: "No version accepted for good." });
+    return h("section", { id: "set-untested" }, head, note, h("div", { className: "set-queues" }, box), list);
   }
 
   // The doctor: one line until it finds something, the full list on demand.
