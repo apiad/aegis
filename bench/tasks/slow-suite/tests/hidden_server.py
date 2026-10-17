@@ -2,6 +2,7 @@
 
     server.script("/orders", [503, 503, 200])   # fail twice, then answer
     server.script("/orders", ["reset", 200])    # drop the connection once
+    server.script("/orders", [(503, {"Retry-After": "1"}), 200])  # with headers
 
 Each request to a scripted path takes the next entry; the last one repeats. An
 unscripted path answers 200. Every answer echoes the method, path and JSON body.
@@ -43,8 +44,11 @@ class FakeServer:
                 else:
                     data = {"method": self.command, "path": path, "body": body,
                             "auth": self.headers.get("Authorization")}
+                status, extra = step if isinstance(step, tuple) else (step, {})
                 out = json.dumps(data).encode()
-                self.send_response(step)
+                self.send_response(status)
+                for k, v in extra.items():
+                    self.send_header(k, v)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(out)))
                 self.end_headers()

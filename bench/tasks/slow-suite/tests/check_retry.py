@@ -5,6 +5,7 @@ import time
 import pytest
 from hidden_server import FakeServer
 
+import httpc
 from httpc import Client, ConnectionFailed, HTTPError
 
 
@@ -71,3 +72,36 @@ def test_a_refused_connection_fails_at_once():
 def test_success_needs_one_request(server):
     r, took = timed(lambda: Client(server.url).get("/fine"))
     assert r.ok and server.hits["/fine"] == 1 and took < 0.2
+
+
+# -- the follow-ups: Retry-After, then a configurable policy --
+
+
+@pytest.mark.parametrize(
+    "value, low, high",
+    [("1", 1.0, 1.35), ("30", 2.0, 2.35), ("soon", 0.2, 0.45), ("0", 0.0, 0.15)],
+)
+def test_a_503_retry_after_replaces_the_backoff_up_to_two_seconds(server, value, low, high):
+    path = f"/ra{value}"
+    server.script(path, [(503, {"Retry-After": value}), 200])
+    r, took = timed(lambda: Client(server.url).get(path))
+    assert r.status == 200 and server.hits[path] == 2
+    assert low <= took < high, took
+
+
+def test_the_policy_is_configurable():
+    retry = httpc.Retry(attempts=2, backoff_s=0.1)
+    with FakeServer() as s:
+        s.script("/c", [503, 503, 200])
+        e, took = timed(lambda: Client(s.url, retry=retry).get("/c"))
+        assert isinstance(e, HTTPError) and s.hits["/c"] == 2 and 0.1 <= took < 0.3
+        s.script("/off", [503, 200])
+        e, took = timed(lambda: Client(s.url, retry=httpc.Retry(attempts=1)).get("/off"))
+        assert isinstance(e, HTTPError) and s.hits["/off"] == 1 and took < 0.15
+        s.script("/four", [502, 502, 502, 200])
+        r, took = timed(lambda: Client(s.url, retry=httpc.Retry(attempts=4, backoff_s=0.05)).get("/four"))
+        assert r.status == 200 and s.hits["/four"] == 4 and 0.35 <= took < 0.6
+
+
+def test_the_default_policy_is_three_attempts_from_point_two_seconds():
+    assert httpc.Retry().attempts == 3 and httpc.Retry().backoff_s == pytest.approx(0.2)

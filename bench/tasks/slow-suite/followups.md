@@ -1,0 +1,3 @@
+The gateway sometimes sends `Retry-After: N` (whole seconds) with a 503. When it does, wait N seconds before the next attempt instead of the backoff, but never more than 2 seconds; when the value is larger than 2, wait 2; when it is not a whole number, use the backoff. Add an integration test for it and keep the whole suite passing.
+---
+Make the policy configurable: `Client(base_url, ..., retry=Retry(attempts=3, backoff_s=0.2))`, with `Retry` importable from `httpc`. The defaults stay what they are now; `Retry(attempts=1)` turns retrying off, and the delay before attempt k+1 is `backoff_s * 2**(k-1)`. A `Retry-After` still wins over the backoff, as before. Keep the whole suite passing.
