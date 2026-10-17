@@ -1,0 +1,53 @@
+name: canary
+# The latest stable Claude Code, Codex and OpenCode under main's aegis, against
+# a fake model (tests/canary/), once a day and before a release. A failure
+# opens or updates one issue per test and setup; a test that passes again
+# closes its issue (scripts/canary_issue.py). Never on push or pull_request:
+# the harnesses change on their own schedule, not on ours.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: canary
+  cancel-in-progress: false
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install uv
+      - run: uv sync --locked
+      # Codex's sandbox wants bubblewrap; without it Codex warns and uses a
+      # bundled one, which is not what a person's machine runs.
+      - run: sudo apt-get update -q && sudo apt-get install -yq bubblewrap
+      - name: canary
+        id: canary
+        run: scripts/canary.sh
+      - name: report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-report
+          path: .canary
+          if-no-files-found: ignore
+      # Runs after a pass too, so a test that passes again closes its issue.
+      # Not after a cancel or a broken install: no junit.xml, nothing to say.
+      - name: issues
+        if: always() && hashFiles('.canary/junit.xml') != ''
+        run: >
+          uv run python scripts/canary_issue.py .canary
+          --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          --sha "$GITHUB_SHA"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
