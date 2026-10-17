@@ -283,3 +283,125 @@ async def test_a_hung_agent_is_stopped_at_the_timeout_and_the_app_shut_down(
     res = await r.run_aegis(run, "m", "high", fake_claude)
     assert res.error == "timeout" and res.walls == []
     assert _fakes_alive(tmp_path / "fake-home") == []
+
+
+# -- the CLI, with both arms patched: no model runs --
+
+
+@pytest.fixture
+def cli(tmp_path, monkeypatch, _cleanup):
+    """One trivial task, the baselines in tmp_path, the arms faked: every stock
+    run costs one 1k request, every aegis run what ``costs`` says next."""
+    import json
+
+    tasks, tokens = tmp_path / "tasks", tmp_path / "tokens"
+    t = tasks / "tiny"
+    (t / "tests").mkdir(parents=True)
+    (t / "task.toml").write_text(
+        'category = "x"\nexpert_minutes = 20\ntimeout_s = 60\n'
+    )
+    (t / "instruction.md").write_text("do it")
+    (t / "setup.sh").write_text(
+        'cd "$1" && git init -q && git commit -q --allow-empty -m s && git tag start\n'
+    )
+    (t / "tests" / "test.sh").write_text("echo PASS\n")
+    monkeypatch.setattr(r, "TASKS", tasks)
+    monkeypatch.setattr(r, "TOKENS", tokens)
+    monkeypatch.setattr(r, "preflight", lambda: None)
+    monkeypatch.setattr(r, "capped", lambda argv: argv)
+    monkeypatch.setattr(r, "claude_version", lambda claude="claude": "2.1.296")
+    real_prepare = r.prepare
+
+    def prepare(task):
+        run = real_prepare(task)
+        _cleanup.append(run.root)
+        return run
+
+    monkeypatch.setattr(r, "prepare", prepare)
+    calls = {"stock": 0, "aegis": 0}
+    costs: list[int] = []
+
+    def transcript(run, ctx):
+        d = run.config / "projects" / "x"
+        d.mkdir(parents=True)
+        line = {
+            "type": "assistant",
+            "requestId": "q",
+            "timestamp": "1",
+            "message": {
+                "usage": {"cache_creation_input_tokens": ctx, "output_tokens": 0}
+            },
+        }
+        (d / "t.jsonl").write_text(json.dumps(line) + "\n")
+
+    def run_stock(run, model, effort, claude="claude"):
+        calls["stock"] += 1
+        transcript(run, 1000)
+        return r.ArmResult([1.0], None)
+
+    async def run_aegis(run, model, effort, claude=None):
+        calls["aegis"] += 1
+        transcript(run, costs.pop(0) if costs else 1000)
+        return r.ArmResult([2.0, 3.0], None)
+
+    monkeypatch.setattr(r, "run_stock", run_stock)
+    monkeypatch.setattr(r, "run_aegis", run_aegis)
+    return dict(tokens=tokens, calls=calls, costs=costs, out=tmp_path / "out.json")
+
+
+def test_refuses_a_baseline_from_another_claude_version(cli, capsys):
+    cli["tokens"].mkdir()
+    (cli["tokens"] / "stock-2.1.200-claude-opus-5-5-high.json").write_text(
+        '{"tiny": []}'
+    )
+    assert r.main(["--out", str(cli["out"])]) == 2
+    err = capsys.readouterr().err
+    assert "--refresh-stock" in err and "2.1.296" in err and cli["calls"]["aegis"] == 0
+
+
+def test_refresh_stock_runs_each_task_three_times_and_writes_the_baseline(cli):
+    import json
+
+    assert r.main(["--refresh-stock"]) == 0
+    base = json.loads(
+        (cli["tokens"] / "stock-2.1.296-claude-opus-5-5-high.json").read_text()
+    )
+    assert cli["calls"] == {"stock": 3, "aegis": 0} and len(base["tiny"]) == 3
+
+
+def test_one_result_per_run_carries_task_arm_pass_wall_and_the_summary(cli):
+    import json
+
+    r.main(["--refresh-stock"])
+    assert r.main(["--out", str(cli["out"])]) == 0
+    res = json.loads(cli["out"].read_text())
+    (one,) = res["aegis"]
+    assert one["task"] == "tiny" and one["arm"] == "aegis" and one["passed"] is True
+    assert one["wall"] == 5.0 and one["requests"] == 1 and one["verdict"] == "PASS"
+    assert {"cost", "first_ctx", "bookkeeping_cost", "auth", "python"} <= one.keys()
+    assert res["rows"][0]["ratio"] == pytest.approx(1.0) and "| tiny |" in res["table"]
+
+
+def test_a_task_marked_for_rerun_runs_once_more_and_is_averaged(cli):
+    import json
+
+    r.main(["--refresh-stock"])
+    (cli["tokens"] / "history.jsonl").write_text(
+        json.dumps({"version": "0.1", "headline": 1.0, "tasks": {"tiny": 1.0}}) + "\n"
+    )
+    cli["costs"] += [2000, 1000]  # ratio 2.0, a move of 100%, then 1.0
+    assert r.main(["--out", str(cli["out"])]) == 0
+    res = json.loads(cli["out"].read_text())
+    assert cli["calls"]["aegis"] == 2 and res["rerun"] == ["tiny"]
+    assert res["rows"][0]["ratio"] == pytest.approx(1.5)
+
+
+def test_record_release_appends_the_last_result_to_the_history(cli):
+    import json
+
+    r.main(["--refresh-stock"])
+    r.main(["--out", str(cli["out"])])
+    assert r.main(["--out", str(cli["out"]), "--record-release", "9.9.9"]) == 0
+    (line,) = (cli["tokens"] / "history.jsonl").read_text().splitlines()
+    rec = json.loads(line)
+    assert rec["version"] == "9.9.9" and rec["tasks"] == {"tiny": pytest.approx(1.0)}

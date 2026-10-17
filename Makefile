@@ -1,4 +1,4 @@
-.PHONY: check lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-slow test-live test-browser bench bench-tasks-check coverage know-how site-css
+.PHONY: check lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-slow test-live test-browser bench bench-tasks-check bench-tokens coverage know-how site-css
 
 # Every gate, on the fast lane: the tests marked slow, the browser tests among
 # them, are `test-slow`'s. The tests run before typecheck so a type error cannot
@@ -78,6 +78,12 @@ bench:
 # fails it. No model; CI runs the same module in its `-m "not live"` step.
 bench-tasks-check:
 	uv run pytest -q -m slow tests/test_bench_tasks.py
+
+# aegis against stock Claude Code on bench/tasks/, fenced under /tmp. SPENDS QUOTA:
+# one aegis run per task, about $5-15 at Opus list price. Reports, never gates.
+# ARGS="--refresh-stock" re-measures the stock baseline after a Claude Code upgrade.
+bench-tokens:
+	uv run python scripts/bench_tokens.py $(ARGS)
 
 # Real agent CLIs and models: spends quota. Select by marker, never with
 # -k "not live": -k matches substrings and silently drops unrelated tests whose

@@ -43,6 +43,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TASKS = ROOT / "bench" / "tasks"
+TOKENS = ROOT / "bench" / "tokens"  # stock baselines and history.jsonl
 # Per claude process tree: the CLI, its Bash commands, a compile and an ASan run
 # fit with room to spare, and three arms at a time still leave a 7 GB host alive.
 MEMORY_MAX = "2G"
@@ -462,5 +463,233 @@ async def run_aegis(
     return ArmResult(walls, error)
 
 
+def check(run: Run) -> tuple[bool, str]:
+    """The task's hidden check, run in place from the task folder against the
+    work folder: its helper files are found through its own folder, so nothing
+    of tests/ is ever copied where the agent worked. Under the memory cap and
+    the agent's PATH, so it uses the agent's python3."""
+    test = run.task / "tests" / "test.sh"
+    p = run_group(
+        capped(["bash", str(test), str(run.work)]), run.work, arm_env(run), 900
+    )
+    if p is None:
+        return False, "FAIL: the check timed out"
+    lines = (p.stdout + p.stderr).strip().splitlines()
+    return p.returncode == 0, lines[-1] if lines else f"exit {p.returncode}"
+
+
+def claude_version(claude: str = "claude") -> str:
+    out = subprocess.run([claude, "--version"], capture_output=True, text=True).stdout
+    return out.split()[0] if out.split() else "unknown"
+
+
+async def one(task: Path, arm: str, model: str, effort: str, claude: str) -> dict:
+    """Prepare, run one arm, check, count: one result."""
+    import bench_tokens_count as count
+
+    run = await asyncio.to_thread(prepare, task)
+    if arm == "stock":
+        res = await asyncio.to_thread(run_stock, run, model, effort, claude)
+    else:
+        res = await run_aegis(run, model, effort, claude)
+    passed, verdict = await asyncio.to_thread(check, run)
+    summary = count.summarize(count.read_requests(run.config))
+    print(
+        f"  {task.name} {arm}: {'pass' if passed else 'FAIL'}, ${summary['cost']:.2f}, "
+        f"{summary['requests']} requests, {sum(res.walls):.0f}s",
+        flush=True,
+    )
+    return dict(
+        task=task.name,
+        arm=arm,
+        model=model,
+        effort=effort,
+        passed=passed and res.error is None,
+        verdict=verdict,
+        error=res.error,
+        wall=round(sum(res.walls), 1),
+        walls=[round(w, 1) for w in res.walls],
+        auth=run.auth,
+        python=interpreter(),
+        root=str(run.root),
+        **summary,
+    )
+
+
+async def _many(
+    jobs: list[tuple[Path, str]], j: int, model: str, effort: str, claude: str
+):
+    gate = asyncio.Semaphore(j)
+
+    async def go(task: Path, arm: str) -> dict:
+        async with gate:
+            return await one(task, arm, model, effort, claude)
+
+    return await asyncio.gather(*(go(t, a) for t, a in jobs))
+
+
+def _group(results: list[dict]) -> dict[str, list[dict]]:
+    out: dict[str, list[dict]] = {}
+    for x in results:
+        out.setdefault(x["task"], []).append(x)
+    return out
+
+
+def _prev() -> dict | None:
+    path = TOKENS / "history.jsonl"
+    lines = path.read_text().splitlines() if path.exists() else []
+    if not lines:
+        return None
+    last = json.loads(lines[-1])
+    return {"headline": last["headline"], **last["tasks"]}
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    import bench_tokens_count as count
+
+    ap = argparse.ArgumentParser(
+        description="Run the token bench: aegis against stock Claude Code. Spends quota."
+    )
+    ap.add_argument("--tasks", help="comma-separated task names (default: all)")
+    ap.add_argument("--model", default="claude-opus-5-5")
+    ap.add_argument("--effort", default="high")
+    ap.add_argument("-j", type=int, default=3, help="runs at a time (default 3)")
+    ap.add_argument(
+        "--refresh-stock",
+        action="store_true",
+        help="run the stock arm 3 times per task and write its baseline; no aegis run",
+    )
+    ap.add_argument(
+        "--out", default=".aegis-bench-tokens.json", help="where the result goes"
+    )
+    ap.add_argument(
+        "--record-release",
+        metavar="VERSION",
+        help="append the result in --out to bench/tokens/history.jsonl; runs nothing",
+    )
+    ap.add_argument("--claude", default="claude", help=argparse.SUPPRESS)
+    a = ap.parse_args(argv)
+    out = Path(a.out)
+
+    if a.record_release:
+        res = json.loads(out.read_text())
+        line = dict(
+            version=a.record_release,
+            date=time.strftime("%Y-%m-%d"),
+            claude=res["claude"],
+            model=res["model"],
+            effort=res["effort"],
+            headline=res["headline"],
+            tasks={
+                r["task"]: r["ratio"] for r in res["rows"] if r["ratio"] is not None
+            },
+        )
+        TOKENS.mkdir(parents=True, exist_ok=True)
+        with open(TOKENS / "history.jsonl", "a") as f:
+            f.write(json.dumps(line, ensure_ascii=False) + "\n")
+        print(f"recorded {a.record_release}: headline {res['headline']:.2f}")
+        return 0
+
+    try:
+        preflight()
+    except FenceUnavailable as e:
+        print(
+            f"bench-tokens: the fence cannot start, so nothing runs: {e}",
+            file=sys.stderr,
+        )
+        return 1
+    for k in [k for k in os.environ if k.startswith("AEGIS_")]:
+        del os.environ[k]  # the App sets its own for the claudes it starts
+    names = (
+        a.tasks.split(",")
+        if a.tasks
+        else sorted(p.name for p in TASKS.iterdir() if p.is_dir())
+    )
+    tasks = [TASKS / n for n in names]
+    version = claude_version(a.claude)
+    baseline = TOKENS / f"stock-{version}-{a.model}-{a.effort}.json"
+    stock = json.loads(baseline.read_text()) if baseline.exists() else {}
+
+    if a.refresh_stock:
+        results = asyncio.run(
+            _many(
+                [(t, "stock") for t in tasks for _ in range(3)],
+                a.j,
+                a.model,
+                a.effort,
+                a.claude,
+            )
+        )
+        stock.update(_group(results))
+        TOKENS.mkdir(parents=True, exist_ok=True)
+        baseline.write_text(json.dumps(stock, indent=1, ensure_ascii=False) + "\n")
+        print(
+            f"wrote {baseline.relative_to(ROOT) if baseline.is_relative_to(ROOT) else baseline}"
+        )
+        for name, runs in _group(results).items():
+            ok = sum(r["passed"] for r in runs)
+            costs = ", ".join(f"${r['cost']:.2f}/{r['requests']}" for r in runs)
+            print(f"  {name}: {ok}/3 passed; cost/requests {costs}")
+        return 0
+
+    missing = [t.name for t in tasks if t.name not in stock]
+    if missing:
+        others = sorted(p.name for p in TOKENS.glob("stock-*.json"))
+        print(
+            f"bench-tokens: no stock baseline for Claude Code {version}, {a.model}, {a.effort}"
+            f" covering {', '.join(missing)} (have: {', '.join(others) or 'none'}). "
+            "Run it with --refresh-stock first.",
+            file=sys.stderr,
+        )
+        return 2
+    stock = {t.name: stock[t.name] for t in tasks}
+    prev = _prev()
+    results = asyncio.run(
+        _many([(t, "aegis") for t in tasks], a.j, a.model, a.effort, a.claude)
+    )
+    cmp = count.compare(stock, _group(results), prev)
+    if cmp.rerun:
+        print(
+            f"moved more than 25% against the last release, once more: {', '.join(cmp.rerun)}"
+        )
+        again = asyncio.run(
+            _many(
+                [(TASKS / n, "aegis") for n in cmp.rerun],
+                a.j,
+                a.model,
+                a.effort,
+                a.claude,
+            )
+        )
+        results += again
+        cmp = count.compare(stock, _group(results), prev)
+    print(count.table(cmp))
+    for w in cmp.warnings:
+        print(w)
+    out.write_text(
+        json.dumps(
+            dict(
+                claude=version,
+                model=a.model,
+                effort=a.effort,
+                headline=cmp.headline,
+                failed=cmp.failed,
+                rerun=cmp.rerun,
+                warnings=cmp.warnings,
+                rows=cmp.rows,
+                table=count.table(cmp),
+                aegis=results,
+            ),
+            indent=1,
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
+    return 0
+
+
 if __name__ == "__main__":
-    sys.exit("main() lands with the CLI")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    sys.exit(main())

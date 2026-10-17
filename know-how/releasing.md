@@ -56,6 +56,19 @@ range (`gh pr checks <n>`, the `bench` job's summary), and either explain each
 in the changelog or fix it. On a quiet zion, `make bench` gives the numbers for
 the release notes.
 
+## Before tagging: run the token bench
+
+`make bench-tokens` runs each task in `bench/tasks/` once as an aegis session and
+compares it with the stock Claude Code baseline in `bench/tokens/`. It spends
+quota, about $5 to $15, and takes under half an hour. Paste its table into the
+release PR. A `::warning` line means the headline ratio is 0.05 or more worse
+than the last release's: explain it in the changelog or fix it. Then record the
+result with `make bench-tokens ARGS="--record-release X.Y.Z"`, which appends
+`.aegis-bench-tokens.json` to `bench/tokens/history.jsonl` without running
+anything, and commit that line with the release. When Claude Code was upgraded
+since the baseline, the bench refuses to compare; run it with
+`ARGS="--refresh-stock"` first and commit the new baseline.
+
 ## The other one: `[Unreleased]` is routinely a fraction of what shipped
 
 Sessions land features and write the changelog entry *only* for the thing they
