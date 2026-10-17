@@ -408,6 +408,11 @@ App._version_gate(caller, harness_name: str, untested: str | None, s: Session | 
   <li>The spec journals the notice "once per harness version per day". The journal derives its rows from session stores (<code>journal/derive.py</code>), so each notice becomes one row; a session only writes one per version, which keeps the count small without a daily dedupe.</li>
   <li>The first range has <code>min = max</code> at the versions the canary passed on 2026-10-16, until task 7 finds the real <code>min</code>. Claude Code's <code>max</code> is 2.1.296 because 2.1.301 fails the canary (#442).</li>
   <li><code>OpError</code> gains a <code>data</code> payload. The spec only said "a payload"; nothing in aegis carried one before.</li>
+  <li><b>Found while executing.</b> A failed <code>--version</code> read is cached for 60 s, not left uncached: uncached, a binary that hangs cost 5 s on every launch. The read runs the name found on PATH (a shim that dispatches on its own name answers) and reads stdout only, taking the line that holds a version, so a runtime's warning is never read as the version.</li>
+  <li><code>accept_version</code> edits only the <code>harness_versions</code> block instead of going through <code>write()</code>: a finding elsewhere in the file, such as a queue missing <code>max_parallel</code>, made "Always" fail. An OS error writing it is reported as not saved, and the session starts once.</li>
+  <li>The journal row uses the existing <code>session</code> kind; only <code>session.spawn</code>'s result carries the notice (a queue, schedule or workflow spawn has no caller waiting on a result); a missing binary skips the check, so the launch still fails as <code>harness_not_found</code>.</li>
+  <li><code>help.guide</code>, <code>/tutorial</code> and <code>/whats-new</code> also carry <code>untested</code>. A queued draft flushed in the background settles as an error and asks only on Send anyway. The <code>config.md</code> help section landed with task 3, because a test requires every config key on that page.</li>
+  <li>The fakes answer <code>--version</code> before importing their module: at 0.15 s a read, the new check pushed near-budget tests over the fast lane's 3 s limit.</li>
 </ul>
 </main>
 
