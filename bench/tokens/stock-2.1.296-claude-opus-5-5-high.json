@@ -1,0 +1,580 @@
+{
+ "api-rename": [
+  {
+   "task": "api-rename",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 119.5,
+   "walls": [
+    119.5
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-hot1d8e_",
+   "transcripts": 1,
+   "requests": 12,
+   "context": 478615,
+   "output": 11750,
+   "cost": 0.818798,
+   "first_ctx": 19060,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 10,
+    "Write": 1
+   }
+  },
+  {
+   "task": "api-rename",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 113.0,
+   "walls": [
+    113.0
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-rtmm3e2k",
+   "transcripts": 1,
+   "requests": 10,
+   "context": 364450,
+   "output": 9027,
+   "cost": 0.657519,
+   "first_ctx": 19114,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 8,
+    "Write": 1
+   }
+  },
+  {
+   "task": "api-rename",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 104.8,
+   "walls": [
+    104.8
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-2fc_ebro",
+   "transcripts": 1,
+   "requests": 9,
+   "context": 296835,
+   "output": 8869,
+   "cost": 0.603903,
+   "first_ctx": 18972,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 8
+   }
+  }
+ ],
+ "c-build": [
+  {
+   "task": "c-build",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 210.6,
+   "walls": [
+    47.0,
+    96.6,
+    67.0
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-cc9dj9uy",
+   "transcripts": 1,
+   "requests": 16,
+   "context": 584448,
+   "output": 17823,
+   "cost": 1.03204375,
+   "first_ctx": 19062,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 13
+   }
+  },
+  {
+   "task": "c-build",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 221.1,
+   "walls": [
+    46.2,
+    111.7,
+    63.2
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-lmefg4lb",
+   "transcripts": 1,
+   "requests": 18,
+   "context": 733089,
+   "output": 20642,
+   "cost": 1.1950265,
+   "first_ctx": 19008,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 14,
+    "Write": 1
+   }
+  },
+  {
+   "task": "c-build",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 224.5,
+   "walls": [
+    46.9,
+    124.4,
+    53.2
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-l9vpf42n",
+   "transcripts": 1,
+   "requests": 19,
+   "context": 799222,
+   "output": 21623,
+   "cost": 1.27747525,
+   "first_ctx": 19009,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 16
+   }
+  }
+ ],
+ "git-rescue": [
+  {
+   "task": "git-rescue",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 186.4,
+   "walls": [
+    135.9,
+    19.3,
+    31.2
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-h103yg2t",
+   "transcripts": 1,
+   "requests": 23,
+   "context": 855725,
+   "output": 9640,
+   "cost": 0.935467,
+   "first_ctx": 19064,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 20
+   }
+  },
+  {
+   "task": "git-rescue",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 157.2,
+   "walls": [
+    108.3,
+    13.3,
+    35.6
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-q5twsfq0",
+   "transcripts": 1,
+   "requests": 20,
+   "context": 699065,
+   "output": 7526,
+   "cost": 0.79002125,
+   "first_ctx": 19111,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 17
+   }
+  },
+  {
+   "task": "git-rescue",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 126.4,
+   "walls": [
+    90.0,
+    10.4,
+    26.0
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-rr7512q3",
+   "transcripts": 1,
+   "requests": 23,
+   "context": 829547,
+   "output": 8338,
+   "cost": 0.88273825,
+   "first_ctx": 19061,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 20
+   }
+  }
+ ],
+ "ledger-fix": [
+  {
+   "task": "ledger-fix",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 191.5,
+   "walls": [
+    138.2,
+    27.4,
+    25.8
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-__hiwm06",
+   "transcripts": 1,
+   "requests": 13,
+   "context": 427545,
+   "output": 8134,
+   "cost": 0.64667975,
+   "first_ctx": 19009,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 9,
+    "Write": 1
+   }
+  },
+  {
+   "task": "ledger-fix",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 261.7,
+   "walls": [
+    205.2,
+    24.1,
+    32.4
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-ed5hzn1r",
+   "transcripts": 1,
+   "requests": 15,
+   "context": 468746,
+   "output": 8356,
+   "cost": 0.6793795,
+   "first_ctx": 19021,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 11,
+    "Write": 1
+   }
+  },
+  {
+   "task": "ledger-fix",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 147.6,
+   "walls": [
+    88.1,
+    29.1,
+    30.4
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-u76sp42l",
+   "transcripts": 1,
+   "requests": 13,
+   "context": 407915,
+   "output": 7111,
+   "cost": 0.59679975,
+   "first_ctx": 19007,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 9,
+    "Write": 1
+   }
+  }
+ ],
+ "log-report": [
+  {
+   "task": "log-report",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 108.6,
+   "walls": [
+    51.5,
+    16.4,
+    40.6
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-ejzboptd",
+   "transcripts": 1,
+   "requests": 10,
+   "context": 327533,
+   "output": 8569,
+   "cost": 0.61693275,
+   "first_ctx": 19226,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 7,
+    "Write": 1
+   }
+  },
+  {
+   "task": "log-report",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 134.7,
+   "walls": [
+    53.3,
+    22.0,
+    59.4
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-9fuwd6fv",
+   "transcripts": 1,
+   "requests": 12,
+   "context": 416385,
+   "output": 10321,
+   "cost": 0.72075275,
+   "first_ctx": 19328,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 9,
+    "Write": 1
+   }
+  },
+  {
+   "task": "log-report",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 137.5,
+   "walls": [
+    40.7,
+    42.3,
+    54.5
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-rvc8p6di",
+   "transcripts": 1,
+   "requests": 12,
+   "context": 393258,
+   "output": 11541,
+   "cost": 0.729391,
+   "first_ctx": 19277,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 8,
+    "Write": 1
+   }
+  }
+ ],
+ "slow-suite": [
+  {
+   "task": "slow-suite",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 989.1,
+   "walls": [
+    297.7,
+    325.2,
+    366.1
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-4i72rb24",
+   "transcripts": 1,
+   "requests": 28,
+   "context": 1082781,
+   "output": 15458,
+   "cost": 1.23120475,
+   "first_ctx": 19061,
+   "bookkeeping_requests": 1,
+   "bookkeeping_cost": 0.02103875,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 18,
+    "Edit": 13,
+    "Read": 1,
+    "ToolSearch": 1,
+    "Write": 1
+   }
+  },
+  {
+   "task": "slow-suite",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 992.3,
+   "walls": [
+    314.9,
+    334.5,
+    342.8
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-ldnsswlg",
+   "transcripts": 1,
+   "requests": 24,
+   "context": 888472,
+   "output": 15456,
+   "cost": 1.14407425,
+   "first_ctx": 19022,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 16,
+    "ScheduleWakeup": 2
+   }
+  },
+  {
+   "task": "slow-suite",
+   "arm": "stock",
+   "model": "claude-opus-5-5",
+   "effort": "high",
+   "passed": true,
+   "verdict": "PASS",
+   "error": null,
+   "wall": 953.2,
+   "walls": [
+    294.4,
+    319.5,
+    339.3
+   ],
+   "auth": "credentials-copy",
+   "python": "/usr/bin/python3 3.12.3 pytest 7.4.4",
+   "root": "/tmp/tokbench-51mi_q2t",
+   "transcripts": 1,
+   "requests": 14,
+   "context": 476189,
+   "output": 11542,
+   "cost": 0.78453775,
+   "first_ctx": 19106,
+   "bookkeeping_requests": 0,
+   "bookkeeping_cost": 0,
+   "work_requests": 0,
+   "work_cost": 0,
+   "tools": {
+    "Bash": 11
+   }
+  }
+ ]
+}
