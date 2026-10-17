@@ -1,0 +1,3 @@
+`taskq FILE done ID` and `taskq FILE drop ID` change nothing on disk: the next `list` shows the task as it was. Make both write the file back in the same `id|priority|flags|title` format, keeping the comment lines at the top of the file, and write it through a temporary file and a rename so a crash never leaves half a file. Cover the writer in the unit tests, and keep `make clean all test` passing under AddressSanitizer.
+---
+Add a command `taskq FILE add PRIORITY TITLE`: it appends a task with the next free id (one more than the largest), saves the file and prints `added: ID`. Refuse a priority outside 1 to 5, an empty title, a title holding `|` and a title longer than 255 bytes: exit 1 and leave the file unchanged. Mention the new command in the usage line.
