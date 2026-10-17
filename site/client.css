@@ -103,6 +103,19 @@ body{background:#000}
 .a2 .dialog .panel{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:18px 20px;max-width:420px;width:100%}
 .a2 .dialog .q{margin:0 0 16px;color:var(--strong);font-size:14px;line-height:1.45}
 .a2 .dialog .acts{display:flex;gap:10px;justify-content:flex-end}
+.a2 .dialog .panel.wide{max-width:560px}
+.a2 .set-vtag{display:inline-block;margin-left:6px}
+.a2 .set-vtag summary{cursor:pointer;list-style:none;display:inline;color:var(--muted)}
+.a2 .set-vtag summary::-webkit-details-marker{display:none}
+.a2 .set-vtag.warn summary{color:var(--warn)}
+.a2 .set-vtag .set-vline{font-size:12px;color:var(--muted);overflow-wrap:anywhere;margin-top:4px}
+.a2 .dialog .b{margin:0 0 16px;font-size:13px;line-height:1.5;color:var(--ink)}
+.a2 .untested .range{color:var(--muted);margin:0 0 8px}
+.a2 .untested .found{font-family:var(--font-mono);font-size:12px;overflow-wrap:anywhere;margin:0 0 8px}
+.a2 .untested .cmd{display:flex;gap:8px;align-items:flex-start;background:var(--bg);border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;margin:0 0 8px}
+.a2 .untested .cmd code{flex:1;font-family:var(--font-mono);font-size:12px;overflow-wrap:anywhere;white-space:pre-wrap}
+.a2 .untested .note{color:var(--muted);margin:0 0 4px}
+@media (max-width:520px){.a2 .dialog .acts{flex-direction:column-reverse;align-items:stretch}}
 /* Installing (install.js): the offer at the top of the Fleet, and the dialog's
    three steps, each with its real state and, for a download, a bar. */
 .a2 .install-offer{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--surface);border:1px solid color-mix(in srgb,var(--accent) 40%,var(--rule));border-radius:var(--r-lg);padding:10px 14px;margin:12px 20px}
