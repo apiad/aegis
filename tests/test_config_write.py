@@ -315,3 +315,18 @@ def test_accept_version_on_an_unparseable_file_raises(tmp_path):
     with pytest.raises(OpError) as e:
         accept_version(p, "claude-code", "2.1.301")
     assert e.value.code == "bad_config"
+
+
+def test_accept_version_on_an_unwritable_folder_raises_an_op_error(tmp_path):
+    from aegis.config import accept_version
+
+    d = tmp_path / "ro"
+    d.mkdir()
+    p, _ = setup(d, WORKSPACE)
+    d.chmod(0o555)
+    try:
+        with pytest.raises(OpError) as e:
+            accept_version(p, "claude-code", "2.1.301")
+        assert e.value.code == "unwritable"
+    finally:
+        d.chmod(0o755)

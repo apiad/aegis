@@ -20,6 +20,7 @@ not read survive.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 from collections.abc import Callable
@@ -699,8 +700,8 @@ def accept_version(path: Path, harness: str, version: str) -> None:
     """Add ``version`` to ``harness_versions.accepted.<harness>``: what a
     person's "Always" does. Only that block is edited, so a finding elsewhere
     in the file (a broken queue) does not stop it. Raises OpError("stale")
-    when the file moves under it and OpError("bad_config") when it cannot be
-    written as it stands."""
+    when the file moves under it, OpError("bad_config") when it cannot be
+    written as it stands, and OpError("unwritable") when the disk refuses."""
     stamp = stamp_of(path)
     rt = YAML()
     rt.preserve_quotes = True
@@ -727,5 +728,10 @@ def accept_version(path: Path, harness: str, version: str) -> None:
     if stamp_of(path) != stamp:
         raise OpError("stale", f"{path} changed on disk while it was edited; try again")
     tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(buf.getvalue())
-    os.replace(tmp, path)
+    try:
+        tmp.write_text(buf.getvalue())
+        os.replace(tmp, path)
+    except OSError as e:
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+        raise OpError("unwritable", f"{path} cannot be written: {e}") from e
