@@ -368,6 +368,7 @@ class App:
         self.monitors = Monitors(self.sessions, roots.state_root / "monitors.json")
         self.config = Config(roots.config_root, self._on_config)
         self._config_task: asyncio.Task | None = None
+        self._versions_task: asyncio.Task | None = None
         self._background: set[asyncio.Task] = set()
         self.queues = Queues(
             self.sessions, self.monitors, roots.state_root / "tasks.jsonl", self.config
@@ -627,6 +628,35 @@ class App:
         # Last: its first snapshot must hold every session the boot loaded,
         # so none of them reads as a transition (push.py).
         self.push.sender.start()
+        # In the background: a harness that hangs on --version must not hold
+        # the server's start (harness_versions.py, spec §08).
+        self._versions_task = asyncio.create_task(self._startup_versions())
+
+    async def _startup_versions(self) -> None:
+        """Log one warning per harness the config's agents name whose version
+        is outside the tested range. Never blocks, never fails the start."""
+        snap = self.config.current()
+        hv = snap.harness_versions
+        if hv["startup"] == "off":
+            return
+        names = sorted({a.harness for a in snap.agents if a.harness in HARNESSES})
+        verdicts = await asyncio.gather(
+            *(
+                harness_versions.check(
+                    harness_for(n, self.claude_bin, self.opencode_bin, self.codex_bin),
+                    hv["accepted"],
+                )
+                for n in names
+            ),
+            return_exceptions=True,
+        )
+        for v in verdicts:
+            if isinstance(v, BaseException):
+                log.warning("reading a harness version failed: %s", v)
+            elif v.path is not None and v.outside:
+                log.warning(
+                    "untested harness version: %s", v.message().replace("\n", "; ")
+                )
 
     async def shutdown(self) -> None:
         stopping_at = restarts.stopping(self.roots.state_root)
@@ -634,6 +664,8 @@ class App:
         await self.schedules.stop()
         await self.workflows.stop()
         self.queues.shutdown()
+        if self._versions_task is not None:
+            self._versions_task.cancel()
         if self._config_task is not None:
             self._config_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

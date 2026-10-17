@@ -1,7 +1,9 @@
 """A harness version outside the tested range (#446): unattended launches
 start and say so in the transcript."""
 
+import asyncio
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -257,3 +259,59 @@ async def test_warm_parked_never_asks(world, monkeypatch):
     await until(lambda: s.running, timeout=5, what="warmed")
     (n,) = notices(s)
     assert "nobody was there to ask" in n["summary"]
+
+
+# -- at startup ---------------------------------------------------------------------
+def startup_lines(caplog) -> list[str]:
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "aegis.app" and "untested harness version" in r.getMessage()
+    ]
+
+
+async def test_boot_warns_but_serves(tmp_path, fake_claude, monkeypatch, caplog):
+    caplog.set_level(logging.WARNING, logger="aegis.app")
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    untested(monkeypatch, fake_claude, "99.0.0")
+    w = await World(tmp_path, fake_claude).start()
+    try:
+        assert await w.app.registry.call("session.list", {}) is not None
+        await until(lambda: startup_lines(caplog), timeout=6, what="the warning")
+        (line,) = startup_lines(caplog)
+        assert "Claude Code 99.0.0" in line and str(Path(fake_claude).resolve()) in line
+        assert "npm install -g @anthropic-ai/claude-code@" in line
+    finally:
+        await w.stop()
+
+
+async def test_boot_with_startup_off_logs_nothing(
+    tmp_path, fake_claude, monkeypatch, caplog
+):
+    caplog.set_level(logging.WARNING, logger="aegis.app")
+    (tmp_path / ".aegis.yaml").write_text(CONFIG + "harness_versions: {startup: off}\n")
+    untested(monkeypatch, fake_claude, "99.0.0")
+    w = await World(tmp_path, fake_claude).start()
+    try:
+        await asyncio.sleep(1.5)
+        assert startup_lines(caplog) == []
+    finally:
+        await w.stop()
+
+
+async def test_boot_does_not_wait_for_a_hanging_version(tmp_path, monkeypatch):
+    from aegis import harness_versions as hv
+
+    monkeypatch.setattr(hv, "VERSION_TIMEOUT_S", 30)
+    hang = tmp_path / "bin-hang" / "claude"
+    hang.parent.mkdir()
+    hang.write_text("#!/bin/sh\nsleep 60\n")
+    hang.chmod(0o755)
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    t = time.monotonic()
+    w = await World(tmp_path, str(hang)).start()
+    try:
+        assert await w.app.registry.call("session.list", {}) is not None
+        assert time.monotonic() - t < 10
+    finally:
+        await w.stop()

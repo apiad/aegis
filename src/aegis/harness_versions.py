@@ -123,17 +123,24 @@ async def read_version(bin: str) -> tuple[str | None, str | None]:
     try:
         out, _ = await asyncio.wait_for(proc.communicate(), VERSION_TIMEOUT_S)
     except TimeoutError:
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        _kill(proc.pid)
         await proc.wait()
         return None, path
+    except BaseException:
+        _kill(proc.pid)  # cancelled with the server: leave no child behind
+        raise
     lines = out.decode(errors="replace").strip().splitlines()
     if proc.returncode or not lines:
         return None, path
     _cache[key] = lines[0].strip()
     return _cache[key], path
+
+
+def _kill(pid: int) -> None:
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
 
 
 def install_command(
