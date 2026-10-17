@@ -13,7 +13,8 @@ or ``unknown``; the last three are outside.
 
 The read runs ``bin --version`` with a 5 s timeout and caches the answer by the
 binary's resolved path and mtime, so a spawn pays for it only after an upgrade,
-which replaces the file. A failed read is not cached.
+which replaces the file. A failed read is kept for a minute, so a binary that
+hangs costs one timeout a minute, not one per launch.
 
 Every message names the binary as its resolved path, so a symlink on PATH shows
 where it really points, and the command that installs the tested max with the
@@ -28,6 +29,7 @@ import os
 import re
 import shutil
 import signal
+import time
 import tomllib
 from dataclasses import dataclass
 from importlib import resources
@@ -94,46 +96,70 @@ def parse_version(text: str) -> tuple[tuple[int, ...] | None, str | None]:
     return _ints(m.group(1)), m.group(1)
 
 
-_cache: dict[tuple[str, int], str] = {}
+# A read's answer by (the name run, its resolved path, mtime): an upgrade
+# replaces the file, so the key moves with it. A failed read is kept for
+# FAILED_TTL_S only, so a binary that hangs on --version costs one timeout a
+# minute, not one per launch, and a transient failure does not stick.
+FAILED_TTL_S = 60.0
+_cache: dict[tuple[str, str, int], tuple[str | None, float]] = {}
+_inflight: dict[tuple[str, str, int], asyncio.Future[str | None]] = {}
 
 
 async def read_version(bin: str) -> tuple[str | None, str | None]:
-    """(the first line ``bin --version`` printed, the resolved path)."""
+    """(the line of ``bin --version`` that holds a version, else its first
+    line; the resolved path). The name found on PATH is what runs, so a shim
+    that dispatches on its own name answers; the resolved path names the
+    installer. Only stdout is read: a runtime's warning on stderr is not the
+    version."""
     found = shutil.which(bin)
     if found is None:
         return None, None
     path = os.path.realpath(found)
     try:
-        key = (path, os.stat(path).st_mtime_ns)
+        key = (found, path, os.stat(path).st_mtime_ns)
     except OSError:
         return None, path
-    if key in _cache:
-        return _cache[key], path
+    if (hit := _cache.get(key)) is not None:
+        raw, at = hit
+        if raw is not None or time.monotonic() - at < FAILED_TTL_S:
+            return raw, path
+    # Launches that start together (a boot's continues, the startup check)
+    # share one read of a binary instead of running it once each.
+    task = _inflight.get(key)
+    if task is None:
+        task = _inflight[key] = asyncio.ensure_future(_run(found))
+        task.add_done_callback(lambda _: _inflight.pop(key, None))
+    raw = await asyncio.shield(task)
+    _cache[key] = (raw, time.monotonic())
+    return raw, path
+
+
+async def _run(exe: str) -> str | None:
     try:
         proc = await asyncio.create_subprocess_exec(
-            path,
+            exe,
             "--version",
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
+            stderr=asyncio.subprocess.DEVNULL,
             start_new_session=True,
         )
     except OSError:
-        return None, path
+        return None
     try:
         out, _ = await asyncio.wait_for(proc.communicate(), VERSION_TIMEOUT_S)
     except TimeoutError:
         _kill(proc.pid)
         await proc.wait()
-        return None, path
+        return None
     except BaseException:
         _kill(proc.pid)  # cancelled with the server: leave no child behind
         raise
-    lines = out.decode(errors="replace").strip().splitlines()
+    lines = [ln.strip() for ln in out.decode(errors="replace").splitlines()]
+    lines = [ln for ln in lines if ln]
     if proc.returncode or not lines:
-        return None, path
-    _cache[key] = lines[0].strip()
-    return _cache[key], path
+        return None
+    return next((ln for ln in lines if _VERSION.search(ln)), lines[0])
 
 
 def _kill(pid: int) -> None:

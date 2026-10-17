@@ -109,3 +109,48 @@ async def test_read_version_missing_flag_is_unknown(tmp_path):
     b.write_text("#!/bin/sh\nexit 2\n")
     b.chmod(0o755)
     assert (await hv.read_version(str(b)))[0] is None
+
+
+async def test_read_version_skips_warnings_before_the_version(tmp_path):
+    b = tmp_path / "h"
+    b.write_text(
+        "#!/bin/sh\necho '(node:42) [DEP0040] DeprecationWarning: punycode' >&2\n"
+        "echo 'a banner line'\necho '2.1.296 (Claude Code)'\n"
+    )
+    b.chmod(0o755)
+    assert hv.parse_version((await hv.read_version(str(b)))[0])[0] == (2, 1, 296)
+
+
+async def test_read_version_runs_the_name_on_path_not_its_target(tmp_path):
+    shim = tmp_path / "shim.sh"
+    shim.write_text(
+        '#!/bin/sh\ncase "$(basename "$0")" in claude) echo 2.1.296;; *) exit 3;; esac\n'
+    )
+    shim.chmod(0o755)
+    link = tmp_path / "claude"
+    link.symlink_to(shim)
+    raw, path = await hv.read_version(str(link))
+    assert raw == "2.1.296" and path == str(shim.resolve())
+
+
+async def test_a_hanging_read_is_not_paid_twice(tmp_path, monkeypatch):
+    monkeypatch.setattr(hv, "VERSION_TIMEOUT_S", 0.5)
+    b = tmp_path / "h"
+    b.write_text("#!/bin/sh\nsleep 30\n")
+    b.chmod(0o755)
+    await hv.read_version(str(b))
+    t = time.monotonic()
+    raw, _ = await hv.read_version(str(b))
+    assert raw is None and time.monotonic() - t < 0.3
+
+
+async def test_concurrent_reads_of_one_binary_run_it_once(tmp_path):
+    import asyncio
+
+    count = tmp_path / "count"
+    b = tmp_path / "h"
+    b.write_text(f"#!/bin/sh\necho x >> {count}\nsleep 0.3\necho 1.2.3\n")
+    b.chmod(0o755)
+    got = await asyncio.gather(*(hv.read_version(str(b)) for _ in range(5)))
+    assert {g[0] for g in got} == {"1.2.3"}
+    assert count.read_text().count("x") == 1
