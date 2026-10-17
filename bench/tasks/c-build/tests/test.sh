@@ -15,7 +15,10 @@ timeout 300 make clean all test CFLAGS="$asan" LDFLAGS=-fsanitize=address >/dev/
 orig=$(mktemp -d)
 git archive start tests | tar -x -C "$orig" || fail "no start tag"
 cp "$here/check_remove.c" "$orig/tests/"
-for t in test_list test_parse check_remove; do
+# Not test_parse: the writer follow-up may change parse_file's signature to keep the
+# comment lines, which the start tag's test cannot know. WORK's own make test and
+# the CLI checks below cover parsing.
+for t in test_list check_remove; do
   timeout 60 cc -Iinclude -I"$orig/tests" -D_POSIX_C_SOURCE=200809L $asan "$orig/tests/$t.c" build/item.o build/list.o build/parse.o -fsanitize=address -o "$orig/$t" 2>/dev/null || fail "$t does not build against WORK's objects"
   timeout 60 "$orig/$t" >/dev/null 2>&1 || fail "$t fails under ASan"
 done
