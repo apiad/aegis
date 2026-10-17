@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 import shlex
 import shutil
 import tempfile
@@ -40,13 +39,12 @@ from .config import (
     load,
 )
 from .harness import harness_for
+from .harness_versions import OUTSIDE, VERSION_TIMEOUT_S, judge
 from .recap import load_recap
 from .roots import CONFIG_FILE, Roots, legacy_state
 from .session import SpawnSpec
 
-VERSION_TIMEOUT_S = 5.0
 PROBE_TIMEOUT_S = 20.0
-UPGRADE = "aegis drives OpenCode 2 (`npm install -g @opencode/cli`)"
 LABELS = {"claude-code": "Claude Code", "opencode": "OpenCode", "codex": "Codex"}
 
 
@@ -57,6 +55,7 @@ class Found:
     version: str | None = None
     models: tuple[Model, ...] = ()
     error: str | None = None
+    verdict: dict | None = None  # harness_versions.Verdict.wire()
 
     def wire(self) -> dict:
         return {
@@ -66,6 +65,7 @@ class Found:
             "version": self.version,
             "models": [m.wire() for m in self.models],
             "error": self.error,
+            "verdict": self.verdict,
         }
 
 
@@ -103,7 +103,9 @@ async def _catalog(name: str, bins: dict[str, str], cwd: Path) -> Catalog:
             raise RuntimeError("; ".join([str(e) or type(e).__name__, *tail])) from e
 
 
-async def _find(name: str, bins: dict[str, str], cwd: Path) -> Found:
+async def _find(
+    name: str, bins: dict[str, str], cwd: Path, accepted: dict[str, list[str]]
+) -> Found:
     bin = shutil.which(bins[name])
     if bin is None:
         return Found(name, None, error=f"{bins[name]} is not on PATH")
@@ -111,26 +113,31 @@ async def _find(name: str, bins: dict[str, str], cwd: Path) -> Found:
         version = await _version(bin)
     except (OSError, RuntimeError) as e:
         return Found(name, bin, error=f"`{bin} --version` failed: {e}")
-    if name == "opencode" and (m := re.search(r"(\d+)\.\d+", version)):
-        if int(m.group(1)) < 2:
-            return Found(
-                name, bin, version, error=f"OpenCode {version} is too old: {UPGRADE}"
-            )
+    verdict = judge(name, LABELS[name], version, os.path.realpath(bin), accepted).wire()
     try:
         cat = await _catalog(name, {**bins, name: bin}, cwd)
     except RuntimeError as e:
         return Found(
-            name, bin, version, error=f"{LABELS[name]} gave no model list: {e}"
+            name,
+            bin,
+            version,
+            error=f"{LABELS[name]} gave no model list: {e}",
+            verdict=verdict,
         )
-    return Found(name, bin, version, cat.models)
+    return Found(name, bin, version, cat.models, verdict=verdict)
 
 
 async def detect(
-    cwd: Path, bins: dict[str, str], only: Iterable[str] = HARNESSES
+    cwd: Path,
+    bins: dict[str, str],
+    only: Iterable[str] = HARNESSES,
+    accepted: dict[str, list[str]] | None = None,
 ) -> list[Found]:
     wanted = set(only)
     return list(
-        await asyncio.gather(*(_find(h, bins, cwd) for h in HARNESSES if h in wanted))
+        await asyncio.gather(
+            *(_find(h, bins, cwd, accepted or {}) for h in HARNESSES if h in wanted)
+        )
     )
 
 
@@ -437,12 +444,18 @@ async def doctor(
     out += _unknown_keys(data)
     snap = Snapshot.parse(path, None, data)
     used = {a.harness for a in snap.agents if a.harness in HARNESSES}
-    found = {f.harness: f for f in await detect(roots.config_root, bins, used)}
+    accepted = snap.harness_versions["accepted"]
+    found = {
+        f.harness: f
+        for f in await detect(roots.config_root, bins, used, accepted=accepted)
+    }
     for name, f in found.items():
         where = f"harness.{name}"
+        if f.verdict and f.verdict["state"] in OUTSIDE:
+            out.append(Finding("warn", where, f.verdict["message"]))
         if f.error:
             out.append(Finding("error", where, f.error))
-        else:
+        elif not (f.verdict and f.verdict["state"] in OUTSIDE):
             out.append(
                 Finding("ok", where, f"{f.bin}, {f.version}, {len(f.models)} models")
             )
@@ -459,6 +472,8 @@ async def doctor(
     out += _recap(roots)
     out.append(_context(snap.context))
     out.append(_park(snap.park))
+    if "error" in snap.harness_versions:
+        out.append(Finding("error", "harness_versions", snap.harness_versions["error"]))
     out.append(_network(snap))
     out.append(_workflows(snap.workflows, tuple(a.name for a in snap.agents)))
     out.append(_session_memory(snap))

@@ -31,6 +31,25 @@ with the paperclip go out with the first message.
 An agent starts a session with `session_spawn`, and a person can type
 `/spawn <agent> <prompt>` in any session's box (see the commands page).
 
+## An untested harness version
+
+Each aegis release is tested with a range of versions of each harness. When
+the installed one is outside it, a session you start pauses on a dialog that
+names the version, the range, the binary aegis found (its real path, past any
+symlink) and the command that installs the newest tested version with the
+installer that put it there, with a copy button. Start once starts it, and a
+later message to that session does not ask again while the version stays the
+same. Always allow adds that exact version to `harness_versions.accepted` in
+`.aegis.yaml`, so it never asks for it again; the next update asks. Cancel
+starts nothing and keeps what you typed. Only an admin sees Always allow.
+
+A session started by an agent, a queue, a schedule or a workflow, or a parked
+session that wakes, starts without asking. Its transcript gets one notice with
+the same version, path and command, and an agent's `session_spawn` result
+carries it too. aegis does not install anything: run the command, and the next
+session starts on the tested version. The configuration page says how to turn
+the question or the notice off.
+
 ## From the Help tab
 
 Every help page has a Guided tour button. On a tutorial it starts the

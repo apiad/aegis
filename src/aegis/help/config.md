@@ -1,7 +1,7 @@
 ---
 title: Configuration
 kind: concept
-when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap, parking idle sessions or the network readings in .aegis.yaml, or picking a theme
+when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap, parking idle sessions, untested harness versions or the network readings in .aegis.yaml, or picking a theme
 ---
 
 aegis reads one file, `.aegis.yaml`, at the root it serves: `--root` when
@@ -33,9 +33,10 @@ park: {claude-code: 1200}
 
 `agents:` maps a name to a preset. Each one has:
 
-- `harness:` one of claude-code, opencode or codex. aegis drives the latest
-  stable release of each; for OpenCode that is OpenCode 2
-  (`npm install -g @opencode/cli`), and `aegis doctor` names an older one;
+- `harness:` one of claude-code, opencode or codex. Each aegis release is
+  tested with a range of versions of each harness; for OpenCode that is
+  OpenCode 2 (`npm install -g @opencode/cli`). A version outside the range is
+  named, with the command that installs a tested one (below);
 - `model:` the model to run, such as opus or haiku for Claude Code. OpenCode
   and Codex models are written provider/model;
 - `effort:` low, medium, high, xhigh or max;
@@ -138,6 +139,39 @@ of the Settings page, which takes minutes and which members do not see.
 
 Only Claude Code's resume has been measured. Codex and OpenCode sessions park
 when named, and `aegis doctor` warns that how they resume is unmeasured.
+
+## Untested harness versions
+
+Each aegis release names, per harness, the lowest and highest version it was
+tested with. When the installed one is outside that range, aegis says so,
+names the binary it found and gives the command that installs the newest
+tested version. `harness_versions:` decides what happens then, and every
+field has a default:
+
+```yaml
+harness_versions:
+  person: ask       # ask | warn | off
+  agent: warn       # warn | off
+  startup: warn     # warn | off
+  accepted:         # versions allowed for good, per harness
+    opencode: ["2.0.33"]
+```
+
+- `person:` is for a session a person starts: `ask` (the default) pauses and
+  asks whether to start once, allow that version for good, or cancel; `warn`
+  starts it with a notice in its transcript; `off` says nothing.
+- `agent:` is for a session started by an agent, a queue, a schedule, a
+  workflow, or the wake of a parked session: `warn` starts it with the notice,
+  and `off` says nothing. It cannot be `ask`, because nobody is there to answer.
+- `startup:` is for `aegis serve`, which checks the harnesses its agents name
+  when it starts and logs one line per version outside the range. It never
+  delays or stops the server.
+- `accepted:` lists versions a person allowed for good. "Always allow" in the
+  dialog adds one; the next update asks again.
+
+A block with a wrong key or value leaves every default in force, and
+`aegis doctor` names the mistake. Only an admin can change it, in the file or
+in the Untested versions section of the Settings page.
 
 ## Network readings
 

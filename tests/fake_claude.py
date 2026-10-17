@@ -82,6 +82,33 @@ line per tool call written, for the bench.
 
 from __future__ import annotations
 
+import sys
+
+if sys.argv[1:2] == ["--version"]:
+    # First, before the imports below: aegis reads this before every launch
+    # on a new binary (harness_versions.py), and the whole module costs
+    # 0.15 s to import. The tested max, or $AEGIS_FAKE_HARNESS_VERSION; empty
+    # prints nothing and exits 2, as a harness with no --version does.
+    import os
+    import tomllib
+
+    _v = os.environ.get("AEGIS_FAKE_HARNESS_VERSION")
+    if _v is None:
+        _toml = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "src",
+            "aegis",
+            "data",
+            "tested-harnesses.toml",
+        )
+        with open(_toml, "rb") as _f:
+            _v = tomllib.load(_f)["claude-code"]["max"]
+    if not _v:
+        sys.exit(2)
+    print("{} (Claude Code)".format(_v))
+    sys.exit(0)
+
 import json
 import os
 import queue
@@ -856,9 +883,6 @@ def oneshot() -> None:
 
 
 def main() -> None:
-    if sys.argv[1:2] == ["--version"]:
-        print("0.0-fake (Claude Code)")
-        return
     if "-p" in sys.argv and _arg("--output-format") == "json":
         oneshot()
         return

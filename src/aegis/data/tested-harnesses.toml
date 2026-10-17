@@ -1,0 +1,18 @@
+# The harness versions this release of aegis was tested with: the canary
+# (scripts/canary.sh) passed at min and at max. know-how/releasing.md says how
+# to move them. Read by harness_versions.py and by the canary.
+[claude-code]
+package = "@anthropic-ai/claude-code"
+min = "2.1.296"
+max = "2.1.296"
+
+[codex]
+package = "@openai/codex"
+min = "0.163.0"
+max = "0.163.0"
+
+[opencode]
+package = "@opencode/cli"
+min = "2.0.31"
+max = "2.0.31"
+hint = "aegis drives OpenCode 2, published as @opencode/cli."

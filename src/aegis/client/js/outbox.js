@@ -70,9 +70,9 @@ export const setSender = (fn) => (sender = fn);
 
 // One send of a claimed draft, settled by its answer. Answers the state it
 // settled in, or "unreached" when the server could not be reached.
-async function deliver(key, d, params) {
+async function deliver(key, d, params, opts = {}) {
   try {
-    await sender(key, params);
+    await sender(key, params, opts);
     await outboxSettle(key, "sent");
     return "sent";
   } catch (e) {
@@ -129,7 +129,8 @@ export async function sendAnyway(key) {
   const mine = await outboxClaim(key, (d) => ["stale", "error", "queued"].includes(d.state));
   if (!mine) return;
   await loadDrafts();
-  const got = await deliver(key, mine, { text: mine.text, ...(mine.nonce && { nonce: mine.nonce }) });
+  // The person pressed it: a refusal that asks them (harness_untested) may ask.
+  const got = await deliver(key, mine, { text: mine.text, ...(mine.nonce && { nonce: mine.nonce }) }, { ask: true });
   await loadDrafts();
   if (got === "unreached") toast("Not sent: the connection went", { kind: "error" });
 }

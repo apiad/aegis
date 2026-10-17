@@ -21,10 +21,13 @@ from pydantic import BaseModel, ValidationError
 
 
 class OpError(Exception):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, data: dict | None = None) -> None:
         super().__init__(f"{code}: {message}")
         self.code = code
         self.message = message
+        # What a client needs to act on the refusal (harness_untested's
+        # version, path and command); sent beside the message, never in MCP.
+        self.data = data
 
 
 @dataclass(frozen=True)

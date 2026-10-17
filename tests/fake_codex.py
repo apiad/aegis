@@ -40,6 +40,33 @@ signal ends it. ``FAKE_CODEX_FAIL_RESUME=1`` refuses every ``thread/resume``.
 
 from __future__ import annotations
 
+import sys
+
+if sys.argv[1:2] == ["--version"]:
+    # First, before the imports below: aegis reads this before every launch
+    # on a new binary (harness_versions.py), and the whole module costs
+    # 0.15 s to import. The tested max, or $AEGIS_FAKE_HARNESS_VERSION; empty
+    # prints nothing and exits 2, as a harness with no --version does.
+    import os
+    import tomllib
+
+    _v = os.environ.get("AEGIS_FAKE_HARNESS_VERSION")
+    if _v is None:
+        _toml = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "src",
+            "aegis",
+            "data",
+            "tested-harnesses.toml",
+        )
+        with open(_toml, "rb") as _f:
+            _v = tomllib.load(_f)["codex"]["max"]
+    if not _v:
+        sys.exit(2)
+    print("codex-cli {}".format(_v))
+    sys.exit(0)
+
 import json
 import os
 import subprocess

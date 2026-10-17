@@ -39,7 +39,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import attachments, cache, restarts
+from . import attachments, cache, harness_versions, restarts
 from . import layout as canvas
 from .artifacts import ArtifactError, Board
 from .claude.control import Catalog
@@ -130,6 +130,11 @@ class Host:
     def card(self, session: "Session") -> dict:
         """Extra fields for the session's card on the ``sessions`` channel."""
         return {}
+
+    def harness_versions(self) -> dict | None:
+        """The config's harness_versions block (config.py), or None to skip
+        the version check, as a bare session in a test does."""
+        return None
 
     def catalog_ready(self, session: "Session", catalog: Catalog) -> None:
         """A process answered ``initialize``: its cwd's commands and models."""
@@ -272,6 +277,7 @@ class Session:
         compactions: int = 0,
         continued_by: str | None = None,
         quiet: bool = False,
+        checked_version: str | None = None,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
@@ -367,6 +373,17 @@ class Session:
         # The current process's catalog; None as a result when it did not answer.
         self.catalog_task: asyncio.Task[Catalog | None] | None = None
         self.artifacts = Board(self)
+        # The harness version the last untested notice, or a person's "start
+        # once", covered (harness_versions.py): a relaunch on it says nothing
+        # again. "?" for a version that could not be read. In the meta.
+        self.checked_version = checked_version
+        # Who asked for the next launch: a person's op sets "person" just
+        # before ensure_running and puts it back after; anything else, a
+        # parked session's wake included, is unattended.
+        self.launch_by = "agent"
+        self.last_verdict: harness_versions.Verdict | None = None
+        # The notice the last launch wrote, for the spawn op's result.
+        self.last_notice: str | None = None
 
     # -- what the outside sees -------------------------------------------
     def meta(self) -> dict:
@@ -410,6 +427,7 @@ class Session:
             "compactions": self.compactions,
             "continued_by": self.continued_by,
             "quiet": self.quiet,
+            "checked_version": self.checked_version,
         }
 
     def wire(self) -> dict:
@@ -556,6 +574,7 @@ class Session:
             if generation == self._generation:
                 self._on_exit(code, tail)
 
+        await self._check_version()
         resume = self.resume_id
         mcp, system_prompt = self._host.spawn_args(self)
         inbox = attachments.ensure_inbox(self.state_root, self.log_id)
@@ -602,6 +621,33 @@ class Session:
             self._set(resume_id=sid)
         self._set(parked_rss=0)
         self._set(status="idle")
+
+    async def _check_version(self) -> None:
+        """Judge the harness version before a launch, and note one outside the
+        tested range in the transcript, once per version."""
+        cfg = self._host.harness_versions()
+        if cfg is None:
+            return
+        v = await harness_versions.check(self.harness, cfg["accepted"])
+        self.last_verdict, self.last_notice = v, None
+        token = v.version or "?"
+        if v.path is None or not v.outside or token == self.checked_version:
+            return
+        if cfg[self.launch_by] == "off":
+            return
+        text = v.notice(started_anyway=self.launch_by == "agent")
+        log.warning("%s (%s): %s", self.handle, self.log_id, text.replace("\n", "; "))
+        self._record(
+            {
+                "kind": "untested",
+                "text": text,
+                "harness": v.harness,
+                "version": v.version,
+                "state": v.state,
+            }
+        )
+        self._set(checked_version=token)
+        self.last_notice = text
 
     async def _fetch_catalog(self, proc: Process) -> Catalog | None:
         try:

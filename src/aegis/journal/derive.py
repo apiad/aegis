@@ -198,6 +198,10 @@ class Deriver:
             if old and new and new != old:
                 return [self._row(i, ts, "session", f"renamed from {old} to {new}")]
             return []
+        if kind == "untested":
+            v = rec.get("version") or "an unreadable version"
+            text = f"started on {rec.get('harness')} {v}, outside the tested range"
+            return [self._row(i, ts, "session", text, source=f"e{i}")]
         if kind == "send":
             if not self._prompt:
                 self._prompt = str(rec.get("text") or "")
