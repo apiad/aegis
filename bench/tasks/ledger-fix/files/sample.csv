@@ -1,0 +1,14 @@
+date,payee,amount,category
+2025-11-28,Employer,"3,100.00",salary
+2025-11-29,Bookshop,(18.40),fun
+2025-12-01,Landlord,(950.00),rent
+05/12/2025,Grocer,(84.20),food
+2025-12-11,Power Co,(72.35),utilities
+2025-12-19,Grocer,(61.75),food
+24/12/2025,Toy Store,(130.00),gifts
+2026-01-02,Employer,"3,100.00",salary
+2026-01-03,Landlord,(950.00),rent
+2026-01-09,Grocer,(102.10),food
+2026-01-15,Cinema,(24.00),fun
+2026-01-20,Refund,45.00,
+2026-01-27,Grocer,(97.90),food

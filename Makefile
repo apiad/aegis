@@ -1,4 +1,4 @@
-.PHONY: check lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-slow test-live test-browser bench coverage know-how site-css
+.PHONY: check lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-slow test-live test-browser bench bench-tasks-check coverage know-how site-css
 
 # Every gate, on the fast lane: the tests marked slow, the browser tests among
 # them, are `test-slow`'s. The tests run before typecheck so a type error cannot
@@ -73,6 +73,11 @@ site-css:
 # The transcript path, measured (scripts/bench.py). Reports, never gates.
 bench:
 	uv run python scripts/bench.py --out .aegis-bench.json
+
+# Each token-bench task's oracle passes its hidden check and its untouched start
+# fails it. No model; CI runs the same module in its `-m "not live"` step.
+bench-tasks-check:
+	uv run pytest -q -m slow tests/test_bench_tasks.py
 
 # Real agent CLIs and models: spends quota. Select by marker, never with
 # -k "not live": -k matches substrings and silently drops unrelated tests whose
