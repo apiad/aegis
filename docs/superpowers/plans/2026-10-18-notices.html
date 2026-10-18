@@ -365,7 +365,7 @@ async def test_a_restart_does_not_repeat_a_notice(world): ...   # world.restart(
 </div>
 </details>
 
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">Notice rows in the transcript</span><span class="files">src/aegis/transcript/entries.py · tests/test_notices.py · tests/browser</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>steps</h4>
@@ -462,6 +462,14 @@ def register_notice_ops(app: "App") -> None
   <li><b>Quota reaches a session by <code>pool_for(harness, model)</code></b>, not by harness, so an OpenCode session on another provider hears nothing about OpenCode Go.</li>
   <li><b><code>pending()</code> has no lock.</b> It runs only on the event loop and never awaits, so two calls cannot interleave.</li>
   <li><b>Memory pressure holds at half.</b> A memory episode that reached <code>psi_full</code> stays on while <code>psi_full</code> is at or above half the threshold.</li>
+</ul>
+<p>Slice B (tasks 3–4):</p>
+<ul>
+  <li><b><code>build_mcp</code> takes the sessions registry.</b> The op registry has no path to the sessions, so <code>build_mcp(registry, tokens, sessions=None)</code> hands it to each <code>OpTool</code> (<code>mcp.py:132</code>). <code>notice_blocks</code> has a default on the session's <code>Host</code>, which returns "" (<code>session.py:152</code>), as the other host methods do.</li>
+  <li><b>Tests pin the host reading.</b> The test machine's disk was 95% full, over the default line, so with delivery on, 24 tests in <code>test_agents.py</code> got a notice on an MCP result and failed to parse it as JSON. An autouse fixture builds every in-process app's <code>Notices</code> over a fixed half-full reading (<code>tests/conftest.py:129</code>). The browser suite's <code>aegis serve</code> is a subprocess the fixture cannot reach, so the shared browser <code>CONFIG</code> turns every kind off (<code>tests/test_browser.py:122</code>). Browser files that write their own <code>.aegis.yaml</code> instead of importing <code>CONFIG</code> are not covered; <code>make test-slow</code> on a full host would show them.</li>
+  <li><b>The pending row is split too.</b> A <code>send</code> record that carries a notice shows only the head in its pending row and keeps the whole text in <code>_said</code>, so <code>_take</code> still pairs it (<code>entries.py:504</code>). Without that, the person's row would flash the block until the echo.</li>
+  <li><b>Only aegis tool results are split.</b> The <code>ToolOutput</code> branch splits only when the tool's name starts with <code>mcp__aegis__</code> (<code>entries.py:1201</code>), so a <code>cat</code> of a file that quotes a notice header stays whole.</li>
+  <li><b>The browser test lives in <code>tests/test_browser.py</code></b>, beside the monitor's inbox-row test; there is no <code>tests/browser/</code> directory. Run it with <code>uv run pytest -m "slow and not live" -k notice tests/test_browser.py</code> (the Makefile's slow lane is a marker, not a <code>--run-slow</code> flag).</li>
 </ul>
 </main>
 <script>

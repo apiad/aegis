@@ -8,11 +8,12 @@ import pytest
 from aegis.config import NOTICES_DEFAULTS, notices_from
 from aegis.notices import Notices, cpu_pct, next_level, psi, read_signals
 from aegis.ops import Caller
-from aegis.transcript.entries import NOTICE_HEADER
+from aegis.transcript.entries import NOTICE_HEADER, split_notices
 from aegis.transcript.store import read_store
 
 from .conftest import until
 from .test_agents import CONFIG, World, inbox, mcp, turn, world  # noqa: F401
+from .test_fold import Rec, run
 
 DISK = NOTICES_DEFAULTS["disk"]
 
@@ -529,3 +530,55 @@ async def test_a_restart_does_not_repeat_a_notice(noticed):
     s = noticed.session(s.log_id)
     await turn(s, "carry on")
     assert sent(noticed.app, s.log_id)[-1] == "carry on"
+
+
+# -- the transcript ---------------------------------------------------------------
+BLOCK = (
+    NOTICE_HEADER + "disk · warn · 2026-10-18T10:00:00Z\n"
+    "The disk holding aegis is 95% full: 3.9 GB free of 75 GB, measured just now."
+)
+CLEAR = NOTICE_HEADER + "disk · clear · 2026-10-18T11:00:00Z\nThe disk is back."
+
+
+def test_split_notices_takes_every_block_off_the_end():
+    assert split_notices("hello") == ("hello", [])
+    assert split_notices(f"hello\n\n{BLOCK}\n\n{CLEAR}") == ("hello", [BLOCK, CLEAR])
+    assert split_notices(BLOCK) == (BLOCK, [])  # a bare block is no carrier
+
+
+def test_a_prompt_with_a_notice_folds_to_the_prompt_and_an_inbox_row():
+    r = Rec()
+    r.own("send", text=f"add the retry\n\n{BLOCK}")
+    r.echo(f"add the retry\n\n{BLOCK}")
+    f, ops = run(r)
+    assert ops[0][0]["upsert"]["md"] == "add the retry"  # the pending row too
+    user, notice = f.entries()
+    assert (user["kind"], user["md"]) == ("user", "add the retry")
+    assert notice["kind"] == "inbox" and notice["id"] == f"{user['id']}:notice:0"
+    assert notice["title"].startswith("aegis:notice · disk · warn")
+    assert notice["md"] == BLOCK
+
+
+def test_a_tool_result_with_a_notice_keeps_the_notice_out_of_its_row():
+    r = Rec()
+    r.call("t1", "mcp__aegis__session_list", {})
+    r.output("t1", f'[{{"handle": "a"}}]\n\n{BLOCK}')
+    tool, notice = run(r)[0].entries()
+    assert tool["detail"]["result"] == "1 item"
+    assert NOTICE_HEADER not in tool["detail"]["tail"]
+    assert (notice["kind"], notice["id"], notice["md"]) == (
+        "inbox",
+        "t1:notice:0",
+        BLOCK,
+    )
+
+
+def test_a_monitor_wake_with_a_notice_is_two_inbox_rows():
+    wake = "> from monitor:01M4 · ok · 2026-10-18T10:00:00Z\npytest finished"
+    r = Rec()
+    r.own("send", text=f"{wake}\n\n{BLOCK}")
+    r.echo(f"{wake}\n\n{BLOCK}")
+    woke, notice = run(r)[0].entries()
+    assert (woke["kind"], woke["md"]) == ("inbox", wake)
+    assert woke["title"].startswith("monitor:01M4")
+    assert notice["kind"] == "inbox" and notice["md"] == BLOCK
