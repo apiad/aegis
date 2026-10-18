@@ -145,6 +145,8 @@ svg.ic{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-wid
   <a href="#delivers">What this delivers</a>
   <a href="#decisions">Decisions</a>
   <a href="#lifecycle">Session lifecycle</a>
+  <a class="sub" href="#asleep">The asleep state</a>
+  <a class="sub" href="#quiet">Quiet is another axis</a>
   <a href="#module">The menu module</a>
   <a class="sub" href="#triggers">Opening it</a>
   <a class="sub" href="#closing">Closing it</a>
@@ -188,6 +190,7 @@ svg.ic{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-wid
     <tr><td>Icons <span class="who">maintainer</span></td><td>Every item has an icon, drawn in the client's sprite (<code>glyphs.js</code>), in currentColor.</td><td class="why">Items are found by shape faster than by word, and the selection bar on a phone shows icons only.</td></tr>
     <tr><td>One lifecycle vocabulary <span class="who">maintainer</span></td><td>Interrupt, Sleep, Wake, Continue, Restart, Archive, Reopen. Section 03.</td><td class="why">Today Stop and park are two names for one state, Close and Archive two names for one action, and Restart sends "Continue".</td></tr>
     <tr><td>Stop and park merge <span class="who">maintainer</span></td><td>One state, <code>asleep</code>, with a reason: slept, idle, exited, server.</td><td class="why">To the person both mean the process is gone and the next message brings it back.</td></tr>
+    <tr><td>Quiet is visibility <span class="who">maintainer</span></td><td>Quiet and Unquiet sit with Open in the card and tab menus. Quiet gets its own mark; <code>zz</code> means asleep only.</td><td class="why">Quiet hides a tab and leaves the process alone, so it is not a lifecycle verb; a <code>zz</code> on a working session would read as asleep.</td></tr>
     <tr><td>Restart is real <span class="who">maintainer</span></td><td>Restart ends the process and starts it again on the same conversation. The panel's old Restart button becomes Continue.</td><td class="why">After an MCP config change or a hung harness there is no way to get a fresh process today short of Stop and a message.</td></tr>
     <tr><td>One module <span class="who">agent</span></td><td><code>menu.js</code> replaces the two menus in <code>files.js</code> and <code>canvas.js</code>, which repeat the same placement, outside-press and Esc code.</td><td class="why">Ten places would otherwise grow ten copies.</td></tr>
     <tr><td>A bar for selections <span class="who">agent</span></td><td>A selection gets a one-line bar above it, not the list menu. Right-click inside a selection opens the row menu with the selection items on top.</td><td class="why">A selection's actions are few and frequent; the bar is one move away from the mouse.</td></tr>
@@ -253,6 +256,21 @@ svg.ic{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-wid
   <li>A stored meta with <code>stopped</code> or <code>parked</code> reads as asleep with the matching reason, so nothing is migrated on disk.</li>
   <li>Commands: <code>/sleep</code>, <code>/restart</code> and <code>/archive</code>; <code>/stop</code> and <code>/close</code> stay as aliases, so habits and agents' prompts keep working.</li>
   <li>MCP tool names do not change in this work (<code>session_close</code> stays): renaming agent-facing tools breaks prompts in the wild, and their descriptions can say "archive". Builder's call to revisit.</li>
+</ul>
+
+<h3 id="quiet">Quiet is another axis</h3>
+<p>Quiet (<code>session.quiet</code>, <code>/spawn --quiet</code>, a queue's workers) takes the tab away and dims the card until the turn ends with something for the person: done, review, needs you or error (<code>registry.py</code>, <code>BACK</code>). The process is untouched. A session therefore has two independent states:</p>
+<table class="tbl">
+  <thead><tr><th>Axis</th><th>Values</th><th>Verbs</th></tr></thead>
+  <tbody>
+    <tr><td>Process</td><td>working, waiting, asleep, archived</td><td>Interrupt, Sleep, Wake, Continue, Restart, Archive, Reopen</td></tr>
+    <tr><td>Visibility</td><td>tabbed, quiet</td><td>Quiet, Unquiet</td></tr>
+  </tbody>
+</table>
+<ul>
+  <li>Quiet shows on a working or waiting session with a tab, the only states the server accepts; Unquiet shows on a quiet one.</li>
+  <li>The card's marks follow the axes: <code>zz</code> (in the comms colour, as <code>parked</code> is today) for asleep with its reason, and an eye-off icon with the word <code>quiet</code> for quiet. Today <code>fleet.js</code> draws <code>zz</code> for quiet and <code>zz parked</code> for a park.</li>
+  <li>Sleeping a quiet session keeps it quiet; Wake, Continue and Restart do not change visibility. Reopen still clears quiet, as it does today.</li>
 </ul>
 
 <h2 id="module"><span class="n">04</span>The menu module</h2>
@@ -323,7 +341,7 @@ menu.attach(root, (target, ev) =&gt; ({
     <tr><td>Agent reply row</td><td>Reply · New session | Copy · Copy link</td><td class="why">Reply quotes the whole row; Copy is the <code>c</code> key's copyRow</td></tr>
     <tr><td>Person's message</td><td>Edit and resend · New session | Copy · Copy link</td><td class="why">Edit puts the text back in the composer</td></tr>
     <tr><td>Tool row</td><td>Open file (when it touched one) · Copy output | Reply · Copy link</td><td class="why"><code>transcript.output</code>; the Files viewer</td></tr>
-    <tr><td>Fleet card and session tab</td><td>Open · Open beside | Interrupt (working) · Wake and Continue (asleep) · Sleep (live) · Restart · Hand off | Rename… | Archive</td><td class="why">the session.* calls; Restart is new</td></tr>
+    <tr><td>Fleet card and session tab</td><td>Open · Open beside · Quiet or Unquiet | Interrupt (working) · Wake and Continue (asleep) · Sleep (live) · Restart · Hand off | Rename… | Archive</td><td class="why">the session.* calls, quiet and unquiet included; Restart is new</td></tr>
     <tr><td>Files row</td><td>Insert path · New session here · Terminal here | New file · New folder · Rename · Copy path | Delete</td><td class="why">today's Files menu, moved</td></tr>
     <tr><td>Journal entry</td><td>Open commit or PR · Go to session</td><td class="why">the entry's refs and log id</td></tr>
     <tr><td>Sent card (artifact, file)</td><td>Dock right · Dock left · Open in new window · Download</td><td class="why">the card's existing buttons</td></tr>
@@ -361,6 +379,7 @@ menu.attach(root, (target, ev) =&gt; ({
 <ul>
   <li><code>session.restart</code>: Sleep then Wake under the session's lock; refused while a workflow holds the session, like Stop today.</li>
   <li>The <code>asleep</code> state and <code>asleep_why</code> in <code>describe</code>, the fleet's marks and <code>session_list</code>; old metas read through.</li>
+  <li>The Fleet's marks: <code>zz</code> for asleep, an eye-off <code>quiet</code> mark for quiet (<code>fleet.js</code>, <code>base.css</code>).</li>
   <li><code>/sleep</code>, <code>/restart</code>, <code>/archive</code> in <code>commands.py</code>, with <code>/stop</code> and <code>/close</code> as aliases.</li>
   <li><code>term.spawn</code> takes an optional <code>cwd</code>, so Files' Terminal here opens in the folder pressed.</li>
   <li>Client only: a row link, <code>#s=&lt;id&gt;&amp;at=&lt;i&gt;</code>, that opens the session scrolled to entry <code>i</code>; <code>route()</code> learns it.</li>
@@ -382,6 +401,7 @@ menu.attach(root, (target, ev) =&gt; ({
   <li>Browser: a selection made while a fake turn streams keeps its bar through ten patches.</li>
   <li>Browser: a triple-click on a reply's last paragraph gets the bar; a code block's selection copies without its language label.</li>
   <li>Server: Sleep and a park both report asleep with their reasons; Restart changes the process id and keeps the conversation; <code>/close</code> archives.</li>
+  <li>A quiet working card shows the quiet mark and no <code>zz</code>; its menu has Unquiet and Interrupt; Sleep keeps it quiet.</li>
   <li>The card menu per state: no Interrupt on an asleep card, no Wake on a working one, disabled items on a locked workflow step.</li>
 </ul>
 
@@ -427,6 +447,8 @@ const I = {
   undock: '<rect x="2" y="5" width="9" height="8" rx="1.5"/><path d="M9 2.5h4.5V7M13.5 2.5L9 7"/>',
   folder: '<path d="M2 4.5h4l1.5 1.5H14v7H2z"/>',
   trash: '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 9h5.6l.7-9"/>',
+  quiet: '<path d="M2 8s2.2-4 6-4c1.2 0 2.2.4 3 .9M14 8s-2.2 4-6 4c-1.2 0-2.2-.4-3-.9"/><path d="M2.5 13.5l11-11"/>',
+  unquiet: '<path d="M1.8 8S4 4 8 4s6.2 4 6.2 4S12 12 8 12 1.8 8 1.8 8z"/><circle cx="8" cy="8" r="2"/>',
   close: '<path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/>',
 };
 // Sample items: [label, icon, key, what it does]. "!" before an id marks a destructive item.
@@ -442,6 +464,8 @@ const A = {
   output: ["Copy output", "copy", "", "Copy the whole output, fetched from the server."],
   open: ["Open", "open", "↵", "Open the session."],
   beside: ["Open beside", "beside", "", "Open it in a column next to this one."],
+  quiet: ["Quiet", "quiet", "", "Hide its tab until the turn ends with something for you; the process keeps running."],
+  unquiet: ["Unquiet", "unquiet", "", "Give it its tab back now."],
   interrupt: ["Interrupt", "interrupt", "", "Cut the current turn; the process stays."],
   sleep: ["Sleep", "sleep", "", "End the process, keep the conversation. Asks first if something would die."],
   wake: ["Wake", "wake", "", "Start the process without sending anything."],
@@ -472,8 +496,8 @@ const MENUS = {
   reply: ["opus · reply", [["reply", "newsess"], ["copy", "link"]]],
   mine: ["your message", [["edit", "newsess"], ["copy", "link"]]],
   tool: ["Edit · files.js", [["openfile", "output"], ["reply", "link"]]],
-  working: ["ana-parser · working", [["open", "beside"], ["interrupt", "sleep", "restart", "handoff"], ["rename"], ["!archive"]]],
-  waiting: ["ben-review · needs you", [["open", "beside"], ["sleep", "restart", "handoff"], ["rename"], ["!archive"]]],
+  working: ["ana-parser · working", [["open", "beside", "quiet"], ["interrupt", "sleep", "restart", "handoff"], ["rename"], ["!archive"]]],
+  waiting: ["ben-review · needs you", [["open", "beside", "quiet"], ["sleep", "restart", "handoff"], ["rename"], ["!archive"]]],
   asleep: ["cara-release · asleep", [["open", "beside"], ["wake", "cont", "restart", "handoff"], ["rename"], ["!archive"]]],
   file: ["files.js", [["insert", "sesshere", "termhere"], ["fnew", "fdir", "frename", "fpath"], ["!fdelete"]]],
   journal: ["journal entry", [["jopen", "jsess"]]],
