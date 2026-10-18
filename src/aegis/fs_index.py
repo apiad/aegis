@@ -26,6 +26,7 @@ is ever listed (fs_paths refuses it anyway).
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import stat
 import subprocess
@@ -86,6 +87,8 @@ _IGNORE_EXTS: frozenset[str] = frozenset(
 )
 
 _IGNORE_NAMES: frozenset[str] = frozenset({".DS_Store", ".coverage"})
+
+log = logging.getLogger(__name__)
 
 #: How many levels into a gitignored directory to look for a nested
 #: repository. One finds ``repos/<name>``; two would also walk scratch clones,
@@ -231,6 +234,14 @@ class FsIndex:
         files = await asyncio.to_thread(walk, self.root, self.state)
         self._files, self._at = files, time.monotonic()
 
+    async def _refresh(self) -> None:
+        """A background walk nobody awaits: a failure is logged, and the old
+        list keeps answering until the next refresh."""
+        try:
+            await self._walk()
+        except Exception:
+            log.exception("the file index's refresh failed; answering from the old one")
+
     async def entries(self) -> list[tuple[str, int]]:
         """Every listed file with its mtime in ms, newest first."""
         if self._files is None:
@@ -240,7 +251,7 @@ class FsIndex:
         elif time.monotonic() - self._at > FRESH_S and (
             self._walking is None or self._walking.done()
         ):
-            self._walking = asyncio.create_task(self._walk())
+            self._walking = asyncio.create_task(self._refresh())
         files = self._files or {}
         return sorted(files.items(), key=lambda e: e[1], reverse=True)
 

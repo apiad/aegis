@@ -170,3 +170,45 @@ async def test_a_save_over_a_cut_file_is_refused(app, tmp_path):
 async def test_stat_refuses_a_folder(app):
     e = await refused(app, "fs.stat", {"path": "src"})
     assert e.code == "not_a_file"
+
+
+@pytest.fixture
+def escapes(app, tmp_path):
+    """Paths every operation must refuse, by what each is: '..', a symlink
+    out of the root, one into the state root, and a folder symlinked out."""
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("outside\n")
+    (tmp_path / "out").symlink_to(outside / "secret.txt")
+    (tmp_path / "tok").symlink_to(app.roots.state_root / "token")
+    (tmp_path / "outdir").symlink_to(outside)
+    return outside
+
+
+REFUSED = [
+    ("../escape.txt", "outside_root"),
+    ("out", "outside_root"),
+    ("tok", "forbidden"),
+    ("outdir/new.txt", "outside_root"),
+]
+
+
+@pytest.mark.parametrize("rel, code", REFUSED)
+async def test_write_refuses_every_escape_and_writes_nothing(
+    app, tmp_path, escapes, rel, code
+):
+    for base in (None, sha("x")):
+        e = await refused(app, "fs.write", {"path": rel, "content": "x", "base": base})
+        assert e.code == code
+    assert (escapes / "secret.txt").read_text() == "outside\n"
+    assert not (escapes / "new.txt").exists()
+    assert not (tmp_path.parent / "escape.txt").exists()
+    assert (app.roots.state_root / "token").read_text() == "secret"
+    assert not (app.roots.state_root / "fs-log.jsonl").exists()
+
+
+@pytest.mark.parametrize("rel, code", REFUSED[:3])
+async def test_stat_and_read_refuse_every_escape(app, escapes, rel, code):
+    for op in ("fs.stat", "fs.read"):
+        e = await refused(app, op, {"path": rel})
+        assert e.code == code

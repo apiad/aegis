@@ -69,3 +69,23 @@ async def test_touched_and_removed_update_the_index(tmp_path: Path):
     index.touched("new.txt")
     index.removed("d")
     assert [p for p, _ in await index.entries()] == ["new.txt", "a.txt"]
+
+
+async def test_a_failed_refresh_is_logged_and_the_old_list_answers(
+    tmp_path: Path, monkeypatch, caplog
+):
+    import aegis.fs_index as fs_index
+
+    write(tmp_path / "a.txt", "a", 1000)
+    index = FsIndex(tmp_path, tmp_path / "state")
+    await index.entries()
+
+    def broken(root, state):
+        raise RuntimeError("disk on fire")
+
+    monkeypatch.setattr(fs_index, "walk", broken)
+    monkeypatch.setattr(fs_index, "FRESH_S", -1.0)
+    assert [p for p, _ in await index.entries()] == ["a.txt"]
+    await index._walking
+    assert "disk on fire" in caplog.text
+    assert [p for p, _ in await index.entries()] == ["a.txt"]

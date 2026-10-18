@@ -179,3 +179,21 @@ def test_a_double_ctrl_s_saves_once_and_the_picker_field_saves_too(
     page.wait_for_function("document.querySelector('.fbar .dirty').hidden")
     assert target.read_text() == "base\none\ntwo\n"
     assert page.errors == []
+
+
+def test_a_redraw_does_not_move_the_cursor_back_to_the_urls_line(
+    server,  # noqa: F811
+    page,  # noqa: F811
+    tmp_path,
+):
+    (tmp_path / "a.py").write_text("".join(f"x{n} = {n}\n" for n in range(1, 41)))
+    open_file(page, server, "a.py:2")
+    line = "document.querySelector('.v-files .cm-activeLineGutter').textContent"
+    page.wait_for_function(f"{line} === '2'")
+    page.keyboard.press("Control+End")
+    page.wait_for_function(f"{line} === '41'")
+    # What a session added or a reconnect does: render() again, same URL.
+    page.evaluate("window.dispatchEvent(new HashChangeEvent('hashchange'))")
+    page.keyboard.type("y = 0")
+    assert page.evaluate(line) == "41"
+    assert page.errors == []

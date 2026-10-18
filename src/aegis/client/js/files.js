@@ -257,6 +257,7 @@ export class Files {
     this.loading = 0;
     this.waiting = null; // {path, line} a read refused offline, for online()
     this.saving = null; // the save in flight, a Promise of whether it landed
+    this.shown = null; // the last target show() applied
     box.innerHTML =
       '<div class="fbar"><span class="crumbs"></span><span class="dirty" title="Unsaved changes" hidden>●</span>' +
       '<span class="gap"></span><button class="btn pick" type="button" title="Open a file (Alt+O)">Alt+O</button>' +
@@ -310,7 +311,11 @@ export class Files {
   }
 
   // Show `target` ("path" or "path:line"); empty keeps what is open.
+  // render() calls this on every redraw (a session added, a reconnect), so
+  // a target already shown is left alone: its :line moved the cursor once.
   async show(target) {
+    if (target === this.shown) return;
+    this.shown = target;
     const { path, line } = parseTarget(target);
     if (!path || path === this.path) {
       if (!this.path) this.empty();
@@ -328,6 +333,7 @@ export class Files {
   }
 
   close() {
+    this.shown = null;
     this.ed?.destroy();
     this.ed = null;
     this.path = null;
