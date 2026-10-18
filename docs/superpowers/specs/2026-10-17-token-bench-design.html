@@ -90,7 +90,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · token bench</span>
-  <span class="st"><span class="pill acc">draft, for review</span><span class="pill">2026-10-17</span></span>
+  <span class="st"><span class="pill acc">implemented</span><span class="pill">2026-10-17</span></span>
 </div>
 <div class="wrap">
 <nav class="toc" id="toc">
@@ -110,7 +110,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 </nav>
 <main>
 <h1>A token bench: what aegis costs on mid-sized tasks</h1>
-<div class="meta"><span>status: draft</span><span>·</span><span>make bench-tokens</span></div>
+<div class="meta"><span>status: implemented</span><span>·</span><span>make bench-tokens</span></div>
 <p class="lede">Six realistic tasks, each run once as stock Claude Code and once as an aegis session, on the host, in auto mode. The bench reports how many more tokens the aegis session spent for the same finished work. It runs before each release for about the price of six tasks, because the stock side is measured once and kept.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -123,6 +123,17 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 </div>
 <p>Those two ends bracket the number that matters and miss it: what the tax is on a task of realistic effort, 20 to 80 requests, where an agent would plan, wait on a slow suite and finish without a person. This bench measures that number at every release, so a primer paragraph or a new tool that raises it is seen before it ships.</p>
 <p>It measures cost, not success. A task that fails in either arm is listed and left out of the ratio, because a failed run's tokens measure the failure, not aegis.</p>
+<p>The first measured run, 2026-10-17, Claude Code 2.1.296, Opus 5.5 at high effort: the stock arm three times per task, aegis once, all six tasks passing in both arms.</p>
+<table class="tbl num">
+<thead><tr><th>measure</th><th>value</th></tr></thead>
+<tbody>
+<tr><td>headline, geomean of aegis/stock cost</td><td>1.30</td></tr>
+<tr><td>per-task ratio, lowest to highest</td><td>1.07 (git-rescue) to 1.54 (c-build)</td></tr>
+<tr><td>stock cost per task, cache-neutral</td><td>$0.64 to $1.17</td></tr>
+<tr><td>stock requests per task</td><td>10 to 22</td></tr>
+<tr><td>bookkeeping share of aegis cost</td><td>6.9% to 19.2%</td></tr>
+</tbody>
+</table>
 
 <h3 id="spike">What a one-task spike showed</h3>
 <p>Before planning, the design was run end to end on one task: a ledger tool with two seeded bugs and two follow-up turns, Opus at high effort, one run per arm. Both arms passed the hidden checks.</p>
