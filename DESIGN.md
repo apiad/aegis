@@ -799,6 +799,28 @@ names two different files, one in each place, opens neither: it answers
 `cwd`. Agents quote from their own cwd, so taking the root's copy of a
 `README.md` would open the wrong file. A linked
 server's replies draw no links: the file would be on the other machine (#323).
+The mechanism stays for links in replies; it is not what keeps a person from a
+file, since the Files view opens any file under the root (next paragraph).
+
+**A person opens any file under the root, and only a person.** The Files view
+(`fs_ops.py`, `client/js/files.js`) reads and writes files by path, relative to
+the config root, through `fs.*` operations. Three rules hold it. Every path goes
+through `fs_paths.resolve`, and no other code builds a path from a client
+string: no `..`, its real path (symlinks followed) inside the root's, never
+inside the state root (it holds the admin token and the live stores) or a
+`.git` directory. Every `fs.*` operation is `local` and none is `agent`, so
+`Registry.call` refuses an agent with not_for_agents and a caller acting
+through a link with not_across_links, in one place; the view polls by calls,
+never by a channel, because a link socket may subscribe to any channel. And a
+save carries the sha256 the buffer was based on: when the disk's bytes no
+longer have it, nothing is written and the answer is changed_on_disk with the
+disk's text, because agents write the files a person edits and
+last-write-wins would drop an agent's edit silently. A write goes through a
+temporary file in the same folder and `os.replace`, keeping the mode, and is
+logged with its author in `<state>/fs-log.jsonl`. Admins and members alike may
+write: every harness already runs as the server's user, so a member's agent
+could anyway. The picker's list is `fs_index.py`'s git-aware walk, run on
+demand and never watched (#458).
 
 The candidates are wider than files: a folder, `owner/repo`, `owner/repo#n` and
 `github.com/…` spans are kept too (`aegis/refs.py`). What each names is asked

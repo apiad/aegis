@@ -175,6 +175,8 @@ FIRST = [
     ("send the person a screenshot", "artifacts#send-a-file-instead"),
     ("keep a page in view", "artifacts#pages-that-stay-in-view"),
     ("dock a file beside the transcript", "transcript#the-canvas"),
+    ("edit a file on the server in the browser", "files"),
+    ("my save says the file changed on disk", "files#when-the-file-changed-on-disk"),
     (
         "pop a page out to a second browser window",
         "transcript#a-canvas-across-browser-windows",

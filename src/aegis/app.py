@@ -1615,8 +1615,7 @@ class App:
             else under the config root and under the session's cwd (#323).
             When both hold a file and they differ, it opens neither and asks:
             `pick` ("root" or "cwd") is the person's answer. The browser sends
-            only the index and the pick, so it can open nothing the agent did
-            not write. Nothing is recorded on the reply."""
+            only the index and the pick. Nothing is recorded on the reply."""
             paths = (
                 row["detail"].get("paths", []) if row and row["kind"] == "prose" else []
             )
