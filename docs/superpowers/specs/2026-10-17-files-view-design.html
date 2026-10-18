@@ -195,6 +195,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <a class="sub" href="#picker">The picker</a>
   <a class="sub" href="#tree">The tree</a>
   <a class="sub" href="#formats">Formats</a>
+  <a class="sub" href="#languages">Languages</a>
   <a href="#editing">Editing and saving</a>
   <a class="sub" href="#conflicts">Agents writing the same file</a>
   <a class="sub" href="#fileops">Create, rename, delete</a>
@@ -234,7 +235,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <div class="stat"><div class="v">24,436</div><div class="k">files in a git-aware listing of a 66-repo workspace, measured</div></div>
   <div class="stat"><div class="v">1.2 s</div><div class="k">to list them with git ls-files, cold</div></div>
   <div class="stat"><div class="v">125 KB</div><div class="k">CodeMirror 6 core, gzipped (386 KB minified)</div></div>
-  <div class="stat"><div class="v">+107 KB</div><div class="k">gzipped for seven languages: Python, JS, Markdown, HTML, CSS, JSON, YAML</div></div>
+  <div class="stat"><div class="v">22 + 8</div><div class="k">programming languages and markup or config formats, each loaded on first use; the largest, C++, is 32 KB gzipped</div></div>
   <div class="stat"><div class="v">0</div><div class="k">ways today to open a file no agent mentioned</div></div>
 </div>
 
@@ -249,7 +250,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>File operations</td><td>Create, rename, move and delete, for files and folders</td><td class="why"><span class="who">maintainer</span> Browsing a repository without being able to tidy it sends the person back to a shell.</td></tr>
 <tr><td>Who may write</td><td>Every person with a token: admins and members alike. Linked servers and agents may not</td><td class="why"><span class="who">maintainer</span> Every harness already runs as the server's Linux user, so a member's agent can write these files anyway. Roles in aegis stop accidents, not a hostile member, and every write through the view is logged with its author in a new log. A link and an agent are refused for the reasons in <a href="#who">Who may call them</a>.</td></tr>
 <tr><td>Where a file opens</td><td>In a view of its own, <code>#files=&lt;path&gt;</code>, like Journal and Settings. A path in a reply still opens the viewer over the transcript, which gains an "Open in Files" button</td><td class="why"><span class="who q">proposed</span> A tree beside an editor needs the whole width. A URL per file gives back, forward, bookmarks and a second browser tab beside a session. Discussed and taken forward by the maintainer.</td></tr>
-<tr><td>The editor</td><td>CodeMirror 6, vendored as ESM: one core file and one file per language, loaded when the Files view first opens</td><td class="why"><span class="who q">proposed</span> A textarea cannot indent or highlight Python. Monaco weighs several megabytes and is poor on a phone. CodeMirror's core is 125 KB gzipped and handles touch.</td></tr>
+<tr><td>The editor</td><td>CodeMirror 6, vendored as ESM: one core file and one file per language, loaded when the Files view first opens</td><td class="why"><span class="who">maintainer</span> About the top twenty programming languages, plus markup and config formats (see <a href="#languages">Languages</a>). <span class="who q">proposed</span> A textarea cannot indent or highlight Python. Monaco weighs several megabytes and is poor on a phone. CodeMirror's core is 125 KB gzipped and handles touch.</td></tr>
 <tr><td>A file changed on disk</td><td>An untouched buffer reloads by itself. An edited one shows a banner. A save checks the file's hash and refuses to overwrite a change it has not seen</td><td class="why"><span class="who q">proposed</span> Agents write the same files the person edits. The legacy design was last-write-wins, which silently drops an agent's edit made after the file was opened.</td></tr>
 <tr><td>Deleting</td><td>Asks once, then moves the file or folder into <code>&lt;state&gt;/trash/</code>, with Undo in a toast. The trash is emptied after 30 days</td><td class="why"><span class="who q">proposed</span> A file outside git has no other way back.</td></tr>
 <tr><td>Live listing</td><td>A walk on demand with <code>git ls-files</code>, cached and refreshed when the picker opens. No filesystem watcher</td><td class="why"><span class="who q">proposed</span> The legacy watcher put a watch on 100,953 directories and ran whether anyone looked. A walk costs 1.2 s and only happens when someone opens the picker.</td></tr>
@@ -344,6 +345,17 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </table>
 <p>A text file up to 2 MB opens editable. One between 2 MB and <code>files.MAX_BYTES</code> (100 MB) opens read-only, as its first 2 MB, with a note saying so. Anything larger offers only a download. A file that is not valid UTF-8 counts as binary.</p>
 
+<h3 id="languages">Languages</h3>
+<p>The editor highlights about the twenty most used programming languages and the usual markup and config formats. Each language is its own file, loaded the first time a file needs it, so a language nobody opens costs nothing. Sizes are gzipped, measured with esbuild's code splitting over CodeMirror 6.0.2; the core is the 125 KB above.</p>
+<table class="tbl">
+<thead><tr><th>Mode</th><th>Languages</th><th>Cost each</th></tr></thead>
+<tbody>
+<tr><td>Full parser (Lezer)</td><td>Python, JavaScript, TypeScript, JSX and TSX, Java, C, C++, Go, Rust, PHP, SQL, HTML, CSS, Markdown, JSON, YAML, XML</td><td>1 to 32 KB; C++ is the largest, then Rust (29 KB) and PHP (27 KB). JS, TS, HTML and CSS share chunks with each other</td></tr>
+<tr><td>Stream mode (<code>@codemirror/legacy-modes</code>)</td><td>C#, Kotlin, Swift, Scala, Dart, Ruby, Shell (bash, zsh, sh), PowerShell, R, Lua, Perl, Haskell, TOML, Dockerfile</td><td>0.1 to 3.4 KB. Highlighting and indentation only: no folding by syntax tree</td></tr>
+</tbody>
+</table>
+<p>All of them together, core included, are 398 KB gzipped in 36 files. Any other extension opens as plain text. Adding a language later is one line in the vendoring script and one in <code>editor.js</code>'s map from extension to language.</p>
+
 <h2 id="editing"><span class="n">05</span>Editing and saving</h2>
 <ul>
 <li>Ctrl+S (Cmd+S on a Mac) saves, and the browser's own Save page never fires inside the view. The Save button does the same, so a phone can save.</li>
@@ -424,9 +436,9 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <h2 id="delivery"><span class="n">08</span>Delivery</h2>
 <p>Three pull requests under one issue, each usable on its own.</p>
 <div class="steps">
-  <div class="step"><div class="n"></div><div><h4>Pick, edit, save</h4><p>The thinnest path end to end: <code>fs_paths</code>, <code>fs_index</code>, <code>fs.find</code>, <code>fs.read</code> and <code>fs.write</code> with the hash check, the <code>local</code> flag, the vendored CodeMirror with Python, Markdown, JS and JSON, Alt+O, and the view with its bar and editor but no tree. Text and code only.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>Pick, edit, save</h4><p>The thinnest path end to end: <code>fs_paths</code>, <code>fs_index</code>, <code>fs.find</code>, <code>fs.read</code> and <code>fs.write</code> with the hash check, the <code>local</code> flag, the vendored CodeMirror with every language in <a href="#languages">Languages</a>, Alt+O, and the view with its bar and editor but no tree. Text and code only.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>The tree and file operations</h4><p><code>fs.list</code>, <code>fs.mkdir</code>, <code>fs.move</code>, <code>fs.delete</code>, <code>fs.restore</code>, the trash, the log, the tree with its menu and drag, the drawer on a phone, and the <code>fs.stat</code> polling with the banner.</p></div></div>
-  <div class="step"><div class="n"></div><div><h4>Formats</h4><p>Tickets and the <code>/fs</code> route, rendered Markdown with its images, HTML and SVG frames, images, PDF, audio and video, the remaining languages, and "Open in Files" in the viewer.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>Formats</h4><p>Tickets and the <code>/fs</code> route, rendered Markdown with its images, HTML frames, images and SVG, PDF, audio and video, and "Open in Files" in the viewer.</p></div></div>
 </div>
 <p>Each one carries its <code>changelog.d/</code> fragment, a new help page <code>src/aegis/help/files.md</code> grown slice by slice, the DESIGN.md rule for files a person opens (replacing the sentence quoted in <a href="#fits">How it fits</a>), and the <code>make bench</code> table, with the client's size before and after.</p>
 
