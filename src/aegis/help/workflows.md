@@ -158,6 +158,8 @@ root:
 `deadline: 2h` on any step, and on the workflow, bounds it: past it, its
 running agents are interrupted and kept for you to read, its commands are
 killed, and the step fails. A deadline on a group bounds everything in it.
+A step or group that has finished, or that was skipped, never expires: its
+deadline stops counting once it is done.
 `retries: 2` on an agent, sh or check runs it again when it fails, with a
 fresh session for an agent. A reference with no value is never retried,
 and a command cut by a server restart is never run again on its own. An
