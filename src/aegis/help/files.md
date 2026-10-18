@@ -42,8 +42,8 @@ than 30 seconds old.
 
 The left side of Files is the folder tree, starting at the config root. Click
 a folder to open it; its contents are read the first time, and the folders you
-leave open stay open the next time. A file opened from the picker or an
-address opens the tree down to it. Ignored entries are hidden, by the same
+leave open stay open the next time. A file opened from the picker or a
+link opens the tree down to it. Ignored entries are hidden, by the same
 rules as the picker, except a folder that holds a repository; "Show ignored"
 at the foot of the tree shows them, dimmed. A .git folder and the server's
 state folder never show.
@@ -60,8 +60,8 @@ Right-click a row, or hold it on a touch screen, for its menu:
 - Copy path: the path under the config root.
 
 Drag a row onto a folder, or below the last row for the root, to move it
-there. Nothing replaces an existing file or folder: a name that is taken is
-refused. An open file that is renamed or moved stays open at its new path;
+there. Nothing overwrites a file or folder that exists: a name that is taken is
+refused. The open file, when renamed or moved, stays open at its new path;
 renaming, moving or deleting a file with unsaved changes asks first.
 
 Deleted entries are kept in the trash folder of the server's state for 30
@@ -92,18 +92,18 @@ A file opens the way its kind is drawn when a session sends it:
 - HTML opens in a sandboxed frame: its scripts run, but the page has no origin
   of its own, so it cannot reach aegis or your sign-in. Files it links to
   beside it (stylesheets, images) do not load.
-- An image opens fitted to the pane. A PDF opens in the browser's own viewer;
+- Images open fitted to the pane. A PDF opens in the browser's own viewer;
   audio and video in their players.
 - Anything else shows its type and size, Download, and, when the browser runs
   on the server's desktop, a button that opens it in the desktop's app for it.
 
 Markdown, HTML and SVG are text too: Rendered and Source at the top of the
 pane switch between the page and the editor, and a save redraws the page.
-Rendered Markdown shows the buffer as it is; an HTML page or an SVG shows the
+Rendered Markdown shows the buffer as it is; HTML pages and SVGs show the
 file as saved. Opened at a line, as `#files=<path>:<line>` does, such a file
 starts in Source.
 
-The bytes of an image, a page or a download come from a short-lived address
+The bytes of images, pages and downloads come from a short-lived address
 that reads the file again each time. It lapses after ten minutes without a use,
 or when the server restarts; Download asks for a fresh one on each click.
 
