@@ -101,9 +101,9 @@ Rendered Markdown shows the buffer as it is; an HTML page or an SVG shows the
 file as saved. Opened at a line, as `#files=<path>:<line>` does, such a file
 starts in Source.
 
-The bytes of an image, a page or a download come from a short-lived address,
-valid for ten minutes and only until the server restarts, which reads the
-file again each time; it is the same address Download gives.
+The bytes of an image, a page or a download come from a short-lived address
+that reads the file again each time. It lapses after ten minutes without a use,
+or when the server restarts; Download asks for a fresh one on each click.
 
 ## When the file changed on disk
 
