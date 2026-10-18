@@ -10,7 +10,7 @@ from aegis.workflow_log import NodeState
 
 from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
-from .test_workflows_e2e import ok
+from .test_workflows_e2e import approve, ok
 from .test_workflows_parallel import leaf, report, script
 
 
@@ -34,12 +34,15 @@ SIDE_BY_SIDE = wf(
 )
 
 
-async def armed(world, definition: str):
+async def armed(world, definition: str, settle=True):
     main = await world.spawn()
     run = ok(await turn(main, mcp("workflow_arm", definition=definition, args={})))[
         "run"
     ]
-    await world.app.registry.call("workflow.approve", {"run": run})
+    if settle:
+        await approve(world, run)
+    else:  # its step's timing matters more than the approval's turn
+        await world.app.registry.call("workflow.approve", {"run": run})
     return main, run
 
 
@@ -261,7 +264,7 @@ async def test_a_session_main_step_is_the_main_agents_and_spawns_nothing(world):
 
 async def test_stopping_a_run_never_interrupts_the_main_agent_at_its_step(world):
     long = MAIN.replace('prompt: "Check the deploy."', 'prompt: "/sleep 4"')
-    main, run = await armed(world, long)
+    main, run = await armed(world, long, settle=False)
     wf_ = world.app.workflows
     await until(
         lambda: (
@@ -282,6 +285,8 @@ async def test_a_wake_that_could_not_be_delivered_is_tried_again_soon(world):
     real, calls = main.deliver, []
 
     async def deliver(*a, **k):
+        if "· approved ·" in a[0]:
+            return await real(*a, **k)  # the approval's message (#474)
         calls.append(a)
         if len(calls) == 1:
             raise RuntimeError("the inbox is busy")

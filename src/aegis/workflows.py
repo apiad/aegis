@@ -58,6 +58,7 @@ from .workflow_lang import (
     Workflow,
     check_value,
     compile_expr,
+    next_stop,
     duration,
     edit_diff,
     edit_errors,
@@ -371,6 +372,8 @@ class Workflows:
         for st in list(self.runs.values()):
             if st.status == "rejected" and st.reject_untold:
                 await self._tell_rejected(st)
+            if st.status == "running" and st.approve_untold:
+                await self.tell_approved(st.run)
         while True:
             # Cleared before the pass: a wake that arrives during it is
             # another pass, not lost.
@@ -1158,9 +1161,48 @@ class Workflows:
         st = self._get(run)
         if st.status != "armed":
             raise OpError("not_armed", f"{run} is {st.status}")
-        self._log(run, {"ev": "approved"})
+        # "tell" as for a rejection: a boot tells an approval whose
+        # delivery a crash cut, and no other.
+        self._log(run, {"ev": "approved", "tell": True})
         self._owner_card(st)  # the click answered its ask; it waits now
         self.changed()
+
+    async def tell_approved(self, run: str) -> None:
+        """Tell the main agent its run was approved and when it next stops,
+        once: the record follows the delivery, as woke does."""
+        st = self._get(run)
+        body = (
+            f"The person approved {run} and it is running. "
+            + self.next_text(st)
+            + ' End this turn with turn_end(attention="review") and a short '
+            "message to them, in their language: the run is going; while it "
+            "runs they can write to you to steer it or ask about it, which does "
+            "not stop it; and when the run next stops, as above. Your tab shows "
+            "waiting on the run until then."
+        )
+        if await self._tell_owner(st, "approved", body):
+            self._log(run, {"ev": "approved_told"})
+
+    def next_text(self, st: RunState) -> str:
+        """Where a running run next stops, from its definition: the first
+        gate or main step not finished, or else its end."""
+        wf = self.defs.get(st.run)
+        done = {template_key(k) for k, n in st.nodes.items() if n.status == "done"}
+        n = next_stop(wf, done) if wf else None
+        if n is None:
+            when = "calls you when it ends"
+        elif n.kind == "gate" and n.body.get("by") == "person":
+            when = (
+                f'stops at the gate "{n.body.get("ask")}", which the person '
+                "answers on the card"
+            )
+        elif n.kind == "gate":
+            when = f'calls you at the gate "{n.body.get("ask")}", which you answer'
+        else:
+            when = f'calls you at the step "{n.say}", which you run yourself'
+        return (
+            f"It next {when}. A failed step or a worker's question can call you sooner."
+        )
 
     def _owner_card(self, st: RunState) -> None:
         """Redraw the main agent's card, which waits on a running run
