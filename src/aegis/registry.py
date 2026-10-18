@@ -216,6 +216,9 @@ class Registry(Host):
             )
         return None
 
+    def notice_blocks(self, session: Session) -> str:
+        return "" if self.notices is None else self.notices.pending(session)
+
     def quota_hold(self, session: Session) -> str | None:
         """A paused session waits for its gate to open; any other may start a
         turn unless its owner is stopped, or closed and the harness would

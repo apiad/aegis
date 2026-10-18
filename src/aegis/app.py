@@ -463,7 +463,9 @@ class App:
         register_help_ops(self)
         register_schedule_ops(self)
         register_workflow_ops(self)
-        self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
+        self.mcp_server, self.mcp_app = build_mcp(
+            self.registry, self.tokens, self.sessions
+        )
 
     def who(self, caller: Caller) -> Principal:
         """The principal a caller acts as. An agent acts as its session's

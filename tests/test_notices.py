@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -7,8 +8,11 @@ import pytest
 from aegis.config import NOTICES_DEFAULTS, notices_from
 from aegis.notices import Notices, cpu_pct, next_level, psi, read_signals
 from aegis.ops import Caller
+from aegis.transcript.entries import NOTICE_HEADER
+from aegis.transcript.store import read_store
 
-from .test_agents import world  # noqa: F401
+from .conftest import until
+from .test_agents import CONFIG, World, inbox, mcp, turn, world  # noqa: F401
 
 DISK = NOTICES_DEFAULTS["disk"]
 
@@ -456,3 +460,72 @@ def test_a_memory_episode_on_percent_ends_below_clear_whatever_the_pressure(stub
     assert "memory · warn" in n.pending(stub.a)
     memory(stub, 80, 3.0)
     assert "Memory is back to 80% used." in n.pending(stub.a)
+
+
+# -- delivery, end to end ---------------------------------------------------------
+# The disk notice fires on any host and never toasts.
+NOTICED = CONFIG + (
+    "notices: {disk: {on: 1, critical: 100, clear: 0}, memory: false,"
+    " cpu: false, quota: false}\n"
+)
+DISK_WARN = NOTICE_HEADER + "disk · warn"
+
+
+@pytest.fixture
+async def noticed(tmp_path, fake_claude):
+    (tmp_path / ".aegis.yaml").write_text(NOTICED)
+    w = await World(tmp_path, fake_claude).start()
+    yield w
+    await w.stop()
+
+
+def sent(app, log_id) -> list[str]:
+    records, _ = read_store(app.sessions.store_path(log_id))
+    return [r["text"] for r in records if r.get("kind") == "send"]
+
+
+async def test_the_first_send_carries_the_notice_and_the_second_does_not(noticed):
+    s = await noticed.spawn()
+    await turn(s, "add the retry")
+    await turn(s, "and a test")
+    first, second = sent(noticed.app, s.log_id)
+    assert first.startswith("add the retry\n\n" + DISK_WARN)
+    assert "ask the person what to do" in first  # the first person-opened asks
+    assert second == "and a test"
+
+
+async def test_a_tool_result_carries_the_notice_when_no_send_came_first(noticed):
+    s = await noticed.spawn()
+    said = await turn(s, mcp("plan_update", items=[{"text": "a", "state": "doing"}]))
+    assert said.startswith("mcp ok: plan saved")
+    assert DISK_WARN in said
+    assert DISK_WARN not in await turn(s, mcp("session_list"))
+    assert sent(noticed.app, s.log_id)[0].startswith("/mcp plan_update")
+
+
+async def test_a_slash_command_goes_unchanged_and_the_next_prompt_carries_it(noticed):
+    s = await noticed.spawn()
+    await turn(s, "/sh true")
+    await turn(s, "hello")
+    command, prompt = sent(noticed.app, s.log_id)
+    assert command == "/sh true"
+    assert prompt.startswith("hello\n\n" + DISK_WARN)
+
+
+async def test_a_worker_gets_no_asker_line(noticed):
+    a = await noticed.spawn()
+    said = await turn(a, mcp("queue_enqueue", queue="general", payload="summarize"))
+    task_id = json.loads(said.removeprefix("mcp ok: ").split("\n\n")[0])["task_id"]
+    await until(lambda: inbox(a), timeout=12, what="the callback")
+    first = sent(noticed.app, noticed.app.queues.tasks[task_id].worker)[0]
+    assert first.startswith("summarize\n\n" + DISK_WARN)
+    assert "Do not ask anyone" in first and "ask the person" not in first
+
+
+async def test_a_restart_does_not_repeat_a_notice(noticed):
+    s = await noticed.spawn()
+    await turn(s, "add the retry")
+    await noticed.restart()
+    s = noticed.session(s.log_id)
+    await turn(s, "carry on")
+    assert sent(noticed.app, s.log_id)[-1] == "carry on"

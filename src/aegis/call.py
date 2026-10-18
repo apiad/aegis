@@ -16,7 +16,7 @@ import sys
 import httpx
 import typer
 
-from .harness import HEADER, TOKEN_VAR, URL_VAR
+from .harness import HEADER, SHELL_HEADER, TOKEN_VAR, URL_VAR
 
 
 def _post(method: str, params: dict) -> dict:
@@ -30,7 +30,11 @@ def _post(method: str, params: dict) -> dict:
         r = httpx.post(
             url,
             json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
-            headers={HEADER: token, "Accept": "application/json, text/event-stream"},
+            headers={
+                HEADER: token,
+                SHELL_HEADER: "1",
+                "Accept": "application/json, text/event-stream",
+            },
             timeout=60,
         )
         r.raise_for_status()

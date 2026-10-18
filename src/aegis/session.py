@@ -149,6 +149,10 @@ class Host:
         node of a live workflow run, workflows.py), or None."""
         return None
 
+    def notice_blocks(self, session: "Session") -> str:
+        """The notices the session has not been told yet (notices.py), or ""."""
+        return ""
+
 
 NO_HOST = Host()
 
@@ -799,6 +803,10 @@ class Session:
         if not self.title and not text.startswith("/"):
             # A slash command names no task; the first prompt does.
             self._set(title=default_title(typed or text))
+        if not text.startswith("/") and (blocks := self._host.notice_blocks(self)):
+            # The record and the harness get the same text, so the fold pairs
+            # them; the fold splits the blocks off into their own rows.
+            text = f"{text}\n\n{blocks}"
         record: dict = {"kind": "send", "text": text}
         if attached:
             record |= {"typed": typed or "", "files": attached}

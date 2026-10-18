@@ -26,7 +26,7 @@ from fastmcp.tools import ToolResult
 from fastmcp.utilities.logging import configure_logging
 from pydantic import PrivateAttr
 
-from .harness import HEADER
+from .harness import HEADER, SHELL_HEADER
 from .ops import Caller, Operation, OpError, Registry
 
 # fastmcp logs every ToolError with its traceback, and every refused op is one
@@ -42,6 +42,7 @@ configure_logging(level=fastmcp.settings.log_level)
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from .registry import Registry as Sessions
     from .session import Session
 
 PATH = "/mcp"
@@ -85,6 +86,7 @@ class OpTool(Tool):
     _op: Operation = PrivateAttr()
     _registry: Registry = PrivateAttr()
     _tokens: Tokens = PrivateAttr()
+    _sessions: Sessions | None = PrivateAttr(default=None)
 
     async def run(self, arguments: dict[str, Any]) -> ToolResult:
         headers = get_http_headers(include_all=True) or {}
@@ -104,6 +106,12 @@ class OpTool(Tool):
             if isinstance(result, str)
             else json.dumps(result, ensure_ascii=False, default=str)
         )
+        # A notice rides on the agent's next tool result, never on aegis
+        # call's output, which a program may parse.
+        s = None if self._sessions is None else self._sessions.sessions.get(log_id)
+        if s is not None and SHELL_HEADER.lower() not in headers:
+            if blocks := self._sessions.notice_blocks(s):
+                text = f"{text}\n\n{blocks}"
         return ToolResult(content=text)
 
 
@@ -121,13 +129,14 @@ SHELL_FORM = (
 )
 
 
-def build_mcp(registry: Registry, tokens: Tokens):
+def build_mcp(registry: Registry, tokens: Tokens, sessions: Sessions | None = None):
     """The fastmcp server and its ASGI app, routed at ``/mcp``."""
     server = FastMCP("aegis")
     for op in registry.agent_ops():
         doc = (op.doc or op.name) + SHELL_FORM.format(name=op.tool_name)
         tool = OpTool(name=op.tool_name, description=doc, parameters=_schema(op))
         tool._op, tool._registry, tool._tokens = op, registry, tokens
+        tool._sessions = sessions
         server.add_tool(tool)
     return server, server.http_app(path=PATH, stateless_http=True, json_response=True)
 
