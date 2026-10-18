@@ -820,7 +820,17 @@ temporary file in the same folder and `os.replace`, keeping the mode, and is
 logged with its author in `<state>/fs-log.jsonl`. Admins and members alike may
 write: every harness already runs as the server's user, so a member's agent
 could anyway. The picker's list is `fs_index.py`'s git-aware walk, run on
-demand and never watched (#458).
+demand and never watched (#458). The tree lists one folder per `fs.list`, with
+one `git check-ignore` for the folder's innermost repository; a folder holding
+a repository shows although its parent ignores it, or `repos/` would hide every
+repository a workspace keeps there. A delete is a move into
+`<state>/trash/<stamp>-<id>/` beside a manifest of where the entry came from
+(`fs_trash.py`), since a file outside git has no other way back; a restore
+refuses with taken when something new is at the path, and the boot purges
+entries older than 30 days. The trash sits under the state root, so the view
+cannot reach it. The open file follows the disk by `fs.stat` every 2 s while
+the view is on screen: an untouched buffer reloads, an edited one gets the
+conflict banner.
 
 The candidates are wider than files: a folder, `owner/repo`, `owner/repo#n` and
 `github.com/…` spans are kept too (`aegis/refs.py`). What each names is asked

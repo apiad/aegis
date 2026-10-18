@@ -1,7 +1,7 @@
 ---
 title: Files
 kind: howto
-when: opening, reading or editing any file on the server in the browser with Alt+O, and saving a file that changed on disk
+when: opening, reading or editing any file on the server in the browser with Alt+O or the folder tree, creating, renaming, moving or deleting files and folders, undoing a delete, and saving a file that changed on disk
 ---
 
 Files opens any file under the config root in the browser, so reading a file,
@@ -32,6 +32,36 @@ that gitignores its repos folder, is listed with its own rules. The list is
 read when the picker opens and refreshed in the background when it is more
 than 30 seconds old.
 
+## The folder tree
+
+The left side of Files is the folder tree, starting at the config root. Click
+a folder to open it; its contents are read the first time, and the folders you
+leave open stay open the next time. A file opened from the picker or an
+address opens the tree down to it. Ignored entries are hidden, by the same
+rules as the picker, except a folder that holds a repository; "Show ignored"
+at the foot of the tree shows them, dimmed. A .git folder and the server's
+state folder never show.
+
+Right-click a row, or hold it on a touch screen, for its menu:
+
+- New file and New folder: type the name in the tree and press Enter, or Esc
+  to cancel. A new file opens in the editor at once.
+- Rename: edit the name in place. A name starting with `/` is a path from the
+  config root, so `/docs/notes.md` moves the file there.
+- Delete: asks once, saying how many files a folder holds. The entry goes to
+  the trash, and the toast's Undo puts it back for 10 seconds, unless
+  something new took its place.
+- Copy path: the path under the config root.
+
+Drag a row onto a folder, or below the last row for the root, to move it
+there. Nothing replaces an existing file or folder: a name that is taken is
+refused. An open file that is renamed or moved stays open at its new path;
+renaming, moving or deleting a file with unsaved changes asks first.
+
+Deleted entries are kept in the trash folder of the server's state for 30
+days, and emptied when the server starts after that. On a phone the tree is
+a drawer behind ☰ in the top bar, and picking a file closes it.
+
 ## Editing and saving
 
 A text file opens in the editor with line numbers, highlighting for about
@@ -48,7 +78,13 @@ text shows its type and size; its preview is not built yet.
 
 ## When the file changed on disk
 
-Sessions write the files you edit. A save sends the version the buffer was
+Sessions write the files you edit. While Files is on screen it checks the
+open file every two seconds. A file you have not edited takes the new version
+by itself, keeping your line and scroll. If you have edits, the banner below
+appears without waiting for a save. A file deleted on disk shows a banner with
+Save, which writes your buffer back as a new file, and Close.
+
+A save sends the version the buffer was
 based on, and when the file on disk is no longer that version, nothing is written
 and a banner says the file changed on disk. It offers three answers:
 

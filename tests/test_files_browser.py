@@ -197,3 +197,91 @@ def test_a_redraw_does_not_move_the_cursor_back_to_the_urls_line(
     page.keyboard.type("y = 0")
     assert page.evaluate(line) == "41"
     assert page.errors == []
+
+
+def row(path: str) -> str:
+    return f".ftree .trow[data-path='{path}']"
+
+
+def menu(pg, path: str, item: str) -> None:
+    pg.click(row(path), button="right")
+    pg.click(f".tmenu button:has-text('{item}')")
+
+
+def test_the_tree_expands_creates_renames_and_deletes_with_undo(
+    server,  # noqa: F811
+    page,  # noqa: F811
+    tmp_path,
+):
+    write(tmp_path / "src" / "a.py", "a = 1\n", 1_000_000_000)
+    (tmp_path / "docs").mkdir()
+    page.goto(f"{server.url.split('#')[0]}#files")
+    page.wait_for_selector(row("src"))
+    assert page.locator(row("src/a.py")).count() == 0
+    page.click(row("src"))
+    page.wait_for_selector(row("src/a.py"))
+
+    menu(page, "src", "New file")
+    page.fill(".ftree .tname", "b.py")
+    page.keyboard.press("Enter")
+    page.wait_for_selector(EDITOR)
+    assert (tmp_path / "src" / "b.py").read_text() == ""
+    assert page.evaluate("location.hash") == "#files=src/b.py"
+    page.wait_for_selector(row("src/b.py") + ".on")
+
+    menu(page, "src/b.py", "Rename")
+    page.fill(".ftree .tname", "c.py")
+    page.keyboard.press("Enter")
+    page.wait_for_selector(row("src/c.py"))
+    assert (tmp_path / "src" / "c.py").exists()
+    assert not (tmp_path / "src" / "b.py").exists()
+    assert page.evaluate("location.hash") == "#files=src/c.py"  # still open
+
+    page.drag_and_drop(row("src/a.py"), row("docs"))
+    page.wait_for_selector(row("src/a.py"), state="detached")
+    assert (tmp_path / "docs" / "a.py").read_text() == "a = 1\n"
+
+    menu(page, "src", "Delete")
+    page.wait_for_selector("#dialog:not([hidden])")
+    assert "1 file" in page.text_content("#dialog .q")
+    page.click("#dialog .ok")
+    page.wait_for_selector(row("src"), state="detached")
+    assert not (tmp_path / "src").exists()
+    assert page.evaluate("location.hash") == "#files"  # the open file went too
+    page.click(".toast .act")
+    page.wait_for_selector(row("src"))
+    assert (tmp_path / "src" / "c.py").exists()
+    assert page.errors == []
+
+
+def test_an_agents_write_reloads_an_untouched_buffer(
+    server,  # noqa: F811
+    page,  # noqa: F811
+    tmp_path,
+):
+    target = tmp_path / "notes.txt"
+    target.write_text("before\n")
+    open_file(page, server, "notes.txt")
+    spawn(page, f"/write {target} => after")
+    assert target.read_text() == "after"
+    page.click("#files-btn")  # back to the view, whose poll finds the change
+    page.wait_for_function(f"({BUFFER}) === 'after'", timeout=6000)
+    assert page.locator(".fbanner").is_hidden()
+    assert page.errors == []
+
+
+def test_on_a_phone_the_tree_waits_behind_its_button(
+    server,  # noqa: F811
+    page,  # noqa: F811
+    tmp_path,
+):
+    write(tmp_path / "src" / "a.py", "a = 1\n", 1_000_000_000)
+    page.set_viewport_size({"width": 390, "height": 800})
+    open_file(page, server, "src/a.py")
+    assert page.locator(".ftree").is_hidden()
+    page.click(".fbar .tbtn")
+    page.wait_for_selector(row("src/a.py") + ".on")
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+    page.click(row("src/a.py"))
+    assert page.locator(".ftree").is_hidden()
+    assert page.errors == []
