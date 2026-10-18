@@ -12,7 +12,8 @@ own file tools and cannot open or write through it.
 ## Opening a file
 
 Press Alt+O anywhere, the Fleet and a session included, or the folder
-button at the top. A picker lists every file under the config root,
+button at the top. On a phone the header has no room for that button:
+open Journal and tap Files at its top. A picker lists every file under the config root,
 the most recently modified first, so what was written a minute ago is at
 the top. Typing filters the list with the same fuzzy match as the command
 menu, the newer file first on a tie. Type `path:line` to open the file at that

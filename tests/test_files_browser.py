@@ -287,6 +287,29 @@ def test_on_a_phone_the_tree_waits_behind_its_button(
     assert page.errors == []
 
 
+def test_on_a_phone_files_is_reached_from_the_journal_view(
+    server,  # noqa: F811
+    page,  # noqa: F811
+):
+    """The phone header has no room for the Files button, so the Journal
+    view carries the way in; on a desktop the link stays hidden."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.click("#journal-btn")
+    page.wait_for_selector("#a2[data-view=journal]")
+    assert page.locator(".jfiles").is_hidden()
+    page.set_viewport_size({"width": 390, "height": 800})
+    assert page.locator("#files-btn").is_hidden()
+    link = page.locator(".jfiles")
+    box = link.bounding_box()
+    assert box and box["height"] >= 44, box
+    link.click()
+    page.wait_for_selector("#a2[data-view=files]")
+    assert page.evaluate("location.hash") == "#files"
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+    assert page.errors == []
+
+
 def test_a_file_written_after_its_folder_was_listed_is_revealed(
     server,  # noqa: F811
     page,  # noqa: F811

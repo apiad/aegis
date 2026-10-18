@@ -1339,6 +1339,7 @@ body{background:#000}
 .a2 .jsearch .jq::placeholder{color:var(--faint);opacity:1}
 .a2 .jwhen{flex:none;font-family:var(--font-mono);font-size:11px;color:var(--muted);background:var(--bg);border:1px solid var(--rule);border-radius:999px;padding:3px 11px;cursor:pointer;white-space:nowrap}
 .a2 .jwhen:hover,.a2 .jwhen:focus-visible{color:var(--strong);border-color:var(--faint);outline:none}
+.a2 .jfiles{display:none}
 .a2 .jkinds{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 0}
 .a2 .jkind{font-family:var(--font-mono);font-size:11px;color:var(--muted);background:none;border:1px solid var(--rule);border-radius:999px;padding:3px 11px;cursor:pointer}
 .a2 .jkind:hover,.a2 .jkind:focus-visible{color:var(--strong);border-color:var(--faint);outline:none}
@@ -1560,6 +1561,11 @@ body{background:#000}
   .a2 .set-btn .lbl{display:none}
   .a2 .set-btn .ic{display:inline-block}
   .a2 .journal{padding:12px 12px 24px}
+  /* Files has no header button here: the Journal view carries its way in. */
+  .a2 .tabs #files-btn{display:none}
+  .a2 .jfiles{display:inline-flex;align-items:center;gap:8px;min-height:44px;margin:0 0 8px;padding:0 14px;font-family:var(--font-mono);font-size:12px;color:var(--muted);border:1px solid var(--rule);border-radius:999px;text-decoration:none}
+  .a2 .jfiles .ic{width:15px;height:15px}
+  .a2 .jfiles:hover,.a2 .jfiles:focus-visible{color:var(--strong);border-color:var(--faint);outline:none}
   .a2 .schedules{padding:12px 12px 24px}
   .a2 .schedules .sch-grid{grid-template-columns:1fr}
   .a2 .schedules .layer{grid-template-columns:1fr;gap:2px}

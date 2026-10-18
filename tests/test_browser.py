@@ -2451,7 +2451,12 @@ def test_every_key_and_every_action_reach_the_list_and_the_palette(server, page)
     page.keyboard.press("Escape")
 
     offered = set()
-    for go in (lambda: None, lambda: spawn(page, "hello")):
+
+    def files():
+        page.evaluate("location.hash = '#files'")
+        page.wait_for_selector("#a2[data-view=files]")
+
+    for go in (lambda: None, lambda: spawn(page, "hello"), files):
         go()
         page.keyboard.press("Control+k")
         page.wait_for_selector("#palette", state="visible")

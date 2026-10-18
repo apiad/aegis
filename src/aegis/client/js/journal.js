@@ -152,7 +152,10 @@ export class Journal {
     this.moreBtn = el("button", "btn jmore", `Show ${PAGE} more`);
     this.moreBtn.hidden = true;
     this.moreBtn.addEventListener("click", () => this.load(true));
-    this.box.replaceChildren(search, this.kinds, this.count, this.list, this.moreBtn);
+    // A phone's header has no room for the Files button, so Files starts here.
+    const files = Object.assign(el("a", "jfiles"), { href: "#files" });
+    files.append(icon("folder"), "Files");
+    this.box.replaceChildren(files, search, this.kinds, this.count, this.list, this.moreBtn);
     this.q.addEventListener("input", () => {
       clearTimeout(this.timer);
       this.timer = setTimeout(() => this.load(false), 200);
