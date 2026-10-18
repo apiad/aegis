@@ -242,6 +242,11 @@ by a person or an agent. Its own monitors and queue tasks still reach it. It end
 `result` schema and a one-sentence `summary`; a turn that ends without one
 is nudged once, then fails.
 
+Once approved, your card shows waiting on `workflow <run>` until the run
+ends, between steps too; approving answers your needs_you. A review or done
+turn during the run goes back to waiting. You get no idle nudge, and your
+process may park: the run's messages restart it.
+
 You are woken by a message headed `> from workflow:<id>` for each thing the
 run waits on you for: a failed step, a gate with `by: main`, a worker's
 question, and the person's answer to a change you proposed. Each one is told

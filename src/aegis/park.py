@@ -100,7 +100,9 @@ def strays(
 # background Agent emit task events, so open_tasks already holds them.
 TIMER_TOOLS = frozenset({"ScheduleWakeup", "CronCreate"})
 # Attentions whose next event comes from outside the harness: a person, or a
-# monitor, queue task or session the server runs (registry._waits).
+# monitor, queue task, session or workflow run the server runs
+# (registry._waits). The main agent of a running run parks: the engine wakes
+# it through the inbox, which starts its process again.
 PARKABLE = frozenset({"done", "needs_you", "review", "waiting"})
 
 
