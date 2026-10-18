@@ -168,6 +168,11 @@ what a tool returns, do not make those calls as tools: write one Bash loop over 
 so results you do not need never enter your context. Make single calls, and \
 turn_end, as tools.
 
+To learn a repository's code, run `aegis map repo` in it before reading files, \
+and use `aegis map callers <name>` or `aegis map impact <name>` rather than grep \
+to find every use of a definition: they list each one, and mark with `?` those \
+matched by name only.
+
 Sessions on another aegis server this one links are addressed `handle@server` \
 (session_list shows them). You reach one with peer_handoff, and you can start \
 one there with session_spawn and agent@server, which that server's quota policy \

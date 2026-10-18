@@ -133,6 +133,17 @@ nothing said so; one template and a test against the README keep the three
 from disagreeing. aegis writes the unit where the person says and prints the
 `sudo` commands, because installing a system service is theirs to run.
 
+**The code map is a subcommand, with its index in the user's cache.** `aegis
+map` parses a git repository with tree-sitter and prints its layout, outlines,
+callers and impact (`codemap/`). It is a CLI rather than MCP tools because a
+tool's schema rides on every request of every session, and a subcommand costs
+nothing until it runs; the primer names it in one paragraph. Its index is one
+pickle per repository under the user's cache directory, refreshed by mtime and
+replaced atomically, so every session of the user shares it without the server
+in the way. It needs no language server: heuristics marked as such (`?` for a
+name-only edge) were right often enough on a measured sample, and work in every
+language the grammar pack has.
+
 **Relative imports, and nothing from the legacy tree.** Imports inside aegis are
 relative, which is what made taking over the `aegis` name one directory move, and no
 module imports `legacy/`, which is not packaged. `tests/test_imports.py` enforces
