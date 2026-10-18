@@ -42,7 +42,9 @@ park: {claude-code: 1200}
 - `effort:` low, medium, high, xhigh or max;
 - `permission:` read, write, auto or full (the sessions page says what each
   allows);
-- `priming:` (optional) a system prompt every session from this agent gets.
+- `priming:` (optional) a system prompt every session from this agent gets;
+- `keep_harness_tools:` (optional, Claude Code) a list of Claude Code tools
+  this agent keeps although aegis replaces them (below).
 
 The harness can also be written as `provider:` with the harness's name, or as
 a nested `provider:` map whose `name` is the harness and whose other keys are
@@ -52,6 +54,27 @@ A session starts from one agent and can override its harness, model, effort
 and permission, from the chips on the new-tab page or in `session_spawn`, but
 never its priming. To make an agent run on haiku, set its `model:`, or override
 the model for one session.
+
+## Claude Code tools aegis replaces
+
+A Claude Code session starts without the Claude Code tools aegis has its own
+version of, because each one's schema costs input tokens on every request
+(about 5.9k a session): Agent, ListAgents, SendMessage, Workflow,
+ScheduleWakeup, CronCreate, CronDelete, CronList, RemoteTrigger, Monitor,
+TaskStop, PushNotification, TodoWrite, TaskCreate, TaskGet, TaskList and
+TaskUpdate. The agent uses queues, session_spawn, peer_handoff, workflows,
+schedules, monitors, toast and plan_update instead.
+
+An agent whose work needs one of them, such as a skill that fans out
+subagents with Agent, keeps it:
+
+```yaml
+agents:
+  research: {harness: claude-code, model: opus, effort: high, permission: full, keep_harness_tools: [Agent]}
+```
+
+A name that is not on that list stops the agent with an error rather than
+keeping nothing. Like the priming, the list is fixed when a session starts.
 
 ## The default agent
 
