@@ -362,3 +362,58 @@ async def test_an_answer_marks_its_step_only_once_delivered(world):
     await world.app.registry.call("workflow.stop", {"run": run}, me)
     await until(lambda: wf_.runs[run].status == "stopped", timeout=10)
     assert not [k for k in wf_._answered if k[0] == run]  # an ended run's go
+
+
+def main_step(id_: str) -> str:
+    return (
+        f'{{agent: {{session: main, prompt: "Do {id_}.", result: {{type: object}}}},'
+        f" id: {id_}, say: Step {id_}.}}"
+    )
+
+
+TWO_MAIN = wf(
+    f"  par:\n    - {main_step('a')}\n    - {main_step('b')}\n  say: Both at once."
+)
+
+
+async def test_main_steps_side_by_side_are_open_at_once_and_name_their_step(world):
+    """The main agent holds no slot, so a ready main step is delivered while
+    another is open (#467); with two open, a result names which one it reports."""
+    main, run = await armed(world, TWO_MAIN)
+    wf_ = world.app.workflows
+    nodes = wf_.runs[run].nodes
+    await until(
+        lambda: all(
+            (n := nodes.get(k)) is not None and n.status == "running" for k in "ab"
+        ),
+        timeout=20,
+        what="both main steps running",
+    )
+    assert not wf_._queued.get(run)
+    await until(
+        lambda: len(inbox(main, "step a") + inbox(main, "step b")) == 2, timeout=10
+    )
+    await until(lambda: main.status == "idle", timeout=10)
+
+    said = await turn(main, mcp("workflow_result", value={}, summary="Did one."))
+    assert "several_steps" in said and "a" in said and "b" in said, said
+    said = await turn(
+        main, mcp("workflow_result", node="b", value={}, summary="Did b.")
+    )
+    assert said.startswith("mcp ok"), said
+    await until(lambda: nodes["b"].status == "done", timeout=10)
+    assert nodes["a"].status == "running"
+    # One step open again: it needs no name.
+    said = await turn(main, mcp("workflow_result", value={}, summary="Did a."))
+    assert said.startswith("mcp ok"), said
+    await until(lambda: wf_.runs[run].status == "done", timeout=20)
+
+
+async def test_a_result_naming_a_step_that_is_not_open_is_refused(world):
+    main, run = await armed(world, MAIN)
+    await until(lambda: inbox(main, "step tick"), timeout=20)
+    await until(lambda: main.status == "idle", timeout=10)
+    said = await turn(
+        main, mcp("workflow_result", node="nope", value={"done": True}, summary="x.")
+    )
+    assert "not_open" in said, said

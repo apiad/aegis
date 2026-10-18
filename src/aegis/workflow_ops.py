@@ -102,6 +102,10 @@ class Result(_Strict):
     summary: str = Field(
         min_length=1, description="One plain sentence for the person: what you did."
     )
+    node: str | None = Field(
+        default=None,
+        description="As the main agent: the step this reports, as its header names it. Needed when several of your steps are open.",
+    )
 
 
 class Output(_Strict):
@@ -113,6 +117,10 @@ class Output(_Strict):
     summary: str = Field(
         min_length=1,
         description="One plain sentence for the person: what this output is.",
+    )
+    node: str | None = Field(
+        default=None,
+        description="As the main agent: the step this reports, as its header names it. Needed when several of your steps are open.",
     )
 
 
@@ -406,7 +414,7 @@ def register_workflow_ops(app: App) -> None:
         """Report your node's result, as a workflow node: a value matching the
         node's schema and a one-sentence summary for the person. Your turn
         should end right after. As a judge, value is {pass, why}."""
-        return wf.result(me(caller), p.value, p.summary)
+        return wf.result(me(caller), p.value, p.summary, p.node)
 
     # Open to read permission, as workflow_result is.
     @r.op("workflow.output", Output, agent=True, read=True)
@@ -414,4 +422,4 @@ def register_workflow_ops(app: App) -> None:
         """Give an early output while your node keeps working, as a workflow
         node: a step waiting on it starts now. Each name once. Your first
         message names the outputs other steps wait on."""
-        return wf.output(me(caller), p.name, p.value, p.summary)
+        return wf.output(me(caller), p.name, p.value, p.summary, p.node)
