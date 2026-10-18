@@ -1,0 +1,1 @@
+import{b as o}from"./chunk-KFW5FJ2E.mjs";import"./chunk-L7GSWAE5.mjs";import"./chunk-GCYVEB7J.mjs";import"./chunk-KM5KFX4M.mjs";import"./chunk-XFBEJDYB.mjs";import"./chunk-KLEZ7NUJ.mjs";var m=()=>o();export{m as lang};

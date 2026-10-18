@@ -19,6 +19,13 @@
 import { artifactStage, dockButton, fileActions, fileUrl, fillWorkflow, hold, markdown, popButton, preview } from "./entries.js";
 import { entryIcon, icon } from "./glyphs.js";
 import { colour, langOfPath, paint } from "./highlight.js";
+import { filesHash } from "./files.js";
+
+// A peeked file's url -> its path under the root, from file.peek's answer
+// (app.js). A tool row's card is drawn from the stored peek record, which
+// keeps its shape, so this is how its viewer knows the file opens in Files;
+// a card from before a reload shows no button until it is peeked again.
+export const peekRoots = new Map();
 
 const MAX_TEXT = 2 * 1024 * 1024; // bytes drawn of a text file; a new tab has the rest
 
@@ -232,6 +239,15 @@ export class Viewer {
     const acts = el("span", "acts");
     const f = item.files[item.at];
     if (!item.remote) acts.append(dockButton(f.replaced ? "" : f.key || ""));
+    // A path under the root (file.peek's answer says so) opens in the Files
+    // view, at the line the reply named.
+    const rootPath = f.root_path || peekRoots.get(f.url);
+    if (rootPath && !item.remote) {
+      const files = el("a", "btn openfiles", "Open in Files");
+      files.href = filesHash(rootPath, item.line);
+      files.title = `Open ${rootPath} in the Files view, where it can be edited`;
+      acts.append(files);
+    }
     drawFile(f, {
       remote: item.remote,
       glyph: item.glyph,

@@ -18,7 +18,11 @@ tests/fixtures/session.jsonl:
 - typing in that session: the renderer main thread's time per keystroke in
   the composer, from a trace. Every layout pays a hover hit test and a paint
   over the mounted rows, so this is what grows if the transcript's DOM does
-  (#157).
+  (#157);
+- the Files view (#458) on a generated tree of 25,000 files: its first open of
+  a Python file in a fresh browser context, the time from Alt+O to a listed
+  picker (the first, which walks the tree, and the warm ones), and the
+  CodeMirror bytes the client loads for that file (core plus Python).
 
 Each figure is the median of several samples taken after a warm-up, and
 the samples are kept in the result's ``samples``: one run's figures moved by
@@ -532,6 +536,66 @@ def fleet_load(playwright) -> dict:
     return {"fleet_load_ms": median("fleet_load_ms", loads[5:])}
 
 
+FILES_TREE = 25_000
+
+
+def files_view(playwright) -> dict:
+    """The Files view on a tree of FILES_TREE files (#458). Each first open
+    is a fresh context with the service worker blocked, so nothing is cached;
+    the bytes are what that context fetched from vendor/codemirror/."""
+    browser = playwright.chromium.launch()
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for i in range(FILES_TREE):
+                d = root / f"pkg{i // 1000:02d}" / f"mod{i // 50 % 20:02d}"
+                d.mkdir(parents=True, exist_ok=True)
+                (d / f"f{i:05d}.py").write_text(f"x = {i}\n")
+            srv = Server(root, {})
+            base = srv.url.split("#")[0]
+            try:
+                opens, kb = [], 0.0
+                for _ in range(6):
+                    ctx = browser.new_context(service_workers="block")
+                    page = ctx.new_page()
+                    page.goto(f"{base}#files=pkg00/mod00/f00000.py")
+                    opens.append(
+                        page.wait_for_function(
+                            "() => document.querySelector('.v-files .cm-content') && performance.now()",
+                            timeout=60_000,
+                        ).json_value()
+                    )
+                    kb = page.evaluate(
+                        "performance.getEntriesByType('resource')"
+                        ".filter(e => e.name.includes('/vendor/codemirror/'))"
+                        ".reduce((n, e) => n + e.encodedBodySize, 0) / 1000"
+                    )
+                    ctx.close()
+                page = browser.new_page()
+                page.goto(base + "#fleet")
+                page.wait_for_selector("#a2[data-view=fleet]")
+                picks = []
+                for _ in range(8):
+                    t0 = time.perf_counter()
+                    page.keyboard.press("Alt+o")
+                    page.wait_for_selector(
+                        "#fpick:not([hidden]) .file-row", timeout=60_000
+                    )
+                    picks.append((time.perf_counter() - t0) * 1000)
+                    page.keyboard.press("Escape")
+                    page.wait_for_selector("#fpick", state="hidden")
+            finally:
+                srv.stop()
+    finally:
+        browser.close()
+    return {
+        "files_open_ms": median("files_open_ms", opens[1:]),
+        "files_picker_cold_ms": picks[0],
+        "files_picker_ms": median("files_picker_ms", picks[1:]),
+        "files_view_kb": kb,
+    }
+
+
 async def _term_echo(samples: int = 200) -> dict:
     """A keystroke's echo in one terminal while another prints at full speed
     (terminal.py's READ_PER_S cap)."""
@@ -590,7 +654,9 @@ async def _term_echo(samples: int = 200) -> dict:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--out", type=Path)
     args = ap.parse_args()
     from playwright.sync_api import sync_playwright
@@ -603,6 +669,7 @@ def main() -> None:
     with sync_playwright() as p:
         metrics.update(browser_runs(p))
         metrics.update(fleet_load(p))
+        metrics.update(files_view(p))
     commit = subprocess.run(
         ["git", "rev-parse", "--short", "HEAD"],
         cwd=ROOT,

@@ -10,7 +10,7 @@ import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
 import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setWorkflows, syncDock, tickWorkflows, workflowLocked, workflowTitle } from "./entries.js";
 import { setScroller } from "./highlight.js";
-import { Viewer } from "./viewer.js";
+import { Viewer, peekRoots } from "./viewer.js";
 import { Canvas } from "./canvas.js";
 import { copyRow, installCopy } from "./copy.js";
 import { Find } from "./find.js";
@@ -27,6 +27,7 @@ import { CommandMenu } from "./commands.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
+import { FilePicker, Files, filesHash, parseTarget } from "./files.js";
 import { Schedules } from "./schedules.js";
 import { Help } from "./help.js";
 import { installBell, listenForOpen, pingToast, redrawFavicon, setTitle, updatePing } from "./ping.js";
@@ -249,6 +250,7 @@ $("jump").append(icon("latest"));
 $("bell").append(icon("bell"));
 $("settings-btn").prepend(icon("gear"));
 $("journal-btn").append(icon("book"));
+$("files-btn").append(icon("folder"));
 $("schedules-btn").prepend(icon("clock"));
 $("send").append(icon("send"));
 $("sp-go").append(icon("send"));
@@ -352,7 +354,7 @@ for (const b of document.querySelectorAll("#fleet-order button"))
     render();
   });
 
-// -- routing: #fleet, #new, #settings, #journal, #schedules, #help[=<page>], #s=<key>, #t=<key>, #read=<key>, #w=<n>:<key> --
+// -- routing: #fleet, #new, #settings, #journal, #files[=<path>[:line]], #schedules, #help[=<page>], #s=<key>, #t=<key>, #read=<key>, #w=<n>:<key> --
 // A help ref is URI-encoded; a hand-typed malformed one is a page name nobody has.
 const unhash = (s) => {
   try {
@@ -361,8 +363,8 @@ const unhash = (s) => {
     return s;
   }
 };
-function route() {
-  const h = location.hash.slice(1);
+function route(hash = location.hash) {
+  const h = hash.slice(1);
   if (h.startsWith("s=")) return { view: "session", id: h.slice(2) };
   if (h.startsWith("t=")) return { view: "term", id: h.slice(2) };
   if (h.startsWith("read=")) return { view: "read", id: h.slice(5) };
@@ -372,6 +374,7 @@ function route() {
   if (h === "new") return { view: "spawn" };
   if (h === "settings") return { view: "settings" };
   if (h === "journal") return { view: "journal" };
+  if (h === "files" || h.startsWith("files=")) return { view: "files", id: unhash(h.slice(6)) };
   if (h === "schedules") return { view: "schedules" };
   if (h === "help" || h.startsWith("help=")) return { view: "help", id: unhash(h.slice(5)) };
   return { view: "fleet" };
@@ -381,7 +384,16 @@ function route() {
 // location.hash would render later, on hashchange, and anything typed in
 // between was wiped when the new tab's draft loaded (#128's CI failure).
 // Back and Forward, and a hand-edited URL, still arrive through hashchange.
+// The Files view (files.js); set once the connection exists, below.
+let filesView = null;
+let filePicker = null;
+
 function go(hash) {
+  // Unsaved edits in the Files view ask first (Save, Discard, Cancel).
+  if (filesView?.leaving(route(hash))) {
+    filesView.confirmLeave().then((ok) => ok && go(hash));
+    return;
+  }
   if (location.hash !== hash) history.pushState(null, "", hash);
   render();
 }
@@ -527,6 +539,7 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
       else delete root.dataset.native;
       loadAgents();
       loadVersion();
+      filesView?.online();
     }
   },
 });
@@ -546,6 +559,13 @@ const journal = new Journal(conn, $("journal"), {
     go(r.open ? `#s=${r.log_id}` : `#read=${r.log_id}`);
   },
 });
+// Alt+O's picker opens a file in the Files view; Shift+Enter in a new browser tab.
+filePicker = new FilePicker($("fpick"), conn, (path, line, newTab) => {
+  const hash = filesHash(path, line);
+  if (newTab) window.open(location.pathname + location.search + hash, "_blank");
+  else go(hash);
+});
+filesView = new Files(conn, $("files"), { toast, go, onPick: () => filePicker.open() });
 // The Help tab (help.js), one per window like Settings. Its code blocks copy
 // as the transcript's do.
 // Guided tour: what /tutorial <page> does, on default_agent, for any page. A
@@ -559,6 +579,7 @@ const helpTab = new Help(conn, $("help"), {
     startGuide({ question, page }, "ask", false).catch((e) => toast(e.message, { kind: "error" })),
 });
 installCopy($("help"), copyDeps);
+installCopy($("files"), copyDeps);
 let sideJournalTimer = null;
 const sideJournalChanged = () => {
   journal.changed();
@@ -979,6 +1000,13 @@ const on = (server) => ordered.filter((m) => m.server === server);
 
 function render() {
   if (!booted) return;
+  // Back or Forward away from unsaved edits: stay on the file, and ask.
+  if (root.dataset.view === "files" && filesView.leaving(route())) {
+    const target = location.hash || "#fleet";
+    history.replaceState(null, "", filesHash(filesView.path));
+    filesView.confirmLeave().then((ok) => ok && go(target));
+    return;
+  }
   tellView(); // the view may have changed with the same session shown
   const r = route();
   if (r.view !== "term") closeTerm();
@@ -1020,6 +1048,7 @@ function render() {
   $("tab-add").classList.toggle("on", r.view === "spawn");
   $("settings-btn").classList.toggle("on", r.view === "settings");
   $("journal-btn").classList.toggle("on", r.view === "journal");
+  $("files-btn").classList.toggle("on", r.view === "files");
   $("schedules-btn").classList.toggle("on", r.view === "schedules");
   if (r.view !== "schedules") schedules.close();
   $("help-btn").classList.toggle("on", r.view === "help");
@@ -1060,6 +1089,13 @@ function render() {
     show("journal");
     if (newView) journal.open();
     setTitle("Journal · aegis");
+  } else if (r.view === "files") {
+    watchHost(null);
+    follow(null);
+    show("files");
+    filesView.show(r.id);
+    const shown = parseTarget(r.id).path || filesView.path;
+    setTitle(`${shown ? shown.split("/").pop() : "Files"} · aegis`);
   } else if (r.view === "schedules") {
     watchHost(null);
     follow(null);
@@ -1951,8 +1987,10 @@ $("entries").addEventListener("click", async (ev) => {
   if (!b) return;
   b.disabled = true;
   try {
-    // The row comes back with the card in it; this node is replaced.
-    await conn.call("file.peek", { log_id: forKey(shown).log_id, entry_id: b.dataset.entry });
+    // The row comes back with the card in it; this node is replaced. Only
+    // the answer says where the file sits under the root (viewer.js).
+    const files = await conn.call("file.peek", { log_id: forKey(shown).log_id, entry_id: b.dataset.entry });
+    for (const f of files) if (f.root_path) peekRoots.set(f.url, f.root_path);
   } catch (e) {
     b.nextElementSibling.textContent = e.message;
     b.disabled = false;
@@ -2581,6 +2619,7 @@ const help = (open = keymap.hidden) => (keymap.hidden = !open);
 $("help-btn").addEventListener("click", () => go("#help"));
 $("settings-btn").addEventListener("click", () => go("#settings"));
 $("journal-btn").addEventListener("click", () => go("#journal"));
+$("files-btn").addEventListener("click", () => go(filesView.path ? filesHash(filesView.path) : "#files"));
 $("schedules-btn").addEventListener("click", () => go("#schedules"));
 keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));
 const palette = new Palette($("palette"), () => route().view);
@@ -2656,6 +2695,8 @@ installKeys(
     spawn: () => offline() || go("#new"), // a new session needs the server
     settings: () => go("#settings"),
     journal: () => go("#journal"),
+    files: () => filePicker.open(),
+    save: () => route().view === "files" && filesView.save(),
     schedules: () => go("#schedules"),
     tab(ev) {
       const n = Number(ev.altKey ? ev.code.slice(5) : ev.key);

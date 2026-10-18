@@ -87,6 +87,8 @@ from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .layout_ops import register_layout_ops
+from .fs_ops import register_fs_ops
+from . import fs_paths, fs_trash
 from .schedule_ops import register_schedule_ops
 from .schedules import Schedules
 from .workflow_ops import register_workflow_ops
@@ -451,6 +453,7 @@ class App:
         register_config_ops(self)
         register_artifact_ops(self)
         register_layout_ops(self)
+        self.fs_index, self.fs_tickets = register_fs_ops(self)
         register_term_ops(self)
         self.push = register_push_ops(self)
         register_journal_ops(self)
@@ -607,6 +610,8 @@ class App:
         await self.terminals.boot()
         # No browser's upload survives a restart (attachments.py).
         att.clear_staged(self.roots.state_root)
+        # The Files view's deletes are kept 30 days (fs_trash.py).
+        fs_trash.purge(self.roots.state_root)
         self.monitors.boot()
         # Before the monitors are armed, so a wake cannot start a turn ahead of
         # the continue; before the queues, so a worker the registry continued
@@ -1608,13 +1613,25 @@ class App:
             except (files.FileError, OSError) as e:
                 raise OpError("open_failed", str(e)) from e
 
+        def root_path(path: Path) -> dict:
+            """``{"root_path": ...}``, the file relative to the config root,
+            when the Files view may open it (fs_paths.resolve passes): the
+            viewer's "Open in Files". Only in the answer; a stored peek keeps
+            its shape."""
+            root = self.roots.config_root
+            try:
+                rel = path.resolve().relative_to(root.resolve()).as_posix()
+                fs_paths.resolve(root, self.roots.state_root, rel)
+            except (ValueError, OpError):
+                return {}
+            return {"root_path": rel}
+
         async def peek_path(s, row, index: int, pick: str | None):
             """A path a reply named, resolved now: as written when absolute,
             else under the config root and under the session's cwd (#323).
             When both hold a file and they differ, it opens neither and asks:
             `pick` ("root" or "cwd") is the person's answer. The browser sends
-            only the index and the pick, so it can open nothing the agent did
-            not write. Nothing is recorded on the reply."""
+            only the index and the pick. Nothing is recorded on the reply."""
             paths = (
                 row["detail"].get("paths", []) if row and row["kind"] == "prose" else []
             )
@@ -1645,7 +1662,7 @@ class App:
                 )
             except files.FileError as e:
                 raise OpError(e.code, e.message) from e
-            return [_sent_file(rec)]
+            return [_sent_file(rec) | root_path(path)]
 
         @r.op("file.peek", PeekParams)
         async def file_peek(p: PeekParams, caller):
@@ -1671,7 +1688,9 @@ class App:
             sent = {k: v for k, v in rec.items() if k != "kind"}
             s.record_peek({"kind": "peek", "entry": p.entry_id, "files": [sent]})
             url = files.url(rec["file_id"], rec["name"])
-            return [{"url": url, "name": rec["name"], "size": rec["size"]}]
+            return [
+                {"url": url, "name": rec["name"], "size": rec["size"]} | root_path(path)
+            ]
 
         @r.op("path.stat", StatParams)
         async def path_stat(p: StatParams, caller):

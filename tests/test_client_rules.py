@@ -151,3 +151,25 @@ def test_every_font_a_theme_names_is_vendored():
         for f in re.findall(r"--font-[a-z]+:'([^']+)'", p.read_text())
     }
     assert named - faces == set()
+
+
+CODEMIRROR = JS.parent / "vendor" / "codemirror"
+
+
+def test_the_editor_lists_exactly_the_vendored_languages():
+    """js/editor.js imports lang-<name>.mjs by name from vendor/codemirror; a
+    name without a file fails at runtime, a file without a name is dead weight
+    in the wheel, and an extension mapped to an unlisted name never colours."""
+    src = (JS / "editor.js").read_text()
+    listed = re.search(r"export const LANGS = \[([^\]]*)\]", src)
+    assert listed, "LANGS is a one-line array literal"
+    names = set(re.findall(r'"([a-z0-9+-]+)"', listed.group(1)))
+    files = {
+        p.name.removeprefix("lang-").removesuffix(".mjs")
+        for p in CODEMIRROR.glob("lang-*.mjs")
+    }
+    assert names == files
+    assert (CODEMIRROR / "core.mjs").is_file()
+    mapped = re.search(r"const BY_EXT = \{(.*?)\};", src, re.S).group(1)
+    mapped += re.search(r"const BY_NAME = \{(.*?)\};", src, re.S).group(1)
+    assert set(re.findall(r':\s*"([a-z0-9+-]+)"', mapped)) <= names

@@ -2451,7 +2451,12 @@ def test_every_key_and_every_action_reach_the_list_and_the_palette(server, page)
     page.keyboard.press("Escape")
 
     offered = set()
-    for go in (lambda: None, lambda: spawn(page, "hello")):
+
+    def files():
+        page.evaluate("location.hash = '#files'")
+        page.wait_for_selector("#a2[data-view=files]")
+
+    for go in (lambda: None, lambda: spawn(page, "hello"), files):
         go()
         page.keyboard.press("Control+k")
         page.wait_for_selector("#palette", state="visible")
@@ -3050,8 +3055,13 @@ def test_settings_imports_lists_and_exports_saved_workflows(
         "#dialog:not([hidden]) >> text=Replace the saved workflow nap?"
     )
     page.click("#dialog .ok")
-    page.wait_for_selector("#set-wf-status >> text=Imported nap.")
+    # The status already reads "Imported nap." from the first import, so wait
+    # on the file the replacing save writes, not on the status line.
+    deadline = time.monotonic() + 10
+    while "Nap longer." not in saved.read_text() and time.monotonic() < deadline:
+        time.sleep(0.05)
     assert "Nap longer." in saved.read_text()
+    page.wait_for_selector("#set-wf-status >> text=Imported nap.")
     page.set_viewport_size({"width": 390, "height": 800})
     assert page.evaluate("document.documentElement.scrollWidth") <= 390
     assert page.errors == []
