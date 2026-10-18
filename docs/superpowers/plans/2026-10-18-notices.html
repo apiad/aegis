@@ -101,7 +101,7 @@ pre.code .lang{display:block;font-size:10px;color:var(--faint);margin-bottom:4px
 <body>
 <div class="chrome">
   <div class="bar"><span>aegis</span><span class="tab">plan · notices</span>
-    <span class="st"><span class="pill acc">execution: not chosen yet</span><span class="pill">#469</span><span class="pill">2026-10-18</span></span></div>
+    <span class="st"><span class="pill acc">execution: one queue worker per slice</span><span class="pill">#469</span><span class="pill">2026-10-18</span></span></div>
   <div class="progress"><span id="pcount">0 of 0 done</span><div class="track" id="ptrack"></div></div>
 </div>
 <main>
@@ -113,7 +113,7 @@ pre.code .lang{display:block;font-size:10px;color:var(--faint);margin-bottom:4px
   <b>branch</b><span><code>notices-469</code>, worktree <code>.claude/worktrees/notices</code></span>
   <b>architecture</b><span>One new module, <code>src/aegis/notices.py</code>: pure readers and level logic, a <code>Notices</code> object built by <code>App</code> beside <code>Nudges</code>, and the announcement store. <code>Session._send</code> and <code>OpTool.run</code> ask it for pending blocks. The transcript fold splits the blocks out into inbox rows.</span>
   <b>stack</b><span>Python 3.13, stdlib readers (<code>os.statvfs</code>, <code>/proc</code>), pytest with the fake claude, Playwright for the one browser test.</span>
-  <b>execution</b><span>Recommended, not yet chosen: one <code>general</code> queue worker per slice, enqueued one after another (<code>know-how/running-a-plan.md</code>). The enqueuer runs the full gates at the end.</span>
+  <b>execution</b><span>Chosen by the maintainer: one <code>general</code> queue worker per slice, enqueued one after another (<code>know-how/running-a-plan.md</code>). The enqueuer runs the full gates at the end.</span>
 </div>
 
 <h2><span class="n">00</span>Global constraints</h2>
