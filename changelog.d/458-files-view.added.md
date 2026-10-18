@@ -16,5 +16,11 @@
   in a toast, kept 30 days. The open file follows the disk: an untouched
   buffer takes a session's write by itself, an edited one shows the banner.
   On a phone the tree is a drawer behind ☰.
+- **The Files view renders what it opens.** Markdown opens rendered, with its
+  relative images; HTML runs in a sandboxed frame; images, PDF, audio and
+  video open in their viewers, each text format with a Source switch to the
+  editor. Any other file offers a download and, on the server's desktop, its
+  own app. A path a reply names gets Open in Files in the viewer, to edit it
+  at that line.
 
 help: files

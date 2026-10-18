@@ -400,3 +400,27 @@ def test_a_png_renders_and_an_unknown_file_offers_a_download(
     origin = server.url.split("/?")[0].split("#")[0]
     assert page.request.get(origin + href).body() == b"\x00\x01\x02" * 100
     assert page.errors == []
+
+
+def test_open_in_files_from_a_peeked_path_opens_the_view_on_it(
+    server,  # noqa: F811
+    page,  # noqa: F811
+    tmp_path,
+):
+    from .test_browser import turns_done
+
+    write(tmp_path / "src" / "app.py", "x = 1\ny = 2\n", 2_000_000_000)
+    page.goto(server.url)
+    spawn(page)
+    page.fill("#input", "/md See `src/app.py:2`.")
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    page.click(".md code.ref")
+    link = page.locator("#viewer .openfiles")
+    link.wait_for()
+    assert link.get_attribute("href") == "#files=src/app.py:2"
+    link.click()
+    page.wait_for_selector(EDITOR)
+    assert page.evaluate("location.hash") == "#files=src/app.py:2"
+    assert page.evaluate(BUFFER) == "x = 1\ny = 2\n"
+    assert page.errors == []

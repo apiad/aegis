@@ -1,7 +1,7 @@
 ---
 title: Files
 kind: howto
-when: opening, reading or editing any file on the server in the browser with Alt+O or the folder tree, creating, renaming, moving or deleting files and folders, undoing a delete, and saving a file that changed on disk
+when: opening, reading or editing any file on the server in the browser with Alt+O or the folder tree, viewing rendered Markdown, HTML, images, PDF, audio and video, creating, renaming, moving or deleting files and folders, undoing a delete, and saving a file that changed on disk
 ---
 
 Files opens any file under the config root in the browser, so reading a file,
@@ -17,6 +17,10 @@ the most recently modified first, so what was written a minute ago is at
 the top. Typing filters the list with the same fuzzy match as the command
 menu, the newer file first on a tie. Type `path:line` to open the file at that
 line.
+
+A path a session's reply names opens in the viewer over the transcript; when
+the file is under the config root, the viewer's Open in Files button opens it
+here, at the line the reply named, to edit.
 
 Enter opens the file as a new step in the browser's history, so Back
 returns where you were. Shift+Enter opens it in a new
@@ -73,8 +77,33 @@ endings and its permissions, and the write replaces the file in one step, so
 nothing reading it sees half a file. Leaving Files, opening another file
 or closing the tab with unsaved changes asks first: Save, Discard or Cancel.
 
-A text file over 2 MB opens read-only, as its first 2 MB. A file that is not
-text shows its type and size; its preview is not built yet.
+A text file over 2 MB opens read-only, as its first 2 MB.
+
+## Markdown, HTML, images and other formats
+
+A file opens the way its kind is drawn when a session sends it:
+
+- Markdown opens rendered, as replies are, with its tables and highlighted
+  code. Its images with a relative path, such as `img/plot.png`, load from
+  beside the file; a path that climbs out of the config root draws nothing.
+  Its relative links open the linked file here.
+- HTML opens in a sandboxed frame: its scripts run, but the page has no origin
+  of its own, so it cannot reach aegis or your sign-in. Files it links to
+  beside it (stylesheets, images) do not load.
+- An image opens fitted to the pane. A PDF opens in the browser's own viewer;
+  audio and video in their players.
+- Anything else shows its type and size, Download, and, when the browser runs
+  on the server's desktop, a button that opens it in the desktop's app for it.
+
+Markdown, HTML and SVG are text too: Rendered and Source at the top of the
+pane switch between the page and the editor, and a save redraws the page.
+Rendered Markdown shows the buffer as it is; an HTML page or an SVG shows the
+file as saved. Opened at a line, as `#files=<path>:<line>` does, such a file
+starts in Source.
+
+The bytes of an image, a page or a download come from a short-lived address,
+valid for ten minutes and only until the server restarts, which reads the
+file again each time; it is the same address Download gives.
 
 ## When the file changed on disk
 
