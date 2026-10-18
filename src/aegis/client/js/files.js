@@ -269,6 +269,14 @@ const parentOf = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
 const join = (dir, name) => (dir ? `${dir}/${name}` : name);
 // Whether `p` is `top` or inside it.
 const under = (p, top) => p === top || p.startsWith(`${top}/`);
+// A heading's anchor as GitHub writes it: "Getting started!" -> "getting-started".
+const slug = (t) =>
+  t
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s_-]/gu, "")
+    .replace(/\s/g, "-");
+
 // "a/./b/../c" -> "a/c"; "" when it climbs out of the root.
 function normalize(p) {
   const out = [];
@@ -1006,7 +1014,20 @@ export class Files {
       );
     }
     for (const a of doc.querySelectorAll("a[href]")) {
-      const rel = local(a.getAttribute("href"));
+      const href = a.getAttribute("href");
+      // A table of contents' "#install": the heading in this page, by the
+      // slug GitHub gives it, never a new tab on the client's own address.
+      if (href.startsWith("#")) {
+        a.removeAttribute("target");
+        a.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          const want = decodeURIComponent(href.slice(1)).toLowerCase();
+          const h = [...doc.querySelectorAll("h1,h2,h3,h4,h5,h6")].find((h) => slug(h.textContent) === want);
+          h?.scrollIntoView({ block: "start" });
+        });
+        continue;
+      }
+      const rel = local(href);
       if (rel === null) continue;
       a.removeAttribute("target");
       if (rel) a.href = filesHash(rel);
@@ -1046,6 +1067,12 @@ export class Files {
     const acts = el("div", "acts");
     const dl = el("a", "btn", "Download");
     dl.href = `${r.url}?download=1`;
+    // The ticket from the open may have lapsed by the time of the click.
+    dl.addEventListener("click", async (ev) => {
+      ev.preventDefault();
+      const t = await this.conn.call("fs.ticket", { path: r.path }).catch(() => null);
+      location.assign(`${t?.url ?? r.url}?download=1`);
+    });
     const native = el("button", "btn fnative", "Open in its app");
     native.type = "button";
     native.addEventListener("click", async () => {

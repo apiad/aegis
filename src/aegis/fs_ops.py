@@ -18,7 +18,8 @@ a download) cannot carry the websocket's token, so they come from
 ``/fs/<ticket>/<name>`` (web.py): a ticket is 128 random bits mapped to a
 relative path for ten minutes, in memory, so a restart ends them all. The route
 resolves the path again on every request, so a ticket never reaches further
-than ``resolve`` does at that moment.
+than ``resolve`` does at that moment. Each use renews the ten minutes, so a
+playing video's range requests keep working; an unused ticket lapses.
 """
 
 from __future__ import annotations
@@ -53,6 +54,7 @@ TEXT_BYTES = 2 * 1024 * 1024
 
 #: How long a ticket URL serves its file, in seconds.
 TICKET_S = 600
+_now = time.monotonic  # a ticket's clock; tests replace it
 
 # Kinds a file's name may give although the file is text: classify asks the
 # system's mime table, which calls .rb "other" on some machines and .ts video.
@@ -96,16 +98,22 @@ class Tickets:
 
     def issue(self, rel: str) -> str:
         """A fresh ticket URL for ``rel``; expired tickets are dropped here."""
-        now = time.monotonic()
+        now = _now()
         self._map = {t: v for t, v in self._map.items() if v[1] > now}
         ticket = secrets.token_urlsafe(16)
         self._map[ticket] = (rel, now + TICKET_S)
         return f"/fs/{ticket}/{quote(Path(rel).name)}"
 
     def find(self, ticket: str) -> str | None:
-        """The path a live ticket names, or None."""
+        """The path a live ticket names, or None. A use renews it: a video
+        or a large PDF keeps asking for byte ranges as it plays or scrolls,
+        long after the ticket was issued."""
         rel, expires = self._map.get(ticket, ("", 0.0))
-        return rel if expires > time.monotonic() else None
+        now = _now()
+        if expires <= now:
+            return None
+        self._map[ticket] = (rel, now + TICKET_S)
+        return rel
 
 
 def _mtime(st: os.stat_result) -> int:

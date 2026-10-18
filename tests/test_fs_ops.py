@@ -476,3 +476,29 @@ async def test_open_natively_needs_the_servers_desktop(app, tmp_path, monkeypatc
     assert e.code == "not_local" and not opened
     await call(app, "fs.open", {"path": "src/a.py"}, Caller("user", desktop=True))
     assert opened == [(tmp_path / "src" / "a.py").resolve()]
+
+
+async def test_a_used_ticket_outlives_its_first_ten_minutes(app, tmp_path, monkeypatch):
+    import aegis.fs_ops as fs_ops
+
+    (tmp_path / "v.mp4").write_bytes(b"\x00" * 64)
+    now = [1000.0]
+    monkeypatch.setattr(fs_ops, "_now", lambda: now[0])
+    url = (await call(app, "fs.ticket", {"path": "v.mp4"}))["url"]
+    for _ in range(3):  # a range request every 8 minutes, 24 in all
+        now[0] += fs_ops.TICKET_S * 0.8
+        assert fetch(app, url).status_code == 200
+    now[0] += fs_ops.TICKET_S + 1  # then nothing for over ten minutes
+    assert fetch(app, url).status_code == 404
+
+
+async def test_a_ticket_is_404_to_an_unknown_host(app, tmp_path):
+    from starlette.testclient import TestClient
+
+    from aegis.web import build_web
+
+    (tmp_path / "d.pdf").write_bytes(b"%PDF")
+    url = (await call(app, "fs.ticket", {"path": "d.pdf"}))["url"]
+    client = TestClient(build_web(app, "tok", {"testserver"}))
+    assert client.get(url).status_code == 200
+    assert client.get(url, headers={"host": "evil.example"}).status_code == 404

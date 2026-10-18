@@ -329,7 +329,10 @@ def test_a_markdown_file_renders_with_its_relative_image(
     (tmp_path / "docs" / "img").mkdir(parents=True)
     (tmp_path / "docs" / "img" / "dot.png").write_bytes(PNG)
     (tmp_path / "docs" / "guide.md").write_text(
-        "# Guide\n\n![dot](img/dot.png)\n\n[up](../src/a.py) and ![out](../../x.png)\n"
+        "# Guide\n\n[To the end](#the-end)\n\n![dot](img/dot.png)\n\n"
+        "[up](../src/a.py) and ![out](../../x.png)\n\n"
+        + "filler\n\n" * 120
+        + "## The end!\n"
     )
     page.goto(f"{server.url.split('#')[0]}#files=docs/guide.md")
     page.wait_for_selector(".v-files .fview .md h1")
@@ -347,6 +350,15 @@ def test_a_markdown_file_renders_with_its_relative_image(
         page.locator(".v-files .fview a", has_text="up").get_attribute("href")
         == "#files=src/a.py"
     )
+    toc = page.locator(".v-files .fview a", has_text="To the end")
+    assert toc.get_attribute("target") is None
+    toc.click()
+    page.wait_for_function(
+        "document.querySelector('.v-files .fview h2').getBoundingClientRect().top"
+        " < document.querySelector('.v-files .fview').getBoundingClientRect().bottom"
+    )
+    assert len(page.context.pages) == 1
+    assert page.evaluate("location.hash") == "#files=docs/guide.md"
     page.click(".fstrip [data-mode=src]")
     page.wait_for_selector(EDITOR)
     assert page.locator(".v-files .fview").is_hidden()
@@ -399,6 +411,9 @@ def test_a_png_renders_and_an_unknown_file_offers_a_download(
     assert href.startswith("/fs/") and href.endswith("/blob.bin?download=1")
     origin = server.url.split("/?")[0].split("#")[0]
     assert page.request.get(origin + href).body() == b"\x00\x01\x02" * 100
+    with page.expect_download() as got:
+        dl.click()  # asks for a fresh ticket first
+    assert got.value.suggested_filename == "blob.bin"
     assert page.errors == []
 
 
