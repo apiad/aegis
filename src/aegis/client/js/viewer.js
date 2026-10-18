@@ -19,6 +19,7 @@
 import { artifactStage, dockButton, fileActions, fileUrl, fillWorkflow, hold, markdown, popButton, preview } from "./entries.js";
 import { entryIcon, icon } from "./glyphs.js";
 import { colour, langOfPath, paint } from "./highlight.js";
+import { filesHash } from "./files.js";
 
 const MAX_TEXT = 2 * 1024 * 1024; // bytes drawn of a text file; a new tab has the rest
 
@@ -232,6 +233,14 @@ export class Viewer {
     const acts = el("span", "acts");
     const f = item.files[item.at];
     if (!item.remote) acts.append(dockButton(f.replaced ? "" : f.key || ""));
+    // A path under the root (file.peek's answer says so) opens in the Files
+    // view, at the line the reply named.
+    if (f.root_path && !item.remote) {
+      const files = el("a", "btn openfiles", "Open in Files");
+      files.href = filesHash(f.root_path, item.line);
+      files.title = `Open ${f.root_path} in the Files view, where it can be edited`;
+      acts.append(files);
+    }
     drawFile(f, {
       remote: item.remote,
       glyph: item.glyph,

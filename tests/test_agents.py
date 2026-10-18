@@ -807,7 +807,10 @@ async def test_a_person_peeks_at_the_file_a_tool_row_read(world, tmp_path):
     peek = world.app.registry.call
     sent = await peek("file.peek", {"log_id": a.log_id, "entry_id": read["id"]})
     (f,) = a.fold().entry(read["id"])["detail"]["peek"]["files"]
-    assert sent == [{"url": f["url"], "name": "notes.md", "size": 22}]
+    assert sent == [
+        {"url": f["url"], "name": "notes.md", "size": 22, "root_path": "notes.md"}
+    ]
+    assert "root_path" not in f, "the stored peek keeps its shape"
     assert f["excerpt"] == "# Notes, edited since"
     assert files_sent(a) == [], "a peek is not a file the agent sent"
     async with httpx.AsyncClient() as c:
@@ -822,6 +825,23 @@ async def test_a_person_peeks_at_the_file_a_tool_row_read(world, tmp_path):
         await peek("file.peek", {"log_id": a.log_id, "entry_id": read["id"]})
     assert e.value.code == "not_found"
     assert set((world.app.roots.state_root / "files").iterdir()) == stored
+
+
+async def test_a_peek_names_its_root_path_only_under_the_root(world, tmp_path):
+    a = await world.spawn()
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.md"
+    outside.write_text("# Away\n")
+    token = world.app.roots.state_root / "token"
+    token.parent.mkdir(parents=True, exist_ok=True)
+    token.write_text("secret")
+    await turn(a, f"/read {outside}")
+    await turn(a, f"/read {token}")
+    away, state = [e for e in a.entries() if e["kind"] == "tool"]
+    peek = world.app.registry.call
+    (f,) = await peek("file.peek", {"log_id": a.log_id, "entry_id": away["id"]})
+    assert "root_path" not in f
+    (g,) = await peek("file.peek", {"log_id": a.log_id, "entry_id": state["id"]})
+    assert "root_path" not in g, "the Files view never opens the state root"
 
 
 async def test_a_path_in_a_reply_opens_by_its_index_root_first_then_cwd(
@@ -840,9 +860,11 @@ async def test_a_path_in_a_reply_opens_by_its_index_root_first_then_cwd(
     ask = {"log_id": s.log_id, "entry_id": reply["id"]}
     (f,) = await call("file.peek", {**ask, "index": 0})
     assert f["name"] == "r.md" and f["preview"] == "markdown"
+    assert f["root_path"] == "docs/r.md"
     assert f["url"].startswith("/files/") and f["download"] == f["url"] + "?download=1"
     (g,) = await call("file.peek", {**ask, "index": 1})
     assert g["name"] == "here.py", "found under the session's cwd"
+    assert g["root_path"] == "sub/pkg/here.py"
     with pytest.raises(OpError) as e:
         await call("file.peek", {**ask, "index": 2})
     assert e.value.code == "no_file" and str(tmp_path) in str(e.value.args)

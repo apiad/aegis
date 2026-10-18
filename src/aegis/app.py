@@ -88,7 +88,7 @@ from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .layout_ops import register_layout_ops
 from .fs_ops import register_fs_ops
-from . import fs_trash
+from . import fs_paths, fs_trash
 from .schedule_ops import register_schedule_ops
 from .schedules import Schedules
 from .workflow_ops import register_workflow_ops
@@ -1613,6 +1613,19 @@ class App:
             except (files.FileError, OSError) as e:
                 raise OpError("open_failed", str(e)) from e
 
+        def root_path(path: Path) -> dict:
+            """``{"root_path": ...}``, the file relative to the config root,
+            when the Files view may open it (fs_paths.resolve passes): the
+            viewer's "Open in Files". Only in the answer; a stored peek keeps
+            its shape."""
+            root = self.roots.config_root
+            try:
+                rel = path.resolve().relative_to(root.resolve()).as_posix()
+                fs_paths.resolve(root, self.roots.state_root, rel)
+            except (ValueError, OpError):
+                return {}
+            return {"root_path": rel}
+
         async def peek_path(s, row, index: int, pick: str | None):
             """A path a reply named, resolved now: as written when absolute,
             else under the config root and under the session's cwd (#323).
@@ -1649,7 +1662,7 @@ class App:
                 )
             except files.FileError as e:
                 raise OpError(e.code, e.message) from e
-            return [_sent_file(rec)]
+            return [_sent_file(rec) | root_path(path)]
 
         @r.op("file.peek", PeekParams)
         async def file_peek(p: PeekParams, caller):
@@ -1675,7 +1688,9 @@ class App:
             sent = {k: v for k, v in rec.items() if k != "kind"}
             s.record_peek({"kind": "peek", "entry": p.entry_id, "files": [sent]})
             url = files.url(rec["file_id"], rec["name"])
-            return [{"url": url, "name": rec["name"], "size": rec["size"]}]
+            return [
+                {"url": url, "name": rec["name"], "size": rec["size"]} | root_path(path)
+            ]
 
         @r.op("path.stat", StatParams)
         async def path_stat(p: StatParams, caller):
