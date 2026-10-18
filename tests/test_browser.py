@@ -119,7 +119,7 @@ AGENTS = (
 )
 # `aegis serve` reads the machine running the tests: on a loaded host every
 # session would be told about it, so no notice fires unless a test asks.
-CONFIG = AGENTS + "notices: {disk: false, memory: false, cpu: false, quota: false}\n"
+CONFIG = "notices: {disk: false, memory: false, cpu: false, quota: false}\n" + AGENTS
 
 
 @pytest.fixture
