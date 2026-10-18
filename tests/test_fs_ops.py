@@ -1,5 +1,6 @@
 """The Files view's operations through Registry.call, on a real App."""
 
+import asyncio
 import hashlib
 import json
 import os
@@ -135,3 +136,37 @@ async def test_a_linked_server_is_refused(app):
     ]:
         e = await refused(app, name, params, Caller("user", link="far"))
         assert e.code == "not_across_links"
+
+
+async def test_two_saves_on_one_base_cannot_both_land(app, tmp_path):
+    base = (await call(app, "fs.read", {"path": "src/a.py"}))["hash"]
+    results = await asyncio.gather(
+        *[
+            call(app, "fs.write", {"path": "src/a.py", "content": t, "base": base})
+            for t in ("tab one\n", "tab two\n")
+        ],
+        return_exceptions=True,
+    )
+    refused = [r for r in results if isinstance(r, OpError)]
+    assert [e.code for e in refused] == ["changed_on_disk"]
+    won = "tab one\n" if isinstance(results[1], OpError) else "tab two\n"
+    assert (tmp_path / "src" / "a.py").read_text() == won
+    log = (app.roots.state_root / "fs-log.jsonl").read_text().splitlines()
+    assert len(log) == 1
+
+
+async def test_a_save_over_a_cut_file_is_refused(app, tmp_path):
+    big = tmp_path / "big.txt"
+    big.write_text("x" * (3 * 1024 * 1024))
+    r = await call(app, "fs.read", {"path": "big.txt"})
+    assert r["cut"]
+    e = await refused(
+        app, "fs.write", {"path": "big.txt", "content": "tiny", "base": r["hash"]}
+    )
+    assert e.code == "too_large"
+    assert big.stat().st_size == 3 * 1024 * 1024
+
+
+async def test_stat_refuses_a_folder(app):
+    e = await refused(app, "fs.stat", {"path": "src"})
+    assert e.code == "not_a_file"

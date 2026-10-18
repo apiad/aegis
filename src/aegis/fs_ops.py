@@ -129,10 +129,48 @@ def _write(path: Path, data: bytes, mode: int | None) -> os.stat_result:
     return path.stat()
 
 
+def _save(path: Path, rel: str, data: bytes, base: str | None):
+    """Check ``base`` against the disk and write, in one step under
+    register_fs_ops's lock: (whether the file existed, its new stat). A
+    process outside aegis writing between the check and os.replace can still
+    be overwritten; the window is a read and a rename, not a round trip."""
+    exists = path.exists()
+    if base is None and exists:
+        raise OpError("exists", f"{rel} already exists")
+    if base is not None and not exists:
+        raise OpError("not_found", f"no file {rel}")
+    mode = None
+    if exists:
+        if not path.is_file():
+            raise OpError("not_a_file", f"{rel} is a folder")
+        disk = _read(path)
+        if disk["hash"] != base:
+            raise OpError(
+                "changed_on_disk",
+                f"{rel} changed on disk since it was opened",
+                # A cut text is not the file: Reload reads it again.
+                {
+                    "text": None if disk.get("cut") else disk.get("text"),
+                    "hash": disk["hash"],
+                },
+            )
+        # A buffer opened from the first TEXT_BYTES of a bigger file is not
+        # the file: saving it would cut the file.
+        if disk["size"] > TEXT_BYTES:
+            raise OpError(
+                "too_large", f"{rel} is over {TEXT_BYTES} bytes; it opens read-only"
+            )
+        mode = path.stat().st_mode & 0o7777
+    return exists, _write(path, data, mode)
+
+
 def register_fs_ops(app: App) -> FsIndex:
     r = app.registry
     root, state = app.roots.config_root, app.roots.state_root
     index = FsIndex(root, state)
+    # One save at a time, so two saves on the same base cannot both pass the
+    # hash check (_save).
+    writing = asyncio.Lock()
     log_path = state / "fs-log.jsonl"
 
     def log(caller: Caller, op: str, path: str, size: int, to: str | None = None):
@@ -164,6 +202,8 @@ def register_fs_ops(app: App) -> FsIndex:
         """A file's size, mtime and kind, polled for the open file."""
         path = resolve(root, state, p.path)
         st = path.stat()
+        if not path.is_file():
+            raise OpError("not_a_file", f"{p.path} is a folder")
         return {"size": st.st_size, "mtime": _mtime(st), "kind": _kind(path)[1]}
 
     @r.op("fs.write", FsWrite, local=True)
@@ -176,28 +216,8 @@ def register_fs_ops(app: App) -> FsIndex:
                 "too_large", f"{len(data)} bytes; the editor saves {TEXT_BYTES}"
             )
         path = resolve(root, state, p.path, must_exist=False)
-        exists = path.exists()
-        if p.base is None and exists:
-            raise OpError("exists", f"{p.path} already exists")
-        if p.base is not None and not exists:
-            raise OpError("not_found", f"no file {p.path}")
-        mode = None
-        if exists:
-            if not path.is_file():
-                raise OpError("not_a_file", f"{p.path} is a folder")
-            disk = await asyncio.to_thread(_read, path)
-            if disk["hash"] != p.base:
-                raise OpError(
-                    "changed_on_disk",
-                    f"{p.path} changed on disk since it was opened",
-                    # A cut text is not the file: Reload reads it again.
-                    {
-                        "text": None if disk.get("cut") else disk.get("text"),
-                        "hash": disk["hash"],
-                    },
-                )
-            mode = path.stat().st_mode & 0o7777
-        st = await asyncio.to_thread(_write, path, data, mode)
+        async with writing:
+            exists, st = await asyncio.to_thread(_save, path, p.path, data, p.base)
         log(caller, "write" if exists else "create", p.path, len(data))
         index.touched(p.path)
         return {"hash": hashlib.sha256(data).hexdigest(), "mtime": _mtime(st)}
