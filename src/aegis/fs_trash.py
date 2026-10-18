@@ -55,7 +55,13 @@ def delete(state: Path, path: Path, rel: str, who: str) -> dict:
     files, size = count(path)
     meta = {"path": rel, "at": now.isoformat(timespec="seconds"), "who": who}
     (box / "manifest.json").write_text(json.dumps({**meta, "files": files}))
-    shutil.move(path, box / "item")
+    try:
+        shutil.move(path, box / "item")
+    except OSError as e:  # shutil.Error is one
+        # A box holding only a manifest would restore nothing.
+        if not (box / "item").exists():
+            shutil.rmtree(box, ignore_errors=True)
+        raise OpError("not_deleted", f"{rel}: {e}") from None
     return {"id": tid, "files": files, "size": size}
 
 

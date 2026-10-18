@@ -329,12 +329,17 @@ def register_fs_ops(app: App) -> FsIndex:
         return {"hash": hashlib.sha256(data).hexdigest(), "mtime": _mtime(st)}
 
     def entry(rel: str) -> Path:
-        """The entry ``rel`` names itself, a symlink rather than its target,
-        once ``resolve`` has passed both. Never the root."""
-        real = resolve(root, state, rel)
-        if real == root.resolve():
-            raise OpError("forbidden", "the root itself cannot be moved or deleted")
-        return resolve(root, state, str(Path(rel).parent)) / Path(rel).name
+        """The entry ``rel`` names itself, a symlink rather than its target
+        (a dangling one included), once ``resolve`` has passed both. Never
+        the state root's folder or one above it, the root included: moving
+        ``.aegis`` would carry the admin token out to where fs.read reaches."""
+        real = resolve(root, state, rel, must_exist=False)
+        if state.resolve().is_relative_to(real):
+            raise OpError("forbidden", f"{rel} holds aegis's own state")
+        path = resolve(root, state, str(Path(rel).parent)) / Path(rel).name
+        if not (path.exists() or path.is_symlink()):
+            raise OpError("not_found", f"no file {rel}")
+        return path
 
     @r.op("fs.list", FsList, local=True)
     async def list_(p: FsList, caller: Caller):
@@ -373,6 +378,14 @@ def register_fs_ops(app: App) -> FsIndex:
         index.removed(p.path)
         index.added(p.to)
         return {"path": p.to}
+
+    @r.op("fs.count", FsPath, local=True)
+    async def count(p: FsPath, caller: Caller):
+        """How many files and bytes a file or folder holds, every file
+        counted, ignored ones included: what a delete would take."""
+        path = entry(p.path)
+        files, size = await asyncio.to_thread(fs_trash.count, path)
+        return {"files": files, "size": size}
 
     @r.op("fs.delete", FsPath, local=True)
     async def delete(p: FsPath, caller: Caller):

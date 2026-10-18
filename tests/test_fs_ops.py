@@ -140,6 +140,7 @@ async def test_a_linked_server_is_refused(app):
         ("fs.mkdir", {"path": "x"}),
         ("fs.move", {"path": "src/a.py", "to": "b.py"}),
         ("fs.delete", {"path": "src/a.py"}),
+        ("fs.count", {"path": "src"}),
         ("fs.restore", {"trash_id": "20261017-000000-00000000"}),
     ]:
         e = await refused(app, name, params, Caller("user", link="far"))
@@ -343,3 +344,43 @@ async def test_a_symlink_out_of_the_root_is_listed_but_not_read(app, escapes):
     e = await refused(app, "fs.move", {"path": "src/a.py", "to": "outdir/a.py"})
     assert e.code == "outside_root"
     assert (escapes / "secret.txt").read_text() == "outside\n"
+
+
+@pytest.mark.parametrize("rel", [".aegis", "."])
+async def test_the_state_roots_folders_cannot_be_moved_or_deleted(app, rel):
+    for name, params in [
+        ("fs.move", {"path": rel, "to": "leak"}),
+        ("fs.delete", {"path": rel}),
+    ]:
+        e = await refused(app, name, params)
+        assert e.code == "forbidden"
+    assert (app.roots.state_root / "token").read_text() == "secret"
+    assert not (app.roots.state_root / "trash").exists()
+
+
+def test_a_delete_that_cannot_move_leaves_no_box(tmp_path):
+    state = tmp_path / "s" / "state"
+    state.mkdir(parents=True)
+    with pytest.raises(OpError) as e:
+        fs_trash.delete(state, tmp_path / "s", "s", "bea")  # into itself
+    assert e.value.code == "not_deleted"
+    assert list((state / "trash").iterdir()) == []
+
+
+async def test_count_includes_ignored_files(app, tmp_path):
+    nm = tmp_path / "node_modules" / "pkg"
+    nm.mkdir(parents=True)
+    for n in range(3):
+        (nm / f"{n}.js").write_text("x")
+    assert await call(app, "fs.count", {"path": "node_modules"}) == {
+        "files": 3,
+        "size": 3,
+    }
+
+
+async def test_a_dangling_symlink_can_be_deleted(app, tmp_path):
+    (tmp_path / "gone").symlink_to(tmp_path / "nothing-here")
+    r = await call(app, "fs.delete", {"path": "gone"})
+    assert not (tmp_path / "gone").is_symlink()
+    await call(app, "fs.restore", {"trash_id": r["trash_id"]})
+    assert (tmp_path / "gone").is_symlink()
