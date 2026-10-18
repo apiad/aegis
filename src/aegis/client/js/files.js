@@ -349,21 +349,20 @@ export class FileTree {
     if (this.open.has(dir)) this.open.delete(dir);
     else {
       this.open.add(dir);
-      if (!this.kids.has(dir)) await this.list(dir);
+      await this.list(dir); // the tree does not poll: an expand is a fresh look
     }
     this.save();
     this.draw();
   }
 
-  // Open every folder down to `path` and scroll its row into view.
+  // Open every folder down to `path`, listed afresh so a file an agent just
+  // wrote is there, and scroll its row into view.
   async reveal(path) {
     if (!this.started) await this.start();
-    const dirs = [];
-    for (let d = parentOf(path); d; d = parentOf(d)) dirs.unshift(d);
-    for (const d of dirs) {
-      this.open.add(d);
-      if (!this.kids.has(d)) await this.list(d);
-    }
+    const dirs = [""];
+    for (let d = parentOf(path); d; d = parentOf(d)) dirs.splice(1, 0, d);
+    for (const d of dirs) if (d) this.open.add(d);
+    await Promise.all(dirs.map((d) => this.list(d)));
     this.save();
     this.draw();
     this.row(path)?.scrollIntoView({ block: "nearest" });
@@ -551,16 +550,20 @@ export class FileTree {
   async move(path, to) {
     if (to === path) return this.draw();
     if (!(await this.host.mayDisturb(path, "Move"))) return this.draw();
+    // A poll already under way would find the old path gone and call the
+    // file deleted on disk.
+    this.host.gen++;
     try {
       await this.conn.call("fs.move", { path, to });
     } catch (e) {
       this.host.toast(`Not moved: ${e.message}`, { kind: "error" });
       return this.draw();
     }
-    this.renamed(path, to);
-    await this.list(parentOf(path));
-    await this.refresh(parentOf(to));
     this.host.moved(path, to);
+    this.renamed(path, to);
+    const moved = [...this.open].filter((d) => under(d, to));
+    await Promise.all([parentOf(path), parentOf(to), ...moved].map((d) => this.list(d)));
+    this.draw();
   }
 
   // Keep the open folders under a moved one open at its new place.

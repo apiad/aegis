@@ -207,6 +207,7 @@ def _git_ignored(top: Path, paths: list[Path]) -> set[Path]:
 def _repo_top(folder: Path, root: Path) -> Path | None:
     """The innermost repository holding ``folder``, up to ``root``. A
     worktree's ``.git`` file counts here: git answers for it."""
+    root = root.resolve()  # ``folder`` is resolved: a symlinked root must match
     for p in (folder, *folder.parents):
         if (p / ".git").exists():
             return p

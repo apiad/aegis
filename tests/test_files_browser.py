@@ -285,3 +285,35 @@ def test_on_a_phone_the_tree_waits_behind_its_button(
     page.click(row("src/a.py"))
     assert page.locator(".ftree").is_hidden()
     assert page.errors == []
+
+
+def test_a_file_written_after_its_folder_was_listed_is_revealed(
+    server,  # noqa: F811
+    page,  # noqa: F811
+    tmp_path,
+):
+    write(tmp_path / "src" / "a.py", "a = 1\n", 1_000_000_000)
+    open_file(page, server, "src/a.py")
+    page.wait_for_selector(row("src/a.py") + ".on")
+    (tmp_path / "src" / "new.py").write_text("new = 1\n")  # an agent writes it
+    page.evaluate("location.hash = '#files=src/new.py'")
+    page.wait_for_selector(row("src/new.py") + ".on")
+    assert page.errors == []
+
+
+def test_renaming_an_open_folder_lists_it_at_its_new_place(
+    server,  # noqa: F811
+    page,  # noqa: F811
+    tmp_path,
+):
+    write(tmp_path / "src" / "a.py", "a = 1\n", 1_000_000_000)
+    open_file(page, server, "src/a.py")
+    page.wait_for_selector(row("src/a.py"))
+    menu(page, "src", "Rename")
+    page.fill(".ftree .tname", "lib")
+    page.keyboard.press("Enter")
+    page.wait_for_selector(row("lib/a.py") + ".on")
+    assert page.evaluate("location.hash") == "#files=lib/a.py"
+    page.wait_for_timeout(2500)  # a poll after the move finds the file
+    assert page.locator(".fbanner").is_hidden()
+    assert page.errors == []

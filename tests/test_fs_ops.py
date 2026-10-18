@@ -384,3 +384,14 @@ async def test_a_dangling_symlink_can_be_deleted(app, tmp_path):
     assert not (tmp_path / "gone").is_symlink()
     await call(app, "fs.restore", {"trash_id": r["trash_id"]})
     assert (tmp_path / "gone").is_symlink()
+
+
+def test_a_symlinked_root_stops_the_climb_for_a_repository(tmp_path):
+    from aegis.fs_ops import _repo_top
+
+    outer = tmp_path / "outer"
+    (outer / "real" / "sub").mkdir(parents=True)
+    git(outer, "init", "-q")  # a repository above the root, say in $HOME
+    link = tmp_path / "link"
+    link.symlink_to(outer / "real")
+    assert _repo_top((link / "sub").resolve(), link) is None
