@@ -3055,8 +3055,13 @@ def test_settings_imports_lists_and_exports_saved_workflows(
         "#dialog:not([hidden]) >> text=Replace the saved workflow nap?"
     )
     page.click("#dialog .ok")
-    page.wait_for_selector("#set-wf-status >> text=Imported nap.")
+    # The status already reads "Imported nap." from the first import, so wait
+    # on the file the replacing save writes, not on the status line.
+    deadline = time.monotonic() + 10
+    while "Nap longer." not in saved.read_text() and time.monotonic() < deadline:
+        time.sleep(0.05)
     assert "Nap longer." in saved.read_text()
+    page.wait_for_selector("#set-wf-status >> text=Imported nap.")
     page.set_viewport_size({"width": 390, "height": 800})
     assert page.evaluate("document.documentElement.scrollWidth") <= 390
     assert page.errors == []
