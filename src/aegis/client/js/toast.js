@@ -51,7 +51,8 @@ export function toast(text, { kind = "info", from = null, ms, action = null } = 
   }
   place();
   const live = () => [...stack.children].filter((n) => !n.classList.contains("out"));
-  const same = live().find((n) => n.dataset.text === text);
+  // An action toast is never merged: two deletes of one path are two Undos.
+  const same = !action && live().find((n) => n.dataset.text === text);
   if (same) return same.restart();
   while (live().length >= MAX) live()[0].remove();
 

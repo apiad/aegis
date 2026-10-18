@@ -577,9 +577,9 @@ export class FileTree {
   async remove(path, isDir) {
     let what = path;
     if (isDir) {
-      // The listed files under it, as the picker sees them.
-      const n = await this.conn.call("fs.find", {}).then(
-        (r) => r.files.filter(([p]) => p.startsWith(`${path}/`)).length,
+      // Every file under it, ignored ones too: what the delete takes.
+      const n = await this.conn.call("fs.count", { path }).then(
+        (r) => r.files,
         () => null,
       );
       what = n === null ? `the folder ${path}` : `the folder ${path} and the ${n} file${n === 1 ? "" : "s"} in it`;
@@ -671,6 +671,7 @@ export class Files {
     this.saving = null; // the save in flight, a Promise of whether it landed
     this.shown = null; // the last target show() applied
     this.stat = null; // {size, mtime} of the file the buffer last matched
+    this.gen = 0; // bumped when a save or the banner changes the base, so a poll begun before drops its answer
     this.polling = false;
     box.innerHTML =
       '<div class="fbar"><button class="btn tbtn" type="button" title="Folders" aria-label="Folders">☰</button>' +
@@ -817,9 +818,11 @@ export class Files {
     if (!shown || document.visibilityState !== "visible" || !this.ed || this.polling || this.saving) return;
     this.polling = true;
     const path = this.path;
+    const gen = this.gen;
+    const stale = () => path !== this.path || this.saving || gen !== this.gen;
     try {
       const st = await this.conn.call("fs.stat", { path }).catch((e) => e);
-      if (path !== this.path || this.saving) return;
+      if (stale()) return;
       if (st instanceof Error) {
         if (st.code === "not_found" && this.hash !== null) {
           this.hash = null; // a save now creates it again
@@ -830,7 +833,7 @@ export class Files {
       }
       if (this.stat && st.mtime === this.stat.mtime && st.size === this.stat.size) return;
       const r = await this.conn.call("fs.read", { path }).catch(() => null);
-      if (!r || path !== this.path || this.saving) return;
+      if (!r || stale()) return;
       this.stat = { size: r.size, mtime: r.mtime };
       if (r.hash === this.hash) return; // touched, not changed
       if (r.text === undefined || r.cut) {
@@ -938,6 +941,7 @@ export class Files {
   }
 
   async write() {
+    this.gen++;
     const content = this.ed.value();
     try {
       const r = await this.conn.call("fs.write", { path: this.path, content, base: this.hash });
@@ -989,6 +993,7 @@ export class Files {
   // The disk's version, keeping the cursor's line; read again when the
   // refused save did not carry it as text.
   async reload() {
+    this.gen++;
     const disk = this.disk;
     this.banner(false);
     if (disk?.text != null && this.ed) {
@@ -1006,6 +1011,7 @@ export class Files {
   }
 
   keep() {
+    this.gen++;
     // The next save overwrites the disk's version on purpose.
     this.hash = this.disk?.hash ?? this.hash;
     this.banner(false);
