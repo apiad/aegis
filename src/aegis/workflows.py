@@ -1159,7 +1159,14 @@ class Workflows:
         if st.status != "armed":
             raise OpError("not_armed", f"{run} is {st.status}")
         self._log(run, {"ev": "approved"})
+        self._owner_card(st)  # the click answered its ask; it waits now
         self.changed()
+
+    def _owner_card(self, st: RunState) -> None:
+        """Redraw the main agent's card, which waits on a running run
+        (registry._waits)."""
+        if (o := self.owner(st)) is not None:
+            self._reg.refresh_card(o.log_id)
 
     async def reject(self, run: str) -> None:
         st = self._get(run)
@@ -2575,6 +2582,7 @@ class Workflows:
         self._queued.pop(st.run, None)
         self._answered = {k for k in self._answered if k[0] != st.run}
         self._publish(st.run)
+        self._owner_card(st)
         self.changed()
         self._app.schedules.changed()  # a schedule's run may have waited on it
         await self._tell_owner(st, outcome, body)

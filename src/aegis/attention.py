@@ -8,6 +8,11 @@ transcript to guess. The first rule that holds wins:
 
     working > error > needs_you > waiting > review > done
 
+A needs_you is answered without a message when the person approves the run
+the agent armed: a report from a turn opened before that click (its `asked`)
+is dropped, so the card falls through to waiting on the run. Only a turn
+opened after the click asks anew.
+
 A queue worker's needs_you is done: its answer goes to whoever enqueued it,
 and nobody reads its tab, so its replies are dropped too.
 
@@ -27,8 +32,16 @@ def card(
     worker: bool,
     waits: list[str],
     last_unread: bool = False,
+    answered_at: float | None = None,
 ) -> dict:
     report = standing.get("report")
+    if (
+        report
+        and answered_at is not None
+        and report["attention"] == "needs_you"
+        and (report.get("asked") or 0) < answered_at
+    ):
+        report = None
     said = report["attention"] if report else "done"
     if worker and said == "needs_you":
         said = "done"
