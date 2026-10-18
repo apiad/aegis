@@ -597,8 +597,10 @@ root:
 as a message headed `step <id>`, and you end it with `workflow_result`, as a
 node does. It takes no `agent` and no `cwd`. Your turns are also the
 person's, so nothing nudges you or fails you for a turn without a result;
-give the step a `deadline`. Steps like it run one at a time in a run, and
-stopping the run never interrupts you.
+give the step a `deadline`. Such a step never waits for room, since you hold
+no slot: on parallel branches several can be open at once, and then each
+`workflow_result` or `workflow_output` passes `node`, the step id its header
+names. Stopping the run never interrupts you.
 
 ## Continue a step's session
 

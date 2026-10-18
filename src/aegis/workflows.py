@@ -182,7 +182,7 @@ When your task is done, call workflow_result with `value` matching this JSON Sch
 If you cannot go on without an answer, call workflow_ask with your question and end your turn: it reaches the main agent, never a person, and the answer arrives as your next message. No person reads this session while the workflow runs."""
 
 MAIN_PREAMBLE = """---
-This is step `{node}` of your workflow, and it is yours to do. When it is done, call workflow_result with `value` matching {schema} and a one-sentence `summary`."""
+This is step `{node}` of your workflow, and it is yours to do. When it is done, call workflow_result with `node` "{node}", `value` matching {schema} and a one-sentence `summary`."""
 
 REUSED = """---
 This is step `{node}` of the same workflow, in the session you already have. When it is done, call workflow_result with `value` matching this JSON Schema and `summary`, one plain sentence telling the person what you did:
@@ -1208,17 +1208,36 @@ class Workflows:
                 "The workflow was stopped. Its node sessions are open and unlocked.",
             )
 
-    def _reporting(self, s: Session, tool: str) -> tuple[RunState, str]:
+    def _reporting(
+        self, s: Session, tool: str, step: str | None = None
+    ) -> tuple[RunState, str]:
         """The run and instance a node session reports for; refused to any
         other session, and once its run has ended. The main agent reports
-        for its run's running session: main step."""
+        for one of its run's open session: main steps: the one ``step``
+        names, which it must name when several are open."""
         wf_ref = s.workflow or {}
         if not wf_ref:
             mine = self.of_owner(s.log_id)
             if mine is not None and mine.status == "running":
-                for k, n in mine.nodes.items():
-                    if n.main and n.status == "running":
-                        return mine, k
+                open_ = [
+                    k for k, n in mine.nodes.items() if n.main and n.status == "running"
+                ]
+                if step is not None:
+                    if step not in open_:
+                        raise OpError(
+                            "not_open",
+                            f"step {step} is not one of yours that is open; "
+                            f"open: {', '.join(open_) or 'none'}",
+                        )
+                    return mine, step
+                if len(open_) == 1:
+                    return mine, open_[0]
+                if open_:
+                    raise OpError(
+                        "several_steps",
+                        f"steps {', '.join(open_)} are open: pass node, the step "
+                        "this reports, as its header names it",
+                    )
         st = self.runs.get(wf_ref.get("run", ""))
         if st is None or st.status != "running":
             raise OpError("not_a_node", f"only a running workflow node calls {tool}")
@@ -1244,8 +1263,10 @@ class Workflows:
             )
         return st, wf_ref["node"]
 
-    def output(self, s: Session, name: str, value, summary: str) -> dict:
-        st, inst = self._reporting(s, "workflow_output")
+    def output(
+        self, s: Session, name: str, value, summary: str, step: str | None = None
+    ) -> dict:
+        st, inst = self._reporting(s, "workflow_output", step)
         if (s.workflow or {}).get("probe") == "judge":
             raise OpError(
                 "judge", "a judge gives only its verdict, with workflow_result"
@@ -1263,8 +1284,8 @@ class Workflows:
         self.changed()
         return {"accepted": True}
 
-    def result(self, s: Session, value, summary: str) -> dict:
-        st, inst = self._reporting(s, "workflow_result")
+    def result(self, s: Session, value, summary: str, step: str | None = None) -> dict:
+        st, inst = self._reporting(s, "workflow_result", step)
         wf_ref = s.workflow or {}
         if wf_ref.get("probe") == "judge":
             j = st.nodes[inst].judges.get(wf_ref.get("round", "")) or {}
@@ -1924,9 +1945,11 @@ class Workflows:
     async def _main_step(
         self, st: RunState, wf: Workflow, node: Node, prefix: str
     ) -> str:
-        """A step the main agent runs in its own session, one at a time per
-        run, outside the pool. Its prompt is an inbox turn; it ends when the
-        main agent's workflow_result is accepted. The main agent's turns are
+        """A step the main agent runs in its own session, outside the pool.
+        It never waits for room: the main agent holds no slot, and several of
+        its steps may be open at once, each reported by name (#467). Its
+        prompt is an inbox turn; it ends when the main agent's
+        workflow_result is accepted. The main agent's turns are
         also the person's, so no turn end nudges or fails it: only its
         deadline bounds it. It logs no log_id, so nothing that ends a run
         interrupts or unquiets the main agent."""
@@ -1939,9 +1962,6 @@ class Workflows:
                 self._log(st.run, {"ev": "node_done", "node": inst})
                 return "done"
             return "running"
-        if any(x.main and x.status == "running" for x in st.nodes.values()):
-            self._queuing.add(inst)
-            return "queued"
         owner = self.owner(st)
         say = self._say(st, wf, node, prefix)
         if owner is None:
