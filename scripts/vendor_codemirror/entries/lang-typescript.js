@@ -1,0 +1,2 @@
+import { javascript } from "@codemirror/lang-javascript";
+export const lang = () => javascript({ typescript: true });
