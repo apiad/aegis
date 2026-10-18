@@ -287,6 +287,7 @@ async def test_arming_again_starts_a_groups_deadline_afresh(world):
     assert wf.runs[run].nodes["y"].error.startswith("exit 3")
 
 
+@pytest.mark.slow  # waits out real deadlines
 async def test_finished_steps_never_expire_after_an_edit(world):
     # Two steps and a group finish early; a change is applied; the clock
     # passes their deadlines while the run waits on a later step.
