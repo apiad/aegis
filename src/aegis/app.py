@@ -80,6 +80,7 @@ from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from . import refs
 from .monitors import Monitors, iso_now
 from .names import valid_handle
+from .notice_ops import register_notice_ops
 from .notices import Notices
 from .nudges import Nudges
 from .park import Parker, Watchers
@@ -461,6 +462,7 @@ class App:
         self.push = register_push_ops(self)
         register_journal_ops(self)
         register_help_ops(self)
+        register_notice_ops(self)
         register_schedule_ops(self)
         register_workflow_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(
@@ -909,6 +911,10 @@ class App:
             return await self._spawn_line(
                 commands.parse_spawn(arg), caller, s, untested
             )
+        if name == "announce":
+            text, level, until = commands.parse_announce(arg)
+            params = {"text": text, "level": level, "until": until}
+            return await self.registry.call("notice.announce", params, caller)
         await reg.close(s.log_id)  # close
         return None
 

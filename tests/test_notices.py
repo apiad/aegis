@@ -1,13 +1,17 @@
 import asyncio
 import json
+import time
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from aegis.commands import parse_announce
 from aegis.config import NOTICES_DEFAULTS, notices_from
-from aegis.notices import Notices, cpu_pct, next_level, psi, read_signals
-from aegis.ops import Caller
+from aegis.notice_ops import until_ts
+from aegis.notices import Announcements, Notices, cpu_pct, next_level, psi, read_signals
+from aegis.ops import Caller, OpError, Principal
 from aegis.transcript.entries import NOTICE_HEADER, split_notices
 from aegis.transcript.store import read_store
 
@@ -111,7 +115,7 @@ class Stub:
         self.toasts: list[tuple[str, str]] = []
         self.a, self.b = session("a"), session("b")
         self.w = session("w", worker={"queue": "general"})
-        self.roots = SimpleNamespace(config_root=tmp_path)
+        self.roots = SimpleNamespace(config_root=tmp_path, state_root=tmp_path)
         self.config = SimpleNamespace(current=lambda: SimpleNamespace(notices=self.cfg))
         self.quota = None
         self.sessions = SimpleNamespace(
@@ -582,3 +586,123 @@ def test_a_monitor_wake_with_a_notice_is_two_inbox_rows():
     assert (woke["kind"], woke["md"]) == ("inbox", wake)
     assert woke["title"].startswith("monitor:01M4")
     assert notice["kind"] == "inbox" and notice["md"] == BLOCK
+
+
+# -- announcements ----------------------------------------------------------------
+def test_the_store_adds_lists_clears_and_expires(tmp_path):
+    store = Announcements(tmp_path / "announcements.json")
+    a = store.add("aegis restarts at 14:00", "warn", "ops", until=100.0)
+    b = store.add("no big builds today", "critical", "ops", until=None)
+    assert len(a["id"]) == 6 and int(a["id"], 16) >= 0
+    assert [x["id"] for x in store.active(50.0)] == [a["id"], b["id"]]
+    assert [x["id"] for x in store.active(150.0)] == [b["id"]]  # a expired
+    again = Announcements(tmp_path / "announcements.json")
+    assert [x["text"] for x in again.active(50.0)] == [b["text"]]  # expiry was saved
+    assert again.clear(b["id"]) and not again.clear(b["id"])
+    assert again.active(0.0) == []
+
+
+def test_every_session_gets_an_announcement_once_and_its_clear(stub):
+    n = stub.notices
+    a = n.announcements.add("aegis restarts at 14:00", "warn", "ops-agent", None)
+    key = f"announce:{a['id']}"
+    for s in (stub.a, stub.b, stub.w):
+        got = n.pending(s)
+        assert got.startswith(f"{NOTICE_HEADER}{key} · warn · ")
+        assert "aegis restarts at 14:00\n" in got
+        assert "This was written by ops-agent, not measured by aegis." in got
+        assert "ask" not in got.split("\n", 1)[1]  # no asker, no tail
+        assert n.pending(s) == ""
+    n.announcements.clear(a["id"])
+    for s in (stub.a, stub.w):
+        assert n.pending(s).endswith(f"The announcement {a['id']} has ended.")
+        assert n.pending(s) == ""
+
+
+def test_an_announcement_clears_when_it_expires(stub):
+    n = stub.notices
+    a = n.announcements.add("deploy window", "warn", "ops", until=stub.now + 60)
+    assert "deploy window" in n.pending(stub.a)
+    stub.now += 120
+    assert n.pending(stub.a).endswith(f"The announcement {a['id']} has ended.")
+
+
+def test_a_critical_announcement_toasts_once(stub):
+    n = stub.notices
+    n.announcements.add("the disk is being moved", "critical", "ops", None)
+    n.levels()
+    n.levels()
+    assert stub.toasts == [
+        ("aegis: announce is critical: the disk is being moved", "error")
+    ]
+
+
+async def test_a_member_may_not_announce(world):  # noqa: F811
+    ben = Caller("user", principal=Principal("ben", "member"))
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call("notice.announce", {"text": "hi"}, ben)
+    assert e.value.code == "not_for_members"
+
+
+async def test_an_agents_announcement_names_its_handle(world):  # noqa: F811
+    s = await world.spawn()
+    other = await world.spawn()
+    me = Caller("agent", log_id=s.log_id)
+    a = await world.app.registry.call(
+        "notice.announce", {"text": "main is frozen", "until": "23:59"}, me
+    )
+    assert a["author"] == s.handle and a["until"] > time.time()
+    key = f"announce:{a['id']}"
+    assert s.notices_sent == {key: "warn"}  # its author is not told its own
+    got = world.app.notices.pending(other)
+    assert f"This was written by {s.handle}, not measured by aegis." in got
+    listed = await world.app.registry.call("notice.announce", {}, me)
+    assert [x["id"] for x in listed] == [a["id"]]
+    assert await world.app.registry.call("notice.announce", {"clear": a["id"]}, me) == {
+        "cleared": a["id"]
+    }
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call("notice.announce", {"clear": a["id"]}, me)
+    assert e.value.code == "unknown_announcement"
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call("notice.announce", {"until": "25:00"}, me)
+    assert e.value.code == "bad_params"
+
+
+async def test_announce_from_a_composer_names_the_person(world):  # noqa: F811
+    s = await world.spawn()
+    await world.app.registry.call(
+        "session.send",
+        {"log_id": s.log_id, "text": "/announce aegis restarts at 14:00 --until 14:10"},
+    )
+    (a,) = world.app.notices.announcements.active(time.time())
+    assert a["text"] == "aegis restarts at 14:00" and a["level"] == "warn"
+    assert a["author"] == world.app.user
+    end = datetime.fromtimestamp(a["until"])
+    assert (end.hour, end.minute) == (14, 10) and a["until"] > time.time()
+
+
+def test_the_announce_line_takes_its_flags_anywhere():
+    assert parse_announce("the build box is down --critical") == (
+        "the build box is down",
+        "critical",
+        None,
+    )
+    assert parse_announce("--until 14:10 restart at 14:00") == (
+        "restart at 14:00",
+        "warn",
+        "14:10",
+    )
+    for bad in ("--until", "x --loud", "--critical"):
+        with pytest.raises(OpError):
+            parse_announce(bad)
+
+
+def test_an_until_is_today_or_tomorrow_and_never_past():
+    now = datetime(2026, 10, 18, 15, 0).timestamp()
+    assert until_ts("16:30", now) == datetime(2026, 10, 18, 16, 30).timestamp()
+    assert until_ts("14:10", now) == datetime(2026, 10, 19, 14, 10).timestamp()
+    assert until_ts("2026-10-20T09:00", now) == datetime(2026, 10, 20, 9).timestamp()
+    for bad in ("2026-10-17T09:00", "noon", "24:00"):
+        with pytest.raises(OpError):
+            until_ts(bad, now)

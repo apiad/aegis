@@ -71,6 +71,11 @@ AEGIS: dict[str, Command] = {
             "Start a session, here or on a linked server; flags: --quiet, "
             "--model, --effort, --permission, --cwd",
         ),
+        Command(
+            "announce",
+            "<text> [--until HH:MM] [--critical]",
+            "Tell every agent on this server something, once",
+        ),
         Command("close", "", "Close the session; it stays in the archive"),
         # The browser answers it: alone by opening the menu, with words by
         # opening the Help tab searched for them. It never reaches claude.
@@ -139,6 +144,31 @@ def parse_spawn(arg: str) -> SpawnLine:
         flags[name] = value
         rest = rest.lstrip()
     return SpawnLine(agent, server or None, rest or None, quiet=quiet, **flags)
+
+
+ANNOUNCE_USAGE = "usage: /announce <text> [--until HH:MM] [--critical]"
+
+
+def parse_announce(arg: str) -> tuple[str, str, str | None]:
+    """``/announce``'s argument as (text, level, until). The flags may stand
+    anywhere, since a line reads naturally with them after the text."""
+    words: list[str] = []
+    level, until = "warn", None
+    it = iter(arg.split())
+    for w in it:
+        if w == "--critical":
+            level = "critical"
+        elif w == "--until":
+            until = next(it, None)
+            if until is None:
+                raise OpError("bad_announce", f"--until needs a time; {ANNOUNCE_USAGE}")
+        elif w.startswith("--"):
+            raise OpError("bad_announce", f"no flag {w}; {ANNOUNCE_USAGE}")
+        else:
+            words.append(w)
+    if not words:
+        raise OpError("bad_announce", ANNOUNCE_USAGE)
+    return " ".join(words), level, until
 
 
 def escape(text: str) -> str:

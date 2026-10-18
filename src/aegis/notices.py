@@ -11,13 +11,20 @@ clear is owed when the kind is no longer active. That record is in the meta;
 the episodes and their askers live here, in memory, and are re-read from the
 signals after a restart. One session the person opened is the asker per kind
 and owner, so nine agents do not ask about the same disk.
+
+An announcement is a notice a person or an admin's agent writes
+(``notice_ops.py``). It is kept in ``<state>/announcements.json``, since no
+signal can re-read it, and is active until it is cleared or its ``until``
+passes.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+import secrets
 import tempfile
 import time
 from collections.abc import Callable
@@ -268,6 +275,61 @@ def _quota(providers: list[dict]) -> dict[str, tuple[str | None, dict]]:
     return out
 
 
+class Announcements:
+    """The announcements in force, in one JSON file written atomically. A
+    file that cannot be read starts empty; a write that fails keeps the
+    list in memory, so a full disk never stops a notice."""
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        try:
+            self._items: list[dict] = json.loads(path.read_text())
+        except (OSError, ValueError):
+            self._items = []
+
+    def _save(self) -> None:
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._path.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(self._items, ensure_ascii=False, indent=1))
+            os.replace(tmp, self._path)
+        except OSError:
+            log.warning("aegis: could not save %s", self._path)
+
+    def add(self, text: str, level: str, author: str, until: float | None) -> dict:
+        known = {a["id"] for a in self._items}
+        id = secrets.token_hex(3)
+        while id in known:
+            id = secrets.token_hex(3)
+        a = {
+            "id": id,
+            "text": text,
+            "level": level,
+            "author": author,
+            "at": time.time(),
+            "until": until,
+        }
+        self._items.append(a)
+        self._save()
+        return a
+
+    def clear(self, id: str) -> bool:
+        kept = [a for a in self._items if a["id"] != id]
+        if len(kept) == len(self._items):
+            return False
+        self._items = kept
+        self._save()
+        return True
+
+    def active(self, now: float) -> list[dict]:
+        """Those in force at ``now``; an expired one is dropped for good."""
+        kept = [a for a in self._items if a["until"] is None or a["until"] > now]
+        if len(kept) != len(self._items):
+            self._items = kept
+            self._save()
+        return [dict(a) for a in kept]
+
+
 RANK = {"warn": 1, "critical": 2}
 
 
@@ -296,6 +358,7 @@ class Notices:
         # The memory episode reached psi_full, so it holds at half of it.
         self._psi = False
         self._task: asyncio.Task | None = None
+        self.announcements = Announcements(app.roots.state_root / "announcements.json")
 
     def start(self) -> None:
         if self._task is None:
@@ -396,6 +459,8 @@ class Notices:
                 if prev == "critical":
                     level = "critical"  # never steps down within an episode
                 now[key] = (level, reading)
+        for a in self.announcements.active(self._clock()):
+            now[f"announce:{a['id']}"] = (a["level"], a)
         if "memory" not in now:
             self._psi = False
         for key in set(self._active) - set(now):
