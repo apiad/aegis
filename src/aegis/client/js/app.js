@@ -565,7 +565,7 @@ filePicker = new FilePicker($("fpick"), conn, (path, line, newTab) => {
   if (newTab) window.open(location.pathname + location.search + hash, "_blank");
   else go(hash);
 });
-filesView = new Files(conn, $("files"), { toast, onPick: () => filePicker.open() });
+filesView = new Files(conn, $("files"), { toast, go, onPick: () => filePicker.open() });
 // The Help tab (help.js), one per window like Settings. Its code blocks copy
 // as the transcript's do.
 // Guided tour: what /tutorial <page> does, on default_agent, for any page. A
