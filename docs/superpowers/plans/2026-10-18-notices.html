@@ -446,12 +446,22 @@ def register_notice_ops(app: "App") -> None
 <p>Slice A (tasks 1–2):</p>
 <ul>
   <li><b><code>notices</code> is not in <code>ConfigDoc</code>.</b> <code>ConfigDoc</code> is the Settings form's model (<code>extra="forbid"</code>) and <code>context</code> is not in it either. <code>notices</code> went into <code>TOP_KEYS</code> instead, which the plan missed: without it doctor calls the block an unknown key.</li>
-  <li><b><code>clear &lt; on</code> is checked only when <code>clear</code> is given.</b> Task 1's own test sets <code>disk: {on: 80}</code> over the default <code>clear: 85</code> and expects it to pass. Such a block flaps between 80 and 85.</li>
   <li><b><code>role(s, kind)</code> takes the kind.</b> The asker is per kind and owner, so <code>role(s)</code> cannot answer alone. <code>pending</code> records the asker; <code>role</code> only reads.</li>
   <li><b>Disk <code>free_gb</code> comes from <code>statvfs.f_bavail</code>.</b> <code>host.disk</code> returns used and total in whole GB and no free figure.</li>
   <li><b><code>NOTICE_HEADER</code> lives in <code>transcript/entries.py</code></b> beside <code>NUDGE_HEADER</code>, as the spec says, and <code>notices.py</code> imports it.</li>
   <li><b>Quota is keyed <code>quota:&lt;provider&gt;</code></b> in <code>notices_sent</code> and in the header, so two providers are two episodes. Its reading is the worst window; <code>projected</code> falls back to <code>percent</code>.</li>
   <li><b>No announcement source yet.</b> <code>levels()</code> reads none until task 5; <code>body()</code> already prints the announce text and clear.</li>
+</ul>
+<p>Slice A review fixes:</p>
+<ul>
+  <li><b>An <code>on</code> alone moves <code>clear</code> and <code>critical</code> with it.</b> When a kind gives <code>on</code> without <code>clear</code>, clear is <code>on</code> minus the default gap (disk <code>on: 80</code> gives clear 75, cpu <code>on: 40</code> gives clear 20); without <code>critical</code>, critical is <code>on</code> plus the default gap, capped at 100. The merged levels must keep <code>clear &lt; on &lt;= critical</code> (no critical for cpu), or the whole block falls back to the defaults with an error. This replaces the spec's fixed defaults for a partial block.</li>
+  <li><b>Episodes are re-seeded after a restart.</b> The spec re-reads them from the signal alone; the first <code>levels()</code> also starts each key from the highest level a live session holds, so a reading between clear and on neither clears nor repeats it, and a held critical does not toast again.</li>
+  <li><b>An episode survives a failed read.</b> A host reading of None, and a quota provider that is missing, failed or stale, keep the previous level. Only a reading below clear, or a fresh <code>ok</code> quota reading with every window normal, ends one.</li>
+  <li><b>A kind turned off mid-episode clears with <code>aegis no longer watches …</code></b> instead of a reading; <code>back to N%</code> prints only a reading below clear.</li>
+  <li><b>A closed asker hands over to a session already told.</b> A live person-opened session of the same owner that holds the key forgets it and is told again with the asker's text.</li>
+  <li><b>Quota reaches a session by <code>pool_for(harness, model)</code></b>, not by harness, so an OpenCode session on another provider hears nothing about OpenCode Go.</li>
+  <li><b><code>pending()</code> has no lock.</b> It runs only on the event loop and never awaits, so two calls cannot interleave.</li>
+  <li><b>Memory pressure holds at half.</b> A memory episode that reached <code>psi_full</code> stays on while <code>psi_full</code> is at or above half the threshold.</li>
 </ul>
 </main>
 <script>
