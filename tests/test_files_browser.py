@@ -466,3 +466,20 @@ def test_open_in_files_from_a_read_rows_peek(
     page.wait_for_selector(EDITOR)
     assert page.evaluate(BUFFER) == "one\ntwo\n"
     assert page.errors == []
+
+
+def test_a_file_deleted_then_written_again_moves_the_banner_to_changed(
+    server,  # noqa: F811
+    page,  # noqa: F811
+    tmp_path,
+):
+    target = tmp_path / "notes.txt"
+    target.write_text("one\n")
+    open_file(page, server, "notes.txt")
+    target.unlink()
+    page.wait_for_selector(".fbanner[data-kind=deleted]:not([hidden])")
+    target.write_text("agent\n")  # an agent writes it again
+    page.wait_for_selector(".fbanner[data-kind=changed]:not([hidden])")
+    page.click(".fbanner [data-act=reload]")
+    page.wait_for_function(f"{BUFFER} === 'agent\\n'")
+    assert page.errors == []

@@ -848,7 +848,10 @@ export class Files {
   // Ask whether the open file moved on disk; see the module's comment.
   async poll() {
     const shown = document.getElementById("a2")?.dataset.view === "files";
-    if (!shown || document.visibilityState !== "visible" || !this.stat || this.polling || this.saving) return;
+    // A buffer keeps polling after its file was deleted (stat is null then),
+    // so a file written again moves the banner to "changed".
+    const idle = !this.path || (!this.ed && !this.stat);
+    if (!shown || document.visibilityState !== "visible" || idle || this.polling || this.saving) return;
     this.polling = true;
     const path = this.path;
     const gen = this.gen;
