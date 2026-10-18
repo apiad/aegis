@@ -175,7 +175,8 @@ waited on go out by handle (`waiting_for`), so a change in a worker's card
 re-derives its enqueuer's the same way. Whether a finished turn asked the person something, showed
 them something to read, or just finished, only the agent knows, and it says so
 with `turn_end`; approving a run answers the needs_you of a turn opened before
-the click, so the main agent's card falls through to waiting on the run; its plan comes from `plan_update`. `turn_end` refuses done
+the click, so the main agent's card falls through to waiting on the run, and
+the click wakes it once to tell the person where the run next stops (#474); its plan comes from `plan_update`. `turn_end` refuses done
 while the plan has an item not done, because a done card offers to archive the
 session and the person should not have to read it to learn the task goes on.
 Both are aegis records in the

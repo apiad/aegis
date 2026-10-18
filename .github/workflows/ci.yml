@@ -6,7 +6,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     # A websocket test that waits forever must not hold a runner for hours.
-    timeout-minutes: 40  # the suite takes 17-24 min on a runner; 25 cut a passing run at 90% (#353)
+    timeout-minutes: 60  # the suite now takes 31-40 min on a runner; 40 cut passing runs at 96% (#476), 25 at 90% (#353)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -244,6 +244,14 @@ by a person or an agent. Its own monitors and queue tasks still reach it. It end
 `result` schema and a one-sentence `summary`; a turn that ends without one
 is nudged once, then fails.
 
+When the person approves, you get a message headed `approved` that says
+where the run next stops: its first gate or `session: main` step not yet
+done, or else its end. Answer it with `turn_end(attention="review")` and a
+short message telling the person the run is going, that they can write to
+you meanwhile to steer it or ask about it without stopping it, and when it
+next stops. A run approved by its launch gets no such message: the
+`workflow_arm` result carries the same line as `next`.
+
 Once approved, your card shows waiting on `workflow <run>` until the run
 ends, between steps too; approving answers your needs_you. A review or done
 turn during the run goes back to waiting. You get no idle nudge, and your

@@ -237,6 +237,10 @@ def register_workflow_ops(app: App) -> None:
         else:
             st = wf.arm(s, p.definition, p.args, run=p.run)
         out = {"run": st.run, "status": st.status}
+        if st.status == "running":
+            # Approved by its launch: no approval message follows, so the
+            # agent reads here when the run next stops.
+            out["next"] = wf.next_text(st)
         if p.dock is not None:
             # The run exists now; a placement that no longer fits is
             # reported, not raised, as artifact_send does.
@@ -307,6 +311,7 @@ def register_workflow_ops(app: App) -> None:
     async def workflow_approve(p: RunName, caller):
         owned(p.run, caller)
         wf.approve(p.run)
+        await wf.tell_approved(p.run)
         return wf.wire(p.run)
 
     @r.op("workflow.reject", RunName)

@@ -391,6 +391,7 @@ async def test_a_leaf_past_its_deadline_fails(world):
     assert slow.ended - slow.started < 2 + 4
 
 
+@pytest.mark.slow  # waits out real deadlines
 async def test_a_finished_group_never_expires_while_a_later_step_runs(world):
     st = await ended(
         world,
@@ -405,6 +406,7 @@ async def test_a_finished_group_never_expires_while_a_later_step_runs(world):
     assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
 
 
+@pytest.mark.slow  # waits out real deadlines
 async def test_a_finished_step_with_retries_never_runs_again_at_its_deadline(world):
     st = await ended(
         world,
