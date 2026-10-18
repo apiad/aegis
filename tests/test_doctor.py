@@ -248,3 +248,12 @@ async def test_an_opencode_older_than_the_range_warns_with_the_upgrade(
     assert "OpenCode 1.19.0 is older than" in oc.message
     assert f"found: {old}" in oc.message
     assert "@opencode/cli@" in oc.message
+
+
+async def test_a_model_listed_twice_is_a_warning_and_the_repeat_is_dropped(
+    tmp_path, fake_claude, fake_opencode
+):
+    text = "default_agent: p\nagents:\n  p: {harness: opencode, models: [opencode-go/fake-pro, opencode-go/fake-flash, opencode-go/fake-pro], effort: high, permission: full}\n"
+    (f,) = at(await run(tmp_path, text, fake_claude, fake_opencode), "agents.p.models")
+    assert f.level == "warn"
+    assert f.message == "opencode-go/fake-pro is listed twice; the second is ignored"

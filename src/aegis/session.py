@@ -188,6 +188,10 @@ class SpawnSpec:
     continues: str | None = None
     # The agent's keep_harness_tools, fixed at spawn like the priming.
     keep_harness_tools: tuple[str, ...] = ()
+    # The agent's models when it names two or more and the spawn kept its
+    # model; () otherwise. Fixed at spawn: the position in use is the index
+    # of ``model`` in it.
+    cascade: tuple[str, ...] = ()
 
     def record(self) -> dict:
         """The fields a spawn record and a meta carry."""
@@ -213,6 +217,8 @@ class SpawnSpec:
             d["continues"] = self.continues
         if self.keep_harness_tools:
             d["keep_harness_tools"] = list(self.keep_harness_tools)
+        if self.cascade:
+            d["cascade"] = list(self.cascade)
         return d
 
     @classmethod
@@ -233,6 +239,7 @@ class SpawnSpec:
             spawned_from=d.get("spawned_from"),
             continues=d.get("continues"),
             keep_harness_tools=tuple(d.get("keep_harness_tools") or ()),
+            cascade=tuple(d.get("cascade") or ()),
         )
 
 

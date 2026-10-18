@@ -8,6 +8,7 @@ from aegis.config import (
     ConfigDoc,
     QueueDoc,
     doc_from,
+    load,
     stamp_of,
     validate,
     write,
@@ -330,3 +331,18 @@ def test_accept_version_on_an_unwritable_folder_raises_an_op_error(tmp_path):
         assert e.value.code == "unwritable"
     finally:
         d.chmod(0o755)
+
+
+def test_settings_save_keeps_model_and_models_shapes_and_comments(tmp_path):
+    p = tmp_path / ".aegis.yaml"
+    p.write_text(
+        "agents:\n  o:\n    provider: claude-code\n    model: opus  # pinned\n    effort: high\n    permission: full\n"
+        "  free:\n    provider: opencode\n    models:\n      - opencode/a\n      - opencode/b\n    effort: high\n    permission: full\n"
+    )
+    doc = doc_from(load(p)[0])
+    assert write(p, doc, stamp_of(p)) == []
+    text = p.read_text()
+    assert (
+        "model: opus  # pinned" in text
+        and "models:\n      - opencode/a\n      - opencode/b" in text
+    )
