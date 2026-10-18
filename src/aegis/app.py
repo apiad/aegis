@@ -453,7 +453,7 @@ class App:
         register_config_ops(self)
         register_artifact_ops(self)
         register_layout_ops(self)
-        self.fs_index = register_fs_ops(self)
+        self.fs_index, self.fs_tickets = register_fs_ops(self)
         register_term_ops(self)
         self.push = register_push_ops(self)
         register_journal_ops(self)

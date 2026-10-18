@@ -52,7 +52,7 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from . import files
+from . import files, fs_paths
 from .app import App
 from .channels import Sub
 from .links import PROTO
@@ -293,6 +293,27 @@ def build_web(
         if path is None:
             return PlainTextResponse("Not Found", status_code=404)
         headers = files.headers(path, request.query_params.get("download") == "1")
+        return FileResponse(
+            path, media_type=headers.pop("Content-Type"), headers=headers
+        )
+
+    async def fs_file(request):
+        """A file under the root, through a ticket fs.ticket or fs.read issued
+        (fs_ops.py). The path is resolved again now, so a file replaced by a
+        symlink out of the root since the ticket was issued is refused, and
+        the bytes are the file's as it is now, never cached."""
+        host = request.headers.get("host", "")
+        rel = app.fs_tickets.find(request.path_params["ticket"])
+        if rel is None or not (host in allowed_hosts or host in public):
+            return PlainTextResponse("Not Found", status_code=404)
+        try:
+            path = fs_paths.resolve(app.roots.config_root, app.roots.state_root, rel)
+        except OpError:
+            return PlainTextResponse("Not Found", status_code=404)
+        if not path.is_file():
+            return PlainTextResponse("Not Found", status_code=404)
+        headers = files.headers(path, request.query_params.get("download") == "1")
+        headers["Cache-Control"] = "no-store"
         return FileResponse(
             path, media_type=headers.pop("Content-Type"), headers=headers
         )
@@ -616,6 +637,7 @@ def build_web(
             Route("/client-files.json", files_list),
             Mount("/static", ClientFiles(directory=CLIENT_DIR)),
             Route("/files/{file_id}/{name}", sent_file),
+            Route("/fs/{ticket}/{name}", fs_file),
             Route("/via/{server}/files/{file_id}/{name}", via_file),
             Route("/dictation/{pin}/{name}", dictation_file),
             WebSocketRoute("/ws", ws),

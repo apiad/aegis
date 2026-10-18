@@ -395,3 +395,64 @@ def test_a_symlinked_root_stops_the_climb_for_a_repository(tmp_path):
     link = tmp_path / "link"
     link.symlink_to(outer / "real")
     assert _repo_top((link / "sub").resolve(), link) is None
+
+
+def fetch(app, url):
+    from starlette.testclient import TestClient
+
+    from aegis.web import build_web
+
+    return TestClient(build_web(app, "tok", {"testserver"})).get(url)
+
+
+async def test_an_html_ticket_is_sandboxed_and_never_cached(app, tmp_path):
+    (tmp_path / "r.html").write_text("<p>hi</p>")
+    r = await call(app, "fs.read", {"path": "r.html"})
+    assert r["kind"] == "html" and r["text"] == "<p>hi</p>"
+    res = fetch(app, r["url"])
+    assert res.status_code == 200 and res.text == "<p>hi</p>"
+    assert res.headers["content-security-policy"] == "sandbox allow-scripts"
+    assert res.headers["cache-control"] == "no-store"
+
+
+async def test_a_pdf_ticket_has_no_csp_and_downloads_on_ask(app, tmp_path):
+    (tmp_path / "d.pdf").write_bytes(b"%PDF-1.4 x")
+    url = (await call(app, "fs.ticket", {"path": "d.pdf"}))["url"]
+    assert url.startswith("/fs/") and url.endswith("/d.pdf")
+    res = fetch(app, url)
+    assert res.status_code == 200 and res.content == b"%PDF-1.4 x"
+    assert "content-security-policy" not in res.headers
+    res = fetch(app, url + "?download=1")
+    assert res.headers["content-disposition"].startswith("attachment")
+
+
+async def test_a_text_read_carries_no_ticket(app):
+    r = await call(app, "fs.read", {"path": "src/a.py"})
+    assert "url" not in r
+
+
+async def test_an_expired_or_unknown_ticket_is_404(app, tmp_path, monkeypatch):
+    import aegis.fs_ops as fs_ops
+
+    (tmp_path / "d.pdf").write_bytes(b"%PDF")
+    monkeypatch.setattr(fs_ops, "TICKET_S", -1)
+    url = (await call(app, "fs.ticket", {"path": "d.pdf"}))["url"]
+    assert fetch(app, url).status_code == 404
+    assert fetch(app, "/fs/AAAAAAAAAAAAAAAAAAAAAA/d.pdf").status_code == 404
+
+
+async def test_a_ticket_follows_no_symlink_out_of_the_root(app, tmp_path):
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.png"
+    outside.write_bytes(b"secret")
+    (tmp_path / "i.png").write_bytes(b"\x89PNG")
+    url = (await call(app, "fs.ticket", {"path": "i.png"}))["url"]
+    assert fetch(app, url).status_code == 200
+    (tmp_path / "i.png").unlink()
+    (tmp_path / "i.png").symlink_to(outside)
+    assert fetch(app, url).status_code == 404
+
+
+async def test_a_ticket_is_refused_to_a_link_caller(app, tmp_path):
+    (tmp_path / "d.pdf").write_bytes(b"%PDF")
+    e = await refused(app, "fs.ticket", {"path": "d.pdf"}, Caller("user", link="far"))
+    assert e.code == "not_across_links"

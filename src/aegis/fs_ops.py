@@ -12,6 +12,13 @@ disk differs is not written: agents write the files a person edits, and
 last-write-wins would silently drop an agent's edit made after the file was
 opened. A write goes through a temporary file in the same folder and
 ``os.replace``, so a reader never sees half a file.
+
+Bytes a browser element fetches itself (an image, a PDF, a rendered HTML page,
+a download) cannot carry the websocket's token, so they come from
+``/fs/<ticket>/<name>`` (web.py): a ticket is 128 random bits mapped to a
+relative path for ten minutes, in memory, so a restart ends them all. The route
+resolves the path again on every request, so a ticket never reaches further
+than ``resolve`` does at that moment.
 """
 
 from __future__ import annotations
@@ -22,10 +29,13 @@ import json
 import os
 import shutil
 import subprocess
+import secrets
 import tempfile
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 from pydantic import BaseModel
 
@@ -40,6 +50,9 @@ if TYPE_CHECKING:
 #: The most text a read sends, and the largest file a save writes. A bigger
 #: text file opens read-only as its first TEXT_BYTES.
 TEXT_BYTES = 2 * 1024 * 1024
+
+#: How long a ticket URL serves its file, in seconds.
+TICKET_S = 600
 
 # Kinds a file's name may give although the file is text: classify asks the
 # system's mime table, which calls .rb "other" on some machines and .ts video.
@@ -73,6 +86,26 @@ class FsWrite(BaseModel):
     path: str
     content: str
     base: str | None
+
+
+class Tickets:
+    """Ticket to (relative path, expiry): what ``/fs/<ticket>/<name>`` serves."""
+
+    def __init__(self) -> None:
+        self._map: dict[str, tuple[str, float]] = {}
+
+    def issue(self, rel: str) -> str:
+        """A fresh ticket URL for ``rel``; expired tickets are dropped here."""
+        now = time.monotonic()
+        self._map = {t: v for t, v in self._map.items() if v[1] > now}
+        ticket = secrets.token_urlsafe(16)
+        self._map[ticket] = (rel, now + TICKET_S)
+        return f"/fs/{ticket}/{quote(Path(rel).name)}"
+
+    def find(self, ticket: str) -> str | None:
+        """The path a live ticket names, or None."""
+        rel, expires = self._map.get(ticket, ("", 0.0))
+        return rel if expires > time.monotonic() else None
 
 
 def _mtime(st: os.stat_result) -> int:
@@ -119,7 +152,8 @@ def _read(path: Path) -> dict:
         "mtime": _mtime(st),
         "hash": _hash(path),
     }
-    texty = kind in ("text", "markdown") or path.suffix.lower() == ".svg"
+    # HTML is sent as text too, for its Source switch.
+    texty = kind in ("text", "markdown", "html") or path.suffix.lower() == ".svg"
     if texty and st.st_size <= files.MAX_BYTES:
         with path.open("rb") as f:
             head = f.read(TEXT_BYTES + 1)
@@ -271,10 +305,11 @@ def _list(root: Path, state: Path, folder: Path, show_ignored: bool) -> list[dic
     return out
 
 
-def register_fs_ops(app: App) -> FsIndex:
+def register_fs_ops(app: App) -> tuple[FsIndex, Tickets]:
     r = app.registry
     root, state = app.roots.config_root, app.roots.state_root
     index = FsIndex(root, state)
+    tickets = Tickets()
     # One save at a time, so two saves on the same base cannot both pass the
     # hash check (_save).
     writing = asyncio.Lock()
@@ -300,9 +335,21 @@ def register_fs_ops(app: App) -> FsIndex:
 
     @r.op("fs.read", FsPath, local=True)
     async def read(p: FsPath, caller: Caller):
-        """A file's kind, size, mtime and hash, and its text when it is text."""
+        """A file's kind, size, mtime and hash, its text when it is text, and
+        a ticket URL for every kind a browser element draws itself."""
         path = resolve(root, state, p.path)
-        return {"path": p.path, **await asyncio.to_thread(_read, path)}
+        out = {"path": p.path, **await asyncio.to_thread(_read, path)}
+        if out["kind"] not in ("text", "markdown"):
+            out["url"] = tickets.issue(p.path)
+        return out
+
+    @r.op("fs.ticket", FsPath, local=True)
+    async def ticket(p: FsPath, caller: Caller):
+        """A ticket URL for one file, such as an image a Markdown file links to."""
+        path = resolve(root, state, p.path)
+        if not path.is_file():
+            raise OpError("not_a_file", f"{p.path} is a folder")
+        return {"url": tickets.issue(p.path)}
 
     @r.op("fs.stat", FsPath, local=True)
     async def stat(p: FsPath, caller: Caller):
@@ -412,4 +459,4 @@ def register_fs_ops(app: App) -> FsIndex:
         index.added(rel)
         return {"path": rel}
 
-    return index
+    return index, tickets
