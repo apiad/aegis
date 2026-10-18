@@ -363,7 +363,7 @@ def resolve(root: Path, state: Path, rel: str, *, must_exist: bool = True) -> Pa
 
 <p class="slice">Landing</p>
 
-<details class="task" id="task-15" data-state="pending">
+<details class="task" id="task-15" data-state="doing">
 <summary><span class="num">15</span><span><span class="ttl">Merge main, the full gates, the PR</span><span class="files">the branch</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>steps</h4>
@@ -378,7 +378,58 @@ def resolve(root: Path, state: Path, rel: str, *, must_exist: bool = True) -> Pa
 </details>
 
 <h2><span class="n">16</span>Where this plan departs from the spec</h2>
-<p>Nothing yet. Each worker's departures are copied here with the file and line that forced them.</p>
+<p>Each slice's departures, copied from its report, with the file each one concerns.</p>
+
+<h3>Slice 1: find, read, write, the editor and the picker (tasks 1 to 6)</h3>
+<ol>
+<li><code>src/aegis/fs_paths.py</code>: the plan's sketch let a dangling symlink through and would have let a write follow it. A dangling link now counts as existing, so its target is checked; a dangling link out of the root is <code>outside_root</code>. A new path whose folder does not exist answers <code>not_found</code>, as the spec's test list asks. <code>must_exist</code> is checked after the root and state checks.</li>
+<li><code>src/aegis/fs_index.py</code>: mtimes are integer milliseconds. <code>FsIndex</code> is asyncio-based: <code>entries()</code> awaits a walk in a thread, with one background refresh at a time. The legacy fixed ignore list is kept as it is, so <code>vendor</code>, <code>build</code>, <code>dist</code>, <code>.claude</code> and <code>.aegis</code> stay out of the picker (<code>src/aegis/client/vendor/</code> among them).</li>
+<li><code>src/aegis/ops.py</code>: <code>OpError</code> already had a data field, so it needed no change. The local check sits after the agent checks and before params validation.</li>
+<li><code>src/aegis/fs_ops.py</code>: (a) the kind comes from the system's mime table, which calls <code>.rb</code> and <code>.dart</code> "other" (and on some machines calls <code>.ts</code> video/mp2t), so a file classified other, audio or video that sniffs as text is served as text. (b) <code>fs.read</code>, <code>fs.stat</code> and <code>fs.write</code> answer mtimes in milliseconds, as <code>fs.find</code> does. (c) <code>fs.write</code> with a non-null base on a missing file answers <code>not_found</code>, and on a folder <code>not_a_file</code>. (d) <code>changed_on_disk</code> omits the disk text when the file is over 2 MB, so Reload reads it again instead of loading a cut text. (e) <code>register_fs_ops</code> returns the index and <code>app.py</code> stores it as <code>self.fs_index</code>.</li>
+<li>Vendoring: <code>scripts/vendor_codemirror/</code> commits its <code>package-lock.json</code> so transitive versions are pinned. Entries export <code>lang()</code>; the JavaScript variants are separate files and C and C++ share <code>lang-cpp</code>, giving 31 language files. <code>core.js</code> also exports <code>Prec</code>, <code>indentWithTab</code> and <code>indentUnit</code>. Gzipped, the core as loaded is 131 KB (the spec said 125 KB) and all 39 modules are 399,543 B (the spec said 398 KB).</li>
+<li><code>src/aegis/client/js/editor.js</code>: the value is read with <code>state.sliceDoc()</code>, because <code>doc.toString()</code> always joins lines with <code>\n</code> and dropped CRLF. The API grew <code>dirty()</code>, <code>focus()</code> and <code>view</code>; <code>setValue()</code> keeps the cursor line and the scroll and marks the new text as saved. A new rule in <code>tests/test_client_rules.py</code> checks that <code>LANGS</code> equals the vendored <code>lang-*.mjs</code> files.</li>
+<li><code>files.js</code> and <code>app.js</code>: <code>route()</code> takes an optional hash so <code>go()</code> can ask whether a target leaves unsaved edits; Back or Forward out of a dirty file restores the hash with <code>replaceState</code> and asks. The instance is <code>filesView</code>, since <code>app.js</code> already uses <code>files</code> as a local name. Fixed beyond the plan: a page loaded straight on <code>#files=&lt;path&gt;</code> could read before its socket opened and show "offline"; the view now reads when the connection opens. Ctrl+S outside the editor is a new <code>save</code> action in a new <code>files</code> key scope; Alt+O is the global action <code>files</code>. The Files button uses the existing folder icon.</li>
+<li>Kinds without a preview show their mime type and size and say only text opens for now, rather than naming slice 3.</li>
+<li>The changelog fragment is <code>changelog.d/458-files-view.added.md</code>, because <code>changelog.d/README.md</code> has no "feature" category. It ends with <code>help: files</code>, which <code>.rift.yaml</code> requires.</li>
+<li><code>src/aegis/help/files.md</code> avoids the words "agent", "add" and "an": with them, <code>tests/test_help_index.py</code>'s question "add an agent to .aegis.yaml" ranks <code>config#untested-harness-versions</code> first, because those two config sections already scored within 0.002 of each other. Slices 2 and 3 put "an" back and the landing reworded it out again. The question will tip with the next page that uses those words; it is worth its own fix.</li>
+<li><code>DESIGN.md</code>: the new paragraph "A person opens any file under the root, and only a person" follows "A path in a reply is a link". The <code>peek_path</code> docstring sentence the spec named was in <code>src/aegis/app.py</code> and was removed there.</li>
+</ol>
+
+<h3>Slice 2: the tree and following the disk (tasks 7 to 10)</h3>
+<ol>
+<li><code>src/aegis/fs_ops.py</code>, <code>fs.list</code>: a folder's <code>size</code> is null. An ignored folder is still listed when it is a repository or holds one a level down, because the tree must reach <code>repos/&lt;name&gt;</code> under a gitignored <code>repos/</code>; its <code>ignored</code> flag stays true so the client dims it. A repository folder reports <code>ignored=false</code>. The repository that answers <code>check-ignore</code> is the nearest <code>.git</code> file or folder, worktrees included. An empty <code>dir</code> means the root.</li>
+<li><code>fs.delete</code> answers <code>{trash_id, files}</code>, not only the id. The log line's <code>to</code> is the trash id and its <code>size</code> the bytes deleted.</li>
+<li>Move and delete act on the entry itself, not on what a symlink points to: a new <code>entry()</code> helper resolves the parent and appends the name. Deleting or moving <code>.</code> and moving a folder into itself answer <code>forbidden</code>.</li>
+<li><code>src/aegis/fs_trash.py</code>: an entry is stored as <code>trash/&lt;id&gt;/item</code> beside <code>manifest.json</code>, so a file named <code>manifest.json</code> cannot clash. <code>purge()</code> reads a box's age from the stamp in its name. It runs synchronously in <code>App.boot</code>, after staged attachments are cleared.</li>
+<li><code>src/aegis/fs_index.py</code>: <code>FsIndex.added(rel)</code> applies only the fixed ignore list until the next walk; move and restore use it so the picker sees the result at once.</li>
+<li><code>js/files.js</code>: Delete's file count for a folder comes from <code>fs.find</code>, so ignored files are not counted. No new operation was added for it.</li>
+<li>Rename: a name that starts with <code>/</code> is a path from the config root, which is how a rename moves a file up the tree; any other name is relative to the entry's folder. Dropping below the last row targets the root. <code>help/files.md</code> says so.</li>
+<li>The "deleted on disk" banner reuses <code>.fbanner</code> with <code>data-kind=changed|deleted</code>; Save there writes with a null base. <code>Files</code> takes a new <code>go</code> option from <code>app.js</code>.</li>
+<li>Slice 2's changelog bullet went into slice 1's fragment.</li>
+<li>The tree does not poll: a file deleted outside the view stays listed until its folder is listed again. The spec does not ask for this.</li>
+</ol>
+
+<h3>Slice 3: tickets, the other formats and Open in Files (tasks 11 to 14)</h3>
+<ol>
+<li><code>src/aegis/fs_ops.py</code> (<code>_read</code>): <code>fs.read</code> also sends an HTML file's text, which HTML's Source switch needs.</li>
+<li><code>fs.read</code> issues a ticket URL for every kind except text and Markdown, and for any file whose text it does not send (binary, or over <code>MAX_BYTES</code>), because a file too large to open is offered as a download and a download needs a URL.</li>
+<li>A new op <code>fs.open {path}</code> (local, needs a desktop caller, like <code>file.open</code>): <code>file.open</code> takes only a sent file's id, and the Other view needs one that takes a path.</li>
+<li><code>register_fs_ops</code> returns <code>(FsIndex, Tickets)</code>; the App keeps <code>self.fs_tickets</code> for <code>web.py</code>'s <code>/fs</code> route.</li>
+<li><code>src/aegis/web.py</code>: the <code>/fs</code> route applies the same Host check as <code>/files/</code>. It ignores the <code>{name}</code> segment and takes the name from the resolved path.</li>
+<li><code>js/files.js</code>: a rendered Markdown file's relative links open in the Files view, since they would otherwise open broken tabs on aegis's origin. A file opened at a line starts in Source. Rendered Markdown draws the buffer; HTML and SVG draw the file on disk through a fresh ticket, redrawn after a save or reload. A preview without an editor follows the disk by reopening when <code>fs.stat</code> moves, and shows "deleted on disk" when the file goes.</li>
+<li><code>js/app.js</code>: <code>installCopy($("files"))</code> makes the copy buttons in rendered Markdown work; the plan's file list for task 12 did not name <code>app.js</code>.</li>
+<li><code>tests/test_files_browser.py</code>: slice 1's conflict test opens <code>notes.txt</code>, because a <code>.md</code> file now opens rendered. Task 14's format tests landed in task 12's commit with the renderers they test.</li>
+<li>The HTML sandbox test proves the opaque origin (sessionStorage refused, <code>self.origin</code> is <code>null</code>), as the sent-file test in <code>tests/test_browser.py</code> does, rather than having the frame try the websocket.</li>
+<li><code>src/aegis/client/js/viewer.js</code>: Open in Files appears only for paths a reply names. A Read, Write or Edit row's peek card is drawn from the stored record, which keeps its shape, so it shows no button even though <code>file.peek</code> now answers <code>root_path</code>. The viewer stays open in the session it came from.</li>
+<li><code>scripts/bench.py</code>: <code>--help</code> prints the module docstring. <code>files_view_kb</code> is raw bytes, since the server sends no gzip; the spec's 125 KB is gzipped.</li>
+</ol>
+
+<h3>Landing (task 15)</h3>
+<ol>
+<li><code>site/client.css</code> was stale after the Files view's CSS and is regenerated with <code>make site-css</code>.</li>
+<li>On a phone the Files button is not in the header. With it, the header's first row ran out of room at 390 px and wrapped <code>?</code> to a second row (<code>tests/test_help_browser.py</code>); the row already ended at 384 px, and shrinking the icon buttons would put them under the 44 px tap size. Below the phone breakpoint <code>#files-btn</code> is hidden and the Journal view starts with a 44 px Files link to <code>#files</code> (<code>src/aegis/client/js/journal.js</code>, <code>src/aegis/client/css/base.css</code>). A desktop keeps the header button and does not show the link. <code>help/files.md</code> names the phone path, and <code>tests/test_files_browser.py</code> walks it at 390 px.</li>
+<li><code>tests/test_browser.py</code>'s palette test also opens the Files view, because the new <code>save</code> action is offered only there.</li>
+</ol>
 
 </main>
 <script>
