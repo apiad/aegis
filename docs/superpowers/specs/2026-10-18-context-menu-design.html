@@ -85,6 +85,12 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 .mrow:hover{background:var(--raised)}
 .mrow .src{font-family:var(--font-mono);font-size:10.5px;color:var(--faint)}
 .mrow.tool{font-family:var(--font-mono);font-size:12px}
+.page .pg{padding:6px 8px;border-radius:var(--r);cursor:context-menu;font-family:var(--font-prose);font-size:15px;position:relative}
+.page .pg:hover,.page .pg.on{outline:1px dashed var(--accent);outline-offset:1px}
+.page .pin{position:absolute;right:6px;top:4px;font:10.5px var(--font-mono);color:var(--on-accent);background:var(--accent);border-radius:999px;padding:0 6px}
+.tray{display:flex;gap:10px;align-items:center;margin-top:10px;font-family:var(--font-mono);font-size:11.5px;color:var(--muted)}
+.tray button{font:11px var(--font-mono);background:none;border:1px solid var(--rule);color:var(--ink);border-radius:5px;padding:2px 10px;cursor:pointer}
+#notes input{width:100%;margin-top:6px;background:var(--bg);border:1px solid var(--rule);border-radius:var(--r);color:var(--strong);font:13px var(--font-ui);padding:6px 8px}
 .mcards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
 .mcard{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:10px 12px;cursor:context-menu}
 .mcard b{font-family:var(--font-mono);font-weight:500;font-size:12px;color:var(--strong)}
@@ -153,6 +159,10 @@ svg.ic{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-wid
   <a href="#selection">The selection bar</a>
   <a class="sub" href="#review">What #441's review asked</a>
   <a href="#menus">The menus, place by place</a>
+  <a href="#pointing">Inside files and pages</a>
+  <a class="sub" href="#locators">What the agent gets</a>
+  <a class="sub" href="#frames">Pages in a sandbox</a>
+  <a class="sub" href="#comments">Comments</a>
   <a href="#try">Try it</a>
   <a href="#server">Server and protocol</a>
   <a href="#delivery">Delivery</a>
@@ -169,7 +179,7 @@ svg.ic{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-wid
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
 <div class="stats">
   <div class="stat"><div class="v">2 → 1</div><div class="k">menu implementations: Files' .tmenu and the canvas tabs' .pmenu become menu.js</div></div>
-  <div class="stat"><div class="v">10</div><div class="k">places with a menu, listed in section 06</div></div>
+  <div class="stat"><div class="v">14</div><div class="k">places with a menu: ten in section 06, four inside files and pages in section 07</div></div>
   <div class="stat"><div class="v">4</div><div class="k">actions on a selection: Ask, Ask aside, New session, Copy</div></div>
   <div class="stat"><div class="v">10/10</div><div class="k">findings of the review of #441 answered, in section 05</div></div>
   <div class="stat"><div class="v">7</div><div class="k">lifecycle verbs, one per transition; today Close and Archive name one action and Restart names none</div></div>
@@ -192,6 +202,8 @@ svg.ic{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-wid
     <tr><td>Stop and park merge <span class="who">maintainer</span></td><td>One state, <code>asleep</code>, with a reason: slept, idle, exited, server.</td><td class="why">To the person both mean the process is gone and the next message brings it back.</td></tr>
     <tr><td>Quiet is visibility <span class="who">maintainer</span></td><td>Quiet and Unquiet sit with Open in the card and tab menus. Quiet gets its own mark; <code>zz</code> means asleep only.</td><td class="why">Quiet hides a tab and leaves the process alone, so it is not a lifecycle verb; a <code>zz</code> on a working session would read as asleep.</td></tr>
     <tr><td>Restart is real <span class="who">maintainer</span></td><td>Restart ends the process and starts it again on the same conversation. The panel's old Restart button becomes Continue.</td><td class="why">After an MCP config change or a hung harness there is no way to get a fresh process today short of Stop and a message.</td></tr>
+    <tr><td>Pointing inside files <span class="who">maintainer</span></td><td>The menu works inside the viewer, the editor, artifacts and sent pages, with a quick Ask and a Comment mode whose comments go out as one message and then vanish.</td><td class="why">Reviewing a spec or a page means saying "this part" many times; the agent needs the place, not only the words.</td></tr>
+    <tr><td>No inspect mode <span class="who">agent</span></td><td>Right-click or long press picks the element under the pointer; comments survive a reload in that browser only.</td><td class="why">One gesture everywhere; the server keeps no comment state because nothing persists after Send.</td></tr>
     <tr><td>One module <span class="who">agent</span></td><td><code>menu.js</code> replaces the two menus in <code>files.js</code> and <code>canvas.js</code>, which repeat the same placement, outside-press and Esc code.</td><td class="why">Ten places would otherwise grow ten copies.</td></tr>
     <tr><td>A bar for selections <span class="who">agent</span></td><td>A selection gets a one-line bar above it, not the list menu. Right-click inside a selection opens the row menu with the selection items on top.</td><td class="why">A selection's actions are few and frequent; the bar is one move away from the mouse.</td></tr>
     <tr><td>Fork is New session <span class="who">agent</span></td><td>The row menu's "Fork from here" from the first mockup folds into New session with the row quoted.</td><td class="why">Same effect as the selection's New session; two names would split it.</td></tr>
@@ -351,7 +363,62 @@ menu.attach(root, (target, ev) =&gt; ({
 </table>
 <p>A session card shows only what applies to its state and what the viewer may do: a member reading another's session gets Open and Open beside; a workflow's locked step shows Sleep, Restart and Archive disabled with the reason.</p>
 
-<h2 id="try"><span class="n">07</span>Try it</h2>
+<h2 id="pointing"><span class="n">07</span>Pointing inside files and pages</h2>
+<p>The same bar and menu work inside an open file or page: the code viewer and the Files editor, a Markdown file, an artifact and a sent HTML page. Two uses: a quick question about one place, and a set of comments made while reading, sent as one message.</p>
+<table class="tbl">
+  <thead><tr><th>Item</th><th>What it does here</th></tr></thead>
+  <tbody>
+    <tr><td>Ask · Ask aside · New session · Copy</td><td>As in the transcript, with the locator below in front of the quote.</td></tr>
+    <tr><td>Comment</td><td>Pins a numbered marker on the line or element and opens a one-line note for it. The comment tray collects them.</td></tr>
+  </tbody>
+</table>
+<h3 id="locators">What the agent gets</h3>
+<table class="tbl">
+  <thead><tr><th>Where</th><th>Locator, then the quote</th></tr></thead>
+  <tbody>
+    <tr><td>Code or text</td><td><code>`src/aegis/park.py:40-52`</code> and the lines, from the viewer's line numbers or CodeMirror's.</td></tr>
+    <tr><td>Markdown</td><td>The path, the nearest heading (<code>§ Decisions</code>) and the quote.</td></tr>
+    <tr><td>HTML</td><td>The path (an artifact's id for an artifact), the nearest heading, the element's id or a short CSS path, and the selection or the element's text cut to about 300 characters.</td></tr>
+  </tbody>
+</table>
+<h3 id="frames">Pages in a sandbox</h3>
+<p>Artifacts and sent HTML run in frames with an opaque origin (<code>files.py</code>, <code>_policy</code>: <code>sandbox allow-scripts</code>), so the client cannot read a selection or an element inside them. A small script inside the frame does it:</p>
+<ul>
+  <li>Artifacts already load <code>artifact.js</code>; it gains the pointing script.</li>
+  <li>A sent HTML file gets the same script inlined by the server on the preview response only. Download returns the original bytes.</li>
+  <li>The script answers right-click, long press and a selection with <code>{kind, locator, text, rect}</code> over the existing postMessage channel, and outlines the element while the menu is open. There is no separate inspect mode.</li>
+  <li>The client draws the bar and the menu over the frame, in its own coordinates from <code>rect</code>, so the frame's edges never cut them.</li>
+  <li>The script reports only on a gesture by the person; a page cannot fake one into the composer, because the client acts only on the menu item the person picks in its own document.</li>
+</ul>
+<h3 id="comments">Comments</h3>
+<ul>
+  <li>A tray at the bottom of the viewer or pane: <code>3 comments · Send · Discard</code>. Each comment can be edited or removed from it.</li>
+  <li>Send puts one message in the composer, which the person can still edit before sending. Nothing persists after that: the markers go away.</li>
+  <li>Until Send or Discard, the comments live in that browser's storage, keyed by the file and its version, so a reload keeps them. No other browser or the server sees them.</li>
+  <li>The message goes to the session that sent the file or artifact; for a file opened from Files, to the session in the window.</li>
+</ul>
+<pre>Comments on docs/superpowers/specs/2026-10-18-context-menu-design.html:
+1. § Decisions › #fork-row
+   &gt; Same effect as the selection's New session
+   I'd keep fork for the row menu.
+2. § Testing
+   &gt; a selection made while a fake turn streams keeps its bar
+   Also during a park.</pre>
+<figure>
+  <div><span class="try">try it</span><span style="font-family:var(--font-mono);font-size:11px;color:var(--faint)">right-click or long-press an element of the sample page, pick Comment, then Send</span></div>
+  <div class="mock page" id="page">
+    <div class="pg" data-loc="§ Decisions › h3"><b>Decisions</b></div>
+    <div class="pg" data-loc="§ Decisions › #fork-row">Fork is New session: same effect as the selection's New session.</div>
+    <div class="pg" data-loc="§ Decisions › #icons">Icons on every item, drawn in the client's sprite.</div>
+    <div class="pg" data-loc="§ Testing › li:nth-child(3)">A selection made while a fake turn streams keeps its bar.</div>
+  </div>
+  <div class="tray" id="tray" hidden><span id="tray-n"></span><button type="button" id="tray-send">Send</button><button type="button" id="tray-drop">Discard</button></div>
+  <div id="notes"></div>
+  <pre id="sent" hidden></pre>
+  <figcaption>A sample page. In the client the page is a sandboxed frame and the script in it reports the element; here it is one document.</figcaption>
+</figure>
+
+<h2 id="try"><span class="n">08</span>Try it</h2>
 <figure>
   <div><span class="try">try it</span><span style="font-family:var(--font-mono);font-size:11px;color:var(--faint)">select text in the reply; right-click or long-press anything else</span></div>
   <div class="mock" id="mock">
@@ -375,26 +442,28 @@ menu.attach(root, (target, ev) =&gt; ({
   <figcaption>Sample sessions and rows. The menu here is the proposed menu.js in miniature: one builder, one placement, one set of closing rules.</figcaption>
 </figure>
 
-<h2 id="server"><span class="n">08</span>Server and protocol</h2>
+<h2 id="server"><span class="n">09</span>Server and protocol</h2>
 <ul>
   <li><code>session.restart</code>: Sleep then Wake under the session's lock; refused while a workflow holds the session, like Stop today.</li>
   <li>The <code>asleep</code> state and <code>asleep_why</code> in <code>describe</code>, the fleet's marks and <code>session_list</code>; old metas read through.</li>
   <li>The Fleet's marks: <code>zz</code> for asleep, an eye-off <code>quiet</code> mark for quiet (<code>fleet.js</code>, <code>base.css</code>).</li>
   <li><code>/sleep</code>, <code>/restart</code>, <code>/archive</code> in <code>commands.py</code>, with <code>/stop</code> and <code>/close</code> as aliases.</li>
+  <li>The pointing script, inlined into a sent HTML file's preview response and added to <code>artifact.js</code>, with a <code>point</code> message on the existing channel.</li>
   <li><code>term.spawn</code> takes an optional <code>cwd</code>, so Files' Terminal here opens in the folder pressed.</li>
   <li>Client only: a row link, <code>#s=&lt;id&gt;&amp;at=&lt;i&gt;</code>, that opens the session scrolled to entry <code>i</code>; <code>route()</code> learns it.</li>
 </ul>
 
-<h2 id="delivery"><span class="n">09</span>Delivery</h2>
-<p>Four PRs, each usable alone, in this order:</p>
+<h2 id="delivery"><span class="n">10</span>Delivery</h2>
+<p>Five PRs, each usable alone, in this order:</p>
 <ol>
   <li><b>menu.js</b>: the module, Files' and the canvas tabs' menus moved onto it with no change in what they show, and the fleet card and session tab menus with today's calls (Open, Open beside, Interrupt, Stop, Hand off, Rename, Close).</li>
   <li><b>Lifecycle</b>: asleep, Wake, Restart, Archive, the commands and aliases, the panel's buttons renamed, the help pages (<code>commands.md</code>, <code>getting-started.md</code>, <code>config.md</code>'s park section) and DESIGN.md's process model.</li>
   <li><b>Transcript</b>: the selection bar, the row menus, the composer helper, <code>data-chrome</code>, the row link.</li>
+  <li><b>Inside files and pages</b>: the bar, menu and comment tray in the viewer and editor, then in artifacts and sent HTML with the pointing script.</li>
   <li><b>The rest</b>: Files' new items with <code>term.spawn</code>'s cwd, journal entries, sent cards, archive rows.</li>
 </ol>
 
-<h2 id="testing"><span class="n">10</span>Testing</h2>
+<h2 id="testing"><span class="n">11</span>Testing</h2>
 <ul>
   <li>Browser: right-click and an emulated long press open the same items on a card; Shift+right-click opens none; the keyboard walks and runs an item.</li>
   <li>Browser: Ask and Ask aside with a draft present keep <code>/btw</code> first and the draft after the quote; the unknown-command marker and the warm call fire.</li>
@@ -402,10 +471,11 @@ menu.attach(root, (target, ev) =&gt; ({
   <li>Browser: a triple-click on a reply's last paragraph gets the bar; a code block's selection copies without its language label.</li>
   <li>Server: Sleep and a park both report asleep with their reasons; Restart changes the process id and keeps the conversation; <code>/close</code> archives.</li>
   <li>A quiet working card shows the quiet mark and no <code>zz</code>; its menu has Unquiet and Interrupt; Sleep keeps it quiet.</li>
+  <li>Browser: a right-click on an element of a sent HTML page opens the menu with that element's locator; Ask puts it in the composer; three comments become one message in order; Download still returns the original bytes; a reload keeps unsent comments.</li>
   <li>The card menu per state: no Interrupt on an asleep card, no Wake on a working one, disabled items on a locked workflow step.</li>
 </ul>
 
-<h2 id="non-goals"><span class="n">11</span>Non-goals</h2>
+<h2 id="non-goals"><span class="n">12</span>Non-goals</h2>
 <ul>
   <li>Items that draft an instruction: critique, verify, explain, file an issue, "go with this option".</li>
   <li>Menus on plan items, the composer, schedules or settings.</li>
@@ -414,7 +484,7 @@ menu.attach(root, (target, ev) =&gt; ({
   <li>Renaming MCP tools.</li>
 </ul>
 
-<h2 id="credit"><span class="n">12</span>Credit</h2>
+<h2 id="credit"><span class="n">13</span>Credit</h2>
 <p>This design starts from <a href="https://github.com/apiad/aegis/pull/441">#441</a> by <a href="https://github.com/dvaldes8128">@dvaldes8128</a>, which added a selection toolbar to assistant replies for issue <a href="https://github.com/apiad/aegis/issues/439">#439</a>. Its review listed the ten problems section 05 answers.</p>
 
 </main>
@@ -449,6 +519,7 @@ const I = {
   trash: '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 9h5.6l.7-9"/>',
   quiet: '<path d="M2 8s2.2-4 6-4c1.2 0 2.2.4 3 .9M14 8s-2.2 4-6 4c-1.2 0-2.2-.4-3-.9"/><path d="M2.5 13.5l11-11"/>',
   unquiet: '<path d="M1.8 8S4 4 8 4s6.2 4 6.2 4S12 12 8 12 1.8 8 1.8 8z"/><circle cx="8" cy="8" r="2"/>',
+  comment: '<path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/>',
   close: '<path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/>',
 };
 // Sample items: [label, icon, key, what it does]. "!" before an id marks a destructive item.
@@ -474,6 +545,7 @@ const A = {
   handoff: ["Hand off", "handoff", "", "The agent writes a brief and continues in a fresh session."],
   rename: ["Rename…", "tag", "", "Change the handle or the title in place."],
   archive: ["Archive", "archive", "", "Archive the session; asks first unless it is done."],
+  comment: ["Comment", "comment", "", "Pin a numbered note here; the tray sends them all as one message."],
   insert: ["Insert path", "file", "", "Put `path` at the composer's cursor."],
   sesshere: ["New session here", "newsess", "", "A new session with this folder as its working directory."],
   termhere: ["Terminal here", "term", "", "A terminal in this folder."],
@@ -587,6 +659,60 @@ document.addEventListener("selectionchange", () => {
   const inside = s.rangeCount && !s.isCollapsed && selbox.contains(s.anchorNode) && s.toString().trim();
   if (!inside) { if (open?.classList.contains("sbar")) shut(); return; }
   bar(s.getRangeAt(0).getBoundingClientRect(), lastTouch);
+});
+
+// The sample page: one menu for any element, Comment pins a note, Send writes the message.
+const page = document.getElementById("page"), tray = document.getElementById("tray"), notes = document.getElementById("notes");
+const pins = [];
+function drawTray() {
+  tray.hidden = !pins.length;
+  document.getElementById("tray-n").textContent = pins.length + (pins.length === 1 ? " comment" : " comments");
+}
+function pageMenu(el, x, y) {
+  shut();
+  el.classList.add("on");
+  const node = document.createElement("div");
+  node.className = "cmenu"; node.setAttribute("role", "menu");
+  const h = document.createElement("div"); h.className = "head"; h.textContent = el.dataset.loc; node.append(h);
+  for (const id of ["ask", "aside", "newsess", "comment", "copy"]) {
+    const b = item(id);
+    if (id === "comment") b.addEventListener("click", () => {
+      const n = pins.length + 1, tag = document.createElement("span");
+      tag.className = "pin"; tag.textContent = n; el.append(tag);
+      const inp = document.createElement("input"); inp.placeholder = n + ". your note on " + el.dataset.loc;
+      notes.append(inp); pins.push({ el, inp }); drawTray(); inp.focus();
+    });
+    node.append(b);
+  }
+  place(node, x, y);
+  const off = new MutationObserver(() => { if (!node.isConnected) { el.classList.remove("on"); off.disconnect(); } });
+  off.observe(document.body, { childList: true });
+}
+page.addEventListener("contextmenu", (e) => {
+  const el = e.target.closest(".pg");
+  if (!el || e.shiftKey) return;
+  e.preventDefault(); pageMenu(el, e.clientX, e.clientY);
+});
+let pageTimer = null;
+page.addEventListener("pointerdown", (e) => {
+  const el = e.target.closest(".pg");
+  if (!el || e.pointerType === "mouse") return;
+  const x = e.clientX, y = e.clientY;
+  pageTimer = setTimeout(() => pageMenu(el, x, y), 500);
+});
+for (const t of ["pointerup", "pointercancel"]) page.addEventListener(t, () => clearTimeout(pageTimer));
+document.getElementById("tray-send").addEventListener("click", () => {
+  const lines = ["Comments on docs/superpowers/specs/2026-10-18-context-menu-design.html:"];
+  pins.forEach((p, i) => {
+    const text = [...p.el.childNodes].filter((n) => !n.classList?.contains("pin")).map((n) => n.textContent).join("");
+    lines.push(`${i + 1}. ${p.el.dataset.loc}`, `   > ${text}`, `   ${p.inp.value || "(no note)"}`);
+  });
+  const out = document.getElementById("sent"); out.hidden = false; out.textContent = lines.join("\n");
+  document.getElementById("tray-drop").click();
+});
+document.getElementById("tray-drop").addEventListener("click", () => {
+  for (const p of pins) { p.el.querySelector(".pin")?.remove(); p.inp.remove(); }
+  pins.length = 0; drawTray();
 });
 
 // Highlight the section in view in the contents rail.
