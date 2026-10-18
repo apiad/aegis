@@ -439,3 +439,30 @@ def test_open_in_files_from_a_peeked_path_opens_the_view_on_it(
     assert page.evaluate("location.hash") == "#files=src/app.py:2"
     assert page.evaluate(BUFFER) == "x = 1\ny = 2\n"
     assert page.errors == []
+
+
+def test_open_in_files_from_a_read_rows_peek(
+    server,  # noqa: F811
+    page,  # noqa: F811
+    tmp_path,
+):
+    from .test_browser import turns_done
+
+    write(tmp_path / "notes.txt", "one\ntwo\n", 2_000_000_000)
+    page.goto(server.url)
+    spawn(page)
+    page.fill("#input", f"/read {tmp_path / 'notes.txt'}")
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    row = page.locator(".row.tool")
+    row.locator("summary").click()
+    row.locator(".peek").click()
+    row.locator(".fcard").wait_for()
+    row.locator(".fcard .view").click()
+    link = page.locator("#viewer .openfiles")
+    link.wait_for()
+    assert link.get_attribute("href") == "#files=notes.txt"
+    link.click()
+    page.wait_for_selector(EDITOR)
+    assert page.evaluate(BUFFER) == "one\ntwo\n"
+    assert page.errors == []

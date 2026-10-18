@@ -10,7 +10,7 @@ import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
 import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setWorkflows, syncDock, tickWorkflows, workflowLocked, workflowTitle } from "./entries.js";
 import { setScroller } from "./highlight.js";
-import { Viewer } from "./viewer.js";
+import { Viewer, peekRoots } from "./viewer.js";
 import { Canvas } from "./canvas.js";
 import { copyRow, installCopy } from "./copy.js";
 import { Find } from "./find.js";
@@ -1987,8 +1987,10 @@ $("entries").addEventListener("click", async (ev) => {
   if (!b) return;
   b.disabled = true;
   try {
-    // The row comes back with the card in it; this node is replaced.
-    await conn.call("file.peek", { log_id: forKey(shown).log_id, entry_id: b.dataset.entry });
+    // The row comes back with the card in it; this node is replaced. Only
+    // the answer says where the file sits under the root (viewer.js).
+    const files = await conn.call("file.peek", { log_id: forKey(shown).log_id, entry_id: b.dataset.entry });
+    for (const f of files) if (f.root_path) peekRoots.set(f.url, f.root_path);
   } catch (e) {
     b.nextElementSibling.textContent = e.message;
     b.disabled = false;
