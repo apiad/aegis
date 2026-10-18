@@ -9,6 +9,7 @@ import pytest
 from .test_browser import CONFIG, Server, browser, page, spawn  # noqa: F401
 from .test_workflows_e2e import RESULT, flow
 from .test_workflows_parallel import leaf, report
+from .test_workflows_steps import flow as steps
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
@@ -779,4 +780,23 @@ def test_a_launched_card_says_who_started_it_and_has_no_approve(server, page):  
     page.set_viewport_size({"width": 390, "height": 800})
     page.wait_for_selector(f"{card} .wfargs")
     assert page.evaluate("document.documentElement.scrollWidth") <= 390
+    assert not page.errors
+
+
+def test_approving_tells_the_main_agent_and_its_card_waits(server, page):  # noqa: F811
+    """#474: the click wakes the main agent with where the run next stops,
+    and after that turn its card waits on the run."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    gate = '{gate: {by: person, ask: "Publish it?"}, id: pub, say: Ask first.}'
+    arm = {"definition": steps("{wait: 30s, id: nap, say: Pause.}", gate), "args": {}}
+    main = spawn(page, "/mcp workflow_arm " + json.dumps(arm))
+    page.click(".wfcard[data-status=armed] button >> text=Approve and run")
+    page.wait_for_selector(
+        'text=It next stops at the gate "Publish it?"', timeout=10000
+    )
+    page.click("#tab-fleet")
+    page.wait_for_selector(
+        f"#cards .card[data-id='{main}'] .s >> text=waiting · workflow", timeout=10000
+    )
     assert not page.errors
