@@ -180,7 +180,7 @@ svg text{font-family:'JBM',ui-monospace,monospace}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · a native lovelaice harness</span>
-  <span class="st"><span class="pill acc">proposed</span><span class="pill">2026-10-17</span></span>
+  <span class="st"><span class="pill acc">proposed</span><span class="pill">2026-10-17</span><span class="pill">#457</span></span>
 </div>
 
 <div class="wrap">
@@ -202,7 +202,7 @@ svg text{font-family:'JBM',ui-monospace,monospace}
 
 <main>
 <h1>A native lovelaice harness: aegis sessions on any OpenAI-compatible model, local ones included</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-17-lovelaice-harness-design.html</span><span>·</span><span>proposed, not built</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-17-lovelaice-harness-design.html</span><span>·</span><span>proposed, not built</span><span>·</span><a href="https://github.com/apiad/aegis/issues/457">#457</a></div>
 <p class="lede">aegis runs Claude Code, Codex and OpenCode, and each one needs its vendor's CLI and, in practice, its vendor's models. This spec adds a fourth harness, lovelaice, whose engine calls any OpenAI-compatible endpoint directly, so a workflow step or a queue worker can run on a model served on a local GPU. Most such sessions are workers that nobody talks to, so the design makes the worker path cheap in context first. Opening the same agent as a tab only has to work.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
