@@ -539,6 +539,31 @@ def test_the_header_counts_a_failure_but_not_a_branch_not_taken(server, page):  
     assert not page.errors
 
 
+EARLY = """id: early
+title: Early
+say: Two steps finish early, then a wait outlives their deadlines.
+root:
+  seq:
+    - {sh: "true", id: r0, deadline: 2s, say: R0.}
+    - {seq: [{sh: "true", id: a, say: A.}], id: plan, deadline: 2s, say: Plan.}
+    - {wait: 4s, id: hold, say: Hold.}
+  say: All of it.
+"""
+
+
+def test_finished_steps_stay_done_past_their_deadlines(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_arm " + json.dumps({"definition": EARLY, "args": {}}))
+    card = "#entries .wfcard"
+    page.click(f"{card} button >> text=Approve and run")
+    page.wait_for_selector(f"{card}[data-status=done]", timeout=20000)
+    for node in ("r0", "plan", "a", "hold"):
+        assert page.locator(f"{card} .wfrow[data-node={node}][data-state=done]").count()
+    assert page.locator(f"{card} .wfrow[data-state=failed]").count() == 0
+    assert not page.errors
+
+
 def test_the_header_counts_an_open_question(server, page):  # noqa: F811
     from .test_workflows_parallel import script
 
