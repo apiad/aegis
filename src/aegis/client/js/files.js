@@ -8,6 +8,12 @@
 // disk since, the server writes nothing and answers changed_on_disk with the
 // disk's text, and the banner offers the diff, the disk's version, or the
 // buffer on purpose: an agent's edit is never dropped silently.
+//
+// While the view is on screen it asks fs.stat about the open file every two
+// seconds. An untouched buffer takes a change on disk quietly; an edited one
+// shows the same banner a refused save does. It is a call, not a channel: a
+// link's socket may subscribe to any channel, and a channel would let a far
+// server watch the files here (spec, "Agents writing the same file").
 
 import { fuzzy } from "./commands.js";
 import { ask, choose } from "./dialog.js";
@@ -19,6 +25,7 @@ import { langName } from "./highlight.js";
 const SHOWN = 200; // rows the picker draws
 const CONTEXT = 3; // unchanged lines around each change in the conflict's diff
 const MAX_LCS = 4_000_000; // cells; a bigger change is drawn as all removed, all added
+const POLL_MS = 2000; // how often the open file's size and mtime are asked for
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -663,16 +670,20 @@ export class Files {
     this.waiting = null; // {path, line} a read refused offline, for online()
     this.saving = null; // the save in flight, a Promise of whether it landed
     this.shown = null; // the last target show() applied
+    this.stat = null; // {size, mtime} of the file the buffer last matched
+    this.polling = false;
     box.innerHTML =
       '<div class="fbar"><button class="btn tbtn" type="button" title="Folders" aria-label="Folders">☰</button>' +
       '<span class="crumbs"></span><span class="dirty" title="Unsaved changes" hidden>●</span>' +
       '<span class="gap"></span><button class="btn pick" type="button" title="Open a file (Alt+O)">Alt+O</button>' +
       '<button class="btn primary save" type="button" disabled>Save</button></div>' +
       '<div class="fbody"><nav class="ftree"></nav><div class="fmain">' +
-      '<div class="fbanner" role="alert" hidden><span class="t">This file changed on disk since you opened it.</span>' +
+      '<div class="fbanner" role="alert" hidden><span class="t"></span>' +
       '<span class="acts"><button class="btn" type="button" data-act="diff">Show diff</button>' +
       '<button class="btn" type="button" data-act="reload">Reload</button>' +
-      '<button class="btn" type="button" data-act="keep">Keep mine</button></span><div class="fdiff" hidden></div></div>' +
+      '<button class="btn" type="button" data-act="keep">Keep mine</button>' +
+      '<button class="btn" type="button" data-act="recreate">Save</button>' +
+      '<button class="btn" type="button" data-act="close">Close</button></span><div class="fdiff" hidden></div></div>' +
       '<div class="fpane"></div></div></div>';
     this.$ = (s) => box.querySelector(s);
     this.tree = new FileTree(this.$(".ftree"), conn, this);
@@ -684,7 +695,10 @@ export class Files {
       if (act === "diff") this.showDiff();
       else if (act === "reload") this.reload();
       else if (act === "keep") this.keep();
+      else if (act === "recreate") this.save(true);
+      else if (act === "close") this.closeFile();
     });
+    setInterval(() => this.poll(), POLL_MS);
     window.addEventListener("beforeunload", (ev) => {
       if (!this.dirty()) return;
       ev.preventDefault();
@@ -784,8 +798,56 @@ export class Files {
     this.ed = null;
     this.path = null;
     this.hash = null;
+    this.stat = null;
     this.banner(false);
     this.mark(false);
+  }
+
+  // Close leaves the deleted file's buffer behind for the empty view.
+  closeFile() {
+    this.close();
+    this.empty();
+    history.replaceState(null, "", "#files");
+    this.tree.draw();
+  }
+
+  // Ask whether the open file moved on disk; see the module's comment.
+  async poll() {
+    const shown = document.getElementById("a2")?.dataset.view === "files";
+    if (!shown || document.visibilityState !== "visible" || !this.ed || this.polling || this.saving) return;
+    this.polling = true;
+    const path = this.path;
+    try {
+      const st = await this.conn.call("fs.stat", { path }).catch((e) => e);
+      if (path !== this.path || this.saving) return;
+      if (st instanceof Error) {
+        if (st.code === "not_found" && this.hash !== null) {
+          this.hash = null; // a save now creates it again
+          this.stat = null;
+          this.banner("deleted");
+        }
+        return;
+      }
+      if (this.stat && st.mtime === this.stat.mtime && st.size === this.stat.size) return;
+      const r = await this.conn.call("fs.read", { path }).catch(() => null);
+      if (!r || path !== this.path || this.saving) return;
+      this.stat = { size: r.size, mtime: r.mtime };
+      if (r.hash === this.hash) return; // touched, not changed
+      if (r.text === undefined || r.cut) {
+        if (!this.dirty()) return this.reopen();
+        this.disk = { text: null, hash: r.hash };
+        return this.banner("changed");
+      }
+      if (this.dirty() || this.hash === null) {
+        this.disk = { text: r.text, hash: r.hash };
+        this.banner("changed");
+      } else {
+        this.ed.setValue(r.text);
+        this.hash = r.hash;
+      }
+    } finally {
+      this.polling = false;
+    }
   }
 
   crumbs(path) {
@@ -829,6 +891,7 @@ export class Files {
       return;
     }
     this.hash = r.hash;
+    this.stat = { size: r.size, mtime: r.mtime };
     this.readOnly = !!r.cut;
     if (r.cut) pane.append(el("p", "fnote", `Read-only: the first 2 MB of this ${size(r.size)} file.`));
     const host = el("div", "fed");
@@ -866,9 +929,10 @@ export class Files {
   // A save while one is in flight joins it: a second one would carry the
   // same base and come back changed_on_disk against our own write. A clean
   // buffer is already on disk.
-  save() {
+  // `force` writes a clean buffer too: the file was deleted under it.
+  save(force = false) {
     if (!this.ed || this.readOnly) return Promise.resolve(false);
-    if (!this.saving && !this.ed.dirty()) return Promise.resolve(true);
+    if (!this.saving && !this.ed.dirty() && !force) return Promise.resolve(true);
     this.saving ??= this.write().finally(() => (this.saving = null));
     return this.saving;
   }
@@ -878,20 +942,29 @@ export class Files {
     try {
       const r = await this.conn.call("fs.write", { path: this.path, content, base: this.hash });
       this.hash = r.hash;
+      this.stat = { size: new TextEncoder().encode(content).length, mtime: r.mtime };
       if (this.ed.value() === content) this.ed.markSaved();
       this.banner(false);
       return true;
     } catch (e) {
       if (e.code === "changed_on_disk") {
         this.disk = e.data;
-        this.banner(true);
+        this.banner("changed");
       } else this.toast(`Not saved: ${e.message}`, { kind: "error" });
       return false;
     }
   }
 
+  // "changed": the disk has a version the buffer does not; "deleted": the
+  // file is gone; false hides it.
   banner(on) {
-    this.$(".fbanner").hidden = !on;
+    const b = this.$(".fbanner");
+    b.hidden = !on;
+    if (on) {
+      b.dataset.kind = on;
+      b.querySelector(".t").textContent =
+        on === "deleted" ? "This file was deleted on disk." : "This file changed on disk since you opened it.";
+    }
     this.$(".fdiff").hidden = true;
     this.$(".fdiff").replaceChildren();
     if (!on) this.disk = null;
@@ -923,6 +996,10 @@ export class Files {
       this.hash = disk.hash;
       return;
     }
+    await this.reopen();
+  }
+
+  async reopen() {
     const path = this.path;
     this.path = null; // load() opens it afresh
     await this.load(path);
