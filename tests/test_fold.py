@@ -800,6 +800,7 @@ def test_a_turn_end_lasts_until_the_next_send_or_a_later_turn_ends_without_one()
         "attention": "needs_you",
         "line": "Rebase or merge?",
         "replies": ["rebase"],
+        "asked": 1000.0,  # when the send that opened the turn was made
     }
     # A turn Claude starts on its own and ends without turn_end drops it.
     f.apply(rec.text("the background task finished"))
