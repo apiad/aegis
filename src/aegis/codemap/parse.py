@@ -267,7 +267,7 @@ def parse_file(rel: str, src: bytes, lang: str) -> FileInfo:
                 prev = n.prev_sibling
                 info.refs.append(
                     (
-                        n.text.decode(errors="replace"),
+                        src[n.start_byte : n.end_byte].decode(errors="replace"),
                         n.start_point[0] + 1,
                         n.start_byte in call_starts,
                         enc,
