@@ -4,7 +4,7 @@ import pytest
 
 from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
-from .test_workflows_e2e import RESULT, flow, ok
+from .test_workflows_e2e import RESULT, approve, flow, ok
 
 
 @pytest.fixture
@@ -43,7 +43,7 @@ async def test_an_agent_cannot_approve_reject_or_arm_beside_a_running_run(world)
     assert world.app.workflows.runs[run].status == "armed"
     # Armed and not approved, a new arm replaces it (test_workflows_edits.py);
     # once it runs, a second one is refused.
-    await world.app.registry.call("workflow.approve", {"run": run})
+    await approve(world, run)
     assert "already has workflow run" in await turn(
         a, mcp("workflow_arm", definition=flow(RESULT, RESULT), args={})
     )

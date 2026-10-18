@@ -18,7 +18,7 @@ have started on them), in that one record, so no crash lands between the two.
 
 What a run waits on is folded into ``open``, keyed by the id the main agent
 answers to: a failure that will not retry, a gate, a question, an edit's
-outcome. ``woke`` records that the main agent was told, so a restart tells
+outcome. ``woke`` (and ``approved_told``, for an approval) records that the main agent was told, so a restart tells
 again only what was never delivered; the answers (``retried``, ``skipped``,
 ``gate_answered``, ``answered``, ``edit_applied``, ``edit_rejected``) close
 the items. A stop or an ending stops only leaves: a loop or an if keeps its
@@ -93,6 +93,7 @@ class RunState:
     launch: dict | None = None
     # A rejection logged and not yet told to the main agent.
     reject_untold: bool = False
+    approve_untold: bool = False
     # The text and version a person last approved: arming again compares
     # with these, so a rejected change shows again when it is armed again.
     approved: dict | None = None
@@ -160,6 +161,7 @@ def _apply(st: RunState, r: dict) -> None:
     ev, t = r.get("ev"), float(r.get("t") or 0)
     if ev == "approved":
         st.status, st.started = "running", t
+        st.approve_untold = bool(r.get("tell"))
         st.approved = {"text": st.text, "v": st.version}
         if r.get("by") and st.launch:
             _tell(st, t, "ok", _started_by(st.launch))
@@ -168,6 +170,8 @@ def _apply(st: RunState, r: dict) -> None:
         st.reject_untold = bool(r.get("tell"))
     elif ev == "rejected_told":
         st.reject_untold = False
+    elif ev == "approved_told":
+        st.approve_untold = False
     elif ev == "stopped":
         st.status, st.ended = "stopped", t
         # A node the stop interrupted ends with the run, not running forever.

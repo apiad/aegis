@@ -215,6 +215,7 @@ class Fold:
         self.standing: dict = EMPTY_STANDING
         self._turns = 0  # results seen
         self._report_turn = -1  # self._turns when the current report was made
+        self._sent_at: float | None = None  # the ts of the last send
         self.last_index = -1  # the "i" of the last record applied
         # The "i" of the last record that changed what a recap reads: a stop,
         # an exit or a recap after it leaves the point a recap covers alone.
@@ -486,6 +487,7 @@ class Fold:
                 and clock["running"] == "idle"
             )
             self._turn_open = True
+            self._sent_at = ts
             self._clock(ts, "work")
             self._stand(
                 report=None,
@@ -557,6 +559,9 @@ class Fold:
                     "attention": rec.get("attention"),
                     "line": rec.get("line") or "",
                     "replies": list(rec.get("replies") or []),
+                    # When the message that opened the turn was sent: a click
+                    # after it answers an ask (attention.card, answered_at).
+                    "asked": self._sent_at if self._sent_at is not None else ts,
                     # Only when the agent wrote one (#354), so a report without
                     # it keeps its old shape.
                     **({"handoff": h} if (h := rec.get("handoff")) else {}),

@@ -167,13 +167,16 @@ and one usage repeated across the lines of one call counts once (`cache.py`).
 
 **A session's attention is decided in Python, from facts and the agent's own
 reports.** Working, error and waiting are facts the server holds: the turn, the
-fold's last failure, live monitors, background tasks, held messages, queue tasks
+fold's last failure, live monitors, background tasks, held messages, queue tasks,
+the approved workflow run it is the main agent of,
 and child sessions that are working or waiting themselves, so a wait is
 transitive and a change in a child's card re-derives its parent's. The sessions
 waited on go out by handle (`waiting_for`), so a change in a worker's card
 re-derives its enqueuer's the same way. Whether a finished turn asked the person something, showed
 them something to read, or just finished, only the agent knows, and it says so
-with `turn_end`; its plan comes from `plan_update`. `turn_end` refuses done
+with `turn_end`; approving a run answers the needs_you of a turn opened before
+the click, so the main agent's card falls through to waiting on the run, and
+the click wakes it once to tell the person where the run next stops (#474); its plan comes from `plan_update`. `turn_end` refuses done
 while the plan has an item not done, because a done card offers to archive the
 session and the person should not have to read it to learn the task goes on.
 Both are aegis records in the
