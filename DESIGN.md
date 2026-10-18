@@ -832,8 +832,9 @@ cannot reach it. The open file follows the disk by `fs.stat` every 2 s while
 the view is on screen: an untouched buffer reloads, an edited one gets the
 conflict banner. Bytes an element fetches itself (an image, a frame, a
 download) cannot carry the socket's token, so `fs.ticket` and `fs.read` hand
-out `/fs/<ticket>/<name>`: 128 random bits mapped to a relative path for ten
-minutes, in memory. The route resolves the path again on every request, so a
+out `/fs/<ticket>/<name>`: 128 random bits mapped to a relative path, in
+memory, until ten minutes pass without a use (a playing video keeps asking
+for byte ranges). The route resolves the path again on every request, so a
 file swapped for a symlink out of the root after the ticket was issued is
 refused, and answers with `files.headers`, the sandbox a sent file gets, with
 `no-store` because the file changes. Kinds are `files.classify`'s, so a file
