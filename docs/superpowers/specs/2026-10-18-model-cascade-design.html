@@ -298,16 +298,17 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 <p>The session's meta and <code>session_list</code> keep <code>model</code> as the model in use, and add <code>cascade</code>: the agent's list and the index in use. A resumed session reads its cascade from the spawn record, never from the edited <code>.aegis.yaml</code>, as <code>SpawnSpec</code> does for everything else.</p>
 
 <h2 id="spawn"><span class="n">05</span>Choosing a model at spawn</h2>
-<p>Every path that starts a harness from an agent (a new tab, <code>session_spawn</code>, a queue worker, a workflow node, a schedule) goes through one function: the first model in the list that is not cooling and whose quota gate is open. A model on a provider aegis reads no gauge for counts as open here, because an admin's server has no policy and a member's gate decides on its own as it does today.</p>
-<p>When every model is cooling or gated, the spawn waits the way a quota-closed spawn waits today, with the reason "every model in <code>free</code> is cooling; the first is free again at 14:32". It does not start on a cooling model.</p>
+<p>Every path that starts a harness from an agent (a new tab, <code>session_spawn</code>, a handoff, a queue worker, a workflow node, a schedule) goes through one function: the first model in the list that is not cooling and whose quota gate is open. The gate is the existing one, asked per candidate. Note that <code>pool_for</code> (src/aegis/quota_gate.py:65) maps only <code>opencode-go/…</code> models to a pool; the Zen free models (<code>opencode/…</code>) map to none, so for them only cooling decides. That is what the students' case needs: their server has no policy.</p>
+<p>When every model is cooling or gated, each path does what it does today for a closed quota gate, with a new reason. <code>session_spawn</code> and a handoff are refused (today's <code>OpError("quota_closed", …)</code> at src/aegis/app.py:1223 and :1360), with the message "every model in <code>free</code> is cooling; the first is free again at 14:32". Queue tasks and schedule ticks are held, as src/aegis/queues.py:281 and src/aegis/schedules.py:212 hold them for quota. Today only <code>app.on_quota</code> releases held work, so the cooling table also schedules one timer at its earliest expiry that calls the same release path. Nothing starts on a cooling model.</p>
 
 <h2 id="fallback"><span class="n">06</span>Falling to the next model</h2>
 <h3 id="which-errors">Which errors fall</h3>
-<p>A classifier per harness reads the failed <code>Result</code>'s subtype (OpenCode: <code>"&lt;type&gt;: &lt;message&gt;"</code> from <code>stream._error</code>), and the text of a send that failed outside the stream (<code>Launch.on_error</code>). It answers <code>fallback</code>, with a retry-after when the error carries one, or <code>stay</code>.</p>
+<p>A classifier per harness reads the failed turn's error text and the text of a send that failed outside the stream (<code>Launch.on_error</code>). OpenCode puts <code>"&lt;type&gt;: &lt;message&gt;"</code> in <code>Result.subtype</code> (<code>stream._error</code>). Claude Code does not: its <code>Result</code> keeps <code>subtype</code> (such as <code>error_during_execution</code>) and <code>stop_reason</code>, and drops the <code>result</code> text where usage-limit and overload messages appear (src/aegis/claude/stream.py:160 and :329). <code>Result</code> therefore gains an <code>error_text</code> field, which the Claude stream fills from the result text on an error, and the OpenCode stream fills with the same string as its subtype. The classifier answers <code>fallback</code> with a scope (<code>model</code> or <code>pool</code>) and a retry-after when the error carries one, or <code>stay</code>.</p>
 <table class="tbl">
 <thead><tr><th>Error</th><th>Answer</th><th>Why</th></tr></thead>
 <tbody>
-<tr><td>429, <code>FreeUsageLimitError</code>, rate limit, usage limit, quota exceeded</td><td>fallback</td><td class="why">The model is exhausted; another one is not.</td></tr>
+<tr><td>OpenCode 429, <code>FreeUsageLimitError</code>, rate limit</td><td>fallback, scope model</td><td class="why">The model is exhausted; another one may not be. Whether Zen's free limit is per model is checked first (below).</td></tr>
+<tr><td>Claude Code usage limit, weekly limit</td><td>fallback, scope pool</td><td class="why">The subscription is exhausted, not the model: opus and sonnet draw on the same account. Every model in the <code>claude</code> pool cools, so a cascade of Claude models is exhausted at once, and only a model on another harness could help, which a cascade cannot hold.</td></tr>
 <tr><td>5xx, overloaded, provider unavailable, timeout</td><td>fallback</td><td class="why">The provider failed; another provider may be up.</td></tr>
 <tr><td>404 or "model not found" for the model</td><td>fallback</td><td class="why">A free model that left the free tier. OmniRoute locks a model on a local 404 for the same reason.</td></tr>
 <tr><td>Interrupted, aborted</td><td>stay</td><td class="why">The person or aegis stopped it.</td></tr>
@@ -315,19 +316,21 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 <tr><td>Anything unrecognized</td><td>stay</td><td class="why">Falling on an unknown error can hide a real defect behind a weaker model.</td></tr>
 </tbody>
 </table>
+<p>Whether Zen's <code>FreeUsageLimitError</code> exhausts one model or every free model is not documented. One vendor's error guide says it fires on "one of its free trial models"; nothing official confirms it. The first task of pull request 1 is an experiment: exhaust one free model on a throwaway account, then send to another free model, and record the result in the module docstring. If the limit is shared, that error gets scope <code>pool</code> over the Zen free models, and the cascade's value on Zen comes from rate limits, overloads and models leaving the free tier rather than from the daily cap. The rest of the design does not change.</p>
 <p>The patterns live in <code>cascade.py</code> with one test per pattern, built from errors the real harnesses produce. The canary fake model (know-how/canary.md) learns to answer a 429 <code>FreeUsageLimitError</code> so the patterns are checked against the real OpenCode and Claude Code releases every night.</p>
 
 <h3 id="cooling">Cooling</h3>
-<p>A model that answered <code>fallback</code> cools: new spawns skip it until its retry-after passes, or 10 minutes when the error gave none. The table is per server, in memory, keyed by harness and model. A restart clears it, which costs at most one failed turn per model. The table is readable in <code>session_list</code>'s cascade field and in Settings, so a person can see why a session did not start on the first model.</p>
+<p>A model that answered <code>fallback</code> cools: new spawns skip it until its retry-after passes, or 10 minutes when the error gave none. The table is per server, in memory, keyed by harness and model; an error with scope <code>pool</code> cools every model that maps to the same pool. A restart clears it, which costs at most one failed turn per model. The table is readable in <code>session_list</code>'s cascade field and in Settings, so a person can see why a session did not start on the first model.</p>
 
 <h3 id="continue">Continuing the turn</h3>
 <ol>
 <li>Write the notice to the transcript (below).</li>
+<li>Pick the next model with the same rule as the spawn: the first model after the current one that is not cooling and whose gate is open for the session's owner. A paid model a member's policy closes is skipped, never used. If none is left, the cascade is exhausted.</li>
 <li><code>Session.configure(model=next)</code>, the path <code>/model</code> uses. It records the change for the meta and a rebuild.</li>
 <li>Send a continue prompt: "The previous model failed with: &lt;error&gt;. You are now running on &lt;model&gt;. Continue the task from where it stopped." The conversation history is the harness's, so the new model sees the person's message and everything done so far.</li>
 <li>Within one turn, a session falls at most once per model in the list. It never wraps to the top. When the last model fails, the turn ends with that error as it does today, and the card says the cascade is exhausted.</li>
 </ol>
-<p>Held messages and the quota hold behave as today: a fallback is part of the same turn, so nothing queued behind it is sent until it ends.</p>
+<p>Held messages and the quota hold behave as today: a fallback is part of the same turn, so nothing queued behind it is sent until it ends. <code>app.on_quota</code> (src/aegis/app.py:497) judges a working session by the model it is on now, so after a fallback to a model in another pool, that pool's stop line applies to the rest of the turn. That is intended: the policy follows the money being spent.</p>
 
 <h3 id="seen">What people see</h3>
 <p><span class="try">try it</span>Simulate failures on the sample session. The card's model line shows the model in use and its place in the cascade.</p>
@@ -361,7 +364,7 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 <p><code>scripts/refresh-model-ranking</code> rebuilds it:</p>
 <ol>
 <li>Read the model catalogs of the installed OpenCode and Claude Code (the same catalog the Settings model pick uses).</li>
-<li>Fetch the Artificial Analysis free endpoint (<code>GET /api/v2/language/models/free</code>, which returns the headline indices) with a key from <code>AA_API_KEY</code>.</li>
+<li>Fetch the Artificial Analysis free endpoint (<code>GET /api/v2/language/models/free</code>; its OpenAPI example lists <code>evaluations.artificial_analysis_coding_index</code> and <code>artificial_analysis_intelligence_index</code> in the free response; 100 requests a day, which one refresh fits in) with a key from <code>AA_API_KEY</code>.</li>
 <li>Map each catalog id to an Artificial Analysis slug. The mapping is by normalized name, and a hand-kept table in the script covers names that do not normalize. The script prints every catalog model it could not map, so a release notes what stays unranked.</li>
 <li>Write the file sorted by Coding Index, with the date.</li>
 </ol>
@@ -428,6 +431,7 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 </ul>
 <h3>Open questions</h3>
 <ul>
+<li>Whether Artificial Analysis's terms allow shipping its scores inside an open-source package. The API docs require attribution and send redistribution questions to their team; the Terms of Use and Data Platform Terms are the binding text. If scores may not ship, the file keeps only the order (rank and date) and Settings shows the rank instead of the score.</li>
 <li>Whether a context-too-long error should fall to a model with a larger window. This spec says no.</li>
 <li>Whether 10 minutes is the right cooling time when a provider gives no retry-after. Free tiers on Zen tend to reset daily, so a longer default may waste fewer turns.</li>
 </ul>
