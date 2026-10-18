@@ -179,7 +179,9 @@ export function installKeys(runs, view) {
   document.addEventListener("keydown", (ev) => {
     if (ev.defaultPrevented || ev.isComposing) return;
     const v = view();
-    const scopes = typing(ev.target) ? ["global"] : ["global", "browse", v === "read" ? "session" : v];
+    // In the Files view Ctrl+S saves from any field, the picker's included:
+    // the browser's own Save page never opens there.
+    const scopes = typing(ev.target) ? ["global", ...(v === "files" ? ["files"] : [])] : ["global", "browse", v === "read" ? "session" : v];
     const b = KEYS.find((k) => scopes.includes(k.scope) && k.match(ev));
     if (!b || (b.action.nav && v === "window")) return;
     // Enter and Space on a focused link, button or summary are the element's own.

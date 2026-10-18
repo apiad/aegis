@@ -256,6 +256,7 @@ export class Files {
     this.disk = null; // {text, hash} the last refused save found
     this.loading = 0;
     this.waiting = null; // {path, line} a read refused offline, for online()
+    this.saving = null; // the save in flight, a Promise of whether it landed
     box.innerHTML =
       '<div class="fbar"><span class="crumbs"></span><span class="dirty" title="Unsaved changes" hidden>●</span>' +
       '<span class="gap"></span><button class="btn pick" type="button" title="Open a file (Alt+O)">Alt+O</button>' +
@@ -404,12 +405,21 @@ export class Files {
 
   mark(dirty) {
     this.$(".dirty").hidden = !dirty;
-    this.$(".save").disabled = !this.ed || this.readOnly;
+    this.$(".save").disabled = !this.ed || this.readOnly || !dirty;
   }
 
   // True when the buffer is on disk afterwards.
-  async save() {
-    if (!this.ed || this.readOnly) return false;
+  // A save while one is in flight joins it: a second one would carry the
+  // same base and come back changed_on_disk against our own write. A clean
+  // buffer is already on disk.
+  save() {
+    if (!this.ed || this.readOnly) return Promise.resolve(false);
+    if (!this.saving && !this.ed.dirty()) return Promise.resolve(true);
+    this.saving ??= this.write().finally(() => (this.saving = null));
+    return this.saving;
+  }
+
+  async write() {
     const content = this.ed.value();
     try {
       const r = await this.conn.call("fs.write", { path: this.path, content, base: this.hash });

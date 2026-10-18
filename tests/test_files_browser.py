@@ -143,3 +143,39 @@ def test_the_view_fits_a_phone(
     page.wait_for_selector("#fpick:not([hidden]) .file-row")
     assert page.evaluate("document.documentElement.scrollWidth") <= 390
     assert page.errors == []
+
+
+def test_a_double_ctrl_s_saves_once_and_the_picker_field_saves_too(
+    server,  # noqa: F811
+    page,  # noqa: F811
+    tmp_path,
+):
+    target = tmp_path / "a.txt"
+    target.write_text("base\n")
+    open_file(page, server, "a.txt")
+    assert page.locator(".fbar .save").is_disabled()  # nothing to save yet
+    page.click(EDITOR)
+    page.keyboard.press("Control+End")
+    page.keyboard.type("one\n")
+    page.keyboard.press("Control+s")
+    page.keyboard.press("Control+s")
+    page.wait_for_selector(".fbar .dirty[hidden]", state="attached")
+    assert target.read_text() == "base\none\n"
+    assert page.locator(".fbanner").is_hidden()
+    log = tmp_path / ".aegis" / "state" / "fs-log.jsonl"
+    assert len(log.read_text().splitlines()) == 1
+
+    page.keyboard.type("two\n")
+    page.keyboard.press("Alt+o")
+    page.wait_for_selector("#fpick:not([hidden])")
+    prevented = page.evaluate(
+        """() => {
+          const ev = new KeyboardEvent('keydown', {key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true});
+          document.querySelector('#fpick-q').dispatchEvent(ev);
+          return ev.defaultPrevented;
+        }"""
+    )
+    assert prevented  # the browser's Save page does not open
+    page.wait_for_function("document.querySelector('.fbar .dirty').hidden")
+    assert target.read_text() == "base\none\ntwo\n"
+    assert page.errors == []
