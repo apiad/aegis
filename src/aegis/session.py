@@ -276,6 +276,7 @@ class Session:
         last_exit: dict | None = None,
         restart_continues: int = 0,
         quota_paused: str | None = None,
+        notices_sent: dict[str, str] | None = None,
         tool_calls: int = 0,
         parked_rss: int = 0,
         cache_recent: list[list] | None = None,
@@ -360,6 +361,10 @@ class Session:
         # until the gate opens and continues it. In the meta, so a restart
         # keeps it paused.
         self.quota_paused = quota_paused
+        # What notices this session was told, kind to level (notices.py),
+        # {"disk": "warn", "announce:<id>": "warn"}. In the meta, so a restart
+        # neither repeats a notice nor forgets a clear.
+        self.notices_sent: dict[str, str] = dict(notices_sent or {})
         # What the cache did (cache.py): tool calls and compactions of the main
         # thread, and the last calls' [cache_read, total_input, at]. In the meta,
         # so the counters survive a restart.
@@ -426,6 +431,7 @@ class Session:
             "last_exit": self.last_exit,
             "restart_continues": self.restart_continues,
             "quota_paused": self.quota_paused,
+            "notices_sent": self.notices_sent,
             "tool_calls": self.tool_calls,
             "parked_rss": self.parked_rss,
             "cache_recent": self.cache_recent,

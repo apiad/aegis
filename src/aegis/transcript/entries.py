@@ -120,6 +120,7 @@ EMPTY_STANDING: dict = {
 }
 
 NUDGE_HEADER = "> from aegis:nudge · "
+NOTICE_HEADER = "> from aegis:notice · "  # notices.py
 
 
 def _nudged(prev: list[str], text: str) -> list[str]:

@@ -1,7 +1,10 @@
 import json
 from pathlib import Path
 
+from aegis import restarts
 from aegis.meta import MetaStore, rebuild
+from aegis.registry import Registry
+from aegis.roots import make_roots
 from aegis.transcript.store import Store
 
 
@@ -120,3 +123,16 @@ def test_rebuild_applies_configure_records_and_the_last_session_id(tmp_path: Pat
     m = rebuild(path)
     assert (m["model"], m["effort"], m["permission"]) == ("sonnet", "max", "full")
     assert m["resume_id"] == "after-clear"
+
+
+def test_notices_sent_survives_a_meta_round_trip(tmp_path: Path):
+    (tmp_path / ".aegis.yaml").write_text("agents: {}\n")
+    roots = make_roots(tmp_path, None)
+    sent = {"disk": "warn", "announce:3fa1c2": "critical"}
+    MetaStore(roots.state_root / "sessions").write(
+        meta(agent="opus", notices_sent=sent)
+    )
+    r = Registry(roots, lambda ch, ops: None, "claude")
+    r.boot(restarts.CLEAN)
+    s = r.sessions["a"]
+    assert s.notices_sent == sent and s.meta()["notices_sent"] == sent

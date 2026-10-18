@@ -80,6 +80,7 @@ from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from . import refs
 from .monitors import Monitors, iso_now
 from .names import valid_handle
+from .notices import Notices
 from .nudges import Nudges
 from .park import Parker, Watchers
 from .push import register_push_ops
@@ -424,6 +425,8 @@ class App:
         self.side_notes = SideNotes(self)
         self.sessions.side_notes = self.side_notes
         self.nudges = Nudges(self.sessions)
+        self.notices = Notices(self)
+        self.sessions.notices = self.notices
         self.watchers = Watchers()
         self.parker = Parker(
             self.sessions, lambda: self.config.current().park, self.watchers
@@ -628,6 +631,7 @@ class App:
         self.host.start()
         self.net.start()
         self.nudges.start()
+        self.notices.start()
         self.parker.start()
         self.links.boot()
         # Last: its first snapshot must hold every session the boot loaded,
@@ -678,6 +682,7 @@ class App:
         await self.links.shutdown()
         await self.parker.stop()
         await self.nudges.stop()
+        await self.notices.stop()
         await self.quota.stop()
         await self.host.stop()
         await self.net.stop()
@@ -1201,6 +1206,10 @@ class App:
                     spec,
                     spawned_from=f"{p.spawned_from.handle}@{p.spawned_from.server}",
                 )
+            elif caller.link is not None:
+                # A person's /spawn on the far side: its questions would reach
+                # someone on another server, so it is never a notice's asker.
+                spec = dataclasses.replace(spec, spawned_from=f"person@{caller.link}")
             # An agent cannot hand a session more power than it has itself.
             if parent is not None and PERMISSION_ORDER.index(
                 spec.permission

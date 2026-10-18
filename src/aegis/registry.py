@@ -84,6 +84,7 @@ class Registry(Host):
         self.schedules = None
         self.workflows = None
         self.quota = None
+        self.notices = None  # notices.Notices, set by App
         # The live config's context block (config.py); the app points it at
         # Config.current().
         self.context: Callable[[], dict] = lambda: dict(CONTEXT_DEFAULTS)
@@ -434,6 +435,7 @@ class Registry(Host):
             last_exit=meta.get("last_exit"),
             restart_continues=meta.get("restart_continues") or 0,
             quota_paused=meta.get("quota_paused"),
+            notices_sent=meta.get("notices_sent"),
             tool_calls=meta.get("tool_calls") or 0,
             cache_recent=meta.get("cache_recent"),
             compactions=meta.get("compactions") or 0,
