@@ -125,7 +125,6 @@ export async function open(parent, { text, path, readOnly = false, onChange, onS
   const C = await cm();
   const lang = await language(langOf(path)).catch(() => []);
   const langSlot = new C.Compartment();
-  const sepSlot = new C.Compartment();
   let saved = null;
   let dirty = false;
   const extensions = (body) => [
@@ -134,7 +133,7 @@ export async function open(parent, { text, path, readOnly = false, onChange, onS
     C.Prec.highest(
       C.keymap.of([{ key: "Mod-s", preventDefault: true, run: () => (onSave?.(), true) }]),
     ),
-    sepSlot.of(C.EditorState.lineSeparator.of(separator(body))),
+    C.EditorState.lineSeparator.of(separator(body)),
     langSlot.of(lang),
     look(C),
     C.EditorState.readOnly.of(readOnly),
@@ -152,7 +151,8 @@ export async function open(parent, { text, path, readOnly = false, onChange, onS
     state: C.EditorState.create({ doc: text, extensions: extensions(text) }),
   });
   saved = view.state.doc;
-  const value = () => view.state.doc.toString();
+  // sliceDoc joins lines with the file's separator; doc.toString() always uses \n.
+  const value = () => view.state.sliceDoc();
   return {
     view,
     value,

@@ -190,7 +190,11 @@ def register_fs_ops(app: App) -> FsIndex:
                 raise OpError(
                     "changed_on_disk",
                     f"{p.path} changed on disk since it was opened",
-                    {"text": disk.get("text"), "hash": disk["hash"]},
+                    # A cut text is not the file: Reload reads it again.
+                    {
+                        "text": None if disk.get("cut") else disk.get("text"),
+                        "hash": disk["hash"],
+                    },
                 )
             mode = path.stat().st_mode & 0o7777
         st = await asyncio.to_thread(_write, path, data, mode)

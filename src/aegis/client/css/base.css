@@ -1224,6 +1224,38 @@ body{background:#000}
 #a2 #settings-btn.on,#a2 #journal-btn.on,#a2 #help-btn.on{color:var(--strong);border-color:var(--accent)}
 @media (max-width:640px){#a2 .set-agent{grid-template-columns:1fr}#a2 .set-card-foot,#a2 .set-agent > .set-why{grid-column:1}#a2 .set-findings li{grid-template-columns:1fr;gap:2px}}
 
+/* the Files view (js/files.js): a bar with the path and Save, the conflict's
+   banner, and the editor filling the rest; Alt+O's picker is the palette's panel */
+#a2[data-view=files] .v-files{display:flex;flex-direction:column;overflow:hidden}
+#a2 .files{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0}
+#a2 .fbar{display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--rule);font-family:var(--font-chrome);font-size:12.5px;min-width:0}
+#a2 .fbar .crumbs{display:flex;align-items:baseline;min-width:0;overflow:hidden;white-space:nowrap}
+#a2 .fbar .crumbs .dir{color:var(--muted)}#a2 .fbar .crumbs .sep{color:var(--faint);padding:0 4px}
+#a2 .fbar .crumbs .here{color:var(--strong);overflow:hidden;text-overflow:ellipsis}
+#a2 .fbar .dirty{color:var(--accent)}
+#a2 .fbar .gap{flex:1}
+#a2 .fbar .pick{font-family:var(--font-mono);font-size:11.5px}
+#a2 .fbanner{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 12px;background:var(--raised);border-bottom:1px solid var(--rule);font-size:12.5px}
+#a2 .fbanner[hidden]{display:none}
+#a2 .fbanner .t{flex:1 1 240px;color:var(--warn)}
+#a2 .fbanner .acts{display:flex;gap:6px;flex-wrap:wrap}
+#a2 .fbanner .fdiff{flex:1 0 100%;max-height:40vh;overflow:auto;container:md/inline-size}
+#a2 .fbanner .fdiff[hidden]{display:none}
+#a2 .fpane{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+#a2 .fpane .notice{margin:24px auto;max-width:560px;padding:0 16px;text-align:center}
+#a2 .fpane .fnote{margin:0;padding:4px 12px;color:var(--muted);font-size:12px;border-bottom:1px solid var(--rule)}
+#a2 .fed{flex:1;min-height:0;overflow:hidden}
+#a2 .fpick .file-row{grid-template-columns:auto minmax(0,1fr) auto}
+#a2 .fpick .file-row .dir{color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#a2 .fpick .file-row b{color:var(--accent)}
+#a2 .fpick .file-row .age{color:var(--faint);font-size:11px;white-space:nowrap}
+@media (max-width:640px){
+  #a2 .fbar .crumbs .dir,#a2 .fbar .crumbs .sep,#a2 .fbar .pick{display:none}
+  #a2 .fpick{padding-top:0}
+  #a2 .fpick .panel{width:100vw;max-height:100%;border-radius:0}
+}
+@media (pointer:coarse){#a2 .fbar .btn,#a2 .fbanner .btn{min-height:44px}#a2 .fpick .file-row{min-height:44px;align-items:center}}
+
 /* the journal view (js/journal.js): one box shaped like the composer's, the
    kind chips, and the entries as a timeline on the transcript's thread */
 #a2[data-view=journal] .v-journal{display:flex;flex-direction:column;overflow:auto}

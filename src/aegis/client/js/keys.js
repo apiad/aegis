@@ -59,6 +59,9 @@ export const ACTIONS = [
   { id: "spawn", title: "New session", nav: true, keys: [on("global", "Alt+N", alt("KeyN")), on("browse", "n", key("n"))] },
   { id: "settings", title: "Settings: .aegis.yaml", nav: true, keys: [on("global", "Alt+S", alt("KeyS"))] },
   { id: "journal", title: "Journal: what was done", nav: true, keys: [on("global", "Alt+L", alt("KeyL"))] },
+  { id: "files", title: "Open a file under the root, newest first", nav: true, keys: [on("global", "Alt+O", alt("KeyO"))] },
+  // Inside the editor Mod-s is CodeMirror's (editor.js); this is the rest of the view.
+  { id: "save", title: "Save the open file", when: ["files"], keys: [on("files", MAC ? "⌘S" : "Ctrl+S", mod("s"))] },
   { id: "schedules", title: "Schedules: prompts fired on a clock", nav: true, keys: [on("global", "Alt+K", alt("KeyK"))] },
   {
     id: "dictate",
@@ -128,7 +131,7 @@ export const ACTIONS = [
 // Every key, in the order the ? list shows them, each with its action.
 export const KEYS = ACTIONS.flatMap((a) => a.keys.map((k) => ({ ...k, action: a })));
 
-const VIEWS = { global: null, browse: null, session: ["session", "read"], fleet: ["fleet"] };
+const VIEWS = { global: null, browse: null, session: ["session", "read"], fleet: ["fleet"], files: ["files"] };
 
 // Whether the palette offers an action in a view.
 export function applies(a, view) {
@@ -141,7 +144,7 @@ function typing(t) {
   return t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 }
 
-const HEADS = { global: "Anywhere", browse: "Outside a text field", session: "Transcript", fleet: "Fleet" };
+const HEADS = { global: "Anywhere", browse: "Outside a text field", session: "Transcript", fleet: "Fleet", files: "Files" };
 
 export function renderKeys(box) {
   const panel = document.createElement("div");
