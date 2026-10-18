@@ -14,7 +14,8 @@ fails, never run again; a wait resumes on its logged end. A judge is a
 quiet session in the pool, as an agent node is. An if's branch, a loop's
 rounds and each until are logged once, so a restart never asks a probe
 again. Every deadline on the path from the root is checked on each pass
-against wall time; a leaf with retries left goes back to pending. Every node
+against wall time, on every instance not yet done (a finished or skipped one,
+leaf or group, never expires); a leaf with retries left goes back to pending. Every node
 instance has a path (``images.base.impl`` inside item ``base`` of map
 ``images``); only leaves and a map's items are logged, and every other state
 is derived from them on each pass (``_state``), so a restart rebuilds them by
@@ -1414,6 +1415,8 @@ class Workflows:
         if mine is not None and mine.status == "failed":
             return "failed"
         end = self._end_at(st, wf, node, inst)
+        if end is not None and self._state(st, node, inst) == "done":
+            end = None  # a finished instance, leaf or group, never expires
         if end is not None:
             if time.time() >= end[0]:
                 if node is wf.root:
