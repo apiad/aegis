@@ -264,6 +264,21 @@ class FsIndex:
         except OSError:
             self._files.pop(rel, None)
 
+    def added(self, rel: str) -> None:
+        """A file or a folder appeared at ``rel`` (a move, a restore): it
+        and every file under it, by the fixed list only until the next walk."""
+        if self._files is None:
+            return
+        full = self.root / rel
+        if full.is_symlink() or not full.is_dir():
+            self.touched(rel)
+            return
+        for top, dirs, names in os.walk(full):
+            dirs[:] = [d for d in dirs if not ignore_dir(d)]
+            sub = os.path.relpath(top, self.root).replace(os.sep, "/")
+            for n in names:
+                self.touched(f"{sub}/{n}")
+
     def removed(self, rel: str) -> None:
         """The file at ``rel`` is gone, or every file under it when a folder."""
         if self._files is None:

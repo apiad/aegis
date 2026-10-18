@@ -20,6 +20,8 @@ import asyncio
 import hashlib
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -27,8 +29,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from . import files
-from .fs_index import FsIndex
+from . import files, fs_trash
+from .fs_index import FsIndex, _is_repo, ignore_dir, ignore_file
 from .fs_paths import resolve
 from .ops import Caller, NoParams, OpError
 
@@ -47,6 +49,23 @@ _MAYBE_TEXT = ("other", "audio", "video")
 class FsPath(BaseModel):
     model_config = {"extra": "forbid"}
     path: str
+
+
+class FsList(BaseModel):
+    model_config = {"extra": "forbid"}
+    dir: str = ""
+    ignored: bool = False
+
+
+class FsMove(BaseModel):
+    model_config = {"extra": "forbid"}
+    path: str
+    to: str
+
+
+class FsRestore(BaseModel):
+    model_config = {"extra": "forbid"}
+    trash_id: str
 
 
 class FsWrite(BaseModel):
@@ -164,6 +183,93 @@ def _save(path: Path, rel: str, data: bytes, base: str | None):
     return exists, _write(path, data, mode)
 
 
+def _git_ignored(top: Path, paths: list[Path]) -> set[Path]:
+    """Which of ``paths`` the repository at ``top`` ignores: one
+    ``git check-ignore`` for the whole listing, nothing when git cannot say."""
+    if not paths:
+        return set()
+    rels = [str(p.relative_to(top)) for p in paths]
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(top), "check-ignore", "--stdin", "-z"],
+            input="\0".join(rels).encode("utf-8", "surrogateescape"),
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return set()
+    if out.returncode not in (0, 1):  # 1: none ignored; 128: not a repository
+        return set()
+    said = out.stdout.decode("utf-8", "surrogateescape").split("\0")
+    return {top / r for r in said if r}
+
+
+def _repo_top(folder: Path, root: Path) -> Path | None:
+    """The innermost repository holding ``folder``, up to ``root``. A
+    worktree's ``.git`` file counts here: git answers for it."""
+    for p in (folder, *folder.parents):
+        if (p / ".git").exists():
+            return p
+        if p == root:
+            return None
+    return None
+
+
+def _holds_repo(path: Path) -> bool:
+    """A repository, or a folder with one ``SEARCH_DEPTH`` levels down: the
+    tree must reach it although git ignores the folder (``repos/``)."""
+    if _is_repo(str(path)):
+        return True
+    try:
+        return any(
+            e.is_dir(follow_symlinks=False) and _is_repo(e.path)
+            for e in os.scandir(path)
+        )
+    except OSError:
+        return False
+
+
+def _list(root: Path, state: Path, folder: Path, show_ignored: bool) -> list[dict]:
+    real_state = state.resolve()
+    entries = []
+    for e in os.scandir(folder):
+        path = Path(e.path)
+        if e.name == ".git" or path.resolve() == real_state:
+            continue
+        try:
+            st = e.stat()  # a symlink's target, as the editor would see it
+            is_dir = e.is_dir()
+        except OSError:  # a dangling symlink
+            st, is_dir = e.stat(follow_symlinks=False), False
+        fixed = ignore_dir(e.name) if is_dir else ignore_file(e.name)
+        entries.append((path, is_dir, st, fixed))
+    top = _repo_top(folder, root)
+    by_git = (
+        _git_ignored(top, [p for p, _, _, fixed in entries if not fixed])
+        if top
+        else set()
+    )
+    out = []
+    for path, is_dir, st, fixed in entries:
+        repo = is_dir and _is_repo(str(path))
+        # A repository answers for itself, not to the one around it.
+        ignored = not repo and (fixed or path in by_git)
+        if ignored and not show_ignored and not (is_dir and _holds_repo(path)):
+            continue
+        out.append(
+            {
+                "name": path.name,
+                "kind": "dir" if is_dir else "file",
+                "size": None if is_dir else st.st_size,
+                "mtime": _mtime(st),
+                "ignored": ignored,
+                "repo": repo,
+            }
+        )
+    out.sort(key=lambda d: (d["kind"] != "dir", d["name"].lower(), d["name"]))
+    return out
+
+
 def register_fs_ops(app: App) -> FsIndex:
     r = app.registry
     root, state = app.roots.config_root, app.roots.state_root
@@ -221,5 +327,75 @@ def register_fs_ops(app: App) -> FsIndex:
         log(caller, "write" if exists else "create", p.path, len(data))
         index.touched(p.path)
         return {"hash": hashlib.sha256(data).hexdigest(), "mtime": _mtime(st)}
+
+    def entry(rel: str) -> Path:
+        """The entry ``rel`` names itself, a symlink rather than its target,
+        once ``resolve`` has passed both. Never the root."""
+        real = resolve(root, state, rel)
+        if real == root.resolve():
+            raise OpError("forbidden", "the root itself cannot be moved or deleted")
+        return resolve(root, state, str(Path(rel).parent)) / Path(rel).name
+
+    @r.op("fs.list", FsList, local=True)
+    async def list_(p: FsList, caller: Caller):
+        """One folder's entries, folders first, each alphabetical; ignored
+        ones only when asked for, except a folder holding a repository."""
+        folder = resolve(root, state, p.dir) if p.dir else root.resolve()
+        if not folder.is_dir():
+            raise OpError("not_a_folder", f"{p.dir} is a file")
+        entries = await asyncio.to_thread(_list, root, state, folder, p.ignored)
+        return {"dir": p.dir, "entries": entries}
+
+    @r.op("fs.mkdir", FsPath, local=True)
+    async def mkdir(p: FsPath, caller: Caller):
+        """Create a folder; refuses a name that exists."""
+        path = resolve(root, state, p.path, must_exist=False)
+        async with writing:
+            if path.exists() or path.is_symlink():
+                raise OpError("exists", f"{p.path} already exists")
+            path.mkdir()
+        log(caller, "mkdir", p.path, 0)
+        return {"path": p.path}
+
+    @r.op("fs.move", FsMove, local=True)
+    async def move(p: FsMove, caller: Caller):
+        """Rename or move a file or folder; refuses a target that exists."""
+        src = entry(p.path)
+        dst = resolve(root, state, p.to, must_exist=False)
+        if dst.is_relative_to(src):
+            raise OpError("forbidden", f"{p.to} is inside {p.path}")
+        async with writing:
+            if dst.exists() or dst.is_symlink():
+                raise OpError("exists", f"{p.to} already exists")
+            size = await asyncio.to_thread(lambda: fs_trash.count(src)[1])
+            await asyncio.to_thread(shutil.move, src, dst)
+        log(caller, "move", p.path, size, p.to)
+        index.removed(p.path)
+        index.added(p.to)
+        return {"path": p.to}
+
+    @r.op("fs.delete", FsPath, local=True)
+    async def delete(p: FsPath, caller: Caller):
+        """Move a file or folder into the trash: its id there and how many
+        files it held."""
+        path = entry(p.path)
+        who = r.who(caller).name
+        async with writing:
+            t = await asyncio.to_thread(fs_trash.delete, state, path, p.path, who)
+        log(caller, "delete", p.path, t["size"], t["id"])
+        index.removed(p.path)
+        return {"trash_id": t["id"], "files": t["files"]}
+
+    @r.op("fs.restore", FsRestore, local=True)
+    async def restore(p: FsRestore, caller: Caller):
+        """Put a deleted entry back, or ``taken`` when something new is there."""
+        rel = fs_trash.manifest(state, p.trash_id)["path"]
+        dest = resolve(root, state, rel, must_exist=False)
+        async with writing:
+            await asyncio.to_thread(fs_trash.restore, state, p.trash_id, dest)
+        size = await asyncio.to_thread(lambda: fs_trash.count(dest)[1])
+        log(caller, "restore", rel, size, p.trash_id)
+        index.added(rel)
+        return {"path": rel}
 
     return index

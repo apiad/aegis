@@ -88,6 +88,7 @@ from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .layout_ops import register_layout_ops
 from .fs_ops import register_fs_ops
+from . import fs_trash
 from .schedule_ops import register_schedule_ops
 from .schedules import Schedules
 from .workflow_ops import register_workflow_ops
@@ -609,6 +610,8 @@ class App:
         await self.terminals.boot()
         # No browser's upload survives a restart (attachments.py).
         att.clear_staged(self.roots.state_root)
+        # The Files view's deletes are kept 30 days (fs_trash.py).
+        fs_trash.purge(self.roots.state_root)
         self.monitors.boot()
         # Before the monitors are armed, so a wake cannot start a turn ahead of
         # the continue; before the queues, so a worker the registry continued
