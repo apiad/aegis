@@ -339,7 +339,7 @@ def register_fs_ops(app: App) -> tuple[FsIndex, Tickets]:
         a ticket URL for every kind a browser element draws itself."""
         path = resolve(root, state, p.path)
         out = {"path": p.path, **await asyncio.to_thread(_read, path)}
-        if out["kind"] not in ("text", "markdown"):
+        if out["kind"] not in ("text", "markdown") or "text" not in out:
             out["url"] = tickets.issue(p.path)
         return out
 
@@ -350,6 +350,20 @@ def register_fs_ops(app: App) -> tuple[FsIndex, Tickets]:
         if not path.is_file():
             raise OpError("not_a_file", f"{p.path} is a folder")
         return {"url": tickets.issue(p.path)}
+
+    @r.op("fs.open", FsPath, local=True)
+    async def open_(p: FsPath, caller: Caller):
+        """Open a file in the desktop's app for it, as file.open does for a
+        sent file: only from a browser on the server's desktop."""
+        if not caller.desktop:
+            raise OpError(
+                "not_local", "only a browser on the server's desktop can do this"
+            )
+        path = resolve(root, state, p.path)
+        try:
+            files.open_natively(path)
+        except (files.FileError, OSError) as e:
+            raise OpError("open_failed", str(e)) from e
 
     @r.op("fs.stat", FsPath, local=True)
     async def stat(p: FsPath, caller: Caller):

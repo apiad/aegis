@@ -579,6 +579,7 @@ const helpTab = new Help(conn, $("help"), {
     startGuide({ question, page }, "ask", false).catch((e) => toast(e.message, { kind: "error" })),
 });
 installCopy($("help"), copyDeps);
+installCopy($("files"), copyDeps);
 let sideJournalTimer = null;
 const sideJournalChanged = () => {
   journal.changed();

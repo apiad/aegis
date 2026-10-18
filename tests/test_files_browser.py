@@ -64,9 +64,9 @@ def test_a_change_on_disk_before_a_save_shows_the_banner_and_reload_takes_it(
     page,  # noqa: F811
     tmp_path,
 ):
-    target = tmp_path / "notes.md"
+    target = tmp_path / "notes.txt"
     target.write_text("one\ntwo\n")
-    open_file(page, server, "notes.md")
+    open_file(page, server, "notes.txt")
     page.click(EDITOR)
     page.keyboard.press("Control+End")
     page.keyboard.type("mine\n")
@@ -316,4 +316,87 @@ def test_renaming_an_open_folder_lists_it_at_its_new_place(
     assert page.evaluate("location.hash") == "#files=lib/a.py"
     page.wait_for_timeout(2500)  # a poll after the move finds the file
     assert page.locator(".fbanner").is_hidden()
+    assert page.errors == []
+
+
+def test_a_markdown_file_renders_with_its_relative_image(
+    server,  # noqa: F811
+    page,  # noqa: F811
+    tmp_path,
+):
+    from .test_browser import PNG
+
+    (tmp_path / "docs" / "img").mkdir(parents=True)
+    (tmp_path / "docs" / "img" / "dot.png").write_bytes(PNG)
+    (tmp_path / "docs" / "guide.md").write_text(
+        "# Guide\n\n![dot](img/dot.png)\n\n[up](../src/a.py) and ![out](../../x.png)\n"
+    )
+    page.goto(f"{server.url.split('#')[0]}#files=docs/guide.md")
+    page.wait_for_selector(".v-files .fview .md h1")
+    assert page.locator(".v-files .fview .md h1").inner_text() == "Guide"
+    page.wait_for_function(
+        "document.querySelector('.v-files .fview img[alt=dot]')?.naturalWidth > 0"
+    )
+    assert (
+        page.locator(".v-files .fview img[alt=dot]")
+        .get_attribute("src")
+        .startswith("/fs/")
+    )
+    assert page.locator(".v-files .fview img[alt=out]").get_attribute("src") is None
+    assert (
+        page.locator(".v-files .fview a", has_text="up").get_attribute("href")
+        == "#files=src/a.py"
+    )
+    page.click(".fstrip [data-mode=src]")
+    page.wait_for_selector(EDITOR)
+    assert page.locator(".v-files .fview").is_hidden()
+    assert page.errors == []
+
+
+def test_an_html_file_runs_in_a_sandbox(
+    server,  # noqa: F811
+    page,  # noqa: F811
+    tmp_path,
+):
+    # The page reports whether it has an origin of its own and the client's
+    # storage: a sandboxed frame has neither, so it cannot open the websocket
+    # signed in with the client's cookie.
+    (tmp_path / "report.html").write_text(
+        '<p id="s">no script</p><script>let r;'
+        'try { sessionStorage.length; r = "storage open"; }'
+        'catch (e) { r = "storage refused"; }'
+        'document.getElementById("s").textContent = r + " " + self.origin;</script>'
+    )
+    page.goto(f"{server.url.split('#')[0]}#files=report.html")
+    frame = page.locator(".v-files .fview iframe")
+    frame.wait_for()
+    assert frame.get_attribute("sandbox") == "allow-scripts"
+    report = page.frame_locator(".v-files .fview iframe").locator("#s")
+    report.filter(has_text="storage").wait_for()
+    assert report.inner_text() == "storage refused null"
+    page.click(".fstrip [data-mode=src]")
+    page.wait_for_selector(EDITOR)
+    assert page.errors == []
+
+
+def test_a_png_renders_and_an_unknown_file_offers_a_download(
+    server,  # noqa: F811
+    page,  # noqa: F811
+    tmp_path,
+):
+    from .test_browser import PNG
+
+    (tmp_path / "dot.png").write_bytes(PNG)
+    (tmp_path / "blob.bin").write_bytes(b"\x00\x01\x02" * 100)
+    page.goto(f"{server.url.split('#')[0]}#files=dot.png")
+    page.wait_for_function(
+        "document.querySelector('.v-files .fstage img')?.naturalWidth > 0"
+    )
+    page.goto(f"{server.url.split('#')[0]}#files=blob.bin")
+    dl = page.locator(".v-files .fother a.btn")
+    dl.wait_for()
+    href = dl.get_attribute("href")
+    assert href.startswith("/fs/") and href.endswith("/blob.bin?download=1")
+    origin = server.url.split("/?")[0].split("#")[0]
+    assert page.request.get(origin + href).body() == b"\x00\x01\x02" * 100
     assert page.errors == []

@@ -456,3 +456,23 @@ async def test_a_ticket_is_refused_to_a_link_caller(app, tmp_path):
     (tmp_path / "d.pdf").write_bytes(b"%PDF")
     e = await refused(app, "fs.ticket", {"path": "d.pdf"}, Caller("user", link="far"))
     assert e.code == "not_across_links"
+
+
+async def test_a_text_too_big_to_send_still_gets_a_ticket(app, tmp_path, monkeypatch):
+    from aegis import files
+
+    monkeypatch.setattr(files, "MAX_BYTES", 10)
+    (tmp_path / "big.log").write_text("x" * 20)
+    r = await call(app, "fs.read", {"path": "big.log"})
+    assert "text" not in r and r["url"].endswith("/big.log")
+
+
+async def test_open_natively_needs_the_servers_desktop(app, tmp_path, monkeypatch):
+    from aegis import files
+
+    opened = []
+    monkeypatch.setattr(files, "open_natively", opened.append)
+    e = await refused(app, "fs.open", {"path": "src/a.py"})
+    assert e.code == "not_local" and not opened
+    await call(app, "fs.open", {"path": "src/a.py"}, Caller("user", desktop=True))
+    assert opened == [(tmp_path / "src" / "a.py").resolve()]

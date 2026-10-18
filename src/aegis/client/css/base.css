@@ -1247,6 +1247,22 @@ body{background:#000}
 #a2 .fpane .notice{margin:24px auto;max-width:560px;padding:0 16px;text-align:center}
 #a2 .fpane .fnote{margin:0;padding:4px 12px;color:var(--muted);font-size:12px;border-bottom:1px solid var(--rule)}
 #a2 .fed{flex:1;min-height:0;overflow:hidden}
+#a2 .fstrip{display:flex;justify-content:flex-end;gap:4px;padding:4px 12px;border-bottom:1px solid var(--rule)}
+#a2 .fstrip .btn{padding:2px 10px;font-size:12px}
+#a2 .fstrip .btn[aria-pressed=true]{background:var(--raised);color:var(--strong);border-color:var(--accent)}
+#a2 .fview{flex:1;min-height:0;display:flex;flex-direction:column;overflow:auto;container:md/inline-size}
+#a2 .fview[hidden],#a2 .fed[hidden]{display:none}
+#a2 .fview>.md{flex-shrink:0;width:100%;max-width:860px;margin:0 auto;padding:22px 32px 56px;box-sizing:border-box}
+#a2 .fview>.md img{max-width:100%}
+@container md (max-width:600px){#a2 .fview>.md{padding:14px 14px 40px}}
+#a2 .fstage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto}
+#a2 .fstage img,#a2 .fstage video{max-width:100%;max-height:100%;object-fit:contain}
+#a2 .fstage audio{width:min(640px,100%)}
+#a2 .fstage.html,#a2 .fstage.pdf{padding:0;align-items:stretch}
+#a2 .fstage iframe{flex:1;width:100%;border:0;background:#fff}
+#a2 .fother .acts{display:flex;justify-content:center;gap:8px}
+#a2 .fother .fnative{display:none}
+#a2[data-native] .fother .fnative{display:inline-flex}
 #a2 .fbody{flex:1;min-height:0;display:flex;position:relative}
 #a2 .fmain{flex:1;min-width:0;display:flex;flex-direction:column}
 #a2 .ftree{width:260px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--rule);background:var(--bg);font-family:var(--font-chrome);font-size:12.5px}

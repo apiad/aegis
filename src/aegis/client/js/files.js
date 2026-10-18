@@ -14,13 +14,20 @@
 // shows the same banner a refused save does. It is a call, not a channel: a
 // link's socket may subscribe to any channel, and a channel would let a far
 // server watch the files here (spec, "Agents writing the same file").
+//
+// Markdown, HTML and SVG open rendered, with a switch to the editor on their
+// source; the rendered view draws the buffer (Markdown) or the file on disk
+// through a ticket URL (HTML in a sandboxed frame, SVG in an <img>), redrawn
+// after a save. Images, PDF, audio and video draw from their ticket URL, and
+// anything else offers its size, a download and the desktop's app for it.
 
 import { fuzzy } from "./commands.js";
 import { ask, choose } from "./dialog.js";
 import { diffView } from "./diff.js";
 import { open as openEditor } from "./editor.js";
+import { markdown } from "./entries.js";
 import { ago } from "./fleet.js";
-import { langName } from "./highlight.js";
+import { langName, paint } from "./highlight.js";
 
 const SHOWN = 200; // rows the picker draws
 const CONTEXT = 3; // unchanged lines around each change in the conflict's diff
@@ -262,6 +269,17 @@ const parentOf = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
 const join = (dir, name) => (dir ? `${dir}/${name}` : name);
 // Whether `p` is `top` or inside it.
 const under = (p, top) => p === top || p.startsWith(`${top}/`);
+// "a/./b/../c" -> "a/c"; "" when it climbs out of the root.
+function normalize(p) {
+  const out = [];
+  for (const part of p.split("/")) {
+    if (part === "..") {
+      if (!out.length) return "";
+      out.pop();
+    } else if (part && part !== ".") out.push(part);
+  }
+  return out.join("/");
+}
 
 function stored(key, fallback) {
   try {
@@ -676,6 +694,8 @@ export class Files {
     this.stat = null; // {size, mtime} of the file the buffer last matched
     this.gen = 0; // bumped when a save or the banner changes the base, so a poll begun before drops its answer
     this.polling = false;
+    this.kind = null; // the open file's kind, from fs.read
+    this.viewMode = null; // "view" or "src" for a kind with a rendered view
     box.innerHTML =
       '<div class="fbar"><button class="btn tbtn" type="button" title="Folders" aria-label="Folders">☰</button>' +
       '<span class="crumbs"></span><span class="dirty" title="Unsaved changes" hidden>●</span>' +
@@ -803,6 +823,8 @@ export class Files {
     this.path = null;
     this.hash = null;
     this.stat = null;
+    this.kind = null;
+    this.viewMode = null;
     this.banner(false);
     this.mark(false);
   }
@@ -818,7 +840,7 @@ export class Files {
   // Ask whether the open file moved on disk; see the module's comment.
   async poll() {
     const shown = document.getElementById("a2")?.dataset.view === "files";
-    if (!shown || document.visibilityState !== "visible" || !this.ed || this.polling || this.saving) return;
+    if (!shown || document.visibilityState !== "visible" || !this.stat || this.polling || this.saving) return;
     this.polling = true;
     const path = this.path;
     const gen = this.gen;
@@ -827,7 +849,10 @@ export class Files {
       const st = await this.conn.call("fs.stat", { path }).catch((e) => e);
       if (stale()) return;
       if (st instanceof Error) {
-        if (st.code === "not_found" && this.hash !== null) {
+        if (st.code === "not_found" && !this.ed) {
+          this.close();
+          this.$(".fpane").replaceChildren(el("p", "notice", "This file was deleted on disk."));
+        } else if (st.code === "not_found" && this.hash !== null) {
           this.hash = null; // a save now creates it again
           this.stat = null;
           this.banner("deleted");
@@ -835,6 +860,7 @@ export class Files {
         return;
       }
       if (this.stat && st.mtime === this.stat.mtime && st.size === this.stat.size) return;
+      if (!this.ed) return this.reopen(); // a preview draws the file as it is now
       const r = await this.conn.call("fs.read", { path }).catch(() => null);
       if (!r || stale()) return;
       this.stat = { size: r.size, mtime: r.mtime };
@@ -850,6 +876,7 @@ export class Files {
       } else {
         this.ed.setValue(r.text);
         this.hash = r.hash;
+        this.drawView();
       }
     } finally {
       this.polling = false;
@@ -890,16 +917,24 @@ export class Files {
     }
     if (n !== this.loading) return;
     pane.replaceChildren();
-    if (r.text === undefined) {
-      pane.append(
-        el("p", "notice", `${r.mime || "A file"} · ${size(r.size)}. Its preview is not built yet; only text opens here for now.`),
-      );
-      return;
-    }
     this.hash = r.hash;
     this.stat = { size: r.size, mtime: r.mtime };
+    this.kind = r.kind;
+    if (r.text === undefined) return pane.append(this.preview(r));
     this.readOnly = !!r.cut;
     if (r.cut) pane.append(el("p", "fnote", `Read-only: the first 2 MB of this ${size(r.size)} file.`));
+    const rendered = ["markdown", "html", "image"].includes(r.kind);
+    if (rendered) {
+      const strip = el("div", "fstrip");
+      for (const [mode, label] of [["view", "Rendered"], ["src", "Source"]]) {
+        const b = el("button", "btn", label);
+        b.type = "button";
+        b.dataset.mode = mode;
+        b.addEventListener("click", () => this.mode(mode));
+        strip.append(b);
+      }
+      pane.append(strip, el("div", "fview"));
+    }
     const host = el("div", "fed");
     pane.append(host);
     const ed = await openEditor(host, {
@@ -912,8 +947,115 @@ export class Files {
     if (n !== this.loading) return ed.destroy();
     this.ed = ed;
     this.mark(false);
+    if (rendered) this.mode(line ? "src" : "view");
     if (line) ed.goto(line);
-    else ed.focus();
+    else if (!rendered) ed.focus();
+  }
+
+  // Rendered or Source, for a kind that has both.
+  mode(m) {
+    this.viewMode = m;
+    for (const b of this.box.querySelectorAll(".fstrip .btn")) b.setAttribute("aria-pressed", String(b.dataset.mode === m));
+    this.$(".fview").hidden = m !== "view";
+    this.$(".fed").hidden = m === "view";
+    if (m === "view") this.drawView();
+    else this.ed?.focus();
+  }
+
+  // The rendered view: Markdown from the buffer, HTML and SVG from the disk
+  // through a fresh ticket (one issued at open may have expired).
+  async drawView() {
+    if (this.viewMode !== "view" || !this.ed) return;
+    const box = this.$(".fview");
+    const path = this.path;
+    if (this.kind === "markdown") {
+      const doc = markdown(this.ed.value());
+      box.replaceChildren(doc);
+      for (const f of doc.querySelectorAll(".fence")) paint(f);
+      this.relink(doc, path);
+      return;
+    }
+    const r = await this.conn.call("fs.ticket", { path }).catch(() => null);
+    if (!r || path !== this.path) return;
+    box.replaceChildren(this.stage(this.kind === "html" ? "html" : "image", r.url, path));
+  }
+
+  // A rendered Markdown file's relative images come through a ticket each,
+  // resolved against its folder; its relative links open in this view.
+  // A path climbing out of the root draws nothing.
+  relink(doc, path) {
+    const dir = parentOf(path);
+    const local = (raw) => {
+      if (!raw || /^([a-z][a-z0-9+.-]*:|\/|#)/i.test(raw)) return null;
+      let rel;
+      try {
+        rel = normalize(join(dir, decodeURIComponent(raw.split(/[?#]/)[0])));
+      } catch {
+        return false;
+      }
+      return rel;
+    };
+    for (const img of doc.querySelectorAll("img")) {
+      const rel = local(img.getAttribute("src"));
+      if (rel === null) continue;
+      img.removeAttribute("src");
+      if (!rel) continue;
+      this.conn.call("fs.ticket", { path: rel }).then(
+        (r) => (img.src = r.url),
+        () => (img.title = `${rel} could not be opened`),
+      );
+    }
+    for (const a of doc.querySelectorAll("a[href]")) {
+      const rel = local(a.getAttribute("href"));
+      if (rel === null) continue;
+      a.removeAttribute("target");
+      if (rel) a.href = filesHash(rel);
+      else a.removeAttribute("href");
+    }
+  }
+
+  // An element drawing a ticket URL: a sandboxed frame for HTML, a frame
+  // without the sandbox for a PDF (Chrome refuses to draw one under it), an
+  // <img> fitted to the pane, or audio and video with their own controls.
+  stage(kind, url, path) {
+    const box = el("div", `fstage ${kind}`);
+    let v;
+    if (kind === "html" || kind === "pdf") {
+      v = el("iframe");
+      if (kind === "html") v.setAttribute("sandbox", "allow-scripts");
+      v.title = path;
+    } else if (kind === "image") {
+      v = el("img");
+      v.alt = path;
+    } else {
+      v = el(kind);
+      v.controls = true;
+      v.preload = "metadata";
+    }
+    v.src = url;
+    box.append(v);
+    return box;
+  }
+
+  // A file with no text: drawn from its ticket, or its size, type, a
+  // download and the desktop's app for it.
+  preview(r) {
+    if (["image", "pdf", "audio", "video"].includes(r.kind)) return this.stage(r.kind, r.url, r.path);
+    const box = el("div", "fother");
+    box.append(el("p", "notice", `${r.mime || "A file"} · ${size(r.size)}. This kind of file has no preview here.`));
+    const acts = el("div", "acts");
+    const dl = el("a", "btn", "Download");
+    dl.href = `${r.url}?download=1`;
+    const native = el("button", "btn fnative", "Open in its app");
+    native.type = "button";
+    native.addEventListener("click", async () => {
+      native.disabled = true;
+      await this.conn.call("fs.open", { path: r.path }).catch((e) => this.toast(e.message, { kind: "error" }));
+      setTimeout(() => (native.disabled = false), 800);
+    });
+    acts.append(dl, native);
+    box.append(acts);
+    return box;
   }
 
   // The socket is up: open what waited for it.
@@ -952,6 +1094,7 @@ export class Files {
       this.stat = { size: new TextEncoder().encode(content).length, mtime: r.mtime };
       if (this.ed.value() === content) this.ed.markSaved();
       this.banner(false);
+      this.drawView();
       return true;
     } catch (e) {
       if (e.code === "changed_on_disk") {
@@ -1002,6 +1145,7 @@ export class Files {
     if (disk?.text != null && this.ed) {
       this.ed.setValue(disk.text);
       this.hash = disk.hash;
+      this.drawView();
       return;
     }
     await this.reopen();
