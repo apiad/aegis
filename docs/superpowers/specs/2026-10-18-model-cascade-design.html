@@ -141,6 +141,19 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 .mark{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok)}
 .btn2{font:11px var(--font-mono);background:none;border:1px solid var(--rule);color:var(--muted);border-radius:5px;padding:2px 9px;cursor:pointer}
 .btn2:hover{color:var(--strong);border-color:var(--faint)}
+.mchip{font-family:var(--font-mono);font-size:10px;color:var(--muted);border-left:1px solid var(--rule);margin-left:6px;padding-left:6px}
+.mvrows{display:flex;flex-direction:column;gap:4px;margin-top:10px}
+.mvrow{display:grid;grid-template-columns:minmax(0,1.6fr) 90px 44px 52px 52px 110px minmax(0,1.2fr);gap:8px;align-items:center;background:var(--surface);border:1px solid var(--rule);border-radius:5px;padding:6px 10px;font-family:var(--font-mono);font-size:11.5px;color:var(--muted)}
+.mvrow.use{border-color:#5a4430}
+.mvrow.hd{background:none;border:0;font-size:10.5px;color:var(--faint);padding-top:0;padding-bottom:0}
+.mvrow .nm{color:var(--strong);overflow-wrap:anywhere}
+.mvrow .by{color:var(--accent);overflow-wrap:anywhere}
+@media (max-width:640px){
+  .mvrow{grid-template-columns:1fr auto;gap:2px 8px}
+  .mvrow.hd{display:none}
+  .mvrow .h,.mvrow .ii{display:none}
+  .mvrow .by{grid-column:1/-1}
+}
 .sim{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:auto}
 .flow text{font-family:'JBM',monospace}
@@ -177,6 +190,9 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
   <a class="sub" href="#continue">Continuing the turn</a>
   <a class="sub" href="#seen">What people see</a>
   <a href="#ranking">The quality ranking</a>
+  <a href="#models">Seeing the models</a>
+  <a class="sub" href="#chips">The chip on every pick</a>
+  <a class="sub" href="#view">The Models view</a>
   <a href="#onboarding">Onboarding</a>
   <a href="#settings">Editing a cascade</a>
   <a href="#delivery">Delivery</a>
@@ -222,6 +238,8 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 <tr><td>Onboarding</td><td>With OpenCode installed, propose an agent whose cascade is the free models</td><td class="why"><span class="who">maintainer</span> A student who accepts the proposal works on free models without writing YAML.</td></tr>
 <tr><td>What failure means here</td><td>A weak model ahead of a strong one</td><td class="why"><span class="who">maintainer</span> A cascade that works but starts every session on a poor model has failed. Order is as important as fallback.</td></tr>
 <tr><td>Where the order comes from</td><td>A ranking file shipped in aegis, refreshed against Artificial Analysis at each release</td><td class="why"><span class="who">maintainer</span> No runtime dependency on an external API, and an ordering a reviewer can read in a diff.</td></tr>
+<tr><td>The scores in the package</td><td>Vendored: Coding Index, Intelligence Index and list price per model, in a file that ships with aegis</td><td class="why"><span class="who">maintainer</span> The same data serves cascades, every model pick and a Models view.</td></tr>
+<tr><td>Where people see them</td><td>A chip on every model pick (rank, Coding Index, price) and a Models view in Settings that marks the models in use</td><td class="why"><span class="who">maintainer</span> A person picking a model should know how good it is and what it costs at the moment of choosing.</td></tr>
 <tr><td>Which score orders</td><td>Artificial Analysis Coding Index; Intelligence Index breaks ties; unranked models go last</td><td class="why"><span class="who q">proposed</span> aegis agents write code. An unranked model is an unknown, and the anti-goal says an unknown must not sit above a known good model.</td></tr>
 <tr><td>One harness per cascade</td><td>Every model in a cascade runs on the agent's harness</td><td class="why"><span class="who q">proposed</span> A session's conversation lives in its harness. OpenCode cannot continue a Claude Code conversation, so a cascade that crossed harnesses would lose the context it exists to keep.</td></tr>
 <tr><td><code>model</code> and <code>models</code></td><td><code>model: x</code> stays and means <code>models: [x]</code>. Both on one agent is a config error</td><td class="why"><span class="who q">proposed</span> Existing configs keep working unchanged.</td></tr>
@@ -269,7 +287,7 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 <li>A new module, <code>src/aegis/cascade.py</code>: the pure parts (pick, classify, cooling table), so they test without a harness.</li>
 <li><code>src/aegis/quota_gate.py</code>: unchanged. The pick asks the existing gate for each candidate (<code>pool_for</code> already maps an OpenCode model to its pool).</li>
 <li><code>src/aegis/doctor.py</code>: <code>propose</code> and the findings.</li>
-<li><code>src/aegis/data/model_ranking.json</code> and <code>scripts/refresh-model-ranking</code>: new.</li>
+<li><code>src/aegis/data/models.json</code> and <code>scripts/refresh-model-ranking</code>: new.</li>
 <li>The Settings client: the agent row's model pick.</li>
 </ul>
 
@@ -350,17 +368,19 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 </div>
 
 <h2 id="ranking"><span class="n">07</span>The quality ranking</h2>
-<p><code>src/aegis/data/model_ranking.json</code> ships in the package:</p>
+<p><code>src/aegis/data/models.json</code> ships in the package:</p>
 <pre>{
   "source": "Artificial Analysis",
   "url": "https://artificialanalysis.ai",
   "refreshed": "2026-10-18",
   "models": {
-    <span class="c">// harness model id -> Artificial Analysis slug and scores (sample values)</span>
-    "opencode/kimi-k2.5-free": {"aa": "kimi-k2-5", "coding": 41.2, "intelligence": 54.0},
-    "opencode/glm-5-free":     {"aa": "glm-5",     "coding": 38.9, "intelligence": 50.1}
+    <span class="c">// harness model id -> Artificial Analysis slug, scores, and price in USD per million tokens (sample values)</span>
+    "opencode/kimi-k2.5-free": {"aa": "kimi-k2-5", "coding": 41.2, "intelligence": 54.0, "price_in": 0.60, "price_out": 2.50},
+    "opencode/glm-5-free":     {"aa": "glm-5",     "coding": 38.9, "intelligence": 50.1, "price_in": 0.40, "price_out": 1.80},
+    "claude-code/opus":        {"aa": "claude-opus-5-5", "coding": 72.0, "intelligence": 75.3, "price_in": 15.0, "price_out": 75.0}
   }
 }</pre>
+<p>The scores are vendored: the file ships in the package and is the only place aegis reads them from. <span class="who">maintainer</span> The price in the file is Artificial Analysis's list price for the model on its first-party API. aegis shows the harness's own price where the harness gives one (OpenCode's catalog carries <code>cost.input</code> and <code>cost.output</code>, which today only feed the <code>free</code> flag at src/aegis/opencode/config.py:126) and falls back to the file's price otherwise (Claude Code's catalog carries no price). A model that costs nothing through its harness shows "free" whatever its list price.</p>
 <p><code>scripts/refresh-model-ranking</code> rebuilds it:</p>
 <ol>
 <li>Read the model catalogs of the installed OpenCode and Claude Code (the same catalog the Settings model pick uses).</li>
@@ -371,7 +391,27 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 <p>know-how/releasing.md gains a step: run the script, read the diff, commit it before the version bump. A <code>.rift.yaml</code> check warns when the file's <code>refreshed</code> date is older than 60 days. Artificial Analysis requires attribution where its data is shown, so Settings shows "Order by Artificial Analysis Coding Index, refreshed &lt;date&gt;" with a link, under every cascade.</p>
 <p>Users never call Artificial Analysis. A model released after the last aegis release is unranked until the next one, and goes last in proposals and sorting.</p>
 
-<h2 id="onboarding"><span class="n">08</span>Onboarding</h2>
+<h2 id="models"><span class="n">08</span>Seeing the models</h2>
+<p><span class="who">maintainer</span> The ranking is not only for cascades. Anywhere a person picks a model, they see how good it is and what it costs, and one view lists every model aegis knows with the agents that use it.</p>
+<h3 id="chips">The chip on every model pick</h3>
+<p>Each model in a pick (the new-tab composer's model chip, the <code>/model</code> completion menu, the Settings agent row, the cascade's "Add model") carries one short chip: the rank among the models of that harness, the Coding Index, and the price per million tokens in and out, or "free". An unranked model shows "unranked" and its price. The data reaches the client on the catalog's model wire (<code>Model.wire</code>, src/aegis/claude/control.py:41), which gains <code>rank</code>, <code>coding</code>, <code>intelligence</code>, <code>price_in</code> and <code>price_out</code>.</p>
+<h3 id="view">The Models view</h3>
+<p>A new section in Settings, "Models", lists every model in the catalogs of the installed harnesses, one row each: name, harness, rank, Coding Index, Intelligence Index, price in and out, and "used by" with the agents (and their place in each cascade) that name it. Models in use are marked and come first; the rest follow by rank. The list can be filtered by harness and by "free only", and sorted by any column. Under it: "Scores by Artificial Analysis, refreshed &lt;date&gt;" with a link, which is the attribution the API asks for. The same data is readable by agents through a <code>models_list</code> tool, so an agent choosing an agent for a task can read rank and cost without a browser.</p>
+<p><span class="try">try it</span>Sample models, scores and prices; not real Artificial Analysis data.</p>
+<div class="mock" id="mv">
+  <div class="row2" style="margin-top:0">
+    <select id="mv-h" aria-label="harness"><option value="">all harnesses</option><option>OpenCode</option><option>Claude Code</option></select>
+    <label class="attr" style="margin:0;display:flex;gap:6px;align-items:center"><input type="checkbox" id="mv-free"> free only</label>
+    <span class="attr" style="margin:0">sort:</span>
+    <select id="mv-sort" aria-label="sort"><option value="use">in use, then rank</option><option value="coding">Coding Index</option><option value="price">price</option></select>
+  </div>
+  <div id="mv-rows" class="mvrows"></div>
+  <div class="attr">Scores by <a href="https://artificialanalysis.ai">Artificial Analysis</a>, refreshed 2026-10-18</div>
+</div>
+<p>Composer model chip, as it will read (sample):</p>
+<div class="mock"><div class="picks"><span class="pick">opencode/kimi-k2.5-free <span class="mchip">#1 · 41.2 · free</span></span><span class="pick">claude-code/opus <span class="mchip">#1 · 72.0 · $15 / $75</span></span><span class="pick">opencode/big-pickle <span class="mchip">unranked · free</span></span></div></div>
+
+<h2 id="onboarding"><span class="n">09</span>Onboarding</h2>
 <p><code>doctor.propose</code> (used by <code>aegis init</code> and by Settings on a server with no config) changes in one place. When OpenCode is installed and its catalog has free models that can run an agent:</p>
 <ul>
 <li>It proposes an agent named <code>free</code> on OpenCode whose <code>models</code> are those free models, ranked models first by Coding Index, then unranked ones in catalog order.</li>
@@ -381,7 +421,7 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 </ul>
 <p>A proposal with only one free model is a cascade of one, which works and needs no special case.</p>
 
-<h2 id="settings"><span class="n">09</span>Editing a cascade</h2>
+<h2 id="settings"><span class="n">10</span>Editing a cascade</h2>
 <p>In Settings, the agent row's model pick becomes an ordered list. Each row shows the model, its Coding Index or "unranked", and buttons to move it up or down or remove it. "Add model" offers the harness's catalog. "Sort by ranking" applies the ranking order. A warning under the list names the first pair out of ranking order. A model that is cooling shows dimmed, with the time it is free again.</p>
 <p><span class="try">try it</span>Sample models and scores.</p>
 <div class="mock">
@@ -400,16 +440,17 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
   </div>
 </div>
 
-<h2 id="delivery"><span class="n">10</span>Delivery</h2>
+<h2 id="delivery"><span class="n">11</span>Delivery</h2>
 <p>Four pull requests, each usable on its own:</p>
 <ol>
 <li><b>Cascades.</b> <code>models</code> in the config, the pick at spawn, the classifier for OpenCode and Claude Code, cooling, the fallback and its notice, the <code>cascade</code> field, the help page and changelog fragment. Usable by writing the YAML by hand.</li>
 <li><b>The ranking.</b> The JSON file, the refresh script, the release step and the rift check, and the out-of-order warning in the doctor.</li>
+<li><b>Seeing the models.</b> The catalog wire gains the scores and prices, the chip on every pick, the Models view in Settings and the <code>models_list</code> tool.</li>
 <li><b>Onboarding.</b> <code>propose</code> builds the <code>free</code> cascade from the ranking.</li>
 <li><b>Settings.</b> The list editor, sort by ranking, cooling shown, attribution.</li>
 </ol>
 
-<h2 id="testing"><span class="n">11</span>Testing</h2>
+<h2 id="testing"><span class="n">12</span>Testing</h2>
 <ul>
 <li>Unit tests in the fast lane for <code>cascade.py</code>: the pick with cooling and gates, every classifier pattern, the never-wrap rule, and the config findings.</li>
 <li>A session test with a fake harness whose first model fails a turn with a 429: the session switches model, the notice is in the transcript, the continue prompt is sent, and the turn ends with the second model's answer. A second test exhausts the list.</li>
@@ -419,7 +460,7 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 <li><code>make test-live</code> with a real session on a cascade whose first model is made to fail.</li>
 </ul>
 
-<h2 id="nongoals"><span class="n">12</span>Non-goals and open questions</h2>
+<h2 id="nongoals"><span class="n">13</span>Non-goals and open questions</h2>
 <h3>Non-goals</h3>
 <ul>
 <li>An OpenAI-compatible endpoint for tools outside aegis. That is OmniRoute's job.</li>
@@ -431,7 +472,6 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 </ul>
 <h3>Open questions</h3>
 <ul>
-<li>Whether Artificial Analysis's terms allow shipping its scores inside an open-source package. The API docs require attribution and send redistribution questions to their team; the Terms of Use and Data Platform Terms are the binding text. If scores may not ship, the file keeps only the order (rank and date) and Settings shows the rank instead of the score.</li>
 <li>Whether a context-too-long error should fall to a model with a larger window. This spec says no.</li>
 <li>Whether 10 minutes is the right cooling time when a provider gives no retry-after. Free tiers on Zen tend to reset daily, so a longer default may waste fewer turns.</li>
 </ul>
@@ -463,6 +503,34 @@ const RANK = {
   "opencode/grok-code-free": 29.7,
 };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+// The Models view.
+(() => {
+  const M = [
+    {m: "claude-code/opus", h: "Claude Code", c: 72.0, i: 75.3, pi: 15, po: 75, free: false, by: "opus"},
+    {m: "claude-code/sonnet", h: "Claude Code", c: 64.1, i: 68.0, pi: 3, po: 15, free: false, by: ""},
+    {m: "opencode/kimi-k2.5-free", h: "OpenCode", c: 41.2, i: 54.0, pi: 0.6, po: 2.5, free: true, by: "free #1"},
+    {m: "opencode/glm-5-free", h: "OpenCode", c: 38.9, i: 50.1, pi: 0.4, po: 1.8, free: true, by: "free #2"},
+    {m: "opencode/minimax-m2.5-free", h: "OpenCode", c: 33.4, i: 47.2, pi: 0.3, po: 1.2, free: true, by: "free #3"},
+    {m: "opencode-go/deepseek-v4-pro", h: "OpenCode", c: 52.3, i: 61.0, pi: 0.5, po: 2.0, free: false, by: "deepseek"},
+    {m: "opencode/grok-code-free", h: "OpenCode", c: 29.7, i: 40.3, pi: 0.2, po: 1.5, free: true, by: ""},
+    {m: "opencode/big-pickle", h: "OpenCode", c: null, i: null, pi: null, po: null, free: true, by: ""},
+  ];
+  const rank = {};
+  for (const h of ["OpenCode", "Claude Code"])
+    M.filter((x) => x.h === h && x.c != null).sort((a, b) => b.c - a.c).forEach((x, k) => rank[x.m] = k + 1);
+  const price = (x) => x.free ? "free" : `$${x.pi} / $${x.po}`;
+  const draw = () => {
+    const h = $("mv-h").value, fo = $("mv-free").checked, so = $("mv-sort").value;
+    const rows = M.filter((x) => (!h || x.h === h) && (!fo || x.free));
+    const c = (x) => x.c ?? -1;
+    rows.sort(so === "coding" ? (a, b) => c(b) - c(a) : so === "price" ? (a, b) => ((a.free ? 0 : a.po) ?? 1e9) - ((b.free ? 0 : b.po) ?? 1e9) : (a, b) => (!!b.by - !!a.by) || c(b) - c(a));
+    $("mv-rows").innerHTML = `<div class="mvrow hd"><span>model</span><span class="h">harness</span><span>rank</span><span>coding</span><span class="ii">intel.</span><span>price in/out</span><span>used by</span></div>` +
+      rows.map((x) => `<div class="mvrow ${x.by ? "use" : ""}"><span class="nm">${esc(x.m)}</span><span class="h">${x.h}</span><span>${rank[x.m] ? "#" + rank[x.m] : "—"}</span><span>${x.c ?? "unranked"}</span><span class="ii">${x.i ?? "—"}</span><span>${price(x)}</span><span class="by">${esc(x.by)}</span></div>`).join("");
+  };
+  for (const id of ["mv-h", "mv-free", "mv-sort"]) $(id).addEventListener("change", draw);
+  draw();
+})();
 
 // The fallback simulator.
 (() => {
