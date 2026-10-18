@@ -50,7 +50,7 @@ def test_a_host_without_proc_reads_no_memory_or_cpu(tmp_path):
 def test_the_notices_block_falls_back_and_turns_kinds_off():
     assert notices_from(None) == NOTICES_DEFAULTS
     got = notices_from({"disk": {"on": 80}, "cpu": False})
-    assert got["disk"] == {"on": 80, "critical": 97, "clear": 85}
+    assert got["disk"] == {"on": 80, "critical": 87, "clear": 75}
     assert got["cpu"] is False
     bad = notices_from({"disk": {"onn": 1}})
     assert "error" in bad and bad["disk"] == NOTICES_DEFAULTS["disk"]
@@ -67,12 +67,22 @@ class Metas:
         self.writes += 1
 
 
-def session(log_id, *, owner=None, worker=None, spawned_by=None, spawned_from=None):
+def session(
+    log_id,
+    *,
+    owner=None,
+    worker=None,
+    spawned_by=None,
+    spawned_from=None,
+    harness="claude-code",
+    model="opus",
+):
     return SimpleNamespace(
         log_id=log_id,
         handle=log_id,
         spec=SimpleNamespace(
-            harness="claude-code",
+            harness=harness,
+            model=model,
             owner=owner,
             spawned_by=spawned_by,
             spawned_from=spawned_from,
@@ -202,11 +212,14 @@ def test_spawned_and_cpu_never_ask(stub):
     assert "Another session is asking the person" in cpu
 
 
-async def test_concurrent_pending_gives_each_block_once(stub):
+async def test_pending_from_tasks_on_the_loop_gives_each_block_once(stub):
     stub.disk(94)
-    got = await asyncio.gather(
-        *(asyncio.to_thread(stub.notices.pending, stub.a) for _ in range(5))
-    )
+
+    async def call():
+        await asyncio.sleep(0)
+        return stub.notices.pending(stub.a)
+
+    got = await asyncio.gather(*(call() for _ in range(5)))
     assert len([g for g in got if g]) == 1
 
 
@@ -258,8 +271,12 @@ def test_memory_turns_on_under_pressure_and_names_the_sessions_own(stub, tmp_pat
 class Quota:
     def __init__(self, severity):
         self.severity = severity
+        self.state = "ok"
+        self.missing = False
 
     def snapshot(self):
+        if self.missing:
+            return {"providers": []}
         window = {
             "kind": "week",
             "label": "week",
@@ -270,9 +287,9 @@ class Quota:
         return {
             "providers": [
                 {"name": "claude", "label": "Claude", "harness": "claude-code",
-                 "windows": [window]},
+                 "state": self.state, "windows": [window]},
                 {"name": "opencode-go", "label": "OpenCode Go",
-                 "harness": "opencode", "windows": [window]},
+                 "harness": "opencode", "state": "ok", "windows": [window]},
             ]
         }  # fmt: skip
 
@@ -302,3 +319,140 @@ async def test_a_spawn_through_a_link_is_never_the_asker(world):  # noqa: F811
     assert world.app.notices.role(s, "disk") == "spawned"
     here = await world.spawn()
     assert world.app.notices.role(here, "disk") == "asker"
+
+
+def test_a_kinds_on_alone_derives_clear_and_critical():
+    got = notices_from({"cpu": {"on": 40}, "memory": {"on": 92}})
+    assert got["cpu"] == {"on": 40, "clear": 20}
+    assert got["memory"] == {"on": 92, "critical": 97, "clear": 87, "psi_full": 5}
+    assert notices_from({"disk": {"on": 95}})["disk"]["critical"] == 100  # capped
+
+
+def test_a_block_whose_levels_cross_keeps_the_defaults():
+    for raw in (
+        {"disk": {"clear": 95}},
+        {"disk": {"on": 90, "critical": 80}},
+        {"memory": {"critical": 50}},
+        {"cpu": {"clear": 60}},
+    ):
+        got = notices_from(raw)
+        assert "error" in got, raw
+        assert got["disk"] == NOTICES_DEFAULTS["disk"]
+
+
+def fresh(stub):
+    """The same app after a restart: a new Notices over the restored sessions."""
+    stub.notices = Notices(
+        stub, read=lambda paths: stub.reading, clock=lambda: stub.now
+    )
+    return stub.notices
+
+
+def test_a_restart_does_not_repeat_a_critical_or_toast_again(stub):
+    stub.a.notices_sent = {"disk": "critical"}
+    stub.disk(93)
+    n = fresh(stub)
+    assert n.pending(stub.a) == ""
+    assert stub.a.notices_sent == {"disk": "critical"}
+    n.levels()
+    assert stub.toasts == []
+
+
+def test_a_restart_does_not_clear_a_warn_above_clear(stub):
+    stub.a.notices_sent = {"disk": "warn"}
+    stub.disk(87)
+    n = fresh(stub)
+    assert n.pending(stub.a) == ""
+    assert stub.a.notices_sent == {"disk": "warn"}
+    assert "disk · warn" in n.pending(stub.b)
+
+
+def test_quota_keeps_its_level_while_the_reading_is_not_fresh(stub):
+    n = stub.notices
+    stub.quota = Quota("warning")
+    assert "quota:claude · warn" in n.pending(stub.a)
+    stub.quota.severity = "normal"
+    for state in ("stale", "failed"):
+        stub.quota.state = state
+        assert n.pending(stub.a) == "", state
+    stub.quota.state = "ok"
+    stub.quota.missing = True
+    assert n.pending(stub.a) == ""
+    stub.quota.missing = False
+    assert "The Claude quota is back on pace." in n.pending(stub.a)
+
+
+def test_quota_reaches_only_sessions_that_draw_on_that_pool(stub):
+    n = stub.notices
+    stub.quota = Quota("warning")
+    zen = session("z", harness="opencode", model="zen/big")
+    go = session("g", harness="opencode", model="opencode-go/kimi")
+    stub.sessions.sessions |= {"z": zen, "g": go}
+    assert n.pending(zen) == ""
+    got = n.pending(go)
+    assert "quota:opencode-go · warn" in got and "quota:claude" not in got
+
+
+def test_a_kind_turned_off_mid_episode_says_so_instead_of_a_reading(stub):
+    n = stub.notices
+    stub.quota = Quota("warning")
+    stub.reading = stub.reading | {"cpu": {"pct": 70.0}}
+    stub.disk(94)
+    n.pending(stub.a)
+    stub.cfg = notices_from(
+        {"disk": False, "cpu": False, "memory": False, "quota": False}
+    )
+    got = n.pending(stub.a)
+    assert "aegis no longer watches the disk." in got
+    assert "aegis no longer watches the CPU." in got
+    assert "aegis no longer watches the Claude quota." in got
+    assert "back to" not in got and "no longer saturated" not in got
+
+
+def test_a_failed_read_keeps_the_episode(stub):
+    n = stub.notices
+    stub.disk(94)
+    n.pending(stub.a)
+    stub.reading = stub.reading | {"disk": None}
+    stub.now += 10
+    assert n.pending(stub.a) == ""
+    assert stub.a.notices_sent == {"disk": "warn"}
+    assert "The disk holding aegis is 94% full" in n.pending(stub.b)
+
+
+def test_a_closed_asker_hands_over_to_a_session_already_told(stub):
+    n = stub.notices
+    stub.disk(94)
+    n.pending(stub.a)
+    assert "Another session is asking the person" in n.pending(stub.b)
+    n.pending(stub.w)
+    stub.a.archived = True
+    got = n.pending(stub.b)
+    assert "disk · warn" in got and "ask the person what to do" in got
+    assert n.pending(stub.w) == ""  # a worker never becomes the asker
+    assert n.pending(stub.b) == ""
+
+
+def memory(stub, pct, psi_full):
+    stub.reading = stub.reading | {
+        "memory": {"pct": pct, "avail_gb": 3.0, "total_gb": 7.6, "psi_full": psi_full}
+    }
+    stub.now += 10
+
+
+def test_a_memory_episode_on_pressure_holds_until_half_the_threshold(stub):
+    n = stub.notices
+    memory(stub, 60, 8.0)
+    assert "memory · warn" in n.pending(stub.a)
+    memory(stub, 60, 3.0)  # at or above 5 / 2: held
+    assert n.pending(stub.a) == ""
+    memory(stub, 60, 2.0)
+    assert "Memory is back to 60% used." in n.pending(stub.a)
+
+
+def test_a_memory_episode_on_percent_ends_below_clear_whatever_the_pressure(stub):
+    n = stub.notices
+    memory(stub, 92, 3.0)
+    assert "memory · warn" in n.pending(stub.a)
+    memory(stub, 80, 3.0)
+    assert "Memory is back to 80% used." in n.pending(stub.a)

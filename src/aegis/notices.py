@@ -19,7 +19,6 @@ import asyncio
 import logging
 import os
 import tempfile
-import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -27,6 +26,7 @@ from typing import TYPE_CHECKING, Literal
 
 from . import host
 from .monitors import iso_now
+from .quota_gate import pool_for
 from .transcript.entries import NOTICE_HEADER
 
 if TYPE_CHECKING:
@@ -177,6 +177,14 @@ CLEAR = {
     "quota": "The {label} quota is back on pace. Work as usual.",
     "announce": "The announcement {id} has ended.",
 }
+# A kind turned off in the config mid-episode: no reading says it is over.
+OFF = "aegis no longer watches {what}."
+WATCHED = {
+    "disk": "the disk",
+    "memory": "memory",
+    "cpu": "the CPU",
+    "quota": "the {label} quota",
+}
 ANNOUNCED = "{text}\nThis was written by {author}, not measured by aegis."
 NO_ASKER = ("cpu", "announce")  # nothing of the person's to decide
 
@@ -193,8 +201,11 @@ def _shown(reading: dict) -> dict:
 
 def body(kind: str, level: str, reading: dict, role: Role) -> str:
     """The text under a notice's header. ``kind`` is the bare kind (``quota``,
-    not ``quota:claude``); ``level`` is warn, critical or clear."""
+    not ``quota:claude``); ``level`` is warn, critical, clear or off, the
+    clear of a kind turned off."""
     r = _shown(reading)
+    if level == "off":
+        return OFF.format(what=WATCHED[kind].format(**r))
     if level == "clear":
         return CLEAR[kind].format(**r)
     if kind == "announce":
@@ -215,7 +226,8 @@ def body(kind: str, level: str, reading: dict, role: Role) -> str:
 def block(key: str, level: str, reading: dict, role: Role) -> str:
     """One notice as a session reads it: the inbox's header shape, then the body."""
     kind = key.partition(":")[0]
-    return f"{NOTICE_HEADER}{key} · {level} · {iso_now()}\n" + body(
+    shown = "clear" if level == "off" else level
+    return f"{NOTICE_HEADER}{key} · {shown} · {iso_now()}\n" + body(
         kind, level, reading, role
     )
 
@@ -231,19 +243,22 @@ def _summary(kind: str, r: dict) -> str:
     return str(r.get("text", ""))
 
 
-def _quota(providers: list[dict]) -> dict[str, tuple[str, dict]]:
-    """Each provider whose account reads warning or critical in any window,
-    with the worst window as its reading."""
+def _quota(providers: list[dict]) -> dict[str, tuple[str | None, dict]]:
+    """Each provider with a fresh reading: its level (None when every window
+    is normal) and its worst window as the reading. A provider that is
+    missing or not ``ok`` is left out, so its episode keeps its level."""
     rank = {"warning": 1, "critical": 2}
-    out = {}
+    out: dict[str, tuple[str | None, dict]] = {}
     for p in providers:
+        if p.get("state") != "ok":
+            continue
+        reading = {"label": p["label"], "harness": p["harness"]}
         ws = [w for w in p.get("windows", ()) if w.get("severity") in rank]
         if not ws:
+            out[f"quota:{p['name']}"] = (None, reading)
             continue
         w = max(ws, key=lambda w: (rank[w["severity"]], w.get("percent") or 0))
-        reading = {
-            "label": p["label"],
-            "harness": p["harness"],
+        reading |= {
             "window": w["label"],
             "percent": w.get("percent") or 0,
             "projected": w.get("projected") or w.get("percent") or 0,
@@ -251,6 +266,9 @@ def _quota(providers: list[dict]) -> dict[str, tuple[str, dict]]:
         level = "critical" if w["severity"] == "critical" else "warn"
         out[f"quota:{p['name']}"] = (level, reading)
     return out
+
+
+RANK = {"warn": 1, "critical": 2}
 
 
 class Notices:
@@ -268,12 +286,15 @@ class Notices:
         # Every active kind: key -> (level, reading). A kind leaves when its
         # episode ends, so a session holding it in notices_sent is owed a clear.
         self._active: dict[str, tuple[str, dict]] = {}
-        # The last reading per key, which a clear prints.
-        self._last: dict[str, dict] = {}
+        # Why each ended episode ended, "clear" or "off", and the reading a
+        # clear prints: the one below clear, or the last one when turned off.
+        self._ended: dict[str, tuple[str, dict]] = {}
         self._askers: dict[tuple[str, str | None], str] = {}
         self._toasted: set[str] = set()
-        # Several aegis calls in one parallel batch race for the same blocks.
-        self._lock = threading.RLock()
+        # The first levels() seeds the episodes from what live sessions hold.
+        self._restored = False
+        # The memory episode reached psi_full, so it holds at half of it.
+        self._psi = False
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
@@ -305,75 +326,146 @@ class Notices:
             self._cached = (now, self._read(paths))
         return self._cached[1]
 
-    def _signals(self, cfg: dict) -> dict[str, tuple[float, dict]]:
-        """Each host kind that is on and read: key -> (value, reading)."""
-        r = self._reading()
-        out = {}
-        for kind in ("disk", "memory", "cpu"):
-            levels, reading = cfg.get(kind), r.get(kind)
-            if not levels or reading is None:
+    def _restore(self) -> None:
+        """After a restart, each key's episode starts from the highest level a
+        live session holds, so a reading between clear and on neither clears
+        it nor repeats it, and a critical one is not toasted again."""
+        for s in self._app.sessions.sessions.values():
+            if s.archived:
                 continue
-            value = reading["pct"]
-            full = reading.get("psi_full")
-            if kind == "memory" and full is not None and full >= levels["psi_full"]:
-                value = max(value, levels["on"])
-            out[kind] = (value, reading)
-        return out
+            for key, level in s.notices_sent.items():
+                held = self._active.get(key, (None,))[0]
+                if level in RANK and RANK[level] > RANK.get(held, 0):
+                    self._active[key] = (level, {})
+        self._toasted |= {k for k, (lv, _) in self._active.items() if lv == "critical"}
+
+    def _value(self, kind: str, reading: dict, cfg: dict, on: bool) -> float:
+        value = reading["pct"]
+        full = reading.get("psi_full")
+        if kind != "memory" or full is None:
+            return value
+        if full >= cfg["psi_full"]:
+            self._psi = True
+            return max(value, cfg["on"])
+        if on and self._psi and full >= cfg["psi_full"] / 2:
+            return max(value, cfg["clear"])  # held, not escalated
+        return value
 
     def levels(self) -> dict[str, tuple[str, dict]]:
         """Every active kind -> (level, reading). Turns episodes: a level
-        only steps up, an ended episode drops its askers, and the first call
-        that sees a kind critical in an episode toasts the person."""
-        with self._lock:
-            cfg = self._app.config.current().notices
-            now: dict[str, tuple[str, dict]] = {}
-            for kind, (value, reading) in self._signals(cfg).items():
-                self._last[kind] = reading  # a clear prints the reading now
-                prev = self._active.get(kind, (None, None))[0]
-                level = next_level(prev, value, cfg[kind])
-                if level is not None:
-                    now[kind] = (level, reading)
-            if cfg.get("quota") and self._app.quota is not None:
-                for key, (level, reading) in _quota(
-                    self._app.quota.snapshot()["providers"]
-                ).items():
-                    if self._active.get(key, (None,))[0] == "critical":
-                        level = "critical"  # never steps down within an episode
-                    now[key] = (level, reading)
-            for key, (_, reading) in now.items():
-                self._last[key] = reading
-            for key in set(self._active) - set(now):
-                self._askers = {k: v for k, v in self._askers.items() if k[0] != key}
-                self._toasted.discard(key)
-            for key, (level, reading) in now.items():
-                if level == "critical" and key not in self._toasted:
-                    self._toasted.add(key)
-                    kind = key.partition(":")[0]
-                    self._app.toast(
-                        f"aegis: {kind} is critical: {_summary(kind, reading)}", "error"
-                    )
-            self._active = now
-            return dict(now)
+        only steps up, a failed or stale reading keeps it, an ended episode
+        drops its askers, and the first call that sees a kind critical in an
+        episode toasts the person."""
+        if not self._restored:
+            self._restored = True
+            self._restore()
+        cfg = self._app.config.current().notices
+        now: dict[str, tuple[str, dict]] = {}
+        ended: dict[str, dict] = {}  # ended below clear -> that reading
+        r = self._reading()
+        for kind in ("disk", "memory", "cpu"):
+            prev = self._active.get(kind)
+            if not cfg.get(kind):
+                continue
+            reading = r.get(kind)
+            if reading is None:
+                if prev is not None:
+                    now[kind] = prev  # a failed read keeps the episode
+                continue
+            value = self._value(kind, reading, cfg[kind], prev is not None)
+            level = next_level(prev and prev[0], value, cfg[kind])
+            if level is not None:
+                now[kind] = (level, reading)
+            elif prev is not None:
+                ended[kind] = reading
+        if cfg.get("quota"):
+            fresh = (
+                {}
+                if self._app.quota is None
+                else _quota(self._app.quota.snapshot()["providers"])
+            )
+            for key, prev in self._active.items():
+                if key.startswith("quota:") and key not in fresh:
+                    now[key] = prev  # missing or not ok: keeps its level
+            for key, (level, reading) in fresh.items():
+                prev = self._active.get(key, (None, None))[0]
+                if level is None:
+                    if prev is not None:
+                        ended[key] = reading
+                    continue
+                if prev == "critical":
+                    level = "critical"  # never steps down within an episode
+                now[key] = (level, reading)
+        if "memory" not in now:
+            self._psi = False
+        for key in set(self._active) - set(now):
+            self._askers = {k: v for k, v in self._askers.items() if k[0] != key}
+            self._toasted.discard(key)
+            if key in ended:
+                self._ended[key] = ("clear", ended[key])
+            elif not key.startswith("announce:"):
+                self._ended[key] = ("off", self._active[key][1])
+        for key in now:
+            self._ended.pop(key, None)
+        for key, (level, reading) in now.items():
+            if level == "critical" and key not in self._toasted:
+                self._toasted.add(key)
+                kind = key.partition(":")[0]
+                self._app.toast(
+                    f"aegis: {kind} is critical: {_summary(kind, reading)}", "error"
+                )
+        self._active = now
+        self._hand_over()
+        return dict(now)
+
+    def _hand_over(self) -> None:
+        """An asker that closed mid-episode passes the role to a live
+        person-opened session of its owner that was already told: it forgets
+        the key, so its next pending() tells it again, as the asker."""
+        sessions = self._app.sessions.sessions
+        for (key, owner), log_id in list(self._askers.items()):
+            if self._live(log_id):
+                continue
+            del self._askers[(key, owner)]
+            heir = next(
+                (
+                    s
+                    for s in sessions.values()
+                    if not s.archived
+                    and s.spec.owner == owner
+                    and key in s.notices_sent
+                    and self._opener(s) is None
+                ),
+                None,
+            )
+            if heir is not None:
+                del heir.notices_sent[key]
+                self._askers[(key, owner)] = heir.log_id
 
     def _live(self, log_id: str) -> bool:
         s = self._app.sessions.sessions.get(log_id)
         return s is not None and not s.archived
 
-    def role(self, s: Session, kind: str) -> Role:
-        """What the text for ``kind`` asks of ``s``: a worker and a spawned
-        session never ask the person, and only one person-opened session per
-        kind and owner does."""
+    def _opener(self, s: Session) -> Role | None:
+        """worker or spawned for a session no person opened, else None."""
         if s.worker or s.schedule or self._app.sessions.workflow_lock(s):
             return "worker"
         if s.spec.spawned_by or s.spec.spawned_from:
             return "spawned"
+        return None
+
+    def role(self, s: Session, kind: str) -> Role:
+        """What the text for ``kind`` asks of ``s``: a worker and a spawned
+        session never ask the person, and only one person-opened session per
+        kind and owner does."""
+        if opener := self._opener(s):
+            return opener
         if kind.partition(":")[0] in NO_ASKER:
             return "person"
-        with self._lock:
-            asker = self._askers.get((kind, s.spec.owner))
-            if asker is None or asker == s.log_id or not self._live(asker):
-                return "asker"
-            return "person"
+        asker = self._askers.get((kind, s.spec.owner))
+        if asker is None or asker == s.log_id or not self._live(asker):
+            return "asker"
+        return "person"
 
     def _own_memory(self, s: Session) -> float | None:
         d = self._app.sessions.cgroup_dir(s)
@@ -387,41 +479,48 @@ class Notices:
     def pending(self, s: Session) -> str:
         """The blocks ``s`` has not been told yet, and the clears it is owed,
         joined by a blank line; "" when there are none. Marks them sent
-        before it returns, so each block reaches one result."""
-        with self._lock:
-            active = {
-                k: v
-                for k, v in self.levels().items()
-                if not k.startswith("quota:") or v[1]["harness"] == s.spec.harness
-            }
-            blocks = []
-            for key, (level, reading) in active.items():
-                if s.notices_sent.get(key) == level:
-                    continue
-                role = self.role(s, key)
-                if role == "asker":
-                    self._askers[(key, s.spec.owner)] = s.log_id
-                if key == "memory":
-                    reading = reading | {"rss_gb": self._own_memory(s)}
-                blocks.append(block(key, level, reading, role))
-                s.notices_sent[key] = level
-            for key in [k for k in s.notices_sent if k not in active]:
-                blocks.append(block(key, "clear", self._clear_reading(key), "person"))
-                del s.notices_sent[key]
-            if blocks:
-                try:
-                    s._metas.write_soon(s.log_id, s.meta)
-                except OSError:  # a full disk keeps the in-memory record (#395)
-                    log.warning("aegis: could not record notices for %s", s.handle)
-            return "\n\n".join(blocks)
+        before it returns, so each block reaches one result.
 
-    def _clear_reading(self, key: str) -> dict:
-        r = dict(self._last.get(key, {}))
+        It runs only on the event loop, as levels() does, and never awaits:
+        two calls cannot interleave, so it needs no lock. Do not call it from
+        a thread."""
+        pool = pool_for(s.spec.harness, s.spec.model)
+        active = {
+            k: v
+            for k, v in self.levels().items()
+            if not k.startswith("quota:") or k.partition(":")[2] == pool
+        }
+        blocks = []
+        for key, (level, reading) in active.items():
+            # A level kept from before a restart has no reading to print yet.
+            if s.notices_sent.get(key) == level or not reading:
+                continue
+            role = self.role(s, key)
+            if role == "asker":
+                self._askers[(key, s.spec.owner)] = s.log_id
+            if key == "memory":
+                reading = reading | {"rss_gb": self._own_memory(s)}
+            blocks.append(block(key, level, reading, role))
+            s.notices_sent[key] = level
+        for key in [k for k in s.notices_sent if k not in active]:
+            blocks.append(self._clear(key))
+            del s.notices_sent[key]
+        if blocks:
+            try:
+                s._metas.write_soon(s.log_id, s.meta)
+            except OSError:  # a full disk keeps the in-memory record (#395)
+                log.warning("aegis: could not record notices for %s", s.handle)
+        return "\n\n".join(blocks)
+
+    def _clear(self, key: str) -> str:
+        """The clear for ``key``: back to its reading below clear, or that
+        aegis no longer watches it when it was turned off or never read."""
+        why, reading = self._ended.get(key, ("off", {}))
         kind, _, rest = key.partition(":")
+        r = dict(reading)
         if kind == "announce":
             r.setdefault("id", rest)
+            why = "clear"
         if kind == "quota":
             r.setdefault("label", rest)
-        if kind in ("disk", "memory") and "pct" not in r:
-            r["pct"] = "?"
-        return r
+        return block(key, "clear" if why == "clear" else "off", r, "person")

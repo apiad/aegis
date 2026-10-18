@@ -142,9 +142,23 @@ def notices_from(raw: object) -> dict:
                     "error": f"notices.{kind}.{k} {n!r} is not a number from 0 to 100"
                 }
         levels = default | v
-        if "clear" in v and levels["clear"] >= levels["on"]:
+        # An ``on`` alone moves clear and critical with it, by the defaults'
+        # gaps, so {on: 80} does not sit below the default clear.
+        if "on" in v and "clear" not in v:
+            levels["clear"] = max(v["on"] - (default["on"] - default["clear"]), 0)
+        if "on" in v and "critical" in default and "critical" not in v:
+            levels["critical"] = min(
+                v["on"] + (default["critical"] - default["on"]), 100
+            )
+        if not levels["clear"] < levels["on"] <= levels.get("critical", 100):
+            order = "clear < on <= critical" if "critical" in levels else "clear < on"
             return _notices_defaults() | {
-                "error": f"notices.{kind}.clear must be below on ({levels['on']})"
+                "error": f"notices.{kind} must keep {order}, not "
+                + ", ".join(
+                    f"{k} {levels[k]}"
+                    for k in ("clear", "on", "critical")
+                    if k in levels
+                )
             }
         out[kind] = levels
     return out
