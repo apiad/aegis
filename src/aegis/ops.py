@@ -90,6 +90,9 @@ class Operation:
     admin: bool = False
     # The param naming the session it changes: a member must own that session.
     owned: str | None = None
+    # Refused to a caller acting through a link: a far server never reads or
+    # writes this server's files (fs_ops.py).
+    local: bool = False
 
     @property
     def tool_name(self) -> str:
@@ -124,6 +127,7 @@ class Registry:
         read: bool = False,
         admin: bool = False,
         owned: str | None = None,
+        local: bool = False,
     ) -> Callable[[Handler], Handler]:
         def register(handler: Handler) -> Handler:
             if name in self._ops:
@@ -137,6 +141,7 @@ class Registry:
                 read,
                 admin,
                 owned,
+                local,
             )
             return handler
 
@@ -173,6 +178,8 @@ class Registry:
                     f"run {run['run']} of {run['name']} may not start other work "
                     "(spawn: false)",
                 )
+        if op.local and caller.link:
+            raise OpError("not_across_links", f"{name} is not open to a linked server")
         try:
             params = op.params.model_validate(raw if raw is not None else {})
         except ValidationError as e:

@@ -87,6 +87,7 @@ from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .layout_ops import register_layout_ops
+from .fs_ops import register_fs_ops
 from .schedule_ops import register_schedule_ops
 from .schedules import Schedules
 from .workflow_ops import register_workflow_ops
@@ -451,6 +452,7 @@ class App:
         register_config_ops(self)
         register_artifact_ops(self)
         register_layout_ops(self)
+        self.fs_index = register_fs_ops(self)
         register_term_ops(self)
         self.push = register_push_ops(self)
         register_journal_ops(self)
