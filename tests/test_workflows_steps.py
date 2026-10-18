@@ -404,6 +404,7 @@ async def test_a_finished_group_never_expires_while_a_later_step_runs(world):
     )
     assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
 
+
 async def test_a_finished_step_with_retries_never_runs_again_at_its_deadline(world):
     st = await ended(
         world,
@@ -417,6 +418,7 @@ async def test_a_finished_step_with_retries_never_runs_again_at_its_deadline(wor
     )
     assert st.status == "done" and st.nodes["s"].attempts == 0
     assert (world.root / "runs").read_text() == "x\n"
+
 
 @pytest.mark.slow
 async def test_an_ifs_deadline_counts_while_its_command_probe_runs(world):

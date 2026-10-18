@@ -309,6 +309,7 @@ async def test_finished_steps_never_expire_after_an_edit(world):
         assert st.nodes[k].status in ("done", "running"), (k, st.nodes[k].error)
     assert tree(wf, run)["plan"]["state"] == "done"
 
+
 async def test_arming_again_with_a_command_needs_full_permission(world):
     waits = (
         "id: ed\ntitle: Edit\nsay: Edit.\nroot:\n  seq:\n"
