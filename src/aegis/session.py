@@ -186,6 +186,8 @@ class SpawnSpec:
     spawned_from: str | None = None
     # The log id of the session this one continues after a handoff (#354).
     continues: str | None = None
+    # The agent's keep_harness_tools, fixed at spawn like the priming.
+    keep_harness_tools: tuple[str, ...] = ()
 
     def record(self) -> dict:
         """The fields a spawn record and a meta carry."""
@@ -209,6 +211,8 @@ class SpawnSpec:
             d["spawned_from"] = self.spawned_from
         if self.continues:
             d["continues"] = self.continues
+        if self.keep_harness_tools:
+            d["keep_harness_tools"] = list(self.keep_harness_tools)
         return d
 
     @classmethod
@@ -228,6 +232,7 @@ class SpawnSpec:
             owner=d.get("owner"),
             spawned_from=d.get("spawned_from"),
             continues=d.get("continues"),
+            keep_harness_tools=tuple(d.get("keep_harness_tools") or ()),
         )
 
 
@@ -594,6 +599,7 @@ class Session:
                 read_dirs=(inbox,),
                 cgroup=self._host.cgroup(self),
                 log_id=self.log_id,
+                keep_harness_tools=self.spec.keep_harness_tools,
             )
         )
         # Before the start: a harness can speak while it starts (OpenCode's

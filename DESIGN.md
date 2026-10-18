@@ -268,6 +268,18 @@ deltas drew (`claude/stream.py`). OpenCode's and Codex's parts are stored
 opening too, and the fold puts the entry in, empty, at the open, so a prompt
 read while a part streams sits after that part, live and on a reload (#373).
 
+**Where aegis has a tool, the harness's twin is off.** A Claude Code session
+with aegis's tools starts with `--disallowedTools` naming every Claude Code tool
+aegis replaces (`claude/process.py` `REPLACED_TOOLS`: subagents, messaging,
+cron and wakeups, monitors, notifications, task lists). The primer already says
+to use aegis's, but a schema the agent is told not to use still ships on every
+request, about 5.9k input tokens a session on 2.1.296, and an agent that reaches
+for it anyway works around the transcript and the inbox. An agent keeps one
+with `keep_harness_tools`, fixed at spawn like its priming. A session without
+aegis's tools keeps them all, since nothing would replace them. The primer is
+not trimmed to match: OpenCode and Codex share it and still have their own
+twins.
+
 **A `/` line is resolved on the server, and a typo costs nothing.** `session.send`
 runs an aegis command (`commands.py`) as the operation it stands for, passes a name
 in the session's catalog to its harness as typed (OpenCode's run through its

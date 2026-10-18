@@ -75,6 +75,9 @@ class Launch:
     # The session's log id, exported to the child as AEGIS_SESSION so park.strays
     # can find its descendants after they leave its process tree.
     log_id: str | None = None
+    # Harness tools the agent keeps although aegis replaces them
+    # (claude/process.py REPLACED_TOOLS); other harnesses ignore it.
+    keep_harness_tools: tuple[str, ...] = ()
 
 
 SESSION_VAR = "AEGIS_SESSION"

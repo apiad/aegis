@@ -1,7 +1,8 @@
 """Agents: named presets read from the ``agents:`` map of ``.aegis.yaml``.
 
 An agent fixes a harness, a model, an effort, a permission and, optionally, a
-priming prompt. A spawn starts from one agent and may override every field
+priming prompt and the harness tools it keeps although aegis replaces them
+(``keep_harness_tools``). A spawn starts from one agent and may override every field
 but the priming (``resolve``); one-off instructions belong in the first
 message.
 
@@ -23,7 +24,7 @@ from typing import Any
 
 from ruamel.yaml import YAML, YAMLError
 
-from .claude.process import PERMISSION_MODE
+from .claude.process import PERMISSION_MODE, REPLACED_TOOLS
 from .ops import OpError
 from .roots import CONFIG_FILE
 from .session import SpawnSpec
@@ -63,6 +64,7 @@ class Agent:
     effort: str
     permission: str
     priming: str | None = None
+    keep_harness_tools: tuple[str, ...] = ()
     # Why this agent cannot be spawned as written; None when it can.
     error: str | None = None
 
@@ -109,12 +111,31 @@ def _agent(name: str, raw: Any) -> Agent:
         error = next((e for f in FIELDS if (e := _invalid(f, values[f]))), None)
         error = error or _model_error(values["harness"], values["model"])
     priming = d.get("priming")
+    keep, keep_error = _keep(d.get("keep_harness_tools"))
     return Agent(
         name=str(name),
         **values,
         priming=str(priming) if priming else None,
-        error=error,
+        keep_harness_tools=keep,
+        error=error or keep_error,
     )
+
+
+def _keep(raw: Any) -> tuple[tuple[str, ...], str | None]:
+    """``keep_harness_tools`` as names, or the error that stops the agent. A
+    name aegis does not turn off is refused rather than ignored: it is most
+    likely a typo, and a typo would silently keep nothing."""
+    if raw is None:
+        return (), None
+    if not isinstance(raw, list) or not all(isinstance(n, str) for n in raw):
+        return (), "keep_harness_tools must be a list of tool names"
+    unknown = [n for n in raw if n not in REPLACED_TOOLS]
+    if unknown:
+        return (), (
+            f"keep_harness_tools names {', '.join(unknown)}, which aegis does not "
+            f"turn off; it turns off {', '.join(REPLACED_TOOLS)}"
+        )
+    return tuple(raw), None
 
 
 def read_config(config_root: Path) -> dict:
@@ -194,6 +215,7 @@ def resolve(
         cwd=cwd,
         harness=fields["harness"],
         priming=agent.priming,
+        keep_harness_tools=agent.keep_harness_tools,
         overridden=overridden,
         spawned_by=spawned_by,
         owner=owner,

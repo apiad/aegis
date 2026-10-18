@@ -15,7 +15,7 @@ from ..cgroups import wrap
 from ..harness import Launch, session_env
 from . import control
 from .control import Catalog
-from .process import ClaudeProcess, build_argv
+from .process import REPLACED_TOOLS, ClaudeProcess, build_argv
 
 if TYPE_CHECKING:
     from ..session import SpawnSpec
@@ -30,10 +30,14 @@ _SETTERS = {
 class ClaudeSession:
     def __init__(self, bin: str, launch: Launch) -> None:
         mcp_config = None
+        disallowed: tuple[str, ...] = ()
         if launch.mcp is not None:
             from ..mcp import mcp_config as build
 
             mcp_config = build(*launch.mcp)
+            # Without aegis's tools there is nothing to replace them with.
+            keep = set(launch.keep_harness_tools)
+            disallowed = tuple(t for t in REPLACED_TOOLS if t not in keep)
         argv = build_argv(
             bin,
             launch.model,
@@ -43,6 +47,7 @@ class ClaudeSession:
             **({"mcp_config": mcp_config} if mcp_config else {}),
             system_prompt=launch.system_prompt,
             add_dirs=launch.read_dirs,
+            disallowed=disallowed,
         )
         self._proc = ClaudeProcess(
             wrap(launch.cgroup, argv),

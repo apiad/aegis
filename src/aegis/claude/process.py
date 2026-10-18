@@ -42,6 +42,32 @@ PERMISSION_MODE = {
 
 
 NO_MCP = '{"mcpServers":{}}'
+# Claude Code's own tools that an aegis tool replaces, each with its
+# replacement (#461). The primer already says to use aegis's, but every schema
+# still ships on every request: measured on 2.1.296, these cost about 5.9k input
+# tokens per session. A session with aegis's tools runs without them, unless its
+# agent keeps some (``keep_harness_tools`` in .aegis.yaml). A name Claude Code
+# does not know is ignored, so a tool renamed upstream costs tokens, not a launch.
+# The init line lists Agent by its older name, Task; a deny of either removes it.
+REPLACED_TOOLS = {
+    "Agent": "queue_enqueue, session_spawn",
+    "ListAgents": "session_list",
+    "SendMessage": "peer_handoff",
+    "Workflow": "workflow_arm",
+    "ScheduleWakeup": "schedule_create",
+    "CronCreate": "schedule_create",
+    "CronDelete": "schedule_delete",
+    "CronList": "schedule_list",
+    "RemoteTrigger": "schedule_fire",
+    "Monitor": "monitor_start",
+    "TaskStop": "monitor_cancel",
+    "PushNotification": "toast",
+    "TodoWrite": "plan_update",
+    "TaskCreate": "plan_update",
+    "TaskGet": "plan_update",
+    "TaskList": "plan_update",
+    "TaskUpdate": "plan_update",
+}
 # aegis decides which of its own tools a session may call (ops.Registry.call),
 # so Claude Code lets each one through in every mode. Measured on 2.1.291:
 # plan mode refuses an MCP call even when --allowedTools or a settings rule
@@ -85,6 +111,7 @@ def build_argv(
     mcp_config: str = NO_MCP,
     system_prompt: str | None = None,
     add_dirs: tuple[Path, ...] = (),
+    disallowed: tuple[str, ...] = (),
 ) -> list[str]:
     argv = [
         claude_bin,
@@ -108,6 +135,10 @@ def build_argv(
     for folder in add_dirs:
         # Read access outside the cwd under every permission mode: the inbox.
         argv += ["--add-dir", str(folder)]
+    if disallowed:
+        # One comma-joined value: the flag is variadic and would eat a
+        # following positional.
+        argv += ["--disallowedTools", ",".join(disallowed)]
     if system_prompt:
         argv += ["--append-system-prompt", system_prompt]
     if model:
