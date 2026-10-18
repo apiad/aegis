@@ -1,0 +1,1 @@
+- **A workflow step that already finished no longer fails on its deadline.** A done step or group whose deadline passed while a later step was still running failed then, woke the main agent, and a step with retries ran its command again. A deadline now applies only to a step that is still pending or running.
