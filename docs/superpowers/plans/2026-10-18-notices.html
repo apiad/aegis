@@ -415,7 +415,7 @@ def register_notice_ops(app: "App") -> None
 </div>
 </details>
 
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">Help page, changelog, DESIGN.md and the live test</span><span class="files">src/aegis/help/sessions.md · changelog.d/ · DESIGN.md · tests/test_live.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>steps</h4>
@@ -470,6 +470,18 @@ def register_notice_ops(app: "App") -> None
   <li><b>The pending row is split too.</b> A <code>send</code> record that carries a notice shows only the head in its pending row and keeps the whole text in <code>_said</code>, so <code>_take</code> still pairs it (<code>entries.py:504</code>). Without that, the person's row would flash the block until the echo.</li>
   <li><b>Only aegis tool results are split.</b> The <code>ToolOutput</code> branch splits only when the tool's name starts with <code>mcp__aegis__</code> (<code>entries.py:1201</code>), so a <code>cat</code> of a file that quotes a notice header stays whole.</li>
   <li><b>The browser test lives in <code>tests/test_browser.py</code></b>, beside the monitor's inbox-row test; there is no <code>tests/browser/</code> directory. Run it with <code>uv run pytest -m "slow and not live" -k notice tests/test_browser.py</code> (the Makefile's slow lane is a marker, not a <code>--run-slow</code> flag).</li>
+</ul>
+<p>Slice C (tasks 5–6):</p>
+<ul>
+  <li><b>Notices owns the store.</b> <code>Notices.announcements</code> is built from <code>roots.state_root</code> in its constructor (<code>notices.py:361</code>), so the op and <code>levels()</code> share one object. <code>active()</code> drops an expired announcement from the file as well (<code>notices.py:324</code>), and a failed write keeps the list in memory.</li>
+  <li><b>The author is not told its own announcement.</b> An agent's call marks <code>announce:&lt;id&gt;</code> in its own <code>notices_sent</code> (<code>notice_ops.py:93</code>); without it, the same tool result would carry the text back to the agent that wrote it. It still gets the clear.</li>
+  <li><b>The op's errors.</b> <code>clear</code> returns <code>{"cleared": id}</code>, or unknown_announcement. <code>text</code> with <code>clear</code>, or <code>until</code>/<code>level</code> without <code>text</code>, is bad_params; an <code>until</code> that does not parse or has passed is bad_until (<code>notice_ops.py:61</code>).</li>
+  <li><b><code>/announce</code> takes its flags anywhere</b>, not leading as <code>parse_spawn</code> does: the plan's own example puts <code>--until</code> after the text (<code>commands.py:152</code>). Words are rejoined with single spaces; a bad line is bad_announce.</li>
+  <li><b>An announcement's level only decides the toast.</b> Its body is the text, the author line and the once line, with no "This is critical." and no tail, as <code>body()</code> already did.</li>
+  <li><b>No success feedback for <code>/announce</code>.</b> The command returns the announcement (<code>app.py:914</code>), but the client ignores what a command returns, so the person sees nothing until an agent is told. Not changed here.</li>
+  <li><b>The help is two sections</b>, <code>## Notices</code> and <code>## Announcements</code>, in <code>sessions.md</code> (:141, :185), since search returns sections. The spec's separate <code>notices.md</code> page is not written; the task named <code>sessions.md</code>.</li>
+  <li><b><code>tests/test_commands.py</code> pins the command menu</b>, so <code>announce</code> joins its list before <code>close</code> (:155).</li>
+  <li><b>The live test runs on Sonnet at low effort with the host's real reading.</b> It puts back the real <code>Notices</code> over conftest's calm one (<code>tests/test_live.py:1630</code>), so the agent's <code>df</code> agrees with the notice. The spawned session is the child of a parent spawned without a prompt. In its one run the agent deleted <code>build/out.bin</code> and then ran <code>df</code>, not before as the text asks; it left <code>cache/shared.bin</code> and said, without a question, that it would tell whoever started it.</li>
 </ul>
 </main>
 <script>

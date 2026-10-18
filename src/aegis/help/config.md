@@ -1,7 +1,7 @@
 ---
 title: Configuration
 kind: concept
-when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap, parking idle sessions, untested harness versions or the network readings in .aegis.yaml, or picking a theme
+when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap, notices about disk, memory, CPU and quota, parking idle sessions, untested harness versions or the network readings in .aegis.yaml, or picking a theme
 ---
 
 aegis reads one file, `.aegis.yaml`, at the root it serves: `--root` when
@@ -26,6 +26,7 @@ queues:
 recap: {agent: quick}
 btw: {agent: opus}
 context: {handoff_at: 300000, cold_after: 3600, cold_min: 100000}
+notices: {disk: {on: 90, critical: 97, clear: 85}, cpu: false}
 park: {claude-code: 1200}
 ```
 
@@ -119,6 +120,30 @@ covers Claude Code only, because only its cache lifetime was measured.
 
 A `context:` block with a wrong key or value leaves all three defaults in
 force, and `aegis doctor` names the mistake.
+
+## Notices about the host
+
+`notices:` sets when aegis tells agents that the host runs short (the
+sessions page says what they are told). Every key is optional; these are the
+defaults, in percent:
+
+```yaml
+notices:
+  disk:   {on: 90, critical: 97, clear: 85}
+  memory: {on: 90, critical: 95, clear: 85, psi_full: 5}
+  cpu:    {on: 50, clear: 30}
+  quota:  true
+```
+
+A notice starts at `on:`, is sent again at `critical:` and ends below
+`clear:`. `psi_full:` also starts the memory notice when memory pressure
+reaches it, whatever the percent. cpu has no critical. `false` in place of a
+kind turns it off; announcements cannot be turned off. An `on:` given alone
+moves `clear:` and `critical:` with it by the default gaps, so `disk: {on:
+80}` reads as clear 75 and critical 87. A block with a wrong key, a number
+outside 0 to 100, or levels out of order (clear below on, on at most
+critical) leaves every default in force, and `aegis doctor` names the
+mistake.
 
 ## Memory per session
 
