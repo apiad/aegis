@@ -18,9 +18,11 @@ the top. Typing filters the list with the same fuzzy match as the command
 menu, the newer file first on a tie. Type `path:line` to open the file at that
 line.
 
-A path a session's reply names opens in the viewer over the transcript; when
-the file is under the config root, the viewer's Open in Files button opens it
-here, at the line the reply named, to edit.
+A path a session's reply names opens in the viewer over the transcript, and so
+does the file a Read, Write or Edit row used once you show it. When the file is
+under the config root, the viewer's Open in Files button opens it here to edit,
+at the line the reply named. A row shown before the page was reloaded gets the
+button once you show its file again.
 
 Enter opens the file as a new step in the browser's history, so Back
 returns where you were. Shift+Enter opens it in a new
