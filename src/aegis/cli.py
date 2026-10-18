@@ -1,5 +1,5 @@
 """``aegis serve``, ``aegis init``, ``aegis doctor``, ``aegis link``, ``aegis service``, ``aegis usage``,
-``aegis journal``, ``aegis call``, ``aegis tools``, and ``aegis`` alone, which is ``serve --window``.
+``aegis journal``, ``aegis map``, ``aegis call``, ``aegis tools``, and ``aegis`` alone, which is ``serve --window``.
 
 This is the only module that reads the process's working directory.
 
@@ -23,11 +23,13 @@ DEFAULT_PORT = 8742
 
 app = typer.Typer(add_completion=False, help=HELP)
 
+from .codemap.cli import app as map_app  # noqa: E402
 from .journal.cli import app as journal_app  # noqa: E402
 from .usage.cli import app as usage_app  # noqa: E402
 
 app.add_typer(journal_app, name="journal")
 app.add_typer(usage_app, name="usage", help="What the agents' work cost.")
+app.add_typer(map_app, name="map")
 
 
 def _version(value: bool) -> None:
