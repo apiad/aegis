@@ -166,6 +166,11 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <li><b>A fired long press swallows the release's mousedown as well as its click</b> (<code>js/menu.js</code>, <code>onMouseDown</code>): Chromium's compatibility mousedown focused the tab under the finger, and the menu closed through its focusout.</li>
 <li><b><code>tests/test_workflows_browser.py:454</code> used <code>.pmenu</code> too</b>; it moves to <code>.cmenu</code> with the canvas tests. The menu node lives under <code>#a2</code>, not <code>#canvas</code>, so the selectors are <code>.cmenu [role=menuitem]</code>.</li>
 <li><b>A dropped pane closes the menu by the pane above its target</b> (<code>canvas.js</code> <code>closeMenuIn</code>): after the drop loop the pane is gone from <code>this.panes</code>, but the detached target still has its <code>.pane</code> ancestor, which keeps today's "a new card leaves the Move menu open" (<code>test_canvas_browser.py:837-842</code>).</li>
+<li><b>Open's icon is <code>arrow</code> and Open in new tab's is the existing <code>open</code></b> (<code>js/glyphs.js</code>, <code>g-open</code> already drew an external-link box); Rename… uses the existing <code>pencil</code> and Stop the existing <code>stop</code>. New symbols: quiet, unquiet, interrupt, play, handoff, archive (and trash from task 1).</li>
+<li><b>Terminal cards get Open, Open in new tab and Close</b>, not Open and Close only: <code>hashOf</code> already gives a terminal its <code>#t=</code> URL (<code>app.js</code>, <code>hashOf</code>), so the new tab costs nothing.</li>
+<li><b>The guard reason covers a workflow's lock and a missing connection</b> (<code>offline()</code> or a linked server down, <code>s.off</code>); the panel's state guards (<code>app.js:1772-1782</code>) decide which items show rather than disable them, as the spec's "absent, not disabled" says.</li>
+<li><b>An action's error goes to the panel only for the shown session</b>, else a toast (<code>app.js</code>, <code>failed</code>): the panel's handlers wrote <code>#side-error</code>, which shows another session's panel.</li>
+<li><b>The provider is <code>cardMenu</code>, attached by <code>attachCardMenu</code></b>, a hoisted function, since a linked server's <code>.cards</code> box is built in <code>drawRemotes</code> above the provider's definition; <code>sessionTarget</code> already names the composer's dictation target (<code>app.js:2873</code>).</li>
 </ul>
 
 <h2>Review focus</h2>
@@ -242,7 +247,7 @@ def test_shift_right_click_and_inputs_keep_the_browsers_menu(page, server):
 </div>
 </details>
 
-<details class="task" id="task-2" data-state="doing">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">The canvas tab and Move menus on menu.js</span><span class="files">js/canvas.js · js/app.js · css/base.css · tests/test_canvas_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -265,7 +270,7 @@ def test_shift_right_click_and_inputs_keep_the_browsers_menu(page, server):
 </div>
 </details>
 
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="doing">
 <summary><span class="num">3</span><span><span class="ttl">Fleet card and session tab menus with today's verbs</span><span class="files">js/app.js · js/fleet.js · js/tabs.js · js/glyphs.js · tests/test_menu_browser.py · help/sessions.md</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>

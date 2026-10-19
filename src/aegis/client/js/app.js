@@ -1249,6 +1249,7 @@ function renderRemotes() {
       band.classList.add("far");
       const cards = document.createElement("section");
       cards.className = "cards";
+      attachCardMenu(cards);
       box.append(band, cards);
       host.append(box);
       const r = remote.get(l.name);
@@ -3315,15 +3316,45 @@ for (const [id, cmd] of [
   });
 }
 
-async function interrupt() {
-  const s = focused();
+// A session action's error: in the panel when it is the shown session's,
+// else a toast (a card's or a tab's menu acts on any session).
+function failed(key, e) {
+  if (key === shown) $("side-error").textContent = e.message;
+  else toast(e.message, { kind: "error" });
+}
+
+async function interruptKey(key) {
+  const s = sessions.get(key);
   if (!s || s.state !== "working") return;
   try {
-    await callFor(s.key, "session.interrupt");
+    await callFor(key, "session.interrupt");
   } catch (e) {
     toast(e.message, { kind: "error" });
   }
 }
+const interrupt = () => focused() && interruptKey(focused().key);
+
+async function quietKey(key, on) {
+  if (offline() || !sessions.has(key)) return;
+  try {
+    await callFor(key, on ? "session.quiet" : "session.unquiet");
+  } catch (e) {
+    failed(key, e);
+  }
+}
+
+async function stopKey(key) {
+  if (offline() || !sessions.has(key)) return;
+  try {
+    await callFor(key, "session.stop");
+  } catch (e) {
+    failed(key, e);
+  }
+}
+
+// A nudge after an interrupt, an error or a stop: a message to a stopped
+// session resumes it, so Continue is one sentence to the agent.
+const continueKey = (key) => !offline() && sessions.has(key) && sendLine("Continue", false, [], sessions.get(key));
 
 // The first keystroke to a parked session starts its harness while the person
 // types (session.warm); once per parked stretch (warmed, above).
@@ -3360,31 +3391,9 @@ input.addEventListener("keydown", (ev) => {
 });
 $("send").addEventListener("click", send);
 $("interrupt").addEventListener("click", interrupt);
-// A nudge after an interrupt, an error or a stop: a message to a stopped
-// session resumes it, so Restart is one sentence to the agent.
-$("restart").addEventListener("click", () => !offline() && sendLine("Continue", false));
-
-$("quiet-session").addEventListener("click", async () => {
-  if (offline()) return;
-  const s = focused();
-  if (!s) return;
-  try {
-    await callFor(s.key, "session.quiet");
-  } catch (e) {
-    $("side-error").textContent = e.message;
-  }
-});
-
-$("stop-session").addEventListener("click", async () => {
-  if (offline()) return;
-  const s = focused();
-  if (!s) return;
-  try {
-    await callFor(s.key, "session.stop");
-  } catch (e) {
-    $("side-error").textContent = e.message;
-  }
-});
+$("restart").addEventListener("click", () => focused() && continueKey(focused().key));
+$("quiet-session").addEventListener("click", () => focused() && quietKey(focused().key, true));
+$("stop-session").addEventListener("click", () => focused() && stopKey(focused().key));
 
 $("close").addEventListener("click", () => {
   const s = focused();
@@ -3460,3 +3469,54 @@ function editable(elId, field) {
 }
 editable("s-title", "title");
 editable("s-handle", "handle");
+
+// Rename… from a menu: the session opens and its handle turns into the
+// panel's own input, once the panel shows that session.
+async function renameKey(key) {
+  await openCard(key);
+  const s = sessions.get(key);
+  for (let i = 0; i < 30 && s && $("s-handle").textContent !== s.handle; i++) await new Promise(requestAnimationFrame);
+  $("s-handle").click();
+}
+
+// -- the card and tab menu (menu.js) --------------------------------------------
+// What applies to the session's state, and what the viewer may do: another
+// member's session offers only opening it; a guard that blocks an action
+// (a workflow's step, no connection) leaves it disabled with the reason.
+function sessionMenu(key) {
+  const s = sessions.get(key);
+  if (!s) return null;
+  const opening = [
+    { id: "open", label: "Open", icon: "arrow", run: () => openCard(key) },
+    { id: "newtab", label: "Open in new tab", icon: "open", run: () => window.open(hashOf(key)) },
+  ];
+  const title = `${s.kind === "term" ? s.name : s.handle} · ${LABEL[s.attention] || s.state}`;
+  if (!mine(s)) return { title, groups: [opening] };
+  const why = locked(s)
+    ? `${s.handle} is a step of a running workflow`
+    : offline() || s.off
+      ? "No connection to its server"
+      : undefined;
+  const close = [{ id: "close", label: "Close", icon: "archive", danger: true, disabled: why, run: () => closeSession(s) }];
+  if (s.kind === "term") return { title, groups: [opening, close] };
+  if (s.quiet) opening.push({ id: "unquiet", label: "Unquiet", icon: "unquiet", disabled: why, run: () => quietKey(key, false) });
+  else if (["working", "waiting"].includes(s.attention))
+    opening.push({ id: "quiet", label: "Quiet", icon: "quiet", disabled: why, run: () => quietKey(key, true) });
+  const working = s.state === "working";
+  const life = [];
+  if (working) life.push({ id: "interrupt", label: "Interrupt", icon: "interrupt", disabled: why, run: () => interruptKey(key) });
+  else life.push({ id: "continue", label: "Continue", icon: "play", disabled: why, run: () => continueKey(key) });
+  if (s.state !== "stopped") life.push({ id: "stop", label: "Stop", icon: "stop", disabled: why, run: () => stopKey(key) });
+  if (!s.worker) life.push({ id: "handoff", label: "Hand off", icon: "handoff", disabled: why, run: () => handOff(s) });
+  const rename = [{ id: "rename", label: "Rename…", icon: "pencil", disabled: why, run: () => renameKey(key) }];
+  return { title, groups: [opening, life, rename, close] };
+}
+// The menu of a card or tab pressed; none on the space around them.
+function cardMenu(t) {
+  return t.dataset?.id && t.matches(".card, .tab") ? sessionMenu(t.dataset.id) : null;
+}
+function attachCardMenu(box) {
+  cmenu.attach(box, cardMenu, { selector: ".card[data-id], .tab[data-id]" });
+}
+attachCardMenu($("cards"));
+attachCardMenu($("tablist"));
