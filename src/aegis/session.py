@@ -5,7 +5,7 @@ A session exists without a process. ``asleep`` means there is none, and
 ``asleep_why`` says how it lost it (``ASLEEP_WHY``); the first
 prompt starts ``claude``, with ``--resume`` once the harness has given the session
 an id, and the store and the fold simply continue (Claude prints nothing old on
-resume, measured in issue #127). Only shutdown, Stop and Close end a process:
+resume, measured in issue #127). Only shutdown, a park, Sleep, Restart and Archive end a process:
 a session waiting on its own background task wakes itself, so nothing stops an
 idle-looking one.
 
@@ -847,6 +847,18 @@ class Session:
         self._record({"kind": "stop"})
         self._set(status="asleep", asleep_why="slept")
         self._metas.write(self.meta())
+
+    async def restart(self) -> None:
+        """A fresh process on the same conversation: end the one there is, if
+        any, and start another, which resumes it (#479). Under the start lock,
+        so a send waits for the new process. Calls neither stop() nor
+        ensure_running(): the lock is not reentrant. A start that fails leaves
+        the session asleep."""
+        async with self._starting:
+            await self._end_process()
+            self._record({"kind": "restart"})
+            self._set(status="asleep", asleep_why="slept")
+            await self._start_process()
 
     async def park(self, idle_s: float) -> bool:
         """End the process of a session nothing needs (park.py); the next

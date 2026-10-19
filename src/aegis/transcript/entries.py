@@ -671,9 +671,11 @@ class Fold:
                     summary=f"asleep after {mins} min idle",
                 )
             )
-        if kind in ("stop", "server_stopped"):
+        if kind in ("stop", "restart", "server_stopped"):
             if kind == "stop":
                 line = "asleep"
+            elif kind == "restart":
+                line = "restarted"
             else:
                 line = rec.get("declined") or (
                     "aegis stopped unexpectedly during a turn"

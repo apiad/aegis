@@ -175,6 +175,9 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <li><b>An old meta's <code>stopped</code> reads as <code>slept</code> even when the harness had exited</b>: before #479 an exit and a Stop wrote the same value. New metas persist <code>asleep_why</code>.</li>
 <li><b>The far list's mapping is <code>agent_ops.far_entry</code></b>, a module function the test calls directly, where the loop in <code>far_sessions</code> did it inline. A far <code>asleep_why</code> outside <code>ASLEEP_WHY</code> becomes null, like any far text. <code>session_list</code> entries here carry <code>asleep_why</code> for an asleep session.</li>
 <li><b>Stop on a parked session changes only the reason</b> (<code>session.py</code>, <code>stop</code>): it was already asleep, so it records the stop and sets <code>asleep_why</code> to <code>slept</code>.</li>
+<li><b>The fakes' <code>/sleep N</code> script is <code>/busy N</code> now</b> (<code>tests/fake_claude.py</code>, <code>fake_opencode.py</code>, <code>fake_codex.py</code>, and every test that typed it). An aegis command shadows a harness command of the same name (<code>app.py</code>, <code>deliver</code>: <code>if name in commands.AEGIS</code>), so some 30 browser tests that typed <code>/sleep 30</code> to keep a session working would have put it to sleep. A commit of its own, before task 5's.</li>
+<li><b><code>session.restart</code> takes <code>RestartParams</code></b>, <code>LogParams</code> with an optional <code>untested</code>, since the version gate it shares with a send refuses a person's launch until the browser answers once or always (<code>app.py</code>, <code>_version_gate</code>). <code>/restart</code> and the op both go through <code>App._restart</code>, which also refuses behind a closed quota gate, as a send that starts a process does.</li>
+<li><b>A restart records a <code>restart</code> row, "restarted"</b>, which ends a cut turn like a stop's row (<code>transcript/entries.py</code>), and the session passes through asleep, so a start that fails leaves it asleep rather than in the state it had.</li>
 </ul>
 
 <h2>Review focus</h2>
@@ -316,7 +319,7 @@ def test_another_members_card_offers_only_opening(page, server):
 
 <div class="slice">slice 2 · lifecycle · branch menu-2-lifecycle</div>
 
-<details class="task" id="task-4" data-state="doing">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">One asleep state with its reason</span><span class="files">session.py · registry.py · agent_ops.py · app.py · entries.py · meta.py · nudges.py · park.py · tests</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -358,7 +361,7 @@ async def test_session_list_keeps_a_linked_servers_old_states(world):
 </div>
 </details>
 
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="doing">
 <summary><span class="num">5</span><span><span class="ttl">session.restart and the /sleep, /restart, /archive commands</span><span class="files">session.py · app.py · commands.py · help/commands.md · tests/test_lifecycle.py · tests/test_commands.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>interfaces</h4>

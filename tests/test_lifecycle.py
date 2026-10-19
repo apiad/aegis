@@ -9,6 +9,7 @@ import signal
 import pytest
 
 from aegis import agent_ops
+from aegis.ops import OpError
 from aegis.session import asleep_from
 
 from .conftest import until
@@ -109,3 +110,56 @@ def test_session_list_keeps_a_linked_servers_old_states():
         {"handle": "liar-one", "server": "beta", "state": "asleep", "asleep_why": None},
         {"handle": "busy-one", "server": "beta", "state": "working"},
     ]
+
+
+async def test_restart_gives_a_fresh_process_on_the_same_conversation(world):
+    a = await world.spawn()
+    await turn(a, "remember kiwi")
+    old, rid = a.pid, a.resume_id
+    await world.app.registry.call("session.restart", {"log_id": a.log_id})
+    assert a.pid not in (None, old) and a.resume_id == rid and a.status == "idle"
+    with pytest.raises(ProcessLookupError):
+        os.kill(old, 0)
+    assert not [e for e in a.entries() if e["kind"] == "user" and "kiwi" not in e["md"]]
+    assert "kiwi" in await turn(a, "/recall")
+
+
+async def test_restart_cuts_a_turn_and_leaves_the_session_waiting(world):
+    a = await world.spawn()
+    await a.send("/busy 30")
+    await until(lambda: a.status == "working", what="the turn")
+    await world.app.registry.call("session.restart", {"log_id": a.log_id})
+    assert a.status == "idle" and a.running
+    assert a.entries()[-1]["summary"] == "restarted"
+
+
+async def test_restart_on_an_asleep_session_starts_it(world):
+    a = await world.spawn()
+    await turn(a, "hello")
+    await a.stop()
+    await world.app.registry.call("session.restart", {"log_id": a.log_id})
+    assert a.running and (a.status, a.asleep_why) == ("idle", None)
+
+
+async def test_sleep_restart_and_archive_commands_and_their_aliases(world):
+    reg = world.app.registry
+
+    async def say(s, text):
+        return await reg.call("session.send", {"log_id": s.log_id, "text": text})
+
+    a = await world.spawn()
+    for line in ("/sleep", "/stop"):
+        await turn(a, "hello")
+        await say(a, line)
+        assert (a.status, a.asleep_why) == ("asleep", "slept"), line
+    await turn(a, "hello")
+    pid = a.pid
+    await say(a, "/restart")
+    assert a.pid not in (None, pid) and a.status == "idle"
+    with pytest.raises(OpError) as e:
+        await say(a, "/archivex")
+    assert e.value.code == "unknown_command" and not a.archived
+    b = await world.spawn()
+    await say(a, "/archive")
+    await say(b, "/close")
+    assert {a.log_id, b.log_id} <= set(world.app.sessions.archived)

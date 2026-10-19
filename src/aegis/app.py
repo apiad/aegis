@@ -235,6 +235,10 @@ class LogParams(_Strict):
     log_id: str
 
 
+class RestartParams(LogParams):
+    untested: Literal["once", "always"] | None = None
+
+
 class DetailParams(_Strict):
     log_id: str
     ids: list[str] = Field(min_length=1, max_length=100)
@@ -837,6 +841,7 @@ class App:
         untested: str | None = None,
     ):
         """Run an aegis command typed in the composer."""
+        name = commands.ALIASES.get(name, name)
         cmd = commands.AEGIS[name]
         if cmd.hint.startswith("<") and not arg:
             raise OpError("missing_argument", f"usage: /{name} {cmd.hint}")
@@ -895,15 +900,45 @@ class App:
             body = self.workflows.launch(s, self.saved.get(wid), typed.strip(), origin)
             await s.deliver(f"> from workflow:{wid} · launch · {iso_now()}", body)
             return {"launched": wid}
-        if name == "stop":
+        if name == "sleep":
             await s.stop()
             return s.wire()
+        if name == "restart":
+            return await self._restart(s, caller, untested)
         if name == "spawn":
             return await self._spawn_line(
                 commands.parse_spawn(arg), caller, s, untested
             )
-        await reg.close(s.log_id)  # close
-        return None
+        if name == "archive":
+            await reg.close(s.log_id)
+            return None
+        raise OpError("unknown_command", f"/{name} has no handler")
+
+    async def _restart(self, s, caller: Caller, untested: str | None):
+        """End a session's process and start a fresh one on the same
+        conversation (Session.restart). Refused like a send that would start
+        one: on a workflow's locked step, behind a closed quota gate, and on a
+        harness version outside the tested range until the person says so."""
+        s.check_lock()
+        if (why := self.sessions.quota_hold(s)) is not None:
+            owner = s.spec.owner or self.user
+            raise OpError(
+                "quota_closed",
+                f"{owner}'s quota gate holds this session: {why}. "
+                "It continues when the gate opens.",
+            )
+        not_saved = await self._version_gate(caller, s.spec.harness, untested, s)
+        s.launch_by = "agent" if caller.is_agent else "person"
+        try:
+            await s.restart()
+        except FileNotFoundError as e:
+            raise OpError(
+                "harness_not_found",
+                f"cannot run {self._bin(s.spec.harness)!r}: {e}",
+            ) from e
+        finally:
+            s.launch_by = "agent"
+        return {"not_saved": not_saved} if not_saved else s.wire()
 
     async def _version_gate(
         self, caller: Caller, harness: str, untested: str | None, s=None
@@ -1549,6 +1584,10 @@ class App:
             s = reg.open(p.log_id)
             s.check_lock()
             await s.stop()
+
+        @r.op("session.restart", RestartParams, owned="log_id")
+        async def restart(p: RestartParams, caller):
+            return await self._restart(reg.open(p.log_id), caller, p.untested)
 
         @r.op("session.warm", LogParams, owned="log_id")
         async def warm(p: LogParams, caller):
