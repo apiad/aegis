@@ -10,6 +10,8 @@ first doc line, a file's outline, every caller of a definition, and everything
 that depends on it. It runs in the shell, needs no server and works in any
 language the pack of tree-sitter grammars has, from Python and TypeScript to
 Go, Rust, Java and C.
+The same commands run without aegis as `wayfind`, a package of their own
+(`uvx wayfind repo`), for a CI job or a machine where aegis is not installed.
 
 ## Start with the layout
 
@@ -60,7 +62,7 @@ edges only.
 
 The receiver types work in Python, JavaScript and TypeScript. Other languages
 get the rest of the map with calls matched by name; another language is
-one more `Spec` in `aegis/codemap/specs.py` (its docstring says how).
+one more `Spec` in wayfind's `specs.py` (its docstring says how).
 
 ## Numbers for a review
 
