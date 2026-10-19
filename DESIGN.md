@@ -147,7 +147,12 @@ pickle per repository under the user's cache directory, refreshed by mtime and
 replaced atomically, so every session of the user shares it without the server
 in the way. It needs no language server: heuristics marked as such (`?` for a
 name-only edge) were right often enough on a measured sample, and work in every
-language the grammar pack has.
+language the grammar pack has. What one language adds over that, receiver
+types, base classes and an exact branch count, is one table of query
+patterns per language (`codemap/specs.py`), so a language is data, not code.
+Its numbers views (metrics, cycles, unused, diff) report and never judge: a
+threshold is the caller's, so a CI gate is a filter over `--json` rather than
+a script beside the map.
 
 **Relative imports, and nothing from the legacy tree.** Imports inside aegis are
 relative, which is what made taking over the `aegis` name one directory move, and no
