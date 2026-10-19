@@ -337,3 +337,86 @@ def test_quiet_has_its_own_mark_and_survives_sleep(server, page):  # noqa: F811
     assert page.locator(card(a) + " .hd .quiet").count() == 1
     assert "unquiet" in card_menu(page, a)
     assert page.errors == []
+
+
+def test_a_linked_servers_old_states_read_as_asleep(server, page):  # noqa: F811
+    # A server older than #479 sends stopped or parked and no asleep_why.
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    got = page.evaluate(
+        """async () => {
+        const { lifecycle } = await import("/static/js/lifecycle.js");
+        return [
+            lifecycle({ state: "stopped" }),
+            lifecycle({ state: "parked" }),
+            lifecycle({ state: "idle" }),
+            lifecycle({ state: "asleep", asleep_why: "exited" }),
+        ];
+    }"""
+    )
+    assert got == [
+        {"state": "asleep", "asleep_why": "slept", "old": True},
+        {"state": "asleep", "asleep_why": "idle", "old": True},
+        {"state": "idle", "asleep_why": None, "old": True},
+        {"state": "asleep", "asleep_why": "exited"},
+    ]
+    assert page.errors == []
+
+
+def as_old_server(m):
+    """A frame as a server older than #479 sends it: stopped or parked, and
+    no asleep_why."""
+    if isinstance(m, list):
+        return [as_old_server(x) for x in m]
+    if not isinstance(m, dict):
+        return m
+    out = {k: as_old_server(v) for k, v in m.items() if k != "asleep_why"}
+    if m.get("state") == "asleep":
+        out["state"] = "parked" if m.get("asleep_why") == "idle" else "stopped"
+    return out
+
+
+def test_an_old_servers_stopped_session_reads_as_asleep(server, browser):  # noqa: F811
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    page = ctx.new_page()
+    page.errors = []
+    page.on("pageerror", lambda e: page.errors.append(str(e)))
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "hello")
+    page.fill("#input", "/sleep")
+    page.press("#input", "Enter")
+    page.goto(f"{server.url.split('#')[0]}#fleet")
+    page.wait_for_selector(card(a) + ".asleep")
+
+    # The same server, its frames rewritten as a server older than #479 sends them.
+    def route(ws):
+        srv = ws.connect_to_server()
+
+        def down(msg):
+            if isinstance(msg, str) and msg.startswith("{"):
+                msg = json.dumps(as_old_server(json.loads(msg)))
+            ws.send(msg)
+
+        srv.on_message(down)
+
+    old = ctx.new_page()
+    old.errors = []
+    old.on("pageerror", lambda e: old.errors.append(str(e)))
+    old.route_web_socket("**/*", route)
+    old.goto(server.url)
+    old.wait_for_selector(card(a) + ".asleep")
+    assert old.text_content(card(a) + " .hd .zz") == "zz slept"
+    old.click(card(a), button="right")
+    ids = item_ids(old)
+    assert "continue" in ids and not {"sleep", "restart", "wake"} & set(ids)
+    old.keyboard.press("Escape")
+    old.goto(f"{server.url.split('#')[0]}#s={a}")
+    old.wait_for_function(
+        "document.querySelector('#input').placeholder.startsWith('Asleep;')"
+    )
+    old.wait_for_function(
+        "['stop-session', 'restart'].every(id => document.getElementById(id).disabled)"
+    )
+    assert old.errors == [] and page.errors == []
+    ctx.close()

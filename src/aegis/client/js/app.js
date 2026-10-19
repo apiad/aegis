@@ -45,6 +45,7 @@ import { checkRotation, closePushPanel, openPushPanel, pushSupported, setupPush 
 import { clearDevice, loadFleet, loadTranscript, saveFleet, saveTranscript } from "./devicestore.js";
 import { markNeedsNet, offline } from "./net.js";
 import { discard, draftFor, flushNow, loadDrafts, onDrafts, queue, sendAnyway, setSender } from "./outbox.js";
+import { lifecycle } from "./lifecycle.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -100,7 +101,7 @@ function callFor(key, op, params = {}) {
 }
 const linkOf = (server) => links.find((l) => l.name === server);
 const isOff = (server) => !!server && linkOf(server)?.state !== "linked";
-const withKey = (m, server = null) => ({ ...m, server, key: keyOf(server, m.log_id), off: isOff(server) });
+const withKey = (m, server = null) => ({ ...lifecycle(m), server, key: keyOf(server, m.log_id), off: isOff(server) });
 const order = new TabOrder();
 let ordered = []; // metas in this browser's tab order
 let shown = null; // the key of the session whose transcript is subscribed
@@ -1777,7 +1778,7 @@ function renderMeta(s) {
   // A workflow's node is the engine's while its run lives.
   const held = locked(s);
   $("continue").disabled = working || theirs || held;
-  $("restart").disabled = theirs || held;
+  $("restart").disabled = theirs || held || !!s.old;
   $("working").hidden = !working;
   $("stop-session").disabled = s.state === "asleep" || theirs || held;
   $("quiet-session").disabled = !["working", "waiting"].includes(s.attention) || theirs || held;
@@ -3359,11 +3360,15 @@ async function sleepKey(key) {
   }
 }
 
-// Wake starts an asleep session's process and sends nothing (session.warm).
+// Wake starts an asleep session's process and sends nothing (session.warm),
+// asking first about an untested harness version, as a send does.
 async function wakeKey(key) {
   if (offline() || !sessions.has(key)) return;
   try {
-    await callFor(key, "session.warm");
+    await untestedRetry(
+      () => callFor(key, "session.warm"),
+      (untested) => callFor(key, "session.warm", { untested }),
+    );
   } catch (e) {
     failed(key, e);
   }
@@ -3539,10 +3544,11 @@ function sessionMenu(key) {
   const life = [];
   if (s.state === "working") life.push({ id: "interrupt", label: "Interrupt", icon: "interrupt", disabled: why, run: () => interruptKey(key) });
   if (s.state === "asleep") {
-    life.push({ id: "wake", label: "Wake", icon: "wake", disabled: why, run: () => wakeKey(key) });
+    // A server older than #479 wakes only a parked session.
+    if (!s.old || s.asleep_why === "idle") life.push({ id: "wake", label: "Wake", icon: "wake", disabled: why, run: () => wakeKey(key) });
     life.push({ id: "continue", label: "Continue", icon: "play", disabled: why, run: () => continueKey(key) });
   } else life.push({ id: "sleep", label: "Sleep", icon: "sleep", disabled: why, run: () => sleepKey(key) });
-  life.push({ id: "restart", label: "Restart", icon: "restart", disabled: why, run: () => restartKey(key) });
+  if (!s.old) life.push({ id: "restart", label: "Restart", icon: "restart", disabled: why, run: () => restartKey(key) });
   if (!s.worker) life.push({ id: "handoff", label: "Hand off", icon: "handoff", disabled: why, run: () => handOff(s) });
   const rename = [{ id: "rename", label: "Rename…", icon: "pencil", disabled: why, run: () => renameKey(key) }];
   return { title, groups: [opening, life, rename, close] };
