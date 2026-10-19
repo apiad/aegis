@@ -124,7 +124,7 @@ async def test_a_stop_during_a_nodes_spawn_leaves_no_node_working(world):
         return await real(*args, **kw)
 
     reg.spawn = slow
-    run = await armed(world, main, flow("/sleep 3", RESULT))
+    run = await armed(world, main, flow("/busy 3", RESULT))
     await asyncio.sleep(0.1)  # the pass is inside the spawn
     await world.app.registry.call("workflow.stop", {"run": run})
     assert wf.runs[run].status == "stopped"
@@ -174,7 +174,7 @@ async def test_a_stop_during_the_last_close_is_the_runs_one_ending(world):
 
 async def test_a_stopped_runs_node_gets_its_tab_and_keeps_it(world):
     main = await world.spawn()
-    run = await armed(world, main, flow("/sleep 2", RESULT))
+    run = await armed(world, main, flow("/busy 2", RESULT))
     s = await started(world, run)
     assert s.quiet
     await world.app.registry.call("workflow.stop", {"run": run})
@@ -196,7 +196,7 @@ async def handed_off(world, main):
 async def test_a_run_follows_its_main_agent_through_a_handoff(world):
     main = await world.spawn()
     wf = world.app.workflows
-    run = await armed(world, main, flow("/sleep 8", RESULT))
+    run = await armed(world, main, flow("/busy 8", RESULT))
     one = await started(world, run)
     heir = await handed_off(world, main)
     assert wf.owner(wf.runs[run]) is heir and one.status == "working"
@@ -209,7 +209,7 @@ async def test_a_run_follows_its_main_agent_through_a_handoff(world):
 
 async def test_the_heir_of_a_main_agent_may_stop_its_run(world):
     main = await world.spawn()
-    run = await armed(world, main, flow("/sleep 3", RESULT))
+    run = await armed(world, main, flow("/busy 3", RESULT))
     await started(world, run)
     heir = await handed_off(world, main)
     said = await turn(heir, mcp("workflow_stop", run=run))
@@ -222,7 +222,7 @@ id: reviewed
 title: Reviewed
 say: One review.
 root:
-  agent: {agent: reviewer, prompt: "/sleep 10"}
+  agent: {agent: reviewer, prompt: "/busy 10"}
   say: Review it.
 """
 

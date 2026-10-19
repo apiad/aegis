@@ -821,7 +821,7 @@ def test_esc_closes_a_pane_menu_without_interrupting_and_a_card_leaves_it_open(
     page.click(".row.artifact .fbar .dock")
     pane = page.locator(f'#canvas .pane[data-pane="{aid}"]')
     pane.wait_for()
-    page.fill("#input", "/sleep 3")
+    page.fill("#input", "/busy 3")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
     menu = page.locator(".cmenu")

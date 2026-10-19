@@ -401,3 +401,21 @@ def test_a_needs_you_line_names_the_turn_before_its_prompt():
         "tidy up",
     ]
     assert rows == [x for x in live(r) if x.kind == "turn"]
+
+
+def test_a_restart_ends_the_turn_it_cut():
+    r = Rec()
+    spawned(r)
+    r.own("send", text="write")
+    r.call("t1", "Write", {"file_path": "n.md", "content": "z"})
+    r.output("t1", "ok")
+    r.own("restart")
+    r.own("send", text="next")
+    r.call("t2", "Write", {"file_path": "m.md", "content": "z"})
+    r.output("t2", "ok")
+    r.result()
+    turns = [x for x in derive(r) if x.kind == "turn"]
+    assert [(t.text, t.touches) for t in turns] == [
+        ("write", [("write", "/w/n.md")]),
+        ("next", [("write", "/w/m.md")]),
+    ]

@@ -131,7 +131,7 @@ def rebuild(store_path: Path) -> dict | None:
         "archived": True,
         "created_at": records[0].get("ts"),
         "last_activity": records[-1].get("ts"),
-        "last_status": "stopped",
+        "last_status": "asleep",
         "cost_usd": None,
         "context_tokens": None,
         "context_window": None,

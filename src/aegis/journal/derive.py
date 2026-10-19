@@ -35,7 +35,7 @@ WRITE_TOOLS = {
     "NotebookEdit": "edit",
     "Delete": "write",
 }
-TURN_ENDS = ("exit", "stop", "server_stopped", "reset")
+TURN_ENDS = ("exit", "stop", "restart", "server_stopped", "reset")
 
 
 @dataclass

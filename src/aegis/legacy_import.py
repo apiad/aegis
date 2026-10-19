@@ -381,7 +381,7 @@ def import_legacy(source: Path, state_root: Path) -> Report:
                 "archived": True,
                 "created_at": first_ts,
                 "last_activity": last_ts,
-                "last_status": "stopped",
+                "last_status": "asleep",
                 "cost_usd": _cost(info["costs"]),
                 "context_tokens": None,
                 "context_window": None,

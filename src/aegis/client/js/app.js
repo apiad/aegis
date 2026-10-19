@@ -45,6 +45,7 @@ import { checkRotation, closePushPanel, openPushPanel, pushSupported, setupPush 
 import { clearDevice, loadFleet, loadTranscript, saveFleet, saveTranscript } from "./devicestore.js";
 import { markNeedsNet, offline } from "./net.js";
 import { discard, draftFor, flushNow, loadDrafts, onDrafts, queue, sendAnyway, setSender } from "./outbox.js";
+import { idleFor, lifecycle } from "./lifecycle.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -100,11 +101,11 @@ function callFor(key, op, params = {}) {
 }
 const linkOf = (server) => links.find((l) => l.name === server);
 const isOff = (server) => !!server && linkOf(server)?.state !== "linked";
-const withKey = (m, server = null) => ({ ...m, server, key: keyOf(server, m.log_id), off: isOff(server) });
+const withKey = (m, server = null) => ({ ...lifecycle(m), server, key: keyOf(server, m.log_id), off: isOff(server) });
 const order = new TabOrder();
 let ordered = []; // metas in this browser's tab order
 let shown = null; // the key of the session whose transcript is subscribed
-let warmed = null; // the parked session whose first keystroke asked for session.warm
+let warmed = null; // the parked (asleep, idle) session whose first keystroke asked for session.warm
 let landUnread = null; // the tab Alt+J opened, whose transcript lands on its first unread
 let unsubTranscript = null;
 let workingSince = null;
@@ -804,7 +805,8 @@ let early = ["session", "window", "read"].includes(boot.view) ? { id: boot.id, c
 loadFleet().then((saved) => {
   if (!saved || booted || refused) return;
   seenAt = saved.saved_at;
-  for (const m of saved.metas) sessions.set(m.key, { ...m, stale: true });
+  // An older client saved stopped and parked: read them as asleep (#479).
+  for (const m of saved.metas) sessions.set(m.key, { ...lifecycle(m), stale: true });
   booted = true;
   onSessions();
 });
@@ -1393,7 +1395,7 @@ function drawSideHost() {
   rows.push(...netRows(net, Date.now() / 1000, () => measureNet(server || null)));
   $("s-host-tiles").replaceChildren(...tiles);
   $("s-host-rows").replaceChildren(...rows);
-  const live = (s.server ? on(s.server) : local()).filter((m) => !["stopped", "parked"].includes(m.state) && m.kind !== "term");
+  const live = (s.server ? on(s.server) : local()).filter((m) => m.state !== "asleep" && m.kind !== "term");
   const sized = live.filter((m) => m.context_window && m.context_tokens);
   $("s-host-live").textContent = String(live.length);
   $("s-host-ctx").textContent = sized.length
@@ -1776,9 +1778,10 @@ function renderMeta(s) {
   const theirs = !mine(s);
   // A workflow's node is the engine's while its run lives.
   const held = locked(s);
-  $("restart").disabled = working || theirs || held;
+  $("continue").disabled = working || theirs || held;
+  $("restart").disabled = theirs || held || !!s.old;
   $("working").hidden = !working;
-  $("stop-session").disabled = s.state === "stopped" || theirs || held;
+  $("stop-session").disabled = s.state === "asleep" || theirs || held;
   $("quiet-session").disabled = !["working", "waiting"].includes(s.attention) || theirs || held;
   $("interrupt").disabled = theirs || held;
   $("close").disabled = theirs || held;
@@ -1788,7 +1791,7 @@ function renderMeta(s) {
   const down = s.off ? linkOf(s.server) : null;
   input.disabled = $("attach").disabled = !!down || theirs || held;
   drawSending(!!down || theirs || held);
-  if (s.state !== "parked" && warmed === shown) warmed = null;
+  if (s.asleep_why !== "idle" && warmed === shown) warmed = null;
   drawComposerHint(s);
   setTitle(`${s.title || s.handle} · aegis`);
 }
@@ -1821,7 +1824,7 @@ function drawWaiting(s) {
 // and whether a message resumes it. While a parked session's harness resumes
 // after the first keystroke, the waking row says so in the transcript instead.
 function drawComposerHint(s) {
-  $("waking").hidden = !(s.state === "parked" && warmed === shown);
+  $("waking").hidden = !(s.asleep_why === "idle" && warmed === shown);
   const theirs = !mine(s);
   const down = s.off ? linkOf(s.server) : null;
   // Chrome counts a placeholder in scrollHeight: measure again when it changes.
@@ -1833,10 +1836,12 @@ function drawComposerHint(s) {
       : `${ownerOf(s)}'s session. You can read it; only ${ownerOf(s)} can write to it.`
     : down
     ? `${s.server} is ${down.state} since ${new Date(down.since * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}; nothing can be sent until it is back.`
-    : s.state === "parked"
-      ? "Parked to free memory. Typing wakes it."
-      : s.state === "stopped"
-      ? "Stopped; your next message resumes it."
+    : s.state === "asleep" && s.asleep_why === "idle"
+      ? idleFor(s)
+        ? `Asleep after ${idleFor(s)} idle. Typing wakes it.`
+        : "Asleep while idle. Typing wakes it."
+      : s.state === "asleep"
+      ? "Asleep; your next message wakes it."
       : touch.matches
         ? "Message the agent"
         : "Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts.";
@@ -3055,14 +3060,15 @@ $("closing-btn").addEventListener("click", () => {
 });
 
 const askClose = (s) =>
-  ask(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`, { ok: "Close" });
-// The one rule for when closing asks: a done session has nothing left to lose,
-// anything else may be mid-work. The Close button, /close, the Fleet's Archive
-// button and the phone's Archive row all pass through it.
+  ask(`Archive ${s.title || s.handle}? Its tab goes away in every browser; Reopen in the archive brings it back.`, { ok: "Archive" });
+// The one rule for when archiving asks: a done session has nothing left to
+// lose, anything else may be mid-work. The panel's Archive, /archive and /close,
+// the Fleet's Archive button, the menu and the phone's Archive row all pass
+// through it.
 const confirmClose = async (s) => s.attention === "done" || (await askClose(s));
 
 async function closeSession(s) {
-  if (locked(s)) return toast(`${s.handle} is a step of a running workflow; it closes when the run ends`, { kind: "error" });
+  if (locked(s)) return toast(`${s.handle} is a step of a running workflow; it archives when the run ends`, { kind: "error" });
   if (offline() || !(await confirmClose(s))) return;
   if (s.kind === "term") {
     const { server, log_id } = forKey(s.key);
@@ -3105,7 +3111,8 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
     go("#help");
     return;
   }
-  if (text === "/close" && !(await confirmClose(s))) return;
+  if ((text === "/archive" || text === "/close") && !(await confirmClose(s))) return;
+  if (text === "/restart" && !(await confirmRestart(s))) return;
   // With no way to the session's server, plain text waits as its draft on this
   // device (outbox.js); a command or files still need the connection.
   const rev = shown === s.key ? transcript.rev : -1;
@@ -3343,8 +3350,15 @@ async function quietKey(key, on) {
   }
 }
 
-async function stopKey(key) {
-  if (offline() || !sessions.has(key)) return;
+// Sleep ends the process and keeps the conversation. What would die with it
+// (session.kills: background tasks, timers, processes it left running)
+// is asked about first. A server older than #479 has no such op.
+async function sleepKey(key) {
+  const s = sessions.get(key);
+  if (offline() || !s) return;
+  // A check that fails cannot say nothing would die: ask then too.
+  const kills = s.old || s.state === "asleep" ? [] : await callFor(key, "session.kills").catch(() => ["aegis could not check what would end with it"]);
+  if (kills.length && !(await ask(`Sleep ${s.handle}? ${kills.join("; ")}.`, { ok: "Sleep" }))) return;
   try {
     await callFor(key, "session.stop");
   } catch (e) {
@@ -3352,15 +3366,50 @@ async function stopKey(key) {
   }
 }
 
-// A nudge after an interrupt, an error or a stop: a message to a stopped
-// session resumes it, so Continue is one sentence to the agent.
+// Wake starts an asleep session's process and sends nothing (session.warm),
+// asking first about an untested harness version, as a send does.
+async function wakeKey(key) {
+  const s = sessions.get(key);
+  if (offline() || !s) return;
+  try {
+    // An older server's warm takes only log_id.
+    const wake = s.old ? {} : { wake: true };
+    await untestedRetry(
+      () => callFor(key, "session.warm", wake),
+      (untested) => callFor(key, "session.warm", { ...wake, untested }),
+    );
+  } catch (e) {
+    failed(key, e);
+  }
+}
+
+// Restart: a fresh process on the same conversation. It cuts a turn, so a
+// working session asks first: from the menu, the panel and a typed /restart.
+const confirmRestart = async (s) =>
+  s.state !== "working" || (await ask(`Restart ${s.handle}? It cuts the turn it is working on.`, { ok: "Restart" }));
+async function restartKey(key) {
+  const s = sessions.get(key);
+  if (offline() || !s) return;
+  if (!(await confirmRestart(s))) return;
+  try {
+    await untestedRetry(
+      () => callFor(key, "session.restart"),
+      (untested) => callFor(key, "session.restart", { untested }),
+    );
+  } catch (e) {
+    failed(key, e);
+  }
+}
+
+// A nudge after an interrupt, an error or a sleep: a message to an asleep
+// session wakes it, so Continue is one sentence to the agent.
 const continueKey = (key) => !offline() && sessions.has(key) && sendLine("Continue", false, [], sessions.get(key));
 
 // The first keystroke to a parked session starts its harness while the person
 // types (session.warm); once per parked stretch (warmed, above).
 function warmIfParked() {
   const s = shown && sessions.get(shown);
-  if (!s || s.state !== "parked" || warmed === shown || !mine(s)) return;
+  if (!s || s.asleep_why !== "idle" || warmed === shown || !mine(s)) return;
   warmed = shown;
   const key = shown;
   callFor(key, "session.warm", { log_id: forKey(key).log_id }).catch(() => {
@@ -3391,9 +3440,10 @@ input.addEventListener("keydown", (ev) => {
 });
 $("send").addEventListener("click", send);
 $("interrupt").addEventListener("click", interrupt);
-$("restart").addEventListener("click", () => focused() && continueKey(focused().key));
+$("continue").addEventListener("click", () => focused() && continueKey(focused().key));
+$("restart").addEventListener("click", () => focused() && restartKey(focused().key));
 $("quiet-session").addEventListener("click", () => focused() && quietKey(focused().key, true));
-$("stop-session").addEventListener("click", () => focused() && stopKey(focused().key));
+$("stop-session").addEventListener("click", () => focused() && sleepKey(focused().key));
 
 $("close").addEventListener("click", () => {
   const s = focused();
@@ -3497,16 +3547,18 @@ function sessionMenu(key) {
     : offline() || s.off
       ? "No connection to its server"
       : undefined;
-  const close = [{ id: "close", label: "Close", icon: "archive", danger: true, disabled: why, run: () => closeSession(s) }];
+  const close = [{ id: "archive", label: "Archive", icon: "archive", danger: true, disabled: why, run: () => closeSession(s) }];
   if (s.kind === "term") return { title, groups: [opening, close] };
   if (s.quiet) opening.push({ id: "unquiet", label: "Unquiet", icon: "unquiet", disabled: why, run: () => quietKey(key, false) });
   else if (["working", "waiting"].includes(s.attention))
     opening.push({ id: "quiet", label: "Quiet", icon: "quiet", disabled: why, run: () => quietKey(key, true) });
-  const working = s.state === "working";
   const life = [];
-  if (working) life.push({ id: "interrupt", label: "Interrupt", icon: "interrupt", disabled: why, run: () => interruptKey(key) });
-  else life.push({ id: "continue", label: "Continue", icon: "play", disabled: why, run: () => continueKey(key) });
-  if (s.state !== "stopped") life.push({ id: "stop", label: "Stop", icon: "stop", disabled: why, run: () => stopKey(key) });
+  if (s.state === "working") life.push({ id: "interrupt", label: "Interrupt", icon: "interrupt", disabled: why, run: () => interruptKey(key) });
+  // A server older than #479 wakes only a parked session.
+  if (s.state === "asleep" && (!s.old || s.asleep_why === "idle")) life.push({ id: "wake", label: "Wake", icon: "wake", disabled: why, run: () => wakeKey(key) });
+  if (s.state !== "working") life.push({ id: "continue", label: "Continue", icon: "play", disabled: why, run: () => continueKey(key) });
+  if (s.state !== "asleep") life.push({ id: "sleep", label: "Sleep", icon: "sleep", disabled: why, run: () => sleepKey(key) });
+  if (!s.old) life.push({ id: "restart", label: "Restart", icon: "restart", disabled: why, run: () => restartKey(key) });
   if (!s.worker) life.push({ id: "handoff", label: "Hand off", icon: "handoff", disabled: why, run: () => handOff(s) });
   const rename = [{ id: "rename", label: "Rename…", icon: "pencil", disabled: why, run: () => renameKey(key) }];
   return { title, groups: [opening, life, rename, close] };

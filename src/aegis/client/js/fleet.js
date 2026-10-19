@@ -2,6 +2,7 @@
 // Every field comes from the session's meta; nothing here computes activity.
 
 import { glyph, icon, LABEL } from "./glyphs.js";
+import { idleFor } from "./lifecycle.js";
 import { hostRow, netRows, noteRow, providerLine, quotaHeading, quotaRow } from "./gauges.js";
 import { shownOwner } from "./me.js";
 import { dur, planTimes } from "./plantime.js";
@@ -140,8 +141,16 @@ function card(m, onOpen, onClose) {
   if (owner) hd.append(el("span", "who", owner));
   if (m.worker) hd.append(el("span", "badge", `worker · ${m.worker.queue}`));
   if (m.workflow) hd.append(el("span", "badge", `workflow · ${workflowTitle(m.workflow.run) || m.workflow.run} · ${m.workflow.node}`));
-  if (m.quiet) hd.append(el("span", "zz", "zz"));
-  if (m.state === "parked") hd.append(el("span", "zz pk", "parked"));
+  // Two axes, two marks: quiet hides the tab, asleep has no process (#479).
+  if (m.quiet) {
+    const q = el("span", "quiet");
+    q.append(icon("quiet"), "quiet");
+    hd.append(q);
+  }
+  if (m.state === "asleep") {
+    const idle = m.asleep_why === "idle" && idleFor(m);
+    hd.append(el("span", "zz pk", idle ? `zz idle ${idle}` : m.asleep_why ? `zz ${m.asleep_why}` : "zz"));
+  }
   const label = m.attention === "waiting" && m.waiting_on ? `waiting · ${m.waiting_on}` : LABEL[m.attention] || m.state;
   hd.append(el("span", `s at-${m.attention}`, label));
   if (m.attention === "done") hd.append(archiveButton(m, onClose));
@@ -316,16 +325,17 @@ export function renderBand(band, { metas, host, server, link = "", off = false, 
     if (host.disk) meters.push(hostRow("Disk", host.disk.pct, `${host.disk.used_gb} / ${host.disk.total_gb} GB`));
     meters.push(...netRows(host.net, Date.now() / 1000, off ? null : measure));
   }
-  const live = metas.filter((m) => !["stopped", "parked"].includes(m.state) && m.context_window && m.context_tokens);
+  const live = metas.filter((m) => m.state !== "asleep" && m.context_window && m.context_tokens);
   if (live.length) {
     const avg = Math.round(live.reduce((a, m) => a + Math.min(100, (100 * m.context_tokens) / m.context_window), 0) / live.length);
     meters.push(hostRow("Context", avg, `avg of ${live.length} live`));
   }
-  // What parking freed: the harnesses' own memory when each was parked (park.py).
-  const parked = metas.filter((m) => m.state === "parked");
-  if (parked.length) {
-    const gb = parked.reduce((n, m) => n + (m.parked_rss || 0), 0) / 2 ** 30;
-    meters.push(el("span", "parked-count", `${parked.length} parked · ~${gb.toFixed(1)} GB`));
+  // How many have no process, and what parking freed: the harnesses' own
+  // memory when each was parked (park.py).
+  const asleep = metas.filter((m) => m.state === "asleep");
+  if (asleep.length) {
+    const gb = asleep.reduce((n, m) => n + (m.parked_rss || 0), 0) / 2 ** 30;
+    meters.push(el("span", "parked-count", `${asleep.length} asleep · ~${gb.toFixed(1)} GB idle`));
   }
   band.querySelector(".band-host").replaceChildren(...meters);
 }

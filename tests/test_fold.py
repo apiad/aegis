@@ -391,7 +391,7 @@ def test_stopping_ends_running_calls_and_loses_unread_prompts():
     f, _ = run(r)
     by_kind = {(e["kind"], e["status"]) for e in f.entries()}
     assert ("user", "lost") in by_kind and ("tool", "err") in by_kind
-    assert f.entries()[-1]["summary"] == "stopped"
+    assert f.entries()[-1]["summary"] == "asleep"
 
 
 def test_resume_and_server_stopped_lines():
@@ -568,7 +568,7 @@ def test_the_recorded_slash_commands_fold_with_nothing_left_pending():
 
 def test_a_command_waiting_for_the_turn_end_does_not_take_a_prompts_echo():
     r = Rec()
-    r.own("send", text="/sleep 2")
+    r.own("send", text="/busy 2")
     r.call("t1", "Bash", {"command": "sleep 2"})
     r.own("send", text="/effort low")
     r.own("send", text="steer")
@@ -584,8 +584,8 @@ def test_a_command_waiting_for_the_turn_end_does_not_take_a_prompts_echo():
     read = [e["md"] for e in es if e["kind"] == "user" and e["status"] == "ok"]
     assert read == ["steer"]
     assert [e["title"] for e in es if e["kind"] == "command"] == ["/effort low"]
-    # Nothing echoed /sleep here; the fake echoes it, real Claude runs a script.
-    assert [e["md"] for e in es if e["status"] == "pending"] == ["/sleep 2"]
+    # Nothing echoed /busy here; the fake echoes it, real Claude runs a script.
+    assert [e["md"] for e in es if e["status"] == "pending"] == ["/busy 2"]
 
 
 def test_the_escape_leading_space_matches_the_stripped_echo():

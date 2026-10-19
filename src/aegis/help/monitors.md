@@ -99,4 +99,4 @@ held and delivered when your turn ends.
 `monitor_list` shows your live monitors. `monitor_cancel` with
 `monitor_id=<id>` stops one; no wake is sent. You can cancel only monitors
 you started. Monitors are kept in the server's state directory and armed again
-when the server restarts, and a wake for a stopped session starts it again.
+when the server restarts, and a wake for an asleep session starts it again.

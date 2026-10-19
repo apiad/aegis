@@ -14,7 +14,7 @@ world = test_workflows_parallel.world  # the fixture, shared
 
 
 def spawner(agent: str = "opus") -> str:
-    spawn = ["session_spawn", {"agent": agent, "prompt": "/sleep 3"}]
+    spawn = ["session_spawn", {"agent": agent, "prompt": "/busy 3"}]
     return script(
         spawn,
         spawn,
@@ -80,7 +80,7 @@ root: {leaf("n", "Spawn two.", script(["sleep", 20]))}
     node = world.app.sessions.sessions[wf.runs[run].nodes["n"].log_id]
     me, ask = (
         Caller("agent", log_id=node.log_id),
-        {"agent": "opus", "prompt": "/sleep 3"},
+        {"agent": "opus", "prompt": "/busy 3"},
     )
     assert (await world.app.registry.call("session.spawn", ask, me))["log_id"]
     try:

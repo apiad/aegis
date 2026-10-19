@@ -1508,7 +1508,7 @@ async def test_real_claude_parks_when_idle_and_not_while_a_background_bash_runs(
         assert _pids_running(sleep), "the background sleep is not running"
         await asyncio.sleep(15)
         why = park.blockers(app.parker.facts(a, deep=True))
-        assert a.status != "parked" and a.running, why
+        assert a.asleep_why != "idle" and a.running, why
         assert any("background task" in w or "process" in w for w in why), why
 
         r = await app.registry.call("session.spawn", {"agent": "sonnet"})
@@ -1522,7 +1522,7 @@ async def test_real_claude_parks_when_idle_and_not_while_a_background_bash_runs(
             timeout=120,
             what="the done turn",
         )
-        await until(lambda: b.status == "parked", timeout=15, what="the park")
+        await until(lambda: b.asleep_why == "idle", timeout=15, what="the park")
         assert not b.running and b.parked_rss > 0
 
         def prose():

@@ -253,7 +253,7 @@ async def test_spawn_line_carries_untested(world, monkeypatch):
 
 async def test_warm_parked_never_asks(world, monkeypatch):
     s = await world.spawn()
-    assert await s.park(60) and s.status == "parked"
+    assert await s.park(60) and s.asleep_why == "idle"
     untested(monkeypatch, world.fake, "99.0.0")
     await world.app.registry.call("session.warm", {"log_id": s.log_id})
     await until(lambda: s.running, timeout=5, what="warmed")
@@ -342,3 +342,18 @@ async def test_help_guide_takes_untested(world, monkeypatch):
     assert e.value.code == "harness_untested"
     r = await call("help.guide", {"kind": "tutorial", "untested": "once"})
     assert len(notices(world.session(r["log_id"]))) == 1
+
+
+async def test_a_persons_wake_of_a_slept_session_asks(world, monkeypatch):
+    from aegis.ops import OpError
+
+    s = await world.spawn()
+    await s.stop()
+    untested(monkeypatch, world.fake, "99.0.0")
+    call = world.app.registry.call
+    with pytest.raises(OpError) as e:
+        await call("session.warm", {"log_id": s.log_id, "wake": True})
+    assert e.value.code == "harness_untested" and not s.running
+    await call("session.warm", {"log_id": s.log_id, "wake": True, "untested": "once"})
+    assert s.running and s.launch_by == "agent"  # reset after the launch
+    assert len(notices(s)) == 1

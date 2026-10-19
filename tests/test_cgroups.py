@@ -333,7 +333,7 @@ async def test_a_session_asks_for_a_cgroup_and_releases_it_on_stop_and_exit(
     await h.session.stop()
     assert host.released_n == 1
     await h.session.send("/exit 3")
-    await until(lambda: h.session.status == "stopped", timeout=5, what="stopped")
+    await until(lambda: h.session.status == "asleep", timeout=5, what="stopped")
     assert host.released_n == 2
 
 
