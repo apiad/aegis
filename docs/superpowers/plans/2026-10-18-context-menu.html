@@ -188,6 +188,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <li><b>Wake of a session that did not park goes through the send's gates</b> (<code>app.py</code>, <code>session.warm</code> and <code>App._launch</code>, shared with Restart): the workflow lock, a closed quota gate (now <code>quota_closed</code>, not silence), the version gate with <code>untested</code>, and <code>harness_not_found</code>. The keystroke warm of a parked session stays silent, as before.</li>
 <li><b>A person's Wake of a parked session says when the quota gate holds</b>: <code>session.warm</code> takes <code>wake: true</code> from the menu (<code>WarmParams</code>), and only the keystroke warm stays silent. A typed <code>/restart</code> asks on a working session as the menu and panel do (<code>confirmRestart</code>). The journal ends a turn on a <code>restart</code> record (<code>journal/derive.py</code>, <code>TURN_ENDS</code>). Fleet metas cached on the device go through <code>lifecycle()</code> too.</li>
 <li><b>Continue is on every session that is not working</b> (asleep, waiting, interrupted, error), as slice 1 had it and spec 03 says ("asleep or waiting → working"); the plan's task 6 grouping named it with Wake for asleep only. Sleep asks with "aegis could not check what would end with it" when <code>session.kills</code> fails, instead of reading the failure as nothing. Every person's Wake (<code>wake: true</code>) goes through <code>App._launch</code>, a parked one's too; the keystroke warm starts only a parked session, so a session another browser just slept waits for the message.</li>
+<li><b><code>insertIntoComposer</code> lives in <code>js/quote.js</code>, not app.js</b>: it needs only <code>#input</code>, since the composer's own input listener (<code>app.js</code>, <code>input.addEventListener("input"</code>) saves the draft, warms and marks; a test and every provider import it from there. The tests check the input path through the unknown-command mark, not <code>session.warm</code>: a session a browser watches never parks (<code>park.py</code>, <code>Watchers</code>).</li>
 </ul>
 
 <h2>Review focus</h2>
@@ -440,7 +441,7 @@ def test_quiet_has_its_own_mark_and_survives_sleep(page, server):
 
 <div class="slice">slice 3 · transcript · branch menu-3-transcript</div>
 
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="done">
 <summary><span class="num">7</span><span><span class="ttl">Clean text, quotes and the composer helper</span><span class="files">js/quote.js · js/entries.js · js/copy.js · js/app.js · tests/test_quote.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>interfaces</h4>

@@ -29,6 +29,7 @@ export function copyButton(what) {
   b.className = "copy";
   b.tabIndex = -1;
   b.dataset.copy = what;
+  b.dataset.chrome = ""; // not part of the text a selection quotes (quote.js)
   b.title = `Copy the ${what}`;
   b.setAttribute("aria-label", b.title);
   b.append(icon("copy"), document.createElement("span"));

@@ -60,7 +60,7 @@ export function fenceHtml(text, label, open = false) {
   const hit = may ? cachedColour(text, name) : undefined;
   const tag = hit?.guessed ? `<span class="lang guessed">${esc(hit.lang)}</span>` : `<span class="lang">${esc(label)}</span>`;
   const attrs = `data-lang="${esc(label)}"${open ? " data-open" : ""}${hit !== undefined ? ' data-painted="1"' : ""}`;
-  return `<div class="fence" ${attrs}><div class="fh">${tag}</div><pre><code${hit ? ' class="hljs"' : ""}>${hit ? hit.html : esc(text)}</code></pre></div>`;
+  return `<div class="fence" ${attrs}><div class="fh" data-chrome>${tag}</div><pre><code${hit ? ' class="hljs"' : ""}>${hit ? hit.html : esc(text)}</code></pre></div>`;
 }
 
 // "- [ ] x" and "- [x] x" become a disabled checkbox; ten lines, no plugin.
@@ -1211,6 +1211,7 @@ const RENDERERS = {
     // Only the live view carries the flag; an archived transcript draws no mark.
     if (e.unread !== undefined) {
       const rm = el("span", "rm");
+      rm.dataset.chrome = "";
       rm.append(icon(e.unread ? "unread" : "read"));
       r.append(rm);
       r.classList.toggle("unread", e.unread);
