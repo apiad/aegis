@@ -51,6 +51,39 @@ export function clampToRow(range, row) {
   return r;
 }
 
+// A range inside `root` as text offsets from its start, and back: a row
+// redrawn by a streaming delta keeps the same text, longer, so the offsets
+// find the selection again in the new node.
+export function offsetsIn(root, range) {
+  const at = (node, offset) => {
+    const r = document.createRange();
+    r.setStart(root, 0);
+    r.setEnd(node, offset);
+    return r.toString().length;
+  };
+  return [at(range.startContainer, range.startOffset), at(range.endContainer, range.endOffset)];
+}
+
+export function rangeIn(root, [start, end]) {
+  const r = document.createRange();
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let seen = 0;
+  let started = false;
+  for (let n; (n = w.nextNode()); ) {
+    const len = n.data.length;
+    if (!started && start <= seen + len) {
+      r.setStart(n, start - seen);
+      started = true;
+    }
+    if (started && end <= seen + len) {
+      r.setEnd(n, end - seen);
+      return r;
+    }
+    seen += len;
+  }
+  return null;
+}
+
 export function quoted(text) {
   return text
     .split("\n")

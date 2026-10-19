@@ -32,6 +32,7 @@ import { applyKinds, fadeTables, hhmm, render, update } from "./entries.js";
 import { icon } from "./glyphs.js";
 import { unwatch, watch } from "./highlight.js";
 import * as menu from "./menu.js";
+import { offsetsIn, rangeIn } from "./quote.js";
 
 const WINDOW = 200;
 
@@ -39,12 +40,23 @@ const WINDOW = 200;
 // patch) hands the focus to the same control in its new node. Without it, an
 // answer landing after Tab reached the row's summary dropped the focus on the
 // page, and the next Enter went nowhere.
+// A selection inside its body goes over too, by text offsets: a person
+// selecting in a reply as it streams keeps the selection, and its bar.
 const FOCUSABLE = "summary, button, a[href]";
 function swap(old, n) {
   const a = document.activeElement;
   const at = a && old.contains(a) ? [...old.querySelectorAll(FOCUSABLE)].indexOf(a) : -1;
+  const sel = getSelection();
+  const r = sel.rangeCount && !sel.isCollapsed ? sel.getRangeAt(0) : null;
+  const body = old.querySelector(":scope > .body");
+  const kept = r && body?.contains(r.startContainer) && body.contains(r.endContainer) ? offsetsIn(body, r) : null;
   old.replaceWith(n);
   if (at >= 0) n.querySelectorAll(FOCUSABLE)[at]?.focus({ preventScroll: true });
+  const again = kept && n.querySelector(":scope > .body") && rangeIn(n.querySelector(":scope > .body"), kept);
+  if (again) {
+    sel.removeAllRanges();
+    sel.addRange(again);
+  }
 }
 const PAGE = 100;
 const NEAR_TOP_PX = 400;

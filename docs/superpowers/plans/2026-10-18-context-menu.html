@@ -208,6 +208,10 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <li><b>Ask, Ask aside, Reply and Edit and resend are left out on another member's session</b> (<code>mine(s)</code>), as <code>sessionMenu</code> leaves out its actions; New session, Copy and Copy link stay.</li>
 <li><b>A contextmenu after a fired long press is ignored whether or not the menu is still open</b> (<code>attach</code>, <code>swallow</code>): once the bar has replaced the long-press menu, the browser's late contextmenu opened the row menu again.</li>
 <li><b>The full-answer test truncates the store while the server is down</b>, so the page's revision is past the server's and it answers in full (<code>entries.py</code>, <code>snapshot</code>): that reaches <code>transcript.snapshot</code> and <code>keepMenu</code>. A parked session's warm through <code>insertIntoComposer</code> is tested with the park test's server (<code>AEGIS_PARK_EVERY_S</code>, a hidden page).</li>
+<li><b>A selection inside a row that a delta redraws goes over to the new node by text offsets</b> (<code>transcript.js</code>, <code>swap</code>; <code>quote.js</code>, <code>offsetsIn</code> and <code>rangeIn</code>), so a person selecting in the reply as it streams keeps the selection and its bar. The block that replaces the streamed entry at the end is another row, and the selection ends with it.</li>
+<li><b>The bar checks on keyup except Escape</b>: Esc's keydown closed the bar and its keyup, reaching <code>#entries</code> when focus was in a row, opened it again.</li>
+<li><b>A row menu carries the bar's items only when the press is inside the selection's rects</b> (<code>rowMenu</code> takes the event; the keyboard's menu has none and keeps them): Chrome on macOS selects the word under any right-click.</li>
+<li><b>A row link to the shown session whose row it no longer has clears <code>landEntry</code></b>; nothing visible follows from the stale value today (<code>reveal</code> of a missing id does nothing), so it has no test.</li>
 </ul>
 
 <h2>Review focus</h2>

@@ -1130,8 +1130,9 @@ function render() {
     // once it lands. The URL drops "&at=", so the tab's hash is its own again.
     if (r.at) {
       history.replaceState(null, "", `#s=${r.id}`);
-      if (shown === r.id && transcript.entries.has(r.at)) transcript.reveal(r.at);
-      else landEntry = { key: r.id, id: r.at };
+      if (shown !== r.id) landEntry = { key: r.id, id: r.at };
+      else if (transcript.entries.has(r.at)) transcript.reveal(r.at);
+      else landEntry = null; // a row this session no longer has: nothing to land on later
     }
     watchHost(forKey(r.id).server || "");
     // Shown first: follow() sizes the message box, which measures 0 while hidden.
@@ -3648,14 +3649,17 @@ cmenu.bar($("entries"), selectionItems);
 // A transcript row's menu (spec 06), by kind; a selection inside the row puts
 // the bar's items on top. Kinds the spec names no menu for keep the browser's,
 // unless a selection is in them.
-function rowMenu(t) {
+function rowMenu(t, ev) {
   const id = t.dataset?.id;
   const e = id && transcript.entries.get(id);
   const s = shown && sessions.get(shown);
   if (!e || !s) return null;
   const sel = getSelection();
   const range = sel.rangeCount && !sel.isCollapsed ? clampToRow(sel.getRangeAt(0), t) : null;
-  const picked = range && selectionItems(range);
+  // Only a press inside the selection is about it: Chrome on macOS selects
+  // the word under any right-click. The keyboard's menu (no event) takes it.
+  const hit = (r) => ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+  const picked = range && (!ev || [...range.getClientRects()].some(hit)) && selectionItems(range);
   const quote = (then) => rowText(id, copyDeps).then((text) => text && then(quoted(text.trim())), (err) => toast(err.message, { kind: "error" }));
   const reply = { id: "reply", label: "Reply", icon: "prompt", run: () => quote((q) => insertIntoComposer(q)) };
   const fresh = {

@@ -697,3 +697,69 @@ def test_a_quote_into_a_parked_sessions_composer_wakes_it(park_server, page):  #
         timeout=8000,
     )
     assert page.input_value("#input") == "> x\n\n"
+
+
+def test_a_selection_in_the_streaming_reply_keeps_its_bar(server, page):  # noqa: F811
+    page.goto(server.url)
+    spawn(page)
+    page.fill("#input", "later")
+    page.evaluate("document.getElementById('input').blur()")
+    other = page.context.new_page()  # sends, so this page's selection stays
+    other.goto(page.url)
+    other.wait_for_selector("#a2[data-view=session]")
+    other.fill("#input", "/stream 12")
+    other.press("#input", "Enter")
+    page.wait_for_selector(".row.prose .body >> text=chunk1")
+    select(page, REPLY, "chunk1")
+    page.wait_for_selector(".sbar")
+    # Each delta redraws the row; the selection and its bar go over.
+    page.wait_for_selector(".row.prose .body >> text=chunk8")
+    assert page.evaluate("getSelection().toString()") == "chunk1"
+    assert page.locator(".sbar").count() == 1
+    page.click(".sbar [data-id=ask]")
+    assert page.input_value("#input") == "> chunk1\n\nlater"
+    other.close()
+    assert page.errors == []
+
+
+def test_esc_closes_the_bar_with_focus_in_a_row(server, page):  # noqa: F811
+    page.goto(server.url)
+    spawn(page, "/md alpha kiwi beta [lnk](https://example.com)")
+    page.focus(".row.prose .body a")
+    select(page, REPLY, "kiwi")
+    page.wait_for_selector(".sbar")
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(500)
+    assert page.locator(".sbar").count() == 0
+    assert page.errors == []
+
+
+def test_a_right_click_outside_the_selection_gets_only_the_rows_menu(server, page):  # noqa: F811
+    page.goto(server.url)
+    spawn(page, "/md alpha kiwi beta and some more words")
+    select(page, REPLY, "kiwi")
+    page.wait_for_selector(".sbar")
+    # A right-click on "words": Chrome on macOS would select that word first.
+    at = page.evaluate(
+        """() => { const b = [...document.querySelectorAll('.row.prose .body')].at(-1);
+          const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT);
+          for (let n; (n = w.nextNode()); ) { const i = n.data.indexOf('words'); if (i < 0) continue;
+            const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 5);
+            const q = r.getBoundingClientRect(); return [q.x + q.width / 2, q.y + q.height / 2]; } }"""
+    )
+    select(page, REPLY, "words")  # as macOS does, before contextmenu
+    page.evaluate(
+        """([x, y]) => document.elementFromPoint(x, y).dispatchEvent(new MouseEvent('contextmenu',
+             { bubbles: true, cancelable: true, clientX: x, clientY: y }))""",
+        at,
+    )
+    assert menu_ids(page)[:4] == ["ask", "aside", "new", "copy"]  # inside: on top
+    close_menu(page)
+    select(page, REPLY, "kiwi")
+    page.evaluate(
+        """([x, y]) => document.elementFromPoint(x, y).dispatchEvent(new MouseEvent('contextmenu',
+             { bubbles: true, cancelable: true, clientX: x, clientY: y }))""",
+        at,
+    )
+    assert menu_ids(page) == ["reply", "new", "copy", "link"]
+    assert page.errors == []

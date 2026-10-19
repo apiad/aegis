@@ -256,6 +256,9 @@ export function bar(root, provider) {
     if (!items?.length) return unbar();
     showBar(items, r, row);
   };
+  // A key that moved the selection (Shift and arrows). Esc's keyup comes
+  // after its keydown closed the bar: checking then would open it again.
+  const onKey = (ev) => ev.key !== "Escape" && check();
   const onDown = () => (down = true);
   // A press that began in the root ends wherever it is let go: a drag that
   // selected a line and went on out of the transcript gets its bar too. The
@@ -276,14 +279,14 @@ export function bar(root, provider) {
   root.addEventListener("pointerdown", onDown);
   document.addEventListener("pointerup", onUp, true);
   root.addEventListener("pointercancel", onUp); // a native long press cancels the pointer
-  root.addEventListener("keyup", check);
+  root.addEventListener("keyup", onKey);
   document.addEventListener("selectionchange", onChange);
   return () => {
     unbar();
     root.removeEventListener("pointerdown", onDown);
     document.removeEventListener("pointerup", onUp, true);
     root.removeEventListener("pointercancel", onUp);
-    root.removeEventListener("keyup", check);
+    root.removeEventListener("keyup", onKey);
     document.removeEventListener("selectionchange", onChange);
   };
 }
