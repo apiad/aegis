@@ -465,11 +465,12 @@ def test_a_phone_shows_the_canvas_as_tabs_with_the_composer_on_each(
     ).wait_for()
     # A long press offers Undock.
     box = tab.bounding_box()
-    phone.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-    phone.mouse.down()
+    point = {"x": box["x"] + box["width"] / 2, "y": box["y"] + box["height"] / 2}
+    cdp = phone.context.new_cdp_session(phone)
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [point]})
     phone.wait_for_timeout(700)
-    phone.mouse.up()
-    phone.locator("#canvas .pmenu button").click()
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+    phone.locator(".cmenu [role=menuitem]").click()
     phone.locator(f'#canvas .pane[data-pane="{aid}"]').wait_for(state="detached")
     strip.wait_for(state="detached")
     assert phone.locator("#tr").is_visible()
@@ -717,10 +718,10 @@ def test_move_to_window_lists_the_windows_and_opens_the_one_chosen(server, page)
     # The file's card says where it is too, and its chip counts one pane.
     page.locator("#canvas .wchip").filter(has_text="window 2 · 1 pane").wait_for()
     pane.locator(".pbar .move").click()
-    items = page.locator("#canvas .pmenu button").all_inner_texts()
+    items = page.locator(".cmenu [role=menuitem]").all_inner_texts()
     assert items == ["Window 2", "New window"], items
     with page.context.expect_page() as opened:
-        page.locator("#canvas .pmenu button", has_text="Window 2").click()
+        page.locator(".cmenu [role=menuitem]", has_text="Window 2").click()
     two = _watch(opened.value)
     assert two.url.endswith(f"#w=2:{sid}")
     two.locator(f'#canvas .pane[data-pane="{fkey}"]').locator("text=One").wait_for()
@@ -729,11 +730,11 @@ def test_move_to_window_lists_the_windows_and_opens_the_one_chosen(server, page)
     assert page.locator(".row.file .fcard .held").inner_text() == "in window 2 · open"
     # From window 2, the menu offers window 1 and a new one.
     two.locator(f'#canvas .pane[data-pane="{aid}"] .pbar .move').click()
-    assert two.locator("#canvas .pmenu button").all_inner_texts() == [
+    assert two.locator(".cmenu [role=menuitem]").all_inner_texts() == [
         "Window 1",
         "New window",
     ]
-    two.locator("#canvas .pmenu button", has_text="Window 1").click()
+    two.locator(".cmenu [role=menuitem]", has_text="Window 1").click()
     page.locator(f'#canvas .pane[data-pane="{aid}"]').wait_for()
     page.locator("#canvas .wchip").filter(has_text="window 2 · 1 pane").wait_for()
     assert two.locator(f'#canvas .pane[data-pane="{aid}"]').count() == 0
@@ -823,7 +824,7 @@ def test_esc_closes_a_pane_menu_without_interrupting_and_a_card_leaves_it_open(
     page.fill("#input", "/sleep 3")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
-    menu = page.locator("#canvas .pmenu")
+    menu = page.locator(".cmenu")
     pane.locator(".pbar .move").click()
     menu.wait_for()
     page.keyboard.press("Escape")
@@ -853,7 +854,7 @@ def test_a_windows_only_pane_moved_to_a_new_window_gets_a_tab_of_its_own(
     pane.wait_for()
     pane.locator(".pbar .move").click()
     with two.context.expect_page() as opened:
-        two.locator("#canvas .pmenu button", has_text="New window").click()
+        two.locator(".cmenu [role=menuitem]", has_text="New window").click()
     three = _watch(opened.value)
     three.frame_locator(f'#canvas iframe[data-artifact="{aid}"]').locator(
         "#st"

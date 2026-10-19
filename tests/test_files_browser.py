@@ -205,7 +205,7 @@ def row(path: str) -> str:
 
 def menu(pg, path: str, item: str) -> None:
     pg.click(row(path), button="right")
-    pg.click(f".tmenu button:has-text('{item}')")
+    pg.click(f".cmenu button:has-text('{item}')")
 
 
 def test_the_tree_expands_creates_renames_and_deletes_with_undo(

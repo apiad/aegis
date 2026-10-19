@@ -59,6 +59,13 @@ const SPRITE = `<defs>
 <symbol id="g-globe" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.8"/><path d="M2.2 8h11.6M8 2.2c-1.7 1.6-2.5 3.5-2.5 5.8s.8 4.2 2.5 5.8c1.7-1.6 2.5-3.5 2.5-5.8S9.7 3.8 8 2.2z"/></symbol>
 <symbol id="g-swap" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.5h9.5M10 3l2.5 2.5L10 8M13 10.5H3.5M6 8l-2.5 2.5L6 13"/></symbol>
 <symbol id="g-slash" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 2.5l-5 11"/></symbol>
+<symbol id="g-trash" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 4.5h10.4M6.2 4.5V3a.8.8 0 0 1 .8-.8h2a.8.8 0 0 1 .8.8v1.5M4.2 4.5l.6 8.4a1 1 0 0 0 1 .9h4.4a1 1 0 0 0 1-.9l.6-8.4M6.8 7v4.2M9.2 7v4.2"/></symbol>
+<symbol id="g-quiet" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8s2-3.6 5.5-3.6c.9 0 1.7.2 2.4.6M13.5 8s-.8 1.4-2.3 2.5M6.2 11.2c.6.3 1.2.4 1.8.4 1.1 0 2-.3 2.8-.8M2.5 13.5l11-11"/></symbol>
+<symbol id="g-unquiet" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8s2-3.6 5.5-3.6S13.5 8 13.5 8s-2 3.6-5.5 3.6S2.5 8 2.5 8z"/><circle cx="8" cy="8" r="1.6"/></symbol>
+<symbol id="g-interrupt" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.8"/><path d="M6.5 5.8v4.4M9.5 5.8v4.4"/></symbol>
+<symbol id="g-play" viewBox="0 0 16 16" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"><path d="M5 3.5l7.5 4.5L5 12.5z"/></symbol>
+<symbol id="g-handoff" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5.5h8M8 3l2.5 2.5L8 8M13.5 10.5h-8M8 8l-2.5 2.5L8 13"/><path d="M13.5 3v5" opacity=".5"/></symbol>
+<symbol id="g-archive" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.8" width="12" height="3.2" rx=".8"/><path d="M3.2 6v6.4a1 1 0 0 0 1 1h7.6a1 1 0 0 0 1-1V6M6.5 8.6h3"/></symbol>
 <symbol id="g-dot" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3.4" fill="currentColor"/></symbol>
 <symbol id="g-pip" viewBox="0 0 16 16"><circle cx="8" cy="8" r="1.5" fill="currentColor"/></symbol>
 </defs>`;

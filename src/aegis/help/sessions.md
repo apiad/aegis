@@ -150,6 +150,24 @@ until it is quieted again; a queue worker comes back only on an error.
 - An agent calls `session_quiet` with a handle, its own included.
 - Clicking a quiet card in the Fleet brings the session back at once.
 
+## Menus
+
+A session's card in the Fleet and its tab carry the same menu. Open it with a
+right-click, a long press on a touch screen, or the ContextMenu key or
+Shift+F10 on a selected card; Shift with a right-click keeps the browser's own
+menu. Arrows move through it, Enter runs an item, Esc closes it.
+
+It shows only what applies to that session now: Open, Open in new tab, and
+Quiet or Unquiet; then Interrupt while it works, Continue when it does not,
+Stop while it has a process, and Hand off; then Rename…, which opens the
+session with its handle ready to edit; then Close. Each acts on that
+session, not on the one shown. Another member's session offers Open and Open
+in new tab only, and a step of a running workflow shows the rest disabled,
+with the reason as the item's tooltip. A terminal's card has Open, Open in new
+tab and Close.
+
+The tree in the Files view has a menu opened the same way.
+
 ## Stop, close and reopen
 
 - Stop (in the session panel, or `/stop`) ends the process and keeps the
