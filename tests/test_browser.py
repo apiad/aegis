@@ -1318,7 +1318,9 @@ def test_the_actions_are_one_row_of_equal_cells_with_icons(server, page):
     spawn(page)
     row = page.locator(".side-acts.live-only").bounding_box()
     cells = page.eval_on_selector_all(".side-acts.live-only .act", ACTS)
-    assert [c["icon"] for c in cells] == [True, True, True, True]  # Quiet (#386)
+    assert [c["icon"] for c in cells] == [
+        True
+    ] * 5  # Sleep, Quiet (#386), Continue, Restart, Archive
     widths = [c["width"] for c in cells]
     assert max(widths) - min(widths) < 1, widths
     # The row is covered edge to edge.
