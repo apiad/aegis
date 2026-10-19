@@ -13,10 +13,25 @@ export function rangeText(range) {
   return clean(range).trim();
 }
 
+// A file's or a diff's lines are spans in a grid: their numbers go, and each
+// line ends with a newline. A diff draws both its layouts; the unified one,
+// with its + and − marks, is the one quoted.
 function clean(range) {
   const frag = range.cloneContents();
-  for (const n of frag.querySelectorAll("[data-chrome]")) n.remove();
-  return frag.textContent;
+  const at = range.commonAncestorContainer;
+  const inside = (at.nodeType === 1 ? at : at.parentElement)?.closest(".lines, .diff");
+  let root = frag;
+  if (inside) {
+    root = document.createElement("div"); // what the clone's selectors need above its spans
+    root.className = inside.className;
+    root.append(frag);
+  }
+  for (const n of root.querySelectorAll("[data-chrome]")) n.remove();
+  for (const d of root.querySelectorAll(".diff")) if (d.querySelector(".unified")) d.querySelector(".split")?.remove();
+  if (root.matches?.(".diff") && root.querySelector(".unified")) root.querySelector(".split")?.remove();
+  for (const n of root.querySelectorAll(".lines > .n, .diff .n, .diff .hunk")) n.remove();
+  for (const c of root.querySelectorAll(".lines > .c, .diff .c")) c.append("\n");
+  return root.textContent;
 }
 
 // The range inside `row`'s body, or null when it reaches out of it. A

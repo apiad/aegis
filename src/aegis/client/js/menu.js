@@ -39,11 +39,11 @@ export function attach(root, provider, opts = {}) {
     clearTimeout(timer);
     timer = null;
   };
-  const show = (el, ev, x, y) => {
+  const show = (el, ev, x, y, touch = false) => {
     const target = targetOf(el, root, entry.selector);
     const m = provider(target, ev);
     if (!m) return false;
-    open(m, { x, y }, target);
+    open(m, { x, y, touch }, target);
     return true;
   };
   const onMenu = (ev) => {
@@ -61,7 +61,7 @@ export function attach(root, provider, opts = {}) {
     stop();
     timer = setTimeout(() => {
       timer = null;
-      swallow = show(el, ev, at[0], at[1]);
+      swallow = show(el, ev, at[0], at[1], true);
     }, LONG_PRESS);
   };
   const onMove = (ev) => {
@@ -194,7 +194,7 @@ export function open(menu, at, target) {
   document.addEventListener("pointerdown", away, true);
   addEventListener("hashchange", close);
   unbar(); // one at a time: the bar's items go on top of a row's menu instead
-  cur = { target, node, anchor: at.anchor ?? null, away, top: target.getBoundingClientRect().top };
+  cur = { target, node, anchor: at.anchor ?? null, away, top: target.getBoundingClientRect().top, touch: !!at.touch };
   const items = () => [...node.querySelectorAll("[role=menuitem]:not(:disabled)")];
   node.addEventListener("keydown", (ev) => {
     const all = items();
@@ -240,11 +240,14 @@ export function bar(root, provider) {
   let timer = null;
   const check = () => {
     clearTimeout(timer);
-    if (cur) return; // a right-click inside the selection: its menu carries the bar's items
     const sel = getSelection();
     const range = sel.rangeCount && !sel.isCollapsed ? sel.getRangeAt(0) : null;
     const start = range?.startContainer;
     const row = (start?.nodeType === 1 ? start : start?.parentElement)?.closest(".row[data-id]");
+    // A right-click inside the selection: its menu carries the bar's items.
+    // A touch's long press both opens the row's menu and selects a word; the
+    // selection is what the person was after, so the bar takes its place.
+    if (cur && !(cur.touch && row && cur.target.contains(row))) return;
     const r = row && root.contains(row) ? clampToRow(range, row) : null;
     if (!r || !rangeText(r)) return unbar();
     if (bar_ && bar_.range.toString() === r.toString() && bar_.row === row) return place();
@@ -268,6 +271,7 @@ export function bar(root, provider) {
   };
   root.addEventListener("pointerdown", onDown);
   root.addEventListener("pointerup", onUp);
+  root.addEventListener("pointercancel", onUp); // a native long press cancels the pointer
   document.addEventListener("pointerup", onUpAnywhere, true);
   root.addEventListener("keyup", check);
   document.addEventListener("selectionchange", onChange);
@@ -275,6 +279,7 @@ export function bar(root, provider) {
     unbar();
     root.removeEventListener("pointerdown", onDown);
     root.removeEventListener("pointerup", onUp);
+    root.removeEventListener("pointercancel", onUp);
     document.removeEventListener("pointerup", onUpAnywhere, true);
     root.removeEventListener("keyup", check);
     document.removeEventListener("selectionchange", onChange);

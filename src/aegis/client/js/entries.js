@@ -1239,6 +1239,7 @@ const RENDERERS = {
     const det = e.detail || {};
     const d = el("details");
     const line = el("summary", "line");
+    line.dataset.chrome = ""; // the tool's name and counts, not its output (quote.js)
     const name = el("span", "tn", e.title);
     const label = el("span", "ta", e.summary);
     if (det.steps) label.append(el("span", "steps", `${det.steps} steps`));
@@ -1250,19 +1251,27 @@ const RENDERERS = {
       // A file tool's row: the person can see its file without the agent
       // sending it (file.peek). Not on a linked server's row: the op is local.
       const bar = el("div", "peekbar");
+      bar.dataset.chrome = "";
       const b = det.peek ? withIcon(el("button", "btn peek"), "again", "Show the file again") : withIcon(el("button", "btn peek"), "file", "Show the file");
       b.dataset.entry = e.id;
       bar.append(b, el("span", "peekerr"));
       more.append(bar);
     }
     if (det.peek) {
-      more.append(el("div", "peekcap", `as of ${hhmm(det.peek.ts)}`), fileCard(det.peek.files, det.peek.glyph));
+      const cap = el("div", "peekcap", `as of ${hhmm(det.peek.ts)}`);
+      const card = fileCard(det.peek.files, det.peek.glyph);
+      cap.dataset.chrome = card.dataset.chrome = "";
+      more.append(cap, card);
     }
     if (det.file) more.append(fileView(det.file, det.lang));
     if (det.diff) more.append(diffView(det.diff, det.lang));
     if (det.tail) more.append(el("pre", "out", det.tail));
     if (det.args && !det.file && !det.diff) more.append(argsView(det.args, det.path ? null : det.lang));
-    if (det.more) more.append(el("div", "loading", "loading…"));
+    if (det.more) {
+      const wait = el("div", "loading", "loading…");
+      wait.dataset.chrome = "";
+      more.append(wait);
+    }
     if (more.childNodes.length) d.append(more);
     const body = el("div", "body");
     body.append(d);

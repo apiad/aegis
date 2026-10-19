@@ -1006,6 +1006,7 @@ async function openCard(key) {
 }
 const on = (server) => ordered.filter((m) => m.server === server);
 
+let menuView = null; // the view the open menu or bar belongs to (render)
 function render() {
   if (!booted) return;
   // Back or Forward away from unsaved edits: stay on the file, and ask.
@@ -1017,6 +1018,14 @@ function render() {
   }
   tellView(); // the view may have changed with the same session shown
   const r = route();
+  // A menu or the selection bar is about the view it opened in. go() moves
+  // with pushState, which fires no hashchange, so the change is caught here.
+  const at = `${r.view}:${r.id ?? ""}`;
+  if (at !== menuView) {
+    menuView = at;
+    cmenu.close();
+    cmenu.unbar();
+  }
   if (r.view !== "term") closeTerm();
   if (leaveIfQuieted(r)) return;
   // A session's link to a terminal, or the reverse, opens the right view.
@@ -1117,7 +1126,13 @@ function render() {
     if (newView) helpTab.show(r.id);
     setTitle("Help · aegis");
   } else if (r.view === "session") {
-    if (r.at) landEntry = { key: r.id, id: r.at }; // revealed once its transcript lands
+    // A row's link: the row is revealed now when its transcript is here, else
+    // once it lands. The URL drops "&at=", so the tab's hash is its own again.
+    if (r.at) {
+      history.replaceState(null, "", `#s=${r.id}`);
+      if (shown === r.id && transcript.entries.has(r.at)) transcript.reveal(r.at);
+      else landEntry = { key: r.id, id: r.at };
+    }
     watchHost(forKey(r.id).server || "");
     // Shown first: follow() sizes the message box, which measures 0 while hidden.
     show("session");
@@ -3581,16 +3596,20 @@ attachCardMenu($("tablist"));
 
 // The New session form filled from a source session: its server, agent,
 // model and folder, and a prompt the person goes on writing.
+// Another server's roster is loading after setSpServer: the agent is picked
+// when it lands (loadAgents keeps dataset.picked), never from this one's.
+// What the form held stays after the prompt, as a composer draft does.
 function openSpawnWith({ server = null, agent, model, cwd, prompt }) {
+  const same = (server || null) === spServer;
   setSpServer(server || null);
-  $("sp-agent").dataset.picked = agent; // kept when the roster loads after this
-  if (roster.agents.some((a) => a.name === agent)) pickAgent(agent);
+  $("sp-agent").dataset.picked = agent;
+  if (same && roster.agents.some((a) => a.name === agent)) pickAgent(agent);
   if (model && model !== "default") {
     $("sp-model").value = model;
     markDiffs();
   }
   $("sp-cwd").value = cwd || "";
-  $("sp-text").value = prompt;
+  $("sp-text").value = prompt + $("sp-text").value;
   go("#new");
   spawnGrow();
 }

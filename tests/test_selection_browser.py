@@ -5,8 +5,8 @@ survives, after the quote."""
 
 import pytest
 
-from .test_browser import EXPECTED_CONSOLE, spawn, turns_done
-from .test_browser import browser, btw_server, server  # noqa: F401
+from .test_browser import EXPECTED_CONSOLE, beta_session, spawn, turns_done
+from .test_browser import browser, btw_server, linked, server  # noqa: F401
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
@@ -200,11 +200,12 @@ def test_a_triple_click_on_the_last_paragraph_gets_the_bar(server, page):  # noq
     page.fill("#input", "/md next")
     page.press("#input", "Enter")
     turns_done(page, 2)
+    page.fill("#input", "later")
     last = page.locator(".row.prose .body").first.locator("p").last
     last.click(click_count=3)
     page.wait_for_selector(".sbar")
     page.click(".sbar [data-id=ask]")
-    assert page.input_value("#input") == "> last part kiwi\n\n"
+    assert page.input_value("#input") == "> last part kiwi\n\nlater"
     assert page.errors == []
 
 
@@ -224,21 +225,26 @@ def test_a_selection_across_two_rows_gets_no_bar(server, page):  # noqa: F811
     assert page.errors == []
 
 
-def test_new_session_opens_the_form_with_the_source_and_the_quote(
-    server,  # noqa: F811
-    page,
-    tmp_path,
-):
+def test_new_session_opens_the_form_with_the_source_and_the_quote(server, page):  # noqa: F811
     page.goto(server.url)
-    spawn(page, "/md alpha kiwi beta")
+    key = spawn(page, "/md alpha kiwi beta")
     handle = page.locator("#s-handle").inner_text()
     cwd = page.locator("#s-cwd").inner_text()
+    # Half a prompt in the form, and a draft in the composer: both survive.
+    page.click("#tab-add")
+    page.fill("#sp-text", "half typed")
+    page.click(f"#tablist .tab[data-id='{key}']")
+    page.wait_for_selector("#a2[data-view=session]")
+    page.fill("#input", "later")
     select(page, REPLY, "kiwi")
     page.click(".sbar [data-id=new]")
     page.wait_for_selector("#a2[data-view=spawn]")
-    assert page.input_value("#sp-text") == f"From {handle}:\n> kiwi\n\n"
+    assert page.input_value("#sp-text") == f"From {handle}:\n> kiwi\n\nhalf typed"
     assert page.evaluate("document.querySelector('#sp-agent').value") == "opus"
+    assert page.evaluate("document.querySelector('#sp-model').value") == "opus"
     assert page.input_value("#sp-cwd") == cwd
+    page.click(f"#tablist .tab[data-id='{key}']")
+    assert page.input_value("#input") == "later"
     assert page.errors == []
 
 
@@ -354,9 +360,11 @@ def test_copy_link_opens_the_session_at_that_row(server, page):  # noqa: F811
     first = page.locator(".row.prose").first
     rid = first.get_attribute("data-id")
     page.evaluate(f"document.querySelector('.row[data-id=\"{rid}\"]').scrollIntoView()")
+    page.fill("#input", "later")
     first.locator(".body").click(button="right")
     page.click(".cmenu [data-id=link]")
     link = page.evaluate("navigator.clipboard.readText()")
+    assert page.input_value("#input") == "later"
     # The link carries no token: a browser that signed in already opens it.
     origin = server.url.split("?")[0].split("#")[0]
     assert link == f"{origin}#s={key}&at={rid}"
@@ -372,3 +380,165 @@ def test_copy_link_opens_the_session_at_that_row(server, page):  # noqa: F811
     finally:
         pg.close()
     assert page.errors == []
+
+
+def test_a_view_change_closes_the_bar_and_the_menu(server, page):  # noqa: F811
+    # go() moves with pushState, which fires no hashchange.
+    page.goto(server.url)
+    key = spawn(page, "/md alpha kiwi beta")
+    select(page, REPLY, "kiwi")
+    page.wait_for_selector(".sbar")
+    page.keyboard.press("Alt+BracketLeft")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert page.locator(".sbar").count() == 0
+    page.click(f"#tablist .tab[data-id='{key}']")
+    page.wait_for_selector("#a2[data-view=session]")
+    page.click(REPLY, button="right")
+    page.wait_for_selector(".cmenu")
+    page.evaluate("document.getElementById('tab-fleet').click()")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert page.locator(".cmenu").count() == 0
+    assert page.errors == []
+
+
+def test_esc_closes_the_bar(server, page):  # noqa: F811
+    page.goto(server.url)
+    spawn(page, "/md alpha kiwi beta")
+    select(page, REPLY, "kiwi")
+    page.wait_for_selector(".sbar")
+    page.keyboard.press("Escape")
+    page.wait_for_selector(".sbar", state="detached")
+    assert page.errors == []
+
+
+def quote_body(pg, sel: str) -> str:
+    return pg.evaluate(
+        f"""async () => {{
+          const {{ rangeText }} = await {QUOTE};
+          const r = document.createRange();
+          r.selectNodeContents([...document.querySelectorAll("{sel}")].at(-1));
+          return rangeText(r);
+        }}"""
+    )
+
+
+def test_a_tool_rows_quote_is_its_output_without_the_interface(server, page, tmp_path):  # noqa: F811
+    f = tmp_path / "notes.txt"
+    f.write_text("kiwi one\nkiwi two\n")
+    page.goto(server.url)
+    spawn(page, f"/read {f}")
+    page.click(".row.tool .line")
+    page.wait_for_selector(".row.tool .more .peekbar")
+    page.click(".row.tool .peek")  # the file card and its "as of" caption
+    page.wait_for_selector(".row.tool .peekcap")
+    text = quote_body(page, ".row.tool .body")
+    assert "kiwi one\nkiwi two" in text
+    for word in ("Read", "Show the file", "as of", "lines", "Open"):
+        assert word not in text, (word, text)
+    # A Write's file view and an Edit's diff: no line numbers, one line each.
+    page.fill("#input", f"/write {tmp_path / 'c.py'} => z = 9")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    page.locator(".row.tool .line").last.click()
+    page.locator(".row.tool").last.locator(".lines, .diff").first.wait_for()
+    text = quote_body(page, ".row.tool .body")
+    assert "z = 9" in text and "1z" not in text, text
+    (tmp_path / "b.py").write_text("x = 1\ny = 2\n")
+    page.fill("#input", f"/edit {tmp_path / 'b.py'} y = 2 => y = 3")
+    page.press("#input", "Enter")
+    turns_done(page, 3)
+    page.locator(".row.tool .line").last.click()
+    page.locator(".row.tool").last.locator(".diff .unified").wait_for(state="attached")
+    text = quote_body(page, ".row.tool .body")
+    assert "−y = 2\n+y = 3" in text and "@@" not in text, text
+    assert page.errors == []
+
+
+def test_a_server_restart_leaves_no_menu_on_a_row_that_left(server, page):  # noqa: F811
+    page.goto(server.url)
+    spawn(page, "/md alpha kiwi beta")
+    page.click(REPLY, button="right")
+    page.wait_for_selector(".cmenu")
+    server.stop()
+    server.start()
+    page.wait_for_function(
+        "document.getElementById('conn-dot').className.includes('ready')", timeout=15000
+    )
+    page.wait_for_selector(REPLY)
+    # Either closed, or about the row as it is drawn now: never a detached one.
+    assert page.evaluate(
+        "async () => { const c = (await import('/static/js/menu.js')).current();"
+        " return !c || c.target.isConnected; }"
+    )
+
+
+def test_a_row_link_in_the_shown_session_reveals_it_and_tabs_still_cycle(server, page):  # noqa: F811
+    page.goto(server.url)
+    a = spawn(page, "/md alpha kiwi beta")
+    b = spawn(page, "/md other")
+    page.click(f"#tablist .tab[data-id='{a}']")
+    page.wait_for_selector("#a2[data-view=session] .row.prose >> text=kiwi")
+    rid = page.locator(".row.prose").first.get_attribute("data-id")
+    page.evaluate(f"location.hash = '#s={a}&at={rid}'")
+    page.wait_for_selector(f".row.sel[data-id='{rid}']")
+    page.wait_for_function(f"location.hash === '#s={a}'")
+    page.keyboard.press("Alt+BracketRight")
+    page.wait_for_function(f"location.hash === '#s={b}'")
+    assert page.errors == []
+
+
+def test_a_linked_servers_rows_open_no_file_and_spawn_there(
+    linked,  # noqa: F811
+    browser,  # noqa: F811
+    page,
+    tmp_path,
+):
+    f = tmp_path / "far.txt"
+    f.write_text("kiwi far\n")
+    lid = beta_session(linked, browser, f"/read {f}")
+    page.goto(linked.alpha.url)
+    page.click(f"#tablist .tab[data-id='beta/{lid}']")
+    page.wait_for_selector("#a2[data-view=session]")
+    turns_done(page, 1)
+    cwd = page.locator("#s-cwd").inner_text()
+    page.click(".row.tool .line", button="right")
+    assert menu_ids(page) == ["copyout", "reply", "link"]
+    page.keyboard.press("Escape")
+    select(page, REPLY, "Read")
+    page.click(".sbar [data-id=new]")
+    page.wait_for_selector("#a2[data-view=spawn]")
+    page.wait_for_function("document.querySelector('#sp-server').value === 'beta'")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    assert page.input_value("#sp-cwd") == cwd
+    assert page.input_value("#sp-text").startswith("From ")
+    assert not [e for e in page.errors if "server_offline" not in e]
+
+
+def test_a_long_press_on_text_on_a_phone_gives_the_bar(browser, server):  # noqa: F811
+    ctx = browser.new_context(
+        viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True
+    )
+    pg = ctx.new_page()
+    try:
+        pg.goto(server.url)
+        spawn(pg, "/md alpha kiwi beta")
+        box = pg.evaluate(
+            """() => { const b = [...document.querySelectorAll('.row.prose .body')].at(-1);
+              const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT);
+              for (let n; (n = w.nextNode()); ) { const i = n.data.indexOf('kiwi'); if (i < 0) continue;
+                const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 4);
+                const q = r.getBoundingClientRect(); return [q.x + q.width / 2, q.y + q.height / 2]; } }"""
+        )
+        cdp = ctx.new_cdp_session(pg)
+        point = [{"x": box[0], "y": box[1]}]
+        cdp.send(
+            "Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": point}
+        )
+        pg.wait_for_selector(".cmenu")  # the long press opened the row's menu
+        # The browser's own long press selects the word under the finger.
+        select(pg, REPLY, "kiwi")
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+        pg.wait_for_selector(".sbar")
+        assert pg.locator(".cmenu").count() == 0
+    finally:
+        ctx.close()

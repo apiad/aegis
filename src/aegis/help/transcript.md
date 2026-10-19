@@ -62,7 +62,8 @@ and a bar appears over it (under it on a touch screen, icons only):
 | New session | Opens the New session form with this session's agent, model and folder, and `From <handle>:` and the quote in its message. |
 | Copy | Copies the text without the interface around it (a code block's language, copy buttons). With Shift, as a quote. |
 
-A selection that runs into a second row gets no bar. A scroll of your own
+On a touch screen, a long press on a word selects it and shows the bar in
+place of the row's menu. A selection that runs into a second row gets no bar. A scroll of your own
 closes the bar; the transcript's own scroll, as a reply streams in, moves it
 along.
 

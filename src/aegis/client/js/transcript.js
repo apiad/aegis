@@ -286,6 +286,7 @@ export class Transcript {
     const frag = document.createDocumentFragment();
     for (const e of data.entries.slice(-WINDOW)) frag.append(this.mount(e));
     this.list.replaceChildren(frag);
+    this.keepMenu();
     this.fold();
     this.mark();
     this.toBottom();
@@ -324,6 +325,7 @@ export class Transcript {
     const frag = document.createDocumentFragment();
     for (const e of [...this.entries.values()].slice(-WINDOW)) frag.append(this.mount(e));
     this.list.replaceChildren(frag);
+    this.keepMenu();
     this.fold();
     this.mark();
     this.toBottom();
@@ -419,18 +421,22 @@ export class Transcript {
         first.remove();
       }
     }
-    // An open menu's row: redrawn, the menu follows the new node; gone, it
-    // closes. Only the one open target is checked, and no observer runs.
-    const c = menu.current();
-    if (c && !c.target.isConnected && c.target.matches(".row[data-id]")) {
-      const n = this.nodes.get(c.target.dataset.id);
-      if (n) menu.retarget(n);
-      else menu.close();
-    }
+    this.keepMenu();
     this.fold();
     this.mark();
     if (this.following) this.toBottom();
     else if (added) this.jump.classList.add("new");
+  }
+
+  // An open menu's row, after the rows changed: redrawn, the menu follows
+  // the new node; gone (a patch removed it, a snapshot or a switch replaced
+  // the list), it closes. Only the one open target is checked: no observer.
+  keepMenu() {
+    const c = menu.current();
+    if (!c || c.target.isConnected || !c.target.matches(".row[data-id]")) return;
+    const n = this.nodes.get(c.target.dataset.id);
+    if (n?.isConnected) menu.retarget(n);
+    else menu.close();
   }
 
   clear() {
@@ -456,6 +462,7 @@ export class Transcript {
     this.since.clear();
     this.sent.clear();
     this.list.replaceChildren();
+    this.keepMenu();
   }
 
   // -- the selection --------------------------------------------------------
