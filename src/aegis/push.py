@@ -84,7 +84,11 @@ MAX_DEVICES = 10  # rows per owner
 # (localhost, the private network, a cloud's metadata address) and read the
 # status back from push.test. AEGIS_PUSH_HOSTS adds exact hosts, comma-separated:
 # a self-hosted push service, or a test's fake one.
-PUSH_HOSTS = ("fcm.googleapis.com", "updates.push.services.mozilla.com")
+PUSH_HOSTS = (
+    "fcm.googleapis.com",
+    "jmt17.google.com",
+    "updates.push.services.mozilla.com",
+)
 PUSH_SUFFIXES = (".push.apple.com", ".notify.windows.com")
 
 
