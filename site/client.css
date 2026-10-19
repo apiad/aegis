@@ -73,7 +73,7 @@ body{background:#000}
 .a2 .tab .tname{max-width:22ch;overflow:hidden;text-overflow:ellipsis}
 .a2 .tab.home{font-weight:500}
 .a2 .tab.add{font-size:15px;padding:4px 12px}
-.a2 .tab.stopped{opacity:.6}
+.a2 .tab.asleep{opacity:.6}
 .a2 .tab.dragging{opacity:.35}
 .a2 .tab.drop{box-shadow:inset 2px 0 0 var(--accent)}
 .a2 .tabs .servers{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--faint);padding:0 10px}
@@ -615,15 +615,17 @@ body{background:#000}
 .a2 .card.working{border-color:var(--accent)}
 .a2 .card.sel{outline:2px solid var(--accent);outline-offset:1px}
 .a2 .card.error{border-color:var(--err)}
-.a2 .card.stopped{opacity:.6}
+.a2 .card.asleep{opacity:.6}
 .a2 .card.quiet{opacity:.55;border-style:dashed}
 .a2 .card.quiet:hover,.a2 .card.quiet:focus-within,.a2 .card.quiet.sel{opacity:1}
 .a2 .card .hd .zz{font-family:var(--font-chrome);font-size:10.5px;color:var(--muted);border:1px solid var(--rule);border-radius:999px;padding:0 6px}
 .a2 .card .hd .zz.pk{color:var(--comms);border-color:var(--comms)}
+.a2 .card .hd .quiet{display:inline-flex;align-items:center;gap:3px;font-family:var(--font-chrome);font-size:10.5px;color:var(--muted)}
+.a2 .card .hd .quiet svg{width:12px;height:12px}
 .a2 .parked-count{font-family:var(--font-chrome);font-size:11px;color:var(--comms)}
 .a2 .card.finished{opacity:.5}
 .a2 .card.finished:hover,.a2 .card.finished:focus-within,.a2 .card.finished.sel{opacity:1}
-.a2 .card.stopped.at-error{opacity:1}
+.a2 .card.asleep.at-error{opacity:1}
 .a2 .card .hd{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px}
 .a2 .card .hd>*{white-space:nowrap}
 .a2 .card .hd .h{font-family:var(--font-chrome);color:var(--strong);font-weight:500}
