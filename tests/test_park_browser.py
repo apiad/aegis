@@ -25,9 +25,7 @@ HIDE = """() => {
     document.dispatchEvent(new Event("visibilitychange"));
 }"""
 SHOW = HIDE.replace("value: true", "value: false")
-PARKED = (
-    "() => document.querySelector('#input').placeholder.startsWith('Asleep while idle')"
-)
+PARKED = "() => document.querySelector('#input').placeholder.startsWith('Asleep after')"
 
 
 def test_a_watched_session_stays_up_and_a_hidden_page_lets_it_park(park_server, page):  # noqa: F811
@@ -42,13 +40,13 @@ def test_a_watched_session_stays_up_and_a_hidden_page_lets_it_park(park_server, 
     page.wait_for_function(PARKED, timeout=8000)
     assert (
         page.locator("#input").get_attribute("placeholder")
-        == "Asleep while idle. Typing wakes it."
+        == "Asleep after 1 min idle. Typing wakes it."
     )
     # The Fleet card carries the chip, and the band counts what parking freed.
     page.click("#tab-fleet")
     page.wait_for_selector("#a2[data-view=fleet]")
     page.wait_for_selector("#a2 .card .hd .zz.pk")
-    assert page.locator("#a2 .card .hd .zz.pk").inner_text() == "zz idle"
+    assert page.locator("#a2 .card .hd .zz.pk").inner_text() == "zz idle 1 min"
     assert page.locator("#a2 .parked-count").inner_text().startswith("1 asleep · ~")
 
 
@@ -63,9 +61,7 @@ def test_typing_to_a_parked_session_wakes_it_before_send(park_server, page):  # 
     page.evaluate(SHOW)
     page.wait_for_timeout(500)
     assert (
-        page.locator("#input")
-        .get_attribute("placeholder")
-        .startswith("Asleep while idle")
+        page.locator("#input").get_attribute("placeholder").startswith("Asleep after")
     )
     # The waking row may come and go faster than a poll: record whether it shows.
     page.evaluate("""() => {

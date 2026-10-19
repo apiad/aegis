@@ -2,6 +2,7 @@
 // Every field comes from the session's meta; nothing here computes activity.
 
 import { glyph, icon, LABEL } from "./glyphs.js";
+import { idleFor } from "./lifecycle.js";
 import { hostRow, netRows, noteRow, providerLine, quotaHeading, quotaRow } from "./gauges.js";
 import { shownOwner } from "./me.js";
 import { dur, planTimes } from "./plantime.js";
@@ -146,7 +147,10 @@ function card(m, onOpen, onClose) {
     q.append(icon("quiet"), "quiet");
     hd.append(q);
   }
-  if (m.state === "asleep") hd.append(el("span", "zz pk", m.asleep_why ? `zz ${m.asleep_why}` : "zz"));
+  if (m.state === "asleep") {
+    const idle = m.asleep_why === "idle" && idleFor(m);
+    hd.append(el("span", "zz pk", idle ? `zz idle ${idle}` : m.asleep_why ? `zz ${m.asleep_why}` : "zz"));
+  }
   const label = m.attention === "waiting" && m.waiting_on ? `waiting · ${m.waiting_on}` : LABEL[m.attention] || m.state;
   hd.append(el("span", `s at-${m.attention}`, label));
   if (m.attention === "done") hd.append(archiveButton(m, onClose));

@@ -294,6 +294,7 @@ class Session:
         quota_paused: str | None = None,
         tool_calls: int = 0,
         parked_rss: int = 0,
+        parked_idle_s: int = 0,
         cache_recent: list[list] | None = None,
         compactions: int = 0,
         continued_by: str | None = None,
@@ -381,6 +382,8 @@ class Session:
         # so the counters survive a restart.
         self.tool_calls = tool_calls
         self.parked_rss = parked_rss
+        # How long it sat idle before its park, for "asleep after N min idle".
+        self.parked_idle_s = parked_idle_s
         self.cache_recent: list[list] = list(cache_recent or [])
         self.compactions = compactions
         # The last usage counted: one call written as several lines repeats it.
@@ -445,6 +448,7 @@ class Session:
             "quota_paused": self.quota_paused,
             "tool_calls": self.tool_calls,
             "parked_rss": self.parked_rss,
+            "parked_idle_s": self.parked_idle_s,
             "cache_recent": self.cache_recent,
             "compactions": self.compactions,
             "continued_by": self.continued_by,
@@ -642,7 +646,7 @@ class Session:
             )
         if sid:
             self._set(resume_id=sid)
-        self._set(parked_rss=0)
+        self._set(parked_rss=0, parked_idle_s=0)
         self._set(status="idle", asleep_why=None)
 
     async def _check_version(self) -> None:
@@ -871,7 +875,12 @@ class Session:
             rss = _rss(self.pid)
             await self._end_process()
             self._record({"kind": "park", "idle_s": round(idle_s), "rss": rss})
-            self._set(status="asleep", asleep_why="idle", parked_rss=rss)
+            self._set(
+                status="asleep",
+                asleep_why="idle",
+                parked_rss=rss,
+                parked_idle_s=round(idle_s),
+            )
             return True
 
     async def shutdown(self) -> None:

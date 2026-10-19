@@ -177,10 +177,10 @@ The tree in the Files view has a menu opened the same way.
 | verb | where | what it does |
 |---|---|---|
 | Interrupt | the menu, Esc, the button beside Send | ends the turn the agent is working on |
-| Sleep | the menu, the panel, `/sleep` (`/stop` is an alias) | ends the process and keeps the conversation; the session is asleep until a message wakes it. When ending it would also end a background task or a harness timer, the menu asks first and names them |
-| Wake | the menu, on an asleep session | starts the process and sends nothing |
+| Sleep | the menu, the panel, `/sleep` (`/stop` is an alias) | ends the process and keeps the conversation; the session is asleep until a message wakes it. When ending it would also end a background task, a harness timer or a process it left running (a `nohup` command, a dev server), the menu and the panel ask first and name them |
+| Wake | the menu, on an asleep session | starts the process and sends nothing. Like a message, it is refused while the quota gate is closed, and it asks before starting a harness version outside the tested range |
 | Continue | the menu, on an asleep session; the panel | sends "Continue" to the agent |
-| Restart | the menu, the panel, `/restart` | ends the process and starts a fresh one on the same conversation; nothing is sent. On a working session it asks first, since it cuts the turn. Use it after a change to the agent's MCP config or when the harness hangs |
+| Restart | the menu, the panel, `/restart` | ends the process and starts a fresh one on the same conversation; nothing is sent. On a working session it asks first, typed or clicked, since it cuts the turn. Use it after a change to the agent's MCP config or when the harness hangs |
 | Archive | the menu, the panel, `/archive` (`/close` is an alias), a middle click on the tab or card | archives the session, and its tab goes away in every browser. A session that is not done asks first |
 | Reopen | the archive, an archived session's panel | gives the session a tab again, asleep, ready for the next message |
 
@@ -239,9 +239,9 @@ These sessions do not park:
 
 A parked session is asleep with the reason `idle`. It keeps its tab, its mark
 and its place in the attention counts, and leaves the live count and the
-context average. Its Fleet card carries a `zz idle` chip, its composer reads
-"Asleep while idle. Typing wakes it.", and its transcript gets a row such as
-"asleep after 20 min idle". The Fleet's header counts every asleep session,
+context average. Its Fleet card carries a chip such as `zz idle 20 min`, its
+composer reads "Asleep after 20 min idle. Typing wakes it.", and its
+transcript gets a row such as "asleep after 20 min idle". The Fleet's header counts every asleep session,
 as in `3 asleep · ~0.9 GB idle`: the memory each parked harness held when it
 parked, without the processes it had started.
 

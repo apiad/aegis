@@ -35,9 +35,9 @@ async def test_stop_and_park_both_leave_a_session_asleep_with_their_reason(world
     assert await b.park(1200)
     assert (b.status, b.asleep_why) == ("asleep", "idle")
     assert b.entries()[-1]["summary"] == "asleep after 20 min idle"
-    assert b.wire()["asleep_why"] == "idle"
+    assert (b.wire()["asleep_why"], b.wire()["parked_idle_s"]) == ("idle", 1200)
     await turn(b, "hello again")
-    assert (b.status, b.asleep_why) == ("idle", None)
+    assert (b.status, b.asleep_why, b.parked_idle_s) == ("idle", None, 0)
 
 
 async def test_an_exit_and_a_server_restart_are_asleep_too(world):
@@ -163,3 +163,18 @@ async def test_sleep_restart_and_archive_commands_and_their_aliases(world):
     await say(a, "/archive")
     await say(b, "/close")
     assert {a.log_id, b.log_id} <= set(world.app.sessions.archived)
+
+
+async def test_sleep_kills_names_a_process_the_session_left_running(world, tmp_path):
+    from .test_park_e2e import kill, leave_a_sleep
+
+    a = await world.spawn()
+    await turn(a, "hello")
+    call = world.app.registry.call
+    assert await call("session.kills", {"log_id": a.log_id}) == []
+    pid = await leave_a_sleep(a, "60.7319", tmp_path / "pid")
+    try:
+        said = await call("session.kills", {"log_id": a.log_id})
+        assert said == ["1 other process(es) would die"]
+    finally:
+        kill(pid)

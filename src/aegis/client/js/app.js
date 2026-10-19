@@ -45,7 +45,7 @@ import { checkRotation, closePushPanel, openPushPanel, pushSupported, setupPush 
 import { clearDevice, loadFleet, loadTranscript, saveFleet, saveTranscript } from "./devicestore.js";
 import { markNeedsNet, offline } from "./net.js";
 import { discard, draftFor, flushNow, loadDrafts, onDrafts, queue, sendAnyway, setSender } from "./outbox.js";
-import { lifecycle } from "./lifecycle.js";
+import { idleFor, lifecycle } from "./lifecycle.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -805,7 +805,8 @@ let early = ["session", "window", "read"].includes(boot.view) ? { id: boot.id, c
 loadFleet().then((saved) => {
   if (!saved || booted || refused) return;
   seenAt = saved.saved_at;
-  for (const m of saved.metas) sessions.set(m.key, { ...m, stale: true });
+  // An older client saved stopped and parked: read them as asleep (#479).
+  for (const m of saved.metas) sessions.set(m.key, { ...lifecycle(m), stale: true });
   booted = true;
   onSessions();
 });
@@ -1836,7 +1837,9 @@ function drawComposerHint(s) {
     : down
     ? `${s.server} is ${down.state} since ${new Date(down.since * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}; nothing can be sent until it is back.`
     : s.state === "asleep" && s.asleep_why === "idle"
-      ? "Asleep while idle. Typing wakes it."
+      ? idleFor(s)
+        ? `Asleep after ${idleFor(s)} idle. Typing wakes it.`
+        : "Asleep while idle. Typing wakes it."
       : s.state === "asleep"
       ? "Asleep; your next message wakes it."
       : touch.matches
@@ -3109,6 +3112,7 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
     return;
   }
   if ((text === "/archive" || text === "/close") && !(await confirmClose(s))) return;
+  if (text === "/restart" && !(await confirmRestart(s))) return;
   // With no way to the session's server, plain text waits as its draft on this
   // device (outbox.js); a command or files still need the connection.
   const rev = shown === s.key ? transcript.rev : -1;
@@ -3347,11 +3351,12 @@ async function quietKey(key, on) {
 }
 
 // Sleep ends the process and keeps the conversation. What would die with it
-// (sleep_kills: background tasks, timers) is asked about first.
+// (session.kills: background tasks, timers, processes it left running)
+// is asked about first. A server older than #479 has no such op.
 async function sleepKey(key) {
   const s = sessions.get(key);
   if (offline() || !s) return;
-  const kills = s.sleep_kills || [];
+  const kills = s.old || s.state === "asleep" ? [] : await callFor(key, "session.kills").catch(() => []);
   if (kills.length && !(await ask(`Sleep ${s.handle}? ${kills.join("; ")}.`, { ok: "Sleep" }))) return;
   try {
     await callFor(key, "session.stop");
@@ -3363,11 +3368,14 @@ async function sleepKey(key) {
 // Wake starts an asleep session's process and sends nothing (session.warm),
 // asking first about an untested harness version, as a send does.
 async function wakeKey(key) {
-  if (offline() || !sessions.has(key)) return;
+  const s = sessions.get(key);
+  if (offline() || !s) return;
   try {
+    // An older server's warm takes only log_id.
+    const wake = s.old ? {} : { wake: true };
     await untestedRetry(
-      () => callFor(key, "session.warm"),
-      (untested) => callFor(key, "session.warm", { untested }),
+      () => callFor(key, "session.warm", wake),
+      (untested) => callFor(key, "session.warm", { ...wake, untested }),
     );
   } catch (e) {
     failed(key, e);
@@ -3375,11 +3383,13 @@ async function wakeKey(key) {
 }
 
 // Restart: a fresh process on the same conversation. It cuts a turn, so a
-// working session asks first.
+// working session asks first: from the menu, the panel and a typed /restart.
+const confirmRestart = async (s) =>
+  s.state !== "working" || (await ask(`Restart ${s.handle}? It cuts the turn it is working on.`, { ok: "Restart" }));
 async function restartKey(key) {
   const s = sessions.get(key);
   if (offline() || !s) return;
-  if (s.state === "working" && !(await ask(`Restart ${s.handle}? It cuts the turn it is working on.`, { ok: "Restart" }))) return;
+  if (!(await confirmRestart(s))) return;
   try {
     await untestedRetry(
       () => callFor(key, "session.restart"),

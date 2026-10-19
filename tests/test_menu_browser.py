@@ -3,6 +3,8 @@ and the menus built on it. Kept out of test_browser.py, whose server fixture it
 borrows; the page here may read the clipboard."""
 
 import json
+import os
+import signal
 import time
 
 import pytest
@@ -419,4 +421,94 @@ def test_an_old_servers_stopped_session_reads_as_asleep(server, browser):  # noq
         "['stop-session', 'restart'].every(id => document.getElementById(id).disabled)"
     )
     assert old.errors == [] and page.errors == []
+    ctx.close()
+
+
+def dialog_says(pg, text: str) -> None:
+    pg.wait_for_selector("#dialog .ok", state="visible")
+    assert text in pg.inner_text("#dialog .q")
+    pg.keyboard.press("Escape")
+    pg.wait_for_selector("#dialog", state="hidden")
+
+
+def test_sleep_asks_first_when_a_process_it_left_would_die(server, page, tmp_path):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "hello")
+    pidfile = tmp_path / "left.pid"
+    page.fill(
+        "#input", f"/sh nohup sleep 60.5813 >/dev/null 2>&1 & echo $! > {pidfile}"
+    )
+    page.press("#input", "Enter")
+    for _ in range(80):
+        if pidfile.exists() and pidfile.read_text().strip():
+            break
+        time.sleep(0.1)
+    pid = int(pidfile.read_text())
+    try:
+        page.goto(f"{server.url.split('#')[0]}#fleet")
+        page.wait_for_selector(card(a) + ":not(.working)")
+        card_menu(page, a)
+        page.click(".cmenu [data-id=sleep]")
+        dialog_says(page, "1 other process(es) would die")
+        assert page.locator(card(a) + ".asleep").count() == 0  # Esc kept it up
+    finally:
+        os.kill(pid, signal.SIGKILL)
+    assert page.errors == []
+
+
+def test_restart_asks_first_on_a_working_session(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page)
+    page.fill("#input", "/busy 30")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    # Typed: the line waits for the answer, and Esc keeps the turn.
+    page.fill("#input", "/restart")
+    page.press("#input", "Enter")
+    dialog_says(page, "cuts the turn")
+    assert page.is_visible(".row.tool.running")
+    page.goto(f"{server.url.split('#')[0]}#fleet")
+    page.wait_for_selector(card(a) + ".working")
+    card_menu(page, a)
+    page.click(".cmenu [data-id=restart]")
+    dialog_says(page, "cuts the turn")
+    assert page.locator(card(a) + ".working").count() == 1
+    assert page.errors == []
+
+
+def test_an_old_clients_cached_fleet_reads_as_asleep(server, browser):  # noqa: F811
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    page = ctx.new_page()
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "hello")
+    page.fill("#input", "/sleep")
+    page.press("#input", "Enter")
+    page.goto(f"{server.url.split('#')[0]}#fleet")
+    page.wait_for_selector(card(a) + ".asleep")
+    page.wait_for_timeout(500)  # the Fleet's save on this device
+    page.close()
+
+    # No server: the websocket opens and never speaks, so only the cache draws.
+    cached = ctx.new_page()
+    cached.errors = []
+    cached.on("pageerror", lambda e: cached.errors.append(str(e)))
+    cached.route_web_socket("**/*", lambda ws: None)
+    cached.goto(server.url)
+    cached.wait_for_selector(card(a))
+    saved = cached.evaluate(
+        "async () => (await import('/static/js/devicestore.js')).loadFleet()"
+    )
+    old = as_old_server(saved["metas"])
+    assert [m["state"] for m in old if m["key"] == a] == ["stopped"]
+    cached.evaluate(
+        "async (metas) => (await import('/static/js/devicestore.js')).saveFleet(metas)",
+        old,
+    )
+    cached.reload()
+    cached.wait_for_selector(card(a) + ".asleep")
+    assert cached.text_content(card(a) + " .hd .zz") == "zz slept"
+    assert cached.errors == []
     ctx.close()

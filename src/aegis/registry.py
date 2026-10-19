@@ -22,7 +22,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .archive import Position, count_workers, page as archive_page
-from . import attention, cache, park, restarts
+from . import attention, cache, restarts
 from .cgroups import SessionCgroups
 from .config import CONTEXT_DEFAULTS
 from .harness import harness_for
@@ -236,13 +236,6 @@ class Registry(Host):
             else [],
             **self._attention(session),
             "waiting_for": self._waiting_for(session),
-            # What Sleep would end; the stray processes a park also counts
-            # take a /proc scan, too dear for every publish.
-            "sleep_kills": park.kills(
-                len(session.open_tasks), frozenset(session.timers)
-            )
-            if session.running
-            else [],
             **self._worker(session),
             "layout": session.standing.get("layout"),
             "cache_cold": cache.cold_policy(session.spec.harness, self.context()),
@@ -436,6 +429,7 @@ class Registry(Host):
             last_status=meta.get("last_status") or "asleep",
             asleep_why=meta.get("asleep_why"),
             parked_rss=meta.get("parked_rss") or 0,
+            parked_idle_s=meta.get("parked_idle_s") or 0,
             cost_usd=meta.get("cost_usd"),
             context_tokens=meta.get("context_tokens"),
             context_window=meta.get("context_window"),

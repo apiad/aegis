@@ -81,6 +81,7 @@ from . import refs
 from .monitors import Monitors, iso_now
 from .names import valid_handle
 from .nudges import Nudges
+from . import park
 from .park import Parker, Watchers
 from .push import register_push_ops
 from .queues import Queues
@@ -235,8 +236,17 @@ class LogParams(_Strict):
     log_id: str
 
 
+def _held(owner: str, why: str) -> str:
+    return f"{owner}'s quota gate holds this session: {why}. It continues when the gate opens."
+
+
 class RestartParams(LogParams):
     untested: Literal["once", "always"] | None = None
+
+
+class WarmParams(RestartParams):
+    # A person's Wake, not the first keystroke: a closed gate is said.
+    wake: bool = False
 
 
 class DetailParams(_Strict):
@@ -921,12 +931,7 @@ class App:
         harness version outside the tested range until the person says so."""
         s.check_lock()
         if (why := self.sessions.quota_hold(s)) is not None:
-            owner = s.spec.owner or self.user
-            raise OpError(
-                "quota_closed",
-                f"{owner}'s quota gate holds this session: {why}. "
-                "It continues when the gate opens.",
-            )
+            raise OpError("quota_closed", _held(s.spec.owner or self.user, why))
         not_saved = await self._version_gate(caller, s.spec.harness, untested, s)
         s.launch_by = "agent" if caller.is_agent else "person"
         try:
@@ -1328,12 +1333,7 @@ class App:
                     )
             text = commands.escape(p.text)
             if (why := reg.quota_hold(s)) is not None:
-                owner = s.spec.owner or self.user
-                raise OpError(
-                    "quota_closed",
-                    f"{owner}'s quota gate holds this session: {why}. "
-                    "It continues when the gate opens.",
-                )
+                raise OpError("quota_closed", _held(s.spec.owner or self.user, why))
             not_saved = None
             if not s.running and s.asleep_why != "idle":
                 # A person resuming a session that slept; a parked one wakes
@@ -1590,8 +1590,8 @@ class App:
             s = reg.open(p.log_id)
             return await self._launch(s, caller, p.untested, s.restart)
 
-        @r.op("session.warm", RestartParams, owned="log_id")
-        async def warm(p: RestartParams, caller):
+        @r.op("session.warm", WarmParams, owned="log_id")
+        async def warm(p: WarmParams, caller):
             # A parked session: someone started typing to it, so start its
             # harness while they write (park.py); a closed quota gate starts
             # nothing and says nothing. Any other asleep one is a person's
@@ -1601,9 +1601,25 @@ class App:
                 return None
             if s.asleep_why != "idle":
                 return await self._launch(s, caller, p.untested, s.ensure_running)
-            if not reg.quota_hold(s):
+            if (why := reg.quota_hold(s)) is None:
                 await s.ensure_running()
+            elif p.wake:
+                raise OpError("quota_closed", _held(s.spec.owner or self.user, why))
             return None
+
+        @r.op("session.kills", LogParams, owned="log_id")
+        async def sleep_kills(p: LogParams, caller):
+            """What Sleep would end with the process, one plain line each: what
+            a park waits for, the stray processes included (park.kills). Asked
+            when Sleep is chosen, since the /proc scan is too dear per publish."""
+            s = reg.open(p.log_id)
+            if not s.running or s.pid is None:
+                return []
+            keep = s.spec.harness == "claude-code"
+            found = await asyncio.to_thread(
+                park.strays, s.pid, s.log_id, reg.cgroup_dir(s), keep_servers=keep
+            )
+            return park.kills(len(s.open_tasks), frozenset(s.timers), len(found))
 
         @r.op("session.unquiet", LogParams, owned="log_id")
         async def unquiet(p: LogParams, caller):
