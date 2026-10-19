@@ -1228,3 +1228,61 @@ async def test_a_member_link_delivers_only_into_its_own_sessions(pair):
         },
     )
     assert r["error"]["code"] == "not_owner"
+
+
+async def old_far(port: int):
+    """A far server older than #479: it says stopped and parked."""
+
+    async def handler(ws):
+        await ws.recv()
+        await ws.send(json.dumps({"t": "welcome", "proto": PROTO, "server": "old"}))
+        async for raw in ws:
+            m = json.loads(raw)
+            if m.get("t") != "call":
+                continue
+            reply = {"t": "reply", "id": m["id"], "result": None}
+            if m.get("op") == "session.list":
+                reply["result"] = [
+                    {"handle": "old-stop", "state": "stopped"},
+                    {"handle": "old-park", "state": "parked"},
+                    {"handle": "old-busy", "state": "working"},
+                ]
+            await ws.send(json.dumps(reply))
+
+    return ws_serve(handler, "127.0.0.1", port)
+
+
+async def test_session_list_reads_an_old_servers_states_as_asleep(
+    tmp_path, fake_claude
+):
+    alpha = await Node(tmp_path / "alpha", "alpha", fake_claude).start()
+    port = _free_port()
+    try:
+        async with await old_far(port):
+            alpha.app.links.add("old", f"http://127.0.0.1:{port}", "x")
+            await until(
+                lambda: alpha.app.links.get("old").state == "linked",
+                timeout=10,
+                what="linked",
+            )
+            here = await alpha.spawn()
+            listed = json.loads(
+                (await turn(here, mcp("session_list"))).removeprefix("mcp ok: ")
+            )
+            assert [e for e in listed if e.get("server") == "old"] == [
+                {
+                    "handle": "old-stop",
+                    "server": "old",
+                    "state": "asleep",
+                    "asleep_why": "slept",
+                },
+                {
+                    "handle": "old-park",
+                    "server": "old",
+                    "state": "asleep",
+                    "asleep_why": "idle",
+                },
+                {"handle": "old-busy", "server": "old", "state": "working"},
+            ]
+    finally:
+        await alpha.stop()

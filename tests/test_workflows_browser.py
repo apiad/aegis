@@ -673,6 +673,27 @@ def test_a_loop_past_six_rounds_shows_only_its_current_round(server, page):  # n
     assert not page.errors
 
 
+def test_a_working_steps_card_menu_shows_its_actions_disabled(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    arm = {"definition": flow(report(7, 8), RESULT), "args": {}}
+    spawn(page, "/mcp workflow_arm " + json.dumps(arm))
+    card = "#entries .wfcard"
+    page.click(f"{card} button >> text=Approve and run")
+    page.locator(f"{card} .wfrow[data-node=one] a.who").wait_for()
+    page.goto(server.url + "#fleet")
+    step = page.locator(".card.quiet", has=page.locator(".badge", has_text="· one"))
+    step.wait_for()
+    step.click(button="right")
+    page.wait_for_selector(".cmenu")
+    why = "is a step of a running workflow"
+    for item in ("sleep", "restart", "archive"):
+        b = page.locator(f".cmenu [data-id={item}]")
+        assert b.is_disabled() and why in b.get_attribute("title"), item
+    assert page.locator(".cmenu [data-id=open]").is_enabled()
+    assert not page.errors
+
+
 def test_a_working_step_opens_read_only_from_the_card_with_no_tab(server, page):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
