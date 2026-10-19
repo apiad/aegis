@@ -904,7 +904,7 @@ class App:
             await s.stop()
             return s.wire()
         if name == "restart":
-            return await self._restart(s, caller, untested)
+            return await self._launch(s, caller, untested, s.restart)
         if name == "spawn":
             return await self._spawn_line(
                 commands.parse_spawn(arg), caller, s, untested
@@ -914,10 +914,10 @@ class App:
             return None
         raise OpError("unknown_command", f"/{name} has no handler")
 
-    async def _restart(self, s, caller: Caller, untested: str | None):
-        """End a session's process and start a fresh one on the same
-        conversation (Session.restart). Refused like a send that would start
-        one: on a workflow's locked step, behind a closed quota gate, and on a
+    async def _launch(self, s, caller: Caller, untested: str | None, start):
+        """Start a session's harness through ``start`` (Session.restart, or
+        ensure_running for a Wake). Refused like a send that would start one:
+        on a workflow's locked step, behind a closed quota gate, and on a
         harness version outside the tested range until the person says so."""
         s.check_lock()
         if (why := self.sessions.quota_hold(s)) is not None:
@@ -930,7 +930,7 @@ class App:
         not_saved = await self._version_gate(caller, s.spec.harness, untested, s)
         s.launch_by = "agent" if caller.is_agent else "person"
         try:
-            await s.restart()
+            await start()
         except FileNotFoundError as e:
             raise OpError(
                 "harness_not_found",
@@ -1587,15 +1587,23 @@ class App:
 
         @r.op("session.restart", RestartParams, owned="log_id")
         async def restart(p: RestartParams, caller):
-            return await self._restart(reg.open(p.log_id), caller, p.untested)
-
-        @r.op("session.warm", LogParams, owned="log_id")
-        async def warm(p: LogParams, caller):
-            # Someone started typing to an asleep session: start its harness
-            # while they write (park.py). A closed quota gate starts nothing.
             s = reg.open(p.log_id)
-            if s.status == "asleep" and not reg.quota_hold(s):
+            return await self._launch(s, caller, p.untested, s.restart)
+
+        @r.op("session.warm", RestartParams, owned="log_id")
+        async def warm(p: RestartParams, caller):
+            # A parked session: someone started typing to it, so start its
+            # harness while they write (park.py); a closed quota gate starts
+            # nothing and says nothing. Any other asleep one is a person's
+            # Wake, refused like a send that would start it (#479).
+            s = reg.open(p.log_id)
+            if s.status != "asleep":
+                return None
+            if s.asleep_why != "idle":
+                return await self._launch(s, caller, p.untested, s.ensure_running)
+            if not reg.quota_hold(s):
                 await s.ensure_running()
+            return None
 
         @r.op("session.unquiet", LogParams, owned="log_id")
         async def unquiet(p: LogParams, caller):

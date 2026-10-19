@@ -1,6 +1,8 @@
 """What the browser tells the server for parking: which session it shows in a
 visible page, and that someone started typing to a parked one."""
 
+import pytest
+
 from starlette.testclient import TestClient
 
 from aegis.app import App
@@ -75,3 +77,28 @@ async def test_warm_starts_nothing_while_the_quota_gate_holds(world, monkeypatch
     monkeypatch.setattr(reg, "quota_hold", lambda s: "the weekly window is spent")
     await world.app.registry.call("session.warm", {"log_id": a.log_id})
     assert not a.running and a.asleep_why == "idle"
+
+
+async def test_a_wake_of_a_slept_session_says_the_quota_gate_holds(world, monkeypatch):  # noqa: F811
+    from aegis.ops import OpError
+
+    a = await world.spawn()
+    await turn(a, "hello ana")
+    await a.stop()
+    reg = world.app.sessions
+    monkeypatch.setattr(reg, "quota_hold", lambda s: "the weekly window is spent")
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call("session.warm", {"log_id": a.log_id})
+    assert e.value.code == "quota_closed" and not a.running
+
+
+async def test_a_wake_of_a_slept_session_names_a_missing_harness(world):  # noqa: F811
+    from aegis.ops import OpError
+
+    a = await world.spawn()
+    await turn(a, "hello ana")
+    await a.stop()
+    a.harness.bin = "/nonexistent/claude"
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call("session.warm", {"log_id": a.log_id})
+    assert e.value.code == "harness_not_found"
