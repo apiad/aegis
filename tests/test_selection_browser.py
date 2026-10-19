@@ -5,7 +5,7 @@ survives, after the quote."""
 
 import pytest
 
-from .test_browser import EXPECTED_CONSOLE, browser, server, spawn, turns_done  # noqa: F401
+from .test_browser import EXPECTED_CONSOLE, browser, btw_server, server, spawn, turns_done  # noqa: F401
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
@@ -73,3 +73,163 @@ def test_insert_keeps_the_draft_after_the_quote_and_runs_the_input_path(server, 
     )
     assert page.evaluate(f"localStorage.getItem('aegis.draft.{key}')") == "/btw\n> x\n\nhello"
     assert page.errors == []
+
+
+REPLY = ".row.prose .body"
+
+
+def select(pg, sel: str, word: str) -> None:
+    """Select `word` in the last match of `sel` that holds it, as a drag would."""
+    pg.evaluate(
+        """([sel, word]) => {
+          const body = [...document.querySelectorAll(sel)].filter((b) => b.textContent.includes(word)).at(-1);
+          const w = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+          for (let n; (n = w.nextNode()); ) {
+            const i = n.data.indexOf(word);
+            if (i < 0) continue;
+            const r = document.createRange();
+            r.setStart(n, i);
+            r.setEnd(n, i + word.length);
+            getSelection().removeAllRanges();
+            getSelection().addRange(r);
+            return;
+          }
+          throw new Error("no " + word);
+        }""",
+        [sel, word],
+    )
+
+
+def bar_and_selection(pg) -> dict:
+    return pg.evaluate(
+        """() => {
+          const b = document.querySelector('.sbar').getBoundingClientRect();
+          const s = getSelection().getRangeAt(0).getClientRects()[0];
+          return { barTop: b.top, barBottom: b.bottom, selTop: s.top, selBottom: s.bottom };
+        }"""
+    )
+
+
+def labels(pg) -> list[str]:
+    return [x.strip() for x in pg.locator(".sbar button").evaluate_all("bs => bs.map(b => b.getAttribute('aria-label'))")]
+
+
+def test_ask_and_ask_aside_with_a_draft(btw_server, page):  # noqa: F811
+    page.goto(btw_server.url)
+    spawn(page, "/md alpha kiwi beta")
+    page.fill("#input", "later")
+    select(page, REPLY, "kiwi")
+    page.wait_for_selector(".sbar")
+    assert labels(page) == ["Ask", "Ask aside", "New session", "Copy"]
+    page.click(".sbar [data-id=ask]")
+    page.wait_for_selector(".sbar", state="detached")
+    assert page.input_value("#input") == "> kiwi\n\nlater"
+    page.fill("#input", "later")
+    select(page, REPLY, "kiwi")
+    page.click(".sbar [data-id=aside]")
+    assert page.input_value("#input") == "/btw\n> kiwi\n\nlater"
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.btw .hd .q", timeout=8000)
+    assert "kiwi" in page.locator(".row.btw .hd .q").inner_text()
+    # Copy takes the clean text; with Shift, the quote.
+    select(page, REPLY, "kiwi")
+    page.click(".sbar [data-id=copy]")
+    assert page.evaluate("navigator.clipboard.readText()") == "kiwi"
+    select(page, REPLY, "kiwi")
+    page.click(".sbar [data-id=copy]", modifiers=["Shift"])
+    assert page.evaluate("navigator.clipboard.readText()") == "> kiwi"
+    assert page.errors == []
+
+
+def test_the_bar_survives_a_streaming_reply(server, page):  # noqa: F811
+    page.goto(server.url)
+    # A transcript taller than the view, so each new row scrolls it.
+    spawn(page, "/md " + "\\n\\n".join(f"line {i}" for i in range(40)))
+    page.fill("#input", "/md alpha kiwi beta")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    page.fill("#input", "/stream 10")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.prose .body >> text=chunk1")
+    select(page, REPLY, "kiwi")
+    page.wait_for_selector(".sbar")
+    before = bar_and_selection(page)
+    page.evaluate(
+        "window.__scrolls = 0;"
+        " document.getElementById('tr').addEventListener('scroll', () => window.__scrolls++)"
+    )
+    turns_done(page, 3)  # the ten chunks and the turn's end landed
+    page.wait_for_timeout(300)
+    assert page.locator(".sbar").count() == 1
+    after = bar_and_selection(page)
+    assert page.evaluate("window.__scrolls") > 0  # the transcript scrolled itself under it
+    assert abs((after["selTop"] - after["barBottom"]) - (before["selTop"] - before["barBottom"])) < 2
+    # A wheel scroll by the person closes it.
+    page.mouse.move(600, 300)
+    page.mouse.wheel(0, -300)
+    page.wait_for_selector(".sbar", state="detached")
+    assert page.errors == []
+
+
+def test_a_triple_click_on_the_last_paragraph_gets_the_bar(server, page):  # noqa: F811
+    page.goto(server.url)
+    spawn(page, "/md first part\\n\\nlast part kiwi")
+    page.fill("#input", "/md next")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    last = page.locator(".row.prose .body").first.locator("p").last
+    last.click(click_count=3)
+    page.wait_for_selector(".sbar")
+    page.click(".sbar [data-id=ask]")
+    assert page.input_value("#input") == "> last part kiwi\n\n"
+    assert page.errors == []
+
+
+def test_a_selection_across_two_rows_gets_no_bar(server, page):  # noqa: F811
+    page.goto(server.url)
+    spawn(page, "/md alpha kiwi beta")
+    page.evaluate("""() => {
+      const r = document.createRange();
+      r.setStart(document.querySelector('.row.user .body'), 0);
+      r.setEnd(document.querySelector('.row.prose .body'), 1);
+      getSelection().removeAllRanges(); getSelection().addRange(r);
+    }""")
+    page.wait_for_timeout(600)
+    assert page.locator(".sbar").count() == 0
+    select(page, REPLY, "kiwi")  # the control: one row's selection does get it
+    page.wait_for_selector(".sbar")
+    assert page.errors == []
+
+
+def test_new_session_opens_the_form_with_the_source_and_the_quote(server, page, tmp_path):  # noqa: F811
+    page.goto(server.url)
+    spawn(page, "/md alpha kiwi beta")
+    handle = page.locator("#s-handle").inner_text()
+    cwd = page.locator("#s-cwd").inner_text()
+    select(page, REPLY, "kiwi")
+    page.click(".sbar [data-id=new]")
+    page.wait_for_selector("#a2[data-view=spawn]")
+    assert page.input_value("#sp-text") == f"From {handle}:\n> kiwi\n\n"
+    assert page.evaluate("document.querySelector('#sp-agent').value") == "opus"
+    assert page.input_value("#sp-cwd") == cwd
+    assert page.errors == []
+
+
+def test_on_a_phone_the_bar_sits_under_the_selection_with_icons_only(browser, server):  # noqa: F811
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+    pg = ctx.new_page()
+    try:
+        pg.goto(server.url)
+        assert pg.evaluate("matchMedia('(pointer: coarse)').matches")
+        spawn(pg, "/md alpha kiwi beta")
+        pg.fill("#input", "later")
+        select(pg, REPLY, "kiwi")
+        pg.wait_for_selector(".sbar")
+        at = bar_and_selection(pg)
+        assert at["barTop"] >= at["selBottom"]
+        assert pg.locator(".sbar .lb").first.is_hidden()
+        assert pg.locator(".sbar button").first.bounding_box()["height"] >= 44
+        pg.tap(".sbar [data-id=ask]")
+        assert pg.input_value("#input") == "> kiwi\n\nlater"
+    finally:
+        ctx.close()

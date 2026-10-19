@@ -10,14 +10,19 @@
 
 // A range's clean text: the interface parts dropped, trimmed.
 export function rangeText(range) {
+  return clean(range).trim();
+}
+
+function clean(range) {
   const frag = range.cloneContents();
   for (const n of frag.querySelectorAll("[data-chrome]")) n.remove();
-  return frag.textContent.trim();
+  return frag.textContent;
 }
 
 // The range inside `row`'s body, or null when it reaches out of it. A
-// triple-click on a row's last paragraph ends at offset 0 of what follows,
-// with no text in between: that end is pulled back to the end of the body.
+// triple-click on a row's last paragraph ends at offset 0 of the next row's
+// body, past only that row's time and glyph: that end is pulled back to the
+// end of the body.
 export function clampToRow(range, row) {
   const body = row?.querySelector(":scope > .body");
   if (!body || !body.contains(range.startContainer)) return null;
@@ -25,7 +30,7 @@ export function clampToRow(range, row) {
   const tail = document.createRange();
   tail.setStart(body, body.childNodes.length);
   tail.setEnd(range.endContainer, range.endOffset);
-  if (tail.toString() !== "") return null;
+  if (clean(tail) !== "") return null;
   const r = range.cloneRange();
   r.setEnd(body, body.childNodes.length);
   return r;

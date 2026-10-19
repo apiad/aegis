@@ -25,6 +25,7 @@ import { Palette } from "./palette.js";
 import { entryIcon, glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import * as cmenu from "./menu.js";
+import { insertIntoComposer, quoted, rangeText } from "./quote.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
@@ -2737,7 +2738,7 @@ installKeys(
       if (cancelAsk() || closeInstallDialog() || closePushPanel()) return;
       if (root.dataset.side === "open") return closeSide();
       if (!keymap.hidden) help(false);
-      else if (cmenu.close() || viewer.close() || find.close() || closeMonitorCard() || closeCard()) return;
+      else if (cmenu.close() || cmenu.unbar() || viewer.close() || find.close() || closeMonitorCard() || closeCard()) return;
       else if (route().view === "session" && !editing.size) interrupt();
     },
     help: () => help(),
@@ -3572,3 +3573,48 @@ function attachCardMenu(box) {
 }
 attachCardMenu($("cards"));
 attachCardMenu($("tablist"));
+
+// The New session form filled from a source session: its server, agent,
+// model and folder, and a prompt the person goes on writing.
+function openSpawnWith({ server = null, agent, model, cwd, prompt }) {
+  setSpServer(server || null);
+  $("sp-agent").dataset.picked = agent; // kept when the roster loads after this
+  if (roster.agents.some((a) => a.name === agent)) pickAgent(agent);
+  if (model && model !== "default") {
+    $("sp-model").value = model;
+    markDiffs();
+  }
+  $("sp-cwd").value = cwd || "";
+  $("sp-text").value = prompt;
+  go("#new");
+  spawnGrow();
+}
+
+// What a selection in the transcript offers (spec 05). The text is taken now:
+// a touch can clear the selection before a button's click lands.
+function selectionItems(range) {
+  const text = rangeText(range);
+  const s = shown && sessions.get(shown);
+  if (!text || !s) return null;
+  return [
+    { id: "ask", label: "Ask", icon: "prompt", run: () => insertIntoComposer(quoted(text)) },
+    { id: "aside", label: "Ask aside", icon: "btw", run: () => insertIntoComposer(quoted(text), { prefix: "/btw\n" }) },
+    {
+      id: "new",
+      label: "New session",
+      icon: "start",
+      run: () => openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, prompt: `From ${s.handle}:\n${quoted(text)}\n\n` }),
+    },
+    {
+      id: "copy",
+      label: "Copy",
+      icon: "copy",
+      title: "Copy (Shift: as a quote)",
+      run: (ev) => navigator.clipboard.writeText(ev?.shiftKey ? quoted(text) : text).catch((e) => toast(`Copy failed: ${e.message || e}`, { kind: "error" })),
+    },
+  ];
+}
+cmenu.bar($("entries"), selectionItems);
+// The transcript's own scroll listener runs first: it still follows after a
+// scroll it made, or one the browser made when a remounted row shrank the list.
+cmenu.follow($("tr"), () => transcript.following);

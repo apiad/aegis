@@ -189,6 +189,9 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <li><b>A person's Wake of a parked session says when the quota gate holds</b>: <code>session.warm</code> takes <code>wake: true</code> from the menu (<code>WarmParams</code>), and only the keystroke warm stays silent. A typed <code>/restart</code> asks on a working session as the menu and panel do (<code>confirmRestart</code>). The journal ends a turn on a <code>restart</code> record (<code>journal/derive.py</code>, <code>TURN_ENDS</code>). Fleet metas cached on the device go through <code>lifecycle()</code> too.</li>
 <li><b>Continue is on every session that is not working</b> (asleep, waiting, interrupted, error), as slice 1 had it and spec 03 says ("asleep or waiting → working"); the plan's task 6 grouping named it with Wake for asleep only. Sleep asks with "aegis could not check what would end with it" when <code>session.kills</code> fails, instead of reading the failure as nothing. Every person's Wake (<code>wake: true</code>) goes through <code>App._launch</code>, a parked one's too; the keystroke warm starts only a parked session, so a session another browser just slept waits for the message.</li>
 <li><b><code>insertIntoComposer</code> lives in <code>js/quote.js</code>, not app.js</b>: it needs only <code>#input</code>, since the composer's own input listener (<code>app.js</code>, <code>input.addEventListener("input"</code>) saves the draft, warms and marks; a test and every provider import it from there. The tests check the input path through the unknown-command mark, not <code>session.warm</code>: a session a browser watches never parks (<code>park.py</code>, <code>Watchers</code>).</li>
+<li><b>The transcript's own scroll is <code>transcript.following</code></b>, not <code>scrollTop &gt;= bottomAt - 1</code>: a streaming row is remounted on each delta (<code>entries.js</code>, <code>UPDATERS.prose</code> refuses a grown text), the list shrinks for a frame and the browser clamps <code>scrollTop</code> 10 px up, which the plan's test read as the person's scroll and closed the bar on every patch. The transcript's scroll listener (<code>transcript.js:80-92</code>) runs first and keeps following through such a scroll; <code>follow</code> reads its verdict.</li>
+<li><b>A row's time and glyph carry <code>data-chrome</code> too</b> (<code>entries.js</code>, <code>row</code>): Chromium's triple-click on a reply's last paragraph ends at offset 0 of the next row's <code>.body</code>, past that row's <code>span.t</code> and <code>span.g</code>, so "nothing in between" means nothing but chrome.</li>
+<li><b>The bar's test of a streaming reply counts the transcript's scroll events</b> rather than a net move: ten one-line chunks do not move a row already on screen, but the remounts scroll the list under the selection on every patch, which is what closed the bar.</li>
 </ul>
 
 <h2>Review focus</h2>
@@ -468,7 +471,7 @@ def test_insert_keeps_the_draft_after_the_quote_and_runs_the_input_path(page, se
 </div>
 </details>
 
-<details class="task" id="task-8" data-state="pending">
+<details class="task" id="task-8" data-state="done">
 <summary><span class="num">8</span><span><span class="ttl">The selection bar</span><span class="files">js/menu.js · js/app.js · js/transcript.js · css/base.css · tests/test_selection_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>interfaces</h4>

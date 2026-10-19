@@ -13,6 +13,7 @@
 // The menu's only key listener is on its own node: keys.js owns the page's.
 
 import { icon } from "./glyphs.js";
+import { clampToRow, rangeText } from "./quote.js";
 
 export const LONG_PRESS = 500; // ms a touch holds before the menu opens
 const SLOP = 8; // px a held touch may move and still open it
@@ -186,7 +187,8 @@ export function open(menu, at, target) {
   };
   document.addEventListener("pointerdown", away, true);
   addEventListener("hashchange", close);
-  cur = { target, node, anchor: at.anchor ?? null, away };
+  unbar(); // one at a time: the bar's items go on top of a row's menu instead
+  cur = { target, node, anchor: at.anchor ?? null, away, top: target.getBoundingClientRect().top };
   const items = () => [...node.querySelectorAll("[role=menuitem]:not(:disabled)")];
   node.addEventListener("keydown", (ev) => {
     const all = items();
@@ -214,4 +216,137 @@ export function open(menu, at, target) {
     if (!node.contains(ev.relatedTarget) && cur?.node === node) close();
   });
   items()[0]?.focus({ preventScroll: true });
+}
+
+// The selection bar: a non-empty selection inside one row's body (clampToRow)
+// shows the provider's items over its first line, or under its last on a
+// coarse pointer, where the system's handles and callout sit above. The text
+// is the provider's to capture when the bar opens: a touch can clear the
+// selection before a button's click lands. Its buttons keep the selection by
+// cancelling their pointerdown. One bar at a time, and a menu opening closes
+// it.
+let bar_ = null; // {node, range, row}
+
+const coarse = matchMedia("(pointer: coarse)");
+
+export function bar(root, provider) {
+  let down = false;
+  let timer = null;
+  const check = () => {
+    clearTimeout(timer);
+    if (cur) return; // a right-click inside the selection: its menu carries the bar's items
+    const sel = getSelection();
+    const range = sel.rangeCount && !sel.isCollapsed ? sel.getRangeAt(0) : null;
+    const start = range?.startContainer;
+    const row = (start?.nodeType === 1 ? start : start?.parentElement)?.closest(".row[data-id]");
+    const r = row && root.contains(row) ? clampToRow(range, row) : null;
+    if (!r || !rangeText(r)) return unbar();
+    if (bar_ && bar_.range.toString() === r.toString() && bar_.row === row) return place();
+    const items = provider(r, row);
+    if (!items?.length) return unbar();
+    showBar(items, r, row);
+  };
+  const onDown = () => (down = true);
+  const onUpAnywhere = () => (down = false); // a drag that ends outside the root
+  const onUp = () => {
+    down = false;
+    setTimeout(check); // a click inside a selection collapses it after pointerup
+  };
+  // While a finger or the mouse is down the selection is still being made;
+  // a touch's handles change it with no pointerup on the root.
+  const onChange = () => {
+    if (!getSelection().isCollapsed && !down) {
+      clearTimeout(timer);
+      timer = setTimeout(check, 200);
+    } else if (getSelection().isCollapsed && bar_) unbar();
+  };
+  root.addEventListener("pointerdown", onDown);
+  root.addEventListener("pointerup", onUp);
+  document.addEventListener("pointerup", onUpAnywhere, true);
+  root.addEventListener("keyup", check);
+  document.addEventListener("selectionchange", onChange);
+  return () => {
+    unbar();
+    root.removeEventListener("pointerdown", onDown);
+    root.removeEventListener("pointerup", onUp);
+    document.removeEventListener("pointerup", onUpAnywhere, true);
+    root.removeEventListener("keyup", check);
+    document.removeEventListener("selectionchange", onChange);
+  };
+}
+
+function showBar(items, range, row) {
+  close();
+  unbar();
+  const node = el("div", "sbar");
+  node.setAttribute("role", "toolbar");
+  for (const item of items) {
+    const b = el("button", "btn");
+    b.type = "button";
+    b.dataset.id = item.id;
+    b.title = item.title ?? item.label;
+    b.setAttribute("aria-label", item.label);
+    b.append(icon(item.icon), el("span", "lb", item.label));
+    b.addEventListener("pointerdown", (ev) => ev.preventDefault());
+    b.addEventListener("mousedown", (ev) => ev.preventDefault());
+    b.addEventListener("click", (ev) => {
+      unbar();
+      item.run(ev);
+    });
+    node.append(b);
+  }
+  document.getElementById("a2").append(node);
+  bar_ = { node, range, row };
+  addEventListener("hashchange", unbar);
+  place();
+}
+
+// Over the first line, or under the last on a coarse pointer, clamped to the
+// viewport.
+function place() {
+  if (!bar_) return;
+  const { node, range } = bar_;
+  const rects = range.getClientRects();
+  if (!rects.length) return unbar();
+  const first = rects[0];
+  const last = rects[rects.length - 1];
+  const h = node.offsetHeight;
+  const w = node.offsetWidth;
+  const x = coarse.matches ? last.left : first.left;
+  const y = coarse.matches ? last.bottom + 6 : first.top - h - 6;
+  node.style.left = `${Math.max(4, Math.min(x, innerWidth - w - 4))}px`;
+  node.style.top = `${Math.max(4, Math.min(y, innerHeight - h - 4))}px`;
+}
+
+// True when one was shown.
+export function unbar() {
+  if (!bar_) return false;
+  bar_.node.remove();
+  bar_ = null;
+  removeEventListener("hashchange", unbar);
+  return true;
+}
+
+// A scroll of `scroller`: one it made itself (ownScroll() true, a transcript
+// following its bottom) moves the bar and an open menu with their anchor; one
+// by the person closes them. A wheel, a touch's move and the scroll keys are
+// the person's for sure.
+const SCROLL_KEYS = new Set(["PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown", " "]);
+export function follow(scroller, ownScroll) {
+  const away = () => {
+    unbar();
+    if (cur && scroller.contains(cur.target)) close();
+  };
+  scroller.addEventListener("scroll", () => {
+    if (!ownScroll()) return away();
+    place();
+    if (cur && scroller.contains(cur.target) && cur.target.isConnected) {
+      const top = cur.target.getBoundingClientRect().top;
+      cur.node.style.top = `${parseFloat(cur.node.style.top) + top - cur.top}px`;
+      cur.top = top;
+    }
+  });
+  scroller.addEventListener("wheel", away, { passive: true });
+  scroller.addEventListener("touchmove", away, { passive: true });
+  scroller.addEventListener("keydown", (ev) => SCROLL_KEYS.has(ev.key) && away());
 }

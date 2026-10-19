@@ -1149,7 +1149,10 @@ export const btwFolds = new Map();
 function row(entry, cls, body) {
   const r = el("div", `row ${cls}`);
   r.dataset.id = entry.id;
-  r.append(el("span", "t", hhmm(entry.ts)), withIcon(el("span", "g"), entry.glyph), body);
+  const t = el("span", "t", hhmm(entry.ts));
+  const g = withIcon(el("span", "g"), entry.glyph);
+  t.dataset.chrome = g.dataset.chrome = ""; // not text a selection quotes (quote.js)
+  r.append(t, g, body);
   return r;
 }
 
