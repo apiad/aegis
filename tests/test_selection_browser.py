@@ -707,7 +707,7 @@ def test_a_selection_in_the_streaming_reply_keeps_its_bar(server, page):  # noqa
     other = page.context.new_page()  # sends, so this page's selection stays
     other.goto(page.url)
     other.wait_for_selector("#a2[data-view=session]")
-    other.fill("#input", "/stream 12")
+    other.fill("#input", "/stream 30")  # the end, a new row, is 7 s away
     other.press("#input", "Enter")
     page.wait_for_selector(".row.prose .body >> text=chunk1")
     select(page, REPLY, "chunk1")
@@ -762,4 +762,74 @@ def test_a_right_click_outside_the_selection_gets_only_the_rows_menu(server, pag
         at,
     )
     assert menu_ids(page) == ["reply", "new", "copy", "link"]
+    assert page.errors == []
+
+
+DELAY = """ops => {
+  const send = WebSocket.prototype.send;
+  WebSocket.prototype.send = function (data) {
+    if (typeof data === "string" && ops.some((op) => data.includes(`"op":"${op}"`)))
+      setTimeout(() => send.call(this, data), 1500);
+    else send.call(this, data);
+  };
+}"""
+
+
+def test_a_late_tool_quote_is_dropped_after_a_session_switch(server, page, tmp_path):  # noqa: F811
+    (tmp_path / "notes.txt").write_text("kiwi notes\n")
+    page.goto(server.url)
+    a = spawn(page, f"/read {tmp_path / 'notes.txt'}")
+    b = spawn(page)
+    page.click(f"#tablist .tab[data-id='{a}']")
+    page.wait_for_selector(".row.tool .line")
+    page.evaluate(DELAY, ["transcript.output", "transcript.detail"])
+    page.click(".row.tool .line", button="right")
+    page.click(".cmenu [data-id=reply]")
+    page.click(f"#tablist .tab[data-id='{b}']")  # before the output lands
+    page.wait_for_timeout(2500)
+    assert page.input_value("#input") == ""
+    assert page.evaluate(f"localStorage.getItem('aegis.draft.{b}')") in (None, "")
+    page.click(f"#tablist .tab[data-id='{a}']")
+    assert page.input_value("#input") == ""
+    assert page.errors == []
+
+
+def test_new_session_right_after_a_load_takes_the_source_agent(server, page):  # noqa: F811
+    page.goto(server.url)
+    key = spawn(page, "/md alpha kiwi beta")  # the default agent, opus
+    # A fresh load whose roster comes late, with another agent remembered.
+    page.evaluate("localStorage.setItem('aegis.lastAgent', 'deepseek')")
+    page.add_init_script(f"({DELAY})(['agents.list'])")
+    page.goto(f"{server.url.split('#')[0]}#s={key}")
+    page.wait_for_selector(REPLY)
+    select(page, REPLY, "kiwi")
+    page.click(".sbar [data-id=new]")
+    page.wait_for_selector("#a2[data-view=spawn]")
+    page.wait_for_timeout(2500)  # the roster has landed
+    assert page.evaluate("document.querySelector('#sp-agent').value") == "opus"
+    assert page.evaluate("document.querySelector('#sp-model').value") == "opus"
+
+
+def test_a_moved_selection_closes_the_old_bar_at_once(server, page):  # noqa: F811
+    page.goto(server.url)
+    spawn(page, "/md alpha kiwi beta")
+    select(page, REPLY, "kiwi")
+    page.wait_for_selector(".sbar")
+    # As a touch handle would: the selection moves, and right after, the old
+    # bar must not be there to quote the earlier text.
+    gone = page.evaluate(
+        """async () => {
+          const b = [...document.querySelectorAll('.row.prose .body')].at(-1);
+          const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT);
+          for (let n; (n = w.nextNode()); ) { const i = n.data.indexOf('beta'); if (i < 0) continue;
+            const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 4);
+            getSelection().removeAllRanges(); getSelection().addRange(r); break; }
+          await new Promise((r) => setTimeout(r, 50));
+          return document.querySelectorAll('.sbar').length === 0;
+        }"""
+    )
+    assert gone
+    page.wait_for_selector(".sbar")
+    page.click(".sbar [data-id=ask]")
+    assert page.input_value("#input") == "> beta\n\n"
     assert page.errors == []

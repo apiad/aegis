@@ -2314,7 +2314,14 @@ function drawProfiles(list, server) {
   );
 }
 
-async function loadAgents() {
+// The roster load in flight, so a caller can wait for the one already
+// running (openSpawnWith right after a connect).
+let agentsLoading = Promise.resolve();
+function loadAgents() {
+  agentsLoading = fetchAgents();
+  return agentsLoading;
+}
+async function fetchAgents() {
   conn.call("term.profiles", {}, spServer).then(
     (list) => drawProfiles(list, spServer),
     () => drawProfiles([], spServer), // a server without terminals
@@ -3598,8 +3605,6 @@ attachCardMenu($("cards"));
 attachCardMenu($("tablist"));
 
 // The New session form filled from a source session: its server, agent,
-// model and folder, and a prompt the person goes on writing.
-// The New session form filled from a source session: its server, agent,
 // model and folder, and a prompt the person goes on writing. The picks come
 // from the source's server's roster once it has loaded, the same way on every
 // server: pickAgent resets the chips to that agent, so nothing a person set in
@@ -3608,7 +3613,9 @@ async function openSpawnWith({ server = null, agent, model, cwd, prompt }) {
   $("sp-text").value = prompt + $("sp-text").value;
   go("#new");
   spawnGrow();
+  $("sp-agent").dataset.picked = agent;
   await setSpServer(server || null);
+  await agentsLoading; // the boot's or a reconnect's load may still be out
   if (roster.agents.some((a) => a.name === agent)) pickAgent(agent);
   if (model && model !== "default") {
     $("sp-model").value = model;
@@ -3660,7 +3667,19 @@ function rowMenu(t, ev) {
   // the word under any right-click. The keyboard's menu (no event) takes it.
   const hit = (r) => ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
   const picked = range && (!ev || [...range.getClientRects()].some(hit)) && selectionItems(range);
-  const quote = (then) => rowText(id, copyDeps).then((text) => text && then(quoted(text.trim())), (err) => toast(err.message, { kind: "error" }));
+  // A tool's output is a round trip away: if the person moved to another
+  // session meanwhile, the quote is dropped rather than written to that
+  // session's composer.
+  const quote = (then) => {
+    const from = shown;
+    rowText(id, copyDeps).then(
+      (text) => {
+        if (shown !== from) return toast("The quote was dropped: you left the session it came from.");
+        if (text) then(quoted(text.trim()));
+      },
+      (err) => toast(err.message, { kind: "error" }),
+    );
+  };
   const reply = { id: "reply", label: "Reply", icon: "prompt", run: () => quote((q) => insertIntoComposer(q)) };
   const fresh = {
     id: "new",

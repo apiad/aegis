@@ -251,10 +251,14 @@ export function bar(root, provider) {
     if (cur && !(cur.touch && row && cur.target.contains(row))) return;
     const r = row && root.contains(row) ? clampToRow(range, row) : null;
     if (!r || !rangeText(r)) return unbar();
-    if (bar_ && bar_.range.toString() === r.toString() && bar_.row === row) return place();
+    if (bar_ && bar_.range.toString() === r.toString() && bar_.row === row) {
+      bar_.at = ends(range);
+      return place();
+    }
     const items = provider(r, row);
     if (!items?.length) return unbar();
     showBar(items, r, row);
+    bar_.at = ends(range);
   };
   // A key that moved the selection (Shift and arrows). Esc's keyup comes
   // after its keydown closed the bar: checking then would open it again.
@@ -271,6 +275,9 @@ export function bar(root, provider) {
   // While a finger or the mouse is down the selection is still being made;
   // a touch's handles change it with no pointerup on the root.
   const onChange = () => {
+    // A selection that moved (a touch handle dragged) is not the one the bar
+    // quotes: the bar goes at once, and only its reopening waits.
+    if (bar_ && !same(getSelection(), bar_.at)) unbar();
     if (!getSelection().isCollapsed && !down) {
       clearTimeout(timer);
       timer = setTimeout(check, 200);
@@ -289,6 +296,18 @@ export function bar(root, provider) {
     root.removeEventListener("keyup", onKey);
     document.removeEventListener("selectionchange", onChange);
   };
+}
+
+// What a selection is, as values (getRangeAt's range is live): its text and
+// its row's id. A row a streaming delta redraws gets new nodes but keeps both.
+function ends(r) {
+  const n = r.startContainer;
+  return { text: r.toString(), row: (n.nodeType === 1 ? n : n.parentElement)?.closest(".row[data-id]")?.dataset.id };
+}
+function same(sel, at) {
+  if (!sel.rangeCount) return false;
+  const now = ends(sel.getRangeAt(0));
+  return now.text === at.text && now.row === at.row;
 }
 
 function showBar(items, range, row) {
