@@ -49,8 +49,9 @@ export function attach(root, provider, opts = {}) {
   const onMenu = (ev) => {
     if (ev.shiftKey || ev.target.closest(NATIVE)) return;
     ev.preventDefault();
-    // A touch long press can fire contextmenu too: the timer already opened it.
-    if (swallow && cur) return;
+    // A touch long press fires contextmenu too, late: the timer already
+    // opened the menu, or the bar took its place (bar's check).
+    if (swallow) return;
     show(ev.target, ev, ev.clientX, ev.clientY);
   };
   const onDown = (ev) => {
@@ -256,10 +257,13 @@ export function bar(root, provider) {
     showBar(items, r, row);
   };
   const onDown = () => (down = true);
-  const onUpAnywhere = () => (down = false); // a drag that ends outside the root
+  // A press that began in the root ends wherever it is let go: a drag that
+  // selected a line and went on out of the transcript gets its bar too. The
+  // check waits a task: a click inside a selection collapses it after pointerup.
   const onUp = () => {
+    if (!down) return;
     down = false;
-    setTimeout(check); // a click inside a selection collapses it after pointerup
+    setTimeout(check);
   };
   // While a finger or the mouse is down the selection is still being made;
   // a touch's handles change it with no pointerup on the root.
@@ -270,17 +274,15 @@ export function bar(root, provider) {
     } else if (getSelection().isCollapsed && bar_) unbar();
   };
   root.addEventListener("pointerdown", onDown);
-  root.addEventListener("pointerup", onUp);
+  document.addEventListener("pointerup", onUp, true);
   root.addEventListener("pointercancel", onUp); // a native long press cancels the pointer
-  document.addEventListener("pointerup", onUpAnywhere, true);
   root.addEventListener("keyup", check);
   document.addEventListener("selectionchange", onChange);
   return () => {
     unbar();
     root.removeEventListener("pointerdown", onDown);
-    root.removeEventListener("pointerup", onUp);
+    document.removeEventListener("pointerup", onUp, true);
     root.removeEventListener("pointercancel", onUp);
-    document.removeEventListener("pointerup", onUpAnywhere, true);
     root.removeEventListener("keyup", check);
     document.removeEventListener("selectionchange", onChange);
   };
@@ -348,13 +350,22 @@ export function follow(scroller, ownScroll) {
     unbar();
     if (cur && scroller.contains(cur.target)) close();
   };
+  // An anchor the scroll took out of the scroller's view closes what it
+  // anchors: a bar pinned over the tabs would point at nothing.
   scroller.addEventListener("scroll", () => {
     if (!ownScroll()) return away();
-    place();
+    const box = scroller.getBoundingClientRect();
+    const out = (r) => !r || r.bottom <= box.top || r.top >= box.bottom;
+    if (bar_ && scroller.contains(bar_.row)) {
+      const rs = bar_.range.getClientRects();
+      if (out(coarse.matches ? rs[rs.length - 1] : rs[0])) unbar();
+      else place();
+    }
     if (cur && scroller.contains(cur.target) && cur.target.isConnected) {
-      const top = cur.target.getBoundingClientRect().top;
-      cur.node.style.top = `${parseFloat(cur.node.style.top) + top - cur.top}px`;
-      cur.top = top;
+      const r = cur.target.getBoundingClientRect();
+      if (out(r)) return close();
+      cur.node.style.top = `${parseFloat(cur.node.style.top) + r.top - cur.top}px`;
+      cur.top = r.top;
     }
   });
   scroller.addEventListener("wheel", away, { passive: true });

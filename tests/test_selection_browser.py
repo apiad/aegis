@@ -6,7 +6,8 @@ survives, after the quote."""
 import pytest
 
 from .test_browser import EXPECTED_CONSOLE, beta_session, spawn, turns_done
-from .test_browser import browser, btw_server, linked, server  # noqa: F401
+from .test_browser import CONFIG, Linked, browser, btw_server, linked, server  # noqa: F401
+from .test_park_browser import HIDE, PARKED, SHOW, park_server  # noqa: F401
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
@@ -535,10 +536,164 @@ def test_a_long_press_on_text_on_a_phone_gives_the_bar(browser, server):  # noqa
             "Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": point}
         )
         pg.wait_for_selector(".cmenu")  # the long press opened the row's menu
-        # The browser's own long press selects the word under the finger.
+        # The browser's own long press selects the word under the finger and
+        # cancels the pointer; its contextmenu comes after, while still held.
         select(pg, REPLY, "kiwi")
-        cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchCancel", "touchPoints": []})
         pg.wait_for_selector(".sbar")
         assert pg.locator(".cmenu").count() == 0
+        pg.evaluate(
+            "document.querySelector('.row.prose .body')"
+            ".dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true}))"
+        )
+        pg.wait_for_timeout(300)
+        assert pg.locator(".cmenu").count() == 0 and pg.locator(".sbar").count() == 1
     finally:
         ctx.close()
+
+
+def test_new_session_on_a_linked_server_takes_its_agents_picks(
+    tmp_path,
+    fake_claude,
+    fake_opencode,
+    browser,  # noqa: F811
+):
+    pair = Linked(tmp_path, fake_claude, fake_opencode)
+    far = CONFIG.replace(
+        "opus: {harness: claude-code, model: opus, effort: high, permission: full}",
+        "opus: {harness: claude-code, model: sonnet, effort: low, permission: read}",
+    )
+    (pair.beta.root / ".aegis.yaml").write_text(far)
+    pair.start()
+    try:
+        lid = beta_session(pair, browser, "/md alpha kiwi beta")
+        errors: list = []
+        from .test_browser import new_page, pick
+
+        pg = new_page(browser, errors)
+        pg.goto(pair.alpha.url)
+        # An override left in the form from an earlier spawn here.
+        pg.click("#tab-add")
+        pg.wait_for_function("document.querySelector('#sp-agent').value !== ''")
+        pick(pg, "#sp-effort", "max")
+        pg.click(f"#tablist .tab[data-id='beta/{lid}']")
+        pg.wait_for_selector("#a2[data-view=session]")
+        turns_done(pg, 1)
+        select(pg, REPLY, "kiwi")
+        pg.click(".sbar [data-id=new]")
+        pg.wait_for_selector("#a2[data-view=spawn]")
+        pg.wait_for_function("document.querySelector('#sp-server').value === 'beta'")
+        pg.wait_for_function("document.querySelector('#sp-effort').value === 'low'")
+        picks = pg.evaluate(
+            "['agent', 'model', 'effort', 'permission']"
+            ".map(k => document.querySelector('#sp-' + k).value)"
+        )
+        assert picks == ["opus", "sonnet", "low", "read"]
+    finally:
+        pair.stop()
+
+
+def test_a_drag_let_go_outside_the_transcript_gets_the_bar(server, page):  # noqa: F811
+    # From the last row's text down into the scroller's empty space under the
+    # list: one row selected, let go outside #entries.
+    page.goto(server.url)
+    spawn(page, "/md alpha kiwi beta")
+    at = page.evaluate(
+        """() => { const b = [...document.querySelectorAll('#entries > .row .body')].at(-1);
+          const r = b.getBoundingClientRect(); return [r.x + 2, r.y + r.height / 2, r.bottom]; }"""
+    )
+    page.mouse.move(at[0], at[1])
+    page.mouse.down()
+    page.mouse.move(at[0] + 200, at[2] + 150, steps=8)
+    page.mouse.up()
+    assert page.evaluate(
+        "document.elementFromPoint(%d, %d).closest('#entries') === null"
+        % (at[0] + 200, at[2] + 150)
+    )
+    assert page.evaluate("getSelection().toString()").startswith("done in")
+    page.wait_for_selector(".sbar")
+    assert page.errors == []
+
+
+def test_a_bar_and_a_menu_whose_row_scrolled_away_close(server, page):  # noqa: F811
+    page.goto(server.url)
+    key = spawn(page, "/md alpha kiwi beta")
+    other = page.context.new_page()  # sends, so this page's selection stays
+    other.goto(f"{server.url.split('#')[0]}#s={key}")
+    other.wait_for_selector("#a2[data-view=session]")
+    tall = "/md " + "\\n\\n".join(f"line {i}" for i in range(60))
+    select(page, REPLY, "kiwi")
+    page.wait_for_selector(".sbar")
+    other.fill("#input", tall)
+    other.press("#input", "Enter")
+    page.wait_for_selector(".row.prose >> text=line 59")
+    page.wait_for_selector(".sbar", state="detached")
+    # The same for a row's menu, opened on a reply the next one pushes away.
+    other.fill("#input", "/md short reply")
+    other.press("#input", "Enter")
+    page.wait_for_selector(".row.prose >> text=short reply")
+    page.locator(".row.prose .body").last.click(button="right")
+    page.wait_for_selector(".cmenu")
+    other.fill("#input", tall.replace("line", "row"))
+    other.press("#input", "Enter")
+    page.wait_for_selector(".row.prose >> text=row 59")
+    page.wait_for_selector(".cmenu", state="detached")
+    other.close()
+    assert page.errors == []
+
+
+def test_another_members_session_offers_no_composer_items(server, page, browser):  # noqa: F811
+    from .test_browser import member_page
+
+    page.goto(server.url)
+    key = spawn(page, "/md alpha kiwi beta")
+    pg, base = member_page(browser, server)
+    pg.goto(f"{base}#s={key}")
+    pg.wait_for_selector(".row.prose .body")
+    select(pg, REPLY, "kiwi")
+    pg.wait_for_selector(".sbar")
+    assert [b.get_attribute("data-id") for b in pg.locator(".sbar button").all()] == [
+        "new",
+        "copy",
+    ]
+    pg.click(".row.prose .body", button="right")
+    assert menu_ids(pg) == ["new", "copy", "link"]
+    close_menu(pg)
+    pg.click(".row.user .body", button="right")
+    assert menu_ids(pg) == ["new", "copy", "link"]
+
+
+def test_a_full_answer_after_a_restart_leaves_no_menu_on_a_detached_row(server, page):  # noqa: F811
+    page.goto(server.url)
+    key = spawn(page, "/md alpha kiwi beta")
+    page.evaluate("window.__row = document.querySelector('.row.prose')")
+    page.click(REPLY, button="right")
+    page.wait_for_selector(".cmenu")
+    server.stop()
+    # A store shorter than the page's revision: the server answers in full.
+    store = server.root / ".aegis" / "state" / "transcripts" / f"{key}.jsonl"
+    lines = store.read_text().splitlines(keepends=True)
+    store.write_text("".join(lines[:-1]))
+    server.start()
+    page.wait_for_function(
+        "!window.__row.isConnected", timeout=15000
+    )  # snapshot() redrew
+    assert page.evaluate(
+        "async () => { const c = (await import('/static/js/menu.js')).current();"
+        " return !c || c.target.isConnected; }"
+    )
+
+
+def test_a_quote_into_a_parked_sessions_composer_wakes_it(park_server, page):  # noqa: F811
+    page.goto(park_server.url)
+    spawn(page, '/mcp turn_end {"attention": "done", "line": "finished"}')
+    turns_done(page, 1)
+    page.evaluate(HIDE)
+    page.wait_for_function(PARKED, timeout=8000)
+    page.evaluate(SHOW)
+    page.evaluate(f"async () => (await {QUOTE}).insertIntoComposer('> x')")
+    page.wait_for_function(
+        "() => document.querySelector('#input').placeholder.startsWith('Message the agent')",
+        timeout=8000,
+    )
+    assert page.input_value("#input") == "> x\n\n"

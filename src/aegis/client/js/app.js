@@ -2270,14 +2270,16 @@ function drawServerPick() {
   pick.value = spServer || "";
 }
 
+// Resolves once the picked server's roster has loaded.
 function setSpServer(server) {
-  if (server === spServer) return;
+  if (server === spServer) return Promise.resolve();
   spServer = server;
   $("sp-server").value = server || "";
   $("sp-cwd").value = ""; // the other machine's directories
   delete $("sp-agent").dataset.picked;
-  loadAgents();
+  const loaded = loadAgents();
   drawHints();
+  return loaded;
 }
 $("sp-server").addEventListener("change", () => setSpServer($("sp-server").value || null));
 const LAST_AGENT = "aegis.lastAgent";
@@ -3596,22 +3598,22 @@ attachCardMenu($("tablist"));
 
 // The New session form filled from a source session: its server, agent,
 // model and folder, and a prompt the person goes on writing.
-// Another server's roster is loading after setSpServer: the agent is picked
-// when it lands (loadAgents keeps dataset.picked), never from this one's.
-// What the form held stays after the prompt, as a composer draft does.
-function openSpawnWith({ server = null, agent, model, cwd, prompt }) {
-  const same = (server || null) === spServer;
-  setSpServer(server || null);
-  $("sp-agent").dataset.picked = agent;
-  if (same && roster.agents.some((a) => a.name === agent)) pickAgent(agent);
+// The New session form filled from a source session: its server, agent,
+// model and folder, and a prompt the person goes on writing. The picks come
+// from the source's server's roster once it has loaded, the same way on every
+// server: pickAgent resets the chips to that agent, so nothing a person set in
+// the form before carries over. What the form's text held stays after the prompt.
+async function openSpawnWith({ server = null, agent, model, cwd, prompt }) {
+  $("sp-text").value = prompt + $("sp-text").value;
+  go("#new");
+  spawnGrow();
+  await setSpServer(server || null);
+  if (roster.agents.some((a) => a.name === agent)) pickAgent(agent);
   if (model && model !== "default") {
     $("sp-model").value = model;
     markDiffs();
   }
   $("sp-cwd").value = cwd || "";
-  $("sp-text").value = prompt + $("sp-text").value;
-  go("#new");
-  spawnGrow();
 }
 
 // What a selection in the transcript offers (spec 05). The text is taken now:
@@ -3620,9 +3622,12 @@ function selectionItems(range) {
   const text = rangeText(range);
   const s = shown && sessions.get(shown);
   if (!text || !s) return null;
+  // Another member's session takes no message from this person (drawSending),
+  // so the items that write to its composer are left out, as sessionMenu does.
+  const own = mine(s);
   return [
-    { id: "ask", label: "Ask", icon: "prompt", run: () => insertIntoComposer(quoted(text)) },
-    { id: "aside", label: "Ask aside", icon: "btw", run: () => insertIntoComposer(quoted(text), { prefix: "/btw\n" }) },
+    own && { id: "ask", label: "Ask", icon: "prompt", run: () => insertIntoComposer(quoted(text)) },
+    own && { id: "aside", label: "Ask aside", icon: "btw", run: () => insertIntoComposer(quoted(text), { prefix: "/btw\n" }) },
     {
       id: "new",
       label: "New session",
@@ -3636,7 +3641,7 @@ function selectionItems(range) {
       title: "Copy (Shift: as a quote)",
       run: (ev) => navigator.clipboard.writeText(ev?.shiftKey ? quoted(text) : text).catch((e) => toast(`Copy failed: ${e.message || e}`, { kind: "error" })),
     },
-  ];
+  ].filter(Boolean);
 }
 cmenu.bar($("entries"), selectionItems);
 
@@ -3666,16 +3671,18 @@ function rowMenu(t) {
     icon: "link",
     run: () => navigator.clipboard.writeText(`${location.origin}${location.pathname}#s=${shown}&at=${id}`).catch((err) => toast(`Copy failed: ${err.message || err}`, { kind: "error" })),
   };
+  const own = mine(s); // Reply and Edit write to a composer only its owner sends from
   let groups = null;
-  if (e.kind === "prose" || e.kind === "inbox") groups = [[reply, fresh], [copy, link]];
+  if (e.kind === "prose" || e.kind === "inbox") groups = [[own && reply, fresh], [copy, link]];
   else if (e.kind === "user") {
-    const edit = { id: "edit", label: "Edit and resend", icon: "pencil", run: () => insertIntoComposer(e.md || "") };
+    const edit = own && { id: "edit", label: "Edit and resend", icon: "pencil", run: () => insertIntoComposer(e.md || "") };
     groups = [[edit, fresh], [copy, link]];
   } else if (e.kind === "tool") {
     const open = e.detail?.path && !s.server && { id: "open", label: "Open file", icon: "file", run: () => openToolFile(id) };
     const out = { id: "copyout", label: "Copy output", icon: "copy", key: "c", run: copy.run };
-    groups = [[open, out].filter(Boolean), [reply, link]];
+    groups = [[open, out], [own && reply, link]];
   }
+  groups = groups?.map((g) => g.filter(Boolean));
   if (!groups && !picked) return null;
   return { groups: [picked || [], ...(groups || [])] };
 }
