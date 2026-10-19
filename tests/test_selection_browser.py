@@ -233,3 +233,95 @@ def test_on_a_phone_the_bar_sits_under_the_selection_with_icons_only(browser, se
         assert pg.input_value("#input") == "> kiwi\n\nlater"
     finally:
         ctx.close()
+
+
+def menu_ids(pg) -> list[str]:
+    pg.wait_for_selector(".cmenu")
+    return pg.locator(".cmenu [role=menuitem]").evaluate_all("bs => bs.map(b => b.dataset.id)")
+
+
+def close_menu(pg) -> None:
+    pg.keyboard.press("Escape")
+    pg.wait_for_selector(".cmenu", state="detached")
+
+
+def test_row_menus_by_kind(server, page, tmp_path):  # noqa: F811
+    (tmp_path / "notes.txt").write_text("kiwi notes\n")
+    page.goto(server.url)
+    spawn(page, f"/read {tmp_path / 'notes.txt'}")
+    page.fill("#input", "later")
+    page.click(".row.prose .body", button="right")
+    assert menu_ids(page) == ["reply", "new", "copy", "link"]
+    assert page.locator(".cmenu .grp").count() == 1
+    page.click(".cmenu [data-id=reply]")
+    assert page.input_value("#input") == "> Read it.\n\nlater"
+    page.fill("#input", "later")
+    page.click(".row.user .body", button="right")
+    assert menu_ids(page) == ["edit", "new", "copy", "link"]
+    page.click(".cmenu [data-id=edit]")
+    assert page.input_value("#input") == f"/read {tmp_path / 'notes.txt'}\n\nlater"
+    page.click(".row.tool .line", button="right")
+    assert menu_ids(page) == ["open", "copyout", "reply", "link"]
+    page.click(".cmenu [data-id=open]")
+    page.wait_for_selector("#viewer:not([hidden]) .fn >> text=notes.txt")
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#viewer", state="hidden")
+    # A right-click inside a selection puts the bar's items on top.
+    select(page, REPLY, "Read")
+    page.wait_for_selector(".sbar")
+    box = page.evaluate("(() => { const r = getSelection().getRangeAt(0).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()")
+    page.mouse.click(box[0], box[1], button="right")
+    assert menu_ids(page) == ["ask", "aside", "new", "copy", "reply", "new", "copy", "link"]
+    assert page.locator(".sbar").count() == 0  # one at a time
+    close_menu(page)
+    assert page.errors == []
+
+
+def test_a_menu_stays_through_an_in_place_update_and_closes_when_its_row_goes(server, page):  # noqa: F811
+    page.goto(server.url)
+    spawn(page)
+    page.fill("#input", "/stream 12")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.prose .body >> text=chunk1")
+    streaming = page.locator(".row.prose").last
+    sid = streaming.get_attribute("data-id")
+    streaming.locator(".body").click(button="right")
+    page.wait_for_selector(".cmenu")
+    # Each delta redraws the row as a new node; the menu stays, about it.
+    page.wait_for_selector(".row.prose .body >> text=chunk6")
+    assert page.locator(".cmenu").count() == 1
+    assert page.evaluate("document.activeElement.closest('.cmenu') !== null")
+    # The whole block replaces the streamed entry: its row goes, and the menu with it.
+    page.wait_for_function(f"!document.querySelector('.row[data-id=\"{sid}\"]')", timeout=10000)
+    page.wait_for_selector(".cmenu", state="detached", timeout=2000)
+    assert page.errors == []
+
+
+def test_copy_link_opens_the_session_at_that_row(server, page):  # noqa: F811
+    page.goto(server.url)
+    key = spawn(page, "/md alpha kiwi beta")
+    for i in range(30):
+        page.fill("#input", f"/md filler {i}")
+        page.press("#input", "Enter")
+        turns_done(page, i + 2)
+    first = page.locator(".row.prose").first
+    rid = first.get_attribute("data-id")
+    page.evaluate(f"document.querySelector('.row[data-id=\"{rid}\"]').scrollIntoView()")
+    first.locator(".body").click(button="right")
+    page.click(".cmenu [data-id=link]")
+    link = page.evaluate("navigator.clipboard.readText()")
+    # The link carries no token: a browser that signed in already opens it.
+    origin = server.url.split("?")[0].split("#")[0]
+    assert link == f"{origin}#s={key}&at={rid}"
+    pg = page.context.new_page()
+    try:
+        pg.goto(link)
+        pg.wait_for_selector(f".row.sel[data-id='{rid}']")
+        assert pg.evaluate(
+            f"""() => {{ const r = document.querySelector('.row[data-id="{rid}"]').getBoundingClientRect();
+              const v = document.getElementById('tr').getBoundingClientRect();
+              return r.bottom > v.top && r.top < v.bottom; }}"""
+        )
+    finally:
+        pg.close()
+    assert page.errors == []

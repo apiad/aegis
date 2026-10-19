@@ -192,6 +192,10 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <li><b>The transcript's own scroll is <code>transcript.following</code></b>, not <code>scrollTop &gt;= bottomAt - 1</code>: a streaming row is remounted on each delta (<code>entries.js</code>, <code>UPDATERS.prose</code> refuses a grown text), the list shrinks for a frame and the browser clamps <code>scrollTop</code> 10 px up, which the plan's test read as the person's scroll and closed the bar on every patch. The transcript's scroll listener (<code>transcript.js:80-92</code>) runs first and keeps following through such a scroll; <code>follow</code> reads its verdict.</li>
 <li><b>A row's time and glyph carry <code>data-chrome</code> too</b> (<code>entries.js</code>, <code>row</code>): Chromium's triple-click on a reply's last paragraph ends at offset 0 of the next row's <code>.body</code>, past that row's <code>span.t</code> and <code>span.g</code>, so "nothing in between" means nothing but chrome.</li>
 <li><b>The bar's test of a streaming reply counts the transcript's scroll events</b> rather than a net move: ten one-line chunks do not move a row already on screen, but the remounts scroll the list under the selection on every patch, which is what closed the bar.</li>
+<li><b>A streaming reply's patch redraws its row as a new node</b> (<code>entries.js</code>, <code>UPDATERS.prose</code> returns false when the text grew), so "updated in place" is by row id: <code>transcript.apply</code> hands the open menu the new node through a new <code>menu.retarget</code> and closes it only when no row has that id. Claude's whole block then replaces the streamed entry under another id (<code>transcript/entries.py</code>, <code>_unlive</code>), which is the test's "row goes".</li>
+<li><b><code>canvas.closeMenuIn</code> spares the transcript pane</b> (<code>canvas.js</code>, <code>place</code>): slice 1's check closed a menu inside any pane not in <code>ids()</code>, which leaves the transcript out, so every session update that re-placed the canvas closed a row's menu.</li>
+<li><b>Copy link carries no <code>?token=</code></b>: it is <code>origin + pathname</code>, so a link pasted elsewhere does not hand out the token; the test opens it in a page of the same browser, signed in already. A row link to the session already shown sets <code>landEntry</code> but reveals only when the transcript next lands.</li>
+<li><b>Rows of other kinds keep the browser's menu</b> unless a selection is in them; inbox rows get a reply's menu. Open file is left out on a linked server's row, as its Show button is (<code>file.peek</code> is local). A new <code>g-link</code> symbol draws Copy link; <code>copy.js</code> exports <code>rowText</code> for Reply.</li>
 </ul>
 
 <h2>Review focus</h2>
@@ -504,7 +508,7 @@ def test_on_a_phone_the_bar_sits_under_the_selection_with_icons_only(browser, se
 </div>
 </details>
 
-<details class="task" id="task-9" data-state="pending">
+<details class="task" id="task-9" data-state="done">
 <summary><span class="num">9</span><span><span class="ttl">Row menus and the row link</span><span class="files">js/app.js · js/transcript.js · js/glyphs.js · help/transcript.md · tests/test_selection_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>interfaces</h4>

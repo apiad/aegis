@@ -83,7 +83,8 @@ function tableOf(b) {
   return { text: src.split("\n").slice(a, z).join("\n").replace(/\n+$/, ""), html: t.outerHTML };
 }
 
-async function rowText(id, deps) {
+// A row's message, or a tool's whole output; the row menu's Reply quotes it too.
+export async function rowText(id, deps) {
   const e = deps.entry(id);
   if (!e) throw new Error("the row is gone");
   if (MESSAGES.has(e.kind)) return e.md || "";

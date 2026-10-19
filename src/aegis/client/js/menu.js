@@ -112,6 +112,12 @@ export function openFor(el) {
   return false;
 }
 
+// The open menu's row was redrawn as a new node (a streaming reply's patch):
+// the menu stays, now about that node.
+export function retarget(target) {
+  if (cur) cur.target = target;
+}
+
 export function current() {
   return cur && { target: cur.target, node: cur.node };
 }

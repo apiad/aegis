@@ -12,7 +12,7 @@ import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refresh
 import { setScroller } from "./highlight.js";
 import { Viewer, peekRoots } from "./viewer.js";
 import { Canvas } from "./canvas.js";
-import { copyRow, installCopy } from "./copy.js";
+import { copyRow, installCopy, rowText } from "./copy.js";
 import { Find } from "./find.js";
 import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
@@ -25,7 +25,7 @@ import { Palette } from "./palette.js";
 import { entryIcon, glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import * as cmenu from "./menu.js";
-import { insertIntoComposer, quoted, rangeText } from "./quote.js";
+import { clampToRow, insertIntoComposer, quoted, rangeText } from "./quote.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
@@ -368,7 +368,11 @@ const unhash = (s) => {
 };
 function route(hash = location.hash) {
   const h = hash.slice(1);
-  if (h.startsWith("s=")) return { view: "session", id: h.slice(2) };
+  // A row's link (its menu's Copy link) names the entry to reveal after "&at=".
+  if (h.startsWith("s=")) {
+    const [id, at] = h.slice(2).split("&at=");
+    return at ? { view: "session", id, at } : { view: "session", id };
+  }
   if (h.startsWith("t=")) return { view: "term", id: h.slice(2) };
   if (h.startsWith("read=")) return { view: "read", id: h.slice(5) };
   // Window n of a session's canvas, a browser tab of its own (js/canvas.js).
@@ -1113,6 +1117,7 @@ function render() {
     if (newView) helpTab.show(r.id);
     setTitle("Help · aegis");
   } else if (r.view === "session") {
+    if (r.at) landEntry = { key: r.id, id: r.at }; // revealed once its transcript lands
     watchHost(forKey(r.id).server || "");
     // Shown first: follow() sizes the message box, which measures 0 while hidden.
     show("session");
@@ -3615,6 +3620,58 @@ function selectionItems(range) {
   ];
 }
 cmenu.bar($("entries"), selectionItems);
+
+// A transcript row's menu (spec 06), by kind; a selection inside the row puts
+// the bar's items on top. Kinds the spec names no menu for keep the browser's,
+// unless a selection is in them.
+function rowMenu(t) {
+  const id = t.dataset?.id;
+  const e = id && transcript.entries.get(id);
+  const s = shown && sessions.get(shown);
+  if (!e || !s) return null;
+  const sel = getSelection();
+  const range = sel.rangeCount && !sel.isCollapsed ? clampToRow(sel.getRangeAt(0), t) : null;
+  const picked = range && selectionItems(range);
+  const quote = (then) => rowText(id, copyDeps).then((text) => text && then(quoted(text.trim())), (err) => toast(err.message, { kind: "error" }));
+  const reply = { id: "reply", label: "Reply", icon: "prompt", run: () => quote((q) => insertIntoComposer(q)) };
+  const fresh = {
+    id: "new",
+    label: "New session",
+    icon: "start",
+    run: () => quote((q) => openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, prompt: `From ${s.handle}:\n${q}\n\n` })),
+  };
+  const copy = { id: "copy", label: "Copy", icon: "copy", key: "c", run: () => copyRow(id, transcript.nodes.get(id), copyDeps) };
+  const link = {
+    id: "link",
+    label: "Copy link",
+    icon: "link",
+    run: () => navigator.clipboard.writeText(`${location.origin}${location.pathname}#s=${shown}&at=${id}`).catch((err) => toast(`Copy failed: ${err.message || err}`, { kind: "error" })),
+  };
+  let groups = null;
+  if (e.kind === "prose" || e.kind === "inbox") groups = [[reply, fresh], [copy, link]];
+  else if (e.kind === "user") {
+    const edit = { id: "edit", label: "Edit and resend", icon: "pencil", run: () => insertIntoComposer(e.md || "") };
+    groups = [[edit, fresh], [copy, link]];
+  } else if (e.kind === "tool") {
+    const open = e.detail?.path && !s.server && { id: "open", label: "Open file", icon: "file", run: () => openToolFile(id) };
+    const out = { id: "copyout", label: "Copy output", icon: "copy", key: "c", run: copy.run };
+    groups = [[open, out].filter(Boolean), [reply, link]];
+  }
+  if (!groups && !picked) return null;
+  return { groups: [picked || [], ...(groups || [])] };
+}
+cmenu.attach($("entries"), rowMenu, { selector: ".row[data-id]" });
+
+// A Read, Write or Edit row's file, in the viewer (file.peek, as its Show button).
+async function openToolFile(id) {
+  try {
+    const files = await conn.call("file.peek", { log_id: forKey(shown).log_id, entry_id: id });
+    for (const f of files) if (f.root_path) peekRoots.set(f.url, f.root_path);
+    viewer.open({ files, at: 0, remote: false, glyph: "file" });
+  } catch (err) {
+    toast(err.message, { kind: "error" });
+  }
+}
 // The transcript's own scroll listener runs first: it still follows after a
 // scroll it made, or one the browser made when a remounted row shrank the list.
 cmenu.follow($("tr"), () => transcript.following);

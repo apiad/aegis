@@ -237,7 +237,8 @@ export class Canvas {
     for (const [id, n] of away) if (was.get(id) !== n && id.startsWith("art-")) hold(id, () => {}, this.entryOf(id), inWindow(n));
     for (const id of this.dots) if (id !== TRANSCRIPT && !keep.has(id)) this.dots.delete(id);
     if (!keep.has(this.open)) this.open = this.n === 1 ? TRANSCRIPT : [...keep][0] || TRANSCRIPT;
-    this.closeMenuIn((n) => n.classList.contains("pane") && !keep.has(n.dataset.pane));
+    // The transcript stays though ids() leaves it out: a row's menu lives in it.
+    this.closeMenuIn((n) => n.classList.contains("pane") && n.dataset.pane !== TRANSCRIPT && !keep.has(n.dataset.pane));
     this.tabbed = this.wantTabs();
     if (!this.tabbed) this.dots.clear(); // a dot is a tab's, and the tabs are gone
     const cols = this.window().columns;

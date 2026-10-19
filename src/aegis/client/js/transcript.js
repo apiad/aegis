@@ -31,6 +31,7 @@
 import { applyKinds, fadeTables, hhmm, render, update } from "./entries.js";
 import { icon } from "./glyphs.js";
 import { unwatch, watch } from "./highlight.js";
+import * as menu from "./menu.js";
 
 const WINDOW = 200;
 
@@ -417,6 +418,14 @@ export class Transcript {
         this.since.delete(first.dataset.id);
         first.remove();
       }
+    }
+    // An open menu's row: redrawn, the menu follows the new node; gone, it
+    // closes. Only the one open target is checked, and no observer runs.
+    const c = menu.current();
+    if (c && !c.target.isConnected && c.target.matches(".row[data-id]")) {
+      const n = this.nodes.get(c.target.dataset.id);
+      if (n) menu.retarget(n);
+      else menu.close();
     }
     this.fold();
     this.mark();
