@@ -178,6 +178,12 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <li><b>The fakes' <code>/sleep N</code> script is <code>/busy N</code> now</b> (<code>tests/fake_claude.py</code>, <code>fake_opencode.py</code>, <code>fake_codex.py</code>, and every test that typed it). An aegis command shadows a harness command of the same name (<code>app.py</code>, <code>deliver</code>: <code>if name in commands.AEGIS</code>), so some 30 browser tests that typed <code>/sleep 30</code> to keep a session working would have put it to sleep. A commit of its own, before task 5's.</li>
 <li><b><code>session.restart</code> takes <code>RestartParams</code></b>, <code>LogParams</code> with an optional <code>untested</code>, since the version gate it shares with a send refuses a person's launch until the browser answers once or always (<code>app.py</code>, <code>_version_gate</code>). <code>/restart</code> and the op both go through <code>App._restart</code>, which also refuses behind a closed quota gate, as a send that starts a process does.</li>
 <li><b>A restart records a <code>restart</code> row, "restarted"</b>, which ends a cut turn like a stop's row (<code>transcript/entries.py</code>), and the session passes through asleep, so a start that fails leaves it asleep rather than in the state it had.</li>
+<li><b>The panel keeps the ids <code>#stop-session</code> and <code>#close</code></b> with the labels Sleep and Archive (<code>index.html</code>, <code>.side-acts</code>); only the old <code>#restart</code> moved, to <code>#continue</code>, so the tests and styles that name the other two hold.</li>
+<li><b>The parked placeholder reads "Asleep while idle. Typing wakes it."</b>, not "after N min": the wire carries no idle time for a session (the park record's <code>idle_s</code> lives in the transcript only).</li>
+<li><b><code>sleep_kills</code> lists background tasks and harness timers only</b> (<code>park.kills</code>, used by <code>blockers</code> and <code>registry.card</code>): the stray processes a park counts take a <code>/proc</code> scan, too dear on every publish. A monitor runs in the server and survives a sleep, so it is not listed.</li>
+<li><b>Wake is <code>session.warm</code></b>, which task 4 opened to any asleep session; the composer's keystroke warm still fires only for <code>asleep_why == "idle"</code>, as it did for parked. Restart from the menu or panel goes through <code>untestedRetry</code>, the dialog a send already uses for <code>harness_untested</code>.</li>
+<li><b>A terminal card's Close is Archive too</b> (<code>app.js</code>, <code>sessionMenu</code>), since the word Close leaves the session UI. The asleep mark reads <code>zz &lt;why&gt;</code>.</li>
+<li><b>Task 6's verify grep still finds three lines</b>: the find bar's <code>title="Close (Esc)"</code> (<code>index.html:151</code>) and a workflow run's Stop (<code>entries.js:733</code>, <code>:788</code>). Neither is a session verb.</li>
 </ul>
 
 <h2>Review focus</h2>
@@ -361,7 +367,7 @@ async def test_session_list_keeps_a_linked_servers_old_states(world):
 </div>
 </details>
 
-<details class="task" id="task-5" data-state="doing">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">session.restart and the /sleep, /restart, /archive commands</span><span class="files">session.py · app.py · commands.py · help/commands.md · tests/test_lifecycle.py · tests/test_commands.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -395,7 +401,7 @@ async def test_sleep_restart_and_archive_commands_and_their_aliases(world):
 </div>
 </details>
 
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">The client and the docs speak the new verbs</span><span class="files">index.html · app.js · fleet.js · tabs.js · base.css · glyphs.js · help/*.md · DESIGN.md · tests</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>

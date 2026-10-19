@@ -81,8 +81,8 @@ headed `> from agent:<handle>@<server> (<user>)`.
 
 ## Close a session
 
-`session_close` with `handle` closes a session: its tab goes away and it stays
-in the archive. A session you spawned, or the worker of a task you enqueued,
+`session_close` with `handle` archives a session, what a person does with
+Archive or `/archive`: its tab goes away and it stays in the archive. A session you spawned, or the worker of a task you enqueued,
 closes at once when it is done: not working, waiting on nothing, and its
 last turn ended done. Any other close, your own session's included, is
 refused the first time with what the session is doing (and, for another

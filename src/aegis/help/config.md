@@ -146,8 +146,9 @@ size leaves the default in force, and `aegis doctor` names the mistake.
 ## Parking idle sessions
 
 `park:` maps a harness to the seconds an idle session of it must be safe to
-end before aegis ends its process to free its memory. The next message
-resumes it. The sessions page says what makes a session safe to end.
+end before aegis ends its process to free its memory. The session is then
+asleep with the reason `idle`, and the next message wakes it. The sessions
+page says what makes a session safe to end.
 
 ```yaml
 park:

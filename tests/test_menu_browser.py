@@ -2,6 +2,9 @@
 and the menus built on it. Kept out of test_browser.py, whose server fixture it
 borrows; the page here may read the clipboard."""
 
+import json
+import time
+
 import pytest
 
 from .test_browser import EXPECTED_CONSOLE, browser, server, spawn  # noqa: F401
@@ -194,10 +197,11 @@ def test_a_cards_menu_follows_its_state_and_acts_on_that_card(server, page, brow
         "newtab",
         "quiet",
         "interrupt",
-        "stop",
+        "sleep",
+        "restart",
         "handoff",
         "rename",
-        "close",
+        "archive",
     ]
     assert page.locator(".cmenu .grp").count() == 3
     page.click(".cmenu [data-id=interrupt]")
@@ -205,11 +209,11 @@ def test_a_cards_menu_follows_its_state_and_acts_on_that_card(server, page, brow
     assert page.locator(card(idle)).count() == 1
 
     ids = card_menu(page, idle)
-    assert "interrupt" not in ids and "continue" in ids and "stop" in ids
-    page.click(".cmenu [data-id=stop]")
-    page.wait_for_selector(card(idle) + ".stopped")
+    assert "interrupt" not in ids and "sleep" in ids
+    page.click(".cmenu [data-id=sleep]")
+    page.wait_for_selector(card(idle) + ".asleep")
     stopped = card_menu(page, idle)
-    assert "stop" not in stopped and "continue" in stopped
+    assert "sleep" not in stopped and "continue" in stopped
     page.keyboard.press("Escape")
 
     # A long press on a touch screen opens the same items.
@@ -261,3 +265,75 @@ def test_another_members_card_offers_only_opening(server, page, browser):  # noq
     pg.wait_for_selector(card(a))
     pg.click(card(a), button="right")
     assert item_ids(pg) == ["open", "newtab"]
+
+
+def meta(srv, key: str) -> dict:
+    return json.loads(
+        (srv.root / ".aegis" / "state" / "sessions" / f"{key}.json").read_text()
+    )
+
+
+def test_the_card_menu_speaks_the_lifecycle(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    busy = spawn(page, "hello")
+    page.fill("#input", "/busy 30")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    waiting = spawn(page, "hello")
+    page.goto(f"{server.url.split('#')[0]}#fleet")
+    page.wait_for_selector(card(busy) + ".working")
+
+    ids = card_menu(page, busy)
+    assert {"interrupt", "sleep", "restart", "handoff", "archive"} <= set(ids)
+    assert not {"wake", "continue", "close", "stop"} & set(ids)
+    page.click(".cmenu [data-id=sleep]")
+    page.wait_for_selector(card(busy) + ".asleep")
+    assert page.text_content(card(busy) + " .hd .zz") == "zz slept"
+    ids = card_menu(page, busy)
+    assert {"wake", "continue", "restart"} <= set(ids)
+    assert not {"interrupt", "sleep"} & set(ids)
+
+    page.click(".cmenu [data-id=wake]")
+    page.wait_for_selector(card(busy) + ":not(.asleep)")
+    assert meta(server, busy)["pid"]
+    page.goto(f"{server.url.split('#')[0]}#s={busy}")
+    page.wait_for_selector(".row.user")
+    assert page.locator(".row.user").count() == 2  # hello and /busy; Wake sent nothing
+
+    page.goto(f"{server.url.split('#')[0]}#fleet")
+    page.wait_for_selector(card(waiting))
+    pid = meta(server, waiting)["pid"]
+    card_menu(page, waiting)
+    page.click(".cmenu [data-id=restart]")
+    for _ in range(50):
+        if meta(server, waiting)["pid"] not in (None, pid):
+            break
+        time.sleep(0.1)
+    assert meta(server, waiting)["pid"] not in (None, pid)
+    page.goto(f"{server.url.split('#')[0]}#s={waiting}")
+    page.wait_for_selector(".row.user")
+    assert page.locator(".row.user").count() == 1
+    assert page.errors == []
+
+
+def test_quiet_has_its_own_mark_and_survives_sleep(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page)
+    page.fill("#input", "/busy 30")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    page.goto(f"{server.url.split('#')[0]}#fleet")
+    page.wait_for_selector(card(a) + ".working")
+    card_menu(page, a)
+    page.click(".cmenu [data-id=quiet]")
+    page.wait_for_selector(card(a) + " .hd .quiet")
+    assert page.locator(card(a) + " .hd .zz").count() == 0
+    ids = card_menu(page, a)
+    assert "unquiet" in ids and "interrupt" in ids
+    page.click(".cmenu [data-id=sleep]")
+    page.wait_for_selector(card(a) + " .hd .zz")
+    assert page.locator(card(a) + " .hd .quiet").count() == 1
+    assert "unquiet" in card_menu(page, a)
+    assert page.errors == []

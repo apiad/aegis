@@ -1,14 +1,14 @@
 ---
 title: Sessions
 kind: concept
-when: starting, steering, renaming, stopping, parking, closing and reopening agent sessions
+when: starting, steering, renaming, sleeping, waking, restarting, parking, archiving and reopening agent sessions
 ---
 
 A session is one agent's conversation, run by its harness (Claude Code,
 OpenCode or Codex) on this server, with a tab in every browser. It outlives
-its process: a session is live while its harness runs, parked when aegis
-ended an idle harness to free its memory, stopped when someone stopped it,
-and archived once closed. Closing the browser leaves every session running.
+its process: a session is live while its harness runs, asleep when it has
+no process and keeps its conversation, and archived once you archive it.
+Closing the browser leaves every session running.
 
 ## Start a session
 
@@ -79,7 +79,7 @@ plan, its card, `session_list`, `peer_read`, `help_search`, `journal_note`,
 or closes a session, enqueues, cancels or resumes a task, arms a monitor, or
 works with artifacts. An agent can start sessions only at its own permission
 or below. `/permission` changes a live session's permission from its next
-turn, and a stopped session's when it resumes.
+turn, and an asleep session's when it wakes.
 
 ## Steer a running session
 
@@ -141,14 +141,18 @@ them too.
 ## Quiet sessions
 
 A quiet session has no tab. Its card stays in the Fleet, dimmed and marked
-`zz`, in the last group of "Needs you first". It comes back to the tab bar by
+quiet with a crossed-out eye, in the last group of "Needs you first". It comes back to the tab bar by
 itself when its turn ends done, review, needs_you or error, and stays there
 until it is quieted again; a queue worker comes back only on an error.
 
-- The Quiet button in the session panel, beside Stop, quiets a session that
+- The Quiet button in the session panel, beside Sleep, quiets a session that
   is working or waiting.
 - An agent calls `session_quiet` with a handle, its own included.
 - Clicking a quiet card in the Fleet brings the session back at once.
+
+Quiet is about the tab, not the process: a quiet session keeps working, and
+sleeping one keeps it quiet. Wake, Continue and Restart leave it quiet too;
+Reopen clears it.
 
 ## Menus
 
@@ -158,33 +162,46 @@ Shift+F10 on a selected card; Shift with a right-click keeps the browser's own
 menu. Arrows move through it, Enter runs an item, Esc closes it.
 
 It shows only what applies to that session now: Open, Open in new tab, and
-Quiet or Unquiet; then Interrupt while it works, Continue when it does not,
-Stop while it has a process, and Hand off; then Rename…, which opens the
-session with its handle ready to edit; then Close. Each acts on that
-session, not on the one shown. Another member's session offers Open and Open
-in new tab only, and a step of a running workflow shows the rest disabled,
-with the reason as the item's tooltip. A terminal's card has Open, Open in new
-tab and Close.
+Quiet or Unquiet; then Interrupt while it works, Wake and Continue while it
+is asleep, Sleep while it is not, Restart, and Hand off; then Rename…, which
+opens the session with its handle ready to edit; then Archive. Each acts on
+that session, not on the one shown. Another member's session offers Open and
+Open in new tab only, and a step of a running workflow shows the rest
+disabled, with the reason as the item's tooltip. A terminal's card has Open,
+Open in new tab and Archive.
 
 The tree in the Files view has a menu opened the same way.
 
-## Stop, close and reopen
+## Sleep, wake, restart, archive and reopen
 
-- Stop (in the session panel, or `/stop`) ends the process and keeps the
-  session and its tab; the next message starts it again with its context.
-- Close (`/close`, the panel's Close, or a middle click on the tab or card)
-  archives the session, and its tab goes away in every browser. A session
-  that is not done asks first.
+| verb | where | what it does |
+|---|---|---|
+| Interrupt | the menu, Esc, the button beside Send | ends the turn the agent is working on |
+| Sleep | the menu, the panel, `/sleep` (`/stop` is an alias) | ends the process and keeps the conversation; the session is asleep until a message wakes it. When ending it would also end a background task or a harness timer, the menu asks first and names them |
+| Wake | the menu, on an asleep session | starts the process and sends nothing |
+| Continue | the menu, on an asleep session; the panel | sends "Continue" to the agent |
+| Restart | the menu, the panel, `/restart` | ends the process and starts a fresh one on the same conversation; nothing is sent. On a working session it asks first, since it cuts the turn. Use it after a change to the agent's MCP config or when the harness hangs |
+| Archive | the menu, the panel, `/archive` (`/close` is an alias), a middle click on the tab or card | archives the session, and its tab goes away in every browser. A session that is not done asks first |
+| Reopen | the archive, an archived session's panel | gives the session a tab again, asleep, ready for the next message |
+
+An asleep session's card is marked `zz` with the reason it has no process:
+
+- `slept`: someone slept it (Sleep, `/sleep`, or an agent through
+  `session.stop`);
+- `idle`: aegis parked it (see below);
+- `exited`: the harness ended on its own;
+- `server`: the server restarted under it.
+
 - The archive is the list at the bottom of the Fleet. Filter it by title,
   handle, directory or agent; Read opens a transcript without starting anything, and
-  Reopen gives the session a tab again, stopped, ready for the next message.
+  Reopen gives the session a tab again, asleep, ready for the next message.
   Read and Reopen are icon buttons on each row, and in an archived session's
-  panel Reopen is a tile like Stop, Restart and Close.
+  panel Reopen is a tile like Sleep, Restart and Archive.
 - The archive leaves out queue workers, because a worker's result already
   went to whoever enqueued its task. When some match, the Queue workers chip
   in the archive's header says how many, and a click adds them to the list.
 - On a phone, a session marked done ends its transcript with an Archive
-  button that closes it in one tap. It stays in the archive.
+  button that archives it in one tap.
 
 ## Parked sessions
 
@@ -220,13 +237,13 @@ These sessions do not park:
   through `sh -c` does count. For Codex and OpenCode every child process
   counts, so a session of theirs with any MCP server never parks.
 
-A parked session keeps its tab, its mark and its place in the attention
-counts, and leaves the live count and the context average.
-Its Fleet card carries a `parked` chip, its composer reads "Parked to free
-memory. Typing wakes it.", and its transcript gets a row such as "parked
-after 20 min idle". The Fleet's header counts them, as in
-`3 parked · ~0.9 GB`: the memory each harness held when it parked, without
-the processes it had started.
+A parked session is asleep with the reason `idle`. It keeps its tab, its mark
+and its place in the attention counts, and leaves the live count and the
+context average. Its Fleet card carries a `zz idle` chip, its composer reads
+"Asleep while idle. Typing wakes it.", and its transcript gets a row such as
+"asleep after 20 min idle". The Fleet's header counts every asleep session,
+as in `3 asleep · ~0.9 GB idle`: the memory each parked harness held when it
+parked, without the processes it had started.
 
 Any message wakes a parked session: one you send, a monitor's or queue's
 callback, a handoff from another session, or one of aegis's nudges. Opening
@@ -235,8 +252,8 @@ harness while you type, and a "Waking · resuming the harness" row shows in
 the transcript until it is back. A wake costs one harness start, about 3 s
 for Claude Code; slow SessionStart hooks in the checkout add their own time.
 
-Stop on a parked session makes it a stopped one, which stays stopped until
-someone sends it a message.
+Sleep on a parked session changes its reason to `slept`: typing no longer
+wakes it, and it stays asleep until someone sends it a message.
 
 ## When the server restarts
 

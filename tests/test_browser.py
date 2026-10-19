@@ -695,10 +695,10 @@ def test_a_restart_brings_tabs_back_stopped_and_a_prompt_resumes(server, page):
     page.wait_for_function(
         "document.getElementById('conn-dot').className.includes('ready')", timeout=15000
     )
-    # The idle tab comes back stopped; the one the restart cut continues on its
+    # The idle tab comes back asleep; the one the restart cut continues on its
     # own, after the row that says the server stopped (#312).
     page.wait_for_function(
-        "id => document.querySelector(`#tablist .tab[data-id='${id}']`)?.classList.contains('stopped')",
+        "id => document.querySelector(`#tablist .tab[data-id='${id}']`)?.classList.contains('asleep')",
         arg=a,
         timeout=5000,
     )
@@ -708,7 +708,7 @@ def test_a_restart_brings_tabs_back_stopped_and_a_prompt_resumes(server, page):
 
     page.click(f"#tablist .tab[data-id='{a}']")
     page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
-    assert "resumes" in page.get_attribute("#input", "placeholder")
+    assert "wakes it" in page.get_attribute("#input", "placeholder")
     page.fill("#input", "/recall")
     page.press("#input", "Enter")
     try:
@@ -5470,7 +5470,7 @@ def test_close_asks_in_an_aegis_dialog_and_esc_cancels_without_interrupting(
     page.wait_for_selector(".row.tool.running")
     page.click("#close")
     page.wait_for_selector("#dialog .ok", state="visible")
-    assert "Close" in page.inner_text("#dialog .q")
+    assert "Archive" in page.inner_text("#dialog .q")
     page.keyboard.press("Escape")
     page.wait_for_selector("#dialog", state="hidden")
     assert page.is_visible(".row.tool.running"), "Esc on the dialog interrupted"
@@ -5660,7 +5660,7 @@ def test_a_middle_click_on_a_card_or_a_tab_closes_it_and_asks_unless_done(server
     assert page.errors == []
 
 
-def test_the_interrupt_sits_beside_send_and_restart_sends_continue(server, page):
+def test_the_interrupt_sits_beside_send_and_continue_sends_continue(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
@@ -5675,13 +5675,13 @@ def test_the_interrupt_sits_beside_send_and_restart_sends_continue(server, page)
     box = page.locator(".composer .box").bounding_box()
     btn = page.locator("#interrupt").bounding_box()
     assert box["y"] <= btn["y"] and btn["y"] + btn["height"] <= box["y"] + box["height"]
-    assert page.is_disabled("#restart")
+    assert page.is_disabled("#continue")
     page.click("#interrupt")
     turns_done(page, 1)
     # The server sends the "interrupted" row before the idle state, and the
     # card draws that state on the frame after it lands (#158): wait for it.
     page.wait_for_selector("#interrupt", state="hidden", timeout=5000)
-    page.click("#restart")
+    page.click("#continue")
     page.wait_for_selector(".row.user >> text=Continue")
     turns_done(page, 2)
     assert page.errors == []
