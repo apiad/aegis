@@ -5,11 +5,8 @@ survives, after the quote."""
 
 import pytest
 
-from .test_browser import (
-    EXPECTED_CONSOLE,
-    spawn,
-    turns_done,
-)  # noqa: F401
+from .test_browser import EXPECTED_CONSOLE, spawn, turns_done
+from .test_browser import browser, btw_server, server  # noqa: F401
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
@@ -228,8 +225,10 @@ def test_a_selection_across_two_rows_gets_no_bar(server, page):  # noqa: F811
 
 
 def test_new_session_opens_the_form_with_the_source_and_the_quote(
-    server, page, tmp_path
-):  # noqa: F811
+    server,  # noqa: F811
+    page,
+    tmp_path,
+):
     page.goto(server.url)
     spawn(page, "/md alpha kiwi beta")
     handle = page.locator("#s-handle").inner_text()
@@ -321,8 +320,9 @@ def test_row_menus_by_kind(server, page, tmp_path):  # noqa: F811
 
 
 def test_a_menu_stays_through_an_in_place_update_and_closes_when_its_row_goes(
-    server, page
-):  # noqa: F811
+    server,  # noqa: F811
+    page,
+):
     page.goto(server.url)
     spawn(page)
     page.fill("#input", "/stream 12")
