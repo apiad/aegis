@@ -129,7 +129,7 @@ async def test_no_delta_line_is_stored(cx):
 
 
 async def test_interrupt_ends_the_turn_and_marks_the_call(cx):
-    await cx.session.send("/sleep 5")
+    await cx.session.send("/busy 5")
     await until(
         lambda: any(e["kind"] == "tool" for e in cx.session.entries()), what="the call"
     )
@@ -237,7 +237,7 @@ async def test_an_exit_leaves_the_session_stopped(cx):
 
 
 async def test_a_prompt_sent_mid_turn_is_steered_into_the_same_turn(cx):
-    await cx.session.send("/sleep 0.6")
+    await cx.session.send("/busy 0.6")
     await until(
         lambda: any(e["kind"] == "tool" for e in cx.session.entries()), what="the call"
     )
@@ -315,7 +315,7 @@ async def test_the_catalog_has_the_fakes_models_skills_and_codex_commands(cx):
     cat = await cx.session.catalog_task
     assert [m.value for m in cat.models][:2] == ["openai/fake-pro", "openai/fake-flash"]
     names = [c["name"] for c in cat.commands]
-    assert names[:2] == ["compact", "review"] and "sleep" in names
+    assert names[:2] == ["compact", "review"] and "busy" in names
 
 
 async def test_a_free_model_shows_zero_cost(tmp_path, fake_codex):

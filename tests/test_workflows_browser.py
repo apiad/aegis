@@ -169,7 +169,7 @@ def test_the_card_docks_beside_the_transcript_as_a_file_does(server, page):  # n
 def test_the_running_card_counts_up_without_redrawing(server, page):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
-    arm = {"definition": flow("/sleep 6", RESULT), "args": {}}
+    arm = {"definition": flow("/busy 6", RESULT), "args": {}}
     spawn(page, "/mcp workflow_arm " + json.dumps(arm))
     page.click(".wfcard[data-status=armed] button >> text=Approve and run")
     card = ".wfcard[data-status=running]"
@@ -205,7 +205,7 @@ def test_the_running_card_counts_up_without_redrawing(server, page):  # noqa: F8
 def test_a_stopped_run_shows_its_running_node_and_seq_stopped(server, page):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
-    arm = {"definition": flow("/sleep 10", RESULT), "args": {}}
+    arm = {"definition": flow("/busy 10", RESULT), "args": {}}
     spawn(page, "/mcp workflow_arm " + json.dumps(arm))
     page.click(".wfcard[data-status=armed] button >> text=Approve and run")
     page.wait_for_selector(

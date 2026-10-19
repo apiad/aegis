@@ -61,7 +61,7 @@ async def test_skip_busy_off_and_people_only(world, tmp_path):
     assert (await world.app.registry.call("recap.request", {"log_id": a.log_id}))[
         "status"
     ] == "skip"
-    await a.send("/sleep 2")
+    await a.send("/busy 2")
     await until(lambda: a.status == "working", what="working")
     assert (
         await world.app.registry.call(

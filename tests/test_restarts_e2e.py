@@ -27,7 +27,7 @@ def said(s, text):
 
 
 async def mid_turn(s):
-    await s.send("/sleep 30")
+    await s.send("/busy 30")
     await until(lambda: any(e["kind"] == "tool" for e in s.entries()), what="the call")
 
 
@@ -62,7 +62,7 @@ async def test_a_harness_killed_by_the_units_sigterm_still_continues(world):
 
 async def test_a_worker_killed_by_sigterm_keeps_its_task_and_finishes_it(world):
     a = await world.spawn()
-    out = await turn(a, mcp("queue_enqueue", queue="general", payload="/sleep 30"))
+    out = await turn(a, mcp("queue_enqueue", queue="general", payload="/busy 30"))
     task_id = json.loads(out.removeprefix("mcp ok: "))["task_id"]
     t = world.app.queues.tasks[task_id]
     await until(
@@ -86,7 +86,7 @@ async def test_a_worker_killed_by_sigterm_keeps_its_task_and_finishes_it(world):
 
 async def worker_mid_turn(world):
     a = await world.spawn()
-    out = await turn(a, mcp("queue_enqueue", queue="general", payload="/sleep 30"))
+    out = await turn(a, mcp("queue_enqueue", queue="general", payload="/busy 30"))
     task_id = json.loads(out.removeprefix("mcp ok: "))["task_id"]
     t = world.app.queues.tasks[task_id]
     await until(

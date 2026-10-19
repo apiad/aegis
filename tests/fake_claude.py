@@ -3,7 +3,7 @@
 It reads user messages and control requests on stdin and writes stream-json on
 stdout. The text of a prompt picks a script:
 
-    /sleep N       a Bash call that takes N seconds, then text and a result.
+    /busy N        a Bash call that takes N seconds, then text and a result.
                    Prompts that arrive meanwhile are echoed at the tool
                    boundary and answered in the same turn, as Claude does.
     /deafsleep N   the same, but it ignores interrupts.
@@ -26,7 +26,7 @@ stdout. The text of a prompt picks a script:
     /mcp T JSON    call tool T of the aegis MCP server named in --mcp-config with
                    arguments JSON, as a tool call and its result, then a result.
     /script JSON   a list of steps in one turn: ["sleep", N] waits N seconds
-                   (an interrupt ends the turn, as /sleep's does); [T, {args}]
+                   (an interrupt ends the turn, as /busy's does); [T, {args}]
                    calls aegis tool T as /mcp does. Then text naming each
                    call's outcome, and a result.
     /bgtask N      start a background task (task_started) and end the turn; N
@@ -138,7 +138,7 @@ state: dict = {
     "effort": _arg("--effort"),
 }
 SCRIPTS = (
-    "sleep",
+    "busy",
     "deafsleep",
     "fail",
     "notice",
@@ -526,7 +526,7 @@ def run(text: str) -> None:
     before = earlier_prompts()
     with open(prompts_file(), "a") as f:
         f.write(json.dumps(text) + "\n")
-    if word in ("/sleep", "/deafsleep"):
+    if word in ("/busy", "/deafsleep"):
         state["deaf"] = word == "/deafsleep"
         tid = tool_id()
         assistant(

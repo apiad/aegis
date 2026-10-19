@@ -95,7 +95,7 @@ async def test_only_the_main_agent_ends_the_run_with_fail(world):
 
 @pytest.mark.slow
 async def test_the_runs_deadline_ends_it_without_asking(world):
-    body = f"  seq:\n    - {leaf('slow', 'Sleep.', '/sleep 20')}\n  say: One."
+    body = f"  seq:\n    - {leaf('slow', 'Sleep.', '/busy 20')}\n  say: One."
     main, run = await armed(world, wf(body).replace("root:", "deadline: 2s\nroot:"))
     wf_ = world.app.workflows
     await until(lambda: wf_.runs[run].status != "running", timeout=10)
@@ -169,7 +169,7 @@ async def test_skip_gives_later_steps_its_value(world):
 
 
 async def test_the_main_agent_stops_one_node_and_the_run_waits(world):
-    body = f"  par:\n    - {leaf('long', 'Work long.', '/sleep 30')}\n    - {leaf('ok', 'Finish.', report(wait=1))}\n  say: Both."
+    body = f"  par:\n    - {leaf('long', 'Work long.', '/busy 30')}\n    - {leaf('ok', 'Finish.', report(wait=1))}\n  say: Both."
     main, run = await armed(world, wf(body))
     wf_ = world.app.workflows
     await until(
@@ -263,7 +263,7 @@ async def test_a_session_main_step_is_the_main_agents_and_spawns_nothing(world):
 
 
 async def test_stopping_a_run_never_interrupts_the_main_agent_at_its_step(world):
-    long = MAIN.replace('prompt: "Check the deploy."', 'prompt: "/sleep 4"')
+    long = MAIN.replace('prompt: "Check the deploy."', 'prompt: "/busy 4"')
     main, run = await armed(world, long, settle=False)
     wf_ = world.app.workflows
     await until(

@@ -712,7 +712,7 @@ async def test_a_handoff_reaches_a_session_on_the_linked_server(pair):
 async def test_a_handoff_with_interrupt_cuts_the_far_turn_first(pair):
     alpha, beta = pair
     here, far = await alpha.spawn(), await beta.spawn()
-    await far.send("/sleep 20")
+    await far.send("/busy 20")
     await until(lambda: far.status == "working", what="beta's long turn")
     out = await turn(
         here,

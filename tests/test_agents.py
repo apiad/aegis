@@ -222,7 +222,7 @@ async def test_quota_read_returns_the_snapshot(world):
 # -- the inbox ----------------------------------------------------------------------
 async def test_messages_to_a_busy_session_are_held_and_arrive_once_in_one_turn(world):
     a, b = await world.spawn(), await world.spawn()
-    await b.send("/sleep 1")
+    await b.send("/busy 1")
     await until(
         lambda: b.status == "working" and any(e["kind"] == "tool" for e in b.entries()),
         what="b busy",
@@ -684,7 +684,7 @@ async def test_the_parallel_limit_holds_tasks_back(world):
     ids = []
     for i in range(2):
         said = await turn(
-            a, mcp("queue_enqueue", queue="solo", payload="/sleep 1", callback=False)
+            a, mcp("queue_enqueue", queue="solo", payload="/busy 1", callback=False)
         )
         ids.append(json.loads(said.removeprefix("mcp ok: "))["task_id"])
     first, second = (world.app.queues.tasks[i] for i in ids)
@@ -695,7 +695,7 @@ async def test_the_parallel_limit_holds_tasks_back(world):
 async def test_agents_cancel_only_their_own_tasks(world):
     a, b = await world.spawn(), await world.spawn()
     said = await turn(
-        a, mcp("queue_enqueue", queue="solo", payload="/sleep 30", callback=False)
+        a, mcp("queue_enqueue", queue="solo", payload="/busy 30", callback=False)
     )
     task_id = json.loads(said.removeprefix("mcp ok: "))["task_id"]
     said = await turn(b, mcp("task_cancel", task_id=task_id))
@@ -706,7 +706,7 @@ async def test_agents_cancel_only_their_own_tasks(world):
 
 async def test_a_running_task_resumes_after_a_restart(world):
     a = await world.spawn()
-    said = await turn(a, mcp("queue_enqueue", queue="general", payload="/sleep 30"))
+    said = await turn(a, mcp("queue_enqueue", queue="general", payload="/busy 30"))
     task_id = json.loads(said.removeprefix("mcp ok: "))["task_id"]
     t = world.app.queues.tasks[task_id]
     await until(

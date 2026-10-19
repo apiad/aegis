@@ -181,7 +181,7 @@ def test_a_cards_menu_follows_its_state_and_acts_on_that_card(server, page, brow
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     busy = spawn(page)
-    page.fill("#input", "/sleep 30")
+    page.fill("#input", "/busy 30")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
     idle = spawn(page, "hello")

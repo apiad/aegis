@@ -39,7 +39,7 @@ async def test_a_parked_session_has_no_process_and_resumes_with_its_context(worl
 async def test_a_turn_or_a_held_message_wins_over_a_park(world):
     a = await world.spawn()
     await turn(a, "/hello ana")
-    sending = asyncio.create_task(a.send("/sleep 1"))
+    sending = asyncio.create_task(a.send("/busy 1"))
     await until(lambda: a.status == "working", what="the turn")
     assert not await a.park(1200)
     await sending

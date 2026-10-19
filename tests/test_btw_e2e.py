@@ -55,7 +55,7 @@ async def test_a_side_note_is_answered_into_one_block_and_costs(world):
 
 async def test_mid_turn_it_answers_and_the_agent_never_sees_it(world):
     a = await world.spawn()
-    await a.send("/sleep 2")
+    await a.send("/busy 2")
     await until(lambda: a.status == "working", what="working")
     await ask(world, a, "the hidden question")
     e = await settled(a)

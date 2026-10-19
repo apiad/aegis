@@ -139,17 +139,17 @@ async def test_notices_never_start_a_turn(h):
 
 
 async def test_a_prompt_sent_mid_turn_is_echoed_in_order_and_one_result_ends_both(h):
-    await h.session.send("/sleep 0.4")
+    await h.session.send("/busy 0.4")
     await until(lambda: tools(h.session), what="the tool call")
     await h.session.send("steer this")
     await until(lambda: h.session.status == "idle", what="idle")
     users = [e["md"] for e in h.session.entries() if e["kind"] == "user"]
-    assert users == ["/sleep 0.4", "steer this"]
+    assert users == ["/busy 0.4", "steer this"]
     assert h.statuses() == ["idle", "working", "idle"]
 
 
 async def test_interrupt_ends_the_turn(h):
-    await h.session.send("/sleep 5")
+    await h.session.send("/busy 5")
     await until(lambda: tools(h.session), what="the tool call")
     await h.session.interrupt()
     await until(lambda: h.session.status == "idle", what="idle after interrupt")

@@ -129,7 +129,7 @@ async def test_text_streams_before_the_turn_ends(oc):
 
 
 async def test_a_prompt_sent_mid_turn_is_answered_in_the_same_turn(oc):
-    await oc.session.send("/sleep 0.6")
+    await oc.session.send("/busy 0.6")
     await until(
         lambda: any(e["kind"] == "tool" for e in oc.session.entries()), what="the call"
     )
@@ -147,7 +147,7 @@ async def test_a_prompt_sent_mid_turn_is_answered_in_the_same_turn(oc):
 
 
 async def test_an_inbox_message_waits_for_the_turn_and_arrives_as_its_own(oc):
-    await oc.session.send("/sleep 0.5")
+    await oc.session.send("/busy 0.5")
     await until(lambda: oc.session.status == "working", what="working")
     await oc.session.deliver("> from monitor:m1 · done", "the build finished")
     assert len(oc.session.held) == 1
@@ -163,7 +163,7 @@ async def test_an_inbox_message_waits_for_the_turn_and_arrives_as_its_own(oc):
 
 
 async def test_interrupt_marks_the_call_interrupted_and_it_stays_so(oc):
-    await oc.session.send("/sleep 5")
+    await oc.session.send("/busy 5")
     await until(
         lambda: any(e["kind"] == "tool" for e in oc.session.entries()), what="the call"
     )
@@ -303,7 +303,7 @@ async def test_an_interrupt_that_cannot_reach_the_child_still_times_out(
     h.session = h.make(interrupt_timeout=0.3)
     await h.session.start()
     try:
-        await h.session.send("/sleep 3")
+        await h.session.send("/busy 3")
         await until(lambda: h.session.status == "working", what="working")
 
         async def refuse():

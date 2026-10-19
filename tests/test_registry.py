@@ -73,7 +73,7 @@ async def test_booting_idle_sessions_writes_and_publishes_nothing(world):
 async def test_a_session_working_at_shutdown_is_marked_once(world):
     r = world.registry()
     s = await r.spawn(world.spec())
-    await s.send("/sleep 5")
+    await s.send("/busy 5")
     await until(lambda: any(e["kind"] == "tool" for e in s.entries()), what="the call")
     await r.shutdown()
     r2 = world.registry()
@@ -93,7 +93,7 @@ async def test_a_session_working_at_shutdown_is_marked_once(world):
 async def test_a_turn_cut_by_a_restart_boots_as_an_error(world):
     r = world.registry()
     s = await r.spawn(world.spec())
-    await s.send("/sleep 5")
+    await s.send("/busy 5")
     await until(lambda: any(e["kind"] == "tool" for e in s.entries()), what="the call")
     await r.shutdown()
     r2 = world.registry()
@@ -431,7 +431,7 @@ def crash(r):
 
 async def mid_turn(world, r):
     s = await r.spawn(world.spec())
-    await s.send("/sleep 30")
+    await s.send("/busy 30")
     await until(lambda: any(e["kind"] == "tool" for e in s.entries()), what="the call")
     return s
 
@@ -587,7 +587,7 @@ async def test_a_continue_waits_for_a_turn_that_started_first(world):
     await r.shutdown()
     r2 = world.registry()
     s2 = r2.sessions[s.log_id]
-    await s2.send("/sleep 1")
+    await s2.send("/busy 1")
     await until(lambda: s2.status == "working", what="the first turn")
     await r2.continue_after_boot()
     assert [m["body"] for m in s2.held] == [restarts.RESTARTED]

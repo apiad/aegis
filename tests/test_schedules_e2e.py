@@ -93,7 +93,7 @@ async def test_a_run_that_asks_the_person_stays_open(world):
 
 async def test_wait_holds_one_tick_during_a_live_run_and_fires_it_after(world):
     t = frozen(world)
-    create(world, "slow-one", "/sleep 1")
+    create(world, "slow-one", "/busy 1")
     for _ in range(3):
         await tick(world, t)
     assert outs(world, "slow-one") == ["fired", "held", "held"]
@@ -104,7 +104,7 @@ async def test_wait_holds_one_tick_during_a_live_run_and_fires_it_after(world):
 
 async def test_skip_drops_a_tick_during_a_live_run(world):
     t = frozen(world)
-    create(world, "skip-one", "/sleep 1", overlap="skip")
+    create(world, "skip-one", "/busy 1", overlap="skip")
     await tick(world, t)
     await tick(world, t)
     assert outs(world, "skip-one") == ["fired", "skipped"]
@@ -115,7 +115,7 @@ async def test_skip_drops_a_tick_during_a_live_run(world):
 
 async def test_parallel_starts_a_second_session_while_the_first_works(world):
     t = frozen(world)
-    create(world, "two-at-once", "/sleep 1", overlap="parallel")
+    create(world, "two-at-once", "/busy 1", overlap="parallel")
     await tick(world, t)
     await tick(world, t)
     a, b = runs(world, "two-at-once", "fired")
@@ -125,7 +125,7 @@ async def test_parallel_starts_a_second_session_while_the_first_works(world):
 
 async def test_a_run_whose_tab_a_person_closes_ends_and_lets_a_held_tick_go(world):
     t = frozen(world)
-    create(world, "closed-early", "/sleep 5")
+    create(world, "closed-early", "/busy 5")
     await tick(world, t)
     await tick(world, t)
     (fired,) = runs(world, "closed-early", "fired")
@@ -207,7 +207,7 @@ async def test_an_idle_session_gets_the_prompt_in_its_inbox_at_once(world):
 async def test_a_working_session_gets_the_prompt_when_its_turn_ends(world):
     t = frozen(world)
     a = await world.spawn()
-    await a.send("/sleep 1")
+    await a.send("/busy 1")
     await until(lambda: a.status == "working", 5, "the turn")
     create(
         world,
@@ -370,7 +370,7 @@ async def test_with_spawn_on_a_working_child_keeps_the_run_live(world):
     create(
         world,
         "with-kids",
-        mcp("session_spawn", agent="opus", prompt="/sleep 1"),
+        mcp("session_spawn", agent="opus", prompt="/busy 1"),
         fire={"agent": "opus", "spawn": True},
     )
     await tick(world, t)
@@ -431,7 +431,7 @@ async def test_a_machine_that_slept_eight_hours_fires_once(world):
 
 async def test_a_live_run_and_a_held_tick_survive_a_restart(world):
     t = frozen(world)
-    create(world, "long-run", "/sleep 3")
+    create(world, "long-run", "/busy 3")
     await tick(world, t)
     await tick(world, t)
     await world.restart()

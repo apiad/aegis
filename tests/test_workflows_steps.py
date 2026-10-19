@@ -442,7 +442,7 @@ async def test_an_ifs_deadline_counts_while_its_command_probe_runs(world):
 
 @pytest.mark.slow
 async def test_a_group_past_its_deadline_stops_the_agent_inside_it(world):
-    slow = json.dumps("/sleep 30")
+    slow = json.dumps("/busy 30")
     text = f"""id: group
 title: Group
 say: A group with a deadline.

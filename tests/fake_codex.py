@@ -5,7 +5,7 @@ It speaks JSON-RPC on stdio in the shapes codex-cli 0.162.1 emits
 them, a ``{"type": "skill"}`` input runs one with the text after it as its
 argument), because aegis sends a ``/name`` line as a skill:
 
-    sleep N        a shell call that takes N seconds, then text. A steer
+    busy N         a shell call that takes N seconds, then text. A steer
                    meanwhile is read after the call, in the same turn.
     stream N       N words of text, one delta every 0.25 s.
     fail           a shell call that exits 1.
@@ -79,7 +79,7 @@ import uuid
 HOME = os.environ.get("FAKE_CODEX_HOME") or "/tmp/fake-codex-home"
 LOG = os.environ.get("FAKE_CODEX_LOG")
 VERSION = "0.162.1"
-SCRIPTS = ("sleep", "stream", "fail", "bash", "patch", "mcp", "spawn", "big", "ask",
+SCRIPTS = ("busy", "stream", "fail", "bash", "patch", "mcp", "spawn", "big", "ask",
            "recall", "argv", "env", "body", "exit")  # fmt: skip
 OUT = threading.Lock()
 STATE: dict = {"thread": None, "turn": None, "steer": [], "stop": threading.Event(),
@@ -290,7 +290,7 @@ def run(t: Turn, name: str, args: str, text: str) -> None:
     )
     t.user(text if name == "say" else (f"{args}" if args else name))
     extra = ""
-    if name == "sleep":
+    if name == "busy":
         if not t.shell(f"sleep {args}", "", wait=float(args or 1)):
             t.end("interrupted")
             return
