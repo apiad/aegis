@@ -74,4 +74,4 @@ async def test_warm_starts_nothing_while_the_quota_gate_holds(world, monkeypatch
     reg = world.app.sessions
     monkeypatch.setattr(reg, "quota_hold", lambda s: "the weekly window is spent")
     await world.app.registry.call("session.warm", {"log_id": a.log_id})
-    assert not a.running and a.status == "parked"
+    assert not a.running and a.asleep_why == "idle"

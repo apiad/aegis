@@ -186,7 +186,7 @@ async def test_a_dead_claude_leaves_the_session_stopped_and_the_next_prompt_resu
         what="the first result",
     )
     await h.session.send("/exit 3")
-    await until(lambda: h.session.status == "stopped", what="stopped")
+    await until(lambda: h.session.status == "asleep", what="stopped")
     last = h.session.entries()[-1]
     assert last["summary"] == "Claude Code exited with code 3"
     assert "fatal: something broke" in last["detail"]["tail"]
@@ -252,7 +252,7 @@ async def test_a_stderr_file_that_cannot_be_written_still_reports_the_exit(
     await h.session.start()
     try:
         await h.session.send("/exit 3")
-        await until(lambda: h.session.status == "stopped", what="stopped")
+        await until(lambda: h.session.status == "asleep", what="stopped")
         last = h.session.entries()[-1]
         assert last["summary"] == "Claude Code exited with code 3"
         assert "fatal: something broke" in last["detail"]["tail"]
@@ -265,8 +265,8 @@ async def test_stop_ends_the_child_and_keeps_the_session(h):
     assert pid is not None
     await h.session.stop()
     assert (
-        h.session.status == "stopped"
-        and h.session.entries()[-1]["summary"] == "stopped"
+        h.session.status == "asleep"
+        and h.session.entries()[-1]["summary"] == "asleep"
     )
     with pytest.raises(ProcessLookupError):
         os.kill(pid, 0)
@@ -284,7 +284,7 @@ async def test_a_stopped_session_resumes_with_its_context_in_the_same_store(h):
     await until(lambda: h.session.status == "idle", what="the resumed turn")
     assert h.session.resume_id == first_id
     summaries = [e["summary"] for e in h.session.entries() if e["kind"] == "system"]
-    assert "stopped" in summaries and "resumed" in summaries
+    assert "asleep" in summaries and "resumed" in summaries
     prose = [e["md"] for e in h.session.entries() if e["kind"] == "prose"]
     assert prose[-1] == "earlier: remember PELICAN"
 
@@ -298,7 +298,7 @@ async def test_a_session_rebuilt_from_its_meta_resumes(h):
     kept = {k: v for k, v in h.session.meta().items() if k in ("resume_id", "title")}
     h.published.clear()
     reborn = h.session = h.make(**kept)
-    assert reborn.status == "stopped" and not reborn.running
+    assert reborn.status == "asleep" and not reborn.running
     h.snapshot = reborn.view()  # a browser subscribes after the restart
     await reborn.send("/recall")
     await until(lambda: reborn.status == "idle", what="the resumed turn")
@@ -311,14 +311,14 @@ async def test_a_missing_binary_on_resume_leaves_it_stopped(h):
     h.session.harness.bin = "/no/such/claude"
     with pytest.raises(FileNotFoundError):
         await h.session.send("hello")
-    assert h.session.status == "stopped" and not h.session.running
+    assert h.session.status == "asleep" and not h.session.running
     h.session.harness.bin = h.fake
 
 
 async def test_interrupt_on_a_stopped_session_does_nothing(h):
     await h.session.stop()
     await h.session.interrupt()
-    assert h.session.status == "stopped"
+    assert h.session.status == "asleep"
 
 
 async def test_a_missing_binary_raises_on_start(tmp_path):

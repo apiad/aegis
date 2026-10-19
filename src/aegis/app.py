@@ -1300,8 +1300,8 @@ class App:
                     "It continues when the gate opens.",
                 )
             not_saved = None
-            if not s.running and s.status != "parked":
-                # A person resuming a stopped session; a parked one wakes
+            if not s.running and s.asleep_why != "idle":
+                # A person resuming a session that slept; a parked one wakes
                 # unattended (spec §06).
                 not_saved = await self._version_gate(
                     caller, s.spec.harness, p.untested, s
@@ -1552,10 +1552,10 @@ class App:
 
         @r.op("session.warm", LogParams, owned="log_id")
         async def warm(p: LogParams, caller):
-            # Someone started typing to a parked session: start its harness while
-            # they write (park.py). A closed quota gate starts nothing.
+            # Someone started typing to an asleep session: start its harness
+            # while they write (park.py). A closed quota gate starts nothing.
             s = reg.open(p.log_id)
-            if s.status == "parked" and not reg.quota_hold(s):
+            if s.status == "asleep" and not reg.quota_hold(s):
                 await s.ensure_running()
 
         @r.op("session.unquiet", LogParams, owned="log_id")

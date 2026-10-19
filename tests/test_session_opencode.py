@@ -106,7 +106,7 @@ async def test_a_prompt_runs_a_turn_with_cost_context_title_and_model(oc):
     # ends: that update still says stopped, which the session was.
     assert oc.statuses() in (
         ["idle", "working", "idle"],
-        ["stopped", "idle", "working", "idle"],
+        ["asleep", "idle", "working", "idle"],
     )
     assert oc.prose() == ["you said: hello"]
     assert s.cost_usd == pytest.approx(0.002) and s.context_tokens == 1030
@@ -233,7 +233,7 @@ async def test_a_command_shows_as_typed_and_an_unknown_one_ends_the_turn(oc):
 
 async def test_an_exit_leaves_the_session_stopped(oc):
     await oc.session.send("/exit 3")
-    await until(lambda: oc.session.status == "stopped", timeout=5, what="stopped")
+    await until(lambda: oc.session.status == "asleep", timeout=5, what="stopped")
     assert oc.session.entries()[-1]["summary"] == "OpenCode exited with code 3"
 
 
@@ -291,7 +291,7 @@ async def test_a_restart_that_fails_leaves_the_session_stopped(oc):
     oc.session._proc._bin = "/no/such/opencode"
     with pytest.raises(Exception):
         await oc.session.send("again")
-    assert oc.session.status == "stopped" and not oc.session.running
+    assert oc.session.status == "asleep" and not oc.session.running
     oc.session.harness.bin = oc.fake
     await oc.turn("after")
 

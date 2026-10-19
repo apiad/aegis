@@ -668,12 +668,12 @@ class Fold:
                     "ok",
                     ts,
                     d.SYSTEM_GLYPH,
-                    summary=f"parked after {mins} min idle",
+                    summary=f"asleep after {mins} min idle",
                 )
             )
         if kind in ("stop", "server_stopped"):
             if kind == "stop":
-                line = "stopped"
+                line = "asleep"
             else:
                 line = rec.get("declined") or (
                     "aegis stopped unexpectedly during a turn"

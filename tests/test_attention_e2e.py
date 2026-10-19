@@ -95,7 +95,7 @@ async def test_a_live_monitor_is_waiting_and_cancelling_it_is_done(world):
 async def test_a_dead_process_is_an_error_until_the_next_send(world):
     a = await world.spawn()
     await a.send("/exit 3")
-    await until(lambda: a.status == "stopped", timeout=8, what="the exit")
+    await until(lambda: a.status == "asleep", timeout=8, what="the exit")
     c = a.wire()
     assert c["attention"] == "error"
     assert c["attention_line"] == "Claude Code exited with code 3"

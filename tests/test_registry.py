@@ -65,7 +65,7 @@ async def test_booting_idle_sessions_writes_and_publishes_nothing(world):
     r2 = world.registry()
     assert world.stores() == before, "boot wrote to a store"
     assert world.published == [], "boot published"
-    assert [s.status for s in r2.open_sessions()] == ["stopped", "stopped"]
+    assert [s.status for s in r2.open_sessions()] == ["asleep", "asleep"]
     assert {s.handle for s in r2.open_sessions()} == {a.handle, b.handle}
     assert [s.title for s in r2.open_sessions()] == ["one", "two"]
 
@@ -407,7 +407,7 @@ async def test_the_meta_names_the_running_harness_and_its_last_exit(world):
     m = json.loads(r.metas.path(s.log_id).read_text())
     assert m["pid"] == s.pid and m["pid_started"] == restarts.started_at(s.pid)
     await s.send("/exit 3")
-    await until(lambda: s.status == "stopped", what="the exit")
+    await until(lambda: s.status == "asleep", what="the exit")
     m = json.loads(r.metas.path(s.log_id).read_text())
     assert m["pid"] is None and m["last_exit"]["code"] == 3 and m["last_exit"]["at"] > 0
     await r.shutdown()
@@ -461,7 +461,7 @@ async def test_a_harness_that_failed_on_its_own_is_not_continued(world):
     r = world.registry()
     s = await r.spawn(world.spec())
     await s.send("/exit 1")
-    await until(lambda: s.status == "stopped", what="the exit")
+    await until(lambda: s.status == "asleep", what="the exit")
     await r.shutdown()
     r2 = world.registry(restarts.Previous(True, time.time()))
     assert r2.continuing == {} and r2.declined == set()
@@ -472,7 +472,7 @@ async def test_an_exit_by_sigterm_just_before_a_clean_stop_counts_as_the_stop(wo
     r = world.registry()
     s = await mid_turn(world, r)
     os.kill(s.pid, signal.SIGTERM)
-    await until(lambda: s.status == "stopped", what="the SIGTERM exit")
+    await until(lambda: s.status == "asleep", what="the SIGTERM exit")
     await r.shutdown()
     # Long before the stop: not the stop's doing.
     far = world.registry(restarts.Previous(True, time.time() + 60))
@@ -527,7 +527,7 @@ async def test_a_turn_cut_too_often_waits_for_a_person_with_its_messages(
     s2 = r2.sessions[s.log_id]
     assert s2.wire()["attention_line"] == restarts.DECLINED
     await r2.continue_after_boot()
-    assert s2.status == "stopped" and [m["body"] for m in s2.held] == ["the held body"]
+    assert s2.status == "asleep" and [m["body"] for m in s2.held] == ["the held body"]
     await r2.shutdown()
 
 
@@ -560,7 +560,7 @@ async def test_a_continue_that_cannot_start_keeps_its_messages(world):
     r2 = world.registry(bin=str(world.roots.state_root / "no-such-claude"))
     await r2.continue_after_boot()  # raises nothing, and tries both
     for s in (r2.sessions[a.log_id], r2.sessions[b.log_id]):
-        assert s.status == "stopped"
+        assert s.status == "asleep"
         assert [m["body"] for m in s.held] == [restarts.RESTARTED]
     await r2.shutdown()
 
@@ -572,7 +572,7 @@ async def test_an_idle_harness_killed_by_sigterm_before_a_clean_stop_is_not_cont
     s = await r.spawn(world.spec())
     await turn(s, "hello")
     os.kill(s.pid, signal.SIGTERM)
-    await until(lambda: s.status == "stopped", what="the SIGTERM exit")
+    await until(lambda: s.status == "asleep", what="the SIGTERM exit")
     await r.shutdown()
     r2 = world.registry(restarts.Previous(True, time.time()))
     assert r2.continuing == {} and r2.declined == set()

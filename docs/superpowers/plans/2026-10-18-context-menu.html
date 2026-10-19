@@ -171,6 +171,10 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <li><b>The guard reason covers a workflow's lock and a missing connection</b> (<code>offline()</code> or a linked server down, <code>s.off</code>); the panel's state guards (<code>app.js:1772-1782</code>) decide which items show rather than disable them, as the spec's "absent, not disabled" says.</li>
 <li><b>An action's error goes to the panel only for the shown session</b>, else a toast (<code>app.js</code>, <code>failed</code>): the panel's handlers wrote <code>#side-error</code>, which shows another session's panel.</li>
 <li><b>The provider is <code>cardMenu</code>, attached by <code>attachCardMenu</code></b>, a hoisted function, since a linked server's <code>.cards</code> box is built in <code>drawRemotes</code> above the provider's definition; <code>sessionTarget</code> already names the composer's dictation target (<code>app.js:2873</code>).</li>
+<li><b>Task 4's server-restart case is an idle session, not a working one.</b> A turn the restart cut is continued at boot (<code>registry.py</code>, <code>boot</code>, <code>self.continuing</code>), so it does not stay asleep; an idle one does, as <code>("asleep", "server")</code>. <code>asleep_from</code> also reads any live <code>last_status</code> (idle, working, error) as <code>server</code>, since only a server's end leaves one in a meta with no process.</li>
+<li><b>An old meta's <code>stopped</code> reads as <code>slept</code> even when the harness had exited</b>: before #479 an exit and a Stop wrote the same value. New metas persist <code>asleep_why</code>.</li>
+<li><b>The far list's mapping is <code>agent_ops.far_entry</code></b>, a module function the test calls directly, where the loop in <code>far_sessions</code> did it inline. A far <code>asleep_why</code> outside <code>ASLEEP_WHY</code> becomes null, like any far text. <code>session_list</code> entries here carry <code>asleep_why</code> for an asleep session.</li>
+<li><b>Stop on a parked session changes only the reason</b> (<code>session.py</code>, <code>stop</code>): it was already asleep, so it records the stop and sets <code>asleep_why</code> to <code>slept</code>.</li>
 </ul>
 
 <h2>Review focus</h2>
@@ -312,7 +316,7 @@ def test_another_members_card_offers_only_opening(page, server):
 
 <div class="slice">slice 2 · lifecycle · branch menu-2-lifecycle</div>
 
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="doing">
 <summary><span class="num">4</span><span><span class="ttl">One asleep state with its reason</span><span class="files">session.py · registry.py · agent_ops.py · app.py · entries.py · meta.py · nudges.py · park.py · tests</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>

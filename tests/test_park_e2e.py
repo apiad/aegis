@@ -27,8 +27,8 @@ async def test_a_parked_session_has_no_process_and_resumes_with_its_context(worl
     await turn(a, "hello ana")
     pid = a.pid
     assert await a.park(1200)
-    assert a.status == "parked" and not a.running and a.parked_rss > 0
-    assert a.entries()[-1]["summary"] == "parked after 20 min idle"
+    assert a.asleep_why == "idle" and not a.running and a.parked_rss > 0
+    assert a.entries()[-1]["summary"] == "asleep after 20 min idle"
     with pytest.raises(ProcessLookupError):
         os.kill(pid, 0)
     reply = await turn(a, "/recall")
@@ -63,7 +63,7 @@ async def test_a_message_racing_a_park_is_delivered(world):
     await asyncio.sleep(0)  # the park is inside _end_process
     await a.deliver("> from agent:ben · now", "/hello again")
     assert await parking
-    assert not (a.status == "parked" and a.running)
+    assert not (a.asleep_why == "idle" and a.running)
     await until(
         lambda: any("hello again" in (e.get("md") or "") for e in a.entries()),
         timeout=8,
@@ -76,8 +76,8 @@ async def test_stop_on_a_parked_session_leaves_it_stopped(world):
     await turn(a, "/hello ana")
     await a.park(1200)
     await a.stop()
-    assert a.status == "stopped"
-    assert a.entries()[-1]["summary"] == "stopped"
+    assert a.status == "asleep"
+    assert a.entries()[-1]["summary"] == "asleep"
 
 
 async def test_a_parked_session_stays_parked_across_a_restart_and_is_not_continued(
@@ -89,9 +89,9 @@ async def test_a_parked_session_stays_parked_across_a_restart_and_is_not_continu
     log_id = a.log_id
     await world.restart()
     b = world.session(log_id)
-    assert b.status == "parked" and not b.running
+    assert b.asleep_why == "idle" and not b.running
     await asyncio.sleep(0.5)
-    assert b.status == "parked"  # nothing continued it
+    assert b.asleep_why == "idle"  # nothing continued it
     assert "hello ana" in await turn(b, "/recall")
 
 
@@ -104,7 +104,7 @@ async def test_a_parked_session_is_listed_as_parked_and_still_nudged(
     await turn(a, "write the summary")
     await a.park(1200)
     rows = await world.app.registry.call("session.list", {})
-    assert next(r for r in rows if r["handle"] == a.handle)["state"] == "parked"
+    assert next(r for r in rows if r["handle"] == a.handle)["state"] == "asleep"
     await world.app.nudges.tick()
     await until(lambda: a.running, timeout=5, what="the nudge waking it")
 
@@ -145,7 +145,7 @@ def kill(pid: int) -> None:
 async def test_an_idle_session_that_said_done_parks(parking):
     a = await parking.spawn()
     await done(a)
-    await until(lambda: a.status == "parked", timeout=5, what="the park")
+    await until(lambda: a.asleep_why == "idle", timeout=5, what="the park")
 
 
 async def test_a_turn_that_did_not_end_with_turn_end_does_not_park(parking):
@@ -180,7 +180,7 @@ async def test_the_left_behind_test_can_fail(parking, monkeypatch, tmp_path):
     pid = await leave_a_sleep(a, "21.37", tmp_path / "pid")
     try:
         await done(a)
-        await until(lambda: a.status == "parked", timeout=5, what="the park")
+        await until(lambda: a.asleep_why == "idle", timeout=5, what="the park")
     finally:
         kill(pid)
 
@@ -198,7 +198,7 @@ async def test_a_monitor_wakes_a_parked_session(parking, tmp_path):
             interval_s=1,
         ),
     )
-    await until(lambda: a.status == "parked", timeout=5, what="the park while it waits")
+    await until(lambda: a.asleep_why == "idle", timeout=5, what="the park while it waits")
     flag.touch()
     await until(
         lambda: any(e["title"].startswith("monitor:") for e in inbox(a)),
@@ -215,11 +215,11 @@ async def test_removing_the_harness_from_park_stops_new_parks_and_keeps_parked_o
     # b has not ended a turn yet, so it cannot park before the edit.
     a, b = await parking.spawn(), await parking.spawn()
     await done(a)
-    await until(lambda: a.status == "parked", timeout=5, what="the park")
+    await until(lambda: a.asleep_why == "idle", timeout=5, what="the park")
     (parking.root / ".aegis.yaml").write_text(CONFIG)
     await done(b)
     await asyncio.sleep(1.3)  # b would have parked after 1 s
-    assert b.running and a.status == "parked"
+    assert b.running and a.asleep_why == "idle"
 
 
 async def test_a_wrong_park_block_parks_nothing(tmp_path, fake_claude, fast):

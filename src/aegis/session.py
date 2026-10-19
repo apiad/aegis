@@ -1,7 +1,8 @@
 """One Claude Code session: its store, its fold, its status, and a process when
 it has one.
 
-A session exists without a process. ``stopped`` means there is none; the first
+A session exists without a process. ``asleep`` means there is none, and
+``asleep_why`` says how it lost it (``ASLEEP_WHY``); the first
 prompt starts ``claude``, with ``--resume`` once the harness has given the session
 an id, and the store and the fold simply continue (Claude prints nothing old on
 resume, measured in issue #127). Only shutdown, Stop and Close end a process:
@@ -18,7 +19,7 @@ The session is a continuous fold. Every stdout line is stored, parsed once,
 folded into entry patches and published, whatever the turn state. Status: only a
 sent prompt or a turn-bearing event moves it to ``working``, and only ``result``
 moves it back to ``idle``; system notices never do. ``error`` is an interrupt
-that went unanswered. A child that exits leaves the session ``stopped``.
+that went unanswered. A child that exits leaves the session asleep, ``exited``.
 
 A line that cannot be stored (a full disk) is logged and dropped, never raised:
 the reader that called ``_on_line`` would die with it, nothing would read the
@@ -74,6 +75,7 @@ Publish = Callable[[str, list[dict]], None]
 # line in the bench (issue #127).
 _NOW = (
     "status",
+    "asleep_why",
     "handle",
     "title",
     "model_id",
@@ -95,6 +97,19 @@ _SOON = (
     "compactions",
 )
 PUBLISH_EVERY_S = 0.25
+
+# Why an asleep session has no process: a Stop or /sleep, a park, the harness
+# ending on its own, the server restarting under it (#479).
+ASLEEP_WHY = ("slept", "idle", "exited", "server")
+
+
+def asleep_from(last_status: str, why: str | None) -> tuple[str, str | None]:
+    """The state a loaded session starts in. A meta written before #479 says
+    ``stopped`` or ``parked``; one that says a live state was cut by the server."""
+    if why in ASLEEP_WHY:
+        return "asleep", why
+    old = {"stopped": "slept", "parked": "idle", "asleep": "slept"}
+    return "asleep", old.get(last_status, "server")
 
 
 class Host:
@@ -253,7 +268,8 @@ class Session:
         archived: bool = False,
         created_at: float | None = None,
         last_activity: float | None = None,
-        last_status: str = "stopped",
+        last_status: str = "asleep",
+        asleep_why: str | None = None,
         cost_usd: float | None = None,
         context_tokens: int | None = None,
         context_window: int | None = None,
@@ -302,7 +318,7 @@ class Session:
         self.context_window = context_window
         self.activity = activity
         self.model_id = model_id
-        self.status = "parked" if last_status == "parked" else "stopped"
+        self.status, self.asleep_why = asleep_from(last_status, asleep_why)
         self._stderr_path = stderr_path
         self.harness = harness_for(spec.harness, claude_bin, opencode_bin, codex_bin)
         self._publish = publish
@@ -406,8 +422,9 @@ class Session:
             "created_at": self.created_at,
             "last_activity": self.last_activity,
             "last_status": self.status
-            if self._proc or self.status == "parked"
+            if self._proc or self.asleep_why == "idle"
             else self.last_status,
+            "asleep_why": self.asleep_why,
             "cost_usd": self.cost_usd,
             "context_tokens": self.context_tokens,
             "context_window": self.context_window,
@@ -626,7 +643,7 @@ class Session:
         if sid:
             self._set(resume_id=sid)
         self._set(parked_rss=0)
-        self._set(status="idle")
+        self._set(status="idle", asleep_why=None)
 
     async def _check_version(self) -> None:
         """Judge the harness version before a launch, and note one outside the
@@ -821,13 +838,14 @@ class Session:
     async def stop(self) -> None:
         """End the process and keep the session."""
         if self._proc is None:
-            if self.status == "parked":  # a person's Stop outranks a park
+            if self.asleep_why == "idle":  # a person's Stop outranks a park
                 self._record({"kind": "stop"})
-                self._set(status="stopped")
+                self._set(asleep_why="slept")
+                self._metas.write(self.meta())
             return
         await self._end_process()
         self._record({"kind": "stop"})
-        self._set(status="stopped")
+        self._set(status="asleep", asleep_why="slept")
         self._metas.write(self.meta())
 
     async def park(self, idle_s: float) -> bool:
@@ -841,7 +859,7 @@ class Session:
             rss = _rss(self.pid)
             await self._end_process()
             self._record({"kind": "park", "idle_s": round(idle_s), "rss": rss})
-            self._set(status="parked", parked_rss=rss)
+            self._set(status="asleep", asleep_why="idle", parked_rss=rss)
             return True
 
     async def shutdown(self) -> None:
@@ -1004,7 +1022,7 @@ class Session:
                 self._publish_timer = loop.call_later(
                     PUBLISH_EVERY_S, self._publish_now
                 )
-        if changes.get("status") in ("idle", "stopped", "error", "parked"):
+        if changes.get("status") in ("idle", "asleep", "error"):
             self._metas.write(self.meta())
         else:
             self._metas.write_soon(self.log_id, self.meta)
@@ -1114,7 +1132,7 @@ class Session:
                 "harness": self.harness.label,
             }
         )
-        self._set(status="stopped")
+        self._set(status="asleep", asleep_why="exited")
         self._host.exited(self, code, stderr_tail)
 
     def _on_error(self, text: str, idle: bool, line: str | None = None) -> None:

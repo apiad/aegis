@@ -194,7 +194,7 @@ async def test_stopping_the_session_after_a_recap_leaves_it_covered(world):
     r = await world.app.registry.call("recap.request", {"log_id": a.log_id})
     assert r["status"] == "made"
     await world.app.registry.call("session.stop", {"log_id": a.log_id})
-    await until(lambda: a.status == "stopped", what="stopped")
+    await until(lambda: a.status == "asleep", what="stopped")
     again = await world.app.registry.call("recap.request", {"log_id": a.log_id})
     assert again["status"] == "exists"
 

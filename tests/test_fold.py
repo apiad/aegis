@@ -391,7 +391,7 @@ def test_stopping_ends_running_calls_and_loses_unread_prompts():
     f, _ = run(r)
     by_kind = {(e["kind"], e["status"]) for e in f.entries()}
     assert ("user", "lost") in by_kind and ("tool", "err") in by_kind
-    assert f.entries()[-1]["summary"] == "stopped"
+    assert f.entries()[-1]["summary"] == "asleep"
 
 
 def test_resume_and_server_stopped_lines():

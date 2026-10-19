@@ -419,7 +419,7 @@ async def test_a_monitor_survives_a_restart_and_resumes_a_stopped_owner(
     await world.restart()
     a2 = world.session(log_id)
     assert (
-        a2.status == "stopped"
+        a2.status == "asleep"
         and a2.wire()["monitors"][0]["description"] == "after restart"
     )
     flag.touch()

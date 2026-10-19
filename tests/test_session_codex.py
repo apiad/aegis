@@ -188,7 +188,7 @@ async def test_an_exit_kills_what_the_child_left_and_the_resume_works(cx):
     await cx.turn("remember OKAPI")
     lease = cx.pids("LEASE")[-1]
     await cx.session.send("/exit 3")
-    await until(lambda: cx.session.status == "stopped", timeout=5, what="stopped")
+    await until(lambda: cx.session.status == "asleep", timeout=5, what="stopped")
     await until(lambda: not alive(lease), timeout=5, what="the lease holder gone")
     await cx.turn("/recall")
     assert "OKAPI" in cx.prose()[-1]
@@ -232,7 +232,7 @@ async def test_a_subagent_shows_as_a_task_with_steps(cx):
 
 async def test_an_exit_leaves_the_session_stopped(cx):
     await cx.session.send("/exit 1")
-    await until(lambda: cx.session.status == "stopped", timeout=5, what="stopped")
+    await until(lambda: cx.session.status == "asleep", timeout=5, what="stopped")
     assert any("Codex exited with code 1" in e["summary"] for e in cx.session.entries())
 
 

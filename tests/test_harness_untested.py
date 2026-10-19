@@ -253,7 +253,7 @@ async def test_spawn_line_carries_untested(world, monkeypatch):
 
 async def test_warm_parked_never_asks(world, monkeypatch):
     s = await world.spawn()
-    assert await s.park(60) and s.status == "parked"
+    assert await s.park(60) and s.asleep_why == "idle"
     untested(monkeypatch, world.fake, "99.0.0")
     await world.app.registry.call("session.warm", {"log_id": s.log_id})
     await until(lambda: s.running, timeout=5, what="warmed")
