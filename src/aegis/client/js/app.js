@@ -2731,7 +2731,7 @@ installKeys(
       if (cancelAsk() || closeInstallDialog() || closePushPanel()) return;
       if (root.dataset.side === "open") return closeSide();
       if (!keymap.hidden) help(false);
-      else if (canvas.closeMenu() || viewer.close() || find.close() || closeMonitorCard() || closeCard()) return;
+      else if (cmenu.close() || viewer.close() || find.close() || closeMonitorCard() || closeCard()) return;
       else if (route().view === "session" && !editing.size) interrupt();
     },
     help: () => help(),

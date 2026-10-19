@@ -33,7 +33,7 @@ export function attach(root, provider, opts = {}) {
   roots.set(root, entry);
   let timer = null;
   let at = null;
-  let swallow = false; // a long press opened the menu: its click does nothing
+  let swallow = false; // a long press opened the menu: the mousedown and click after it do nothing
   const stop = () => {
     clearTimeout(timer);
     timer = null;
@@ -66,6 +66,11 @@ export function attach(root, provider, opts = {}) {
   const onMove = (ev) => {
     if (timer && Math.hypot(ev.clientX - at[0], ev.clientY - at[1]) > SLOP) stop();
   };
+  // The release's mousedown would focus what is under the finger, which
+  // closes the menu through its focusout.
+  const onMouseDown = (ev) => {
+    if (swallow) ev.preventDefault();
+  };
   const onClick = (ev) => {
     if (!swallow) return;
     swallow = false;
@@ -77,6 +82,7 @@ export function attach(root, provider, opts = {}) {
   root.addEventListener("pointermove", onMove);
   root.addEventListener("pointerup", stop);
   root.addEventListener("pointercancel", stop);
+  root.addEventListener("mousedown", onMouseDown, true);
   root.addEventListener("click", onClick, true);
   return () => {
     stop();
@@ -86,6 +92,7 @@ export function attach(root, provider, opts = {}) {
     root.removeEventListener("pointermove", onMove);
     root.removeEventListener("pointerup", stop);
     root.removeEventListener("pointercancel", stop);
+    root.removeEventListener("mousedown", onMouseDown, true);
     root.removeEventListener("click", onClick, true);
   };
 }

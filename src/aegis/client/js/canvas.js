@@ -47,6 +47,7 @@
 import { drawArtifact, drawFile } from "./viewer.js";
 import { DOCKED, fileUrl, fillWorkflow, hold, inWindow, popButton, workflowTitle } from "./entries.js";
 import { icon } from "./glyphs.js";
+import * as menu from "./menu.js";
 
 const TRANSCRIPT = "transcript";
 // The canvas with nothing docked: the transcript alone (layout.DEFAULT).
@@ -58,8 +59,6 @@ const MAX_WINDOWS = 4;
 const MIN_W = 280;
 const MIN_W_TRANSCRIPT = 360;
 const MIN_H = 120;
-// A tab held this long offers Undock.
-const LONG_PRESS = 500;
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -124,16 +123,12 @@ export class Canvas {
     this.tabs = new Map(); // pane id -> its tab
     this.strip = el("div", "ptabs");
     this.strip.setAttribute("role", "tablist");
-    this.menu = null; // an open menu: {id, node, anchor, away}
-    this.pressed = false; // a long press just opened the menu: its click opens no tab
     this.strip.addEventListener("click", (ev) => {
       const b = ev.target.closest("button[data-pane]");
-      if (!b) return;
-      if (this.pressed) this.pressed = false;
-      else this.openTab(b.dataset.pane);
+      if (b) this.openTab(b.dataset.pane);
     });
-    this.strip.addEventListener("pointerdown", (ev) => this.press(ev));
-    this.strip.addEventListener("contextmenu", (ev) => ev.preventDefault());
+    // A tab other than the transcript's offers Undock, on a right-click or a long press.
+    menu.attach(this.strip, (t) => this.tabMenu(t), { selector: "button[data-pane]" });
     // A phone, not a narrow desktop window: that one has windows of its own.
     this.phone = matchMedia("(max-width: 760px) and (pointer: coarse)");
     // A phone draws every window's panes in window 1: crossing the
@@ -242,7 +237,7 @@ export class Canvas {
     for (const [id, n] of away) if (was.get(id) !== n && id.startsWith("art-")) hold(id, () => {}, this.entryOf(id), inWindow(n));
     for (const id of this.dots) if (id !== TRANSCRIPT && !keep.has(id)) this.dots.delete(id);
     if (!keep.has(this.open)) this.open = this.n === 1 ? TRANSCRIPT : [...keep][0] || TRANSCRIPT;
-    if (this.menu && !keep.has(this.menu.id)) this.closeMenu();
+    this.closeMenuIn((n) => n.classList.contains("pane") && !keep.has(n.dataset.pane));
     this.tabbed = this.wantTabs();
     if (!this.tabbed) this.dots.clear(); // a dot is a tab's, and the tabs are gone
     const cols = this.window().columns;
@@ -332,7 +327,7 @@ export class Canvas {
   syncStrip() {
     if (!this.tabbed) {
       // A tab's long-press menu goes with the strip; a pane's Move menu stays.
-      if (this.menu && this.strip.contains(this.menu.anchor)) this.closeMenu();
+      this.closeMenuIn((n) => n === this.strip);
       this.strip.remove();
       return;
     }
@@ -367,7 +362,7 @@ export class Canvas {
 
   openTab(id) {
     if (!this.panes.has(id) && id !== TRANSCRIPT) return;
-    this.closeMenu();
+    this.closeMenuIn((n) => n === this.root);
     this.open = id;
     this.dots.delete(id);
     this.place();
@@ -394,60 +389,17 @@ export class Canvas {
     this.syncStrip();
   }
 
-  // Hold a tab other than the transcript's: Undock, in a one-item menu under it.
-  press(ev) {
-    const b = ev.target.closest("button[data-pane]");
-    this.pressed = false;
-    if (!b || b.dataset.pane === TRANSCRIPT || !this.writable || ev.button !== 0) return;
-    const id = b.dataset.pane;
-    const timer = setTimeout(() => {
-      this.pressed = true;
-      this.openMenu(id, b);
-    }, LONG_PRESS);
-    const cancel = () => {
-      clearTimeout(timer);
-      for (const t of ["pointerup", "pointercancel", "pointerleave"]) b.removeEventListener(t, cancel);
-    };
-    for (const t of ["pointerup", "pointercancel", "pointerleave"]) b.addEventListener(t, cancel);
+  tabMenu(b) {
+    const id = b.dataset?.pane;
+    if (!id || id === TRANSCRIPT || !this.writable) return null;
+    return { groups: [[{ id: "undock", label: "Undock", icon: "close", run: () => this.undock(id) }]] };
   }
 
-  // A small menu under `anchor` (a tab, a pane's Move button): [label, act]
-  // items, closed by a choice or a press anywhere else.
-  openMenu(id, anchor, items = [["Undock", () => this.undock(id)]]) {
-    this.closeMenu();
-    const node = el("div", "pmenu");
-    node.setAttribute("role", "menu");
-    for (const [label, act] of items) {
-      const b = el("button", "btn", label);
-      b.type = "button";
-      b.setAttribute("role", "menuitem");
-      b.addEventListener("click", () => {
-        this.closeMenu();
-        act();
-      });
-      node.append(b);
-    }
-    const r = anchor.getBoundingClientRect();
-    const box = this.root.getBoundingClientRect();
-    node.style.left = `${Math.max(0, Math.min(r.left - box.left, box.width - 160))}px`;
-    node.style.top = `${r.bottom - box.top + 4}px`;
-    // A press anywhere else closes it.
-    const away = (e) => {
-      if (!node.contains(e.target) && !anchor.contains(e.target)) this.closeMenu();
-    };
-    document.addEventListener("pointerdown", away, true);
-    this.menu = { id, node, anchor, away };
-    this.root.append(node);
-    node.firstChild.focus({ preventScroll: true });
-  }
-
-  // True when there was one to close (Esc asks before it interrupts).
-  closeMenu() {
-    if (!this.menu) return false;
-    document.removeEventListener("pointerdown", this.menu.away, true);
-    this.menu.node.remove();
-    this.menu = null;
-    return true;
+  // Close the open menu when its target sits in an element `gone` picks. A
+  // target in a dropped pane still has that pane above it.
+  closeMenuIn(gone) {
+    const t = menu.current()?.target;
+    for (let n = t; n; n = n.parentElement) if (gone(n)) return menu.close();
   }
 
   // One grip on each boundary between columns, and one between each two
@@ -565,11 +517,13 @@ export class Canvas {
     b.title = "Move to another browser window";
     b.setAttribute("aria-label", "Move to window");
     b.addEventListener("click", () => {
-      if (this.menu?.id === id) return this.closeMenu();
+      if (menu.current()?.target === b) return menu.close();
       const ws = this.windows();
-      const items = ws.filter((w) => w.n !== this.n).map((w) => [`Window ${w.n}`, () => this.toWindow(id, w.n)]);
-      if (ws.length < MAX_WINDOWS) items.push(["New window", () => this.toWindow(id, "new")]);
-      this.openMenu(id, b, items);
+      const items = ws
+        .filter((w) => w.n !== this.n)
+        .map((w) => ({ id: `window-${w.n}`, label: `Window ${w.n}`, icon: "window", run: () => this.toWindow(id, w.n) }));
+      if (ws.length < MAX_WINDOWS) items.push({ id: "new-window", label: "New window", icon: "open", run: () => this.toWindow(id, "new") });
+      menu.open({ groups: [items] }, { anchor: b }, b);
     });
     return b;
   }
@@ -984,7 +938,7 @@ export class Canvas {
     this.dots.clear();
     this.tabs.clear();
     this.strip.remove();
-    this.closeMenu();
+    this.closeMenuIn((n) => n === this.strip || n === this.root);
     delete this.root.dataset.mode;
     delete this.root.dataset.merged;
     this.chips.remove();

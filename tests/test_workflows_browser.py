@@ -451,7 +451,7 @@ def test_a_workflow_moves_to_a_second_window_and_runs_live_there(server, page): 
     pane = f'#canvas .pane[data-pane="wf-{run}"]'
     page.click(f"{pane} .pbar .move")
     with page.context.expect_page() as opened:
-        page.locator("#canvas .pmenu button", has_text="New window").click()
+        page.locator(".cmenu [role=menuitem]", has_text="New window").click()
     two = _watch(opened.value)
     two.locator(f"{pane} .wfcard >> text=Do the first thing.").wait_for()
     page.locator("#entries .wfcard .held", has_text="in window 2").wait_for()
