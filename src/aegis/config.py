@@ -120,7 +120,7 @@ def notices_from(raw: object) -> dict:
             return _notices_defaults() | {
                 "error": f"notices has no kind {kind!r}; it takes {kinds}"
             }
-        default = NOTICES_DEFAULTS[kind]
+        default = NOTICES_DEFAULTS[str(kind)]
         if v is False or (kind == "quota" and v is True):
             out[kind] = v
             continue
@@ -141,14 +141,14 @@ def notices_from(raw: object) -> dict:
                 return _notices_defaults() | {
                     "error": f"notices.{kind}.{k} {n!r} is not a number from 0 to 100"
                 }
-        levels = default | v
+        levels: dict = default | v
         # An ``on`` alone moves clear and critical with it, by the defaults'
         # gaps, so {on: 80} does not sit below the default clear.
         if "on" in v and "clear" not in v:
-            levels["clear"] = max(v["on"] - (default["on"] - default["clear"]), 0)
+            levels["clear"] = max(levels["on"] - (default["on"] - default["clear"]), 0)
         if "on" in v and "critical" in default and "critical" not in v:
             levels["critical"] = min(
-                v["on"] + (default["critical"] - default["on"]), 100
+                levels["on"] + (default["critical"] - default["on"]), 100
             )
         if not levels["clear"] < levels["on"] <= levels.get("critical", 100):
             order = "clear < on <= critical" if "critical" in levels else "clear < on"

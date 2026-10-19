@@ -108,9 +108,10 @@ class OpTool(Tool):
         )
         # A notice rides on the agent's next tool result, never on aegis
         # call's output, which a program may parse.
-        s = None if self._sessions is None else self._sessions.sessions.get(log_id)
-        if s is not None and SHELL_HEADER.lower() not in headers:
-            if blocks := self._sessions.notice_blocks(s):
+        reg = self._sessions
+        s = None if reg is None else reg.sessions.get(log_id)
+        if reg is not None and s is not None and SHELL_HEADER.lower() not in headers:
+            if blocks := reg.notice_blocks(s):
                 text = f"{text}\n\n{blocks}"
         return ToolResult(content=text)
 

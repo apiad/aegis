@@ -398,7 +398,7 @@ class Notices:
                 continue
             for key, level in s.notices_sent.items():
                 held = self._active.get(key, (None,))[0]
-                if level in RANK and RANK[level] > RANK.get(held, 0):
+                if level in RANK and RANK[level] > RANK.get(held or "", 0):
                     self._active[key] = (level, {})
         self._toasted |= {k for k, (lv, _) in self._active.items() if lv == "critical"}
 
