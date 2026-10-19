@@ -140,7 +140,7 @@ from disagreeing. aegis writes the unit where the person says and prints the
 
 **The code map is a subcommand, with its index in the user's cache.** `aegis
 map` parses a git repository with tree-sitter and prints its layout, outlines,
-callers and impact (`codemap/`). It is a CLI rather than MCP tools because a
+callers and impact. The code lives in its own package, [wayfind](https://github.com/apiad/wayfind), so it can run where aegis does not, such as CI; aegis depends on it and mounts its typer app as `aegis map`. It is a CLI rather than MCP tools because a
 tool's schema rides on every request of every session, and a subcommand costs
 nothing until it runs; the primer names it in one paragraph. Its index is one
 pickle per repository under the user's cache directory, refreshed by mtime and
@@ -149,7 +149,7 @@ in the way. It needs no language server: heuristics marked as such (`?` for a
 name-only edge) were right often enough on a measured sample, and work in every
 language the grammar pack has. What one language adds over that, receiver
 types, base classes and an exact branch count, is one table of query
-patterns per language (`codemap/specs.py`), so a language is data, not code.
+patterns per language (wayfind's `specs.py`), so a language is data, not code.
 Its numbers views (metrics, cycles, unused, diff) report and never judge: a
 threshold is the caller's, so a CI gate is a filter over `--json` rather than
 a script beside the map.
