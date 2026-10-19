@@ -135,6 +135,7 @@ async def test_an_endpoint_outside_the_known_push_services_is_refused(world, end
     "endpoint",
     [
         "https://fcm.googleapis.com/fcm/send/abc",
+        "https://jmt17.google.com/fcm/send/abc",
         "https://updates.push.services.mozilla.com/wpush/v2/abc",
         "https://web.push.apple.com/QGx",
         "https://wns2-par02p.notify.windows.com/w/?token=abc",
