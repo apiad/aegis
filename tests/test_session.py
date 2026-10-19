@@ -265,8 +265,7 @@ async def test_stop_ends_the_child_and_keeps_the_session(h):
     assert pid is not None
     await h.session.stop()
     assert (
-        h.session.status == "asleep"
-        and h.session.entries()[-1]["summary"] == "asleep"
+        h.session.status == "asleep" and h.session.entries()[-1]["summary"] == "asleep"
     )
     with pytest.raises(ProcessLookupError):
         os.kill(pid, 0)

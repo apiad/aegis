@@ -25,7 +25,9 @@ HIDE = """() => {
     document.dispatchEvent(new Event("visibilitychange"));
 }"""
 SHOW = HIDE.replace("value: true", "value: false")
-PARKED = "() => document.querySelector('#input').placeholder.startsWith('Asleep while idle')"
+PARKED = (
+    "() => document.querySelector('#input').placeholder.startsWith('Asleep while idle')"
+)
 
 
 def test_a_watched_session_stays_up_and_a_hidden_page_lets_it_park(park_server, page):  # noqa: F811
@@ -60,7 +62,11 @@ def test_typing_to_a_parked_session_wakes_it_before_send(park_server, page):  # 
     page.wait_for_function(PARKED, timeout=8000)
     page.evaluate(SHOW)
     page.wait_for_timeout(500)
-    assert page.locator("#input").get_attribute("placeholder").startswith("Asleep while idle")
+    assert (
+        page.locator("#input")
+        .get_attribute("placeholder")
+        .startswith("Asleep while idle")
+    )
     # The waking row may come and go faster than a poll: record whether it shows.
     page.evaluate("""() => {
         const w = document.querySelector('#waking');

@@ -198,7 +198,9 @@ async def test_a_monitor_wakes_a_parked_session(parking, tmp_path):
             interval_s=1,
         ),
     )
-    await until(lambda: a.asleep_why == "idle", timeout=5, what="the park while it waits")
+    await until(
+        lambda: a.asleep_why == "idle", timeout=5, what="the park while it waits"
+    )
     flag.touch()
     await until(
         lambda: any(e["title"].startswith("monitor:") for e in inbox(a)),
