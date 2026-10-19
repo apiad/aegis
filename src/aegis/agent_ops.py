@@ -386,7 +386,7 @@ FAR_ERRORS = {
 }
 
 
-def far_entry(e: object, server: str) -> dict | None:
+def far_entry(e: dict, server: str) -> dict | None:
     """One linked server's session as an agent here may see it: a valid handle
     and a known state, or nothing. An older server's stopped and parked read as
     asleep with their reason; a reason that is not one of ours is dropped."""
