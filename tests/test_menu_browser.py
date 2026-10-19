@@ -43,13 +43,23 @@ def focused_label(pg) -> str:
     return pg.evaluate("document.activeElement.textContent.trim()")
 
 
-def test_a_menu_walks_with_arrows_runs_with_enter_and_esc_returns_focus(server, page, tmp_path):  # noqa: F811
+def test_a_menu_walks_with_arrows_runs_with_enter_and_esc_returns_focus(
+    server,  # noqa: F811
+    page,
+    tmp_path,
+):
     (tmp_path / "a.py").write_text("a = 1\n")
     files(page, server)
     page.click(row("a.py"), button="right")
     page.wait_for_selector(".cmenu[role=menu]")
     labels = page.locator(".cmenu [role=menuitem]").all_inner_texts()
-    assert [x.strip() for x in labels] == ["New file", "New folder", "Rename", "Copy path", "Delete"]
+    assert [x.strip() for x in labels] == [
+        "New file",
+        "New folder",
+        "Rename",
+        "Copy path",
+        "Delete",
+    ]
     assert page.locator(".cmenu .grp").count() == 1  # Delete stands apart
     assert focused_label(page) == "New file"
     page.keyboard.press("ArrowDown")
@@ -115,9 +125,15 @@ def test_the_menu_key_opens_the_focused_rows_menu(server, page, tmp_path):  # no
     assert page.errors == []
 
 
-def test_a_long_press_on_touch_opens_it_and_swallows_the_click(browser, server, tmp_path):  # noqa: F811
+def test_a_long_press_on_touch_opens_it_and_swallows_the_click(
+    browser,  # noqa: F811
+    server,  # noqa: F811
+    tmp_path,
+):
     (tmp_path / "a.py").write_text("a = 1\n")
-    ctx = browser.new_context(viewport={"width": 1280, "height": 800}, has_touch=True)  # a phone hides the tree in a drawer
+    ctx = browser.new_context(
+        viewport={"width": 1280, "height": 800}, has_touch=True
+    )  # a phone hides the tree in a drawer
     pg = ctx.new_page()
     errors = []
     pg.on("pageerror", lambda e: errors.append(str(e)))
@@ -125,12 +141,17 @@ def test_a_long_press_on_touch_opens_it_and_swallows_the_click(browser, server, 
     box = pg.locator(row("a.py")).bounding_box()
     x, y = box["x"] + 20, box["y"] + box["height"] / 2
     cdp = ctx.new_cdp_session(pg)
-    cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
+    cdp.send(
+        "Input.dispatchTouchEvent",
+        {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]},
+    )
     pg.wait_for_selector(".cmenu", timeout=3000)
     cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
     pg.wait_for_timeout(300)
     assert pg.locator(".cmenu").count() == 1
-    assert pg.evaluate("location.hash") == "#files"  # the click that followed opened nothing
+    assert (
+        pg.evaluate("location.hash") == "#files"
+    )  # the click that followed opened nothing
     ctx.close()
     assert errors == []
 
@@ -140,7 +161,9 @@ def test_a_long_press_on_touch_opens_it_and_swallows_the_click(browser, server, 
 
 def item_ids(pg) -> list[str]:
     pg.wait_for_selector(".cmenu")
-    return pg.eval_on_selector_all(".cmenu [role=menuitem]", "bs => bs.map(b => b.dataset.id)")
+    return pg.eval_on_selector_all(
+        ".cmenu [role=menuitem]", "bs => bs.map(b => b.dataset.id)"
+    )
 
 
 def card(key: str) -> str:
@@ -166,7 +189,16 @@ def test_a_cards_menu_follows_its_state_and_acts_on_that_card(server, page, brow
     page.wait_for_selector(card(busy) + ".working")
 
     page.click(card(busy), button="right")
-    assert item_ids(page) == ["open", "newtab", "quiet", "interrupt", "stop", "handoff", "rename", "close"]
+    assert item_ids(page) == [
+        "open",
+        "newtab",
+        "quiet",
+        "interrupt",
+        "stop",
+        "handoff",
+        "rename",
+        "close",
+    ]
     assert page.locator(".cmenu .grp").count() == 3
     page.click(".cmenu [data-id=interrupt]")
     page.wait_for_selector(card(busy) + ":not(.working)")
@@ -181,7 +213,9 @@ def test_a_cards_menu_follows_its_state_and_acts_on_that_card(server, page, brow
     page.keyboard.press("Escape")
 
     # A long press on a touch screen opens the same items.
-    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+    ctx = browser.new_context(
+        viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True
+    )
     phone = ctx.new_page()
     phone.goto(server.url)
     phone.wait_for_selector(card(idle))
@@ -193,7 +227,10 @@ def test_a_cards_menu_follows_its_state_and_acts_on_that_card(server, page, brow
     cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
     phone.wait_for_timeout(300)
     assert item_ids(phone) == stopped
-    assert phone.evaluate("location.hash") in ("", "#fleet")  # the press opened no session
+    assert phone.evaluate("location.hash") in (
+        "",
+        "#fleet",
+    )  # the press opened no session
     ctx.close()
     assert page.errors == []
 
