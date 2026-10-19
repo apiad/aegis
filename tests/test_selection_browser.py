@@ -5,7 +5,11 @@ survives, after the quote."""
 
 import pytest
 
-from .test_browser import EXPECTED_CONSOLE, browser, btw_server, server, spawn, turns_done  # noqa: F401
+from .test_browser import (
+    EXPECTED_CONSOLE,
+    spawn,
+    turns_done,
+)  # noqa: F401
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
@@ -58,20 +62,29 @@ def test_insert_keeps_the_draft_after_the_quote_and_runs_the_input_path(server, 
     page.goto(server.url)
     key = spawn(page)
     # The composer's own input path runs: an unknown command is marked...
-    page.evaluate(f"async () => (await {QUOTE}).insertIntoComposer('> x', {{ prefix: '/nosuch\\n' }})")
-    page.wait_for_function("document.getElementById('composer').classList.contains('bad')")
+    page.evaluate(
+        f"async () => (await {QUOTE}).insertIntoComposer('> x', {{ prefix: '/nosuch\\n' }})"
+    )
+    page.wait_for_function(
+        "document.getElementById('composer').classList.contains('bad')"
+    )
     page.fill("#input", "hello")
     page.evaluate(
         f"async () => (await {QUOTE}).insertIntoComposer('> x', {{ prefix: '/btw\\n' }})"
     )
     # ...and /btw is not.
-    page.wait_for_function("!document.getElementById('composer').classList.contains('bad')")
+    page.wait_for_function(
+        "!document.getElementById('composer').classList.contains('bad')"
+    )
     assert page.input_value("#input") == "/btw\n> x\n\nhello"
     assert page.evaluate(
         "() => { const i = document.getElementById('input');"
         " return i.selectionStart === i.value.length && document.activeElement === i; }"
     )
-    assert page.evaluate(f"localStorage.getItem('aegis.draft.{key}')") == "/btw\n> x\n\nhello"
+    assert (
+        page.evaluate(f"localStorage.getItem('aegis.draft.{key}')")
+        == "/btw\n> x\n\nhello"
+    )
     assert page.errors == []
 
 
@@ -111,7 +124,12 @@ def bar_and_selection(pg) -> dict:
 
 
 def labels(pg) -> list[str]:
-    return [x.strip() for x in pg.locator(".sbar button").evaluate_all("bs => bs.map(b => b.getAttribute('aria-label'))")]
+    return [
+        x.strip()
+        for x in pg.locator(".sbar button").evaluate_all(
+            "bs => bs.map(b => b.getAttribute('aria-label'))"
+        )
+    ]
 
 
 def test_ask_and_ask_aside_with_a_draft(btw_server, page):  # noqa: F811
@@ -162,8 +180,16 @@ def test_the_bar_survives_a_streaming_reply(server, page):  # noqa: F811
     page.wait_for_timeout(300)
     assert page.locator(".sbar").count() == 1
     after = bar_and_selection(page)
-    assert page.evaluate("window.__scrolls") > 0  # the transcript scrolled itself under it
-    assert abs((after["selTop"] - after["barBottom"]) - (before["selTop"] - before["barBottom"])) < 2
+    assert (
+        page.evaluate("window.__scrolls") > 0
+    )  # the transcript scrolled itself under it
+    assert (
+        abs(
+            (after["selTop"] - after["barBottom"])
+            - (before["selTop"] - before["barBottom"])
+        )
+        < 2
+    )
     # A wheel scroll by the person closes it.
     page.mouse.move(600, 300)
     page.mouse.wheel(0, -300)
@@ -201,7 +227,9 @@ def test_a_selection_across_two_rows_gets_no_bar(server, page):  # noqa: F811
     assert page.errors == []
 
 
-def test_new_session_opens_the_form_with_the_source_and_the_quote(server, page, tmp_path):  # noqa: F811
+def test_new_session_opens_the_form_with_the_source_and_the_quote(
+    server, page, tmp_path
+):  # noqa: F811
     page.goto(server.url)
     spawn(page, "/md alpha kiwi beta")
     handle = page.locator("#s-handle").inner_text()
@@ -216,7 +244,9 @@ def test_new_session_opens_the_form_with_the_source_and_the_quote(server, page, 
 
 
 def test_on_a_phone_the_bar_sits_under_the_selection_with_icons_only(browser, server):  # noqa: F811
-    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+    ctx = browser.new_context(
+        viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True
+    )
     pg = ctx.new_page()
     try:
         pg.goto(server.url)
@@ -237,7 +267,9 @@ def test_on_a_phone_the_bar_sits_under_the_selection_with_icons_only(browser, se
 
 def menu_ids(pg) -> list[str]:
     pg.wait_for_selector(".cmenu")
-    return pg.locator(".cmenu [role=menuitem]").evaluate_all("bs => bs.map(b => b.dataset.id)")
+    return pg.locator(".cmenu [role=menuitem]").evaluate_all(
+        "bs => bs.map(b => b.dataset.id)"
+    )
 
 
 def close_menu(pg) -> None:
@@ -269,15 +301,28 @@ def test_row_menus_by_kind(server, page, tmp_path):  # noqa: F811
     # A right-click inside a selection puts the bar's items on top.
     select(page, REPLY, "Read")
     page.wait_for_selector(".sbar")
-    box = page.evaluate("(() => { const r = getSelection().getRangeAt(0).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()")
+    box = page.evaluate(
+        "(() => { const r = getSelection().getRangeAt(0).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()"
+    )
     page.mouse.click(box[0], box[1], button="right")
-    assert menu_ids(page) == ["ask", "aside", "new", "copy", "reply", "new", "copy", "link"]
+    assert menu_ids(page) == [
+        "ask",
+        "aside",
+        "new",
+        "copy",
+        "reply",
+        "new",
+        "copy",
+        "link",
+    ]
     assert page.locator(".sbar").count() == 0  # one at a time
     close_menu(page)
     assert page.errors == []
 
 
-def test_a_menu_stays_through_an_in_place_update_and_closes_when_its_row_goes(server, page):  # noqa: F811
+def test_a_menu_stays_through_an_in_place_update_and_closes_when_its_row_goes(
+    server, page
+):  # noqa: F811
     page.goto(server.url)
     spawn(page)
     page.fill("#input", "/stream 12")
@@ -292,7 +337,9 @@ def test_a_menu_stays_through_an_in_place_update_and_closes_when_its_row_goes(se
     assert page.locator(".cmenu").count() == 1
     assert page.evaluate("document.activeElement.closest('.cmenu') !== null")
     # The whole block replaces the streamed entry: its row goes, and the menu with it.
-    page.wait_for_function(f"!document.querySelector('.row[data-id=\"{sid}\"]')", timeout=10000)
+    page.wait_for_function(
+        f"!document.querySelector('.row[data-id=\"{sid}\"]')", timeout=10000
+    )
     page.wait_for_selector(".cmenu", state="detached", timeout=2000)
     assert page.errors == []
 
