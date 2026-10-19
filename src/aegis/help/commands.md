@@ -62,7 +62,7 @@ and no aegis command is refused before it costs a turn.
 | `aegis usage` | what the agents' work cost: `--by` month, dow or hour, `--sessions`, `--tools`, `--since` |
 | `aegis usage repo <path>` | the cost of one git repository's work |
 | `aegis usage repos <dir>` | the cost of every repository directly under a directory |
-| `aegis map` | a map of the git repository holding the current directory, or `--repo`, for an agent learning its code; see the code map page |
+| `aegis map` | a map of the git repository holding the current directory, or `--repo`, less `--exclude` paths, for an agent learning its code; see the code map page |
 | `aegis map repo [path]` | its folders and files, with definition counts and each module's first doc line; `--depth` |
 | `aegis map deps [path]` | which files use which, with how many uses |
 | `aegis map outline <path>` | a file's or folder's classes and functions: line, signature, first doc line |
@@ -71,6 +71,10 @@ and no aegis command is refused before it costs a turn.
 | `aegis map callers <symbol>` | every call of a definition, by file; `--depth` for callers of callers |
 | `aegis map callees <symbol>` | what a definition calls |
 | `aegis map impact <symbol>` | every definition that uses it, and what uses those; `--depth` (3) |
+| `aegis map metrics [path]` | lines, complexity, docs, typing and fan-in per function, file and folder; `--sort`, `--top`, `--json` |
+| `aegis map cycles [path]` | files, or folders with `--level package`, that use each other in a cycle; `--json` |
+| `aegis map unused [path]` | definitions nothing names, and those only tests name; `--json` |
+| `aegis map diff [base]` | each definition changed since base (the merge-base with origin/main), its sizes before and after and its users; `--json` |
 | `aegis call <tool> [args]` | from an agent's shell, call one of its aegis tools as that agent; see below |
 | `aegis tools [tool]` | from an agent's shell, list its aegis tools, or print one tool's description and JSON schema |
 | `aegis import-legacy <dir>` | copy the sessions of aegis before 2.0 into the archive, to read |
