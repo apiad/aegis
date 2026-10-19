@@ -88,7 +88,9 @@ async def test_a_wake_of_a_slept_session_says_the_quota_gate_holds(world, monkey
     reg = world.app.sessions
     monkeypatch.setattr(reg, "quota_hold", lambda s: "the weekly window is spent")
     with pytest.raises(OpError) as e:
-        await world.app.registry.call("session.warm", {"log_id": a.log_id})
+        await world.app.registry.call(
+            "session.warm", {"log_id": a.log_id, "wake": True}
+        )
     assert e.value.code == "quota_closed" and not a.running
 
 
@@ -100,7 +102,9 @@ async def test_a_wake_of_a_slept_session_names_a_missing_harness(world):  # noqa
     await a.stop()
     a.harness.bin = "/nonexistent/claude"
     with pytest.raises(OpError) as e:
-        await world.app.registry.call("session.warm", {"log_id": a.log_id})
+        await world.app.registry.call(
+            "session.warm", {"log_id": a.log_id, "wake": True}
+        )
     assert e.value.code == "harness_not_found"
 
 
@@ -120,3 +124,27 @@ async def test_a_persons_wake_of_a_parked_session_says_the_quota_gate_holds(
             "session.warm", {"log_id": a.log_id, "wake": True}
         )
     assert e.value.code == "quota_closed" and not a.running
+
+
+async def test_a_keystroke_warm_leaves_a_slept_session_for_the_message(world):  # noqa: F811
+    # Another browser slept it just before this one's first keystroke.
+    a = await world.spawn()
+    await turn(a, "hello ana")
+    await a.stop()
+    await world.app.registry.call("session.warm", {"log_id": a.log_id})
+    assert not a.running and a.asleep_why == "slept"
+
+
+async def test_a_persons_wake_of_a_parked_step_is_refused_by_its_run(world):  # noqa: F811
+    from aegis.ops import OpError
+
+    a = await world.spawn()
+    await turn(a, "hello ana")
+    await a.park(60)
+    a.workflow = {"run": "r1", "node": "write"}
+    world.app.workflows.live = lambda run: run == "r1"
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call(
+            "session.warm", {"log_id": a.log_id, "wake": True}
+        )
+    assert e.value.code == "in_workflow" and not a.running

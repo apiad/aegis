@@ -512,3 +512,59 @@ def test_an_old_clients_cached_fleet_reads_as_asleep(server, browser):  # noqa: 
     assert cached.text_content(card(a) + " .hd .zz") == "zz slept"
     assert cached.errors == []
     ctx.close()
+
+
+def test_continue_is_on_every_card_that_is_not_working(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    waiting = spawn(page, "hello")
+    cut = spawn(page)
+    page.fill("#input", "/busy 30")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    page.goto(f"{server.url.split('#')[0]}#fleet")
+    page.wait_for_selector(card(cut) + ".working")
+    assert "continue" not in card_menu(page, cut)
+    page.click(".cmenu [data-id=interrupt]")
+    page.wait_for_selector(card(cut) + ":not(.working)")
+    for key in (waiting, cut):
+        ids = card_menu(page, key)
+        assert "continue" in ids and "sleep" in ids and "wake" not in ids, key
+    page.click(".cmenu [data-id=continue]")
+    page.goto(f"{server.url.split('#')[0]}#s={cut}")
+    page.wait_for_selector(".row.user >> text=Continue")
+    assert page.errors == []
+
+
+def test_sleep_asks_when_it_cannot_check_what_would_die(server, browser):  # noqa: F811
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    page = ctx.new_page()
+    page.errors = []
+    page.on("pageerror", lambda e: page.errors.append(str(e)))
+
+    # The server answers everything but the kills check, which fails.
+    def route(ws):
+        srv = ws.connect_to_server()
+
+        def up(msg):
+            m = json.loads(msg) if isinstance(msg, str) else {}
+            if m.get("t") == "call" and m.get("op") == "session.kills":
+                err = {"code": "timeout", "message": "no answer"}
+                ws.send(json.dumps({"t": "reply", "id": m["id"], "error": err}))
+            else:
+                srv.send(msg)
+
+        ws.on_message(up)
+
+    page.route_web_socket("**/*", route)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "hello")
+    page.goto(f"{server.url.split('#')[0]}#fleet")
+    page.wait_for_selector(card(a))
+    card_menu(page, a)
+    page.click(".cmenu [data-id=sleep]")
+    dialog_says(page, "could not check what would end with it")
+    assert page.locator(card(a) + ".asleep").count() == 0
+    assert page.errors == []
+    ctx.close()

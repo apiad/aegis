@@ -352,8 +352,8 @@ async def test_a_persons_wake_of_a_slept_session_asks(world, monkeypatch):
     untested(monkeypatch, world.fake, "99.0.0")
     call = world.app.registry.call
     with pytest.raises(OpError) as e:
-        await call("session.warm", {"log_id": s.log_id})
+        await call("session.warm", {"log_id": s.log_id, "wake": True})
     assert e.value.code == "harness_untested" and not s.running
-    await call("session.warm", {"log_id": s.log_id, "untested": "once"})
+    await call("session.warm", {"log_id": s.log_id, "wake": True, "untested": "once"})
     assert s.running and s.launch_by == "agent"  # reset after the launch
     assert len(notices(s)) == 1

@@ -3356,7 +3356,8 @@ async function quietKey(key, on) {
 async function sleepKey(key) {
   const s = sessions.get(key);
   if (offline() || !s) return;
-  const kills = s.old || s.state === "asleep" ? [] : await callFor(key, "session.kills").catch(() => []);
+  // A check that fails cannot say nothing would die: ask then too.
+  const kills = s.old || s.state === "asleep" ? [] : await callFor(key, "session.kills").catch(() => ["aegis could not check what would end with it"]);
   if (kills.length && !(await ask(`Sleep ${s.handle}? ${kills.join("; ")}.`, { ok: "Sleep" }))) return;
   try {
     await callFor(key, "session.stop");
@@ -3553,11 +3554,10 @@ function sessionMenu(key) {
     opening.push({ id: "quiet", label: "Quiet", icon: "quiet", disabled: why, run: () => quietKey(key, true) });
   const life = [];
   if (s.state === "working") life.push({ id: "interrupt", label: "Interrupt", icon: "interrupt", disabled: why, run: () => interruptKey(key) });
-  if (s.state === "asleep") {
-    // A server older than #479 wakes only a parked session.
-    if (!s.old || s.asleep_why === "idle") life.push({ id: "wake", label: "Wake", icon: "wake", disabled: why, run: () => wakeKey(key) });
-    life.push({ id: "continue", label: "Continue", icon: "play", disabled: why, run: () => continueKey(key) });
-  } else life.push({ id: "sleep", label: "Sleep", icon: "sleep", disabled: why, run: () => sleepKey(key) });
+  // A server older than #479 wakes only a parked session.
+  if (s.state === "asleep" && (!s.old || s.asleep_why === "idle")) life.push({ id: "wake", label: "Wake", icon: "wake", disabled: why, run: () => wakeKey(key) });
+  if (s.state !== "working") life.push({ id: "continue", label: "Continue", icon: "play", disabled: why, run: () => continueKey(key) });
+  if (s.state !== "asleep") life.push({ id: "sleep", label: "Sleep", icon: "sleep", disabled: why, run: () => sleepKey(key) });
   if (!s.old) life.push({ id: "restart", label: "Restart", icon: "restart", disabled: why, run: () => restartKey(key) });
   if (!s.worker) life.push({ id: "handoff", label: "Hand off", icon: "handoff", disabled: why, run: () => handOff(s) });
   const rename = [{ id: "rename", label: "Rename…", icon: "pencil", disabled: why, run: () => renameKey(key) }];

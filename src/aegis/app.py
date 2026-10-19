@@ -1592,19 +1592,18 @@ class App:
 
         @r.op("session.warm", WarmParams, owned="log_id")
         async def warm(p: WarmParams, caller):
-            # A parked session: someone started typing to it, so start its
-            # harness while they write (park.py); a closed quota gate starts
-            # nothing and says nothing. Any other asleep one is a person's
-            # Wake, refused like a send that would start it (#479).
+            # A person's Wake (wake: true) is refused like a send that would
+            # start the session (#479). Without it, someone started typing to
+            # a parked session: start its harness while they write
+            # (park.py); a closed quota gate starts nothing and says nothing,
+            # and one that slept waits for the message itself.
             s = reg.open(p.log_id)
             if s.status != "asleep":
                 return None
-            if s.asleep_why != "idle":
+            if p.wake:
                 return await self._launch(s, caller, p.untested, s.ensure_running)
-            if (why := reg.quota_hold(s)) is None:
+            if s.asleep_why == "idle" and reg.quota_hold(s) is None:
                 await s.ensure_running()
-            elif p.wake:
-                raise OpError("quota_closed", _held(s.spec.owner or self.user, why))
             return None
 
         @r.op("session.kills", LogParams, owned="log_id")

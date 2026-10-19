@@ -162,8 +162,9 @@ Shift+F10 on a selected card; Shift with a right-click keeps the browser's own
 menu. Arrows move through it, Enter runs an item, Esc closes it.
 
 It shows only what applies to that session now: Open, Open in new tab, and
-Quiet or Unquiet; then Interrupt while it works, Wake and Continue while it
-is asleep, Sleep while it is not, Restart, and Hand off; then Rename…, which
+Quiet or Unquiet; then Interrupt while it works, Wake while it is asleep,
+Continue while it is not working, Sleep while it is not asleep, Restart, and
+Hand off; then Rename…, which
 opens the session with its handle ready to edit; then Archive. Each acts on
 that session, not on the one shown. Another member's session offers Open and
 Open in new tab only, and a step of a running workflow shows the rest
@@ -177,9 +178,9 @@ The tree in the Files view has a menu opened the same way.
 | verb | where | what it does |
 |---|---|---|
 | Interrupt | the menu, Esc, the button beside Send | ends the turn the agent is working on |
-| Sleep | the menu, the panel, `/sleep` (`/stop` is an alias) | ends the process and keeps the conversation; the session is asleep until a message wakes it. When ending it would also end a background task, a harness timer or a process it left running (a `nohup` command, a dev server), the menu and the panel ask first and name them |
+| Sleep | the menu, the panel, `/sleep` (`/stop` is an alias) | ends the process and keeps the conversation; the session is asleep until a message wakes it. When ending it would also end a background task, a harness timer or a process it left running (a `nohup` command, a dev server), the menu and the panel ask first and name them; when aegis cannot check, they ask anyway |
 | Wake | the menu, on an asleep session | starts the process and sends nothing. Like a message, it is refused while the quota gate is closed, and it asks before starting a harness version outside the tested range |
-| Continue | the menu, on an asleep session; the panel | sends "Continue" to the agent |
+| Continue | the menu and the panel, on a session that is not working | sends "Continue" to the agent, which wakes an asleep one |
 | Restart | the menu, the panel, `/restart` | ends the process and starts a fresh one on the same conversation; nothing is sent. On a working session it asks first, typed or clicked, since it cuts the turn. Use it after a change to the agent's MCP config or when the harness hangs |
 | Archive | the menu, the panel, `/archive` (`/close` is an alias), a middle click on the tab or card | archives the session, and its tab goes away in every browser. A session that is not done asks first |
 | Reopen | the archive, an archived session's panel | gives the session a tab again, asleep, ready for the next message |
