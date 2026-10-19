@@ -123,6 +123,7 @@ export class Settings {
     this.wire = null;
     this.doc = null;
     this.savedWf = undefined; // the saved workflows are that server's
+    this.wfStatus = null;
     this.dirty = false;
     this.findings = null;
     this.found = [];
@@ -1043,7 +1044,7 @@ export class Settings {
     const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Workflows" }), button("Import…", "set-wf-import-btn", () => file.click()), file);
     const note = h("p", { className: "set-none", textContent: "The pool bounds the node sessions every workflow on this server has open at once; blank is the default, 4 in all, and an agent left blank is bound by the total. Saved workflows are files in .aegis/workflows beside .aegis.yaml: Import and Export act on them at once, without Save changes." });
     if (this.savedWf === undefined) this.loadSaved();
-    return h("section", { id: "set-workflows" }, head, note, h("div", { className: "set-queues", id: "set-wf-pool" }, ...this.poolRows()), h("div", { id: "set-wf-status" }), h("div", { id: "set-wf-list" }, ...this.savedRows()));
+    return h("section", { id: "set-workflows" }, head, note, h("div", { className: "set-queues", id: "set-wf-pool" }, ...this.poolRows()), h("div", { id: "set-wf-status" }, ...this.wfStatusNodes()), h("div", { id: "set-wf-list" }, ...this.savedRows()));
   }
 
   // A row per agent, keyed by its data-row, which an agent's rename moves.
@@ -1122,11 +1123,21 @@ export class Settings {
     setTimeout(() => URL.revokeObjectURL(a.href), 0);
   }
 
+  // The last import's outcome, kept so a redraw of the page does not drop it.
+  wfStatusNodes() {
+    if (!this.wfStatus) return [];
+    const { msg, lines } = this.wfStatus;
+    return [h("p", { className: lines.length ? "set-why error" : "set-none", textContent: msg }), ...lines.map((l) => h("pre", { className: "set-wf-err", textContent: l }))];
+  }
+
   // Linted first, so a file that does not lint writes nothing and shows its
   // errors; the save lints again on the server, as the person's own save.
   async importWorkflow(file) {
     const text = await file.text();
-    const status = (msg, lines = []) => this.box.querySelector("#set-wf-status")?.replaceChildren(h("p", { className: lines.length ? "set-why error" : "set-none", textContent: msg }), ...lines.map((l) => h("pre", { className: "set-wf-err", textContent: l })));
+    const status = (msg, lines = []) => {
+      this.wfStatus = { msg, lines };
+      this.box.querySelector("#set-wf-status")?.replaceChildren(...this.wfStatusNodes());
+    };
     try {
       const lint = await this.call("workflow.lint", { definition: text });
       if (lint.errors.length) return status(`${file.name} does not lint, so nothing was imported:`, lint.errors);

@@ -3115,6 +3115,23 @@ def saved_ok(page) -> None:
     )
 
 
+def test_a_settings_redraw_keeps_the_import_status(settings_server, page, tmp_path):
+    open_settings(page, settings_server.url)
+    page.wait_for_selector('#set-wf-list .set-wf[data-wf="loop"]')
+    good = tmp_path / "nap.yaml"
+    good.write_text(NAP_YAML)
+    page.set_input_files("#set-wf-import", str(good))
+    page.wait_for_selector("#set-wf-status >> text=Imported nap.")
+    # The file changes on disk: the config channel sends it and Settings redraws.
+    (settings_server.root / ".aegis.yaml").write_text(
+        SETTINGS_CONFIG
+        + "  extra: {harness: claude-code, model: opus, effort: high, permission: full}\n"
+    )
+    page.wait_for_selector('.set-agent[data-row="agents.extra"]')
+    assert page.inner_text("#set-wf-status") == "Imported nap."
+    assert page.errors == []
+
+
 def test_a_rename_or_removal_carries_to_the_workflow_pool(settings_server, page):
     (settings_server.root / ".aegis.yaml").write_text(
         SETTINGS_CONFIG + "workflows: {max_agents: {total: 4, opus: 2, bad.one: 1}}\n"
