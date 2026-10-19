@@ -154,6 +154,15 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>Slice 1 ships the card menu with today's verbs</b> (Stop, Close, Continue as the panel's Restart does); slice 2 renames them. The spec's delivery section says this; the menus table shows the end state.</li>
 </ul>
 <p class="note">Task 14 updates the spec page to match. Departures found while executing go below this line.</p>
+<h3>Departures found while executing</h3>
+<ul class="rules" id="departures-found">
+<li><b>Task 1's verify grep counts <code>contextmenu</code>.</b> <code>grep -c tmenu</code> matches the event name in <code>js/menu.js</code> and <code>js/canvas.js:136</code>; the check that holds is <code>grep -cw tmenu</code>.</li>
+<li><b>File rows take focus</b> (<code>tabIndex = -1</code>, <code>js/files.js</code> draw): a <code>div.trow</code> could not be focused (<code>files.js:407-411</code>), so neither the menu key nor Esc's return to the target could reach it.</li>
+<li><b>The menu node cancels its own mousedown.</b> A touch released over the menu that opened under the finger lands a compatibility mousedown on its padding, which moved focus to the body and closed it through focusout.</li>
+<li><b>Delete has a trash icon</b>, a new <code>g-trash</code> symbol in <code>js/glyphs.js</code>, which had none to fit.</li>
+<li><b>menuKey is one key in the browse scope</b>, which already covers the session, read, Fleet and Files views (<code>js/keys.js</code>, <code>installKeys</code>'s scopes); app.js imports menu.js as <code>cmenu</code>, since <code>menu</code> is the command menu there (<code>app.js</code>, <code>new CommandMenu</code>).</li>
+<li><b>The long-press test runs on a wide touch screen.</b> Under 640 px the Files tree is a closed drawer (<code>css/base.css</code>, <code>.ftree{display:none}</code>).</li>
+</ul>
 
 <h2>Review focus</h2>
 <p class="note">Failure modes the spec implies that no feature test reaches. Each one's pinning test is in the task named after it.</p>
@@ -186,7 +195,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 
 <div class="slice">slice 1 · menu.js · branch menu-1-module</div>
 
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="doing">
 <summary><span class="num">1</span><span><span class="ttl">menu.js, and Files' menu moved onto it</span><span class="files">js/menu.js · js/files.js · js/keys.js · css/base.css · tests/test_menu_browser.py · tests/test_files_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>

@@ -26,6 +26,7 @@ import { ask, choose } from "./dialog.js";
 import { diffView } from "./diff.js";
 import { open as openEditor } from "./editor.js";
 import { markdown } from "./entries.js";
+import * as menu from "./menu.js";
 import { ago } from "./fleet.js";
 import { langName, paint } from "./highlight.js";
 
@@ -262,7 +263,6 @@ export function hunks(disk, mine) {
 
 const OPEN_KEY = "aegis.files.open"; // the folders left expanded, in localStorage
 const IGNORED_KEY = "aegis.files.ignored"; // "1" when ignored entries show
-const LONG_PRESS = 500; // ms a touch holds a row before its menu opens
 const UNDO_MS = 10_000;
 
 const parentOf = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
@@ -308,7 +308,6 @@ export class FileTree {
     this.open = new Set(stored(OPEN_KEY, []));
     this.showIgnored = stored(IGNORED_KEY, false) === true;
     this.started = false;
-    this.menu = null;
     this.dragged = null;
     box.innerHTML =
       '<div class="trows" role="tree" aria-label="Files"></div>' +
@@ -327,12 +326,7 @@ export class FileTree {
       if (r.dataset.kind === "dir") this.toggle(r.dataset.path);
       else this.host.pick(r.dataset.path);
     });
-    this.rows.addEventListener("contextmenu", (ev) => {
-      if (ev.target.closest("input")) return;
-      ev.preventDefault();
-      this.openMenu(ev.target.closest(".trow"), ev.clientX, ev.clientY);
-    });
-    this.longPress();
+    menu.attach(this.rows, (t) => this.menuFor(t.closest(".trow")), { selector: ".trow" });
     this.drag();
   }
 
@@ -408,6 +402,7 @@ export class FileTree {
         r.dataset.path = path;
         r.dataset.kind = e.kind;
         r.draggable = true;
+        r.tabIndex = -1; // the menu key opens its menu, and Esc on the menu comes back here
         r.setAttribute("role", "treeitem");
         r.style.setProperty("--depth", depth);
         const open = isDir && this.open.has(path);
@@ -424,85 +419,27 @@ export class FileTree {
 
   // -- the menu ---------------------------------------------------------------
 
-  // A long press on a touch screen opens the row's menu, as a right-click does.
-  longPress() {
-    let timer = null;
-    let at = null;
-    const stop = () => {
-      clearTimeout(timer);
-      timer = null;
-    };
-    this.rows.addEventListener("pointerdown", (ev) => {
-      if (ev.pointerType === "mouse") return;
-      at = [ev.clientX, ev.clientY];
-      const r = ev.target.closest(".trow");
-      timer = setTimeout(() => {
-        timer = null;
-        this.openMenu(r, at[0], at[1]);
-      }, LONG_PRESS);
-    });
-    this.rows.addEventListener("pointermove", (ev) => {
-      if (timer && Math.hypot(ev.clientX - at[0], ev.clientY - at[1]) > 8) stop();
-    });
-    for (const t of ["pointerup", "pointercancel"]) this.rows.addEventListener(t, stop);
-  }
-
-  // Removing the focused menu fires its focusout, which lands here again.
-  closeMenu() {
-    const m = this.menu;
-    this.menu = null;
-    m?.remove();
-  }
-
   // The menu for row `r`, or for the root when the press missed every row.
-  openMenu(r, x, y) {
-    this.closeMenu();
+  menuFor(r) {
     const path = r?.dataset.path ?? "";
     const isDir = !r || r.dataset.kind === "dir";
     const dir = isDir ? path : parentOf(path);
-    const items = [
-      ["New file", () => this.create(dir, "file")],
-      ["New folder", () => this.create(dir, "dir")],
+    const make = [
+      { id: "new-file", label: "New file", icon: "file", run: () => this.create(dir, "file") },
+      { id: "new-folder", label: "New folder", icon: "folder", run: () => this.create(dir, "dir") },
     ];
-    if (r)
-      items.push(
-        ["Rename", () => this.rename(path)],
-        ["Delete", () => this.remove(path, isDir)],
-        ["Copy path", () => navigator.clipboard.writeText(path).then(() => this.host.toast(`Copied ${path}`))],
-      );
-    const m = el("div", "tmenu");
-    m.setAttribute("role", "menu");
-    for (const [label, run] of items) {
-      const b = el("button", "btn", label);
-      b.type = "button";
-      b.setAttribute("role", "menuitem");
-      b.addEventListener("click", () => {
-        this.closeMenu();
-        run();
-      });
-      m.append(b);
-    }
-    document.getElementById("a2").append(m);
-    const w = m.offsetWidth;
-    const h = m.offsetHeight;
-    m.style.left = `${Math.max(4, Math.min(x, innerWidth - w - 4))}px`;
-    m.style.top = `${Math.max(4, Math.min(y, innerHeight - h - 4))}px`;
-    this.menu = m;
-    m.querySelector("button").focus();
-    const away = (ev) => {
-      if (m.contains(ev.target)) return;
-      document.removeEventListener("pointerdown", away, true);
-      if (this.menu === m) this.closeMenu();
+    if (!r) return { groups: [make] };
+    const copy = () => navigator.clipboard.writeText(path).then(() => this.host.toast(`Copied ${path}`));
+    return {
+      groups: [
+        [
+          ...make,
+          { id: "rename", label: "Rename", icon: "pencil", run: () => this.rename(path) },
+          { id: "copy-path", label: "Copy path", icon: "copy", run: copy },
+        ],
+        [{ id: "delete", label: "Delete", icon: "trash", danger: true, run: () => this.remove(path, isDir) }],
+      ],
     };
-    document.addEventListener("pointerdown", away, true);
-    m.addEventListener("keydown", (ev) => {
-      if (ev.key !== "Escape") return;
-      ev.preventDefault();
-      this.closeMenu();
-    });
-    m.addEventListener("focusout", (ev) => {
-      if (!m.contains(ev.relatedTarget) && this.menu === m) this.closeMenu();
-    });
   }
 
   // An input in place of a row's name: resolves to the text, or null on Esc

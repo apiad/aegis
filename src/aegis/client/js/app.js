@@ -24,6 +24,7 @@ import { installKeys, renderKeys } from "./keys.js";
 import { Palette } from "./palette.js";
 import { entryIcon, glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
+import * as cmenu from "./menu.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
@@ -2692,6 +2693,14 @@ installKeys(
     fleetPrev: () => fleetMove(-1),
     fleetOpen,
     filter: () => $("arch-q").focus(),
+    // The focused row's menu, else the selected transcript row's or Fleet card's.
+    menuKey() {
+      const at = document.activeElement?.closest?.("[data-id], .trow");
+      if (cmenu.openFor(at)) return;
+      const v = route().view;
+      if (v === "session" || v === "read") cmenu.openFor(transcript.selected && transcript.nodes.get(transcript.selected));
+      else if (v === "fleet") cmenu.openFor(fleetItems().find((x) => x.dataset.id === fleetSel));
+    },
     spawn: () => offline() || go("#new"), // a new session needs the server
     settings: () => go("#settings"),
     journal: () => go("#journal"),

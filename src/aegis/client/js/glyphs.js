@@ -59,6 +59,7 @@ const SPRITE = `<defs>
 <symbol id="g-globe" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.8"/><path d="M2.2 8h11.6M8 2.2c-1.7 1.6-2.5 3.5-2.5 5.8s.8 4.2 2.5 5.8c1.7-1.6 2.5-3.5 2.5-5.8S9.7 3.8 8 2.2z"/></symbol>
 <symbol id="g-swap" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.5h9.5M10 3l2.5 2.5L10 8M13 10.5H3.5M6 8l-2.5 2.5L6 13"/></symbol>
 <symbol id="g-slash" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 2.5l-5 11"/></symbol>
+<symbol id="g-trash" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 4.5h10.4M6.2 4.5V3a.8.8 0 0 1 .8-.8h2a.8.8 0 0 1 .8.8v1.5M4.2 4.5l.6 8.4a1 1 0 0 0 1 .9h4.4a1 1 0 0 0 1-.9l.6-8.4M6.8 7v4.2M9.2 7v4.2"/></symbol>
 <symbol id="g-dot" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3.4" fill="currentColor"/></symbol>
 <symbol id="g-pip" viewBox="0 0 16 16"><circle cx="8" cy="8" r="1.5" fill="currentColor"/></symbol>
 </defs>`;
