@@ -280,6 +280,7 @@ export class Canvas {
     // A handle this redraw took away (its pane undocked elsewhere, its grip
     // gone with a column) never sees its pointer released.
     if (this.dragged && !this.dragged.alive()) this.dragged.end();
+    menu.unbarHidden(); // a selection bar over a transcript another tab now covers
   }
 
   box(node, x, y, w, h) {

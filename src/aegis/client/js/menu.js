@@ -353,6 +353,13 @@ function place() {
   node.style.top = `${Math.max(4, Math.min(y, innerHeight - h - 4))}px`;
 }
 
+// The bar of a row no longer drawn (its pane went behind another canvas tab):
+// no scroll tells follow(), so the canvas calls this when it lays out.
+export function unbarHidden() {
+  // A tabbed canvas hides a pane with visibility, not display (base.css).
+  if (bar_ && !bar_.row.checkVisibility({ visibilityProperty: true })) unbar();
+}
+
 // True when one was shown.
 export function unbar() {
   if (!bar_) return false;

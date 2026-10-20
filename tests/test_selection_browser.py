@@ -833,3 +833,47 @@ def test_a_moved_selection_closes_the_old_bar_at_once(server, page):  # noqa: F8
     page.click(".sbar [data-id=ask]")
     assert page.input_value("#input") == "> beta\n\n"
     assert page.errors == []
+
+
+def test_a_streaming_reply_offers_no_link_until_it_is_whole(server, page):  # noqa: F811
+    # Its id goes when the whole block replaces it: a link to it would land nowhere.
+    page.goto(server.url)
+    spawn(page)
+    page.fill("#input", "/stream 12")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.prose .body >> text=chunk1")
+    page.locator(".row.prose").last.locator(".body").click(button="right")
+    assert "link" not in menu_ids(page)
+    close_menu(page)
+    turns_done(page, 1)
+    page.locator(".row.prose").last.locator(".body").click(button="right")
+    assert menu_ids(page)[-1] == "link"
+    assert page.errors == []
+
+
+def test_a_bar_goes_when_another_canvas_tab_covers_the_transcript(
+    server,  # noqa: F811
+    page,
+    browser,  # noqa: F811
+):
+    from .test_browser import PICK, _artifact
+
+    page.goto(server.url)
+    key = spawn(page, "/md alpha kiwi beta")
+    aid, _ = _artifact(page, server, PICK, 1)
+    page.close()
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True)
+    phone = ctx.new_page()
+    try:
+        phone.goto(f"{server.url}#s={key}")
+        phone.wait_for_selector("#a2[data-view=session]")
+        phone.click(".row.artifact .fbar .dock")
+        tab = phone.locator(f'#canvas .ptabs button[data-pane="{aid}"]')
+        tab.wait_for()
+        select(phone, REPLY, "kiwi")
+        phone.wait_for_selector(".sbar")
+        tab.click()
+        assert phone.locator("#tr-pane").is_hidden()
+        phone.wait_for_selector(".sbar", state="detached")
+    finally:
+        ctx.close()

@@ -1018,6 +1018,14 @@ function render() {
   }
   tellView(); // the view may have changed with the same session shown
   const r = route();
+  // A row's link is read once: the URL drops "&at=" on every path, so the
+  // tab's hash is its own again (cycle) and a quiet session's bounce keeps
+  // none. The row waits in landEntry: a render that waits for the session
+  // list runs again later with the plain hash.
+  if (r.at) {
+    history.replaceState(null, "", `#s=${r.id}`);
+    landEntry = { key: r.id, id: r.at };
+  }
   // A menu or the selection bar is about the view it opened in. go() moves
   // with pushState, which fires no hashchange, so the change is caught here.
   const at = `${r.view}:${r.id ?? ""}`;
@@ -1128,11 +1136,11 @@ function render() {
   } else if (r.view === "session") {
     // A row's link: the row is revealed now when its transcript is here, else
     // once it lands. The URL drops "&at=", so the tab's hash is its own again.
-    if (r.at) {
-      history.replaceState(null, "", `#s=${r.id}`);
-      if (shown !== r.id) landEntry = { key: r.id, id: r.at };
-      else if (transcript.entries.has(r.at)) transcript.reveal(r.at);
-      else landEntry = null; // a row this session no longer has: nothing to land on later
+    // The session shown already: its transcript is here, so the row lands
+    // now, or never when it is gone. Otherwise it lands with the transcript.
+    if (landEntry?.key === r.id && shown === r.id) {
+      if (transcript.entries.has(landEntry.id)) transcript.reveal(landEntry.id);
+      landEntry = null;
     }
     watchHost(forKey(r.id).server || "");
     // Shown first: follow() sizes the message box, which measures 0 while hidden.
@@ -3688,7 +3696,8 @@ function rowMenu(t, ev) {
     run: () => quote((q) => openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, prompt: `From ${s.handle}:\n${q}\n\n` })),
   };
   const copy = { id: "copy", label: "Copy", icon: "copy", key: "c", run: () => copyRow(id, transcript.nodes.get(id), copyDeps) };
-  const link = {
+  // A part still streaming has an id the whole block will replace: no link.
+  const link = !e.live && {
     id: "link",
     label: "Copy link",
     icon: "link",
