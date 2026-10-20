@@ -50,14 +50,13 @@ correct you.
 ## What each kind needs
 
 Each kind has a GitHub issue form. Each field below has a label, which is
-the heading in the issue body, and an id, which a prefilled link uses. The
-starred ones are required.
+the heading in the issue body. The starred ones are required.
 
 ```text
-bug       What happened* (happened) · What you expected* (expected) · Steps to reproduce* (steps) · Version* (version) · Evidence (evidence) · Context (context)
-feature   The problem* (problem) · What you propose* (proposal) · What you do today (workaround) · Version* (version) · Context (context)
-docs      Page or search* (page) · What is wrong or missing* (wrong) · Suggested text (suggested) · Version* (version)
-question  Question* (question) · What you tried (tried) · Version* (version)
+bug       What happened* · What you expected* · Steps to reproduce* · Version* · Evidence · Context
+feature   The problem* · What you propose* · What you do today · Version* · Context
+docs      Page or search* · What is wrong or missing* · Suggested text · Version*
+question  Question* · What you tried · Version*
 ```
 
 What a maintainer needs from each field:
@@ -144,17 +143,19 @@ gh issue create -R <owner>/<repo> --title "<title>" --body-file body.md --label 
 GitHub drops the label when the person cannot triage the repository. The
 marker is how the lint workflow knows the kind then.
 
-**Without `gh`**, give the person a link that opens the issue form with
-every field filled:
+**Without `gh`**, give the person a link that opens a blank issue with the
+title and the same body filled in, kind marker included:
 
 ```text
-https://github.com/<owner>/<repo>/issues/new?template=<kind>.yml&title=<title>&<id>=<value>&...
+https://github.com/<owner>/<repo>/issues/new?title=<title>&body=<body>
 ```
 
-URL-encode each value. GitHub refuses a link that is too long, so keep it
+URL-encode both. Do not fill the form's fields from the link
+(`template=<kind>.yml` with one parameter per field): GitHub leaves them
+empty for some links. GitHub refuses a link that is too long, so keep it
 under about 6,000 characters: leave Evidence out of the link and give it to
-the person as a file to paste or drop into that field. Tell them that nothing
-is filed until they press Submit.
+the person as a file to paste into the body. Tell them that nothing is filed
+until they press Submit.
 
 **A duplicate** gets a comment instead, with the person's case, version and
 evidence, approved the same way:

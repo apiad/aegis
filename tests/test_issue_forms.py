@@ -37,9 +37,7 @@ def test_each_form_sets_its_label_and_has_a_required_version_field(kind):
 
 @pytest.mark.parametrize("kind", KINDS)
 def test_every_id_is_one_lowercase_word(kind):
-    # A hyphen in any parameter of a prefilled link leaves every field of the
-    # form empty on GitHub, though its schema allows one; an underscore reads
-    # as a tool name on a help page.
+    # An underscore reads as a tool name on a help page.
     for item in fields(kind):
         assert re.fullmatch(r"[a-z]+", item["id"]), item["id"]
 
@@ -65,12 +63,9 @@ def test_the_bug_steps_prefill_keeps_one_line_per_step():
     assert steps["attributes"]["value"].splitlines() == ["1.", "2.", "3."]
 
 
-@pytest.mark.parametrize("kind", KINDS)
-def test_the_help_page_names_each_field_and_id_a_prefilled_link_uses(kind):
+def test_the_help_page_link_fills_title_and_body_not_form_fields():
     page = (FORMS.parents[1] / "src/aegis/help/feedback.md").read_text()
-    block = re.search(r"## What each kind needs.*?```text\n(.*?)```", page, re.S)[1]
-    (line,) = [x for x in block.splitlines() if x.split(" ", 1)[0] == kind]
-    named = re.findall(r"([A-Z][^·*(]*?)\*? \(([a-z-]+)\)", line)
-    assert [(lbl.strip(), i) for lbl, i in named] == [
-        (f["attributes"]["label"], f["id"]) for f in fields(kind)
+    links = re.findall(r"^https://github\.com/\S+/issues/new\?\S+$", page, re.M)
+    assert links == [
+        "https://github.com/<owner>/<repo>/issues/new?title=<title>&body=<body>"
     ]
