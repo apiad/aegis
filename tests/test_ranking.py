@@ -1,0 +1,47 @@
+import re
+
+from aegis.ranking import Ranking, Score, ranking
+
+
+def small() -> Ranking:
+    return Ranking.from_dict(
+        {
+            "refreshed": "2026-10-18",
+            "models": {
+                "a": {"aa": "a", "coding": 41.2, "intelligence": 54.0},
+                "b": {"aa": "b", "coding": 38.9, "intelligence": 50.1},
+                "c": {"aa": "c", "coding": 38.9, "intelligence": 52.0},
+                "d": {"aa": "d", "coding": None, "intelligence": 60.0},
+            },
+        }
+    )
+
+
+def test_order_puts_higher_coding_first_and_unranked_last():
+    r = small()
+    assert r.order(["x", "b", "y", "a", "d"]) == ["a", "b", "x", "y", "d"]
+    assert r.score("a") == Score("a", 41.2, 54.0, None, None)
+    assert r.score("x") is None
+
+
+def test_intelligence_breaks_a_coding_tie():
+    assert small().order(["b", "c"]) == ["c", "b"]
+
+
+def test_rank_counts_only_ranked_models_among_the_given_ones():
+    r = small()
+    among = ["x", "b", "a", "d"]
+    assert r.rank("a", among) == 1
+    assert r.rank("b", among) == 2
+    assert r.rank("x", among) is None
+    assert r.rank("d", among) is None  # no Coding Index: unranked
+    assert r.rank("c", among) is None  # ranked, but not among them
+
+
+def test_the_packaged_file_loads_and_has_a_date():
+    r = ranking()
+    assert r is ranking()
+    # Empty until the first refresh with an Artificial Analysis key.
+    assert r.refreshed == "" or re.fullmatch(r"\d{4}-\d{2}-\d{2}", r.refreshed)
+    for model in r.models:
+        assert r.score(model) is not None
