@@ -114,6 +114,13 @@ through its harness. A model the ranking does not score shows "unranked" and
 its price. OpenCode's catalog gives its own prices; for Claude Code the price
 is the ranking's list price.
 
+The Settings page has a Models section that lists every model the installed
+harnesses can run, one row each: name, harness, rank, Coding Index,
+Intelligence Index, price in and out, and the agents that use it with its
+place in each cascade, such as "free #2". Models in use are marked and come
+first. Chips above the list filter it by harness and to free models only, and
+sort it by any column. Under it is the ranking's date and its source.
+
 An agent reads the same data with `models_list`: every model the installed
 harnesses can run, with harness, rank, Coding and Intelligence Indexes, price
 in and out, whether it is free, the agents that name it (`at` is its index in

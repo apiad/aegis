@@ -591,6 +591,80 @@ def test_model_options_show_rank_score_and_price(ranked_server, page):
     assert page.errors == []
 
 
+def model_view_rows(pg) -> list[str]:
+    return pg.eval_on_selector_all(
+        "#set-models .set-mrow[data-model]", "els => els.map(e => e.dataset.model)"
+    )
+
+
+def test_models_view_filters_and_sorts(ranked_server, page):
+    page.goto(ranked_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.keyboard.press("Alt+KeyS")
+    page.wait_for_selector("#set-models .set-mrow[data-model]")
+    # In use first, then by Coding Index; unranked ones last, in catalog order.
+    assert model_view_rows(page) == [
+        "opus",
+        "opencode-go/fake-pro",
+        "sonnet",
+        "opencode-go/fake-flash",
+        "haiku",
+        "opencode-go/fake-video",
+        "opencode-go/fake-plain",
+    ]
+    assert page.eval_on_selector_all(
+        "#set-models .set-mrow.use", "els => els.map(e => e.dataset.model)"
+    ) == ["opus", "opencode-go/fake-pro"]
+    opus = '#set-models .set-mrow[data-model="opus"]'
+    assert page.inner_text(f"{opus} .by") == "opus #1"
+    assert page.inner_text(f"{opus} .pr") == "$15 / $75"
+    pro = '#set-models .set-mrow[data-model="opencode-go/fake-pro"]'
+    assert page.inner_text(f"{pro} .rk") == "#2"
+
+    pick(page, "#set-models pick-chip[name=models-harness]", "OpenCode")
+    assert model_view_rows(page) == [
+        "opencode-go/fake-pro",
+        "opencode-go/fake-flash",
+        "opencode-go/fake-video",
+        "opencode-go/fake-plain",
+    ]
+    pick(page, "#set-models pick-chip[name=models-harness]", "all")
+    pick(page, "#set-models pick-chip[name=models-price]", "free only")
+    assert model_view_rows(page) == ["opencode-go/fake-flash", "opencode-go/fake-video"]
+    pick(page, "#set-models pick-chip[name=models-price]", "any price")
+
+    pick(page, "#set-models pick-chip[name=models-sort]", "Coding Index")
+    assert model_view_rows(page)[:4] == [
+        "opus",
+        "sonnet",
+        "opencode-go/fake-flash",
+        "opencode-go/fake-pro",
+    ]
+    pick(page, "#set-models pick-chip[name=models-sort]", "price")
+    assert model_view_rows(page) == [
+        "opencode-go/fake-flash",
+        "opencode-go/fake-video",
+        "opencode-go/fake-pro",
+        "opencode-go/fake-plain",
+        "sonnet",
+        "opus",
+        "haiku",
+    ]
+
+    attr = page.locator("#set-models .set-attr")
+    assert attr.inner_text() == "Scores by Artificial Analysis, refreshed 2026-10-18"
+    assert attr.locator("a").get_attribute("href") == "https://artificialanalysis.ai"
+
+    # On a phone each row stacks and nothing scrolls sideways.
+    page.set_viewport_size({"width": 390, "height": 800})
+    assert page.evaluate(
+        "(() => { const b = document.querySelector('#set-models');"
+        " return b.scrollWidth <= b.clientWidth; })()"
+    )
+    assert page.is_hidden("#set-models .set-mrow.hd")
+    assert page.errors == []
+
+
 def test_the_first_message_grows_until_the_form_fills_the_view(server, page):
     # #384: the box was three lines tall whatever was typed, so the fourth
     # scrolled inside it with the view mostly empty around the form.

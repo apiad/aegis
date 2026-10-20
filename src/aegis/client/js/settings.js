@@ -17,7 +17,7 @@
 // operations and `config` channel, sent through the link.
 
 import { elapsed } from "./gauges.js";
-import { modelMeta } from "./models.js";
+import { modelMeta, modelPrice } from "./models.js";
 import "./pick.js";
 import { who } from "./me.js";
 import { deviceCopy } from "./appworker.js";
@@ -74,6 +74,8 @@ export class Settings {
     this.homeWire = null;
     this.unsubFar = null;
     this.linkError = "";
+    this.models = null; // models.list
+    this.modelView = { harness: "", price: "", sort: "use" };
   }
 
   call(op, params = {}) {
@@ -128,6 +130,7 @@ export class Settings {
     this.dirty = false;
     this.findings = null;
     this.found = [];
+    this.models = null;
     if (server === null) {
       if (this.homeWire) this.onConfig(this.homeWire);
     } else
@@ -153,6 +156,7 @@ export class Settings {
   // nothing is redrawn: the chips hold the doc they were drawn from. An edited
   // form says the file moved at once, in place; an untouched one waits.
   onConfig(wire) {
+    const moved = wire.stamp !== this.wire?.stamp;
     this.wire = wire;
     if (this.saving) return;
     if (this.doc !== null && this.editing()) {
@@ -162,6 +166,7 @@ export class Settings {
       }
       return this.later();
     }
+    if (moved && this.models) this.loadModels(); // who uses which model
     if (!this.dirty || this.doc === null) this.load(wire);
     else if (wire.stamp !== this.stamp) this.stale = true;
     if (this.box.isConnected && this.box.offsetParent !== null) this.draw();
@@ -178,6 +183,7 @@ export class Settings {
   // sessions patch never redraws the form under the person's cursor.
   async open() {
     this.draw();
+    this.loadModels();
     if (this.found.length) return;
     try {
       this.found = await this.call("config.detect");
@@ -219,6 +225,7 @@ export class Settings {
           h("p", { className: "notice", id: "set-member", textContent: "Server settings (agents, queues, parking, workflows, servers, tokens) are edited by an admin." }),
           this.browser(),
           this.checks(),
+          this.modelsView(),
         ),
       );
     if (this.tokenRows === undefined) {
@@ -242,6 +249,7 @@ export class Settings {
       this.stale && this.staleAlert(),
       this.checks(),
       this.agents(),
+      this.modelsView(),
       this.queues(),
       this.park(),
       this.untested(),
@@ -882,6 +890,94 @@ export class Settings {
   modelOptions(harness) {
     const f = this.found.find((f) => f.harness === harness);
     return (f ? f.models : []).map((m) => ({ value: m.value, label: m.label, meta: modelMeta(m) }));
+  }
+
+  async loadModels() {
+    const server = this.server;
+    try {
+      const m = await this.call("models.list");
+      if (server !== this.server) return;
+      this.models = m;
+    } catch (e) {
+      this.models = { error: e.message };
+    }
+    this.box.querySelector("#set-models")?.replaceWith(this.modelsView());
+  }
+
+  // Every model the installed harnesses run, the ones agents use first:
+  // filtered by harness and price, sorted by any column (models.list).
+  modelsView() {
+    const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Models" }));
+    const box = h("section", { id: "set-models" }, head);
+    const m = this.models;
+    if (!m || m.error) {
+      box.append(h("p", { className: "set-none", textContent: m ? m.error : "Loading…" }));
+      return box;
+    }
+    const view = this.modelView;
+    const label = (x) => this.found.find((f) => f.harness === x)?.label || x;
+    const harnesses = [...new Set(m.models.map((x) => x.harness))];
+    const chip = (name, words, options, key) => {
+      const c = select(name, options.map((o) => o[0]), view[key], (v) => options.find((o) => o[0] === v)[1]);
+      c.setAttribute("aria-label", words);
+      c.addEventListener("input", () => {
+        view[key] = c.value;
+        rows.replaceWith((rows = this.modelRows(m.models, label)));
+      });
+      return c;
+    };
+    const tools = h(
+      "div",
+      { className: "set-mtools" },
+      chip("models-harness", "Models harness", [["", "all harnesses"], ...harnesses.map((x) => [x, label(x)])], "harness"),
+      chip("models-price", "Models price", [["", "any price"], ["free", "free only"]], "price"),
+      h("span", { className: "set-none", textContent: "sort" }),
+      chip("models-sort", "Models sort", [["use", "in use, then rank"], ["name", "name"], ["harness", "harness"], ["rank", "rank"], ["coding", "Coding Index"], ["intelligence", "Intelligence Index"], ["price", "price"]], "sort"),
+    );
+    let rows = this.modelRows(m.models, label);
+    const link = h("a", { href: m.source_url, textContent: "Artificial Analysis", target: "_blank", rel: "noopener" });
+    const attr = h("p", { className: "set-attr" }, "Scores by ", link, m.refreshed ? `, refreshed ${m.refreshed}` : ", not refreshed yet");
+    box.append(tools, rows, attr);
+    return box;
+  }
+
+  modelRows(models, label) {
+    const { harness, price, sort } = this.modelView;
+    // Unscored and unpriced models go last: scores are 0 to 100.
+    const cost = (x) => (modelPrice(x) === "free" ? 0 : (x.price_out ?? x.price_in ?? 1e9));
+    const down = (k) => (a, b) => (b[k] ?? -1) - (a[k] ?? -1);
+    const by = {
+      name: (a, b) => a.value.localeCompare(b.value),
+      harness: (a, b) => label(a.harness).localeCompare(label(b.harness)),
+      rank: (a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9),
+      coding: down("coding"),
+      intelligence: down("intelligence"),
+      price: (a, b) => cost(a) - cost(b),
+    }[sort];
+    // models.list's order is "in use, then rank"; every other sort keeps it for ties.
+    const list = models.filter((x) => (!harness || x.harness === harness) && (!price || modelPrice(x) === "free"));
+    if (by) list.sort(by);
+    const cell = (cls, text) => h("span", { className: cls, textContent: text });
+    const hd = h("div", { className: "set-mrow hd" }, ...["model", "harness", "rank", "coding", "intel.", "price in / out", "used by"].map((t, i) => cell(["nm", "h", "rk", "ci", "ii", "pr", "by"][i], t)));
+    const row = (x) => {
+      const used = x.used_by.map((u) => `${u.agent} #${u.at + 1}`).join(", ");
+      const cool = x.cooling_until ? `cooling until ${new Date(x.cooling_until * 1000).toTimeString().slice(0, 5)}` : "";
+      const r = h(
+        "div",
+        { className: x.used_by.length ? "set-mrow use" : "set-mrow", title: x.label },
+        cell("nm", x.value),
+        cell("h", label(x.harness)),
+        cell("rk", x.rank ? `#${x.rank}` : "—"),
+        cell("ci", x.coding != null ? x.coding.toFixed(1) : "unranked"),
+        cell("ii", x.intelligence != null ? x.intelligence.toFixed(1) : "—"),
+        cell("pr", modelPrice(x) || "—"),
+        cell("by", [used, cool].filter(Boolean).join(" · ")),
+      );
+      r.dataset.model = x.value;
+      return r;
+    };
+    const body = list.length ? list.map(row) : [h("p", { className: "set-none", textContent: "No model matches." })];
+    return h("div", { className: "set-mrows" }, hd, ...body);
   }
 
   agents() {
