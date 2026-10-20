@@ -497,14 +497,17 @@ overrides the model), and `model` is the one in use, so the position is
 `cascade.index(model)` and survives a restart through the meta. `App.start_spec`
 is the one place a start picks: every path that starts a harness from an agent
 (spawn, handoff, queue dispatch, workflow node, schedule tick) asks it, and it
-returns the first model not cooling whose gate is open, or a closed gate. A
+returns the first model not cooling whose gate is open, or a closed gate; a
+model a person moved outside the cascade is judged by its own gate alone. A
 turn's failed `Result` is handed to `Host.cascade_next` before the session goes
 idle: `cascade.classify` reads the harness's error text, a fall cools the model
 (or, for Claude Code's usage limit, the whole pool) and picks the next model
-below it, and the session records a `cascade` row, switches with `configure`
-and sends a continue prompt in the same turn, so `turn_ended`, a queue task and
-a workflow node see one turn ending with the last model's answer. It never wraps
-to the top. The cooling table is in memory per server; one timer at its earliest
+below it, and the session switches with `configure`, records a `cascade` row
+and sends a continue prompt under an `aegis:cascade` header in the same turn, so `turn_ended`, a queue task and
+a workflow node see one turn ending with the last model's answer. Stop and close
+cancel a fall still switching and end the turn once; shutdown cancels it and
+leaves the turn working, so the next boot continues it. It never wraps to the
+top. The cooling table is in memory per server; one timer at its earliest
 end calls `App._release_held`, the same release `on_quota` ends with, so held
 queue tasks, schedule ticks and workflow nodes start when a model is free again.
 

@@ -79,11 +79,13 @@ and whose quota gate is open. When none is, the start is refused or held as
 for a closed gate, with the time the first model is free again. A spawn that
 overrides the model runs that model alone, with no cascade.
 
-When a turn fails because the model ran out of quota, hit a rate limit, was
-overloaded, or is no longer served, the session falls to the next model below
+When a turn fails because the model ran out of quota, hit a rate limit, timed
+out, was overloaded, or is no longer served, the session falls to the next model below
 it and continues the same turn: the transcript shows a line "cascade: <model>
 failed (<error>); cools until HH:MM. Continuing on <next>.", and the new model
-gets a prompt saying what failed. An interrupt, a context-too-long or auth
+gets a message from aegis saying what failed. If the switch is refused, the
+line says "could not switch to <next>" and the turn ends with the error; a Stop
+or an interrupt while it switches ends the turn without continuing. An interrupt, a context-too-long or auth
 error, and any error aegis does not recognize end the turn as before. When the
 last model fails, the transcript says "cascade exhausted" and the turn ends with
 the error. A session never climbs back up; the card's model line shows the
@@ -93,7 +95,7 @@ A model that failed cools for its retry-after, or 10 minutes, and new sessions
 skip it. Claude Code's usage limit cools every Claude model at once, since they
 share one account. Cooling is kept in memory by the server: a restart clears it.
 `/model` moves a session within its cascade; a model outside it turns falling
-off for that session. Codex errors never fall yet.
+off for that session, and a handoff from it keeps that model. Codex errors never fall yet.
 
 ## Claude Code tools aegis replaces
 
