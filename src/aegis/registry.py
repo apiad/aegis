@@ -148,16 +148,12 @@ class Registry(Host):
             self.workflows.turn_ended(session)
         if self.notices is not None:
             self.notices.turn_ended(session)
-        if (
-            self.nudges is not None
-            and (silent_s := self.nudges.timings()[0]) is not None
-        ):
+        nudges = self.nudges
+        if nudges is not None and (silent_s := nudges.timings()[0]) is not None:
             # The silent-turn nudge comes silent_s after the turn's end, not on
             # the next tick; the grace lets a held flush start and the card settle.
             loop = asyncio.get_running_loop()
-            loop.call_later(
-                silent_s, lambda: loop.create_task(self.nudges.check(session))
-            )
+            loop.call_later(silent_s, lambda: loop.create_task(nudges.check(session)))
 
     def _retire_predecessor(self, new: Session) -> None:
         """After a handoff, archive the old session once the new one has
