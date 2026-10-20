@@ -987,7 +987,8 @@ appear; it can never put text in a composer, because that menu takes no
 focus and only a click on one of its items writes, never in its first half
 second, since the page chose where it opens. A field, a link, an image
 or a press with no text keeps the browser's own menu, and a scroll or Esc in
-the page closes what the host drew for it, as does any press in the page.
+the page closes what the host drew for it, as does any press in the page or
+the page losing the focus to another frame.
 `/via` adds the tag too, once, so a far server older than this one gets it,
 and passes a download through as one. A page whose own CSP blocks the script
 simply has no menu. Comments on files and pages live in

@@ -399,6 +399,8 @@ export function barAt(items, rect, owner, settle = 0) {
   showBar(items, { getClientRects: () => [rect], toString: () => "" }, null, null, settle);
   bar_.owner = owner;
   const node = bar_.node;
+  // A press in another frame reaches neither listener: the owner's
+  // pagepoint.js posts clear when its page loses the focus.
   const away = (ev) => {
     if (ev.type === "pointerdown" && node.contains(ev.target)) return;
     document.removeEventListener("pointerdown", away, true);

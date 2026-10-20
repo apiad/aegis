@@ -598,3 +598,71 @@ def test_a_second_right_click_in_a_page_keeps_its_menu_closable(server, page):  
     page.wait_for_selector(".cmenu", state="detached")
     frame.wait_for_function(f"({outline})(null) === ''")
     assert page.errors == []
+
+
+def test_ask_from_a_window_tab_goes_to_the_sessions_composer(server, page):  # noqa: F811
+    """A window tab (#w=) follows the session but draws no composer: Ask
+    takes the tab to the session, where the quote is seen."""
+    from .test_canvas_browser import mcp
+
+    page.goto(server.url)
+    sid = spawn(page)
+    aid, _ = _artifact(
+        page, server, ("<h3>Pick</h3><p id=q>mango</p>", "aegis.state({});"), 0
+    )
+    mcp(
+        page,
+        3,
+        "layout_set",
+        {
+            "windows": [
+                {"n": 1, "columns": [{"panes": [{"id": "transcript"}]}]},
+                {"n": 2, "columns": [{"panes": [{"id": aid}]}]},
+            ]
+        },
+    )
+    page.locator(".row.artifact .acard .held").filter(has_text="in window 2").wait_for()
+    win = page.context.new_page()
+    win.errors = []
+    win.on("pageerror", lambda e: win.errors.append(str(e)))
+    win.goto(f"{server.url.split('#')[0]}#w=2:{sid}")
+    frame = frame_of(win, f'#canvas iframe[data-artifact="{aid}"]')
+    frame.locator("#q").click(button="right")
+    pick(win, "ask")
+    win.wait_for_function(f"location.hash === '#s={sid}'")
+    assert win.locator("#input").is_visible()
+    assert win.input_value("#input").startswith(f"`{aid}` § Pick › #q\n> mango")
+    assert win.errors == [] and page.errors == []
+
+
+def test_a_press_in_another_page_closes_a_pages_menu_and_bar(server, page):  # noqa: F811
+    (server.root / "a.html").write_text(PAGE)
+    (server.root / "b.html").write_text(PAGE.replace("kiwi", "fig"))
+    page.set_viewport_size({"width": 1280, "height": 1600})
+    page.goto(server.url)
+    spawn(page)
+    send(page, 1, ["a.html"])
+    send(page, 2, ["b.html"])
+    one = frame_of(page, ".row.file >> nth=0 >> iframe")
+    frame_of(page, ".row.file >> nth=1 >> iframe")  # loaded, with its script
+    # Both on screen, so pressing the second scrolls nothing here: the
+    # host's own scroll would close the menu for another reason.
+    page.locator(".row.file iframe").nth(0).scroll_into_view_if_needed()
+    there = page.locator(".row.file iframe").nth(1).bounding_box()
+    assert there["y"] + 60 < 1600
+    at = (there["x"] + 30, there["y"] + 30)
+    page.evaluate(
+        "window.__scrolls = 0;"
+        " document.addEventListener('scroll', () => window.__scrolls++, true)"
+    )
+    one.locator("#p1").click(button="right")
+    page.wait_for_selector(".cmenu")
+    page.mouse.click(*at)
+    page.wait_for_selector(".cmenu", state="detached")
+    one.wait_for_function("document.getElementById('p1').style.outline === ''")
+    one.locator("p:not([id])").dblclick(position={"x": 8, "y": 6})
+    page.wait_for_selector(".sbar")
+    page.mouse.click(*at)
+    page.wait_for_selector(".sbar", state="detached")
+    assert page.evaluate("window.__scrolls") == 0
+    assert page.errors == []

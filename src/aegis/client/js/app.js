@@ -3766,11 +3766,12 @@ function pagePoint(frame, { kind, x, y, rect, touch, locator = {}, text = "" }) 
 async function toComposer(key, text, opts) {
   const s = key && sessions.get(key);
   if (!s || !mine(s)) return newSessionWith(null, text);
-  if (shown !== key) {
+  // A window tab (#w=) follows the session too, but draws no composer.
+  if (shown !== key || route().view !== "session") {
     if (filesView.leaving(route(hashOf(key))) && !(await filesView.confirmLeave())) return false;
     go(hashOf(key));
   }
-  if (shown !== key) return false;
+  if (shown !== key || route().view !== "session") return false;
   insertIntoComposer(text, opts);
   return true;
 }

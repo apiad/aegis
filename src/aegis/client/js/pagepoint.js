@@ -179,6 +179,14 @@
     true,
   );
 
+  // A press in another frame, or anywhere the host cannot see, takes the
+  // focus from this page: what the host drew for it goes.
+  window.addEventListener("blur", () => {
+    if (!pointed && !shown) return;
+    shown = "";
+    post({ kind: "clear" });
+  });
+
   window.addEventListener("message", (ev) => {
     if (ev.source !== window.parent || ev.data?.jsonrpc !== "2.0") return;
     // Each message names its menu: the host closes the old one after it
