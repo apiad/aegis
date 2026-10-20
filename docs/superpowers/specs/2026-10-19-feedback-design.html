@@ -406,7 +406,7 @@ do it. If the person agrees, follow help_read feedback, as for /feedback.</pre>
 <ul>
   <li><b>No model review.</b> GitHub Models was retired on 2026-07-30, and <code>actions/ai-inference</code> v3 runs the Copilot CLI with a Copilot token stored in the repository. The workflow runs the script's checks only. The script still writes the prompt (<code>check</code>) and merges an answer (<code>finish --review-file</code>), tested, for a later step once a token is chosen.</li>
   <li><b>A <code>feedback</code> label.</b> The kind labels also mark the maintainer's own issues, so a kind label alone cannot say an issue is feedback. Each form adds <code>feedback</code>; the lint runs on issues with the marker or that label, and adds the label to marked ones.</li>
-  <li><b>Field ids use hyphens</b> (<code>what-happened</code>): a help page reads a backticked underscored word as a tool name. Sections are matched by the field's label, which is what a submitted form renders.</li>
+  <li><b>Field ids are one lowercase word</b> (<code>happened</code>): a hyphen in any parameter of a prefilled link leaves every field of the form empty on GitHub, though its schema allows one, and a help page reads a backticked underscored word as a tool name. Sections are matched by the field's label, which is what a submitted form renders.</li>
   <li><b>Evidence is not rendered as a code block,</b> so a <code>&lt;details&gt;</code> excerpt folds instead of showing as raw text.</li>
   <li><b>The lint comment never mentions a review,</b> since none runs.</li>
 </ul>

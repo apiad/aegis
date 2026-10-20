@@ -6,7 +6,7 @@ body:
     attributes:
       value: "Filed by an agent? It followed the help page feedback. Filing by hand? `/feedback` in any aegis session drafts this for you."
   - type: textarea
-    id: what-happened
+    id: happened
     attributes:
       label: What happened
       description: "The observed behaviour, with the exact error text."

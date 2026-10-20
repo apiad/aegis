@@ -36,9 +36,12 @@ def test_each_form_sets_its_label_and_has_a_required_version_field(kind):
 
 
 @pytest.mark.parametrize("kind", KINDS)
-def test_every_id_is_lowercase_with_hyphens(kind):
+def test_every_id_is_one_lowercase_word(kind):
+    # A hyphen in any parameter of a prefilled link leaves every field of the
+    # form empty on GitHub, though its schema allows one; an underscore reads
+    # as a tool name on a help page.
     for item in fields(kind):
-        assert re.fullmatch(r"[a-z]+(-[a-z]+)*", item["id"]), item["id"]
+        assert re.fullmatch(r"[a-z]+", item["id"]), item["id"]
 
 
 @pytest.mark.parametrize("kind", KINDS)

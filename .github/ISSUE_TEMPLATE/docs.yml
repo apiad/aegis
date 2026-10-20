@@ -13,7 +13,7 @@ body:
     validations:
       required: true
   - type: textarea
-    id: wrong-or-missing
+    id: wrong
     attributes:
       label: What is wrong or missing
       description: "What the page says, or does not say, and what is true."
