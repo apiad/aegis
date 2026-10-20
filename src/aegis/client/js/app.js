@@ -629,9 +629,41 @@ conn.subscribe(
 
 // The workflow runs (workflows.py), for their cards in the transcript and
 // their canvas panes. A running card counts its times up once a second.
-const wfRuns = new Map();
+// `workflow-runs` has every run's summary, without the tree and the story a
+// card draws: those were 96% of the bytes (#525). A card's run comes whole
+// from `workflow:<run>`, subscribed while a card of it is in the page.
+const wfRuns = new Map(); // run -> its summary
+const wfWhole = new Map(); // run -> {w: the run whole, or null until it lands; unsub}
+function wfGet(run) {
+  const summary = wfRuns.get(run);
+  if (!summary) return null;
+  let d = wfWhole.get(run);
+  if (!d) {
+    d = { w: null, unsub: null };
+    wfWhole.set(run, d);
+    const land = (w) => {
+      d.w = w;
+      wfChanged(new Set([run]));
+    };
+    d.unsub = conn.subscribe(`workflow:${run}`, land, (ops) => {
+      for (const op of ops) if (op.set) land(op.set);
+    });
+  }
+  // Until it lands, the card draws from the summary, with no rows yet.
+  return d.w || { ...summary, tree: [], story: [] };
+}
+// A run whose cards all left the page is no longer followed.
+function wfForget() {
+  for (const [run, d] of wfWhole) {
+    if (document.querySelector(`.wfcard[data-run="${CSS.escape(run)}"], .wfdcard[data-run="${CSS.escape(run)}"]`)) continue;
+    d.unsub();
+    wfWhole.delete(run);
+  }
+}
+setInterval(wfForget, 10000);
 setWorkflows({
-  get: (run) => wfRuns.get(run) || null,
+  get: wfGet,
+  summary: (run) => wfRuns.get(run) || null,
   call: (op, params) => conn.call(op, params),
   view: (files, line) => viewer.open({ files, at: 0, remote: false, glyph: "file", line }),
 });
@@ -645,7 +677,7 @@ const wfChanged = (runs) => {
   if (s?.workflow && (!runs || runs.has(s.workflow.run))) renderMeta(s);
 };
 conn.subscribe(
-  "workflows",
+  "workflow-runs",
   (list) => {
     wfRuns.clear();
     for (const w of list || []) wfRuns.set(w.run, w);
@@ -654,9 +686,13 @@ conn.subscribe(
   (ops) => {
     const runs = new Set();
     for (const op of ops) {
-      if (!op.upsert) continue;
-      wfRuns.set(op.upsert.run, op.upsert);
-      runs.add(op.upsert.run);
+      const w = op.upsert || (op.merge && wfRuns.has(op.merge.run) && { ...wfRuns.get(op.merge.run), ...op.merge });
+      if (!w) continue;
+      wfRuns.set(w.run, w);
+      // A whole run that is followed takes the summary's news too.
+      const d = wfWhole.get(w.run);
+      if (d?.w) d.w = { ...d.w, ...w };
+      runs.add(w.run);
     }
     wfChanged(runs);
   },

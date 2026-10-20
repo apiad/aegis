@@ -452,11 +452,13 @@ class Workflows:
                 self.defs[run] = wf
         return wf
 
-    def wire(self, run: str) -> dict:
+    def wire(self, run: str, detail: bool = True) -> dict:
+        """A run as browsers see it. Without ``detail``, its summary: no
+        ``tree`` and no ``story``, which were 96% of a run's bytes and only its
+        card draws (#525); the rest of the client reads the summary."""
         st = self.runs[run]
         wf = self.definition(run)
-        tree = self._rows(st, wf) if wf else []
-        return {
+        out = {
             "run": run,
             "id": wf.id if wf else "",
             "title": wf.title if wf else "",
@@ -466,8 +468,6 @@ class Workflows:
             "created": st.created,
             "started": st.started,
             "ended": st.ended,
-            "tree": tree,
-            "story": st.story,
             "args": st.args,
             "saved": st.saved,
             "launch": st.launch,
@@ -494,6 +494,10 @@ class Workflows:
                 for to, o in st.open.items()
             ],
         }
+        if detail:
+            out["tree"] = self._rows(st, wf) if wf else []
+            out["story"] = st.story
+        return out
 
     def _open_text(self, st: RunState, to: str, o: dict) -> str:
         n = st.nodes.get(o.get("node") or "") or NodeState()
@@ -813,6 +817,9 @@ class Workflows:
 
     def wire_all(self) -> list[dict]:
         return [self.wire(r) for r in sorted(self.runs)]
+
+    def summaries(self) -> list[dict]:
+        return [self.wire(r, detail=False) for r in sorted(self.runs)]
 
     # -- what people and agents do ------------------------------------------
     def arm(
@@ -3092,19 +3099,34 @@ class Workflows:
         on its run's state would be retried, and logged, every PUBLISH_S."""
         self._flush_at = None
         runs, self._dirty = self._dirty, set()
-        ops, failed = [], []
+        # Three channels: `workflow-runs` has every run's summary, and
+        # `workflow:<run>` one run whole, for a browser that shows its card;
+        # `workflows` has every run whole, for a client older than #525. A
+        # whole run walks its tree, so it is built only for a subscriber.
+        subscribers = self._app.channels.subscribers
+        whole = subscribers("workflows") > 0
+        ops, summaries, failed = [], [], []
         for r in sorted(runs):
             if r not in self.runs:
                 continue
+            watched = subscribers(f"workflow:{r}") > 0
             try:
-                ops.append({"upsert": self.wire(r)})
+                summary = self.wire(r, detail=False)
+                full = self.wire(r) if whole or watched else None
             except Exception:
                 if r not in self._unpublishable:
                     log.exception("aegis: workflow run %s could not be published", r)
                     self._unpublishable.add(r)
                 failed.append(r)
-            else:
-                self._unpublishable.discard(r)
+                continue
+            self._unpublishable.discard(r)
+            summaries.append({"upsert": summary})
+            if whole:
+                ops.append({"upsert": full})
+            if watched:
+                self._app.publish(f"workflow:{r}", [{"set": full}])
+        if summaries:
+            self._app.publish("workflow-runs", summaries)
         if ops:
             self._app.publish("workflows", ops)
         self._dirty.update(failed)

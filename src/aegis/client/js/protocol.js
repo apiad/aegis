@@ -14,7 +14,7 @@ export const PROTO = 3;
 
 // Channels this client asks to patch with merges: a row it holds comes back as
 // {merge: {key, ...}} with only the fields that changed (channels.py, #525).
-const MERGES = new Set(["sessions"]);
+const MERGES = new Set(["sessions", "workflow-runs"]);
 
 export class OpError extends Error {
   constructor(code, message, data = null) {
