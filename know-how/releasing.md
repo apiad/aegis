@@ -115,7 +115,8 @@ no user-facing doc.
    `gh workflow run canary.yml --ref main`, then read
    `gh issue list --label canary`. An open canary issue is a harness that
    does not work under this release; fix it or name it in the release notes.
-   Run the suite locally: `make check` and `make test-slow`. A red run is a regression; do not
+   Run the full gates locally, once, here and not per PR: `make check`,
+   `make test-slow` and `make bench`. A red run is a regression; do not
    re-roll it.
 6. Commit `chore(release): vX.Y.Z`, push `main`.
 7. `git tag -a vX.Y.Z -m "Release vX.Y.Z"` and `git push origin vX.Y.Z`.
