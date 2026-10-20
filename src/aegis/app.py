@@ -47,7 +47,7 @@ from pydantic import BaseModel, Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 from . import archive, attachments as att, commands, dictation, files, restarts
-from . import harness_versions
+from . import feedback, harness_versions
 from . import workflow_store
 from .agent_ops import (
     far_error,
@@ -894,6 +894,14 @@ class App:
                 params["untested"] = untested
             r = await self.registry.call("help.guide", params, caller)
             return {**r, "server": self.server_name}
+        if name == "feedback":
+            # The agent drafts the issue from the help page feedback; the
+            # turn grants nothing, so it needs no launch token.
+            facts = feedback.facts(s.harness.label, s.checked_version)
+            await s.deliver(
+                *feedback.turn(arg, facts, feedback.issues_url(), iso_now())
+            )
+            return {"status": "delivered"}
         if name in ("workflow", "loop"):
             # A person's line launches a saved workflow: the only path, beside
             # an approved schedule's fire, that mints a launch token
