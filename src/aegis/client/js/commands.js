@@ -3,6 +3,7 @@
 // Everything it shows comes from `commands.list`: names, hints, descriptions,
 // sources, models, efforts. It decides only which rows match what is typed;
 // the server resolves and runs the line (commands.py).
+import { modelMeta } from "./models.js";
 
 // The legacy TUI's scorer (legacy/aegis/commands/fuzzy.py): a case-insensitive
 // subsequence, +2 per character that follows the previous match, +3 at a word
@@ -58,7 +59,7 @@ export function complete(line, catalog, meta) {
   if (!cmd || !cmd.args || arg.includes(" ")) return { items: [] };
   let choices = [];
   if (cmd.args === "models")
-    choices = catalog.models.map((m) => ({ v: m.value, doc: `${m.label}. ${m.doc}`, source: m.efforts.length ? "effort" : "" }));
+    choices = catalog.models.map((m) => ({ v: m.value, doc: `${m.label} · ${modelMeta(m)}. ${m.doc}`, source: m.efforts.length ? "effort" : "" }));
   if (cmd.args === "permissions") choices = catalog.permissions.map((p) => ({ v: p, doc: "", source: "" }));
   if (cmd.args === "tutorials") choices = (catalog.tutorials || []).map((t) => ({ v: t.id, doc: t.title, source: "" }));
   if (cmd.args === "workflows")

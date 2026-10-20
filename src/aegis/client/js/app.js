@@ -33,6 +33,7 @@ import { Schedules } from "./schedules.js";
 import { Help } from "./help.js";
 import { installBell, listenForOpen, pingToast, redrawFavicon, setTitle, updatePing } from "./ping.js";
 import { ask, cancelAsk, choose } from "./dialog.js";
+import { modelMeta } from "./models.js";
 import "./pick.js";
 import { Dictation } from "./dictation.js";
 import { Attachments } from "./attach.js";
@@ -2357,7 +2358,7 @@ function fillModels(harness) {
   const have = new Set(listed.map((m) => m.value));
   const named = (roster.models[harness] || []).filter((m) => !have.has(m));
   $("sp-model").options = [
-    ...listed.map((m) => ({ value: m.value, label: m.free ? `${m.value} (free)` : m.value })),
+    ...listed.map((m) => ({ value: m.value, label: m.value, meta: modelMeta(m) })),
     ...named,
   ];
 }

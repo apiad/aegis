@@ -37,6 +37,15 @@ class Model:
     # Costs nothing per token and can run an agent: it calls tools and writes
     # text. Only OpenCode's catalog prices its models.
     free: bool = False
+    # USD per million tokens: the harness's price (OpenCode's), else the
+    # ranking file's list price. ranking.annotate fills these and the scores.
+    price_in: float | None = None
+    price_out: float | None = None
+    # Rank among the models of this harness's catalog, and Artificial
+    # Analysis's Coding and Intelligence Indexes; None when unranked.
+    rank: int | None = None
+    coding: float | None = None
+    intelligence: float | None = None
 
     def wire(self) -> dict:
         return {
@@ -46,6 +55,11 @@ class Model:
             "doc": self.doc,
             "efforts": list(self.efforts),
             "free": self.free,
+            "price_in": self.price_in,
+            "price_out": self.price_out,
+            "rank": self.rank,
+            "coding": self.coding,
+            "intelligence": self.intelligence,
         }
 
 

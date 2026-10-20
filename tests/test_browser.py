@@ -455,7 +455,7 @@ def catalog_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
 
 def model_rows(pg) -> list[str]:
     return pg.eval_on_selector_all(
-        "#sp-model .opt", "els => els.map(e => e.textContent)"
+        "#sp-model .opt .lbl", "els => els.map(e => e.textContent)"
     )
 
 
@@ -472,7 +472,7 @@ def test_the_model_chip_offers_every_model_claude_can_run_and_nothing_it_cannot(
     page.click("#sp-model input")
     # `fable` is an alias the CLI no longer lists, and `retired` is disabled.
     assert model_rows(page) == ["opus", "sonnet", "haiku", "claude-fable-5-1"]
-    assert page.inner_text("#sp-model .opt.on") == "opus", (
+    assert page.inner_text("#sp-model .opt.on .lbl") == "opus", (
         "the agent's model is current"
     )
     page.click("#sp-model .opt:has-text('claude-fable-5-1')")
@@ -499,18 +499,169 @@ def test_the_model_chip_lists_what_opencode_can_reach_and_filters_it(server, pag
     )
     page.click("#sp-model input")
     assert sorted(model_rows(page)) == [
-        "opencode-go/fake-flash (free)",
+        "opencode-go/fake-flash",
         "opencode-go/fake-plain",
         "opencode-go/fake-pro",
         "opencode-go/fake-video",
     ]
-    assert page.inner_text("#sp-model .opt.on") == "opencode-go/fake-pro"
+    assert page.inner_text("#sp-model .opt.on .lbl") == "opencode-go/fake-pro"
     page.fill("#sp-model input", "flash")
-    assert model_rows(page)[-1] == "opencode-go/fake-flash (free)"
+    assert model_rows(page)[-1] == "opencode-go/fake-flash"
     page.press("#sp-model input", "Enter")
     assert picked(page, "#sp-model") == "opencode-go/fake-flash"
     assert "diff" in page.get_attribute("#sp-model", "class")
     assert page.input_value("#sp-agent input") == "deepseek*"
+    assert page.errors == []
+
+
+# Sample scores, not Artificial Analysis data: the packaged file has none yet.
+RANKING = {
+    "source": "Artificial Analysis",
+    "url": "https://artificialanalysis.ai",
+    "refreshed": "2026-10-18",
+    "models": {
+        "opus": {"aa": "o", "coding": 72.0, "intelligence": 75.3,
+                 "price_in": 15.0, "price_out": 75.0},
+        "sonnet": {"aa": "s", "coding": 64.1, "intelligence": 68.0,
+                   "price_in": 3.0, "price_out": 15.0},
+        "opencode-go/fake-flash": {"aa": "f", "coding": 41.2, "intelligence": 54.0,
+                                   "price_in": 0.6, "price_out": 2.5},
+        "opencode-go/fake-pro": {"aa": "p", "coding": 38.9, "intelligence": 50.1},
+    },
+}  # fmt: skip
+
+
+@pytest.fixture
+def ranked_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    """A server that reads RANKING in place of the packaged models.json."""
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    (tmp_path / "models.json").write_text(json.dumps(RANKING))
+    s = Server(tmp_path, fake_claude, fake_opencode)
+    s.env["AEGIS_MODELS_FILE"] = str(tmp_path / "models.json")
+    s.start()
+    yield s
+    s.stop()
+
+
+def chips(pg, sel: str) -> dict[str, str]:
+    """Each open option's label and the chip beside it."""
+    return dict(
+        pg.eval_on_selector_all(
+            f"{sel} .opt",
+            "els => els.map(e => [e.querySelector('.lbl').textContent,"
+            " e.querySelector('.meta')?.textContent ?? ''])",
+        )
+    )
+
+
+def test_model_options_show_rank_score_and_price(ranked_server, page):
+    page.goto(ranked_server.url)
+    page.click("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
+    page.wait_for_function(
+        "document.querySelector('#sp-model').options.some(o => o.meta)"
+    )
+    page.click("#sp-model input")
+    assert chips(page, "#sp-model")["opus"] == "#1 · 72.0 · $15 / $75"
+    assert chips(page, "#sp-model")["haiku"] == "unranked"  # no score, no price
+    page.press("#sp-model input", "Escape")
+    pick(page, "#sp-agent", "deepseek")
+    page.wait_for_function(
+        "document.querySelector('#sp-model').options.some(o => o.meta)"
+    )
+    page.click("#sp-model input")
+    got = chips(page, "#sp-model")
+    assert got["opencode-go/fake-flash"] == "#1 · 41.2 · free"
+    assert got["opencode-go/fake-pro"] == "#2 · 38.9 · $1 / $4"
+    assert got["opencode-go/fake-video"] == "unranked · free"  # costs nothing
+    assert got["opencode-go/fake-plain"] == "unranked · $1 / $4"
+    page.press("#sp-model input", "Escape")
+
+    page.keyboard.press("Alt+KeyS")
+    row = '.set-agent[data-row="agents.deepseek"] pick-chip[name=model]'
+    page.wait_for_selector(row)
+    page.wait_for_function(f"document.querySelector('{row}').options.some(o => o.meta)")
+    page.click(f"{row} input")
+    got = chips(page, row)
+    assert got["Fake Flash"] == "#1 · 41.2 · free"
+    assert got["Fake Video"] == "unranked · free"
+    opus = '.set-agent[data-row="agents.opus"] pick-chip[name=model]'
+    page.click(f"{opus} input")
+    assert chips(page, opus)["Opus"] == "#1 · 72.0 · $15 / $75"
+    assert page.errors == []
+
+
+def model_view_rows(pg) -> list[str]:
+    return pg.eval_on_selector_all(
+        "#set-models .set-mrow[data-model]", "els => els.map(e => e.dataset.model)"
+    )
+
+
+def test_models_view_filters_and_sorts(ranked_server, page):
+    page.goto(ranked_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.keyboard.press("Alt+KeyS")
+    page.wait_for_selector("#set-models .set-mrow[data-model]")
+    # In use first, then by Coding Index; unranked ones last, in catalog order.
+    assert model_view_rows(page) == [
+        "opus",
+        "opencode-go/fake-pro",
+        "sonnet",
+        "opencode-go/fake-flash",
+        "haiku",
+        "opencode-go/fake-video",
+        "opencode-go/fake-plain",
+    ]
+    assert page.eval_on_selector_all(
+        "#set-models .set-mrow.use", "els => els.map(e => e.dataset.model)"
+    ) == ["opus", "opencode-go/fake-pro"]
+    opus = '#set-models .set-mrow[data-model="opus"]'
+    assert page.inner_text(f"{opus} .by") == "opus #1"
+    assert page.inner_text(f"{opus} .pr") == "$15 / $75"
+    pro = '#set-models .set-mrow[data-model="opencode-go/fake-pro"]'
+    assert page.inner_text(f"{pro} .rk") == "#2"
+
+    pick(page, "#set-models pick-chip[name=models-harness]", "OpenCode")
+    assert model_view_rows(page) == [
+        "opencode-go/fake-pro",
+        "opencode-go/fake-flash",
+        "opencode-go/fake-video",
+        "opencode-go/fake-plain",
+    ]
+    pick(page, "#set-models pick-chip[name=models-harness]", "all")
+    pick(page, "#set-models pick-chip[name=models-price]", "free only")
+    assert model_view_rows(page) == ["opencode-go/fake-flash", "opencode-go/fake-video"]
+    pick(page, "#set-models pick-chip[name=models-price]", "any price")
+
+    pick(page, "#set-models pick-chip[name=models-sort]", "Coding Index")
+    assert model_view_rows(page)[:4] == [
+        "opus",
+        "sonnet",
+        "opencode-go/fake-flash",
+        "opencode-go/fake-pro",
+    ]
+    pick(page, "#set-models pick-chip[name=models-sort]", "price")
+    assert model_view_rows(page) == [
+        "opencode-go/fake-flash",
+        "opencode-go/fake-video",
+        "opencode-go/fake-pro",
+        "opencode-go/fake-plain",
+        "sonnet",
+        "opus",
+        "haiku",
+    ]
+
+    attr = page.locator("#set-models .set-attr")
+    assert attr.inner_text() == "Scores by Artificial Analysis, refreshed 2026-10-18"
+    assert attr.locator("a").get_attribute("href") == "https://artificialanalysis.ai"
+
+    # On a phone each row stacks and nothing scrolls sideways.
+    page.set_viewport_size({"width": 390, "height": 800})
+    assert page.evaluate(
+        "(() => { const b = document.querySelector('#set-models');"
+        " return b.scrollWidth <= b.clientWidth; })()"
+    )
+    assert page.is_hidden("#set-models .set-mrow.hd")
     assert page.errors == []
 
 

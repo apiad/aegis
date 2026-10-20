@@ -3,7 +3,9 @@ from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
 
-from aegis.ranking import Ranking, Score, ranking
+from aegis.claude.control import Model
+from aegis.opencode.config import catalog_from
+from aegis.ranking import Ranking, Score, annotate, ranking
 
 
 def small() -> Ranking:
@@ -69,3 +71,58 @@ def test_slug_for_maps_catalog_ids(monkeypatch):
     assert s.slug_for("opencode/big-pickle", "", known) is None
     monkeypatch.setitem(s.ALIASES, "opencode/deepseek-r", "deepseek-v3-2-reasoning")
     assert s.slug_for("opencode/deepseek-r", "", known) == "deepseek-v3-2-reasoning"
+
+
+def priced() -> Ranking:
+    return Ranking.from_dict(
+        {
+            "refreshed": "2026-10-18",
+            "models": {
+                "opus": {"aa": "o", "coding": 72.0, "intelligence": 75.3,
+                         "price_in": 15.0, "price_out": 75.0},
+                "sonnet": {"aa": "s", "coding": 64.1, "intelligence": 68.0,
+                           "price_in": 3.0, "price_out": 15.0},
+                "go/free": {"aa": "k", "coding": 41.2, "intelligence": 54.0,
+                            "price_in": 0.6, "price_out": 2.5},
+            },
+        }
+    )  # fmt: skip
+
+
+def bare(value: str, **kw) -> Model:
+    return Model(value, value, value, "", (), **kw)
+
+
+def test_annotate_prefers_the_harness_price():
+    opus, mine = annotate(
+        [bare("opus"), bare("sonnet", price_in=2.0, price_out=9.0)], priced()
+    )
+    assert (opus.price_in, opus.price_out) == (15.0, 75.0)  # the file's
+    assert (mine.price_in, mine.price_out) == (2.0, 9.0)  # the harness's
+    assert (opus.coding, opus.intelligence) == (72.0, 75.3)
+
+
+def test_annotate_ranks_within_the_harness():
+    # The ranks count only the models given, which are one harness's catalog.
+    sonnet, new, opus = annotate([bare("sonnet"), bare("new"), bare("opus")], priced())
+    assert [m.rank for m in (opus, sonnet, new)] == [1, 2, None]
+    assert (new.coding, new.price_in) == (None, None)
+    (alone,) = annotate([bare("sonnet")], priced())
+    assert alone.rank == 1
+
+
+def test_a_free_model_wires_free_true_and_zero_price():
+    cat = catalog_from([], [], [{
+        "id": "free", "providerID": "go", "name": "Free",
+        "capabilities": {"tools": True, "output": ["text"]},
+        "cost": [{"input": 0, "output": 0}],
+    }])  # fmt: skip
+    (m,) = annotate(cat.models, priced())
+    w = m.wire()
+    assert (w["free"], w["price_in"], w["price_out"]) == (True, 0, 0)
+    assert (w["rank"], w["coding"], w["intelligence"]) == (1, 41.2, 54.0)
+
+
+def test_annotate_reads_the_packaged_file_by_default():
+    (m,) = annotate([bare("no-such/model")])
+    assert m.wire()["rank"] is None

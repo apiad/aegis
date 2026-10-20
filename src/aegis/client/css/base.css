@@ -132,6 +132,10 @@ body{background:#000}
 #a2 pick-chip .opt b{color:var(--accent);font-weight:600}
 #a2 pick-chip .opt.free{color:var(--muted);font-style:italic}
 #a2 pick-chip .opt[aria-disabled=true]{color:var(--faint);cursor:default}
+/* A model's rank, Coding Index and price beside its name (js/models.js). */
+#a2 pick-chip .opt .meta{font-family:var(--font-mono);font-size:10px;color:var(--muted);border-left:1px solid var(--rule);margin-left:6px;padding-left:6px}
+/* On a phone the chip goes under the name, so the list is no wider for it. */
+@media (max-width:640px){#a2 pick-chip .opt:has(.meta){display:flex;flex-direction:column;align-items:flex-start;justify-content:center}#a2 pick-chip .opt .meta{border-left:0;margin-left:0;padding-left:0}}
 #a2 .dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none}
 #a2 .dot.ready{background:var(--ok)}#a2 .dot.err{background:var(--err)}#a2 .dot.ghost{background:var(--faint)}
 
@@ -1214,6 +1218,24 @@ body{background:#000}
 #a2 .set-wf-err{margin:4px 0 0;font:11.5px var(--font-mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--err)}
 @media (max-width:640px){#a2 .set-wf-acts{margin-left:0;flex-basis:100%}}
 #a2 .set-none{margin:0;font-size:13px;color:var(--faint)}
+/* Settings' Models view: one row per model, in-use rows marked; on a phone a
+   row stacks name and rank, score and price, then who uses it. */
+#a2 .set-mtools{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#a2 .set-mrows{display:flex;flex-direction:column;gap:4px;margin-top:10px}
+#a2 .set-mrow{display:grid;grid-template-columns:minmax(0,1.6fr) 90px 44px 60px 52px 110px minmax(0,1.2fr);gap:8px;align-items:center;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 10px;font-family:var(--font-mono);font-size:11.5px;color:var(--muted)}
+#a2 .set-mrow.use{border-color:var(--accent)}
+#a2 .set-mrow.hd{background:none;border:0;font-size:10.5px;color:var(--faint);padding-top:0;padding-bottom:0}
+#a2 .set-mrow .nm{color:var(--strong);overflow-wrap:anywhere}
+#a2 .set-mrow .by{color:var(--accent);overflow-wrap:anywhere}
+#a2 .set-mrow.hd .nm,#a2 .set-mrow.hd .by{color:inherit}
+#a2 .set-attr{margin:8px 0 0;font-family:var(--font-mono);font-size:10.5px;color:var(--faint)}
+#a2 .set-attr a{color:var(--muted)}
+@media (max-width:640px){
+  #a2 .set-mrow{grid-template-columns:minmax(0,1fr) auto;gap:2px 8px}
+  #a2 .set-mrow.hd,#a2 .set-mrow .h,#a2 .set-mrow .ii,#a2 .set-mrow .by:empty{display:none}
+  #a2 .set-mrow .rk,#a2 .set-mrow .pr{text-align:right}
+  #a2 .set-mrow .by{grid-column:1/-1}
+}
 #a2 .set-bar{position:sticky;bottom:0;display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:10px max(24px,calc((100% - 880px) / 2 + 24px));border-top:1px solid var(--rule);background:var(--side)}
 #a2 .set-bar #set-status{margin-right:auto;font-size:12.5px;color:var(--muted)}
 #a2 .set-bar.dirty #set-status{color:var(--accent)}

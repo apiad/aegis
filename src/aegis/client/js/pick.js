@@ -5,7 +5,10 @@
 // tests/test_client_rules.py fails on a native select in the client.
 //
 //   <pick-chip id="sp-effort" name="effort" aria-label="Effort" free></pick-chip>
-//   chip.options = [{ value, label, disabled }]; chip.value; chip.suffix
+//   chip.options = [{ value, label, disabled, meta }]; chip.value; chip.suffix
+//
+// `meta` is a short note drawn after the label in the list, not matched by
+// the filter: a model's rank, Coding Index and price (models.js).
 //
 // Typing filters the options with the command menu's scorer; ArrowUp/Down,
 // Enter and Esc are the command menu's. `free` (the model chip) lets a typed
@@ -151,13 +154,22 @@ export class PickChip extends HTMLElement {
     d.setAttribute("role", "option");
     if (r.disabled) d.setAttribute("aria-disabled", "true");
     const hit = new Set(r.positions);
+    const lbl = document.createElement("span");
+    lbl.className = "lbl";
     [...r.label].forEach((ch, i) => {
       if (hit.has(i)) {
         const b = document.createElement("b");
         b.textContent = ch;
-        d.append(b);
-      } else d.append(ch);
+        lbl.append(b);
+      } else lbl.append(ch);
     });
+    d.append(lbl);
+    if (r.meta) {
+      const m = document.createElement("span");
+      m.className = "meta";
+      m.textContent = r.meta;
+      d.append(m);
+    }
     return d;
   }
 
@@ -216,3 +228,4 @@ export class PickChip extends HTMLElement {
 }
 
 customElements.define("pick-chip", PickChip);
+

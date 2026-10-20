@@ -40,7 +40,7 @@ from .config import (
 )
 from .harness import harness_for
 from .harness_versions import OUTSIDE, VERSION_TIMEOUT_S, judge
-from .ranking import ranking
+from .ranking import annotate, ranking
 from .recap import load_recap
 from .roots import CONFIG_FILE, Roots, legacy_state
 from .session import SpawnSpec
@@ -125,7 +125,7 @@ async def _find(
             error=f"{LABELS[name]} gave no model list: {e}",
             verdict=verdict,
         )
-    return Found(name, bin, version, cat.models, verdict=verdict)
+    return Found(name, bin, version, annotate(cat.models), verdict=verdict)
 
 
 async def detect(

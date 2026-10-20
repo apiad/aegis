@@ -17,12 +17,13 @@ to disk, so an upgraded CLI never meets a stale list.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .claude import control
 from .claude.control import Catalog
 from .ops import OpError
+from .ranking import annotate
 from .session import Session
 
 
@@ -201,6 +202,11 @@ def aegis_wire() -> list[dict]:
     ]
 
 
+def ranked(cat: Catalog) -> Catalog:
+    """The catalog with its models' scores, rank and price for the client."""
+    return replace(cat, models=annotate(cat.models))
+
+
 class Catalogs:
     """Each (harness, cwd)'s catalog, from a live process or a probe.
 
@@ -223,7 +229,7 @@ class Catalogs:
 
     def put(self, harness: str, cwd: Path, catalog: Catalog) -> None:
         key = self._key(harness, cwd)
-        self._by_key[key] = catalog
+        self._by_key[key] = ranked(catalog)
         self._failed.discard(key)
 
     async def get(self, s: Session) -> Catalog | None:
@@ -233,7 +239,7 @@ class Catalogs:
             await asyncio.wait([t])
             done = None if t.cancelled() else t.result()
             if done is not None:
-                return done
+                return ranked(done)
             if not t.cancelled():
                 self._failed.add(key)  # the live process gave none
         if key in self._by_key:

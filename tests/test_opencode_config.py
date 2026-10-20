@@ -126,3 +126,14 @@ def test_the_child_config_carries_the_inbox_rule():
         "resource": "/s/inbox/l/*",
         "effect": "allow",
     } in cfg["permissions"]
+
+
+def test_opencode_catalog_keeps_prices():
+    cat = catalog_from([], [], [
+        model("paid", cost={"input": 1.25, "output": 10}),
+        model("unpriced"),
+    ])  # fmt: skip
+    paid, unpriced = cat.models
+    assert (paid.price_in, paid.price_out) == (1.25, 10)
+    assert (unpriced.price_in, unpriced.price_out) == (None, None)
+    assert paid.wire()["price_in"] == 1.25 and paid.wire()["price_out"] == 10
