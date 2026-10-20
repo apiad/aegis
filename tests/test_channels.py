@@ -124,6 +124,20 @@ def test_each_merge_subscriber_diffs_against_what_it_was_sent():
     assert whole[1]["ops"] == [{"upsert": row("a")}]
 
 
+def test_a_list_changed_in_place_is_still_merged():
+    """A run's wire shares its edits list with the run's state: a merge
+    against the very object that changed saw no change (#525)."""
+    edits = []
+    ch = sessions_channel([row("a", edits=edits)])
+    got = []
+    ch.subscribe("sessions", got.append, merge=True)
+    edits.append({"v": 2})
+    ch.publish("sessions", [{"upsert": row("a", edits=edits)}])
+    edits.append({"v": 3})
+    ch.publish("sessions", [{"upsert": row("a", edits=edits)}])
+    assert [list(m["ops"][0]["merge"]) for m in got[1:]] == [["log_id", "edits"]] * 2
+
+
 def test_merge_is_ignored_on_a_channel_without_row_keys():
     ch, _ = make()
     got = []
