@@ -29,6 +29,7 @@ export function copyButton(what) {
   b.className = "copy";
   b.tabIndex = -1;
   b.dataset.copy = what;
+  b.dataset.chrome = ""; // not part of the text a selection quotes (quote.js)
   b.title = `Copy the ${what}`;
   b.setAttribute("aria-label", b.title);
   b.append(icon("copy"), document.createElement("span"));
@@ -82,7 +83,8 @@ function tableOf(b) {
   return { text: src.split("\n").slice(a, z).join("\n").replace(/\n+$/, ""), html: t.outerHTML };
 }
 
-async function rowText(id, deps) {
+// A row's message, or a tool's whole output; the row menu's Reply quotes it too.
+export async function rowText(id, deps) {
   const e = deps.entry(id);
   if (!e) throw new Error("the row is gone");
   if (MESSAGES.has(e.kind)) return e.md || "";

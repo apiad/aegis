@@ -60,7 +60,7 @@ export function fenceHtml(text, label, open = false) {
   const hit = may ? cachedColour(text, name) : undefined;
   const tag = hit?.guessed ? `<span class="lang guessed">${esc(hit.lang)}</span>` : `<span class="lang">${esc(label)}</span>`;
   const attrs = `data-lang="${esc(label)}"${open ? " data-open" : ""}${hit !== undefined ? ' data-painted="1"' : ""}`;
-  return `<div class="fence" ${attrs}><div class="fh">${tag}</div><pre><code${hit ? ' class="hljs"' : ""}>${hit ? hit.html : esc(text)}</code></pre></div>`;
+  return `<div class="fence" ${attrs}><div class="fh" data-chrome>${tag}</div><pre><code${hit ? ' class="hljs"' : ""}>${hit ? hit.html : esc(text)}</code></pre></div>`;
 }
 
 // "- [ ] x" and "- [x] x" become a disabled checkbox; ten lines, no plugin.
@@ -1149,7 +1149,10 @@ export const btwFolds = new Map();
 function row(entry, cls, body) {
   const r = el("div", `row ${cls}`);
   r.dataset.id = entry.id;
-  r.append(el("span", "t", hhmm(entry.ts)), withIcon(el("span", "g"), entry.glyph), body);
+  const t = el("span", "t", hhmm(entry.ts));
+  const g = withIcon(el("span", "g"), entry.glyph);
+  t.dataset.chrome = g.dataset.chrome = ""; // not text a selection quotes (quote.js)
+  r.append(t, g, body);
   return r;
 }
 
@@ -1211,6 +1214,7 @@ const RENDERERS = {
     // Only the live view carries the flag; an archived transcript draws no mark.
     if (e.unread !== undefined) {
       const rm = el("span", "rm");
+      rm.dataset.chrome = "";
       rm.append(icon(e.unread ? "unread" : "read"));
       r.append(rm);
       r.classList.toggle("unread", e.unread);
@@ -1235,6 +1239,7 @@ const RENDERERS = {
     const det = e.detail || {};
     const d = el("details");
     const line = el("summary", "line");
+    line.dataset.chrome = ""; // the tool's name and counts, not its output (quote.js)
     const name = el("span", "tn", e.title);
     const label = el("span", "ta", e.summary);
     if (det.steps) label.append(el("span", "steps", `${det.steps} steps`));
@@ -1246,19 +1251,27 @@ const RENDERERS = {
       // A file tool's row: the person can see its file without the agent
       // sending it (file.peek). Not on a linked server's row: the op is local.
       const bar = el("div", "peekbar");
+      bar.dataset.chrome = "";
       const b = det.peek ? withIcon(el("button", "btn peek"), "again", "Show the file again") : withIcon(el("button", "btn peek"), "file", "Show the file");
       b.dataset.entry = e.id;
       bar.append(b, el("span", "peekerr"));
       more.append(bar);
     }
     if (det.peek) {
-      more.append(el("div", "peekcap", `as of ${hhmm(det.peek.ts)}`), fileCard(det.peek.files, det.peek.glyph));
+      const cap = el("div", "peekcap", `as of ${hhmm(det.peek.ts)}`);
+      const card = fileCard(det.peek.files, det.peek.glyph);
+      cap.dataset.chrome = card.dataset.chrome = "";
+      more.append(cap, card);
     }
     if (det.file) more.append(fileView(det.file, det.lang));
     if (det.diff) more.append(diffView(det.diff, det.lang));
     if (det.tail) more.append(el("pre", "out", det.tail));
     if (det.args && !det.file && !det.diff) more.append(argsView(det.args, det.path ? null : det.lang));
-    if (det.more) more.append(el("div", "loading", "loading…"));
+    if (det.more) {
+      const wait = el("div", "loading", "loading…");
+      wait.dataset.chrome = "";
+      more.append(wait);
+    }
     if (more.childNodes.length) d.append(more);
     const body = el("div", "body");
     body.append(d);

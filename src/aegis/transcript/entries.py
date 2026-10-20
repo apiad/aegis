@@ -450,6 +450,12 @@ class Fold:
 
     def _upsert(self, e: dict) -> list[dict]:
         e["rev"] = self._rev
+        # A part still streaming: its id goes when the whole block replaces it,
+        # so the browser offers no link to it (a row menu's Copy link).
+        if e["id"] in self._live:
+            e["live"] = True
+        else:
+            e.pop("live", None)
         self._entries[e["id"]] = e
         return [{"upsert": e}]
 

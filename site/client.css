@@ -1931,6 +1931,11 @@ body{background:#000}
 .a2 .arch-terms h4{margin:0 0 8px;font-family:var(--font-head);font-weight:500;font-size:13.5px;color:var(--strong)}
 .a2 .card.term .ln{font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (pointer:coarse){.a2 .sp-term-list button,.a2 .kinds button{min-height:44px}}
+/* The selection bar (js/menu.js bar): over a transcript selection; on a coarse pointer under it, icons only. */
+.a2 .sbar{position:fixed;z-index:60;display:flex;gap:2px;padding:3px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.a2 .sbar .btn{display:flex;gap:6px;align-items:center;border:0;white-space:nowrap}
+.a2 .sbar .btn .ic{flex-shrink:0;width:14px;height:14px;color:var(--muted)}
+@media (pointer:coarse){.a2 .sbar .btn{min-height:44px;min-width:44px;justify-content:center}.a2 .sbar .btn .lb{display:none}}
 /* Aizome: indigo-dyed cloth; cotton-white sashiko stitches for the thread and rules, seigaiha waves in the panel. */
 [data-theme=aizome] .a2{
   --bg:#15213f;--chrome:#0f1832;--side:#121d39;--surface:#1b2a4f;--raised:#22335d;--rule:#33477a;

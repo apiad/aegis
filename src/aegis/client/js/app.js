@@ -12,7 +12,7 @@ import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refresh
 import { setScroller } from "./highlight.js";
 import { Viewer, peekRoots } from "./viewer.js";
 import { Canvas } from "./canvas.js";
-import { copyRow, installCopy } from "./copy.js";
+import { copyRow, installCopy, rowText } from "./copy.js";
 import { Find } from "./find.js";
 import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
@@ -25,6 +25,7 @@ import { Palette } from "./palette.js";
 import { entryIcon, glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import * as cmenu from "./menu.js";
+import { clampToRow, insertIntoComposer, quoted, rangeText } from "./quote.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
@@ -368,7 +369,11 @@ const unhash = (s) => {
 };
 function route(hash = location.hash) {
   const h = hash.slice(1);
-  if (h.startsWith("s=")) return { view: "session", id: h.slice(2) };
+  // A row's link (its menu's Copy link) names the entry to reveal after "&at=".
+  if (h.startsWith("s=")) {
+    const [id, at] = h.slice(2).split("&at=");
+    return at ? { view: "session", id, at } : { view: "session", id };
+  }
   if (h.startsWith("t=")) return { view: "term", id: h.slice(2) };
   if (h.startsWith("read=")) return { view: "read", id: h.slice(5) };
   // Window n of a session's canvas, a browser tab of its own (js/canvas.js).
@@ -1002,6 +1007,7 @@ async function openCard(key) {
 }
 const on = (server) => ordered.filter((m) => m.server === server);
 
+let menuView = null; // the view the open menu or bar belongs to (render)
 function render() {
   if (!booted) return;
   // Back or Forward away from unsaved edits: stay on the file, and ask.
@@ -1013,6 +1019,22 @@ function render() {
   }
   tellView(); // the view may have changed with the same session shown
   const r = route();
+  // A row's link is read once: the URL drops "&at=" on every path, so the
+  // tab's hash is its own again (cycle) and a quiet session's bounce keeps
+  // none. The row waits in landEntry: a render that waits for the session
+  // list runs again later with the plain hash.
+  if (r.at) {
+    history.replaceState(null, "", `#s=${r.id}`);
+    landEntry = { key: r.id, id: r.at };
+  }
+  // A menu or the selection bar is about the view it opened in. go() moves
+  // with pushState, which fires no hashchange, so the change is caught here.
+  const at = `${r.view}:${r.id ?? ""}`;
+  if (at !== menuView) {
+    menuView = at;
+    cmenu.close();
+    cmenu.unbar();
+  }
   if (r.view !== "term") closeTerm();
   if (leaveIfQuieted(r)) return;
   // A session's link to a terminal, or the reverse, opens the right view.
@@ -1113,6 +1135,16 @@ function render() {
     if (newView) helpTab.show(r.id);
     setTitle("Help · aegis");
   } else if (r.view === "session") {
+    // A row's link: the row is revealed now when its transcript is here, else
+    // once it lands. The URL drops "&at=", so the tab's hash is its own again.
+    // The session shown already: its transcript is here, so the row lands
+    // now, or never when it is gone. Otherwise it lands with the transcript.
+    // Only on the render that read the link: a later one may come before the
+    // transcript lands, and must leave the row waiting for it.
+    if (r.at && landEntry?.key === r.id && shown === r.id) {
+      if (transcript.entries.has(landEntry.id)) transcript.reveal(landEntry.id);
+      landEntry = null;
+    }
     watchHost(forKey(r.id).server || "");
     // Shown first: follow() sizes the message box, which measures 0 while hidden.
     show("session");
@@ -2250,14 +2282,16 @@ function drawServerPick() {
   pick.value = spServer || "";
 }
 
+// Resolves once the picked server's roster has loaded.
 function setSpServer(server) {
-  if (server === spServer) return;
+  if (server === spServer) return Promise.resolve();
   spServer = server;
   $("sp-server").value = server || "";
   $("sp-cwd").value = ""; // the other machine's directories
   delete $("sp-agent").dataset.picked;
-  loadAgents();
+  const loaded = loadAgents();
   drawHints();
+  return loaded;
 }
 $("sp-server").addEventListener("change", () => setSpServer($("sp-server").value || null));
 const LAST_AGENT = "aegis.lastAgent";
@@ -2291,7 +2325,14 @@ function drawProfiles(list, server) {
   );
 }
 
-async function loadAgents() {
+// The roster load in flight, so a caller can wait for the one already
+// running (openSpawnWith right after a connect).
+let agentsLoading = Promise.resolve();
+function loadAgents() {
+  agentsLoading = fetchAgents();
+  return agentsLoading;
+}
+async function fetchAgents() {
   conn.call("term.profiles", {}, spServer).then(
     (list) => drawProfiles(list, spServer),
     () => drawProfiles([], spServer), // a server without terminals
@@ -2738,7 +2779,7 @@ installKeys(
       if (cancelAsk() || closeInstallDialog() || closePushPanel()) return;
       if (root.dataset.side === "open") return closeSide();
       if (!keymap.hidden) help(false);
-      else if (cmenu.close() || viewer.close() || find.close() || closeMonitorCard() || closeCard()) return;
+      else if (cmenu.close() || cmenu.unbar() || viewer.close() || find.close() || closeMonitorCard() || closeCard()) return;
       else if (route().view === "session" && !editing.size) interrupt();
     },
     help: () => help(),
@@ -3573,3 +3614,125 @@ function attachCardMenu(box) {
 }
 attachCardMenu($("cards"));
 attachCardMenu($("tablist"));
+
+// The New session form filled from a source session: its server, agent,
+// model and folder, and a prompt the person goes on writing. The picks come
+// from the source's server's roster once it has loaded, the same way on every
+// server: pickAgent resets the chips to that agent, so nothing a person set in
+// the form before carries over. What the form's text held stays after the prompt.
+async function openSpawnWith({ server = null, agent, model, cwd, prompt }) {
+  $("sp-text").value = prompt + $("sp-text").value;
+  go("#new");
+  spawnGrow();
+  $("sp-agent").dataset.picked = agent;
+  await setSpServer(server || null);
+  await agentsLoading; // the boot's or a reconnect's load may still be out
+  if (roster.agents.some((a) => a.name === agent)) pickAgent(agent);
+  if (model && model !== "default") {
+    $("sp-model").value = model;
+    markDiffs();
+  }
+  $("sp-cwd").value = cwd || "";
+}
+
+// What a selection in the transcript offers (spec 05). The text is taken now:
+// a touch can clear the selection before a button's click lands.
+function selectionItems(range) {
+  const text = rangeText(range);
+  const s = shown && sessions.get(shown);
+  if (!text || !s) return null;
+  // Another member's session takes no message from this person (drawSending),
+  // so the items that write to its composer are left out, as sessionMenu does.
+  const own = mine(s);
+  return [
+    own && { id: "ask", label: "Ask", icon: "prompt", run: () => insertIntoComposer(quoted(text)) },
+    own && { id: "aside", label: "Ask aside", icon: "btw", run: () => insertIntoComposer(quoted(text), { prefix: "/btw\n" }) },
+    {
+      id: "new",
+      label: "New session",
+      icon: "start",
+      run: () => openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, prompt: `From ${s.handle}:\n${quoted(text)}\n\n` }),
+    },
+    {
+      id: "copy",
+      label: "Copy",
+      icon: "copy",
+      title: "Copy (Shift: as a quote)",
+      run: (ev) => navigator.clipboard.writeText(ev?.shiftKey ? quoted(text) : text).catch((e) => toast(`Copy failed: ${e.message || e}`, { kind: "error" })),
+    },
+  ].filter(Boolean);
+}
+cmenu.bar($("entries"), selectionItems);
+
+// A transcript row's menu (spec 06), by kind; a selection inside the row puts
+// the bar's items on top. Kinds the spec names no menu for keep the browser's,
+// unless a selection is in them.
+function rowMenu(t, ev) {
+  const id = t.dataset?.id;
+  const e = id && transcript.entries.get(id);
+  const s = shown && sessions.get(shown);
+  if (!e || !s) return null;
+  const sel = getSelection();
+  const range = sel.rangeCount && !sel.isCollapsed ? clampToRow(sel.getRangeAt(0), t) : null;
+  // Only a press inside the selection is about it: Chrome on macOS selects
+  // the word under any right-click. The keyboard's menu (no event) takes it.
+  const hit = (r) => ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+  const picked = range && (!ev || [...range.getClientRects()].some(hit)) && selectionItems(range);
+  // A tool's output is a round trip away: if the person moved to another
+  // session meanwhile, the quote is dropped rather than written to that
+  // session's composer.
+  const quote = (then) => {
+    const from = shown;
+    rowText(id, copyDeps).then(
+      (text) => {
+        if (shown !== from) return toast("The quote was dropped: you left the session it came from.");
+        if (text) then(quoted(text.trim()));
+      },
+      (err) => toast(err.message, { kind: "error" }),
+    );
+  };
+  const reply = { id: "reply", label: "Reply", icon: "prompt", run: () => quote((q) => insertIntoComposer(q)) };
+  const fresh = {
+    id: "new",
+    label: "New session",
+    icon: "start",
+    run: () => quote((q) => openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, prompt: `From ${s.handle}:\n${q}\n\n` })),
+  };
+  const copy = { id: "copy", label: "Copy", icon: "copy", key: "c", run: () => copyRow(id, transcript.nodes.get(id), copyDeps) };
+  // A part still streaming has an id the whole block will replace: no link.
+  const link = !e.live && {
+    id: "link",
+    label: "Copy link",
+    icon: "link",
+    run: () => navigator.clipboard.writeText(`${location.origin}${location.pathname}#s=${shown}&at=${id}`).catch((err) => toast(`Copy failed: ${err.message || err}`, { kind: "error" })),
+  };
+  const own = mine(s); // Reply and Edit write to a composer only its owner sends from
+  let groups = null;
+  if (e.kind === "prose" || e.kind === "inbox") groups = [[own && reply, fresh], [copy, link]];
+  else if (e.kind === "user") {
+    const edit = own && { id: "edit", label: "Edit and resend", icon: "pencil", run: () => insertIntoComposer(e.md || "") };
+    groups = [[edit, fresh], [copy, link]];
+  } else if (e.kind === "tool") {
+    const open = e.detail?.path && !s.server && { id: "open", label: "Open file", icon: "file", run: () => openToolFile(id) };
+    const out = { id: "copyout", label: "Copy output", icon: "copy", key: "c", run: copy.run };
+    groups = [[open, out], [own && reply, link]];
+  }
+  groups = groups?.map((g) => g.filter(Boolean));
+  if (!groups && !picked) return null;
+  return { groups: [picked || [], ...(groups || [])] };
+}
+cmenu.attach($("entries"), rowMenu, { selector: ".row[data-id]" });
+
+// A Read, Write or Edit row's file, in the viewer (file.peek, as its Show button).
+async function openToolFile(id) {
+  try {
+    const files = await conn.call("file.peek", { log_id: forKey(shown).log_id, entry_id: id });
+    for (const f of files) if (f.root_path) peekRoots.set(f.url, f.root_path);
+    viewer.open({ files, at: 0, remote: false, glyph: "file" });
+  } catch (err) {
+    toast(err.message, { kind: "error" });
+  }
+}
+// The transcript's own scroll listener runs first: it still follows after a
+// scroll it made, or one the browser made when a remounted row shrank the list.
+cmenu.follow($("tr"), () => transcript.following);

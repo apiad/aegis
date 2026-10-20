@@ -50,6 +50,35 @@ Each code block and each table has a copy button, shown when you hover it or
 select its row. A table pastes as Markdown into a chat and as cells into a
 spreadsheet. The c key copies the selected reply's Markdown.
 
+## Quoting and row menus
+
+Select text inside one row, a reply, your own message or a tool's output,
+and a bar appears over it (under it on a touch screen, icons only):
+
+| Item | What it does |
+|---|---|
+| Ask | Puts the selection in the message box as a quote, each line starting with `> `, above what you had typed. |
+| Ask aside | The same quote after `/btw`, so it goes as a side question. |
+| New session | Opens the New session form with this session's agent, model and folder, and `From <handle>:` and the quote in its message. |
+| Copy | Copies the text without the interface around it (a code block's language, copy buttons). With Shift, as a quote. |
+
+On a touch screen, a long press on a word selects it and shows the bar in
+place of the row's menu. A selection that runs into a second row gets no bar. A scroll of your own
+closes the bar; the transcript's own scroll, as a reply streams in, moves it
+along.
+
+A right-click on a row, a long press on a touch screen, or the ContextMenu key
+or Shift+F10 on the selected row opens its menu:
+
+- a reply: Reply (quotes the whole reply), New session, Copy, Copy link;
+- your message: Edit and resend (puts it back in the message box), New
+  session, Copy, Copy link;
+- a tool row: Open file (when it read or wrote one), Copy output, Reply, Copy
+  link.
+
+A right-click inside a selection puts the bar's items on top. Copy link copies
+an address that opens the session at that row, selected and in view.
+
 ## Files and the viewer
 
 A file an agent sends with `file_send`, and a page it sends with
