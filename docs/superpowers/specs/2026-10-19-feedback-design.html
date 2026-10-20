@@ -131,7 +131,7 @@ svg text{font-family:'JBM',ui-monospace,monospace}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · /feedback</span>
-  <span class="st"><span class="pill acc">approved</span><span class="pill">2026-10-19</span><span class="pill">#497</span></span>
+  <span class="st"><span class="pill acc">built, on branch feedback-command</span><span class="pill">2026-10-19</span><span class="pill">#497</span></span>
 </div>
 
 <div class="wrap">
@@ -153,7 +153,7 @@ svg text{font-family:'JBM',ui-monospace,monospace}
 
 <main>
 <h1>/feedback: agents file good issues against aegis</h1>
-<div class="meta"><span>status: approved, not built</span><span>·</span><span>branch feedback-command</span><span>·</span><span>issue #497</span></div>
+<div class="meta"><span>status: built, on branch feedback-command</span><span>·</span><span>branch feedback-command</span><span>·</span><span>issue #497</span></div>
 <p class="lede">A person types <code>/feedback the queue card should show the worker's model</code> in any session. The agent reads one help page, works out whether this is a bug, a feature, a docs gap or a question, asks only what the conversation does not already say, and shows the person a draft issue. Once the person approves it, the agent files it on GitHub under the person's own account, or hands over a link that opens GitHub's form already filled in. A GitHub workflow then checks each new feedback issue and says what is missing.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -401,6 +401,14 @@ do it. If the person agrees, follow help_read feedback, as for /feedback.</pre>
   <li>An <code>aegis feedback</code> CLI subcommand. The slash command and the primer's offer cover agents and people in the browser.</li>
   <li>An artifact card for the draft, with checkboxes for what to include. A fenced draft and two replies are enough to start. Add the card if people edit drafts often.</li>
   <li>Triage after the lint: deciding priority or assigning work remains the maintainer's job.</li>
+</ul>
+<h3>Where the build departs from this page</h3>
+<ul>
+  <li><b>No model review.</b> GitHub Models was retired on 2026-07-30, and <code>actions/ai-inference</code> v3 runs the Copilot CLI with a Copilot token stored in the repository. The workflow runs the script's checks only. The script still writes the prompt (<code>check</code>) and merges an answer (<code>finish --review-file</code>), tested, for a later step once a token is chosen.</li>
+  <li><b>A <code>feedback</code> label.</b> The kind labels also mark the maintainer's own issues, so a kind label alone cannot say an issue is feedback. Each form adds <code>feedback</code>; the lint runs on issues with the marker or that label, and adds the label to marked ones.</li>
+  <li><b>Field ids use hyphens</b> (<code>what-happened</code>): a help page reads a backticked underscored word as a tool name. Sections are matched by the field's label, which is what a submitted form renders.</li>
+  <li><b>Evidence is not rendered as a code block,</b> so a <code>&lt;details&gt;</code> excerpt folds instead of showing as raw text.</li>
+  <li><b>The lint comment never mentions a review,</b> since none runs.</li>
 </ul>
 <h3>Open</h3>
 <ul>
