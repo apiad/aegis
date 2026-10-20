@@ -38,7 +38,8 @@ park: {claude-code: 1200}
   OpenCode 2 (`npm install -g @opencode/cli`). A version outside the range is
   named, with the command that installs a tested one (below);
 - `model:` the model to run, such as opus or haiku for Claude Code. OpenCode
-  and Codex models are written provider/model;
+  and Codex models are written provider/model. `models:` instead names an
+  ordered list, a cascade (below);
 - `effort:` low, medium, high, xhigh or max;
 - `permission:` read, write, auto or full (the sessions page says what each
   allows);
@@ -54,6 +55,45 @@ A session starts from one agent and can override its harness, model, effort
 and permission, from the chips on the new-tab page or in `session_spawn`, but
 never its priming. To make an agent run on haiku, set its `model:`, or override
 the model for one session.
+
+## Cascades
+
+`models:` gives an agent an ordered list of models, best first, all on the
+agent's harness:
+
+```yaml
+agents:
+  free:
+    harness: opencode
+    models: [opencode/kimi-k2.5-free, opencode/glm-5-free, opencode/big-pickle]
+    effort: high
+    permission: full
+```
+
+`model: x` is a cascade of one, and an agent gives `model` or `models`, never
+both. A model listed twice is a warning, and the repeat is ignored.
+
+Every start from the agent (a new tab, `session_spawn`, a handoff, a queue
+worker, a workflow node, a schedule) runs the first model that is not cooling
+and whose quota gate is open. When none is, the start is refused or held as
+for a closed gate, with the time the first model is free again. A spawn that
+overrides the model runs that model alone, with no cascade.
+
+When a turn fails because the model ran out of quota, hit a rate limit, was
+overloaded, or is no longer served, the session falls to the next model below
+it and continues the same turn: the transcript shows a line "cascade: <model>
+failed (<error>); cools until HH:MM. Continuing on <next>.", and the new model
+gets a prompt saying what failed. An interrupt, a context-too-long or auth
+error, and any error aegis does not recognize end the turn as before. When the
+last model fails, the transcript says "cascade exhausted" and the turn ends with
+the error. A session never climbs back up; the card's model line shows the
+model and its place, such as "opencode/glm-5-free · 2 of 3".
+
+A model that failed cools for its retry-after, or 10 minutes, and new sessions
+skip it. Claude Code's usage limit cools every Claude model at once, since they
+share one account. Cooling is kept in memory by the server: a restart clears it.
+`/model` moves a session within its cascade; a model outside it turns falling
+off for that session. Codex errors never fall yet.
 
 ## Claude Code tools aegis replaces
 

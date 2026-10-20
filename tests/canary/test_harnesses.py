@@ -593,3 +593,26 @@ async def test_the_opencode_the_official_installer_gives_is_refused_in_words(
     finally:
         for s in list(app.sessions.sessions.values()):
             await s.stop()
+
+
+async def test_a_rate_limited_model_falls_to_the_next_in_its_cascade(canary):
+    """The real harness's words for a 429 are ones cascade.classify falls on,
+    and the session continues the turn on the second model."""
+    if canary.harness == "codex":
+        pytest.skip("no Codex error falls yet (cascade.py)")
+    canary.model.script(
+        Rule("CANARY-429", [Say("CANARY-429-UNREACHED")]),
+        Rule("You are now running on", [Say("CANARY-429-RECOVERED")]),
+    )
+    s = await canary.spawn(agent="cascade")
+    first = s.spec.model
+    await canary.send(s, "CANARY-429")
+    await until(
+        lambda: said(s, "CANARY-429-RECOVERED") and s.status == "idle",
+        timeout=TURN,
+        what="the turn to fall to the second model and finish",
+    )
+    rows = [e["summary"] for e in s.entries() if e["kind"] == "system"]
+    assert any(r.startswith(f"cascade: {first} failed") for r in rows), rows
+    assert s.spec.model == f"{first}-two"
+    assert not said(s, "CANARY-429-UNREACHED")

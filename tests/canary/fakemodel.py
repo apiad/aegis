@@ -17,6 +17,11 @@ list, because each harness names aegis's tools its own way
 a tool-search tool is, the fake searches for it first, as a model would. When
 neither is, the reply says so in text, and the log records it.
 
+A request whose last person message carries ``LIMITED`` and that names
+``MODEL`` (not ``MODEL-two``) is answered with an HTTP 429 in the API's own
+error shape and ``x-should-retry: false``, as a provider out of quota answers:
+the cascade scenario falls from one model to the other on it.
+
 Every request and reply goes to ``log``, which the tests write next to their
 failure: it is the first thing to read when a harness changed.
 """
@@ -39,6 +44,19 @@ from starlette.routing import Route
 
 SIDE = "ok"
 MODEL = "canary-model"
+LIMITED = "CANARY-429"
+# The 429 bodies: Anthropic's error shape, then OpenAI's (Responses and Chat).
+LIMIT_ANTHROPIC = {
+    "type": "error",
+    "error": {"type": "rate_limit_error", "message": "canary: rate limit reached"},
+}
+LIMIT_OPENAI = {
+    "error": {
+        "message": "canary: rate limit reached",
+        "type": "rate_limit_exceeded",
+        "code": "rate_limit_exceeded",
+    }
+}
 
 
 @dataclass(frozen=True)
@@ -334,6 +352,15 @@ class FakeModel:
             }
         )
 
+    def _limited(self, api: str, body: dict, c: Convo) -> Response | None:
+        """The 429 a LIMITED request on MODEL gets, or None."""
+        model = str(body.get("model") or "")
+        if not c.tools or LIMITED not in c.last_person or not model.endswith(MODEL):
+            return None
+        self.log.append({"t": time.time(), "api": api, "model": model, "reply": 429})
+        shape = LIMIT_ANTHROPIC if api == "anthropic" else LIMIT_OPENAI
+        return JSONResponse(shape, status_code=429, headers={"x-should-retry": "false"})
+
     async def _other(self, request: Request) -> Response:
         self.log.append({"t": time.time(), "api": "unknown", "path": request.url.path})
         return JSONResponse({"error": {"message": "not faked"}}, status_code=404)
@@ -356,6 +383,8 @@ class FakeModel:
     async def _messages(self, request: Request) -> Response:
         body = await request.json()
         c = _anthropic(body)
+        if limited := self._limited("anthropic", body, c):
+            return limited
         r = self.decide(c)
         self._record("anthropic", body, c, r)
         if r.delay:
@@ -423,6 +452,8 @@ class FakeModel:
     async def _responses(self, request: Request) -> Response:
         body = await request.json()
         c = _responses(body)
+        if limited := self._limited("responses", body, c):
+            return limited
         items = body.get("input") or []
         compact = (
             isinstance(items, list)
@@ -560,6 +591,8 @@ class FakeModel:
     async def _chat(self, request: Request) -> Response:
         body = await request.json()
         c = _chat(body)
+        if limited := self._limited("chat", body, c):
+            return limited
         r = self.decide(c)
         self._record("chat", body, c, r)
         if r.delay:
