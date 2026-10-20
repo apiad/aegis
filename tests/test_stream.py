@@ -277,3 +277,23 @@ def test_the_recorded_probe_parses_into_the_new_events():
     ):
         assert want in kinds, want
     assert "Garbled" not in kinds
+
+
+def test_an_error_result_keeps_its_text():
+    (ev,) = parse(
+        line(
+            {
+                "type": "result",
+                "subtype": "error_during_execution",
+                "is_error": True,
+                "result": "Claude AI usage limit reached|1792400000",
+            }
+        )
+    )
+    assert ev.is_error and ev.error_text == "Claude AI usage limit reached|1792400000"
+    (ok,) = parse(
+        line(
+            {"type": "result", "subtype": "success", "is_error": False, "result": "hi"}
+        )
+    )
+    assert ok.error_text is None
