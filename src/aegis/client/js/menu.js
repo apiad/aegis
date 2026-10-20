@@ -357,7 +357,10 @@ function place() {
 // no scroll tells follow(), so the canvas calls this when it lays out.
 export function unbarHidden() {
   // A tabbed canvas hides a pane with visibility, not display (base.css).
-  if (bar_ && !bar_.row.checkVisibility({ visibilityProperty: true })) unbar();
+  // The row by its id: a streaming delta redraws it as a new node.
+  if (!bar_) return;
+  const row = bar_.row.isConnected ? bar_.row : document.querySelector(`.row[data-id="${CSS.escape(bar_.row.dataset.id)}"]`);
+  if (!row?.checkVisibility({ visibilityProperty: true })) unbar();
 }
 
 // True when one was shown.

@@ -1138,7 +1138,9 @@ function render() {
     // once it lands. The URL drops "&at=", so the tab's hash is its own again.
     // The session shown already: its transcript is here, so the row lands
     // now, or never when it is gone. Otherwise it lands with the transcript.
-    if (landEntry?.key === r.id && shown === r.id) {
+    // Only on the render that read the link: a later one may come before the
+    // transcript lands, and must leave the row waiting for it.
+    if (r.at && landEntry?.key === r.id && shown === r.id) {
       if (transcript.entries.has(landEntry.id)) transcript.reveal(landEntry.id);
       landEntry = null;
     }
