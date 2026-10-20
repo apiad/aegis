@@ -4,7 +4,7 @@
 // jumping to the next option starting with that letter.
 // tests/test_client_rules.py fails on a native select in the client.
 //
-//   <pick-chip id="sp-effort" name="effort" aria-label="Effort" free></pick-chip>
+//   <pick-chip id="sp-effort" name="effort" aria-label="Effort" placeholder="…" free></pick-chip>
 //   chip.options = [{ value, label, disabled, meta }]; chip.value; chip.suffix
 //
 // `meta` is a short note drawn after the label in the list, not matched by
@@ -43,6 +43,8 @@ export class PickChip extends HTMLElement {
     if (!this.free) this.input.inputMode = "none";
     const label = this.getAttribute("aria-label");
     if (label) this.input.setAttribute("aria-label", label);
+    const hint = this.getAttribute("placeholder");
+    if (hint) this.input.placeholder = hint;
     this.list = document.createElement("div");
     this.list.className = "menu";
     this.list.setAttribute("role", "listbox");

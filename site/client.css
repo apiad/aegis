@@ -1262,6 +1262,31 @@ body{background:#000}
 .a2 .set-mrow.hd .nm,.a2 .set-mrow.hd .by{color:inherit}
 .a2 .set-attr{margin:8px 0 0;font-family:var(--font-mono);font-size:10.5px;color:var(--faint)}
 .a2 .set-attr a{color:var(--muted)}
+/* An agent's cascade: its models in order, each with its Coding Index and
+   buttons to move or remove it (the spec's section 10 mockup). */
+.a2 .set-casc{grid-column:2;min-width:0}
+.a2 .set-casc ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.a2 .set-casc li{display:grid;grid-template-columns:22px minmax(0,1fr) 64px auto;gap:8px;align-items:center;background:var(--bg);border:1px solid var(--rule);border-radius:5px;padding:4px 8px;font-family:var(--font-mono);font-size:11.5px;color:var(--ink)}
+.a2 .set-casc li.cool{opacity:.55}
+.a2 .set-casc .i{color:var(--faint)}
+.a2 .set-casc .m{color:var(--strong);overflow-wrap:anywhere}
+.a2 .set-casc .sc{color:var(--muted);text-align:right}
+.a2 .set-casc .sc.none{color:var(--faint)}
+.a2 .set-casc .mv{display:flex;gap:4px}
+.a2 .set-casc-btn{font:11px var(--font-mono);background:none;border:1px solid var(--rule);color:var(--muted);border-radius:4px;padding:0 6px;cursor:pointer;min-width:24px}
+.a2 .set-casc-btn:hover:not(:disabled){color:var(--strong);border-color:var(--faint)}
+.a2 .set-casc-btn:focus-visible{outline:none;border-color:var(--accent)}
+.a2 .set-casc-btn:disabled{opacity:.35;cursor:default}
+.a2 .set-casc-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.a2 .set-casc-warn{margin:6px 0 0;font-family:var(--font-mono);font-size:11px;color:var(--warn);overflow-wrap:anywhere}
+.a2 .set-casc .set-attr{margin-top:6px}
+@media (max-width:640px){
+  .a2 .set-casc{grid-column:1}
+  .a2 .set-casc li{grid-template-columns:22px minmax(0,1fr) auto}
+  .a2 .set-casc .m{grid-column:2/-1}
+  .a2 .set-casc .sc{grid-column:2;text-align:left}
+}
+@media (pointer:coarse){.a2 .set-casc-btn{min-width:44px;min-height:44px;font-size:14px}.a2 .set-casc-sort{min-height:44px}.a2 .set-casc pick-chip input{min-height:44px}}
 @media (max-width:640px){
   .a2 .set-mrow{grid-template-columns:minmax(0,1fr) auto;gap:2px 8px}
   .a2 .set-mrow.hd,.a2 .set-mrow .h,.a2 .set-mrow .ii,.a2 .set-mrow .by:empty{display:none}

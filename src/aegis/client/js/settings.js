@@ -902,6 +902,112 @@ export class Settings {
       this.models = { error: e.message };
     }
     this.box.querySelector("#set-models")?.replaceWith(this.modelsView());
+    for (const c of this.box.querySelectorAll(".set-casc")) c.draw(); // scores and cooling
+  }
+
+  // A model of a harness as models.list tells it (with when it stops
+  // cooling), or as its catalog does until that answers.
+  modelInfo(harness, value) {
+    const same = (x) => x.value === value || x.resolved === value;
+    return this.models?.models?.find((x) => x.harness === harness && same(x)) || this.found.find((f) => f.harness === harness)?.models.find(same);
+  }
+
+  // An agent's models in the order it tries them (its cascade): the first
+  // at spawn, the next when one runs out of quota or its provider fails.
+  // One model is written model:, two or more models: (config.py).
+  cascade(a) {
+    let list = a.models?.length ? [...a.models] : a.model ? [a.model] : [];
+    const box = h("div", { className: "set-casc" });
+    const rows = h("ul");
+    const add = h("pick-chip", { name: "add-model", className: "pick" });
+    add.setAttribute("aria-label", "Agent add model");
+    add.setAttribute("placeholder", "Add model");
+    add.addEventListener("input", (ev) => {
+      ev.stopPropagation();
+      if (add.value) set([...list, add.value]);
+    });
+    const info = (m) => this.modelInfo(a.harness, m);
+    // Ranked before unranked, then Coding Index down, Intelligence Index
+    // breaking ties: negative when p goes first.
+    const key = (m) => ((x) => (x?.coding == null ? [0, 0, 0] : [1, x.coding, x.intelligence ?? 0]))(info(m));
+    const order = (p, q) => {
+      const [x, y] = [key(p), key(q)];
+      return y[0] - x[0] || y[1] - x[1] || y[2] - x[2];
+    };
+    const sort = button("Sort by ranking", null, () => set([...list].sort(order)), "link set-casc-sort");
+    const warn = h("p", { className: "set-casc-warn" });
+    const attr = h("p", { className: "set-attr" });
+    const set = (next, focus) => {
+      list = next;
+      a.models = list.length > 1 ? [...list] : [];
+      a.model = list[0] ?? "";
+      this.touch();
+      box.draw();
+      // The button pressed is gone with its row: the focus follows the model.
+      if (focus) box.querySelector(`li[data-model="${CSS.escape(focus[0])}"] button[data-a=${focus[1]}]:not(:disabled)`)?.focus();
+    };
+    box.clear = () => {
+      list = [];
+      a.model = "";
+      a.models = [];
+      box.draw();
+    };
+    box.draw = () => {
+      const score = (x) => (x?.coding == null ? "unranked" : x.coding.toFixed(1));
+      const now = Date.now() / 1000;
+      rows.replaceChildren(
+        ...list.map((m, i) => {
+          const x = info(m);
+          const until = x?.cooling_until > now ? new Date(x.cooling_until * 1000).toTimeString().slice(0, 5) : "";
+          const act = (kind, text, words, to) => {
+            const b = button(text, null, () => set(to(), [m, kind]), "set-casc-btn");
+            b.dataset.a = kind;
+            b.setAttribute("aria-label", `${words} ${m}`);
+            return b;
+          };
+          const swap = (j) => () => {
+            const next = [...list];
+            [next[i], next[j]] = [next[j], next[i]];
+            return next;
+          };
+          const up = act("up", "↑", "Move up", swap(i - 1));
+          const down = act("down", "↓", "Move down", swap(i + 1));
+          const rm = act("rm", "×", "Remove", () => list.filter((_, k) => k !== i));
+          up.disabled = i === 0;
+          down.disabled = i === list.length - 1;
+          rm.disabled = list.length === 1; // an agent runs at least one model
+          const li = h(
+            "li",
+            { className: until ? "cool" : "", title: x?.label || m },
+            h("span", { className: "i", textContent: i + 1 }),
+            h("span", { className: "m", textContent: until ? `${m} · cooling until ${until}` : m }),
+            h("span", { className: x?.coding == null ? "sc none" : "sc", textContent: score(x) }),
+            h("span", { className: "mv" }, up, down, rm),
+          );
+          li.dataset.model = m;
+          return li;
+        }),
+      );
+      add.options = this.modelOptions(a.harness).filter((o) => !list.includes(o.value));
+      add.value = "";
+      sort.hidden = list.length < 2;
+      // The first pair out of ranking order, with both scores.
+      let w = "";
+      for (let i = 0; i < list.length && !w; i++)
+        for (let j = i + 1; j < list.length && !w; j++)
+          if (order(list[j], list[i]) < 0) w = `${list[i]} (${score(info(list[i]))}) is above ${list[j]} (${score(info(list[j]))})`;
+      warn.textContent = w;
+      warn.hidden = !w;
+      const m = this.models;
+      attr.hidden = !m || !!m.error;
+      if (m && !m.error) {
+        const link = h("a", { href: m.source_url, textContent: "Artificial Analysis", target: "_blank", rel: "noopener" });
+        attr.replaceChildren("Scores by ", link, m.refreshed ? `, refreshed ${m.refreshed}` : ", not refreshed yet");
+      }
+    };
+    box.append(rows, h("div", { className: "set-casc-tools" }, add, sort), warn, attr);
+    box.draw();
+    return box;
   }
 
   // Every model the installed harnesses run, the ones agents use first:
@@ -983,7 +1089,7 @@ export class Settings {
   agents() {
     const v = this.wire.vocab;
     const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Agents" }), button("Add agent", "set-add-agent", () => {
-      this.doc.agents.push({ name: "", harness: v.harnesses[0], model: "", effort: "", permission: "", priming: null });
+      this.doc.agents.push({ name: "", harness: v.harnesses[0], model: "", models: [], effort: "", permission: "", priming: null });
       this.touch();
       this.draw();
       this.box.querySelector(".set-agent:last-of-type input[name=name]")?.focus();
@@ -999,14 +1105,11 @@ export class Settings {
     const isDefault = this.doc.default_agent === a.name && a.name !== "";
     const name = h("input", { name: "name", value: a.name, spellcheck: false, placeholder: "name", className: "set-name" });
     const harness = select("harness", v.harnesses, a.harness, (x) => this.harnessLabel(x));
-    const model = h("pick-chip", { name: "model", className: "pick" });
-    model.setAttribute("free", "");
-    model.options = this.modelOptions(a.harness);
-    model.value = a.model;
+    const casc = this.cascade(a);
     const effort = select("effort", ["", ...v.efforts], a.effort, (x) => (x ? `effort ${x}` : "effort?"));
     const permission = select("permission", ["", ...v.permissions], a.permission, (x) => (x ? `perm ${x}` : "perm?"));
     const priming = h("textarea", { name: "priming", value: a.priming || "", rows: 4, placeholder: "A system prompt every session of this agent starts with." });
-    for (const el of [name, harness, model, effort, permission, priming]) {
+    for (const el of [name, harness, effort, permission, priming]) {
       el.setAttribute("aria-label", `Agent ${el.name}`);
       el.addEventListener("input", () => {
         const was = a.name;
@@ -1019,7 +1122,7 @@ export class Settings {
           for (const q of this.doc.queues) if (q.agent === was) q.agent = el.value;
           this.refreshNames();
         }
-        if (el.name === "harness") model.options = this.modelOptions(el.value);
+        if (el.name === "harness") casc.clear();
         this.touch();
       });
     }
@@ -1058,7 +1161,7 @@ export class Settings {
       this.draw();
     }, "link danger");
     const fold = h("details", { className: "set-priming", open: !!a.priming }, h("summary", { textContent: a.priming ? "Priming" : "Add a priming" }), priming);
-    card.append(name, h("div", { className: "picks" }, harness, model, effort, permission), h("div", { className: "set-card-foot" }, fold, star, del));
+    card.append(name, h("div", { className: "picks" }, harness, effort, permission), casc, h("div", { className: "set-card-foot" }, fold, star, del));
     if (isDefault) card.classList.add("is-default");
     return card;
   }

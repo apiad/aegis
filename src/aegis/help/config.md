@@ -104,10 +104,20 @@ share one account. Cooling is kept in memory by the server: a restart clears it.
 `/model` moves a session within its cascade; a model outside it turns falling
 off for that session, and a handoff from it keeps that model. Codex errors never fall yet.
 
+On the Settings page an agent's models are a list in the order they are
+tried, each with its Coding Index or "unranked", and buttons to move it up or
+down or remove it; the last model cannot be removed. "Add model" offers the
+rest of the harness's models, and "Sort by ranking" puts them in the ranking's
+order. Under the list a warning names the first pair out of that order, as
+`aegis doctor` does, and a model that is cooling shows dimmed with "cooling
+until HH:MM". Saving writes `models:` for two or more models and `model:` for
+one, except that an agent the file already lists under `models:` stays a list.
+Changing the agent's harness empties the list.
+
 ## Models
 
-Every model pick (the new tab's model chip, the `/model` menu, an agent's
-model in Settings) shows a short chip beside each model: its rank among the
+Every model pick (the new tab's model chip, the `/model` menu, "Add model" on
+an agent in Settings) shows a short chip beside each model: its rank among the
 models of its harness, its Coding Index, and its price per million tokens in
 and out, such as "#1 · 72.0 · $15 / $75", or "free" when it costs nothing
 through its harness. A model the ranking does not score shows "unranked" and
@@ -368,8 +378,8 @@ with no restart. A file that does not parse leaves the last one that did in
 force, and says so, so a half-typed edit never stops a spawn. A deleted file
 means no agents and no queues.
 
-The Settings page edits the same file as a form: agents with their chips and
-priming, which one is the default, and the queues. It keeps the file's
+The Settings page edits the same file as a form: agents with their chips,
+models and priming, which one is the default, and the queues. It keeps the file's
 comments and key order, and refuses to save over a change made on disk since
 you opened it. Only an admin can save.
 
