@@ -226,8 +226,12 @@ class Registry(Host):
     ) -> tuple[str | None, float] | None:
         return None if self.cascade is None else self.cascade(session, text)
 
-    def notice_blocks(self, session: Session) -> str:
-        return "" if self.notices is None else self.notices.pending(session)
+    def notice_blocks(self, session: Session, at: str) -> str:
+        return "" if self.notices is None else self.notices.pending(session, at)
+
+    def compacted(self, session: Session) -> None:
+        if self.notices is not None:
+            self.notices.forget(session.log_id)
 
     def quota_hold(self, session: Session) -> str | None:
         """A paused session waits for its gate to open; any other may start a
@@ -464,6 +468,7 @@ class Registry(Host):
             restart_continues=meta.get("restart_continues") or 0,
             quota_paused=meta.get("quota_paused"),
             notices_sent=meta.get("notices_sent"),
+            items_sent=meta.get("items_sent"),
             tool_calls=meta.get("tool_calls") or 0,
             cache_recent=meta.get("cache_recent"),
             compactions=meta.get("compactions") or 0,

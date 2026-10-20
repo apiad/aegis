@@ -191,6 +191,20 @@ def propose(found: list[Found]) -> ConfigDoc:
     return ConfigDoc(agents=agents, default_agent=default, queues=queues)
 
 
+def _notices(cfg: dict) -> list[Finding]:
+    """A wrong notices: block, and each name no installed source declares."""
+    out = [Finding("error", "notices", cfg["error"])] if "error" in cfg else []
+    out += [
+        Finding(
+            "warn",
+            "notices",
+            f"notices.{name}: no installed source declares it; it is ignored",
+        )
+        for name in cfg.get("undeclared", [])
+    ]
+    return out
+
+
 def _unknown_keys(data: dict) -> list[Finding]:
     out = [
         Finding(
@@ -499,8 +513,7 @@ async def doctor(
         out.append(Finding("error", "terminal_memory_max", snap.terminal_memory_error))
     out += _recap(roots)
     out.append(_context(snap.context))
-    if "error" in snap.notices:
-        out.append(Finding("error", "notices", snap.notices["error"]))
+    out += _notices(snap.notices)
     out.append(_park(snap.park))
     if "error" in snap.harness_versions:
         out.append(Finding("error", "harness_versions", snap.harness_versions["error"]))

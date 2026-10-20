@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from aegis import notice_sources
 from aegis.commands import parse_announce
 from aegis.config import NOTICES_DEFAULTS, notices_from
 from aegis.notice_ops import until_ts
@@ -57,7 +58,7 @@ def test_a_host_without_proc_reads_no_memory_or_cpu(tmp_path):
 
 
 def test_the_notices_block_falls_back_and_turns_kinds_off():
-    assert notices_from(None) == NOTICES_DEFAULTS
+    assert notices_from(None) == NOTICES_DEFAULTS | notice_sources.declared()
     got = notices_from({"disk": {"on": 80}, "cpu": False})
     assert got["disk"] == {"on": 80, "critical": 87, "clear": 75}
     assert got["cpu"] is False
@@ -100,6 +101,7 @@ def session(
         schedule=None,
         archived=False,
         notices_sent={},
+        items_sent={},
         _metas=Metas(),
         meta=lambda: {},
     )

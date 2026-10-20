@@ -175,9 +175,13 @@ class Host:
         time the failed model cools until."""
         return None
 
-    def notice_blocks(self, session: "Session") -> str:
-        """The notices the session has not been told yet (notices.py), or ""."""
+    def notice_blocks(self, session: "Session", at: str) -> str:
+        """The notices the session has not been told yet (notices.py), or "".
+        ``at`` is "send" for a prompt, "tool" for a tool result."""
         return ""
+
+    def compacted(self, session: "Session") -> None:
+        """The harness compacted the session's context."""
 
 
 NO_HOST = Host()
@@ -321,6 +325,7 @@ class Session:
         restart_continues: int = 0,
         quota_paused: str | None = None,
         notices_sent: dict[str, str] | None = None,
+        items_sent: dict[str, str] | None = None,
         tool_calls: int = 0,
         parked_rss: int = 0,
         parked_idle_s: int = 0,
@@ -411,6 +416,9 @@ class Session:
         # {"disk": "warn", "announce:<id>": "warn"}. In the meta, so a restart
         # neither repeats a notice nor forgets a clear.
         self.notices_sent: dict[str, str] = dict(notices_sent or {})
+        # What per-session notice sources told it, apart from the host kinds
+        # (notices.py): their restore reads every key in notices_sent.
+        self.items_sent: dict[str, str] = dict(items_sent or {})
         # What the cache did (cache.py): tool calls and compactions of the main
         # thread, and the last calls' [cache_read, total_input, at]. In the meta,
         # so the counters survive a restart.
@@ -488,6 +496,7 @@ class Session:
             "restart_continues": self.restart_continues,
             "quota_paused": self.quota_paused,
             "notices_sent": self.notices_sent,
+            "items_sent": self.items_sent,
             "tool_calls": self.tool_calls,
             "parked_rss": self.parked_rss,
             "parked_idle_s": self.parked_idle_s,
@@ -872,7 +881,9 @@ class Session:
             self._set(title=default_title(typed or text))
         if self.cascade_exhausted:
             self.cascade_exhausted = False  # a new turn starts
-        if not text.startswith("/") and (blocks := self._host.notice_blocks(self)):
+        if not text.startswith("/") and (
+            blocks := self._host.notice_blocks(self, "send")
+        ):
             # The record and the harness get the same text, so the fold pairs
             # them; the fold splits the blocks off into their own rows.
             text = f"{text}\n\n{blocks}"
@@ -1175,6 +1186,7 @@ class Session:
             if isinstance(ev, Compact):
                 compactions += 1
                 changes["compactions"] = compactions
+                self._host.compacted(self)
             if isinstance(ev, Title) and not self.title_set:
                 changes["title"] = ev.text
             if isinstance(ev, Init):

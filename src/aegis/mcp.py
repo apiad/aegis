@@ -111,7 +111,7 @@ class OpTool(Tool):
         reg = self._sessions
         s = None if reg is None else reg.sessions.get(log_id)
         if reg is not None and s is not None and SHELL_HEADER.lower() not in headers:
-            if blocks := reg.notice_blocks(s):
+            if blocks := reg.notice_blocks(s, "tool"):
                 text = f"{text}\n\n{blocks}"
         return ToolResult(content=text)
 
