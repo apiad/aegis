@@ -248,8 +248,20 @@ def browser():
         b.close()
 
 
+# The client's timers, shortened for every page new_page opens (#506): a
+# reconnect retries within RETRY_MAX_MS instead of backing off to 5 s, and the
+# Fleet and transcript are written to the device SAVE_MS after a change
+# instead of 2 s. A page opened another way keeps the real timings.
+RETRY_MAX_MS = 250
+SAVE_MS = 200
+# Long enough for a debounced save to have been written.
+SAVE_WAIT_S = 4 * SAVE_MS / 1000
+TIMERS = f"window.AEGIS_TEST = {{retryMaxMs: {RETRY_MAX_MS}, saveMs: {SAVE_MS}}};"
+
+
 def new_page(browser, errors: list):
     pg = browser.new_page(viewport={"width": 1280, "height": 800})
+    pg.add_init_script(TIMERS)
     pg.on("pageerror", lambda e: errors.append(str(e)))
     pg.on(
         "console",
@@ -4981,7 +4993,7 @@ def test_offline_the_fleet_draws_from_the_device(server, page):
     page.wait_for_selector(f".card[data-id='{sid}']")
     page.set_viewport_size({"width": 390, "height": 844})
     online = tab_strip_height(page)
-    time.sleep(2.5)  # the debounced save
+    time.sleep(SAVE_WAIT_S)  # the debounced save
     server.stop()
     page.reload()
     page.wait_for_selector(f".card[data-id='{sid}']", timeout=10000)
@@ -5009,7 +5021,7 @@ def test_offline_an_opened_transcript_reads_as_it_was(server, page):
     sid = spawn(page, "hello")
     turns_done(page, 1)
     live = page.text_content("#entries")
-    time.sleep(2.5)  # the debounced save
+    time.sleep(SAVE_WAIT_S)  # the debounced save
     server.stop()
     page.reload()
     page.wait_for_selector("#a2[data-view=session]", timeout=10000)
@@ -5035,7 +5047,7 @@ def test_a_reload_into_a_kept_session_asks_only_for_what_changed(server, page):
     spawn(page, "hello")
     turns_done(page, 1)
     live = page.text_content("#entries")
-    time.sleep(2.5)  # the debounced save
+    time.sleep(SAVE_WAIT_S)  # the debounced save
     sent = []
     page.on("websocket", lambda ws: ws.on("framesent", lambda f: sent.append(f)))
     page.reload()
@@ -5055,7 +5067,7 @@ def test_offline_a_session_never_opened_here_says_so(server, page):
     first = spawn(page, "hello")
     turns_done(page, 1)
     page.click("#tab-fleet")
-    time.sleep(2.5)  # the Fleet's and the transcript's saves
+    time.sleep(SAVE_WAIT_S)  # the Fleet's and the transcript's saves
     # Its transcript is gone from the device, its card is not: a session
     # another browser opened, that this one only saw on the Fleet.
     page.evaluate(
@@ -5092,7 +5104,7 @@ def test_offline_a_rows_detail_needs_the_connection(server, page, tmp_path):
     wait_for_device_copy(page)
     spawn(page, f"/read {tmp_path / 'notes.txt'}")
     turns_done(page, 1)
-    time.sleep(2.5)  # the debounced save
+    time.sleep(SAVE_WAIT_S)  # the debounced save
     server.stop()
     page.reload()
     tool = page.locator(".row.tool").first
@@ -5478,7 +5490,7 @@ def test_a_refused_token_empties_the_device(server, page):
     wait_for_device_copy(page)
     spawn(page, "hello")
     turns_done(page, 1)
-    time.sleep(2.5)  # the debounced save
+    time.sleep(SAVE_WAIT_S)  # the debounced save
     has = "import('/static/js/devicestore.js').then(s => s.loadFleet())"
     assert page.evaluate(has)
     page.context.clear_cookies()
@@ -5497,7 +5509,7 @@ def test_a_cold_start_asks_only_for_what_changed(server, page):
     page.wait_for_selector("#a2[data-view=fleet]")
     sid = spawn(page, "hello")
     turns_done(page, 1)
-    time.sleep(2.5)  # the debounced save
+    time.sleep(SAVE_WAIT_S)  # the debounced save
     subs: list = []
     page.on(
         "websocket",
