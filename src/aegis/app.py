@@ -18,8 +18,9 @@ and ``schedule.list``, ``schedule.runs``, ``schedule.create``,
 ``schedule.update``, ``schedule.delete``, ``schedule.pause``,
 ``schedule.resume``, ``schedule.fire`` and ``schedule.test``
 (``schedule_ops.py``).
-Channels: ``sessions`` (every open session's meta; patches ``upsert`` and
-``remove``), ``transcript:<log_id>`` (any session, archived included; a
+Channels: ``sessions`` (every open session's meta; patches ``upsert``,
+``merge`` to a subscriber that asks, and ``remove``, which carries the
+``archived`` row when a close archived it), ``transcript:<log_id>`` (any session, archived included; a
 subscribe ``since`` a revision gets what changed after it), ``quota`` (each
 provider's windows; patches ``set``), ``host`` (CPU, RAM and disk while someone
 watches; patches ``set``), ``journal`` (when its rows last changed; patches

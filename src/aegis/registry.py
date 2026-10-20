@@ -712,7 +712,9 @@ class Registry(Host):
         meta = s.meta()
         self.metas.write(meta)
         self.archived[log_id] = meta
-        self._publish("sessions", [{"remove": log_id}])
+        # The row the archive gains rides along, so a browser adds it to the
+        # archive it shows instead of reading a page again (#525).
+        self._publish("sessions", [{"remove": log_id, "archived": _public(meta)}])
         if self.schedules is not None:
             self.schedules.changed()
         if self.workflows is not None:
