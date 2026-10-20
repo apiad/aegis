@@ -23,6 +23,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import re
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, replace
 from io import StringIO
@@ -33,6 +34,7 @@ from pydantic import BaseModel, Field
 from ruamel.yaml import YAML, YAMLError
 from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.scalarstring import LiteralScalarString
+from ruamel.yaml.util import load_yaml_guess_indent
 
 from .agents import EFFORTS, HARNESSES, PERMISSION_ORDER, Agent, agents_from
 from .cgroups import DEFAULT_MEMORY_MAX, parse_size
@@ -51,7 +53,7 @@ TOP_KEYS = (
     "harness_versions", "notices",
 )  # fmt: skip
 AGENT_KEYS = (
-    "harness", "provider", "model", "effort", "permission", "priming",
+    "harness", "provider", "model", "models", "effort", "permission", "priming",
     "keep_harness_tools",
 )  # fmt: skip
 QUEUE_KEYS = ("agent", "max_parallel", "quiet")
@@ -376,6 +378,9 @@ class AgentDoc(BaseModel):
     name: str
     harness: str = ""
     model: str = ""
+    # The cascade, when the agent names two or more models; empty for a
+    # one-model agent, which uses ``model``.
+    models: list[str] = Field(default_factory=list)
     effort: str = ""
     permission: str = ""
     priming: str | None = None
@@ -418,6 +423,7 @@ def doc_from(data: dict) -> ConfigDoc:
             name=a.name,
             harness=a.harness,
             model=a.model,
+            models=list(a.models) if len(a.models) > 1 else [],
             effort=a.effort,
             permission=a.permission,
             priming=a.priming,
@@ -585,7 +591,8 @@ def validate(doc: ConfigDoc) -> list[Finding]:
                 f"harness {a.harness!r} is not one of {', '.join(HARNESSES)}",
             )
             continue
-        (agent,) = agents_from({"agents": {a.name: a.model_dump(exclude={"name"})}})
+        raw = a.model_dump(exclude={"name", "models" if not a.models else "model"})
+        (agent,) = agents_from({"agents": {a.name: raw}})
         if agent.error:
             err(row, row, agent.error)
     queues = [q.name for q in doc.queues]
@@ -663,9 +670,23 @@ def _set_agent(node: CommentedMap, a: AgentDoc) -> None:
         _put(node, "provider", a.harness)
     else:
         _put(node, "harness", a.harness)
-    for f in ("model", "effort", "permission"):
+    for f in ("effort", "permission"):
         holder = provider if isinstance(provider, dict) and f in provider else node
         _put(holder, f, getattr(a, f))
+    # Two or more models are written as models:, one as model:, unless the
+    # file already lists it under models:, which a person wrote as a list.
+    held = isinstance(provider, dict) and ("model" in provider or "models" in provider)
+    holder = provider if held else node
+    if len(a.models) > 1:
+        holder.pop("model", None)
+        _put(holder, "models", list(a.models))
+    elif isinstance(listed := holder.get("models"), list):
+        holder.pop("model", None)
+        if list(listed) != [a.model]:
+            listed[:] = [a.model]  # in place, so the list keeps its style
+    else:
+        holder.pop("models", None)
+        _put(holder, "model", a.model)
     if a.priming:
         if node.get("priming") != a.priming:
             node["priming"] = (
@@ -759,7 +780,13 @@ def write(path: Path, doc: ConfigDoc, expected: Stamp | None) -> list[Finding]:
     data = None
     if expected is not None:
         try:
-            data = rt.load(path.read_text())
+            text = path.read_text()
+            data = rt.load(text)
+            # A file with a models: list keeps its own list indentation, such
+            # as dashes indented by hand; any other file is written as before.
+            _, seq, offset = load_yaml_guess_indent(text)
+            if offset is not None and re.search(r"^\s*models:", text, re.M):
+                rt.indent(mapping=2, sequence=seq, offset=offset)
         except YAMLError as e:
             raise OpError(
                 "bad_config", f"{path} does not parse; fix it in an editor first: {e}"

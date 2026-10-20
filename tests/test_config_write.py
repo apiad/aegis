@@ -8,6 +8,7 @@ from aegis.config import (
     ConfigDoc,
     QueueDoc,
     doc_from,
+    load,
     stamp_of,
     validate,
     write,
@@ -330,3 +331,53 @@ def test_accept_version_on_an_unwritable_folder_raises_an_op_error(tmp_path):
         assert e.value.code == "unwritable"
     finally:
         d.chmod(0o755)
+
+
+def test_settings_save_keeps_model_and_models_shapes_and_comments(tmp_path):
+    p = tmp_path / ".aegis.yaml"
+    p.write_text(
+        "agents:\n  o:\n    provider: claude-code\n    model: opus  # pinned\n    effort: high\n    permission: full\n"
+        "  free:\n    provider: opencode\n    models:\n      - opencode/a\n      - opencode/b\n    effort: high\n    permission: full\n"
+    )
+    doc = doc_from(load(p)[0])
+    assert write(p, doc, stamp_of(p)) == []
+    text = p.read_text()
+    assert (
+        "model: opus  # pinned" in text
+        and "models:\n      - opencode/a\n      - opencode/b" in text
+    )
+
+
+ONE_MODEL_LIST = (
+    "agents:\n  free:\n    provider: opencode\n    models: [opencode/a]\n"
+    "    effort: high\n    permission: full\n"
+)
+
+
+def test_a_one_model_list_stays_a_list_where_it_was(tmp_path):
+    p = tmp_path / ".aegis.yaml"
+    p.write_text(ONE_MODEL_LIST)
+    assert write(p, doc_from(load(p)[0]), stamp_of(p)) == []
+    assert p.read_text() == ONE_MODEL_LIST
+
+
+def test_a_one_model_list_takes_a_new_model_as_a_list(tmp_path):
+    p = tmp_path / ".aegis.yaml"
+    p.write_text(ONE_MODEL_LIST)
+    doc = doc_from(load(p)[0])
+    doc.agents[0].model = "opencode/x"
+    assert write(p, doc, stamp_of(p)) == []
+    assert "    models: [opencode/x]\n    effort: high\n" in p.read_text()
+
+
+def test_a_file_without_models_keeps_its_old_list_indentation(tmp_path):
+    p = tmp_path / ".aegis.yaml"
+    p.write_text(
+        "agents:\n    o:\n        provider: claude-code\n        model: opus\n"
+        "        effort: high\n        permission: full\n"
+        "        keep_harness_tools:\n            - WebSearch\n"
+    )
+    doc = doc_from(load(p)[0])
+    doc.agents[0].effort = "low"
+    assert write(p, doc, stamp_of(p)) == []
+    assert "keep_harness_tools:\n    - WebSearch" in p.read_text()

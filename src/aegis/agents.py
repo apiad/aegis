@@ -11,6 +11,10 @@ an empty string, is listed with an ``error`` and cannot be spawned, and the
 other agents in the file are unaffected. A field the loader filled in would be
 a setting nobody chose, with nothing to show it was filled.
 
+``models:`` names an ordered list instead of one ``model:``, a cascade
+(cascade.py); ``model`` is then its head, and ``model: x`` is a cascade of one.
+Every model of a cascade runs on the agent's harness.
+
 Three forms name the harness: flat ``harness:``, ``provider: <harness>`` as a
 string (the Workspace's own form), and a nested ``provider:`` mapping whose
 ``name`` is the harness and whose other keys are fields.
@@ -67,6 +71,10 @@ class Agent:
     keep_harness_tools: tuple[str, ...] = ()
     # Why this agent cannot be spawned as written; None when it can.
     error: str | None = None
+    # The cascade, head first; (model,) for a one-model agent.
+    models: tuple[str, ...] = ()
+    # Models ``models:`` listed more than once; the repeats are dropped.
+    repeated: tuple[str, ...] = ()
 
     @property
     def enabled(self) -> bool:
@@ -77,6 +85,7 @@ class Agent:
             "name": self.name,
             "harness": self.harness,
             "model": self.model,
+            "models": list(self.models),
             "effort": self.effort,
             "permission": self.permission,
             "enabled": self.enabled,
@@ -102,6 +111,9 @@ def _agent(name: str, raw: Any) -> Agent:
         d |= {k: v for k, v in provider.items() if k != "name"}
         if provider.get("name"):
             d["harness"] = provider["name"]
+    models, repeated, models_error = _models(d)
+    if models:
+        d["model"] = models[0]
     values = {f: "" if d.get(f) in (None, "") else str(d[f]) for f in FIELDS}
     missing = [f for f in FIELDS if not values[f]]
     if missing:
@@ -109,7 +121,12 @@ def _agent(name: str, raw: Any) -> Agent:
         error: str | None = f"{', '.join(missing)} {verb} missing"
     else:
         error = next((e for f in FIELDS if (e := _invalid(f, values[f]))), None)
-        error = error or _model_error(values["harness"], values["model"])
+        error = error or next(
+            (e for m in models or (values["model"],)
+             if (e := _model_error(values["harness"], m))),
+            None,
+        )  # fmt: skip
+    error = models_error or error
     priming = d.get("priming")
     keep, keep_error = _keep(d.get("keep_harness_tools"))
     return Agent(
@@ -118,7 +135,27 @@ def _agent(name: str, raw: Any) -> Agent:
         priming=str(priming) if priming else None,
         keep_harness_tools=keep,
         error=error or keep_error,
+        models=models or ((values["model"],) if values["model"] else ()),
+        repeated=repeated,
     )
+
+
+def _models(d: dict) -> tuple[tuple[str, ...], tuple[str, ...], str | None]:
+    """``models:`` without repeats, the repeats, and the error that stops the
+    agent; ``((), (), None)`` when the agent gives ``model:`` alone."""
+    raw = d.get("models")
+    if raw is None:
+        return (), (), None
+    if d.get("model") not in (None, ""):
+        return (), (), "give model or models, not both"
+    if not isinstance(raw, list) or not all(isinstance(m, str) and m for m in raw):
+        return (), (), "models must be a list of model names"
+    if not raw:
+        return (), (), "models is empty"
+    names = [str(m) for m in raw]
+    models = tuple(dict.fromkeys(names))
+    repeated = tuple(dict.fromkeys(m for i, m in enumerate(names) if m in names[:i]))
+    return models, repeated, None
 
 
 def _keep(raw: Any) -> tuple[tuple[str, ...], str | None]:
@@ -169,8 +206,8 @@ def model_suggestions(agents: list[Agent]) -> dict[str, list[str]]:
     for h in HARNESSES:
         models: list[str] = []
         for a in agents:
-            if a.harness == h and a.model and a.model not in models:
-                models.append(a.model)
+            if a.harness == h:
+                models += [m for m in a.models if m not in models]
         out[h] = models
     return out
 
@@ -207,6 +244,9 @@ def resolve(
         )
     if err := _model_error(fields["harness"], fields["model"]):
         raise OpError("bad_model", err)
+    # An explicit model is the person's choice: it runs alone, with no cascade.
+    own = not {"model", "harness"} & set(overridden)
+    cascade = agent.models if own and len(agent.models) > 1 else ()
     return SpawnSpec(
         agent=agent.name,
         model=fields["model"],
@@ -216,6 +256,7 @@ def resolve(
         harness=fields["harness"],
         priming=agent.priming,
         keep_harness_tools=agent.keep_harness_tools,
+        cascade=cascade,
         overridden=overridden,
         spawned_by=spawned_by,
         owner=owner,

@@ -94,6 +94,11 @@ class Registry(Host):
         self.version_policy: Callable[[], dict | None] = lambda: None
         # The app's quota gate: (owner, harness, model) -> quota_gate.Gate.
         self.gate = None
+        # The app's start_spec: a spec -> the spec to start (its cascade's
+        # first model free now) and the gate it passes.
+        self.start_spec = None
+        # The app's cascade_next, which cools and picks (Host.cascade_next).
+        self.cascade = None
         self.journal = None
         self.catalogs = None
         # One cgroup per session, when the unit is delegated (cgroups.py); the
@@ -215,6 +220,11 @@ class Registry(Host):
                 "stop the workflow to talk to it"
             )
         return None
+
+    def cascade_next(
+        self, session: Session, text: str
+    ) -> tuple[str | None, float] | None:
+        return None if self.cascade is None else self.cascade(session, text)
 
     def notice_blocks(self, session: Session) -> str:
         return "" if self.notices is None else self.notices.pending(session)
@@ -463,6 +473,10 @@ class Registry(Host):
             else meta.get("continued_by"),
             quiet=bool(meta.get("quiet")),
             checked_version=meta.get("checked_version"),
+            # The meta's {"models", "at", "exhausted"}; a spawn record's list
+            # has no exhausted.
+            cascade_exhausted=isinstance(c := meta.get("cascade"), dict)
+            and bool(c.get("exhausted")),
         )
 
     def boot(self, prev: restarts.Previous = restarts.CLEAN) -> None:

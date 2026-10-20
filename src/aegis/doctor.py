@@ -40,6 +40,7 @@ from .config import (
 )
 from .harness import harness_for
 from .harness_versions import OUTSIDE, VERSION_TIMEOUT_S, judge
+from .ranking import ranking
 from .recap import load_recap
 from .roots import CONFIG_FILE, Roots, legacy_state
 from .session import SpawnSpec
@@ -235,16 +236,23 @@ def _agent(a: Agent, f: Found | None) -> list[Finding]:
                 row,
             )
         ]
-    out: list[Finding] = []
-    if f is not None and f.models:
-        m = next((m for m in f.models if a.model in (m.value, m.resolved)), None)
+    out: list[Finding] = [
+        Finding("warn", f"{row}.models", f"{m} is listed twice; the second is ignored", row)
+        for m in a.repeated
+    ]  # fmt: skip
+    where = f"{row}.models" if len(a.models) > 1 else f"{row}.model"
+    if (order := _out_of_order(a.models)) is not None:
+        out.append(Finding("warn", where, order, row))
+    catalog = f.models if f is not None else ()
+    for model in a.models if catalog else ():
+        m = next((m for m in catalog if model in (m.value, m.resolved)), None)
         if m is None:
-            listed = ", ".join(x.value for x in f.models[:8])
+            listed = ", ".join(x.value for x in catalog[:8])
             out.append(
                 Finding(
                     "warn",
-                    f"{row}.model",
-                    f"{LABELS[a.harness]} does not list {a.model!r}; it lists {listed}",
+                    where,
+                    f"{LABELS[a.harness]} does not list {model!r}; it lists {listed}",
                     row,
                 )
             )
@@ -265,6 +273,19 @@ def _agent(a: Agent, f: Found | None) -> list[Finding]:
             row,
         )
     ]
+
+
+def _coding(model: str) -> str:
+    s = ranking().score(model)
+    return "unranked" if s is None or s.coding is None else f"{s.coding:.1f}"
+
+
+def _out_of_order(models: tuple[str, ...]) -> str | None:
+    """The first model a cascade puts above one the ranking scores higher."""
+    for above, better in zip(models, ranking().order(models)):
+        if above != better:
+            return f"{above} ({_coding(above)}) is above {better} ({_coding(better)}) in the ranking"
+    return None
 
 
 def _default(name: str | None, by_name: dict[str, Agent]) -> Finding:

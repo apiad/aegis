@@ -33,6 +33,13 @@ function cwdTail(cwd) {
 
 // transcript/describe.py's money(): a sub-cent session (cheap OpenCode models)
 // would otherwise read $0.00.
+// A session's model and, on a cascade, its place in it (session.py meta).
+export function modelLine(m) {
+  const c = m.cascade;
+  if (!c || c.at === null || c.at === undefined) return m.model;
+  return c.exhausted ? `${m.model} · cascade exhausted` : `${m.model} · ${c.at + 1} of ${c.models.length}`;
+}
+
 export function money(usd) {
   const v = usd || 0;
   return v >= 0.005 || v === 0 ? `$${v.toFixed(2)}` : `$${v.toFixed(4)}`;
@@ -157,7 +164,7 @@ function card(m, onOpen, onClose) {
   const parts = [hd, el("div", "ttl", m.title || "untitled")];
   if (m.attention_line) parts.push(el("div", `ask at-${m.attention}`, m.attention_line));
   const sub = el("div", "ln");
-  sub.append(el("b", null, `${m.agent}${(m.overridden || []).length ? "*" : ""}`), document.createTextNode(`${m.model} · ${cwdTail(m.cwd)}`));
+  sub.append(el("b", null, `${m.agent}${(m.overridden || []).length ? "*" : ""}`), document.createTextNode(`${modelLine(m)} · ${cwdTail(m.cwd)}`));
   parts.push(sub);
   if (m.plan_now || m.plan_did) {
     const pl = el("div", "pl");

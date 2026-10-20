@@ -248,6 +248,8 @@ async def canary(setup, fake_model, tmp_path, monkeypatch, request):
         "default_agent: canary\nagents:\n"
         f"  canary: {{harness: {harness}, model: {model}, "
         "effort: low, permission: full}\n"
+        f"  cascade: {{harness: {harness}, models: [{model}, {model}-two], "
+        "effort: low, permission: full}\n"
         "queues:\n  canary: {agent: canary, max_parallel: 2}\n"
     )
     c = Canary(harness, None, fm, root, setup)

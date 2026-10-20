@@ -165,6 +165,9 @@ class Result:
     stop_reason: str | None
     context_window: int | None
     turns: int | None = None
+    # A failed turn's own words, which a cascade classifies (cascade.py):
+    # Claude Code's result text, OpenCode's "<type>: <message>".
+    error_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -325,9 +328,10 @@ def _parse(obj: dict) -> list[Event]:
                     window = max(window or 0, u["contextWindow"])
         cost = obj.get("total_cost_usd")
         dur = obj.get("duration_ms")
+        is_error = bool(obj.get("is_error", False))
         return [
             Result(
-                is_error=bool(obj.get("is_error", False)),
+                is_error=is_error,
                 subtype=str(obj.get("subtype") or ""),
                 duration_ms=dur if isinstance(dur, int) else None,
                 cost_usd=float(cost) if isinstance(cost, (int, float)) else None,
@@ -336,6 +340,7 @@ def _parse(obj: dict) -> list[Event]:
                 turns=obj["num_turns"]
                 if isinstance(obj.get("num_turns"), int)
                 else None,
+                error_text=_str(obj.get("result")) if is_error else None,
             )
         ]
 

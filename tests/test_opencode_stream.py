@@ -354,3 +354,11 @@ def test_a_prompt_read_while_a_part_streams_sits_where_a_reload_puts_it():
     assert live == folded(live=False).entries()
     said = [e["md"] for e in live if e["kind"] in ("user", "prose")]
     assert said == ["one", "you said: one", "two", "you said: two"]
+
+
+def test_a_failed_turn_keeps_its_error_text():
+    p = Parser()
+    p.feed(ev("session.created", sessionID="ses_1"))
+    err = {"type": "APIError", "message": "429 FreeUsageLimitError"}
+    (r,) = p.feed(ev("session.execution.failed", sessionID="ses_1", error=err))
+    assert r.error_text == "APIError: 429 FreeUsageLimitError"

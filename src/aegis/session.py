@@ -33,12 +33,15 @@ so a crash and a clean stop read the same.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from . import attachments, cache, harness_versions, restarts
 from . import layout as canvas
@@ -164,12 +167,26 @@ class Host:
         node of a live workflow run, workflows.py), or None."""
         return None
 
+    def cascade_next(
+        self, session: "Session", text: str
+    ) -> tuple[str | None, float] | None:
+        """A turn of a cascade failed with ``text`` (cascade.py): None when it
+        stays; else the model it falls to, None when none is left, and the
+        time the failed model cools until."""
+        return None
+
     def notice_blocks(self, session: "Session") -> str:
         """The notices the session has not been told yet (notices.py), or ""."""
         return ""
 
 
 NO_HOST = Host()
+
+# What a cascade sends the model it fell to, in the same turn.
+CONTINUE_PROMPT = (
+    "The previous model failed with: {error}. You are now running on {model}. "
+    "Continue the task from where it stopped."
+)
 
 
 class Archived(Exception):
@@ -207,6 +224,10 @@ class SpawnSpec:
     continues: str | None = None
     # The agent's keep_harness_tools, fixed at spawn like the priming.
     keep_harness_tools: tuple[str, ...] = ()
+    # The agent's models when it names two or more and the spawn kept its
+    # model; () otherwise. Fixed at spawn: the position in use is the index
+    # of ``model`` in it.
+    cascade: tuple[str, ...] = ()
 
     def record(self) -> dict:
         """The fields a spawn record and a meta carry."""
@@ -232,6 +253,8 @@ class SpawnSpec:
             d["continues"] = self.continues
         if self.keep_harness_tools:
             d["keep_harness_tools"] = list(self.keep_harness_tools)
+        if self.cascade:
+            d["cascade"] = list(self.cascade)
         return d
 
     @classmethod
@@ -252,6 +275,7 @@ class SpawnSpec:
             spawned_from=d.get("spawned_from"),
             continues=d.get("continues"),
             keep_harness_tools=tuple(d.get("keep_harness_tools") or ()),
+            cascade=_cascade_of(d.get("cascade")),
         )
 
 
@@ -305,6 +329,7 @@ class Session:
         continued_by: str | None = None,
         quiet: bool = False,
         checked_version: str | None = None,
+        cascade_exhausted: bool = False,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
@@ -417,6 +442,13 @@ class Session:
         self.last_verdict: harness_versions.Verdict | None = None
         # The notice the last launch wrote, for the spawn op's result.
         self.last_notice: str | None = None
+        # A cascade falling to its next model inside a turn, and whether an
+        # interrupt came while it did; the card says "cascade exhausted"
+        # from the last model's failure until the next turn starts.
+        self._falling: asyncio.Task | None = None
+        self._fall_stop = False
+        self._fall_to: str | None = None
+        self.cascade_exhausted = cascade_exhausted
 
     # -- what the outside sees -------------------------------------------
     def meta(self) -> dict:
@@ -464,7 +496,21 @@ class Session:
             "continued_by": self.continued_by,
             "quiet": self.quiet,
             "checked_version": self.checked_version,
+            "cascade": self._cascade_meta(),
         }
+
+    def _cascade_meta(self) -> dict | None:
+        """The cascade and the position in use, None for a session with no
+        cascade. ``at`` is None while a person has moved the model outside
+        it, which turns falling off until they move back."""
+        c = self.spec.cascade
+        if not c:
+            return None
+        at = c.index(self.spec.model) if self.spec.model in c else None
+        out: dict = {"models": list(c), "at": at}
+        if self.cascade_exhausted:
+            out["exhausted"] = True
+        return out
 
     def wire(self) -> dict:
         """What the ``sessions`` channel carries."""
@@ -824,6 +870,8 @@ class Session:
         if not self.title and not text.startswith("/"):
             # A slash command names no task; the first prompt does.
             self._set(title=default_title(typed or text))
+        if self.cascade_exhausted:
+            self.cascade_exhausted = False  # a new turn starts
         if not text.startswith("/") and (blocks := self._host.notice_blocks(self)):
             # The record and the harness get the same text, so the fold pairs
             # them; the fold splits the blocks off into their own rows.
@@ -844,6 +892,11 @@ class Session:
     async def interrupt(self, *, through_lock: bool = False) -> None:
         if not through_lock:
             self.check_lock()
+        if self._falling is not None:
+            # Between the failed turn and the continue prompt nothing runs in
+            # the harness: the fall stops before it sends.
+            self._fall_stop = True
+            return
         if self.status != "working" or self._proc is None:
             return
         self._record({"kind": "interrupt"})
@@ -854,17 +907,22 @@ class Session:
         await self._proc.interrupt()
 
     async def stop(self) -> None:
-        """End the process and keep the session."""
+        """End the process and keep the session. A fall under way stops
+        before it continues, and the failed turn it held open ends."""
+        fell_to = await self._drop_fall()
         if self._proc is None:
             if self.asleep_why == "idle":  # a person's Stop outranks a park
                 self._record({"kind": "stop"})
                 self._set(asleep_why="slept")
                 self._metas.write(self.meta())
-            return
-        await self._end_process()
-        self._record({"kind": "stop"})
-        self._set(status="asleep", asleep_why="slept")
-        self._metas.write(self.meta())
+        else:
+            await self._end_process()
+            self._record({"kind": "stop"})
+            self._set(status="asleep", asleep_why="slept")
+            self._metas.write(self.meta())
+        if fell_to is not None:
+            self._record({"kind": "cascade_stopped", "to": fell_to, "by": "stop"})
+            self._host.turn_ended(self)
 
     async def restart(self) -> None:
         """A fresh process on the same conversation: end the one there is, if
@@ -899,7 +957,10 @@ class Session:
 
     async def shutdown(self) -> None:
         """The server is stopping: end the process, record nothing, and keep the
-        last status in the meta so a mid-turn session is marked at next boot."""
+        last status in the meta so a mid-turn session is marked at next boot.
+        A fall under way is dropped there: the turn is still working, so the
+        next boot continues it."""
+        await self._drop_fall()
         self.artifacts.flush_all()
         if self._proc is not None:
             self.last_status = self.status
@@ -1095,6 +1156,7 @@ class Session:
             self.tool_calls,
             self.compactions,
         )
+        falling = False
         for ev in events:
             if isinstance(ev, TURN_BEARING) and self.status == "idle":
                 changes["status"] = "working"
@@ -1126,9 +1188,15 @@ class Session:
                 elif ev.subtype == "task_notification":
                     self.open_tasks.discard(ev.task_id)
             if isinstance(ev, Result):
+                interrupting = (
+                    self._interrupt_timer is not None
+                    and not self._interrupt_timer.done()
+                )
                 if self._interrupt_timer:
                     self._interrupt_timer.cancel()
-                changes["status"] = "idle"
+                falling = self._cascade(ev, interrupting)
+                if not falling:
+                    changes["status"] = "idle"
                 if not ev.is_error:
                     changes["restart_continues"] = 0
                 if ev.cost_usd is not None:
@@ -1140,16 +1208,87 @@ class Session:
         if len(self.open_tasks) != tasks:
             self._publish_now()  # waiting on a background task shows on the card
             self._host.status_changed(self)
-        if any(isinstance(ev, Result) for ev in events):
-            if self.held and self._host.quota_hold(self) is not None:
-                # The gate says no new turn: they wait for it to open.
-                self.held = [m | {"held_for": "quota"} for m in self.held]
-                self._metas.write_soon(self.log_id, self.meta)
-                self._publish_now()
-            elif self.held:
-                self._flushing = True
-                asyncio.get_running_loop().create_task(self._flush_held())
-            self._host.turn_ended(self)
+        if any(isinstance(ev, Result) for ev in events) and not falling:
+            self._turn_over()
+
+    def _turn_over(self) -> None:
+        """A turn ended: send what it held, unless the gate says no new turn."""
+        if self.held and self._host.quota_hold(self) is not None:
+            # The gate says no new turn: they wait for it to open.
+            self.held = [m | {"held_for": "quota"} for m in self.held]
+            self._metas.write_soon(self.log_id, self.meta)
+            self._publish_now()
+        elif self.held:
+            self._flushing = True
+            asyncio.get_running_loop().create_task(self._flush_held())
+        self._host.turn_ended(self)
+
+    def _cascade(self, ev: Result, interrupting: bool) -> bool:
+        """Hand a failed turn of a cascade to the host; True when the session
+        falls to its next model, which continues this same turn."""
+        c, model = self.spec.cascade, self.spec.model
+        if not ev.is_error or not c or model not in c or interrupting:
+            return False
+        error = ev.error_text or ev.subtype
+        answer = self._host.cascade_next(self, error)
+        if answer is None:
+            return False  # an error that stays: the turn ends as before
+        to, until = answer
+        if to is None:
+            self.cascade_exhausted = True
+            self._record({"kind": "cascade_exhausted", "error": error})
+            return False
+        self._fall_stop, self._fall_to = False, to
+        self._falling = asyncio.get_running_loop().create_task(
+            self._fall({"from": model, "to": to, "error": error, "until": until})
+        )
+        return True
+
+    async def _fall(self, row: dict) -> None:
+        """Switch to the next model, then say so and continue the turn on it.
+        Stop and shutdown cancel this task while it switches (_drop_fall); an
+        interrupt lets the switch finish and sends nothing."""
+        to, error = row["to"], row["error"]
+        try:
+            await self.configure(model=to)
+        except Exception as e:
+            log.warning("%s: the cascade could not move to %s: %s", self.handle, to, e)
+            self._falling = None
+            why = getattr(e, "message", None) or str(e)
+            self._record({"kind": "cascade", **row, "refused": why})
+            self._end_fallen_turn()
+            return
+        self._falling = None
+        if self._fall_stop:
+            self._record({"kind": "cascade_stopped", "to": to})
+            self._end_fallen_turn()
+            return
+        self._record({"kind": "cascade", **row})
+        try:
+            # Under an aegis header, as a restart's continue is: the
+            # transcript shows it as aegis's message, not the person's.
+            at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            body = CONTINUE_PROMPT.format(error=error, model=to)
+            await self._send(f"> from aegis:cascade · {at}\n{body}")
+        except Exception:
+            log.exception("%s: the cascade could not continue on %s", self.handle, to)
+            if self.status == "working":  # failed before _send's _on_error ended it
+                self._end_fallen_turn()
+
+    def _end_fallen_turn(self) -> None:
+        self._set(status="idle")
+        self._turn_over()
+
+    async def _drop_fall(self) -> str | None:
+        """Cancel a fall that has not continued yet (stop, close, shutdown):
+        the model it was moving to, or None when no fall was under way."""
+        t, self._falling = self._falling, None
+        if t is None:
+            return None
+        t.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await t
+        return self._fall_to
 
     def _on_exit(self, code: int, stderr_tail: list[str]) -> None:
         if self._stopping:
@@ -1180,6 +1319,14 @@ class Session:
         if idle and self.status == "working":
             self._set(status="idle")
             self._host.turn_ended(self)
+
+
+def _cascade_of(raw: Any) -> tuple[str, ...]:
+    """A recorded cascade: the spawn record's list, or the meta's
+    ``{"models", "at"}``."""
+    if isinstance(raw, dict):
+        raw = raw.get("models")
+    return tuple(str(m) for m in raw) if isinstance(raw, list) else ()
 
 
 def _inbox_text(batch: list[dict]) -> str:

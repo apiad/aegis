@@ -303,6 +303,7 @@ class Parser:
             cost_usd=self.cost,
             stop_reason=None,
             context_window=None,
+            error_text=error,
         )
         self.end_turn()
         return [result]

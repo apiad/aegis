@@ -42,6 +42,10 @@ connected after. ``FAKE_OPENCODE_DIE=1`` exits with code 1 before listening;
 ``FAKE_OPENCODE_FAIL_SESSION=1`` answers ``POST /api/session`` with a 500. The
 log also gets ``START <pid>`` when the server starts, so a test can check every
 child it caused is gone. A prompt whose text is ``FAIL500`` is answered 500.
+``FAKE_OPENCODE_EXHAUSTED=<id>,<id>`` names models (``provider/model``) whose
+every turn fails with Zen's ``429 FreeUsageLimitError``, as an exhausted free
+model's does. A prompt ``OVERFLOW`` fails its turn with a
+``ContextOverflowError``.
 """
 
 from __future__ import annotations
@@ -91,6 +95,12 @@ CONFIG = json.loads(os.environ.get("OPENCODE_CONFIG_CONTENT") or "{}")
 PASSWORD = os.environ.get("OPENCODE_SERVER_PASSWORD")
 HOME = os.environ.get("FAKE_OPENCODE_HOME") or tempfile.gettempdir()
 LOG = os.environ.get("FAKE_OPENCODE_LOG")
+EXHAUSTED = {m for m in os.environ.get("FAKE_OPENCODE_EXHAUSTED", "").split(",") if m}
+LIMIT = {
+    "type": "APIError",
+    "message": "429 FreeUsageLimitError: free usage limit reached",
+}
+OVERFLOW = {"type": "ContextOverflowError", "message": "prompt is too long"}
 COST = 0.002
 TOKENS = {
     "input": 1000,
@@ -407,6 +417,12 @@ def worker(s: Sess) -> None:
         s.abort.clear()
         emit("session.execution.started", sessionID=s.id)
         emit("session.inbox.delivered", sessionID=s.id, inboxID=iid)
+        model = f"{s.model['providerID']}/{s.model['id']}"
+        if model in EXHAUSTED or text == "OVERFLOW":
+            drain(s)
+            error = OVERFLOW if text == "OVERFLOW" else LIMIT
+            emit("session.execution.failed", sessionID=s.id, error=error)
+            continue
         try:
             while True:
                 run(s, text)
