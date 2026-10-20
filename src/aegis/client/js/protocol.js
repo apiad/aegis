@@ -12,6 +12,10 @@
 
 export const PROTO = 3;
 
+// Channels this client asks to patch with merges: a row it holds comes back as
+// {merge: {key, ...}} with only the fields that changed (channels.py, #525).
+const MERGES = new Set(["sessions"]);
+
 export class OpError extends Error {
   constructor(code, message, data = null) {
     super(`${code}: ${message}`);
@@ -179,6 +183,7 @@ export class Connection {
     const msg = { t: "sub", channel: s.channel };
     if (s.server) msg.server = s.server;
     if (Number.isInteger(rev)) msg.since = rev;
+    if (MERGES.has(s.channel)) msg.merge = true;
     this.ws.send(JSON.stringify(msg));
   }
 }

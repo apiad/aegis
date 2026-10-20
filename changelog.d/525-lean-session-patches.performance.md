@@ -1,0 +1,1 @@
+- **A session's card update sends only what changed.** Every update to a session re-sent its whole row, 40-odd fields, when one or two had changed, and that was about a third of what an idle browser received. The browser now asks for only the changed fields; an older browser or linked server still gets whole rows.

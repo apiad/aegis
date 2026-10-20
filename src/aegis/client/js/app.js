@@ -666,7 +666,7 @@ setInterval(() => {
 }, 1000);
 
 // Each server's `sessions` channel: a snapshot replaces that server's metas,
-// patches upsert and remove them.
+// patches upsert, merge (only the fields that changed) and remove them.
 function sessionHandlers(server) {
   return [
     (metas) => {
@@ -688,6 +688,12 @@ function sessionHandlers(server) {
           if (!sessions.has(w.key)) setChanged = true;
           sessions.set(w.key, w);
           changed.add(w.key);
+        } else if (op.merge) {
+          const k = keyOf(server, op.merge.log_id);
+          const held = sessions.get(k);
+          if (!held) continue;
+          sessions.set(k, withKey({ ...held, ...op.merge }, server));
+          changed.add(k);
         } else if (op.remove !== undefined) {
           sessions.delete(keyOf(server, op.remove));
           setChanged = true;

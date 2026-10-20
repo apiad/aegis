@@ -3158,8 +3158,10 @@ def test_a_click_on_a_quiet_card_opens_it_when_a_patch_overtakes_the_unquiet(
 
         def from_server(msg):
             ws.send(msg)
-            # The unquiet goes out behind a patch of the still-quiet worker.
-            if gate["held"] and gate["worker"] in msg and '"quiet": true' in msg:
+            # The unquiet goes out behind a patch of the still-quiet worker. A
+            # merge carries only what changed, so it may not name `quiet` at
+            # all; any patch of the worker replaces the meta the click read.
+            if gate["held"] and gate["worker"] in msg and '"patch"' in msg:
                 far.send(gate.pop("held"))
                 gate["held"] = None
 

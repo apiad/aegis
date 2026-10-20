@@ -7,6 +7,16 @@ subscribe may carry ``since``, the revision the client already holds; a channel
 that keeps revisions (a transcript) answers with only what changed after it,
 and any other channel ignores it.
 Adding a subsystem adds channels, never a protocol field.
+
+A subscribe may also carry ``merge: true`` on a channel whose rows have a key
+(``MERGE_KEYS``). That subscriber's patches then turn each ``upsert`` of a row
+it already holds into ``{"merge": {key, ...}}`` with only the fields that
+changed, and drop one that changed nothing. A working session changes one or
+two of its 40-odd fields per patch, so whole rows were most of an idle
+client's traffic (#525). The rows a subscriber holds are kept per
+subscription, from its own snapshot on, so a merge is exact for it whatever
+the others were sent. A subscriber that did not ask (an older client or link)
+keeps getting whole rows.
 """
 
 from __future__ import annotations
@@ -21,12 +31,41 @@ Send = Callable[[dict], None]
 Snapshot = Callable[[], Any]
 Resolve = Callable[[str, int | None], Snapshot | None]
 
+# The channels a subscriber may take merges on, and the field that keys a row.
+MERGE_KEYS = {"sessions": "log_id"}
+
 
 class Sub:
-    def __init__(self, channel: str, send: Send) -> None:
+    def __init__(self, channel: str, send: Send, merge: bool = False) -> None:
         self.channel = channel
         self.send = send
         self.seq = 0
+        # The rows this subscriber holds, by key; None when it takes whole rows.
+        self.rows: dict[Any, dict] | None = {} if merge else None
+
+
+def _merged(key: str, rows: dict[Any, dict], ops: list[dict]) -> list[dict]:
+    """``ops`` as one merge subscriber is sent them, against ``rows``, the rows
+    it holds, which this updates."""
+    out = []
+    for op in ops:
+        row = op.get("upsert")
+        if row is None:
+            if "remove" in op:
+                rows.pop(op["remove"], None)
+            out.append(op)
+            continue
+        k = row[key]
+        held = rows.get(k)
+        rows[k] = row
+        # A field gone from the row has no merge to say so: send it whole.
+        if held is None or held.keys() - row.keys():
+            out.append(op)
+            continue
+        changed = {f: v for f, v in row.items() if f not in held or held[f] != v}
+        if changed:
+            out.append({"merge": {key: k, **changed}})
+    return out
 
 
 class Channels:
@@ -34,13 +73,19 @@ class Channels:
         self._resolve = resolve
         self._subs: dict[str, list[Sub]] = {}
 
-    def subscribe(self, channel: str, send: Send, since: int | None = None) -> Sub:
+    def subscribe(
+        self, channel: str, send: Send, since: int | None = None, merge: bool = False
+    ) -> Sub:
         snapshot = self._resolve(channel, since)
         if snapshot is None:
             raise OpError("unknown_channel", f"no channel named {channel!r}")
-        sub = Sub(channel, send)
+        sub = Sub(channel, send, merge and channel in MERGE_KEYS)
         self._subs.setdefault(channel, []).append(sub)
-        send({"t": "snapshot", "channel": channel, "seq": 0, "data": snapshot()})
+        data = snapshot()
+        if sub.rows is not None:
+            key = MERGE_KEYS[channel]
+            sub.rows = {row[key]: row for row in data}
+        send({"t": "snapshot", "channel": channel, "seq": 0, "data": data})
         return sub
 
     def unsubscribe(self, sub: Sub) -> None:
@@ -52,8 +97,13 @@ class Channels:
         if not ops:
             return
         for sub in list(self._subs.get(channel, ())):
+            out = (
+                ops if sub.rows is None else _merged(MERGE_KEYS[channel], sub.rows, ops)
+            )
+            if not out:
+                continue
             sub.seq += 1
-            sub.send({"t": "patch", "channel": channel, "seq": sub.seq, "ops": ops})
+            sub.send({"t": "patch", "channel": channel, "seq": sub.seq, "ops": out})
 
     def subscribers(self, channel: str) -> int:
         return len(self._subs.get(channel, ()))
