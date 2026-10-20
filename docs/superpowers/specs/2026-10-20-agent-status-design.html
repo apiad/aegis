@@ -246,7 +246,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <text class="tx" x="284" y="128">Notices</text>
   <text class="ts" x="284" y="146">set(log_id, source, items)</text>
   <text class="ts" x="284" y="162">pending(s, at)</text>
-  <text class="ts" x="284" y="178">notices_sent in the meta</text>
+  <text class="ts" x="284" y="178">items_sent in the meta</text>
   <path class="ar" d="M460,130 C510,130 510,70 548,70"/>
   <path class="aa" d="M460,170 C510,170 510,220 548,220"/>
   <rect class="bx" x="550" y="45" width="200" height="50" rx="6"/><text class="tx" x="562" y="65">Session._send</text><text class="ts" x="562" y="82">every level, info included</text>
@@ -274,7 +274,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
     <span class="k">def</span> pending(self, s: Session, at: str) -> str: ...
         <span class="c"># at = "send" | "tool"; was pending(s)</span></pre>
 <p>The full key is <code>&lt;source&gt;:&lt;key&gt;</code>, for example <code>monitors:m5:stalled</code>, so two sources never collide and the notice header names who said it. The key is what makes a warning "the same" across updates: a stalled monitor's text changes every minute ("no progress for 16 min", "17 min") but its key does not, so it is told once.</p>
-<p>Per-session items live in memory, in a dict keyed by log id and then by full key. Every item is derived from facts the store or <code>monitors.json</code> already keep, so each source sets its items again at boot. <code>notices_sent</code> is already in the meta, so a restart neither repeats a warning nor forgets its clear.</p>
+<p>Per-session items live in memory, in a dict keyed by log id and then by full key. Every item is derived from facts the store or <code>monitors.json</code> already keep, so each source sets its items again at boot. What a session was told of them is kept in <code>items_sent</code>, a dict in the meta beside <code>notices_sent</code>: the host kinds' restore and clear logic reads every key in <code>notices_sent</code> as a host kind, so per-session keys stay out of it. A restart neither repeats a warning nor forgets its clear.</p>
 
 <h3 id="push">Pushed, not pulled</h3>
 <p>A source never gets called back to produce items; it calls <code>set</code> when its facts change. A source whose item goes stale with time alone (the plan's "untouched for N minutes of work") re-evaluates on a timer it already has: for the plan that is the nudge tick, every 15 seconds. Monitors already poll each interval. That keeps <code>pending()</code> to dict reads and works unchanged once a source lives in another process.</p>
@@ -285,21 +285,21 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 plan 3/7 · doing: write the stall check
 monitors: m5 tests 40%
 queue tasks out: 2 running (review-a, review-b)</pre>
-<p>Lines are in the order sources first set items, then the order each source gave. Past <code>notices.status.lines</code> (5) lines the block ends with <code>… and N more</code>. In <code>notices_sent</code> the <code>status</code> key holds a short hash of the lines instead of a level; the block is pending when the hash differs. When the session has no info items left and the hash is set, the owed clear is one line: <code>nothing tracked: no plan items open, no monitors, no tasks out</code>.</p>
+<p>Lines are in the order sources first set items, then the order each source gave. Past <code>notices.status.lines</code> (5) lines the block ends with <code>… and N more</code>. In <code>items_sent</code> the <code>status</code> key holds a short hash of the lines instead of a level; the block is pending when the hash differs. When the session has no info items left and the hash is set, the owed clear is one line: <code>nothing tracked: no plan items open, no monitors, no tasks out</code>.</p>
 
 <h3 id="pending">What pending() sends</h3>
 <table class="tbl">
 <thead><tr><th>Item</th><th>at="send" (a prompt)</th><th>at="tool" (an MCP result)</th></tr></thead>
 <tbody>
 <tr><td>host kinds</td><td>as today</td><td>as today</td></tr>
-<tr><td>warn, critical</td><td>its block when <code>notices_sent[key]</code> differs from its level; its clear, when it had one, after it ends</td><td>the same</td></tr>
-<tr><td>info</td><td>the <code>status</code> block when its hash differs</td><td>nothing, and <code>notices_sent["status"]</code> is left as it was</td></tr>
+<tr><td>warn, critical</td><td>its block when <code>items_sent[key]</code> differs from its level; its clear, when it had one, after it ends</td><td>the same</td></tr>
+<tr><td>info</td><td>the <code>status</code> block when its hash differs</td><td>nothing, and <code>items_sent["status"]</code> is left as it was</td></tr>
 </tbody>
 </table>
 <p>A per-session warning's block is the header and the item's text, without the host kinds' "aegis tells you this once" tail: one line is enough to act on. Warnings come before the status block.</p>
-<p>An item that ends with no <code>clear</code> text leaves <code>notices_sent</code> silently. A plan warning has none, since the agent's own <code>plan_update</code> ended it. A monitor stall has one ("monitor m5 moves again, or has ended"). An item that turns on again later is told again.</p>
-<p>An item with <code>wake</code> set does not wait for the next prompt when its owner is idle. When it turns on (or rises to critical) and the session is idle or asleep, with no turn running, <code>Notices</code> delivers its block at once through <code>Session.deliver</code>, as a monitor's outcome is delivered: an asleep session is resumed for it, and a quota hold keeps it held like any inbox message. <code>notices_sent</code> records it in the same step, so the next prompt does not repeat it. If a turn is running, the item rides on the next MCP result or prompt as any warning does; if that turn ends with the warning still not told, the end of the turn delivers it. A clear never wakes anyone: it rides on the next prompt. The once-per-level rule is what stops a loop: a monitor that stays stalled wakes its owner once, and wakes it again only after it moved and stalled anew.</p>
-<p>When the harness reports a compaction, the session's per-session keys and <code>status</code> are removed from <code>notices_sent</code>, so its next prompt tells the fresh context everything again. Host kinds are left as they are, outside this change.</p>
+<p>An item that ends with no <code>clear</code> text leaves <code>items_sent</code> silently. A plan warning has none, since the agent's own <code>plan_update</code> ended it. A monitor stall has one ("monitor m5 moves again, or has ended"). An item that turns on again later is told again.</p>
+<p>An item with <code>wake</code> set does not wait for the next prompt when its owner is idle. When it turns on (or rises to critical) and the session is idle or asleep, with no turn running, <code>Notices</code> delivers its block at once through <code>Session.deliver</code>, as a monitor's outcome is delivered: an asleep session is resumed for it, and a quota hold keeps it held like any inbox message. <code>items_sent</code> records it in the same step, so the next prompt does not repeat it. If a turn is running, the item rides on the next MCP result or prompt as any warning does; if that turn ends with the warning still not told, the end of the turn delivers it. A clear never wakes anyone: it rides on the next prompt. The once-per-level rule is what stops a loop: a monitor that stays stalled wakes its owner once, and wakes it again only after it moved and stalled anew.</p>
+<p>When the harness reports a compaction, the session's <code>items_sent</code> is emptied, so its next prompt tells the fresh context everything again. Host kinds are left as they are, outside this change.</p>
 <p>The operation runs before <code>OpTool.run</code> reads <code>pending()</code>, so a <code>plan_update</code> that ends the plan warning never comes back carrying that warning.</p>
 
 <h3 id="sim">Try it</h3>
@@ -368,7 +368,7 @@ queue tasks out: 2 running (review-a, review-b)</pre>
   plan_min: 15      <span class="c"># the plan nudge at turn end (today PLAN_STALE_S)</span></pre>
 <ul>
 <li><code>false</code> in place of a source turns it off: its items are never set, and any it had are cleared. <code>status: false</code> turns off the info block while every source's warnings still go. <code>nudges: {silent_s: false}</code> turns off the silent-turn nudge. <code>monitors: {wake: false}</code> keeps the monitor warnings but lets them wait for the next prompt.</li>
-<li>Each source declares its own keys. A source registers its defaults with <code>notices.declare(source, defaults)</code> at import, and <code>config.notices_from</code> validates the <code>notices:</code> block against the host kinds plus every declared source. That keeps <code>config.py</code> free of per-source names, and a plugin's manifest declares its defaults through the same call. A key for a source that is not declared (a plugin not installed) is kept and reported by <code>aegis doctor</code> as a warning, not an error, so removing a plugin never invalidates the file.</li>
+<li>Each source declares its own keys. A source registers its defaults with <code>notice_sources.declare(source, defaults)</code> (a leaf module, since <code>config.py</code> imports <code>queues.py</code>) at import, and <code>config.notices_from</code> validates the <code>notices:</code> block against the host kinds plus every declared source. That keeps <code>config.py</code> free of per-source names, and a plugin's manifest declares its defaults through the same call. A key for a source that is not declared (a plugin not installed) is kept and reported by <code>aegis doctor</code> as a warning, not an error, so removing a plugin never invalidates the file.</li>
 <li>A wrong value follows the existing rule: the whole block keeps its defaults and carries <code>error</code> for <code>aegis doctor</code>, so a typo never stops a send.</li>
 <li>A source reads its values from <code>config.current()</code> each time it evaluates, so a changed file applies within a second with no restart, as every other key does. Lowering a threshold can turn a warning on at the next evaluation; raising one clears it, with its clear text.</li>
 <li>The Settings page's config editor shows the new keys as it shows the host kinds; it needs no code of its own.</li>
@@ -401,7 +401,7 @@ queue tasks out: 2 running (review-a, review-b)</pre>
 <li><code>Notices.set</code>, <code>drop_source</code>, the <code>info</code> level, <code>pending(s, at)</code> and the compaction reset, with unit tests. The two existing callers pass <code>at</code>.</li>
 <li>The three sources set their items, and <code>wake</code> delivery to idle owners.</li>
 <li>The immediate silent-turn nudge.</li>
-<li>The config keys: <code>notices.declare</code>, the declared sources in <code>notices_from</code>, the <code>nudges:</code> block, and doctor's warning for an undeclared source.</li>
+<li>The config keys: <code>notice_sources.declare</code>, the declared sources in <code>notices_from</code>, the <code>nudges:</code> block, and doctor's warning for an undeclared source.</li>
 <li>Docs: DESIGN.md's notice and nudge paragraphs; <code>config.md</code> (the new keys); the help pages <code>monitors.md</code> (what a stall warning means) and <code>sessions.md</code> (the status block); a <code>changelog.d/</code> fragment.</li>
 </ol>
 
