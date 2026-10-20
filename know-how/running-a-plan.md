@@ -28,9 +28,9 @@ can be tried, which is what a worker can verify on its own.
   its tests.
 - **The worker runs only the tests its tasks touch.** The plan names them in
   each task's verify block. The full suite is not the worker's job.
-- **The enqueuer runs the full gates once, at the end:** merge `main` into the
-  branch, open the PR, let CI run the suite, and run what CI cannot
-  (`make test-slow` where CI skips it, `rift check`, `make bench`).
+- **The enqueuer does not run the full gates:** merge `main` into the branch,
+  open the PR and let CI run the suite and the bench. The full local gates
+  run before a release, not per PR.
 - **A review agent is sent only when the work could hide something:** a slice
   that changes how state is folded, recorded or synced across browsers, or one
   whose code in the plan was a sketch rather than finished code. Brief it to

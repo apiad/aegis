@@ -19,13 +19,18 @@ false by a commit that adds a module, a tool or a test.
 
 A change is done when:
 
-1. `make check` and `make test-slow` pass. `make check` runs the fast lane only;
-   the browser tests are all marked slow, so they run in `make test-slow`;
-2. it has been exercised in a browser against an `aegis serve` started after the
-   change, and, for a change to how agents use aegis, by a real Claude Code
-   session (`make test-live`);
-3. `make bench` has run and its table is in the PR body. CI reports a regression
-   as a warning and never fails on one, so a reader has to look at it;
+1. the tests that cover the change pass locally, and nothing more: run the
+   test files you touched and their neighbours while you iterate, plus
+   `make lint-docs` when a doc or help page changed. The whole suite is CI's
+   job, not yours;
+2. CI is green on the PR. It runs the whole hermetic suite, slow and browser
+   tests included, with format, lint, typecheck, rift and the changelog check,
+   and compares the bench of the PR's base and head in its job summary. Copy
+   that table into the PR body: CI warns on a regression and never fails on
+   one, so a reader has to look at it;
+3. it has been exercised in a browser against an `aegis serve` started after the
+   change, and, for a change to how agents use aegis, by the `make test-live`
+   case that covers it, run on its own (`-k`), not the whole live suite;
 4. DESIGN.md describes the code as it now is;
 5. a user-visible change has a `changelog.d/` fragment and updates or adds its
    help page under `src/aegis/help/`, and a change to how the pieces fit has
@@ -39,6 +44,11 @@ A change is done when:
    file it as issues unless the fix on main is trivial. Every check above is a
    proxy; his hands on the build are the gate, and a merged PR he has not run
    is not done.
+
+The full local gates, `make check`, `make test-slow` and `make bench`, run once
+before a release, not per PR. The order is the order
+of what each gate protects: a fast local loop while you work, CI before a merge
+to `main`, the full gates and the smoke test before a release.
 
 Green tests against a server that booted before the change prove nothing about
 the change.

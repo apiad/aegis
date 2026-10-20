@@ -79,16 +79,23 @@ skipped, because a dropped fragment is a missing release note.
 
 Do not edit `CHANGELOG.md` directly. The releaser collates.
 
-## 4. Run the gates before pushing
+## 4. Run what covers the change, then push
+
+Run only the tests that cover the change, and `make lint-docs` if a doc or
+help page changed:
 
 ```bash
-make test          # the fast lane
-make check         # every gate, on the fast lane
-make test-slow     # what the fast lane skips: every browser test, restarts
+uv run pytest -q tests/test_<what_you_touched>.py   # and its neighbours
 make lint-docs     # rift, the help pages among its rules; CI runs it too
 ```
 
-`make test` green is not the same as CI green. Reproduce the runner:
+Do not run `make check`, `make test-slow` or `make bench` for a PR: CI runs
+the whole hermetic suite on every PR, slow and browser tests included, and
+compares the bench of base and head. Those three run locally once, before a
+release (`releasing.md`).
+
+A local green is not the same as CI green. To reproduce a CI failure, run the
+runner's way:
 
 ```bash
 GITHUB_ACTIONS=true uv run pytest -q -m "not live"
