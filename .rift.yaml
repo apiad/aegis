@@ -134,3 +134,14 @@ rules:
       regex: '^help: ([a-z0-9-]+)'
       sub: ['^(.*)$', 'src/aegis/help/\1.md']
     require: { exists: true }
+
+  # The model scores are vendored and go stale between releases; each release
+  # refreshes them (know-how/releasing.md). rift matches text and cannot
+  # compare a date with today, so this catches only a file never refreshed.
+  - name: "models.json is refreshed: run scripts/refresh-model-ranking with AA_API_KEY"
+    severity: warning
+    extract:
+      list: ['"refreshed":\s*""']
+    forbid:
+      in: "src/aegis/data/models.json"
+      as: regex
