@@ -210,7 +210,10 @@ class Journal:
             dirs += [r.workdir for r in rows if r.workdir]
             dirs += d.take_pushes()
             if fresh or dirs:
-                self.on_live(log_id, d.handle, fresh, list(dict.fromkeys(dirs)))
+                try:
+                    self.on_live(log_id, d.handle, fresh, list(dict.fromkeys(dirs)))
+                except Exception:
+                    log.exception("journal: on_live failed")
         return n
 
     def _backfill(self, con, token: int | None = None) -> int:

@@ -263,3 +263,110 @@ async def test_an_unchanged_snapshot_is_not_published_again(world, repo, monkeyp
         assert world.published[-1][1][0]["set"]["repos"][0]["dirty_n"] == 1
     finally:
         await world.repos.stop()
+
+
+def test_a_merge_seen_in_the_main_checkout_holds_for_the_worktree_line(
+    world, repo, tmp_path
+):
+    wt = tmp_path / "wt"
+    run(repo, "worktree", "add", "-q", "-b", "topic", str(wt))
+    wt = wt.resolve()
+    world.wrote("L1", wt, "b.py", main=repo)
+    world.pr("L1", wt, "opened https://github.com/o/repo/pull/12 · feat: x")
+    world.pr("L1", repo, "merged #12")
+    lines = world.repos.build("L1")["repos"]
+    assert {ln["top"]: [p["state"] for p in ln["prs"]] for ln in lines} == {
+        str(wt): ["merged"],
+        str(repo): ["merged"],
+    }
+
+
+def test_a_removed_worktree_asks_gh_from_its_main_checkout(
+    world, repo, tmp_path, monkeypatch
+):
+    asked = []
+    monkeypatch.setattr(gh, "prs", lambda top, b: asked.append(top) or [])
+    gone = tmp_path / "gone"
+    world.wrote("L1", gone, "x.py", main=repo)
+    world.committed("L1", gone, "0" * 40, "add x", branch="topic")
+    world.repos.build("L1")
+    assert asked == [str(repo)]
+
+
+def test_a_pr_of_another_github_repo_is_dropped(world, repo):
+    run(repo, "remote", "set-url", "origin", "git@github.com:o/repo.git")
+    world.pr("L1", repo, "opened https://github.com/o/repo/pull/3 · mine")
+    world.pr("L1", repo, "opened https://github.com/other/thing/pull/4 · theirs")
+    [line] = world.repos.build("L1")["repos"]
+    assert [p["n"] for p in line["prs"]] == [3]
+
+
+def test_git_failing_to_tell_unpushed_is_never_clean(world, repo, monkeypatch):
+    (repo / "c.py").write_text("c\n")
+    run(repo, "add", "c.py")
+    run(repo, "commit", "-q", "-m", "add c")
+    world.committed("L1", repo, run(repo, "rev-parse", "HEAD"), "add c")
+    monkeypatch.setattr(probe, "unpushed", lambda *a: None)
+    [line] = world.repos.build("L1")["repos"]
+    assert (line["clean"], line["stale"]) == (False, True)
+
+
+def test_a_file_name_that_is_not_utf8_does_not_break_the_probe(repo):
+    (repo / b"bad\xff.txt".decode("utf-8", "surrogateescape")).write_text("x")
+    p = probe.probe(str(repo))
+    assert p is not None and len(p.dirty) == 1
+
+
+async def test_a_failed_build_is_retried(world, repo, monkeypatch):
+    monkeypatch.setattr(service, "PUBLISH_EVERY", 0.1)
+    world.wrote("L1", repo, "a.py")
+    real, calls = world.repos.build, []
+
+    def flaky(*a):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("boom")
+        return real(*a)
+
+    monkeypatch.setattr(world.repos, "build", flaky)
+    world.repos.start()
+    try:
+        world.repos.snapshot("L1")
+        for _ in range(100):
+            await asyncio.sleep(0.02)
+            if world.published:
+                break
+        assert len(calls) == 2 and world.published
+    finally:
+        await world.repos.stop()
+
+
+async def test_a_probe_elsewhere_does_not_rebuild_an_unrelated_session(
+    world, repo, tmp_path, monkeypatch
+):
+    world.repos.start()
+    try:
+        world.repos.snapshot("L1")
+        world.repos._live["L1"] = {str(repo): (str(repo), 1.0, frozenset({"a.py"}))}
+        await asyncio.sleep(0.3)
+        refreshed = []
+        monkeypatch.setattr(
+            world.repos, "refresh", lambda k, now=False: refreshed.append(k)
+        )
+        other = tmp_path / "other"
+        other.mkdir()
+        await world.repos._probe_and_refresh(str(other))
+        assert refreshed == []
+        await world.repos._probe_and_refresh(str(repo))
+        assert refreshed == ["L1"]
+    finally:
+        await world.repos.stop()
+
+
+async def test_nothing_is_scheduled_after_stop(world, repo):
+    world.repos.start()
+    await world.repos.stop()
+    world.repos.live("L1", "ana", [str(repo / "a.py")], [str(repo)])
+    world.repos.request(str(repo))
+    world.repos.refresh("L1")
+    assert not world.repos._probe_due and not world.repos._build_due

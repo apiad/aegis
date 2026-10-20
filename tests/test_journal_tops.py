@@ -5,7 +5,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from aegis.journal import db
+from aegis.journal import db, paths
 from aegis.journal.derive import Deriver, Row
 from aegis.journal.service import Journal
 
@@ -153,3 +153,38 @@ def test_on_live_reports_new_writes_and_the_dirs_of_commits_prs_and_pushes(tmp_p
     for rec in r.records[-2:]:
         j._feed(con, "L", "h", store, rec, None)
     assert seen[-1] == ("L", "h", [], ["/x/wt"])
+
+
+def test_a_gh_pr_call_with_repo_names_no_directory():
+    r = Rec()
+    r.own("spawn", agent="opus", model="opus", cwd="/w", handle="h")
+    r.own("send", text="go")
+    r.call("t1", "Bash", {"command": "gh pr merge 5 --repo o/r --rebase"})
+    r.output("t1", "Merged pull request #5")
+    d = Deriver("h")
+    rows = [x for rec in r.records for x in d.feed(rec)]
+    [pr] = [x for x in rows if x.kind == "pr"]
+    assert pr.workdir == ""
+
+
+def test_a_write_under_a_removed_directory_names_no_worktree(tmp_path):
+    repo, wt = _repo_with_worktree(tmp_path)
+    assert paths.place(str(wt / "x" / "gone.py"))[2] is None
+    assert paths.place(str(wt / "gone.py"))[2] == str(wt)
+
+
+def test_on_live_raising_still_inserts_and_announces(tmp_path):
+    def boom(*a):
+        raise RuntimeError("boom")
+
+    j = Journal(tmp_path, None, db_path=tmp_path / "j.db", on_live=boom)
+    con, _ = db.connect(j.path)
+    r = Rec()
+    r.own("spawn", agent="opus", model="opus", cwd=str(tmp_path), handle="h")
+    r.own("send", text="go")
+    r.call("t1", "Write", {"file_path": "a.py", "content": "z"})
+    r.output("t1", "ok")
+    store = tmp_path / "none.jsonl"
+    store.write_text("")
+    n = sum(j._feed(con, "L", "h", store, rec, None) for rec in r.records)
+    assert n == 1  # the spawn row, inserted although on_live raised
