@@ -38,6 +38,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -306,6 +307,7 @@ class Session:
         continued_by: str | None = None,
         quiet: bool = False,
         checked_version: str | None = None,
+        cascade_exhausted: bool = False,
     ) -> None:
         self.log_id = log_id
         self.spec = spec
@@ -418,7 +420,7 @@ class Session:
         self._falling: asyncio.Task | None = None
         self._fall_stop = False
         self._fall_to: str | None = None
-        self.cascade_exhausted = False
+        self.cascade_exhausted = cascade_exhausted
 
     # -- what the outside sees -------------------------------------------
     def meta(self) -> dict:
@@ -1210,7 +1212,11 @@ class Session:
             return
         self._record({"kind": "cascade", **row})
         try:
-            await self._send(CONTINUE_PROMPT.format(error=error, model=to))
+            # Under an aegis header, as a restart's continue is: the
+            # transcript shows it as aegis's message, not the person's.
+            at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            body = CONTINUE_PROMPT.format(error=error, model=to)
+            await self._send(f"> from aegis:cascade · {at}\n{body}")
         except Exception:
             log.exception("%s: the cascade could not continue on %s", self.handle, to)
             if self.status == "working":  # failed before _send's _on_error ended it

@@ -86,9 +86,9 @@ async def test_a_failed_turn_falls_to_the_next_model_and_finishes(world, monkeyp
     assert world.ended[s.log_id] == 1
     assert s.meta()["cascade"] == {"models": MODELS, "at": 1}
     error = "APIError: 429 FreeUsageLimitError: free usage limit reached"
-    assert world.sends(s)[-1] == CONTINUE_PROMPT.format(error=error, model="opencode/b")
-    prose = [e["md"] for e in s.entries() if e["kind"] == "prose"]
-    assert prose[-1].startswith("you said: The previous model failed")
+    sent = world.sends(s)[-1]
+    assert sent.startswith("> from aegis:cascade · ")
+    assert sent.endswith("\n" + CONTINUE_PROMPT.format(error=error, model="opencode/b"))
     # New spawns skip the model that fell.
     assert world.app.cooling.until("opencode", "opencode/a", s.created_at) is not None
 
@@ -117,7 +117,7 @@ async def test_a_queue_worker_that_falls_completes_once_with_the_last_answer(
     )
     await until(lambda: t.status != "pending" and t.status != "running", timeout=10)
     assert t.status == "completed", t.result
-    assert t.result.startswith("you said: The previous model failed")
+    assert t.result.startswith("you said: > from aegis:cascade")
     assert world.session(t.worker).spec.model == "opencode/b"
     assert world.ended[t.worker] == 1
 
@@ -277,8 +277,14 @@ async def test_shutdown_during_fallback_continues_the_worker_at_boot(
     assert t.status == "running"
     exhaust(monkeypatch)
     await world.start()
-    t2 = world.app.queues.tasks[t.id]
-    await until(lambda: t2.status == "completed", timeout=10, what="the worker")
+    # Continued, not failed; whether it completes races queues.boot (app.py).
+    assert world.app.queues.tasks[t.id].status in ("running", "completed")
+    sends = [
+        r.get("text", "")
+        for r in read_store(world.app.sessions.store_path(t.worker))[0]
+        if r.get("kind") == "send"
+    ]
+    assert any(x.startswith("> from aegis:restart") for x in sends), sends
 
 
 async def test_a_continue_that_fails_to_send_ends_the_turn_once(world, monkeypatch):
@@ -323,3 +329,23 @@ async def test_a_refused_switch_says_so_and_ends_the_turn(world, monkeypatch):
     assert rows[-1].startswith("cascade: opencode/a failed")
     assert rows[-1].endswith("could not switch to opencode/b: set_model refused.")
     assert world.ended[s.log_id] == 1
+
+
+async def test_an_exhausted_cascade_still_says_so_after_restart(world, monkeypatch):
+    exhaust(monkeypatch, *MODELS)
+    s = await world.spawn_free()
+    await world.turn_ended(s)
+    log_id = s.log_id
+    await world.restart()
+    s = world.session(log_id)
+    assert s.wire()["cascade"]["exhausted"] is True
+
+
+async def test_the_continue_prompt_is_aegis_not_the_person(world, monkeypatch):
+    exhaust(monkeypatch, "opencode/a")
+    s = await world.spawn_free()
+    await world.turn_ended(s)
+    users = [e["md"] for e in s.entries() if e["kind"] == "user"]
+    assert users == ["hello"], users
+    inbox = [e for e in s.entries() if e["kind"] == "inbox"]
+    assert inbox and inbox[-1]["title"].startswith("aegis:cascade · ")

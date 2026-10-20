@@ -453,6 +453,10 @@ class Registry(Host):
             else meta.get("continued_by"),
             quiet=bool(meta.get("quiet")),
             checked_version=meta.get("checked_version"),
+            # The meta's {"models", "at", "exhausted"}; a spawn record's list
+            # has no exhausted.
+            cascade_exhausted=isinstance(c := meta.get("cascade"), dict)
+            and bool(c.get("exhausted")),
         )
 
     def boot(self, prev: restarts.Previous = restarts.CLEAN) -> None:
