@@ -32,7 +32,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from . import host, notice_sources
+from . import host
 from .notice_sources import Item
 from .monitors import iso_now
 from .quota_gate import pool_for
@@ -55,7 +55,6 @@ Role = Literal["asker", "person", "spawned", "worker"]
 TEXT_MAX = 160
 STATUS_KEY = "status"
 NOTHING_TRACKED = "nothing tracked: no plan items open, no monitors, no tasks out"
-notice_sources.declare(STATUS_KEY, {"lines": 5})
 __all__ = ["Item", "Notices"]
 
 
@@ -381,6 +380,19 @@ class Notices:
         self._items: dict[str, dict[str, Item]] = {}
         self._clears: dict[str, dict[str, str]] = {}
         self._order: list[str] = []  # sources, in the order they first set
+        # While the server boots, no source has set its items yet: a prompt
+        # then (a restart's continue) must neither forget what a session was
+        # told nor say it tracks nothing. App.boot releases it.
+        self._booting = False
+
+    def boot_begin(self) -> None:
+        self._booting = True
+
+    def boot_end(self) -> None:
+        """Every source has set its items: deliver the wakes owed."""
+        self._booting = False
+        for log_id in list(self._items):
+            self._wake(log_id)
 
     def cfg(self, source: str) -> dict | None:
         """A source's entry under ``notices:``, or None when it is off."""
@@ -422,8 +434,11 @@ class Notices:
         again. Recorded as told before the delivery, so it wakes once per
         level. A clear never wakes."""
         s = self._app.sessions.sessions.get(log_id)
-        if s is None or s.archived or s.in_turn or s.status == "working":
+        if self._booting or s is None or s.archived or s.in_turn:
             return
+        if s.status == "working":
+            return
+        due = []
         for full, item in self._items.get(log_id, {}).items():
             src = full.partition(":")[0]
             if source is not None and src != source:
@@ -435,12 +450,20 @@ class Notices:
             if (self.cfg(src) or {}).get("wake") is False:
                 continue
             s.items_sent[full] = item.level
-            try:
-                s._metas.write_soon(s.log_id, s.meta)
-            except OSError:  # a full disk keeps the in-memory record (#395)
-                log.warning("aegis: could not record notices for %s", s.handle)
-            header = f"{NOTICE_HEADER}{full} · {item.level} · {iso_now()}"
-            asyncio.get_running_loop().create_task(self._deliver(s, header, item.text))
+            due.append(
+                f"{NOTICE_HEADER}{full} · {item.level} · {iso_now()}\n{item.text}"
+            )
+        if not due:
+            return
+        try:
+            s._metas.write_soon(s.log_id, s.meta)
+        except OSError:  # a full disk keeps the in-memory record (#395)
+            log.warning("aegis: could not record notices for %s", s.handle)
+        # One message for all of them: two deliveries to an asleep session
+        # would both start it, and the second would land mid-turn.
+        header, _, first = due[0].partition("\n")
+        body = "\n\n".join([first, *due[1:]])
+        asyncio.get_running_loop().create_task(self._deliver(s, header, body))
 
     @staticmethod
     async def _deliver(s: Session, header: str, text: str) -> None:
@@ -472,6 +495,8 @@ class Notices:
         """The per-session warnings ``s`` is owed, their clears, and (on a
         prompt) the status block when its lines changed. Records what it
         returns in ``s.items_sent``."""
+        if self._booting:
+            return []
         items = self._items.get(s.log_id, {})
         sent = s.items_sent
         blocks = []

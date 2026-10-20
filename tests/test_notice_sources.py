@@ -326,3 +326,52 @@ async def test_monitors_wake_false_lets_warnings_wait(world, monkeypatch):
     world.app.notices.set(a.log_id, "monitors", [STALL])
     await asyncio.sleep(0.5)
     assert inbox(a) == []
+
+
+# -- review fixes ------------------------------------------------------------------
+def test_a_prompt_while_booting_carries_no_session_notices_and_forgets_nothing(
+    stub, tmp_path
+):
+    n, a = stub.notices, stub.a
+    stall = Item("m5:stalled", "warn", "monitor m5 stalled", clear="m5 moves again")
+    n.set(a.log_id, "plan", [Item("progress", "info", "plan 1/2")])
+    n.set(a.log_id, "monitors", [stall])
+    n.pending(a, "send")
+    told = dict(a.items_sent)
+    fresh = Stub(tmp_path)  # a restart: the meta kept items_sent
+    fresh.cfg = stub.cfg
+    fresh.a.items_sent = dict(told)
+    fresh.notices.boot_begin()
+    assert fresh.notices.pending(fresh.a, "send") == ""  # the continue prompt
+    assert fresh.a.items_sent == told
+    fresh.notices.set(a.log_id, "plan", [Item("progress", "info", "plan 1/2")])
+    fresh.notices.set(a.log_id, "monitors", [stall])
+    fresh.notices.boot_end()
+    assert fresh.notices.pending(fresh.a, "send") == ""  # nothing repeated or cleared
+
+
+def test_the_status_source_is_declared_without_importing_notices():
+    import subprocess
+    import sys
+
+    code = "from aegis.config import notices_from; print(notices_from(None)['status'])"
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert out.stdout.strip() == "{'lines': 5}", out.stderr
+
+
+async def test_several_wake_items_come_as_one_inbox_message(world):
+    a = await world.spawn()
+    await turn(a, "arm it")
+    both = [
+        Item("m5:stalled", "warn", "monitor m5 stalled", wake=True),
+        Item("m5:overdue", "warn", "monitor m5 overdue", wake=True),
+    ]
+    world.app.notices.set(a.log_id, "monitors", both)
+    await until(lambda: inbox(a), timeout=5, what="the wake")
+    await until(lambda: a.status == "idle", timeout=5, what="the woken turn")
+    await asyncio.sleep(0.3)
+    rows = [e for e in inbox(a) if "monitors:m5" in e["title"]]
+    # One delivery: the fold draws its second notice as a row of the same event.
+    assert len({e["id"].split(":")[0] for e in rows}) == 1, [e["id"] for e in rows]
+    md = " ".join(e["md"] for e in rows)
+    assert "m5 stalled" in md and "m5 overdue" in md

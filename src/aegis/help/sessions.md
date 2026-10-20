@@ -192,7 +192,7 @@ ask. Its next message carries a status block when what it tracks changed:
 ```text
 > from aegis:notice · status · info · 2026-10-20T07:41:12
 plan 3/7 · doing: write the stall check
-monitors: mon-5e1f tests 40%
+monitor mon-5e1f tests 40%
 queue tasks out: 2 running (review-a, review-b)
 ```
 

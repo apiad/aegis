@@ -363,6 +363,11 @@ through the inbox to an idle owner, or at its turn's end, so a waiting agent is
 not left asleep until a monitor's timeout. What a session was told of these is
 `items_sent` in its meta, apart from `notices_sent`, whose keys the host kinds'
 restore reads; a compaction empties it so the fresh context is told again.
+While the server boots, `Notices` holds every per-session notice until each
+source has set its items (`boot_begin`, `boot_end` in `App.boot`), so a
+restart's continue neither forgets what a session was told nor says it tracks
+nothing; a monitor warns only after its first check in the new process, so
+downtime never reads as a stall. Several wakes due at once go as one message.
 Sources declare their `.aegis.yaml` keys in `notice_sources.py`, a module that
 imports nothing from aegis, so `notices.py` and `config.py` name no source:
 that call is the seam a plugin will use (#490).
