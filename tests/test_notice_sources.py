@@ -231,3 +231,98 @@ def test_doctor_warns_on_an_undeclared_source_and_errs_on_a_wrong_one(declared):
     (f,) = _notices(notices_from({"monitors": {"stall_min": 0}}))
     assert f.level == "error" and "notices.monitors.stall_min" in f.message
     assert _notices(notices_from(None)) == []
+
+
+# -- the wake: end to end on the fake claude ---------------------------------------
+import asyncio  # noqa: E402
+
+from .conftest import until  # noqa: E402
+from .test_agents import CONFIG, World, inbox, turn  # noqa: E402
+
+STALL = Item(
+    "m5:stalled", "warn", "monitor m5 stalled", clear="m5 moves again", wake=True
+)
+
+
+def wakes(s, key: str) -> list[dict]:
+    return [e for e in inbox(s) if e["title"].startswith(f"aegis:notice · {key} · ")]
+
+
+@pytest.fixture
+async def world(tmp_path, fake_claude):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    w = await World(tmp_path, fake_claude).start()
+    yield w
+    await w.stop()
+
+
+async def test_a_wake_item_reaches_an_idle_session_once(world):
+    a = await world.spawn()
+    await turn(a, "arm it")
+    n = world.app.notices
+    n.set(a.log_id, "monitors", [STALL])
+    await until(lambda: wakes(a, "monitors:m5:stalled"), timeout=5, what="the wake")
+    await until(lambda: a.status == "idle", timeout=5, what="the woken turn")
+    n.set(a.log_id, "monitors", [STALL])  # still stalled
+    await asyncio.sleep(0.5)
+    assert len(wakes(a, "monitors:m5:stalled")) == 1
+    n.set(a.log_id, "monitors", [])  # it moved
+    n.set(a.log_id, "monitors", [STALL])  # and stalled anew
+    await until(
+        lambda: len(wakes(a, "monitors:m5:stalled")) == 2,
+        timeout=5,
+        what="the second wake",
+    )
+
+
+async def test_a_wake_item_set_mid_turn_comes_at_the_turn_end(world):
+    a = await world.spawn()
+    await a.send("/busy 1")
+    await until(lambda: a.status == "working", timeout=5, what="the busy turn")
+    world.app.notices.set(a.log_id, "monitors", [STALL])
+    await asyncio.sleep(0.3)
+    assert wakes(a, "monitors:m5:stalled") == []  # not while it works
+    await until(
+        lambda: wakes(a, "monitors:m5:stalled"), timeout=8, what="the wake at the end"
+    )
+    await until(lambda: a.status == "idle", timeout=5, what="the woken turn")
+    assert len(wakes(a, "monitors:m5:stalled")) == 1
+
+
+async def test_a_warning_without_wake_never_starts_a_turn(world):
+    a = await world.spawn()
+    await turn(a, "arm it")
+    quiet = Item("m5:stalled", "warn", "monitor m5 stalled")
+    world.app.notices.set(a.log_id, "monitors", [quiet])
+    await asyncio.sleep(0.5)
+    assert inbox(a) == [] and a.status == "idle"
+
+
+async def test_a_clear_never_wakes(world):
+    a = await world.spawn()
+    await turn(a, "arm it")
+    n = world.app.notices
+    n.set(a.log_id, "monitors", [STALL])
+    await until(lambda: wakes(a, "monitors:m5:stalled"), timeout=5, what="the wake")
+    await until(lambda: a.status == "idle", timeout=5, what="the woken turn")
+    n.set(a.log_id, "monitors", [])
+    await asyncio.sleep(0.5)
+    assert len(inbox(a)) == 1 and a.status == "idle"
+
+
+async def test_a_wake_for_an_archived_session_is_dropped(world):
+    a = await world.spawn()
+    await turn(a, "arm it")
+    await world.app.registry.call("session.close", {"log_id": a.log_id})
+    world.app.notices.set(a.log_id, "monitors", [STALL])
+    await asyncio.sleep(0.5)
+    assert wakes(a, "monitors:m5:stalled") == []
+
+
+async def test_monitors_wake_false_lets_warnings_wait(world, monkeypatch):
+    a = await world.spawn()
+    await turn(a, "arm it")
+    monkeypatch.setattr(world.app.notices, "cfg", lambda source: {"wake": False})
+    world.app.notices.set(a.log_id, "monitors", [STALL])
+    await asyncio.sleep(0.5)
+    assert inbox(a) == []

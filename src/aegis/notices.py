@@ -415,13 +415,57 @@ class Notices:
             prefix + i.key: Item(i.key, i.level, _cut(i.text), _cut(i.clear), i.wake)
             for i in items
         }
+        s = self._app.sessions.sessions.get(log_id)
+        sent = s.items_sent if s is not None else {}
         for full in [k for k in mine if k.startswith(prefix) and k not in new]:
             gone = mine.pop(full)
-            if gone.level in RANK and gone.clear:
+            # Told ends here, so the same condition turning on again is told
+            # (and wakes) again; the clear is owed only to a session told.
+            if sent.pop(full, None) in RANK and gone.clear:
                 self._clears.setdefault(log_id, {})[full] = gone.clear
         for full, item in new.items():
             self._clears.get(log_id, {}).pop(full, None)
             mine[full] = item
+        self._wake(log_id, source)
+
+    def _wake(self, log_id: str, source: str | None = None) -> None:
+        """Deliver at once, through the inbox, each warning with ``wake`` the
+        session has not been told, when it is idle or asleep: a turn running
+        carries it on its next tool result or prompt, and its end calls this
+        again. Recorded as told before the delivery, so it wakes once per
+        level. A clear never wakes."""
+        s = self._app.sessions.sessions.get(log_id)
+        if s is None or s.archived or s.in_turn or s.status == "working":
+            return
+        for full, item in self._items.get(log_id, {}).items():
+            src = full.partition(":")[0]
+            if source is not None and src != source:
+                continue
+            if not item.wake or item.level not in RANK:
+                continue
+            if s.items_sent.get(full) == item.level:
+                continue
+            if (self.cfg(src) or {}).get("wake") is False:
+                continue
+            s.items_sent[full] = item.level
+            try:
+                s._metas.write_soon(s.log_id, s.meta)
+            except OSError:  # a full disk keeps the in-memory record (#395)
+                log.warning("aegis: could not record notices for %s", s.handle)
+            header = f"{NOTICE_HEADER}{full} · {item.level} · {iso_now()}"
+            asyncio.get_running_loop().create_task(self._deliver(s, header, item.text))
+
+    @staticmethod
+    async def _deliver(s: Session, header: str, text: str) -> None:
+        try:
+            # Like a monitor's own outcome, it reaches a workflow node too.
+            await s.deliver(header, text, through_lock=True)
+        except Exception:
+            log.exception("aegis: could not deliver a notice to %s", s.handle)
+
+    def turn_ended(self, s: Session) -> None:
+        """A turn ended: a wake item it was not told comes now."""
+        self._wake(s.log_id)
 
     def drop_source(self, source: str) -> None:
         """A source went away (a plugin's connection closed): its items go,
@@ -450,11 +494,10 @@ class Notices:
                     f"{NOTICE_HEADER}{full} · {item.level} · {iso_now()}\n{item.text}"
                 )
                 sent[full] = item.level
-        clears = self._clears.get(s.log_id, {})
+        for full, text in self._clears.pop(s.log_id, {}).items():
+            blocks.append(f"{NOTICE_HEADER}{full} · clear · {iso_now()}\n{text}")
         for full in [k for k in sent if k != STATUS_KEY and k not in items]:
-            if text := clears.pop(full, ""):
-                blocks.append(f"{NOTICE_HEADER}{full} · clear · {iso_now()}\n{text}")
-            del sent[full]
+            del sent[full]  # kept from before a restart, its source gone
         if at != "send":
             return blocks
         status = self.cfg(STATUS_KEY)
