@@ -102,6 +102,8 @@ def session(
         archived=False,
         notices_sent={},
         items_sent={},
+        in_turn=False,
+        status="idle",
         _metas=Metas(),
         meta=lambda: {},
     )
