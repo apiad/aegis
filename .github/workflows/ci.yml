@@ -1,48 +1,105 @@
 name: ci
+# A branch runs CI through its pull request, once per head commit. Running on
+# every branch push as well ran the whole workflow twice for each PR commit
+# (#506). A push to main still runs, so main's own state is always known.
 on:
   push:
+    branches: [main]
   pull_request:
+
+# A new push to a PR cancels the run on its old head. Runs on main never
+# cancel each other: each gets its own group through its run id.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+# The time each job should take is in its timeout's comment. A job that
+# keeps running past it is a regression in the suite, not a reason to raise
+# the timeout (know-how/landing-a-change.md).
 jobs:
-  test:
+  # The checks that take seconds, first and on their own runner, so a format
+  # or type error is named in a minute or two instead of after the suite.
+  #
+  # `make check` is deliberately not used here: it runs `format`, which
+  # rewrites files, and a runner has to fail instead.
+  gates:
     runs-on: ubuntu-latest
-    # A websocket test that waits forever must not hold a runner for hours.
-    timeout-minutes: 60  # the suite now takes 31-40 min on a runner; 40 cut passing runs at 96% (#476), 25 at 90% (#353)
+    timeout-minutes: 10  # about 2 min
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Install uv
-        run: pip install uv
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
       - run: uv sync --locked
-
-      # Each gate is its own step so a red run names which one failed in the
-      # job list, without anyone opening the log.
-      #
-      # `make check` is deliberately not used here: it runs `format`, which
-      # rewrites files, and a runner has to fail instead.
       - name: format
         run: make format-check
       - name: lint
         run: make lint
-      # Blocking, unlike typecheck below: a filename parse over a handful of
-      # files, no backlog, and a fragment that does not parse is a release note
-      # that silently goes missing.
+      # A fragment that does not parse is a release note that silently goes
+      # missing.
       - name: changelog fragments
         run: make changelog-check
       # The doc rules (.rift.yaml), the help pages against the code among them.
       # rift is pinned to a tag, so a new rift release cannot turn main red.
-      # uvx comes with the uv installed above.
       - name: doc drift (rift)
         run: uvx --from git+https://github.com/apiad/rift@v0.9.0 rift check .
-      # aegis's browser tests drive headless Chromium.
-      - name: chromium for browser tests
-        run: uv run playwright install --with-deps chromium
-      - run: uv run pytest -q -m "not live"
-
-      # Blocking, as in `make check`: the tree has no diagnostics.
       - name: typecheck
         run: make typecheck
+
+  # The fast lane, as `make test` runs it, with coverage. Coverage is reported
+  # in the job summary and never fails the run. It counts only code the test
+  # process runs: the `aegis serve` the browser tests start is a subprocess.
+  fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15  # about 4 min
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run pytest -q -n auto -m "not slow and not live" --cov=aegis --cov-report=
+      - name: coverage summary
+        if: always()
+        run: |
+          { echo "### coverage, fast lane: $(uv run coverage report --format=total)%"
+            echo; uv run coverage report --format=markdown --skip-covered --sort=cover; } >> "$GITHUB_STEP_SUMMARY"
+
+  # Every slow test, the browser tests among them, in four shards that run at
+  # once. pytest-split balances the shards from .test_durations (refresh it
+  # with `make test-durations`). Two workers per shard: more on a 4-vCPU runner
+  # turns Chromium-heavy tests flaky.
+  slow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25  # about 8 min per shard
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3, 4]
+    name: slow (${{ matrix.group }}/4)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+      - name: chromium for browser tests
+        run: uv run playwright install --with-deps chromium
+      - run: uv run pytest -q -n 2 -m "slow and not live" --splits 4 --group ${{ matrix.group }} --splitting-algorithm least_duration
+
 
   # aegis's bench, on the PR's base and head on one runner so the machine
   # cancels out. Reports in the job summary and warns past 20% worse; it

@@ -92,7 +92,33 @@ make lint-docs     # rift, the help pages among its rules; CI runs it too
 Do not run `make check`, `make test-slow` or `make bench` for a PR: CI runs
 the whole hermetic suite on every PR, slow and browser tests included, and
 compares the bench of base and head. Those three run locally once, before a
-release (`releasing.md`).
+release (`releasing.md`). On a host where other agents run suites too, the
+whole slow lane takes about 30 min and its browser tests fail from load
+alone; CI runs it in four shards in a fraction of that.
+
+`make gates` runs the checks that take seconds: format, lint, typecheck,
+the changelog fragments and rift. `make hooks` makes it a pre-push hook.
+Run that once per clone, because the setting lives in the shared
+`.git/config` and covers every worktree. In #506, 18 of 40 red CI runs had
+failed on one of these checks, after a wait of up to half an hour.
+
+**Push when the PR is ready to be judged, not after every commit.** Each
+push to an open PR cancels its running CI and starts the whole workflow
+again. Commit as often as you like, push when you open the PR, and push once
+per round of review fixes. In #506, a merged PR cost about 9 CI runs.
+
+### What CI runs, and how long it should take
+
+`ci.yml` has four jobs: `gates`, the `fast` lane with coverage in its
+summary, `slow` in four shards, and `bench` on PRs. Each job's
+`timeout-minutes` comment states how long the job should take. A job that
+keeps running past that time is a regression in the suite. Open an issue
+with the slowest tests (`--durations=20`) instead of raising the timeout. #353
+and #475 each raised it once, while the suite doubled.
+
+The shards balance on `.test_durations`. A slow test that is missing from
+it counts as an average one. When one shard keeps finishing minutes after
+the others, refresh the file with `make test-durations` and commit it.
 
 A local green is not the same as CI green. To reproduce a CI failure, run the
 runner's way:
@@ -139,6 +165,13 @@ def count(mod, name):
 
 Zero calls means the failure is not yours, and that is worth a line in the
 PR so nobody re-investigates it.
+
+**A flake gets an issue the same day, not a silent re-run.** A test that
+failed and then passed on the same commit is a flake. Search the issues for
+its name, then open one or comment on the open one. Name the test, the run
+and its log line before you re-run. In #506, 26 commits flipped from red to
+green with no change, and the three flakes found while measuring had no
+issue. A re-run without a record hides the race until it fails every run.
 
 ## 6. Merge, then confirm it merged
 

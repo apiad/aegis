@@ -61,9 +61,8 @@ def _selects(expr: str, markers: set[str]) -> bool:
 
 def test_the_release_gates_run_every_test_ci_runs():
     ci = (ROOT / ".github/workflows/ci.yml").read_text()
-    (ci_expr,) = [
-        s for c in re.findall(r"run: (.*)", ci) if (s := _pytest_selection(c))
-    ]
+    ci_exprs = [s for c in re.findall(r"run: (.*)", ci) if (s := _pytest_selection(c))]
+    assert ci_exprs, "found no pytest step in ci.yml"
     rules = _makefile()
     targets = _release_targets()
     lanes = [lane for t in targets for lane in _lanes(t, rules)]
@@ -71,7 +70,8 @@ def test_the_release_gates_run_every_test_ci_runs():
         kinds
         for n in range(len(MARKERS) + 1)
         for kinds in map(set, itertools.combinations(MARKERS, n))
-        if _selects(ci_expr, kinds) and not any(_selects(e, kinds) for e in lanes)
+        if any(_selects(e, kinds) for e in ci_exprs)
+        and not any(_selects(e, kinds) for e in lanes)
     ]
     assert not missed, (
         f"CI runs tests marked {missed} that none of {targets} runs; "
