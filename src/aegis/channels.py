@@ -22,6 +22,7 @@ keeps getting whole rows.
 from __future__ import annotations
 
 import asyncio
+import copy
 from collections.abc import Callable
 from typing import Any
 
@@ -32,7 +33,7 @@ Snapshot = Callable[[], Any]
 Resolve = Callable[[str, int | None], Snapshot | None]
 
 # The channels a subscriber may take merges on, and the field that keys a row.
-MERGE_KEYS = {"sessions": "log_id"}
+MERGE_KEYS = {"sessions": "log_id", "workflow-runs": "run"}
 
 
 class Sub:
@@ -57,7 +58,10 @@ def _merged(key: str, rows: dict[Any, dict], ops: list[dict]) -> list[dict]:
             continue
         k = row[key]
         held = rows.get(k)
-        rows[k] = row
+        # A copy: a row may share a list with live state (a run's edits, a
+        # session's cache_recent) that changes in place, and then equals
+        # what was held, so its change was never sent.
+        rows[k] = copy.deepcopy(row)
         # A field gone from the row has no merge to say so: send it whole.
         if held is None or held.keys() - row.keys():
             out.append(op)
@@ -84,7 +88,7 @@ class Channels:
         data = snapshot()
         if sub.rows is not None:
             key = MERGE_KEYS[channel]
-            sub.rows = {row[key]: row for row in data}
+            sub.rows = {row[key]: copy.deepcopy(row) for row in data}
         send({"t": "snapshot", "channel": channel, "seq": 0, "data": data})
         return sub
 
