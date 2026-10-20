@@ -247,8 +247,8 @@ notices:
 
 `plan.stale_min` is the minutes of work on a plan left untouched before the
 agent is warned. `monitors.stall_min` is the minutes a monitor's progress may
-sit still (and at least three intervals), `broken_checks` how many intervals a
-check may fail to run, and `overdue_min` how far past its ETA a monitor may
+sit still (and at least three intervals), `monitors.broken_checks` how many intervals a
+check may fail to run, and `monitors.overdue_min` how far past its ETA a monitor may
 run, before its owner is warned; with `wake: true` the warning wakes an idle
 owner. `status.lines` caps the status block. Minutes may be fractions.
 `false` in place of a source turns it off; `status: false` drops the status
