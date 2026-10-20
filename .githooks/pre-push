@@ -1,0 +1,5 @@
+#!/bin/sh
+# The seconds-long gates before a push (`make gates`), so a format, lint, type
+# or doc error fails here rather than minutes into CI. Installed by `make hooks`;
+# `git push --no-verify` skips it.
+exec make -s gates

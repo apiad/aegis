@@ -1,9 +1,24 @@
-.PHONY: check lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-slow test-live canary test-browser bench coverage know-how site-css
+.PHONY: check gates hooks test-durations lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-slow test-live canary test-browser bench coverage know-how site-css
 
 # Every gate, on the fast lane: the tests marked slow, the browser tests among
 # them, are `test-slow`'s. The tests run before typecheck so a type error cannot
 # hide a failing suite; both block.
 check: format lint lint-docs changelog-check test typecheck
+
+# The checks that take seconds, as the pre-push hook runs them: what failed
+# 18 of 40 red CI runs (#506). Unlike `check`, nothing here rewrites a file.
+gates: format-check changelog-check lint-docs typecheck
+	uv run ruff check src/ tests/ scripts/
+
+# Run `gates` before every `git push`. Once per clone: the setting lives in the
+# shared .git/config, so every worktree gets it. `git push --no-verify` skips it.
+hooks:
+	git config core.hooksPath .githooks
+
+# Refresh the slow lane's per-test times, which CI's shards balance on. Serial,
+# so the times are not inflated by neighbours; about 30 min.
+test-durations:
+	uv run pytest -q -m "slow and not live" --store-durations --clean-durations
 
 # Doc drift (.rift.yaml), the help pages against the code among it. CI runs
 # rift pinned to a tag; with no rift installed, so does this. `make
@@ -55,9 +70,9 @@ test-cov:
 test-all:
 	uv run pytest -q -n auto --cov=aegis --cov-report=term-missing
 
-# Every test the fast lane skips, serially, as CI runs them: the browser tests,
-# restarts, detached servers. With `check` it is what CI runs; AGENTS.md's done
-# line names both (tests/test_lanes.py holds them together).
+# Every test the fast lane skips: the browser tests, restarts, detached servers.
+# Serial here; CI splits it in four shards. With `check` it is every test CI
+# runs (tests/test_lanes.py holds them together).
 test-slow:
 	uv run pytest -q -m "slow and not live"
 
