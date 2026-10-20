@@ -26,8 +26,11 @@ provider's windows; patches ``set``), ``host`` (CPU, RAM and disk while someone
 watches; patches ``set``), ``journal`` (when its rows last changed; patches
 ``set``), ``repos:<log_id>`` (the repos a session wrote to and their state;
 patches ``set``, ``repos/service.py``), ``schedules`` (every schedule's state; patches ``upsert`` and
-``remove``, ``schedules.py``) and ``config`` (``.aegis.yaml`` as aegis holds
-it; patches ``set``).
+``remove``, ``schedules.py``), ``workflow-runs`` (every workflow run's summary,
+without its tree and story; patches ``upsert``, or ``merge`` to a subscriber
+that asks), ``workflow:<run>`` (one run whole, for its card; patches ``set``),
+``workflows`` (every run whole, for a client older than #525) and ``config``
+(``.aegis.yaml`` as aegis holds it; patches ``set``).
 """
 
 from __future__ import annotations
@@ -887,6 +890,13 @@ class App:
             return self.schedules.wire_all
         if name == "workflows":
             return self.workflows.wire_all
+        if name == "workflow-runs":
+            return self.workflows.summaries
+        if name.startswith("workflow:"):
+            run = name.removeprefix("workflow:")
+            if run not in self.workflows.runs:
+                return None
+            return lambda: self.workflows.wire(run)
         if name == "toasts":
             # Always empty: a browser that subscribes later never replays a toast.
             return lambda: []

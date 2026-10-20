@@ -295,16 +295,17 @@ export function scheduleWorkflow(wf) {
 // the viewer and a canvas pane. The card docks as a file
 // or a page does, by its entry id; while docked, its transcript card is one
 // line, as a docked file's is.
-let workflows = { get: () => null, call: async () => {}, view: () => {} };
+// get gives a run whole, for its card; summary only what the rest reads.
+let workflows = { get: () => null, summary: () => null, call: async () => {}, view: () => {} };
 const openPrompts = new Set(); // "run/node" whose prompt a person opened
 export function setWorkflows(w) {
   workflows = w;
 }
-export const workflowTitle = (run) => workflows.get(run)?.title;
+export const workflowTitle = (run) => workflows.summary(run)?.title;
 // A workflow's node while its run lives: no tab, read-only (spec §05). The
 // server refuses its send, interrupt, unquiet, stop, close, configure and
 // rename; this only draws that.
-export const workflowLocked = (m) => !!m?.workflow && ["armed", "running"].includes(workflows.get(m.workflow.run)?.status);
+export const workflowLocked = (m) => !!m?.workflow && ["armed", "running"].includes(workflows.summary(m.workflow.run)?.status);
 export function refreshWorkflows(runs) {
   const mine = (c) => !runs || runs.has(c.dataset.run);
   for (const c of document.querySelectorAll(".wfcard")) if (mine(c)) fillWorkflow(c);
@@ -607,7 +608,7 @@ export function fillWorkflow(card) {
   const title = [entryIcon("pip"), el("span", "fn", w.title), el("span", "fs", workflowStatus(w))];
   if (w.status === "replaced" && !host) {
     // Armed again before approval: the newer card under a later call is the one.
-    const v = workflows.get(w.replaced_by)?.version || w.version + 1;
+    const v = workflows.summary(w.replaced_by)?.version || w.version + 1;
     const head = el("div", "fbar");
     head.append(...title);
     card.replaceChildren(head, el("div", "wflede", `replaced by v${v}`));
