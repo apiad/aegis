@@ -172,8 +172,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
     <p>A subsystem pushes items about one session to <code>Notices.set</code>: a stalled monitor, a plan not touched for ten minutes of work, the tasks it has out. The notice machinery already decides when each reaches the agent and records what it was told.</p>
   </div>
   <div class="card">
-    <h4>A status summary at turn boundaries</h4>
-    <p>A new <code>info</code> level collects a few lines (plan step, live monitors, queue tasks out) into one block. It rides on prompts only, never mid-turn, and only when it changed since the agent last saw it.</p>
+    <h4>A status summary, and a wake for a stalled monitor</h4>
+    <p>A new <code>info</code> level collects a few lines (plan step, live monitors, queue tasks out) into one block. It rides on prompts only, never mid-turn, and only when it changed since the agent last saw it. A monitor that stalls, breaks or overruns its ETA wakes its idle owner instead of leaving it asleep until the timeout.</p>
   </div>
   <div class="card">
     <h4>A nudge at once for a silent turn</h4>
@@ -201,6 +201,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>Levels</td><td>The existing <code>warn</code> and <code>critical</code>, mid-turn and on prompts; a new <code>info</code>, on prompts only</td><td class="why"><span class="who q">proposed</span> Mid-turn text should be rare enough that the agent acts on it. "Plan at step 3 of 7" is not worth interrupting work for; "monitor m5 has not moved in 16 minutes" is.</td></tr>
 <tr><td>Repetition</td><td>Warnings follow the notice rule: once per level, a clear when they end. The info block goes when its lines changed</td><td class="why"><span class="who q">proposed</span> Status that repeats unchanged on every message is noise the agent learns to skip. A compaction resets what the session was told, so the next prompt carries it all to the fresh context.</td></tr>
 <tr><td>Thresholds</td><td>Configurable in <code>.aegis.yaml</code>: each source declares its keys and defaults under <code>notices:</code>, and <code>false</code> turns a source off. The nudge timings go under a new <code>nudges:</code> block</td><td class="why"><span class="who">maintainer</span> The first values are guesses; tuning them should not need a release. A source that declares its own keys keeps the config pluggable: a plugin's manifest brings its defaults the same way.</td></tr>
+<tr><td>A stall on a waiting agent</td><td>Wakes it. A monitor warning that turns on while its owner is idle is delivered through the inbox, which starts a turn; the monitor stays live</td><td class="why"><span class="who">maintainer</span> An agent waiting on a monitor whose progress never moves would otherwise sleep until the timeout, which can be hours. Waking once per episode cannot loop.</td></tr>
 <tr><td>aegis call</td><td>Unchanged: no notice on its output</td><td class="why">The existing rule (<code>mcp.py</code>, <code>SHELL_HEADER</code>): a program may parse that output.</td></tr>
 <tr><td>Size</td><td>The info block holds at most 5 lines; any item's text is cut at 160 characters</td><td class="why"><span class="who q">proposed</span> About 100 tokens at the cap. #462 is already counting the primer's tokens.</td></tr>
 </tbody>
@@ -251,7 +252,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <rect class="bx" x="550" y="45" width="200" height="50" rx="6"/><text class="tx" x="562" y="65">Session._send</text><text class="ts" x="562" y="82">every level, info included</text>
   <rect class="bx" x="550" y="195" width="200" height="50" rx="6"/><text class="tx" x="562" y="215">OpTool.run (MCP)</text><text class="ts" x="562" y="232">warn and critical only</text>
 </svg>
-<figcaption>The two outlets exist today. What is new is the left column's first four boxes and the per-call <code>at</code> that keeps info off tool results. The amber path is the mid-turn one.</figcaption>
+<figcaption>The two outlets exist today. What is new is the left column's first four boxes and the per-call <code>at</code> that keeps info off tool results. The amber path is the mid-turn one. An item with <code>wake</code> set also goes to an idle owner at once, through <code>Session.deliver</code>.</figcaption>
 </figure>
 
 <h2 id="set"><span class="n">05</span>Per-session notices</h2>
@@ -263,6 +264,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
     level: str          <span class="c"># "info" | "warn" | "critical"</span>
     text: str           <span class="c"># one line; set() cuts it at 160 chars</span>
     clear: str = <span class="s">""</span>       <span class="c"># warn/critical: what to say when it ends; "" says nothing</span>
+    wake: bool = False  <span class="c"># warn/critical: deliver at once to an idle owner, starting a turn</span>
 
 <span class="k">class</span> Notices:
     <span class="k">def</span> set(self, log_id: str, source: str, items: list[Item]) -> None: ...
@@ -296,6 +298,7 @@ queue tasks out: 2 running (review-a, review-b)</pre>
 </table>
 <p>A per-session warning's block is the header and the item's text, without the host kinds' "aegis tells you this once" tail: one line is enough to act on. Warnings come before the status block.</p>
 <p>An item that ends with no <code>clear</code> text leaves <code>notices_sent</code> silently. A plan warning has none, since the agent's own <code>plan_update</code> ended it. A monitor stall has one ("monitor m5 moves again, or has ended"). An item that turns on again later is told again.</p>
+<p>An item with <code>wake</code> set does not wait for the next prompt when its owner is idle. When it turns on (or rises to critical) and the session is idle or asleep, with no turn running, <code>Notices</code> delivers its block at once through <code>Session.deliver</code>, as a monitor's outcome is delivered: an asleep session is resumed for it, and a quota hold keeps it held like any inbox message. <code>notices_sent</code> records it in the same step, so the next prompt does not repeat it. If a turn is running, the item rides on the next MCP result or prompt as any warning does; if that turn ends with the warning still not told, the end of the turn delivers it. A clear never wakes anyone: it rides on the next prompt. The once-per-level rule is what stops a loop: a monitor that stays stalled wakes its owner once, and wakes it again only after it moved and stalled anew.</p>
 <p>When the harness reports a compaction, the session's per-session keys and <code>status</code> are removed from <code>notices_sent</code>, so its next prompt tells the fresh context everything again. Host kinds are left as they are, outside this change.</p>
 <p>The operation runs before <code>OpTool.run</code> reads <code>pending()</code>, so a <code>plan_update</code> that ends the plan warning never comes back carrying that warning.</p>
 
@@ -339,7 +342,7 @@ queue tasks out: 2 running (review-a, review-b)</pre>
 <tr><td>monitors:&lt;id&gt;:overdue</td><td>warn</td><td>The ETA has passed by half the time it estimated, and by at least <code>overdue_min</code> (10) minutes</td><td><code>monitor m2 "build" past its eta by 14 min at 85%</code></td></tr>
 </tbody>
 </table>
-<p>A monitor that watches sessions gets only the info line: its own <code>blocked</code> outcome already wakes the owner. When a monitor ends, its items go; its done, fail or timeout still reach the owner through the inbox as today. Each warning's <code>clear</code> is "monitor m5 moves again, or has ended".</p>
+<p>The three monitor warnings set <code>wake</code>. An agent that armed a monitor and ended its turn is idle, so a stall, a broken check or an overdue ETA wakes it with the warning, and it can look, cancel the monitor with <code>monitor_cancel</code>, or end its turn again to keep waiting. The monitor stays live in every case: a stall is the agent's call, not aegis's. A monitor that watches sessions gets only the info line: its own <code>blocked</code> outcome already wakes the owner. When a monitor ends, its items go; its done, fail or timeout still reach the owner through the inbox as today. Each warning's <code>clear</code> is "monitor m5 moves again, or has ended".</p>
 
 <h3 id="c-queues">Queues (source <code>queues</code>)</h3>
 <table class="tbl">
@@ -357,14 +360,14 @@ queue tasks out: 2 running (review-a, review-b)</pre>
   disk:     {on: 90, critical: 97, clear: 85}
   <span class="c"># per-session sources</span>
   plan:     {stale_min: 10}
-  monitors: {stall_min: 15, broken_checks: 3, overdue_min: 10}
+  monitors: {stall_min: 15, broken_checks: 3, overdue_min: 10, wake: true}
   queues:   true
   status:   {lines: 5}
 <span class="k">nudges</span>:
   silent_s: 2       <span class="c"># a turn ended without turn_end</span>
   plan_min: 15      <span class="c"># the plan nudge at turn end (today PLAN_STALE_S)</span></pre>
 <ul>
-<li><code>false</code> in place of a source turns it off: its items are never set, and any it had are cleared. <code>status: false</code> turns off the info block while every source's warnings still go. <code>nudges: {silent_s: false}</code> turns off the silent-turn nudge.</li>
+<li><code>false</code> in place of a source turns it off: its items are never set, and any it had are cleared. <code>status: false</code> turns off the info block while every source's warnings still go. <code>nudges: {silent_s: false}</code> turns off the silent-turn nudge. <code>monitors: {wake: false}</code> keeps the monitor warnings but lets them wait for the next prompt.</li>
 <li>Each source declares its own keys. A source registers its defaults with <code>notices.declare(source, defaults)</code> at import, and <code>config.notices_from</code> validates the <code>notices:</code> block against the host kinds plus every declared source. That keeps <code>config.py</code> free of per-source names, and a plugin's manifest declares its defaults through the same call. A key for a source that is not declared (a plugin not installed) is kept and reported by <code>aegis doctor</code> as a warning, not an error, so removing a plugin never invalidates the file.</li>
 <li>A wrong value follows the existing rule: the whole block keeps its defaults and carries <code>error</code> for <code>aegis doctor</code>, so a typo never stops a send.</li>
 <li>A source reads its values from <code>config.current()</code> each time it evaluates, so a changed file applies within a second with no restart, as every other key does. Lowering a threshold can turn a warning on at the next evaluation; raising one clears it, with its clear text.</li>
@@ -396,7 +399,7 @@ queue tasks out: 2 running (review-a, review-b)</pre>
 <p>One PR, in commits that each leave main working:</p>
 <ol>
 <li><code>Notices.set</code>, <code>drop_source</code>, the <code>info</code> level, <code>pending(s, at)</code> and the compaction reset, with unit tests. The two existing callers pass <code>at</code>.</li>
-<li>The three sources set their items.</li>
+<li>The three sources set their items, and <code>wake</code> delivery to idle owners.</li>
 <li>The immediate silent-turn nudge.</li>
 <li>The config keys: <code>notices.declare</code>, the declared sources in <code>notices_from</code>, the <code>nudges:</code> block, and doctor's warning for an undeclared source.</li>
 <li>Docs: DESIGN.md's notice and nudge paragraphs; <code>config.md</code> (the new keys); the help pages <code>monitors.md</code> (what a stall warning means) and <code>sessions.md</code> (the status block); a <code>changelog.d/</code> fragment.</li>
@@ -405,9 +408,9 @@ queue tasks out: 2 running (review-a, review-b)</pre>
 <h2 id="testing"><span class="n">10</span>Testing</h2>
 <ul>
 <li><b>Unit, fast lane:</b> <code>set</code> replacing a source's items; <code>drop_source</code>; the info block's order, cap, cut and hash; info never on <code>at="tool"</code>; a warning told once, its clear, told again after it turns on again; the compaction reset; <code>stale_now</code>; the monitor stall, broken and overdue rules on synthetic readings and verdicts; <code>nudges.due</code> at 2 s and its exemptions; <code>notices_from</code> with declared sources, <code>false</code>, a wrong value and an undeclared source; a threshold changed in a running server applying at the next evaluation.</li>
-<li><b>Through the fake model:</b> a monitor stalls during a turn, and the next MCP result carries the warning once, the following one none; a person's message carries the status block, a second one with nothing changed does not; a silent turn is nudged within 3 s, and the nudge's own silent turn is not.</li>
+<li><b>Through the fake model:</b> a monitor stalls during a turn, and the next MCP result carries the warning once, the following one none; a person's message carries the status block, a second one with nothing changed does not; a silent turn is nudged within 3 s, and the nudge's own silent turn is not; an idle agent waiting on a monitor whose progress never moves is woken once with the warning, not again while it stays stalled, and again after it moves and stalls anew; a warning owed when a turn ends is delivered at its end.</li>
 <li><b>Every harness:</b> the canary checks that a notice appended to a tool result and to a prompt reaches the model's next request in Claude Code, OpenCode and Codex. Notices already rely on this; this change makes it load-bearing.</li>
-<li><b>Live:</b> <code>make test-live</code> with a real Claude Code session that arms a monitor whose progress never moves, then works with aegis tools; the agent should mention or act on the stall without being asked.</li>
+<li><b>Live:</b> <code>make test-live</code> with a real Claude Code session that arms a monitor whose progress never moves (with <code>stall_min</code> set low) and ends its turn; it should be woken and act on the stall without being asked.</li>
 <li><b>Bench:</b> <code>make bench</code>, for the cost <code>pending()</code> adds per tool call.</li>
 </ul>
 
@@ -418,13 +421,13 @@ queue tasks out: 2 running (review-a, review-b)</pre>
 <li>Per-user or per-session thresholds: the keys are per server, as the host kinds are.</li>
 <li>Client changes: notice rows already render, and the card already shows plan and monitors.</li>
 <li>Porting the host kinds to a source, and the plugin runtime itself (#490).</li>
-<li>New wakes. A stalled monitor does not wake an idle agent; the next prompt, or the monitor's timeout, carries the warning.</li>
+<li>Wakes from other sources: only the monitor warnings set <code>wake</code> in this change. The plan warning never wakes; an idle agent with a stale plan gets the existing plan nudge.</li>
 </ul>
 <h3>Open questions</h3>
 <ul>
 <li>The defaults (10 minutes of work for a stale plan, 15 minutes for a stalled monitor, 3 checks for a broken one) are first guesses, to be tuned in <code>.aegis.yaml</code> once #178's measure shows their effect.</li>
 <li><code>aegis call</code> could print owed warnings to stderr, which no parser reads, and so narrow the Bash-only gap for agents that use it. This spec leaves the existing rule alone.</li>
-<li>Should a stalled monitor wake an idle agent after all? This spec says no, to keep this change to informing. If idle agents keep missing stalls, a monitor outcome <code>stalled</code> is the natural next step.</li>
+
 </ul>
 </main>
 </div>
