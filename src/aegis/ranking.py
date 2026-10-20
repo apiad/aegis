@@ -40,11 +40,13 @@ class Score:
 class Ranking:
     refreshed: str  # YYYY-MM-DD, or "" before the first refresh
     models: dict[str, Score]
+    url: str = "https://artificialanalysis.ai"  # the attribution's link
 
     @classmethod
     def from_dict(cls, data: dict) -> Ranking:
         return cls(
             refreshed=data.get("refreshed") or "",
+            url=data.get("url") or "https://artificialanalysis.ai",
             models={
                 k: Score(
                     aa=v.get("aa", ""),

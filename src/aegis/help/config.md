@@ -104,6 +104,24 @@ share one account. Cooling is kept in memory by the server: a restart clears it.
 `/model` moves a session within its cascade; a model outside it turns falling
 off for that session, and a handoff from it keeps that model. Codex errors never fall yet.
 
+## Models
+
+Every model pick (the new tab's model chip, the `/model` menu, an agent's
+model in Settings) shows a short chip beside each model: its rank among the
+models of its harness, its Coding Index, and its price per million tokens in
+and out, such as "#1 · 72.0 · $15 / $75", or "free" when it costs nothing
+through its harness. A model the ranking does not score shows "unranked" and
+its price. OpenCode's catalog gives its own prices; for Claude Code the price
+is the ranking's list price.
+
+An agent reads the same data with `models_list`: every model the installed
+harnesses can run, with harness, rank, Coding and Intelligence Indexes, price
+in and out, whether it is free, the agents that name it (`at` is its index in
+the agent's models, 0 first) and the epoch it stops cooling, or
+`"cooling_until": null` when it is not cooling. Models in use come first, then by Coding Index, unranked ones last. The
+answer carries the ranking's date and its source,
+[Artificial Analysis](https://artificialanalysis.ai).
+
 ## Claude Code tools aegis replaces
 
 A Claude Code session starts without the Claude Code tools aegis has its own

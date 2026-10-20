@@ -1,7 +1,8 @@
-"""The configuration's operations: read, write, detect, doctor, propose.
+"""The configuration's operations: read, write, detect, doctor, propose, and
+``models.list``.
 
-The Settings page uses all five; ``config.doctor`` is open to agents too,
-because it only reads. Writing is a person's: an agent that could write
+The Settings page uses all six; ``config.doctor`` and ``models.list`` are
+open to agents too, because they only read. Writing is a person's: an agent that could write
 .aegis.yaml could raise its own permission. A write goes to the file only; the
 running server picks it up the way it picks up an editor's (config.py).
 """
@@ -15,6 +16,7 @@ from pydantic import BaseModel
 
 from .config import ConfigDoc, stamp_from, write
 from .doctor import Found, detect, doctor, propose
+from .ranking import ranking
 
 if TYPE_CHECKING:
     from .app import App
@@ -80,3 +82,42 @@ def register_config_ops(app: App) -> None:
     async def config_propose(_, caller):
         """The first configuration `aegis init` would write here."""
         return propose(await detected()).model_dump()
+
+    @r.op("models.list", agent=True, read=True)
+    async def models_list(_, caller):
+        """Every model the installed harnesses can run, with its rank among
+        its harness's models, Artificial Analysis's Coding and Intelligence
+        Indexes, its price in and out per million tokens, the agents that
+        name it (at: its index in the agent's models, 0 first) and the epoch
+        it stops cooling, or null. Models in use come first, then by Coding
+        Index; unranked ones last."""
+        agents = app.config.current().agents
+        now = time.time()
+        rows = []
+        for f in await detected():
+            for m in f.models:
+                used = [
+                    {"agent": a.name, "at": a.models.index(v)}
+                    for a in agents
+                    if a.harness == f.harness
+                    for v in (m.value, m.resolved)
+                    if v in a.models
+                ]
+                rows.append(
+                    {
+                        "harness": f.harness,
+                        **m.wire(),
+                        "used_by": list({u["agent"]: u for u in used}.values()),
+                        "cooling_until": app.cooling.until(f.harness, m.value, now),
+                    }
+                )
+        rows.sort(
+            key=lambda x: (
+                not x["used_by"],
+                x["coding"] is None,
+                -(x["coding"] or 0),
+                -(x["intelligence"] or 0),
+            )
+        )
+        rk = ranking()
+        return {"refreshed": rk.refreshed, "source_url": rk.url, "models": rows}
