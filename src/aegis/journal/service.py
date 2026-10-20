@@ -69,9 +69,10 @@ class Journal:
         self, state_root: Path, publish, db_path: Path | None = None, on_live=None
     ) -> None:
         self.state_root = state_root
-        # Called on the writer thread with (log_id, handle, new paths, rows)
-        # when a live record wrote files or made a commit or pr row: the
-        # Repos row must see a write before the turn that made it closes.
+        # Called on the writer thread with (log_id, handle, new paths, dirs)
+        # when a live record wrote files, or committed, opened or merged a PR
+        # or pushed in dirs: the Repos row must see a write before the turn
+        # that made it closes.
         self.on_live = on_live
         self._seen: dict[str, int] = {}
         self.path = db_path or state_root / "journal.db"
@@ -205,9 +206,11 @@ class Journal:
             pending = d.pending()
             fresh = pending[self._seen.get(log_id, 0) :]
             self._seen[log_id] = len(pending)
-            made = [r for r in rows if r.kind in ("commit", "pr")]
-            if fresh or made:
-                self.on_live(log_id, d.handle, fresh, made)
+            dirs = [r.commit[0] for r in rows if r.commit]
+            dirs += [r.workdir for r in rows if r.workdir]
+            dirs += d.take_pushes()
+            if fresh or dirs:
+                self.on_live(log_id, d.handle, fresh, list(dict.fromkeys(dirs)))
         return n
 
     def _backfill(self, con, token: int | None = None) -> int:
