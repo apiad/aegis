@@ -1085,6 +1085,31 @@ def test_a_closed_session_is_in_the_archive_without_a_reload(server, page):
     assert page.errors == []
 
 
+def test_a_close_adds_its_row_to_the_archive_without_reading_a_page(server, page):
+    """#525: every close read the archive's first page again, 50 whole metas,
+    to add one row. The close's remove carries the row, and it lands where it
+    sorts, newest first, with the count."""
+    sent: list[str] = []
+    page.on("websocket", lambda ws: ws.on("framesent", lambda f: sent.append(f)))
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.wait_for_selector("#arch-list .empty")
+    first = spawn(page, "first")
+    close_session(page)
+    page.wait_for_selector(f"#arch-list tr[data-id='{first}']")
+    second = spawn(page, "second")
+    close_session(page)
+    page.wait_for_selector(f"#arch-list tr[data-id='{second}']")
+    rows = page.eval_on_selector_all(
+        "#arch-list tr[data-id]", "rs => rs.map(r => r.dataset.id)"
+    )
+    assert rows == [second, first]
+    assert page.text_content("#arch-count") == "Showing 2 of 2"
+    reads = [f for f in sent if '"archive.list"' in f]
+    assert len(reads) == 1, reads  # the first load only
+    assert page.errors == []
+
+
 # A slow runner paints late: a frame 300 ms out makes any redraw left to the
 # next frame visible to the test (#161's CI failure).
 SLOW_FRAMES = "const raf = window.requestAnimationFrame; window.requestAnimationFrame = (f) => setTimeout(() => raf(f), 300);"

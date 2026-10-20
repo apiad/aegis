@@ -336,6 +336,28 @@ async def test_the_priming_never_leaves_the_server_from_the_archive(world):
     assert r.archived[s.log_id]["priming"] == "secret text"
 
 
+async def test_a_close_publishes_its_archived_row_with_the_remove(world):
+    """#525: a browser adds the closed session to the archive it shows from
+    the remove, instead of reading the archive's first page again."""
+    r = world.registry()
+    spec = SpawnSpec(
+        "rev", "opus", "max", "read", world.roots.config_root, priming="secret text"
+    )
+    s = await r.spawn(spec)
+    await r.close(s.log_id)
+    (op,) = [
+        op
+        for ch, ops in world.published
+        if ch == "sessions"
+        for op in ops
+        if "remove" in op
+    ]
+    (listed,) = r.archive(None, 10, None)[0]
+    assert op == {"remove": s.log_id, "archived": listed}
+    assert "priming" not in op["archived"]
+    await r.shutdown()
+
+
 def test_a_meta_from_before_the_rename_still_resumes(world):
     from aegis.meta import MetaStore
 

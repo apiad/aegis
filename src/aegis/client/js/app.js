@@ -699,7 +699,9 @@ function sessionHandlers(server) {
           setChanged = true;
           // The server archives a session before it publishes the removal, so
           // this is the moment the archive gains a row, wherever it was closed.
-          archiveLoaded = false;
+          // A close carries the row; anything else reads the page again.
+          if (op.archived) archiveGained({ ...op.archived, server: server ?? conn.server });
+          else archiveLoaded = false;
         }
       }
       // A session added or removed redraws at once: a reply that navigates
@@ -2259,6 +2261,10 @@ async function loadArchive(more = false) {
     if (!more) [archived, archiveCursor, archiveTotal, archiveLoaded] = [[], null, 0, false];
   }
   if (!more) loadClosedTerms();
+  drawArchive();
+}
+
+function drawArchive() {
   renderArchive($("arch-list"), archived.filter(kindShown), {
     onReopen: reopen,
     onRead: (id) => go(`#read=${id}`),
@@ -2269,6 +2275,33 @@ async function loadArchive(more = false) {
   drawArchiveServers();
   drawArchiveWorkers();
   fleetMark(false);
+}
+
+// A closed session's row, which its remove carried, joins the archive where it
+// sorts (archive.py's newest-first key), so a close does not read the first
+// page again, about 85 KB (#525). A search is the server's to match: it reads
+// the page again.
+function archiveGained(m) {
+  if (!archiveLoaded) return; // the next render reads the page, this row in it
+  if ($("arch-q").value.trim()) {
+    archiveLoaded = false;
+    return;
+  }
+  const row = withKey(m, m.server !== conn.server ? m.server : null);
+  if (archived.some((x) => x.key === row.key)) return;
+  if (m.worker) archiveWorkerCount += 1;
+  if (!m.worker || archiveWorkers) {
+    archiveCounts[m.server] = (archiveCounts[m.server] || 0) + 1;
+    if (!archiveServer || archiveServer === m.server) {
+      archiveTotal += 1;
+      const newer = (a, b) => a.last_activity > b.last_activity || (a.last_activity === b.last_activity && a.log_id > b.log_id);
+      const at = archived.findIndex((x) => newer(row, x));
+      // Past the pages shown, the next page brings it.
+      if (at >= 0) archived.splice(at, 0, row);
+      else if (!archiveCursor) archived.push(row);
+    }
+  }
+  drawArchive();
 }
 
 // Closed terminals on this server (term.closed), in a section of their own
