@@ -65,8 +65,15 @@ def _complete_if(con, token: int) -> None:
 
 
 class Journal:
-    def __init__(self, state_root: Path, publish, db_path: Path | None = None) -> None:
+    def __init__(
+        self, state_root: Path, publish, db_path: Path | None = None, on_live=None
+    ) -> None:
         self.state_root = state_root
+        # Called on the writer thread with (log_id, handle, new paths, rows)
+        # when a live record wrote files or made a commit or pr row: the
+        # Repos row must see a write before the turn that made it closes.
+        self.on_live = on_live
+        self._seen: dict[str, int] = {}
         self.path = db_path or state_root / "journal.db"
         self._publish = publish
         self._derivers: dict[str, Deriver] = {}
@@ -192,7 +199,16 @@ class Journal:
                     break
                 d.feed(r)
             self._derivers[log_id] = d
-        return self._insert(con, log_id, d.feed(record, events))
+        rows = d.feed(record, events)
+        n = self._insert(con, log_id, rows)
+        if self.on_live is not None:
+            pending = d.pending()
+            fresh = pending[self._seen.get(log_id, 0) :]
+            self._seen[log_id] = len(pending)
+            made = [r for r in rows if r.kind in ("commit", "pr")]
+            if fresh or made:
+                self.on_live(log_id, d.handle, fresh, made)
+        return n
 
     def _backfill(self, con, token: int | None = None) -> int:
         if token is None:
@@ -219,9 +235,11 @@ class Journal:
     def _entry(self, log_id: str, n: int, row: Row) -> db.Entry:
         touches = []
         for op, p in row.touches:
-            repo, rel = paths.name(p)
-            touches.append((op, repo, rel, paths.full(repo, rel)))
+            repo, rel, top = paths.place(p)
+            touches.append((op, repo, rel, paths.full(repo, rel), top))
         repo = touches[0][1] if touches else None
+        top = touches[0][4] if touches else None
+        sha = None
         unknown = False
         if row.commit:
             # The guessed directory first, then where the turn wrote. A hash
@@ -233,9 +251,16 @@ class Journal:
                 if files is not None:
                     directory = d
                     break
-            repo = paths.name(directory)[0] if files is not None else None
+            repo, _, top = (
+                paths.place(directory) if files is not None else (None, "", None)
+            )
+            sha = paths.full_sha(directory, h) if files is not None else None
             unknown = files is None
-            touches += [("commit", repo, f, paths.full(repo, f)) for f in files or []]
+            touches += [
+                ("commit", repo, f, paths.full(repo, f), top) for f in files or []
+            ]
+        if row.workdir:
+            repo, _, top = paths.place(row.workdir)
         return db.Entry(
             log_id,
             row.rec,
@@ -249,6 +274,8 @@ class Journal:
             row.source,
             unknown,
             touches,
+            top,
+            sha,
         )
 
     def _changed(self) -> None:
