@@ -15,18 +15,18 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 TABLES = ("entries_fts", "touches", "handles", "entries")
 SCHEMA = """
 CREATE TABLE entries(
   id INTEGER PRIMARY KEY, log_id TEXT NOT NULL, rec INTEGER NOT NULL, n INTEGER NOT NULL,
   ts REAL NOT NULL, handle TEXT NOT NULL, repo TEXT, kind TEXT NOT NULL,
   tag TEXT NOT NULL DEFAULT '', text TEXT NOT NULL, source TEXT,
-  files_unknown INTEGER NOT NULL DEFAULT 0, UNIQUE(log_id, rec, n));
+  files_unknown INTEGER NOT NULL DEFAULT 0, top TEXT, sha TEXT, UNIQUE(log_id, rec, n));
 CREATE INDEX entries_ts ON entries(ts);
 CREATE TABLE touches(
   entry_id INTEGER NOT NULL, op TEXT NOT NULL, repo TEXT, path TEXT NOT NULL,
-  full TEXT NOT NULL, UNIQUE(entry_id, op, full));
+  full TEXT NOT NULL, top TEXT, UNIQUE(entry_id, op, full));
 CREATE INDEX touches_full ON touches(full);
 CREATE TABLE handles(handle TEXT NOT NULL, log_id TEXT NOT NULL, PRIMARY KEY(handle, log_id));
 CREATE VIRTUAL TABLE entries_fts USING fts5(text, content='entries', content_rowid='id');
@@ -50,7 +50,11 @@ class Entry:
     text: str
     source: str | None
     files_unknown: bool
-    touches: list[tuple[str, str | None, str, str]]
+    # (op, repo, path, full) or (op, repo, path, full, top): top is the
+    # worktree the file was written in, when it was in one.
+    touches: list[tuple]
+    top: str | None = None
+    sha: str | None = None
 
 
 @dataclass
@@ -146,7 +150,8 @@ def insert(con: sqlite3.Connection, e: Entry) -> bool:
     try:
         row = con.execute(
             "INSERT INTO entries(log_id, rec, n, ts, handle, repo, kind, tag, text, source,"
-            " files_unknown) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING RETURNING id",
+            " files_unknown, top, sha) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " ON CONFLICT DO NOTHING RETURNING id",
             (
                 e.log_id,
                 e.rec,
@@ -159,6 +164,8 @@ def insert(con: sqlite3.Connection, e: Entry) -> bool:
                 e.text,
                 e.source,
                 int(e.files_unknown),
+                e.top,
+                e.sha,
             ),
         ).fetchone()
         if row:
@@ -166,8 +173,8 @@ def insert(con: sqlite3.Connection, e: Entry) -> bool:
                 "INSERT INTO entries_fts(rowid, text) VALUES(?, ?)", (row[0], e.text)
             )
             con.executemany(
-                "INSERT OR IGNORE INTO touches VALUES(?,?,?,?,?)",
-                [(row[0], op, repo, path, full) for op, repo, path, full in e.touches],
+                "INSERT OR IGNORE INTO touches VALUES(?,?,?,?,?,?)",
+                [(row[0], *t[:4], t[4] if len(t) > 4 else None) for t in e.touches],
             )
         if e.handle:
             con.execute(

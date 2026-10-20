@@ -277,8 +277,13 @@ async def test_a_monitor_wakes_its_owner_with_the_roster(world, tmp_path):
         "never",
     ]
     flag.touch()
-    await until(lambda: inbox(a), timeout=10, what="the wake")
-    (wake,) = inbox(a)
+    await until(
+        lambda: any(e["title"].startswith("monitor:") for e in inbox(a)),
+        timeout=10,
+        what="the wake",
+    )
+    # The status block rides on the wake as its own row (notices.py).
+    (wake,) = [e for e in inbox(a) if e["title"].startswith("monitor:")]
     assert wake["title"].startswith(f"monitor:{first} · ok")
     assert "Your other live monitors" in wake["md"] and "never" in wake["md"]
 

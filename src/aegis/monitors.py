@@ -38,6 +38,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from . import notice_sources
+from .notice_sources import Item
+
 if TYPE_CHECKING:
     from .registry import Registry
 
@@ -185,12 +188,69 @@ class Monitor:
         }
 
 
+# The per-session notices a monitor's owner gets (notices.py): its live
+# monitors as a status line, and a warning that wakes it when one has stalled,
+# cannot run its check, or has overrun its ETA.
+SOURCE = "monitors"
+notice_sources.declare(
+    SOURCE, {"stall_min": 15.0, "broken_checks": 3, "overdue_min": 10.0, "wake": True}
+)
+
+
+def monitor_items(
+    ms: list[Monitor], cfg: dict, now: float, checked: set[str]
+) -> list[Item]:
+    """The owner's items for its live monitors ``ms``, under ``cfg`` (the
+    ``notices.monitors`` block): a status line each, and warnings only for
+    those in ``checked``, checked at least once by this process, so a
+    restart's downtime never reads as a stall."""
+    live = []
+    warns = []
+    for m in ms:
+        row = f"{m.id} {m.description}"
+        if m.last_progress is not None:
+            row += f" {m.last_progress}%"
+        due = None if m.sessions else eta(m.started_at, m.readings)
+        if due and due[0] > now:
+            row += f" eta {round((due[0] - now) / 60)} min"
+        live.append(Item(f"{m.id}:live", "info", f"monitor {row}"))
+        if m.sessions or m.id not in checked:
+            continue  # a session watcher's own blocked outcome wakes the owner
+        name = f'monitor {m.id} "{m.description}"'
+        warn = {"level": "warn", "clear": f"monitor {m.id} moves again, or has ended",
+                "wake": cfg["wake"]}  # fmt: skip
+        if m.progress:
+            last = m.readings[-1][0] if m.readings else m.started_at
+            if now - last >= max(cfg["stall_min"] * 60, 3 * m.interval_s):
+                at = f"at {m.last_progress}% " if m.last_progress is not None else ""
+                text = f"{name} {at}for {round((now - last) / 60)} min · look, or monitor_cancel it"
+                warns.append(Item(f"{m.id}:stalled", text=text, **warn))
+        for kind in ("done", "progress", "fail"):
+            c = m.checks.get(kind)
+            if (
+                c
+                and c["bad"]
+                and now - c["since"] >= cfg["broken_checks"] * m.interval_s
+            ):
+                text = f"{name} {kind} check cannot run: {c['verdict']}"
+                warns.append(Item(f"{m.id}:broken", text=text, **warn))
+                break
+        if due and due[1] != "finished":
+            late = now - due[0]
+            if late >= max((due[0] - m.started_at) / 2, cfg["overdue_min"] * 60):
+                at = f" at {m.last_progress}%" if m.last_progress is not None else ""
+                text = f"{name} past its eta by {round(late / 60)} min{at}"
+                warns.append(Item(f"{m.id}:overdue", text=text, **warn))
+    return [*live, *warns]
+
+
 class Monitors:
     def __init__(self, registry: Registry, path: Path) -> None:
         self._registry = registry
         self._path = path
         self.items: dict[str, Monitor] = {}
         self._tasks: dict[str, asyncio.Task] = {}
+        self._checked: set[str] = set()  # checked at least once by this process
 
     # -- persistence ---------------------------------------------------------
     def _save(self) -> None:
@@ -219,6 +279,8 @@ class Monitors:
     def arm_all(self) -> None:
         for m in self.items.values():
             self._arm(m)
+        for owner in {m.owner for m in self.items.values()}:
+            self._status(owner)
 
     # -- operations ----------------------------------------------------------
     def start(self, owner: str, cwd: str, **kw) -> Monitor:
@@ -227,17 +289,20 @@ class Monitors:
         self._save()
         self._arm(m)
         self._registry.refresh_card(owner)
+        self._status(owner)
         return m
 
     def cancel(self, monitor_id: str) -> Monitor | None:
         m = self.items.pop(monitor_id, None)
         if m is None:
             return None
+        self._checked.discard(monitor_id)
         t = self._tasks.pop(monitor_id, None)
         if t:
             t.cancel()
         self._save()
         self._registry.refresh_card(m.owner)
+        self._status(m.owner)
         return m
 
     def of(self, owner: str) -> list[Monitor]:
@@ -245,6 +310,19 @@ class Monitors:
 
     def card(self, owner: str) -> list[dict]:
         return [m.card() for m in self.of(owner)]
+
+    def _status(self, owner: str) -> None:
+        """Set the owner's monitor notices from its live monitors now."""
+        notices = self._registry.notices
+        if notices is None:
+            return
+        cfg = notices.cfg(SOURCE)
+        items = (
+            []
+            if cfg is None
+            else monitor_items(self.of(owner), cfg, time.time(), self._checked)
+        )
+        notices.set(owner, SOURCE, items)
 
     def drop_owner(self, owner: str) -> None:
         for m in self.of(owner):
@@ -308,6 +386,8 @@ class Monitors:
                         changed = True
                     if changed:
                         self._publish(m)
+                self._checked.add(m.id)
+                self._status(m.owner)
                 await asyncio.sleep(m.interval_s)
         except asyncio.CancelledError:
             raise
@@ -361,6 +441,7 @@ class Monitors:
                 m.last_progress = round(100 * done / len(rows))
                 m.read(time.time(), m.last_progress)
                 self._publish(m)
+                self._status(m.owner)
             blocked = [r for r in rows if r["state"] == "blocked"]
             if blocked:
                 await self._end(m, "blocked", "; ".join(map(_said, blocked)))
@@ -373,9 +454,11 @@ class Monitors:
 
     async def _end(self, m: Monitor, outcome: str, why: str) -> None:
         self.items.pop(m.id, None)
+        self._checked.discard(m.id)
         self._tasks.pop(m.id, None)
         self._save()
         self._registry.refresh_card(m.owner)
+        self._status(m.owner)
         others = self.of(m.owner)
         lines = [
             f"{m.description}: {outcome}, {why}, after {_elapsed(time.time() - m.started_at)}."

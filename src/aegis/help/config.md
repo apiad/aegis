@@ -1,7 +1,7 @@
 ---
 title: Configuration
 kind: concept
-when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap, notices about disk, memory, CPU and quota, parking idle sessions, untested harness versions or the network readings in .aegis.yaml, or picking a theme
+when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap, notices about disk, memory, CPU and quota, an agent's status and stalled monitors, when aegis nudges a silent agent, parking idle sessions, untested harness versions or the network readings in .aegis.yaml, or picking a theme
 ---
 
 aegis reads one file, `.aegis.yaml`, at the root it serves: `--root` when
@@ -74,9 +74,10 @@ agents:
 `model: x` is a cascade of one, and an agent gives `model` or `models`, never
 both. A model listed twice is a warning, and the repeat is ignored.
 `aegis doctor` warns when a cascade puts a model above one that scores
-higher on [Artificial Analysis](https://artificialanalysis.ai)'s Coding Index, naming the first such pair:
-"b (38.9) is above a (41.2) in the ranking", or "x (unranked) is above a
-(41.2) in the ranking" for a model the ranking does not score. The scores
+higher on [Artificial Analysis](https://artificialanalysis.ai)'s Intelligence Index, the Coding Index
+breaking ties, naming the first such pair:
+"b (50.1) is above a (54.0) in the ranking", or "x (unranked) is above a
+(54.0) in the ranking" for a model with no Intelligence Index. The scores
 ship with aegis and are refreshed at each release, so a model released since
 is unranked. The order is still yours: the warning changes nothing.
 
@@ -105,7 +106,7 @@ share one account. Cooling is kept in memory by the server: a restart clears it.
 off for that session, and a handoff from it keeps that model. Codex errors never fall yet.
 
 On the Settings page an agent's models are a list in the order they are
-tried, each with its Coding Index or "unranked", and buttons to move it up or
+tried, each with its Intelligence Index or "unranked", and buttons to move it up or
 down or remove it; the last model cannot be removed. "Add model" offers the
 rest of the harness's models, and "Sort by ranking" puts them in the ranking's
 order. Under the list a warning names the first pair out of that order, as
@@ -118,15 +119,16 @@ Changing the agent's harness empties the list.
 
 Every model pick (the new tab's model chip, the `/model` menu, "Add model" on
 an agent in Settings) shows a short chip beside each model: its rank among the
-models of its harness, its Coding Index, and its price per million tokens in
-and out, such as "#1 · 72.0 · $15 / $75", or "free" when it costs nothing
-through its harness. A model the ranking does not score shows "unranked" and
+models of its harness, its Intelligence Index, and its price per million tokens in
+and out, such as "#1 · 57.6 · $4 / $20", or "free" when it costs nothing
+through its harness. Rank follows the Intelligence Index, the Coding Index
+breaking ties. A model with no Intelligence Index shows "unranked" and
 its price. OpenCode's catalog gives its own prices; for Claude Code the price
 is the ranking's list price.
 
 The Settings page has a Models section that lists every model the installed
 harnesses can run, one row each: name, harness, rank, Coding Index,
-Intelligence Index, price in and out, and the agents that use it with its
+Intelligence Index ("unranked" when it has none), price in and out, and the agents that use it with its
 place in each cascade, such as "free #2". Models in use are marked and come
 first. Chips above the list filter it by harness and to free models only, and
 sort it by any column. Under it is the ranking's date and its source.
@@ -135,7 +137,7 @@ An agent reads the same data with `models_list`: every model the installed
 harnesses can run, with harness, rank, Coding and Intelligence Indexes, price
 in and out, whether it is free, the agents that name it (`at` is its index in
 the agent's models, 0 first) and the epoch it stops cooling, or
-`"cooling_until": null` when it is not cooling. Models in use come first, then by Coding Index, unranked ones last. The
+`"cooling_until": null` when it is not cooling. Models in use come first, then by Intelligence Index with the Coding Index breaking ties, unranked ones last. The
 answer carries the ranking's date and its source,
 [Artificial Analysis](https://artificialanalysis.ai).
 
@@ -227,6 +229,43 @@ moves `clear:` and `critical:` with it by the default gaps, so `disk: {on:
 outside 0 to 100, or levels out of order (clear below on, on at most
 critical) leaves every default in force, and `aegis doctor` names the
 mistake.
+
+## Notices about an agent's own work
+
+The same block sets what aegis tells an agent about its own work: its plan,
+its monitors and the queue tasks it has out (the sessions page shows the
+status block they make). Each is a source that declares its keys; these are
+the defaults:
+
+```yaml
+notices:
+  plan:     {stale_min: 10}
+  monitors: {stall_min: 15, broken_checks: 3, overdue_min: 10, wake: true}
+  queues:   true
+  status:   {lines: 5}
+```
+
+`plan.stale_min` is the minutes of work on a plan left untouched before the
+agent is warned. `monitors.stall_min` is the minutes a monitor's progress may
+sit still (and at least three intervals), `monitors.broken_checks` how many intervals a
+check may fail to run, and `monitors.overdue_min` how far past its ETA a monitor may
+run, before its owner is warned; with `wake: true` the warning wakes an idle
+owner. `status.lines` caps the status block. Minutes may be fractions.
+`false` in place of a source turns it off; `status: false` drops the status
+block and keeps the warnings. A name no installed source declares is ignored,
+and `aegis doctor` warns about it.
+
+## Nudges
+
+`nudges:` sets when aegis asks an agent that drifted where it stands:
+
+```yaml
+nudges:
+  silent_s: 2     # after a turn that ended without turn_end; false: never
+  plan_min: 15    # minutes of work on a plan left untouched, at a turn's end
+```
+
+A wrong value leaves both defaults in force, and `aegis doctor` names it.
 
 ## Memory per session
 
@@ -378,10 +417,14 @@ with no restart. A file that does not parse leaves the last one that did in
 force, and says so, so a half-typed edit never stops a spawn. A deleted file
 means no agents and no queues.
 
-The Settings page edits the same file as a form: agents with their chips,
-models and priming, which one is the default, and the queues. It keeps the file's
-comments and key order, and refuses to save over a change made on disk since
-you opened it. Only an admin can save.
+The Settings page edits the same file as a form, every key on this page
+included: agents with their chips, models, priming and kept tools, which one
+is the default, the queues, recaps and side notes, terminals, the memory
+caps, the context thresholds, nudges, notices, parking, untested versions,
+workflows and the network readings. A field left blank is left out of the
+file, so its default holds; the field shows the default. It keeps the file's
+comments and key order, and keys it does not read, and refuses to save over a
+change made on disk since you opened it. Only an admin can save.
 
 `aegis init` writes a first file from the harnesses installed on this machine,
 proposing agents and queues and asking about each (`aegis init --yes` takes

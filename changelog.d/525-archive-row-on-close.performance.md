@@ -1,0 +1,1 @@
+- **Closing a session no longer reloads the archive.** Each close made every open Fleet read the archive's first page again, about 85 KB on a busy server, to add one row; the close now carries that row, and the Fleet adds it where it sorts.

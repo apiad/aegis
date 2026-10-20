@@ -99,4 +99,5 @@ dev = [
     "httpx>=0.28",
     "psutil>=6.0",
     "pytest-httpx>=0.35",
+    "pytest-split>=0.11.0",
 ]

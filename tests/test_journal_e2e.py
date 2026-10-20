@@ -527,7 +527,7 @@ def test_a_commit_not_in_the_guessed_repo_is_found_where_the_turn_wrote(tmp_path
     near = Row(1, 1.0, "commit", "c", "h", commit=(guessed, h), near=(real,))
     e = j._entry("log", 0, near)
     assert (e.repo, e.files_unknown) == (real, False)
-    assert [(op, rel) for op, _, rel, _ in e.touches] == [("commit", "c.py")]
+    assert [(op, rel) for op, _, rel, *_ in e.touches] == [("commit", "c.py")]
     # Nowhere to be found: no repo, rather than the wrong one.
     lost = Row(1, 1.0, "commit", "c", "h", commit=(guessed, h))
     e = j._entry("log", 0, lost)

@@ -191,6 +191,20 @@ def propose(found: list[Found]) -> ConfigDoc:
     return ConfigDoc(agents=agents, default_agent=default, queues=queues)
 
 
+def _notices(cfg: dict) -> list[Finding]:
+    """A wrong notices: block, and each name no installed source declares."""
+    out = [Finding("error", "notices", cfg["error"])] if "error" in cfg else []
+    out += [
+        Finding(
+            "warn",
+            "notices",
+            f"notices.{name}: no installed source declares it; it is ignored",
+        )
+        for name in cfg.get("undeclared", [])
+    ]
+    return out
+
+
 def _unknown_keys(data: dict) -> list[Finding]:
     out = [
         Finding(
@@ -282,16 +296,18 @@ def _agent(a: Agent, f: Found | None) -> list[Finding]:
     ]
 
 
-def _coding(model: str) -> str:
+def _intelligence(model: str) -> str:
     s = ranking().score(model)
-    return "unranked" if s is None or s.coding is None else f"{s.coding:.1f}"
+    return (
+        "unranked" if s is None or s.intelligence is None else f"{s.intelligence:.1f}"
+    )
 
 
 def _out_of_order(models: tuple[str, ...]) -> str | None:
     """The first model a cascade puts above one the ranking scores higher."""
     for above, better in zip(models, ranking().order(models)):
         if above != better:
-            return f"{above} ({_coding(above)}) is above {better} ({_coding(better)}) in the ranking"
+            return f"{above} ({_intelligence(above)}) is above {better} ({_intelligence(better)}) in the ranking"
     return None
 
 
@@ -499,8 +515,9 @@ async def doctor(
         out.append(Finding("error", "terminal_memory_max", snap.terminal_memory_error))
     out += _recap(roots)
     out.append(_context(snap.context))
-    if "error" in snap.notices:
-        out.append(Finding("error", "notices", snap.notices["error"]))
+    out += _notices(snap.notices)
+    if "error" in snap.nudges:
+        out.append(Finding("error", "nudges", snap.nudges["error"]))
     out.append(_park(snap.park))
     if "error" in snap.harness_versions:
         out.append(Finding("error", "harness_versions", snap.harness_versions["error"]))

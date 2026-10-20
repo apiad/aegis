@@ -85,6 +85,7 @@ class Registry(Host):
         self.workflows = None
         self.quota = None
         self.notices = None  # notices.Notices, set by App
+        self.nudges = None  # nudges.Nudges, set by App
         # The live config's context block (config.py); the app points it at
         # Config.current().
         self.context: Callable[[], dict] = lambda: dict(CONTEXT_DEFAULTS)
@@ -145,6 +146,14 @@ class Registry(Host):
             self.schedules.changed()
         if self.workflows is not None:
             self.workflows.turn_ended(session)
+        if self.notices is not None:
+            self.notices.turn_ended(session)
+        nudges = self.nudges
+        if nudges is not None and (silent_s := nudges.timings()[0]) is not None:
+            # The silent-turn nudge comes silent_s after the turn's end, not on
+            # the next tick; the grace lets a held flush start and the card settle.
+            loop = asyncio.get_running_loop()
+            loop.call_later(silent_s, lambda: loop.create_task(nudges.check(session)))
 
     def _retire_predecessor(self, new: Session) -> None:
         """After a handoff, archive the old session once the new one has
@@ -174,6 +183,10 @@ class Registry(Host):
             log.exception("aegis: could not archive %s after its handoff", s.handle)
 
     def recorded(self, session: Session, record: dict, events: list | None) -> None:
+        if record.get("kind") == "plan" and self.nudges is not None:
+            # Before the plan_update's result reads its notices, so it never
+            # answers with the stale-plan warning it just ended.
+            self.nudges.refresh(session)
         if self.journal is not None:
             self.journal.recorded(
                 session.log_id,
@@ -226,8 +239,12 @@ class Registry(Host):
     ) -> tuple[str | None, float] | None:
         return None if self.cascade is None else self.cascade(session, text)
 
-    def notice_blocks(self, session: Session) -> str:
-        return "" if self.notices is None else self.notices.pending(session)
+    def notice_blocks(self, session: Session, at: str) -> str:
+        return "" if self.notices is None else self.notices.pending(session, at)
+
+    def compacted(self, session: Session) -> None:
+        if self.notices is not None:
+            self.notices.forget(session.log_id)
 
     def quota_hold(self, session: Session) -> str | None:
         """A paused session waits for its gate to open; any other may start a
@@ -464,6 +481,7 @@ class Registry(Host):
             restart_continues=meta.get("restart_continues") or 0,
             quota_paused=meta.get("quota_paused"),
             notices_sent=meta.get("notices_sent"),
+            items_sent=meta.get("items_sent"),
             tool_calls=meta.get("tool_calls") or 0,
             cache_recent=meta.get("cache_recent"),
             compactions=meta.get("compactions") or 0,
@@ -694,7 +712,9 @@ class Registry(Host):
         meta = s.meta()
         self.metas.write(meta)
         self.archived[log_id] = meta
-        self._publish("sessions", [{"remove": log_id}])
+        # The row the archive gains rides along, so a browser adds it to the
+        # archive it shows instead of reading a page again (#525).
+        self._publish("sessions", [{"remove": log_id, "archived": _public(meta)}])
         if self.schedules is not None:
             self.schedules.changed()
         if self.workflows is not None:

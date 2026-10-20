@@ -645,9 +645,41 @@ conn.subscribe(
 
 // The workflow runs (workflows.py), for their cards in the transcript and
 // their canvas panes. A running card counts its times up once a second.
-const wfRuns = new Map();
+// `workflow-runs` has every run's summary, without the tree and the story a
+// card draws: those were 96% of the bytes (#525). A card's run comes whole
+// from `workflow:<run>`, subscribed while a card of it is in the page.
+const wfRuns = new Map(); // run -> its summary
+const wfWhole = new Map(); // run -> {w: the run whole, or null until it lands; unsub}
+function wfGet(run) {
+  const summary = wfRuns.get(run);
+  if (!summary) return null;
+  let d = wfWhole.get(run);
+  if (!d) {
+    d = { w: null, unsub: null };
+    wfWhole.set(run, d);
+    const land = (w) => {
+      d.w = w;
+      wfChanged(new Set([run]));
+    };
+    d.unsub = conn.subscribe(`workflow:${run}`, land, (ops) => {
+      for (const op of ops) if (op.set) land(op.set);
+    });
+  }
+  // Until it lands, the card draws from the summary, with no rows yet.
+  return d.w || { ...summary, tree: [], story: [] };
+}
+// A run whose cards all left the page is no longer followed.
+function wfForget() {
+  for (const [run, d] of wfWhole) {
+    if (document.querySelector(`.wfcard[data-run="${CSS.escape(run)}"], .wfdcard[data-run="${CSS.escape(run)}"]`)) continue;
+    d.unsub();
+    wfWhole.delete(run);
+  }
+}
+setInterval(wfForget, 10000);
 setWorkflows({
-  get: (run) => wfRuns.get(run) || null,
+  get: wfGet,
+  summary: (run) => wfRuns.get(run) || null,
   call: (op, params) => conn.call(op, params),
   view: (files, line) => viewer.open({ files, at: 0, remote: false, glyph: "file", line }),
 });
@@ -661,7 +693,7 @@ const wfChanged = (runs) => {
   if (s?.workflow && (!runs || runs.has(s.workflow.run))) renderMeta(s);
 };
 conn.subscribe(
-  "workflows",
+  "workflow-runs",
   (list) => {
     wfRuns.clear();
     for (const w of list || []) wfRuns.set(w.run, w);
@@ -670,9 +702,13 @@ conn.subscribe(
   (ops) => {
     const runs = new Set();
     for (const op of ops) {
-      if (!op.upsert) continue;
-      wfRuns.set(op.upsert.run, op.upsert);
-      runs.add(op.upsert.run);
+      const w = op.upsert || (op.merge && wfRuns.has(op.merge.run) && { ...wfRuns.get(op.merge.run), ...op.merge });
+      if (!w) continue;
+      wfRuns.set(w.run, w);
+      // A whole run that is followed takes the summary's news too.
+      const d = wfWhole.get(w.run);
+      if (d?.w) d.w = { ...d.w, ...w };
+      runs.add(w.run);
     }
     wfChanged(runs);
   },
@@ -682,7 +718,7 @@ setInterval(() => {
 }, 1000);
 
 // Each server's `sessions` channel: a snapshot replaces that server's metas,
-// patches upsert and remove them.
+// patches upsert, merge (only the fields that changed) and remove them.
 function sessionHandlers(server) {
   return [
     (metas) => {
@@ -704,12 +740,20 @@ function sessionHandlers(server) {
           if (!sessions.has(w.key)) setChanged = true;
           sessions.set(w.key, w);
           changed.add(w.key);
+        } else if (op.merge) {
+          const k = keyOf(server, op.merge.log_id);
+          const held = sessions.get(k);
+          if (!held) continue;
+          sessions.set(k, withKey({ ...held, ...op.merge }, server));
+          changed.add(k);
         } else if (op.remove !== undefined) {
           sessions.delete(keyOf(server, op.remove));
           setChanged = true;
           // The server archives a session before it publishes the removal, so
           // this is the moment the archive gains a row, wherever it was closed.
-          archiveLoaded = false;
+          // A close carries the row; anything else reads the page again.
+          if (op.archived) archiveGained({ ...op.archived, server: server ?? conn.server });
+          else archiveLoaded = false;
         }
       }
       // A session added or removed redraws at once: a reply that navigates
@@ -1765,6 +1809,149 @@ async function drawSideJournal(key, force = false) {
   $("s-journal-all").replaceChildren(thread);
 }
 
+// The sidebar's Repos row: each repo or worktree the shown session wrote to,
+// from the repos:<log_id> channel (repos/service.py), which sends the whole
+// list again only when it changed. A session on a linked server has none here.
+let reposFor = null;
+let unsubRepos = null;
+function followRepos(key) {
+  if (reposFor === key) return;
+  reposFor = key;
+  if (unsubRepos) unsubRepos();
+  unsubRepos = null;
+  $("s-repos-sec").hidden = true;
+  if (!key || key.includes("/")) return;
+  const draw = (d) => {
+    if (reposFor === key) drawRepos(d);
+  };
+  unsubRepos = conn.subscribe(`repos:${forKey(key).log_id}`, draw, (ops) => {
+    for (const op of ops) if (op.set) draw(op.set);
+  });
+}
+
+const rpPlural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const rpBase = (p) => p.split("/").filter(Boolean).pop() || p;
+
+function prLink(pr) {
+  if (!pr.url) return span("rp-pr", `#${pr.n}`);
+  const a = document.createElement("a");
+  a.className = "rp-pr";
+  a.href = pr.url;
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.textContent = `#${pr.n}`;
+  a.title = pr.title || "";
+  return a;
+}
+
+function repoLine(r) {
+  const line = document.createElement("div");
+  line.className = "rp-line";
+  if (r.peers.length) {
+    const dot = span("rp-dot", "");
+    dot.title = r.peers.map((p) => `${p.handle} is also here`).join("\n");
+    line.append(dot);
+  }
+  line.append(span("n", r.name), span("rp-br", r.worktree ? `⑂ ${rpBase(r.top)}` : r.branch || "detached"));
+  const right = span("rp-r", "");
+  if (r.removed) right.append(span("rp-gone", "removed"));
+  if (r.op) right.append(span("rp-op", r.op));
+  if (r.dirty_n) right.append(span("rp-dirty", `~${r.dirty_n}`));
+  if (r.unpushed_n) right.append(span("rp-ahead", `↑${r.unpushed_n}`));
+  for (const pr of r.prs) if (pr.state === "open") right.append(prLink(pr));
+  if (r.clean) right.prepend(span("rp-clean", "✓"));
+  line.append(right);
+  return line;
+}
+
+function rpKv(k, v, cls = "") {
+  const d = document.createElement("div");
+  d.className = "kv";
+  const key = span(cls, k);
+  const val = typeof v === "string" ? span("", v) : v;
+  d.append(key, val);
+  return d;
+}
+
+function rpList(items, shown, total) {
+  const ul = document.createElement("ul");
+  ul.className = "rp-files";
+  for (const [text, x] of items.slice(0, shown)) {
+    const li = document.createElement("li");
+    li.append(span("", text));
+    if (x) li.append(span("x", x));
+    ul.append(li);
+  }
+  if (total > shown) {
+    const li = document.createElement("li");
+    li.className = "more";
+    li.textContent = `+${total - shown} more`;
+    ul.append(li);
+  }
+  return ul;
+}
+
+function repoSection(r, ghOk) {
+  const sec = document.createElement("div");
+  sec.className = "csec";
+  const h = document.createElement("h5");
+  h.className = "rp-h";
+  h.append(span("", r.name));
+  if (r.worktree) h.append(span("rp-wt", "worktree"));
+  h.append(span("p", r.path));
+  sec.append(h);
+  if (r.removed) sec.append(rpKv("state", "removed: the directory is gone"));
+  else if (r.branch || r.upstream) sec.append(rpKv("branch", r.upstream ? `${r.branch} → ${r.upstream}` : `${r.branch || "detached"}, no upstream`));
+  if (r.stale) sec.append(rpKv("state", "git did not answer; last known state"));
+  if (r.op) sec.append(rpKv("in progress", r.op, "rp-op"));
+  if (r.dirty_n) {
+    sec.append(rpKv("uncommitted", rpPlural(r.dirty_n, "file"), "rp-dirty"));
+    sec.append(rpList(r.dirty.map((f) => [f.path, f.stat]), 10, r.dirty_n));
+  }
+  if (r.unpushed_n) {
+    sec.append(rpKv("unpushed", rpPlural(r.unpushed_n, "commit"), "rp-ahead"));
+    sec.append(rpList(r.unpushed.map((s) => [s]), 5, r.unpushed_n));
+  }
+  if (r.clean) sec.append(rpKv("state", "clean, pushed", "rp-clean"));
+  if (r.left_n) {
+    sec.append(rpKv("left here", rpPlural(r.left_n, "commit")));
+    sec.append(rpList(r.left.map((c) => [`${c.hash} ${c.subject}`]), 5, r.left_n));
+  }
+  for (const pr of r.prs) {
+    const v = span("", "");
+    v.append(prLink(pr), document.createTextNode(` ${[pr.title, pr.state, pr.ci].filter(Boolean).join(" · ")}`));
+    sec.append(rpKv("PR", v));
+  }
+  if (r.prs.length && !ghOk) sec.append(rpKv("", "PR state unknown: gh unavailable"));
+  if (r.others_n) sec.append(rpKv("others' dirt", `${rpPlural(r.others_n, "file")} this session never wrote`));
+  for (const p of r.peers) {
+    const d = document.createElement("div");
+    d.className = "rp-peer";
+    d.textContent = `● ${p.handle} is also here: ${p.where}`;
+    sec.append(d);
+  }
+  return sec;
+}
+
+function drawRepos(d) {
+  const repos = d.repos || [];
+  $("s-repos-sec").hidden = !repos.length;
+  if (!repos.length) return;
+  $("s-repos-n").textContent = String(repos.length);
+  const lines = repos.slice(0, 5).map(repoLine);
+  if (repos.length > 5) lines.push(span("rp-more", `+${repos.length - 5} more`));
+  $("s-repos").replaceChildren(...lines);
+  const sum = (k) => repos.reduce((a, r) => a + r[k], 0);
+  const open = repos.reduce((a, r) => a + r.prs.filter((p) => p.state === "open").length, 0);
+  $("s-repos-sum").textContent = [
+    rpPlural(repos.length, "repo"),
+    `${rpPlural(sum("dirty_n"), "file")} uncommitted`,
+    `${rpPlural(sum("unpushed_n"), "commit")} unpushed`,
+    `${rpPlural(open, "PR")} open`,
+  ].join(" · ");
+  $("s-repos-all").replaceChildren(...repos.map((r) => repoSection(r, d.gh)));
+}
+
 // A window tab: its panes, and the session's name in its title so the
 // browser's tab list tells the windows apart. A session gone from the list
 // leaves the window empty.
@@ -1807,6 +1994,7 @@ function renderMeta(s) {
   drawPlan(s);
   if (s.key === shown) showCanvas(s);
   drawSideJournal(s.key);
+  followRepos(s.key);
   drawReplies(s);
   drawCold(s);
   drawClosing(s);
@@ -2126,6 +2314,10 @@ async function loadArchive(more = false) {
     if (!more) [archived, archiveCursor, archiveTotal, archiveLoaded] = [[], null, 0, false];
   }
   if (!more) loadClosedTerms();
+  drawArchive();
+}
+
+function drawArchive() {
   renderArchive($("arch-list"), archived.filter(kindShown), {
     onReopen: reopen,
     onRead: (id) => go(`#read=${id}`),
@@ -2136,6 +2328,33 @@ async function loadArchive(more = false) {
   drawArchiveServers();
   drawArchiveWorkers();
   fleetMark(false);
+}
+
+// A closed session's row, which its remove carried, joins the archive where it
+// sorts (archive.py's newest-first key), so a close does not read the first
+// page again, about 85 KB (#525). A search is the server's to match: it reads
+// the page again.
+function archiveGained(m) {
+  if (!archiveLoaded) return; // the next render reads the page, this row in it
+  if ($("arch-q").value.trim()) {
+    archiveLoaded = false;
+    return;
+  }
+  const row = withKey(m, m.server !== conn.server ? m.server : null);
+  if (archived.some((x) => x.key === row.key)) return;
+  if (m.worker) archiveWorkerCount += 1;
+  if (!m.worker || archiveWorkers) {
+    archiveCounts[m.server] = (archiveCounts[m.server] || 0) + 1;
+    if (!archiveServer || archiveServer === m.server) {
+      archiveTotal += 1;
+      const newer = (a, b) => a.last_activity > b.last_activity || (a.last_activity === b.last_activity && a.log_id > b.log_id);
+      const at = archived.findIndex((x) => newer(row, x));
+      // Past the pages shown, the next page brings it.
+      if (at >= 0) archived.splice(at, 0, row);
+      else if (!archiveCursor) archived.push(row);
+    }
+  }
+  drawArchive();
 }
 
 // Closed terminals on this server (term.closed), in a section of their own

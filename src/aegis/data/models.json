@@ -1,6 +1,147 @@
 {
   "source": "Artificial Analysis",
   "url": "https://artificialanalysis.ai",
-  "refreshed": "",
-  "models": {}
+  "refreshed": "2026-10-20",
+  "models": {
+    "fable": {
+      "aa": "claude-fable-5-1",
+      "coding": 81.6,
+      "intelligence": 53.4,
+      "price_in": 10,
+      "price_out": 50
+    },
+    "claude-opus-5": {
+      "aa": "claude-opus-5",
+      "coding": 78,
+      "intelligence": 50.8,
+      "price_in": 5,
+      "price_out": 25
+    },
+    "claude-fable-5": {
+      "aa": "claude-fable-5",
+      "coding": 76.5,
+      "intelligence": 49.6,
+      "price_in": 10,
+      "price_out": 50
+    },
+    "claude-opus-4-8": {
+      "aa": "claude-opus-4-8",
+      "coding": 74.3,
+      "intelligence": 41.8,
+      "price_in": 5,
+      "price_out": 25
+    },
+    "claude-opus-4-7": {
+      "aa": "claude-opus-4-7",
+      "coding": 73.6,
+      "intelligence": 40.7,
+      "price_in": 5,
+      "price_out": 25
+    },
+    "claude-sonnet-5": {
+      "aa": "claude-sonnet-5",
+      "coding": 71.5,
+      "intelligence": 38.2,
+      "price_in": 2,
+      "price_out": 10
+    },
+    "opencode/glm-5.3-flash-free": {
+      "aa": "glm-5-3-flash",
+      "coding": 71.5,
+      "intelligence": 41.8,
+      "price_in": 0.15,
+      "price_out": 0.5
+    },
+    "opencode/nemotron-3-ultra-free": {
+      "aa": "nvidia-nemotron-3-ultra-550b-a55b",
+      "coding": 49.3,
+      "intelligence": 22.9,
+      "price_in": 0.6,
+      "price_out": 2.7
+    },
+    "opencode/nemotron-3.5-lightning-free": {
+      "aa": "nemotron-3-5-lightning",
+      "coding": 26.8,
+      "intelligence": 12.9,
+      "price_in": 0.06,
+      "price_out": 0.2
+    },
+    "default": {
+      "aa": "claude-opus-5-5",
+      "coding": null,
+      "intelligence": 57.6,
+      "price_in": 4,
+      "price_out": 20
+    },
+    "opus": {
+      "aa": "claude-opus-5-5",
+      "coding": null,
+      "intelligence": 57.6,
+      "price_in": 4,
+      "price_out": 20
+    },
+    "sonnet": {
+      "aa": "claude-sonnet-5-5",
+      "coding": null,
+      "intelligence": 56,
+      "price_in": 2,
+      "price_out": 10
+    },
+    "haiku": {
+      "aa": "claude-haiku-5-5",
+      "coding": null,
+      "intelligence": 43.4,
+      "price_in": 0.1,
+      "price_out": 0.5
+    },
+    "claude-haiku-4-5-20251001": {
+      "aa": "claude-4-5-haiku",
+      "coding": null,
+      "intelligence": 15.4,
+      "price_in": 1,
+      "price_out": 5
+    },
+    "claude-opus-4-6": {
+      "aa": "claude-opus-4-6",
+      "coding": null,
+      "intelligence": 26.4,
+      "price_in": 5,
+      "price_out": 25
+    },
+    "claude-sonnet-4-6": {
+      "aa": "claude-sonnet-4-6",
+      "coding": null,
+      "intelligence": 24.7,
+      "price_in": 3,
+      "price_out": 15
+    },
+    "opencode/deepseek-v4.1-flash-free": {
+      "aa": "deepseek-v4-1-flash",
+      "coding": null,
+      "intelligence": 39.5,
+      "price_in": 0.3,
+      "price_out": 1.2
+    },
+    "opencode/minimax-m3.1-flash-free": {
+      "aa": "minimax-m3-1-flash",
+      "coding": null,
+      "intelligence": 42.7,
+      "price_in": 0.15,
+      "price_out": 0.6
+    },
+    "opencode/nemotron-3.5-super-vl-free": {
+      "aa": "nemotron-3-5-super-vl",
+      "coding": null,
+      "intelligence": 26.5,
+      "price_in": 0.225,
+      "price_out": 0.575
+    },
+    "opencode/mimo-v2.6-flash-free": {
+      "aa": "mimo-v2-6-flash",
+      "coding": null,
+      "intelligence": 37.9,
+      "price_in": 0.14,
+      "price_out": 0.28
+    }
+  }
 }

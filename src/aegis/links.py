@@ -402,7 +402,9 @@ class Link:
             raise OpError(str(e.get("code", "error")), str(e.get("message", "")))
         return reply.get("result")
 
-    def sub(self, sid: str, channel: str, since: int | None, send: Send) -> None:
+    def sub(
+        self, sid: str, channel: str, since: int | None, send: Send, merge: bool = False
+    ) -> None:
         if self.state != "linked":
             send(
                 {
@@ -416,6 +418,10 @@ class Link:
         msg: dict = {"t": "sub", "sid": sid, "channel": channel}
         if since is not None:
             msg["since"] = since
+        if (
+            merge
+        ):  # the browser's ask, passed on: a far server too old to know it ignores it
+            msg["merge"] = True
         self._out.put_nowait(msg)
 
     def watch(self, sid: str, log_id: str | None) -> None:

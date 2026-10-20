@@ -7,7 +7,7 @@ catalogs of the installed Claude Code and OpenCode, the same ones the Settings
 model pick uses, fetches every language model Artificial Analysis scores (one
 request of the free API's daily allowance), and writes, for each catalog model
 it can map, the Coding and Intelligence Indexes and the list price per million
-tokens, sorted by Coding Index, with today's date. It prints every catalog
+tokens, sorted by Intelligence Index, with today's date. It prints every catalog
 model it could not map: those stay unranked until an alias below covers them.
 """
 
@@ -33,7 +33,10 @@ HARNESSES = ("claude-code", "opencode")
 BINS = {"claude-code": "claude", "opencode": "opencode", "codex": "codex"}
 
 # Catalog id -> Artificial Analysis slug, for names that do not normalize.
-ALIASES: dict[str, str] = {}
+ALIASES: dict[str, str] = {
+    "claude-haiku-4-5-20251001": "claude-4-5-haiku",
+    "opencode/nemotron-3-ultra-free": "nvidia-nemotron-3-ultra-550b-a55b",
+}
 
 
 def normalize(name: str) -> str:
@@ -106,7 +109,11 @@ def main() -> int:
                 models[m.value] = entry(aa[slug])
     ordered = sorted(
         models.items(),
-        key=lambda kv: (kv[1]["coding"] is not None, kv[1]["coding"] or 0.0),
+        key=lambda kv: (
+            kv[1]["intelligence"] is not None,
+            kv[1]["intelligence"] or 0.0,
+            kv[1]["coding"] or 0.0,
+        ),
         reverse=True,
     )
     data = {

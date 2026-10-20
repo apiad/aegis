@@ -215,3 +215,20 @@ def test_harness_versions_unknown_harness_under_accepted_is_an_error(tmp_path):
     assert "gemini" in got["error"] and got["accepted"] == {}
     c, _ = config(tmp_path, A + "harness_versions: {accepted: {gemini: ['1.0']}}\n")
     assert "error" in c.current().harness_versions
+
+
+def test_the_nudges_block():
+    from aegis.config import nudges_from
+
+    assert nudges_from(None) == {"silent_s": 2, "plan_min": 15}
+    assert nudges_from({"silent_s": False})["silent_s"] is False
+    assert nudges_from({"silent_s": 0.5, "plan_min": 1}) == {
+        "silent_s": 0.5,
+        "plan_min": 1,
+    }
+    for raw, key in (({"silent_s": -1}, "silent_s"), ({"plan_min": 0}, "plan_min"),
+                     ({"x": 1}, "x"), ({"plan_min": False}, "plan_min")):  # fmt: skip
+        got = nudges_from(raw)
+        assert got["silent_s"] == 2 and got["plan_min"] == 15
+        assert key in got["error"], raw
+    assert "error" in nudges_from(3)

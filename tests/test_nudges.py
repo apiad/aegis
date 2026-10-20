@@ -24,8 +24,16 @@ def refolded(s) -> dict:
 
 
 @pytest.fixture
-async def world(tmp_path, fake_claude):
-    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+def nudge_cfg():
+    """The nudges: block the world's .aegis.yaml gets; a test may change it
+    before it asks for ``world``."""
+    return {"silent_s": 0.5, "plan_min": 60}
+
+
+@pytest.fixture
+async def world(tmp_path, fake_claude, nudge_cfg):
+    block = ", ".join(f"{k}: {str(v).lower()}" for k, v in nudge_cfg.items())
+    (tmp_path / ".aegis.yaml").write_text(CONFIG + f"nudges: {{{block}}}\n")
     w = await World(tmp_path, fake_claude).start()
     yield w
     await w.stop()
@@ -35,28 +43,24 @@ async def world(tmp_path, fake_claude):
 def fast(monkeypatch):
     """Before `world`: its loop reads EVERY_S as it goes to sleep."""
     monkeypatch.setattr(nudges, "EVERY_S", 0.1)
-    monkeypatch.setattr(nudges, "IDLE_S", 0.5)
-    monkeypatch.setattr(nudges, "PLAN_STALE_S", 3600.0)
 
 
-async def test_a_silent_idle_session_is_asked_once_per_stretch(
-    fast, world, monkeypatch
-):
-    # Shorter than `fast`'s, so the three idle stretches below fit the fast
-    # lane's budget under load (#359); every wait is a multiple of it.
-    monkeypatch.setattr(nudges, "IDLE_S", 0.2)
+@pytest.mark.parametrize("nudge_cfg", [{"silent_s": 0.2, "plan_min": 60}])
+async def test_a_silent_idle_session_is_asked_once_per_stretch(fast, world):
+    # Short, so the three idle stretches below fit the fast lane's budget
+    # under load (#359); every wait is a multiple of it.
     a = await world.spawn()
     await turn(a, "write the summary")
     await until(lambda: nudges_of(a, "idle"), timeout=5, what="the idle nudge")
     (n,) = nudges_of(a, "idle")
-    assert "What are you doing: done, needs you, or something else?" in n["md"]
+    assert "Your last turn ended without turn_end, so your card reads done." in n["md"]
     assert not any(
         "aegis:nudge" in (e.get("md") or "") for e in a.entries() if e["kind"] == "user"
     )
     # The fake answers the nudge with a turn that says nothing: that is not a
     # new stretch, so there is no second nudge.
     await until(lambda: a.status == "idle", timeout=5, what="the nudge's turn")
-    await asyncio.sleep(3 * nudges.IDLE_S)
+    await asyncio.sleep(0.6)
     assert len(nudges_of(a, "idle")) == 1
     # The person writes again: a new stretch, asked once more.
     await turn(a, "and the tests")
@@ -82,11 +86,10 @@ async def test_a_session_waiting_on_a_monitor_is_not_nudged(fast, world):
     assert a.wire()["attention"] == "waiting" and inbox(a) == []
 
 
-async def test_a_stale_plan_is_reminded_once_per_plan(fast, world, monkeypatch):
-    monkeypatch.setattr(nudges, "IDLE_S", 3600.0)
-    # Each `/busy 0.4` works past it; halved from 0.6 and 0.8 for the fast
-    # lane's budget under load (#359).
-    monkeypatch.setattr(nudges, "PLAN_STALE_S", 0.3)
+# Each `/busy 0.4` works past 0.3 s (plan_min 0.005); halved from 0.6 and 0.8
+# for the fast lane's budget under load (#359).
+@pytest.mark.parametrize("nudge_cfg", [{"silent_s": False, "plan_min": 0.005}])
+async def test_a_stale_plan_is_reminded_once_per_plan(fast, world):
     a = await world.spawn()
     plan = [
         {"text": "build it", "state": "doing"},
@@ -127,7 +130,8 @@ def _standing(how="silent", at=0.0, report=None, **kw) -> dict:
 
 
 def test_due_leaves_alone_what_explains_the_silence():
-    ok = dict(attention="done", worker=False, idle=True, now=10_000.0)
+    ok = dict(attention="done", worker=False, idle=True, now=10_000.0,
+              silent_s=600.0, plan_s=900.0)  # fmt: skip
     assert due(_standing(), **ok) == "idle"
     for how in ("interrupted", "error", "command"):
         assert due(_standing(how=how), **ok) is None, how
@@ -139,10 +143,34 @@ def test_due_leaves_alone_what_explains_the_silence():
     assert due({**_standing(), "ended": None}, **ok) is None
     # A meta written before the nudges has none of their keys.
     assert due({"plan": [], "report": None}, **ok) is None
+    # Within silent_s of the end, or with the nudge off, not yet or never.
+    assert due(_standing(at=9_999.0), **ok) is None
+    assert due(_standing(), **{**ok, "silent_s": None}) is None
+
+
+@pytest.mark.parametrize("nudge_cfg", [{"silent_s": 2, "plan_min": 60}])
+async def test_a_silent_turn_is_nudged_within_seconds(world):
+    # The default silent_s, with the 15 s tick: the turn's end does it.
+    import time
+
+    a = await world.spawn()
+    await turn(a, "write the summary")
+    t0 = time.time()
+    await until(lambda: nudges_of(a, "idle"), timeout=4, what="the idle nudge")
+    assert time.time() - t0 < 3.5
+
+
+@pytest.mark.parametrize("nudge_cfg", [{"silent_s": False, "plan_min": 60}])
+async def test_silent_s_false_turns_the_nudge_off(fast, world):
+    a = await world.spawn()
+    await turn(a, "write the summary")
+    await asyncio.sleep(1)
+    assert nudges_of(a, "idle") == []
 
 
 def test_due_measures_a_stale_plan_in_work_time():
-    ok = dict(attention="review", worker=False, idle=True, now=0.0)
+    ok = dict(attention="review", worker=False, idle=True, now=0.0,
+              silent_s=600.0, plan_s=900.0)  # fmt: skip
     stale = _standing(
         how="reported",
         plan=[{"text": "a", "state": "doing"}],
@@ -153,3 +181,61 @@ def test_due_measures_a_stale_plan_in_work_time():
     assert due({**stale, "plan_mark": 1200.0}, **ok) is None
     assert due({**stale, "nudged": ["plan"]}, **ok) is None
     assert due({**stale, "plan": [{"text": "a", "state": "done"}]}, **ok) is None
+
+
+# -- the plan notice source ---------------------------------------------------------
+from aegis.notice_sources import Item  # noqa: E402
+from aegis.nudges import plan_items, stale_now  # noqa: E402
+
+
+def test_stale_now_adds_the_running_work_stretch():
+    st = {"clock": {"work_s": 100.0, "idle_s": 0.0, "at": 1000.0, "running": "work"},
+          "plan_mark": 40.0}  # fmt: skip
+    assert stale_now(st, 1100.0) == 160.0
+    st["clock"]["running"] = "idle"
+    assert stale_now(st, 1100.0) == 60.0
+    assert stale_now({"clock": None, "plan_mark": None}, 1.0) == 0.0
+
+
+def _plan(done=3, total=7, doing="write the stall check", work=300.0):
+    items = [{"text": f"i{k}", "state": "done"} for k in range(done)]
+    items.append({"text": doing, "state": "doing"})
+    items += [{"text": f"p{k}", "state": "pending"} for k in range(total - done - 1)]
+    return {"plan": items, "plan_mark": 0.0,
+            "clock": {"work_s": work, "idle_s": 0.0, "at": 0.0, "running": "idle"}}  # fmt: skip
+
+
+def test_plan_items():
+    assert plan_items(_plan(), {"stale_min": 10.0}, 0.0) == [
+        Item("progress", "info", "plan 3/7 · doing: write the stall check")
+    ]
+    assert plan_items(_plan(work=601.0), {"stale_min": 10.0}, 0.0)[1] == Item(
+        "stale",
+        "warn",
+        "plan untouched for 10 min of work · update it with plan_update",
+    )
+    st = _plan()
+    for i in st["plan"]:
+        i["state"] = "done"
+    assert plan_items(st, {"stale_min": 10.0}, 0.0) == []
+    assert plan_items({"plan": [], "clock": None, "plan_mark": None}, {}, 0.0) == []
+
+
+def test_a_plan_with_nothing_doing_names_the_next_item():
+    st = _plan()
+    st["plan"][3]["state"] = "pending"
+    assert (
+        plan_items(st, {"stale_min": 10.0}, 0.0)[0].text
+        == "plan 3/7 · next: write the stall check"
+    )
+
+
+async def test_plan_update_never_answers_with_the_plan_warning(world):
+    a = await world.spawn()
+    await turn(a, mcp("plan_update", items=[{"text": "a", "state": "doing"}]))
+    stale = Item("stale", "warn", "plan untouched for 12 min of work")
+    world.app.notices.set(a.log_id, "plan", [stale])  # as a tick would
+    said = await turn(a, mcp("plan_update", items=[{"text": "a", "state": "doing"}]))
+    assert said.startswith("mcp ok: plan saved")
+    assert "plan:stale" not in said
+    assert "plan:stale" not in a.items_sent

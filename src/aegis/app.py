@@ -18,14 +18,19 @@ and ``schedule.list``, ``schedule.runs``, ``schedule.create``,
 ``schedule.update``, ``schedule.delete``, ``schedule.pause``,
 ``schedule.resume``, ``schedule.fire`` and ``schedule.test``
 (``schedule_ops.py``).
-Channels: ``sessions`` (every open session's meta; patches ``upsert`` and
-``remove``), ``transcript:<log_id>`` (any session, archived included; a
+Channels: ``sessions`` (every open session's meta; patches ``upsert``,
+``merge`` to a subscriber that asks, and ``remove``, which carries the
+``archived`` row when a close archived it), ``transcript:<log_id>`` (any session, archived included; a
 subscribe ``since`` a revision gets what changed after it), ``quota`` (each
 provider's windows; patches ``set``), ``host`` (CPU, RAM and disk while someone
 watches; patches ``set``), ``journal`` (when its rows last changed; patches
-``set``), ``schedules`` (every schedule's state; patches ``upsert`` and
-``remove``, ``schedules.py``) and ``config`` (``.aegis.yaml`` as aegis holds
-it; patches ``set``).
+``set``), ``repos:<log_id>`` (the repos a session wrote to and their state;
+patches ``set``, ``repos/service.py``), ``schedules`` (every schedule's state; patches ``upsert`` and
+``remove``, ``schedules.py``), ``workflow-runs`` (every workflow run's summary,
+without its tree and story; patches ``upsert``, or ``merge`` to a subscriber
+that asks), ``workflow:<run>`` (one run whole, for its card; patches ``set``),
+``workflows`` (every run whole, for a client older than #525) and ``config``
+(``.aegis.yaml`` as aegis holds it; patches ``set``).
 """
 
 from __future__ import annotations
@@ -90,6 +95,7 @@ from .push import register_push_ops
 from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
+from .repos.service import Repos
 from .layout_ops import register_layout_ops
 from .fs_ops import register_fs_ops
 from . import fs_paths, fs_trash
@@ -419,6 +425,14 @@ class App:
         reg.quota = self.quota
         self.journal = Journal(roots.state_root, self.publish)
         reg.journal = self.journal
+        self.repos = Repos(
+            self.journal.path,
+            self.publish,
+            lambda: {s.log_id: s.handle for s in self.sessions.open_sessions()},
+            lambda name: self.channels.subscribers(name),
+            roots.harness_cwd,
+        )
+        self.journal.on_live = self.repos.live
         self.schedules = Schedules(self)
         reg.schedules = self.schedules
         self.workflows = Workflows(self)
@@ -440,7 +454,8 @@ class App:
         self.recaps = Recaps(self)
         self.side_notes = SideNotes(self)
         self.sessions.side_notes = self.side_notes
-        self.nudges = Nudges(self.sessions)
+        self.nudges = Nudges(self.sessions, self.config)
+        self.sessions.nudges = self.nudges
         self.notices = Notices(self)
         self.sessions.notices = self.notices
         self.watchers = Watchers()
@@ -699,6 +714,7 @@ class App:
         # Before sessions.boot(), which records server_stopped for every session
         # whose turn the last run's end cut: the journal must see those records.
         self.journal.start()
+        self.repos.start()
         self.sessions.boot(restarts.started(self.roots.state_root))
         await self.terminals.boot()
         # No browser's upload survives a restart (attachments.py).
@@ -706,12 +722,17 @@ class App:
         # The Files view's deletes are kept 30 days (fs_trash.py).
         fs_trash.purge(self.roots.state_root)
         self.monitors.boot()
+        # No session notice until every source has set its items (notices.py).
+        self.notices.boot_begin()
         # Before the monitors are armed, so a wake cannot start a turn ahead of
         # the continue; before the queues, so a worker the registry continued
         # needs no second message from its queue.
         await self.sessions.continue_after_boot()
         self.monitors.arm_all()
         await self.queues.resume_after_boot(self.queues.boot())
+        for s in list(self.sessions.sessions.values()):
+            self.nudges.refresh(s)
+        self.notices.boot_end()
         # After the sessions and their continues, so a live run is found live.
         self.schedules.boot()
         self.schedules.start()
@@ -784,6 +805,7 @@ class App:
         await self.terminals.shutdown()
         await self.side_notes.shutdown()
         await self.sessions.shutdown()
+        await self.repos.stop()
         await asyncio.to_thread(self.journal.stop)
         restarts.stopped(self.roots.state_root, stopping_at)
 
@@ -857,6 +879,9 @@ class App:
             return self.host.snapshot
         if name == "journal":
             return self.journal.snapshot
+        if name.startswith("repos:"):
+            log_id = name.removeprefix("repos:")
+            return lambda: self.repos.snapshot(log_id)
         if name == "config":
             return lambda: self.config.current().wire()
         if name == "links":
@@ -865,6 +890,13 @@ class App:
             return self.schedules.wire_all
         if name == "workflows":
             return self.workflows.wire_all
+        if name == "workflow-runs":
+            return self.workflows.summaries
+        if name.startswith("workflow:"):
+            run = name.removeprefix("workflow:")
+            if run not in self.workflows.runs:
+                return None
+            return lambda: self.workflows.wire(run)
         if name == "toasts":
             # Always empty: a browser that subscribes later never replays a toast.
             return lambda: []

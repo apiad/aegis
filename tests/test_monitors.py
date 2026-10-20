@@ -137,3 +137,176 @@ def test_a_session_monitor_has_no_eta():
         readings=[[0.0, 0], [10.0, 50]],
     )
     assert m.card()["eta_at"] is None and m.card()["eta_basis"] is None
+
+
+# -- the monitors notice source (notices.py, per-session items) ---------------------
+from aegis.monitors import monitor_items  # noqa: E402
+
+CFG = {"stall_min": 15.0, "broken_checks": 3, "overdue_min": 10.0, "wake": True}
+IDS = {"m2", "m5"}  # checked at least once by this process
+NOW = 100_000.0
+
+
+def mon(
+    id="m5", desc="tests", progress="cat p", interval=10.0, started=NOW - 3600, **kw
+):
+    return Monitor(
+        id=id, owner="a", description=desc, done="false", cwd="/",
+        progress=progress, interval_s=interval, started_at=started, **kw,
+    )  # fmt: skip
+
+
+def by_key(items):
+    return {i.key: i for i in items}
+
+
+def test_live_monitors_make_one_info_line_each():
+    a = mon("m2", "build", readings=[[NOW - 600, 10], [NOW - 60, 60]], last_progress=60)
+    b = mon("m5", "tests", readings=[[NOW - 30, 40]], last_progress=40)
+    live = [i for i in monitor_items([a, b], CFG, NOW, IDS) if i.level == "info"]
+    assert [i.key for i in live] == ["m2:live", "m5:live"]
+    assert live[0].text.startswith("monitor m2 build 60% eta ")
+    assert live[1].text == "monitor m5 tests 40%"
+
+
+def test_a_progress_unchanged_for_stall_min_is_stalled():
+    m = mon(readings=[[NOW - 901, 40]], last_progress=40)
+    st = by_key(monitor_items([m], CFG, NOW, IDS))["m5:stalled"]
+    assert (st.level, st.wake) == ("warn", True)
+    assert (
+        st.text == 'monitor m5 "tests" at 40% for 15 min · look, or monitor_cancel it'
+    )
+    assert st.clear == "monitor m5 moves again, or has ended"
+
+
+def test_stall_needs_three_intervals_too():
+    m = mon(interval=600.0, readings=[[NOW - 901, 40]], last_progress=40)
+    assert "m5:stalled" not in by_key(monitor_items([m], CFG, NOW, IDS))
+
+
+def test_a_monitor_without_progress_is_never_stalled():
+    m = mon(progress=None, started=NOW - 99_999)
+    assert "m5:stalled" not in by_key(monitor_items([m], CFG, NOW, IDS))
+
+
+def test_no_reading_yet_counts_from_the_start():
+    assert "m5:stalled" in by_key(
+        monitor_items([mon(started=NOW - 901)], CFG, NOW, IDS)
+    )
+    assert "m5:stalled" not in by_key(
+        monitor_items([mon(started=NOW - 60)], CFG, NOW, IDS)
+    )
+
+
+def test_a_check_bad_for_broken_checks_intervals_is_broken():
+    bad = {"rc": 127, "verdict": "command not found", "bad": True, "out": "", "err": ""}
+    m = mon(checks={"progress": bad | {"since": NOW - 31}}, readings=[[NOW - 5, 1]])
+    br = by_key(monitor_items([m], CFG, NOW, IDS))["m5:broken"]
+    assert br.text == 'monitor m5 "tests" progress check cannot run: command not found'
+    assert br.wake and br.level == "warn"
+    m = mon(checks={"progress": bad | {"since": NOW - 29}}, readings=[[NOW - 5, 1]])
+    assert "m5:broken" not in by_key(monitor_items([m], CFG, NOW, IDS))
+
+
+def test_past_its_eta_by_half_and_by_overdue_min_is_overdue():
+    # 0 -> 50 in 1000 s: eta at started + 2000; overdue once now - eta >= max(1000, 600)
+    started = NOW - 3100
+    m = mon(
+        started=started, readings=[[started, 0], [started + 1000, 50]], last_progress=50
+    )
+    ov = by_key(monitor_items([m], {**CFG, "stall_min": 999.0}, NOW, IDS))["m5:overdue"]
+    assert ov.text == 'monitor m5 "tests" past its eta by 18 min at 50%'
+    m.started_at, m.readings = NOW - 2900, [[NOW - 2900, 0], [NOW - 1900, 50]]
+    assert "m5:overdue" not in by_key(
+        monitor_items([m], {**CFG, "stall_min": 999.0}, NOW, IDS)
+    )
+
+
+def test_a_session_watcher_gets_only_the_info_line():
+    m = mon(
+        progress=None, started=NOW - 99_999, sessions=[{"log_id": "b", "handle": "b"}]
+    )
+    assert [i.level for i in monitor_items([m], CFG, NOW, IDS)] == ["info"]
+
+
+def test_wake_false_in_config_sets_items_without_wake():
+    m = mon(readings=[[NOW - 901, 40]], last_progress=40)
+    st = by_key(monitor_items([m], {**CFG, "wake": False}, NOW, IDS))["m5:stalled"]
+    assert st.wake is False
+
+
+def test_no_monitors_no_items():
+    assert monitor_items([], CFG, NOW, IDS) == []
+
+
+async def _stall_world(tmp_path, fake_claude, stall_min):
+    from .test_agents import CONFIG, World
+
+    (tmp_path / ".aegis.yaml").write_text(
+        CONFIG + f"notices:\n  monitors: {{stall_min: {stall_min}}}\n"
+    )
+    return await World(tmp_path, fake_claude).start()
+
+
+def _stall_wakes(s) -> list[dict]:
+    from .test_agents import inbox
+
+    return [e for e in inbox(s) if ":stalled · warn" in e["title"]]
+
+
+async def test_a_stalled_monitor_wakes_its_idle_owner_once(tmp_path, fake_claude):
+    import asyncio
+
+    from .conftest import until
+    from .test_agents import turn
+
+    w = await _stall_world(tmp_path, fake_claude, 0.005)  # 0.3 s; 3 intervals 0.6 s
+    try:
+        a = await w.spawn()
+        await turn(a, "arm it")
+        mons = w.app.sessions.monitors
+        m = mons.start(a.log_id, str(tmp_path), description="tests", done="false",
+                       progress="echo 40", interval_s=0.2)  # fmt: skip
+        await until(lambda: _stall_wakes(a), timeout=5, what="the stall wake")
+        assert f'monitor {m.id} "tests" at 40%' in _stall_wakes(a)[0]["md"]
+        await until(lambda: a.status == "idle", timeout=5, what="the woken turn")
+        await asyncio.sleep(0.6)
+        assert len(_stall_wakes(a)) == 1 and m.id in mons.items  # still live
+    finally:
+        await w.stop()
+
+
+async def test_a_lowered_stall_min_applies_in_a_running_server(tmp_path, fake_claude):
+    from .conftest import until
+    from .test_agents import CONFIG, turn
+
+    w = await _stall_world(tmp_path, fake_claude, 60)
+    try:
+        a = await w.spawn()
+        await turn(a, "arm it")
+        w.app.sessions.monitors.start(a.log_id, str(tmp_path), description="tests",
+                                      done="false", progress="echo 40", interval_s=0.2)  # fmt: skip
+        (tmp_path / ".aegis.yaml").write_text(
+            CONFIG + "notices:\n  monitors: {stall_min: 0.005}\n"
+        )
+        await until(lambda: _stall_wakes(a), timeout=5, what="the wake after the edit")
+    finally:
+        await w.stop()
+
+
+def test_no_warning_before_the_monitors_first_check_in_this_process():
+    m = mon(
+        readings=[[NOW - 9_999, 40]], last_progress=40
+    )  # stale only across a restart
+    assert [i.level for i in monitor_items([m], CFG, NOW, checked=set())] == ["info"]
+    assert "m5:stalled" in by_key(monitor_items([m], CFG, NOW, checked={"m5"}))
+
+
+def test_each_live_monitor_is_its_own_status_line():
+    ms = [
+        mon(f"m{k}", f"job {k}", readings=[[NOW - 5, 10]], last_progress=10)
+        for k in range(4)
+    ]
+    info = [i for i in monitor_items(ms, CFG, NOW, checked=set()) if i.level == "info"]
+    assert [i.key for i in info] == ["m0:live", "m1:live", "m2:live", "m3:live"]
+    assert info[0].text == "monitor m0 job 0 10%"

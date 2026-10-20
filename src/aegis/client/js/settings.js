@@ -251,9 +251,16 @@ export class Settings {
       this.agents(),
       this.modelsView(),
       this.queues(),
+      this.fieldSection("generators"),
+      this.terminals(),
+      this.fieldSection("memory"),
+      this.fieldSection("context"),
+      this.fieldSection("nudges"),
+      this.fieldSection("notices"),
       this.park(),
       this.untested(),
       this.workflows(),
+      this.fieldSection("network"),
     );
     this.box.replaceChildren(full, this.bar());
     this.mark();
@@ -811,10 +818,11 @@ export class Settings {
   untested() {
     const hv = (this.doc.harness_versions ||= { person: "ask", agent: "warn", startup: "warn", accepted: {} });
     hv.accepted ||= {};
-    const pickRow = (key, values, words) => {
+    const pickRow = (key, values, words, path) => {
       // Named hv-*: a bare "agent" would match the queues' agent pickers.
       const sel = select(`hv-${key}`, values, hv[key]);
       sel.setAttribute("aria-label", `Untested versions ${words}`);
+      sel.dataset.key = path;
       sel.addEventListener("input", () => {
         hv[key] = sel.value;
         this.touch();
@@ -822,9 +830,9 @@ export class Settings {
       return h("div", { className: "set-queue-line" }, h("span", { className: "set-name", textContent: words }), sel);
     };
     const rows = [
-      pickRow("person", ["ask", "warn", "off"], "when a person starts one"),
-      pickRow("agent", ["warn", "off"], "when an agent starts one"),
-      pickRow("startup", ["warn", "off"], "at startup"),
+      pickRow("person", ["ask", "warn", "off"], "when a person starts one", "harness_versions.person"),
+      pickRow("agent", ["warn", "off"], "when an agent starts one", "harness_versions.agent"),
+      pickRow("startup", ["warn", "off"], "at startup", "harness_versions.startup"),
     ];
     const accepted = Object.entries(hv.accepted).flatMap(([harness, versions]) =>
       versions.map((v) =>
@@ -848,6 +856,7 @@ export class Settings {
     const list = accepted.length
       ? h("div", { className: "set-queues", id: "set-accepted" }, h("p", { className: "set-none", textContent: "Accepted for good:" }), ...accepted)
       : h("p", { className: "set-none", id: "set-accepted", textContent: "No version accepted for good." });
+    list.dataset.key = "harness_versions.accepted";
     return h("section", { id: "set-untested" }, head, note, h("div", { className: "set-queues" }, box), list);
   }
 
@@ -927,9 +936,9 @@ export class Settings {
       if (add.value) set([...list, add.value]);
     });
     const info = (m) => this.modelInfo(a.harness, m);
-    // Ranked before unranked, then Coding Index down, Intelligence Index
+    // Ranked before unranked, then Intelligence Index down, Coding Index
     // breaking ties: negative when p goes first.
-    const key = (m) => ((x) => (x?.coding == null ? [0, 0, 0] : [1, x.coding, x.intelligence ?? 0]))(info(m));
+    const key = (m) => ((x) => (x?.intelligence == null ? [0, 0, 0] : [1, x.intelligence, x.coding ?? 0]))(info(m));
     const order = (p, q) => {
       const [x, y] = [key(p), key(q)];
       return y[0] - x[0] || y[1] - x[1] || y[2] - x[2];
@@ -953,7 +962,7 @@ export class Settings {
       box.draw();
     };
     box.draw = () => {
-      const score = (x) => (x?.coding == null ? "unranked" : x.coding.toFixed(1));
+      const score = (x) => (x?.intelligence == null ? "unranked" : x.intelligence.toFixed(1));
       const now = Date.now() / 1000;
       rows.replaceChildren(
         ...list.map((m, i) => {
@@ -981,7 +990,7 @@ export class Settings {
             { className: until ? "cool" : "", title: x?.label || m },
             h("span", { className: "i", textContent: i + 1 }),
             h("span", { className: "m", textContent: until ? `${m} · cooling until ${until}` : m }),
-            h("span", { className: x?.coding == null ? "sc none" : "sc", textContent: score(x) }),
+            h("span", { className: x?.intelligence == null ? "sc none" : "sc", textContent: score(x) }),
             h("span", { className: "mv" }, up, down, rm),
           );
           li.dataset.model = m;
@@ -1074,8 +1083,8 @@ export class Settings {
         cell("nm", x.value),
         cell("h", label(x.harness)),
         cell("rk", x.rank ? `#${x.rank}` : "—"),
-        cell("ci", x.coding != null ? x.coding.toFixed(1) : "unranked"),
-        cell("ii", x.intelligence != null ? x.intelligence.toFixed(1) : "—"),
+        cell("ci", x.coding != null ? x.coding.toFixed(1) : "—"),
+        cell("ii", x.intelligence != null ? x.intelligence.toFixed(1) : "unranked"),
         cell("pr", modelPrice(x) || "—"),
         cell("by", [used, cool].filter(Boolean).join(" · ")),
       );
@@ -1089,7 +1098,7 @@ export class Settings {
   agents() {
     const v = this.wire.vocab;
     const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Agents" }), button("Add agent", "set-add-agent", () => {
-      this.doc.agents.push({ name: "", harness: v.harnesses[0], model: "", models: [], effort: "", permission: "", priming: null });
+      this.doc.agents.push({ name: "", harness: v.harnesses[0], model: "", models: [], effort: "", permission: "", priming: null, keep_harness_tools: [] });
       this.touch();
       this.draw();
       this.box.querySelector(".set-agent:last-of-type input[name=name]")?.focus();
@@ -1109,6 +1118,12 @@ export class Settings {
     const effort = select("effort", ["", ...v.efforts], a.effort, (x) => (x ? `effort ${x}` : "effort?"));
     const permission = select("permission", ["", ...v.permissions], a.permission, (x) => (x ? `perm ${x}` : "perm?"));
     const priming = h("textarea", { name: "priming", value: a.priming || "", rows: 4, placeholder: "A system prompt every session of this agent starts with." });
+    // The key each control edits, which the coverage test looks for (#527).
+    harness.dataset.key = "agents.*.harness";
+    casc.dataset.key = "agents.*.model agents.*.models";
+    effort.dataset.key = "agents.*.effort";
+    permission.dataset.key = "agents.*.permission";
+    priming.dataset.key = "agents.*.priming";
     for (const el of [name, harness, effort, permission, priming]) {
       el.setAttribute("aria-label", `Agent ${el.name}`);
       el.addEventListener("input", () => {
@@ -1153,6 +1168,7 @@ export class Settings {
       this.draw();
     }, isDefault ? "set-default on" : "set-default");
     star.disabled = isDefault || !a.name;
+    star.dataset.key = "default_agent";
     const del = button("Remove", null, () => {
       this.doc.agents.splice(i, 1);
       if (this.doc.default_agent === a.name) this.doc.default_agent = null;
@@ -1161,9 +1177,35 @@ export class Settings {
       this.draw();
     }, "link danger");
     const fold = h("details", { className: "set-priming", open: !!a.priming }, h("summary", { textContent: a.priming ? "Priming" : "Add a priming" }), priming);
-    card.append(name, h("div", { className: "picks" }, harness, effort, permission), casc, h("div", { className: "set-card-foot" }, fold, star, del));
+    card.append(name, h("div", { className: "picks" }, harness, effort, permission), casc, h("div", { className: "set-card-foot" }, fold, this.keepFold(a), star, del));
     if (isDefault) card.classList.add("is-default");
     return card;
+  }
+
+  // The Claude Code tools aegis replaces that this agent keeps (agents.py
+  // _keep): one toggle each.
+  keepFold(a) {
+    a.keep_harness_tools ||= [];
+    const keep = a.keep_harness_tools;
+    const tools = [...new Set([...(this.wire.vocab.tools || []), ...keep])];
+    const summary = h("summary");
+    const say = () => (summary.textContent = keep.length ? `Keeps ${keep.join(", ")}` : "Keep a Claude Code tool");
+    say();
+    const toggles = tools.map((t) => {
+      const b = button(t, null, () => {
+        const i = keep.indexOf(t);
+        if (i < 0) keep.push(t);
+        else keep.splice(i, 1);
+        b.setAttribute("aria-pressed", String(i < 0));
+        say();
+        this.touch();
+      }, "set-tool");
+      b.setAttribute("aria-pressed", String(keep.includes(t)));
+      return b;
+    });
+    const fold = h("details", { className: "set-priming set-keep", open: keep.length > 0 }, summary, h("p", { className: "set-none", textContent: "Claude Code sessions start without these, since aegis has its own; an agent whose work needs one keeps it." }), h("div", { className: "set-tools" }, ...toggles));
+    fold.dataset.key = "agents.*.keep_harness_tools";
+    return fold;
   }
 
   // The queues' agent pickers follow a rename in place. Redrawing the form
@@ -1184,6 +1226,16 @@ export class Settings {
       const name = h("input", { name: "name", value: q.name, spellcheck: false, placeholder: "queue", className: "set-name" });
       const agent = select("agent", names, q.agent);
       const limit = h("input", { name: "max_parallel", type: "number", min: 1, value: q.max_parallel ?? "", className: "pick set-limit" });
+      // Left out reads as quiet: "" keeps a quiet: true the file spells out.
+      const quiet = select("quiet", ["", "false"], q.quiet === false ? "false" : "", (x) => (x ? "with a tab" : "quiet"));
+      quiet.setAttribute("aria-label", "Queue quiet");
+      quiet.addEventListener("input", () => {
+        q.quiet = quiet.value === "false" ? false : q.quiet === true ? true : null;
+        this.touch();
+      });
+      agent.dataset.key = "queues.*.agent";
+      limit.dataset.key = "queues.*.max_parallel";
+      quiet.dataset.key = "queues.*.quiet";
       for (const el of [name, agent, limit]) {
         el.setAttribute("aria-label", `Queue ${el.name}`);
         el.addEventListener("input", () => {
@@ -1197,7 +1249,7 @@ export class Settings {
         this.touch();
         this.draw();
       }, "link danger");
-      row.append(h("div", { className: "set-queue-line" }, name, h("span", { textContent: "runs" }), agent, limit, h("span", { textContent: "at a time" }), del));
+      row.append(h("div", { className: "set-queue-line" }, name, h("span", { textContent: "runs" }), agent, limit, h("span", { textContent: "at a time" }), quiet, del));
       return row;
     });
     const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Queues" }), button("Add queue", "set-add-queue", () => {
@@ -1211,6 +1263,126 @@ export class Settings {
     return h("section", {}, head, body);
   }
 
+  // Terminal profiles (term_profiles.py): a command, where it runs, when it
+  // restarts, and its env and access maps as NAME=value lines.
+  terminals() {
+    this.doc.terminals ||= [];
+    const restarts = this.wire.vocab?.restarts || ["no", "on-failure", "always"];
+    const lines = (m) => Object.entries(m || {}).map(([k, v]) => `${k}=${v}`).join("\n");
+    const parse = (text) =>
+      Object.fromEntries(
+        text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
+          const i = l.indexOf("=");
+          return i < 0 ? [l, ""] : [l.slice(0, i).trim(), l.slice(i + 1).trim()];
+        }),
+      );
+    const keys = { cmd: "terminals.*.cmd", cwd: "terminals.*.cwd", restart: "terminals.*.restart", env: "terminals.*.env", access: "terminals.*.access" };
+    const rows = this.doc.terminals.map((t, i) => {
+      const row = h("div", { className: "set-queue" });
+      row.dataset.row = `terminals.${t.name}`;
+      const name = h("input", { name: "name", value: t.name, spellcheck: false, placeholder: "profile", className: "set-name" });
+      const cmd = h("input", { name: "cmd", value: t.cmd, spellcheck: false, placeholder: "command", className: "pick set-cmd" });
+      const cwd = h("input", { name: "cwd", value: t.cwd, spellcheck: false, placeholder: "cwd", className: "pick set-cwd" });
+      const restart = select("restart", ["", ...restarts.filter((r) => r !== "no")], t.restart === "no" ? "" : t.restart, (x) => (x ? `restart ${x}` : "no restart"));
+      const env = h("textarea", { name: "env", value: lines(t.env), rows: 2, spellcheck: false, placeholder: "NAME=value, one a line" });
+      const access = h("textarea", { name: "access", value: lines(t.access), rows: 2, spellcheck: false, placeholder: "name=level, one a line" });
+      for (const el of [name, cmd, cwd, restart, env, access]) {
+        el.setAttribute("aria-label", `Terminal ${el.name}`);
+        if (keys[el.name]) el.dataset.key = keys[el.name];
+        el.addEventListener("input", () => {
+          t[el.name] = el.name === "env" || el.name === "access" ? parse(el.value) : el.value;
+          if (el.name === "name") row.dataset.row = `terminals.${el.value}`;
+          this.touch();
+        });
+      }
+      const del = button("Remove", null, () => {
+        this.doc.terminals.splice(i, 1);
+        this.touch();
+        this.draw();
+      }, "link danger");
+      const more = h("details", { className: "set-priming", open: !!(Object.keys(t.env).length || Object.keys(t.access).length) }, h("summary", { textContent: "Environment and access" }), env, access);
+      row.append(h("div", { className: "set-queue-line" }, name, cmd, h("span", { textContent: "in" }), cwd, restart, del), more);
+      return row;
+    });
+    const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Terminals" }), button("Add terminal", "set-add-terminal", () => {
+      this.doc.terminals.push({ name: "", cmd: "", cwd: ".", restart: "", env: {}, access: {} });
+      this.touch();
+      this.draw();
+    }, "link"));
+    const body = rows.length
+      ? h("div", { className: "set-queues", id: "set-terminals" }, ...rows)
+      : h("p", { className: "set-none", id: "set-terminals", textContent: "No terminal profiles. The + view still offers a login shell." });
+    return h("section", {}, head, body);
+  }
+
+  // A section drawn from the wire's schema (config.py fields()): a row per
+  // key, blank for its default, which the placeholder shows. Each block is
+  // one box, which a finding on it marks.
+  fieldSection(id) {
+    const sec = this.wire.sections?.[id];
+    const fields = (this.wire.schema || []).filter((f) => f.section === id);
+    if (!sec || !fields.length) return null;
+    const s = (this.doc.settings ||= {});
+    const boxes = new Map();
+    // A key under a switch that is off has no row: it is not read.
+    const off = (k) => k.split(".").some((_, i, parts) => i > 0 && s[parts.slice(0, i).join(".")] === false);
+    for (const f of fields.filter((f) => !off(f.key))) {
+      const block = f.key.split(".")[0];
+      if (!boxes.has(block)) {
+        const b = h("div", { className: "set-queue" });
+        b.dataset.row = block;
+        boxes.set(block, b);
+      }
+      boxes.get(block).append(this.fieldRow(f, s, sec.title, () => this.box.querySelector(`#set-${id}`)?.replaceWith(this.fieldSection(id))));
+    }
+    const head = h("div", { className: "set-section-head" }, h("h3", { textContent: sec.title }));
+    return h("section", { id: `set-${id}` }, head, h("p", { className: "set-none", textContent: sec.note }), h("div", { className: "set-queues" }, ...boxes.values()));
+  }
+
+  fieldRow(f, s, title, redraw) {
+    const k = f.key;
+    const words = (k.includes(".") ? k.slice(k.indexOf(".") + 1) : k).replaceAll(/[._]/g, " ");
+    const shown = (v) => (Array.isArray(v) ? v.join(", ") : v === false ? "off" : v == null ? "" : String(v));
+    const set = (v) => {
+      if (v === undefined) delete s[k];
+      else s[k] = v;
+      this.touch();
+    };
+    let el;
+    if (f.kind === "agent") {
+      const names = this.doc.agents.filter((a) => a.harness === "claude-code").map((a) => a.name);
+      el = select(k, ["", ...names], s[k] || "", (x) => x || "off");
+      el.addEventListener("input", () => set(el.value || undefined));
+    } else if (f.kind === "switch") {
+      el = select(k, ["", "off"], s[k] === false ? "off" : "", (x) => x || "on");
+      el.addEventListener("input", () => {
+        set(el.value === "off" ? false : undefined);
+        redraw(); // the keys under it turn on or off
+      });
+    } else if (f.kind === "bool") {
+      el = select(k, ["", "true", "false"], k in s ? String(s[k]) : "", (x) => x || `default, ${f.default}`);
+      el.addEventListener("input", () => set(el.value ? el.value === "true" : undefined));
+    } else {
+      const number = (f.kind === "int" || f.kind === "number") && !f.off;
+      el = h("input", { type: number ? "number" : "text", step: "any", value: shown(s[k]), placeholder: shown(f.default), spellcheck: false, className: f.kind === "list" ? "pick set-cmd" : "pick set-num" });
+      if (f.off) el.title = "a number, or off";
+      el.addEventListener("input", () => {
+        const v = el.value.trim();
+        if (v === "") return set(undefined);
+        if (f.off && (v === "off" || v === "false")) return set(false);
+        if (f.kind === "list") return set(v.split(/[,\s]+/).filter(Boolean));
+        // A value that is not a number goes as typed, for the server to name.
+        if (f.kind === "int" || f.kind === "number") return set(Number.isFinite(Number(v)) ? Number(v) : v);
+        set(v);
+      });
+    }
+    el.setAttribute("aria-label", `${title} ${words}`);
+    el.dataset.key = k;
+    const row = h("div", { className: "set-queue-line set-field" }, h("span", { className: "set-name", textContent: words }), el);
+    if (f.kind === "switch") row.classList.add("set-switch");
+    return row;
+  }
+
   // One number per harness: the minutes a session of it must be safe to end
   // before aegis ends its process (park.py). Blank is off.
   park() {
@@ -1220,6 +1392,7 @@ export class Settings {
       const mins = this.doc.park[name] ? Math.round(this.doc.park[name] / 60) : "";
       const input = h("input", { name, type: "number", min: 1, value: mins, className: "pick set-limit", placeholder: "off" });
       input.setAttribute("aria-label", `Park ${name} sessions after minutes`);
+      input.dataset.key = "park.*";
       input.addEventListener("input", () => {
         if (input.value === "") delete this.doc.park[name];
         else this.doc.park[name] = Math.round(Math.max(1, Number(input.value)) * 60);
@@ -1244,7 +1417,9 @@ export class Settings {
     const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Workflows" }), button("Import…", "set-wf-import-btn", () => file.click()), file);
     const note = h("p", { className: "set-none", textContent: "The pool bounds the node sessions every workflow on this server has open at once; blank is the default, 4 in all, and an agent left blank is bound by the total. Saved workflows are files in .aegis/workflows beside .aegis.yaml: Import and Export act on them at once, without Save changes." });
     if (this.savedWf === undefined) this.loadSaved();
-    return h("section", { id: "set-workflows" }, head, note, h("div", { className: "set-queues", id: "set-wf-pool" }, ...this.poolRows()), h("div", { id: "set-wf-status" }, ...this.wfStatusNodes()), h("div", { id: "set-wf-list" }, ...this.savedRows()));
+    const pool = h("div", { className: "set-queues", id: "set-wf-pool" }, ...this.poolRows());
+    pool.dataset.key = "workflows.max_agents";
+    return h("section", { id: "set-workflows" }, head, note, pool, h("div", { id: "set-wf-status" }, ...this.wfStatusNodes()), h("div", { id: "set-wf-list" }, ...this.savedRows()));
   }
 
   // A row per agent, keyed by its data-row, which an agent's rename moves.

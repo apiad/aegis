@@ -1013,8 +1013,7 @@ async def test_real_claude_answers_both_nudges(tmp_path: Path, monkeypatch):
     from .test_agents import _free_port
 
     monkeypatch.setattr(nudges, "EVERY_S", 1.0)
-    monkeypatch.setattr(nudges, "IDLE_S", 5.0)
-    monkeypatch.setattr(nudges, "PLAN_STALE_S", 3600.0)
+    monkeypatch.setattr(nudges.Nudges, "timings", lambda self: (5.0, 3600.0))
     claude = shutil.which("claude")
     assert claude, "claude is not on PATH"
     (tmp_path / ".aegis.yaml").write_text(
@@ -1054,8 +1053,7 @@ async def test_real_claude_answers_both_nudges(tmp_path: Path, monkeypatch):
         await asyncio.sleep(8)
         assert len(nudged(s, "idle")) == 1
 
-        monkeypatch.setattr(nudges, "IDLE_S", 3600.0)
-        monkeypatch.setattr(nudges, "PLAN_STALE_S", 8.0)
+        monkeypatch.setattr(nudges.Nudges, "timings", lambda self: (3600.0, 8.0))
         r = await app.registry.call("session.spawn", {"agent": "sonnet"})
         p = app.sessions.sessions[r["log_id"]]
         await p.send(
@@ -1767,6 +1765,74 @@ async def test_a_real_agent_given_a_disk_notice_frees_only_what_it_created(
         assert not own.exists(), what
         assert shared.exists(), what
         assert prose and "?" not in prose[-1], what
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
+async def test_real_claude_is_woken_by_a_stalled_monitor_and_acts(tmp_path: Path):
+    """A real Sonnet arms a monitor whose progress never moves and ends its
+    turn to wait. With stall_min shortened to seconds, the stall warning
+    wakes it, once, and it acts on it (cancels the monitor or says so)
+    without being told what a stall is (#522)."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+        "notices:\n  monitors: {stall_min: 0.1}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+
+    def stalls(s):
+        return [
+            e
+            for e in s.entries()
+            if e["kind"] == "inbox" and ":stalled · warn" in e["title"]
+        ]
+
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "This is a test of aegis itself. Call monitor_start with description "
+            '"tests", done "false", progress "echo 40" and interval_s 1, then end '
+            "your turn to wait for it, without calling anything else."
+        )
+        await until(
+            lambda: app.monitors.items and s.status == "idle",
+            timeout=150,
+            what="the monitor armed and the turn ended",
+        )
+        await until(lambda: stalls(s), timeout=60, what="the stall wake")
+        await until(lambda: s.status == "idle", timeout=150, what="the answer to it")
+        said = " ".join(e["md"] for e in s.entries() if e["kind"] == "prose").lower()
+        assert not app.monitors.items or "stall" in said, (
+            "the agent neither cancelled the monitor nor mentioned the stall"
+        )
+        await asyncio.sleep(5)
+        assert len(stalls(s)) == 1
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)

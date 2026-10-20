@@ -174,7 +174,7 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · model cascades</span>
-  <span class="st"><span class="pill acc">built: #504 #512 #513 #514 and the cascade editor; scores not yet refreshed</span><span class="pill">2026-10-18</span></span>
+  <span class="st"><span class="pill acc">built: #504 #512 #513 #514 and the cascade editor; scores refreshed 2026-10-20</span><span class="pill">2026-10-18</span></span>
 </div>
 
 <div class="wrap">
@@ -218,7 +218,7 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
   </div>
   <div class="card">
     <h4>Best first</h4>
-    <p>A ranking file in the package orders known models by Artificial Analysis's Coding Index. Onboarding sorts by it, Settings can sort by it, and the config doctor warns when a cascade puts a lower-ranked model above a higher one.</p>
+    <p>A ranking file in the package orders known models by Artificial Analysis's Intelligence Index, the Coding Index breaking ties. Onboarding sorts by it, Settings can sort by it, and the config doctor warns when a cascade puts a lower-ranked model above a higher one.</p>
   </div>
 </div>
 <div class="stats">
@@ -239,8 +239,8 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 <tr><td>What failure means here</td><td>A weak model ahead of a strong one</td><td class="why"><span class="who">maintainer</span> A cascade that works but starts every session on a poor model has failed. Order is as important as fallback.</td></tr>
 <tr><td>Where the order comes from</td><td>A ranking file shipped in aegis, refreshed against Artificial Analysis at each release</td><td class="why"><span class="who">maintainer</span> No runtime dependency on an external API, and an ordering a reviewer can read in a diff.</td></tr>
 <tr><td>The scores in the package</td><td>Vendored: Coding Index, Intelligence Index and list price per model, in a file that ships with aegis</td><td class="why"><span class="who">maintainer</span> The same data serves cascades, every model pick and a Models view.</td></tr>
-<tr><td>Where people see them</td><td>A chip on every model pick (rank, Coding Index, price) and a Models view in Settings that marks the models in use</td><td class="why"><span class="who">maintainer</span> A person picking a model should know how good it is and what it costs at the moment of choosing.</td></tr>
-<tr><td>Which score orders</td><td>Artificial Analysis Coding Index; Intelligence Index breaks ties; unranked models go last</td><td class="why"><span class="who q">proposed</span> aegis agents write code. An unranked model is an unknown, and the anti-goal says an unknown must not sit above a known good model.</td></tr>
+<tr><td>Where people see them</td><td>A chip on every model pick (rank, Intelligence Index, price) and a Models view in Settings that marks the models in use</td><td class="why"><span class="who">maintainer</span> A person picking a model should know how good it is and what it costs at the moment of choosing.</td></tr>
+<tr><td>Which score orders</td><td>Artificial Analysis Intelligence Index; Coding Index breaks ties; models with no Intelligence Index go last</td><td class="why"><span class="who">maintainer</span> In the first real refresh, 11 of 20 models had no Coding Index, the newest Claude models among them, while all 20 had an Intelligence Index, so ordering by Coding Index put the best models last. An unranked model is an unknown, and the anti-goal says an unknown must not sit above a known good model.</td></tr>
 <tr><td>One harness per cascade</td><td>Every model in a cascade runs on the agent's harness</td><td class="why"><span class="who q">proposed</span> A session's conversation lives in its harness. OpenCode cannot continue a Claude Code conversation, so a cascade that crossed harnesses would lose the context it exists to keep.</td></tr>
 <tr><td><code>model</code> and <code>models</code></td><td><code>model: x</code> stays and means <code>models: [x]</code>. Both on one agent is a config error</td><td class="why"><span class="who q">proposed</span> Existing configs keep working unchanged.</td></tr>
 <tr><td>Granularity</td><td>Per turn: aegis switches the session's model after a failed turn</td><td class="why"><span class="who q">proposed</span> aegis sees turns, not the harness's HTTP requests. In-place model switching already exists (<code>Process.set("model", …)</code>).</td></tr>
@@ -311,7 +311,7 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 <li>An empty <code>models</code> list: error.</li>
 <li>A model the harness's catalog does not list: warn, as today for <code>model</code>.</li>
 <li>A model listed twice: warn; the second is ignored.</li>
-<li>A pair out of ranking order (a lower Coding Index above a higher one, or an unranked model above a ranked one): warn, naming both and their scores. Not an error: the person may have a reason.</li>
+<li>A pair out of ranking order (a lower Intelligence Index above a higher one, the Coding Index breaking ties, or an unranked model above a ranked one): warn, naming both and their scores. Not an error: the person may have a reason.</li>
 </ul>
 <p>The session's meta and <code>session_list</code> keep <code>model</code> as the model in use, and add <code>cascade</code>: the agent's list and the index in use. A resumed session reads its cascade from the spawn record, never from the edited <code>.aegis.yaml</code>, as <code>SpawnSpec</code> does for everything else.</p>
 
@@ -386,24 +386,24 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 <li>Read the model catalogs of the installed OpenCode and Claude Code (the same catalog the Settings model pick uses).</li>
 <li>Fetch the Artificial Analysis free endpoint (<code>GET /api/v2/language/models/free</code>; its OpenAPI example lists <code>evaluations.artificial_analysis_coding_index</code> and <code>artificial_analysis_intelligence_index</code> in the free response; 100 requests a day, which one refresh fits in) with a key from <code>AA_API_KEY</code>.</li>
 <li>Map each catalog id to an Artificial Analysis slug. The mapping is by normalized name, and a hand-kept table in the script covers names that do not normalize. The script prints every catalog model it could not map, so a release notes what stays unranked.</li>
-<li>Write the file sorted by Coding Index, with the date.</li>
+<li>Write the file sorted by Intelligence Index, with the date.</li>
 </ol>
-<p>know-how/releasing.md gains a step: run the script, read the diff, commit it before the version bump. A <code>.rift.yaml</code> check warns when the file's <code>refreshed</code> date is older than 60 days. Artificial Analysis requires attribution where its data is shown, so Settings shows "Order by Artificial Analysis Coding Index, refreshed &lt;date&gt;" with a link, under every cascade.</p>
+<p>know-how/releasing.md gains a step: run the script, read the diff, commit it before the version bump. A <code>.rift.yaml</code> check warns when the file's <code>refreshed</code> date is older than 60 days. Artificial Analysis requires attribution where its data is shown, so Settings shows "Order by Artificial Analysis Intelligence Index, refreshed &lt;date&gt;" with a link, under every cascade.</p>
 <p>Users never call Artificial Analysis. A model released after the last aegis release is unranked until the next one, and goes last in proposals and sorting.</p>
 
 <h2 id="models"><span class="n">08</span>Seeing the models</h2>
 <p><span class="who">maintainer</span> The ranking is not only for cascades. Anywhere a person picks a model, they see how good it is and what it costs, and one view lists every model aegis knows with the agents that use it.</p>
 <h3 id="chips">The chip on every model pick</h3>
-<p>Each model in a pick (the new-tab composer's model chip, the <code>/model</code> completion menu, the Settings agent row, the cascade's "Add model") carries one short chip: the rank among the models of that harness, the Coding Index, and the price per million tokens in and out, or "free". An unranked model shows "unranked" and its price. The data reaches the client on the catalog's model wire (<code>Model.wire</code>, src/aegis/claude/control.py:41), which gains <code>rank</code>, <code>coding</code>, <code>intelligence</code>, <code>price_in</code> and <code>price_out</code>.</p>
+<p>Each model in a pick (the new-tab composer's model chip, the <code>/model</code> completion menu, the Settings agent row, the cascade's "Add model") carries one short chip: the rank among the models of that harness, the Intelligence Index, and the price per million tokens in and out, or "free", such as "#1 · 57.6 · $4 / $20". A model with no Intelligence Index shows "unranked" and its price. The data reaches the client on the catalog's model wire (<code>Model.wire</code>, src/aegis/claude/control.py:41), which gains <code>rank</code>, <code>coding</code>, <code>intelligence</code>, <code>price_in</code> and <code>price_out</code>.</p>
 <h3 id="view">The Models view</h3>
-<p>A new section in Settings, "Models", lists every model in the catalogs of the installed harnesses, one row each: name, harness, rank, Coding Index, Intelligence Index, price in and out, and "used by" with the agents (and their place in each cascade) that name it. Models in use are marked and come first; the rest follow by rank. The list can be filtered by harness and by "free only", and sorted by any column. Under it: "Scores by Artificial Analysis, refreshed &lt;date&gt;" with a link, which is the attribution the API asks for. The same data is readable by agents through a <code>models_list</code> tool, so an agent choosing an agent for a task can read rank and cost without a browser.</p>
+<p>A new section in Settings, "Models", lists every model in the catalogs of the installed harnesses, one row each: name, harness, rank, Coding Index, Intelligence Index ("unranked" when it has none), price in and out, and "used by" with the agents (and their place in each cascade) that name it. Models in use are marked and come first; the rest follow by rank. The list can be filtered by harness and by "free only", and sorted by any column. Under it: "Scores by Artificial Analysis, refreshed &lt;date&gt;" with a link, which is the attribution the API asks for. The same data is readable by agents through a <code>models_list</code> tool, so an agent choosing an agent for a task can read rank and cost without a browser.</p>
 <p><span class="try">try it</span>Sample models, scores and prices; not real Artificial Analysis data.</p>
 <div class="mock" id="mv">
   <div class="row2" style="margin-top:0">
     <select id="mv-h" aria-label="harness"><option value="">all harnesses</option><option>OpenCode</option><option>Claude Code</option></select>
     <label class="attr" style="margin:0;display:flex;gap:6px;align-items:center"><input type="checkbox" id="mv-free"> free only</label>
     <span class="attr" style="margin:0">sort:</span>
-    <select id="mv-sort" aria-label="sort"><option value="use">in use, then rank</option><option value="coding">Coding Index</option><option value="price">price</option></select>
+    <select id="mv-sort" aria-label="sort"><option value="use">in use, then rank</option><option value="coding">Coding Index</option><option value="intelligence">Intelligence Index</option><option value="price">price</option></select>
   </div>
   <div id="mv-rows" class="mvrows"></div>
   <div class="attr">Scores by <a href="https://artificialanalysis.ai">Artificial Analysis</a>, refreshed 2026-10-18</div>
@@ -414,7 +414,7 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 <h2 id="onboarding"><span class="n">09</span>Onboarding</h2>
 <p><code>doctor.propose</code> (used by <code>aegis init</code> and by Settings on a server with no config) changes in one place. When OpenCode is installed and its catalog has free models that can run an agent:</p>
 <ul>
-<li>It proposes an agent named <code>free</code> on OpenCode whose <code>models</code> are those free models, ranked models first by Coding Index, then unranked ones in catalog order.</li>
+<li>It proposes an agent named <code>free</code> on OpenCode whose <code>models</code> are those free models, ranked models first by Intelligence Index, then unranked ones in catalog order.</li>
 <li>With Claude Code also installed, <code>opus</code> stays the default agent and <code>free</code> is added beside it, with a <code>light</code> queue on <code>free</code> for reviews and research.</li>
 <li>Without Claude Code, <code>free</code> is the default agent and the <code>general</code> queue uses it.</li>
 <li>No paid model is ever proposed.</li>
@@ -422,7 +422,7 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 <p>A proposal with only one free model is a cascade of one, which works and needs no special case.</p>
 
 <h2 id="settings"><span class="n">10</span>Editing a cascade</h2>
-<p>In Settings, the agent row's model pick becomes an ordered list. Each row shows the model, its Coding Index or "unranked", and buttons to move it up or down or remove it. "Add model" offers the harness's catalog. "Sort by ranking" applies the ranking order. A warning under the list names the first pair out of ranking order. A model that is cooling shows dimmed, with the time it is free again.</p>
+<p>In Settings, the agent row's model pick becomes an ordered list. Each row shows the model, its Intelligence Index or "unranked", and buttons to move it up or down or remove it. "Add model" offers the harness's catalog. "Sort by ranking" applies the ranking order. A warning under the list names the first pair out of ranking order. A model that is cooling shows dimmed, with the time it is free again.</p>
 <p><span class="try">try it</span>Sample models and scores.</p>
 <div class="mock">
   <div class="set-agent">
@@ -435,7 +435,7 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
         <button class="link" id="casc-sort">Sort by ranking</button>
       </div>
       <div class="warn" id="casc-warn"></div>
-      <div class="attr">Order by <a href="https://artificialanalysis.ai">Artificial Analysis</a> Coding Index, refreshed 2026-10-18</div>
+      <div class="attr">Order by <a href="https://artificialanalysis.ai">Artificial Analysis</a> Intelligence Index, refreshed 2026-10-20</div>
     </div>
   </div>
 </div>
@@ -496,11 +496,11 @@ const $ = (id) => document.getElementById(id);
 
 // Sample models and scores for both mockups; not real Artificial Analysis data.
 const RANK = {
-  "opencode/kimi-k2.5-free": 41.2,
-  "opencode/glm-5-free": 38.9,
-  "opencode/minimax-m2.5-free": 33.4,
+  "opencode/kimi-k2.5-free": 54.0,
+  "opencode/glm-5-free": 50.1,
+  "opencode/minimax-m2.5-free": 47.2,
   "opencode/big-pickle": null,
-  "opencode/grok-code-free": 29.7,
+  "opencode/grok-code-free": 40.3,
 };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 
@@ -518,15 +518,15 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt
   ];
   const rank = {};
   for (const h of ["OpenCode", "Claude Code"])
-    M.filter((x) => x.h === h && x.c != null).sort((a, b) => b.c - a.c).forEach((x, k) => rank[x.m] = k + 1);
+    M.filter((x) => x.h === h && x.i != null).sort((a, b) => b.i - a.i || (b.c ?? -1) - (a.c ?? -1)).forEach((x, k) => rank[x.m] = k + 1);
   const price = (x) => x.free ? "free" : `$${x.pi} / $${x.po}`;
   const draw = () => {
     const h = $("mv-h").value, fo = $("mv-free").checked, so = $("mv-sort").value;
     const rows = M.filter((x) => (!h || x.h === h) && (!fo || x.free));
-    const c = (x) => x.c ?? -1;
-    rows.sort(so === "coding" ? (a, b) => c(b) - c(a) : so === "price" ? (a, b) => ((a.free ? 0 : a.po) ?? 1e9) - ((b.free ? 0 : b.po) ?? 1e9) : (a, b) => (!!b.by - !!a.by) || c(b) - c(a));
+    const c = (x) => x.c ?? -1, ii = (x) => x.i ?? -1;
+    rows.sort(so === "coding" ? (a, b) => c(b) - c(a) : so === "intelligence" ? (a, b) => ii(b) - ii(a) : so === "price" ? (a, b) => ((a.free ? 0 : a.po) ?? 1e9) - ((b.free ? 0 : b.po) ?? 1e9) : (a, b) => (!!b.by - !!a.by) || ii(b) - ii(a) || c(b) - c(a));
     $("mv-rows").innerHTML = `<div class="mvrow hd"><span>model</span><span class="h">harness</span><span>rank</span><span>coding</span><span class="ii">intel.</span><span>price in/out</span><span>used by</span></div>` +
-      rows.map((x) => `<div class="mvrow ${x.by ? "use" : ""}"><span class="nm">${esc(x.m)}</span><span class="h">${x.h}</span><span>${rank[x.m] ? "#" + rank[x.m] : "—"}</span><span>${x.c ?? "unranked"}</span><span class="ii">${x.i ?? "—"}</span><span>${price(x)}</span><span class="by">${esc(x.by)}</span></div>`).join("");
+      rows.map((x) => `<div class="mvrow ${x.by ? "use" : ""}"><span class="nm">${esc(x.m)}</span><span class="h">${x.h}</span><span>${rank[x.m] ? "#" + rank[x.m] : "—"}</span><span>${x.c ?? "—"}</span><span class="ii">${x.i ?? "unranked"}</span><span>${price(x)}</span><span class="by">${esc(x.by)}</span></div>`).join("");
   };
   for (const id of ["mv-h", "mv-free", "mv-sort"]) $(id).addEventListener("change", draw);
   draw();

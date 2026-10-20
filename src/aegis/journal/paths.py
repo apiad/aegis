@@ -62,26 +62,45 @@ def _checkout(directory: str) -> tuple[str, str] | None:
     return result
 
 
-def name(path: str) -> tuple[str | None, str]:
+def place(path: str) -> tuple[str | None, str, str | None]:
+    """(the main checkout, the path inside the worktree, the worktree's top
+    level) for a path in a repo; (None, the real path, None) outside one."""
     try:
         path = os.path.realpath(path)
     except ValueError:
         # NUL byte or other invalid input
-        return None, path
+        return None, path, None
     hit = _checkout(_existing(path))
     if hit is None:
-        return None, path
+        return None, path, None
     top, main = hit
     rel = os.path.relpath(path, top)
     if rel.startswith(".."):
-        return None, path
-    return main, "" if rel == "." else rel
+        return None, path, None
+    # A file whose directory is gone was in a tree since removed (a worktree):
+    # the nearest existing ancestor's checkout is not where it was written.
+    if not os.path.isdir(os.path.dirname(path)):
+        return main, "" if rel == "." else rel, None
+    return main, "" if rel == "." else rel, top
+
+
+def name(path: str) -> tuple[str | None, str]:
+    main, rel, _ = place(path)
+    return main, rel
 
 
 def full(repo: str | None, rel: str) -> str:
     if repo is None:
         return rel
     return os.path.join(repo, rel) if rel else repo
+
+
+def full_sha(directory: str, commit: str) -> str | None:
+    out = _git(
+        ["rev-parse", "--verify", "--end-of-options", f"{commit}^{{commit}}"],
+        _existing(os.path.realpath(directory)),
+    )
+    return out.strip() if out else None
 
 
 def commit_files(directory: str, commit: str) -> list[str] | None:

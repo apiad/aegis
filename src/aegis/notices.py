@@ -21,6 +21,7 @@ passes.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -32,6 +33,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from . import host
+from .notice_sources import Item
 from .monitors import iso_now
 from .quota_gate import pool_for
 from .transcript.entries import NOTICE_HEADER
@@ -46,6 +48,19 @@ EVERY_S = 30.0  # the loop that turns levels and toasts at critical
 CACHE_S = 5.0  # a reading is reused this long
 
 Role = Literal["asker", "person", "spawned", "worker"]
+
+# Per-session notices: what a subsystem says about one session (its plan, its
+# monitors, its queue tasks). Warnings ride like the host kinds; info lines
+# make one status block that rides on prompts only.
+TEXT_MAX = 160
+STATUS_KEY = "status"
+NOTHING_TRACKED = "nothing tracked: no plan items open, no monitors, no tasks out"
+__all__ = ["Item", "Notices"]
+
+
+def _cut(text: str) -> str:
+    line = " ".join(text.split())
+    return line if len(line) <= TEXT_MAX else line[: TEXT_MAX - 1] + "…"
 
 
 def psi(text: str) -> dict | None:
@@ -359,6 +374,174 @@ class Notices:
         self._psi = False
         self._task: asyncio.Task | None = None
         self.announcements = Announcements(app.roots.state_root / "announcements.json")
+        # Per-session items: log id -> "<source>:<key>" -> Item, and each
+        # session's ended items' clear texts, owed until told. In memory:
+        # every source sets its items again at boot.
+        self._items: dict[str, dict[str, Item]] = {}
+        self._clears: dict[str, dict[str, str]] = {}
+        self._order: list[str] = []  # sources, in the order they first set
+        # While the server boots, no source has set its items yet: a prompt
+        # then (a restart's continue) must neither forget what a session was
+        # told nor say it tracks nothing. App.boot releases it.
+        self._booting = False
+
+    def boot_begin(self) -> None:
+        self._booting = True
+
+    def boot_end(self) -> None:
+        """Every source has set its items: deliver the wakes owed."""
+        self._booting = False
+        for log_id in list(self._items):
+            self._wake(log_id)
+
+    def cfg(self, source: str) -> dict | None:
+        """A source's entry under ``notices:``, or None when it is off."""
+        got = self._app.config.current().notices.get(source)
+        if got is False:
+            return None
+        return got if isinstance(got, dict) else {}
+
+    def set(self, log_id: str, source: str, items: list[Item]) -> None:
+        """Replace every item ``source`` had for ``log_id``; [] clears them.
+        A source turned off in .aegis.yaml sets nothing."""
+        if source not in self._order:
+            self._order.append(source)
+        if self.cfg(source) is None:
+            items = []
+        mine = self._items.setdefault(log_id, {})
+        prefix = f"{source}:"
+        new = {
+            prefix + i.key: Item(i.key, i.level, _cut(i.text), _cut(i.clear), i.wake)
+            for i in items
+        }
+        s = self._app.sessions.sessions.get(log_id)
+        sent = s.items_sent if s is not None else {}
+        for full in [k for k in mine if k.startswith(prefix) and k not in new]:
+            gone = mine.pop(full)
+            # Told ends here, so the same condition turning on again is told
+            # (and wakes) again; the clear is owed only to a session told.
+            if sent.pop(full, None) in RANK and gone.clear:
+                self._clears.setdefault(log_id, {})[full] = gone.clear
+        for full, item in new.items():
+            self._clears.get(log_id, {}).pop(full, None)
+            mine[full] = item
+        self._wake(log_id, source)
+
+    def _wake(self, log_id: str, source: str | None = None) -> None:
+        """Deliver at once, through the inbox, each warning with ``wake`` the
+        session has not been told, when it is idle or asleep: a turn running
+        carries it on its next tool result or prompt, and its end calls this
+        again. Recorded as told before the delivery, so it wakes once per
+        level. A clear never wakes."""
+        s = self._app.sessions.sessions.get(log_id)
+        if self._booting or s is None or s.archived or s.in_turn:
+            return
+        if s.status == "working":
+            return
+        due = []
+        for full, item in self._items.get(log_id, {}).items():
+            src = full.partition(":")[0]
+            if source is not None and src != source:
+                continue
+            if not item.wake or item.level not in RANK:
+                continue
+            if s.items_sent.get(full) == item.level:
+                continue
+            if (self.cfg(src) or {}).get("wake") is False:
+                continue
+            s.items_sent[full] = item.level
+            due.append(
+                f"{NOTICE_HEADER}{full} · {item.level} · {iso_now()}\n{item.text}"
+            )
+        if not due:
+            return
+        try:
+            s._metas.write_soon(s.log_id, s.meta)
+        except OSError:  # a full disk keeps the in-memory record (#395)
+            log.warning("aegis: could not record notices for %s", s.handle)
+        # One message for all of them: two deliveries to an asleep session
+        # would both start it, and the second would land mid-turn.
+        header, _, first = due[0].partition("\n")
+        body = "\n\n".join([first, *due[1:]])
+        asyncio.get_running_loop().create_task(self._deliver(s, header, body))
+
+    @staticmethod
+    async def _deliver(s: Session, header: str, text: str) -> None:
+        try:
+            # Like a monitor's own outcome, it reaches a workflow node too.
+            await s.deliver(header, text, through_lock=True)
+        except Exception:
+            log.exception("aegis: could not deliver a notice to %s", s.handle)
+
+    def turn_ended(self, s: Session) -> None:
+        """A turn ended: a wake item it was not told comes now."""
+        self._wake(s.log_id)
+
+    def drop_source(self, source: str) -> None:
+        """A source went away (a plugin's connection closed): its items go,
+        for every session."""
+        for log_id in list(self._items):
+            self.set(log_id, source, [])
+
+    def forget(self, log_id: str) -> None:
+        """The session's context was compacted: nothing it was told by a
+        source counts any more, so its next prompt tells it all again."""
+        s = self._app.sessions.sessions.get(log_id)
+        if s is not None:
+            s.items_sent.clear()
+            self._clears.pop(log_id, None)
+
+    def _session_blocks(self, s: Session, at: str) -> list[str]:
+        """The per-session warnings ``s`` is owed, their clears, and (on a
+        prompt) the status block when its lines changed. Records what it
+        returns in ``s.items_sent``."""
+        if self._booting:
+            return []
+        items = self._items.get(s.log_id, {})
+        sent = s.items_sent
+        blocks = []
+        for full, item in items.items():
+            if item.level in RANK and sent.get(full) != item.level:
+                blocks.append(
+                    f"{NOTICE_HEADER}{full} · {item.level} · {iso_now()}\n{item.text}"
+                )
+                sent[full] = item.level
+        for full, text in self._clears.pop(s.log_id, {}).items():
+            blocks.append(f"{NOTICE_HEADER}{full} · clear · {iso_now()}\n{text}")
+        for full in [k for k in sent if k != STATUS_KEY and k not in items]:
+            del sent[full]  # kept from before a restart, its source gone
+        if at != "send":
+            return blocks
+        status = self.cfg(STATUS_KEY)
+        # Sources in the order they first set items; sorted() keeps each
+        # source's own order.
+        rank = {src: n for n, src in enumerate(self._order)}
+        info = [
+            i
+            for full, i in sorted(
+                items.items(), key=lambda kv: rank[kv[0].partition(":")[0]]
+            )
+            if i.level == "info"
+        ]
+        if status is None or not info:
+            if STATUS_KEY in sent:
+                del sent[STATUS_KEY]
+                if status is not None:
+                    blocks.append(
+                        f"{NOTICE_HEADER}{STATUS_KEY} · clear · {iso_now()}\n{NOTHING_TRACKED}"
+                    )
+            return blocks
+        cap = status.get("lines", 5)
+        lines = [i.text for i in info[:cap]]
+        if len(info) > cap:
+            lines.append(f"… and {len(info) - cap} more")
+        mark = hashlib.sha1("\n".join(lines).encode()).hexdigest()[:12]
+        if sent.get(STATUS_KEY) != mark:
+            blocks.append(
+                f"{NOTICE_HEADER}{STATUS_KEY} · info · {iso_now()}\n" + "\n".join(lines)
+            )
+            sent[STATUS_KEY] = mark
+        return blocks
 
     def start(self) -> None:
         if self._task is None:
@@ -541,7 +724,7 @@ class Notices:
         except (OSError, ValueError):
             return None
 
-    def pending(self, s: Session) -> str:
+    def pending(self, s: Session, at: Literal["send", "tool"] = "send") -> str:
         """The blocks ``s`` has not been told yet, and the clears it is owed,
         joined by a blank line; "" when there are none. Marks them sent
         before it returns, so each block reaches one result.
@@ -570,7 +753,9 @@ class Notices:
         for key in [k for k in s.notices_sent if k not in active]:
             blocks.append(self._clear(key))
             del s.notices_sent[key]
-        if blocks:
+        before = dict(s.items_sent)
+        blocks += self._session_blocks(s, at)
+        if blocks or s.items_sent != before:
             try:
                 s._metas.write_soon(s.log_id, s.meta)
             except OSError:  # a full disk keeps the in-memory record (#395)

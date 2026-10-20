@@ -116,12 +116,14 @@ async def test_a_large_map_builds_its_wire_a_few_times_not_per_record(
     wf = world.app.workflows
     built = []
     real = wf.wire
-    monkeypatch.setattr(wf, "wire", lambda run: built.append(run) or real(run))
+    monkeypatch.setattr(
+        wf, "wire", lambda run, detail=True: built.append(run) or real(run, detail)
+    )
     sent: list[dict] = []
     publish = world.app.publish
 
     def spy(channel, ops):
-        if channel == "workflows":
+        if channel == "workflow-runs":
             sent.extend(op["upsert"] for op in ops if "upsert" in op)
         return publish(channel, ops)
 
@@ -237,18 +239,18 @@ async def test_a_wire_that_raises_drops_no_other_runs_publish(world, monkeypatch
     bad, good = sorted(runs)  # the flush builds in this order
     real, broke = wf.wire, []
 
-    def wire(run):
+    def wire(run, detail=True):
         if run == bad and not broke:
             broke.append(run)
             raise RuntimeError("boom")
-        return real(run)
+        return real(run, detail)
 
     monkeypatch.setattr(wf, "wire", wire)
     sent: list[str] = []
     publish = world.app.publish
 
     def spy(channel, ops):
-        if channel == "workflows":
+        if channel == "workflow-runs":
             sent.extend(op["upsert"]["run"] for op in ops if "upsert" in op)
         return publish(channel, ops)
 
@@ -277,18 +279,18 @@ async def test_a_wire_that_always_raises_is_logged_once_and_not_retried_alone(
     bad, good = runs
     real, tries = wf.wire, []
 
-    def wire(run):
+    def wire(run, detail=True):
         if run == bad:
             tries.append(run)
             raise RuntimeError("boom")
-        return real(run)
+        return real(run, detail)
 
     monkeypatch.setattr(wf, "wire", wire)
     sent: list[str] = []
     publish = world.app.publish
 
     def spy(channel, ops):
-        if channel == "workflows":
+        if channel == "workflow-runs":
             sent.extend(op["upsert"]["run"] for op in ops if "upsert" in op)
         return publish(channel, ops)
 
@@ -346,3 +348,27 @@ async def test_a_member_cannot_open_a_see_of_a_run_they_do_not_own(world):
             Caller("user", principal=Principal("ben", "member")),
         )
     assert e.value.code == "not_owner", e.value
+
+
+async def test_the_runs_channel_has_summaries_and_a_runs_channel_has_it_whole(world):
+    """#525: every run's tree and story went to every browser, 96% of the
+    workflows channel's bytes; only a card draws them."""
+    wf = world.app.workflows
+    a = await world.spawn()
+    run = ok(await turn(a, mcp("workflow_arm", definition=flow(RESULT, RESULT))))["run"]
+    runs, one, old = [], [], []
+    world.app.channels.subscribe("workflow-runs", runs.append, merge=True)
+    world.app.channels.subscribe(f"workflow:{run}", one.append)
+    (summary,) = runs[0]["data"]
+    assert "tree" not in summary and "story" not in summary
+    assert summary["run"] == run and one[0]["data"] == wf.wire(run)
+    wf._publish(run)
+    wf._publish_now()
+    assert one[-1]["ops"] == [{"set": wf.wire(run)}]
+    assert len(runs) == 1, "an unchanged summary sends no patch"
+    # A client older than #525 still gets every run whole.
+    world.app.channels.subscribe("workflows", old.append)
+    assert old[0]["data"] == wf.wire_all()
+    wf._publish(run)
+    wf._publish_now()
+    assert old[-1]["ops"] == [{"upsert": wf.wire(run)}]

@@ -13,6 +13,7 @@ caller passes, which is the meta's.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 
 from ..claude.stream import (
@@ -36,6 +37,8 @@ WRITE_TOOLS = {
     "Delete": "write",
 }
 TURN_ENDS = ("exit", "stop", "restart", "server_stopped", "reset")
+REPO_FLAG = re.compile(r"\bgh\s+pr\b.*\s(?:--repo|-R)(?:\s|=)")
+PUSH = re.compile(r"\bgit\b[^|;&\n]*\bpush\b")
 
 
 @dataclass
@@ -52,6 +55,14 @@ class Row:
     # Where else a commit's hash may be: the directories the turn wrote in
     # before it, tried when the guessed directory does not hold the hash.
     near: tuple[str, ...] = ()
+    # Where a pr row's gh ran: names its repo and worktree.
+    workdir: str = ""
+
+
+def _pr_dir(cmd: str, cwd: str) -> str:
+    """Where a gh pr call's repo is checked out: nowhere this can know when
+    --repo names it."""
+    return "" if REPO_FLAG.search(cmd) else shell.workdir(cmd, cwd)
 
 
 class Deriver:
@@ -62,6 +73,9 @@ class Deriver:
         self._calls: dict[str, ToolCall] = {}
         self._last_call: str | None = None
         self._turn: list[tuple[str, str]] = []
+        # Directories a git push ran in since the last take_pushes(): not a
+        # row, but what turns a Repos line from unpushed to clean.
+        self._pushes: list[str] = []
         self._prompt = ""
         # What names a turn that has no prompt (a wake): its first prose line,
         # else a background task's notice. OpenCode updates a part in place, so
@@ -94,6 +108,18 @@ class Deriver:
                 rows += self._event(i, f"e{i}.{k}", ts, ev)
             return rows
         return self._own(i, ts, record)
+
+    def pending(self) -> list[str]:
+        """The files the open turn has written so far, before its row exists."""
+        return list(
+            dict.fromkeys(
+                p for op, p in self._turn if op in ("write", "edit", "bash-write")
+            )
+        )
+
+    def take_pushes(self) -> list[str]:
+        out, self._pushes = self._pushes, []
+        return out
 
     def _row(self, i: int, ts: float, kind: str, text: str, **kw) -> Row:
         return Row(i, ts, kind, text, self.handle, **kw)
@@ -173,9 +199,13 @@ class Deriver:
             )
         ]
         if pr := shell.pull_request(cmd, text, out.is_error):
-            rows.append(self._row(i, ts, "pr", pr, source=source))
+            rows.append(
+                self._row(i, ts, "pr", pr, source=source, workdir=_pr_dir(cmd, cwd))
+            )
         if not out.is_error:
             self._turn += [("bash-write", p) for p in shell.writes(cmd, cwd)]
+        if PUSH.search(cmd):
+            self._pushes.append(shell.workdir(cmd, cwd))
         # Claude's Bash keeps its directory between the agent's own calls; a
         # subagent's calls start afresh each time.
         if self._src == "claude" and call.parent is None:

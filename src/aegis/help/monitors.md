@@ -94,6 +94,30 @@ The outcome is `ok`, `fail` or `timeout` (and `blocked` for
 your monitors are still live. A wake that arrives while you are working is
 held and delivered when your turn ends.
 
+## A monitor that stalls
+
+A monitor that never finishes would otherwise wait out its timeout. aegis
+warns you, while it keeps running, when:
+
+- its progress has not moved for 15 minutes (and at least three intervals):
+  stalled;
+- one of its checks cannot run, for three intervals: broken, for example a
+  command not found;
+- it is past its ETA by half the time it estimated, and by 10 minutes at
+  least: overdue.
+
+```text
+> from aegis:notice · monitors:mon-5e1f:stalled · warn · 2026-10-20T07:41:12
+monitor mon-5e1f "tests" at 40% for 16 min · look, or monitor_cancel it
+```
+
+If you are waiting, the warning wakes you; if you are working, it rides on
+your next aegis tool result. Each warning comes once, and once more only if
+the monitor moved and stalled again. Look at what it watches, cancel it with
+`monitor_cancel`, or end your turn again to keep waiting. The `notices:` block
+in `.aegis.yaml` changes the thresholds or turns the wake off (see the config
+page).
+
 ## List and cancel
 
 `monitor_list` shows your live monitors. `monitor_cancel` with

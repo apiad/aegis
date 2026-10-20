@@ -125,7 +125,12 @@ behind the file's back. A file that does not parse, or is empty, leaves the last
 one that did in force and says so, because a half-typed edit must not stop every
 spawn. `aegis init` and the Settings page write through one writer that keeps
 comments and refuses a stale write; `aegis doctor` and `config.doctor` check the
-file against the harnesses actually installed (`doctor.py`). Its `context:`
+file against the harnesses actually installed (`doctor.py`). The Settings form
+edits every key the readers take: the blocks that are values over defaults are
+drawn from `fields()`, a schema the wire carries, and the rest have controls of
+their own. `tests/test_config_coverage.py` takes the keys from the readers'
+declarations, so a key added to a reader fails until the form's document and
+the page carry it. Its `context:`
 block is the one section with defaults: a wrong one keeps them all in force
 and `aegis doctor` names the mistake, because a typo there must never stop a
 `turn_end`.
@@ -316,7 +321,17 @@ checkout's path. Git and SQLite run on one writer thread; the event loop only
 enqueues, and boot reads no store: the journal starts before the sessions boot,
 and `journal.db` records in `PRAGMA application_id` that a backfill finished, so
 an interrupted one resumes at the next start. A corrupt `journal.db` is set aside
-and rebuilt (#289).
+and rebuilt (#289). Each touch and each commit or pr row also keeps `top`, the
+worktree it was in, and a commit row its full `sha`, for the Repos row.
+
+**A session's repos are the journal's, their state is git's.** `repos/service.py`
+lists the worktrees a session wrote to from the journal's `top` columns, plus the
+writes the writer thread reports through `Journal.on_live` before the turn's row
+exists, and asks git (`repos/probe.py`) and `gh` (`repos/gh.py`) only for the
+present state. Uncommitted counts only the files the session wrote. A worktree is
+probed at most every 10 s, in a thread; only sessions a browser subscribes to on
+`repos:<log_id>` are built and published, at most every 5 s and only on change
+(#526).
 
 **The inbox holds messages until a turn ends.** A monitor's wake, a queue's result
 and a handoff reach a session as a user turn headed `> from <kind>:<name> · …`. An
@@ -326,9 +341,11 @@ working `claude` would inject the message at its next tool boundary instead.
 
 **aegis nudges an agent that drifts, once.** A live, idle session that is
 not a queue worker, whose card says done or review, gets an inbox message
-headed `> from aegis:nudge · plan|idle · …` when its plan has gone 15 minutes
-of work untouched with items not done, or when its last turn ended with no
-`turn_end` 10 minutes ago (`nudges.py`). What a nudge needs is folded into the
+headed `> from aegis:nudge · plan|idle · …` when its plan has gone
+`nudges.plan_min` (15) minutes of work untouched with items not done, or when
+its last turn ended with no `turn_end` `nudges.silent_s` (2) seconds ago
+(`nudges.py`, `.aegis.yaml`). The silent check is scheduled from the turn's
+end; a 15 s tick is the backstop and sends the plan nudge. What a nudge needs is folded into the
 standing from the store (`ended`, `plan_mark`, `nudged`), so a restart neither
 repeats one nor forgets it. A send that carries no nudge re-arms the idle
 nudge and only a plan record re-arms the plan nudge, so a nudge's own turn
@@ -347,6 +364,28 @@ What each session was told is `notices_sent` in its meta, so a restart
 neither repeats a notice nor forgets its clear; the episodes and the one
 asker per kind and owner live in memory. A 30 s loop turns the episodes so a
 notice at critical toasts while nobody is talking to anyone.
+
+**A session's own status is a notice its subsystems push.** Beside the host
+kinds, `Notices.set(log_id, source, items)` takes per-session items from a
+source: the plan (`nudges.py`), monitors (`monitors.py`) and queue tasks out
+(`queues.py`). Each source sets its items when its facts change; `pending()`
+only reads them, so it stays cheap per tool call and a source may later live in
+a plugin's process. A `warn` or `critical` item rides like a host notice, once
+per level, with its own clear text; `info` items from every source make one
+`status` block that rides on prompts only, when its lines changed. An item with
+`wake` (the monitor warnings: stalled, broken, overdue) is delivered at once
+through the inbox to an idle owner, or at its turn's end, so a waiting agent is
+not left asleep until a monitor's timeout. What a session was told of these is
+`items_sent` in its meta, apart from `notices_sent`, whose keys the host kinds'
+restore reads; a compaction empties it so the fresh context is told again.
+While the server boots, `Notices` holds every per-session notice until each
+source has set its items (`boot_begin`, `boot_end` in `App.boot`), so a
+restart's continue neither forgets what a session was told nor says it tracks
+nothing; a monitor warns only after its first check in the new process, so
+downtime never reads as a stall. Several wakes due at once go as one message.
+Sources declare their `.aegis.yaml` keys in `notice_sources.py`, a module that
+imports nothing from aegis, so `notices.py` and `config.py` name no source:
+that call is the seam a plugin will use (#490).
 
 **A turn ending is not completion.** Ending a turn is how an agent waits, so a
 queue worker is finished only when its turn has ended with no live monitor, no
@@ -567,6 +606,12 @@ named channels: a snapshot on subscribe, then numbered patches. A gap in the
 numbers, or a reconnect, means resubscribe, saying which revision it holds; a
 channel that keeps revisions answers with what changed after it, and any other
 with a fresh snapshot. Adding a subsystem adds operations and channels, never a protocol field.
+A subscriber may ask for `merge` on a channel whose rows have a key (only
+`sessions` today, `channels.MERGE_KEYS`): it then gets a row it already holds as
+the fields that changed, diffed against what that subscription was sent, and
+one that asked nothing (an older client or link) keeps getting whole rows.
+Whole session rows re-sent for one changed field were about a third of an idle
+client's traffic (#525).
 
 **Python decides, the browser draws.** Every fact and decision about a transcript
 entry is computed once in Python: its glyph (the name of a symbol in the
