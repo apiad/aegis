@@ -96,6 +96,8 @@ class Registry(Host):
         # The app's start_spec: a spec -> the spec to start (its cascade's
         # first model free now) and the gate it passes.
         self.start_spec = None
+        # The app's cascade_next, which cools and picks (Host.cascade_next).
+        self.cascade = None
         self.journal = None
         self.catalogs = None
         # One cgroup per session, when the unit is delegated (cgroups.py); the
@@ -217,6 +219,11 @@ class Registry(Host):
                 "stop the workflow to talk to it"
             )
         return None
+
+    def cascade_next(
+        self, session: Session, text: str
+    ) -> tuple[str | None, float] | None:
+        return None if self.cascade is None else self.cascade(session, text)
 
     def quota_hold(self, session: Session) -> str | None:
         """A paused session waits for its gate to open; any other may start a

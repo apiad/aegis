@@ -17,7 +17,7 @@ import { Find } from "./find.js";
 import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { linesOf, mine, ownerOf, setWho } from "./me.js";
-import { ago, byNeed, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan } from "./fleet.js";
+import { ago, byNeed, modelLine, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan } from "./fleet.js";
 import { age, countdown, elapsed, hostRow, hostSeverity, mbps, netRows, providerFor, quotaSideRow, quotaTile, tile } from "./gauges.js";
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
 import { installKeys, renderKeys } from "./keys.js";
@@ -1730,7 +1730,7 @@ function renderMeta(s) {
   const born = s.created_at ? ` · started ${new Date(s.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "";
   $("c-sub").textContent = `${s.handle}${born}`;
   $("s-harness").textContent = s.harness_label || s.harness || "";
-  $("s-model").textContent = s.model_id && s.model_id !== s.model ? `${s.model} → ${s.model_id}` : s.model;
+  $("s-model").textContent = s.model_id && s.model_id !== s.model ? `${modelLine(s)} → ${s.model_id}` : modelLine(s);
   $("s-effort").textContent = s.effort || "";
   $("s-perm").textContent = s.permission || "";
   $("s-server").textContent = s.server || conn.server || "this server";

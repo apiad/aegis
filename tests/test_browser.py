@@ -8464,3 +8464,33 @@ def test_folding_a_side_note_leaves_another_sessions_alone(btw_server, page):
     page.wait_for_selector(f".row.btw[data-id='{rows}']")
     assert page.locator(".row.btw:not(.folded)").count() == 1
     assert page.errors == []
+
+
+CASCADE = (
+    "default_agent: free\nagents:\n"
+    "  free: {harness: opencode, models: [opencode/a, opencode/b, opencode/c], effort: high, permission: full}\n"
+)
+
+
+@pytest.fixture
+def cascade_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    (tmp_path / ".aegis.yaml").write_text(CASCADE)
+    s = Server(tmp_path, fake_claude, fake_opencode)
+    s.env["FAKE_OPENCODE_EXHAUSTED"] = "opencode/a"
+    yield s.start()
+    s.stop()
+
+
+def test_card_shows_the_cascade_position(cascade_server, page):
+    page.goto(cascade_server.url)
+    spawn(page, "hello")
+    text = page.text_content("#entries")
+    assert "cascade: opencode/a failed (APIError: 429 FreeUsageLimitError" in text
+    assert "Continuing on opencode/b." in text
+    page.hover("#p-session")
+    page.wait_for_selector("#p-session .pcard", state="visible")
+    assert page.inner_text("#s-model") == "opencode/b · 2 of 3"
+    page.click("#tab-fleet")
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert "opencode/b · 2 of 3" in page.inner_text(".card .ln")
+    assert page.errors == []

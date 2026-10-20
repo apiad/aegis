@@ -65,7 +65,7 @@ from .agents import (
     model_suggestions,
     resolve,
 )
-from .cascade import Cooling, Fall, pick
+from .cascade import Cooling, Fall, classify, pick
 from .cgroups import SessionCgroups
 from .channels import Channels, Throttle
 from .claude.process import PERMISSION_MODE, ControlError
@@ -446,6 +446,7 @@ class App:
         self._cool_timer: asyncio.TimerHandle | None = None
         self._cool_at: float | None = None
         reg.start_spec = self.start_spec
+        reg.cascade = self.cascade_next
         self.registry = Ops()
         self.registry.who = self.who
         self.registry.owner_of = self.owner_of
@@ -506,6 +507,24 @@ class App:
         if model is None:
             return spec, Gate("closed", why)
         return dataclasses.replace(spec, model=model), Gate("open")
+
+    def cascade_next(self, s, text: str) -> tuple[str | None, float] | None:
+        """A cascade's turn failed: cool its model and pick the next one below
+        it, with the gate of the session's owner (Host.cascade_next)."""
+        spec = s.spec
+        fall = classify(spec.harness, text)
+        if fall is None:
+            return None
+        until = self.cool(spec.harness, spec.model, fall)
+        model, _ = pick(
+            spec.cascade,
+            spec.cascade.index(spec.model),
+            spec.harness,
+            lambda m: self.gate(spec.owner, spec.harness, m),
+            self.cooling,
+            time.time(),
+        )
+        return model, until
 
     def cool(self, harness: str, model: str, fall: Fall) -> float:
         """Cool a model that fell, and arm the timer that releases what it

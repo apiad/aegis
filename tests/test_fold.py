@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -414,6 +415,23 @@ def test_a_quota_pause_is_a_system_line():
         "system",
         "paused: quota line reached (Claude 5 hours is at 91%, stop line 90%)",
     )
+
+
+def test_fold_draws_cascade_records():
+    r = Rec()
+    until = time.mktime((2026, 10, 18, 14, 32, 0, 0, 0, -1))
+    err = "APIError: 429 FreeUsageLimitError"
+    r.own(
+        "cascade",
+        **{"from": "opencode/a", "to": "opencode/b", "error": err, "until": until},
+    )
+    r.own("cascade_exhausted", error=err)
+    f, _ = run(r)
+    assert [e["summary"] for e in f.entries()] == [
+        f"cascade: opencode/a failed ({err}); cools until 14:32. Continuing on opencode/b.",
+        f"cascade exhausted: {err}",
+    ]
+    assert {e["kind"] for e in f.entries()} == {"system"}
 
 
 def test_activity_prefers_a_running_call_then_the_latest_prose():

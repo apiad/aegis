@@ -19,6 +19,7 @@ Two rules from Claude Code's measured behaviour live here:
 from __future__ import annotations
 
 import re
+import time
 from collections import deque
 from typing import Any
 
@@ -694,6 +695,21 @@ class Fold:
         if kind == "resume":
             return self._upsert(
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary="resumed")
+            )
+        if kind in ("cascade", "cascade_exhausted", "cascade_stopped"):
+            # A cascade's turn failed and fell to the next model (session.py).
+            if kind == "cascade":
+                until = time.strftime("%H:%M", time.localtime(rec.get("until") or ts))
+                line = (
+                    f"cascade: {rec.get('from')} failed ({rec.get('error')}); cools"
+                    f" until {until}. Continuing on {rec.get('to')}."
+                )
+            elif kind == "cascade_exhausted":
+                line = f"cascade exhausted: {rec.get('error')}"
+            else:
+                line = f"cascade: interrupted before continuing on {rec.get('to')}"
+            return self._upsert(
+                _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary=line)
             )
         if kind == "quota_paused":
             # The quota gate interrupted the turn (app.on_quota); the
