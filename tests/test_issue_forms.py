@@ -60,3 +60,14 @@ def test_blank_issues_stay_open():
 def test_the_bug_steps_prefill_keeps_one_line_per_step():
     (steps,) = [i for i in fields("bug") if i["id"] == "steps"]
     assert steps["attributes"]["value"].splitlines() == ["1.", "2.", "3."]
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_the_help_page_names_each_field_and_id_a_prefilled_link_uses(kind):
+    page = (FORMS.parents[1] / "src/aegis/help/feedback.md").read_text()
+    block = re.search(r"## What each kind needs.*?```text\n(.*?)```", page, re.S)[1]
+    (line,) = [x for x in block.splitlines() if x.split(" ", 1)[0] == kind]
+    named = re.findall(r"([A-Z][^·*(]*?)\*? \(([a-z-]+)\)", line)
+    assert [(lbl.strip(), i) for lbl, i in named] == [
+        (f["attributes"]["label"], f["id"]) for f in fields(kind)
+    ]
