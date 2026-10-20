@@ -30,12 +30,17 @@ while the server runs. Plugin hosts come later, in the order the vision spec
 gives.
 
 **A session outlives its process.** A session is live (a harness child, `claude`,
-`opencode serve` or `codex app-server`, is running), parked (aegis ended an idle
-one), stopped (Stop ended it, the harness exited on its own, or the server
-restarted under it), or archived (closed: no process, no tab). A prompt to a stopped session starts the harness again on the same
+`opencode serve` or `codex app-server`, is running), asleep (no process, the
+conversation kept), or archived (no process, no tab). An asleep session carries
+`asleep_why`: `slept` (Sleep or `session.stop`), `idle` (a park), `exited` (the
+harness ended on its own) or `server` (the server restarted under it). A meta
+written before that state says `stopped` or `parked`, and loads through
+`session.asleep_from`, so nothing on disk is migrated. Quiet is the other axis:
+it hides the tab and never touches the process. A prompt to an asleep session starts the harness again on the same
 conversation (`claude --resume`, `opencode serve` and the same session id, or
 `thread/resume` on the same Codex thread),
-which prints nothing old, so the store and the fold simply continue. Shutdown, Stop, Close and a park end a process.
+which prints nothing old, so the store and the fold simply continue. Shutdown, Sleep, Restart (`session.restart`: the
+process ends and a fresh one resumes the conversation, under the start lock), Archive and a park end a process.
 A park (park.py) happens only when ending the process kills nothing: no background
 task, no harness timer, no process it left running, and nobody watching. A Claude
 session waiting on its own background task wakes itself when the task ends, so a
@@ -47,7 +52,7 @@ runs as a systemd service with `Delegate=yes`, it moves itself into
 child in `<unit>/sessions/<log_id>` with `memory.max` from
 `session_memory_max`. The child joins its cgroup before it execs, through a
 `/bin/sh` wrapper, so nothing it starts escapes the cap. When the process ends
-(exit, Stop, Close, shutdown) its cgroup is killed and removed, and boot
+(exit, Sleep, Restart, Archive, shutdown) its cgroup is killed and removed, and boot
 removes the empty ones a crash left. Everything stays inside the unit, so the
 unit's `MemoryMax` still covers the whole tree and `KillMode` still kills every
 session when the unit stops. Without delegation every child lives in the
@@ -135,14 +140,19 @@ from disagreeing. aegis writes the unit where the person says and prints the
 
 **The code map is a subcommand, with its index in the user's cache.** `aegis
 map` parses a git repository with tree-sitter and prints its layout, outlines,
-callers and impact (`codemap/`). It is a CLI rather than MCP tools because a
+callers and impact. The code lives in its own package, [wayfind](https://github.com/apiad/wayfind), so it can run where aegis does not, such as CI; aegis depends on it and mounts its typer app as `aegis map`. It is a CLI rather than MCP tools because a
 tool's schema rides on every request of every session, and a subcommand costs
 nothing until it runs; the primer names it in one paragraph. Its index is one
 pickle per repository under the user's cache directory, refreshed by mtime and
 replaced atomically, so every session of the user shares it without the server
 in the way. It needs no language server: heuristics marked as such (`?` for a
 name-only edge) were right often enough on a measured sample, and work in every
-language the grammar pack has.
+language the grammar pack has. What one language adds over that, receiver
+types, base classes and an exact branch count, is one table of query
+patterns per language (wayfind's `specs.py`), so a language is data, not code.
+Its numbers views (metrics, cycles, unused, diff) report and never judge: a
+threshold is the caller's, so a CI gate is a filter over `--json` rather than
+a script beside the map.
 
 **Relative imports, and nothing from the legacy tree.** Imports inside aegis are
 relative, which is what made taking over the `aegis` name one directory move, and no
@@ -310,7 +320,7 @@ and rebuilt (#289).
 
 **The inbox holds messages until a turn ends.** A monitor's wake, a queue's result
 and a handoff reach a session as a user turn headed `> from <kind>:<name> · …`. An
-idle session gets it at once and a stopped one is resumed for it; a working one
+idle session gets it at once and an asleep one is woken for it; a working one
 holds it and gets every held message as one turn when its turn ends. Writing to a
 working `claude` would inject the message at its next tool boundary instead.
 
@@ -412,7 +422,7 @@ canvas pane kind, `wf-<run>`: it docks through `layout.place`, opens in the
 viewer and moves windows through the paths pages and files use, and a run
 armed again before approval takes its predecessor's pane. A node's session
 stays without a tab while its run lives: `session.unquiet`, `session.stop`,
-`session.close`, `session.configure` and `session.rename` refuse it, and
+`session.restart`, `session.close`, `session.configure` and `session.rename` refuse it, and
 the card and the Fleet open it read-only. A step's `see` is a fixed path,
 resolved on the server from the run and the step by `workflow.see`, an
 operation not marked for agents, so the browser never names a path and no
@@ -1020,7 +1030,7 @@ mtime so a launch pays for it only after an upgrade, and judges it
 queue worker, a schedule, a workflow node, a parked session's wake, the
 restart's continue) starts anyway and records an `untested` notice, once per
 version per session, which the transcript shows and the journal derives a
-row from. A person's spawn, `/spawn` line or send to a stopped session is
+row from. A person's spawn, `/spawn` line or send to an asleep session that did not park, Wake of one, and Restart are
 refused first with `harness_untested`, whose error data the browser turns into
 a dialog, and the second call says once or always (`App._version_gate`). The
 split is by who is there to answer: a refusal nobody can answer would stop a

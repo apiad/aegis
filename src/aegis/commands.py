@@ -52,7 +52,11 @@ AEGIS: dict[str, Command] = {
         ),
         Command("rename", "<handle>", "Rename this session's handle"),
         Command("title", "<text>", "Set this session's title"),
-        Command("stop", "", "Stop the process and keep the session"),
+        Command(
+            "sleep", "", "End the process and keep the session; a message wakes it"
+        ),
+        Command("stop", "", "Alias of /sleep"),
+        Command("restart", "", "A fresh process on the same conversation"),
         Command("btw", "<question>", "Ask a side question; the agent never sees it"),
         Command(
             "workflow",
@@ -76,7 +80,8 @@ AEGIS: dict[str, Command] = {
             "<text> [--until HH:MM] [--critical]",
             "Tell every agent on this server something, once",
         ),
-        Command("close", "", "Close the session; it stays in the archive"),
+        Command("archive", "", "Archive the session; Reopen brings it back"),
+        Command("close", "", "Alias of /archive"),
         # The browser answers it: alone by opening the menu, with words by
         # opening the Help tab searched for them. It never reaches claude.
         Command("help", "[query]", "List every command, or search the help pages"),
@@ -86,6 +91,9 @@ AEGIS: dict[str, Command] = {
         Command("whats-new", "", "Tour what changed since your last tour"),
     )
 }
+
+# Old names kept so habits and agents' prompts keep working (#479).
+ALIASES = {"stop": "sleep", "close": "archive"}
 
 
 def split(text: str) -> tuple[str, str] | None:

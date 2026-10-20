@@ -106,7 +106,7 @@ async def test_a_prompt_runs_a_turn_with_cost_context_title_and_model(oc):
     # ends: that update still says stopped, which the session was.
     assert oc.statuses() in (
         ["idle", "working", "idle"],
-        ["stopped", "idle", "working", "idle"],
+        ["asleep", "idle", "working", "idle"],
     )
     assert oc.prose() == ["you said: hello"]
     assert s.cost_usd == pytest.approx(0.002) and s.context_tokens == 1030
@@ -129,7 +129,7 @@ async def test_text_streams_before_the_turn_ends(oc):
 
 
 async def test_a_prompt_sent_mid_turn_is_answered_in_the_same_turn(oc):
-    await oc.session.send("/sleep 0.6")
+    await oc.session.send("/busy 0.6")
     await until(
         lambda: any(e["kind"] == "tool" for e in oc.session.entries()), what="the call"
     )
@@ -147,7 +147,7 @@ async def test_a_prompt_sent_mid_turn_is_answered_in_the_same_turn(oc):
 
 
 async def test_an_inbox_message_waits_for_the_turn_and_arrives_as_its_own(oc):
-    await oc.session.send("/sleep 0.5")
+    await oc.session.send("/busy 0.5")
     await until(lambda: oc.session.status == "working", what="working")
     await oc.session.deliver("> from monitor:m1 · done", "the build finished")
     assert len(oc.session.held) == 1
@@ -163,7 +163,7 @@ async def test_an_inbox_message_waits_for_the_turn_and_arrives_as_its_own(oc):
 
 
 async def test_interrupt_marks_the_call_interrupted_and_it_stays_so(oc):
-    await oc.session.send("/sleep 5")
+    await oc.session.send("/busy 5")
     await until(
         lambda: any(e["kind"] == "tool" for e in oc.session.entries()), what="the call"
     )
@@ -233,7 +233,7 @@ async def test_a_command_shows_as_typed_and_an_unknown_one_ends_the_turn(oc):
 
 async def test_an_exit_leaves_the_session_stopped(oc):
     await oc.session.send("/exit 3")
-    await until(lambda: oc.session.status == "stopped", timeout=5, what="stopped")
+    await until(lambda: oc.session.status == "asleep", timeout=5, what="stopped")
     assert oc.session.entries()[-1]["summary"] == "OpenCode exited with code 3"
 
 
@@ -291,7 +291,7 @@ async def test_a_restart_that_fails_leaves_the_session_stopped(oc):
     oc.session._proc._bin = "/no/such/opencode"
     with pytest.raises(Exception):
         await oc.session.send("again")
-    assert oc.session.status == "stopped" and not oc.session.running
+    assert oc.session.status == "asleep" and not oc.session.running
     oc.session.harness.bin = oc.fake
     await oc.turn("after")
 
@@ -303,7 +303,7 @@ async def test_an_interrupt_that_cannot_reach_the_child_still_times_out(
     h.session = h.make(interrupt_timeout=0.3)
     await h.session.start()
     try:
-        await h.session.send("/sleep 3")
+        await h.session.send("/busy 3")
         await until(lambda: h.session.status == "working", what="working")
 
         async def refuse():

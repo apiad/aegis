@@ -157,7 +157,7 @@ def quota_inbox(s):
     ]
 
 
-async def working(s, text="/sleep 30"):
+async def working(s, text="/busy 30"):
     await s.send(text)
     await until(lambda: s.status == "working", what="the turn")
 
@@ -228,7 +228,7 @@ async def test_a_restart_keeps_a_paused_session_paused_until_the_gate_opens(worl
 async def test_a_paused_worker_keeps_its_task_running_and_finishes_after(world):
     seed(world, session=40)
     q = world.app.queues
-    t = await q.enqueue("solo", "/sleep 30", False, None, str(world.root), owner="ben")
+    t = await q.enqueue("solo", "/busy 30", False, None, str(world.root), owner="ben")
     await until(lambda: t.worker, what="the worker")
     w = world.session(t.worker)
     await until(lambda: w.status == "working", what="the worker's turn")

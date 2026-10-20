@@ -155,6 +155,7 @@ async def test_a_node_session_cannot_be_stopped_closed_configured_or_renamed(wor
     reg = world.app.registry
     for op, extra in (
         ("session.stop", {}),
+        ("session.restart", {}),
         ("session.close", {}),
         ("session.configure", {"effort": "low"}),
         ("session.rename", {"title": "Mine now"}),

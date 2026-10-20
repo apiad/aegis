@@ -96,7 +96,7 @@ async def test_a_session_whose_process_dies_comes_back(world):
 async def test_a_quiet_spawn_starts_without_a_tab(world):
     a = await world.spawn()
     said = await turn(
-        a, mcp("session_spawn", agent="opus", prompt="/sleep 2", quiet=True)
+        a, mcp("session_spawn", agent="opus", prompt="/busy 2", quiet=True)
     )
     assert not said.startswith("mcp error"), said
     log_id = json.loads(said.removeprefix("mcp ok: "))["log_id"]
@@ -130,7 +130,7 @@ def test_a_queue_is_quiet_unless_it_says_otherwise():
 
 async def test_a_worker_starts_quiet_and_never_shows_when_it_finishes(world):
     a = await world.spawn()
-    said = await turn(a, mcp("queue_enqueue", queue="general", payload="/sleep 1"))
+    said = await turn(a, mcp("queue_enqueue", queue="general", payload="/busy 1"))
     task_id = json.loads(said.removeprefix("mcp ok: "))["task_id"]
     t = world.app.queues.tasks[task_id]
     await until(lambda: t.worker, timeout=8, what="the worker")

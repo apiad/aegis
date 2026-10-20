@@ -589,7 +589,7 @@ def test_a_session_from_spawn_to_close(server, page):
     page.click(".row.tool.err summary")
     page.wait_for_selector(".row.tool.err pre.out", state="visible")
 
-    page.fill("#input", "/sleep 5")
+    page.fill("#input", "/busy 5")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
     page.keyboard.press("Escape")
@@ -627,7 +627,7 @@ def test_a_prompt_sent_mid_turn_shows_pending_until_read(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
-    page.fill("#input", "/sleep 1")
+    page.fill("#input", "/busy 1")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
     page.fill("#input", "steer")
@@ -689,7 +689,7 @@ def test_a_restart_brings_tabs_back_stopped_and_a_prompt_resumes(server, page):
     page.wait_for_selector("#a2[data-view=fleet]")
     a = spawn(page, "remember PELICAN")
     b = spawn(page)
-    page.fill("#input", "/sleep 30")
+    page.fill("#input", "/busy 30")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
 
@@ -698,10 +698,10 @@ def test_a_restart_brings_tabs_back_stopped_and_a_prompt_resumes(server, page):
     page.wait_for_function(
         "document.getElementById('conn-dot').className.includes('ready')", timeout=15000
     )
-    # The idle tab comes back stopped; the one the restart cut continues on its
+    # The idle tab comes back asleep; the one the restart cut continues on its
     # own, after the row that says the server stopped (#312).
     page.wait_for_function(
-        "id => document.querySelector(`#tablist .tab[data-id='${id}']`)?.classList.contains('stopped')",
+        "id => document.querySelector(`#tablist .tab[data-id='${id}']`)?.classList.contains('asleep')",
         arg=a,
         timeout=5000,
     )
@@ -711,7 +711,7 @@ def test_a_restart_brings_tabs_back_stopped_and_a_prompt_resumes(server, page):
 
     page.click(f"#tablist .tab[data-id='{a}']")
     page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
-    assert "resumes" in page.get_attribute("#input", "placeholder")
+    assert "wakes it" in page.get_attribute("#input", "placeholder")
     page.fill("#input", "/recall")
     page.press("#input", "Enter")
     try:
@@ -1100,7 +1100,7 @@ def test_a_monitor_on_sessions_counts_them_in_its_row_and_card(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     busy = spawn(page)
-    page.fill("#input", "/sleep 30")
+    page.fill("#input", "/busy 30")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool")
     idle = spawn(page)
@@ -1347,7 +1347,9 @@ def test_the_actions_are_one_row_of_equal_cells_with_icons(server, page):
     spawn(page)
     row = page.locator(".side-acts.live-only").bounding_box()
     cells = page.eval_on_selector_all(".side-acts.live-only .act", ACTS)
-    assert [c["icon"] for c in cells] == [True, True, True, True]  # Quiet (#386)
+    assert [c["icon"] for c in cells] == [
+        True
+    ] * 5  # Sleep, Quiet (#386), Continue, Restart, Archive
     widths = [c["width"] for c in cells]
     assert max(widths) - min(widths) < 1, widths
     # The row is covered edge to edge.
@@ -2228,7 +2230,7 @@ def test_a_selected_row_keeps_its_selection_when_it_updates_and_enter_opens_it(
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
-    page.fill("#input", "/sleep 1")
+    page.fill("#input", "/busy 1")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
     tid = page.get_attribute(".row.tool", "data-id")
@@ -2264,7 +2266,7 @@ def test_a_row_redrawn_under_the_keyboard_keeps_its_focus(server, page):
     ends; the focus moves to the summary of the new node, not to the page."""
     page.goto(server.url)
     spawn(page)
-    page.fill("#input", "/sleep 1")
+    page.fill("#input", "/busy 1")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
     page.focus(".row.tool.running summary")
@@ -2531,7 +2533,7 @@ def test_the_menu_completes_a_model_and_esc_closes_it_without_interrupting(
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page, "hello")
-    page.fill("#input", "/sleep 3")
+    page.fill("#input", "/busy 3")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
     page.click("#input")
@@ -2738,7 +2740,7 @@ def test_a_session_waiting_on_a_worker_names_it_and_opens_it(queue_server, page)
     page.goto(queue_server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     boss = spawn(page)
-    args = {"queue": "q", "payload": "/sleep 20"}
+    args = {"queue": "q", "payload": "/busy 20"}
     page.fill("#input", f"/mcp queue_enqueue {json.dumps(args)}")
     page.press("#input", "Enter")
     row = page.wait_for_selector("#s-wait-sec:not([hidden]) .kv.wait.go")
@@ -2783,7 +2785,7 @@ def test_a_finished_worker_fades_and_sinks_below_the_live_cards_and_an_errored_o
     failed = page.get_attribute("#cards .card.at-error", "data-id")
     page.click("#tab-fleet")
     page.click(f"#tablist .tab[data-id='{boss}']")
-    enqueue(page, "/sleep 4")
+    enqueue(page, "/busy 4")
     page.click("#tab-fleet")
     page.wait_for_selector("#cards .card:not(.at-error) .badge >> text=worker · q")
     worker = page.get_attribute("#cards .card:not(.at-error):has(.badge)", "data-id")
@@ -2842,7 +2844,7 @@ def test_the_session_panel_names_the_server_and_marks_a_queue_worker(
     # A worker that outlives the test: one done with its task is archived and
     # its open panel goes back to the Fleet, which a slow runner reached
     # before the badge was checked when the task took 4 s.
-    enqueue(page, "/sleep 60")
+    enqueue(page, "/busy 60")
     page.click("#tab-fleet")
     page.wait_for_selector("#cards .card .badge >> text=worker · q")
     page.click("#cards .card:has(.badge)")
@@ -3441,7 +3443,7 @@ def test_a_tall_reply_that_lands_off_screen_becomes_read_when_you_scroll_into_it
     # A prompt sent mid-turn is answered when the tool call ends, with text that
     # quotes it: the tall reply lands two seconds from now, with the reader at
     # the top.
-    page.fill("#input", "/sleep 2")
+    page.fill("#input", "/busy 2")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
     page.fill("#input", "\n\n".join(f"line {i}" for i in range(200)))
@@ -3515,7 +3517,7 @@ def test_a_reply_that_lands_while_you_are_away_stays_unread_until_you_look(
     page.wait_for_function(
         "() => !document.querySelector('.row.prose .rm .ic.i-unread')", timeout=6000
     )
-    page.fill("#input", "/sleep 1")
+    page.fill("#input", "/busy 1")
     page.press("#input", "Enter")
     page.click("#tab-fleet")  # away while the reply arrives
     page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=1 unread", timeout=8000)
@@ -3538,13 +3540,13 @@ def test_landing_after_two_replies_shows_a_recap_last_and_the_sparkle_makes_one(
     page.wait_for_function(
         "() => !document.querySelector('.row.prose .rm .ic.i-unread')", timeout=6000
     )
-    page.fill("#input", "/sleep 1")
+    page.fill("#input", "/busy 1")
     page.press("#input", "Enter")
     page.click("#tab-fleet")
     page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=1 unread", timeout=8000)
     # one unread is under the threshold: make a second one land while away
     page.click(f".tab[data-id='{sid}']")
-    page.fill("#input", "/sleep 1")
+    page.fill("#input", "/busy 1")
     page.press("#input", "Enter")
     page.click("#tab-fleet")
     page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=2 unread", timeout=8000)
@@ -3635,7 +3637,7 @@ def test_coming_back_to_the_page_asks_for_a_recap_and_hiding_it_does_not(
         }"""
     )
     for n in (2, 3):
-        page.fill("#input", "/sleep 1")
+        page.fill("#input", "/busy 1")
         page.press("#input", "Enter")
         turns_done(page, n)
     page.evaluate("() => document.dispatchEvent(new Event('visibilitychange'))")
@@ -3660,7 +3662,7 @@ def test_the_divider_and_navigator_walk_agent_messages(server, page):
         "() => !document.querySelector('.row.prose .rm .ic.i-unread')", timeout=6000
     )
     # A reply lands while away: a one-second turn, and the Fleet before it ends.
-    page.fill("#input", "/sleep 1")
+    page.fill("#input", "/busy 1")
     page.press("#input", "Enter")
     page.click("#tab-fleet")
     page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=1 unread", timeout=8000)
@@ -3724,7 +3726,7 @@ def test_the_navigator_counts_the_unread_and_jumps_to_the_first(server, page):
     )
     # A reply lands while away, and the page is not focused when we return,
     # so it stays unread.
-    page.fill("#input", "/sleep 1")
+    page.fill("#input", "/busy 1")
     page.press("#input", "Enter")
     page.click("#tab-fleet")
     page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=1 unread", timeout=8000)
@@ -3854,7 +3856,7 @@ def test_the_divider_stays_where_it_was_across_a_reconnect(server, page):
     page.wait_for_function(
         "() => !document.querySelector('.row.prose .rm .ic.i-unread')", timeout=6000
     )
-    page.fill("#input", "/sleep 1")
+    page.fill("#input", "/busy 1")
     page.press("#input", "Enter")
     page.click("#tab-fleet")
     page.wait_for_selector(f".card[data-id='{sid}'] .ft >> text=1 unread", timeout=8000)
@@ -5494,12 +5496,12 @@ def test_close_asks_in_an_aegis_dialog_and_esc_cancels_without_interrupting(
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     a = spawn(page)
-    page.fill("#input", "/sleep 3")
+    page.fill("#input", "/busy 3")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
     page.click("#close")
     page.wait_for_selector("#dialog .ok", state="visible")
-    assert "Close" in page.inner_text("#dialog .q")
+    assert "Archive" in page.inner_text("#dialog .q")
     page.keyboard.press("Escape")
     page.wait_for_selector("#dialog", state="hidden")
     assert page.is_visible(".row.tool.running"), "Esc on the dialog interrupted"
@@ -5595,7 +5597,7 @@ def test_the_archive_button_shows_on_done_cards_only_and_closes_without_opening(
     report(page, attention="needs_you", line="Which?", replies=[])
     turns_done(page, 2)
     busy = spawn(page)
-    page.fill("#input", "/sleep 30")
+    page.fill("#input", "/busy 30")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
     broken = spawn(page)
@@ -5648,7 +5650,7 @@ def test_a_middle_click_on_a_card_or_a_tab_closes_it_and_asks_unless_done(server
     page.wait_for_selector("#arch-list .empty")  # the archive is loaded, empty
     a, b = spawn(page, "hello"), spawn(page, "hello")
     busy = spawn(page)
-    page.fill("#input", "/sleep 30")
+    page.fill("#input", "/busy 30")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
     page.click("#tab-fleet")
@@ -5689,13 +5691,13 @@ def test_a_middle_click_on_a_card_or_a_tab_closes_it_and_asks_unless_done(server
     assert page.errors == []
 
 
-def test_the_interrupt_sits_beside_send_and_restart_sends_continue(server, page):
+def test_the_interrupt_sits_beside_send_and_continue_sends_continue(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
     assert page.locator("#stop").count() == 0, "the text Stop under the box is gone"
     assert page.is_hidden("#interrupt")
-    page.fill("#input", "/sleep 5")
+    page.fill("#input", "/busy 5")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
     # The card's state is drawn on the next frame (#158), so the row can land
@@ -5704,13 +5706,13 @@ def test_the_interrupt_sits_beside_send_and_restart_sends_continue(server, page)
     box = page.locator(".composer .box").bounding_box()
     btn = page.locator("#interrupt").bounding_box()
     assert box["y"] <= btn["y"] and btn["y"] + btn["height"] <= box["y"] + box["height"]
-    assert page.is_disabled("#restart")
+    assert page.is_disabled("#continue")
     page.click("#interrupt")
     turns_done(page, 1)
     # The server sends the "interrupted" row before the idle state, and the
     # card draws that state on the frame after it lands (#158): wait for it.
     page.wait_for_selector("#interrupt", state="hidden", timeout=5000)
-    page.click("#restart")
+    page.click("#continue")
     page.wait_for_selector(".row.user >> text=Continue")
     turns_done(page, 2)
     assert page.errors == []
@@ -6065,7 +6067,7 @@ def test_an_open_row_refetches_when_its_result_lands(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
-    page.fill("#input", "/sleep 2")
+    page.fill("#input", "/busy 2")
     page.press("#input", "Enter")
     page.wait_for_selector(".row.tool.running")
     page.click(".row.tool.running summary")
@@ -7022,7 +7024,7 @@ def test_the_doing_spinner_turns_only_while_the_agent_works(server, page):
     anim = "m => getComputedStyle(m).animationName"
     page.wait_for_selector(spin)
     assert page.eval_on_selector(spin, anim) == "none"
-    page.fill("#input", "/sleep 3")
+    page.fill("#input", "/busy 3")
     page.press("#input", "Enter")
     page.wait_for_selector("#s-plan.live")
     assert page.eval_on_selector(spin, anim) == "a2spin"
@@ -7058,7 +7060,7 @@ def test_the_sidebar_spinner_is_not_redrawn_when_the_session_publishes(server, p
     spin = "#s-plan > div.doing svg.ic"
     page.wait_for_selector(spin)
     page.eval_on_selector(spin, "m => { m.dataset.tag = 'kept'; }")
-    page.fill("#input", "/sleep 1")
+    page.fill("#input", "/busy 1")
     page.press("#input", "Enter")
     turns_done(page, 3)  # status, activity and cost all published meanwhile
     assert page.eval_on_selector(spin, "m => m.dataset.tag || ''") == "kept"
@@ -8293,7 +8295,7 @@ def test_the_recap_button_mid_turn_says_busy_in_a_toast(recap_server, page):
     page.goto(recap_server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page, "first")
-    page.fill("#input", "/sleep 2")
+    page.fill("#input", "/busy 2")
     page.press("#input", "Enter")
     page.wait_for_function(
         "() => (document.querySelector('.tab.on')?.title || '').includes('working')",
@@ -8436,7 +8438,7 @@ def test_btw_mid_turn_answers_in_a_block_that_folds_locally(btw_server, page):
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page, "first")
     turns_done(page, 1)
-    page.fill("#input", "/sleep 2")
+    page.fill("#input", "/busy 2")
     page.press("#input", "Enter")
     page.fill("#input", "/btw what did I ask first?")
     page.press("#input", "Enter")

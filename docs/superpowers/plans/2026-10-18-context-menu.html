@@ -154,6 +154,41 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>Slice 1 ships the card menu with today's verbs</b> (Stop, Close, Continue as the panel's Restart does); slice 2 renames them. The spec's delivery section says this; the menus table shows the end state.</li>
 </ul>
 <p class="note">Task 14 updates the spec page to match. Departures found while executing go below this line.</p>
+<h3>Departures found while executing</h3>
+<ul class="rules" id="departures-found">
+<li><b>Task 1's verify grep counts <code>contextmenu</code>.</b> <code>grep -c tmenu</code> matches the event name in <code>js/menu.js</code> and <code>js/canvas.js:136</code>; the check that holds is <code>grep -cw tmenu</code>.</li>
+<li><b>File rows take focus</b> (<code>tabIndex = -1</code>, <code>js/files.js</code> draw): a <code>div.trow</code> could not be focused (<code>files.js:407-411</code>), so neither the menu key nor Esc's return to the target could reach it.</li>
+<li><b>The menu node cancels its own mousedown.</b> A touch released over the menu that opened under the finger lands a compatibility mousedown on its padding, which moved focus to the body and closed it through focusout.</li>
+<li><b>Delete has a trash icon</b>, a new <code>g-trash</code> symbol in <code>js/glyphs.js</code>, which had none to fit.</li>
+<li><b>menuKey is one key in the browse scope</b>, which already covers the session, read, Fleet and Files views (<code>js/keys.js</code>, <code>installKeys</code>'s scopes); app.js imports menu.js as <code>cmenu</code>, since <code>menu</code> is the command menu there (<code>app.js</code>, <code>new CommandMenu</code>).</li>
+<li><b>The long-press test runs on a wide touch screen.</b> Under 640 px the Files tree is a closed drawer (<code>css/base.css</code>, <code>.ftree{display:none}</code>).</li>
+<li><b>The canvas's long press is a touch's now, and the phone test presses with touch.</b> <code>canvas.js</code>'s <code>press</code> timed any primary pointer, a mouse included, and <code>tests/test_canvas_browser.py:466-472</code> held the mouse; menu.js times non-mouse pointers, and a desktop right-click opens the tab menu instead. The test sends CDP touch events.</li>
+<li><b>A fired long press swallows the release's mousedown as well as its click</b> (<code>js/menu.js</code>, <code>onMouseDown</code>): Chromium's compatibility mousedown focused the tab under the finger, and the menu closed through its focusout.</li>
+<li><b><code>tests/test_workflows_browser.py:454</code> used <code>.pmenu</code> too</b>; it moves to <code>.cmenu</code> with the canvas tests. The menu node lives under <code>#a2</code>, not <code>#canvas</code>, so the selectors are <code>.cmenu [role=menuitem]</code>.</li>
+<li><b>A dropped pane closes the menu by the pane above its target</b> (<code>canvas.js</code> <code>closeMenuIn</code>): after the drop loop the pane is gone from <code>this.panes</code>, but the detached target still has its <code>.pane</code> ancestor, which keeps today's "a new card leaves the Move menu open" (<code>test_canvas_browser.py:837-842</code>).</li>
+<li><b>Open's icon is <code>arrow</code> and Open in new tab's is the existing <code>open</code></b> (<code>js/glyphs.js</code>, <code>g-open</code> already drew an external-link box); Rename… uses the existing <code>pencil</code> and Stop the existing <code>stop</code>. New symbols: quiet, unquiet, interrupt, play, handoff, archive (and trash from task 1).</li>
+<li><b>Terminal cards get Open, Open in new tab and Close</b>, not Open and Close only: <code>hashOf</code> already gives a terminal its <code>#t=</code> URL (<code>app.js</code>, <code>hashOf</code>), so the new tab costs nothing.</li>
+<li><b>The guard reason covers a workflow's lock and a missing connection</b> (<code>offline()</code> or a linked server down, <code>s.off</code>); the panel's state guards (<code>app.js:1772-1782</code>) decide which items show rather than disable them, as the spec's "absent, not disabled" says.</li>
+<li><b>An action's error goes to the panel only for the shown session</b>, else a toast (<code>app.js</code>, <code>failed</code>): the panel's handlers wrote <code>#side-error</code>, which shows another session's panel.</li>
+<li><b>The provider is <code>cardMenu</code>, attached by <code>attachCardMenu</code></b>, a hoisted function, since a linked server's <code>.cards</code> box is built in <code>drawRemotes</code> above the provider's definition; <code>sessionTarget</code> already names the composer's dictation target (<code>app.js:2873</code>).</li>
+<li><b>Task 4's server-restart case is an idle session, not a working one.</b> A turn the restart cut is continued at boot (<code>registry.py</code>, <code>boot</code>, <code>self.continuing</code>), so it does not stay asleep; an idle one does, as <code>("asleep", "server")</code>. <code>asleep_from</code> also reads any live <code>last_status</code> (idle, working, error) as <code>server</code>, since only a server's end leaves one in a meta with no process.</li>
+<li><b>An old meta's <code>stopped</code> reads as <code>slept</code> even when the harness had exited</b>: before #479 an exit and a Stop wrote the same value. New metas persist <code>asleep_why</code>.</li>
+<li><b>The far list's mapping is <code>agent_ops.far_entry</code></b>, a module function the test calls directly, where the loop in <code>far_sessions</code> did it inline. A far <code>asleep_why</code> outside <code>ASLEEP_WHY</code> becomes null, like any far text. <code>session_list</code> entries here carry <code>asleep_why</code> for an asleep session.</li>
+<li><b>Stop on a parked session changes only the reason</b> (<code>session.py</code>, <code>stop</code>): it was already asleep, so it records the stop and sets <code>asleep_why</code> to <code>slept</code>.</li>
+<li><b>The fakes' <code>/sleep N</code> script is <code>/busy N</code> now</b> (<code>tests/fake_claude.py</code>, <code>fake_opencode.py</code>, <code>fake_codex.py</code>, and every test that typed it). An aegis command shadows a harness command of the same name (<code>app.py</code>, <code>deliver</code>: <code>if name in commands.AEGIS</code>), so some 30 browser tests that typed <code>/sleep 30</code> to keep a session working would have put it to sleep. A commit of its own, before task 5's.</li>
+<li><b><code>session.restart</code> takes <code>RestartParams</code></b>, <code>LogParams</code> with an optional <code>untested</code>, since the version gate it shares with a send refuses a person's launch until the browser answers once or always (<code>app.py</code>, <code>_version_gate</code>). <code>/restart</code> and the op both go through <code>App._restart</code>, which also refuses behind a closed quota gate, as a send that starts a process does.</li>
+<li><b>A restart records a <code>restart</code> row, "restarted"</b>, which ends a cut turn like a stop's row (<code>transcript/entries.py</code>), and the session passes through asleep, so a start that fails leaves it asleep rather than in the state it had.</li>
+<li><b>The panel keeps the ids <code>#stop-session</code> and <code>#close</code></b> with the labels Sleep and Archive (<code>index.html</code>, <code>.side-acts</code>); only the old <code>#restart</code> moved, to <code>#continue</code>, so the tests and styles that name the other two hold.</li>
+<li><b>A park's idle time is on the wire</b> (<code>parked_idle_s</code>, beside <code>parked_rss</code> in the meta), so the placeholder reads "Asleep after N min idle. Typing wakes it." and the mark <code>zz idle N min</code>; a meta from before it has none, and reads "Asleep while idle".</li>
+<li><b>What Sleep would end is an op, <code>session.kills</code></b>, asked when Sleep is chosen rather than a card field: it counts the stray processes a park counts (<code>park.strays</code>, a <code>/proc</code> scan, too dear on every publish) beside background tasks and harness timers (<code>park.kills</code>). A monitor runs in the server and survives a sleep, so it is not listed.</li>
+<li><b>Wake is <code>session.warm</code></b>, which task 4 opened to any asleep session; the composer's keystroke warm still fires only for <code>asleep_why == "idle"</code>, as it did for parked. Restart from the menu or panel goes through <code>untestedRetry</code>, the dialog a send already uses for <code>harness_untested</code>.</li>
+<li><b>A terminal card's Close is Archive too</b> (<code>app.js</code>, <code>sessionMenu</code>), since the word Close leaves the session UI. The asleep mark reads <code>zz &lt;why&gt;</code>.</li>
+<li><b>Task 6's verify grep still finds three lines</b>: the find bar's <code>title="Close (Esc)"</code> (<code>index.html:151</code>) and a workflow run's Stop (<code>entries.js:733</code>, <code>:788</code>). Neither is a session verb.</li>
+<li><b>A linked server older than slice 2 is mapped in the client too</b> (<code>js/lifecycle.js</code>, called from <code>withKey</code> in <code>app.js</code>): the browser takes a far server's <code>sessions</code> channel raw (<code>links.py</code> maps nothing), so <code>agent_ops.far_entry</code> alone left its cards, tabs, menu and placeholder on the old states. A meta with no <code>asleep_why</code> key comes from such a server and is marked <code>old</code>: its menu has no Restart (it lacks <code>session.restart</code>) and Wake only for a parked session (its warm starts nothing else).</li>
+<li><b>Wake of a session that did not park goes through the send's gates</b> (<code>app.py</code>, <code>session.warm</code> and <code>App._launch</code>, shared with Restart): the workflow lock, a closed quota gate (now <code>quota_closed</code>, not silence), the version gate with <code>untested</code>, and <code>harness_not_found</code>. The keystroke warm of a parked session stays silent, as before.</li>
+<li><b>A person's Wake of a parked session says when the quota gate holds</b>: <code>session.warm</code> takes <code>wake: true</code> from the menu (<code>WarmParams</code>), and only the keystroke warm stays silent. A typed <code>/restart</code> asks on a working session as the menu and panel do (<code>confirmRestart</code>). The journal ends a turn on a <code>restart</code> record (<code>journal/derive.py</code>, <code>TURN_ENDS</code>). Fleet metas cached on the device go through <code>lifecycle()</code> too.</li>
+<li><b>Continue is on every session that is not working</b> (asleep, waiting, interrupted, error), as slice 1 had it and spec 03 says ("asleep or waiting → working"); the plan's task 6 grouping named it with Wake for asleep only. Sleep asks with "aegis could not check what would end with it" when <code>session.kills</code> fails, instead of reading the failure as nothing. Every person's Wake (<code>wake: true</code>) goes through <code>App._launch</code>, a parked one's too; the keystroke warm starts only a parked session, so a session another browser just slept waits for the message.</li>
+</ul>
 
 <h2>Review focus</h2>
 <p class="note">Failure modes the spec implies that no feature test reaches. Each one's pinning test is in the task named after it.</p>
@@ -186,7 +221,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 
 <div class="slice">slice 1 · menu.js · branch menu-1-module</div>
 
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="num">1</span><span><span class="ttl">menu.js, and Files' menu moved onto it</span><span class="files">js/menu.js · js/files.js · js/keys.js · css/base.css · tests/test_menu_browser.py · tests/test_files_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -229,7 +264,7 @@ def test_shift_right_click_and_inputs_keep_the_browsers_menu(page, server):
 </div>
 </details>
 
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">The canvas tab and Move menus on menu.js</span><span class="files">js/canvas.js · js/app.js · css/base.css · tests/test_canvas_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -252,7 +287,7 @@ def test_shift_right_click_and_inputs_keep_the_browsers_menu(page, server):
 </div>
 </details>
 
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="num">3</span><span><span class="ttl">Fleet card and session tab menus with today's verbs</span><span class="files">js/app.js · js/fleet.js · js/tabs.js · js/glyphs.js · tests/test_menu_browser.py · help/sessions.md</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -294,7 +329,7 @@ def test_another_members_card_offers_only_opening(page, server):
 
 <div class="slice">slice 2 · lifecycle · branch menu-2-lifecycle</div>
 
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">One asleep state with its reason</span><span class="files">session.py · registry.py · agent_ops.py · app.py · entries.py · meta.py · nudges.py · park.py · tests</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>
@@ -336,7 +371,7 @@ async def test_session_list_keeps_a_linked_servers_old_states(world):
 </div>
 </details>
 
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">session.restart and the /sleep, /restart, /archive commands</span><span class="files">session.py · app.py · commands.py · help/commands.md · tests/test_lifecycle.py · tests/test_commands.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -370,7 +405,7 @@ async def test_sleep_restart_and_archive_commands_and_their_aliases(world):
 </div>
 </details>
 
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">The client and the docs speak the new verbs</span><span class="files">index.html · app.js · fleet.js · tabs.js · base.css · glyphs.js · help/*.md · DESIGN.md · tests</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>files</h4>

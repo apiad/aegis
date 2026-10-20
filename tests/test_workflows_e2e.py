@@ -164,7 +164,7 @@ async def test_a_restart_mid_run_finishes_the_run(world):
     main = await world.spawn()
     armed = ok(
         await turn(
-            main, mcp("workflow_arm", definition=flow("/sleep 2", RESULT), args={})
+            main, mcp("workflow_arm", definition=flow("/busy 2", RESULT), args={})
         )
     )
     await world.app.registry.call("workflow.approve", {"run": armed["run"]})
@@ -202,7 +202,7 @@ async def test_a_stop_mid_node_shows_the_node_and_its_seq_stopped(world):
     main = await world.spawn()
     armed = ok(
         await turn(
-            main, mcp("workflow_arm", definition=flow("/sleep 10", RESULT), args={})
+            main, mcp("workflow_arm", definition=flow("/busy 10", RESULT), args={})
         )
     )
     run = armed["run"]

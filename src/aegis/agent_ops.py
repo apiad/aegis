@@ -29,7 +29,7 @@ from .confirm import TTL_S
 from .monitors import iso_now
 from .names import SPAWN_HEAD, SPAWN_TASK, valid_handle
 from .ops import Caller, OpError
-from .session import Archived
+from .session import ASLEEP_WHY, Archived, asleep_from
 from .transcript.entries import CONTENT_KINDS
 
 if TYPE_CHECKING:
@@ -370,7 +370,8 @@ ACROSS = (
 # What an agent here may learn of a linked server, all of it composed here from
 # values checked here: the far server may be hostile, so none of its text is
 # passed on (DESIGN.md, "A link is a client").
-FAR_STATES = frozenset({"idle", "working", "stopped", "error", "parked"})
+# A server older than #479 says stopped or parked for asleep.
+FAR_STATES = frozenset({"idle", "working", "error", "asleep", "stopped", "parked"})
 FAR_ERRORS = {
     "no_session": "no open session {handle}@{server}",
     "archived": "{handle}@{server} is archived",
@@ -383,6 +384,28 @@ FAR_ERRORS = {
     "not_allowed": "{server} refused the permission asked for",
     "unknown_agent": "{server} has no such agent",
 }
+
+
+def far_entry(e: dict, server: str) -> dict | None:
+    """One linked server's session as an agent here may see it: a valid handle
+    and a known state, or nothing. An older server's stopped and parked read as
+    asleep with their reason; a reason that is not one of ours is dropped."""
+    if not isinstance(e, dict):
+        return None
+    handle, state = e.get("handle"), e.get("state")
+    if (
+        not (isinstance(handle, str) and valid_handle(handle))
+        or state not in FAR_STATES
+    ):
+        return None
+    if state not in ("stopped", "parked", "asleep"):
+        return {"handle": handle, "server": server, "state": state}
+    why = e.get("asleep_why")
+    if state != "asleep":
+        why = asleep_from(state, None)[1]
+    elif why not in ASLEEP_WHY:
+        why = None
+    return {"handle": handle, "server": server, "state": "asleep", "asleep_why": why}
 
 
 def far_error(e: OpError, server: str, handle: str = "") -> OpError:
@@ -863,6 +886,7 @@ def register_agent_ops(app: App) -> None:
                     "handle": s.handle,
                     "title": s.title,
                     "state": s.status,
+                    **({"asleep_why": s.asleep_why} if s.status == "asleep" else {}),
                     "cwd": str(s.spec.cwd),
                     "worker": s.worker,
                     "you": caller.log_id == s.log_id,
@@ -886,10 +910,8 @@ def register_agent_ops(app: App) -> None:
             for e in listed if isinstance(listed, list) else []:
                 if not isinstance(e, dict) or "server" in e:
                     continue
-                handle, state = e.get("handle"), e.get("state")
-                ok = isinstance(handle, str) and valid_handle(handle)
-                if ok and state in FAR_STATES:
-                    out.append({"handle": handle, "server": link.name, "state": state})
+                if (entry := far_entry(e, link.name)) is not None:
+                    out.append(entry)
         return out
 
     def origin(s, me) -> tuple[str, str | None]:

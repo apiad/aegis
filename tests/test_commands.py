@@ -118,7 +118,7 @@ async def test_claudes_commands_pass_through_and_fold_cleanly(app):
 async def test_effort_mid_turn_says_from_the_next_turn(app):
     lid = await spawn(app)
     s = app.sessions.sessions[lid]
-    await send(app, lid, "/sleep 1")
+    await send(app, lid, "/busy 1")
     await until(lambda: s.status == "working", what="the turn")
     await send(app, lid, "/effort low")
     assert s.status == "working" and s.spec.effort == "low"
@@ -141,24 +141,27 @@ async def test_commands_list_puts_aegis_first_and_hides_what_it_shadows(app):
     lid = await spawn(app)
     r = await app.registry.call("commands.list", {"log_id": lid})
     names = [c["name"] for c in r["commands"]]
-    assert names[:13] == [
+    assert names[:16] == [
         "model",
         "effort",
         "permission",
         "rename",
         "title",
+        "sleep",
         "stop",
+        "restart",
         "btw",
         "workflow",
         "loop",
         "spawn",
         "announce",
+        "archive",
         "close",
         "help",
     ]
     assert names.count("model") == 1 and names.count("rename") == 1
     src = {c["name"]: c["source"] for c in r["commands"]}
-    assert (src["model"], src["compact"], src["hello"], src["sleep"]) == (
+    assert (src["model"], src["compact"], src["hello"], src["busy"]) == (
         "aegis",
         "claude",
         "project",

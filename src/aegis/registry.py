@@ -430,8 +430,10 @@ class Registry(Host):
             resume_id=meta.get("resume_id") or meta.get("claude_session_id"),
             created_at=meta.get("created_at"),
             last_activity=meta.get("last_activity"),
-            last_status=meta.get("last_status") or "stopped",
+            last_status=meta.get("last_status") or "asleep",
+            asleep_why=meta.get("asleep_why"),
             parked_rss=meta.get("parked_rss") or 0,
+            parked_idle_s=meta.get("parked_idle_s") or 0,
             cost_usd=meta.get("cost_usd"),
             context_tokens=meta.get("context_tokens"),
             context_window=meta.get("context_window"),
@@ -512,7 +514,7 @@ class Registry(Host):
             if not v.go:
                 rec["declined"] = restarts.DECLINED
             s._record(rec)
-        s.last_status = "stopped"
+        s.last_status = "asleep"
         if v.go:
             self.continuing[s.log_id] = v.crash
         else:
@@ -695,7 +697,8 @@ class Registry(Host):
         meta = {
             **meta,
             "archived": False,
-            "last_status": "stopped",
+            "last_status": "asleep",
+            "asleep_why": "slept",
             "continued_by": None,
             "quiet": False,  # a person reopening it wants to see it (#386)
         }

@@ -125,6 +125,19 @@ class Facts:
     reported: bool = True
 
 
+def kills(open_tasks: int, timers: frozenset[str], strays: int = 0) -> list[str]:
+    """What ending the process would end with it, one plain line each: the
+    reasons a park waits for, and what Sleep asks about first (#479)."""
+    out = []
+    if open_tasks:
+        out.append(f"{open_tasks} background task(s) would die")
+    if timers:
+        out.append(f"{', '.join(sorted(timers))} would be cancelled")
+    if strays:
+        out.append(f"{strays} other process(es) would die")
+    return out
+
+
 def blockers(f: Facts) -> list[str]:
     """Why the session must keep its process, one plain reason per rule;
     empty when it may park."""
@@ -141,12 +154,7 @@ def blockers(f: Facts) -> list[str]:
         out.append("it is a queue worker")
     if f.held:
         out.append("it holds a message")
-    if f.open_tasks:
-        out.append(f"{f.open_tasks} background task(s) would die")
-    if f.timers:
-        out.append(f"{', '.join(sorted(f.timers))} would be cancelled")
-    if f.strays:
-        out.append(f"{len(f.strays)} other process(es) would die")
+    out += kills(f.open_tasks, f.timers, len(f.strays))
     if f.watchers:
         out.append("someone is looking at it")
     return out

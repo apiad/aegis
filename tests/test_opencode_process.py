@@ -124,7 +124,7 @@ async def test_a_resume_keeps_the_id_and_an_unknown_one_starts_anew(
 
 async def test_a_permission_change_restarts_the_child_at_the_next_send_only(rig):
     pid = rig.proc.pid
-    await rig.proc.send("/sleep 1")
+    await rig.proc.send("/busy 1")
     await rig.proc.set("permission", "read")
     await rig.proc.send("steer this")  # mid-turn: no restart
     assert rig.proc.pid == pid
@@ -137,7 +137,7 @@ async def test_a_permission_change_restarts_the_child_at_the_next_send_only(rig)
 
 
 async def test_interrupt_aborts_the_turn(rig):
-    await rig.proc.send("/sleep 5")
+    await rig.proc.send("/busy 5")
     await until(lambda: "session.tool.called" in rig.types(), what="the call")
     await asyncio.sleep(0.2)
     await rig.proc.interrupt()

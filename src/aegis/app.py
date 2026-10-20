@@ -83,6 +83,7 @@ from .names import valid_handle
 from .notice_ops import register_notice_ops
 from .notices import Notices
 from .nudges import Nudges
+from . import park
 from .park import Parker, Watchers
 from .push import register_push_ops
 from .queues import Queues
@@ -235,6 +236,19 @@ class ConfigureParams(_Strict):
 
 class LogParams(_Strict):
     log_id: str
+
+
+def _held(owner: str, why: str) -> str:
+    return f"{owner}'s quota gate holds this session: {why}. It continues when the gate opens."
+
+
+class RestartParams(LogParams):
+    untested: Literal["once", "always"] | None = None
+
+
+class WarmParams(RestartParams):
+    # A person's Wake, not the first keystroke: a closed gate is said.
+    wake: bool = False
 
 
 class DetailParams(_Strict):
@@ -846,6 +860,7 @@ class App:
         untested: str | None = None,
     ):
         """Run an aegis command typed in the composer."""
+        name = commands.ALIASES.get(name, name)
         cmd = commands.AEGIS[name]
         if cmd.hint.startswith("<") and not arg:
             raise OpError("missing_argument", f"usage: /{name} {cmd.hint}")
@@ -904,9 +919,11 @@ class App:
             body = self.workflows.launch(s, self.saved.get(wid), typed.strip(), origin)
             await s.deliver(f"> from workflow:{wid} · launch · {iso_now()}", body)
             return {"launched": wid}
-        if name == "stop":
+        if name == "sleep":
             await s.stop()
             return s.wire()
+        if name == "restart":
+            return await self._launch(s, caller, untested, s.restart)
         if name == "spawn":
             return await self._spawn_line(
                 commands.parse_spawn(arg), caller, s, untested
@@ -915,8 +932,31 @@ class App:
             text, level, until = commands.parse_announce(arg)
             params = {"text": text, "level": level, "until": until}
             return await self.registry.call("notice.announce", params, caller)
-        await reg.close(s.log_id)  # close
-        return None
+        if name == "archive":
+            await reg.close(s.log_id)
+            return None
+        raise OpError("unknown_command", f"/{name} has no handler")
+
+    async def _launch(self, s, caller: Caller, untested: str | None, start):
+        """Start a session's harness through ``start`` (Session.restart, or
+        ensure_running for a Wake). Refused like a send that would start one:
+        on a workflow's locked step, behind a closed quota gate, and on a
+        harness version outside the tested range until the person says so."""
+        s.check_lock()
+        if (why := self.sessions.quota_hold(s)) is not None:
+            raise OpError("quota_closed", _held(s.spec.owner or self.user, why))
+        not_saved = await self._version_gate(caller, s.spec.harness, untested, s)
+        s.launch_by = "agent" if caller.is_agent else "person"
+        try:
+            await start()
+        except FileNotFoundError as e:
+            raise OpError(
+                "harness_not_found",
+                f"cannot run {self._bin(s.spec.harness)!r}: {e}",
+            ) from e
+        finally:
+            s.launch_by = "agent"
+        return {"not_saved": not_saved} if not_saved else s.wire()
 
     async def _version_gate(
         self, caller: Caller, harness: str, untested: str | None, s=None
@@ -1310,15 +1350,10 @@ class App:
                     )
             text = commands.escape(p.text)
             if (why := reg.quota_hold(s)) is not None:
-                owner = s.spec.owner or self.user
-                raise OpError(
-                    "quota_closed",
-                    f"{owner}'s quota gate holds this session: {why}. "
-                    "It continues when the gate opens.",
-                )
+                raise OpError("quota_closed", _held(s.spec.owner or self.user, why))
             not_saved = None
-            if not s.running and s.status != "parked":
-                # A person resuming a stopped session; a parked one wakes
+            if not s.running and s.asleep_why != "idle":
+                # A person resuming a session that slept; a parked one wakes
                 # unattended (spec §06).
                 not_saved = await self._version_gate(
                     caller, s.spec.harness, p.untested, s
@@ -1567,13 +1602,40 @@ class App:
             s.check_lock()
             await s.stop()
 
-        @r.op("session.warm", LogParams, owned="log_id")
-        async def warm(p: LogParams, caller):
-            # Someone started typing to a parked session: start its harness while
-            # they write (park.py). A closed quota gate starts nothing.
+        @r.op("session.restart", RestartParams, owned="log_id")
+        async def restart(p: RestartParams, caller):
             s = reg.open(p.log_id)
-            if s.status == "parked" and not reg.quota_hold(s):
+            return await self._launch(s, caller, p.untested, s.restart)
+
+        @r.op("session.warm", WarmParams, owned="log_id")
+        async def warm(p: WarmParams, caller):
+            # A person's Wake (wake: true) is refused like a send that would
+            # start the session (#479). Without it, someone started typing to
+            # a parked session: start its harness while they write
+            # (park.py); a closed quota gate starts nothing and says nothing,
+            # and one that slept waits for the message itself.
+            s = reg.open(p.log_id)
+            if s.status != "asleep":
+                return None
+            if p.wake:
+                return await self._launch(s, caller, p.untested, s.ensure_running)
+            if s.asleep_why == "idle" and reg.quota_hold(s) is None:
                 await s.ensure_running()
+            return None
+
+        @r.op("session.kills", LogParams, owned="log_id")
+        async def sleep_kills(p: LogParams, caller):
+            """What Sleep would end with the process, one plain line each: what
+            a park waits for, the stray processes included (park.kills). Asked
+            when Sleep is chosen, since the /proc scan is too dear per publish."""
+            s = reg.open(p.log_id)
+            if not s.running or s.pid is None:
+                return []
+            keep = s.spec.harness == "claude-code"
+            found = await asyncio.to_thread(
+                park.strays, s.pid, s.log_id, reg.cgroup_dir(s), keep_servers=keep
+            )
+            return park.kills(len(s.open_tasks), frozenset(s.timers), len(found))
 
         @r.op("session.unquiet", LogParams, owned="log_id")
         async def unquiet(p: LogParams, caller):

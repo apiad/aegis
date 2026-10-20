@@ -158,7 +158,7 @@ async def test_the_schedules_channel_carries_every_schedule(world):
 
 async def test_a_schedule_deleted_mid_run_leaves_its_run_alone(world):
     t = frozen(world)
-    create(world, "gone-soon", "/sleep 1")
+    create(world, "gone-soon", "/busy 1")
     await tick(world, t)
     (fired,) = runs(world, "gone-soon", "fired")
     await world.app.registry.call("schedule.delete", {"name": "gone-soon"})

@@ -24,6 +24,7 @@ import { installKeys, renderKeys } from "./keys.js";
 import { Palette } from "./palette.js";
 import { entryIcon, glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
+import * as cmenu from "./menu.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
@@ -44,6 +45,7 @@ import { checkRotation, closePushPanel, openPushPanel, pushSupported, setupPush 
 import { clearDevice, loadFleet, loadTranscript, saveFleet, saveTranscript } from "./devicestore.js";
 import { markNeedsNet, offline } from "./net.js";
 import { discard, draftFor, flushNow, loadDrafts, onDrafts, queue, sendAnyway, setSender } from "./outbox.js";
+import { idleFor, lifecycle } from "./lifecycle.js";
 
 const $ = (id) => document.getElementById(id);
 const root = $("a2");
@@ -99,11 +101,11 @@ function callFor(key, op, params = {}) {
 }
 const linkOf = (server) => links.find((l) => l.name === server);
 const isOff = (server) => !!server && linkOf(server)?.state !== "linked";
-const withKey = (m, server = null) => ({ ...m, server, key: keyOf(server, m.log_id), off: isOff(server) });
+const withKey = (m, server = null) => ({ ...lifecycle(m), server, key: keyOf(server, m.log_id), off: isOff(server) });
 const order = new TabOrder();
 let ordered = []; // metas in this browser's tab order
 let shown = null; // the key of the session whose transcript is subscribed
-let warmed = null; // the parked session whose first keystroke asked for session.warm
+let warmed = null; // the parked (asleep, idle) session whose first keystroke asked for session.warm
 let landUnread = null; // the tab Alt+J opened, whose transcript lands on its first unread
 let unsubTranscript = null;
 let workingSince = null;
@@ -803,7 +805,8 @@ let early = ["session", "window", "read"].includes(boot.view) ? { id: boot.id, c
 loadFleet().then((saved) => {
   if (!saved || booted || refused) return;
   seenAt = saved.saved_at;
-  for (const m of saved.metas) sessions.set(m.key, { ...m, stale: true });
+  // An older client saved stopped and parked: read them as asleep (#479).
+  for (const m of saved.metas) sessions.set(m.key, { ...lifecycle(m), stale: true });
   booted = true;
   onSessions();
 });
@@ -1248,6 +1251,7 @@ function renderRemotes() {
       band.classList.add("far");
       const cards = document.createElement("section");
       cards.className = "cards";
+      attachCardMenu(cards);
       box.append(band, cards);
       host.append(box);
       const r = remote.get(l.name);
@@ -1391,7 +1395,7 @@ function drawSideHost() {
   rows.push(...netRows(net, Date.now() / 1000, () => measureNet(server || null)));
   $("s-host-tiles").replaceChildren(...tiles);
   $("s-host-rows").replaceChildren(...rows);
-  const live = (s.server ? on(s.server) : local()).filter((m) => !["stopped", "parked"].includes(m.state) && m.kind !== "term");
+  const live = (s.server ? on(s.server) : local()).filter((m) => m.state !== "asleep" && m.kind !== "term");
   const sized = live.filter((m) => m.context_window && m.context_tokens);
   $("s-host-live").textContent = String(live.length);
   $("s-host-ctx").textContent = sized.length
@@ -1774,9 +1778,10 @@ function renderMeta(s) {
   const theirs = !mine(s);
   // A workflow's node is the engine's while its run lives.
   const held = locked(s);
-  $("restart").disabled = working || theirs || held;
+  $("continue").disabled = working || theirs || held;
+  $("restart").disabled = theirs || held || !!s.old;
   $("working").hidden = !working;
-  $("stop-session").disabled = s.state === "stopped" || theirs || held;
+  $("stop-session").disabled = s.state === "asleep" || theirs || held;
   $("quiet-session").disabled = !["working", "waiting"].includes(s.attention) || theirs || held;
   $("interrupt").disabled = theirs || held;
   $("close").disabled = theirs || held;
@@ -1786,7 +1791,7 @@ function renderMeta(s) {
   const down = s.off ? linkOf(s.server) : null;
   input.disabled = $("attach").disabled = !!down || theirs || held;
   drawSending(!!down || theirs || held);
-  if (s.state !== "parked" && warmed === shown) warmed = null;
+  if (s.asleep_why !== "idle" && warmed === shown) warmed = null;
   drawComposerHint(s);
   setTitle(`${s.title || s.handle} · aegis`);
 }
@@ -1819,7 +1824,7 @@ function drawWaiting(s) {
 // and whether a message resumes it. While a parked session's harness resumes
 // after the first keystroke, the waking row says so in the transcript instead.
 function drawComposerHint(s) {
-  $("waking").hidden = !(s.state === "parked" && warmed === shown);
+  $("waking").hidden = !(s.asleep_why === "idle" && warmed === shown);
   const theirs = !mine(s);
   const down = s.off ? linkOf(s.server) : null;
   // Chrome counts a placeholder in scrollHeight: measure again when it changes.
@@ -1831,10 +1836,12 @@ function drawComposerHint(s) {
       : `${ownerOf(s)}'s session. You can read it; only ${ownerOf(s)} can write to it.`
     : down
     ? `${s.server} is ${down.state} since ${new Date(down.since * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}; nothing can be sent until it is back.`
-    : s.state === "parked"
-      ? "Parked to free memory. Typing wakes it."
-      : s.state === "stopped"
-      ? "Stopped; your next message resumes it."
+    : s.state === "asleep" && s.asleep_why === "idle"
+      ? idleFor(s)
+        ? `Asleep after ${idleFor(s)} idle. Typing wakes it.`
+        : "Asleep while idle. Typing wakes it."
+      : s.state === "asleep"
+      ? "Asleep; your next message wakes it."
       : touch.matches
         ? "Message the agent"
         : "Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts.";
@@ -2692,6 +2699,14 @@ installKeys(
     fleetPrev: () => fleetMove(-1),
     fleetOpen,
     filter: () => $("arch-q").focus(),
+    // The focused row's menu, else the selected transcript row's or Fleet card's.
+    menuKey() {
+      const at = document.activeElement?.closest?.("[data-id], .trow");
+      if (cmenu.openFor(at)) return;
+      const v = route().view;
+      if (v === "session" || v === "read") cmenu.openFor(transcript.selected && transcript.nodes.get(transcript.selected));
+      else if (v === "fleet") cmenu.openFor(fleetItems().find((x) => x.dataset.id === fleetSel));
+    },
     spawn: () => offline() || go("#new"), // a new session needs the server
     settings: () => go("#settings"),
     journal: () => go("#journal"),
@@ -2722,7 +2737,7 @@ installKeys(
       if (cancelAsk() || closeInstallDialog() || closePushPanel()) return;
       if (root.dataset.side === "open") return closeSide();
       if (!keymap.hidden) help(false);
-      else if (canvas.closeMenu() || viewer.close() || find.close() || closeMonitorCard() || closeCard()) return;
+      else if (cmenu.close() || viewer.close() || find.close() || closeMonitorCard() || closeCard()) return;
       else if (route().view === "session" && !editing.size) interrupt();
     },
     help: () => help(),
@@ -3045,14 +3060,15 @@ $("closing-btn").addEventListener("click", () => {
 });
 
 const askClose = (s) =>
-  ask(`Close ${s.title || s.handle}? Its tab goes away in every browser; it stays in the archive.`, { ok: "Close" });
-// The one rule for when closing asks: a done session has nothing left to lose,
-// anything else may be mid-work. The Close button, /close, the Fleet's Archive
-// button and the phone's Archive row all pass through it.
+  ask(`Archive ${s.title || s.handle}? Its tab goes away in every browser; Reopen in the archive brings it back.`, { ok: "Archive" });
+// The one rule for when archiving asks: a done session has nothing left to
+// lose, anything else may be mid-work. The panel's Archive, /archive and /close,
+// the Fleet's Archive button, the menu and the phone's Archive row all pass
+// through it.
 const confirmClose = async (s) => s.attention === "done" || (await askClose(s));
 
 async function closeSession(s) {
-  if (locked(s)) return toast(`${s.handle} is a step of a running workflow; it closes when the run ends`, { kind: "error" });
+  if (locked(s)) return toast(`${s.handle} is a step of a running workflow; it archives when the run ends`, { kind: "error" });
   if (offline() || !(await confirmClose(s))) return;
   if (s.kind === "term") {
     const { server, log_id } = forKey(s.key);
@@ -3095,7 +3111,8 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
     go("#help");
     return;
   }
-  if (text === "/close" && !(await confirmClose(s))) return;
+  if ((text === "/archive" || text === "/close") && !(await confirmClose(s))) return;
+  if (text === "/restart" && !(await confirmRestart(s))) return;
   // With no way to the session's server, plain text waits as its draft on this
   // device (outbox.js); a command or files still need the connection.
   const rev = shown === s.key ? transcript.rev : -1;
@@ -3306,21 +3323,93 @@ for (const [id, cmd] of [
   });
 }
 
-async function interrupt() {
-  const s = focused();
+// A session action's error: in the panel when it is the shown session's,
+// else a toast (a card's or a tab's menu acts on any session).
+function failed(key, e) {
+  if (key === shown) $("side-error").textContent = e.message;
+  else toast(e.message, { kind: "error" });
+}
+
+async function interruptKey(key) {
+  const s = sessions.get(key);
   if (!s || s.state !== "working") return;
   try {
-    await callFor(s.key, "session.interrupt");
+    await callFor(key, "session.interrupt");
   } catch (e) {
     toast(e.message, { kind: "error" });
   }
 }
+const interrupt = () => focused() && interruptKey(focused().key);
+
+async function quietKey(key, on) {
+  if (offline() || !sessions.has(key)) return;
+  try {
+    await callFor(key, on ? "session.quiet" : "session.unquiet");
+  } catch (e) {
+    failed(key, e);
+  }
+}
+
+// Sleep ends the process and keeps the conversation. What would die with it
+// (session.kills: background tasks, timers, processes it left running)
+// is asked about first. A server older than #479 has no such op.
+async function sleepKey(key) {
+  const s = sessions.get(key);
+  if (offline() || !s) return;
+  // A check that fails cannot say nothing would die: ask then too.
+  const kills = s.old || s.state === "asleep" ? [] : await callFor(key, "session.kills").catch(() => ["aegis could not check what would end with it"]);
+  if (kills.length && !(await ask(`Sleep ${s.handle}? ${kills.join("; ")}.`, { ok: "Sleep" }))) return;
+  try {
+    await callFor(key, "session.stop");
+  } catch (e) {
+    failed(key, e);
+  }
+}
+
+// Wake starts an asleep session's process and sends nothing (session.warm),
+// asking first about an untested harness version, as a send does.
+async function wakeKey(key) {
+  const s = sessions.get(key);
+  if (offline() || !s) return;
+  try {
+    // An older server's warm takes only log_id.
+    const wake = s.old ? {} : { wake: true };
+    await untestedRetry(
+      () => callFor(key, "session.warm", wake),
+      (untested) => callFor(key, "session.warm", { ...wake, untested }),
+    );
+  } catch (e) {
+    failed(key, e);
+  }
+}
+
+// Restart: a fresh process on the same conversation. It cuts a turn, so a
+// working session asks first: from the menu, the panel and a typed /restart.
+const confirmRestart = async (s) =>
+  s.state !== "working" || (await ask(`Restart ${s.handle}? It cuts the turn it is working on.`, { ok: "Restart" }));
+async function restartKey(key) {
+  const s = sessions.get(key);
+  if (offline() || !s) return;
+  if (!(await confirmRestart(s))) return;
+  try {
+    await untestedRetry(
+      () => callFor(key, "session.restart"),
+      (untested) => callFor(key, "session.restart", { untested }),
+    );
+  } catch (e) {
+    failed(key, e);
+  }
+}
+
+// A nudge after an interrupt, an error or a sleep: a message to an asleep
+// session wakes it, so Continue is one sentence to the agent.
+const continueKey = (key) => !offline() && sessions.has(key) && sendLine("Continue", false, [], sessions.get(key));
 
 // The first keystroke to a parked session starts its harness while the person
 // types (session.warm); once per parked stretch (warmed, above).
 function warmIfParked() {
   const s = shown && sessions.get(shown);
-  if (!s || s.state !== "parked" || warmed === shown || !mine(s)) return;
+  if (!s || s.asleep_why !== "idle" || warmed === shown || !mine(s)) return;
   warmed = shown;
   const key = shown;
   callFor(key, "session.warm", { log_id: forKey(key).log_id }).catch(() => {
@@ -3351,31 +3440,10 @@ input.addEventListener("keydown", (ev) => {
 });
 $("send").addEventListener("click", send);
 $("interrupt").addEventListener("click", interrupt);
-// A nudge after an interrupt, an error or a stop: a message to a stopped
-// session resumes it, so Restart is one sentence to the agent.
-$("restart").addEventListener("click", () => !offline() && sendLine("Continue", false));
-
-$("quiet-session").addEventListener("click", async () => {
-  if (offline()) return;
-  const s = focused();
-  if (!s) return;
-  try {
-    await callFor(s.key, "session.quiet");
-  } catch (e) {
-    $("side-error").textContent = e.message;
-  }
-});
-
-$("stop-session").addEventListener("click", async () => {
-  if (offline()) return;
-  const s = focused();
-  if (!s) return;
-  try {
-    await callFor(s.key, "session.stop");
-  } catch (e) {
-    $("side-error").textContent = e.message;
-  }
-});
+$("continue").addEventListener("click", () => focused() && continueKey(focused().key));
+$("restart").addEventListener("click", () => focused() && restartKey(focused().key));
+$("quiet-session").addEventListener("click", () => focused() && quietKey(focused().key, true));
+$("stop-session").addEventListener("click", () => focused() && sleepKey(focused().key));
 
 $("close").addEventListener("click", () => {
   const s = focused();
@@ -3451,3 +3519,56 @@ function editable(elId, field) {
 }
 editable("s-title", "title");
 editable("s-handle", "handle");
+
+// Rename… from a menu: the session opens and its handle turns into the
+// panel's own input, once the panel shows that session.
+async function renameKey(key) {
+  await openCard(key);
+  const s = sessions.get(key);
+  for (let i = 0; i < 30 && s && $("s-handle").textContent !== s.handle; i++) await new Promise(requestAnimationFrame);
+  $("s-handle").click();
+}
+
+// -- the card and tab menu (menu.js) --------------------------------------------
+// What applies to the session's state, and what the viewer may do: another
+// member's session offers only opening it; a guard that blocks an action
+// (a workflow's step, no connection) leaves it disabled with the reason.
+function sessionMenu(key) {
+  const s = sessions.get(key);
+  if (!s) return null;
+  const opening = [
+    { id: "open", label: "Open", icon: "arrow", run: () => openCard(key) },
+    { id: "newtab", label: "Open in new tab", icon: "open", run: () => window.open(hashOf(key)) },
+  ];
+  const title = `${s.kind === "term" ? s.name : s.handle} · ${LABEL[s.attention] || s.state}`;
+  if (!mine(s)) return { title, groups: [opening] };
+  const why = locked(s)
+    ? `${s.handle} is a step of a running workflow`
+    : offline() || s.off
+      ? "No connection to its server"
+      : undefined;
+  const close = [{ id: "archive", label: "Archive", icon: "archive", danger: true, disabled: why, run: () => closeSession(s) }];
+  if (s.kind === "term") return { title, groups: [opening, close] };
+  if (s.quiet) opening.push({ id: "unquiet", label: "Unquiet", icon: "unquiet", disabled: why, run: () => quietKey(key, false) });
+  else if (["working", "waiting"].includes(s.attention))
+    opening.push({ id: "quiet", label: "Quiet", icon: "quiet", disabled: why, run: () => quietKey(key, true) });
+  const life = [];
+  if (s.state === "working") life.push({ id: "interrupt", label: "Interrupt", icon: "interrupt", disabled: why, run: () => interruptKey(key) });
+  // A server older than #479 wakes only a parked session.
+  if (s.state === "asleep" && (!s.old || s.asleep_why === "idle")) life.push({ id: "wake", label: "Wake", icon: "wake", disabled: why, run: () => wakeKey(key) });
+  if (s.state !== "working") life.push({ id: "continue", label: "Continue", icon: "play", disabled: why, run: () => continueKey(key) });
+  if (s.state !== "asleep") life.push({ id: "sleep", label: "Sleep", icon: "sleep", disabled: why, run: () => sleepKey(key) });
+  if (!s.old) life.push({ id: "restart", label: "Restart", icon: "restart", disabled: why, run: () => restartKey(key) });
+  if (!s.worker) life.push({ id: "handoff", label: "Hand off", icon: "handoff", disabled: why, run: () => handOff(s) });
+  const rename = [{ id: "rename", label: "Rename…", icon: "pencil", disabled: why, run: () => renameKey(key) }];
+  return { title, groups: [opening, life, rename, close] };
+}
+// The menu of a card or tab pressed; none on the space around them.
+function cardMenu(t) {
+  return t.dataset?.id && t.matches(".card, .tab") ? sessionMenu(t.dataset.id) : null;
+}
+function attachCardMenu(box) {
+  cmenu.attach(box, cardMenu, { selector: ".card[data-id], .tab[data-id]" });
+}
+attachCardMenu($("cards"));
+attachCardMenu($("tablist"));
