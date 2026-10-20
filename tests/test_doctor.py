@@ -198,7 +198,11 @@ def scores(monkeypatch):
 
 
 def test_propose_orders_free_models_by_ranking(scores):
-    scores({"o/a": {"coding": 41.2}, "o/b": {"coding": 38.9}})
+    # Coding Index the other way round: Intelligence orders.
+    scores({
+        "o/a": {"intelligence": 41.2, "coding": 10.0},
+        "o/b": {"intelligence": 38.9, "coding": 20.0},
+    })  # fmt: skip
     doc = propose([oc(m("o/c", free=True), m("o/a", free=True), m("o/b", free=True))])
     (free,) = doc.agents
     assert (free.name, free.harness, free.permission) == ("free", "opencode", "full")
@@ -206,7 +210,7 @@ def test_propose_orders_free_models_by_ranking(scores):
 
 
 def test_propose_puts_no_paid_model_in_a_cascade(scores):
-    scores({"g/pro": {"coding": 60.0}, "o/pickle": {"coding": 20.0}})
+    scores({"g/pro": {"intelligence": 60.0}, "o/pickle": {"intelligence": 20.0}})
     paid = m("g/pro", ("high",))
     doc = propose([oc(paid, m("o/pickle", free=True), m("g/max"))])
     (free,) = doc.agents
@@ -216,7 +220,7 @@ def test_propose_puts_no_paid_model_in_a_cascade(scores):
 def test_propose_with_only_paid_models_proposes_the_best_one_alone(scores):
     """Nothing free: the best model alone, as before cascades, so an install
     with only paid OpenCode models still gets an agent."""
-    scores({"g/pro": {"coding": 60.0}})
+    scores({"g/pro": {"intelligence": 60.0}})
     doc = propose([oc(m("g/max"), m("g/pro", ("high",)))])
     (agent,) = doc.agents
     assert (agent.name, agent.model, agent.models) == ("pro", "g/pro", [])
@@ -254,7 +258,7 @@ def test_one_free_model_is_a_cascade_of_one():
 
 
 def test_propose_takes_effort_from_the_first_model(scores):
-    scores({"x/y": {"coding": 50.0}})
+    scores({"x/y": {"intelligence": 50.0}})
     doc = propose([oc(m("g/flash", ("low", "medium", "high"), free=True))])
     assert doc.agents[0].effort == "high"
     doc = propose(
@@ -296,7 +300,11 @@ async def test_a_cascade_out_of_ranking_order_warns(
 ):
     from aegis.ranking import Ranking
 
-    scores = {"opus": {"coding": 41.2}, "sonnet": {"coding": 38.9}}
+    # Coding Index the other way round: Intelligence orders.
+    scores = {
+        "opus": {"intelligence": 57.6, "coding": 30.0},
+        "sonnet": {"intelligence": 52.1, "coding": 45.0},
+    }
     monkeypatch.setattr(
         "aegis.doctor.ranking", lambda: Ranking.from_dict({"models": scores})
     )
@@ -314,7 +322,7 @@ async def test_a_cascade_out_of_ranking_order_warns(
     found = await run(tmp_path, text, fake_claude, fake_opencode)
     (f,) = at(found, "agents.down.models")
     assert f.level == "warn" and f.row == "agents.down"
-    assert f.message == "sonnet (38.9) is above opus (41.2) in the ranking"
+    assert f.message == "sonnet (52.1) is above opus (57.6) in the ranking"
     (f,) = at(found, "agents.unranked.models")
-    assert f.message == "haiku (unranked) is above opus (41.2) in the ranking"
+    assert f.message == "haiku (unranked) is above opus (57.6) in the ranking"
     assert at(found, "agents.ordered.models") == []
