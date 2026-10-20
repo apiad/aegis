@@ -121,8 +121,10 @@ Two calls keep the person informed without reading the transcript:
 The mark on the tab and the card comes from `turn_end`, except working,
 waiting and error, which aegis sees for itself; a turn with no `turn_end`
 reads as done. A session that drifts gets one nudge from aegis: when its plan
-has gone stale after a stretch of work, or when a turn ended without
-`turn_end` and nothing explains the silence.
+has gone stale after a stretch of work, or two seconds after a turn ended
+without `turn_end` when nothing explains the silence (a live monitor or queue
+task does). The `nudges:` block in `.aegis.yaml` sets both (see the config
+page).
 
 ## Toasts
 
@@ -181,6 +183,24 @@ over. cpu and announce have no asker.
 
 The `notices:` block in `.aegis.yaml` moves the lines or turns a kind off
 (see the config page).
+
+### Notices about the agent's own work
+
+The same channel tells an agent about its own work, so it does not have to
+ask. Its next message carries a status block when what it tracks changed:
+
+```text
+> from aegis:notice · status · info · 2026-10-20T07:41:12
+plan 3/7 · doing: write the stall check
+monitors: mon-5e1f tests 40%
+queue tasks out: 2 running (review-a, review-b)
+```
+
+The status block rides only on messages, never on a tool result. Warnings
+ride on both, once, and say when they end: a plan untouched for ten minutes
+of work, and a monitor that has stalled, cannot run its check or has overrun
+its ETA (see the monitors page). After the context is compacted, the next
+message tells it all again.
 
 ## Announcements
 

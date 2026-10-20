@@ -326,9 +326,11 @@ working `claude` would inject the message at its next tool boundary instead.
 
 **aegis nudges an agent that drifts, once.** A live, idle session that is
 not a queue worker, whose card says done or review, gets an inbox message
-headed `> from aegis:nudge · plan|idle · …` when its plan has gone 15 minutes
-of work untouched with items not done, or when its last turn ended with no
-`turn_end` 10 minutes ago (`nudges.py`). What a nudge needs is folded into the
+headed `> from aegis:nudge · plan|idle · …` when its plan has gone
+`nudges.plan_min` (15) minutes of work untouched with items not done, or when
+its last turn ended with no `turn_end` `nudges.silent_s` (2) seconds ago
+(`nudges.py`, `.aegis.yaml`). The silent check is scheduled from the turn's
+end; a 15 s tick is the backstop and sends the plan nudge. What a nudge needs is folded into the
 standing from the store (`ended`, `plan_mark`, `nudged`), so a restart neither
 repeats one nor forgets it. A send that carries no nudge re-arms the idle
 nudge and only a plan record re-arms the plan nudge, so a nudge's own turn
@@ -347,6 +349,23 @@ What each session was told is `notices_sent` in its meta, so a restart
 neither repeats a notice nor forgets its clear; the episodes and the one
 asker per kind and owner live in memory. A 30 s loop turns the episodes so a
 notice at critical toasts while nobody is talking to anyone.
+
+**A session's own status is a notice its subsystems push.** Beside the host
+kinds, `Notices.set(log_id, source, items)` takes per-session items from a
+source: the plan (`nudges.py`), monitors (`monitors.py`) and queue tasks out
+(`queues.py`). Each source sets its items when its facts change; `pending()`
+only reads them, so it stays cheap per tool call and a source may later live in
+a plugin's process. A `warn` or `critical` item rides like a host notice, once
+per level, with its own clear text; `info` items from every source make one
+`status` block that rides on prompts only, when its lines changed. An item with
+`wake` (the monitor warnings: stalled, broken, overdue) is delivered at once
+through the inbox to an idle owner, or at its turn's end, so a waiting agent is
+not left asleep until a monitor's timeout. What a session was told of these is
+`items_sent` in its meta, apart from `notices_sent`, whose keys the host kinds'
+restore reads; a compaction empties it so the fresh context is told again.
+Sources declare their `.aegis.yaml` keys in `notice_sources.py`, a module that
+imports nothing from aegis, so `notices.py` and `config.py` name no source:
+that call is the seam a plugin will use (#490).
 
 **A turn ending is not completion.** Ending a turn is how an agent waits, so a
 queue worker is finished only when its turn has ended with no live monitor, no

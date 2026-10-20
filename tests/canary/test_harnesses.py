@@ -616,3 +616,46 @@ async def test_a_rate_limited_model_falls_to_the_next_in_its_cascade(canary):
     assert any(r.startswith(f"cascade: {first} failed") for r in rows), rows
     assert s.spec.model == f"{first}-two"
     assert not said(s, "CANARY-429-UNREACHED")
+
+
+async def test_a_notice_reaches_the_model_on_a_prompt_and_on_a_tool_result(canary):
+    # Agent status (#522) rides only on what aegis writes: the prompt and its
+    # own tool results. This is the check that every harness hands both on.
+    from aegis.notices import Item
+
+    canary.model.script(
+        Rule(
+            "CANARY-NOTE",
+            [
+                Shell("sleep 3"),
+                Call("plan_update", {"items": [{"text": "a", "state": "doing"}]}),
+                Say("CANARY-NOTE-DONE"),
+            ],
+        )
+    )
+    s = await canary.spawn()
+    n = canary.app.notices
+    on_prompt = Item("p:on", "warn", "seen on the prompt: alpha-7")
+    n.set(s.log_id, "monitors", [on_prompt])
+    await canary.send(s, "CANARY-NOTE")
+    await until(
+        lambda: any("CANARY-NOTE" in x["last_person"] for x in canary.model.log),
+        timeout=TURN,
+        what="the first request",
+    )
+    # While the shell sleeps, before the aegis call: owed on its result.
+    n.set(
+        s.log_id,
+        "monitors",
+        [on_prompt, Item("t:on", "warn", "on a tool result: bravo-9")],
+    )
+    await until(
+        lambda: said(s, "CANARY-NOTE-DONE") and s.status == "idle",
+        timeout=TURN,
+        what="the turn after plan_update",
+    )
+    log = canary.model.log
+    assert any("alpha-7" in x["last_person"] for x in log), "no prompt carried it"
+    assert any("bravo-9" in r for x in log for r in x["tool_results"]), (
+        f"no tool result carried it: {[x['tool_results'] for x in log]}"
+    )
