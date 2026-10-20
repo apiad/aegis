@@ -93,6 +93,9 @@ class Registry(Host):
         self.version_policy: Callable[[], dict | None] = lambda: None
         # The app's quota gate: (owner, harness, model) -> quota_gate.Gate.
         self.gate = None
+        # The app's start_spec: a spec -> the spec to start (its cascade's
+        # first model free now) and the gate it passes.
+        self.start_spec = None
         self.journal = None
         self.catalogs = None
         # One cgroup per session, when the unit is delegated (cgroups.py); the

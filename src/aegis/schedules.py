@@ -270,10 +270,8 @@ class Schedules:
             spec = self._spec(s)
         except OpError:
             return True  # the fire says what is wrong
-        return (
-            self._app.gate(spec.owner, spec.harness, spec.model).may_start
-            and self._line(s, spec.harness, spec.model) is None
-        )
+        spec, g = self._app.start_spec(spec)
+        return g.may_start and self._line(s, spec.harness, spec.model) is None
 
     def _line(self, s: Schedule, harness: str, model: str | None) -> str | None:
         """Why the schedule's own launch line for the pool a fire draws on
@@ -345,8 +343,8 @@ class Schedules:
             if w is not None:
                 check_named(cur, self._app.workflows._agents())  # before a spawn
             if s.d.fire.target == "new":
-                spec = self._spec(s)
-                if not self._app.gate(spec.owner, spec.harness, spec.model).may_start:
+                spec, g = self._app.start_spec(self._spec(s))
+                if not g.may_start:
                     return self._tick(name, tick, "held", why="quota", **extra)
                 if line := self._line(s, spec.harness, spec.model):
                     return self._tick(

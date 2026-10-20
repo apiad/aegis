@@ -65,6 +65,7 @@ from .agents import (
     model_suggestions,
     resolve,
 )
+from .cascade import Cooling, Fall, pick
 from .cgroups import SessionCgroups
 from .channels import Channels, Throttle
 from .claude.process import PERMISSION_MODE, ControlError
@@ -110,7 +111,7 @@ from .tokens import TokenStore
 from .registry import Registry
 from .roots import Roots
 from .transcript.entries import _sent_file
-from .session import PUBLISH_EVERY_S
+from .session import PUBLISH_EVERY_S, SpawnSpec
 from .term_ops import register_term_ops
 from .terminals import Terminals
 from .version import Versions
@@ -439,6 +440,12 @@ class App:
         self._quota_busy: set[str] = set()
         self.quota.listeners.append(self.on_quota)
         reg.gate = self.gate
+        # Models that fell, and the one timer that releases held work when the
+        # first of them is free again (cascade.py).
+        self.cooling = Cooling()
+        self._cool_timer: asyncio.TimerHandle | None = None
+        self._cool_at: float | None = None
+        reg.start_spec = self.start_spec
         self.registry = Ops()
         self.registry.who = self.who
         self.registry.owner_of = self.owner_of
@@ -482,6 +489,46 @@ class App:
             time.time(),
         )
 
+    def start_spec(self, spec: SpawnSpec) -> tuple[SpawnSpec, Gate]:
+        """The spec a start runs and the gate it passes. A cascade starts on
+        its first model that is neither cooling nor gated, or is closed with
+        why; a spec with no cascade asks its gate alone, as before cascades."""
+        if not spec.cascade:
+            return spec, self.gate(spec.owner, spec.harness, spec.model)
+        model, why = pick(
+            spec.cascade,
+            -1,
+            spec.harness,
+            lambda m: self.gate(spec.owner, spec.harness, m),
+            self.cooling,
+            time.time(),
+        )
+        if model is None:
+            return spec, Gate("closed", why)
+        return dataclasses.replace(spec, model=model), Gate("open")
+
+    def cool(self, harness: str, model: str, fall: Fall) -> float:
+        """Cool a model that fell, and arm the timer that releases what it
+        held when the first cooling model is free again."""
+        end = self.cooling.cool(harness, model, fall, time.time())
+        self._arm_cooling()
+        return end
+
+    def _arm_cooling(self) -> None:
+        at = self.cooling.earliest(time.time())
+        if at is None or (self._cool_at is not None and self._cool_at <= at):
+            return
+        if self._cool_timer is not None:
+            self._cool_timer.cancel()
+        self._cool_at = at
+        delay = max(0.0, at - time.time())
+        self._cool_timer = asyncio.get_running_loop().call_later(delay, self._cooled)
+
+    def _cooled(self) -> None:
+        self._cool_timer = self._cool_at = None
+        self._release_held()
+        self._arm_cooling()
+
     def on_quota(self, snapshot: dict) -> None:
         """After every reading, and every minute because pace moves with the
         clock: pause each member's working session whose gate says stopped,
@@ -503,6 +550,11 @@ class App:
                 self._quota_task(s, self._pause(s, g))
             elif g.state == "open" and (s.quota_paused or holding):
                 self._quota_task(s, self._continue(s))
+        self._release_held()
+
+    def _release_held(self) -> None:
+        """Wake what a closed gate or a cooling cascade held: schedule ticks,
+        workflow nodes and pending queue tasks."""
         self.schedules.quota_opened()
         self.workflows.changed()
         if any(t.status == "pending" for t in self.queues.tasks.values()):
@@ -1220,7 +1272,7 @@ class App:
                     "a quiet session needs a prompt: without one it is idle "
                     "and nothing would ever bring its tab back",
                 )
-            g = self.gate(spec.owner, spec.harness, spec.model)
+            spec, g = self.start_spec(spec)
             if not g.may_start:
                 raise OpError("quota_closed", refusal(spec.owner or self.user, g))
             person = parent is None and caller.link is None and not caller.is_agent
@@ -1357,7 +1409,7 @@ class App:
             spec = dataclasses.replace(
                 old.spec, continues=old.log_id, spawned_by=None, spawned_from=None
             )
-            g = self.gate(spec.owner, spec.harness, spec.model)
+            spec, g = self.start_spec(spec)
             if not g.may_start:
                 raise OpError("quota_closed", refusal(spec.owner or self.user, g))
             # Set before the spawn awaits, so a second click in that window is

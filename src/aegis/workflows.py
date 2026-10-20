@@ -2425,7 +2425,7 @@ class Workflows:
             spawned_by=owner.log_id,
             owner=owner.spec.owner,
         )
-        g = self._app.gate(spec.owner, spec.harness, spec.model)
+        spec, g = self._app.start_spec(spec)
         if not g.may_start:
             return (
                 None  # the gate's next reading wakes a pass (app.on_quota -> changed)
