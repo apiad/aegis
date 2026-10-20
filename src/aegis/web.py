@@ -559,7 +559,13 @@ def build_web(
                             if not isinstance(since, int) or isinstance(since, bool):
                                 since = None
                             forwarded[sid] = (link, server, ch)
-                            link.sub(sid, ch, since, restamp(str(server), ch))
+                            link.sub(
+                                sid,
+                                ch,
+                                since,
+                                restamp(str(server), ch),
+                                merge=msg.get("merge") is True,
+                            )
                         continue
                     if key in subs:
                         app.channels.unsubscribe(subs.pop(key))
@@ -576,7 +582,9 @@ def build_web(
                             out.put_nowait({**m, "sid": sid})
 
                     try:
-                        subs[key] = app.channels.subscribe(ch, send, since)
+                        subs[key] = app.channels.subscribe(
+                            ch, send, since, merge=msg.get("merge") is True
+                        )
                     except OpError as e:
                         send(
                             {

@@ -601,6 +601,12 @@ named channels: a snapshot on subscribe, then numbered patches. A gap in the
 numbers, or a reconnect, means resubscribe, saying which revision it holds; a
 channel that keeps revisions answers with what changed after it, and any other
 with a fresh snapshot. Adding a subsystem adds operations and channels, never a protocol field.
+A subscriber may ask for `merge` on a channel whose rows have a key (only
+`sessions` today, `channels.MERGE_KEYS`): it then gets a row it already holds as
+the fields that changed, diffed against what that subscription was sent, and
+one that asked nothing (an older client or link) keeps getting whole rows.
+Whole session rows re-sent for one changed field were about a third of an idle
+client's traffic (#525).
 
 **Python decides, the browser draws.** Every fact and decision about a transcript
 entry is computed once in Python: its glyph (the name of a symbol in the
