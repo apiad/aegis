@@ -106,7 +106,7 @@ function wire(el) {
   // card, or on a name being renamed, is the card's own.
   el.addEventListener("click", (ev) => {
     if (hover.matches && !drawer.matches) return;
-    if (ev.target.closest(".pcard, .editable, input")) return;
+    if (ev.target.closest(".pcard, .editable, input, a")) return;
     if (openEl === el) closeCard();
     else open(el);
   });
