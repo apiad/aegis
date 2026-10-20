@@ -153,3 +153,61 @@ def test_due_measures_a_stale_plan_in_work_time():
     assert due({**stale, "plan_mark": 1200.0}, **ok) is None
     assert due({**stale, "nudged": ["plan"]}, **ok) is None
     assert due({**stale, "plan": [{"text": "a", "state": "done"}]}, **ok) is None
+
+
+# -- the plan notice source ---------------------------------------------------------
+from aegis.notice_sources import Item  # noqa: E402
+from aegis.nudges import plan_items, stale_now  # noqa: E402
+
+
+def test_stale_now_adds_the_running_work_stretch():
+    st = {"clock": {"work_s": 100.0, "idle_s": 0.0, "at": 1000.0, "running": "work"},
+          "plan_mark": 40.0}  # fmt: skip
+    assert stale_now(st, 1100.0) == 160.0
+    st["clock"]["running"] = "idle"
+    assert stale_now(st, 1100.0) == 60.0
+    assert stale_now({"clock": None, "plan_mark": None}, 1.0) == 0.0
+
+
+def _plan(done=3, total=7, doing="write the stall check", work=300.0):
+    items = [{"text": f"i{k}", "state": "done"} for k in range(done)]
+    items.append({"text": doing, "state": "doing"})
+    items += [{"text": f"p{k}", "state": "pending"} for k in range(total - done - 1)]
+    return {"plan": items, "plan_mark": 0.0,
+            "clock": {"work_s": work, "idle_s": 0.0, "at": 0.0, "running": "idle"}}  # fmt: skip
+
+
+def test_plan_items():
+    assert plan_items(_plan(), {"stale_min": 10.0}, 0.0) == [
+        Item("progress", "info", "plan 3/7 · doing: write the stall check")
+    ]
+    assert plan_items(_plan(work=601.0), {"stale_min": 10.0}, 0.0)[1] == Item(
+        "stale",
+        "warn",
+        "plan untouched for 10 min of work · update it with plan_update",
+    )
+    st = _plan()
+    for i in st["plan"]:
+        i["state"] = "done"
+    assert plan_items(st, {"stale_min": 10.0}, 0.0) == []
+    assert plan_items({"plan": [], "clock": None, "plan_mark": None}, {}, 0.0) == []
+
+
+def test_a_plan_with_nothing_doing_names_the_next_item():
+    st = _plan()
+    st["plan"][3]["state"] = "pending"
+    assert (
+        plan_items(st, {"stale_min": 10.0}, 0.0)[0].text
+        == "plan 3/7 · next: write the stall check"
+    )
+
+
+async def test_plan_update_never_answers_with_the_plan_warning(world):
+    a = await world.spawn()
+    await turn(a, mcp("plan_update", items=[{"text": "a", "state": "doing"}]))
+    stale = Item("stale", "warn", "plan untouched for 12 min of work")
+    world.app.notices.set(a.log_id, "plan", [stale])  # as a tick would
+    said = await turn(a, mcp("plan_update", items=[{"text": "a", "state": "doing"}]))
+    assert said.startswith("mcp ok: plan saved")
+    assert "plan:stale" not in said
+    assert "plan:stale" not in a.items_sent

@@ -36,11 +36,14 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
+from . import notice_sources
 from .monitors import iso_now
+from .notice_sources import Item
 from .transcript.entries import NUDGE_HEADER
 
 if TYPE_CHECKING:
     from .registry import Registry
+    from .session import Session
 
 log = logging.getLogger("aegis.nudges")
 IDLE_S = 600.0
@@ -61,6 +64,44 @@ def stale_s(standing: dict) -> float:
         return 0.0
     run = clock["running"] == "work" and ended["at"] > clock["at"]
     return clock["work_s"] + (ended["at"] - clock["at"] if run else 0.0) - mark
+
+
+def stale_now(standing: dict, now: float) -> float:
+    """Work since the last plan record, as of ``now``: the clock's total
+    plus the stretch it is running, when it runs work."""
+    clock, mark = standing.get("clock"), standing.get("plan_mark")
+    if clock is None or mark is None:
+        return 0.0
+    run = clock["running"] == "work" and now > clock["at"]
+    return clock["work_s"] + (now - clock["at"] if run else 0.0) - mark
+
+
+# The plan's per-session notices (notices.py): where it stands as a status
+# line, and a warning when it has gone ``stale_min`` minutes of work untouched.
+SOURCE = "plan"
+notice_sources.declare(SOURCE, {"stale_min": 10.0})
+
+
+def plan_items(standing: dict, cfg: dict, now: float) -> list[Item]:
+    plan = standing.get("plan") or []
+    open_ = [i for i in plan if i["state"] != "done"]
+    if not open_:
+        return []
+    done = len(plan) - len(open_)
+    doing = next((i for i in open_ if i["state"] == "doing"), None)
+    now_text = f"doing: {doing['text']}" if doing else f"next: {open_[0]['text']}"
+    items = [Item("progress", "info", f"plan {done}/{len(plan)} · {now_text}")]
+    stale = stale_now(standing, now)
+    if stale >= cfg.get("stale_min", 10.0) * 60:
+        items.append(
+            Item(
+                "stale",
+                "warn",
+                f"plan untouched for {round(stale / 60)} min of work · "
+                "update it with plan_update",
+            )
+        )
+    return items
 
 
 def due(
@@ -130,8 +171,19 @@ class Nudges:
                 log.exception("aegis: nudge tick failed")
             await asyncio.sleep(EVERY_S)
 
+    def refresh(self, s: "Session") -> None:
+        """Set the session's plan notices from its standing now."""
+        notices = self._registry.notices
+        if notices is None:
+            return
+        cfg = notices.cfg(SOURCE)
+        items = [] if cfg is None else plan_items(s.standing, cfg, time.time())
+        notices.set(s.log_id, SOURCE, items)
+
     async def tick(self) -> None:
         now = time.time()
+        for s in list(self._registry.sessions.values()):
+            self.refresh(s)
         for s in list(self._registry.sessions.values()):
             kind = due(
                 s.standing,

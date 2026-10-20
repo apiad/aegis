@@ -85,6 +85,7 @@ class Registry(Host):
         self.workflows = None
         self.quota = None
         self.notices = None  # notices.Notices, set by App
+        self.nudges = None  # nudges.Nudges, set by App
         # The live config's context block (config.py); the app points it at
         # Config.current().
         self.context: Callable[[], dict] = lambda: dict(CONTEXT_DEFAULTS)
@@ -176,6 +177,10 @@ class Registry(Host):
             log.exception("aegis: could not archive %s after its handoff", s.handle)
 
     def recorded(self, session: Session, record: dict, events: list | None) -> None:
+        if record.get("kind") == "plan" and self.nudges is not None:
+            # Before the plan_update's result reads its notices, so it never
+            # answers with the stale-plan warning it just ended.
+            self.nudges.refresh(session)
         if self.journal is not None:
             self.journal.recorded(
                 session.log_id,

@@ -35,7 +35,9 @@ from typing import TYPE_CHECKING, Any
 
 from .agents import ConfigError, read_config, resolve
 from . import restarts
+from . import notice_sources
 from .monitors import iso_now
+from .notice_sources import Item
 from .names import default_title
 from .ops import OpError
 
@@ -72,6 +74,24 @@ class Task:
         d = asdict(self)
         d["position"] = None
         return d
+
+
+# A session's enqueued tasks not finished, as one status line (notices.py).
+# A task's result reaches its enqueuer through the inbox, so no warning.
+SOURCE = "queues"
+notice_sources.declare(SOURCE, {})
+
+
+def queue_items(running: list[str], waiting: int) -> list[Item]:
+    """``running``: the workers' handles, in enqueue order."""
+    parts = []
+    if running:
+        parts.append(f"{len(running)} running ({', '.join(running)})")
+    if waiting:
+        parts.append(f"{waiting} waiting")
+    return (
+        [Item("out", "info", "queue tasks out: " + ", ".join(parts))] if parts else []
+    )
 
 
 def queues_from(raw: Any) -> dict[str, dict]:
@@ -145,6 +165,27 @@ class Queues:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._path.open("a") as f:
             f.write(json.dumps({"event": event, "at": time.time(), **asdict(t)}) + "\n")
+        if t.enqueuer:
+            self._status(t.enqueuer)
+
+    def _status(self, enqueuer: str) -> None:
+        """Set the enqueuer's queue notice from its tasks not finished."""
+        notices = self._registry.notices
+        if notices is None:
+            return
+        mine = sorted(
+            (t for t in self.tasks.values() if t.enqueuer == enqueuer),
+            key=lambda t: t.created_at,
+        )
+        running = [
+            s.handle
+            for t in mine
+            if t.status == "running"
+            and (s := self._registry.sessions.get(t.worker or "")) is not None
+        ]
+        waiting = sum(1 for t in mine if t.status == "pending")
+        on = notices.cfg(SOURCE) is not None
+        notices.set(enqueuer, SOURCE, queue_items(running, waiting) if on else [])
 
     def boot(self) -> list[Task]:
         """Replay the log; return the running tasks whose workers must resume."""
@@ -168,6 +209,8 @@ class Queues:
                     resume.append(t)
                 else:
                     self._fail(t, "its worker was gone after a restart")
+        for enqueuer in {t.enqueuer for t in self.tasks.values() if t.enqueuer}:
+            self._status(enqueuer)
         return resume
 
     # -- position and status ------------------------------------------------------
