@@ -76,3 +76,14 @@ async def test_a_handoff_keeps_a_model_chosen_outside_the_cascade(world):
         world.app.cool("opencode", m, Fall("model", None))
     r = await world.app.registry.call("session.handoff", {"log_id": old.log_id})
     assert world.session(r["log_id"]).spec.model == "opencode/z"
+
+
+async def test_shutdown_cancels_the_cooling_timer(tmp_path, fake_claude, fake_opencode):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    w = await World(tmp_path, fake_claude, fake_opencode).start()
+    app, released = w.app, []
+    app._release_held = lambda: released.append(time.time())
+    app.cool("opencode", "opencode/a", Fall("model", 0.5))
+    await w.stop()
+    await asyncio.sleep(0.8)
+    assert released == []

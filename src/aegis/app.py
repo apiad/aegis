@@ -740,6 +740,9 @@ class App:
         await self.push.sender.stop()
         await self.schedules.stop()
         await self.workflows.stop()
+        if self._cool_timer is not None:
+            # Its release dispatches the queues, which could start a worker.
+            self._cool_timer.cancel()
         self.queues.shutdown()
         if self._versions_task is not None:
             self._versions_task.cancel()
