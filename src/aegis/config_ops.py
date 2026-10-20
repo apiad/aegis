@@ -89,8 +89,9 @@ def register_config_ops(app: App) -> None:
         its harness's models, Artificial Analysis's Coding and Intelligence
         Indexes, its price in and out per million tokens, the agents that
         name it (at: its index in the agent's models, 0 first) and the epoch
-        it stops cooling, or null. Models in use come first, then by Coding
-        Index; unranked ones last."""
+        it stops cooling, or null. Models in use come first, then by
+        Intelligence Index, the Coding Index breaking ties; those with no
+        Intelligence Index last."""
         agents = app.config.current().agents
         now = time.time()
         rows = []
@@ -114,9 +115,9 @@ def register_config_ops(app: App) -> None:
         rows.sort(
             key=lambda x: (
                 not x["used_by"],
-                x["coding"] is None,
-                -(x["coding"] or 0),
+                x["intelligence"] is None,
                 -(x["intelligence"] or 0),
+                -(x["coding"] or 0) if x["intelligence"] is not None else 0,
             )
         )
         rk = ranking()
