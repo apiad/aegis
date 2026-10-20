@@ -152,6 +152,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <a class="sub" href="#c-plan">Plan</a>
   <a class="sub" href="#c-monitors">Monitors</a>
   <a class="sub" href="#c-queues">Queues</a>
+  <a class="sub" href="#config">Thresholds in .aegis.yaml</a>
   <a href="#nudge">The turn_end nudge, at once</a>
   <a href="#plugins">The plugin seam</a>
   <a href="#delivery">Delivery</a>
@@ -199,6 +200,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>Pushed or pulled</td><td>Pushed: a source sets its items when they change; <code>pending()</code> never calls out</td><td class="why"><span class="who q">proposed</span> Plugins run out of process (vision spec, "Plugins"). Pulling on every tool result would put an RPC per plugin on every call.</td></tr>
 <tr><td>Levels</td><td>The existing <code>warn</code> and <code>critical</code>, mid-turn and on prompts; a new <code>info</code>, on prompts only</td><td class="why"><span class="who q">proposed</span> Mid-turn text should be rare enough that the agent acts on it. "Plan at step 3 of 7" is not worth interrupting work for; "monitor m5 has not moved in 16 minutes" is.</td></tr>
 <tr><td>Repetition</td><td>Warnings follow the notice rule: once per level, a clear when they end. The info block goes when its lines changed</td><td class="why"><span class="who q">proposed</span> Status that repeats unchanged on every message is noise the agent learns to skip. A compaction resets what the session was told, so the next prompt carries it all to the fresh context.</td></tr>
+<tr><td>Thresholds</td><td>Configurable in <code>.aegis.yaml</code>: each source declares its keys and defaults under <code>notices:</code>, and <code>false</code> turns a source off. The nudge timings go under a new <code>nudges:</code> block</td><td class="why"><span class="who">maintainer</span> The first values are guesses; tuning them should not need a release. A source that declares its own keys keeps the config pluggable: a plugin's manifest brings its defaults the same way.</td></tr>
 <tr><td>aegis call</td><td>Unchanged: no notice on its output</td><td class="why">The existing rule (<code>mcp.py</code>, <code>SHELL_HEADER</code>): a program may parse that output.</td></tr>
 <tr><td>Size</td><td>The info block holds at most 5 lines; any item's text is cut at 160 characters</td><td class="why"><span class="who q">proposed</span> About 100 tokens at the cap. #462 is already counting the primer's tokens.</td></tr>
 </tbody>
@@ -281,7 +283,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 plan 3/7 · doing: write the stall check
 monitors: m5 tests 40%
 queue tasks out: 2 running (review-a, review-b)</pre>
-<p>Lines are in the order sources first set items, then the order each source gave. Past 5 lines the block ends with <code>… and N more</code>. In <code>notices_sent</code> the <code>status</code> key holds a short hash of the lines instead of a level; the block is pending when the hash differs. When the session has no info items left and the hash is set, the owed clear is one line: <code>nothing tracked: no plan items open, no monitors, no tasks out</code>.</p>
+<p>Lines are in the order sources first set items, then the order each source gave. Past <code>notices.status.lines</code> (5) lines the block ends with <code>… and N more</code>. In <code>notices_sent</code> the <code>status</code> key holds a short hash of the lines instead of a level; the block is pending when the hash differs. When the session has no info items left and the hash is set, the owed clear is one line: <code>nothing tracked: no plan items open, no monitors, no tasks out</code>.</p>
 
 <h3 id="pending">What pending() sends</h3>
 <table class="tbl">
@@ -322,7 +324,7 @@ queue tasks out: 2 running (review-a, review-b)</pre>
 <thead><tr><th>Key</th><th>Level</th><th>When</th><th>Text, sample</th></tr></thead>
 <tbody>
 <tr><td>plan:progress</td><td>info</td><td>The plan has items not done</td><td><code>plan 3/7 · doing: write the stall check</code></td></tr>
-<tr><td>plan:stale</td><td>warn</td><td>Items not done, and <code>PLAN_WARN_S</code> (600 s) of work since the last <code>plan_update</code></td><td><code>plan untouched for 12 min of work · update it with plan_update</code></td></tr>
+<tr><td>plan:stale</td><td>warn</td><td>Items not done, and <code>notices.plan.stale_min</code> (10) minutes of work since the last <code>plan_update</code></td><td><code>plan untouched for 12 min of work · update it with plan_update</code></td></tr>
 </tbody>
 </table>
 <p>The warning needs the work since the last plan record as of now, not as of the last turn's end as <code>nudges.stale_s</code> computes it. A sibling <code>stale_now(standing, now)</code> adds the running stretch when the clock is in <code>work</code>. The 15-minute plan nudge at turn end stays as it is: the warning reaches an agent that calls aegis tools, the nudge one that never does.</p>
@@ -332,9 +334,9 @@ queue tasks out: 2 running (review-a, review-b)</pre>
 <thead><tr><th>Key</th><th>Level</th><th>When</th><th>Text, sample</th></tr></thead>
 <tbody>
 <tr><td>monitors:live</td><td>info</td><td>The owner has live monitors</td><td><code>monitors: m2 build 60% eta 4 min · m5 tests 40%</code></td></tr>
-<tr><td>monitors:&lt;id&gt;:stalled</td><td>warn</td><td>The monitor has a <code>progress</code> command and its reading has not changed for <code>STALL_S</code> (900 s) and at least 3 intervals</td><td><code>monitor m5 "tests" at 40% for 16 min · look, or monitor_cancel it</code></td></tr>
-<tr><td>monitors:&lt;id&gt;:broken</td><td>warn</td><td>A check's verdict has been bad (<code>monitors.verdict</code> returns <code>bad</code>: command not found, not executable, cannot finish) for 3 intervals</td><td><code>monitor m5 "tests" progress check cannot run: command not found</code></td></tr>
-<tr><td>monitors:&lt;id&gt;:overdue</td><td>warn</td><td>The ETA has passed by half the time it estimated, and by at least 10 minutes</td><td><code>monitor m2 "build" past its eta by 14 min at 85%</code></td></tr>
+<tr><td>monitors:&lt;id&gt;:stalled</td><td>warn</td><td>The monitor has a <code>progress</code> command and its reading has not changed for <code>stall_min</code> (15) minutes and at least 3 intervals</td><td><code>monitor m5 "tests" at 40% for 16 min · look, or monitor_cancel it</code></td></tr>
+<tr><td>monitors:&lt;id&gt;:broken</td><td>warn</td><td>A check's verdict has been bad (<code>monitors.verdict</code> returns <code>bad</code>: command not found, not executable, cannot finish) for <code>broken_checks</code> (3) checks in a row</td><td><code>monitor m5 "tests" progress check cannot run: command not found</code></td></tr>
+<tr><td>monitors:&lt;id&gt;:overdue</td><td>warn</td><td>The ETA has passed by half the time it estimated, and by at least <code>overdue_min</code> (10) minutes</td><td><code>monitor m2 "build" past its eta by 14 min at 85%</code></td></tr>
 </tbody>
 </table>
 <p>A monitor that watches sessions gets only the info line: its own <code>blocked</code> outcome already wakes the owner. When a monitor ends, its items go; its done, fail or timeout still reach the owner through the inbox as today. Each warning's <code>clear</code> is "monitor m5 moves again, or has ended".</p>
@@ -348,10 +350,31 @@ queue tasks out: 2 running (review-a, review-b)</pre>
 </table>
 <p>A task's result already reaches its enqueuer through the inbox, so queues need no warning.</p>
 
-<h2 id="nudge"><span class="n">07</span>The turn_end nudge, at once</h2>
-<p>Today <code>nudges.due</code> returns <code>idle</code> when the last turn ended <code>silent</code> and <code>IDLE_S</code> (600 s) have passed, checked every 15 seconds. This change sets the wait to <code>SILENT_GRACE_S</code> = 2 s and checks from the turn's end instead of waiting for the next tick:</p>
+<h3 id="config">Thresholds in .aegis.yaml</h3>
+<p>Every threshold above is a key in <code>.aegis.yaml</code>. These are the defaults:</p>
+<pre><span class="k">notices</span>:
+  <span class="c"># the host kinds, as today</span>
+  disk:     {on: 90, critical: 97, clear: 85}
+  <span class="c"># per-session sources</span>
+  plan:     {stale_min: 10}
+  monitors: {stall_min: 15, broken_checks: 3, overdue_min: 10}
+  queues:   true
+  status:   {lines: 5}
+<span class="k">nudges</span>:
+  silent_s: 2       <span class="c"># a turn ended without turn_end</span>
+  plan_min: 15      <span class="c"># the plan nudge at turn end (today PLAN_STALE_S)</span></pre>
 <ul>
-<li><code>Registry.turn_ended</code> schedules a check of that one session with <code>loop.call_later(SILENT_GRACE_S, …)</code>. The grace lets a held-message flush start and the card settle; a session with held messages is not idle and is not nudged.</li>
+<li><code>false</code> in place of a source turns it off: its items are never set, and any it had are cleared. <code>status: false</code> turns off the info block while every source's warnings still go. <code>nudges: {silent_s: false}</code> turns off the silent-turn nudge.</li>
+<li>Each source declares its own keys. A source registers its defaults with <code>notices.declare(source, defaults)</code> at import, and <code>config.notices_from</code> validates the <code>notices:</code> block against the host kinds plus every declared source. That keeps <code>config.py</code> free of per-source names, and a plugin's manifest declares its defaults through the same call. A key for a source that is not declared (a plugin not installed) is kept and reported by <code>aegis doctor</code> as a warning, not an error, so removing a plugin never invalidates the file.</li>
+<li>A wrong value follows the existing rule: the whole block keeps its defaults and carries <code>error</code> for <code>aegis doctor</code>, so a typo never stops a send.</li>
+<li>A source reads its values from <code>config.current()</code> each time it evaluates, so a changed file applies within a second with no restart, as every other key does. Lowering a threshold can turn a warning on at the next evaluation; raising one clears it, with its clear text.</li>
+<li>The Settings page's config editor shows the new keys as it shows the host kinds; it needs no code of its own.</li>
+</ul>
+
+<h2 id="nudge"><span class="n">07</span>The turn_end nudge, at once</h2>
+<p>Today <code>nudges.due</code> returns <code>idle</code> when the last turn ended <code>silent</code> and <code>IDLE_S</code> (600 s) have passed, checked every 15 seconds. This change sets the wait to <code>nudges.silent_s</code>, 2 seconds by default, and checks from the turn's end instead of waiting for the next tick:</p>
+<ul>
+<li><code>Registry.turn_ended</code> schedules a check of that one session with <code>loop.call_later(silent_s, …)</code>. The grace lets a held-message flush start and the card settle; a session with held messages is not idle and is not nudged.</li>
 <li>The 15-second tick stays as the backstop, and it still sends the plan nudge.</li>
 <li>Every exemption in <code>nudges.py</code> stays: queue workers, a card that says needs_you, waiting, working or error (a live monitor or queue task makes it waiting), an interrupted or failed turn, a slash command, a workflow node, a sleeping session.</li>
 <li>The once-only rule stays: a send that is not a nudge re-arms <code>idle</code>, so a silent nudge turn earns no second nudge.</li>
@@ -375,12 +398,13 @@ queue tasks out: 2 running (review-a, review-b)</pre>
 <li><code>Notices.set</code>, <code>drop_source</code>, the <code>info</code> level, <code>pending(s, at)</code> and the compaction reset, with unit tests. The two existing callers pass <code>at</code>.</li>
 <li>The three sources set their items.</li>
 <li>The immediate silent-turn nudge.</li>
-<li>Docs: DESIGN.md's notice and nudge paragraphs; the help pages <code>monitors.md</code> (what a stall warning means) and <code>sessions.md</code> (the status block); a <code>changelog.d/</code> fragment.</li>
+<li>The config keys: <code>notices.declare</code>, the declared sources in <code>notices_from</code>, the <code>nudges:</code> block, and doctor's warning for an undeclared source.</li>
+<li>Docs: DESIGN.md's notice and nudge paragraphs; <code>config.md</code> (the new keys); the help pages <code>monitors.md</code> (what a stall warning means) and <code>sessions.md</code> (the status block); a <code>changelog.d/</code> fragment.</li>
 </ol>
 
 <h2 id="testing"><span class="n">10</span>Testing</h2>
 <ul>
-<li><b>Unit, fast lane:</b> <code>set</code> replacing a source's items; <code>drop_source</code>; the info block's order, cap, cut and hash; info never on <code>at="tool"</code>; a warning told once, its clear, told again after it turns on again; the compaction reset; <code>stale_now</code>; the monitor stall, broken and overdue rules on synthetic readings and verdicts; <code>nudges.due</code> at 2 s and its exemptions.</li>
+<li><b>Unit, fast lane:</b> <code>set</code> replacing a source's items; <code>drop_source</code>; the info block's order, cap, cut and hash; info never on <code>at="tool"</code>; a warning told once, its clear, told again after it turns on again; the compaction reset; <code>stale_now</code>; the monitor stall, broken and overdue rules on synthetic readings and verdicts; <code>nudges.due</code> at 2 s and its exemptions; <code>notices_from</code> with declared sources, <code>false</code>, a wrong value and an undeclared source; a threshold changed in a running server applying at the next evaluation.</li>
 <li><b>Through the fake model:</b> a monitor stalls during a turn, and the next MCP result carries the warning once, the following one none; a person's message carries the status block, a second one with nothing changed does not; a silent turn is nudged within 3 s, and the nudge's own silent turn is not.</li>
 <li><b>Every harness:</b> the canary checks that a notice appended to a tool result and to a prompt reaches the model's next request in Claude Code, OpenCode and Codex. Notices already rely on this; this change makes it load-bearing.</li>
 <li><b>Live:</b> <code>make test-live</code> with a real Claude Code session that arms a monitor whose progress never moves, then works with aegis tools; the agent should mention or act on the stall without being asked.</li>
@@ -391,14 +415,14 @@ queue tasks out: 2 running (review-a, review-b)</pre>
 <h3>Non-goals</h3>
 <ul>
 <li>Harness hooks, and with them warnings during a stretch of Bash-only work.</li>
-<li>Per-user or per-session switches for the status block. Once sources are plugins, disabling a plugin removes its items.</li>
+<li>Per-user or per-session thresholds: the keys are per server, as the host kinds are.</li>
 <li>Client changes: notice rows already render, and the card already shows plan and monitors.</li>
 <li>Porting the host kinds to a source, and the plugin runtime itself (#490).</li>
 <li>New wakes. A stalled monitor does not wake an idle agent; the next prompt, or the monitor's timeout, carries the warning.</li>
 </ul>
 <h3>Open questions</h3>
 <ul>
-<li>The thresholds (10 minutes of work for a stale plan, 15 minutes for a stalled monitor, 3 intervals for a broken check) are first guesses. Should they be keys under <code>notices:</code> in <code>.aegis.yaml</code>, as the host thresholds are, or constants until #178's measure shows they need tuning? This spec proposes constants.</li>
+<li>The defaults (10 minutes of work for a stale plan, 15 minutes for a stalled monitor, 3 checks for a broken one) are first guesses, to be tuned in <code>.aegis.yaml</code> once #178's measure shows their effect.</li>
 <li><code>aegis call</code> could print owed warnings to stderr, which no parser reads, and so narrow the Bash-only gap for agents that use it. This spec leaves the existing rule alone.</li>
 <li>Should a stalled monitor wake an idle agent after all? This spec says no, to keep this change to informing. If idle agents keep missing stalls, a monitor outcome <code>stalled</code> is the natural next step.</li>
 </ul>
