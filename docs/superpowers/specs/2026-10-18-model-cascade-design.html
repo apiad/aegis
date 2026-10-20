@@ -174,7 +174,7 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · model cascades</span>
-  <span class="st"><span class="pill acc">draft, not approved</span><span class="pill">2026-10-18</span></span>
+  <span class="st"><span class="pill acc">built: #504 #512 #513 #514 and the cascade editor; scores not yet refreshed</span><span class="pill">2026-10-18</span></span>
 </div>
 
 <div class="wrap">
@@ -202,7 +202,7 @@ figure{min-width:0}figure svg{display:block;width:100%;max-width:100%;height:aut
 
 <main>
 <h1>Model cascades: an agent with an ordered list of models that falls to the next when one fails</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-18-model-cascade-design.html</span><span>·</span><span>draft</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-18-model-cascade-design.html</span><span>·</span><span>built; see the plan for where the code departs from this page</span></div>
 <p class="lede">An agent in <code>.aegis.yaml</code> can name an ordered list of models instead of one. A session starts on the best model that is available. When a turn fails because a model ran out of quota or its provider failed, aegis moves the session to the next model and continues the turn. The order comes from a quality ranking that aegis ships and refreshes against Artificial Analysis at each release. A fresh install with OpenCode proposes a cascade of its free models, best first.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>

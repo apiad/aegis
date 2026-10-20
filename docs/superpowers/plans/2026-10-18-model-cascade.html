@@ -125,7 +125,7 @@ h3.slice{font-family:var(--font-mono);font-weight:500;font-size:13px;color:var(-
 -->
 <div class="chrome">
   <div class="bar"><span>aegis</span><span class="tab">plan · model cascades</span>
-    <span class="st"><span class="pill acc">execution method: one queue worker per slice</span><span class="pill">#472</span><span class="pill">2026-10-18</span></span></div>
+    <span class="st"><span class="pill acc">execution method: one queue worker per slice · slices 1-5 built</span><span class="pill">#472</span><span class="pill">2026-10-18</span></span></div>
   <div class="progress"><span id="pcount">0 of 0 done</span><div class="track" id="ptrack"></div></div>
 </div>
 <main>
@@ -172,6 +172,23 @@ h3.slice{font-family:var(--font-mono);font-weight:500;font-size:13px;color:var(-
   <li><b>Cooling ends with a timer that runs the release half of <code>app.on_quota</code>.</b> That tail (schedules, workflows, queue dispatch) becomes <code>App._release_held()</code>, called by both. The spec says "the same release path"; this names it.</li>
   <li><b>A fallback happens before the turn ends, not after.</b> The session asks its host before it marks itself idle and before <code>turn_ended</code>, so a queue task or workflow node never sees the first model's error as the end of its turn.</li>
   <li><b>The cascade's live position is not stored separately.</b> It is <code>spec.cascade.index(spec.model)</code>; <code>Session.configure</code> already records the model.</li>
+</ul>
+
+<p>Added while executing:</p>
+<ul class="rules">
+  <li><b>Zen's free limit was not reproduced.</b> About 520 calls to one free model never got a 429; the scope stays <code>model</code> (cascade.py docstring). The calls got the host's IP blocked from Zen's free models (403 <code>FreeTierError</code>), which the cascade correctly does not fall on.</li>
+  <li><b>Review of PR 1 found eight defects, all fixed in PR 1:</b> stop, close and shutdown cancel a fall in progress; the turn ends once; the cascade row is written only after the switch applies; a handoff keeps a model chosen outside the cascade; stay and fall patterns tightened (Anthropic's 429 text, "context deadline exceeded", abort-by-timeout fall; ids containing 429 and "Session not found" stay; a bare 404 stays); the cooling timer is cancelled at shutdown; a written <code>models:</code> list stays a list; the continue prompt is sent as <code>&gt; from aegis:cascade</code>, not as the person's message.</li>
+  <li><b>The out-of-order warning lives in the doctor</b>, not <code>config.validate</code>: every <code>validate</code> finding blocks a Settings save.</li>
+  <li><b><code>models.json</code> is keyed by the model id an agent names</b> (<code>opus</code>, <code>opencode/…</code>), not <code>claude-code/opus</code>.</li>
+  <li><b>The refresh script uses the free-tier route</b> <code>/api/v2/language/models/free</code> and follows its pages; the other routes answer 403 to a free key.</li>
+  <li><b>No 60-day age check:</b> rift cannot compare dates. <code>.rift.yaml</code> warns only while <code>refreshed</code> is empty.</li>
+  <li><b><code>AEGIS_MODELS_FILE</code></b> overrides the packaged ranking, for browser tests that run <code>aegis serve</code> as a separate process.</li>
+  <li><b>The <code>/model</code> menu shows the chip too</b>, and the "(free)" label suffix is gone; "free" means zero cost through the harness.</li>
+  <li><b><code>models.list</code> lives in <code>config_ops.py</code></b>, to reuse its detect cache.</li>
+  <li><b>Onboarding with only paid OpenCode models proposes the best one alone</b>, as before cascades; a paid model never joins the cascade. Interactive <code>aegis init</code> asks a cascade as one comma-separated list and offers the <code>light</code> queue.</li>
+  <li><b>Add model offers only catalog models</b>; a typed id would add every prefix. A one-model agent the file lists under <code>models:</code> stays a list when edited down to one.</li>
+  <li><b>Two queue tests read a finished worker's model from its meta</b>: a worker is archived as soon as its task completes.</li>
+  <li><b>Found on the way, filed separately:</b> #505, a worker continued at boot can finish before its queue task is loaded.</li>
 </ul>
 
 <h3 class="slice">Slice 1 · PR 1 · Cascades (tasks 1 to 7)</h3>
