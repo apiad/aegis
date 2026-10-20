@@ -36,14 +36,13 @@ A change is done when:
    help page under `src/aegis/help/`, and a change to how the pieces fit has
    its spec under `docs/superpowers/specs/`, with a status that matches the
    code;
-6. Alex has smoke-tested that version himself. When a PR is ready, and before
-   every release, offer him the guided smoke test: the build under test runs
-   through `bin/aegis-dev` beside his own aegis, and an agent inside it walks
-   him through what changed, simplest first, asking after each step whether it
-   works. On a PR, fix in it what the tour finds that is easy; before a release,
-   file it as issues unless the fix on main is trivial. Every check above is a
-   proxy; his hands on the build are the gate, and a merged PR he has not run
-   is not done.
+6. before a release, Alex has smoke-tested that version himself. Offer him the
+   guided smoke test then, not per PR: the build under test runs through
+   `bin/aegis-dev` beside his own aegis, and an agent inside it walks him
+   through what changed since the last tag, simplest first, asking after each
+   step whether it works. File what the tour finds as issues unless the fix on
+   main is trivial. Every check above is a proxy; his hands on the build are the
+   gate, and a release he has not run is not done.
 
 The full local gates, `make check`, `make test-slow` and `make bench`, run once
 before a release, not per PR. The order is the order

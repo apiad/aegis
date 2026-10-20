@@ -1,5 +1,5 @@
 ---
-when: a PR is ready for the maintainer, or a release is about to be cut — offering the maintainer the guided smoke test, running the build under test beside their aegis with a tour agent inside it, and what to do with what the tour finds
+when: a release is about to be cut — offering the maintainer the guided smoke test, running the build under test beside their aegis with a tour agent inside it, and what to do with what the tour finds
 ---
 
 # The guided smoke test
@@ -12,8 +12,9 @@ found four problems that 1,000 green tests had not (#241, #242, #243, #244).
 
 ## 1. Offer it
 
-When a PR is ready, and before every release, ask the maintainer whether they
-want the smoke test now. Do nothing on a no. A yes covers the steps below.
+Before every release, ask the maintainer whether they want the smoke test
+now. Not per PR: a PR is gated by CI, and the tour covers every change since
+the last tag at once. Do nothing on a no. A yes covers the steps below.
 
 ## 2. Start the build under test beside theirs
 
@@ -45,8 +46,7 @@ record and the site down when the tour is over.
 
 ## 3. Write the tour
 
-List what changed: on a PR its own `changelog.d/` fragments, before a release
-every fragment since the last tag (`git describe --tags --abbrev=0 origin/main`).
+List what changed: every `changelog.d/` fragment since the last tag (`git describe --tags --abbrev=0 origin/main`).
 Order them by how much the person has to do, from looking at something to
 coordinating several sessions. Each step says what changed in a sentence or
 two and exactly what to do or look at.
@@ -71,12 +71,11 @@ an artifact can be the form where the maintainer reviews the steps so far.
 
 **A help page is read with its guide.** The checks on the pages compare names,
 not claims, so a sentence can name a real tool and still describe it wrongly.
-For every page the PR added or changed
-(`git diff --name-only origin/main...HEAD -- src/aegis/help/`), the tour has
-one step: run `/tutorial <page>` in the build under test, follow the guide in
-its own tab, and come back to say whether each step did what the page says. A
-wrong sentence is fixed in the PR like a failing step. Before a release, do
-the same for the pages changed since the last tag.
+For every page changed since the last tag
+(`git diff --name-only <last tag>..origin/main -- src/aegis/help/`), the tour
+has one step: run `/tutorial <page>` in the build under test, follow the guide
+in its own tab, and come back to say whether each step did what the page says.
+A wrong sentence is filed or fixed like a failing step.
 
 **Links need the new version on both ends.** A release older than links
 refuses the link's socket with a bare 403 (#244). To test links, start a
@@ -108,9 +107,8 @@ prints the conversation: their answers, the agent's steps, tool errors. Find the
 cause of each problem before acting on it; one of the first run's four was
 the tour's design, not aegis.
 
-- **On a PR:** fix what is easy in the same PR, and file the rest.
-- **Before a release:** file each problem as an issue, with the maintainer's
-  words and the cause, unless the fix on main is trivial.
+File each problem as an issue, with the maintainer's words and the cause,
+unless the fix on main is trivial.
 
 Ask them whether to stop the build under test (`kill <pid>` from step 2); it
 holds the port and a window until then.
