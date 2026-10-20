@@ -6,9 +6,11 @@ rebuilds the file before a release; aegis never calls Artificial Analysis at
 run time, so a model released since the last refresh is unranked.
 
 The file is keyed by the model id an agent names (the catalog's ``value``).
-A model is ranked when it has a Coding Index. Ranked models order by Coding
-Index, higher first, the Intelligence Index breaking ties; unranked ones go
-after every ranked one, in the order they were given.
+A model is ranked when it has an Intelligence Index. Ranked models order by
+Intelligence Index, higher first, the Coding Index breaking ties; unranked ones
+go after every ranked one, in the order they were given. The Intelligence Index
+orders because Artificial Analysis publishes it for every model it lists, while
+many, the newest included, have no Coding Index.
 
 ``AEGIS_MODELS_FILE`` names a file read in place of the packaged one, so a
 test can serve sample scores from a real ``aegis serve``.
@@ -64,16 +66,20 @@ class Ranking:
 
     def _key(self, model: str) -> tuple[float, float] | None:
         s = self.models.get(model)
-        if s is None or s.coding is None:
+        if s is None or s.intelligence is None:
             return None
-        return (s.coding, s.intelligence if s.intelligence is not None else -1.0)
+        return (s.intelligence, s.coding if s.coding is not None else -1.0)
 
     def order(self, models: Sequence[str]) -> list[str]:
+        """The models by Intelligence Index, higher first, the Coding Index
+        breaking ties; those with no Intelligence Index last, as given."""
         ranked = [m for m in models if self._key(m) is not None]
         ranked.sort(key=lambda m: self._key(m) or (0.0, 0.0), reverse=True)
         return ranked + [m for m in models if self._key(m) is None]
 
     def rank(self, model: str, among: Sequence[str]) -> int | None:
+        """The model's 1-based place in ``order(among)``, or None when it is
+        not among them or has no Intelligence Index."""
         if model not in among or self._key(model) is None:
             return None
         return self.order(among).index(model) + 1
