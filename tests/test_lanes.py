@@ -1,7 +1,8 @@
-"""AGENTS.md's done line names the make targets an agent runs before calling a
-change done. Every worker trusts that line, so it has to run every test CI runs:
-when it named `make check` alone and claimed the browser tests, `check` deselected
-every one of them, and a worker reported green on a change that broke one (#267).
+"""The release step's full gates (know-how/releasing.md) name the make targets
+run locally before a tag. They have to run every test CI runs: when the done
+line named `make check` alone and claimed the browser tests, `check` deselected
+every one of them, and a worker reported green on a change that broke one
+(#267). A PR is now gated by CI itself; the full local gates run per release.
 
 This reads the done line, the Makefile and the CI workflow, and checks marker
 expressions rather than collecting tests, so it costs nothing in the fast lane.
@@ -17,11 +18,10 @@ ROOT = Path(__file__).parent.parent
 MARKERS = ("slow", "browser", "live")
 
 
-def _done_targets() -> list[str]:
-    text = (ROOT / "AGENTS.md").read_text()
-    section = text.split("## What done means", 1)[1]
-    first = re.search(r"^1\. (.*?)^2\. ", section, re.M | re.S).group(1)
-    return list(dict.fromkeys(re.findall(r"`make ([\w-]+)`", first)))
+def _release_targets() -> list[str]:
+    text = (ROOT / "know-how/releasing.md").read_text()
+    step = re.search(r"Run the full gates locally(.*?)re-roll", text, re.S).group(1)
+    return list(dict.fromkeys(re.findall(r"`make ([\w-]+)`", step)))
 
 
 def _makefile() -> dict[str, tuple[list[str], list[str]]]:
@@ -59,13 +59,13 @@ def _selects(expr: str, markers: set[str]) -> bool:
     return not expr or Expression.compile(expr).evaluate(lambda n, **_: n in markers)
 
 
-def test_the_done_line_runs_every_test_ci_runs():
+def test_the_release_gates_run_every_test_ci_runs():
     ci = (ROOT / ".github/workflows/ci.yml").read_text()
     (ci_expr,) = [
         s for c in re.findall(r"run: (.*)", ci) if (s := _pytest_selection(c))
     ]
     rules = _makefile()
-    targets = _done_targets()
+    targets = _release_targets()
     lanes = [lane for t in targets for lane in _lanes(t, rules)]
     missed = [
         kinds
@@ -75,5 +75,5 @@ def test_the_done_line_runs_every_test_ci_runs():
     ]
     assert not missed, (
         f"CI runs tests marked {missed} that none of {targets} runs; "
-        "name the target that does in AGENTS.md's done line"
+        "name the target that does in releasing.md's full gates"
     )
