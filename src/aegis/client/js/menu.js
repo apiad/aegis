@@ -422,6 +422,13 @@ export function unbar() {
   return true;
 }
 
+// A page's menu or bar whose frame left the document (the viewer, Files, a
+// pane or a row redrew it): closed. The views call this after they redraw.
+export function dropDetached() {
+  if (cur && cur.target.localName === "iframe" && !cur.target.isConnected) close();
+  if (bar_?.owner && !bar_.owner.isConnected) unbar();
+}
+
 // True when the bar shown is frame `owner`'s (barAt).
 export const framed = (owner) => !!bar_ && !bar_.root && bar_.owner === owner;
 

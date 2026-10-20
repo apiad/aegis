@@ -79,8 +79,11 @@ def inject_point(body: bytes) -> bytes:
     Idempotent, so a page that already has it gets no second one."""
     if POINT_TAG in body:
         return body
-    at = body.lower().rfind(b"</body>")
-    if at < 0:
+    low = body.lower()
+    at = low.rfind(b"</body>")
+    # A "</body>" before the last </script> is inside a script's text (the
+    # page left out its own, which HTML allows): the tag goes at the end.
+    if at < 0 or at < low.rfind(b"</script>"):
         return body + POINT_TAG
     return body[:at] + POINT_TAG + body[at:]
 

@@ -285,12 +285,14 @@ export class Viewer {
     this.root.parentElement.classList.toggle("viewing", !!item);
     if (!item) {
       this.root.replaceChildren();
+      menu.dropDetached();
       return;
     }
     const bar = el("div", "fbar vbar");
     const body = el("div", "vbody");
     body.tabIndex = -1;
     this.root.replaceChildren(bar, body);
+    menu.dropDetached(); // a page's menu or bar over the frame just replaced
     if (item.artifact) this.drawArtifact(item, e || this.entry(item.artifact), bar, body);
     else if (item.workflow) this.drawWorkflow(item, bar, body);
     else this.drawFile(item, bar, body, draw);

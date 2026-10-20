@@ -281,6 +281,7 @@ export class Canvas {
     // gone with a column) never sees its pointer released.
     if (this.dragged && !this.dragged.alive()) this.dragged.end();
     menu.unbarHidden(); // a selection bar over a transcript another tab now covers
+    menu.dropDetached(); // a page's menu or bar over a pane drawn again
   }
 
   box(node, x, y, w, h) {

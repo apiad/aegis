@@ -3732,7 +3732,9 @@ function pagePoint(frame, { kind, x, y, rect, touch, locator = {}, text = "" }) 
   const path = files
     ? filesView.path
     : frame.dataset.artifact || (inViewer && viewer.pathOf()) || decodeURIComponent(new URL(frame.src, location.href).pathname.split("/").pop());
-  const tray = files ? filesView.tray : inViewer ? viewer.tray : null;
+  // The tray as it is when Comment runs: the view may have drawn a new one.
+  const trayNow = () => (files ? filesView.tray : inViewer ? viewer.tray : null);
+  const tray = trayNow();
   const quote = String(text).trim();
   if (!path || !quote) return;
   const where = [locator.heading && `§ ${locator.heading}`, locator.css].filter(Boolean).join(" › ");
@@ -3741,7 +3743,7 @@ function pagePoint(frame, { kind, x, y, rect, touch, locator = {}, text = "" }) 
     text: quote,
     to: files ? lastShown : shown,
     leave: inViewer ? () => viewer.close() : undefined,
-    comment: tray && (() => tray.add({ locator: where || `\`${path}\``, quote, at: locator })),
+    comment: tray && (() => trayNow()?.add({ locator: where || `\`${path}\``, quote, at: locator })),
   });
   const box = frame.getBoundingClientRect();
   if (kind === "select" && rect) {

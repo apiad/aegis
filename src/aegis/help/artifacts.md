@@ -85,7 +85,9 @@ at lines and comments"). The message reaches you as a quote under a locator:
 the page's id, the nearest heading, and the element's id or a short CSS path,
 such as `` `art-1a2b3c4d` § Options › #plan-b ``. Headings and ids on the
 parts the person may talk about make those locators read well. The same holds
-for an HTML file you send, named by its file name. A right-click with Shift
+for an HTML file you send, named by its file name. The text comes from the
+page's own report of what was selected or pressed, so a page decides what
+Ask and Copy carry. A right-click with Shift
 opens the browser's own menu inside the page.
 
 ## Send a file instead

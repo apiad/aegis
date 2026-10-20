@@ -444,6 +444,7 @@ export class Transcript {
   // the new node; gone (a patch removed it, a snapshot or a switch replaced
   // the list), it closes. Only the one open target is checked: no observer.
   keepMenu() {
+    menu.dropDetached(); // a card's page redrawn with its row
     const c = menu.current();
     if (!c || c.target.isConnected || !c.target.matches(".row[data-id]")) return;
     const n = this.nodes.get(c.target.dataset.id);

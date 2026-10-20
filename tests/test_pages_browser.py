@@ -666,3 +666,39 @@ def test_a_press_in_another_page_closes_a_pages_menu_and_bar(server, page):  # n
     page.wait_for_selector(".sbar", state="detached")
     assert page.evaluate("window.__scrolls") == 0
     assert page.errors == []
+
+
+def test_a_pages_menu_closes_when_its_frame_is_drawn_again(server, page):  # noqa: F811
+    """The agent resends the artifact while its menu is open in the viewer:
+    the frame it was about is gone, so the menu goes, and a new Comment lands
+    in the tray now shown."""
+    page.goto(server.url)
+    sid = spawn(page)
+    aid, _ = _artifact(
+        page, server, ("<h3>Pick</h3><p id=q>mango</p>", "aegis.state({});"), 0
+    )
+    page.locator(".row.artifact .fbar .view").last.click()
+    frame = frame_of(page, "#viewer iframe[data-artifact]")
+    old = page.locator("#viewer iframe[data-artifact]").get_attribute("src")
+    frame.locator("#q").click(button="right")
+    page.wait_for_selector(".cmenu [data-id=comment]")
+    # The agent, driven from a second tab of the same session.
+    other = page.context.new_page()
+    other.goto(f"{server.url.split('#')[0]}#s={sid}")
+    other.fill(
+        "#input", f"/mcp artifact_update {json.dumps({'id': aid, 'resend': True})}"
+    )
+    other.press("#input", "Enter")
+    page.wait_for_function(
+        f"document.querySelector('#viewer iframe[data-artifact]')?.getAttribute('src') !== {json.dumps(old)}"
+    )
+    page.wait_for_selector(".cmenu", state="detached")
+    frame = frame_of(page, "#viewer iframe[data-artifact]")
+    frame.locator("#q").click(button="right")
+    pick(page, "comment")
+    page.keyboard.type("ripe")
+    tray = page.locator("#viewer .ctray")
+    assert tray.locator(".cn").inner_text() == "1 comment"
+    assert tray.locator(".note").input_value() == "ripe"
+    other.close()
+    assert page.errors == []

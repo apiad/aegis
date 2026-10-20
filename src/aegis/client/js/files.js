@@ -870,6 +870,7 @@ export class Files {
     this.tree.reveal(path);
     const pane = this.$(".fpane");
     pane.replaceChildren(el("p", "notice", "Opening…"));
+    menu.dropDetached(); // a page's menu or bar over the file that was open
     let r;
     try {
       r = await this.conn.call("fs.read", { path });
@@ -989,6 +990,7 @@ export class Files {
     const r = await this.conn.call("fs.ticket", { path }).catch(() => null);
     if (!r || path !== this.path) return;
     box.replaceChildren(this.stage(this.kind === "html" ? "html" : "image", r.url, path));
+    menu.dropDetached(); // a page's menu or bar over the page drawn before
   }
 
   // A rendered Markdown file's relative images come through a ticket each,

@@ -188,3 +188,6 @@ def test_inject_point_goes_before_the_last_body_end_once():
     assert inject_point(b"<p>a</p>") == b"<p>a</p>" + POINT_TAG
     once = inject_point(b"<body>x</body>")
     assert inject_point(once) == once and once.count(POINT_TAG) == 1
+    # A page with no </body> of its own but one inside a script's string.
+    js = b"<p>a</p><script>const s = '</body>';</script>"
+    assert inject_point(js) == js + POINT_TAG
