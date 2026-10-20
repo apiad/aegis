@@ -117,7 +117,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 -->
 <div class="chrome">
   <div class="bar"><span>aegis</span><span class="tab">plan · agent status and the turn_end nudge</span>
-  <span class="st"><span class="pill acc">not started</span><span class="pill">2026-10-20</span></span></div>
+  <span class="st"><span class="pill acc">done: PR #523</span><span class="pill">2026-10-20</span></span></div>
   <div class="progress"><span id="pcount">0 of 0 done</span><div class="track" id="ptrack"></div></div>
 </div>
 
@@ -130,7 +130,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <b>goal</b><span>Agents learn what they track (plan, monitors, queue tasks) without asking, a stalled monitor wakes its idle owner, and a silent turn is nudged within seconds.</span>
   <b>architecture</b><span>Sources push <code>Item</code>s into <code>Notices.set</code>; the existing <code>pending()</code> outlets (<code>Session._send</code>, <code>OpTool.run</code>) deliver them; items with <code>wake</code> go through <code>Session.deliver</code> to an idle owner. Thresholds come from <code>.aegis.yaml</code> through sources' declared defaults.</span>
   <b>stack</b><span>Python 3.12, asyncio, pydantic, pytest with the fake claude (<code>tests/test_agents.py</code>'s <code>World</code>).</span>
-  <b>execution</b><span>Not chosen yet.</span>
+  <b>execution</b><span>Native, in the session that wrote it, with one review agent at the end.</span>
 </div>
 
 <h2>Global constraints</h2>
@@ -188,7 +188,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 </table>
 
 <!-- ============================================================ TASK 1 -->
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="num">1</span><span><span class="ttl">Open the issue and the draft PR</span><span class="files">GitHub · branch agent-status-spec</span></span><span class="state"></span></summary>
 <div class="body">
 <ol class="steps">
@@ -200,7 +200,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 </details>
 
 <!-- ============================================================ TASK 2 -->
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">Declared sources in .aegis.yaml, and per-session items in Notices</span><span class="files">notice_sources.py · config.py · doctor.py · notices.py · session.py · registry.py · mcp.py · tests/test_notice_sources.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -302,7 +302,7 @@ def test_per_session_keys_never_touch_host_episodes(...):
 </details>
 
 <!-- ============================================================ TASK 3 -->
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="num">3</span><span><span class="ttl">A warning with wake set wakes its idle owner</span><span class="files">notices.py · registry.py · tests/test_notice_sources.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -344,7 +344,7 @@ async def test_monitors_wake_false_lets_warnings_wait(world): ...       # config
 </details>
 
 <!-- ============================================================ TASK 4 -->
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">The monitors source: live, stalled, broken, overdue</span><span class="files">monitors.py · tests/test_monitors.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -379,7 +379,7 @@ And one end-to-end test: an owner that arms a monitor whose <code>progress</code
 </details>
 
 <!-- ============================================================ TASK 5 -->
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">The plan and queues sources</span><span class="files">nudges.py · queues.py · registry.py · app.py · tests/test_nudges.py · tests/test_queues.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -421,7 +421,7 @@ def test_queue_items():
 </details>
 
 <!-- ============================================================ TASK 6 -->
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">The silent-turn nudge at once, and the nudges: block</span><span class="files">config.py · doctor.py · nudges.py · registry.py · tests/test_nudges.py · tests/test_config.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -451,7 +451,7 @@ Keep the existing exemption tests passing unchanged.</li>
 </details>
 
 <!-- ============================================================ TASK 7 -->
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="done">
 <summary><span class="num">7</span><span><span class="ttl">Docs, the full gates, and the PR ready for review</span><span class="files">DESIGN.md · src/aegis/help/{config,monitors,sessions}.md · changelog.d/ · tests/canary/ · PR body</span></span><span class="state"></span></summary>
 <div class="body">
 <ol class="steps">
