@@ -1,7 +1,7 @@
 ---
 title: Files
 kind: howto
-when: opening, reading or editing any file on the server in the browser with Alt+O or the folder tree, viewing rendered Markdown, HTML, images, PDF, audio and video, creating, renaming, moving or deleting files and folders, undoing a delete, and saving a file that changed on disk, and asking a session about lines or elements of a file or a page, or commenting on them
+when: opening, reading or editing any file on the server in the browser with Alt+O or the folder tree, viewing rendered Markdown, HTML, images, PDF, audio and video, creating, renaming, moving or deleting files and folders, undoing a delete, and saving a file that changed on disk, and asking a session about selected lines or elements, or commenting on them
 ---
 
 Files opens any file under the config root in the browser, so reading a file,
@@ -111,10 +111,10 @@ or when the server restarts; Download asks for a fresh one on each click.
 ## Pointing at lines and comments
 
 Selecting text in a file shows a bar over it, in the Files editor, rendered
-Markdown and HTML, and in the viewer a sent file or page opens in. A
+Markdown and HTML, and over a sent file opened from its card. A
 right-click (not with Shift) or a long press on rendered Markdown, a line of a
 sent file or an element of a page opens the same items for what is under it.
-The editor keeps the browser's own right-click menu, with its paste.
+In the editor a right-click is the browser's own, with its paste.
 
 - Ask writes the place and the quote into the message box, above your draft:
   `` `src/park.py:40-52` `` and the lines for code, the path and the nearest
@@ -132,7 +132,7 @@ The editor keeps the browser's own right-click menu, with its paste.
 A sent file's quotes go to the session that sent it. A file opened in Files
 goes to the session last shown in this browser tab; with none, New session
 opens with it. Comments not sent yet stay in this browser's storage, so a
-reload keeps them; no other browser or the server sees them. They belong to
+reload does not lose them; no other browser or the server sees them. They belong to
 that version of the file: a sent file sent again, or a Files file changed on
 disk, starts with none.
 

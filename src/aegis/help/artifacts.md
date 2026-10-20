@@ -86,7 +86,7 @@ the page's id, the nearest heading, and the element's id or a short CSS path,
 such as `` `art-1a2b3c4d` § Options › #plan-b ``. Headings and ids on the
 parts the person may talk about make those locators read well. The same holds
 for an HTML file you send, named by its file name. A right-click with Shift
-keeps the browser's own menu inside the page.
+opens the browser's own menu inside the page.
 
 ## Send a file instead
 
