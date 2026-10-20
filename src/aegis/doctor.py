@@ -158,17 +158,24 @@ def propose(found: list[Found]) -> ConfigDoc:
     catalog = have["opencode"].models if "opencode" in have else ()
     # Every model that costs nothing and can run an agent, best first, so a
     # first config spends no money and falls to the next free model when one
-    # runs out. A paid model is never proposed.
+    # runs out. A paid model joins no cascade; with nothing free, the best
+    # model alone is proposed, as before cascades, so an install with only
+    # paid models still gets an agent.
     free = ranking().order([m.value for m in catalog if m.free])
-    if free:
-        first = next(m for m in catalog if m.value == free[0])
+    paid = [] if free else ranking().order([m.value for m in catalog])[:1]
+    if free or paid:
+        pick = free or paid
+        first = next(m for m in catalog if m.value == pick[0])
         offered = [e for e in first.efforts if e in EFFORTS]
         effort = "high" if "high" in offered or not offered else offered[0]
+        name = "free" if free else pick[0].rsplit("/", 1)[-1]
+        if any(a.name == name for a in agents):
+            name += "-opencode"
         agents.append(
             AgentDoc(
-                name="free",
+                name=name,
                 harness="opencode",
-                model=free[0],
+                model=pick[0],
                 models=free if len(free) > 1 else [],
                 effort=effort,
                 permission="full",

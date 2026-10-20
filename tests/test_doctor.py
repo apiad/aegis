@@ -205,14 +205,23 @@ def test_propose_orders_free_models_by_ranking(scores):
     assert free.models == ["o/a", "o/b", "o/c"] and free.model == "o/a"
 
 
-def test_propose_never_includes_a_paid_model(scores):
+def test_propose_puts_no_paid_model_in_a_cascade(scores):
     scores({"g/pro": {"coding": 60.0}, "o/pickle": {"coding": 20.0}})
     paid = m("g/pro", ("high",))
     doc = propose([oc(paid, m("o/pickle", free=True), m("g/max"))])
     (free,) = doc.agents
     assert (free.model, free.models) == ("o/pickle", [])
-    assert propose([oc(paid)]).agents == [], "with nothing free, nothing on OpenCode"
-    assert [a.name for a in propose([CLAUDE, oc(paid)]).agents] == ["opus"]
+
+
+def test_propose_with_only_paid_models_proposes_the_best_one_alone(scores):
+    """Nothing free: the best model alone, as before cascades, so an install
+    with only paid OpenCode models still gets an agent."""
+    scores({"g/pro": {"coding": 60.0}})
+    doc = propose([oc(m("g/max"), m("g/pro", ("high",)))])
+    (agent,) = doc.agents
+    assert (agent.name, agent.model, agent.models) == ("pro", "g/pro", [])
+    assert [q.name for q in doc.queues] == ["general"]
+    assert [a.name for a in propose([CLAUDE, oc(m("g/pro"))]).agents] == ["opus", "pro"]
 
 
 def test_propose_with_claude_adds_free_beside_opus_and_a_light_queue():
