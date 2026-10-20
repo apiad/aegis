@@ -440,7 +440,7 @@ class App:
         self.recaps = Recaps(self)
         self.side_notes = SideNotes(self)
         self.sessions.side_notes = self.side_notes
-        self.nudges = Nudges(self.sessions)
+        self.nudges = Nudges(self.sessions, self.config)
         self.sessions.nudges = self.nudges
         self.notices = Notices(self)
         self.sessions.notices = self.notices

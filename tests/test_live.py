@@ -1013,8 +1013,7 @@ async def test_real_claude_answers_both_nudges(tmp_path: Path, monkeypatch):
     from .test_agents import _free_port
 
     monkeypatch.setattr(nudges, "EVERY_S", 1.0)
-    monkeypatch.setattr(nudges, "IDLE_S", 5.0)
-    monkeypatch.setattr(nudges, "PLAN_STALE_S", 3600.0)
+    monkeypatch.setattr(nudges.Nudges, "timings", lambda self: (5.0, 3600.0))
     claude = shutil.which("claude")
     assert claude, "claude is not on PATH"
     (tmp_path / ".aegis.yaml").write_text(
@@ -1054,8 +1053,7 @@ async def test_real_claude_answers_both_nudges(tmp_path: Path, monkeypatch):
         await asyncio.sleep(8)
         assert len(nudged(s, "idle")) == 1
 
-        monkeypatch.setattr(nudges, "IDLE_S", 3600.0)
-        monkeypatch.setattr(nudges, "PLAN_STALE_S", 8.0)
+        monkeypatch.setattr(nudges.Nudges, "timings", lambda self: (3600.0, 8.0))
         r = await app.registry.call("session.spawn", {"agent": "sonnet"})
         p = app.sessions.sessions[r["log_id"]]
         await p.send(

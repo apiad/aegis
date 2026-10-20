@@ -7,7 +7,7 @@ import signal
 
 import pytest
 
-from aegis import nudges, park
+from aegis import park
 
 from .conftest import until
 from .test_agents import CONFIG, World, inbox, mcp, turn
@@ -98,11 +98,13 @@ async def test_a_parked_session_stays_parked_across_a_restart_and_is_not_continu
 async def test_a_parked_session_is_listed_as_parked_and_still_nudged(
     world, monkeypatch
 ):
-    monkeypatch.setattr(nudges, "IDLE_S", 0.0)
+    # Off until it is parked: the turn's end would nudge it before the park.
+    monkeypatch.setattr(world.app.nudges, "timings", lambda: (None, 900.0))
     a = await world.spawn()
     # A silent end: a turn_end would say how it ended, and nothing nudges that.
     await turn(a, "write the summary")
     await a.park(1200)
+    monkeypatch.setattr(world.app.nudges, "timings", lambda: (0.0, 900.0))
     rows = await world.app.registry.call("session.list", {})
     assert next(r for r in rows if r["handle"] == a.handle)["state"] == "asleep"
     await world.app.nudges.tick()

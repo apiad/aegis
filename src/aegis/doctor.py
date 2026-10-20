@@ -516,6 +516,8 @@ async def doctor(
     out += _recap(roots)
     out.append(_context(snap.context))
     out += _notices(snap.notices)
+    if "error" in snap.nudges:
+        out.append(Finding("error", "nudges", snap.nudges["error"]))
     out.append(_park(snap.park))
     if "error" in snap.harness_versions:
         out.append(Finding("error", "harness_versions", snap.harness_versions["error"]))
