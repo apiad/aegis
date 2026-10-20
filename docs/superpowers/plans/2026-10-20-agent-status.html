@@ -142,7 +142,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <li>Defaults, verbatim: <code>plan: {stale_min: 10}</code>, <code>monitors: {stall_min: 15, broken_checks: 3, overdue_min: 10, wake: true}</code>, <code>queues: true</code>, <code>status: {lines: 5}</code>, <code>nudges: {silent_s: 2, plan_min: 15}</code>.</li>
 <li>A wrong value in <code>notices:</code> or <code>nudges:</code> keeps that block's defaults and carries <code>error</code> for <code>aegis doctor</code>; it never stops a send.</li>
 <li>Every wake and every nudge is once per episode: a warning wakes once per level, the silent nudge once per stretch.</li>
-<li>Local runs: only the tests covering the change (<code>uv run pytest tests/test_x.py -q</code>); <code>make check</code> before each commit; <code>make test-slow</code>, <code>make bench</code> and <code>make test-live</code> once, in task 7.</li>
+<li>Local runs: only the tests covering the change (<code>uv run pytest tests/test_x.py -q</code>); <code>make check</code> before each commit. The PR's CI runs the slow suite and the bench (<code>know-how/running-a-plan.md</code>); <code>make test-live</code> runs once locally, in task 7, since it needs a real Claude Code.</li>
 <li>Nothing personal in the repo: no names of people, machines or accounts in code, docs, commits or the PR.</li>
 </ul>
 
@@ -459,11 +459,11 @@ Keep the existing exemption tests passing unchanged.</li>
 <li>Help pages: <code>config.md</code> gets the per-source keys and <code>nudges:</code> with the defaults (and its <code>when:</code> line mentions them); <code>monitors.md</code> says what stalled, broken and overdue mean and that they wake the owner; <code>sessions.md</code> describes the status block. Follow <code>help/writing-help-pages.md</code>.</li>
 <li>Changelog: <code>changelog.d/&lt;issue&gt;-agent-status.added.md</code> and <code>changelog.d/&lt;issue&gt;-silent-nudge.changed.md</code>.</li>
 <li>Canary: add a scenario to <code>tests/canary/</code> (per <code>know-how/canary.md</code>) asserting that a notice appended to a tool result and to a prompt reaches the model's next request for Claude Code, OpenCode and Codex.</li>
-<li>Run <code>make test-slow</code> and <code>make bench</code>; put the bench table in the PR body. Run <code>make test-live</code> with a real Claude Code session that arms a monitor whose progress never moves (<code>stall_min</code> low), ends its turn, and must be woken and act on it.</li>
+<li>Merge <code>main</code> into the branch and push; CI runs the slow suite and the bench. Copy the bench table from the CI run into the PR body. Run <code>make test-live</code> with a real Claude Code session that arms a monitor whose progress never moves (<code>stall_min</code> low), ends its turn, and must be woken and act on it.</li>
 <li>Exercise it in a browser against an <code>aegis serve</code> started after the change: the status block row and a wake row in a transcript.</li>
 <li>Mark the spec's status pill "built", mark the PR ready, and offer the maintainer the guided smoke test (<code>know-how/smoke-testing.md</code>).</li>
 </ol>
-<div class="verify"><span class="lbl">verify</span><p><code>make check</code>, <code>make test-slow</code> and the canary pass; the bench table is in the PR body; the live run's transcript shows the wake and the agent acting on it.</p></div>
+<div class="verify"><span class="lbl">verify</span><p><code>make check</code> and the canary pass locally; CI is green; the bench table is in the PR body; the live run's transcript shows the wake and the agent acting on it.</p></div>
 </div>
 </details>
 
