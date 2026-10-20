@@ -192,6 +192,15 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
           <div class="pcard"><div class="csec"><h5 id="s-plan-card-h">Plan</h5><div class="plan" id="s-plan-all"></div></div></div>
         </div>
       </div>
+      <div class="sec" id="s-repos-sec" hidden><h4><span>Repos</span><span class="aside" id="s-repos-n"></span></h4>
+        <div class="prow" id="p-repos" tabindex="0">
+          <div id="s-repos"></div>
+          <div class="pcard">
+            <div class="chd"><div class="t">Repos this session wrote to</div><div class="sub" id="s-repos-sum"></div></div>
+            <div id="s-repos-all"></div>
+          </div>
+        </div>
+      </div>
       <div class="sec" id="s-journal-sec"><h4><span>Journal</span><span class="aside">today</span></h4>
         <div class="prow" id="p-journal" tabindex="0">
           <div class="jpeek" id="s-journal-peek" hidden></div>
