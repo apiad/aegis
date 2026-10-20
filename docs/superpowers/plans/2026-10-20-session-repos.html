@@ -81,12 +81,14 @@ details.task ol li,details.task ul li{font-size:15px}
 <h2>Where this plan departs from the spec</h2>
 <ul>
 <li>The channel carries the whole snapshot of the session's repos (lines and card details, a few KB at most) instead of lines plus a fetch on card open: it is sent only on change and at most every 5 s, so the bytes are the same order and the card never shows a loading state.</li>
+<li>File paths in the card are text, not links to the Files view: the card is a status read, and the paths are relative to a worktree the Files view may not be rooted in.</li>
+<li>After a live write, the probe's end triggers the rebuild instead of a rebuild of its own (<code>repos/service.py</code> <code>_on_live</code>): a rebuild at once probed the same worktree a second time.</li>
 <li>A peer is named with its handle and where it is (main checkout or worktree, branch), without its own uncommitted count: that count needs the peer's attribution, a second query per peer per publish.</li>
 </ul>
 
 <h2>Tasks</h2>
 
-<details class="task" id="task-1" data-state="pending"><summary><span>1 · Journal: top, sha, pr repo, live writes</span><span class="files">journal/db.py, paths.py, derive.py, service.py; tests/test_journal_*.py</span><span class="state"></span></summary>
+<details class="task" id="task-1" data-state="done"><summary><span>1 · Journal: top, sha, pr repo, live writes</span><span class="files">journal/db.py, paths.py, derive.py, service.py; tests/test_journal_*.py</span><span class="state"></span></summary>
 <ol>
 <li><code>db.SCHEMA_VERSION = 2</code>; <code>touches</code> gains <code>top TEXT</code>; <code>entries</code> gains <code>top TEXT</code> and <code>sha TEXT</code>; <code>Entry</code> gains <code>top: str | None = None</code>, <code>sha: str | None = None</code>; a touch tuple may carry a fifth item, <code>top</code> (a 4-tuple inserts <code>NULL</code>).</li>
 <li><code>paths.place(path) -&gt; tuple[str | None, str, str | None]</code>: (main checkout, path relative to the worktree, worktree top). <code>paths.name</code> stays and uses it. <code>paths.full_sha(directory, h) -&gt; str | None</code> via <code>git rev-parse --verify h^{commit}</code>.</li>
@@ -97,7 +99,7 @@ details.task ol li,details.task ul li{font-size:15px}
 <div class="verify">uv run pytest tests/test_journal_db.py tests/test_journal_derive.py tests/test_journal_e2e.py -q → all pass</div>
 </details>
 
-<details class="task" id="task-2" data-state="pending"><summary><span>2 · Git probe and gh lookup</span><span class="files">repos/__init__.py, repos/probe.py, repos/gh.py; tests/test_repos_probe.py</span><span class="state"></span></summary>
+<details class="task" id="task-2" data-state="done"><summary><span>2 · Git probe and gh lookup</span><span class="files">repos/__init__.py, repos/probe.py, repos/gh.py; tests/test_repos_probe.py</span><span class="state"></span></summary>
 <ol>
 <li><code>probe.probe(top: str) -&gt; Probe | None</code>; <code>Probe(branch, upstream, detached, op, dirty: dict[str, str])</code> where the value is <code>"+a −d"</code>, <code>"new"</code> or <code>"deleted"</code>; one <code>git status --porcelain=v2 --branch -z</code> plus one <code>git diff --numstat HEAD</code>; <code>op</code> read off the git dir as <code>legacy/aegis/repos/probe.py</code> does. A missing directory returns <code>None</code>.</li>
 <li><code>probe.unpushed(top: str, shas: list[str], merged_branches: set[str], branch_of: dict[str, str]) -&gt; list[str]</code>: the shas that exist, are on no remote-tracking ref (<code>git rev-list --not --remotes</code> intersect), have no equivalent patch upstream (<code>git cherry &lt;upstream&gt;</code>, <code>-</code> lines), and whose branch is not in <code>merged_branches</code>.</li>
@@ -107,7 +109,7 @@ details.task ol li,details.task ul li{font-size:15px}
 <div class="verify">uv run pytest tests/test_repos_probe.py -q → all pass</div>
 </details>
 
-<details class="task" id="task-3" data-state="pending"><summary><span>3 · Repos service and channel</span><span class="files">repos/service.py, app.py; tests/test_repos_service.py</span><span class="state"></span></summary>
+<details class="task" id="task-3" data-state="done"><summary><span>3 · Repos service and channel</span><span class="files">repos/service.py, app.py; tests/test_repos_service.py</span><span class="state"></span></summary>
 <ol>
 <li><code>Repos(db_path, publish, open_sessions)</code> where <code>open_sessions()</code> returns <code>{log_id: handle}</code>. Methods: <code>snapshot(log_id) -&gt; dict</code> (the channel's data), <code>live(log_id, handle, paths, rows)</code> (called from the writer thread; hops to the loop), <code>start()</code>, <code>stop()</code>.</li>
 <li>A session's worktrees: distinct <code>top</code> over its touches with op in write, edit, bash-write and its commit and pr entries, plus live paths' tops, newest first. Own files: its write touches' paths relative to that top. Commits: its commit entries with that top. PRs: its pr entries with that top, number from the URL or <code>merged #N</code>, joined with <code>gh.prs</code> on each branch it committed on.</li>
@@ -119,7 +121,7 @@ details.task ol li,details.task ul li{font-size:15px}
 <div class="verify">uv run pytest tests/test_repos_service.py -q → all pass</div>
 </details>
 
-<details class="task" id="task-4" data-state="pending"><summary><span>4 · Client: the Repos row and card</span><span class="files">client/index.html, js/app.js, css/base.css; tests/test_browser.py</span><span class="state"></span></summary>
+<details class="task" id="task-4" data-state="done"><summary><span>4 · Client: the Repos row and card</span><span class="files">client/index.html, js/app.js, css/base.css; tests/test_browser.py</span><span class="state"></span></summary>
 <ol>
 <li>A <code>#s-repos-sec</code> section under the plan, hidden when the list is empty or the session is on a linked server; a <code>.prow#p-repos</code> holding the lines and a <code>.pcard</code> with one <code>.csec</code> per repo, as in the spec's mockup.</li>
 <li>Subscribe <code>repos:&lt;log_id&gt;</code> when the shown session changes, unsubscribe the previous one; draw on snapshot and on <code>set</code> patches.</li>
@@ -129,7 +131,7 @@ details.task ol li,details.task ul li{font-size:15px}
 <div class="verify">uv run pytest tests/test_browser.py -k repos -q -m slow → pass; manual look in a browser against a fresh aegis serve</div>
 </details>
 
-<details class="task" id="task-5" data-state="pending"><summary><span>5 · Docs, checks, PR</span><span class="files">help page, changelog.d, DESIGN.md, spec status</span><span class="state"></span></summary>
+<details class="task" id="task-5" data-state="done"><summary><span>5 · Docs, checks, PR</span><span class="files">help page, changelog.d, DESIGN.md, spec status</span><span class="state"></span></summary>
 <ol>
 <li>Help page section on the panel's Repos row; <code>changelog.d/session-repos.feature.md</code>; a DESIGN.md paragraph on <code>aegis/repos</code>; spec status set to built.</li>
 <li><code>make check</code>, <code>make test-slow</code>, <code>make bench</code> (table in the PR body); open the PR, one reviewer on the branch, merge on green CI.</li>

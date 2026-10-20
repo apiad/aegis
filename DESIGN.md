@@ -316,7 +316,17 @@ checkout's path. Git and SQLite run on one writer thread; the event loop only
 enqueues, and boot reads no store: the journal starts before the sessions boot,
 and `journal.db` records in `PRAGMA application_id` that a backfill finished, so
 an interrupted one resumes at the next start. A corrupt `journal.db` is set aside
-and rebuilt (#289).
+and rebuilt (#289). Each touch and each commit or pr row also keeps `top`, the
+worktree it was in, and a commit row its full `sha`, for the Repos row.
+
+**A session's repos are the journal's, their state is git's.** `repos/service.py`
+lists the worktrees a session wrote to from the journal's `top` columns, plus the
+writes the writer thread reports through `Journal.on_live` before the turn's row
+exists, and asks git (`repos/probe.py`) and `gh` (`repos/gh.py`) only for the
+present state. Uncommitted counts only the files the session wrote. A worktree is
+probed at most every 10 s, in a thread; only sessions a browser subscribes to on
+`repos:<log_id>` are built and published, at most every 5 s and only on change
+(#526).
 
 **The inbox holds messages until a turn ends.** A monitor's wake, a queue's result
 and a handoff reach a session as a user turn headed `> from <kind>:<name> · …`. An

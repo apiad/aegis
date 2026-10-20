@@ -101,6 +101,26 @@ Under the title the panel shows the handle as peers address it,
 `handle@server`, so a session on a linked server says where it runs. A queue
 worker also carries the `worker · <queue>` badge its Fleet card has.
 
+## The repos a session works in
+
+The session panel's Repos row lists each repository and worktree the session
+has written a file in or committed to, newest first, one line each: the repo's
+name, its branch (or `⑂` and the directory of a linked worktree), then `~n`
+for files the session wrote and has not committed, `↑n` for its commits no
+remote has yet, its open pull requests as links to GitHub, or `✓` when nothing
+is pending. A dot marks a repo another open session also wrote in. A repo
+stays listed once clean, so the row also records where the session worked.
+
+Hover the row, or tap it on a phone, for its card: per repo the branch and
+upstream, the uncommitted files, the unpushed commits, the commits the session
+left there and its PRs with their state and CI, files other sessions left
+dirty in the same checkout, and the other sessions working there. A commit
+counts as pushed once a remote has it or an equivalent patch, so a PR merged
+by rebase with its branch deleted reads as clean. A write shows within
+seconds, mid-turn; git is asked at most every 10 seconds per worktree, and
+only for sessions a browser shows. PR state and CI come from `gh`; without it
+the card lists the PRs the journal saw and says their state is unknown.
+
 ## What the agent reports
 
 Two calls keep the person informed without reading the transcript:
