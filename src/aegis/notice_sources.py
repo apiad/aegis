@@ -12,8 +12,23 @@ registry in config.py or notices.py would make a source import back into it.
 from __future__ import annotations
 
 import copy
+from dataclasses import dataclass
 
 _SOURCES: dict[str, dict] = {}
+
+
+@dataclass(frozen=True)
+class Item:
+    """One thing a source says about a session (``Notices.set``). ``key`` is
+    stable for the condition (``m5:stalled``), so a text that changes every
+    minute is told once. ``clear`` is what to say when it ends; empty ends it
+    silently. ``wake`` delivers it at once to an idle owner, starting a turn."""
+
+    key: str
+    level: str  # "info" | "warn" | "critical"
+    text: str
+    clear: str = ""
+    wake: bool = False
 
 
 def declare(name: str, defaults: dict) -> None:
