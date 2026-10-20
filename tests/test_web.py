@@ -283,8 +283,14 @@ def test_spawn_send_and_watch_a_turn(project, fake_claude):
         second = conn.call("session.spawn", agent="opus")["result"]
         assert second["handle"] != r["handle"]
         assert conn.call("session.close", log_id=log_id).get("error") is None
+        # The close carries the row the archive gained (#525).
         assert any(
-            m["t"] == "patch" and {"remove": log_id} in m["ops"] for m in conn.seen
+            m["t"] == "patch"
+            and any(
+                op.get("remove") == log_id and op["archived"]["log_id"] == log_id
+                for op in m["ops"]
+            )
+            for m in conn.seen
         )
         assert (
             conn.call("session.send", log_id=log_id, text="x")["error"]["code"]
