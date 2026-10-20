@@ -123,7 +123,7 @@ def test_pending_lists_the_open_turns_writes_before_it_closes():
     assert d.pending() == []
 
 
-def test_on_live_reports_new_writes_and_commit_rows(tmp_path):
+def test_on_live_reports_new_writes_and_the_dirs_of_commits_prs_and_pushes(tmp_path):
     seen = []
     j = Journal(
         tmp_path, None, db_path=tmp_path / "j.db", on_live=lambda *a: seen.append(a)
@@ -138,10 +138,18 @@ def test_on_live_reports_new_writes_and_commit_rows(tmp_path):
     store.write_text("")
     for rec in r.records:
         j._feed(con, "L", "h", store, rec, None)
-    assert [(log, paths) for log, _, paths, _ in seen] == [
-        ("L", [os.path.join(str(tmp_path), "a.py")])
-    ]
+    assert seen == [("L", "h", [os.path.join(str(tmp_path), "a.py")], [])]
     # Nothing new: no call.
     r.own("send", text="again")
     j._feed(con, "L", "h", store, r.records[-1], None)
     assert len(seen) == 1
+    r.call("t2", "Bash", {"command": "cd /x/wt && git push -u origin topic"})
+    r.output("t2", "")
+    for rec in r.records[-2:]:
+        j._feed(con, "L", "h", store, rec, None)
+    assert seen[-1] == ("L", "h", [], ["/x/wt"])
+    r.call("t3", "Bash", {"command": "cd /x/wt && gh pr merge 5 --rebase"})
+    r.output("t3", "Merged pull request #5")
+    for rec in r.records[-2:]:
+        j._feed(con, "L", "h", store, rec, None)
+    assert seen[-1] == ("L", "h", [], ["/x/wt"])

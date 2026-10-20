@@ -13,6 +13,7 @@ caller passes, which is the meta's.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 
 from ..claude.stream import (
@@ -36,6 +37,7 @@ WRITE_TOOLS = {
     "Delete": "write",
 }
 TURN_ENDS = ("exit", "stop", "restart", "server_stopped", "reset")
+PUSH = re.compile(r"\bgit\b[^|;&\n]*\bpush\b")
 
 
 @dataclass
@@ -64,6 +66,9 @@ class Deriver:
         self._calls: dict[str, ToolCall] = {}
         self._last_call: str | None = None
         self._turn: list[tuple[str, str]] = []
+        # Directories a git push ran in since the last take_pushes(): not a
+        # row, but what turns a Repos line from unpushed to clean.
+        self._pushes: list[str] = []
         self._prompt = ""
         # What names a turn that has no prompt (a wake): its first prose line,
         # else a background task's notice. OpenCode updates a part in place, so
@@ -104,6 +109,10 @@ class Deriver:
                 p for op, p in self._turn if op in ("write", "edit", "bash-write")
             )
         )
+
+    def take_pushes(self) -> list[str]:
+        out, self._pushes = self._pushes, []
+        return out
 
     def _row(self, i: int, ts: float, kind: str, text: str, **kw) -> Row:
         return Row(i, ts, kind, text, self.handle, **kw)
@@ -190,6 +199,8 @@ class Deriver:
             )
         if not out.is_error:
             self._turn += [("bash-write", p) for p in shell.writes(cmd, cwd)]
+        if PUSH.search(cmd):
+            self._pushes.append(shell.workdir(cmd, cwd))
         # Claude's Bash keeps its directory between the agent's own calls; a
         # subagent's calls start afresh each time.
         if self._src == "claude" and call.parent is None:

@@ -23,7 +23,8 @@ Channels: ``sessions`` (every open session's meta; patches ``upsert`` and
 subscribe ``since`` a revision gets what changed after it), ``quota`` (each
 provider's windows; patches ``set``), ``host`` (CPU, RAM and disk while someone
 watches; patches ``set``), ``journal`` (when its rows last changed; patches
-``set``), ``schedules`` (every schedule's state; patches ``upsert`` and
+``set``), ``repos:<log_id>`` (the repos a session wrote to and their state;
+patches ``set``, ``repos/service.py``), ``schedules`` (every schedule's state; patches ``upsert`` and
 ``remove``, ``schedules.py``) and ``config`` (``.aegis.yaml`` as aegis holds
 it; patches ``set``).
 """
@@ -90,6 +91,7 @@ from .push import register_push_ops
 from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
+from .repos.service import Repos
 from .layout_ops import register_layout_ops
 from .fs_ops import register_fs_ops
 from . import fs_paths, fs_trash
@@ -419,6 +421,14 @@ class App:
         reg.quota = self.quota
         self.journal = Journal(roots.state_root, self.publish)
         reg.journal = self.journal
+        self.repos = Repos(
+            self.journal.path,
+            self.publish,
+            lambda: {s.log_id: s.handle for s in self.sessions.open_sessions()},
+            lambda name: self.channels.subscribers(name),
+            roots.harness_cwd,
+        )
+        self.journal.on_live = self.repos.live
         self.schedules = Schedules(self)
         reg.schedules = self.schedules
         self.workflows = Workflows(self)
@@ -700,6 +710,7 @@ class App:
         # Before sessions.boot(), which records server_stopped for every session
         # whose turn the last run's end cut: the journal must see those records.
         self.journal.start()
+        self.repos.start()
         self.sessions.boot(restarts.started(self.roots.state_root))
         await self.terminals.boot()
         # No browser's upload survives a restart (attachments.py).
@@ -790,6 +801,7 @@ class App:
         await self.terminals.shutdown()
         await self.side_notes.shutdown()
         await self.sessions.shutdown()
+        await self.repos.stop()
         await asyncio.to_thread(self.journal.stop)
         restarts.stopped(self.roots.state_root, stopping_at)
 
@@ -863,6 +875,9 @@ class App:
             return self.host.snapshot
         if name == "journal":
             return self.journal.snapshot
+        if name.startswith("repos:"):
+            log_id = name.removeprefix("repos:")
+            return lambda: self.repos.snapshot(log_id)
         if name == "config":
             return lambda: self.config.current().wire()
         if name == "links":
