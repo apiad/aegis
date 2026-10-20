@@ -29,6 +29,23 @@ CASES = [
         None,
     ),
     ("opencode", "something nobody has seen", None),
+    # An Anthropic API 429 names the maximum tokens; it is a rate limit.
+    (
+        "claude-code",
+        'API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":'
+        '"This request would exceed the rate limit for your organization of 30,000'
+        " input tokens per minute. Please reduce the prompt length or the maximum"
+        ' tokens requested, or try again later."}}',
+        Fall("model", None),
+    ),
+    # A gateway timeout and a fetch timeout fall; they are not context or abort.
+    ("opencode", "UnknownError: context deadline exceeded", Fall("model", None)),
+    ("opencode", "TimeoutError: The operation was aborted due to timeout", Fall("model", None)),
+    ("opencode", "APIError: model opencode/x not found", Fall("model", None)),
+    # 429 inside an id, and a not-found that names no model, stay.
+    ("opencode", "APIError: tool_use id toolu_01Xk4290 has no result", None),
+    ("opencode", "NotFoundError: Session not found", None),
+    ("opencode", "AbortError: The operation was aborted", None),
 ]  # fmt: skip
 
 T = 1_800_000_000.0

@@ -63,9 +63,12 @@ ZEN_FREE_SCOPE: Scope = "model"
 _STAY = [
     re.compile(p, re.I)
     for p in (
-        r"\babort",
+        # "aborted due to timeout" is a fetch timeout, which falls.
+        r"\babort(?!ed due to timeout)",
         r"interrupt",
-        r"context|too long|maximum.*tokens",
+        # Not "context deadline exceeded" (a gateway timeout), nor the
+        # "maximum tokens requested" of Anthropic's rate-limit message.
+        r"context(?! deadline)|too long|maximum context",
         r"auth|api[ _-]?key|unauthori[sz]ed|\b40[13]\b",
         r"invalid request|\b400\b",
     )
@@ -73,9 +76,10 @@ _STAY = [
 _PROVIDER: list[tuple[re.Pattern[str], Scope]] = [
     (re.compile(p, re.I), "model")
     for p in (
-        r"429|rate.?limit|too many requests",
-        r"\b5\d\d\b|overloaded|unavailable|timed? ?out",
-        r"\b404\b|not.?found",
+        r"\b429\b|rate.?limit|too many requests",
+        r"\b5\d\d\b|overloaded|unavailable|timed? ?out|deadline exceeded",
+        # Only a not-found that names the model: a lost session stays.
+        r"ModelNotFound|\bmodel\b.*\bnot.?found",
     )
 ]
 _FALL: dict[str, list[tuple[re.Pattern[str], Scope]]] = {
