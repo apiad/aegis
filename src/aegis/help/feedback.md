@@ -54,9 +54,9 @@ the heading in the issue body, and an id, which a prefilled link uses. The
 starred ones are required.
 
 ```text
-bug       What happened* (what-happened) · What you expected* (expected) · Steps to reproduce* (steps) · Version* (version) · Evidence (evidence) · Context (context)
+bug       What happened* (happened) · What you expected* (expected) · Steps to reproduce* (steps) · Version* (version) · Evidence (evidence) · Context (context)
 feature   The problem* (problem) · What you propose* (proposal) · What you do today (workaround) · Version* (version) · Context (context)
-docs      Page or search* (page) · What is wrong or missing* (wrong-or-missing) · Suggested text (suggested) · Version* (version)
+docs      Page or search* (page) · What is wrong or missing* (wrong) · Suggested text (suggested) · Version* (version)
 question  Question* (question) · What you tried (tried) · Version* (version)
 ```
 
