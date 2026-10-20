@@ -283,15 +283,15 @@ class Queues:
         that waits is skipped, never failed, so the next owner's starts; the
         gate's next reading dispatches it (app.on_quota). An agent that cannot
         resolve is left to _start, which fails the task with the reason."""
-        gate = self._registry.gate
-        if gate is None:
+        start_spec = self._registry.start_spec
+        if start_spec is None:
             return None
         try:
             agents = list(self._config.current().agents)
             spec = resolve(agents, None, q["agent"], {}, Path(t.cwd), owner=t.owner)
         except OpError:
             return None
-        g = gate(t.owner, spec.harness, spec.model)
+        _, g = start_spec(spec)
         return None if g.may_start else g.why
 
     async def _start(self, t: Task, q: dict) -> None:
@@ -301,6 +301,8 @@ class Queues:
         except OpError as e:
             self._fail(t, f"the queue's agent {q['agent']!r} cannot start: {e.message}")
             return
+        if self._registry.start_spec is not None:
+            spec, _ = self._registry.start_spec(spec)
         try:
             s = await self._registry.spawn(
                 spec,

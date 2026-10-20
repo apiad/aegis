@@ -17,6 +17,7 @@ import pytest
 import uvicorn
 
 from aegis import files
+from aegis.agents import agents_from, resolve
 from aegis.app import App
 from aegis.ops import OpError
 from aegis.roots import make_roots
@@ -44,8 +45,8 @@ def _free_port() -> int:
 
 
 class World:
-    def __init__(self, root: Path, fake: str):
-        self.root, self.fake = root, fake
+    def __init__(self, root: Path, fake: str, opencode: str = "opencode"):
+        self.root, self.fake, self.opencode = root, fake, opencode
         self.port = _free_port()
         self.base = f"http://127.0.0.1:{self.port}"
         self.app: App | None = None
@@ -56,6 +57,7 @@ class World:
         self.app = App(
             make_roots(self.root, None),
             claude_bin=self.fake,
+            opencode_bin=self.opencode,
             base_url=self.base,
             interrupt_timeout=1,
         )
@@ -1179,3 +1181,93 @@ async def test_a_config_change_during_a_dispatch_is_not_lost(
         )
     finally:
         flag.touch()
+
+
+def test_models_list_makes_a_cascade_and_model_is_its_head():
+    (a,) = agents_from(
+        {
+            "agents": {
+                "free": {
+                    "provider": "opencode",
+                    "models": ["opencode/a", "opencode/b"],
+                    "effort": "high",
+                    "permission": "full",
+                }
+            }
+        }
+    )
+    assert (
+        a.error is None
+        and a.models == ("opencode/a", "opencode/b")
+        and a.model == "opencode/a"
+    )
+
+
+def test_model_and_models_together_is_an_error():
+    (a,) = agents_from(
+        {
+            "agents": {
+                "x": {
+                    "provider": "opencode",
+                    "model": "opencode/a",
+                    "models": ["opencode/b"],
+                    "effort": "high",
+                    "permission": "full",
+                }
+            }
+        }
+    )
+    assert a.error == "give model or models, not both"
+
+
+def test_an_empty_models_list_is_an_error():
+    (a,) = agents_from(
+        {
+            "agents": {
+                "x": {
+                    "provider": "opencode",
+                    "models": [],
+                    "effort": "high",
+                    "permission": "full",
+                }
+            }
+        }
+    )
+    assert a.error == "models is empty"
+
+
+def test_resolve_carries_the_cascade_unless_the_model_is_overridden(tmp_path):
+    agents = agents_from(
+        {
+            "agents": {
+                "free": {
+                    "provider": "opencode",
+                    "models": ["opencode/a", "opencode/b"],
+                    "effort": "high",
+                    "permission": "full",
+                }
+            }
+        }
+    )
+    assert resolve(agents, None, "free", {}, tmp_path).cascade == (
+        "opencode/a",
+        "opencode/b",
+    )
+    spec = resolve(agents, None, "free", {"model": "opencode/z"}, tmp_path)
+    assert spec.cascade == () and spec.model == "opencode/z"
+
+
+def test_a_one_model_agent_has_no_cascade(tmp_path):
+    agents = agents_from(
+        {
+            "agents": {
+                "o": {
+                    "provider": "claude-code",
+                    "model": "opus",
+                    "effort": "high",
+                    "permission": "full",
+                }
+            }
+        }
+    )
+    assert resolve(agents, None, "o", {}, tmp_path).cascade == ()

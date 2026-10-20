@@ -235,16 +235,21 @@ def _agent(a: Agent, f: Found | None) -> list[Finding]:
                 row,
             )
         ]
-    out: list[Finding] = []
-    if f is not None and f.models:
-        m = next((m for m in f.models if a.model in (m.value, m.resolved)), None)
+    out: list[Finding] = [
+        Finding("warn", f"{row}.models", f"{m} is listed twice; the second is ignored", row)
+        for m in a.repeated
+    ]  # fmt: skip
+    where = f"{row}.models" if len(a.models) > 1 else f"{row}.model"
+    catalog = f.models if f is not None else ()
+    for model in a.models if catalog else ():
+        m = next((m for m in catalog if model in (m.value, m.resolved)), None)
         if m is None:
-            listed = ", ".join(x.value for x in f.models[:8])
+            listed = ", ".join(x.value for x in catalog[:8])
             out.append(
                 Finding(
                     "warn",
-                    f"{row}.model",
-                    f"{LABELS[a.harness]} does not list {a.model!r}; it lists {listed}",
+                    where,
+                    f"{LABELS[a.harness]} does not list {model!r}; it lists {listed}",
                     row,
                 )
             )

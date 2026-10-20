@@ -518,6 +518,26 @@ reading needs no memory, and only an open gate continues, so a gauge between the
 lines leaves a paused session paused and nothing flaps. A reading older than 15
 minutes closes the gate and stops nothing: a failed poll must not interrupt work.
 
+**A cascade picks a model at every start and falls only inside a turn.** An
+agent's `models:` is recorded on the spawn spec as `cascade` (unless the spawn
+overrides the model), and `model` is the one in use, so the position is
+`cascade.index(model)` and survives a restart through the meta. `App.start_spec`
+is the one place a start picks: every path that starts a harness from an agent
+(spawn, handoff, queue dispatch, workflow node, schedule tick) asks it, and it
+returns the first model not cooling whose gate is open, or a closed gate; a
+model a person moved outside the cascade is judged by its own gate alone. A
+turn's failed `Result` is handed to `Host.cascade_next` before the session goes
+idle: `cascade.classify` reads the harness's error text, a fall cools the model
+(or, for Claude Code's usage limit, the whole pool) and picks the next model
+below it, and the session switches with `configure`, records a `cascade` row
+and sends a continue prompt under an `aegis:cascade` header in the same turn, so `turn_ended`, a queue task and
+a workflow node see one turn ending with the last model's answer. Stop and close
+cancel a fall still switching and end the turn once; shutdown cancels it and
+leaves the turn working, so the next boot continues it. It never wraps to the
+top. The cooling table is in memory per server; one timer at its earliest
+end calls `App._release_held`, the same release `on_quota` ends with, so held
+queue tasks, schedule ticks and workflow nodes start when a model is free again.
+
 **A link is a client, and nothing travels from a linked server into an agent.**
 Alex's laptop must never run what someone else's token wrote, so a link only
 asks: it sends calls and subscriptions, and reads back `welcome`, `reply`,
