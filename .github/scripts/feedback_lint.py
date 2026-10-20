@@ -44,7 +44,8 @@ REQUIRED = {
 FEEDBACK = "feedback"
 MARKER = re.compile(r"<!--\s*aegis-feedback\s+kind=(\w+)\s*-->")
 SECRETS = re.compile(
-    r"ghp_\w{20,}|github_pat_\w{20,}|sk-\w{20,}|AKIA[0-9A-Z]{16}|-----BEGIN"
+    r"gh[pousr]_\w{30,}|github_pat_\w{20,}|sk-[\w-]{20,}|xox[abpr]-[\w-]{10,}"
+    r"|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY"
 )
 EMPTY = {"", "_No response_"}
 VERSION = re.compile(r"\b\d+\.\d+\.\d+\b")
@@ -167,12 +168,11 @@ def apply(
     text: str | None,
     labels: list[str],
     secret: bool,
+    missing: bool,
     gh=run_gh,
 ) -> None:
     """Label the issue and write, edit or settle the one marked comment."""
     issue = f"repos/{repo}/issues/{number}"
-    # Bullets appear only when something is missing (comment above).
-    missing = text is not None and "\n- " in text
     add = [x for x in (LABELS[kind], FEEDBACK) if x not in labels]
     for label, on in (("needs-info", missing), ("needs-redaction", secret)):
         if on and label not in labels:
@@ -286,6 +286,7 @@ def main(argv: list[str]) -> int:
             comment(kind, found, findings, has_secret),
             labels,
             has_secret,
+            bool(found or findings),
         )
         return 0
     print(

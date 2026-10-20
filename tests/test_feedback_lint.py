@@ -129,7 +129,21 @@ TOKENS = [
     "sk-" + "abcdefghij" * 3,
     "AKIA" + "ABCDEFGHIJKLMNOP",
     "-----BEGIN OPENSSH PRIVATE KEY-----",
+    "-----BEGIN RSA PRIVATE KEY-----",
+    "sk-ant-api03-" + "abcdefghij" * 3,
+    "sk-proj-" + "abcdefghij" * 3,
+    "gho_" + "a1B2" * 9,
+    "ghs_" + "a1B2" * 9,
+    "ghu_" + "a1B2" * 9,
+    "xoxb-" + "1234567890-" * 2 + "abcdef",
 ]
+
+
+@pytest.mark.parametrize(
+    "public", ["-----BEGIN CERTIFICATE-----", "-----BEGIN PUBLIC KEY-----"]
+)
+def test_public_pem_material_is_not_a_secret(public):
+    assert not lint.secret(form_body(dict(GOOD["bug"], Evidence=public)))
 
 
 @pytest.mark.parametrize("token", TOKENS)
@@ -175,7 +189,7 @@ MARK = "<!-- feedback-lint -->"
 def test_a_rerun_edits_its_own_comment_instead_of_adding_one():
     gh = Gh([{"id": 7, "body": "thanks!"}, {"id": 9, "body": MARK + "\nold"}])
     text = lint.comment("bug", ["**Version** is empty."], None, False)
-    lint.apply("o/r", 5, "bug", text, [], False, gh=gh)
+    lint.apply("o/r", 5, "bug", text, [], False, True, gh=gh)
     (patch,) = gh.methods("PATCH")
     assert "repos/o/r/issues/comments/9" in patch
     assert not [c for c in gh.methods("POST") if c[-1].endswith("/comments")]
@@ -184,7 +198,7 @@ def test_a_rerun_edits_its_own_comment_instead_of_adding_one():
 def test_a_first_run_with_problems_posts_one_comment_and_labels():
     gh = Gh()
     text = lint.comment("bug", ["**Version** is empty."], None, False)
-    lint.apply("o/r", 5, "bug", text, [], False, gh=gh)
+    lint.apply("o/r", 5, "bug", text, [], False, True, gh=gh)
     posts = gh.methods("POST")
     assert any(c[-1] == "repos/o/r/issues/5/comments" for c in posts)
     labels = " ".join(" ".join(c) for c in posts)
@@ -194,7 +208,9 @@ def test_a_first_run_with_problems_posts_one_comment_and_labels():
 
 def test_a_complete_issue_clears_needs_info_and_says_complete():
     gh = Gh([{"id": 9, "body": MARK + "\nold"}])
-    lint.apply("o/r", 5, "feature", None, ["enhancement", "needs-info"], False, gh=gh)
+    lint.apply(
+        "o/r", 5, "feature", None, ["enhancement", "needs-info"], False, False, gh=gh
+    )
     (patch,) = gh.methods("PATCH")
     assert any("complete" in a for a in patch)
     (delete,) = gh.methods("DELETE")
@@ -203,7 +219,7 @@ def test_a_complete_issue_clears_needs_info_and_says_complete():
 
 def test_a_complete_issue_with_no_earlier_comment_posts_nothing():
     gh = Gh()
-    lint.apply("o/r", 5, "feature", None, ["enhancement"], False, gh=gh)
+    lint.apply("o/r", 5, "feature", None, ["enhancement"], False, False, gh=gh)
     assert not [c for c in gh.methods("POST") if c[-1].endswith("/comments")]
     assert not gh.methods("PATCH") and not gh.methods("DELETE")
 
@@ -227,9 +243,20 @@ def test_the_secret_comment_asks_for_an_edit_and_adds_needs_redaction():
     gh = Gh()
     text = lint.comment("bug", [], [], True)
     assert "token" in text.lower() and "edit" in text.lower()
-    lint.apply("o/r", 5, "bug", text, [], True, gh=gh)
+    lint.apply("o/r", 5, "bug", text, [], True, False, gh=gh)
     labels = " ".join(" ".join(c) for c in gh.methods("POST"))
     assert "labels[]=needs-redaction" in labels
+    # A list in the secret paragraph is not a missing field.
+    assert "labels[]=needs-info" not in labels
+
+
+def test_needs_info_follows_the_findings_not_the_comment_text():
+    gh = Gh()
+    lint.apply(
+        "o/r", 5, "bug", lint.COMMENT_MARK + "\n- a bullet", [], True, False, gh=gh
+    )
+    labels = " ".join(" ".join(c) for c in gh.methods("POST"))
+    assert "labels[]=needs-info" not in labels
 
 
 def event(tmp_path, body, labels=(), title=TITLE):

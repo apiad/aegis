@@ -3,6 +3,8 @@
 # on what a maintainer would still need and labels needs-info; it never closes
 # an issue. The issue's text reaches the script through the event file only,
 # never through a run: line, so it cannot inject shell.
+# It runs only `finish`: the script's model review (`check`) is dormant until
+# the repository holds a token for one (see the script's docstring).
 name: feedback-lint
 
 on:

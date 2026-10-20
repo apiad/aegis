@@ -24,9 +24,10 @@ body:
     attributes:
       label: Steps to reproduce
       description: "Numbered steps from a fresh session, or a command block."
-      value: "1.
-2.
-3."
+      value: |
+        1.
+        2.
+        3.
     validations:
       required: true
   - type: input

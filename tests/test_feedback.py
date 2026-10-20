@@ -1,6 +1,7 @@
 """/feedback: the turn it delivers, and the facts the server adds to it."""
 
 from importlib.metadata import PackageNotFoundError
+from types import SimpleNamespace
 
 from aegis import feedback
 
@@ -76,3 +77,16 @@ async def test_slash_feedback_mid_turn_is_held_until_the_turn_ends(app):  # noqa
     await send(app, lid, "/feedback something")
     assert any(m["header"].startswith("> from feedback") for m in s.held)
     await until(lambda: inbox(s), timeout=10)
+
+
+async def test_the_turn_names_the_harness_version_the_last_check_found(app):  # noqa: F811
+    lid = await spawn(app)
+    s = app.sessions.sessions[lid]
+    # checked_version keeps the last version outside the range; the last
+    # check's verdict is what runs now.
+    s.checked_version = "1.0.0"
+    s.last_verdict = SimpleNamespace(version="9.9.9")
+    await send(app, lid, "/feedback something")
+    await until(lambda: inbox(s), timeout=5)
+    (md,) = inbox(s)
+    assert f"{s.harness.label} 9.9.9" in md and "1.0.0" not in md

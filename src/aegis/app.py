@@ -897,7 +897,8 @@ class App:
         if name == "feedback":
             # The agent drafts the issue from the help page feedback; the
             # turn grants nothing, so it needs no launch token.
-            facts = feedback.facts(s.harness.label, s.checked_version)
+            v = s.last_verdict
+            facts = feedback.facts(s.harness.label, v.version if v else None)
             await s.deliver(
                 *feedback.turn(arg, facts, feedback.issues_url(), iso_now())
             )

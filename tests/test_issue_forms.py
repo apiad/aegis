@@ -55,3 +55,8 @@ def test_the_required_labels_match_the_linter(kind):
 def test_blank_issues_stay_open():
     config = YAML(typ="safe").load((FORMS / "config.yml").read_text())
     assert config["blank_issues_enabled"] is True
+
+
+def test_the_bug_steps_prefill_keeps_one_line_per_step():
+    (steps,) = [i for i in fields("bug") if i["id"] == "steps"]
+    assert steps["attributes"]["value"].splitlines() == ["1.", "2.", "3."]
