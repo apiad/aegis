@@ -146,3 +146,134 @@ def test_the_required_labels_match_the_help_page():
         kind, _, rest = line.partition(" ")
         starred = re.findall(r"([A-Z][^·*(]*?)\*", rest)
         assert [s.strip() for s in starred] == lint.REQUIRED[kind], kind
+
+
+class Gh:
+    """Records each gh call; answers the comment list with ``comments``."""
+
+    def __init__(self, comments=()):
+        self.comments = list(comments)
+        self.calls: list[list[str]] = []
+
+    def __call__(self, args, stdin=None):
+        self.calls.append(args)
+        if args[-1].endswith("/comments") and "--method" not in args:
+            import json
+
+            return json.dumps(self.comments)
+        return "{}"
+
+    def methods(self, method):
+        return [c for c in self.calls if "--method" in c and method in c]
+
+
+MARK = "<!-- feedback-lint -->"
+
+
+def test_a_rerun_edits_its_own_comment_instead_of_adding_one():
+    gh = Gh([{"id": 7, "body": "thanks!"}, {"id": 9, "body": MARK + "\nold"}])
+    text = lint.comment("bug", ["**Version** is empty."], None, False)
+    lint.apply("o/r", 5, "bug", text, [], False, gh=gh)
+    (patch,) = gh.methods("PATCH")
+    assert "repos/o/r/issues/comments/9" in patch
+    assert not [c for c in gh.methods("POST") if c[-1].endswith("/comments")]
+
+
+def test_a_first_run_with_problems_posts_one_comment_and_labels():
+    gh = Gh()
+    text = lint.comment("bug", ["**Version** is empty."], None, False)
+    lint.apply("o/r", 5, "bug", text, [], False, gh=gh)
+    posts = gh.methods("POST")
+    assert any(c[-1] == "repos/o/r/issues/5/comments" for c in posts)
+    labels = " ".join(" ".join(c) for c in posts)
+    assert "labels[]=bug" in labels and "labels[]=needs-info" in labels
+
+
+def test_a_complete_issue_clears_needs_info_and_says_complete():
+    gh = Gh([{"id": 9, "body": MARK + "\nold"}])
+    lint.apply("o/r", 5, "feature", None, ["enhancement", "needs-info"], False, gh=gh)
+    (patch,) = gh.methods("PATCH")
+    assert any("complete" in a for a in patch)
+    (delete,) = gh.methods("DELETE")
+    assert delete[-1] == "repos/o/r/issues/5/labels/needs-info"
+
+
+def test_a_complete_issue_with_no_earlier_comment_posts_nothing():
+    gh = Gh()
+    lint.apply("o/r", 5, "feature", None, ["enhancement"], False, gh=gh)
+    assert not [c for c in gh.methods("POST") if c[-1].endswith("/comments")]
+    assert not gh.methods("PATCH") and not gh.methods("DELETE")
+
+
+def test_a_failed_review_is_skipped_and_never_adds_needs_info_alone():
+    for raw in (None, "", "not json", '{"a": 1}', "[1, 2]"):
+        assert lint.review_findings(raw) is None
+    assert lint.review_findings('```json\n["a repro"]\n```') == ["a repro"]
+    assert lint.review_findings("[]") == []
+    assert lint.comment("bug", [], None, False) is None
+    assert "review was skipped" in lint.comment("bug", ["x"], None, False)
+
+
+def test_review_findings_reach_the_comment():
+    text = lint.comment("feature", [], ["Which page shows the card?"], False)
+    assert text.startswith(MARK) and "Which page shows the card?" in text
+
+
+def test_the_secret_comment_asks_for_an_edit_and_adds_needs_redaction():
+    gh = Gh()
+    text = lint.comment("bug", [], [], True)
+    assert "token" in text.lower() and "edit" in text.lower()
+    lint.apply("o/r", 5, "bug", text, [], True, gh=gh)
+    labels = " ".join(" ".join(c) for c in gh.methods("POST"))
+    assert "labels[]=needs-redaction" in labels
+
+
+def event(tmp_path, body, labels=(), title=TITLE):
+    import json
+
+    p = tmp_path / "event.json"
+    p.write_text(
+        json.dumps(
+            {
+                "issue": {
+                    "number": 5,
+                    "title": title,
+                    "body": body,
+                    "labels": [{"name": n} for n in labels],
+                },
+                "repository": {"full_name": "o/r"},
+            }
+        )
+    )
+    return p
+
+
+def outputs(path):
+    text = path.read_text()
+    out = dict(re.findall(r"^(\w+)=(.*)$", text, re.M))
+    m = re.search(r"^prompt<<(\S+)\n(.*?)\n\1$", text, re.S | re.M)
+    out["prompt"] = m[2] if m else None
+    return out
+
+
+def test_check_skips_an_issue_that_is_not_feedback(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event(tmp_path, None, ["idea"])))
+    monkeypatch.setenv("GITHUB_OUTPUT", str(tmp_path / "out"))
+    lint.main(["check"])
+    assert outputs(tmp_path / "out")["skip"] == "true"
+
+
+def test_check_writes_a_prompt_only_when_the_checks_pass(tmp_path, monkeypatch):
+    out = tmp_path / "out"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    good = form_body(GOOD["feature"]) + "<!-- aegis-feedback kind=feature -->"
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event(tmp_path, good)))
+    lint.main(["check"])
+    o = outputs(out)
+    assert o["skip"] == "false" and o["kind"] == "feature"
+    assert "What you propose" in o["prompt"] and "JSON array" in o["prompt"]
+    out.unlink()
+    thin = form_body(dict(GOOD["feature"], **{"The problem": ""}))
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event(tmp_path, thin, ["enhancement"])))
+    lint.main(["check"])
+    assert outputs(out)["prompt"] == ""

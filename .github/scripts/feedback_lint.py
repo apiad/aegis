@@ -13,7 +13,13 @@ edits its body, and never quotes what it matched as a secret.
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import secrets
+import subprocess
+import sys
+from pathlib import Path
 
 LABELS = {
     "bug": "bug",
@@ -38,6 +44,10 @@ EMPTY = {"", "_No response_"}
 VERSION = re.compile(r"\b\d+\.\d+\.\d+\b")
 BARE_TITLE = re.compile(
     r"(?i)^\W*(bug|feature( request)?|docs?|question|issue|help)\W*$"
+)
+COMMENT_MARK = "<!-- feedback-lint -->"
+HELP_PAGE = (
+    Path(__file__).resolve().parents[2] / "src" / "aegis" / "help" / "feedback.md"
 )
 LIST_ITEM = re.compile(r"^\s*(?:\d+[.)]|[-*])\s+\S", re.M)
 
@@ -93,3 +103,190 @@ def problems(kind: str, title: str, body: str) -> list[str]:
                 "session, or a command block."
             )
     return found
+
+
+def review_findings(raw: str | None) -> list[str] | None:
+    """The model's answer as a list of findings; None when the step failed or
+    answered anything but a JSON array of strings."""
+    if not raw or not raw.strip():
+        return None
+    text = re.sub(r"^```\w*\n|\n?```$", "", raw.strip())
+    try:
+        found = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(found, list) or not all(isinstance(f, str) for f in found):
+        return None
+    return [f.strip()[:300] for f in found if f.strip()][:5]
+
+
+def comment(
+    kind: str, problems: list[str], findings: list[str] | None, secret: bool
+) -> str | None:
+    """The comment's text, or None when there is nothing to say."""
+    missing = problems + (findings or [])
+    if not missing and not secret:
+        return None
+    parts = [COMMENT_MARK]
+    if secret:
+        parts.append(
+            "This issue may contain a token or a private key. Edit it to take "
+            "the value out, and revoke the key: an edit does not erase the "
+            "issue's history."
+        )
+    if missing:
+        parts.append("This report is missing what a maintainer needs to act on it:")
+        parts.append("\n".join(f"- {m}" for m in missing))
+    if problems and findings is None:
+        parts.append(
+            "The model review was skipped; it runs once the checks above pass."
+        )
+    parts.append(
+        "Edit the issue and this check runs again. Filed by an agent? The agent "
+        "can fix it with `gh issue edit`."
+    )
+    return "\n\n".join(parts)
+
+
+def run_gh(args: list[str], stdin: str | None = None) -> str:
+    return subprocess.run(
+        ["gh", *args], input=stdin, capture_output=True, text=True, check=True
+    ).stdout
+
+
+def apply(
+    repo: str,
+    number: int,
+    kind: str,
+    text: str | None,
+    labels: list[str],
+    secret: bool,
+    gh=run_gh,
+) -> None:
+    """Label the issue and write, edit or settle the one marked comment."""
+    issue = f"repos/{repo}/issues/{number}"
+    # Bullets appear only when something is missing (comment above).
+    missing = text is not None and "\n- " in text
+    add = [LABELS[kind]] * (LABELS[kind] not in labels)
+    for label, on in (("needs-info", missing), ("needs-redaction", secret)):
+        if on and label not in labels:
+            add.append(label)
+        elif not on and label in labels:
+            gh(["api", "--method", "DELETE", f"{issue}/labels/{label}"])
+    if add:
+        gh(
+            [
+                "api",
+                "--method",
+                "POST",
+                *(a for x in add for a in ("-f", f"labels[]={x}")),
+                f"{issue}/labels",
+            ]
+        )
+    mine = next(
+        (
+            c
+            for c in json.loads(gh(["api", "--paginate", f"{issue}/comments"]) or "[]")
+            if (c.get("body") or "").startswith(COMMENT_MARK)
+        ),
+        None,
+    )
+    if text is None:
+        if mine is None:
+            return
+        text = f"{COMMENT_MARK}\ncomplete: nothing a maintainer needs is missing."
+    if mine is None:
+        gh(["api", "--method", "POST", "-f", f"body={text}", f"{issue}/comments"])
+    elif mine.get("body") != text:
+        gh(
+            [
+                "api",
+                "--method",
+                "PATCH",
+                "-f",
+                f"body={text}",
+                f"repos/{repo}/issues/comments/{mine['id']}",
+            ]
+        )
+
+
+def prompt(kind: str, title: str, body: str) -> str:
+    page = HELP_PAGE.read_text()
+    m = re.search(r"## What each kind needs\n(.*?)\n## ", page, re.S)
+    needs = m[1].strip() if m else ""
+    return (
+        "You review an issue filed against aegis, a workplace for coding agents. "
+        "Below are what each kind of issue needs, then the issue.\n\n"
+        f"{needs}\n\n--- issue (kind: {kind}) ---\ntitle: {title}\n\n{body}\n--- end ---\n\n"
+        "Answer with a JSON array of short strings naming what a maintainer would "
+        "still need to act on this issue; [] if nothing. Name only what is "
+        "missing or too vague to act on, at most five, and nothing else."
+    )
+
+
+def _event() -> tuple[str, int, str, str, list[str]]:
+    ev = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+    issue = ev["issue"]
+    labels = [lb["name"] for lb in issue.get("labels", [])]
+    return (
+        ev["repository"]["full_name"],
+        issue["number"],
+        issue.get("title") or "",
+        issue.get("body") or "",
+        labels,
+    )
+
+
+def _output(**values: str) -> None:
+    with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+        for key, value in values.items():
+            if "\n" in value or key == "prompt":
+                end = f"EOF_{secrets.token_hex(8)}"
+                out.write(f"{key}<<{end}\n{value}\n{end}\n")
+            else:
+                out.write(f"{key}={value}\n")
+
+
+def main(argv: list[str]) -> int:
+    repo, number, title, body, labels = _event()
+    kind = kind_of(body, labels)
+    if argv[:1] == ["check"]:
+        if kind is None:
+            _output(skip="true", kind="", prompt="")
+            return 0
+        found = problems(kind, title, body)
+        _output(
+            skip="false",
+            kind=kind,
+            # No review while checks fail, and no body with a secret in it
+            # goes to the model.
+            prompt="" if found or secret(body) else prompt(kind, title, body),
+        )
+        return 0
+    if argv[:1] == ["finish"]:
+        if kind is None:
+            return 0
+        raw = None
+        if "--review-file" in argv:
+            path = Path(argv[argv.index("--review-file") + 1])
+            raw = path.read_text() if path.exists() else None
+        found = problems(kind, title, body)
+        findings = None if found else review_findings(raw)
+        has_secret = secret(f"{title}\n{body}")
+        apply(
+            repo,
+            number,
+            kind,
+            comment(kind, found, findings, has_secret),
+            labels,
+            has_secret,
+        )
+        return 0
+    print(
+        "usage: feedback_lint.py check | finish --review-file <path>", file=sys.stderr
+    )
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
