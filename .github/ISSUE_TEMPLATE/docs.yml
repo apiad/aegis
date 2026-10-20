@@ -1,0 +1,35 @@
+name: Docs
+description: "a help page is wrong, missing, or did not answer your question"
+labels: [documentation, feedback]
+body:
+  - type: markdown
+    attributes:
+      value: "Filed by an agent? It followed the help page feedback. Filing by hand? `/feedback` in any aegis session drafts this for you."
+  - type: input
+    id: page
+    attributes:
+      label: Page or search
+      description: "The help page id and section, such as queues#cancel-a-task, or the search that found nothing."
+    validations:
+      required: true
+  - type: textarea
+    id: wrong-or-missing
+    attributes:
+      label: What is wrong or missing
+      description: "What the page says, or does not say, and what is true."
+    validations:
+      required: true
+  - type: textarea
+    id: suggested
+    attributes:
+      label: Suggested text
+      description: "How you would put it."
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "aegis --version."
+    validations:
+      required: true

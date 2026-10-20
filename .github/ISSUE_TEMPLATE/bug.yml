@@ -1,0 +1,53 @@
+name: Bug
+description: "aegis did something wrong, crashed, or contradicted its help page"
+labels: [bug, feedback]
+body:
+  - type: markdown
+    attributes:
+      value: "Filed by an agent? It followed the help page feedback. Filing by hand? `/feedback` in any aegis session drafts this for you."
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: "The observed behaviour, with the exact error text."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: "What aegis should have done."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: "Numbered steps from a fresh session, or a command block."
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "aegis --version, the harness and its version, the OS, and the browser if the browser view is involved."
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: "Logs, a redacted transcript excerpt or a screenshot. Never a token."
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: "Anything else a maintainer should know."
+    validations:
+      required: false

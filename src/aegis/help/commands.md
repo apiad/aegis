@@ -27,6 +27,7 @@ Tab or Enter picks one. Alt+/ opens the same menu over a draft.
 | `/stop` | alias of `/sleep` |
 | `/restart` | end the process and start a fresh one on the same conversation; nothing is sent. Use it after a change to the agent's MCP config or when the harness hangs |
 | `/btw <question>` | ask a side question about this session, even while the agent works. aegis answers it from the transcript with the agent `btw:` names in `.aegis.yaml`, in one call with no tools, and shows the answer as a block you can fold. The agent never sees the question or the answer. One runs at a time per session; the block's cancel stops it |
+| `/feedback [text]` | report a bug, ask for a feature or point out a docs gap in aegis. The agent reads the help page feedback, asks what it still needs and shows you a draft issue; nothing is filed until you say yes. Claude Code's own /feedback, which reports to Anthropic, is hidden in aegis |
 | `/workflow [id] [text]` | run a saved workflow now: the agent makes its args from your text and starts it, with no card to approve. Alone, it opens the menu of saved workflows |
 | `/loop <prompt>` | repeat a prompt in this session until the agent says it is done, at a fixed interval when the prompt gives one ("every 5m") or at the agent's pace; Stop on its card ends it |
 | `/spawn <agent>[@server] [prompt]` | start a session, here or on a linked server; flags `--quiet` (no tab until its turn ends; needs a prompt), `--model`, `--effort`, `--permission` and `--cwd` go before the prompt |

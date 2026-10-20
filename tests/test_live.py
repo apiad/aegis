@@ -861,6 +861,76 @@ async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
         await asyncio.wait_for(task, 30)
 
 
+async def test_real_claude_drafts_feedback_and_files_nothing_before_a_yes(
+    tmp_path: Path, monkeypatch
+):
+    """/feedback, followed by a real model (#497): it reads the help page
+    feedback, shows a draft, ends its turn asking, and runs no gh issue create.
+    gh on PATH is a stub that logs its arguments and says it is logged in, so
+    nothing can be published."""
+    import asyncio
+    import os
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    log = tmp_path / "gh.log"
+    (stub / "gh").write_text(f'#!/bin/sh\necho "$*" >> {log}\necho "[]"\n')
+    (stub / "gh").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{stub}{os.pathsep}{os.environ['PATH']}")
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await app.registry.call(
+            "session.send",
+            {
+                "log_id": s.log_id,
+                "text": "/feedback the help page for queues does not say how to "
+                "cancel a task",
+            },
+        )
+        await until(
+            lambda: s.status == "idle" and s.cost_usd,
+            timeout=240,
+            what="the draft",
+        )
+        tools = [e for e in s.entries() if e["kind"] == "tool"]
+        assert any(
+            e["title"] == "help_read" and "feedback" in json.dumps(e) for e in tools
+        ), [e["title"] for e in tools]
+        assert s.wire()["attention"] == "needs_you", s.wire()
+        logged = log.read_text() if log.exists() else ""
+        assert "issue create" not in logged, logged
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
 async def test_real_claude_in_read_calls_its_card_and_still_cannot_write(
     tmp_path: Path,
 ):

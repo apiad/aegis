@@ -32,7 +32,7 @@ park: {claude-code: 1200}
 
 ## Add an agent
 
-`agents:` maps a name to a preset. Each one has:
+`agents:` in `.aegis.yaml` maps a name to a preset. Each one has:
 
 - `harness:` one of claude-code, opencode or codex. Each aegis release is
   tested with a range of versions of each harness; for OpenCode that is

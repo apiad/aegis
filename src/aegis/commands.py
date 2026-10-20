@@ -59,6 +59,11 @@ AEGIS: dict[str, Command] = {
         Command("restart", "", "A fresh process on the same conversation"),
         Command("btw", "<question>", "Ask a side question; the agent never sees it"),
         Command(
+            "feedback",
+            "[text]",
+            "Report a bug or ask for a feature in aegis; the agent drafts the issue",
+        ),
+        Command(
             "workflow",
             "[id] [text]",
             "Run a saved workflow now, its args made from your text; alone, list them",

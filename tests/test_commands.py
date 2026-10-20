@@ -151,6 +151,7 @@ async def test_commands_list_puts_aegis_first_and_hides_what_it_shadows(app):
         "stop",
         "restart",
         "btw",
+        "feedback",
         "workflow",
         "loop",
         "spawn",
@@ -160,6 +161,8 @@ async def test_commands_list_puts_aegis_first_and_hides_what_it_shadows(app):
         "help",
     ]
     assert names.count("model") == 1 and names.count("rename") == 1
+    # aegis's /feedback hides Claude Code's own.
+    assert names.count("feedback") == 1
     src = {c["name"]: c["source"] for c in r["commands"]}
     assert (src["model"], src["compact"], src["hello"], src["busy"]) == (
         "aegis",

@@ -1,0 +1,28 @@
+name: Question
+description: "not sure whether it is a bug, a feature or a docs gap"
+labels: [question, feedback]
+body:
+  - type: markdown
+    attributes:
+      value: "Filed by an agent? It followed the help page feedback. Filing by hand? `/feedback` in any aegis session drafts this for you."
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: "What you want to know."
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: "Help pages read, searches run."
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "aegis --version."
+    validations:
+      required: true
