@@ -77,6 +77,10 @@ def place(path: str) -> tuple[str | None, str, str | None]:
     rel = os.path.relpath(path, top)
     if rel.startswith(".."):
         return None, path, None
+    # A file whose directory is gone was in a tree since removed (a worktree):
+    # the nearest existing ancestor's checkout is not where it was written.
+    if not os.path.isdir(os.path.dirname(path)):
+        return main, "" if rel == "." else rel, None
     return main, "" if rel == "." else rel, top
 
 
