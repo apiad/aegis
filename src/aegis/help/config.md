@@ -374,8 +374,16 @@ comments and key order, and refuses to save over a change made on disk since
 you opened it. Only an admin can save.
 
 `aegis init` writes a first file from the harnesses installed on this machine,
-proposing agents for Claude Code and OpenCode and asking about each (`aegis
-init --yes` takes every proposal).
+proposing agents and queues and asking about each (`aegis init --yes` takes
+every proposal). With Claude Code it proposes `opus`. With OpenCode it
+proposes `free`, a cascade of every free model in its catalog that can run an
+agent, best first by the ranking and unranked ones last; a cascade is asked
+as one comma-separated list. A paid model never joins the cascade; a
+catalog with no free model gets its best model alone. With both,
+`opus` is the default, the `general` queue runs it and a `light` queue runs
+`free` for reviews and research; with OpenCode alone, `free` is the default
+and runs `general`. The Settings page's Set up offer, on a server with no
+file, makes the same proposal.
 It refuses to overwrite an existing `.aegis.yaml`.
 
 ## The theme

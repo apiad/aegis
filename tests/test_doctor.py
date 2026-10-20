@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from aegis.claude.control import Model
 from aegis.harness_versions import ranges
 from aegis.doctor import Found, detect, doctor, propose
@@ -166,74 +168,104 @@ async def test_detect_finds_both_fakes_with_their_models(
     assert opencode.models[0].value == "opencode-go/fake-pro"
 
 
-def m(value: str, efforts=()) -> Model:
+def m(value: str, efforts=(), free=False) -> Model:
     return Model(
-        value=value, resolved=value, label=value, doc="", efforts=tuple(efforts)
+        value=value,
+        resolved=value,
+        label=value,
+        doc="",
+        efforts=tuple(efforts),
+        free=free,
     )
 
 
-def test_propose_claude_first_then_opencode():
-    doc = propose(
-        [
-            Found("claude-code", "/bin/claude", "2.1", (m("opus"),)),
-            Found(
-                "opencode",
-                "/bin/opencode",
-                "1.18",
-                (m("opencode-go/deepseek-v4-pro", ("minimal", "high", "max")),),
-            ),
-        ]
-    )
+def oc(*models: Model) -> Found:
+    return Found("opencode", "/bin/opencode", "1.18", models)
+
+
+CLAUDE = Found("claude-code", "/bin/claude", "2.1", (m("opus"),))
+
+
+@pytest.fixture
+def scores(monkeypatch):
+    from aegis.ranking import Ranking
+
+    def use(scores: dict) -> None:
+        ranked = Ranking.from_dict({"models": scores})
+        monkeypatch.setattr("aegis.doctor.ranking", lambda: ranked)
+
+    return use
+
+
+def test_propose_orders_free_models_by_ranking(scores):
+    scores({"o/a": {"coding": 41.2}, "o/b": {"coding": 38.9}})
+    doc = propose([oc(m("o/c", free=True), m("o/a", free=True), m("o/b", free=True))])
+    (free,) = doc.agents
+    assert (free.name, free.harness, free.permission) == ("free", "opencode", "full")
+    assert free.models == ["o/a", "o/b", "o/c"] and free.model == "o/a"
+
+
+def test_propose_puts_no_paid_model_in_a_cascade(scores):
+    scores({"g/pro": {"coding": 60.0}, "o/pickle": {"coding": 20.0}})
+    paid = m("g/pro", ("high",))
+    doc = propose([oc(paid, m("o/pickle", free=True), m("g/max"))])
+    (free,) = doc.agents
+    assert (free.model, free.models) == ("o/pickle", [])
+
+
+def test_propose_with_only_paid_models_proposes_the_best_one_alone(scores):
+    """Nothing free: the best model alone, as before cascades, so an install
+    with only paid OpenCode models still gets an agent."""
+    scores({"g/pro": {"coding": 60.0}})
+    doc = propose([oc(m("g/max"), m("g/pro", ("high",)))])
+    (agent,) = doc.agents
+    assert (agent.name, agent.model, agent.models) == ("pro", "g/pro", [])
+    assert [q.name for q in doc.queues] == ["general"]
+    assert [a.name for a in propose([CLAUDE, oc(m("g/pro"))]).agents] == ["opus", "pro"]
+
+
+def test_propose_with_claude_adds_free_beside_opus_and_a_light_queue():
+    doc = propose([CLAUDE, oc(m("o/a", free=True), m("o/b", free=True))])
     assert [
         (a.name, a.harness, a.model, a.effort, a.permission) for a in doc.agents
     ] == [
         ("opus", "claude-code", "opus", "high", "full"),
-        ("deepseek-v4-pro", "opencode", "opencode-go/deepseek-v4-pro", "high", "full"),
+        ("free", "opencode", "o/a", "high", "full"),
     ]
     assert doc.default_agent == "opus"
     assert [(q.name, q.agent, q.max_parallel) for q in doc.queues] == [
-        ("general", "opus", 3)
+        ("general", "opus", 3),
+        ("light", "free", 3),
     ]
 
 
-def test_propose_without_claude_defaults_to_opencode_and_nothing_installed_proposes_nothing():
+def test_propose_without_claude_makes_free_the_default():
     doc = propose(
-        [
-            Found("claude-code", None),
-            Found("opencode", "/bin/opencode", "1.18", (m("opencode-go/opus"),)),
-        ]
+        [Found("claude-code", None), oc(m("o/a", free=True), m("o/b", free=True))]
     )
-    assert doc.default_agent == "opus" and doc.agents[0].harness == "opencode"
+    assert [a.name for a in doc.agents] == ["free"] and doc.default_agent == "free"
+    assert [(q.name, q.agent) for q in doc.queues] == [("general", "free")]
     assert propose([Found("claude-code", None), Found("opencode", None)]).agents == []
 
 
-def test_propose_prefers_effort_high_when_the_model_offers_it():
+def test_one_free_model_is_a_cascade_of_one():
+    (free,) = propose([oc(m("o/pickle", free=True))]).agents
+    assert (free.model, free.models) == ("o/pickle", [])
+
+
+def test_propose_takes_effort_from_the_first_model(scores):
+    scores({"x/y": {"coding": 50.0}})
+    doc = propose([oc(m("g/flash", ("low", "medium", "high"), free=True))])
+    assert doc.agents[0].effort == "high"
     doc = propose(
         [
-            Found(
-                "opencode",
-                "/bin/opencode",
-                "1.18",
-                (m("google/gemini-flash", ("low", "medium", "high")),),
+            oc(
+                m("g/flash", ("high",), free=True),
+                m("x/y", ("minimal", "low"), free=True),
             )
         ]
     )
-    assert doc.agents[0].effort == "high"
-    doc = propose(
-        [Found("opencode", "/bin/opencode", "1.18", (m("x/y", ("minimal", "low")),))]
-    )
-    assert doc.agents[0].effort == "low"
-
-
-def test_propose_takes_the_first_free_opencode_model():
-    paid = Model(value="g/pro", resolved="g/pro", label="", doc="", efforts=("high",))
-    free = Model(
-        value="o/pickle", resolved="o/pickle", label="", doc="", efforts=(), free=True
-    )
-    doc = propose([Found("opencode", "/bin/opencode", "1.18", (paid, free))])
-    assert (doc.agents[0].name, doc.agents[0].model) == ("pickle", "o/pickle")
-    doc = propose([Found("opencode", "/bin/opencode", "1.18", (paid,))])
-    assert doc.agents[0].model == "g/pro", "with nothing free, the first model"
+    assert doc.agents[0].effort == "low", "x/y ranks first, so its efforts choose"
 
 
 async def test_an_opencode_older_than_the_range_warns_with_the_upgrade(
