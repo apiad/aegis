@@ -1236,6 +1236,15 @@ body{background:#000}
 .a2 .set-queue .link.danger{margin-left:auto;opacity:0}
 .a2 .set-queue:hover .link.danger,.a2 .set-queue:focus-within .link.danger{opacity:1}
 .a2 .set-limit{width:5ch;min-width:0;text-align:right}
+.a2 .set-num{width:12ch;min-width:0}
+.a2 .set-cmd{flex:1 1 18ch;min-width:12ch}
+.a2 .set-cwd{width:12ch;min-width:0}
+.a2 .set-field+.set-field{margin-top:6px}
+.a2 .set-queue .set-field .set-name{flex-basis:190px;font-weight:400;color:var(--ink)}
+.a2 .set-queue .set-priming{margin-top:6px}
+.a2 .set-tools{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.a2 .set-tool{font-family:var(--font-mono);font-size:11px;border:1px solid var(--rule);border-radius:4px;padding:2px 6px;background:none;color:var(--muted);cursor:pointer}
+.a2 .set-tool[aria-pressed=true]{color:var(--strong);border-color:var(--accent)}
 .a2 #set-wf-list{margin-top:12px;border:1px solid var(--rule);border-radius:var(--r-lg);background:var(--surface)}
 .a2 #set-wf-list:empty{display:none}
 .a2 .set-wf{padding:9px 14px;border-top:1px solid var(--rule)}

@@ -125,7 +125,12 @@ behind the file's back. A file that does not parse, or is empty, leaves the last
 one that did in force and says so, because a half-typed edit must not stop every
 spawn. `aegis init` and the Settings page write through one writer that keeps
 comments and refuses a stale write; `aegis doctor` and `config.doctor` check the
-file against the harnesses actually installed (`doctor.py`). Its `context:`
+file against the harnesses actually installed (`doctor.py`). The Settings form
+edits every key the readers take: the blocks that are values over defaults are
+drawn from `fields()`, a schema the wire carries, and the rest have controls of
+their own. `tests/test_config_coverage.py` takes the keys from the readers'
+declarations, so a key added to a reader fails until the form's document and
+the page carry it. Its `context:`
 block is the one section with defaults: a wrong one keeps them all in force
 and `aegis doctor` names the mistake, because a typo there must never stop a
 `turn_end`.
