@@ -336,7 +336,7 @@ queue tasks out: 2 running (review-a, review-b)</pre>
 <table class="tbl">
 <thead><tr><th>Key</th><th>Level</th><th>When</th><th>Text, sample</th></tr></thead>
 <tbody>
-<tr><td>monitors:live</td><td>info</td><td>The owner has live monitors</td><td><code>monitors: m2 build 60% eta 4 min · m5 tests 40%</code></td></tr>
+<tr><td>monitors:&lt;id&gt;:live</td><td>info</td><td>Each live monitor, one line each (one shared line was cut at 160 characters past two monitors)</td><td><code>monitor m2 build 60% eta 4 min</code></td></tr>
 <tr><td>monitors:&lt;id&gt;:stalled</td><td>warn</td><td>The monitor has a <code>progress</code> command and its reading has not changed for <code>stall_min</code> (15) minutes and at least 3 intervals</td><td><code>monitor m5 "tests" at 40% for 16 min · look, or monitor_cancel it</code></td></tr>
 <tr><td>monitors:&lt;id&gt;:broken</td><td>warn</td><td>A check's verdict has been bad (<code>monitors.verdict</code> returns <code>bad</code>: command not found, not executable, cannot finish) for <code>broken_checks</code> (3) checks in a row</td><td><code>monitor m5 "tests" progress check cannot run: command not found</code></td></tr>
 <tr><td>monitors:&lt;id&gt;:overdue</td><td>warn</td><td>The ETA has passed by half the time it estimated, and by at least <code>overdue_min</code> (10) minutes</td><td><code>monitor m2 "build" past its eta by 14 min at 85%</code></td></tr>

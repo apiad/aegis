@@ -40,3 +40,8 @@ def declare(name: str, defaults: dict) -> None:
 
 def declared() -> dict[str, dict]:
     return copy.deepcopy(_SOURCES)
+
+
+# The core's own source: every info item makes one status block (notices.py).
+# Declared here, so config.py knows it without importing notices.
+declare("status", {"lines": 5})

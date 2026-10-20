@@ -197,11 +197,13 @@ notice_sources.declare(
 )
 
 
-def monitor_items(ms: list[Monitor], cfg: dict, now: float) -> list[Item]:
+def monitor_items(
+    ms: list[Monitor], cfg: dict, now: float, checked: set[str]
+) -> list[Item]:
     """The owner's items for its live monitors ``ms``, under ``cfg`` (the
-    ``notices.monitors`` block)."""
-    if not ms:
-        return []
+    ``notices.monitors`` block): a status line each, and warnings only for
+    those in ``checked``, checked at least once by this process, so a
+    restart's downtime never reads as a stall."""
     live = []
     warns = []
     for m in ms:
@@ -211,9 +213,9 @@ def monitor_items(ms: list[Monitor], cfg: dict, now: float) -> list[Item]:
         due = None if m.sessions else eta(m.started_at, m.readings)
         if due and due[0] > now:
             row += f" eta {round((due[0] - now) / 60)} min"
-        live.append(row)
-        if m.sessions:
-            continue  # its own blocked outcome wakes the owner
+        live.append(Item(f"{m.id}:live", "info", f"monitor {row}"))
+        if m.sessions or m.id not in checked:
+            continue  # a session watcher's own blocked outcome wakes the owner
         name = f'monitor {m.id} "{m.description}"'
         warn = {"level": "warn", "clear": f"monitor {m.id} moves again, or has ended",
                 "wake": cfg["wake"]}  # fmt: skip
@@ -239,7 +241,7 @@ def monitor_items(ms: list[Monitor], cfg: dict, now: float) -> list[Item]:
                 at = f" at {m.last_progress}%" if m.last_progress is not None else ""
                 text = f"{name} past its eta by {round(late / 60)} min{at}"
                 warns.append(Item(f"{m.id}:overdue", text=text, **warn))
-    return [Item("live", "info", "monitors: " + " · ".join(live)), *warns]
+    return [*live, *warns]
 
 
 class Monitors:
@@ -248,6 +250,7 @@ class Monitors:
         self._path = path
         self.items: dict[str, Monitor] = {}
         self._tasks: dict[str, asyncio.Task] = {}
+        self._checked: set[str] = set()  # checked at least once by this process
 
     # -- persistence ---------------------------------------------------------
     def _save(self) -> None:
@@ -293,6 +296,7 @@ class Monitors:
         m = self.items.pop(monitor_id, None)
         if m is None:
             return None
+        self._checked.discard(monitor_id)
         t = self._tasks.pop(monitor_id, None)
         if t:
             t.cancel()
@@ -313,7 +317,11 @@ class Monitors:
         if notices is None:
             return
         cfg = notices.cfg(SOURCE)
-        items = [] if cfg is None else monitor_items(self.of(owner), cfg, time.time())
+        items = (
+            []
+            if cfg is None
+            else monitor_items(self.of(owner), cfg, time.time(), self._checked)
+        )
         notices.set(owner, SOURCE, items)
 
     def drop_owner(self, owner: str) -> None:
@@ -378,6 +386,7 @@ class Monitors:
                         changed = True
                     if changed:
                         self._publish(m)
+                self._checked.add(m.id)
                 self._status(m.owner)
                 await asyncio.sleep(m.interval_s)
         except asyncio.CancelledError:
@@ -445,6 +454,7 @@ class Monitors:
 
     async def _end(self, m: Monitor, outcome: str, why: str) -> None:
         self.items.pop(m.id, None)
+        self._checked.discard(m.id)
         self._tasks.pop(m.id, None)
         self._save()
         self._registry.refresh_card(m.owner)
