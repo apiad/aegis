@@ -5,6 +5,157 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.12.0] - 2026-10-20
+
+### Added
+
+- **Each release names the harness versions it was tested with.** aegis now
+  ships a min and a max version per harness. A person who starts a session on
+  a version outside them is asked first (start once, always allow, cancel); a
+  session an agent, queue, schedule or workflow starts runs anyway with a
+  notice in its transcript; `aegis serve` and `aegis doctor` warn. Every
+  message names the binary found and the command that installs a tested
+  version. `harness_versions:` in `.aegis.yaml` turns each part off, and the
+  OpenCode 2 check in `aegis doctor` is now this general one.
+  help: sessions#an-untested-harness-version
+
+- **Alt+O opens any file on the server, and the Files view edits it.** From
+  anywhere in aegis, Alt+O lists every file under the config root, newest
+  first, filtered as you type; `path:line` opens at a line. The file opens at
+  its own address, `#files=<path>`, in an editor with highlighting for about
+  thirty languages, and Ctrl+S saves it, keeping its line endings and
+  permissions. A save checks that the file on disk is still the version it
+  was based on: when a session changed it meanwhile, nothing is written and
+  a banner offers the diff, the disk's version, or your buffer on purpose.
+  Admins and members may write; sessions and linked servers may not, and no
+  path reaches outside the root, the server's state folder or a .git
+  directory. Every save is logged with its author in `fs-log.jsonl`.
+- **The Files view has a folder tree.** Folders open in place from the
+  config root, ignored entries hidden unless asked for; right-click or a long
+  press creates, renames, deletes or copies a path, and a row dragged onto a
+  folder moves there. A delete goes to a trash in the server's state with Undo
+  in a toast, kept 30 days. The open file follows the disk: an untouched
+  buffer takes a session's write by itself, an edited one shows the banner.
+  On a phone the tree is a drawer behind ☰.
+- **The Files view renders what it opens.** Markdown opens rendered, with its
+  relative images; HTML runs in a sandboxed frame; images, PDF, audio and
+  video open in their viewers, each text format with a Source switch to the
+  editor. Any other file offers a download and, on the server's desktop, its
+  own app. A path a reply names gets Open in Files in the viewer, to edit it
+  at that line.
+  help: files
+
+- **`aegis map` maps a repository's code for agents.** `aegis map repo` shows
+  the folders and files with each module's first doc line, `outline` a file's
+  definitions, and `callers`, `callees` and `impact` every use of a
+  definition, marking with `?` those matched by name only. It parses with
+  tree-sitter, so it works in Python, TypeScript, Go, Rust, Java, C and the
+  other languages the grammar pack has, with no language server. The first run
+  in a repository indexes it in seconds; later ones re-parse only changed
+  files, and every session of the user shares the index. The agent primer
+  points agents at it before they grep.
+  help: code-map
+
+- **Claude Code sessions start without the Claude Code tools aegis replaces.**
+  Agent, SendMessage, Workflow, the cron and wakeup tools, Monitor, TaskStop,
+  PushNotification and the task-list tools are off in every session with
+  aegis's tools, which saves about 5.9k input tokens per session and keeps an
+  agent on queues, monitors and plan_update. An agent that needs one keeps it
+  with `keep_harness_tools:` in `.aegis.yaml`.
+  help: config#claude-code-tools-aegis-replaces
+
+- **A workflow's main agent hears when its run is approved, and where it next stops.**
+  Approving a run used to tell its main agent nothing, so its last message
+  still asked for the approval and the person did not know what came next.
+  Now the approval wakes it once with a message naming the run's next stop
+  (its first gate or main step, or its end), and the agent tells the person
+  the run is going, that they can still write to it to steer the run or ask
+  about it, and when the run next needs anyone. The tab stays on waiting.
+  help: workflows#while-it-runs
+
+- **Fleet cards and session tabs have a menu.** A right-click, a long press
+  on a touch screen, or the ContextMenu key or Shift+F10 opens it: Open, Open
+  in new tab, Quiet or Unquiet, Interrupt, Continue, Stop, Hand off, Rename…
+  and Close, each shown only when it applies and acting on that session, not
+  the one in view. Files' tree menu and the canvas's tab and Move menus now
+  open through the same module, with icons, and a right-click on a canvas tab
+  offers Undock as a long press does.
+  help: sessions#menus
+
+- **`aegis map` follows a call through the receiver's type.** A call such as
+  `self.queues.turn_ended()` resolved by method name only, so it pointed at
+  the wrong definition, often the caller itself, and a call through a protocol
+  never reached the class implementing it. The map now types a receiver from
+  annotations, constructor calls, class fields, aliased imports and the
+  assignments to an attribute elsewhere in the repository, and a call through
+  a base method reaches every override. A call on an unknown receiver no
+  longer matches module-level functions, and a call on an outside type
+  matches nothing. Python, JavaScript and TypeScript; a `Spec` per language
+  adds another.
+  help: code-map#callers-and-impact
+
+- **`aegis map --exclude` leaves out folders, and a cold index is twice as
+  fast.** A tracked `legacy/` folder was two thirds of aegis's own index and
+  joined every name match; `-x legacy` (a path or a glob, repeatable) keeps it
+  out of the views without re-parsing anything. The first index parses in a
+  pool of processes with tree-sitter queries instead of a walk over every
+  node: on aegis's 1,370 files, measured side by side on a busy host, about
+  18 s down to 7 to 13 s, and 7 s with `-x legacy`.
+  help: code-map#the-index
+
+- **`aegis map metrics`, `cycles`, `unused` and `diff` give a codebase's
+  numbers.** Per function, file and folder: lines, complexity as ruff's C901
+  counts it, docs, typed parameters and returns, calls on receivers of
+  unknown type, and fan-in; cycles of uses between files or folders;
+  definitions nothing names; and, for a branch, each changed definition with
+  its sizes before and after and its users. They judge nothing: each takes
+  `--json`, and a review or a CI gate is a `jq` filter over it.
+  help: code-map#numbers-for-a-review
+
+### Changed
+
+- **One name for each step of a session's life: Sleep, Wake, Continue,
+  Restart and Archive.** Stop and a park were two names for one state, and
+  are now one, asleep, whose Fleet mark says why: slept, idle (a park),
+  exited or server. Restart is real: it ends the process and starts a fresh
+  one on the same conversation, where the panel's old Restart only sent
+  "Continue" (that button is Continue now). Close is Archive everywhere.
+  `/sleep`, `/restart` and `/archive` are new; `/stop` and `/close` stay as
+  aliases. Quiet gets its own mark, so `zz` means asleep only.
+  help: sessions#sleep-wake-restart-archive-and-reopen
+
+- **`aegis map` comes from wayfind, a package of its own.** The code map moved
+  out of aegis into [wayfind](https://github.com/apiad/wayfind), so the same
+  commands run where aegis is not installed, such as a CI job (`uvx wayfind`).
+  aegis depends on it and `aegis map` works as before. Its index now lives
+  under `~/.cache/wayfind`, so the first command after upgrading re-indexes.
+  help: code-map
+
+### Fixed
+
+- **A running workflow's main agent shows waiting, not a stale needs_you.**
+  Approving a run left the main agent's card asking for that approval until
+  the run first woke it, sometimes for hours, and between agent steps the
+  card did not count the run at all, so the agent was nudged for being idle
+  while it waited correctly. Now the approval answers the ask, the card says
+  waiting on `workflow <run>` for every kind of step and between them, and
+  the main agent gets no idle nudge while its run lives.
+
+- **A workflow step that already finished no longer fails on its deadline.** A done step or group whose deadline passed while a later step was still running failed then, woke the main agent, and a step with retries ran its command again. A deadline now applies only to a step that is still pending or running.
+
+- **A `session: main` step no longer waits behind another one.** A main step
+  was shown as queued while any other main step of its run was open, as if it
+  waited for room, though the main agent holds no slot. A one-minute step on
+  one branch could sit behind a review on another branch that waited 25
+  minutes on a monitor. Each main step is now delivered when it is ready, and
+  with several open, `workflow_result` and `workflow_output` take `node`, the
+  step they report.
+
+- **Settings keeps a workflow import's message when the page redraws.** The
+  line that says a workflow was imported, or why a file did not lint, vanished
+  when Settings redrew, such as when the config changed on disk or the replace
+  dialog closed. It now stays until the next import.
+
 ## [2.11.0] - 2026-10-16
 
 ### Added
