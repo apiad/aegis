@@ -85,6 +85,11 @@ def split_model(model: str) -> dict[str, str]:
     return {"providerID": provider, "id": model_id}
 
 
+def _price(v: object) -> float | None:
+    """A cost from the catalog, USD per million tokens, or None when absent."""
+    return float(v) if isinstance(v, int | float) and not isinstance(v, bool) else None
+
+
 def catalog_from(commands: list, skills: list, models: list) -> Catalog:
     cmds = tuple(
         {
@@ -123,6 +128,8 @@ def catalog_from(commands: list, skills: list, models: list) -> Catalog:
                     if isinstance(v, dict) and v.get("id")
                 ),
                 window=window if isinstance(window, int) else None,
+                price_in=_price(cost.get("input")),
+                price_out=_price(cost.get("output")),
                 free=cost.get("input") == 0
                 and cost.get("output") == 0
                 and caps.get("tools") is True

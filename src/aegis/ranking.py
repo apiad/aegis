@@ -15,9 +15,11 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 from importlib import resources
+
+from .claude.control import Model
 
 
 @dataclass(frozen=True)
@@ -74,3 +76,29 @@ class Ranking:
 def ranking() -> Ranking:
     text = resources.files("aegis").joinpath("data/models.json").read_text()
     return Ranking.from_dict(json.loads(text))
+
+
+def annotate(models: Sequence[Model], r: Ranking | None = None) -> tuple[Model, ...]:
+    """The models with their scores and rank among themselves, and the file's
+    price where the harness gave none. Pass one harness's catalog: the rank
+    is among the models given."""
+    r = r or ranking()
+    among = [m.value for m in models]
+    out = []
+    for m in models:
+        s = r.score(m.value)
+        if s is None:
+            out.append(m)
+            continue
+        own = m.price_in is not None or m.price_out is not None
+        out.append(
+            replace(
+                m,
+                rank=r.rank(m.value, among),
+                coding=s.coding,
+                intelligence=s.intelligence,
+                price_in=m.price_in if own else s.price_in,
+                price_out=m.price_out if own else s.price_out,
+            )
+        )
+    return tuple(out)
