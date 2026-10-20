@@ -8,7 +8,7 @@
 //   chip.options = [{ value, label, disabled, meta }]; chip.value; chip.suffix
 //
 // `meta` is a short note drawn after the label in the list, not matched by
-// the filter: a model's rank, Coding Index and price (models.js).
+// the filter: a model's rank, Intelligence Index and price (models.js).
 //
 // Typing filters the options with the command menu's scorer; ArrowUp/Down,
 // Enter and Esc are the command menu's. `free` (the model chip) lets a typed

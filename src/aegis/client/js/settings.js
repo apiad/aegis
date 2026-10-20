@@ -927,9 +927,9 @@ export class Settings {
       if (add.value) set([...list, add.value]);
     });
     const info = (m) => this.modelInfo(a.harness, m);
-    // Ranked before unranked, then Coding Index down, Intelligence Index
+    // Ranked before unranked, then Intelligence Index down, Coding Index
     // breaking ties: negative when p goes first.
-    const key = (m) => ((x) => (x?.coding == null ? [0, 0, 0] : [1, x.coding, x.intelligence ?? 0]))(info(m));
+    const key = (m) => ((x) => (x?.intelligence == null ? [0, 0, 0] : [1, x.intelligence, x.coding ?? 0]))(info(m));
     const order = (p, q) => {
       const [x, y] = [key(p), key(q)];
       return y[0] - x[0] || y[1] - x[1] || y[2] - x[2];
@@ -953,7 +953,7 @@ export class Settings {
       box.draw();
     };
     box.draw = () => {
-      const score = (x) => (x?.coding == null ? "unranked" : x.coding.toFixed(1));
+      const score = (x) => (x?.intelligence == null ? "unranked" : x.intelligence.toFixed(1));
       const now = Date.now() / 1000;
       rows.replaceChildren(
         ...list.map((m, i) => {
@@ -981,7 +981,7 @@ export class Settings {
             { className: until ? "cool" : "", title: x?.label || m },
             h("span", { className: "i", textContent: i + 1 }),
             h("span", { className: "m", textContent: until ? `${m} · cooling until ${until}` : m }),
-            h("span", { className: x?.coding == null ? "sc none" : "sc", textContent: score(x) }),
+            h("span", { className: x?.intelligence == null ? "sc none" : "sc", textContent: score(x) }),
             h("span", { className: "mv" }, up, down, rm),
           );
           li.dataset.model = m;
@@ -1074,8 +1074,8 @@ export class Settings {
         cell("nm", x.value),
         cell("h", label(x.harness)),
         cell("rk", x.rank ? `#${x.rank}` : "—"),
-        cell("ci", x.coding != null ? x.coding.toFixed(1) : "unranked"),
-        cell("ii", x.intelligence != null ? x.intelligence.toFixed(1) : "—"),
+        cell("ci", x.coding != null ? x.coding.toFixed(1) : "—"),
+        cell("ii", x.intelligence != null ? x.intelligence.toFixed(1) : "unranked"),
         cell("pr", modelPrice(x) || "—"),
         cell("by", [used, cool].filter(Boolean).join(" · ")),
       );

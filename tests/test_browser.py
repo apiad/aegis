@@ -515,7 +515,7 @@ def test_the_model_chip_lists_what_opencode_can_reach_and_filters_it(server, pag
     assert page.errors == []
 
 
-# Sample scores, not Artificial Analysis data: the packaged file has none yet.
+# Sample scores, not Artificial Analysis data: the packaged file changes with each refresh.
 RANKING = {
     "source": "Artificial Analysis",
     "url": "https://artificialanalysis.ai",
@@ -525,9 +525,11 @@ RANKING = {
                  "price_in": 15.0, "price_out": 75.0},
         "sonnet": {"aa": "s", "coding": 64.1, "intelligence": 68.0,
                    "price_in": 3.0, "price_out": 15.0},
-        "opencode-go/fake-flash": {"aa": "f", "coding": 41.2, "intelligence": 54.0,
+        # The Coding Index disagrees with the Intelligence Index, which orders.
+        "opencode-go/fake-flash": {"aa": "f", "coding": 30.0, "intelligence": 54.0,
                                    "price_in": 0.6, "price_out": 2.5},
-        "opencode-go/fake-pro": {"aa": "p", "coding": 38.9, "intelligence": 50.1},
+        "opencode-go/fake-pro": {"aa": "p", "coding": 45.0, "intelligence": 50.1},
+        "opencode-go/fake-plain": {"aa": "n", "coding": 60.0, "intelligence": None},
     },
 }  # fmt: skip
 
@@ -563,7 +565,7 @@ def test_model_options_show_rank_score_and_price(ranked_server, page):
         "document.querySelector('#sp-model').options.some(o => o.meta)"
     )
     page.click("#sp-model input")
-    assert chips(page, "#sp-model")["opus"] == "#1 · 72.0 · $15 / $75"
+    assert chips(page, "#sp-model")["opus"] == "#1 · 75.3 · $15 / $75"
     assert chips(page, "#sp-model")["haiku"] == "unranked"  # no score, no price
     page.press("#sp-model input", "Escape")
     pick(page, "#sp-agent", "deepseek")
@@ -572,9 +574,10 @@ def test_model_options_show_rank_score_and_price(ranked_server, page):
     )
     page.click("#sp-model input")
     got = chips(page, "#sp-model")
-    assert got["opencode-go/fake-flash"] == "#1 · 41.2 · free"
-    assert got["opencode-go/fake-pro"] == "#2 · 38.9 · $1 / $4"
+    assert got["opencode-go/fake-flash"] == "#1 · 54.0 · free"
+    assert got["opencode-go/fake-pro"] == "#2 · 50.1 · $1 / $4"
     assert got["opencode-go/fake-video"] == "unranked · free"  # costs nothing
+    # A Coding Index without an Intelligence Index is unranked.
     assert got["opencode-go/fake-plain"] == "unranked · $1 / $4"
     page.press("#sp-model input", "Escape")
 
@@ -584,11 +587,11 @@ def test_model_options_show_rank_score_and_price(ranked_server, page):
     page.wait_for_function(f"document.querySelector('{row}').options.some(o => o.meta)")
     page.click(f"{row} input")
     got = chips(page, row)
-    assert got["Fake Flash"] == "#1 · 41.2 · free"
+    assert got["Fake Flash"] == "#1 · 54.0 · free"
     assert got["Fake Video"] == "unranked · free"
     opus = '.set-agent[data-row="agents.opus"] pick-chip[name=add-model]'
     page.click(f"{opus} input")
-    assert chips(page, opus)["Sonnet"] == "#2 · 64.1 · $3 / $15"
+    assert chips(page, opus)["Sonnet"] == "#2 · 68.0 · $3 / $15"
     assert page.errors == []
 
 
@@ -603,7 +606,8 @@ def test_models_view_filters_and_sorts(ranked_server, page):
     page.wait_for_selector("#a2[data-view=fleet]")
     page.keyboard.press("Alt+KeyS")
     page.wait_for_selector("#set-models .set-mrow[data-model]")
-    # In use first, then by Coding Index; unranked ones last, in catalog order.
+    # In use first, then by Intelligence Index; unranked ones last, in catalog
+    # order, fake-plain too though it has a Coding Index.
     assert model_view_rows(page) == [
         "opus",
         "opencode-go/fake-pro",
@@ -621,6 +625,9 @@ def test_models_view_filters_and_sorts(ranked_server, page):
     assert page.inner_text(f"{opus} .pr") == "$15 / $75"
     pro = '#set-models .set-mrow[data-model="opencode-go/fake-pro"]'
     assert page.inner_text(f"{pro} .rk") == "#2"
+    plain = '#set-models .set-mrow[data-model="opencode-go/fake-plain"]'
+    assert page.inner_text(f"{plain} .ci") == "60.0"
+    assert page.inner_text(f"{plain} .ii") == "unranked"
 
     pick(page, "#set-models pick-chip[name=models-harness]", "OpenCode")
     assert model_view_rows(page) == [
@@ -638,7 +645,7 @@ def test_models_view_filters_and_sorts(ranked_server, page):
     assert model_view_rows(page)[:4] == [
         "opus",
         "sonnet",
-        "opencode-go/fake-flash",
+        "opencode-go/fake-plain",
         "opencode-go/fake-pro",
     ]
     pick(page, "#set-models pick-chip[name=models-sort]", "price")
@@ -706,7 +713,7 @@ def test_cascade_editor_reorders_adds_sorts_and_saves(cascade_edit_server, page)
     pro, flash, plain = (f"opencode-go/fake-{m}" for m in ("pro", "flash", "plain"))
     assert cascade_rows(page, card) == [pro, flash, plain]
     warn = f"{card} .set-casc-warn"
-    assert page.inner_text(warn) == f"{pro} (38.9) is above {flash} (41.2)"
+    assert page.inner_text(warn) == f"{pro} (50.1) is above {flash} (54.0)"
     row = f'{card} .set-casc li[data-model="{pro}"]'
     assert "cool" in page.get_attribute(row, "class")
     assert re.search(r"cooling until \d\d:\d\d", page.inner_text(row))
@@ -727,12 +734,12 @@ def test_cascade_editor_reorders_adds_sorts_and_saves(cascade_edit_server, page)
     add = f"{card} pick-chip[name=add-model]"
     page.click(f"{add} input")
     got = chips(page, add)
-    assert got["Fake Pro"] == "#2 · 38.9 · $1 / $4"
+    assert got["Fake Pro"] == "#2 · 50.1 · $1 / $4"
     assert "Fake Flash" not in got and "Fake Plain" not in got
     page.press(f"{add} input", "Escape")
     pick(page, add, "Fake Pro")
     assert cascade_rows(page, card) == [flash, plain, pro]
-    assert page.inner_text(warn) == f"{plain} (unranked) is above {pro} (38.9)"
+    assert page.inner_text(warn) == f"{plain} (unranked) is above {pro} (50.1)"
     page.click(f"{card} .set-casc-sort")
     assert cascade_rows(page, card) == [flash, pro, plain]
     assert page.inner_text(warn) == ""
