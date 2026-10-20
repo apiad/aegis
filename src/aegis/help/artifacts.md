@@ -77,6 +77,17 @@ you need the state.
 - `artifact_close` with `id` withdraws a live page, collapsing its card to
   `label`. A draft never sent is discarded.
 
+## What the person can point at
+
+The person can select text in your page, or right-click or long-press an
+element, and ask you about it or leave comments on it (Files help, "Pointing
+at lines and comments"). The message reaches you as a quote under a locator:
+the page's id, the nearest heading, and the element's id or a short CSS path,
+such as `` `art-1a2b3c4d` § Options › #plan-b ``. Headings and ids on the
+parts the person may talk about make those locators read well. The same holds
+for an HTML file you send, named by its file name. A right-click with Shift
+keeps the browser's own menu inside the page.
+
 ## Send a file instead
 
 When the person only needs to look at something, such as a screenshot, a

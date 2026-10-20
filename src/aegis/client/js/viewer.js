@@ -296,6 +296,14 @@ export class Viewer {
     else this.drawFile(item, bar, body, draw);
   }
 
+  // The comment tray, below the body; Send closes the viewer over the composer.
+  newTray(key, path) {
+    if (!this.point) return null;
+    const to = this.key;
+    this.tray = new Tray(this.root, key, (text) => (this.close(), this.point.send(to, text)), path);
+    return this.tray;
+  }
+
   closeButton() {
     const b = el("button", "btn icon vclose");
     b.append(icon("close"));
@@ -318,13 +326,8 @@ export class Viewer {
       files.title = `Open ${rootPath} in the Files view, where it can be edited`;
       acts.append(files);
     }
-    // Comments on a text or Markdown file, kept per version (its URL).
-    const key = this.key;
-    const tray =
-      (f.preview === "markdown" || f.preview === "text") && this.point
-        ? new Tray(this.root, f.url, (text) => (this.close(), this.point.send(key, text)), this.pathOf())
-        : null;
-    this.tray = tray;
+    // Comments on a text, Markdown or HTML file, kept per version (its URL).
+    const tray = ["markdown", "text", "html"].includes(f.preview) ? this.newTray(f.url, this.pathOf()) : null;
     drawFile(f, {
       remote: item.remote,
       glyph: item.glyph,
@@ -382,6 +385,7 @@ export class Viewer {
     drawArtifact(e, { bar, body, acts, popout: e.status === "live" ? popButton(e.id) : null });
     acts.append(this.closeButton());
     bar.append(acts);
+    this.newTray(fileUrl(e.detail?.url), e.id);
     if (e.status === "live") hold(e.id, (next) => this.onArtifact(next));
     else hold(e.id, null, e);
   }

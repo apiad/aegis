@@ -142,7 +142,12 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
     });
   },
 });
-artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
+artifacts.setup({
+  call: (op, params, key) => callFor(key || shown, op, params),
+  entry: (id) => transcript.entries.get(id),
+  key: () => shown,
+  point: (frame, params) => pagePoint(frame, params),
+});
 const pointing = { items: (ctx) => pointItems(ctx), send: (key, text) => toComposer(key, text) };
 const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(id), point: pointing });
 // Open on a docked item shows its pane, so a page never runs in the viewer
@@ -3697,6 +3702,38 @@ function pointItems({ locator, text, to, comment, leave = () => {} }) {
       run: (ev) => navigator.clipboard.writeText(ev?.shiftKey ? q : text).catch((e) => toast(`Copy failed: ${e.message || e}`, { kind: "error" })),
     },
   ].filter(Boolean);
+}
+
+// A gesture inside a sandboxed page (pagepoint.js, through artifacts.js): the
+// menu at the point it reports, or the bar over its selection, drawn here in
+// the frame's place. Which file, session and tray it belongs to comes from
+// where the frame is: Files' page, the viewer's, or a card's in the session.
+function pagePoint(frame, { kind, x, y, rect, touch, locator = {}, text = "" }) {
+  if (kind === "clear") return cmenu.framed() && cmenu.unbar();
+  const files = frame.closest("#files");
+  const inViewer = frame.closest("#viewer");
+  const path = files
+    ? filesView.path
+    : frame.dataset.artifact || decodeURIComponent(new URL(frame.src, location.href).pathname.split("/").pop());
+  const tray = files ? filesView.tray : inViewer ? viewer.tray : null;
+  const quote = String(text).trim();
+  if (!path || !quote || !frame.checkVisibility()) return;
+  const where = [locator.heading && `§ ${locator.heading}`, locator.css].filter(Boolean).join(" › ");
+  const items = pointItems({
+    locator: `\`${path}\`${where ? ` ${where}` : ""}`,
+    text: quote,
+    to: files ? lastShown : shown,
+    leave: inViewer ? () => viewer.close() : undefined,
+    comment: tray && (() => tray.add({ locator: where || `\`${path}\``, quote, at: locator })),
+  });
+  const box = frame.getBoundingClientRect();
+  if (kind === "select" && rect) {
+    const r = new DOMRect(box.left + rect.left, box.top + rect.top, rect.right - rect.left, rect.bottom - rect.top);
+    return cmenu.barAt(items, r);
+  }
+  if (kind !== "menu") return;
+  artifacts.tell(frame, "aegis/point-open");
+  cmenu.open({ groups: [items] }, { x: box.left + x, y: box.top + y, touch }, frame, { onClose: () => artifacts.tell(frame, "aegis/point-closed") });
 }
 
 // `text` into session `key`'s composer, going there first; Files' unsaved

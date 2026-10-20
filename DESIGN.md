@@ -972,6 +972,21 @@ that throws is a tool error, not a card; with no browser open it lands with
 `started` unset, and the first browser to mount it reports an error to the
 inbox.
 
+**A page proposes what the person points at; only the host acts on it.** Every
+HTML preview, a sent page's, a Files page's and an artifact's, is served with a
+`<script src="/static/js/pagepoint.js">` added before its `</body>`
+(`web.inject_point`); a download is the file's own bytes. A tag, not the script
+inline, because previews are cached as immutable and the static script follows
+the client's version. In the frame it reports a right-click, a long press and a
+selection, with a locator (heading, id or CSS path) and the text, as an
+`aegis/point` message; the host bridge takes that one method from any frame it
+mounted and draws the menu or the selection bar in its own document
+(`app.js`, `pagePoint`). A page can make a menu appear, never put text in a
+composer: that takes an item the person picks in the host. A page whose own
+CSP blocks the script simply has no menu. Comments on files and pages live in
+the browser's storage until sent, and the server never sees them
+(`client/js/comments.js`).
+
 **A card's Open shows its file or its page over the transcript, and a page
 runs in one place.** The viewer (`client/js/viewer.js`) covers the session's
 column, transcript and composer, and leaves the tabs and the panel in reach;

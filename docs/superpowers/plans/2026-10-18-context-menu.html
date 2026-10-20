@@ -225,6 +225,12 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <li><b><code>menu.bar</code> takes a <code>unit</code></b>, what a selection may span (a transcript row by default; the viewer's code or Markdown, Files' editor or Markdown), and each bar closes only its own: with two bars, the transcript's check dropped the viewer's.</li>
 <li><b><code>Tray.add</code> takes <code>at</code>, text offsets in the content, not an anchor element</b>: a pin is a span inserted at the offsets whose number is CSS (<code>::before</code>), so the text, the line count and the stored offsets stay as they were, and a reload draws the pins again from storage.</li>
 <li><b>A right-click with nothing selected is about the code line or the Markdown block under the pointer</b> (<code>quote.js</code>, <code>rangeAtPoint</code>), as spec 07's "picks the element under the pointer" says for pages.</li>
+<li><b>The preview test is in <code>tests/test_fs_ops.py</code></b>, beside the HTML ticket test that checked the exact body and has the <code>app</code> and <code>fetch</code> helpers; <code>tests/test_files.py</code> has <code>inject_point</code>'s own test. <code>tests/test_artifacts_e2e.py:65</code> expected an artifact's exact bytes and now expects them with the tag.</li>
+<li><b><code>pagepoint.js</code> has no keyup listener</b>: <code>tests/test_client_rules.py</code> refuses a document key listener outside keys.js. Its <code>selectionchange</code>, settled for 300 ms, covers a selection made with the keyboard.</li>
+<li><b><code>pagepoint.js</code> swallows the release's mousedown after a long press</b>, as <code>menu.js</code> does in the host: the focus moved into the frame and closed the host's menu through its focusout. The phone test fails without it.</li>
+<li><b>A page's comments draw no pins</b>, the frame being out of the host's reach; the element is outlined while its menu is open. A page comment's locator leaves out the path the tray's header names (<code>§ Setup › #p1</code>), as the spec's example does.</li>
+<li><b>Comment is offered where a tray is</b>, the viewer and Files; a page in a transcript card offers Ask, Ask aside, New session and Copy. The phone test long-presses such a card's frame.</li>
+<li><b><code>menu.open</code> takes <code>onClose</code></b> (the frame's <code>aegis/point-closed</code>), <b><code>menu.barAt</code> draws the bar over a frame's rect</b>, and <code>artifacts.js</code> exports <code>tell</code> for the two messages to a frame. A linked server's page streamed through <code>/via</code> carries the tag only when that server is this version or newer.</li>
 </ul>
 
 <h2>Review focus</h2>
@@ -563,7 +569,7 @@ def test_copy_link_opens_the_session_at_that_row(page, server):
 
 <div class="slice">slice 4 · inside files and pages · branch menu-4-pages</div>
 
-<details class="task" id="task-10" data-state="doing">
+<details class="task" id="task-10" data-state="done">
 <summary><span class="num">10</span><span><span class="ttl">Locators, the bar and comments in the viewer and Files</span><span class="files">js/quote.js · js/comments.js · js/viewer.js · js/files.js · css/base.css · tests/test_pages_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -594,7 +600,7 @@ def test_unsent_comments_survive_a_reload_in_that_browser(page, server): ...</sc
 </div>
 </details>
 
-<details class="task" id="task-11" data-state="pending">
+<details class="task" id="task-11" data-state="doing">
 <summary><span class="num">11</span><span><span class="ttl">Pointing inside sandboxed pages</span><span class="files">js/pagepoint.js · js/artifacts.js · js/viewer.js · js/files.js · web.py · tests/test_pages_browser.py · tests/test_files.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>interfaces</h4>

@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from .test_browser import EXPECTED_CONSOLE, spawn, turns_done
+from .test_browser import EXPECTED_CONSOLE, _artifact, spawn, turns_done
 from .test_browser import browser, server  # noqa: F401
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
@@ -221,4 +221,149 @@ def test_unsent_comments_survive_a_reload_in_that_browser(server, page):  # noqa
     page.reload()
     view(page, ".src code")
     assert page.locator("#viewer .ctray").is_hidden()
+    assert page.errors == []
+
+
+PAGE = "<html><body><h2>Setup</h2><p id=p1>kiwi</p><p>plum</p></body></html>"
+
+
+def frame_of(pg, sel: str):
+    """The frame drawn by the iframe at `sel`, once its page has loaded."""
+    handle = pg.wait_for_selector(sel)
+    frame = handle.content_frame()
+    frame.wait_for_load_state("load")
+    return frame
+
+
+def select_in(frame, css: str, word: str) -> None:
+    frame.evaluate(
+        """([css, word]) => {
+          const el = document.querySelector(css);
+          const n = [...el.childNodes].find((c) => c.nodeType === 3 && c.data.includes(word));
+          const r = document.createRange();
+          r.setStart(n, n.data.indexOf(word));
+          r.setEnd(n, n.data.indexOf(word) + word.length);
+          getSelection().removeAllRanges();
+          getSelection().addRange(r);
+        }""",
+        [css, word],
+    )
+
+
+def test_a_right_click_in_a_sent_page_asks_about_that_element(server, page):  # noqa: F811
+    (server.root / "page.html").write_text(PAGE)
+    page.goto(server.url)
+    spawn(page)
+    send(page, 1, ["page.html"])
+    page.fill("#input", "later")
+    view(page, "iframe")
+    frame = frame_of(page, "#viewer iframe")
+    box = frame.locator("#p1").bounding_box()  # in the page's coordinates
+    frame.locator("#p1").click(button="right")
+    page.wait_for_selector(".cmenu [data-id=ask]")
+    # The host's menu, over the frame where the click was.
+    menu = page.locator(".cmenu").bounding_box()
+    assert abs(menu["x"] - (box["x"] + box["width"] / 2)) < 4
+    assert abs(menu["y"] - (box["y"] + box["height"] / 2)) < 4
+    # The element is outlined while the menu is open, and not after.
+    outline = "document.getElementById('p1').style.outline"
+    assert "solid" in frame.evaluate(outline)
+    page.keyboard.press("Escape")
+    page.wait_for_selector(".cmenu", state="detached")
+    frame.wait_for_function(f"{outline} === ''")  # the host's message lands after
+    frame.locator("#p1").click(button="right")
+    page.click(".cmenu [data-id=ask]")
+    page.wait_for_selector("#viewer", state="hidden")
+    assert page.input_value("#input") == "`page.html` § Setup › #p1\n> kiwi\n\nlater"
+    assert page.errors == []
+
+
+def test_comments_in_a_page_and_an_artifact(server, page):  # noqa: F811
+    (server.root / "page.html").write_text(PAGE)
+    page.goto(server.url)
+    spawn(page)
+    send(page, 1, ["page.html"])
+    page.fill("#input", "later")
+    view(page, "iframe")
+    frame = frame_of(page, "#viewer iframe")
+    frame.locator("#p1").click(button="right")
+    page.click(".cmenu [data-id=comment]")
+    page.keyboard.type("one")
+    # A selection in the page gets the host's bar, over it.
+    select_in(frame, "p:not([id])", "plum")
+    page.wait_for_selector(".sbar [data-id=comment]")
+    page.click(".sbar [data-id=comment]")
+    page.keyboard.type("two")
+    page.locator("#viewer .ctray [data-act=send]").click()
+    assert page.input_value("#input") == (
+        "Comments on page.html:\n"
+        "1. § Setup › #p1\n   > kiwi\n   one\n"
+        "2. § Setup › p:nth-of-type(2)\n   > plum\n   two"
+        "\n\nlater"
+    )
+
+    # An artifact's page: its id names it.
+    art, _ = _artifact(
+        page,
+        server,
+        ("<h3>Pick</h3><p id=q>mango</p>", "aegis.state({});"),
+        1,
+    )
+    page.fill("#input", "")
+    page.locator(f".row.artifact [data-artifact='{art}']").first.wait_for()
+    page.locator(".row.artifact .fbar .view").last.click()
+    frame = frame_of(page, "#viewer iframe[data-artifact]")
+    frame.locator("#q").click(button="right")
+    page.click(".cmenu [data-id=comment]")
+    page.keyboard.type("ripe")
+    page.locator("#viewer .ctray [data-act=send]").click()
+    assert page.input_value("#input") == (
+        f"Comments on {art}:\n1. § Pick › #q\n   > mango\n   ripe\n\n"
+    )
+    assert page.errors == []
+
+
+def test_a_page_with_a_strict_csp_still_works_and_has_no_menu(server, page):  # noqa: F811
+    (server.root / "strict.html").write_text(
+        "<html><head><meta http-equiv='Content-Security-Policy'"
+        " content=\"script-src 'unsafe-inline'\"></head><body><p id=p1>kiwi</p>"
+        "<p id=ok></p><script>ok.textContent = 'ran'</script></body></html>"
+    )
+    page.errors_ok = True
+    page.goto(server.url)
+    spawn(page)
+    send(page, 1, ["strict.html"])
+    view(page, "iframe")
+    frame = frame_of(page, "#viewer iframe")
+    assert frame.locator("#ok").inner_text() == "ran"
+    frame.locator("#p1").click(button="right")
+    page.wait_for_timeout(500)
+    assert page.locator(".cmenu").count() == 0
+    # The browser reports the blocked script; nothing else went wrong.
+    assert [e for e in page.errors if "pagepoint.js" not in e] == []
+
+
+def test_a_long_press_inside_a_page_on_a_phone(server, page, browser):  # noqa: F811
+    (server.root / "page.html").write_text(PAGE)
+    page.goto(server.url)
+    key = spawn(page)
+    send(page, 1, ["page.html"])
+    ctx = browser.new_context(
+        viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True
+    )
+    phone = ctx.new_page()
+    phone.goto(f"{server.url.split('#')[0]}#s={key}")
+    frame = frame_of(phone, ".row.file iframe")
+    frame.locator("#p1").scroll_into_view_if_needed()
+    box = frame.locator("#p1").bounding_box()
+    point = {"x": box["x"] + 8, "y": box["y"] + box["height"] / 2}
+    cdp = ctx.new_cdp_session(phone)
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [point]})
+    phone.wait_for_selector(".cmenu [data-id=ask]", timeout=3000)
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+    phone.wait_for_timeout(300)
+    assert phone.locator(".cmenu").count() == 1  # the release did not close it
+    phone.click(".cmenu [data-id=ask]")
+    assert phone.input_value("#input").startswith("`page.html` § Setup › #p1\n> kiwi")
+    ctx.close()
     assert page.errors == []

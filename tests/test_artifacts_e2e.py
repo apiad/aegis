@@ -9,6 +9,7 @@ import pytest
 
 from aegis import artifacts
 from aegis.ops import Caller, OpError
+from aegis.web import inject_point
 
 from .conftest import until
 from .test_agents import CONFIG, World, inbox, mcp, turn
@@ -62,8 +63,9 @@ async def test_create_send_read_update_close(world, tmp_path):
     )
     async with httpx.AsyncClient() as c:
         r = await c.get(world.base + sent["url"])
+    # The preview carries the pointing script (#479); the page is the agent's.
     assert (
-        r.text == PAGE
+        r.content == inject_point(PAGE.encode())
         and r.headers["content-security-policy"] == "sandbox allow-scripts"
     )
 

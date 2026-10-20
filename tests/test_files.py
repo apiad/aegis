@@ -179,3 +179,12 @@ def test_an_office_file_or_an_archive_is_never_previewed_as_text(name):
 )
 def test_text_formats_under_application_keep_their_text_preview(name, preview):
     assert classify_name(name)[1] == preview
+
+
+def test_inject_point_goes_before_the_last_body_end_once():
+    from aegis.web import POINT_TAG, inject_point
+
+    assert inject_point(b"<p>a</p></BODY>") == b"<p>a</p>" + POINT_TAG + b"</BODY>"
+    assert inject_point(b"<p>a</p>") == b"<p>a</p>" + POINT_TAG
+    once = inject_point(b"<body>x</body>")
+    assert inject_point(once) == once and once.count(POINT_TAG) == 1

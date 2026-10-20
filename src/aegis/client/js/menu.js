@@ -20,7 +20,7 @@ const SLOP = 8; // px a held touch may move and still open it
 const NATIVE = "input, textarea, [contenteditable], iframe, .xterm";
 
 const roots = new Map(); // root -> {provider, selector}
-let cur = null; // {target, node, anchor, away}
+let cur = null; // {target, node, anchor, away, onClose}
 
 // The element a press on `el` inside `root` is about: the nearest match of
 // the root's selector, else the root; without a selector, `el` itself.
@@ -126,11 +126,12 @@ export function current() {
 // True when one was open (Esc closes it before it interrupts).
 export function close() {
   if (!cur) return false;
-  const { node, away } = cur;
+  const { node, away, onClose } = cur;
   cur = null; // first: removing the focused node fires its focusout
   document.removeEventListener("pointerdown", away, true);
   removeEventListener("hashchange", close);
   node.remove();
+  onClose?.();
   return true;
 }
 
@@ -146,7 +147,8 @@ function el(tag, cls, text) {
 }
 
 // `at` is a point (a right-click, a long press) or an anchor to drop under.
-export function open(menu, at, target) {
+// `onClose` runs when it closes, however it does.
+export function open(menu, at, target, { onClose } = {}) {
   close();
   const node = el("div", "cmenu");
   node.setAttribute("role", "menu");
@@ -195,7 +197,7 @@ export function open(menu, at, target) {
   document.addEventListener("pointerdown", away, true);
   addEventListener("hashchange", close);
   unbar(); // one at a time: the bar's items go on top of a row's menu instead
-  cur = { target, node, anchor: at.anchor ?? null, away, top: target.getBoundingClientRect().top, touch: !!at.touch };
+  cur = { target, node, anchor: at.anchor ?? null, away, onClose, top: target.getBoundingClientRect().top, touch: !!at.touch };
   const items = () => [...node.querySelectorAll("[role=menuitem]:not(:disabled)")];
   node.addEventListener("keydown", (ev) => {
     const all = items();
@@ -292,7 +294,7 @@ export function bar(root, provider, { unit = rowUnit } = {}) {
   const onChange = () => {
     // A selection that moved (a touch handle dragged) is not the one the bar
     // quotes: the bar goes at once, and only its reopening waits.
-    if (bar_ && !same(getSelection(), bar_.at)) unbar();
+    if (bar_?.at && !same(getSelection(), bar_.at)) unbar();
     if (!getSelection().isCollapsed && !down) {
       clearTimeout(timer);
       timer = setTimeout(check, 200);
@@ -373,9 +375,24 @@ function place() {
 export function unbarHidden() {
   // A tabbed canvas hides a pane with visibility, not display (base.css).
   // The row by its id: a streaming delta redraws it as a new node.
-  if (!bar_) return;
+  if (!bar_?.row) return;
   const row = bar_.row.isConnected ? bar_.row : document.querySelector(`.row[data-id="${CSS.escape(bar_.row.dataset.id)}"]`);
   if (!row?.checkVisibility({ visibilityProperty: true })) unbar();
+}
+
+// A bar for a selection the page cannot see, inside a sandboxed frame
+// (pagepoint.js reports it): over `rect`, in this page's coordinates, until
+// the frame clears it, a press elsewhere or another bar.
+export function barAt(items, rect) {
+  if (!items?.length) return unbar();
+  showBar(items, { getClientRects: () => [rect], toString: () => "" }, null, null);
+  const node = bar_.node;
+  const away = (ev) => {
+    if (node.contains(ev.target)) return;
+    document.removeEventListener("pointerdown", away, true);
+    if (bar_?.node === node) unbar();
+  };
+  document.addEventListener("pointerdown", away, true);
 }
 
 // True when one was shown.
@@ -386,6 +403,9 @@ export function unbar() {
   removeEventListener("hashchange", unbar);
   return true;
 }
+
+// True when the bar shown is a frame's (barAt).
+export const framed = () => !!bar_ && !bar_.root;
 
 // A scroll of `scroller`: one it made itself (ownScroll() true, a transcript
 // following its bottom) moves the bar and an open menu with their anchor; one

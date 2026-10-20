@@ -410,9 +410,28 @@ async def test_an_html_ticket_is_sandboxed_and_never_cached(app, tmp_path):
     r = await call(app, "fs.read", {"path": "r.html"})
     assert r["kind"] == "html" and r["text"] == "<p>hi</p>"
     res = fetch(app, r["url"])
-    assert res.status_code == 200 and res.text == "<p>hi</p>"
+    tag = '<script src="/static/js/pagepoint.js"></script>'
+    assert res.status_code == 200 and res.text == f"<p>hi</p>{tag}"
     assert res.headers["content-security-policy"] == "sandbox allow-scripts"
     assert res.headers["cache-control"] == "no-store"
+
+
+async def test_preview_injects_the_point_script_and_download_does_not(app, tmp_path):
+    """A sent page and a Files page get js/pagepoint.js on their preview only
+    (#479); a download is the file's own bytes."""
+    from aegis import files
+
+    page = b"<html><body><h2>Setup</h2><p id=p1>kiwi</p></body></html>"
+    (tmp_path / "r.html").write_bytes(page)
+    tag = b'<script src="/static/js/pagepoint.js"></script>'
+    (rec,) = files.store_all(app.roots.state_root, [tmp_path / "r.html"])
+    sent = files.url(rec["file_id"], rec["name"])
+    ticket = (await call(app, "fs.ticket", {"path": "r.html"}))["url"]
+    for url in (sent, ticket):
+        res = fetch(app, url)
+        assert res.content == page.replace(b"</body>", tag + b"</body>")
+        assert res.headers["content-security-policy"] == "sandbox allow-scripts"
+        assert fetch(app, url + "?download=1").content == page
 
 
 async def test_a_pdf_ticket_has_no_csp_and_downloads_on_ask(app, tmp_path):

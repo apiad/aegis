@@ -69,6 +69,34 @@ CLIENT_DIR = Path(__file__).parent / "client"
 SERVICE_WORKER = Path(__file__).parent / "sw.js"
 
 
+POINT_TAG = b'<script src="/static/js/pagepoint.js"></script>'
+
+
+def inject_point(body: bytes) -> bytes:
+    """An HTML page with the pointing script (js/pagepoint.js) before its last
+    ``</body>``, or at its end. A tag, not the script inline: previews are
+    cached as immutable, and a static script follows the client's version.
+    Idempotent, so a page that already has it gets no second one."""
+    if POINT_TAG in body:
+        return body
+    at = body.lower().rfind(b"</body>")
+    if at < 0:
+        return body + POINT_TAG
+    return body[:at] + POINT_TAG + body[at:]
+
+
+def _file_response(path: Path, download: bool, extra: dict | None = None):
+    """A sent or a Files file: its bytes, under the headers files.py decides.
+    An HTML preview gets the pointing script; a download is the file as it is."""
+    headers = {**files.headers(path, download), **(extra or {})}
+    media = headers.pop("Content-Type")
+    if not download and files.classify(path)[1] == "html":
+        return Response(
+            inject_point(path.read_bytes()), media_type=media, headers=headers
+        )
+    return FileResponse(path, media_type=media, headers=headers)
+
+
 def client_files(version: str) -> dict:
     """The client as the service worker keeps it: every file under CLIENT_DIR by
     the URL the page asks for it, plus the manifest, and a build id hashed from
@@ -292,10 +320,7 @@ def build_web(
         )
         if path is None:
             return PlainTextResponse("Not Found", status_code=404)
-        headers = files.headers(path, request.query_params.get("download") == "1")
-        return FileResponse(
-            path, media_type=headers.pop("Content-Type"), headers=headers
-        )
+        return _file_response(path, request.query_params.get("download") == "1")
 
     async def fs_file(request):
         """A file under the root, through a ticket fs.ticket or fs.read issued
@@ -312,10 +337,10 @@ def build_web(
             return PlainTextResponse("Not Found", status_code=404)
         if not path.is_file():
             return PlainTextResponse("Not Found", status_code=404)
-        headers = files.headers(path, request.query_params.get("download") == "1")
-        headers["Cache-Control"] = "no-store"
-        return FileResponse(
-            path, media_type=headers.pop("Content-Type"), headers=headers
+        return _file_response(
+            path,
+            request.query_params.get("download") == "1",
+            {"Cache-Control": "no-store"},
         )
 
     async def dictation_file(request):
