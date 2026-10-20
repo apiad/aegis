@@ -1,4 +1,7 @@
 import re
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
 
 from aegis.ranking import Ranking, Score, ranking
 
@@ -45,3 +48,24 @@ def test_the_packaged_file_loads_and_has_a_date():
     assert r.refreshed == "" or re.fullmatch(r"\d{4}-\d{2}-\d{2}", r.refreshed)
     for model in r.models:
         assert r.score(model) is not None
+
+
+def refresh_script():
+    path = Path(__file__).resolve().parents[1] / "scripts" / "refresh-model-ranking"
+    loader = SourceFileLoader("refresh_model_ranking", str(path))
+    module = module_from_spec(spec_from_loader(loader.name, loader))
+    loader.exec_module(module)
+    return module
+
+
+def test_slug_for_maps_catalog_ids(monkeypatch):
+    s = refresh_script()
+    known = {"kimi-k2-5", "glm-5", "claude-opus-5-5", "deepseek-v3-2-reasoning"}
+    assert s.slug_for("opencode/kimi-k2.5-free", "", known) == "kimi-k2-5"
+    assert s.slug_for("opencode-go/GLM-5", "", known) == "glm-5"
+    # Claude Code names an alias; the resolved id is what normalizes.
+    assert s.slug_for("opus", "claude-opus-5-5", known) == "claude-opus-5-5"
+    assert s.slug_for("Claude Opus 5.5", "", known) == "claude-opus-5-5"
+    assert s.slug_for("opencode/big-pickle", "", known) is None
+    monkeypatch.setitem(s.ALIASES, "opencode/deepseek-r", "deepseek-v3-2-reasoning")
+    assert s.slug_for("opencode/deepseek-r", "", known) == "deepseek-v3-2-reasoning"
