@@ -1,0 +1,42 @@
+name: Feature
+description: "aegis cannot do something you want"
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: "Filed by an agent? It followed the help page feedback. Filing by hand? `/feedback` in any aegis session drafts this for you."
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: "The moment you wanted it, and what you were doing."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+      description: "What aegis should do, seen from your side."
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do today
+      description: "How you get by without it."
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "aegis --version, the harness and its version."
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: "Anything else a maintainer should know."
+    validations:
+      required: false
