@@ -20,7 +20,7 @@ async def world(tmp_path, fake_claude):
 async def test_a_session_with_a_working_child_is_not_finished(world):
     reg = world.app.sessions
     a = await world.spawn()
-    await turn(a, mcp("session_spawn", agent="opus", prompt="/sleep 1"))
+    await turn(a, mcp("session_spawn", agent="opus", prompt="/busy 1"))
     (kid,) = [o for o in reg.sessions.values() if o.spec.spawned_by == a.log_id]
     assert kid.status == "working" and a.status == "idle"
     assert not reg.finished(a)

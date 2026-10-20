@@ -41,6 +41,8 @@ async def test_a_launched_run_starts_without_a_click_and_says_who_launched_it(wo
     st = world.app.workflows.runs[run["run"]]
     assert run["status"] == "running" and st.status == "running"
     assert st.launch["by"] == "person" and st.launch["typed"] == "one second"
+    # No approval message follows a launch: the result says what comes (#474).
+    assert run["next"].startswith("It next calls you when it ends.")
     assert any(s["text"].startswith("Started by your /workflow line") for s in st.story)
     await until(
         lambda: world.app.workflows.runs[run["run"]].status == "done", timeout=10

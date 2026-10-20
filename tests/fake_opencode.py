@@ -7,7 +7,7 @@ as the real server's web app does. aegis sends every ``/`` line to
 ``/api/session/{id}/command``, so the scripts are commands, listed by
 ``/api/command`` and echoed as typed:
 
-    /sleep N        a shell call that takes N seconds, then text. Prompts sent
+    /busy N         a shell call that takes N seconds, then text. Prompts sent
                     meanwhile are queued at once and answered after the call,
                     in the same turn, as OpenCode reads them at the next step.
     /stall N        N seconds busy with no step, then text.
@@ -110,7 +110,7 @@ TOKENS = {
 }
 TEMPLATES = {"hello": "Say hello to $ARGUMENTS."}
 SCRIPTS = (
-    "sleep",
+    "busy",
     "stall",
     "stream",
     "fail",
@@ -350,7 +350,7 @@ def run(s: Sess, text: str) -> None:
         print("fake opencode: exiting on request", file=sys.stderr, flush=True)
         os._exit(int(rest or 1))
     st = Step(s)
-    if word == "/sleep":
+    if word == "/busy":
         st.tool("shell", {"command": f"sleep {rest}", "description": f"sleep {rest}"},
                 output=f"slept {rest}\n", wait=float(rest or 1))  # fmt: skip
         return after_tool(s, st, f"done after {rest}")

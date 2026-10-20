@@ -117,6 +117,28 @@ def _no_real_quota(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("AEGIS_NET_PROBES", "offline")
 
 
+# A half-full disk and no memory or CPU reading: below every default line.
+CALM = {
+    "disk": {"pct": 50, "free_gb": 37.5, "total_gb": 75},
+    "memory": None,
+    "cpu": None,
+}
+
+
+@pytest.fixture(autouse=True)
+def _calm_host(monkeypatch):
+    """An app built in the test process reads this, not the machine running
+    the tests: on a loaded host every session would be told about it, and a
+    tool result that carries a notice no longer parses as JSON. A test that
+    wants a notice sets its line low in the config (tests/test_notices.py)."""
+    import aegis.app
+    from aegis.notices import Notices
+
+    monkeypatch.setattr(
+        aegis.app, "Notices", lambda app: Notices(app, read=lambda paths: CALM)
+    )
+
+
 # -- run options, carried over from the legacy tree's conftest --------------------
 def pytest_addoption(parser):
     parser.addoption(

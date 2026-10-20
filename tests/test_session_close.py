@@ -74,7 +74,7 @@ async def test_a_done_session_you_spawned_closes_at_once_into_the_archive(world)
 
 async def test_a_working_session_you_spawned_needs_the_token(world):
     a = await world.spawn()
-    child = await spawn_child(world, a, "/sleep 30")
+    child = await spawn_child(world, a, "/busy 30")
     await until(lambda: child.status == "working", timeout=8, what="the child working")
     said = refused(await turn(a, mcp("session_close", handle=child.handle)))
     assert (
@@ -120,7 +120,7 @@ async def test_a_done_session_you_did_not_spawn_needs_the_token(world):
 
 async def test_another_sessions_child_names_its_starter_and_both_reasons(world):
     a, b = await world.spawn(), await world.spawn()
-    child = await spawn_child(world, b, "/sleep 30")
+    child = await spawn_child(world, b, "/busy 30")
     await until(lambda: child.status == "working", timeout=8, what="the child working")
     said = refused(await turn(a, mcp("session_close", handle=child.handle)))
     assert f"It is not done, and it is not yours either: {b.handle} started it." in said
@@ -183,7 +183,7 @@ async def test_a_session_on_a_linked_server_is_refused(world):
 async def test_a_worker_you_enqueued_counts_as_yours(world):
     a, b = await world.spawn(), await world.spawn()
     said = await turn(
-        a, mcp("queue_enqueue", queue="general", payload="/sleep 30", callback=False)
+        a, mcp("queue_enqueue", queue="general", payload="/busy 30", callback=False)
     )
     t = world.app.queues.tasks[json.loads(said.removeprefix("mcp ok: "))["task_id"]]
     await until(lambda: t.worker in world.app.sessions.sessions, what="the worker")

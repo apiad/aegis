@@ -41,7 +41,7 @@ body{background:#000}
 #a2 .tab .tname{max-width:22ch;overflow:hidden;text-overflow:ellipsis}
 #a2 .tab.home{font-weight:500}
 #a2 .tab.add{font-size:15px;padding:4px 12px}
-#a2 .tab.stopped{opacity:.6}
+#a2 .tab.asleep{opacity:.6}
 #a2 .tab.dragging{opacity:.35}
 #a2 .tab.drop{box-shadow:inset 2px 0 0 var(--accent)}
 #a2 .tabs .servers{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--faint);padding:0 10px}
@@ -543,7 +543,7 @@ body{background:#000}
 #a2 .side .foot>span{overflow:hidden;text-overflow:ellipsis}
 #a2 .side .foot .ic,#a2 .gauge .val .ic,#a2 .qrow .sv .ic,#a2 .tile .v small .ic{width:11px;height:11px;vertical-align:-1px}
 /* the actions: one row of equal cells, labels dropped on a narrow panel */
-#a2 .side-acts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:auto}
+#a2 .side-acts{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:6px;margin-top:auto}
 #a2 .side-acts.read-only{grid-template-columns:minmax(0,1fr)}
 #a2 .act{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:0;padding:8px 4px 7px;border:1px solid var(--rule);border-radius:var(--r);background:var(--surface);color:var(--ink);font-size:11.5px;cursor:pointer}
 #a2 .act svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;color:var(--muted)}
@@ -583,15 +583,17 @@ body{background:#000}
 #a2 .card.working{border-color:var(--accent)}
 #a2 .card.sel{outline:2px solid var(--accent);outline-offset:1px}
 #a2 .card.error{border-color:var(--err)}
-#a2 .card.stopped{opacity:.6}
+#a2 .card.asleep{opacity:.6}
 #a2 .card.quiet{opacity:.55;border-style:dashed}
 #a2 .card.quiet:hover,#a2 .card.quiet:focus-within,#a2 .card.quiet.sel{opacity:1}
 #a2 .card .hd .zz{font-family:var(--font-chrome);font-size:10.5px;color:var(--muted);border:1px solid var(--rule);border-radius:999px;padding:0 6px}
 #a2 .card .hd .zz.pk{color:var(--comms);border-color:var(--comms)}
+#a2 .card .hd .quiet{display:inline-flex;align-items:center;gap:3px;font-family:var(--font-chrome);font-size:10.5px;color:var(--muted)}
+#a2 .card .hd .quiet svg{width:12px;height:12px}
 #a2 .parked-count{font-family:var(--font-chrome);font-size:11px;color:var(--comms)}
 #a2 .card.finished{opacity:.5}
 #a2 .card.finished:hover,#a2 .card.finished:focus-within,#a2 .card.finished.sel{opacity:1}
-#a2 .card.stopped.at-error{opacity:1}
+#a2 .card.asleep.at-error{opacity:1}
 #a2 .card .hd{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px}
 #a2 .card .hd>*{white-space:nowrap}
 #a2 .card .hd .h{font-family:var(--font-chrome);color:var(--strong);font-weight:500}
@@ -868,8 +870,6 @@ body{background:#000}
 #a2 .canvas>.ptabs button{position:relative;display:block;flex:none;width:auto;height:auto;max-width:18ch;border-radius:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 12px;background:none;border:none;color:var(--muted);font:inherit;font-size:12.5px;cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 #a2 .canvas>.ptabs button.on{background:var(--bg);color:var(--strong);box-shadow:inset 0 -2px 0 var(--accent)}
 #a2 .canvas>.ptabs button.dot:after{content:"";position:absolute;top:7px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
-#a2 .canvas>.pmenu{position:absolute;top:calc(var(--ptabs-h) + 4px);z-index:10;min-width:140px;padding:4px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);box-shadow:0 6px 18px rgba(0,0,0,.25)}
-#a2 .canvas>.pmenu .btn{display:block;width:100%;text-align:left}
 @media (pointer:coarse){#a2 .canvas{--ptabs-h:44px}}
 #a2 .md code.ref{color:var(--accent);cursor:pointer;border-style:dashed}
 #a2 .md code.ref:hover{border-style:solid}
@@ -1278,8 +1278,14 @@ body{background:#000}
 #a2 .ftree .tname{flex:1;min-width:0;padding:1px 4px;background:var(--surface);border:1px solid var(--accent);border-radius:3px;color:var(--strong);font:inherit;outline:none}
 #a2 .ftree .tfoot{display:flex;gap:6px;align-items:center;padding:6px 10px;border-top:1px solid var(--rule);color:var(--muted);font-size:11.5px;cursor:pointer}
 #a2 .ftree .tfoot input{accent-color:var(--accent);margin:0}
-#a2 .tmenu{position:fixed;z-index:60;min-width:150px;padding:4px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);box-shadow:0 6px 18px rgba(0,0,0,.25)}
-#a2 .tmenu .btn{display:block;width:100%;text-align:left;border:0}
+#a2 .cmenu{position:fixed;z-index:60;min-width:170px;max-width:min(320px,calc(100vw - 8px));padding:4px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);box-shadow:0 6px 18px rgba(0,0,0,.25)}
+#a2 .cmenu .head{padding:3px 8px 5px;color:var(--muted);font-family:var(--font-mono);font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#a2 .cmenu .grp{height:1px;margin:4px 2px;background:var(--rule)}
+#a2 .cmenu .btn{display:flex;gap:8px;align-items:center;width:100%;text-align:left;border:0}
+#a2 .cmenu .btn .ic{flex-shrink:0;width:14px;height:14px;color:var(--muted)}
+#a2 .cmenu .btn .k{margin-left:auto;padding-left:12px;color:var(--faint);font-family:var(--font-mono);font-size:11px}
+#a2 .cmenu .btn.danger,#a2 .cmenu .btn.danger .ic{color:var(--err)}
+#a2 .cmenu .btn:disabled{opacity:.45}
 #a2 .fbar .tbtn{display:none;padding:3px 9px}
 #a2 .fpick .file-row{grid-template-columns:auto minmax(0,1fr) auto}
 #a2 .fpick .file-row .dir{color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -1293,7 +1299,7 @@ body{background:#000}
   #a2 .fpick{padding-top:0}
   #a2 .fpick .panel{width:100vw;max-height:100%;border-radius:0}
 }
-@media (pointer:coarse){#a2 .fbar .btn,#a2 .fbanner .btn{min-height:44px}#a2 .fpick .file-row,#a2 .ftree .trow,#a2 .tmenu .btn{min-height:44px;align-items:center}}
+@media (pointer:coarse){#a2 .fbar .btn,#a2 .fbanner .btn{min-height:44px}#a2 .fpick .file-row,#a2 .ftree .trow,#a2 .cmenu .btn{min-height:44px;align-items:center}}
 
 /* the journal view (js/journal.js): one box shaped like the composer's, the
    kind chips, and the entries as a timeline on the transcript's thread */

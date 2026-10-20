@@ -50,7 +50,7 @@ WATCH_EVERY_S = 1.0
 TOP_KEYS = (
     "agents", "queues", "default_agent", "recap", "context", "session_memory_max",
     "terminals", "terminal_memory_max", "park", "network", "workflows",
-    "harness_versions",
+    "harness_versions", "notices",
 )  # fmt: skip
 AGENT_KEYS = (
     "harness", "provider", "model", "models", "effort", "permission", "priming",
@@ -88,6 +88,81 @@ def context_from(raw: object) -> dict:
                 "error": f"context.{k} {v!r} is not a {kind} integer"
             }
         out[k] = v
+    return out
+
+
+# When a notice turns on, escalates and clears (notices.py). The gap between
+# on and clear keeps a reading that hovers at the threshold from flapping.
+NOTICES_DEFAULTS = {
+    "disk": {"on": 90, "critical": 97, "clear": 85},
+    "memory": {"on": 90, "critical": 95, "clear": 85, "psi_full": 5},
+    "cpu": {"on": 50, "clear": 30},
+    "quota": True,
+}
+
+
+def _notices_defaults() -> dict:
+    return {
+        k: dict(v) if isinstance(v, dict) else v for k, v in NOTICES_DEFAULTS.items()
+    }
+
+
+def notices_from(raw: object) -> dict:
+    """The ``notices:`` block over its defaults. ``false`` in place of a kind
+    turns it off. A wrong block keeps every default in force and carries
+    ``error`` for aegis doctor, so a typo never stops a send."""
+    out = _notices_defaults()
+    if raw is None:
+        return out
+    kinds = ", ".join(NOTICES_DEFAULTS)
+    if not isinstance(raw, dict):
+        return out | {"error": f"notices must be a mapping of {kinds}"}
+    for kind, v in raw.items():
+        if kind not in NOTICES_DEFAULTS:
+            return _notices_defaults() | {
+                "error": f"notices has no kind {kind!r}; it takes {kinds}"
+            }
+        default = NOTICES_DEFAULTS[str(kind)]
+        if v is False or (kind == "quota" and v is True):
+            out[kind] = v
+            continue
+        if not isinstance(default, dict) or not isinstance(v, dict):
+            what = "true or false" if kind == "quota" else "a mapping or false"
+            return _notices_defaults() | {"error": f"notices.{kind} must be {what}"}
+        for k, n in v.items():
+            if k not in default:
+                keys = ", ".join(default)
+                return _notices_defaults() | {
+                    "error": f"notices.{kind} has no key {k!r}; it takes {keys}"
+                }
+            if (
+                isinstance(n, bool)
+                or not isinstance(n, int | float)
+                or not 0 <= n <= 100
+            ):
+                return _notices_defaults() | {
+                    "error": f"notices.{kind}.{k} {n!r} is not a number from 0 to 100"
+                }
+        levels: dict = default | v
+        # An ``on`` alone moves clear and critical with it, by the defaults'
+        # gaps, so {on: 80} does not sit below the default clear.
+        if "on" in v and "clear" not in v:
+            levels["clear"] = max(levels["on"] - (default["on"] - default["clear"]), 0)
+        if "on" in v and "critical" in default and "critical" not in v:
+            levels["critical"] = min(
+                levels["on"] + (default["critical"] - default["on"]), 100
+            )
+        if not levels["clear"] < levels["on"] <= levels.get("critical", 100):
+            order = "clear < on <= critical" if "critical" in levels else "clear < on"
+            return _notices_defaults() | {
+                "error": f"notices.{kind} must keep {order}, not "
+                + ", ".join(
+                    f"{k} {levels[k]}"
+                    for k in ("clear", "on", "critical")
+                    if k in levels
+                )
+            }
+        out[kind] = levels
     return out
 
 
@@ -395,6 +470,7 @@ class Snapshot:
     unknown_keys: tuple[str, ...] = ()
     doc: ConfigDoc = field(default_factory=ConfigDoc)
     context: dict = field(default_factory=lambda: dict(CONTEXT_DEFAULTS))
+    notices: dict = field(default_factory=_notices_defaults)
     workflows: dict = field(default_factory=lambda: dict(WORKFLOWS_DEFAULTS))
     park: dict = field(default_factory=dict)
     harness_versions: dict = field(default_factory=_hv_defaults)
@@ -428,6 +504,7 @@ class Snapshot:
             unknown_keys=tuple(str(k) for k in data if k not in TOP_KEYS),
             doc=doc_from(data),
             context=context_from(data.get("context")),
+            notices=notices_from(data.get("notices")),
             workflows=workflows_from(data.get("workflows")),
             park=park_from(data.get("park")),
             harness_versions=harness_versions_from(data.get("harness_versions")),

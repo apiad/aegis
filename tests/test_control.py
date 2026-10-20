@@ -25,7 +25,7 @@ async def test_initialize_answers_with_commands_and_models_and_is_not_a_line(
     p = await start(fake_claude, tmp_path, lines)
     try:
         r = await p.request("initialize")
-        assert {"compact", "hello", "sleep"} <= {c["name"] for c in r["commands"]}
+        assert {"compact", "hello", "busy"} <= {c["name"] for c in r["commands"]}
         assert any(m["value"] == "haiku" for m in r["models"])
         assert not [x for x in lines if "control_response" in x]
     finally:

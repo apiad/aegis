@@ -717,6 +717,19 @@ def walk(node: Node) -> Iterator[Node]:
         yield from walk(c)
 
 
+def next_stop(wf: Workflow, finished: set[str]) -> Node | None:
+    """Where the run next stops for someone, in tree order: a gate, or a
+    step the main agent runs itself. ``finished`` holds the template keys
+    already done, as after arming again. Failures and workers' questions
+    are not in the tree, so they can come sooner."""
+    for n in walk(wf.root):
+        if n.key in finished:
+            continue
+        if n.kind == "gate" or (n.kind == "agent" and n.body.get("session") == "main"):
+            return n
+    return None
+
+
 def rows(wf: Workflow, items=lambda path: None) -> list[dict]:
     """The tree as the card draws it: depth-first, one row per node
     instance. ``items(path)`` is a started map's ``[[key, value], ...]``,

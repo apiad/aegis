@@ -12,11 +12,14 @@ so it renders as an inbox row and never as the person's message:
   whether it was or not; the agent is asked once which it was.
 
 A session whose card says needs_you, waiting, working or error gets neither:
-the person owns the next move, or a fact explains the silence. So does a turn
+the person owns the next move, or a fact explains the silence. The main agent
+of a running workflow is waiting on its run (registry._waits), so it is
+never nudged while the engine is the one that will wake it. So does a turn
 the person interrupted, one that failed, and one that ran the person's own
 slash command. Queue workers get neither: one whose turn ended with nothing
 pending is finished and its result delivered, and a nudge would reopen it.
-Only a live idle session is nudged, parked or not; a stopped one was stopped by someone.
+Only an idle session is nudged, live or asleep after a park; one that slept was put
+to sleep by someone.
 
 Neither can loop. The fold keeps which nudges were sent (``nudged`` in the
 standing): a send that carries no nudge re-arms ``idle``, and only a plan
@@ -134,7 +137,7 @@ class Nudges:
                 s.standing,
                 attention=self._registry.card(s)["attention"],
                 worker=bool(s.worker),
-                idle=(s.status == "idle" and s.running or s.status == "parked")
+                idle=(s.status == "idle" and s.running or s.asleep_why == "idle")
                 and not s.held,
                 now=now,
             )

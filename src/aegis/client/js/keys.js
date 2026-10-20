@@ -126,6 +126,17 @@ export const ACTIONS = [
     keys: [on("fleet", "Enter", key("Enter"), { native: true })],
   },
   { id: "filter", title: "Filter the archive", keys: [on("fleet", "/", key("/"))] },
+  // The browse scope covers the transcript, the Fleet and Files; in a text field the key is the browser's.
+  {
+    id: "menuKey",
+    title: "The menu of the selected row, card or file",
+    palette: false,
+    keys: [
+      on("browse", "Menu  Shift+F10", (ev) =>
+        (bare(ev) && !ev.shiftKey && ev.key === "ContextMenu") || (bare(ev) && ev.shiftKey && ev.key === "F10"),
+      ),
+    ],
+  },
 ];
 
 // Every key, in the order the ? list shows them, each with its action.

@@ -84,6 +84,9 @@ SESSION_VAR = "AEGIS_SESSION"
 URL_VAR = "AEGIS_MCP_URL"
 # The MCP header that carries a session's token (mcp.py, call.py).
 HEADER = "X-Aegis-Session"
+# Sent by ``aegis call`` alone: its output is a program's input, so no notice
+# rides on it (notices.py).
+SHELL_HEADER = "X-Aegis-Shell"
 TOKEN_VAR = "AEGIS_SESSION_TOKEN"
 
 

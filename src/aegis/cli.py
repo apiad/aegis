@@ -23,7 +23,7 @@ DEFAULT_PORT = 8742
 
 app = typer.Typer(add_completion=False, help=HELP)
 
-from .codemap.cli import app as map_app  # noqa: E402
+from wayfind.cli import app as map_app  # noqa: E402
 from .journal.cli import app as journal_app  # noqa: E402
 from .usage.cli import app as usage_app  # noqa: E402
 

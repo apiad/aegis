@@ -217,7 +217,7 @@ async def test_stop_during_fallback_cancels_the_fall(world, monkeypatch):
     await s.stop()
     hold.set()
     await settle()
-    assert s.status == "stopped" and not s.running
+    assert s.status == "asleep" and not s.running
     assert not continued(world, s)
     assert world.rows(s)[-1] == "cascade: stopped before continuing on opencode/b"
     assert world.ended[s.log_id] == 1

@@ -52,7 +52,7 @@ export function patchTab(list, m, focusId, actions) {
 
 function tab(m, focusId, { onFocus, onMove, onClose }) {
   const t = document.createElement("div");
-  t.className = `tab${m.key === focusId ? " on" : ""}${m.state === "stopped" ? " stopped" : ""}${m.off ? " off" : ""}`;
+  t.className = `tab${m.key === focusId ? " on" : ""}${m.state === "asleep" ? " asleep" : ""}${m.off ? " off" : ""}`;
   t.classList.toggle("blink", !!m.blink);
   t.draggable = true;
   t.dataset.id = m.key;

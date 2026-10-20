@@ -1,10 +1,11 @@
 """One Claude Code session: its store, its fold, its status, and a process when
 it has one.
 
-A session exists without a process. ``stopped`` means there is none; the first
+A session exists without a process. ``asleep`` means there is none, and
+``asleep_why`` says how it lost it (``ASLEEP_WHY``); the first
 prompt starts ``claude``, with ``--resume`` once the harness has given the session
 an id, and the store and the fold simply continue (Claude prints nothing old on
-resume, measured in issue #127). Only shutdown, Stop and Close end a process:
+resume, measured in issue #127). Only shutdown, a park, Sleep, Restart and Archive end a process:
 a session waiting on its own background task wakes itself, so nothing stops an
 idle-looking one.
 
@@ -18,7 +19,7 @@ The session is a continuous fold. Every stdout line is stored, parsed once,
 folded into entry patches and published, whatever the turn state. Status: only a
 sent prompt or a turn-bearing event moves it to ``working``, and only ``result``
 moves it back to ``idle``; system notices never do. ``error`` is an interrupt
-that went unanswered. A child that exits leaves the session ``stopped``.
+that went unanswered. A child that exits leaves the session asleep, ``exited``.
 
 A line that cannot be stored (a full disk) is logged and dropped, never raised:
 the reader that called ``_on_line`` would die with it, nothing would read the
@@ -77,6 +78,7 @@ Publish = Callable[[str, list[dict]], None]
 # line in the bench (issue #127).
 _NOW = (
     "status",
+    "asleep_why",
     "handle",
     "title",
     "model_id",
@@ -98,6 +100,19 @@ _SOON = (
     "compactions",
 )
 PUBLISH_EVERY_S = 0.25
+
+# Why an asleep session has no process: a Stop or /sleep, a park, the harness
+# ending on its own, the server restarting under it (#479).
+ASLEEP_WHY = ("slept", "idle", "exited", "server")
+
+
+def asleep_from(last_status: str, why: str | None) -> tuple[str, str | None]:
+    """The state a loaded session starts in. A meta written before #479 says
+    ``stopped`` or ``parked``; one that says a live state was cut by the server."""
+    if why in ASLEEP_WHY:
+        return "asleep", why
+    old = {"stopped": "slept", "parked": "idle", "asleep": "slept"}
+    return "asleep", old.get(last_status, "server")
 
 
 class Host:
@@ -159,6 +174,10 @@ class Host:
         stays; else the model it falls to, None when none is left, and the
         time the failed model cools until."""
         return None
+
+    def notice_blocks(self, session: "Session") -> str:
+        """The notices the session has not been told yet (notices.py), or ""."""
+        return ""
 
 
 NO_HOST = Host()
@@ -277,7 +296,8 @@ class Session:
         archived: bool = False,
         created_at: float | None = None,
         last_activity: float | None = None,
-        last_status: str = "stopped",
+        last_status: str = "asleep",
+        asleep_why: str | None = None,
         cost_usd: float | None = None,
         context_tokens: int | None = None,
         context_window: int | None = None,
@@ -300,8 +320,10 @@ class Session:
         last_exit: dict | None = None,
         restart_continues: int = 0,
         quota_paused: str | None = None,
+        notices_sent: dict[str, str] | None = None,
         tool_calls: int = 0,
         parked_rss: int = 0,
+        parked_idle_s: int = 0,
         cache_recent: list[list] | None = None,
         compactions: int = 0,
         continued_by: str | None = None,
@@ -327,7 +349,7 @@ class Session:
         self.context_window = context_window
         self.activity = activity
         self.model_id = model_id
-        self.status = "parked" if last_status == "parked" else "stopped"
+        self.status, self.asleep_why = asleep_from(last_status, asleep_why)
         self._stderr_path = stderr_path
         self.harness = harness_for(spec.harness, claude_bin, opencode_bin, codex_bin)
         self._publish = publish
@@ -385,11 +407,17 @@ class Session:
         # until the gate opens and continues it. In the meta, so a restart
         # keeps it paused.
         self.quota_paused = quota_paused
+        # What notices this session was told, kind to level (notices.py),
+        # {"disk": "warn", "announce:<id>": "warn"}. In the meta, so a restart
+        # neither repeats a notice nor forgets a clear.
+        self.notices_sent: dict[str, str] = dict(notices_sent or {})
         # What the cache did (cache.py): tool calls and compactions of the main
         # thread, and the last calls' [cache_read, total_input, at]. In the meta,
         # so the counters survive a restart.
         self.tool_calls = tool_calls
         self.parked_rss = parked_rss
+        # How long it sat idle before its park, for "asleep after N min idle".
+        self.parked_idle_s = parked_idle_s
         self.cache_recent: list[list] = list(cache_recent or [])
         self.compactions = compactions
         # The last usage counted: one call written as several lines repeats it.
@@ -438,8 +466,9 @@ class Session:
             "created_at": self.created_at,
             "last_activity": self.last_activity,
             "last_status": self.status
-            if self._proc or self.status == "parked"
+            if self._proc or self.asleep_why == "idle"
             else self.last_status,
+            "asleep_why": self.asleep_why,
             "cost_usd": self.cost_usd,
             "context_tokens": self.context_tokens,
             "context_window": self.context_window,
@@ -458,8 +487,10 @@ class Session:
             "last_exit": self.last_exit,
             "restart_continues": self.restart_continues,
             "quota_paused": self.quota_paused,
+            "notices_sent": self.notices_sent,
             "tool_calls": self.tool_calls,
             "parked_rss": self.parked_rss,
+            "parked_idle_s": self.parked_idle_s,
             "cache_recent": self.cache_recent,
             "compactions": self.compactions,
             "continued_by": self.continued_by,
@@ -671,8 +702,8 @@ class Session:
             )
         if sid:
             self._set(resume_id=sid)
-        self._set(parked_rss=0)
-        self._set(status="idle")
+        self._set(parked_rss=0, parked_idle_s=0)
+        self._set(status="idle", asleep_why=None)
 
     async def _check_version(self) -> None:
         """Judge the harness version before a launch, and note one outside the
@@ -841,6 +872,10 @@ class Session:
             self._set(title=default_title(typed or text))
         if self.cascade_exhausted:
             self.cascade_exhausted = False  # a new turn starts
+        if not text.startswith("/") and (blocks := self._host.notice_blocks(self)):
+            # The record and the harness get the same text, so the fold pairs
+            # them; the fold splits the blocks off into their own rows.
+            text = f"{text}\n\n{blocks}"
         record: dict = {"kind": "send", "text": text}
         if attached:
             record |= {"typed": typed or "", "files": attached}
@@ -876,17 +911,30 @@ class Session:
         before it continues, and the failed turn it held open ends."""
         fell_to = await self._drop_fall()
         if self._proc is None:
-            if self.status == "parked":  # a person's Stop outranks a park
+            if self.asleep_why == "idle":  # a person's Stop outranks a park
                 self._record({"kind": "stop"})
-                self._set(status="stopped")
+                self._set(asleep_why="slept")
+                self._metas.write(self.meta())
         else:
             await self._end_process()
             self._record({"kind": "stop"})
-            self._set(status="stopped")
+            self._set(status="asleep", asleep_why="slept")
             self._metas.write(self.meta())
         if fell_to is not None:
             self._record({"kind": "cascade_stopped", "to": fell_to, "by": "stop"})
             self._host.turn_ended(self)
+
+    async def restart(self) -> None:
+        """A fresh process on the same conversation: end the one there is, if
+        any, and start another, which resumes it (#479). Under the start lock,
+        so a send waits for the new process. Calls neither stop() nor
+        ensure_running(): the lock is not reentrant. A start that fails leaves
+        the session asleep."""
+        async with self._starting:
+            await self._end_process()
+            self._record({"kind": "restart"})
+            self._set(status="asleep", asleep_why="slept")
+            await self._start_process()
 
     async def park(self, idle_s: float) -> bool:
         """End the process of a session nothing needs (park.py); the next
@@ -899,7 +947,12 @@ class Session:
             rss = _rss(self.pid)
             await self._end_process()
             self._record({"kind": "park", "idle_s": round(idle_s), "rss": rss})
-            self._set(status="parked", parked_rss=rss)
+            self._set(
+                status="asleep",
+                asleep_why="idle",
+                parked_rss=rss,
+                parked_idle_s=round(idle_s),
+            )
             return True
 
     async def shutdown(self) -> None:
@@ -1065,7 +1118,7 @@ class Session:
                 self._publish_timer = loop.call_later(
                     PUBLISH_EVERY_S, self._publish_now
                 )
-        if changes.get("status") in ("idle", "stopped", "error", "parked"):
+        if changes.get("status") in ("idle", "asleep", "error"):
             self._metas.write(self.meta())
         else:
             self._metas.write_soon(self.log_id, self.meta)
@@ -1253,7 +1306,7 @@ class Session:
                 "harness": self.harness.label,
             }
         )
-        self._set(status="stopped")
+        self._set(status="asleep", asleep_why="exited")
         self._host.exited(self, code, stderr_tail)
 
     def _on_error(self, text: str, idle: bool, line: str | None = None) -> None:

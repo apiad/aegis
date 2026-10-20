@@ -84,6 +84,7 @@ class Registry(Host):
         self.schedules = None
         self.workflows = None
         self.quota = None
+        self.notices = None  # notices.Notices, set by App
         # The live config's context block (config.py); the app points it at
         # Config.current().
         self.context: Callable[[], dict] = lambda: dict(CONTEXT_DEFAULTS)
@@ -225,6 +226,9 @@ class Registry(Host):
     ) -> tuple[str | None, float] | None:
         return None if self.cascade is None else self.cascade(session, text)
 
+    def notice_blocks(self, session: Session) -> str:
+        return "" if self.notices is None else self.notices.pending(session)
+
     def quota_hold(self, session: Session) -> str | None:
         """A paused session waits for its gate to open; any other may start a
         turn unless its owner is stopped, or closed and the harness would
@@ -283,14 +287,22 @@ class Registry(Host):
         if kind == "error" or (not s.worker and not held and kind in self.BACK):
             self.set_quiet(s.log_id, False)
 
+    def _running(self, s: Session):
+        """The approved run ``s`` is the main agent of, until it ends."""
+        st = self.workflows.of_owner(s.log_id) if self.workflows is not None else None
+        return st if st is not None and st.status == "running" else None
+
     def _attention(self, s: Session) -> dict:
         last = s.standing.get("last_message")
+        run = self._running(s)
         return attention.card(
             s.standing,
             working=s.in_turn,
             worker=bool(s.worker),
             waits=self._waits(s),
             last_unread=bool(last) and last in s.unread,
+            # Approving the run answered the ask that armed it.
+            answered_at=run.started if run is not None else None,
         )
 
     def _waiting_for(self, s: Session) -> list[dict]:
@@ -323,8 +335,9 @@ class Registry(Host):
         return tasks + kids
 
     def _waits(self, s: Session) -> list[str]:
-        """What a session waits on that is not a person, one phrase each. The
-        sessions it waits on go by handle, the first two and then a count."""
+        """What a session waits on that is not a person, one phrase each: the
+        approved run it is the main agent of, by name, and the sessions it
+        waits on by handle, the first two and then a count."""
         n_mon = len(self.monitors.of(s.log_id)) if self.monitors is not None else 0
         quota = s.quota_paused or (
             any(m.get("held_for") == "quota" for m in s.held) and self.quota_hold(s)
@@ -341,7 +354,11 @@ class Registry(Host):
             (n_pending, "pending queue task"),
         )
         waits = [f"{n} {noun}{'' if n == 1 else 's'}" for n, noun in counts if n]
-        return names + waits + ([f"quota ({quota})"] if quota else [])
+        # A run waits on its own clock and commands too, not only on the
+        # node sessions named above; the engine wakes its main agent.
+        run = self._running(s)
+        flow = [f"workflow {run.run}"] if run is not None else []
+        return flow + names + waits + ([f"quota ({quota})"] if quota else [])
 
     def status_changed(self, session: Session) -> None:
         parent = session.spec.spawned_by
@@ -423,8 +440,10 @@ class Registry(Host):
             resume_id=meta.get("resume_id") or meta.get("claude_session_id"),
             created_at=meta.get("created_at"),
             last_activity=meta.get("last_activity"),
-            last_status=meta.get("last_status") or "stopped",
+            last_status=meta.get("last_status") or "asleep",
+            asleep_why=meta.get("asleep_why"),
             parked_rss=meta.get("parked_rss") or 0,
+            parked_idle_s=meta.get("parked_idle_s") or 0,
             cost_usd=meta.get("cost_usd"),
             context_tokens=meta.get("context_tokens"),
             context_window=meta.get("context_window"),
@@ -444,6 +463,7 @@ class Registry(Host):
             last_exit=meta.get("last_exit"),
             restart_continues=meta.get("restart_continues") or 0,
             quota_paused=meta.get("quota_paused"),
+            notices_sent=meta.get("notices_sent"),
             tool_calls=meta.get("tool_calls") or 0,
             cache_recent=meta.get("cache_recent"),
             compactions=meta.get("compactions") or 0,
@@ -508,7 +528,7 @@ class Registry(Host):
             if not v.go:
                 rec["declined"] = restarts.DECLINED
             s._record(rec)
-        s.last_status = "stopped"
+        s.last_status = "asleep"
         if v.go:
             self.continuing[s.log_id] = v.crash
         else:
@@ -691,7 +711,8 @@ class Registry(Host):
         meta = {
             **meta,
             "archived": False,
-            "last_status": "stopped",
+            "last_status": "asleep",
+            "asleep_why": "slept",
             "continued_by": None,
             "quiet": False,  # a person reopening it wants to see it (#386)
         }

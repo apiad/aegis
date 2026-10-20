@@ -10,7 +10,7 @@ from aegis.workflow_log import NodeState
 
 from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
-from .test_workflows_e2e import ok
+from .test_workflows_e2e import approve, ok
 from .test_workflows_parallel import leaf, report, script
 
 
@@ -34,12 +34,15 @@ SIDE_BY_SIDE = wf(
 )
 
 
-async def armed(world, definition: str):
+async def armed(world, definition: str, settle=True):
     main = await world.spawn()
     run = ok(await turn(main, mcp("workflow_arm", definition=definition, args={})))[
         "run"
     ]
-    await world.app.registry.call("workflow.approve", {"run": run})
+    if settle:
+        await approve(world, run)
+    else:  # its step's timing matters more than the approval's turn
+        await world.app.registry.call("workflow.approve", {"run": run})
     return main, run
 
 
@@ -92,7 +95,7 @@ async def test_only_the_main_agent_ends_the_run_with_fail(world):
 
 @pytest.mark.slow
 async def test_the_runs_deadline_ends_it_without_asking(world):
-    body = f"  seq:\n    - {leaf('slow', 'Sleep.', '/sleep 20')}\n  say: One."
+    body = f"  seq:\n    - {leaf('slow', 'Sleep.', '/busy 20')}\n  say: One."
     main, run = await armed(world, wf(body).replace("root:", "deadline: 2s\nroot:"))
     wf_ = world.app.workflows
     await until(lambda: wf_.runs[run].status != "running", timeout=10)
@@ -166,7 +169,7 @@ async def test_skip_gives_later_steps_its_value(world):
 
 
 async def test_the_main_agent_stops_one_node_and_the_run_waits(world):
-    body = f"  par:\n    - {leaf('long', 'Work long.', '/sleep 30')}\n    - {leaf('ok', 'Finish.', report(wait=1))}\n  say: Both."
+    body = f"  par:\n    - {leaf('long', 'Work long.', '/busy 30')}\n    - {leaf('ok', 'Finish.', report(wait=1))}\n  say: Both."
     main, run = await armed(world, wf(body))
     wf_ = world.app.workflows
     await until(
@@ -260,8 +263,8 @@ async def test_a_session_main_step_is_the_main_agents_and_spawns_nothing(world):
 
 
 async def test_stopping_a_run_never_interrupts_the_main_agent_at_its_step(world):
-    long = MAIN.replace('prompt: "Check the deploy."', 'prompt: "/sleep 4"')
-    main, run = await armed(world, long)
+    long = MAIN.replace('prompt: "Check the deploy."', 'prompt: "/busy 4"')
+    main, run = await armed(world, long, settle=False)
     wf_ = world.app.workflows
     await until(
         lambda: (
@@ -282,6 +285,8 @@ async def test_a_wake_that_could_not_be_delivered_is_tried_again_soon(world):
     real, calls = main.deliver, []
 
     async def deliver(*a, **k):
+        if "· approved ·" in a[0]:
+            return await real(*a, **k)  # the approval's message (#474)
         calls.append(a)
         if len(calls) == 1:
             raise RuntimeError("the inbox is busy")
@@ -362,3 +367,58 @@ async def test_an_answer_marks_its_step_only_once_delivered(world):
     await world.app.registry.call("workflow.stop", {"run": run}, me)
     await until(lambda: wf_.runs[run].status == "stopped", timeout=10)
     assert not [k for k in wf_._answered if k[0] == run]  # an ended run's go
+
+
+def main_step(id_: str) -> str:
+    return (
+        f'{{agent: {{session: main, prompt: "Do {id_}.", result: {{type: object}}}},'
+        f" id: {id_}, say: Step {id_}.}}"
+    )
+
+
+TWO_MAIN = wf(
+    f"  par:\n    - {main_step('a')}\n    - {main_step('b')}\n  say: Both at once."
+)
+
+
+async def test_main_steps_side_by_side_are_open_at_once_and_name_their_step(world):
+    """The main agent holds no slot, so a ready main step is delivered while
+    another is open (#467); with two open, a result names which one it reports."""
+    main, run = await armed(world, TWO_MAIN)
+    wf_ = world.app.workflows
+    nodes = wf_.runs[run].nodes
+    await until(
+        lambda: all(
+            (n := nodes.get(k)) is not None and n.status == "running" for k in "ab"
+        ),
+        timeout=20,
+        what="both main steps running",
+    )
+    assert not wf_._queued.get(run)
+    await until(
+        lambda: len(inbox(main, "step a") + inbox(main, "step b")) == 2, timeout=10
+    )
+    await until(lambda: main.status == "idle", timeout=10)
+
+    said = await turn(main, mcp("workflow_result", value={}, summary="Did one."))
+    assert "several_steps" in said and "a" in said and "b" in said, said
+    said = await turn(
+        main, mcp("workflow_result", node="b", value={}, summary="Did b.")
+    )
+    assert said.startswith("mcp ok"), said
+    await until(lambda: nodes["b"].status == "done", timeout=10)
+    assert nodes["a"].status == "running"
+    # One step open again: it needs no name.
+    said = await turn(main, mcp("workflow_result", value={}, summary="Did a."))
+    assert said.startswith("mcp ok"), said
+    await until(lambda: wf_.runs[run].status == "done", timeout=20)
+
+
+async def test_a_result_naming_a_step_that_is_not_open_is_refused(world):
+    main, run = await armed(world, MAIN)
+    await until(lambda: inbox(main, "step tick"), timeout=20)
+    await until(lambda: main.status == "idle", timeout=10)
+    said = await turn(
+        main, mcp("workflow_result", node="nope", value={"done": True}, summary="x.")
+    )
+    assert "not_open" in said, said

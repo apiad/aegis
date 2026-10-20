@@ -95,7 +95,7 @@ async def test_a_live_monitor_is_waiting_and_cancelling_it_is_done(world):
 async def test_a_dead_process_is_an_error_until_the_next_send(world):
     a = await world.spawn()
     await a.send("/exit 3")
-    await until(lambda: a.status == "stopped", timeout=8, what="the exit")
+    await until(lambda: a.status == "asleep", timeout=8, what="the exit")
     c = a.wire()
     assert c["attention"] == "error"
     assert c["attention_line"] == "Claude Code exited with code 3"
@@ -105,7 +105,7 @@ async def test_a_dead_process_is_an_error_until_the_next_send(world):
 
 async def test_a_parent_waits_on_a_working_child(world, published):
     a = await world.spawn()
-    said = await turn(a, mcp("session_spawn", agent="opus", prompt="/sleep 1"))
+    said = await turn(a, mcp("session_spawn", agent="opus", prompt="/busy 1"))
     child = world.session(json.loads(said.removeprefix("mcp ok: "))["log_id"])
     await until(lambda: child.status == "working", timeout=8, what="the child working")
     assert a.wire()["attention"] == "waiting" and a.wire()["waiting_on"] == child.handle
@@ -146,10 +146,10 @@ async def test_a_parent_waits_on_a_child_that_waits(world, published):
 async def test_a_cancelled_queue_task_leaves_the_published_card(world, published):
     a = await world.spawn()
     said = await turn(
-        a, mcp("queue_enqueue", queue="solo", payload="/sleep 30", callback=False)
+        a, mcp("queue_enqueue", queue="solo", payload="/busy 30", callback=False)
     )
     busy = json.loads(said.removeprefix("mcp ok: "))["task_id"]
-    said = await turn(a, mcp("queue_enqueue", queue="solo", payload="/sleep 5"))
+    said = await turn(a, mcp("queue_enqueue", queue="solo", payload="/busy 5"))
     held = json.loads(said.removeprefix("mcp ok: "))["task_id"]
     assert world.app.queues.tasks[held].status == "pending"
     await until(
@@ -169,7 +169,7 @@ async def test_a_cancelled_queue_task_leaves_the_published_card(world, published
 
 async def test_the_card_names_the_worker_it_waits_on(world, published):
     a = await world.spawn()
-    said = await turn(a, mcp("queue_enqueue", queue="solo", payload="/sleep 30"))
+    said = await turn(a, mcp("queue_enqueue", queue="solo", payload="/busy 30"))
     task = world.app.queues.tasks[json.loads(said.removeprefix("mcp ok: "))["task_id"]]
     await until(lambda: task.worker in world.app.sessions.sessions, what="the worker")
     worker = world.session(task.worker)
@@ -201,7 +201,7 @@ async def test_the_card_names_the_worker_it_waits_on(world, published):
 async def test_waiting_on_names_two_sessions_then_counts(world):
     a = await world.spawn()
     for _ in range(3):
-        await turn(a, mcp("session_spawn", agent="opus", prompt="/sleep 30"))
+        await turn(a, mcp("session_spawn", agent="opus", prompt="/busy 30"))
     kids = [
         s for s in world.app.sessions.sessions.values() if s.spec.spawned_by == a.log_id
     ]

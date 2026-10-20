@@ -100,7 +100,9 @@ def strays(
 # background Agent emit task events, so open_tasks already holds them.
 TIMER_TOOLS = frozenset({"ScheduleWakeup", "CronCreate"})
 # Attentions whose next event comes from outside the harness: a person, or a
-# monitor, queue task or session the server runs (registry._waits).
+# monitor, queue task, session or workflow run the server runs
+# (registry._waits). The main agent of a running run parks: the engine wakes
+# it through the inbox, which starts its process again.
 PARKABLE = frozenset({"done", "needs_you", "review", "waiting"})
 
 
@@ -123,6 +125,19 @@ class Facts:
     reported: bool = True
 
 
+def kills(open_tasks: int, timers: frozenset[str], strays: int = 0) -> list[str]:
+    """What ending the process would end with it, one plain line each: the
+    reasons a park waits for, and what Sleep asks about first (#479)."""
+    out = []
+    if open_tasks:
+        out.append(f"{open_tasks} background task(s) would die")
+    if timers:
+        out.append(f"{', '.join(sorted(timers))} would be cancelled")
+    if strays:
+        out.append(f"{strays} other process(es) would die")
+    return out
+
+
 def blockers(f: Facts) -> list[str]:
     """Why the session must keep its process, one plain reason per rule;
     empty when it may park."""
@@ -139,12 +154,7 @@ def blockers(f: Facts) -> list[str]:
         out.append("it is a queue worker")
     if f.held:
         out.append("it holds a message")
-    if f.open_tasks:
-        out.append(f"{f.open_tasks} background task(s) would die")
-    if f.timers:
-        out.append(f"{', '.join(sorted(f.timers))} would be cancelled")
-    if f.strays:
-        out.append(f"{len(f.strays)} other process(es) would die")
+    out += kills(f.open_tasks, f.timers, len(f.strays))
     if f.watchers:
         out.append("someone is looking at it")
     return out

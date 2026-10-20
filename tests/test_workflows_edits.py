@@ -11,7 +11,7 @@ from aegis.ops import Caller, OpError
 
 from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
-from .test_workflows_e2e import ok
+from .test_workflows_e2e import approve, ok
 from .test_workflows_steps import verdict
 
 WRITER = (
@@ -41,13 +41,16 @@ WITH_NOTES = BASE.replace(
 )
 
 
-async def armed(world, agent: str = "opus", definition: str = BASE):
+async def armed(world, agent: str = "opus", definition: str = BASE, settle=True):
     r = await world.app.registry.call("session.spawn", {"agent": agent})
     main = world.app.sessions.sessions[r["log_id"]]
     run = ok(await turn(main, mcp("workflow_arm", definition=definition, args={})))[
         "run"
     ]
-    await world.app.registry.call("workflow.approve", {"run": run})
+    if settle:
+        await approve(world, run)
+    else:  # its step's timing matters more than the approval's turn
+        await world.app.registry.call("workflow.approve", {"run": run})
     return main, run
 
 
@@ -284,13 +287,40 @@ async def test_arming_again_starts_a_groups_deadline_afresh(world):
     assert wf.runs[run].nodes["y"].error.startswith("exit 3")
 
 
+@pytest.mark.slow  # waits out real deadlines
+async def test_finished_steps_never_expire_after_an_edit(world):
+    # Two steps and a group finish early; a change is applied; the clock
+    # passes their deadlines while the run waits on a later step.
+    definition = (
+        "id: dl\ntitle: Dl\nsay: Dl.\nroot:\n  seq:\n"
+        '    - {sh: "true", id: r0, deadline: 2s, say: R0.}\n'
+        '    - {seq: [{sh: "true", id: a, say: A.}], id: plan, deadline: 2s, say: Plan.}\n'
+        "    - {wait: 30s, id: hold, say: Hold.}\n"
+        "  id: top\n  say: Three.\n"
+    )
+    main, run = await armed(world, definition=definition)
+    wf = world.app.workflows
+    await until(lambda: "hold" in wf.runs[run].nodes, timeout=10)
+    later = definition.replace(
+        "  id: top\n", '    - {sh: "true", id: tail, say: Tail.}\n  id: top\n'
+    )
+    ok(await turn(main, mcp("workflow_edit", run=run, definition=later)))
+    await world.app.registry.call("workflow.edit.apply", {"run": run, "v": 2})
+    st = wf.runs[run]
+    await until(lambda: time.time() > st.nodes["r0"].started + 3.5, timeout=10)
+    assert st.status == "running" and not st.open, st.open
+    for k in ("r0", "a", "hold"):
+        assert st.nodes[k].status in ("done", "running"), (k, st.nodes[k].error)
+    assert tree(wf, run)["plan"]["state"] == "done"
+
+
 async def test_arming_again_with_a_command_needs_full_permission(world):
     waits = (
         "id: ed\ntitle: Edit\nsay: Edit.\nroot:\n  seq:\n"
         "    - {wait: 30s, id: build, say: Build.}\n"
         "  say: One.\n"
     )
-    main, run = await armed(world, agent="writer", definition=waits)
+    main, run = await armed(world, agent="writer", definition=waits, settle=False)
     wf = world.app.workflows
     await world.app.registry.call("workflow.stop", {"run": run})
     await until(

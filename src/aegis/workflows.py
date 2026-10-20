@@ -14,7 +14,8 @@ fails, never run again; a wait resumes on its logged end. A judge is a
 quiet session in the pool, as an agent node is. An if's branch, a loop's
 rounds and each until are logged once, so a restart never asks a probe
 again. Every deadline on the path from the root is checked on each pass
-against wall time; a leaf with retries left goes back to pending. Every node
+against wall time, on every instance not yet done (a finished or skipped one,
+leaf or group, never expires); a leaf with retries left goes back to pending. Every node
 instance has a path (``images.base.impl`` inside item ``base`` of map
 ``images``); only leaves and a map's items are logged, and every other state
 is derived from them on each pass (``_state``), so a restart rebuilds them by
@@ -57,6 +58,7 @@ from .workflow_lang import (
     Workflow,
     check_value,
     compile_expr,
+    next_stop,
     duration,
     edit_diff,
     edit_errors,
@@ -181,7 +183,7 @@ When your task is done, call workflow_result with `value` matching this JSON Sch
 If you cannot go on without an answer, call workflow_ask with your question and end your turn: it reaches the main agent, never a person, and the answer arrives as your next message. No person reads this session while the workflow runs."""
 
 MAIN_PREAMBLE = """---
-This is step `{node}` of your workflow, and it is yours to do. When it is done, call workflow_result with `value` matching {schema} and a one-sentence `summary`."""
+This is step `{node}` of your workflow, and it is yours to do. When it is done, call workflow_result with `node` "{node}", `value` matching {schema} and a one-sentence `summary`."""
 
 REUSED = """---
 This is step `{node}` of the same workflow, in the session you already have. When it is done, call workflow_result with `value` matching this JSON Schema and `summary`, one plain sentence telling the person what you did:
@@ -370,6 +372,8 @@ class Workflows:
         for st in list(self.runs.values()):
             if st.status == "rejected" and st.reject_untold:
                 await self._tell_rejected(st)
+            if st.status == "running" and st.approve_untold:
+                await self.tell_approved(st.run)
         while True:
             # Cleared before the pass: a wake that arrives during it is
             # another pass, not lost.
@@ -1157,8 +1161,54 @@ class Workflows:
         st = self._get(run)
         if st.status != "armed":
             raise OpError("not_armed", f"{run} is {st.status}")
-        self._log(run, {"ev": "approved"})
+        # "tell" as for a rejection: a boot tells an approval whose
+        # delivery a crash cut, and no other.
+        self._log(run, {"ev": "approved", "tell": True})
+        self._owner_card(st)  # the click answered its ask; it waits now
         self.changed()
+
+    async def tell_approved(self, run: str) -> None:
+        """Tell the main agent its run was approved and when it next stops,
+        once: the record follows the delivery, as woke does."""
+        st = self._get(run)
+        body = (
+            f"The person approved {run} and it is running. "
+            + self.next_text(st)
+            + ' End this turn with turn_end(attention="review") and a short '
+            "message to them, in their language: the run is going; while it "
+            "runs they can write to you to steer it or ask about it, which does "
+            "not stop it; and when the run next stops, as above. Your tab shows "
+            "waiting on the run until then."
+        )
+        if await self._tell_owner(st, "approved", body):
+            self._log(run, {"ev": "approved_told"})
+
+    def next_text(self, st: RunState) -> str:
+        """Where a running run next stops, from its definition: the first
+        gate or main step not finished, or else its end."""
+        wf = self.defs.get(st.run)
+        done = {template_key(k) for k, n in st.nodes.items() if n.status == "done"}
+        n = next_stop(wf, done) if wf else None
+        if n is None:
+            when = "calls you when it ends"
+        elif n.kind == "gate" and n.body.get("by") == "person":
+            when = (
+                f'stops at the gate "{n.body.get("ask")}", which the person '
+                "answers on the card"
+            )
+        elif n.kind == "gate":
+            when = f'calls you at the gate "{n.body.get("ask")}", which you answer'
+        else:
+            when = f'calls you at the step "{n.say}", which you run yourself'
+        return (
+            f"It next {when}. A failed step or a worker's question can call you sooner."
+        )
+
+    def _owner_card(self, st: RunState) -> None:
+        """Redraw the main agent's card, which waits on a running run
+        (registry._waits)."""
+        if (o := self.owner(st)) is not None:
+            self._reg.refresh_card(o.log_id)
 
     async def reject(self, run: str) -> None:
         st = self._get(run)
@@ -1200,17 +1250,36 @@ class Workflows:
                 "The workflow was stopped. Its node sessions are open and unlocked.",
             )
 
-    def _reporting(self, s: Session, tool: str) -> tuple[RunState, str]:
+    def _reporting(
+        self, s: Session, tool: str, step: str | None = None
+    ) -> tuple[RunState, str]:
         """The run and instance a node session reports for; refused to any
         other session, and once its run has ended. The main agent reports
-        for its run's running session: main step."""
+        for one of its run's open session: main steps: the one ``step``
+        names, which it must name when several are open."""
         wf_ref = s.workflow or {}
         if not wf_ref:
             mine = self.of_owner(s.log_id)
             if mine is not None and mine.status == "running":
-                for k, n in mine.nodes.items():
-                    if n.main and n.status == "running":
-                        return mine, k
+                open_ = [
+                    k for k, n in mine.nodes.items() if n.main and n.status == "running"
+                ]
+                if step is not None:
+                    if step not in open_:
+                        raise OpError(
+                            "not_open",
+                            f"step {step} is not one of yours that is open; "
+                            f"open: {', '.join(open_) or 'none'}",
+                        )
+                    return mine, step
+                if len(open_) == 1:
+                    return mine, open_[0]
+                if open_:
+                    raise OpError(
+                        "several_steps",
+                        f"steps {', '.join(open_)} are open: pass node, the step "
+                        "this reports, as its header names it",
+                    )
         st = self.runs.get(wf_ref.get("run", ""))
         if st is None or st.status != "running":
             raise OpError("not_a_node", f"only a running workflow node calls {tool}")
@@ -1236,8 +1305,10 @@ class Workflows:
             )
         return st, wf_ref["node"]
 
-    def output(self, s: Session, name: str, value, summary: str) -> dict:
-        st, inst = self._reporting(s, "workflow_output")
+    def output(
+        self, s: Session, name: str, value, summary: str, step: str | None = None
+    ) -> dict:
+        st, inst = self._reporting(s, "workflow_output", step)
         if (s.workflow or {}).get("probe") == "judge":
             raise OpError(
                 "judge", "a judge gives only its verdict, with workflow_result"
@@ -1255,8 +1326,8 @@ class Workflows:
         self.changed()
         return {"accepted": True}
 
-    def result(self, s: Session, value, summary: str) -> dict:
-        st, inst = self._reporting(s, "workflow_result")
+    def result(self, s: Session, value, summary: str, step: str | None = None) -> dict:
+        st, inst = self._reporting(s, "workflow_result", step)
         wf_ref = s.workflow or {}
         if wf_ref.get("probe") == "judge":
             j = st.nodes[inst].judges.get(wf_ref.get("round", "")) or {}
@@ -1414,6 +1485,8 @@ class Workflows:
         if mine is not None and mine.status == "failed":
             return "failed"
         end = self._end_at(st, wf, node, inst)
+        if end is not None and self._state(st, node, inst) == "done":
+            end = None  # a finished instance, leaf or group, never expires
         if end is not None:
             if time.time() >= end[0]:
                 if node is wf.root:
@@ -1914,9 +1987,11 @@ class Workflows:
     async def _main_step(
         self, st: RunState, wf: Workflow, node: Node, prefix: str
     ) -> str:
-        """A step the main agent runs in its own session, one at a time per
-        run, outside the pool. Its prompt is an inbox turn; it ends when the
-        main agent's workflow_result is accepted. The main agent's turns are
+        """A step the main agent runs in its own session, outside the pool.
+        It never waits for room: the main agent holds no slot, and several of
+        its steps may be open at once, each reported by name (#467). Its
+        prompt is an inbox turn; it ends when the main agent's
+        workflow_result is accepted. The main agent's turns are
         also the person's, so no turn end nudges or fails it: only its
         deadline bounds it. It logs no log_id, so nothing that ends a run
         interrupts or unquiets the main agent."""
@@ -1929,9 +2004,6 @@ class Workflows:
                 self._log(st.run, {"ev": "node_done", "node": inst})
                 return "done"
             return "running"
-        if any(x.main and x.status == "running" for x in st.nodes.values()):
-            self._queuing.add(inst)
-            return "queued"
         owner = self.owner(st)
         say = self._say(st, wf, node, prefix)
         if owner is None:
@@ -2572,6 +2644,7 @@ class Workflows:
         self._queued.pop(st.run, None)
         self._answered = {k for k in self._answered if k[0] != st.run}
         self._publish(st.run)
+        self._owner_card(st)
         self.changed()
         self._app.schedules.changed()  # a schedule's run may have waited on it
         await self._tell_owner(st, outcome, body)

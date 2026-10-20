@@ -158,6 +158,8 @@ root:
 `deadline: 2h` on any step, and on the workflow, bounds it: past it, its
 running agents are interrupted and kept for you to read, its commands are
 killed, and the step fails. A deadline on a group bounds everything in it.
+A step or group that has finished, or that was skipped, never expires: its
+deadline stops counting once it is done.
 `retries: 2` on an agent, sh or check runs it again when it fails, with a
 fresh session for an agent. A reference with no value is never retried,
 and a command cut by a server restart is never run again on its own. An
@@ -241,6 +243,19 @@ naming the run, and so are stopping, closing, configuring and renaming it,
 by a person or an agent. Its own monitors and queue tasks still reach it. It ends by calling `workflow_result` with a value matching the node's
 `result` schema and a one-sentence `summary`; a turn that ends without one
 is nudged once, then fails.
+
+When the person approves, you get a message headed `approved` that says
+where the run next stops: its first gate or `session: main` step not yet
+done, or else its end. Answer it with `turn_end(attention="review")` and a
+short message telling the person the run is going, that they can write to
+you meanwhile to steer it or ask about it without stopping it, and when it
+next stops. A run approved by its launch gets no such message: the
+`workflow_arm` result carries the same line as `next`.
+
+Once approved, your card shows waiting on `workflow <run>` until the run
+ends, between steps too; approving answers your needs_you. A review or done
+turn during the run goes back to waiting. You get no idle nudge, and your
+process may park: the run's messages restart it.
 
 You are woken by a message headed `> from workflow:<id>` for each thing the
 run waits on you for: a failed step, a gate with `by: main`, a worker's
@@ -590,8 +605,10 @@ root:
 as a message headed `step <id>`, and you end it with `workflow_result`, as a
 node does. It takes no `agent` and no `cwd`. Your turns are also the
 person's, so nothing nudges you or fails you for a turn without a result;
-give the step a `deadline`. Steps like it run one at a time in a run, and
-stopping the run never interrupts you.
+give the step a `deadline`. Such a step never waits for room, since you hold
+no slot: on parallel branches several can be open at once, and then each
+`workflow_result` or `workflow_output` passes `node`, the step id its header
+names. Stopping the run never interrupts you.
 
 ## Continue a step's session
 

@@ -34,9 +34,10 @@ This level starts one agent and spends quota.
    and while it works send "Also count the Markdown files". Claude Code reads
    a message sent during a turn at its next tool call. Esc interrupts a turn.
    You should see one answer that covers both requests.
-4. Stop and continue. Open the session panel with Alt+B and press Stop, or
-   type `/stop`. Then send "What did you find?". You should see the session
-   start again and answer from what it already did.
+4. Sleep and wake. Open the session panel with Alt+B and press Sleep, or
+   type `/sleep`. Its card in the Fleet shows `zz slept`. Then send "What did
+   you find?". You should see the session start again and answer from what it
+   already did.
 
 ## Level 2. Know what it needs
 
@@ -93,11 +94,11 @@ This level starts a second agent and spends quota.
 3. Hand it a note. Ask "Use peer_handoff to ask the helper which file here is
    the longest." You should see a message in the helper's tab headed
    agent: with the first session's handle, and the helper answer it.
-4. Close and reopen. Type `/close` in the helper's box and confirm if it
+4. Archive and reopen. Type `/archive` in the helper's box and confirm if it
    asks. Its tab goes away. In the Fleet, scroll to the archive under the
    cards and filter it by the helper's handle. You should see it there: Read
    opens its transcript without starting anything, and Reopen gives it a tab
-   again, stopped until your next message.
+   again, asleep until your next message.
 
 ## Level 5. Queues
 

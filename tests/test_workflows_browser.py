@@ -9,6 +9,7 @@ import pytest
 from .test_browser import CONFIG, Server, browser, page, spawn  # noqa: F401
 from .test_workflows_e2e import RESULT, flow
 from .test_workflows_parallel import leaf, report
+from .test_workflows_steps import flow as steps
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
@@ -168,7 +169,7 @@ def test_the_card_docks_beside_the_transcript_as_a_file_does(server, page):  # n
 def test_the_running_card_counts_up_without_redrawing(server, page):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
-    arm = {"definition": flow("/sleep 6", RESULT), "args": {}}
+    arm = {"definition": flow("/busy 6", RESULT), "args": {}}
     spawn(page, "/mcp workflow_arm " + json.dumps(arm))
     page.click(".wfcard[data-status=armed] button >> text=Approve and run")
     card = ".wfcard[data-status=running]"
@@ -204,7 +205,7 @@ def test_the_running_card_counts_up_without_redrawing(server, page):  # noqa: F8
 def test_a_stopped_run_shows_its_running_node_and_seq_stopped(server, page):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
-    arm = {"definition": flow("/sleep 10", RESULT), "args": {}}
+    arm = {"definition": flow("/busy 10", RESULT), "args": {}}
     spawn(page, "/mcp workflow_arm " + json.dumps(arm))
     page.click(".wfcard[data-status=armed] button >> text=Approve and run")
     page.wait_for_selector(
@@ -450,7 +451,7 @@ def test_a_workflow_moves_to_a_second_window_and_runs_live_there(server, page): 
     pane = f'#canvas .pane[data-pane="wf-{run}"]'
     page.click(f"{pane} .pbar .move")
     with page.context.expect_page() as opened:
-        page.locator("#canvas .pmenu button", has_text="New window").click()
+        page.locator(".cmenu [role=menuitem]", has_text="New window").click()
     two = _watch(opened.value)
     two.locator(f"{pane} .wfcard >> text=Do the first thing.").wait_for()
     page.locator("#entries .wfcard .held", has_text="in window 2").wait_for()
@@ -536,6 +537,31 @@ def test_the_header_counts_a_failure_but_not_a_branch_not_taken(server, page):  
     assert (
         page.locator(f"{card} .wfhead .bar i").get_attribute("style").endswith("50%;")
     )
+    assert not page.errors
+
+
+EARLY = """id: early
+title: Early
+say: Two steps finish early, then a wait outlives their deadlines.
+root:
+  seq:
+    - {sh: "true", id: r0, deadline: 2s, say: R0.}
+    - {seq: [{sh: "true", id: a, say: A.}], id: plan, deadline: 2s, say: Plan.}
+    - {wait: 4s, id: hold, say: Hold.}
+  say: All of it.
+"""
+
+
+def test_finished_steps_stay_done_past_their_deadlines(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_arm " + json.dumps({"definition": EARLY, "args": {}}))
+    card = "#entries .wfcard"
+    page.click(f"{card} button >> text=Approve and run")
+    page.wait_for_selector(f"{card}[data-status=done]", timeout=20000)
+    for node in ("r0", "plan", "a", "hold"):
+        assert page.locator(f"{card} .wfrow[data-node={node}][data-state=done]").count()
+    assert page.locator(f"{card} .wfrow[data-state=failed]").count() == 0
     assert not page.errors
 
 
@@ -647,6 +673,27 @@ def test_a_loop_past_six_rounds_shows_only_its_current_round(server, page):  # n
     assert not page.errors
 
 
+def test_a_working_steps_card_menu_shows_its_actions_disabled(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    arm = {"definition": flow(report(7, 8), RESULT), "args": {}}
+    spawn(page, "/mcp workflow_arm " + json.dumps(arm))
+    card = "#entries .wfcard"
+    page.click(f"{card} button >> text=Approve and run")
+    page.locator(f"{card} .wfrow[data-node=one] a.who").wait_for()
+    page.goto(server.url + "#fleet")
+    step = page.locator(".card.quiet", has=page.locator(".badge", has_text="· one"))
+    step.wait_for()
+    step.click(button="right")
+    page.wait_for_selector(".cmenu")
+    why = "is a step of a running workflow"
+    for item in ("sleep", "restart", "archive"):
+        b = page.locator(f".cmenu [data-id={item}]")
+        assert b.is_disabled() and why in b.get_attribute("title"), item
+    assert page.locator(".cmenu [data-id=open]").is_enabled()
+    assert not page.errors
+
+
 def test_a_working_step_opens_read_only_from_the_card_with_no_tab(server, page):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -754,4 +801,23 @@ def test_a_launched_card_says_who_started_it_and_has_no_approve(server, page):  
     page.set_viewport_size({"width": 390, "height": 800})
     page.wait_for_selector(f"{card} .wfargs")
     assert page.evaluate("document.documentElement.scrollWidth") <= 390
+    assert not page.errors
+
+
+def test_approving_tells_the_main_agent_and_its_card_waits(server, page):  # noqa: F811
+    """#474: the click wakes the main agent with where the run next stops,
+    and after that turn its card waits on the run."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    gate = '{gate: {by: person, ask: "Publish it?"}, id: pub, say: Ask first.}'
+    arm = {"definition": steps("{wait: 30s, id: nap, say: Pause.}", gate), "args": {}}
+    main = spawn(page, "/mcp workflow_arm " + json.dumps(arm))
+    page.click(".wfcard[data-status=armed] button >> text=Approve and run")
+    page.wait_for_selector(
+        'text=It next stops at the gate "Publish it?"', timeout=10000
+    )
+    page.click("#tab-fleet")
+    page.wait_for_selector(
+        f"#cards .card[data-id='{main}'] .s >> text=waiting · workflow", timeout=10000
+    )
     assert not page.errors
