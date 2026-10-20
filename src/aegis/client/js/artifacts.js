@@ -42,7 +42,7 @@ export function setup(opts) {
 }
 
 // A message to a frame from the pointing host: aegis/point-open and -closed.
-export const tell = (frame, method) => notify(frame, method, {});
+export const tell = (frame, method, params = {}) => notify(frame, method, params);
 
 export function themeVars() {
   const cs = getComputedStyle(document.getElementById("a2"));

@@ -3715,9 +3715,11 @@ function pointItems({ locator, text, to, comment, leave = () => {} }) {
 // the focus by script, so that is not proof: what keeps a made-up proposal
 // harmless is that its menu never takes the focus, and only a click on an
 // item writes anything, and not in its first half second: the page chose
-// where the menu opens, and could put Ask under a click aimed at the page. A page scrolled, Esc in it, or a selection gone
+// where the menu or the bar opens, and could put Ask under a click aimed at
+// the page. A page scrolled, Esc in it, or a selection gone
 // closes only what that frame drew.
-const PAGE_MENU_SETTLE_MS = 500; // a page's menu takes no click this soon
+const PAGE_MENU_SETTLE_MS = 500; // a page's menu or bar takes no click this soon
+let pageMenus = 0; // numbers each page menu, for its open and closed messages
 function pagePoint(frame, { kind, x, y, rect, touch, locator = {}, text = "" }) {
   if (kind === "clear") {
     if (cmenu.current()?.target === frame) cmenu.close();
@@ -3744,15 +3746,18 @@ function pagePoint(frame, { kind, x, y, rect, touch, locator = {}, text = "" }) 
   const box = frame.getBoundingClientRect();
   if (kind === "select" && rect) {
     const r = new DOMRect(box.left + rect.left, box.top + rect.top, rect.right - rect.left, rect.bottom - rect.top);
-    return cmenu.barAt(items, r, frame);
+    return cmenu.barAt(items, r, frame, PAGE_MENU_SETTLE_MS);
   }
   if (kind !== "menu") return;
-  artifacts.tell(frame, "aegis/point-open");
+  // Numbered: opening this one closes the one before, whose closed message
+  // reaches the page after this open would, and must not undo it.
+  const n = ++pageMenus;
   cmenu.open({ groups: [items] }, { x: box.left + x, y: box.top + y, touch }, frame, {
     focus: false,
     settle: PAGE_MENU_SETTLE_MS,
-    onClose: () => artifacts.tell(frame, "aegis/point-closed"),
+    onClose: () => artifacts.tell(frame, "aegis/point-closed", { n }),
   });
+  artifacts.tell(frame, "aegis/point-open", { n });
 }
 
 // `text` into session `key`'s composer, going there first; Files' unsaved

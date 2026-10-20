@@ -65,8 +65,8 @@
     return sel.rangeCount && !sel.isCollapsed && sel.toString().trim() ? sel.getRangeAt(0) : null;
   };
 
-  let pointed = null; // the element the last menu was about
-  let outline = null; // its own outline, to put back
+  let pointed = null; // the element the last menu proposed or open is about
+  const open = new Map(); // the host's menu number -> {el, outline}: its own, to put back
 
   // What a press at x, y on `target` is about: the selection under it, else
   // the element and its text. Null leaves the browser its own menu: a field
@@ -89,6 +89,7 @@
 
   document.addEventListener("contextmenu", (ev) => {
     if (ev.shiftKey) return;
+    clearTimeout(timer); // a touch's contextmenu before the long press's timer: one menu, not two
     if (swallow) return ev.preventDefault(); // the long press already reported it
     const about = aboutAt(ev.target, ev.clientX, ev.clientY);
     if (!about) return;
@@ -180,12 +181,18 @@
 
   window.addEventListener("message", (ev) => {
     if (ev.source !== window.parent || ev.data?.jsonrpc !== "2.0") return;
+    // Each message names its menu: the host closes the old one after it
+    // opened the new, so a closed message ends only its own.
+    const n = ev.data.params?.n;
     if (ev.data.method === "aegis/point-open" && pointed) {
-      outline = pointed.style.outline;
+      const earlier = [...open.values()].find((o) => o.el === pointed);
+      open.set(n, { el: pointed, outline: earlier ? earlier.outline : pointed.style.outline });
       pointed.style.outline = "2px solid #2f6fdb";
-    } else if (ev.data.method === "aegis/point-closed" && pointed) {
-      pointed.style.outline = outline ?? "";
-      pointed = null;
+    } else if (ev.data.method === "aegis/point-closed" && open.has(n)) {
+      const { el, outline } = open.get(n);
+      open.delete(n);
+      if (![...open.values()].some((o) => o.el === el)) el.style.outline = outline;
+      if (el === pointed && !open.size) pointed = null;
     }
   });
 })();

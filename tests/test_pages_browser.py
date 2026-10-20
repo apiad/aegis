@@ -37,12 +37,12 @@ def page(browser):  # noqa: F811
     ctx.close()
 
 
-def pick(pg, item: str) -> None:
-    """Pick a menu item as a person would, after a page's menu has settled
-    (a page-proposed menu takes no click in its first 500 ms)."""
-    pg.wait_for_selector(f".cmenu [data-id={item}]")
+def pick(pg, item: str, where: str = ".cmenu") -> None:
+    """Pick a menu or bar item as a person would, once a page's has settled
+    (a page-proposed menu or bar takes no click in its first 500 ms)."""
+    pg.wait_for_selector(f"{where} [data-id={item}]")
     pg.wait_for_timeout(550)
-    pg.click(f".cmenu [data-id={item}]")
+    pg.click(f"{where} [data-id={item}]")
 
 
 def send(pg, n, paths):
@@ -290,8 +290,7 @@ def test_comments_in_a_page_and_an_artifact(server, page):  # noqa: F811
     frame.locator("p:not([id])").dblclick(
         position={"x": 8, "y": 6}
     )  # a selection made by hand
-    page.wait_for_selector(".sbar [data-id=comment]")
-    page.click(".sbar [data-id=comment]")
+    pick(page, "comment", ".sbar")
     page.keyboard.type("two")
     page.locator("#viewer .ctray [data-act=send]").click()
     assert page.input_value("#input") == (
@@ -543,4 +542,59 @@ def test_files_send_cancelled_at_unsaved_edits_keeps_the_comments(
         )
         == []
     )
+    assert page.errors == []
+
+
+BAR_TRAP = TRAP.replace(
+    "kind: 'menu', x: e.clientX - 20, y: e.clientY - 12,",
+    # The bar is drawn above its rect: a rect just below the click puts the
+    # bar's first button, Ask, under it.
+    "kind: 'select', rect: { left: e.clientX - 20, top: e.clientY + 30,"
+    " right: e.clientX + 200, bottom: e.clientY + 50 },",
+)
+
+
+def test_a_page_cannot_put_the_bars_ask_under_the_next_click(server, page):  # noqa: F811
+    assert BAR_TRAP != TRAP
+    (server.root / "trap.html").write_text(BAR_TRAP)
+    page.goto(server.url)
+    spawn(page)
+    send(page, 1, ["trap.html"])
+    page.fill("#input", "later")
+    view(page, "iframe")
+    frame = frame_of(page, "#viewer iframe")
+    box = frame.locator("#b").bounding_box()
+    at = (box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.click(*at)
+    page.wait_for_selector(".sbar")
+    ask = page.locator(".sbar [data-id=ask]").bounding_box()
+    assert ask["x"] <= at[0] <= ask["x"] + ask["width"]
+    assert ask["y"] <= at[1] <= ask["y"] + ask["height"]
+    page.mouse.click(*at)  # the second click of the two, on the bar's Ask
+    page.wait_for_timeout(200)
+    assert page.locator("#viewer").is_visible()
+    assert page.evaluate("document.getElementById('input').value") == "later"
+    assert page.errors == []
+
+
+def test_a_second_right_click_in_a_page_keeps_its_menu_closable(server, page):  # noqa: F811
+    (server.root / "page.html").write_text(PAGE)
+    page.goto(server.url)
+    spawn(page)
+    send(page, 1, ["page.html"])
+    view(page, "iframe")
+    frame = frame_of(page, "#viewer iframe")
+    outline = "(id) => (id ? document.getElementById(id) : document.querySelector('h2')).style.outline"
+    frame.locator("#p1").click(button="right")
+    page.wait_for_selector(".cmenu")
+    frame.locator("h2").click(button="right")
+    frame.wait_for_function(f"({outline})(null).includes('solid')")
+    page.wait_for_timeout(200)  # the first menu's closed message lands too
+    assert "solid" in frame.evaluate(outline, None)
+    assert frame.evaluate(outline, "p1") == ""
+    assert page.locator(".cmenu").count() == 1
+    box = page.locator("#viewer iframe").bounding_box()
+    page.mouse.click(box["x"] + box["width"] - 10, box["y"] + box["height"] - 10)
+    page.wait_for_selector(".cmenu", state="detached")
+    frame.wait_for_function(f"({outline})(null) === ''")
     assert page.errors == []

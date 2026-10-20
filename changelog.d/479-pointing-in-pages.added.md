@@ -5,6 +5,8 @@
   session gets starts with where the text is: `` `src/x.py:3-4` ``, the
   nearest heading of a Markdown file, or a page's heading and element. Comment
   collects notes in a tray that sends them as one message; until then a
-  reload keeps them.
+  reload keeps them. A sent page this browser already showed before the
+  upgrade comes from its cache, without the menu; clearing the browser's cache
+  for the aegis address brings it.
 
 help: files#pointing-at-lines-and-comments

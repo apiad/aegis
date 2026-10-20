@@ -332,7 +332,9 @@ function same(sel, at) {
   return now.text === at.text && now.row === at.row;
 }
 
-function showBar(items, range, row, root) {
+// `settle` ms pass before a click picks an item (a page's bar: barAt).
+function showBar(items, range, row, root, settle = 0) {
+  const armed = performance.now() + settle;
   close();
   unbar();
   const node = el("div", "sbar");
@@ -347,6 +349,7 @@ function showBar(items, range, row, root) {
     b.addEventListener("pointerdown", (ev) => ev.preventDefault());
     b.addEventListener("mousedown", (ev) => ev.preventDefault());
     b.addEventListener("click", (ev) => {
+      if (performance.now() < armed) return;
       unbar();
       item.run(ev);
     });
@@ -389,9 +392,11 @@ export function unbarHidden() {
 // (pagepoint.js reports it): over `rect`, in this page's coordinates, until
 // the frame clears it, a press elsewhere, a scroll or a resize here, or
 // another bar. The rect is fixed, so anything that moves the frame ends it.
-export function barAt(items, rect, owner) {
+// The page chose the rect, so its buttons take no click for `settle` ms, as
+// a page's menu (open's settle).
+export function barAt(items, rect, owner, settle = 0) {
   if (!items?.length) return unbar();
-  showBar(items, { getClientRects: () => [rect], toString: () => "" }, null, null);
+  showBar(items, { getClientRects: () => [rect], toString: () => "" }, null, null, settle);
   bar_.owner = owner;
   const node = bar_.node;
   const away = (ev) => {
