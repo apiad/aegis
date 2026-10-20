@@ -9,15 +9,20 @@ The file is keyed by the model id an agent names (the catalog's ``value``).
 A model is ranked when it has a Coding Index. Ranked models order by Coding
 Index, higher first, the Intelligence Index breaking ties; unranked ones go
 after every ranked one, in the order they were given.
+
+``AEGIS_MODELS_FILE`` names a file read in place of the packaged one, so a
+test can serve sample scores from a real ``aegis serve``.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from functools import cache
 from importlib import resources
+from pathlib import Path
 
 from .claude.control import Model
 
@@ -74,7 +79,12 @@ class Ranking:
 
 @cache
 def ranking() -> Ranking:
-    text = resources.files("aegis").joinpath("data/models.json").read_text()
+    path = os.environ.get("AEGIS_MODELS_FILE")
+    text = (
+        Path(path).read_text()
+        if path
+        else resources.files("aegis").joinpath("data/models.json").read_text()
+    )
     return Ranking.from_dict(json.loads(text))
 
 

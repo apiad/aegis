@@ -17,6 +17,7 @@
 // operations and `config` channel, sent through the link.
 
 import { elapsed } from "./gauges.js";
+import { modelMeta } from "./models.js";
 import "./pick.js";
 import { who } from "./me.js";
 import { deviceCopy } from "./appworker.js";
@@ -880,7 +881,7 @@ export class Settings {
 
   modelOptions(harness) {
     const f = this.found.find((f) => f.harness === harness);
-    return (f ? f.models : []).map((m) => ({ value: m.value, label: m.free ? `${m.label} (free)` : m.label }));
+    return (f ? f.models : []).map((m) => ({ value: m.value, label: m.label, meta: modelMeta(m) }));
   }
 
   agents() {

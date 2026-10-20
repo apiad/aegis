@@ -132,6 +132,8 @@ body{background:#000}
 #a2 pick-chip .opt b{color:var(--accent);font-weight:600}
 #a2 pick-chip .opt.free{color:var(--muted);font-style:italic}
 #a2 pick-chip .opt[aria-disabled=true]{color:var(--faint);cursor:default}
+/* A model's rank, Coding Index and price beside its name (js/models.js). */
+#a2 pick-chip .opt .meta{font-family:var(--font-mono);font-size:10px;color:var(--muted);border-left:1px solid var(--rule);margin-left:6px;padding-left:6px}
 #a2 .dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none}
 #a2 .dot.ready{background:var(--ok)}#a2 .dot.err{background:var(--err)}#a2 .dot.ghost{background:var(--faint)}
 
