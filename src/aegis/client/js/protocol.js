@@ -20,13 +20,6 @@ export class OpError extends Error {
   }
 }
 
-// A reconnect waits RETRY_FIRST_MS, then twice as long each time, up to
-// RETRY_MAX_MS. The browser tests set AEGIS_TEST.retryMaxMs before the page
-// loads (tests/test_browser.py new_page), so a test that restarts the server
-// does not wait out a 5 s backoff (#506).
-const RETRY_MAX_MS = globalThis.AEGIS_TEST?.retryMaxMs ?? 5000;
-const RETRY_FIRST_MS = Math.min(500, RETRY_MAX_MS);
-
 export class Connection {
   constructor(url, { onState = () => {} } = {}) {
     this.url = url;
@@ -37,7 +30,7 @@ export class Connection {
     this.pending = new Map(); // call id -> {resolve, reject}
     this.subs = new Map(); // key -> {channel, server, seq, onSnapshot, onPatch, onError, since}
     this.watches = new Map(); // server -> the last watch message sent to it
-    this.backoff = RETRY_FIRST_MS;
+    this.backoff = 500;
     this.stopped = false;
     this.retryTimer = null;
     this.retryAt = 0; // epoch ms of the next attempt, or 0
@@ -58,7 +51,7 @@ export class Connection {
     switch (msg.t) {
       case "welcome":
         this.open = true;
-        this.backoff = RETRY_FIRST_MS;
+        this.backoff = 500;
         this.server = msg.server;
         this.native = msg.native === true;
         // Who this browser is here, and whose a session with no owner is (tokens.py).
@@ -120,7 +113,7 @@ export class Connection {
     if (this.stopped) return;
     this.retryAt = Date.now() + this.backoff;
     this.retryTimer = setTimeout(() => this.connect(), this.backoff);
-    this.backoff = Math.min(this.backoff * 2, RETRY_MAX_MS);
+    this.backoff = Math.min(this.backoff * 2, 5000);
   }
 
   // Give up on a socket that stalls without closing: closed now, every

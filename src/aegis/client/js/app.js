@@ -815,9 +815,8 @@ loadFleet().then((saved) => {
 // The Fleet is written to the device at most every SAVE_MS, SAVE_MS after the
 // first change since the last write, and at once when the page goes hidden
 // (Android may freeze it right after). Only while the socket is open, so
-// saved cards are never written back as fresh ones. The browser tests shorten
-// it through AEGIS_TEST (tests/test_browser.py new_page).
-const SAVE_MS = globalThis.AEGIS_TEST?.saveMs ?? 2000;
+// saved cards are never written back as fresh ones.
+const SAVE_MS = 2000;
 let fleetSave = null;
 function keepFleet() {
   if (!fleetSave && conn.open) fleetSave = setTimeout(flushFleet, SAVE_MS);
