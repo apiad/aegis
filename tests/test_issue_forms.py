@@ -29,7 +29,7 @@ def fields(kind: str) -> list[dict]:
 def test_each_form_sets_its_label_and_has_a_required_version_field(kind):
     f = form(kind)
     assert f["name"] and f["description"]
-    assert f["labels"] == [KINDS[kind]]
+    assert f["labels"] == [KINDS[kind], "feedback"]
     (version,) = [i for i in fields(kind) if i["id"] == "version"]
     assert version["type"] == "input"
     assert version["validations"]["required"] is True

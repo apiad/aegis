@@ -1,6 +1,6 @@
 name: Bug
 description: "aegis did something wrong, crashed, or contradicted its help page"
-labels: [bug]
+labels: [bug, feedback]
 body:
   - type: markdown
     attributes:

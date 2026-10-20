@@ -1,0 +1,28 @@
+# Lint feedback issues: those an agent filed by the help page feedback (they
+# end with the kind marker) and those opened from an issue form. It comments
+# on what a maintainer would still need and labels needs-info; it never closes
+# an issue. The issue's text reaches the script through the event file only,
+# never through a run: line, so it cannot inject shell.
+name: feedback-lint
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: feedback-lint-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/feedback_lint.py finish

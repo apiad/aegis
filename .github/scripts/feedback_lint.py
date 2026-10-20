@@ -3,12 +3,17 @@
 Runs in .github/workflows/feedback-lint.yml with the runner's own python3, so it
 uses the standard library only. A feedback issue is one an agent filed by
 following the help page feedback (it ends with the kind marker) or one opened
-from an issue form (it carries the form's label). Both have the same body: one
-``### <label>`` section per form field, which is how GitHub renders a submitted
-form and what the help page tells agents to write.
+from an issue form (it carries the form's labels: its kind and feedback). Both
+have the same body: one ``### <label>`` section per form field, which is how
+GitHub renders a submitted form and what the help page tells agents to write.
 
 The lint is advice. It comments and labels; it never closes an issue, never
 edits its body, and never quotes what it matched as a secret.
+
+``check`` writes a prompt for a model review and ``finish --review-file`` merges
+its answer. The workflow runs no model today: GitHub Models, which needed no
+secret, was retired on 2026-07-30, and the action that replaced it needs a
+Copilot token stored in the repository.
 """
 
 from __future__ import annotations
@@ -36,6 +41,7 @@ REQUIRED = {
     "docs": ["Page or search", "What is wrong or missing", "Version"],
     "question": ["Question", "Version"],
 }
+FEEDBACK = "feedback"
 MARKER = re.compile(r"<!--\s*aegis-feedback\s+kind=(\w+)\s*-->")
 SECRETS = re.compile(
     r"ghp_\w{20,}|github_pat_\w{20,}|sk-\w{20,}|AKIA[0-9A-Z]{16}|-----BEGIN"
@@ -56,6 +62,10 @@ def kind_of(body: str, labels: list[str]) -> str | None:
     m = MARKER.search(body)
     if m:
         return m[1] if m[1] in LABELS else None
+    # A kind label alone marks the maintainer's own issues too; a form adds
+    # FEEDBACK beside it.
+    if FEEDBACK not in labels:
+        return None
     by_label = {label: kind for kind, label in LABELS.items()}
     return next((by_label[name] for name in labels if name in by_label), None)
 
@@ -137,10 +147,6 @@ def comment(
     if missing:
         parts.append("This report is missing what a maintainer needs to act on it:")
         parts.append("\n".join(f"- {m}" for m in missing))
-    if problems and findings is None:
-        parts.append(
-            "The model review was skipped; it runs once the checks above pass."
-        )
     parts.append(
         "Edit the issue and this check runs again. Filed by an agent? The agent "
         "can fix it with `gh issue edit`."
@@ -167,7 +173,7 @@ def apply(
     issue = f"repos/{repo}/issues/{number}"
     # Bullets appear only when something is missing (comment above).
     missing = text is not None and "\n- " in text
-    add = [LABELS[kind]] * (LABELS[kind] not in labels)
+    add = [x for x in (LABELS[kind], FEEDBACK) if x not in labels]
     for label, on in (("needs-info", missing), ("needs-redaction", secret)):
         if on and label not in labels:
             add.append(label)

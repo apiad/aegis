@@ -1,6 +1,6 @@
 name: Docs
 description: "a help page is wrong, missing, or did not answer your question"
-labels: [documentation]
+labels: [documentation, feedback]
 body:
   - type: markdown
     attributes:

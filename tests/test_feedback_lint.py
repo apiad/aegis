@@ -116,8 +116,10 @@ def test_crlf_bodies_read_the_same():
 def test_the_marker_wins_and_no_kind_means_skip():
     marked = form_body(GOOD["feature"]) + "<!-- aegis-feedback kind=feature -->\n"
     assert lint.kind_of(marked, ["bug"]) == "feature"
-    assert lint.kind_of("anything", ["documentation", "idea"]) == "docs"
-    assert lint.kind_of("anything", ["idea"]) is None
+    assert lint.kind_of("anything", ["documentation", "feedback"]) == "docs"
+    # A kind label alone is the maintainer's own issue, not feedback.
+    assert lint.kind_of("anything", ["documentation"]) is None
+    assert lint.kind_of("anything", ["idea", "feedback"]) is None
     assert lint.kind_of("<!-- aegis-feedback kind=nonsense -->", []) is None
 
 
@@ -187,6 +189,7 @@ def test_a_first_run_with_problems_posts_one_comment_and_labels():
     assert any(c[-1] == "repos/o/r/issues/5/comments" for c in posts)
     labels = " ".join(" ".join(c) for c in posts)
     assert "labels[]=bug" in labels and "labels[]=needs-info" in labels
+    assert "labels[]=feedback" in labels
 
 
 def test_a_complete_issue_clears_needs_info_and_says_complete():
@@ -211,7 +214,8 @@ def test_a_failed_review_is_skipped_and_never_adds_needs_info_alone():
     assert lint.review_findings('```json\n["a repro"]\n```') == ["a repro"]
     assert lint.review_findings("[]") == []
     assert lint.comment("bug", [], None, False) is None
-    assert "review was skipped" in lint.comment("bug", ["x"], None, False)
+    # No model runs in the workflow today, so the comment never mentions one.
+    assert "review" not in lint.comment("bug", ["x"], None, False)
 
 
 def test_review_findings_reach_the_comment():
@@ -274,6 +278,8 @@ def test_check_writes_a_prompt_only_when_the_checks_pass(tmp_path, monkeypatch):
     assert "What you propose" in o["prompt"] and "JSON array" in o["prompt"]
     out.unlink()
     thin = form_body(dict(GOOD["feature"], **{"The problem": ""}))
-    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event(tmp_path, thin, ["enhancement"])))
+    monkeypatch.setenv(
+        "GITHUB_EVENT_PATH", str(event(tmp_path, thin, ["enhancement", "feedback"]))
+    )
     lint.main(["check"])
     assert outputs(out)["prompt"] == ""

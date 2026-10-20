@@ -1,6 +1,6 @@
 name: Feature
 description: "aegis cannot do something you want"
-labels: [enhancement]
+labels: [enhancement, feedback]
 body:
   - type: markdown
     attributes:

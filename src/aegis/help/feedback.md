@@ -80,9 +80,9 @@ What a maintainer needs from each field:
 - **Evidence**: logs, a transcript excerpt, a screenshot. See
   [Transcripts and examples](#transcripts-and-examples).
 
-The lint workflow on the repository checks every feedback issue against this
-list. It reads the text block above, so keep a field's label here the same
-as in the form.
+The lint workflow on the repository checks every feedback issue for the
+starred fields, by these labels, and comments on what is missing. Keep a
+field's label here the same as in the form; a test holds the two in step.
 
 ## How much to ask
 

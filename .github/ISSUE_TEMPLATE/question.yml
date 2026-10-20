@@ -1,6 +1,6 @@
 name: Question
 description: "not sure whether it is a bug, a feature or a docs gap"
-labels: [question]
+labels: [question, feedback]
 body:
   - type: markdown
     attributes:
