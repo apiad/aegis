@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 import pytest
+from ruamel.yaml import YAML
 
 from .conftest import browser_slot
 
@@ -578,16 +579,16 @@ def test_model_options_show_rank_score_and_price(ranked_server, page):
     page.press("#sp-model input", "Escape")
 
     page.keyboard.press("Alt+KeyS")
-    row = '.set-agent[data-row="agents.deepseek"] pick-chip[name=model]'
+    row = '.set-agent[data-row="agents.deepseek"] pick-chip[name=add-model]'
     page.wait_for_selector(row)
     page.wait_for_function(f"document.querySelector('{row}').options.some(o => o.meta)")
     page.click(f"{row} input")
     got = chips(page, row)
     assert got["Fake Flash"] == "#1 · 41.2 · free"
     assert got["Fake Video"] == "unranked · free"
-    opus = '.set-agent[data-row="agents.opus"] pick-chip[name=model]'
+    opus = '.set-agent[data-row="agents.opus"] pick-chip[name=add-model]'
     page.click(f"{opus} input")
-    assert chips(page, opus)["Opus"] == "#1 · 72.0 · $15 / $75"
+    assert chips(page, opus)["Sonnet"] == "#2 · 64.1 · $3 / $15"
     assert page.errors == []
 
 
@@ -662,6 +663,125 @@ def test_models_view_filters_and_sorts(ranked_server, page):
         " return b.scrollWidth <= b.clientWidth; })()"
     )
     assert page.is_hidden("#set-models .set-mrow.hd")
+    assert page.errors == []
+
+
+CASCADE_EDIT = (
+    "notices: {disk: false, memory: false, cpu: false, quota: false}\n"
+    "default_agent: cheap\nagents:\n"
+    "  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
+    "  cheap:  # kept across a save\n"
+    "    harness: opencode\n"
+    "    models: [opencode-go/fake-pro, opencode-go/fake-flash, opencode-go/fake-plain]\n"
+    "    effort: high\n    permission: full\n"
+)
+
+
+@pytest.fixture
+def cascade_edit_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    """RANKING's scores, and fake-pro exhausted so a turn on it cools it."""
+    (tmp_path / ".aegis.yaml").write_text(CASCADE_EDIT)
+    (tmp_path / "models.json").write_text(json.dumps(RANKING))
+    s = Server(tmp_path, fake_claude, fake_opencode)
+    s.env["AEGIS_MODELS_FILE"] = str(tmp_path / "models.json")
+    s.env["FAKE_OPENCODE_EXHAUSTED"] = "opencode-go/fake-pro"
+    yield s.start()
+    s.stop()
+
+
+def cascade_rows(pg, card: str) -> list[str]:
+    return pg.eval_on_selector_all(
+        f"{card} .set-casc li", "els => els.map(e => e.dataset.model)"
+    )
+
+
+def test_cascade_editor_reorders_adds_sorts_and_saves(cascade_edit_server, page):
+    srv = cascade_edit_server
+    page.goto(srv.url)
+    spawn(page, "hello")  # fake-pro answers 429: it cools, flash takes the turn
+    assert "Continuing on opencode-go/fake-flash." in page.text_content("#entries")
+    page.keyboard.press("Alt+KeyS")
+    card = '.set-agent[data-row="agents.cheap"]'
+    page.wait_for_selector(f"{card} .set-casc .set-attr")
+    pro, flash, plain = (f"opencode-go/fake-{m}" for m in ("pro", "flash", "plain"))
+    assert cascade_rows(page, card) == [pro, flash, plain]
+    warn = f"{card} .set-casc-warn"
+    assert page.inner_text(warn) == f"{pro} (38.9) is above {flash} (41.2)"
+    row = f'{card} .set-casc li[data-model="{pro}"]'
+    assert "cool" in page.get_attribute(row, "class")
+    assert re.search(r"cooling until \d\d:\d\d", page.inner_text(row))
+    assert (
+        page.inner_text(f'{card} .set-casc li[data-model="{plain}"] .sc') == "unranked"
+    )
+    attr = page.locator(f"{card} .set-attr")
+    assert attr.inner_text() == "Scores by Artificial Analysis, refreshed 2026-10-18"
+    assert attr.locator("a").get_attribute("href") == "https://artificialanalysis.ai"
+
+    page.click(f'{card} .set-casc li[data-model="{flash}"] button[data-a=up]')
+    assert cascade_rows(page, card) == [flash, pro, plain]
+    assert page.inner_text(warn) == ""
+    page.click(f'{card} .set-casc li[data-model="{pro}"] button[data-a=rm]')
+    assert cascade_rows(page, card) == [flash, plain]
+
+    # "Add model" offers the rest of the catalog, each with its chip.
+    add = f"{card} pick-chip[name=add-model]"
+    page.click(f"{add} input")
+    got = chips(page, add)
+    assert got["Fake Pro"] == "#2 · 38.9 · $1 / $4"
+    assert "Fake Flash" not in got and "Fake Plain" not in got
+    page.press(f"{add} input", "Escape")
+    pick(page, add, "Fake Pro")
+    assert cascade_rows(page, card) == [flash, plain, pro]
+    assert page.inner_text(warn) == f"{plain} (unranked) is above {pro} (38.9)"
+    page.click(f"{card} .set-casc-sort")
+    assert cascade_rows(page, card) == [flash, pro, plain]
+    assert page.inner_text(warn) == ""
+
+    page.click("#set-save")
+    page.wait_for_function(
+        "document.querySelector('#set-status').textContent === 'Saved'"
+    )
+    text = (srv.root / ".aegis.yaml").read_text()
+    assert YAML(typ="safe").load(text)["agents"]["cheap"]["models"] == [
+        flash,
+        pro,
+        plain,
+    ]
+    assert "# kept across a save" in text
+
+    # Down to one model: the last one cannot be removed.
+    for m in (pro, plain):
+        page.click(f'{card} .set-casc li[data-model="{m}"] button[data-a=rm]')
+    assert cascade_rows(page, card) == [flash]
+    assert page.is_disabled(f"{card} .set-casc li button[data-a=rm]")
+    # A one-model agent that names a model with model: gains a list.
+    opus = '.set-agent[data-row="agents.opus"]'
+    pick(page, f"{opus} pick-chip[name=add-model]", "Sonnet")
+    assert cascade_rows(page, opus) == ["opus", "sonnet"]
+    page.click("#set-save")
+    page.wait_for_function(
+        "document.querySelector('#set-status').textContent === 'Saved'"
+    )
+    data = YAML(typ="safe").load((srv.root / ".aegis.yaml").read_text())
+    # A file that wrote the agent as models: keeps it a list (config.py's
+    # _set_agent); one that wrote model: is written models: from two on.
+    assert data["agents"]["cheap"]["models"] == [flash]
+    assert "model" not in data["agents"]["opus"]
+    assert data["agents"]["opus"]["models"] == ["opus", "sonnet"]
+
+    # A new harness clears the list to one empty pick.
+    pick(page, f"{opus} pick-chip[name=harness]", "OpenCode")
+    assert cascade_rows(page, opus) == []
+    page.click(f"{opus} pick-chip[name=add-model] input")
+    assert "Fake Flash" in chips(page, f"{opus} pick-chip[name=add-model]")
+    page.press(f"{opus} pick-chip[name=add-model] input", "Escape")
+
+    # On a phone the rows stack and nothing scrolls sideways.
+    page.set_viewport_size({"width": 390, "height": 800})
+    assert page.evaluate(
+        "(() => { const b = document.querySelector('.set-agent[data-row=\"agents.cheap\"]');"
+        " return b.scrollWidth <= b.clientWidth; })()"
+    )
     assert page.errors == []
 
 
@@ -3409,14 +3529,14 @@ def test_an_edit_on_disk_reloads_the_open_settings_page(settings_server, page):
 
 def test_an_edit_on_disk_under_unsaved_edits_offers_reload(settings_server, page):
     open_settings(page, settings_server.url)
-    model = '.set-agent[data-row="agents.opus"] pick-chip[name=model]'
-    page.fill(model + " input", "sonnet")
+    effort = '.set-agent[data-row="agents.opus"] pick-chip[name=effort]'
+    pick(page, effort, "max")
     (settings_server.root / ".aegis.yaml").write_text(SETTINGS_CONFIG + "# changed\n")
     page.wait_for_selector("#set-stale", timeout=5000)
-    assert page.input_value(model + " input") == "sonnet"
+    assert picked(page, effort) == "max"
     page.click("#set-reload")
     page.wait_for_function(
-        "document.querySelector('.set-agent[data-row=\"agents.opus\"] pick-chip[name=model]').value === 'opus'"
+        "document.querySelector('.set-agent[data-row=\"agents.opus\"] pick-chip[name=effort]').value === 'high'"
     )
 
 
@@ -3431,7 +3551,7 @@ def test_run_doctor_marks_the_row(settings_server, page):
 
 def test_typing_in_settings_survives_session_patches(settings_server, page):
     open_settings(page, settings_server.url)
-    box = '.set-agent[data-row="agents.opus"] pick-chip[name=model] input'
+    box = "#set-agents .set-agent:first-child input[name=name]"  # opus, renamed
     page.click(box)
     page.keyboard.press("End")
     page.keyboard.type("-x")
@@ -3440,7 +3560,7 @@ def test_typing_in_settings_survives_session_patches(settings_server, page):
     )  # a render() with no view change
     page.keyboard.type("y")
     assert page.input_value(box) == "opus-xy"
-    assert page.evaluate("document.activeElement.closest('pick-chip').name") == "model"
+    assert page.evaluate("document.activeElement.name") == "name"
 
 
 @pytest.fixture
