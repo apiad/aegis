@@ -73,6 +73,12 @@ agents:
 
 `model: x` is a cascade of one, and an agent gives `model` or `models`, never
 both. A model listed twice is a warning, and the repeat is ignored.
+`aegis doctor` warns when a cascade puts a model above one that scores
+higher on [Artificial Analysis](https://artificialanalysis.ai)'s Coding Index, naming the first such pair:
+"b (38.9) is above a (41.2) in the ranking", or "x (unranked) is above a
+(41.2) in the ranking" for a model the ranking does not score. The scores
+ship with aegis and are refreshed at each release, so a model released since
+is unranked. The order is still yours: the warning changes nothing.
 
 Every start from the agent (a new tab, `session_spawn`, a handoff, a queue
 worker, a workflow node, a schedule) runs the first model that is not cooling
