@@ -23,6 +23,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import re
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, replace
 from io import StringIO
@@ -595,12 +596,17 @@ def _set_agent(node: CommentedMap, a: AgentDoc) -> None:
     for f in ("effort", "permission"):
         holder = provider if isinstance(provider, dict) and f in provider else node
         _put(holder, f, getattr(a, f))
-    # Two or more models are written as models:, one as model:.
+    # Two or more models are written as models:, one as model:, unless the
+    # file already lists it under models:, which a person wrote as a list.
     held = isinstance(provider, dict) and ("model" in provider or "models" in provider)
     holder = provider if held else node
     if len(a.models) > 1:
         holder.pop("model", None)
         _put(holder, "models", list(a.models))
+    elif isinstance(listed := holder.get("models"), list):
+        holder.pop("model", None)
+        if list(listed) != [a.model]:
+            listed[:] = [a.model]  # in place, so the list keeps its style
     else:
         holder.pop("models", None)
         _put(holder, "model", a.model)
@@ -699,10 +705,10 @@ def write(path: Path, doc: ConfigDoc, expected: Stamp | None) -> list[Finding]:
         try:
             text = path.read_text()
             data = rt.load(text)
-            # A list keeps the file's own indentation, such as a models: list
-            # written by hand with its dashes indented.
+            # A file with a models: list keeps its own list indentation, such
+            # as dashes indented by hand; any other file is written as before.
             _, seq, offset = load_yaml_guess_indent(text)
-            if offset is not None:
+            if offset is not None and re.search(r"^\s*models:", text, re.M):
                 rt.indent(mapping=2, sequence=seq, offset=offset)
         except YAMLError as e:
             raise OpError(
