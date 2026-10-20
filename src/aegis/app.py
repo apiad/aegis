@@ -493,8 +493,9 @@ class App:
     def start_spec(self, spec: SpawnSpec) -> tuple[SpawnSpec, Gate]:
         """The spec a start runs and the gate it passes. A cascade starts on
         its first model that is neither cooling nor gated, or is closed with
-        why; a spec with no cascade asks its gate alone, as before cascades."""
-        if not spec.cascade:
+        why. A spec with no cascade, or whose model a person moved outside it
+        (a handoff after /model), asks that model's gate alone."""
+        if spec.model not in spec.cascade:
             return spec, self.gate(spec.owner, spec.harness, spec.model)
         model, why = pick(
             spec.cascade,

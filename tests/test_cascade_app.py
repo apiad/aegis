@@ -67,3 +67,12 @@ async def test_a_queue_task_waits_for_cooling_and_starts_when_it_ends(world):
     assert app.cooling.earliest(time.time()) is not None
     await until(lambda: t.status != "pending", timeout=5, what="the cooling to end")
     assert world.session(t.worker).spec.model == "opencode/a"
+
+
+async def test_a_handoff_keeps_a_model_chosen_outside_the_cascade(world):
+    old = await spawn(world)
+    await old.configure(model="opencode/z")
+    for m in ("opencode/a", "opencode/b"):
+        world.app.cool("opencode", m, Fall("model", None))
+    r = await world.app.registry.call("session.handoff", {"log_id": old.log_id})
+    assert world.session(r["log_id"]).spec.model == "opencode/z"
