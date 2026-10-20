@@ -29,11 +29,11 @@ import secrets
 import tempfile
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from . import host, notice_sources
+from .notice_sources import Item
 from .monitors import iso_now
 from .quota_gate import pool_for
 from .transcript.entries import NOTICE_HEADER
@@ -56,20 +56,7 @@ TEXT_MAX = 160
 STATUS_KEY = "status"
 NOTHING_TRACKED = "nothing tracked: no plan items open, no monitors, no tasks out"
 notice_sources.declare(STATUS_KEY, {"lines": 5})
-
-
-@dataclass(frozen=True)
-class Item:
-    """One thing a source says about a session. ``key`` is stable for the
-    condition (``m5:stalled``), so a text that changes every minute is told
-    once. ``clear`` is what to say when it ends; empty ends it silently.
-    ``wake`` delivers it at once to an idle owner, starting a turn."""
-
-    key: str
-    level: str  # "info" | "warn" | "critical"
-    text: str
-    clear: str = ""
-    wake: bool = False
+__all__ = ["Item", "Notices"]
 
 
 def _cut(text: str) -> str:
