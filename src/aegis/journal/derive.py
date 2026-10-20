@@ -52,6 +52,8 @@ class Row:
     # Where else a commit's hash may be: the directories the turn wrote in
     # before it, tried when the guessed directory does not hold the hash.
     near: tuple[str, ...] = ()
+    # Where a pr row's gh ran: names its repo and worktree.
+    workdir: str = ""
 
 
 class Deriver:
@@ -94,6 +96,14 @@ class Deriver:
                 rows += self._event(i, f"e{i}.{k}", ts, ev)
             return rows
         return self._own(i, ts, record)
+
+    def pending(self) -> list[str]:
+        """The files the open turn has written so far, before its row exists."""
+        return list(
+            dict.fromkeys(
+                p for op, p in self._turn if op in ("write", "edit", "bash-write")
+            )
+        )
 
     def _row(self, i: int, ts: float, kind: str, text: str, **kw) -> Row:
         return Row(i, ts, kind, text, self.handle, **kw)
@@ -173,7 +183,11 @@ class Deriver:
             )
         ]
         if pr := shell.pull_request(cmd, text, out.is_error):
-            rows.append(self._row(i, ts, "pr", pr, source=source))
+            rows.append(
+                self._row(
+                    i, ts, "pr", pr, source=source, workdir=shell.workdir(cmd, cwd)
+                )
+            )
         if not out.is_error:
             self._turn += [("bash-write", p) for p in shell.writes(cmd, cwd)]
         # Claude's Bash keeps its directory between the agent's own calls; a
