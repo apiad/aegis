@@ -296,16 +296,18 @@ def _agent(a: Agent, f: Found | None) -> list[Finding]:
     ]
 
 
-def _coding(model: str) -> str:
+def _intelligence(model: str) -> str:
     s = ranking().score(model)
-    return "unranked" if s is None or s.coding is None else f"{s.coding:.1f}"
+    return (
+        "unranked" if s is None or s.intelligence is None else f"{s.intelligence:.1f}"
+    )
 
 
 def _out_of_order(models: tuple[str, ...]) -> str | None:
     """The first model a cascade puts above one the ranking scores higher."""
     for above, better in zip(models, ranking().order(models)):
         if above != better:
-            return f"{above} ({_coding(above)}) is above {better} ({_coding(better)}) in the ranking"
+            return f"{above} ({_intelligence(above)}) is above {better} ({_intelligence(better)}) in the ranking"
     return None
 
 

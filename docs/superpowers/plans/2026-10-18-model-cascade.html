@@ -134,7 +134,7 @@ h3.slice{font-family:var(--font-mono);font-weight:500;font-size:13px;color:var(-
 
 <div class="kv">
   <b>spec</b><span><a href="../specs/2026-10-18-model-cascade-design.html">docs/superpowers/specs/2026-10-18-model-cascade-design.html</a>. Executors read both.</span>
-  <b>goal</b><span>An agent names an ordered list of models; a session starts on the best available one and falls to the next when a model runs out of quota or its provider fails; every model pick shows rank, Coding Index and price.</span>
+  <b>goal</b><span>An agent names an ordered list of models; a session starts on the best available one and falls to the next when a model runs out of quota or its provider fails; every model pick shows rank, Intelligence Index and price.</span>
   <b>architecture</b><span>A pure module, <code>cascade.py</code>, classifies errors, keeps the cooling table and picks a model. One app method, <code>App.start_spec</code>, replaces the bare <code>gate</code> calls at every place a harness starts. The session hands a failed turn to its host before it ends the turn, so a fallback stays inside the turn. A second pure module, <code>ranking.py</code>, reads <code>data/models.json</code> and annotates catalog models.</span>
   <b>stack</b><span>Python 3.13, pydantic op params, ruamel YAML, httpx (already a dependency), plain ES-module client with <code>&lt;pick-chip&gt;</code>, pytest with the fake OpenCode and fake Claude, Playwright for the slow lane.</span>
   <b>branch</b><span>Spec and plan live on <code>model-cascade</code> in <code>repos/aegis/.claude/worktrees/model-cascade</code>. Each slice is its own branch from <code>origin/main</code> after the one before merges (know-how/landing-a-change.md), with its own issue.</span>
@@ -148,7 +148,7 @@ h3.slice{font-family:var(--font-mono);font-weight:500;font-size:13px;color:var(-
   <li>A spawn with an explicit model override runs that model with no cascade.</li>
   <li>Cooling default when an error gives no retry-after: <code>DEFAULT_COOL_S = 600</code>.</li>
   <li>The onboarding proposal never includes a paid model.</li>
-  <li>Unranked models order after every ranked one; ranked ones by Coding Index descending, Intelligence Index breaking ties.</li>
+  <li>Models with no Intelligence Index order after every ranked one, in their input order; ranked ones by Intelligence Index descending, Coding Index breaking ties. The score shown is the Intelligence Index.</li>
   <li>Artificial Analysis attribution, as text with a link to https://artificialanalysis.ai, wherever scores are shown: "Scores by Artificial Analysis, refreshed &lt;date&gt;".</li>
   <li>Never <code>Path.cwd()</code> outside <code>src/aegis/cli.py</code> (<code>tests/test_no_cwd.py</code>).</li>
   <li>Client: no <code>&lt;select&gt;</code> or <code>&lt;datalist&gt;</code> (use <code>&lt;pick-chip&gt;</code>), no <code>confirm</code>/<code>alert</code>/<code>prompt</code>, every CSS rule scoped <code>#a2</code> reading only theme variables, and <code>make site-css</code> after any <code>base.css</code> change.</li>
@@ -188,6 +188,7 @@ h3.slice{font-family:var(--font-mono);font-weight:500;font-size:13px;color:var(-
   <li><b>Onboarding with only paid OpenCode models proposes the best one alone</b>, as before cascades; a paid model never joins the cascade. Interactive <code>aegis init</code> asks a cascade as one comma-separated list and offers the <code>light</code> queue.</li>
   <li><b>Add model offers only catalog models</b>; a typed id would add every prefix. A one-model agent the file lists under <code>models:</code> stays a list when edited down to one.</li>
   <li><b>Two queue tests read a finished worker's model from its meta</b>: a worker is archived as soon as its task completes.</li>
+  <li><b>The ranking orders by Intelligence Index, not Coding Index</b> (maintainer, after task 9): the first refresh found no Coding Index for 11 of 20 models, the newest Claude models among them, and an Intelligence Index for all 20, so ordering by Coding Index put the best models last. <code>Ranking.order</code> and <code>rank</code>, <code>models.list</code>, the chip, the Models view's default sort, the cascade editor and the doctor's warning use the Intelligence Index, the Coding Index breaking ties; the Models view keeps both columns. The ranking tests named in task 8 are renamed to match.</li>
   <li><b>Found on the way, filed separately:</b> #505, a worker continued at boot can finish before its queue task is loaded.</li>
 </ul>
 
@@ -414,7 +415,7 @@ The fixture names follow <code>tests/test_session_opencode.py</code>; adapt <cod
 </div>
 </details>
 
-<details class="task" id="task-9" data-state="doing">
+<details class="task" id="task-9" data-state="done">
 <summary><span class="num">9</span><span><span class="ttl">The refresh script, its release step and its rift check</span><span class="files">scripts/refresh-model-ranking · know-how/releasing.md · .rift.yaml · src/aegis/data/models.json</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Needs an Artificial Analysis API key in <code>AA_API_KEY</code> (a free key is enough). Without one the worker stops after step 2 and reports it.</p>

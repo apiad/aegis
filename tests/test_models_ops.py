@@ -33,8 +33,8 @@ RANKING = Ranking.from_dict(
                      "price_in": 15.0, "price_out": 75.0},
             "sonnet": {"aa": "s", "coding": 64.1, "intelligence": 68.0},
             "zen/kimi-free": {"aa": "k", "coding": 41.2, "intelligence": 54.0},
-            "zen/glm-free": {"aa": "g", "coding": 38.9, "intelligence": 50.1},
-            "zen/grok-free": {"aa": "x", "coding": 29.7, "intelligence": 40.3},
+            "zen/glm-free": {"aa": "g", "coding": 38.9, "intelligence": 55.0},
+            "zen/grok-free": {"aa": "x", "coding": 29.7, "intelligence": None},
         },
     }
 )  # fmt: skip
@@ -99,15 +99,16 @@ async def test_models_list_marks_used_by_with_cascade_positions(app):
     assert (opus["price_in"], opus["price_out"], opus["free"]) == (15.0, 75.0, False)
     pickle = rows["opencode", "zen/big-pickle"]
     assert (pickle["rank"], pickle["free"], pickle["used_by"]) == (None, True, [])
-    # In use first, then by Coding Index; unranked last.
+    # In use first, then by Intelligence Index; those with none last, as
+    # detected, even with a Coding Index (grok).
     assert [r["value"] for r in out["models"]] == [
         "opus",
-        "zen/kimi-free",
         "zen/glm-free",
+        "zen/kimi-free",
         "sonnet",
-        "zen/grok-free",
         "haiku",
         "zen/big-pickle",
+        "zen/grok-free",
     ]
     assert "models.list" in [op.name for op in app.registry.agent_ops()]
 

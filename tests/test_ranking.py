@@ -15,31 +15,33 @@ def small() -> Ranking:
             "models": {
                 "a": {"aa": "a", "coding": 41.2, "intelligence": 54.0},
                 "b": {"aa": "b", "coding": 38.9, "intelligence": 50.1},
-                "c": {"aa": "c", "coding": 38.9, "intelligence": 52.0},
+                "c": {"aa": "c", "coding": 45.0, "intelligence": 50.1},
                 "d": {"aa": "d", "coding": None, "intelligence": 60.0},
+                "e": {"aa": "e", "coding": 70.0, "intelligence": None},
             },
         }
     )
 
 
-def test_order_puts_higher_coding_first_and_unranked_last():
+def test_order_puts_higher_intelligence_first_and_unranked_last():
     r = small()
-    assert r.order(["x", "b", "y", "a", "d"]) == ["a", "b", "x", "y", "d"]
+    assert r.order(["x", "e", "b", "y", "a", "d"]) == ["d", "a", "b", "x", "e", "y"]
     assert r.score("a") == Score("a", 41.2, 54.0, None, None)
     assert r.score("x") is None
 
 
-def test_intelligence_breaks_a_coding_tie():
-    assert small().order(["b", "c"]) == ["c", "b"]
+def test_coding_breaks_an_intelligence_tie():
+    assert small().order(["b", "c", "a"]) == ["a", "c", "b"]
 
 
 def test_rank_counts_only_ranked_models_among_the_given_ones():
     r = small()
-    among = ["x", "b", "a", "d"]
-    assert r.rank("a", among) == 1
-    assert r.rank("b", among) == 2
+    among = ["x", "b", "a", "d", "e"]
+    assert r.rank("d", among) == 1  # no Coding Index, still ranked
+    assert r.rank("a", among) == 2
+    assert r.rank("b", among) == 3
     assert r.rank("x", among) is None
-    assert r.rank("d", among) is None  # no Coding Index: unranked
+    assert r.rank("e", among) is None  # no Intelligence Index: unranked
     assert r.rank("c", among) is None  # ranked, but not among them
 
 
