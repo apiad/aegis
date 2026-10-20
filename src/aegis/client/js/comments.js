@@ -4,8 +4,9 @@
 // note can be edited or the comment removed.
 //
 // Until Send or Discard the comments live in this browser's storage, under
-// the key the host gives (a sent file's URL, unique per version; a Files path
-// with its mtime), so a reload keeps them and nothing else sees them. Send
+// the key the host gives (a sent file's URL, unique per version; an
+// artifact's id; a Files path), so a reload keeps them and nothing else sees
+// them. Send
 // hands the host one message and forgets them, pins included.
 //
 // A comment's `at` is the host's: text offsets inside the content element
@@ -36,7 +37,8 @@ export function message(path, items) {
 }
 
 export class Tray {
-  // `send(message)` takes the message; `path` heads it.
+  // `send(message)` takes the message, and answers false (or a promise of
+  // false) when it did not land; `path` heads it.
   constructor(host, key, send, path) {
     this.store = `aegis.comments.${key}`;
     this.send = send;
@@ -86,10 +88,10 @@ export class Tray {
     const send = el("button", "btn primary", "Send");
     send.type = "button";
     send.dataset.act = "send";
-    send.addEventListener("click", () => {
-      const text = message(this.path, this.items);
-      this.clear();
-      this.send(text);
+    // Forgotten only once the message landed: Files may ask to leave unsaved
+    // edits first, and Cancel keeps both.
+    send.addEventListener("click", async () => {
+      if ((await this.send(message(this.path, this.items))) !== false) this.clear();
     });
     const discard = el("button", "btn", "Discard");
     discard.type = "button";

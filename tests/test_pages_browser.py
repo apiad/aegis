@@ -37,6 +37,14 @@ def page(browser):  # noqa: F811
     ctx.close()
 
 
+def pick(pg, item: str) -> None:
+    """Pick a menu item as a person would, after a page's menu has settled
+    (a page-proposed menu takes no click in its first 500 ms)."""
+    pg.wait_for_selector(f".cmenu [data-id={item}]")
+    pg.wait_for_timeout(550)
+    pg.click(f".cmenu [data-id={item}]")
+
+
 def send(pg, n, paths):
     pg.fill("#input", f"/mcp file_send {json.dumps({'paths': paths})}")
     pg.press("#input", "Enter")
@@ -131,7 +139,7 @@ def test_ask_in_a_markdown_file_names_the_nearest_heading(server, page):  # noqa
     view(page, ".doc h2")
     page.locator("#viewer .doc p").first.click(button="right")
     page.wait_for_selector(".cmenu [data-id=ask]")
-    page.click(".cmenu [data-id=ask]")
+    pick(page, "ask")
     assert page.input_value("#input") == "`notes.md` § Notes\n> intro\n\nlater"
     assert page.errors == []
 
@@ -171,7 +179,7 @@ def test_three_comments_become_one_message_and_vanish(server, page):  # noqa: F8
         }"""
     )
     page.mouse.click(box["x"], box["y"], button="right")
-    page.click(".cmenu [data-id=comment]")
+    pick(page, "comment")
     page.keyboard.type("second")
     tray = page.locator("#viewer .ctray")
     assert tray.locator(".cn").inner_text() == "3 comments"
@@ -181,7 +189,7 @@ def test_three_comments_become_one_message_and_vanish(server, page):  # noqa: F8
     assert tray.locator(".cn").inner_text() == "2 comments"
     page.evaluate("getSelection().removeAllRanges()")
     page.mouse.click(box["x"], box["y"], button="right")
-    page.click(".cmenu [data-id=comment]")
+    pick(page, "comment")
     page.keyboard.type("second")
 
     tray.locator("[data-act=send]").click()
@@ -261,7 +269,7 @@ def test_a_right_click_in_a_sent_page_asks_about_that_element(server, page):  # 
     page.wait_for_selector(".cmenu", state="detached")
     frame.wait_for_function(f"{outline} === ''")  # the host's message lands after
     frame.locator("#p1").click(button="right")
-    page.click(".cmenu [data-id=ask]")
+    pick(page, "ask")
     page.wait_for_selector("#viewer", state="hidden")
     assert page.input_value("#input") == "`page.html` § Setup › #p1\n> kiwi\n\nlater"
     assert page.errors == []
@@ -276,7 +284,7 @@ def test_comments_in_a_page_and_an_artifact(server, page):  # noqa: F811
     view(page, "iframe")
     frame = frame_of(page, "#viewer iframe")
     frame.locator("#p1").click(button="right")
-    page.click(".cmenu [data-id=comment]")
+    pick(page, "comment")
     page.keyboard.type("one")
     # A selection in the page gets the host's bar, over it.
     frame.locator("p:not([id])").dblclick(
@@ -305,7 +313,7 @@ def test_comments_in_a_page_and_an_artifact(server, page):  # noqa: F811
     page.locator(".row.artifact .fbar .view").last.click()
     frame = frame_of(page, "#viewer iframe[data-artifact]")
     frame.locator("#q").click(button="right")
-    page.click(".cmenu [data-id=comment]")
+    pick(page, "comment")
     page.keyboard.type("ripe")
     page.locator("#viewer .ctray [data-act=send]").click()
     assert page.input_value("#input") == (
@@ -354,7 +362,7 @@ def test_a_long_press_inside_a_page_on_a_phone(server, page, browser):  # noqa: 
     cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
     phone.wait_for_timeout(300)
     assert phone.locator(".cmenu").count() == 1  # the release did not close it
-    phone.click(".cmenu [data-id=ask]")
+    pick(phone, "ask")
     assert phone.input_value("#input").startswith("`page.html` § Setup › #p1\n> kiwi")
     ctx.close()
     assert page.errors == []
@@ -443,11 +451,96 @@ def test_comments_on_a_page_in_files_go_to_the_last_session(server, page):  # no
     page.goto(f"{server.url.split('#')[0]}#files=page.html")
     frame = frame_of(page, ".v-files .fview iframe")
     frame.locator("#p1").click(button="right")
-    page.click(".cmenu [data-id=comment]")
+    pick(page, "comment")
     page.keyboard.type("ripe")
     page.locator(".v-files .ctray [data-act=send]").click()
     page.wait_for_function(f"location.hash === '#s={key}'")
     assert page.input_value("#input") == (
         "Comments on page.html:\n1. § Setup › #p1\n   > kiwi\n   ripe\n\nlater"
+    )
+    assert page.errors == []
+
+
+TRAP = (
+    "<html><body><h2>x</h2><button id=b style='margin:80px'>press</button>"
+    "<script>b.addEventListener('mousedown', (e) => parent.postMessage({"
+    " jsonrpc: '2.0', method: 'aegis/point', params: { kind: 'menu',"
+    " x: e.clientX - 20, y: e.clientY - 12, locator: { heading: 'x' },"
+    " text: 'made up' } }, '*'))</script></body></html>"
+)
+
+
+def test_a_page_cannot_put_ask_under_the_next_click(server, page):  # noqa: F811
+    """The page chose where its menu opens: a click aimed at the page that
+    lands on an item right after takes nothing."""
+    (server.root / "trap.html").write_text(TRAP)
+    page.goto(server.url)
+    spawn(page)
+    send(page, 1, ["trap.html"])
+    page.fill("#input", "later")
+    view(page, "iframe")
+    frame = frame_of(page, "#viewer iframe")
+    box = frame.locator("#b").bounding_box()
+    at = (box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.click(*at)
+    page.wait_for_selector(".cmenu")
+    page.mouse.click(*at)  # the second click of the two, on the host's menu
+    page.wait_for_timeout(200)
+    assert page.locator("#viewer").is_visible()
+    page.keyboard.press("Escape")
+    assert page.evaluate("document.getElementById('input').value") == "later"
+    assert page.errors == []
+
+
+def test_a_press_elsewhere_in_the_page_closes_its_menu(server, page):  # noqa: F811
+    (server.root / "page.html").write_text(PAGE)
+    page.goto(server.url)
+    spawn(page)
+    send(page, 1, ["page.html"])
+    view(page, "iframe")
+    frame = frame_of(page, "#viewer iframe")
+    frame.locator("#p1").click(button="right")
+    page.wait_for_selector(".cmenu")
+    box = page.locator("#viewer iframe").bounding_box()
+    page.mouse.click(box["x"] + box["width"] - 10, box["y"] + box["height"] - 10)
+    page.wait_for_selector(".cmenu", state="detached")
+    frame.wait_for_function("document.getElementById('p1').style.outline === ''")
+    assert page.errors == []
+
+
+def test_files_send_cancelled_at_unsaved_edits_keeps_the_comments(
+    server,  # noqa: F811
+    page,
+):
+    (server.root / "notes.md").write_text("# Notes\n\n## Setup\n\nrun kiwi here\n")
+    page.goto(server.url)
+    key = spawn(page)
+    page.goto(f"{server.url.split('#')[0]}#files=notes.md")
+    page.wait_for_selector(".v-files .fview .md h2")
+    page.locator(".v-files .fview .md p").last.click(button="right")
+    pick(page, "comment")
+    page.keyboard.type("ripe")
+    page.click(".v-files .fstrip [data-mode=src]")
+    page.click(".v-files .cm-content")
+    page.keyboard.press("Control+End")
+    page.keyboard.type("more\n")
+    page.wait_for_selector(".fbar .dirty:not([hidden])")
+    tray = page.locator(".v-files .ctray")
+    tray.locator("[data-act=send]").click()
+    page.click(".dialog .btn[data-value=cancel]")
+    assert tray.locator(".cn").inner_text() == "1 comment"
+    assert page.evaluate("location.hash") == "#files=notes.md"
+    # Discard the edits this time: the message lands, and the tray empties.
+    tray.locator("[data-act=send]").click()
+    page.click(".dialog .btn[data-value=discard]")
+    page.wait_for_function(f"location.hash === '#s={key}'")
+    assert page.input_value("#input").startswith(
+        "Comments on notes.md:\n1. `notes.md` § Setup\n   > run kiwi here\n   ripe"
+    )
+    assert (
+        page.evaluate(
+            "Object.keys(localStorage).filter(k => k.startsWith('aegis.comments.'))"
+        )
+        == []
     )
     assert page.errors == []

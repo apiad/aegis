@@ -984,10 +984,13 @@ mounted and draws the menu or the selection bar in its own document
 (`app.js`, `pagePoint`), only while the pointer is over that frame or the
 focus is in it. A page's script can still take the focus and make a menu
 appear; it can never put text in a composer, because that menu takes no
-focus and only a click on one of its items writes. A field, a link, an image
+focus and only a click on one of its items writes, never in its first half
+second, since the page chose where it opens. A field, a link, an image
 or a press with no text keeps the browser's own menu, and a scroll or Esc in
-the page closes what the host drew for it. A page whose own CSP blocks the
-script simply has no menu. Comments on files and pages live in
+the page closes what the host drew for it, as does any press in the page.
+`/via` adds the tag too, once, so a far server older than this one gets it,
+and passes a download through as one. A page whose own CSP blocks the script
+simply has no menu. Comments on files and pages live in
 the browser's storage until sent, and the server never sees them
 (`client/js/comments.js`).
 

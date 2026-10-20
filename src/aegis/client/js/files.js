@@ -904,8 +904,9 @@ export class Files {
     }
     const host = el("div", "fed");
     pane.append(host);
-    // Comments, kept per version: the path and its mtime.
-    this.tray = this.point ? new Tray(pane, `${path}@${r.mtime}`, (text) => this.point.send(text), path) : null;
+    // Comments, by the path: a save here changes the mtime, and what was
+    // said about the file before it still stands.
+    this.tray = this.point ? new Tray(pane, `files:${path}`, (text) => this.point.send(text), path) : null;
     const ed = await openEditor(host, {
       text: r.text,
       path,

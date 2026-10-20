@@ -3714,8 +3714,10 @@ function pointItems({ locator, text, to, comment, leave = () => {} }) {
 // post while the person types in the composer opens nothing. A page can take
 // the focus by script, so that is not proof: what keeps a made-up proposal
 // harmless is that its menu never takes the focus, and only a click on an
-// item writes anything. A page scrolled, Esc in it, or a selection gone
+// item writes anything, and not in its first half second: the page chose
+// where the menu opens, and could put Ask under a click aimed at the page. A page scrolled, Esc in it, or a selection gone
 // closes only what that frame drew.
+const PAGE_MENU_SETTLE_MS = 500; // a page's menu takes no click this soon
 function pagePoint(frame, { kind, x, y, rect, touch, locator = {}, text = "" }) {
   if (kind === "clear") {
     if (cmenu.current()?.target === frame) cmenu.close();
@@ -3748,29 +3750,36 @@ function pagePoint(frame, { kind, x, y, rect, touch, locator = {}, text = "" }) 
   artifacts.tell(frame, "aegis/point-open");
   cmenu.open({ groups: [items] }, { x: box.left + x, y: box.top + y, touch }, frame, {
     focus: false,
+    settle: PAGE_MENU_SETTLE_MS,
     onClose: () => artifacts.tell(frame, "aegis/point-closed"),
   });
 }
 
 // `text` into session `key`'s composer, going there first; Files' unsaved
 // edits ask before it leaves. No session to go to: the New session form.
+// True when the text landed.
 async function toComposer(key, text, opts) {
   const s = key && sessions.get(key);
   if (!s || !mine(s)) return newSessionWith(null, text);
   if (shown !== key) {
-    if (filesView.leaving(route(hashOf(key))) && !(await filesView.confirmLeave())) return;
+    if (filesView.leaving(route(hashOf(key))) && !(await filesView.confirmLeave())) return false;
     go(hashOf(key));
   }
-  if (shown === key) insertIntoComposer(text, opts);
+  if (shown !== key) return false;
+  insertIntoComposer(text, opts);
+  return true;
 }
 
 // The New session form with `text` for its prompt: from session `s`'s agent,
-// model and folder, or the form's own picks.
+// model and folder, or the form's own picks. The text is in the form at once.
 function newSessionWith(s, text) {
-  if (s) return openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, prompt: `From ${s.handle}:\n${text}\n\n` });
-  $("sp-text").value = `${text}\n\n${$("sp-text").value}`;
-  go("#new");
-  spawnGrow();
+  if (s) openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, prompt: `From ${s.handle}:\n${text}\n\n` });
+  else {
+    $("sp-text").value = `${text}\n\n${$("sp-text").value}`;
+    go("#new");
+    spawnGrow();
+  }
+  return true;
 }
 
 // A transcript row's menu (spec 06), by kind; a selection inside the row puts

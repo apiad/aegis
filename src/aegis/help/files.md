@@ -115,8 +115,9 @@ Markdown and HTML, and over a sent file opened from its card. A
 right-click (not with Shift) or a long press on rendered Markdown, a line of a
 sent file or an element of a page opens the same items for what is under it.
 In the editor a right-click is the browser's own, with its paste, and so is
-one on a field, a link or an image inside a page. Scrolling a page closes its
-menu.
+one on a field, a link or an image inside a page. Scrolling a page or
+pressing anywhere in it closes its menu, and the menu takes no click in its
+first half second.
 
 - Ask writes the place and the quote into the message box, above your draft:
   `` `src/park.py:40-52` `` and the lines for code, the path and the nearest

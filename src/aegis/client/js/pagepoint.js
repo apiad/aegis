@@ -101,6 +101,9 @@
   let swallow = false;
   document.addEventListener("pointerdown", (ev) => {
     swallow = false;
+    // A press anywhere in the page is a press outside the host's menu: the
+    // host never sees it, so it is told.
+    if (pointed) post({ kind: "clear" });
     clearTimeout(timer);
     if (ev.pointerType === "mouse" || ev.target.closest?.(NATIVE)) return;
     at = [ev.clientX, ev.clientY];
@@ -167,6 +170,7 @@
   document.addEventListener(
     "scroll",
     () => {
+      clearTimeout(quiet); // a report still due would bring the bar back where it was
       if (!pointed && !shown) return;
       shown = "";
       post({ kind: "clear" });

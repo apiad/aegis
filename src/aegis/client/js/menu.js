@@ -148,8 +148,11 @@ function el(tag, cls, text) {
 
 // `at` is a point (a right-click, a long press) or an anchor to drop under.
 // `onClose` runs when it closes, however it does. `focus: false` leaves the
-// focus where it is (a menu a page proposed: keys never pick its items).
-export function open(menu, at, target, { onClose, focus = true } = {}) {
+// focus where it is, and `settle` ms pass before a click picks an item: a menu
+// a page proposed, where the page chose the point, so a click the person
+// aimed at the page cannot land on an item it put under the pointer.
+export function open(menu, at, target, { onClose, focus = true, settle = 0 } = {}) {
+  const armed = performance.now() + settle;
   close();
   const node = el("div", "cmenu");
   node.setAttribute("role", "menu");
@@ -170,6 +173,7 @@ export function open(menu, at, target, { onClose, focus = true } = {}) {
           b.title = item.disabled;
         }
         b.addEventListener("click", () => {
+          if (performance.now() < armed) return;
           close();
           refocus(target);
           item.run();

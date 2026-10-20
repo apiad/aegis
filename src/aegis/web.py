@@ -365,7 +365,11 @@ def build_web(
         if link is None or not (host in allowed_hosts or host in public):
             return PlainTextResponse("Not Found", status_code=404)
         download = request.query_params.get("download") == "1"
+        # A download asks the far server for one too: its preview of a page
+        # carries the pointing script, and a download is the file's own bytes.
         url = f"{link.url}{files.url(p['file_id'], p['name'])}"
+        if download:
+            url += "?download=1"
         client = httpx.AsyncClient(timeout=httpx.Timeout(30, read=None))
         try:
             # Identity: the bytes go out as they arrive, under this server's
@@ -392,7 +396,16 @@ def build_web(
                 await upstream.aclose()
                 await client.aclose()
 
-        return StreamingResponse(body(), headers=files.via_headers(p["name"], download))
+        headers = files.via_headers(p["name"], download)
+        if not download and files.classify_name(p["name"])[1] == "html":
+            # The script here too, once: a far server older than it sends none.
+            page = b"".join([chunk async for chunk in body()])
+            return Response(
+                inject_point(page),
+                media_type=headers.pop("Content-Type"),
+                headers=headers,
+            )
+        return StreamingResponse(body(), headers=headers)
 
     async def ws(websocket: WebSocket) -> None:
         host = websocket.headers.get("host", "")

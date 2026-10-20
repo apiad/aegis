@@ -426,9 +426,13 @@ async def test_a_sent_file_is_streamed_through_via(pair, tmp_path):
     path = files.url(sent["file_id"], sent["name"])
     async with httpx.AsyncClient() as c:
         r = await c.get(f"{alpha.base}/via/beta{path}")
-        # The far server's preview, pointing script included (#479).
+        # The preview carries the pointing script once, the far server's or
+        # this one's; a download is the file's own bytes (#479).
         tag = '<script src="/static/js/pagepoint.js"></script>'
         assert r.status_code == 200 and r.text == f"<h1>hi</h1>{tag}"
+        dl = await c.get(f"{alpha.base}/via/beta{path}?download=1")
+        assert dl.content == b"<h1>hi</h1>"
+        assert dl.headers["content-disposition"].startswith("attachment")
         assert "sandbox" in r.headers["content-security-policy"]
         miss = await c.get(f"{alpha.base}/via/gamma{path}")
         assert miss.status_code == 404
