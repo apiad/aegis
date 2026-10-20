@@ -417,10 +417,14 @@ with no restart. A file that does not parse leaves the last one that did in
 force, and says so, so a half-typed edit never stops a spawn. A deleted file
 means no agents and no queues.
 
-The Settings page edits the same file as a form: agents with their chips,
-models and priming, which one is the default, and the queues. It keeps the file's
-comments and key order, and refuses to save over a change made on disk since
-you opened it. Only an admin can save.
+The Settings page edits the same file as a form, every key on this page
+included: agents with their chips, models, priming and kept tools, which one
+is the default, the queues, recaps and side notes, terminals, the memory
+caps, the context thresholds, nudges, notices, parking, untested versions,
+workflows and the network readings. A field left blank is left out of the
+file, so its default holds; the field shows the default. It keeps the file's
+comments and key order, and keys it does not read, and refuses to save over a
+change made on disk since you opened it. Only an admin can save.
 
 `aegis init` writes a first file from the harnesses installed on this machine,
 proposing agents and queues and asking about each (`aegis init --yes` takes

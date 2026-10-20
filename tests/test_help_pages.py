@@ -150,12 +150,13 @@ def test_every_cli_subcommand_a_page_names_exists(pages):
 
 def test_every_config_key_is_on_the_config_page(pages):
     """A key is written with its colon. ``name`` is each agent's and queue's
-    key in its map, not a key inside it."""
+    key in its map, not a key inside it; ``settings`` holds the keys of the
+    blocks the page draws from its schema, each named in its own block."""
     keys = {
         k
         for model in (ConfigDoc, AgentDoc, QueueDoc)
         for k in model.model_fields
-        if k != "name"
+        if k not in ("name", "settings")
     }
     missing = sorted(k for k in keys if f"`{k}:`" not in pages["config"])
     assert not missing, f"the config page does not name {missing}"

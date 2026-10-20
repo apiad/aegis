@@ -375,9 +375,9 @@ def test_a_file_without_models_keeps_its_old_list_indentation(tmp_path):
     p.write_text(
         "agents:\n    o:\n        provider: claude-code\n        model: opus\n"
         "        effort: high\n        permission: full\n"
-        "        keep_harness_tools:\n            - WebSearch\n"
+        "        keep_harness_tools:\n            - Agent\n"
     )
     doc = doc_from(load(p)[0])
     doc.agents[0].effort = "low"
     assert write(p, doc, stamp_of(p)) == []
-    assert "keep_harness_tools:\n    - WebSearch" in p.read_text()
+    assert "keep_harness_tools:\n    - Agent" in p.read_text()

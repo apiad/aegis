@@ -37,6 +37,7 @@ from ruamel.yaml.scalarstring import LiteralScalarString
 from ruamel.yaml.util import load_yaml_guess_indent
 
 from .agents import EFFORTS, HARNESSES, PERMISSION_ORDER, Agent, agents_from
+from .claude.process import REPLACED_TOOLS
 
 # Imported for their notice sources' declarations (notice_sources.py), so
 # the first parse of notices: knows them.
@@ -44,19 +45,20 @@ from . import monitors as _monitors  # noqa: F401
 from . import nudges as _nudges  # noqa: F401
 from . import notice_sources
 from .cgroups import DEFAULT_MEMORY_MAX, parse_size
+from .net.config import KEYS as NET_KEYS
 from .net.config import NetConfig, network_from
 from .ops import OpError
 from .queues import queues_from
 from .roots import CONFIG_FILE
-from .term_profiles import terminals_from
+from .term_profiles import RESTARTS, terminals_from
 
 log = logging.getLogger("aegis.config")
 
 WATCH_EVERY_S = 1.0
 TOP_KEYS = (
-    "agents", "queues", "default_agent", "recap", "context", "session_memory_max",
-    "terminals", "terminal_memory_max", "park", "network", "workflows",
-    "harness_versions", "notices", "nudges",
+    "agents", "queues", "default_agent", "recap", "btw", "context",
+    "session_memory_max", "terminals", "terminal_memory_max", "park", "network",
+    "workflows", "harness_versions", "notices", "nudges",
 )  # fmt: skip
 AGENT_KEYS = (
     "harness", "provider", "model", "models", "effort", "permission", "priming",
@@ -388,6 +390,90 @@ def harness_versions_from(raw: object) -> dict:
     return out
 
 
+# The sections of the Settings page drawn from the wire's schema alone: each
+# block that is one value, or a mapping of values over its defaults. Agents,
+# queues, terminals, parking, workflows and untested versions have controls
+# of their own in settings.js.
+SECTIONS = {
+    "generators": (
+        "Recaps and side notes",
+        "A Claude Code agent writes a recap when a person returns to a long unread"
+        " stretch, and answers /btw side questions. Blank turns each off.",
+    ),
+    "memory": (
+        "Memory",
+        "The memory one session, or one terminal, may use: a size (3G, 512M), a"
+        " share of the host's RAM (40%) or max. Blank is 40%.",
+    ),
+    "context": (
+        "Context",
+        "From handoff_at tokens turn_end tells an agent its context size (0 is"
+        " off). A tab warns that its cache went cold after cold_after seconds"
+        " idle with at least cold_min tokens.",
+    ),
+    "nudges": (
+        "Nudges",
+        "Seconds after a turn that ended without turn_end, and minutes of work on"
+        " a plan left untouched, before aegis asks the agent where it stands.",
+    ),
+    "notices": (
+        "Notices",
+        "When aegis tells agents that the host runs short, and what each source"
+        " reports. Off turns a kind off; blank keeps its default.",
+    ),
+    "network": (
+        "Network",
+        "What the Net, Exit and Speed readings reach, and how often, in seconds."
+        " A speed_interval of 0 turns the speed test off.",
+    ),
+}
+
+
+def fields() -> list[dict]:
+    """The keys the Settings page draws from the wire, in order. ``kind`` says
+    which control: agent (a Claude Code agent), size, int, number, bool, list
+    (of strings) or switch (a notice kind, written ``false`` when off);
+    ``off`` marks a number the file may set to false."""
+    out: list[dict] = []
+
+    def add(section: str, key: str, kind: str, default: object, **more) -> None:
+        out.append({"section": section, "key": key, "kind": kind} | more | {
+            "default": default
+        })  # fmt: skip
+
+    add("generators", "recap.agent", "agent", None)
+    add("generators", "btw.agent", "agent", None)
+    add("memory", "session_memory_max", "size", DEFAULT_MEMORY_MAX)
+    add("memory", "terminal_memory_max", "size", DEFAULT_MEMORY_MAX)
+    for k, v in CONTEXT_DEFAULTS.items():
+        add("context", f"context.{k}", "int", v)
+    add("nudges", "nudges.silent_s", "number", NUDGES_DEFAULTS["silent_s"], off=True)
+    add("nudges", "nudges.plan_min", "number", NUDGES_DEFAULTS["plan_min"])
+    for kind, d in _notices_defaults().items():
+        add("notices", f"notices.{kind}", "switch", True)
+        for k, v in (d if isinstance(d, dict) else {}).items():
+            what = (
+                "bool"
+                if isinstance(v, bool)
+                else "int"
+                if isinstance(v, int)
+                else "number"
+            )
+            add("notices", f"notices.{kind}.{k}", what, v)
+    net = NetConfig()
+    for k in NET_KEYS:
+        v = getattr(net, k)
+        if k == "anchors":
+            add("network", "network.anchors", "list", [_anchor(*a) for a in v])
+        else:
+            add("network", f"network.{k}", "bool" if k == "enabled" else "number", v)
+    return out
+
+
+def _anchor(host: str, port: int) -> str:
+    return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+
+
 def session_memory_max_from(
     raw: object, key: str = "session_memory_max"
 ) -> tuple[object, str | None]:
@@ -466,6 +552,7 @@ class AgentDoc(BaseModel):
     effort: str = ""
     permission: str = ""
     priming: str | None = None
+    keep_harness_tools: list[str] = Field(default_factory=list)
 
 
 class QueueDoc(BaseModel):
@@ -473,6 +560,18 @@ class QueueDoc(BaseModel):
     name: str
     agent: str = ""
     max_parallel: int | None = None
+    # None: the file leaves it out, which reads as true.
+    quiet: bool | None = None
+
+
+class TerminalDoc(BaseModel):
+    model_config = {"extra": "forbid"}
+    name: str
+    cmd: str = ""
+    cwd: str = ""
+    restart: str = ""  # blank: left out, which reads as no
+    env: dict[str, str] = Field(default_factory=dict)
+    access: dict[str, str] = Field(default_factory=dict)
 
 
 class HarnessVersionsDoc(BaseModel):
@@ -497,6 +596,12 @@ class ConfigDoc(BaseModel):
     # The harness_versions: block; the defaults when the file has none, or
     # one the reader refuses.
     harness_versions: HarnessVersionsDoc = Field(default_factory=HarnessVersionsDoc)
+    terminals: list[TerminalDoc] = Field(default_factory=list)
+    # Each key of fields() the file sets, by its dotted path; a switch only
+    # when it is off (false).
+    settings: dict[str, bool | int | float | str | list[str]] = Field(
+        default_factory=dict
+    )
 
 
 def doc_from(data: dict) -> ConfigDoc:
@@ -509,6 +614,7 @@ def doc_from(data: dict) -> ConfigDoc:
             effort=a.effort,
             permission=a.permission,
             priming=a.priming,
+            keep_harness_tools=_keep_raw(data, a.name),
         )
         for a in agents_from(data)
     ]
@@ -523,6 +629,7 @@ def doc_from(data: dict) -> ConfigDoc:
                 name=str(name),
                 agent=str(q.get("agent") or ""),
                 max_parallel=limit if ok else None,
+                quiet=q["quiet"] if isinstance(q.get("quiet"), bool) else None,
             )
         )
     d = data.get("default_agent")
@@ -538,7 +645,90 @@ def doc_from(data: dict) -> ConfigDoc:
         harness_versions=HarnessVersionsDoc(
             **{k: v for k, v in hv.items() if k != "error"}
         ),
+        terminals=_terminals_doc(data.get("terminals")),
+        settings=_settings_doc(data),
     )
+
+
+def _keep_raw(data: dict, name: str) -> list[str]:
+    """The agent's keep_harness_tools as the file has it, so a save does not
+    drop a list the reader refuses: it stays on the card, with its error."""
+    node = (data.get("agents") or {}).get(name)
+    node = node if isinstance(node, dict) else {}
+    provider = node.get("provider")
+    raw = node.get("keep_harness_tools")
+    if isinstance(provider, dict) and "keep_harness_tools" in provider:
+        raw = provider["keep_harness_tools"]
+    return [str(t) for t in raw] if isinstance(raw, list) else []
+
+
+def _terminals_doc(raw: object) -> list[TerminalDoc]:
+    out = []
+    entries: dict = raw if isinstance(raw, dict) else {}
+    for name, entry in entries.items():
+        t = {str(k): v for k, v in entry.items()} if isinstance(entry, dict) else {}
+
+        def strs(k: str) -> dict[str, str]:
+            m = t.get(k)
+            return {str(a): str(b) for a, b in m.items()} if isinstance(m, dict) else {}
+
+        out.append(
+            TerminalDoc(
+                name=str(name),
+                cmd=str(t.get("cmd") or ""),
+                cwd=str(t.get("cwd") or ""),
+                restart=str(t.get("restart") or ""),
+                env=strs("env"),
+                access=strs("access"),
+            )
+        )
+    return out
+
+
+_MISSING = object()
+
+
+def _at(data: object, key: str) -> object:
+    """The value at a dotted path, or _MISSING when a step is not a mapping."""
+    node = data
+    for part in key.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return _MISSING
+        node = dict(node)[part]
+    return node
+
+
+def _settings_doc(data: dict) -> dict:
+    out: dict = {}
+    for f in fields():
+        v = _at(data, f["key"])
+        if f["kind"] == "switch":
+            if v is False:
+                out[f["key"]] = False
+        elif v is not _MISSING and v is not None and not isinstance(v, dict):
+            out[f["key"]] = [str(x) for x in v] if isinstance(v, list) else v
+    return out
+
+
+def _settings_blocks(settings: dict) -> dict:
+    """The settings as the file would hold them: nested, without what sits
+    under a switch that is off."""
+    out: dict = {}
+    for f in fields():
+        key = f["key"]
+        if key not in settings or _under_off(settings, key):
+            continue
+        *parents, last = key.split(".")
+        node = out
+        for part in parents:
+            node = node.setdefault(part, {})
+        node[last] = settings[key]
+    return out
+
+
+def _under_off(settings: dict, key: str) -> bool:
+    parts = key.split(".")
+    return any(settings.get(".".join(parts[:i])) is False for i in range(1, len(parts)))
 
 
 @dataclass(frozen=True)
@@ -615,7 +805,11 @@ class Snapshot:
                 "harnesses": list(HARNESSES),
                 "efforts": list(EFFORTS),
                 "permissions": list(PERMISSION_ORDER),
+                "tools": list(REPLACED_TOOLS),
+                "restarts": list(RESTARTS),
             },
+            "schema": fields(),
+            "sections": {k: {"title": t, "note": n} for k, (t, n) in SECTIONS.items()},
         }
 
 
@@ -660,6 +854,9 @@ def validate(doc: ConfigDoc) -> list[Finding]:
 
     def err(row: str, where: str, message: str) -> None:
         out.append(Finding("error", where, message, row))
+
+    _validate_terminals(doc, err)
+    _validate_settings(doc, err)
 
     names = [a.name for a in doc.agents]
     for a in doc.agents:
@@ -721,6 +918,60 @@ def validate(doc: ConfigDoc) -> list[Finding]:
     return out
 
 
+def _validate_terminals(doc: ConfigDoc, err: Callable[[str, str, str], None]) -> None:
+    names = [t.name for t in doc.terminals]
+    for t in doc.terminals:
+        row = f"terminals.{t.name}"
+        if not t.name.strip():
+            err(row, row, "a terminal profile needs a name")
+        elif names.count(t.name) > 1:
+            err(row, row, f"two terminal profiles are named {t.name!r}")
+        elif error := terminals_from({t.name: _profile_raw(t)})[0][t.name].get("error"):
+            err(row, row, error)
+
+
+def _profile_raw(t: TerminalDoc) -> dict:
+    raw: dict = {"cmd": t.cmd, "cwd": t.cwd}
+    if t.restart:
+        raw["restart"] = t.restart
+    return raw | {k: v for k, v in (("env", t.env), ("access", t.access)) if v}
+
+
+def _validate_settings(doc: ConfigDoc, err: Callable[[str, str, str], None]) -> None:
+    """The rules each block's reader applies, on the block's section."""
+    known = {f["key"] for f in fields()}
+    for k in doc.settings:
+        if k not in known:
+            err(k.split(".")[0], k, f"aegis does not read {k!r}")
+    b = _settings_blocks(doc.settings)
+    for key in ("session_memory_max", "terminal_memory_max"):
+        if key in b and (e := session_memory_max_from(b[key], key)[1]):
+            err(key, key, e)
+    readers: dict[str, Callable[[object], object]] = {
+        "context": lambda v: context_from(v).get("error"),
+        "nudges": lambda v: nudges_from(v).get("error"),
+        "notices": lambda v: notices_from(v).get("error"),
+        "network": lambda v: network_from(v)[1],
+    }
+    for block, error_of in readers.items():
+        if block in b and (e := error_of(b[block])):
+            err(block, block, str(e))
+    agents = {a.name: a for a in doc.agents}
+    for key in ("recap", "btw"):
+        name = doc.settings.get(f"{key}.agent")
+        if not name:
+            continue
+        a = agents.get(str(name))
+        if a is None:
+            err(key, f"{key}.agent", f"no agent named {name!r}")
+        elif a.harness != "claude-code":
+            err(
+                key,
+                f"{key}.agent",
+                f"{key} needs a claude-code agent; {name} runs {a.harness}",
+            )
+
+
 def _put(node: dict, key: str, value: object) -> None:
     # Only a changed value is assigned, so an untouched one keeps its quotes.
     if node.get(key) != value:
@@ -778,6 +1029,15 @@ def _set_agent(node: CommentedMap, a: AgentDoc) -> None:
             )
     else:
         node.pop("priming", None)
+    keeper = (
+        provider
+        if isinstance(provider, dict) and "keep_harness_tools" in provider
+        else node
+    )
+    if a.keep_harness_tools:
+        _put(keeper, "keep_harness_tools", list(a.keep_harness_tools))
+    else:
+        keeper.pop("keep_harness_tools", None)
 
 
 def _apply(data: CommentedMap, doc: ConfigDoc) -> None:
@@ -796,6 +1056,10 @@ def _apply(data: CommentedMap, doc: ConfigDoc) -> None:
         for q in doc.queues:
             _put(queues[q.name], "agent", q.agent)
             _put(queues[q.name], "max_parallel", q.max_parallel)
+            if q.quiet is None:
+                queues[q.name].pop("quiet", None)
+            else:
+                _put(queues[q.name], "quiet", q.quiet)
     else:
         data.pop("queues", None)
     if doc.park:
@@ -816,6 +1080,74 @@ def _apply(data: CommentedMap, doc: ConfigDoc) -> None:
     elif block is not None and "error" not in workflows_from(block):
         del data["workflows"]  # every bound back to its default
     _apply_harness_versions(data, doc.harness_versions)
+    _apply_terminals(data, doc.terminals)
+    _apply_settings(data, doc.settings)
+
+
+def _apply_terminals(data: CommentedMap, terminals: list[TerminalDoc]) -> None:
+    if not terminals:
+        data.pop("terminals", None)
+        return
+    section = _entries(data, "terminals", [t.name for t in terminals])
+    for t in terminals:
+        node = section[t.name]
+        _put(node, "cmd", t.cmd)
+        _put(node, "cwd", t.cwd)
+        if t.restart:
+            _put(node, "restart", t.restart)
+        else:
+            node.pop("restart", None)
+        for k in ("env", "access"):
+            want = getattr(t, k)
+            if not want:
+                node.pop(k, None)
+            elif dict(node.get(k) or {}) != want:
+                node[k] = dict(want)
+
+
+def _apply_settings(data: CommentedMap, settings: dict) -> None:
+    """Each key of fields() set, or deleted when the form leaves it blank;
+    keys the form does not know are kept."""
+    for f in fields():
+        key = f["key"]
+        if _under_off(settings, key):
+            continue
+        v = settings.get(key)
+        if f["kind"] == "switch":
+            if v is False:
+                _set_at(data, key, False)
+            elif _at(data, key) is False:
+                _del_at(data, key)
+        elif v is None:
+            _del_at(data, key)
+        else:
+            _set_at(data, key, v)
+
+
+def _set_at(data: CommentedMap, key: str, value: object) -> None:
+    *parents, last = key.split(".")
+    node = data
+    for part in parents:
+        if not isinstance(node.get(part), dict):
+            node[part] = CommentedMap()
+        node = node[part]
+    _put(node, last, value)
+
+
+def _del_at(data: CommentedMap, key: str) -> None:
+    """Delete the key, then each mapping above it that it left empty."""
+    parts = key.split(".")
+    nodes = [data]
+    for part in parts[:-1]:
+        nxt = nodes[-1].get(part)
+        if not isinstance(nxt, dict):
+            return
+        nodes.append(nxt)
+    nodes[-1].pop(parts[-1], None)
+    for i in range(len(nodes) - 1, 0, -1):
+        if nodes[i]:
+            break
+        del nodes[i - 1][parts[i - 1]]
 
 
 def _apply_harness_versions(data: CommentedMap, hv: HarnessVersionsDoc) -> None:
