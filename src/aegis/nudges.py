@@ -42,12 +42,11 @@ from .notice_sources import Item
 from .transcript.entries import NUDGE_HEADER
 
 if TYPE_CHECKING:
+    from .config import Config
     from .registry import Registry
     from .session import Session
 
 log = logging.getLogger("aegis.nudges")
-IDLE_S = 600.0
-PLAN_STALE_S = 900.0
 EVERY_S = 15.0
 
 
@@ -105,9 +104,17 @@ def plan_items(standing: dict, cfg: dict, now: float) -> list[Item]:
 
 
 def due(
-    standing: dict, *, attention: str, worker: bool, idle: bool, now: float
+    standing: dict,
+    *,
+    attention: str,
+    worker: bool,
+    idle: bool,
+    now: float,
+    silent_s: float | None,
+    plan_s: float,
 ) -> str | None:
-    """The nudge a session needs now: ``"plan"``, ``"idle"`` or None."""
+    """The nudge a session needs now: ``"plan"``, ``"idle"`` or None.
+    ``silent_s`` None turns the idle nudge off."""
     ended = standing.get("ended")
     if worker or not idle or not ended or attention not in ("done", "review"):
         return None
@@ -117,13 +124,14 @@ def due(
     if (
         "plan" not in nudged
         and any(i["state"] != "done" for i in standing.get("plan") or [])
-        and stale_s(standing) >= PLAN_STALE_S
+        and stale_s(standing) >= plan_s
     ):
         return "plan"
     if (
-        ended["how"] == "silent"
+        silent_s is not None
+        and ended["how"] == "silent"
         and "idle" not in nudged
-        and now - ended["at"] >= IDLE_S
+        and now - ended["at"] >= silent_s
     ):
         return "idle"
     return None
@@ -137,18 +145,25 @@ def body(kind: str, standing: dict, now: float) -> str:
             "items not done. Update it with plan_update, or carry on with the item "
             "in progress. This reminder comes once per plan."
         )
-    mins = round((now - standing["ended"]["at"]) / 60)
     return (
-        f"You have been idle for {mins} minutes and your last turn did not say how "
-        "it ended. What are you doing: done, needs you, or something else? Answer "
-        "with turn_end. aegis asks this once."
+        "Your last turn ended without turn_end, so your card reads done. If it was "
+        "done, say so with turn_end; if you are waiting or need the person, say "
+        "that. aegis asks this once."
     )
 
 
 class Nudges:
-    def __init__(self, registry: "Registry") -> None:
+    def __init__(self, registry: "Registry", config: "Config") -> None:
         self._registry = registry
+        self._config = config
         self._task: asyncio.Task | None = None
+
+    def timings(self) -> tuple[float | None, float]:
+        """``(silent_s, plan_s)`` from the live ``nudges:`` block; silent_s
+        None when the idle nudge is off."""
+        cfg = self._config.current().nudges
+        silent = cfg["silent_s"]
+        return (None if silent is False else float(silent)), cfg["plan_min"] * 60.0
 
     def start(self) -> None:
         if self._task is None:
@@ -185,20 +200,30 @@ class Nudges:
         for s in list(self._registry.sessions.values()):
             self.refresh(s)
         for s in list(self._registry.sessions.values()):
-            kind = due(
-                s.standing,
-                attention=self._registry.card(s)["attention"],
-                worker=bool(s.worker),
-                idle=(s.status == "idle" and s.running or s.asleep_why == "idle")
-                and not s.held,
-                now=now,
+            await self.check(s, now)
+
+    async def check(self, s: "Session", now: float | None = None) -> None:
+        """Nudge ``s`` when it is due one now."""
+        now = time.time() if now is None else now
+        if s.archived:
+            return
+        silent_s, plan_s = self.timings()
+        kind = due(
+            s.standing,
+            attention=self._registry.card(s)["attention"],
+            worker=bool(s.worker),
+            idle=(s.status == "idle" and s.running or s.asleep_why == "idle")
+            and not s.held,
+            now=now,
+            silent_s=silent_s,
+            plan_s=plan_s,
+        )
+        if kind is None or self._registry.workflow_lock(s) is not None:
+            return  # a workflow's node is the engine's to nudge
+        log.info("aegis: nudging %s (%s)", s.handle, kind)
+        try:
+            await s.deliver(
+                f"{NUDGE_HEADER}{kind} · {iso_now()}", body(kind, s.standing, now)
             )
-            if kind is None or self._registry.workflow_lock(s) is not None:
-                continue  # a workflow's node is the engine's to nudge
-            log.info("aegis: nudging %s (%s)", s.handle, kind)
-            try:
-                await s.deliver(
-                    f"{NUDGE_HEADER}{kind} · {iso_now()}", body(kind, s.standing, now)
-                )
-            except Exception:
-                log.exception("aegis: could not nudge %s", s.handle)
+        except Exception:
+            log.exception("aegis: could not nudge %s", s.handle)

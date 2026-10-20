@@ -6,7 +6,6 @@ import asyncio
 
 import pytest
 
-from aegis import nudges
 from aegis.ops import Caller, OpError
 
 from .conftest import until
@@ -120,7 +119,7 @@ async def test_a_page_the_node_sent_cannot_steer_it(world, tmp_path):
 
 
 async def test_the_fleet_does_not_nudge_a_node(world, monkeypatch):
-    monkeypatch.setattr(nudges, "IDLE_S", 0.2)
+    monkeypatch.setattr(world.app.nudges, "timings", lambda: (0.2, 900.0))
     node, control = await world.spawn(), await world.spawn()
     await turn(node, "write the summary")
     await turn(control, "write the summary")

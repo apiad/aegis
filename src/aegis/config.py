@@ -56,7 +56,7 @@ WATCH_EVERY_S = 1.0
 TOP_KEYS = (
     "agents", "queues", "default_agent", "recap", "context", "session_memory_max",
     "terminals", "terminal_memory_max", "park", "network", "workflows",
-    "harness_versions", "notices",
+    "harness_versions", "notices", "nudges",
 )  # fmt: skip
 AGENT_KEYS = (
     "harness", "provider", "model", "models", "effort", "permission", "priming",
@@ -251,6 +251,45 @@ def workflows_from(raw: object) -> dict:
                 "error": f"workflows.max_agents.{k} {v!r} is not a positive integer"
             }
     return {"max_agents": default["max_agents"] | {str(k): v for k, v in m.items()}}
+
+
+# When aegis nudges an agent (nudges.py): ``silent_s`` after a turn that
+# ended without turn_end (false: never), and ``plan_min`` minutes of work on a
+# plan left untouched, at the end of a turn.
+NUDGES_DEFAULTS: dict = {"silent_s": 2, "plan_min": 15}
+
+
+def nudges_from(raw: object) -> dict:
+    """The ``nudges:`` block over its defaults. A wrong block keeps the
+    defaults and carries ``error`` for aegis doctor."""
+    out = dict(NUDGES_DEFAULTS)
+    if raw is None:
+        return out
+    if not isinstance(raw, dict):
+        return out | {"error": "nudges must be a mapping of silent_s and plan_min"}
+    for k, v in raw.items():
+        if k not in NUDGES_DEFAULTS:
+            return dict(NUDGES_DEFAULTS) | {
+                "error": f"nudges has no key {k!r}; it takes silent_s, plan_min"
+            }
+        if k == "silent_s" and v is False:
+            out[k] = False
+            continue
+        low = 0 if k == "silent_s" else 0.0
+        if (
+            isinstance(v, bool)
+            or not isinstance(v, int | float)
+            or v < low
+            or (k == "plan_min" and v == 0)
+        ):
+            what = (
+                "a number of seconds from 0, or false"
+                if k == "silent_s"
+                else ("a number of minutes above 0")
+            )
+            return dict(NUDGES_DEFAULTS) | {"error": f"nudges.{k} {v!r} is not {what}"}
+        out[k] = v
+    return out
 
 
 def park_from(raw: object) -> dict:
@@ -514,6 +553,7 @@ class Snapshot:
     doc: ConfigDoc = field(default_factory=ConfigDoc)
     context: dict = field(default_factory=lambda: dict(CONTEXT_DEFAULTS))
     notices: dict = field(default_factory=_notices_defaults)
+    nudges: dict = field(default_factory=lambda: dict(NUDGES_DEFAULTS))
     workflows: dict = field(default_factory=lambda: dict(WORKFLOWS_DEFAULTS))
     park: dict = field(default_factory=dict)
     harness_versions: dict = field(default_factory=_hv_defaults)
@@ -548,6 +588,7 @@ class Snapshot:
             doc=doc_from(data),
             context=context_from(data.get("context")),
             notices=notices_from(data.get("notices")),
+            nudges=nudges_from(data.get("nudges")),
             workflows=workflows_from(data.get("workflows")),
             park=park_from(data.get("park")),
             harness_versions=harness_versions_from(data.get("harness_versions")),

@@ -102,11 +102,17 @@ async def test_the_owner_of_a_running_run_is_not_nudged_and_may_park(world):
     await world.app.registry.call("workflow.approve", {"run": run})
     await turn(main, "say nothing")  # a turn that ends without turn_end
     assert main.standing["ended"]["how"] == "silent"
-    later = time.time() + nudges.IDLE_S + 1
+    later = time.time() + 601
     attention = card(world, main)["attention"]
     assert (
         nudges.due(
-            main.standing, attention=attention, worker=False, idle=True, now=later
+            main.standing,
+            attention=attention,
+            worker=False,
+            idle=True,
+            now=later,
+            silent_s=600.0,
+            plan_s=900.0,
         )
         is None
     )
