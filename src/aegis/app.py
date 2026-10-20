@@ -77,7 +77,7 @@ from .help_ops import register_help_ops
 from .host import HostSampler
 from .net.service import NetService
 from .links import LinkError, Links, probe
-from .mcp import PATH as MCP_PATH, Tokens
+from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from . import refs
 from .monitors import Monitors, iso_now
 from .names import valid_handle
@@ -487,9 +487,9 @@ class App:
         register_notice_ops(self)
         register_schedule_ops(self)
         register_workflow_ops(self)
-        # The MCP app, built by web.py once the server listens: building it
-        # imports fastmcp, which took most of a start (#506).
-        self.mcp_app = None
+        self.mcp_server, self.mcp_app = build_mcp(
+            self.registry, self.tokens, self.sessions
+        )
 
     def who(self, caller: Caller) -> Principal:
         """The principal a caller acts as. An agent acts as its session's

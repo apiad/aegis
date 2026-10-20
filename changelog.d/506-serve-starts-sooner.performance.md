@@ -1,1 +1,0 @@
-- **`aegis serve` answers about twice as fast after a start or restart.** It used to import the MCP library before listening, which took 1.5 of its 2.3 seconds. It now listens first and builds the MCP endpoint in the background. An agent's tool call that arrives in that second waits for the endpoint instead of failing.
