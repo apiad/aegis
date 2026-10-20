@@ -7,7 +7,7 @@ catalogs of the installed Claude Code and OpenCode, the same ones the Settings
 model pick uses, fetches every language model Artificial Analysis scores (one
 request of the free API's daily allowance), and writes, for each catalog model
 it can map, the Coding and Intelligence Indexes and the list price per million
-tokens, sorted by Coding Index, with today's date. It prints every catalog
+tokens, sorted by Intelligence Index, with today's date. It prints every catalog
 model it could not map: those stay unranked until an alias below covers them.
 """
 
@@ -109,7 +109,11 @@ def main() -> int:
                 models[m.value] = entry(aa[slug])
     ordered = sorted(
         models.items(),
-        key=lambda kv: (kv[1]["coding"] is not None, kv[1]["coding"] or 0.0),
+        key=lambda kv: (
+            kv[1]["intelligence"] is not None,
+            kv[1]["intelligence"] or 0.0,
+            kv[1]["coding"] or 0.0,
+        ),
         reverse=True,
     )
     data = {
