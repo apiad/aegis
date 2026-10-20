@@ -119,8 +119,14 @@ AGENTS = (
     "  deepseek: {provider: opencode, model: opencode-go/fake-pro, effort: high, permission: full}\n"
 )
 # `aegis serve` reads the machine running the tests: on a loaded host every
-# session would be told about it, so no notice fires unless a test asks.
-CONFIG = "notices: {disk: false, memory: false, cpu: false, quota: false}\n" + AGENTS
+# session would be told about it, so no notice fires unless a test asks. The
+# same holds for a session's own status and for the silent-turn nudge: the
+# fake ends its turns without turn_end, and either would add rows (#522).
+CONFIG = (
+    "notices: {disk: false, memory: false, cpu: false, quota: false,"
+    " plan: false, monitors: false, queues: false, status: false}\n"
+    "nudges: {silent_s: false}\n" + AGENTS
+)
 
 
 @pytest.fixture
