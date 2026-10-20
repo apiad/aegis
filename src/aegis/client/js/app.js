@@ -3709,12 +3709,12 @@ function pointItems({ locator, text, to, comment, leave = () => {} }) {
 // the frame's place. Which file, session and tray it belongs to comes from
 // where the frame is: Files' page, the viewer's, or a card's in the session.
 //
-// A page's script may post at any time. A gesture there leaves the pointer
-// over the frame or the focus in it (a long press focuses its frame), so a
-// post while the person types in the composer opens nothing. A page can take
-// the focus by script, so that is not proof: what keeps a made-up proposal
-// harmless is that its menu never takes the focus, and only a click on an
-// item writes anything, and not in its first half second: the page chose
+// A page's script may post at any time. A press there leaves the focus in
+// the frame (a right-click's mousedown gives it, and a long press focuses its
+// frame), so a post while the person types in the composer or only rests the
+// pointer over the page opens nothing. A page can take the focus by script,
+// so that is not proof: what keeps a made-up proposal harmless is that its
+// menu never takes the focus, and only a click on an item writes anything, and not in its first half second: the page chose
 // where the menu or the bar opens, and could put Ask under a click aimed at
 // the page. A page scrolled, Esc in it, or a selection gone
 // closes only what that frame drew.
@@ -3725,8 +3725,7 @@ function pagePoint(frame, { kind, x, y, rect, touch, locator = {}, text = "" }) 
     if (cmenu.current()?.target === frame) cmenu.close();
     return cmenu.framed(frame) && cmenu.unbar();
   }
-  const gesture = frame.matches(":hover") || document.activeElement === frame;
-  if (!gesture || !frame.checkVisibility({ visibilityProperty: true })) return;
+  if (document.activeElement !== frame || !frame.checkVisibility({ visibilityProperty: true })) return;
   const files = frame.closest("#files");
   const inViewer = frame.closest("#viewer");
   const path = files

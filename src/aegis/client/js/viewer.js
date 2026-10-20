@@ -280,6 +280,11 @@ export class Viewer {
   render(e) {
     const item = this.isOpen ? this.items.get(this.key) : null;
     const draw = ++this.drawn;
+    // A redraw of the same item keeps its tray (newTray), and the note being
+    // typed in it, caught before the redraw takes the focus away.
+    this.kept = this.tray;
+    const typing = this.tray?.node.contains(document.activeElement) ? document.activeElement : null;
+    this.typing = typing && { el: typing, caret: [typing.selectionStart, typing.selectionEnd] };
     this.tray = null;
     this.root.hidden = !item;
     this.root.parentElement.classList.toggle("viewing", !!item);
@@ -299,10 +304,26 @@ export class Viewer {
   }
 
   // The comment tray, below the body; Send closes the viewer over the composer.
+  // A redraw of the same item (an artifact's status) keeps the tray it had,
+  // with the note being typed and its caret (render caught them).
   newTray(key, path) {
     if (!this.point) return null;
+    const kept = this.kept;
+    this.kept = null;
+    const typing = this.typing;
+    this.typing = null;
+    if (kept && kept.store === `aegis.comments.${key}` && kept.to === this.key) {
+      this.root.append(kept.node);
+      if (typing && kept.node.contains(typing.el)) {
+        typing.el.focus({ preventScroll: true });
+        typing.el.setSelectionRange(...typing.caret);
+      }
+      this.tray = kept;
+      return kept;
+    }
     const to = this.key;
     this.tray = new Tray(this.root, key, (text) => (this.close(), this.point.send(to, text)), path);
+    this.tray.to = to;
     return this.tray;
   }
 

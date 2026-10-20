@@ -981,8 +981,7 @@ the client's version. In the frame it reports a right-click, a long press and a
 selection, with a locator (heading, id or CSS path) and the text, as an
 `aegis/point` message; the host bridge takes that one method from any frame it
 mounted and draws the menu or the selection bar in its own document
-(`app.js`, `pagePoint`), only while the pointer is over that frame or the
-focus is in it. A page's script can still take the focus and make a menu
+(`app.js`, `pagePoint`), only while the focus is in that frame. A page's script can still take the focus and make a menu
 appear; it can never put text in a composer, because that menu takes no
 focus and only a click on one of its items writes, never in its first half
 second, since the page chose where it opens. A field, a link, an image

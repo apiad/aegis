@@ -87,10 +87,14 @@
     post({ kind: "menu", x, y, touch, ...locate(el, text) });
   }
 
-  document.addEventListener("contextmenu", (ev) => {
+  // On the window, so the page's own listeners run first: a page with a
+  // right-click or a long press of its own (a board, an editor, its own
+  // menu) cancels the event, and gets no host menu over its own.
+  window.addEventListener("contextmenu", (ev) => {
     if (ev.shiftKey) return;
     clearTimeout(timer); // a touch's contextmenu before the long press's timer: one menu, not two
     if (swallow) return ev.preventDefault(); // the long press already reported it
+    if (ev.defaultPrevented) return;
     const about = aboutAt(ev.target, ev.clientX, ev.clientY);
     if (!about) return;
     ev.preventDefault();
@@ -100,13 +104,13 @@
   let timer = null;
   let at = null;
   let swallow = false;
-  document.addEventListener("pointerdown", (ev) => {
+  window.addEventListener("pointerdown", (ev) => {
     swallow = false;
     // A press anywhere in the page is a press outside the host's menu: the
     // host never sees it, so it is told.
     if (pointed) post({ kind: "clear" });
     clearTimeout(timer);
-    if (ev.pointerType === "mouse" || ev.target.closest?.(NATIVE)) return;
+    if (ev.pointerType === "mouse" || ev.defaultPrevented || ev.target.closest?.(NATIVE)) return;
     at = [ev.clientX, ev.clientY];
     const target = ev.target;
     timer = setTimeout(() => {

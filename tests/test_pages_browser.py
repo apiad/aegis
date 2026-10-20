@@ -377,6 +377,9 @@ def test_a_page_message_without_a_gesture_does_nothing(server, page):  # noqa: F
     frame = frame_of(page, ".row.file iframe")
     page.click("#input")
     page.keyboard.type("hello")
+    # The pointer resting over the page is no press in it.
+    box = page.locator(".row.file iframe").bounding_box()
+    page.mouse.move(box["x"] + 40, box["y"] + 40)
     for kind in ("menu", "select"):
         frame.evaluate(
             """(kind) => parent.postMessage({ jsonrpc: "2.0", method: "aegis/point", params: {
@@ -395,8 +398,9 @@ FORM = (
     "<html><body><h2>Form</h2><p id=p1>kiwi</p><input id=f value=typed>"
     "<textarea id=t>a draft</textarea><a id=a href='#x'>a link</a>"
     "<img id=i width=40 height=40 src='data:image/gif;base64,R0lGODlhAQABAAAAACw='>"
-    "<script>addEventListener('contextmenu', (e) =>"
-    " (document.title = String(e.defaultPrevented)))</script></body></html>"
+    # Registered after load, so it runs after pagepoint's window listener.
+    "<script>addEventListener('load', () => addEventListener('contextmenu', (e) =>"
+    " (document.title = String(e.defaultPrevented))))</script></body></html>"
 )
 
 
@@ -700,5 +704,58 @@ def test_a_pages_menu_closes_when_its_frame_is_drawn_again(server, page):  # noq
     tray = page.locator("#viewer .ctray")
     assert tray.locator(".cn").inner_text() == "1 comment"
     assert tray.locator(".note").input_value() == "ripe"
+    other.close()
+    assert page.errors == []
+
+
+OWN_MENU = (
+    "<html><body><h2>Board</h2><p id=c>cell</p>"
+    "<script>c.addEventListener('contextmenu', (e) => {"
+    " e.preventDefault(); c.textContent = 'flag'; })</script></body></html>"
+)
+
+
+def test_a_page_with_its_own_right_click_keeps_it(server, page):  # noqa: F811
+    (server.root / "board.html").write_text(OWN_MENU)
+    page.goto(server.url)
+    spawn(page)
+    send(page, 1, ["board.html"])
+    view(page, "iframe")
+    frame = frame_of(page, "#viewer iframe")
+    frame.locator("#c").click(button="right")
+    frame.wait_for_function("document.getElementById('c').textContent === 'flag'")
+    page.wait_for_timeout(400)
+    assert page.locator(".cmenu").count() == 0
+    # Its heading, which the page leaves alone, has the host's menu.
+    frame.locator("h2").click(button="right")
+    page.wait_for_selector(".cmenu [data-id=ask]")
+    assert page.errors == []
+
+
+def test_a_note_being_typed_keeps_the_focus_through_a_resend(server, page):  # noqa: F811
+    page.goto(server.url)
+    sid = spawn(page)
+    aid, _ = _artifact(
+        page, server, ("<h3>Pick</h3><p id=q>mango</p>", "aegis.state({});"), 0
+    )
+    page.locator(".row.artifact .fbar .view").last.click()
+    frame = frame_of(page, "#viewer iframe[data-artifact]")
+    old = page.locator("#viewer iframe[data-artifact]").get_attribute("src")
+    frame.locator("#q").click(button="right")
+    pick(page, "comment")
+    page.keyboard.type("ri")
+    other = page.context.new_page()
+    other.goto(f"{server.url.split('#')[0]}#s={sid}")
+    other.fill(
+        "#input", f"/mcp artifact_update {json.dumps({'id': aid, 'resend': True})}"
+    )
+    other.press("#input", "Enter")
+    page.wait_for_function(
+        "document.querySelector('#viewer iframe[data-artifact]')?.getAttribute('src')"
+        f" !== {json.dumps(old)}"
+    )
+    page.keyboard.type("pe")
+    note = page.locator("#viewer .ctray .note")
+    assert note.count() == 1 and note.input_value() == "ripe"
     other.close()
     assert page.errors == []
