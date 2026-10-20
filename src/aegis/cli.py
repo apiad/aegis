@@ -449,10 +449,17 @@ def _ask(doc, found):
         models = next((f.models for f in found if f.harness == a.harness), ())
         if models:
             typer.echo("  models: " + ", ".join(m.value for m in models[:12]))
+        if a.models:
+            # A cascade is asked as one list, best first.
+            typed = typer.prompt("  models", default=", ".join(a.models))
+            listed = [x.strip() for x in typed.split(",") if x.strip()] or a.models
+            update = {"model": listed[0], "models": listed if len(listed) > 1 else []}
+        else:
+            update = {"model": typer.prompt("  model", default=a.model)}
         agents.append(
             a.model_copy(
                 update={
-                    "model": typer.prompt("  model", default=a.model),
+                    **update,
                     "effort": _pick("  effort", a.effort, EFFORTS),
                     "permission": _pick("  permission", a.permission, PERMISSION_ORDER),
                 }
@@ -469,6 +476,14 @@ def _ask(doc, found):
     ):
         n = _count("  workers at a time", 3)
         queues.append(QueueDoc(name="general", agent=default, max_parallel=n))
+    for q in doc.queues:
+        if q.name == "general" or q.agent not in names or q.agent == default:
+            continue
+        if typer.confirm(
+            f"Add a queue {q.name!r} of workers running {q.agent}?", default=True
+        ):
+            n = _count("  workers at a time", q.max_parallel or 3)
+            queues.append(QueueDoc(name=q.name, agent=q.agent, max_parallel=n))
     return ConfigDoc(agents=agents, default_agent=default, queues=queues)
 
 

@@ -24,16 +24,18 @@ def test_init_yes_writes_a_config_the_doctor_passes(
     assert r.exit_code == 0, r.output
     data = YAML(typ="safe").load((root / ".aegis.yaml").read_text())
     assert data["default_agent"] == "opus"
-    assert data["agents"]["fake-flash"]["model"] == "opencode-go/fake-flash"
+    assert data["agents"]["free"]["model"] == "opencode-go/fake-flash"
+    assert "fake-pro" not in (root / ".aegis.yaml").read_text(), "a paid model"
     assert data["queues"]["general"] == {"agent": "opus", "max_parallel": 3}
+    assert data["queues"]["light"] == {"agent": "free", "max_parallel": 3}
     assert "0 errors" in r.output
 
 
 def test_init_asks_with_the_proposal_filled_in(tmp_path, fake_claude, fake_opencode):
     root = tmp_path / "ws"
     root.mkdir()
-    # opus: add, model, effort, permission; fake-flash: add, model, effort,
-    # permission; default; queue; workers.
+    # opus: add, model, effort, permission; free: no; default; queue;
+    # workers.
     answers = "\n\n\nread\nn\nopus\ny\n5\n"
     r = invoke(
         "init", "--root", str(root), *fakes(fake_claude, fake_opencode), input=answers
@@ -53,7 +55,7 @@ def test_init_asks_again_after_an_answer_it_cannot_take(
     root = tmp_path / "ws"
     root.mkdir()
     # opus: add, model, effort (bogus, then high), permission (nope, then
-    # read); fake-flash: no; default (ghost, then opus); queue; workers (0,
+    # read); free: no; default (ghost, then opus); queue; workers (0,
     # abc, then 5).
     answers = "\n\nbogus\nhigh\nnope\nread\nn\nghost\nopus\ny\n0\nabc\n5\n"
     r = invoke(
@@ -125,3 +127,44 @@ def test_doctor_exits_1_on_an_error_and_0_when_healthy(
     r = invoke("doctor", "--root", str(tmp_path), *fakes(fake_claude, fake_opencode))
     assert r.exit_code == 0, r.output
     assert "0 errors, 0 warnings" in r.output
+
+
+def test_init_asks_a_cascade_as_one_list_and_offers_its_queue():
+    from aegis.cli import _ask
+    from aegis.config import AgentDoc, ConfigDoc, QueueDoc
+
+    free = AgentDoc(
+        name="free",
+        harness="opencode",
+        model="o/a",
+        models=["o/a", "o/b", "o/c"],
+        effort="high",
+        permission="full",
+    )
+    opus = AgentDoc(
+        name="opus",
+        harness="claude-code",
+        model="opus",
+        effort="high",
+        permission="full",
+    )
+    doc = ConfigDoc(
+        agents=[opus, free],
+        default_agent="opus",
+        queues=[
+            QueueDoc(name="general", agent="opus"),
+            QueueDoc(name="light", agent="free", max_parallel=3),
+        ],
+    )
+    # opus: add, model, effort, permission; free: add, models (b dropped),
+    # effort, permission; default; general and its workers; light and its
+    # workers.
+    answers = "\n\n\n\n\no/c, o/a\n\n\n\ny\n\ny\n2\n"
+    with CliRunner().isolation(input=answers):
+        got = _ask(doc, [])
+    (_, asked) = got.agents
+    assert (asked.model, asked.models) == ("o/c", ["o/c", "o/a"])
+    assert [(q.name, q.agent, q.max_parallel) for q in got.queues] == [
+        ("general", "opus", 3),
+        ("light", "free", 2),
+    ]

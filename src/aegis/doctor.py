@@ -155,21 +155,21 @@ def propose(found: list[Found]) -> ConfigDoc:
                 permission="full",
             )
         )
-    oc = have.get("opencode")
-    if oc is not None and oc.models:
-        # The first model that costs nothing and can run an agent, so a first
-        # config spends no money until the person picks one that does.
-        first = next((m for m in oc.models if m.free), oc.models[0])
-        name = first.value.rsplit("/", 1)[-1]
-        if any(a.name == name for a in agents):
-            name += "-opencode"
+    catalog = have["opencode"].models if "opencode" in have else ()
+    # Every model that costs nothing and can run an agent, best first, so a
+    # first config spends no money and falls to the next free model when one
+    # runs out. A paid model is never proposed.
+    free = ranking().order([m.value for m in catalog if m.free])
+    if free:
+        first = next(m for m in catalog if m.value == free[0])
         offered = [e for e in first.efforts if e in EFFORTS]
         effort = "high" if "high" in offered or not offered else offered[0]
         agents.append(
             AgentDoc(
-                name=name,
+                name="free",
                 harness="opencode",
-                model=first.value,
+                model=free[0],
+                models=free if len(free) > 1 else [],
                 effort=effort,
                 permission="full",
             )
@@ -177,11 +177,11 @@ def propose(found: list[Found]) -> ConfigDoc:
     if not agents:
         return ConfigDoc()
     default = agents[0].name
-    return ConfigDoc(
-        agents=agents,
-        default_agent=default,
-        queues=[QueueDoc(name="general", agent=default, max_parallel=3)],
-    )
+    queues = [QueueDoc(name="general", agent=default, max_parallel=3)]
+    if free and default != "free":
+        # Reviews and research on the free models, off the paid default.
+        queues.append(QueueDoc(name="light", agent="free", max_parallel=3))
+    return ConfigDoc(agents=agents, default_agent=default, queues=queues)
 
 
 def _unknown_keys(data: dict) -> list[Finding]:
